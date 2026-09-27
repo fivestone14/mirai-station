@@ -14,6 +14,7 @@ from conftest import DAY, at, bars_from_closes, make_row, prior_sessions
 from spx_jev.cuts import (GAP_LARGE_SIGMA, GAP_RULE_SIGMA, GIVEBACK_THIRD, NOISE_EDGE_SIGMA, NOISE_LOOKBACK, OPEN_CONTESTED_CROSSES,
                           OPEN_MOVE_SIGMA, RANGE_TOP_SHARE)
 from spx_jev.labels.gap_open import build_gap_open_labels
+from spx_jev.labels.measures import bar_time
 from spx_jev.labels.rulers import SigmaRuler
 
 SIGMA = 80.0
@@ -150,6 +151,10 @@ def test_the_morning_counts_once_its_1129_bar_has_finished(scene_factory):
     late_touch = opening(7732.0, [7736.0] * 115 + [7700.0] + [7736.0] * 29)                     # the 11:30 bar is after the morning
     got, _, _ = labels(scene(scene_factory, at(12, 0), late_touch))
     assert "and did not touch yesterday's close" in got["gap.morning_vs_gap"]
+    stalled = scene(scene_factory, at(11, 32), closes)
+    stalled.bars[:] = [b for b in stalled.bars if bar_time(b) < at(11, 20)]                   # the 11:2x bars never arrived
+    _, omitted, _ = labels(stalled)
+    assert omitted["gap.morning_vs_gap"] == "the morning runs to 11:30 and its last bar has not finished"
 
 
 # ---- gap.reach_distance

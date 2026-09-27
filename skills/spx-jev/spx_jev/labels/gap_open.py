@@ -191,7 +191,7 @@ def _morning_vs_gap(scene: Scene, gap: Gap | None, why: str, ls: LabelSet) -> No
         ls.omit("gap.morning_vs_gap", f"no real gap this morning: the settled open was within the {sig(GAP_RULE_SIGMA)} gap rule")
         return
     late = scene.session_open.replace(hour=LATE_MORNING.hour, minute=LATE_MORNING.minute)
-    late_close = close_at(scene.bars, late) if scene.now >= late else None
+    late_close = next((float(b["close"]) for b in scene.bars if bar_time(b) == late - ONE_MINUTE), None)
     if late_close is None:
         ls.omit("gap.morning_vs_gap", f"the morning runs to {LATE_MORNING:%H:%M} and its last bar has not finished")
         return
