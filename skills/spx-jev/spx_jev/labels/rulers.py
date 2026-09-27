@@ -4,7 +4,7 @@
   scanner first set it, never the row's ``sigma``, which ratchets up with the live one. The anchor
   counts only from a row stamped by ANCHOR_GUARD; without one the day's earliest ``sigma_live`` stands
   in, else the settled open times the VIX over the square root of 252, and either is flagged
-  estimated ("ruler estimated"): ranks leave such a day out.
+  estimated ("ruler estimated"): the ranks built on ranks.rank_days leave such a day out.
 * The live sigma (sigma_live): spot times at-the-money implied volatility over the square root of 252.
 * The straddle left (straddle_left, remaining_straddles): what today's 0DTE straddle still prices for the
   rest of the day, in points, so the same distance reads as out of reach at 13:30 and inside the priced

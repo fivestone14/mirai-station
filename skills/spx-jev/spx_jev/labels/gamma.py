@@ -370,7 +370,8 @@ def _weight_both_books(scene: Scene, gv: dict, ls: LabelSet) -> None:
 
 def _grip_base(scene: Scene) -> list[float]:
     """The top-strike share on each prior session's diary at this read's clock minute, market time; a session
-    whose ruler was estimated is left out, as in every rank."""
+    whose ruler was estimated is left out, as ranks.rank_days leaves it out; the days are the ones with a ruler,
+    since the share is read from the diary, not the bars."""
     clock = scene.now.astimezone(ET).time()
     out = []
     for day, ruler in scene.prior_rulers.items():

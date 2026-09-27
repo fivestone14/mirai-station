@@ -3,7 +3,9 @@
 SPX's size swings with the clock (the 09:30-10:30 range runs about twice the afternoon's), so a size is
 judged against what the same minute looked like on up to the last 20 sessions, never against a fixed
 cut: "higher than 17 of the last 20 sessions at this minute". A rank needs at least MIN_RANK_SESSIONS
-sessions; a session whose morning ruler was estimated (rulers.morning_ruler) is left out of every rank.
+sessions. A session whose morning ruler was estimated (rulers.morning_ruler) is left out of every rank
+whose base is built on rank_days or same_clock_values: the sigma-scaled measures and the diary's own. The
+tape, breadth and SPY ranks, whose measures the ruler never touches, keep every session.
 """
 from __future__ import annotations
 
@@ -51,6 +53,11 @@ def rank_at_slot(value: float, base: list[float]) -> dict | None:
     return {"band": f"{third(rank.share)} third", "higher_than": rank.higher_than, "of": rank.of}
 
 
+def rank_days(scene: Scene) -> list[str]:
+    """The prior sessions a rank may use, newest first: a day whose morning ruler was estimated sits out."""
+    return [d for d in scene.prior_bars if not ((r := scene.prior_rulers.get(d)) is not None and r.estimated)]
+
+
 def same_clock_values(scene: Scene, measure: Callable[[list[dict], datetime, float | None], float | None]) -> list[float]:
     """``measure(bars, then, sigma)`` on each prior session at this read's clock minute, newest first:
     ``bars`` are the session's bars that had finished by ``then`` (the same minute on that day, market
@@ -58,10 +65,8 @@ def same_clock_values(scene: Scene, measure: Callable[[list[dict], datetime, flo
     ruler was estimated is skipped, and so is a measure that returns None."""
     clock = scene.now.astimezone(ET).time()
     out = []
-    for day, bars in scene.prior_bars.items():
-        ruler = scene.prior_rulers.get(day)
-        if ruler is not None and ruler.estimated:
-            continue
+    for day in rank_days(scene):
+        bars, ruler = scene.prior_bars[day], scene.prior_rulers.get(day)
         then = datetime.combine(date.fromisoformat(day), clock, tzinfo=ET)
         v = measure([b for b in bars if bar_time(b) + ONE_MINUTE <= then], then, ruler.points if ruler else None)
         if v is not None:

@@ -28,7 +28,7 @@ from .events_shocks import judged_windows, shock_bursts
 from .label_set import LabelSet
 from .measures import (ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, day_high_low, is_num, session_extremes,
                        settled_open)
-from .ranks import SameClockRank, fifth, rank_against, same_clock_values
+from .ranks import SameClockRank, fifth, rank_against, rank_days, same_clock_values
 from .rulers import SigmaRuler, normal_day_sigma, sigma_anchor
 from .vol_sources import ROW_MAX_GAP, DiaryPoint, Skew, diary_point, minute_floor, point_at, prior_diary, skew_at
 from .words import pct, plural, sig, signed
@@ -412,12 +412,6 @@ def _same_clock(t: datetime, day: str) -> datetime:
     return datetime.combine(date.fromisoformat(day), t.astimezone(ET).time(), tzinfo=ET)
 
 
-def _ranked_prior_days(scene: Scene) -> list[str]:
-    """The prior sessions a rank may use, newest first: a day whose morning ruler was estimated sits out
-    (as in ranks.same_clock_values)."""
-    return [d for d in scene.prior_bars if not ((r := scene.prior_rulers.get(d)) is not None and r.estimated)]
-
-
 def _minutes_left(t: datetime) -> float:
     return (session_close(t) - t).total_seconds() / 60.0
 
@@ -455,7 +449,7 @@ def _straddle_vs_clock(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> N
     if scene.state_dir is None:
         ls.omit("vol.straddle_vs_clock", "no state folder to read the prior sessions' diaries from")
         return
-    base = [s for d in _ranked_prior_days(scene)
+    base = [s for d in rank_days(scene)
             if (s := _straddle_share(point_at(prior_diary(scene.state_dir, d), _same_clock(scene.now, d)))) is not None]
     if len(base) < MIN_RANK_SESSIONS:
         ls.omit("vol.straddle_vs_clock", f"needs {MIN_RANK_SESSIONS} prior sessions with a straddle at this minute, have {len(base)}")
@@ -500,7 +494,7 @@ def _release_pace(scene: Scene, today: list[DiaryPoint], start: datetime, delive
     before = _straddle_30(point_at(today, start))
     if before is None:
         return f"no straddle on the rows just before {_clock(start)} to judge the tape against"
-    usual = [t / p for d in _ranked_prior_days(scene)
+    usual = [t / p for d in rank_days(scene)
              if (p := _straddle_30(point_at(prior_diary(scene.state_dir, d), _same_clock(start, d))))
              and (t := _tape_30(scene.prior_bars[d], _same_clock(scene.now, d)))]
     if len(usual) < MIN_RANK_SESSIONS:
@@ -531,7 +525,7 @@ def _ruler_event_load(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> No
         ls.omit(path, "no state folder to read the prior sessions' diaries from")
         return
     base = []
-    for d in _ranked_prior_days(scene):
+    for d in rank_days(scene):
         then = _same_clock(scene.now, d)
         p, t = _straddle_30(point_at(prior_diary(scene.state_dir, d), then)), _tape_30(scene.prior_bars[d], then)
         if p is not None and t:
@@ -756,7 +750,7 @@ def _vvix_vs_vix(scene: Scene, ls: LabelSet) -> None:
                       "(the context job)")
         return
     xs, ys, sessions = [], [], 0
-    for d in _ranked_prior_days(scene):
+    for d in rank_days(scene):
         prior, anchor = scene.prior_markets.get(d), scene.prior_rulers.get(d)
         if prior is None or anchor is None:
             continue
@@ -802,7 +796,7 @@ def _vix_curve(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
         ls.omit(path, "no state folder to read the prior sessions' diaries from")
         return
     diaries = {d: prior_diary(scene.state_dir, d) for d in scene.prior_bars}
-    base = [p.vix_ts for d in _ranked_prior_days(scene) if (p := point_at(diaries[d], _same_clock(scene.now, d))) and p.vix_ts]
+    base = [p.vix_ts for d in rank_days(scene) if (p := point_at(diaries[d], _same_clock(scene.now, d))) and p.vix_ts]
     rank = rank_against(ratio, base)
     if rank is None:
         ls.omit(path, f"needs {MIN_RANK_SESSIONS} prior sessions with the VIX curve at this minute, have {len(base)}")
@@ -928,7 +922,7 @@ def _put_tilt(scene: Scene, smile: Skew | None, at_min: datetime, ls: LabelSet) 
         ls.sleep("put_tilt_vs_clock", why)
         return
     tilts, wings = [], []
-    for d in _ranked_prior_days(scene):
+    for d in rank_days(scene):
         if len(tilts) == SKEW_RANK_SESSIONS:
             break
         read_at = _same_clock(scene.now, d)
