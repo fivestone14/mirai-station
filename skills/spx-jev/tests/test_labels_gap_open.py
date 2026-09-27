@@ -285,6 +285,14 @@ def test_the_opening_path_firm_fading_and_rotating(scene_factory):
                                      "0.10 sigma opening move rule on the down side, with no real gap this morning")
 
 
+def test_the_opening_path_never_reaches_a_negative_distance(scene_factory):
+    sc = scene(scene_factory, at(9, 40), [7700.0] * 5 + [7702.0, 7703.0, 7704.0, 7705.0, 7706.0])
+    sc.bars[5].update(open=7701.0, low=7700.5)                                                   # the 09:35 bar opens above the settled open
+    got, _, _ = labels(sc)
+    assert got["open.path"].startswith("5 minutes after the settled open, price reached 0.08 sigma above it and 0.00 sigma below it "
+                                       "and never crossed it")
+
+
 def test_the_settled_open_crossings_and_the_contested_rule(scene_factory):
     def crossings(n: int) -> list[float]:
         return [7700.0] * 5 + [7702.0 if k % 2 == 0 else 7698.0 for k in range(n + 1)] + [7700.0 + (1 if n % 2 == 0 else -1) * 2] * 30

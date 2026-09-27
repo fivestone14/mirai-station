@@ -356,6 +356,7 @@ def _path(scene: Scene, anchor: SigmaRuler | None, gap: Gap | None, ls: LabelSet
         return
     points = anchor.points
     hi, lo = day_high_low(since, scene.spot)
+    hi, lo = max(hi, so), min(lo, so)           # bars that never traded back to the open reached nothing on that side
     now_d = (scene.spot - so) / points
     minutes = _minutes_since_settled(scene)
     crosses = _crosses(since, so)
