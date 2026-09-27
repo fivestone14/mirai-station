@@ -72,6 +72,15 @@ def test_lane_set_matches_the_code(full_scene, lane_scene):
     assert _produced(lane_scene) == built | lane
 
 
+def test_the_question_sets_tags_follow_its_convention():
+    """A tag is one the set's conventions define, and an untagged question carries no tags field."""
+    d = json.loads(QUESTION_SET.read_text(encoding="utf-8"))
+    known = {"SEQUENTIAL_READ"}
+    assert all(t in d["conventions"]["tags"] for t in known)
+    tagged = [q for g in d["groups"] for q in g["questions"] if "tags" in q]
+    assert tagged and all(q["tags"] and set(q["tags"]) <= known for q in tagged), [q["id"] for q in tagged]
+
+
 def test_every_cut_the_spec_names_is_a_constant():
     import importlib
     import pkgutil

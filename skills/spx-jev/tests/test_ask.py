@@ -282,6 +282,39 @@ def test_each_lane_asks_its_share_of_one_doc_with_its_own_schedule_and_horizon()
     assert premarket["overnight_move_vs_expected"]["schedule"] == {"at": ["09:28"]} and not set(premarket) & (set(live) | set(tape))
 
 
+def test_the_premarket_lane_asks_jev_only_at_its_0848_and_0928_checkpoints():
+    """Every checkpoint builds its labels; JEV is asked only at the reads a question's schedule names."""
+    lane = LANES["premarket"]
+    premarket = [q for g in load_questions(lane.questions, lane.key)["groups"] for q in g["questions"].values()]
+    asked = {t for q in premarket for t in q["schedule"]["at"]}
+    assert asked == {"08:48", "09:28"} and asked <= set(lane.schedule)
+
+
+def test_a_premarket_question_reads_only_what_a_premarket_read_writes_and_a_session_question_never_does():
+    from spx_jev.labels.registry import FAMILIES
+    before_open = {p for f in FAMILIES for p in f.premarket}
+    only_before_open = {p for f in FAMILIES for p in f.premarket_only}
+    for lane in LANES.values():
+        for g in load_questions(lane.questions, lane.key)["groups"]:
+            for qid, q in g["questions"].items():
+                reads = set(paths_in(q))
+                if lane.key == "premarket":
+                    assert reads <= before_open, f"{qid} reads {sorted(reads - before_open)}, which a premarket read does not build"
+                else:
+                    assert not reads & only_before_open, f"{qid} reads {sorted(reads & only_before_open)}, built only before the open"
+
+
+def test_a_premarket_question_ranks_against_the_last_nights_and_never_cuts_on_a_fixed_sigma_line():
+    """No fixed cut-offs before the open (premarket-data-plan section 3): every size is a third or a fifth of a rank."""
+    raw = json.loads((QUESTIONS / "spx_questions.json").read_text())
+    for g in raw["groups"]:
+        if g["lane"] != "premarket":
+            continue
+        for qid, q in g["questions"].items():
+            named = {n for key in ("instructions", "criteria", "sleep_when") for t in _texts(q.get(key)) for n in constants_named(t)}
+            assert not {n for n in named if n.endswith("_sigma")}, f"{qid} cuts on {sorted(named)}"
+
+
 def test_a_group_over_the_cap_stops_the_load(tmp_path):
     q = {"type": "noul", "instructions": "Read `context.symbol`.", "criteria": {"true": "t", "false": "f"}}
     p = tmp_path / "doc.json"

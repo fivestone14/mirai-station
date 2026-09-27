@@ -4751,7 +4751,7 @@
       "unwinding": "the furthest point came at an earlier read and price has given back a large share of it for this time of day"
      },
      "code_criteria": {
-      "extending": "furthest point from the 09:34 close is at this read",
+      "extending": "furthest point from the settled open is at this read",
       "stalled": "furthest point earlier; giveback share rank < {third_hi} vs the same clock over the last {night_rank_count} sessions",
       "unwinding": "furthest point earlier; giveback share rank >= {third_hi}"
      },
@@ -4844,7 +4844,7 @@
       "btc_ahead_down": "bitcoin moved further than the index's move would match, in the direction that has gone with stocks falling"
      },
      "code_criteria": {
-      "btc_ahead_up": "excess rank vs the same clock over the last 20 sessions >= {top_fifth}, stocks-up direction",
+      "btc_ahead_up": "excess rank vs the same clock over the last {night_rank_count} sessions >= {top_fifth}, stocks-up direction",
       "btc_ahead_down": "excess rank <= {bottom_fifth}, stocks-down direction"
      },
      "labels": [
@@ -4881,7 +4881,7 @@
       "streak_down": "three half-hours in a row bitcoin moved further than the index's move would match, each time in the stocks-falling direction"
      },
      "code_criteria": {
-      "streak_up": "the last three half-hour excesses all on the stocks-up side and their sum ranks >= {third_hi} against the same clock over the last 20 sessions",
+      "streak_up": "the last three half-hour excesses all on the stocks-up side and their sum ranks >= {third_hi} against the same clock over the last {night_rank_count} sessions",
       "streak_down": "all three on the stocks-down side and their sum ranks <= {third_lo}"
      },
      "labels": [
@@ -4908,7 +4908,7 @@
      "sleep_when": "link rank in the middle third; before 10:32 (too few minutes)",
      "code_answer": true,
      "ask": "Are bitcoin and the index trading together today more tightly than usual, or less?",
-     "instructions": "Read `xasset.btc_link`. Since the open, have bitcoin and the index moved together minute by minute more tightly than on most of the last 20 sessions, or more loosely?",
+     "instructions": "Read `xasset.btc_link`. Since the open, have bitcoin and the index moved together minute by minute more tightly than on most of the last {night_rank_count} sessions, or more loosely?",
      "options": [
       "tight",
       "loose"
@@ -4918,7 +4918,7 @@
       "loose": "bitcoin and the index have moved together today more loosely than on most recent sessions, or in opposite directions"
      },
      "code_criteria": {
-      "tight": "today's link rank vs the last 20 sessions at this clock >= {third_hi}",
+      "tight": "today's link rank vs the last {night_rank_count} sessions at this clock >= {third_hi}",
       "loose": "rank <= {third_lo}"
      },
      "labels": [
@@ -4963,7 +4963,7 @@
       "btc_ahead": "over the last five sessions bitcoin has done clearly better than the index's move would match"
      },
      "code_criteria": {
-      "btc_lagging": "five-session excess rank vs the last 20 sessions <= {bottom_fifth}",
+      "btc_lagging": "five-session excess rank vs the last {night_rank_count} sessions <= {bottom_fifth}",
       "btc_ahead": "rank >= {top_fifth}"
      },
      "labels": [
@@ -4976,7 +4976,7 @@
   {
    "id": "premarket_overnight",
    "lane": "premarket",
-   "purpose": "Pre-market lane (all dark until the lane exists; the overnight store it reads is saved at 09:26), one 09:28 read: the overnight futures move in yesterday's sigma, the overnight session's width, and when the gap was made.",
+   "purpose": "Pre-market lane, the 09:28 JEV read: the futures' move since their 16:00 price in the pre-open ruler, the night's range, which stretch of the night moved most unusually, and the night against yesterday's last cash hour; every checkpoint rebuilds the labels from the overnight store.",
    "reads": [
     "context",
     "overnight.es_move",
@@ -5002,10 +5002,10 @@
      "horizon": {
       "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
-     "cadence": "once at the 09:28 premarket read (premarket lane not built); answer held as a day constant through 10:30",
+     "cadence": "at the 09:28 premarket read",
      "code_answer": true,
-     "ask": "Which way and how far did futures move overnight?",
-     "instructions": "Read `overnight.es_move`. Which way did futures move from yesterday's close to now, and how large was the move against the recent nights' moves to the same time?",
+     "ask": "Which way and how far have futures moved since their 16:00 price?",
+     "instructions": "Read `overnight.es_move`. Where are S&P futures now against their 16:00 price, and how large is that move against the recent nights' moves to the same time?",
      "options": [
       "big_down",
       "down",
@@ -5014,14 +5014,14 @@
       "big_up"
      ],
      "criteria": {
-      "big_down": "futures fell, a move in the top third of the recent nights' moves",
-      "down": "fell, a move in the middle third of the recent nights' moves",
-      "flat": "moved either way, a move in the bottom third of the recent nights' moves",
-      "up": "rose, a move in the middle third of the recent nights' moves",
-      "big_up": "rose, a move in the top third of the recent nights' moves"
+      "big_down": "futures are below their 16:00 price, a move in the top third of the recent nights' moves",
+      "down": "below it, a move in the middle third of the recent nights' moves",
+      "flat": "either side of it, a move in the bottom third of the recent nights' moves",
+      "up": "above it, a move in the middle third of the recent nights' moves",
+      "big_up": "above it, a move in the top third of the recent nights' moves"
      },
      "code_criteria": {
-      "big_down": "move < 0 and |move| larger than over two thirds of the prior nights' |move| (top third)",
+      "big_down": "move < 0 and |move| in percent larger than over two thirds of the last {night_rank_count} usable nights' |move| to this minute (top third)",
       "down": "move < 0 and |move| larger than a third to two thirds of them (middle third)",
       "flat": "|move| larger than under a third of them (bottom third)",
       "up": "move > 0 and |move| larger than a third to two thirds of them (middle third)",
@@ -5049,24 +5049,24 @@
      "horizon": {
       "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
-     "cadence": "once at the 09:28 premarket read (premarket lane not built); answer held as a day constant through 10:30",
+     "cadence": "at the 09:28 premarket read",
      "code_answer": true,
-     "ask": "How wide was last night's futures session?",
-     "instructions": "Read `overnight.range_vs_normal`. How wide was last night's futures session compared with recent nights?",
+     "ask": "How wide has the night's futures session been?",
+     "instructions": "Read `overnight.range_vs_normal`. How wide has the night's futures range been since the reopen, against the recent nights' ranges to the same time?",
      "options": [
       "quiet_night",
       "normal_night",
       "wide_night"
      ],
      "criteria": {
-      "quiet_night": "narrower than the quiet line times the recent median",
-      "normal_night": "between the quiet and wide lines",
-      "wide_night": "wider than the wide line times the recent median"
+      "quiet_night": "the night's range is in the bottom third of the recent nights' ranges",
+      "normal_night": "in the middle third",
+      "wide_night": "in the top third"
      },
      "code_criteria": {
-      "quiet_night": "ratio < {on_quiet}",
-      "normal_night": "{on_quiet} to {on_wide}",
-      "wide_night": "> {on_wide}"
+      "quiet_night": "the range in percent of price is larger than under a third of the last {night_rank_count} usable nights' ranges to this minute (bottom third)",
+      "normal_night": "larger than a third to two thirds of them (middle third)",
+      "wide_night": "larger than over two thirds of them (top third)"
      },
      "labels": [
       "overnight.range_vs_normal"
@@ -5090,36 +5090,33 @@
      "horizon": {
       "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
-     "cadence": "once at the 09:28 premarket read (premarket lane not built); answer held as a day constant through 10:30",
-     "sleep_when": "the move since futures' 16:00 price ranks at or under {third_lo} against the last {night_rank_count} nights (no real gap), a roll night, or /ES bars missing",
+     "cadence": "at the 09:28 premarket read",
+     "sleep_when": "the move since futures' 16:00 price ranks at or under {third_lo} against the last {night_rank_count} nights (no real gap), fewer than {overnight_rank_min_nights} usable nights, a roll night, or /ES bars missing",
      "code_answer": true,
-     "ask": "When was most of the move from yesterday's close made?",
-     "instructions": "Read `overnight.gap_origin`. When was most of the move from yesterday's close to now made?",
+     "ask": "Which stretch of the night moved most unusually for its time?",
+     "instructions": "Read `overnight.gap_origin`. Where futures stand against their 16:00 price comes first. Which stretch of the night moved most unusually against the same stretch on the recent nights: early, in Europe, in the report window, or late?",
      "options": [
-      "no_gap",
-      "made_at_data_release",
-      "made_overnight",
-      "made_in_last_hour",
-      "spread"
+      "made_early",
+      "made_in_europe",
+      "made_at_release",
+      "made_late"
      ],
      "criteria": {
-      "no_gap": "futures are within the gap rule of yesterday's close",
-      "made_at_data_release": "more than the origin share of the gap came in the window after an early-morning report",
-      "made_overnight": "more than the origin share drifted in overnight",
-      "made_in_last_hour": "more than the origin share came in the last hour before the open",
-      "spread": "no single window made more than the origin share"
+      "made_early": "the most unusual stretch was after the close or in Asia",
+      "made_in_europe": "the most unusual stretch was Europe's open or the Europe morning",
+      "made_at_release": "the most unusual stretch was the window after this morning's early report",
+      "made_late": "the most unusual stretch was the one before the report or the last one before the open"
      },
      "code_criteria": {
-      "no_gap": "|gap| < {gap_rule_sigma}",
-      "made_at_data_release": "release window share > {origin_share} and a pre_open row today",
-      "made_overnight": "overnight share > {origin_share}",
-      "made_in_last_hour": "last-hour share > {origin_share}",
-      "spread": "none > {origin_share}"
+      "made_early": "the stretch whose |move| ranks highest against the same stretch on the last {night_rank_count} nights is after_close or asia",
+      "made_in_europe": "it is europe_open or europe_morning",
+      "made_at_release": "it is report_window, on a day the calendar lists a report before the open",
+      "made_late": "it is pre_report or last_stretch, or report_window on a day with no report"
      },
      "labels": [
       "overnight.gap_origin"
      ],
-     "why": "Moved to premarket and asked once: a day constant asked all day repeats one answer. Its release branch could never fire until the calendar carried pre-open rows."
+     "why": "Where the night's move was made: in replay the part made early (after the close, Asia) reversed in the first hour, while the Europe leg carried on to the close (Asia leg against the first 60 minutes -0.23). Each stretch is ranked against its own usual, since as a share of the gap past a fixed half line the answer was 'overnight' on 81% of days."
     },
     "night_vs_last_hour": {
      "status": "dark",
@@ -5138,8 +5135,8 @@
      "horizon": {
       "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
-     "cadence": "once at the 09:28 premarket read, held through 10:30",
-     "sleep_when": "|SPX 15:00-16:00| rank <= {third_lo} over the last {night_rank_count} sessions, |net| rank <= {third_lo}, or data missing",
+     "cadence": "at the 09:28 premarket read",
+     "sleep_when": "|SPX's move in yesterday's last cash hour| rank <= {third_lo} over the last {night_rank_count} sessions, |net| rank <= {third_lo}, or data missing",
      "code_answer": true,
      "ref_side": "yesterday's last hour",
      "ask": "Is the night carrying on yesterday's last cash hour, or turning against it?",
@@ -5153,7 +5150,7 @@
       "turned_against": "the night went against yesterday's last hour"
      },
      "code_criteria": {
-      "carried_on": "sign(net) == sign(SPX 15:00-16:00)",
+      "carried_on": "sign(net since futures' 16:00 price) == sign(SPX's move in yesterday's last cash hour)",
       "turned_against": "otherwise"
      },
      "labels": [
@@ -5166,7 +5163,7 @@
   {
    "id": "premarket_context",
    "lane": "premarket",
-   "purpose": "Pre-market lane, 08:48 and 09:28 reads: the early report's reaction path and the report window against the night, overnight bonds against the gap, and bitcoin's night and weekend against the S&P futures.",
+   "purpose": "Pre-market lane, 08:48 and 09:28 JEV reads: the early report's reaction path and the report window against the night, overnight Treasury futures against the S&P futures' move, and bitcoin's night and weekend against the S&P futures.",
    "reads": [
     "context",
     "overnight.release_reaction",
@@ -5193,11 +5190,11 @@
      "horizon": {
       "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
-     "cadence": "once at the 09:28 premarket read (premarket lane not built); answer held as a day constant through 10:30",
-     "sleep_when": "no release before the open on the calendar today, or /ES bars missing around it",
+     "cadence": "at the 09:28 premarket read on a day with a report before the open",
+     "sleep_when": "no report before the open on the calendar today (a pre_open row after 08:00 and before 08:45; claims-only days are asked), fewer than {overnight_rank_min_nights} usable days, a roll inside the window, or /ES bars missing around it",
      "code_answer": true,
      "ask": "What did futures do after this morning's early report?",
-     "instructions": "Read `overnight.release_reaction`. After this morning's early report, what did futures do between the first reaction and now? Check in order: shrugged, extended, faded, held.",
+     "instructions": "Read `overnight.release_reaction`. Where futures stand against their 16:00 price comes first. How large was the first reaction to this morning's early report against the same window on recent mornings, and what did futures do after it? Check in order: shrugged, extended, faded, held.",
      "options": [
       "shrugged",
       "extended",
@@ -5205,16 +5202,16 @@
       "faded"
      ],
      "criteria": {
-      "shrugged": "the first reaction was under the small-reaction line",
+      "shrugged": "the first reaction was in the bottom third of the same window's moves on recent mornings",
       "extended": "futures kept going the reaction's way by more than the half line of it",
       "held": "futures kept the half line or more of the reaction",
       "faded": "futures gave back more than the half line of the reaction"
      },
      "code_criteria": {
-      "shrugged": "|ES first-reaction window| < {release_small_sigma}",
-      "extended": "further move > {gap_half_share} of the reaction",
-      "held": "given back <= {gap_half_share}",
-      "faded": "given back > {gap_half_share}"
+      "shrugged": "|move from the release minute to the report window's end| larger than under a third of the same window's moves on the last {night_rank_count} days, report or not (bottom third)",
+      "extended": "after the report window futures moved on the reaction's way by more than {gap_half_share} of it",
+      "held": "given back at most {gap_half_share} of it",
+      "faded": "given back more than {gap_half_share} of it"
      },
      "labels": [
       "overnight.release_reaction"
@@ -5238,30 +5235,30 @@
      "horizon": {
       "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
-     "cadence": "once at the 09:28 premarket read (premarket lane not built); answer held as a day constant through 10:30",
-     "sleep_when": "bonds and bitcoin in opposite outer thirds, or data missing",
+     "cadence": "at the 09:28 premarket read",
+     "sleep_when": "fewer than {overnight_rank_min_nights} of the last nights with both futures measured on one contract, a roll between the two prices, bonds and S&P futures showing no link, or data missing",
      "code_answer": true,
-     "ask": "Did Treasuries and bitcoin move further than today's gap overnight?",
-     "instructions": "Read `overnight.bond_gap`. Since yesterday's close, did Treasuries and bitcoin move further toward stocks-up than today's gap, further toward stocks-down, or in line?",
+     "ask": "Did Treasury futures move further overnight than the S&P futures' move would match?",
+     "instructions": "Read `overnight.bond_gap`. Where Treasury futures stand against their 16:00 price comes first. Do they point S&P futures further toward stocks-up than where S&P futures stand, further toward stocks-down, or in line?",
      "options": [
       "overnight_ahead_up",
       "overnight_ahead_down",
       "in_line"
      ],
      "criteria": {
-      "overnight_ahead_up": "overnight bonds (with bitcoin not disagreeing) went further toward stocks-up than the gap did",
-      "overnight_ahead_down": "overnight bonds went further toward stocks-down than the gap did",
-      "in_line": "overnight bonds and the gap agree"
+      "overnight_ahead_up": "Treasury futures point S&P futures further toward stocks-up than where they stand",
+      "overnight_ahead_down": "Treasury futures point S&P futures further toward stocks-down than where they stand",
+      "in_line": "Treasury futures and S&P futures agree"
      },
      "code_criteria": {
-      "overnight_ahead_up": "bond gap rank >= {third_hi}, bitcoin not <= {third_lo}",
-      "overnight_ahead_down": "bond rank <= {third_lo}, bitcoin not >= {third_hi}",
+      "overnight_ahead_up": "where bonds point S&P futures (through the fit over the last {night_rank_count} nights) less where they stand ranks at or over {third_hi} (top third)",
+      "overnight_ahead_down": "ranks at or under {third_lo} (bottom third)",
       "in_line": "middle third"
      },
      "labels": [
       "overnight.bond_gap"
      ],
-     "why": "Overnight bonds reprice on news before cash stocks open; a gap that bonds did not match tends to trade back toward the bonds' side in the first hour. Bitcoin, open all weekend, rides along as a Monday hint."
+     "why": "Overnight bonds reprice on news before cash stocks open; a gap that bonds did not match tends to trade back toward the bonds' side in the first hour. The sign and size of the link come from the last nights, never assumed. Bitcoin is its own question (btc_overnight_vs_futures)."
     },
     "release_vs_night": {
      "status": "dark",
@@ -5281,12 +5278,12 @@
      "horizon": {
       "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
-     "cadence": "08:48 and 09:28 on days with a pre_open calendar row; held through 10:30",
-     "sleep_when": "no pre_open row today, |reaction| rank <= {third_lo} vs the same window over the last {night_rank_count} days, |net at the release minute| rank <= {third_lo}, or data missing",
+     "cadence": "at the 08:48 and 09:28 premarket reads on a day with a report before the open",
+     "sleep_when": "no report before the open on the calendar today (claims-only days are asked), |reaction| rank <= {third_lo} vs the same window over the last {night_rank_count} days, |net at the release minute| rank <= {third_lo}, or data missing",
      "code_answer": true,
      "ref_side": "the night's net move before the report",
      "ask": "Did this morning's early report push the night's move further, undo part of it, or carry futures across their 16:00 price?",
-     "instructions": "Read `premarket.release_vs_night`. Where futures are now decides first. Compare the report's first 15 minutes with the night's move before it. Check crossed_price first.",
+     "instructions": "Read `premarket.release_vs_night`. Where futures are now decides first. Compare the report window's move with the night's move before it. Check crossed_price first.",
      "options": [
       "crossed_price",
       "unwound_night",
@@ -5298,7 +5295,7 @@
       "extended_night": "the reaction went the night's way"
      },
      "code_criteria": {
-      "crossed_price": "sign(net at 08:45) != sign(net at the release minute)",
+      "crossed_price": "sign(net at the report window's end) != sign(net at the release minute)",
       "unwound_night": "sign(reaction) != sign(net at the release minute), no cross",
       "extended_night": "sign(reaction) == sign(net at the release minute)"
      },
@@ -5324,22 +5321,22 @@
      "horizon": {
       "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
-     "cadence": "once at the 09:28 premarket read; answer held as a day constant through 10:30",
-     "sleep_when": "excess rank in the middle three fifths; the Thursday bitcoin roll night; fewer than {min_rank_sessions} clean prior nights; bitcoin's last trade before 09:25 older than {window_10_min} minutes",
+     "cadence": "at the 09:28 premarket read",
+     "sleep_when": "excess rank in the middle three fifths; the Thursday bitcoin roll night or a roll pending; fewer than {overnight_rank_min_nights} clean prior nights; no /MBT trade in the last {window_10_min} minutes before the read",
      "code_answer": true,
      "ask": "Did bitcoin move further overnight than S&P futures did, and which way?",
-     "instructions": "Read `overnight.btc_vs_futures`. Since yesterday's 16:00 close, did bitcoin move further than S&P futures' own overnight move would match, in the direction that has gone with stocks rising, or in the direction that has gone with stocks falling?",
+     "instructions": "Read `overnight.btc_vs_futures`. Since their 16:00 prices, did bitcoin move further than S&P futures' own move would match, in the direction that has gone with stocks rising, or in the direction that has gone with stocks falling?",
      "options": [
       "btc_ahead_up",
       "btc_ahead_down"
      ],
      "criteria": {
-      "btc_ahead_up": "bitcoin went further than the futures' move would match, in the direction that has gone with stocks rising over the last 20 nights",
-      "btc_ahead_down": "bitcoin went further than the futures' move would match, in the direction that has gone with stocks falling over the last 20 nights"
+      "btc_ahead_up": "bitcoin went further than the futures' move would match, in the direction that has gone with stocks rising over the recent nights",
+      "btc_ahead_down": "bitcoin went further than the futures' move would match, in the direction that has gone with stocks falling over the recent nights"
      },
      "code_criteria": {
-      "btc_ahead_up": "overnight excess rank vs the last 20 nights >= {top_fifth} in the stocks-up direction",
-      "btc_ahead_down": "overnight excess rank vs the last 20 nights <= {bottom_fifth} (stocks-down direction)"
+      "btc_ahead_up": "overnight excess rank vs the last {night_rank_count} nights >= {top_fifth} in the stocks-up direction",
+      "btc_ahead_down": "overnight excess rank vs the last {night_rank_count} nights <= {bottom_fifth} (stocks-down direction)"
      },
      "labels": [
       "overnight.btc_vs_futures"
@@ -5363,12 +5360,12 @@
      "horizon": {
       "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
-     "cadence": "once at the 09:28 premarket read on the first session after a weekend or market holiday; held as a day constant",
-     "sleep_when": "weekend-leg rank vs the last 20 weekends in the middle three fifths (an ordinary weekend); not the first session after a weekend or holiday; fewer than {min_rank_sessions} prior weekends; the Saturday maintenance window leaves no trade in the last {window_60_min} minutes of the weekend leg",
+     "cadence": "at the 09:28 premarket read on the first session after a weekend or market holiday (the gate decides, never the schedule)",
+     "sleep_when": "weekend-leg rank vs the last {night_rank_count} weekends in the middle three fifths (an ordinary weekend); not the first session after a weekend or holiday; fewer than {overnight_rank_min_nights} prior weekends; a bitcoin roll across either leg; no trade in the last {window_60_min} minutes of the weekend leg (the Saturday maintenance window)",
      "code_answer": true,
      "ref_side": "sign of the weekend leg (the learning loop folds on it)",
      "ask": "After a big bitcoin weekend, did bitcoin keep going, hold, or turn back once S&P futures reopened?",
-     "instructions": "Read `weekend.btc_path`. It gives bitcoin's weekend leg (Friday 16:00 to Sunday 18:00, before S&P futures reopen) and its reopen leg (Sunday 18:00 to 09:25). Taking the weekend leg's direction as the reference, did the reopen leg extend it, hold it, or turn back against it?",
+     "instructions": "Read `weekend.btc_path`. It gives bitcoin's weekend leg (from Friday's close until S&P futures reopened on Sunday evening) and its reopen leg (since the reopen). Taking the weekend leg's direction as the reference, did the reopen leg extend it, hold it, or turn back against it?",
      "options": [
       "extended",
       "held",
@@ -5380,7 +5377,7 @@
       "reversed": "after the reopen bitcoin moved back against its weekend move"
      },
      "code_criteria": {
-      "extended": "reopen-leg rank vs the last 20 reopen legs in the weekend leg's direction >= {third_hi}",
+      "extended": "reopen-leg rank vs the last {night_rank_count} reopen legs in the weekend leg's direction >= {third_hi}",
       "held": "reopen-leg rank in the middle third",
       "reversed": "reopen-leg rank against the weekend leg's direction >= {third_hi}"
      },
@@ -5394,7 +5391,7 @@
   {
    "id": "premarket_sequence",
    "lane": "premarket",
-   "purpose": "Pre-market lane, 08:48 and 09:28 JEV reads (dark until the lane, collector and premarket grader exist): the night's story rebuilt from saved /ES bars at every read, four labels of at most 45 words each because every question in a group sees every label the group reads.",
+   "purpose": "Pre-market lane, 08:48 and 09:28 JEV reads: the night's story rebuilt from saved /ES bars at every read, four labels of at most 45 words each because every question in a group sees every label the group reads.",
    "reads": [
     "context",
     "premarket.where_now",
@@ -5420,7 +5417,7 @@
      "horizon": {
       "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
-     "cadence": "at the 09:28 premarket read (also 03:35 and 08:48 if those JEV reads run); the 09:28 answer held as a day constant through 10:30",
+     "cadence": "at the 09:28 premarket read",
      "sleep_when": "no leg with |move| rank > {third_lo} (a quiet night), a roll night, or /ES bars missing",
      "code_answer": true,
      "ref_side": "the first leg that moved",
@@ -5441,8 +5438,8 @@
      "code_criteria": {
       "reversed": "sign(net now) != sign(first moving leg) and |net now| rank > {third_lo} vs the same clock over the last {night_rank_count} nights",
       "faded": "kept share < {gap_half_share}",
-      "built": "kept share > 1",
-      "held": "{gap_half_share} <= kept share <= 1"
+      "built": "kept share > {one_ratio}",
+      "held": "{gap_half_share} <= kept share <= {one_ratio}"
      },
      "labels": [
       "premarket.where_now",
@@ -5468,7 +5465,7 @@
      "horizon": {
       "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
-     "cadence": "at the 08:48 and 09:28 premarket reads; the 09:28 answer held through 10:30",
+     "cadence": "at the 08:48 and 09:28 premarket reads",
      "sleep_when": "|leg| rank <= {third_lo} vs the same clock window over the last {night_rank_count} nights (a quiet leg), |net at previous checkpoint| rank <= {third_lo} (no direction to compare with), first checkpoint, or data missing",
      "code_answer": true,
      "ref_side": "the night's net move before the leg",
@@ -5512,7 +5509,7 @@
      "horizon": {
       "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
-     "cadence": "once at the 09:28 premarket read, held through 10:30",
+     "cadence": "at the 09:28 premarket read",
      "sleep_when": "fewer than two finished legs with rank > {third_lo}, |net| rank <= {third_lo}, or data missing",
      "code_answer": true,
      "ref_side": "the night's net move",

@@ -65,7 +65,7 @@ def test_every_declared_cut_is_recorded_at_its_value_or_says_why_not():
 
 
 def test_every_question_set_constant_is_in_cuts_py_at_its_value_and_type():
-    """The question set names 166 thresholds; each is a cuts.py constant of the same name, number and kind
+    """Every threshold the question set names is a cuts.py constant of the same name, number and kind
     (a whole number stays whole, so the words JEV reads print it as the set wrote it)."""
     for name, entry in _question_set_constants().items():
         assert name in cuts.QUESTION_CONSTANTS, f"{name} is in the question set but not in cuts.py"
