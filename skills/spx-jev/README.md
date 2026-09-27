@@ -28,7 +28,7 @@ returns a probability for each answer option. JEV makes no trading call.
 |---|---|---|
 | `spx_jev/state_builder.py` | The Labeller | Reads one moment (a diary row, today's finished bars, the prior sessions' bars, the market context) and writes the labels. Anything it cannot measure is left out, with the reason kept in `omitted`. |
 | `spx_jev/row_adapter.py` | The Row Adapter | Cuts each 40 KB SPX diary row down to the few dozen fields the labeller reads, by name, and says which options book each field describes. |
-| `spx_jev/cuts.py` | The Cuts | Every threshold in one place. The measured ones come from `spec/measure_cuts.py` over the 48 SPX sessions on disk and are held to `spec/cuts.json` by a test; the declared ones are splits and ratios whose meaning is their own words. |
+| `spx_jev/cuts.py` | The Cuts | Every threshold in one place. The measured ones come from `spec/measure_cuts.py` over the 48 SPX sessions on disk and are held to `spec/cuts.json` by a test; the declared ones are splits and ratios whose meaning is their own words, kept at their declared values, with where each falls on SPX and SNDK history recorded beside them. |
 | `spx_jev/sessions.py` | The Session Calendar | The open, the close (13:00 on a half day), holidays and trading days, from the station's own market-hours gate. |
 | `spx_jev/expiry.py` | The Expiries | SPX expires every trading day: today's 0DTE and its settle, the next expiry, the monthly (third Friday, the AM-settled SPX and the PM-settled SPXW) and the quarterly and quarter-end expiries. Point in time. |
 | `spx_jev/ask.py` | The Packer | Fills the question docs' constants, cuts the state into one slice per question group, keeps only the questions whose labels all exist, and can POST a request to JEV. |
@@ -49,7 +49,7 @@ returns a probability for each answer option. JEV makes no trading call.
 | `questions/spx_lane_tape.json`, `questions/spx_lane_hour.json` | The Lane's Questions | The opening lane's two stretch questions (plus a copy of the live weight question) and its five-way 10-minute sum. |
 | `calendar/events.json`, `spx_jev/events.py` | The Calendar | The tier-1 scheduled events (the Fed, rebalance closes, half days), copied from SNDK's calendar less SanDisk's own. |
 | `spec/labels.json` | The Label Spec | All 48 labels with source, logic, cut and a real sentence; a test pins it to the code. |
-| `spec/cuts.json`, `spec/measure_cuts.py` | The Measurements | How each measured cut was found, with its percentile and sample size. |
+| `spec/cuts.json`, `spec/measure_cuts.py` | The Measurements | How each measured cut was found, with its percentile and sample size, and where each declared cut falls (the share of SPX and of SNDK observations under it). |
 | `launchd/*.plist.template`, `runtime/scripts/run-spx-jev*.sh` | The Jobs | Five staged jobs and their runners. Not installed. |
 | `tests/` | The Proof | Offline pytest with synthetic rows, bars and market context. No network, no host state. |
 

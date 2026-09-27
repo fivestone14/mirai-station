@@ -16,6 +16,13 @@ What is measured, on every session with at least MIN_BARS minute bars and MIN_RO
     rows      every diary row, for the book's fields (walls, strike shares)
     tape      every 5 minutes from 09:35 to 10:30, as the opening lane reads, sigma pinned to the
               day's first row
+
+The declared cuts (the bottom of cuts.py: splits and ratios whose meaning is their own words) keep
+their declared values; they are measured to show where each one falls. For every declared constant
+the record gives the share of SPX observations under it, and of SNDK observations of the same
+measurement, as a percentile beside the measured cuts' ones. The values are read from cuts.py itself,
+so the record measures the numbers the labels use. A declared constant nothing on disk can measure
+is listed under ``not_measured`` with its reason.
 Read only: nothing under the state directory is written. The output is the only file touched.
 """
 from __future__ import annotations
@@ -26,7 +33,11 @@ import math
 import statistics
 from bisect import bisect_right
 from datetime import date, datetime, timedelta
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from spx_jev import cuts as CUTS  # noqa: E402  (the package beside spec/, for the declared values)
 
 DEFAULT_STATE_DIR = Path.home() / ".claude" / "plugins" / "mirai-station" / "state"
 OUT = Path(__file__).resolve().parent / "cuts.json"
@@ -62,6 +73,44 @@ SNDK_CUTS = {
     "tape_big_units": ("tape_move10", 0.7),
 }
 DECIMALS = {"share": 3, "ratio": 2, "pts": 1}
+
+# The declared cuts, each with the measurements it splits (the label that reads it, in the same terms).
+DECLARED_CUTS = {
+    "even_split_low": ("expected_move_down_share", "gamma_above_share", "delta_below_share", "call_volume_share"),
+    "even_split_high": ("expected_move_down_share", "gamma_above_share", "delta_below_share", "call_volume_share"),
+    "minute_width_cut": ("minute_width",),
+    "turnover_low": ("turnover",),
+    "turnover_high": ("turnover",),
+    "path_choppy": ("path_efficiency",),
+    "path_orderly": ("path_efficiency",),
+    "pace_smaller": ("pace",),
+    "pace_bigger": ("pace",),
+    "pause_brief_min": ("pause_minutes",),
+    "pause_long_min": ("pause_minutes",),
+    "pullback_share": ("pullback",),
+    "rsi_oversold": ("rsi_1min", "rsi_5min"),
+    "rsi_overbought": ("rsi_1min", "rsi_5min"),
+    "vix_curve_flat": ("vix_ratio",),
+}
+NOT_MEASURED = {
+    "zero_dte_last_hour_min": "a clock fact, the 0DTE book's last hour before its settle, not a split of any measurement; "
+                              "the evidence for treating that hour apart is iv_change30_median_pts",
+}
+HOW_DECLARED = {
+    "expected_move_down_share": "every row: the day's expected move's down share (adaptive_em.down_share), iv.move_sides",
+    "gamma_above_share": "every row: today's 0DTE gamma above spot over above plus below, gex.weight_side",
+    "delta_below_share": "every row: one minus the 0-to-7-day books' delta share above spot, gex.delta_weight_side",
+    "call_volume_share": "every row: calls over all contracts in the per-strike volume near price, options.call_put_split",
+    "turnover": "every row: contracts traded over standing open interest across the per-strike rows, options.turnover",
+    "minute_width": "every read with 15 finished bars: the newest bar's range over the median bar range so far today, price.minute_width",
+    "pace": "every read 20 minutes in: the last 10 minutes' absolute move over the 10 before (reads where the earlier 10 moved), momentum.pace",
+    "path_efficiency": "every read whose 30-minute move passed the move rule: net close-to-close move over the distance the closes travelled, momentum.path_efficiency",
+    "pause_minutes": "the same reads: the longest run of minutes without a new extreme in the move's direction, momentum.pauses",
+    "pullback": "the same reads: the deepest give-back from the running extreme as a share of the move's full extent, momentum.pauses",
+    "rsi_1min": "every read with 15 finished bars: Wilder's 14-period RSI of the 1-minute closes, momentum.rsi_1min",
+    "rsi_5min": "every read with 75 finished bars: the same RSI of every fifth 1-minute close, momentum.rsi_5min",
+    "vix_ratio": "every row: the VIX over the three-month VIX (vix_ts), iv.term_structure",
+}
 
 
 # ----------------------------------------------------------------------------- reading
@@ -142,12 +191,69 @@ def _unit(bars, ends, t: datetime) -> float | None:
     return statistics.median(ranges) if ranges else None
 
 
-def measure(day_bars_rows: list[tuple[str, list[dict], list[dict]]], hold_sigma: float | None = None) -> dict[str, list[float]]:
+def wilder_rsi(closes: list[float], period: int = 14) -> float | None:
+    """state_builder.wilder_rsi, the same arithmetic."""
+    if len(closes) < period + 1:
+        return None
+    gains = [max(b - a, 0.0) for a, b in zip(closes[:-1], closes[1:])]
+    losses = [max(a - b, 0.0) for a, b in zip(closes[:-1], closes[1:])]
+    avg_g, avg_l = sum(gains[:period]) / period, sum(losses[:period]) / period
+    for g, l in zip(gains[period:], losses[period:]):
+        avg_g, avg_l = (avg_g * (period - 1) + g) / period, (avg_l * (period - 1) + l) / period
+    return 100.0 if avg_l == 0 else 100.0 - 100.0 / (1.0 + avg_g / avg_l)
+
+
+def _move_shape(win: list[dict], start: float, up: bool) -> tuple[float, int, float | None]:
+    """A 30-minute move's shape as the momentum labels read it: the longest stall without a new
+    extreme, the deepest give-back as a share of the move's extent, and the path efficiency."""
+    ext, last_ext, stall, deepest = start, -1, 0, 0.0
+    for i, b in enumerate(win):
+        deepest = max(deepest, (ext - b["low"]) if up else (b["high"] - ext))
+        if up and b["high"] > ext:
+            ext, last_ext = b["high"], i
+        elif not up and b["low"] < ext:
+            ext, last_ext = b["low"], i
+        stall = max(stall, i - last_ext if last_ext >= 0 else i + 1)
+    extent = abs(ext - start)
+    closes = [b["close"] for b in win]
+    travel = sum(abs(y - x) for x, y in zip(closes[:-1], closes[1:]))
+    eff = abs(closes[-1] - closes[0]) / travel if travel > 0 else None
+    return (deepest / extent if extent > 0 else 0.0), stall, eff
+
+
+def _row_shares(r: dict, obs: dict[str, list[float]]) -> None:
+    """The book's splits and ratios on one diary row, for the declared cuts."""
+    gv, dv = r.get("gex_views") or {}, r.get("dex_views") or {}
+    ds = (r.get("adaptive_em") or {}).get("down_share")
+    if _num(ds):
+        obs["expected_move_down_share"].append(float(ds))
+    above, below = gv.get("gamma_above_spot"), gv.get("gamma_below_spot")
+    if _num(above) and _num(below) and above + below > 0:
+        obs["gamma_above_share"].append(float(above) / float(above + below))
+    if _num(dv.get("dex_above_spot")):
+        obs["delta_below_share"].append(1.0 - float(dv["dex_above_spot"]))
+    vols = [(float(v[1]), float(v[2])) for v in gv.get("vol_side_by_strike") or []
+            if isinstance(v, (list, tuple)) and len(v) >= 3 and _num(v[1]) and _num(v[2])]
+    ois = [abs(float(v[1])) + abs(float(v[2])) for v in gv.get("oi_side_by_strike") or []
+           if isinstance(v, (list, tuple)) and len(v) >= 3 and _num(v[1]) and _num(v[2])]
+    traded = sum(c + p for c, p in vols)
+    if traded > 0:
+        obs["call_volume_share"].append(sum(c for c, _ in vols) / traded)
+        if sum(ois) > 0:
+            obs["turnover"].append(traded / sum(ois))
+    if _num(r.get("vix_ts")) and r["vix_ts"] > 0:
+        obs["vix_ratio"].append(float(r["vix_ts"]))
+
+
+def measure(day_bars_rows: list[tuple[str, list[dict], list[dict]]], hold_sigma: float | None = None,
+            move_rule: float | None = None) -> dict[str, list[float]]:
     """Every measurement over every session. ``hold_sigma`` is the held tape unit used before 09:45
     for the tape moves; without it the tape moves are not measured (the SNDK side passes SNDK's,
-    the SPX side passes the SPX hold measured first)."""
+    the SPX side passes the SPX hold measured first). ``move_rule`` is the 30-minute move past which
+    the momentum labels judge a move's shape; without it the shape is not measured."""
     obs: dict[str, list[float]] = {k: [] for k, _ in set(SNDK_CUTS.values())}
     obs.update({"signed_end30": [], "signed_end60": [], "tape_signed_move10": [], "iv_change30_last_hour": []})
+    obs.update({m: [] for ms in DECLARED_CUTS.values() for m in ms})
     for day, bars, rows in day_bars_rows:
         ends = [b["t"] + ONE for b in bars]
         stamps = [r["t"] for r in rows]
@@ -161,10 +267,30 @@ def measure(day_bars_rows: list[tuple[str, list[dict], list[dict]]], hold_sigma:
             c0 = _close_at(bars, ends, t)
             if row is not None and c0 is not None:
                 sigma = float(row["sigma"])
+                done = bars[:bisect_right(ends, t)]
+                if len(done) >= 15:
+                    typical = statistics.median(b["high"] - b["low"] for b in done)
+                    if typical > 0:
+                        obs["minute_width"].append((done[-1]["high"] - done[-1]["low"]) / typical)
+                    closes = [b["close"] for b in done]
+                    for key, series in (("rsi_1min", closes), ("rsi_5min", closes[4::5])):
+                        if (rsi := wilder_rsi(series)) is not None:
+                            obs[key].append(rsi)
+                if t >= open_t + timedelta(minutes=20):
+                    c10, c20 = _close_at(bars, ends, t - timedelta(minutes=10)), _close_at(bars, ends, t - timedelta(minutes=20))
+                    if c10 is not None and c20 is not None and c10 != c20:
+                        obs["pace"].append(abs(c0 - c10) / abs(c10 - c20))
                 if t >= open_t + timedelta(minutes=30):
                     back = _close_at(bars, ends, t - timedelta(minutes=30))
                     if back is not None:
                         obs["move30"].append(abs(c0 - back) / sigma)
+                        shape_win = _window(bars, ends, t - timedelta(minutes=30), t)
+                        if move_rule is not None and abs(c0 - back) / sigma >= move_rule and len(shape_win) >= 20:
+                            pullback, stall, eff = _move_shape(shape_win, back, c0 > back)
+                            obs["pullback"].append(pullback)
+                            obs["pause_minutes"].append(float(stall))
+                            if eff is not None:
+                                obs["path_efficiency"].append(eff)
                     obs["open_leg"].append(abs(c0 - open0) / sigma)
                     win = _window(bars, ends, t - timedelta(minutes=30), t)
                     if len(win) >= 25 and back is not None:
@@ -190,6 +316,7 @@ def measure(day_bars_rows: list[tuple[str, list[dict], list[dict]]], hold_sigma:
                         obs["far30"].append(max(max(b["high"] for b in win) - c0, c0 - min(b["low"] for b in win)) / sigma)
             t += timedelta(minutes=READ_STEP_MIN)
         for r in rows:
+            _row_shares(r, obs)
             spot, sigma = float(r["spot"]), float(r["sigma"])
             walls = [(abs(float(r[k]) - spot) / sigma, k) for k in ("call_wall", "put_wall") if _num(r.get(k))]
             gv = r.get("gex_views") or {}
@@ -253,6 +380,21 @@ def carry(sndk: dict[str, list[float]], spx: dict[str, list[float]], names: list
     return out
 
 
+def declared(sndk: dict[str, list[float]], spx: dict[str, list[float]]) -> dict[str, dict]:
+    """Each declared constant at its declared value, and where it falls on each measurement it splits:
+    the percentile (the share of observations under it) on SPX and on SNDK."""
+    out = {}
+    for name, measures in DECLARED_CUTS.items():
+        value = getattr(CUTS, name.upper())
+        at = {}
+        for m in measures:
+            at[m] = {"spx_percentile": round(100 * share_below(spx[m], value), 1) if spx[m] else None, "n_spx": len(spx[m]),
+                     "sndk_percentile": round(100 * share_below(sndk[m], value), 1) if sndk[m] else None, "n_sndk": len(sndk[m]),
+                     "how": HOW_DECLARED[m]}
+        out[name] = {"value": value, "measures": at}
+    return out
+
+
 def pct_of(values: list[float], test) -> int:
     return round(100 * sum(1 for v in values if test(v)) / len(values))
 
@@ -264,9 +406,9 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     state_dir = Path(args.state_dir)
     spx_sessions, sndk_sessions = sessions(state_dir, "SPX"), sessions(state_dir, "SNDK")
-    sndk = measure(sndk_sessions, hold_sigma=SNDK_CUTS["ruler_hold_sigma"][1])
-    first = carry(sndk, measure(spx_sessions), ["ruler_hold_sigma"])
-    spx = measure(spx_sessions, hold_sigma=first["ruler_hold_sigma"]["value"])
+    sndk = measure(sndk_sessions, hold_sigma=SNDK_CUTS["ruler_hold_sigma"][1], move_rule=SNDK_CUTS["move_rule_sigma"][1])
+    first = carry(sndk, measure(spx_sessions), ["ruler_hold_sigma", "move_rule_sigma"])
+    spx = measure(spx_sessions, hold_sigma=first["ruler_hold_sigma"]["value"], move_rule=first["move_rule_sigma"]["value"])
     cuts = carry(sndk, spx, list(SNDK_CUTS))
     base_rates = {}
     for h in (30, 60):
@@ -290,6 +432,10 @@ def main(argv: list[str] | None = None) -> int:
         "base_rates": base_rates,
         "iv_change30_median_pts": {"before_the_last_hour": round(statistics.median(spx["iv_change30"]), 2),
                                    "in_the_last_hour": round(statistics.median(last_hour), 2) if last_hour else None},
+        "declared_rule": ("declared cuts keep their declared values, whose meaning is their own words; each is measured "
+                          "for where it falls: the percentile is the share of observations under it"),
+        "declared": declared(sndk, spx),
+        "not_measured": NOT_MEASURED,
     }
     Path(args.out).write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
     print(f"{len(spx_sessions)} SPX sessions, {len(sndk_sessions)} SNDK sessions -> {args.out}")
@@ -297,6 +443,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {name:28s} {c['value']:>8}   (SNDK {c['sndk_cut']} at the {c['percentile']}th percentile; n {c['n_spx']})")
     print(f"  base rates {base_rates}")
     print(f"  IV change over 30 min, median points: {doc['iv_change30_median_pts']}")
+    for name, d in doc["declared"].items():
+        for m, at in d["measures"].items():
+            print(f"  declared {name:22s} {d['value']:>6}  {m:26s} SPX {at['spx_percentile']}th (n {at['n_spx']}), "
+                  f"SNDK {at['sndk_percentile']}th (n {at['n_sndk']})")
     return 0
 
 

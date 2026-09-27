@@ -1,4 +1,5 @@
-"""Every measured cut in cuts.py is the number spec/cuts.json recorded, and the measurement says how."""
+"""Every measured cut in cuts.py is the number spec/cuts.json recorded, every declared one is recorded where it
+falls, and the measurement says how."""
 from __future__ import annotations
 
 import json
@@ -40,3 +41,15 @@ def test_the_question_constants_are_every_threshold_by_its_lower_case_name():
     assert cuts.QUESTION_CONSTANTS["move_rule_sigma"] == cuts.MOVE_RULE_SIGMA
     assert cuts.QUESTION_CONSTANTS["even_split_high"] == cuts.EVEN_SPLIT_HIGH
     assert all(k == k.lower() for k in cuts.QUESTION_CONSTANTS)
+
+
+def test_every_declared_cut_is_recorded_at_its_value_or_says_why_not():
+    d = _spec()
+    measured = set(d["cuts"]) | {k for k in cuts.QUESTION_CONSTANTS if k.endswith("_pct")}
+    declared = set(cuts.QUESTION_CONSTANTS) - measured
+    assert set(d["declared"]) | set(d["not_measured"]) == declared and not set(d["declared"]) & set(d["not_measured"])
+    for name, entry in d["declared"].items():
+        assert entry["value"] == cuts.QUESTION_CONSTANTS[name], name
+        for m, at in entry["measures"].items():
+            assert at["how"] and at["n_spx"] > 0 and 0 <= at["spx_percentile"] <= 100, (name, m)
+    assert all(why.strip() for why in d["not_measured"].values())

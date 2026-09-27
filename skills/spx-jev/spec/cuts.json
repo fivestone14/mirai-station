@@ -254,5 +254,247 @@
  "iv_change30_median_pts": {
   "before_the_last_hour": 0.82,
   "in_the_last_hour": 2.07
+ },
+ "declared_rule": "declared cuts keep their declared values, whose meaning is their own words; each is measured for where it falls: the percentile is the share of observations under it",
+ "declared": {
+  "even_split_low": {
+   "value": 0.4,
+   "measures": {
+    "expected_move_down_share": {
+     "spx_percentile": 9.5,
+     "n_spx": 10119,
+     "sndk_percentile": 8.9,
+     "n_sndk": 3567,
+     "how": "every row: the day's expected move's down share (adaptive_em.down_share), iv.move_sides"
+    },
+    "gamma_above_share": {
+     "spx_percentile": 9.9,
+     "n_spx": 12203,
+     "sndk_percentile": 25.5,
+     "n_sndk": 3846,
+     "how": "every row: today's 0DTE gamma above spot over above plus below, gex.weight_side"
+    },
+    "delta_below_share": {
+     "spx_percentile": 6.7,
+     "n_spx": 10752,
+     "sndk_percentile": 4.0,
+     "n_sndk": 3846,
+     "how": "every row: one minus the 0-to-7-day books' delta share above spot, gex.delta_weight_side"
+    },
+    "call_volume_share": {
+     "spx_percentile": 0.1,
+     "n_spx": 10468,
+     "sndk_percentile": 0.9,
+     "n_sndk": 3742,
+     "how": "every row: calls over all contracts in the per-strike volume near price, options.call_put_split"
+    }
+   }
+  },
+  "even_split_high": {
+   "value": 0.6,
+   "measures": {
+    "expected_move_down_share": {
+     "spx_percentile": 85.3,
+     "n_spx": 10119,
+     "sndk_percentile": 93.2,
+     "n_sndk": 3567,
+     "how": "every row: the day's expected move's down share (adaptive_em.down_share), iv.move_sides"
+    },
+    "gamma_above_share": {
+     "spx_percentile": 80.5,
+     "n_spx": 12203,
+     "sndk_percentile": 70.0,
+     "n_sndk": 3846,
+     "how": "every row: today's 0DTE gamma above spot over above plus below, gex.weight_side"
+    },
+    "delta_below_share": {
+     "spx_percentile": 61.7,
+     "n_spx": 10752,
+     "sndk_percentile": 61.5,
+     "n_sndk": 3846,
+     "how": "every row: one minus the 0-to-7-day books' delta share above spot, gex.delta_weight_side"
+    },
+    "call_volume_share": {
+     "spx_percentile": 97.0,
+     "n_spx": 10468,
+     "sndk_percentile": 59.4,
+     "n_sndk": 3742,
+     "how": "every row: calls over all contracts in the per-strike volume near price, options.call_put_split"
+    }
+   }
+  },
+  "minute_width_cut": {
+   "value": 2.0,
+   "measures": {
+    "minute_width": {
+     "spx_percentile": 98.0,
+     "n_spx": 3459,
+     "sndk_percentile": 98.4,
+     "n_sndk": 1538,
+     "how": "every read with 15 finished bars: the newest bar's range over the median bar range so far today, price.minute_width"
+    }
+   }
+  },
+  "turnover_low": {
+   "value": 1.0,
+   "measures": {
+    "turnover": {
+     "spx_percentile": 2.2,
+     "n_spx": 10468,
+     "sndk_percentile": 19.7,
+     "n_sndk": 3742,
+     "how": "every row: contracts traded over standing open interest across the per-strike rows, options.turnover"
+    }
+   }
+  },
+  "turnover_high": {
+   "value": 3.0,
+   "measures": {
+    "turnover": {
+     "spx_percentile": 15.2,
+     "n_spx": 10468,
+     "sndk_percentile": 74.5,
+     "n_sndk": 3742,
+     "how": "every row: contracts traded over standing open interest across the per-strike rows, options.turnover"
+    }
+   }
+  },
+  "path_choppy": {
+   "value": 0.3,
+   "measures": {
+    "path_efficiency": {
+     "spx_percentile": 45.6,
+     "n_spx": 1159,
+     "sndk_percentile": 57.5,
+     "n_sndk": 511,
+     "how": "every read whose 30-minute move passed the move rule: net close-to-close move over the distance the closes travelled, momentum.path_efficiency"
+    }
+   }
+  },
+  "path_orderly": {
+   "value": 0.6,
+   "measures": {
+    "path_efficiency": {
+     "spx_percentile": 97.0,
+     "n_spx": 1159,
+     "sndk_percentile": 98.2,
+     "n_sndk": 511,
+     "how": "every read whose 30-minute move passed the move rule: net close-to-close move over the distance the closes travelled, momentum.path_efficiency"
+    }
+   }
+  },
+  "pace_smaller": {
+   "value": 0.6666666666666666,
+   "measures": {
+    "pace": {
+     "spx_percentile": 38.4,
+     "n_spx": 3360,
+     "sndk_percentile": 38.9,
+     "n_sndk": 1498,
+     "how": "every read 20 minutes in: the last 10 minutes' absolute move over the 10 before (reads where the earlier 10 moved), momentum.pace"
+    }
+   }
+  },
+  "pace_bigger": {
+   "value": 1.5,
+   "measures": {
+    "pace": {
+     "spx_percentile": 63.0,
+     "n_spx": 3360,
+     "sndk_percentile": 62.8,
+     "n_sndk": 1498,
+     "how": "every read 20 minutes in: the last 10 minutes' absolute move over the 10 before (reads where the earlier 10 moved), momentum.pace"
+    }
+   }
+  },
+  "pause_brief_min": {
+   "value": 3,
+   "measures": {
+    "pause_minutes": {
+     "spx_percentile": 0.3,
+     "n_spx": 1159,
+     "sndk_percentile": 0.2,
+     "n_sndk": 511,
+     "how": "the same reads: the longest run of minutes without a new extreme in the move's direction, momentum.pauses"
+    }
+   }
+  },
+  "pause_long_min": {
+   "value": 10,
+   "measures": {
+    "pause_minutes": {
+     "spx_percentile": 50.3,
+     "n_spx": 1159,
+     "sndk_percentile": 42.7,
+     "n_sndk": 511,
+     "how": "the same reads: the longest run of minutes without a new extreme in the move's direction, momentum.pauses"
+    }
+   }
+  },
+  "pullback_share": {
+   "value": 0.25,
+   "measures": {
+    "pullback": {
+     "spx_percentile": 9.0,
+     "n_spx": 1159,
+     "sndk_percentile": 5.3,
+     "n_sndk": 511,
+     "how": "the same reads: the deepest give-back from the running extreme as a share of the move's full extent, momentum.pauses"
+    }
+   }
+  },
+  "rsi_oversold": {
+   "value": 30,
+   "measures": {
+    "rsi_1min": {
+     "spx_percentile": 4.5,
+     "n_spx": 3459,
+     "sndk_percentile": 3.6,
+     "n_sndk": 1538,
+     "how": "every read with 15 finished bars: Wilder's 14-period RSI of the 1-minute closes, momentum.rsi_1min"
+    },
+    "rsi_5min": {
+     "spx_percentile": 4.0,
+     "n_spx": 2904,
+     "sndk_percentile": 3.2,
+     "n_sndk": 1295,
+     "how": "every read with 75 finished bars: the same RSI of every fifth 1-minute close, momentum.rsi_5min"
+    }
+   }
+  },
+  "rsi_overbought": {
+   "value": 70,
+   "measures": {
+    "rsi_1min": {
+     "spx_percentile": 94.1,
+     "n_spx": 3459,
+     "sndk_percentile": 96.1,
+     "n_sndk": 1538,
+     "how": "every read with 15 finished bars: Wilder's 14-period RSI of the 1-minute closes, momentum.rsi_1min"
+    },
+    "rsi_5min": {
+     "spx_percentile": 93.3,
+     "n_spx": 2904,
+     "sndk_percentile": 94.7,
+     "n_sndk": 1295,
+     "how": "every read with 75 finished bars: the same RSI of every fifth 1-minute close, momentum.rsi_5min"
+    }
+   }
+  },
+  "vix_curve_flat": {
+   "value": 1.0,
+   "measures": {
+    "vix_ratio": {
+     "spx_percentile": 100.0,
+     "n_spx": 12200,
+     "sndk_percentile": null,
+     "n_sndk": 0,
+     "how": "every row: the VIX over the three-month VIX (vix_ts), iv.term_structure"
+    }
+   }
+  }
+ },
+ "not_measured": {
+  "zero_dte_last_hour_min": "a clock fact, the 0DTE book's last hour before its settle, not a split of any measurement; the evidence for treating that hour apart is iv_change30_median_pts"
  }
 }

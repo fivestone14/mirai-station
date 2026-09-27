@@ -11,7 +11,9 @@ SPX bands. A test holds every measured constant here to spec/cuts.json; re-measu
 numbers.
 
 Declared cuts, at the bottom, are splits and ratios whose meaning is their own words ("more than 60%
-on one side", "twice a typical minute", "the VIX above the three-month VIX"); they are not measured.
+on one side", "twice a typical minute", "the VIX above the three-month VIX"); they are not fitted.
+spec/cuts.json records where each one falls on the same sessions, as the share of SPX and of SNDK
+observations under it, and a test holds those records to the values here.
 
 The question docs never carry a number of their own: their text names these by the keys of
 QUESTION_CONSTANTS ("{move_rule_sigma}") and ask.load_questions fills them in.
@@ -57,7 +59,7 @@ TAPE_FLAT_UNITS = 0.42
 TAPE_BIG_UNITS = 0.89
 TAPE_DOWN_BIG_PCT, TAPE_DOWN_SMALL_PCT, TAPE_FLAT_PCT, TAPE_UP_SMALL_PCT, TAPE_UP_BIG_PCT = 18, 17, 36, 14, 15
 
-# ---- declared, not measured
+# ---- declared, not fitted (spec/cuts.json "declared": where each falls on SPX and SNDK history)
 # A share between these is "about even"; outside them, a lean (options weight, dealers' delta, the
 # expected move's sides, the call-put split).
 EVEN_SPLIT_LOW, EVEN_SPLIT_HIGH = 0.40, 0.60
