@@ -1016,7 +1016,9 @@ def test_the_runbook_names_the_schwab_login_and_the_gate_codes_the_code_has():
     """docs/OPERATIONS.md is what a person follows with a job down. The Schwab
     re-login it gives must be a real flag on a real script, pointing at the
     callback address that script uses; and the market gate's codes must be the
-    ones every gated launch script acts on, with every gated script listed."""
+    ones every gated launch script acts on, with every gated script listed. A gate
+    that also answers in the minutes after the close is named in the runbook with its
+    code and its window, and no other gate answers that way."""
     ops = (ROOT / "docs" / "OPERATIONS.md").read_text()
     schwab = ops[ops.index("# Schwab"):]
     script, flag = re.search(r"(skills/[a-z_-]+/[a-z_]+\.py) (--[a-z-]+)", schwab).groups()
@@ -1025,11 +1027,21 @@ def test_the_runbook_names_the_schwab_login_and_the_gate_codes_the_code_has():
     assert re.search(r'DEFAULT_CALLBACK_URL = "([^"]+)"', source).group(1) in schwab
     live, closed = re.search(r"The gate exits (\d) when the market is open and (\d) when it is closed", ops).groups()
     row = next(line for line in ops.splitlines() if "FAILED (rc=N)" in line)
+    names, after, minutes = re.search(
+        r"The gates of ([a-z, -]+?) also exit (\d) in the (\d+) minutes after the close", row).groups()
+    late = set(re.findall(r"[a-z][a-z-]*", names)) - {"and"}
+    assert after not in (live, closed)
     gated = [p for p in sorted((ROOT / "runtime" / "scripts").glob("run-*.sh")) if "GATE_RC" in p.read_text()]
     assert gated, "no launch script gates on the market clock — the pattern broke"
+    assert late <= {p.stem.removeprefix("run-") for p in gated}, "the runbook names an after-close gate no script has"
     for p in gated:
         text, job = p.read_text(), p.stem.removeprefix("run-")
         assert re.search(r"(?<![\w-])%s(?![\w-])" % re.escape(job), row), f"{p.name} is gated and the runbook does not list it"
-        assert f"sys.exit({live} if m.check().is_live else {closed})" in text, p.name
+        if job in late:
+            assert (f"sys.exit({live} if m.check(now).is_live else {after} if "
+                    f"m.check(now - timedelta(minutes={minutes})).is_live else {closed})") in text, p.name
+            assert f"GATE_RC -eq {after} ]]" in text, p.name
+        else:
+            assert f"sys.exit({live} if m.check().is_live else {closed})" in text, p.name
         assert f"GATE_RC -eq {closed} ]]" in text, p.name
         assert re.search(r"FAILED \(rc=\$\{GATE_RC\}\).*>&2", text), p.name
