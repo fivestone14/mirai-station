@@ -36,16 +36,16 @@ Nothing here changes JEV's prompt: every live question keeps its sentence and we
 The phone keeps today's exact 50/50 blend unless POOL_ON_PHONE is set and the pool was promoted;
 POOL_ON_PHONE is off pending Will's decision.
 
-The premarket lane keeps its own loop state in its own folder, on its two sums from the settled open
-(lane.PREMARKET). Every one of its reads forecasts the same window, the half hour after 09:34, so each
-counts the same in its day rather than by the share of a window no earlier read covered. It learns
-nothing yet: its sums are not blended, so no read has the clock blend50 needs, and no price-only
-reference for the window from the settled open has been validated (clock.py); each read's snapshot
-is left out with the reason, and each session is logged as not applied, every read excluded.
+A lane graded from the settled open keeps its own loop state in its own folder, on its sums from the
+settled open. Every one of its reads forecasts the same window, the half hour after 09:34, so each
+counts the same in its day rather than by the share of a window no earlier read covered. The premarket
+lane does not run the loop (lane.PREMARKET.pool): its sums are not blended, so no read has the clock
+blend50 needs, and no price-only reference for the window from the settled open has been validated
+(clock.py).
 
 Files, beside the lane's records:
     pool_30.json, pool_60.json   the state per horizon: weights, tables, e-processes, statuses, the watermark
-                                 (pool_10.json and pool_30.json on the premarket lane)
+                                 (pool_10.json and pool_30.json for sums of 10 and 30 minutes)
     pool_log.jsonl               one line per horizon per session applied or refused, with its manifest
 """
 from __future__ import annotations

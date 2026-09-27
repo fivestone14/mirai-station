@@ -45,8 +45,7 @@ The question weights
     Every graded line of the primary horizon, with the picks each live question gave afresh on that
     read, goes to the question weights' learn, the one seam a learning method plugs into. The live
     lane learns the loop there (pool.PoolWeights: every newly sealed session applied, each question's
-    standing reported, every weight still 1.0), the premarket lane its own loop in its own folder; the
-    tape lane's weights are neutral.
+    standing reported, every weight still 1.0); the tape and premarket lanes' weights are neutral.
 
 A lane (lane.py) grades by its own settings. The tape lane's one horizon is banded from the record
 itself: the tape unit measured at the read prices a flat and a big band in index points, and the

@@ -10,7 +10,8 @@ read saves the overnight futures and builds the night's labels from them (a scen
 premarket.py), and JEV is asked only at the reads its questions' schedules name (08:48 and 09:28). Its
 two sums are graded from the settled open, 10 and 30 minutes on, never from yesterday's close, and
 stand unblended: how that window ended on prior sessions (clock.premarket_odds) forecast it worse than
-even thirds. Everything under state/spx_jev/lanes/premarket/. Every step takes a lane and defaults to LIVE.
+even thirds. With no blend and no validated reference for the window, it keeps no learning loop and its
+weights are neutral. Everything under state/spx_jev/lanes/premarket/. Every step takes a lane and defaults to LIVE.
 
 Every lane asks from one question doc, each question on its own schedule per lane (schedule.py). A lane
 with a ``schedule`` names its reads in market time; the launchd job fires at each of them, and
@@ -104,7 +105,7 @@ TAPE = Lane(name="tape", key="opening_five_minute", out_dir=f"{LIVE_DIR}/lanes/t
 PREMARKET = Lane(name="premarket", key="premarket", out_dir=f"{LIVE_DIR}/lanes/premarket", questions=QUESTIONS,
                  hour_doc=QUESTIONS_DIR / "spx_premarket_hour.json",
                  horizons={"open_10": (10, OPEN_10_FLAT_BAND_SIGMA), "open_30": (30, NEXT_30_FLAT_BAND_SIGMA)},
-                 primary="open_30", cadence=False, tag="premarket", clock_blend=False, pool=True,
+                 primary="open_30", cadence=False, tag="premarket", clock_blend=False,
                  schedule=("02:35", "03:35", "08:05", "08:48", "09:05", "09:28"),
                  # the 30-minute mark is 10:04: the close-out at 10:06 finds its bar and grades the morning's calls
                  close_out="10:06", graded_from_settled_open=True)

@@ -120,18 +120,18 @@ def _premarket_state(tmp_path, recs):
     return state, out
 
 
-def test_the_lane_run_grades_into_its_own_folder_archive_and_loop_state(tmp_path):
+def test_the_lane_run_grades_into_its_own_folder_and_archive_with_neutral_weights(tmp_path):
     rec = _rec()
     state, out = _premarket_state(tmp_path, [rec, rec])
     w = run(state, out, ALLOWED, lane=PREMARKET)
     lines = [json.loads(l) for l in (out / "grades.jsonl").read_text().splitlines()]
     assert len(lines) == 1 and lines[0]["from"]["settled_open"] == 7700.0 and lines[0]["open_30"]["realized_sigma"] == 0.3
-    assert w["lane"] == "premarket" and w["primary"] == "open_30" and w["graded_runs"] == 1 and w["method"] == "pool_v1"
+    assert w["lane"] == "premarket" and w["primary"] == "open_30" and w["graded_runs"] == 1 and w["method"] == "neutral"
     assert set(w["sums"]) == {"open_10", "open_30"} and w["sums"]["open_10"]["n"] == 1
     archived = [json.loads(l) for l in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
     assert [(a["read_id"], a["lane"]) for a in archived] == [(f"premarket:{rec['row_ts']}", "premarket")]
-    assert (out / "pool_10.json").is_file() and (out / "pool_30.json").is_file() and (out / "pool_log.jsonl").is_file()
-    assert not list((state / "spx_jev").glob("pool_*")) and not (state / "spx_jev" / "grades.jsonl").exists()
+    assert not list(out.glob("pool_*")) and not list((state / "spx_jev").glob("pool_*"))              # no loop runs on the lane
+    assert not (state / "spx_jev" / "grades.jsonl").exists()
     assert run(state, out, ALLOWED, lane=PREMARKET)["new_this_run"] == 0
 
 
