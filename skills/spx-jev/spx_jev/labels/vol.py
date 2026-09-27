@@ -310,9 +310,9 @@ def _vix_vs_price(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
     else:
         shown, words = share, f"inside the {_line(VIX_RESID_PCT)} line"
     ls.put("vol.vix_vs_price",
-           f"over the last 30 minutes VIX {'rose' if d >= 0 else 'fell'} {abs(d):.2f} points; the {abs(move):.2f} sigma SPX "
-           f"{'drop' if move < 0 else 'rise'} alone would {'lift' if explained >= 0 else 'lower'} it about {abs(explained):.2f}, so fear rose "
-           f"{abs(resid):.2f} points ({_share(shown)} of VIX) {'more' if resid >= 0 else 'less'} than price explains, {words}{_ruled(ruler)}")
+           f"over the last 30 minutes VIX ended {abs(resid):.2f} points ({_share(shown)} of VIX) {'above' if resid >= 0 else 'below'} what "
+           f"price explains, {words}: it {'rose' if d >= 0 else 'fell'} {abs(d):.2f} points, and the {abs(move):.2f} sigma SPX "
+           f"{'drop' if move < 0 else 'rise'} alone would {'lift' if explained >= 0 else 'lower'} it about {abs(explained):.2f}{_ruled(ruler)}")
 
 
 def _atm_iv_residual(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
@@ -395,9 +395,9 @@ def _vix_on_shock(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
     else:
         shown, words = min(abs(resid), VIX_SHOCK_RESID - 0.01), f"within the {VIX_SHOCK_RESID:g}-point rule"
     ls.put(path,
-           f"since just before the shock, at {_clock(lead)}, VIX {'rose' if d >= 0 else 'fell'} {abs(d):.2f} points; the {sig(abs(move))} "
-           f"{'drop' if move < 0 else 'rise'} alone would {'lift' if explained >= 0 else 'lower'} it {abs(explained):.2f}, so fear rose "
-           f"{shown:.2f} points {'more' if resid >= 0 else 'less'} than price explains, {words}{_ruled(ruler)}")
+           f"since just before the shock, at {_clock(lead)}, VIX ended {shown:.2f} points {'above' if resid >= 0 else 'below'} what price "
+           f"explains, {words}: it {'rose' if d >= 0 else 'fell'} {abs(d):.2f} points, and the {sig(abs(move))} "
+           f"{'drop' if move < 0 else 'rise'} alone would {'lift' if explained >= 0 else 'lower'} it {abs(explained):.2f}{_ruled(ruler)}")
 
 
 # ----------------------------------------------------------------------------- the straddle and the ruler

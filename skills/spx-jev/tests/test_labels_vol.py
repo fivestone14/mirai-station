@@ -116,12 +116,14 @@ def fall_then_now(now, drop_sigma: float, minutes: int = 180) -> list[dict]:
 
 
 @pytest.mark.parametrize("vix_then, words", [
-    (15.00, "VIX rose 0.35 points; the 0.12 sigma SPX drop alone would lift it about 0.13, so fear rose 0.22 points (1.44% of VIX) "
-            "more than price explains, past the 1.3% line"),
-    (15.20, "VIX rose 0.15 points; the 0.12 sigma SPX drop alone would lift it about 0.13, so fear rose 0.02 points (0.13% of VIX) "
-            "more than price explains, inside the 1.3% line"),
-    (15.60, "VIX fell 0.25 points; the 0.12 sigma SPX drop alone would lift it about 0.13, so fear rose 0.38 points (2.47% of VIX) "
-            "less than price explains, past the 1.3% line"),
+    (15.00, "VIX ended 0.22 points (1.44% of VIX) above what price explains, past the 1.3% line: it rose 0.35 points, and the "
+            "0.12 sigma SPX drop alone would lift it about 0.13"),
+    (15.20, "VIX ended 0.02 points (0.13% of VIX) above what price explains, inside the 1.3% line: it rose 0.15 points, and the "
+            "0.12 sigma SPX drop alone would lift it about 0.13"),
+    (15.60, "VIX ended 0.38 points (2.47% of VIX) below what price explains, past the 1.3% line: it fell 0.25 points, and the "
+            "0.12 sigma SPX drop alone would lift it about 0.13"),
+    (15.40, "VIX ended 0.18 points (1.17% of VIX) below what price explains, inside the 1.3% line: it fell 0.05 points, and the "
+            "0.12 sigma SPX drop alone would lift it about 0.13"),
 ])
 def test_the_vix_move_is_judged_beyond_what_the_spx_move_explains(scene_factory, vix_then, words):
     now = at(12, 30, ss=10)
@@ -152,7 +154,7 @@ def test_an_estimated_ruler_says_so(scene_factory):
     late_first = diary_row(at(9, 45))                   # after the 09:40 guard: the earliest sigma_live stands in
     scene = scene_factory(now, fall_then_now(now, 0.12), row_over={"range_ruler": ruler_block(15.35)},
                           rows_before=[late_first, diary_row(now - timedelta(minutes=30), 15.2)])
-    assert labels(scene)[0]["vol.vix_vs_price"].endswith("inside the 1.3% line; ruler estimated")
+    assert labels(scene)[0]["vol.vix_vs_price"].endswith("would lift it about 0.13; ruler estimated")
 
 
 @pytest.mark.parametrize("iv_then, words", [
@@ -224,12 +226,12 @@ def shocked(now_min: int = 151, drop: float = 18.0) -> list[dict]:
 
 
 @pytest.mark.parametrize("vix_now, words", [
-    (15.52, "VIX rose 0.52 points; the 0.24 sigma drop alone would lift it 0.26, so fear rose 0.26 points more than price explains, "
-            "past the 0.15-point rule"),
-    (15.30, "VIX rose 0.30 points; the 0.24 sigma drop alone would lift it 0.26, so fear rose 0.04 points more than price explains, "
-            "within the 0.15-point rule"),
-    (15.05, "VIX rose 0.05 points; the 0.24 sigma drop alone would lift it 0.26, so fear rose 0.21 points less than price explains, "
-            "past the 0.15-point rule"),
+    (15.52, "VIX ended 0.26 points above what price explains, past the 0.15-point rule: it rose 0.52 points, and the 0.24 sigma "
+            "drop alone would lift it 0.26"),
+    (15.30, "VIX ended 0.04 points above what price explains, within the 0.15-point rule: it rose 0.30 points, and the 0.24 sigma "
+            "drop alone would lift it 0.26"),
+    (15.05, "VIX ended 0.21 points below what price explains, past the 0.15-point rule: it rose 0.05 points, and the 0.24 sigma "
+            "drop alone would lift it 0.26"),
 ])
 def test_the_vix_reaction_to_a_shock_is_judged_beyond_what_the_drop_explains(scene_factory, vix_now, words):
     now = at(12, 1)
