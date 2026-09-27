@@ -224,6 +224,14 @@ def test_the_bar_clock_stamps_the_read_at_the_newest_finished_bar(tmp_path):
     assert scene.row["range_ruler"]["em_points"] == 16.4 and scene.rows_today[0]["sigma_anchor"] == 75.0
 
 
+def test_a_bar_clock_read_leaves_out_a_diary_row_stamped_after_its_bar(tmp_path):
+    rows = [make_row(at(9, 58), 7700.0, vwap=7690.0), make_row(at(10, 10, ss=2), 7701.0, vwap=7695.0)]
+    state = write_state(tmp_path, DAY, rows, bars_from_closes([7700.0 + i for i in range(40)]))
+    scene = make_scene(state, DAY, bar_clock=True)
+    assert scene.row["ts"] == at(10, 10).isoformat() and scene.row["vwap"] == 7690.0
+    assert [r["ts"] for r in scene.rows_today] == [at(9, 58).isoformat(), at(10, 10).isoformat()]
+
+
 def test_the_market_context_joins_snapshots_and_backfilled_bars_by_when_each_was_known(tmp_path):
     lines = [context_line(at(10, 0, ss=20), quotes={"XLK": 200.0, "$TICK": 0.0}, bars={"$TICK": (at(9, 59), 350.0)}),
              context_line(at(10, 1, ss=20), quotes={"XLK": 201.0}, bars={"$TICK": (at(10, 0), -40.0)})]

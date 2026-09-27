@@ -317,17 +317,22 @@ class Scene:
 BAR_CLOCK_OWN_KEYS = ("ts", "spot", "sigma")
 
 
+def newest_bar(bars: list[dict], cutoff: datetime | None = None) -> dict:
+    """The newest bar finished by ``cutoff``, else the newest on file."""
+    done = [b for b in bars if cutoff is None or parse_ts(b["ts"]) + timedelta(minutes=1) <= cutoff]
+    if not done:
+        raise ValueError("no finished bar to stamp the read on")
+    return done[-1]
+
+
 def bar_clock_row(rows: list[dict], bars: list[dict], cutoff: datetime | None = None) -> dict:
     """The read stamped at the newest finished bar (by ``cutoff``, else the newest on file): its close
     time is the row's time and its close the spot, so the read stands where the tape stands rather
     than where the scanner last looked. Sigma is the day's first row's, so a tape unit measured in
-    sigma means the same at 10:30 as at 09:35; the rest comes from the newest diary row."""
-    one = timedelta(minutes=1)
-    done = [b for b in bars if cutoff is None or parse_ts(b["ts"]) + one <= cutoff]
-    if not done:
-        raise ValueError("no finished bar to stamp the read on")
-    last, src = done[-1], rows[-1]
-    row = {"ts": (parse_ts(last["ts"]) + one).isoformat(), "spot": float(last["close"]), "sigma": rows[0].get("sigma")}
+    sigma means the same at 10:30 as at 09:35; the rest comes from the newest diary row, which the
+    caller has cut to the rows stamped by the bar's close (make_scene)."""
+    last, src = newest_bar(bars, cutoff), rows[-1]
+    row = {"ts": (parse_ts(last["ts"]) + timedelta(minutes=1)).isoformat(), "spot": float(last["close"]), "sigma": rows[0].get("sigma")}
     row.update({k: v for k, v in src.items() if k not in BAR_CLOCK_OWN_KEYS})
     return row
 
@@ -355,6 +360,12 @@ def make_scene(state_dir: Path | str = DEFAULT_STATE_DIR, day: str | None = None
             raise ValueError(f"no SPX diary row at or before {at} on {day}")
     all_bars = load_bars(state_dir, day)
     if bar_clock:
+        # a diary row stamped after the bar's close is newer than the read: live, the scanner can write
+        # one between the fire and the read; the read and its replay both stop at the bar
+        close = parse_ts(newest_bar(all_bars, cutoff)["ts"]) + timedelta(minutes=1)
+        rows = [r for r in rows if parse_ts(r["ts"]) <= close]
+        if not rows:
+            raise ValueError(f"no SPX diary row by the bar close {close.isoformat()} on {day}")
         rows = rows + [bar_clock_row(rows, all_bars, cutoff)]
     row = rows[-1]
     now = parse_ts(row["ts"])
