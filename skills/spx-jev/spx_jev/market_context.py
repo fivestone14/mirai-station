@@ -1,4 +1,5 @@
-"""The market around SPX, a snapshot a minute: breadth, volatility, futures, rates, sectors, the big names.
+"""The market around SPX, a snapshot a minute: breadth, volatility, futures, rates, sectors, the big names and
+the funds for bonds, credit, oil and gold.
 
     python3 -m spx_jev.market_context                        # one snapshot now (the launchd job's run)
     python3 -m spx_jev.market_context --backfill 2026-08-10  # every past session's minute bars since then
@@ -41,6 +42,7 @@ SYMBOLS = {
     "rates": ("$TNX", "$IRX"),
     "sectors": ("XLK", "XLF", "XLE", "XLV", "XLY", "XLI", "XLC", "XLP", "XLU", "XLB", "XLRE"),
     "index_funds": ("SMH", "RSP", "QQQ", "IWM", "SPY"),
+    "macro_funds": ("TLT", "HYG", "USO", "GLD"),   # the bond, oil and pooled-markets labels (labels/macro.py)
     "megacaps": ("NVDA", "MSFT", "AAPL", "AMZN", "GOOGL", "META", "AVGO"),
 }
 ALL_SYMBOLS = tuple(s for group in SYMBOLS.values() for s in group)
