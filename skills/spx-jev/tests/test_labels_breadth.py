@@ -480,3 +480,154 @@ def test_the_gate_is_decided_by_the_calendar_and_the_label_needs_the_volume(scen
     stopped = around_release(scene_factory, at(14, 40, ss=10), [(260, 0.5)])
     assert stopped.omitted["breadth.flip_after_release"] == ("no NYSE up and down volume known within 5 minutes of 14:00 and of now: "
                                                              "the market-context job stopped or has not saved them")
+
+
+# ---- the opening lane: breadth.open_net_volume, breadth.opening_tick, breadth.tick_extreme_5m and its gate
+
+OPENING = at(9, 45)                     # a read on the bar clock, stamped at the 09:44 bar's close
+
+
+def tick_bar(start: datetime, high: float, low: float, close: float) -> tuple[datetime, dict]:
+    return start + timedelta(minutes=1), {"ts": start.isoformat(), "open": close, "high": high, "low": low, "close": close, "volume": 0}
+
+
+def prior_tick_sessions(n: int = 10, minutes: int = 60) -> dict[str, MarketContext]:
+    """``n`` prior sessions whose $TICK bar at each minute from 09:30 reaches 400, 450, ... 850 (and the
+    mirror below zero), so the top 5% band at every minute is 827.5 and the bottom one -827.5."""
+    out = {}
+    for k, d in enumerate(PRIOR_DAYS[:n]):
+        reach = 400.0 + 50.0 * k
+        bars = [tick_bar(at(9, 30, day=d) + timedelta(minutes=i), reach, -reach, 0.0) for i in range(minutes)]
+        out[d] = MarketContext({"$TICK": [(t, b["close"]) for t, b in bars]}, {"$TICK": bars})
+    return out
+
+
+def opening_tick_read(scene_factory, today: list[tuple[float, float, float]], now: datetime = OPENING, closes=None,
+                      prior: dict | None = None, anchored: bool = True):
+    """Today's $TICK bars from 09:30 as (high, low, close); SPX flat unless ``closes`` are given."""
+    bars = [tick_bar(at(9, 30) + timedelta(minutes=i), h, lo, c) for i, (h, lo, c) in enumerate(today)]
+    market = MarketContext({"$TICK": [(t, b["close"]) for t, b in bars]}, {"$TICK": bars})
+    minutes = int((now - at(9, 30)).total_seconds() // 60)
+    scene = scene_factory(now, bars_from_closes(closes or [7700.0] * minutes), rows_before=[ANCHOR_ROW] if anchored else None,
+                          market=market)
+    return build_breadth_labels(replace(scene, prior_markets=prior_tick_sessions() if prior is None else prior))
+
+
+QUIET_TICK = (300.0, -300.0, 180.0)
+BUY_BURST = (900.0, -300.0, 180.0)
+
+
+def test_a_one_sided_buying_open(scene_factory):
+    ls = opening_tick_read(scene_factory, [BUY_BURST] * 4 + [QUIET_TICK] * 11)
+    assert sentence(ls, "breadth.opening_tick") == (
+        "since the open NYSE TICK averaged +180, past the 100 lean line on the buy side; its 1-minute highs reached the top 5% band "
+        "for these minutes 4 times, at or past the 3-burst cluster count; its 1-minute lows never reached the bottom 5% band")
+
+
+def test_the_opening_tick_lines_hold_their_edges(scene_factory):
+    on_lines = opening_tick_read(scene_factory, [(827.5, -300.0, 100.0)] * 3 + [(827.4, -827.5, 100.0)] * 2 + [(300.0, -300.0, 100.0)] * 10)
+    assert sentence(on_lines, "breadth.opening_tick") == (
+        "since the open NYSE TICK averaged +100, within the 100 lean line; its 1-minute highs reached the top 5% band for these "
+        "minutes 3 times, at or past the 3-burst cluster count; its 1-minute lows reached the bottom 5% band for these minutes "
+        "2 times, short of the 3-burst cluster count")
+    selling = opening_tick_read(scene_factory, [(300.0, -300.0, -101.0)] * 15)
+    assert sentence(selling, "breadth.opening_tick").startswith("since the open NYSE TICK averaged -101, past the 100 lean line on the sell side;")
+
+
+def test_the_opening_tick_needs_a_live_feed_and_the_prior_sessions(scene_factory):
+    stopped = opening_tick_read(scene_factory, [QUIET_TICK] * 9)                 # the newest bar finished at 09:39
+    assert stopped.omitted["breadth.opening_tick"] == "no NYSE TICK bar in the last 5 minutes: the market-context job stopped or has not saved it"
+    thin = opening_tick_read(scene_factory, [QUIET_TICK] * 15, prior=dict(list(prior_tick_sessions().items())[:4]))
+    assert thin.omitted["breadth.opening_tick"] == "needs 5 prior sessions of NYSE TICK bars at each minute since the open"
+
+
+def test_a_tick_bar_that_finishes_after_the_read_is_not_a_burst(scene_factory):
+    ls = opening_tick_read(scene_factory, [QUIET_TICK] * 15 + [(2000.0, -2000.0, 900.0)])
+    assert "highs never reached the top 5% band" in sentence(ls, "breadth.opening_tick")
+    assert ls.gates["tick_extreme_follow"] == "no NYSE TICK burst in the last 5 minutes"
+
+
+SPX_UP_3 = [7700.0] * 10 + [7703.0] * 5               # +3.00 points from 09:40 to 09:45: 0.04 sigma
+
+
+def test_a_buying_burst_that_spx_followed(scene_factory):
+    ls = opening_tick_read(scene_factory, [QUIET_TICK] * 12 + [BUY_BURST] + [QUIET_TICK] * 2, closes=SPX_UP_3)
+    assert ls.gates["tick_extreme_follow"] is None
+    assert sentence(ls, "breadth.tick_extreme_5m") == (
+        "in the last 5 minutes NYSE TICK's 1-minute high reached the top 5% band for its minute (a buying burst) and its low did not "
+        "reach the bottom band; SPX rose 0.04 sigma over the same 5 minutes, past the 0.03 sigma follow line")
+
+
+def test_the_follow_line_and_each_kind_of_burst(scene_factory):
+    stalled = opening_tick_read(scene_factory, [QUIET_TICK] * 12 + [BUY_BURST] + [QUIET_TICK] * 2, closes=[7700.0] * 10 + [7702.25] * 5)
+    assert sentence(stalled, "breadth.tick_extreme_5m").endswith("SPX rose 0.03 sigma over the same 5 minutes, short of the 0.03 sigma follow line")
+    sell = opening_tick_read(scene_factory, [QUIET_TICK] * 11 + [(300.0, -900.0, -400.0)] + [QUIET_TICK] * 3, closes=[7700.0] * 10 + [7696.0] * 5)
+    assert sentence(sell, "breadth.tick_extreme_5m") == (
+        "in the last 5 minutes NYSE TICK's 1-minute low reached the bottom 5% band for its minute (a selling burst) and its high did "
+        "not reach the top band; SPX fell 0.05 sigma over the same 5 minutes, past the 0.03 sigma follow line")
+    both = opening_tick_read(scene_factory, [QUIET_TICK] * 10 + [(900.0, -900.0, 0.0)] + [QUIET_TICK] * 4)
+    assert sentence(both, "breadth.tick_extreme_5m") == (
+        "in the last 5 minutes NYSE TICK's 1-minute high reached the top 5% band for its minute and its low reached the bottom 5% "
+        "band (bursts both ways); SPX did not move over the same 5 minutes, short of the 0.03 sigma follow line")
+    assert both.gates["tick_extreme_follow"] is None
+
+
+def test_without_a_burst_the_gate_sleeps_and_the_label_says_so(scene_factory):
+    earlier_burst = opening_tick_read(scene_factory, [BUY_BURST] * 10 + [QUIET_TICK] * 5)       # 09:39 is outside the five minutes
+    assert earlier_burst.gates["tick_extreme_follow"] == "no NYSE TICK burst in the last 5 minutes"
+    assert sentence(earlier_burst, "breadth.tick_extreme_5m").startswith(
+        "in the last 5 minutes NYSE TICK's 1-minute highs and lows stayed inside the top and bottom 5% bands for their minutes (no burst);")
+
+
+def test_the_burst_label_omitted_and_its_gate_asleep_without_what_it_needs(scene_factory):
+    stopped = opening_tick_read(scene_factory, [BUY_BURST] * 9)
+    reason = "no NYSE TICK bar in the last 5 minutes: the market-context job stopped or has not saved it"
+    assert stopped.omitted["breadth.tick_extreme_5m"] == reason and stopped.gates["tick_extreme_follow"] == reason
+    thin = opening_tick_read(scene_factory, [BUY_BURST] * 15, prior={})
+    reason = "needs 5 prior sessions of NYSE TICK bars at each of the last 5 minutes"
+    assert thin.omitted["breadth.tick_extreme_5m"] == reason and thin.gates["tick_extreme_follow"] == reason
+    estimated = opening_tick_read(scene_factory, [BUY_BURST] * 15, closes=SPX_UP_3, anchored=False)
+    assert sentence(estimated, "breadth.tick_extreme_5m").endswith("past the 0.03 sigma follow line; ruler estimated")
+    no_context = build_breadth_labels(scene_factory(OPENING, flat_bars(15)))
+    assert no_context.gates["tick_extreme_follow"] == "no market-context snapshot today"
+
+
+def open_volume_read(scene_factory, nyse_m: float, members_m: float, add: tuple[float, float] | None = (100.0, 510.0),
+                     prior_add=(100.0, 200.0, 300.0, 450.0, 500.0), extra: dict | None = None):
+    """Today's totals a minute before the 09:45 read and $ADD 10 and 1 minutes before it; the prior sessions'
+    totals at 09:44 spread 40M ($VOLD) and 25M ($VOLSPD), and their $ADD 10-minute changes ``prior_add`` (None: no $ADD)."""
+    known = {"$VOLD": [(at(9, 44), nyse_m * 1e6)], "$VOLSPD": [(at(9, 44), members_m * 1e6)]}
+    if add:
+        known["$ADD"] = [(at(9, 35), add[0]), (at(9, 44), add[1])]
+    for s, pts in (extra or {}).items():
+        known[s] = known[s] + pts
+    prior = {}
+    for d, n, m, a in zip(PRIOR_DAYS, (-40, -40, 40, 40, 0), (-25, -25, 25, 25, 0), prior_add):
+        prior[d] = MarketContext({"$VOLD": readings(at(9, 44), [n * 1e6], day=d), "$VOLSPD": readings(at(9, 44), [m * 1e6], day=d),
+                                  **({"$ADD": readings(at(9, 44), [0.0] * 9 + [a], day=d)} if a is not None else {})})
+    scene = scene_factory(OPENING, flat_bars(15), market=MarketContext(known))
+    return build_breadth_labels(replace(scene, prior_markets=prior))
+
+
+def test_net_volume_since_the_open_both_buying(scene_factory):
+    assert sentence(open_volume_read(scene_factory, 48, 21), "breadth.open_net_volume") == (
+        "since 09:30 NYSE net volume is +48M, 1.20 times the usual swing for 09:45 on the buy side, past the 0.75 lean line; "
+        "S&P 500 members' net volume is +21M, 0.84 times the usual swing for 09:45 on the buy side, past the 0.75 lean line; "
+        "advancers minus decliners rose 410 in the last 10 minutes, higher than 3 of the last 5 sessions at this minute")
+
+
+def test_the_lean_line_holds_its_edge_and_the_thrust_clause_needs_its_readings(scene_factory):
+    on_line = sentence(open_volume_read(scene_factory, -48, 18.75, add=None), "breadth.open_net_volume")
+    assert on_line == ("since 09:30 NYSE net volume is -48M, 1.20 times the usual swing for 09:45 on the sell side, past the 0.75 lean "
+                       "line; S&P 500 members' net volume is +19M, 0.75 times the usual swing for 09:45 on the buy side, within the "
+                       "0.75 lean line")
+    unranked = sentence(open_volume_read(scene_factory, 48, 21, prior_add=(100.0, 200.0, 300.0, 450.0, None)), "breadth.open_net_volume")
+    assert unranked.endswith("; advancers minus decliners rose 410 in the last 10 minutes")
+
+
+def test_net_volume_since_the_open_omitted_without_its_series_and_never_ahead_of_the_read(scene_factory):
+    ls = open_volume_read(scene_factory, 48, 21, extra={"$VOLD": [(at(9, 46), 900e6)]})
+    assert "NYSE net volume is +48M" in sentence(ls, "breadth.open_net_volume")
+    scene = scene_factory(OPENING, flat_bars(15), market=MarketContext({"$VOLSPD": [(at(9, 44), 21e6)]}))
+    assert build_breadth_labels(scene).omitted["breadth.open_net_volume"] == (
+        "no NYSE net volume ($VOLD) known within 5 minutes of now: the market-context job stopped or has not saved it")
