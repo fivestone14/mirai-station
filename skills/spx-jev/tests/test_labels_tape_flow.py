@@ -353,10 +353,10 @@ def readings(until: datetime, **per_minute) -> list[dict]:
 @pytest.mark.parametrize("strikes, sentence", [
     ([(7709.0, 14, 2), (7701.0, 3, 1)],
      "0.12 sigma above price, inside the 0.25 sigma defense distance; it was hit 16 times in the last 15 minutes, at least the 10-hit minimum; "
-     "market makers refilled its quotes at price on 14 of them (88%), at least the 70% refill share"),
+     "market makers refilled its quotes at price at some point in those 15 minutes on 14 of them (88%), at least the 70% refill share"),
     ([(7691.0, 5, 7), (7750.0, 40, 0)],
      "0.12 sigma below price, inside the 0.25 sigma defense distance; it was hit 12 times in the last 15 minutes, at least the 10-hit minimum; "
-     "market makers refilled its quotes at price on 5 of them (42%), under the 70% refill share"),
+     "market makers refilled its quotes at price at some point in those 15 minutes on 5 of them (42%), under the 70% refill share"),
 ])
 def test_strike_defense_reads_the_nearest_contested_strikes_refill_share(scene_factory, tmp_path, strikes, sentence):
     later = [defense_line(at(10, 0, ss=40), (7700.0, 90, 0))]                   # after the read: never counts

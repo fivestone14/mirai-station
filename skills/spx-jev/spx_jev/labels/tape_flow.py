@@ -549,7 +549,8 @@ def _quote_liquidity(scene: Scene, ls: LabelSet) -> None:
 def _strike_defense(scene: Scene, ls: LabelSet) -> None:
     """Of the book's magnet and walls, the only strikes the collector runs its refill test at, the nearest whose
     same-day quotes keep getting hit, over the collector's last 15 minutes of trades: a hit is a trade that ate the
-    size showing at the touch, refilled when that size came back at the same price (within a tick)."""
+    size showing at the touch, refilled when that size came back at the same price (within a tick) at any point
+    in those 15 minutes, so the refill share says nothing of how fast."""
     if scene.state_dir is None:
         ls.omit("options.strike_defense", "no state folder to read the lob-flow collector's record from")
         return
@@ -582,7 +583,7 @@ def _strike_defense(scene: Scene, ls: LabelSet) -> None:
     ls.put("options.strike_defense",
            f"of the book's magnet and walls, the strikes the collector tests, the nearest where same-day quotes keep getting hit is {where}, inside the {DEFENSE_NEAR_SIGMA} sigma defense distance; "
            f"it was hit {hit} times in the last {OPTIONS_TAPE_WINDOW_MIN} minutes, at least the {DEFENSE_MIN_EVENTS}-hit minimum; "
-           f"market makers refilled its quotes at price on {refilled} of them ({pct(share)}), "
+           f"market makers refilled its quotes at price at some point in those {OPTIONS_TAPE_WINDOW_MIN} minutes on {refilled} of them ({pct(share)}), "
            f"{'at least' if share >= DEFENSE_REFILL_SHARE else 'under'} the {pct(DEFENSE_REFILL_SHARE)} refill share"
            f"{'; ruler estimated' if ruler.estimated else ''}")
 
