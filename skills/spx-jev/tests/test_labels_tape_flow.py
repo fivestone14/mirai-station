@@ -96,6 +96,21 @@ def test_big_prints_count_the_single_large_trades_of_the_last_10_minutes_and_the
     assert read(scene)[1]["options.big_prints_10"] == sentence
 
 
+def at_mid(minute: int, right: str, bid: float, ask: float) -> dict:
+    """A big print at the mid of a quote whose mid is not exact in floats."""
+    return {**big(minute, right, "mid"), "price": round((bid + ask) / 2, 2), "bid": bid, "ask": ask}
+
+
+def test_a_print_at_the_mid_has_no_side_whatever_the_float_rounding(scene_factory, tmp_path):
+    prints = [big(51, "call", "bought"), big(52, "call", "bought"), big(53, "call", "bought"), big(54, "put", "bought"),
+              big(55, "put", "bought"), at_mid(56, "call", 5.6, 5.8), at_mid(57, "put", 2.35, 2.45)]
+    scene = tape_scene(scene_factory, tmp_path, NOW, every_minute(DAY, NOW) + prints)
+    assert read(scene)[1]["options.big_prints_10"] == (
+        "over the last 10 minutes 7 single 0DTE trades of 100 lots or more printed, at least the 5-trade minimum; "
+        "neither side passed the 65% lean line: 60% of their premium whose side could be told was calls bought or puts sold "
+        "and 40% puts bought or calls sold")
+
+
 def test_the_tape_labels_are_omitted_without_a_tape_or_a_running_collector(scene_factory, tmp_path):
     scene = tape_scene(scene_factory, tmp_path, NOW, every_minute(DAY, NOW))
     ls, _ = read(replace(scene, state_dir=None))

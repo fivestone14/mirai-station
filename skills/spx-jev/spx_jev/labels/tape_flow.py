@@ -52,6 +52,8 @@ TAPE_RAW_SUBDIR = Path("lob_flow") / "raw"
 TAPE_LINE_START = b'{"ts_ms": '         # a trade line; the collector also writes gap markers
 OPTION_MULTIPLIER = 100
 MULTI_LEG_CONDITIONS = range(130, 145)   # OPRA's multi-leg and stock-option trade conditions (ThetaData 130-144)
+# Prints and quotes are in cents, so a print nearer the mid than this is at it: 5.70 inside 5.60/5.80 is 1e-15 off in floats.
+AT_MID_TOLERANCE = 1e-6
 # The premium burst's window: the opening lane reads every 5 minutes, so a burst is the stretch since the last read.
 BURST_WINDOW_MIN = 5
 TAPE_LABELS = ("options.big_prints_10", "options.flow_lean_30", "options.premium_burst_5m", "options.premium_pace_30")
@@ -471,9 +473,12 @@ def _add_trade(flow: TapeFlow, t: dict) -> None:
     if big:
         flow.big_prints += 1
     bid, ask = t.get("bid"), t.get("ask")
-    if t.get("right") not in ("call", "put") or not is_num(bid) or not is_num(ask) or ask < bid or price == (bid + ask) / 2:
+    if t.get("right") not in ("call", "put") or not is_num(bid) or not is_num(ask) or ask < bid:
         return
-    if (price > (bid + ask) / 2) == (t["right"] == "call"):
+    past_mid = price - (bid + ask) / 2
+    if abs(past_mid) < AT_MID_TOLERANCE:
+        return
+    if (past_mid > 0) == (t["right"] == "call"):
         flow.bullish += premium
         flow.big_bullish += premium if big else 0.0
     else:
