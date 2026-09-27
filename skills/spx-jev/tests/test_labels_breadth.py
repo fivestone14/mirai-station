@@ -659,6 +659,15 @@ def test_net_volume_since_the_open_both_buying(scene_factory):
         "advancers minus decliners rose 410 in the last 10 minutes, higher than 3 of the last 5 sessions at this minute")
 
 
+def test_a_falling_thrust_is_ranked_by_the_size_of_its_fall(scene_factory):
+    steepest = sentence(open_volume_read(scene_factory, 48, 21, add=(510.0, 100.0)), "breadth.open_net_volume")
+    assert steepest.endswith("; advancers minus decliners fell 410 in the last 10 minutes, a bigger fall than 5 of the last 5 sessions "
+                             "at this minute")
+    among_falls = sentence(open_volume_read(scene_factory, 48, 21, add=(510.0, 100.0), prior_add=(-100.0, -300.0, -450.0, -500.0, 50.0)),
+                           "breadth.open_net_volume")
+    assert among_falls.endswith("fell 410 in the last 10 minutes, a bigger fall than 3 of the last 5 sessions at this minute")
+
+
 def test_the_lean_line_holds_its_edge_and_the_thrust_clause_needs_its_readings(scene_factory):
     on_line = sentence(open_volume_read(scene_factory, -48, 18.75, add=None), "breadth.open_net_volume")
     assert on_line == ("since 09:30 NYSE net volume is -48M, 1.20 times the usual swing for 09:45 on the sell side, past the 0.75 lean "

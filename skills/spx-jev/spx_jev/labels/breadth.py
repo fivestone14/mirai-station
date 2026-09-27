@@ -419,9 +419,8 @@ def _open_net_volume(scene: Scene, ls: LabelSet) -> None:
              for symbol, (value, z) in (("$VOLD", nyse), ("$VOLSPD", members))]
     thrust = _advancers_10m(scene.market, scene.now)
     if thrust is not None:
-        rank = rank_against(thrust, _same_clock(scene, _advancers_10m))
         leans.append(f"advancers minus decliners {'rose' if thrust > 0 else 'fell' if thrust < 0 else 'held'} {abs(thrust):.0f} in the "
-                     f"last {WINDOW_10_MIN} minutes{', ' + rank.words() if rank else ''}")
+                     f"last {WINDOW_10_MIN} minutes{_thrust_rank(thrust, _same_clock(scene, _advancers_10m))}")
     ls.put("breadth.open_net_volume", f"since {scene.session_open.astimezone(ET):%H:%M} " + "; ".join(leans))
 
 
@@ -429,6 +428,16 @@ def _advancers_10m(mk: MarketContext, now: datetime) -> float | None:
     """How far NYSE advancers minus decliners ($ADD) moved over the last 10 minutes."""
     then, latest = mk.last("$ADD", now - timedelta(minutes=WINDOW_10_MIN), max_age_min=FRESH_MIN), mk.last("$ADD", now, max_age_min=FRESH_MIN)
     return None if then is None or latest is None else latest - then
+
+
+def _thrust_rank(thrust: float, base: list[float]) -> str:
+    """The $ADD change against the same minutes of the prior sessions; a fall is ranked by how far it fell,
+    so the steepest fall of them reads as the biggest, not as higher than none."""
+    if thrust >= 0:
+        rank = rank_against(thrust, base)
+        return f", {rank.words()}" if rank else ""
+    rank = rank_against(-thrust, [-b for b in base])
+    return f", a bigger fall than {rank.higher_than} of the last {rank.of} sessions at this minute" if rank else ""
 
 
 def _percentile(values: list[float], share: float) -> float:
