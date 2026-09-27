@@ -4844,8 +4844,8 @@
       "btc_ahead_down": "bitcoin moved further than the index's move would match, in the direction that has gone with stocks falling"
      },
      "code_criteria": {
-      "btc_ahead_up": "excess rank vs the same clock over the last {night_rank_count} sessions >= {top_fifth}, stocks-up direction",
-      "btc_ahead_down": "excess rank <= {bottom_fifth}, stocks-down direction"
+      "btc_ahead_up": "the excess ranks in the outer fifth on the side that has gone with stocks rising, against the same clock over the last {night_rank_count} sessions: >= {top_fifth} while bitcoin's usual multiple of the index is at or above zero, <= {bottom_fifth} while it is below",
+      "btc_ahead_down": "the outer fifth on the side that has gone with stocks falling: <= {bottom_fifth} while the multiple is at or above zero, >= {top_fifth} while it is below"
      },
      "labels": [
       "xasset.btc_gap_30min"
@@ -4881,8 +4881,8 @@
       "streak_down": "three half-hours in a row bitcoin moved further than the index's move would match, each time in the stocks-falling direction"
      },
      "code_criteria": {
-      "streak_up": "the last three half-hour excesses all on the stocks-up side and their sum ranks >= {third_hi} against the same clock over the last {night_rank_count} sessions",
-      "streak_down": "all three on the stocks-down side and their sum ranks <= {third_lo}"
+      "streak_up": "the last three half-hour excesses all one sign, their sum ranking >= {third_hi} when all rose or <= {third_lo} when all fell, against the same clock over the last {night_rank_count} sessions, and that sign the side that has gone with stocks rising (rose while bitcoin's usual multiple of the index is at or above zero, fell while it is below)",
+      "streak_down": "the same on the side that has gone with stocks falling (fell while the multiple is at or above zero, rose while it is below)"
      },
      "labels": [
       "xasset.btc_gap_streak"
@@ -5335,8 +5335,8 @@
       "btc_ahead_down": "bitcoin went further than the futures' move would match, in the direction that has gone with stocks falling over the recent nights"
      },
      "code_criteria": {
-      "btc_ahead_up": "overnight excess rank vs the last {night_rank_count} nights >= {top_fifth} in the stocks-up direction",
-      "btc_ahead_down": "overnight excess rank vs the last {night_rank_count} nights <= {bottom_fifth} (stocks-down direction)"
+      "btc_ahead_up": "the gap to the futures ranks in the outer fifth on the side that has gone with stocks rising, against the last {night_rank_count} nights: >= {top_fifth} while bitcoin's usual multiple of the futures is at or above zero, <= {bottom_fifth} while it is below",
+      "btc_ahead_down": "the outer fifth on the side that has gone with stocks falling: <= {bottom_fifth} while the multiple is at or above zero, >= {top_fifth} while it is below"
      },
      "labels": [
       "overnight.btc_vs_futures"

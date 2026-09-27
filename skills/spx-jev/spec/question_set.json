@@ -8196,8 +8196,8 @@
       }
      ],
      "criteria": {
-      "btc_ahead_up": "excess rank vs the same clock over the last {night_rank_count} sessions >= {top_fifth}, stocks-up direction",
-      "btc_ahead_down": "excess rank <= {bottom_fifth}, stocks-down direction"
+      "btc_ahead_up": "the excess ranks in the outer fifth on the side that has gone with stocks rising, against the same clock over the last {night_rank_count} sessions: >= {top_fifth} while bitcoin's usual multiple of the index is at or above zero, <= {bottom_fifth} while it is below",
+      "btc_ahead_down": "the outer fifth on the side that has gone with stocks falling: <= {bottom_fifth} while the multiple is at or above zero, >= {top_fifth} while it is below"
      },
      "sleep_when": "excess rank in the middle three fifths; fewer than {min_rank_sessions} prior sessions at this clock; no bitcoin trade in the last {window_10_min} minutes",
      "labels_needed": [
@@ -8247,8 +8247,8 @@
       }
      ],
      "criteria": {
-      "streak_up": "the last three half-hour excesses all on the stocks-up side and their sum ranks >= {third_hi} against the same clock over the last {night_rank_count} sessions",
-      "streak_down": "all three on the stocks-down side and their sum ranks <= {third_lo}"
+      "streak_up": "the last three half-hour excesses all one sign, their sum ranking >= {third_hi} when all rose or <= {third_lo} when all fell, against the same clock over the last {night_rank_count} sessions, and that sign the side that has gone with stocks rising (rose while bitcoin's usual multiple of the index is at or above zero, fell while it is below)",
+      "streak_down": "the same on the side that has gone with stocks falling (fell while the multiple is at or above zero, rose while it is below)"
      },
      "sleep_when": "the three signs are mixed, or the summed excess is in the middle third; before 11:02; any of the three windows missing bitcoin data",
      "labels_needed": [
@@ -8888,8 +8888,8 @@
       }
      ],
      "criteria": {
-      "btc_ahead_up": "overnight excess rank vs the last {night_rank_count} nights >= {top_fifth} in the stocks-up direction",
-      "btc_ahead_down": "overnight excess rank vs the last {night_rank_count} nights <= {bottom_fifth} (stocks-down direction)"
+      "btc_ahead_up": "the gap to the futures ranks in the outer fifth on the side that has gone with stocks rising, against the last {night_rank_count} nights: >= {top_fifth} while bitcoin's usual multiple of the futures is at or above zero, <= {bottom_fifth} while it is below",
+      "btc_ahead_down": "the outer fifth on the side that has gone with stocks falling: <= {bottom_fifth} while the multiple is at or above zero, >= {top_fifth} while it is below"
      },
      "sleep_when": "excess rank in the middle three fifths; the Thursday bitcoin roll night or a roll pending; fewer than {overnight_rank_min_nights} clean prior nights; no /MBT trade in the last {window_10_min} minutes before the read",
      "labels_needed": [
@@ -12845,6 +12845,13 @@
    "action": "reword",
    "decision": "accepted",
    "reason": "the question, its example and how its label is computed say where the night starts as the label measures it: the futures' 16:00 price, or after a weekend or holiday their reopen the evening before (the weekend is btc_weekend_path's); a percent move, not a log move.",
+   "source": "review of the premarket build 2026-09-27"
+  },
+  {
+   "subject": "btc_gap_30m, btc_gap_streak, btc_overnight_vs_futures",
+   "action": "criteria",
+   "decision": "accepted",
+   "reason": "the stocks-up and stocks-down answers are the outer band on the side bitcoin's fitted multiple of the index or the futures points to, as the labels answer them, so a month when bitcoin goes against stocks flips the side instead of contradicting the rule.",
    "source": "review of the premarket build 2026-09-27"
   }
  ],
