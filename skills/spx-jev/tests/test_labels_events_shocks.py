@@ -368,8 +368,8 @@ def test_a_burst_the_hour_before_could_not_produce(scene_factory):
         "not at a scheduled release time; the burst ended 17 minutes ago, older than the 10-minute fresh window; since then "
         "price has given back 52% of it, past the half line")
     assert state["shock.vs_day_range"] == (
-        "the shock took price to a new session high, 0.12 sigma over the earlier high, and price is 0.07 sigma below that new high, "
-        "within the 0.09 sigma move rule of it")
+        "the shock took price to a new session high, 0.12 sigma over the earlier high, which price has since pushed 0.01 sigma "
+        "further, and price is 0.07 sigma below that new high, within the 0.09 sigma move rule of it")
     assert gates["shock_state"] is None
 
 
@@ -437,6 +437,17 @@ def test_a_burst_inside_the_days_range_and_one_left_behind(scene_factory):
                                                        "short of the earlier session high")
     left = labels(burst_scene(scene_factory, at(12, 2, BURST_DAY), after=2.0))[0]["shock.vs_day_range"]
     assert left.endswith("and price is 0.10 sigma below that new high, beyond the 0.09 sigma move rule of it")
+
+
+def test_a_burst_price_kept_extending_is_measured_back_from_the_newest_extreme(scene_factory):
+    closes = burst_scene(scene_factory, at(12, 2, BURST_DAY)).bars
+    climb = [float(b["close"]) + 1.5 * min(max(i - minute(11, 49), 0), 10) for i, b in enumerate(closes)]   # 1.5 a minute to 12:00
+    s = scene_at(scene_factory, at(12, 2, BURST_DAY), climb)
+    assert labels(s)[0]["shock.vs_day_range"] == (
+        "the shock took price to a new session high, 0.12 sigma over the earlier high, which price has since pushed 0.15 sigma "
+        "further, and price is 0.01 sigma below that new high, within the 0.09 sigma move rule of it")
+    beyond = labels(scene_at(scene_factory, at(12, 2, BURST_DAY), climb, spot=7730.0))[0]["shock.vs_day_range"]
+    assert beyond.endswith("and price is at or above that new high, within the 0.09 sigma move rule of it")
 
 
 # ---- shock.cross_asset

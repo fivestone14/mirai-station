@@ -549,7 +549,8 @@ def _burst_label(scene: Scene, anchor: SigmaRuler, burst: Burst, day_events: lis
 
 
 def _vs_day_range(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) -> None:
-    """The burst's extreme against the session's high or low before it, and where price sits from it now."""
+    """The burst's extreme against the session's high or low before it, and how far price sits back from the
+    new extreme now, the burst's own or one price has pushed on to since."""
     before = [b for b in scene.bars if bar_time(b) + ONE_MINUTE <= burst.start]
     earlier = session_extremes(before)
     if earlier is None:
@@ -563,10 +564,15 @@ def _vs_day_range(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) 
         ls.put("shock.vs_day_range", f"the shock stayed inside the day's earlier range: its {word} stopped {sig(-past)} short of "
                                      f"the earlier session {word}")
         return
-    away = (scene.spot - extreme) / anchor.points
-    where = f"{sig(abs(away))} {'above' if away > 0 else 'below'} that new {word}" if round(away, 2) else f"at that new {word}"
+    since = session_extremes(bars_finished_between(scene.bars, burst.start, scene.now))
+    newest = since.high if up else since.low
+    further = (newest - extreme) * burst.side / anchor.points
+    pushed = f", which price has since pushed {sig(further)} further" if round(further, 2) else ""
+    back = (newest - scene.spot) * burst.side / anchor.points
+    where = (f"{sig(back)} {'below' if up else 'above'} that new {word}" if round(back, 2) > 0 else
+             f"at or {'above' if up else 'below'} that new {word}")
     ls.put("shock.vs_day_range", f"the shock took price to a new session {word}, {sig(past)} {'over' if up else 'under'} the "
-                                 f"earlier {word}, and price is {where}, {'within' if abs(away) <= MOVE_RULE_SIGMA else 'beyond'} the "
+                                 f"earlier {word}{pushed}, and price is {where}, {'within' if back <= MOVE_RULE_SIGMA else 'beyond'} the "
                                  f"{MOVE_RULE_SIGMA:.2f} sigma move rule of it")
 
 
