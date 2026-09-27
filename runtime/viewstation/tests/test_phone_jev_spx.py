@@ -636,10 +636,11 @@ def test_a_card_left_behind_by_a_sleeping_mac_says_which_read_is_missing():
     assert _card_parts(got)[0] == ["lab", "before the open4 HR 45 MIN AGO"]
     age = [m[1] for m in got["main"] if "pre" in m[0]][0]["kids"][0]["kids"][1]
     assert age["attrs"]["class"] == "r old"
-    # a checkpoint only minutes late is not yet missing, and the service's own staleness is said beside it
+    # a checkpoint only minutes late is not yet missing
     assert _page(pre_card("03:35"), et("08:10"))["state"] == ["snapshot, JEV at 05:48 and 06:28"]
-    old = pre_card("08:05", freshness={"age_s": 1500, "stale": True})
-    assert _page(old, et("08:06"))["state"] == ["snapshot, JEV at 05:48 and 06:28", "futures 25 min old at the read"]
+    # a card written long after its read (a replay) says nothing of it: freshness is not the futures' age
+    replayed = pre_card("08:05", freshness={"age_s": 206361, "stale": True})
+    assert _page(replayed, et("08:06"))["state"] == ["snapshot, JEV at 05:48 and 06:28"]
     assert _page(pre_card("09:05"), et("09:06"), ok=False)["state"][0] == "fetch failed, showing the last card"
 
 
@@ -746,7 +747,7 @@ def test_the_week_frankfurt_is_on_winter_time_moves_a_checkpoint_and_the_card_fo
 _PRE_W = {"pre-market read 00:35, 4 hr 45 min ago, open 06:30": 319.23, "BEFORE THE OPEN": 113.08,
           "SNAPSHOT, JEV AT 05:48 AND 06:28": 222.83, "STALE: THE 05:05 READ HAS NOT LANDED": 255.12,
           "NOT SENT: NO KEY ON THIS MACHINE": 227.98,
-          "NOT SENT: THIS RUN WAS NOT ASKED TO SEND": 284.97, "NOT SENT: NOTHING TO ASK AT THE 05:48 READ": 293.56, "FUTURES 25 MIN OLD AT THE READ": 208.96,
+          "NOT SENT: THIS RUN WAS NOT ASKED TO SEND": 284.97, "NOT SENT: NOTHING TO ASK AT THE 05:48 READ": 293.56,
           "OPENS 06:30": 85.72, "5 HR 50 MIN TO GO": 120.45, "Read 13:05 GMT+5:30": 119.91, "Checked 19:14 and 19:34": 143.86}
 
 
@@ -761,7 +762,7 @@ def test_the_premarket_card_fits_the_owners_360px_phone():
     assert _PRE_W["pre-market read 00:35, 4 hr 45 min ago, open 06:30"] <= column
     for w in ("BEFORE THE OPEN", "SNAPSHOT, JEV AT 05:48 AND 06:28", "STALE: THE 05:05 READ HAS NOT LANDED",
               "NOT SENT: NO KEY ON THIS MACHINE", "NOT SENT: THIS RUN WAS NOT ASKED TO SEND",
-              "NOT SENT: NOTHING TO ASK AT THE 05:48 READ", "FUTURES 25 MIN OLD AT THE READ"):
+              "NOT SENT: NOTHING TO ASK AT THE 05:48 READ"):
         assert _PRE_W[w] + chip <= column, w
     assert _PRE_W["OPENS 06:30"] + _px(".clock-top", "gap") + _PRE_W["5 HR 50 MIN TO GO"] <= card
     assert _PRE_W["Read 13:05 GMT+5:30"] + _PRE_W["Checked 19:14 and 19:34"] <= card

@@ -1148,7 +1148,8 @@ details .q{margin-top:8px}
     var reason = marketWords(p.unsent_reason, p.row_ts);
     return /^not sent\b/.test(reason) ? reason : 'not sent: ' + reason;
   }
-  // the state chips: a failed fetch, whether this read asked JEV and was sent, a missed checkpoint, old futures
+  // the state chips: a failed fetch, whether this read asked JEV and was sent, a missed checkpoint; none from the
+  // card's freshness, which is how long after its read the card was written, not how old the futures were
   function preState(p, ok, now){
     var out = [], jev = (p.schedule && p.schedule.jev_reads) || [];
     if(!ok) out.push('fetch failed, showing the last card');
@@ -1161,7 +1162,6 @@ details .q{margin-top:8px}
     }
     var missed = preMissed(p, now);
     if(missed != null) out.push('stale: the ' + viewerTime(missed) + ' read has not landed');
-    if(p.freshness && p.freshness.stale && p.freshness.age_s != null) out.push('futures ' + Math.round(p.freshness.age_s / 60) + ' min old at the read');
     return out;
   }
   // the call in words, from the two sums' picks: how the first check (10 minutes on) opens, and whether the
