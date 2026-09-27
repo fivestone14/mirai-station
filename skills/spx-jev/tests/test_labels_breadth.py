@@ -471,6 +471,18 @@ def test_breadth_flipped_after_the_fed(scene_factory, tmp_path, monkeypatch):
         "on the sell side; in the hour before it the share was 63%, past the 60% lean line on the buy side")
 
 
+def test_breadth_flipped_to_buying_and_breadth_that_kept_its_side(scene_factory, tmp_path, monkeypatch):
+    calendar(tmp_path, monkeypatch, FOMC_AND_PRESSER)
+    to_buying = around_release(scene_factory, at(14, 40, ss=10), [(210, 0.5), (60, 0.37), (40, 0.64)])
+    assert sentence(to_buying, "breadth.flip_after_release").endswith(
+        "64% of NYSE volume went into rising stocks, past the 60% lean line on the buy side; in the hour before it the share was 37%, "
+        "past the 40% lean line on the sell side")
+    kept = around_release(scene_factory, at(14, 40, ss=10), [(210, 0.5), (60, 0.35), (40, 0.3)])
+    assert sentence(kept, "breadth.flip_after_release").endswith(
+        "30% of NYSE volume went into rising stocks, past the 40% lean line on the sell side; in the hour before it the share was 35%, "
+        "past the 40% lean line on the sell side")
+
+
 def test_a_release_in_the_first_hour_is_held_against_the_minutes_from_the_open(scene_factory, tmp_path, monkeypatch):
     calendar(tmp_path, monkeypatch, [("10:00", "ISM_MANUFACTURING", "data_10am")])
     ls = around_release(scene_factory, at(10, 32, ss=10), [(30, 0.55), (32, 0.6)])
