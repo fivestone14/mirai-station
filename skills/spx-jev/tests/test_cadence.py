@@ -86,6 +86,23 @@ def test_what_the_schedule_does_not_ask_holds_by_its_kind():
     assert plan(DOC, stale, {}, now, not_due, {}, "11:32")[1] == {}                         # nothing from another day
 
 
+def test_a_question_held_until_its_code_answer_changes_is_asked_again_when_it_does():
+    """vol_curve_vs_usual is asked at 10:02, then held until the code's own reading of the curve changes."""
+    q = "vol_curve_vs_usual"
+    now, not_due = at(11, 32), {q: "a day constant: asked at 10:02 ET and held"}
+    last = {q: {"row_ts": at(10, 2).isoformat(), "answer": {"pick": "usual", "probabilities": {"usual": 0.8}}, "code_answer": "usual"}}
+    skip, held = plan(DOC, last, {}, now, not_due, {}, "11:32", code_answers={q: "flatter_than_usual"})
+    assert q not in skip and q not in held
+    for same in ({q: "usual"}, {}, None):
+        skip, held = plan(DOC, last, {}, now, not_due, {}, "11:32", code_answers=same)
+        assert q in skip and held[q]["held_from"] == at(10, 2).isoformat()
+    yesterday = {q: {**last[q], "row_ts": at(10, 2, day=DAY_BEFORE).isoformat()}}
+    assert q in plan(DOC, yesterday, {}, now, not_due, {}, "11:32", code_answers={q: "flatter_than_usual"})[0]
+    one_way = "one_way_hour"                                            # asked on its schedule, never on a code change
+    assert one_way in plan(DOC, {one_way: {**last[q], "code_answer": "x"}}, {}, now, {one_way: "not on its schedule"}, {}, "11:32",
+                           code_answers={one_way: "y"})[0]
+
+
 def test_recount_sets_every_read_for_a_flipper_and_slower_for_a_holder():
     q_flip, q_hold = LIVE[0], LIVE[1]
     times = [(9, 32), (10, 2), (10, 32), (11, 2), (11, 32), (12, 2), (12, 32), (13, 2), (13, 32), (14, 2), (14, 32)]

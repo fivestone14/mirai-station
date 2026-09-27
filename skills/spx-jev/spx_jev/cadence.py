@@ -4,6 +4,8 @@ The question's schedule (schedule.py) says when it may be asked at all; the cade
 that out on the live lane. Between fresh answers the last answer is held, and a question its schedule
 does not ask at a read holds too: a day constant (asked at 09:35, or at 10:02, and held) all day, a
 question held from its other lane until the hour its schedule names, and an hourly one while young.
+A day constant whose schedule says ``then`` (re-asked when the code's answer changes) is asked again
+on the first read whose code answer differs from the one the code had when its held answer was given.
 
     python3 -m spx_jev.cadence                     # the table for the newest day with records
     python3 -m spx_jev.cadence --day 2026-09-29 --write    # recount that day and write cadence.json
@@ -35,7 +37,8 @@ The schedule's ``every_min`` is the starting value until a recount exists; the d
 
 Files, under state/spx_jev/:
     cadence.json      {"recounted_from": day, "questions": {qid: {"minutes", "p25_hold_min", "changes", "reads", "why"}}}
-    last_asked.json   {qid: {"row_ts", "answer", "moved"}}   the newest fresh answer per question and how far it moved from the one before
+    last_asked.json   {qid: {"row_ts", "answer", "moved", "code_answer"}}   the newest fresh answer per question, how far it
+                      moved from the one before, and the code's answer at that read for a question that has one
 """
 from __future__ import annotations
 
@@ -159,6 +162,15 @@ def held_today(entry: dict | None, now: datetime) -> dict | None:
     return {**entry["answer"], "held_from": entry["row_ts"]}
 
 
+def code_answer_moved(q: dict, entry: dict | None, code_answer: str | None, now: datetime) -> bool:
+    """Whether a question held until the code's answer changes (its schedule's ``then``) is due again: its
+    held answer was given earlier today, beside a code answer that is not this read's ``code_answer``."""
+    if "then" not in (q.get("schedule") or {}) or not q.get("code_answer") or code_answer is None:
+        return False
+    was = entry.get("code_answer") if held_today(entry, now) else None
+    return was is not None and was != code_answer
+
+
 def scheduled_hold(q: dict, entry: dict | None, borrowed: dict | None, now: datetime, slot: str | None, minutes: int) -> dict | None:
     """What a live question its schedule does not ask at the read ``slot`` holds: a day constant its answer
     from earlier today, a question held from its other lane that lane's answer from today (``borrowed``,
@@ -172,10 +184,12 @@ def scheduled_hold(q: dict, entry: dict | None, borrowed: dict | None, now: date
 
 
 def plan(doc: dict, last: dict, cad: dict, now: datetime, not_due: dict[str, str] | None = None, borrowed: dict | None = None,
-         slot: str | None = None, learned: bool = True) -> tuple[dict[str, str], dict[str, dict]]:
+         slot: str | None = None, learned: bool = True,
+         code_answers: dict[str, str] | None = None) -> tuple[dict[str, str], dict[str, dict]]:
     """Which questions to leave out of this read, with the answer to hold for each live one. ``not_due``
     is what the schedule leaves out at the read ``slot`` (schedule.not_due, schedule.read_slot), each
-    holding by scheduled_hold; ``borrowed`` is the other lane's last-asked answers. With ``learned`` a live
+    holding by scheduled_hold, unless the code's answer this read (``code_answers``) moved it
+    (code_answer_moved); ``borrowed`` is the other lane's last-asked answers. With ``learned`` a live
     question that is due is also left out while its cadence has not elapsed. Shadow questions are
     forecasts: never held, asked when due."""
     skip: dict[str, str] = dict(not_due or {})
@@ -185,6 +199,9 @@ def plan(doc: dict, last: dict, cad: dict, now: datetime, not_due: dict[str, str
             if q.get("status") != "live":
                 continue
             minutes = cadence_of(cad, q, qid)
+            if qid in skip and slot is not None and code_answer_moved(q, last.get(qid), (code_answers or {}).get(qid), now):
+                del skip[qid]                  # the code's answer changed since the held one was given: ask it again now
+                continue
             if qid in skip:
                 h = scheduled_hold(q, last.get(qid), (borrowed or {}).get(qid), now, slot, minutes)
                 if h is not None:
