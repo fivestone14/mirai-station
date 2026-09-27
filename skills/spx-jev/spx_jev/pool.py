@@ -36,8 +36,16 @@ Nothing here changes JEV's prompt: every live question keeps its sentence and we
 The phone keeps today's exact 50/50 blend unless POOL_ON_PHONE is set and the pool was promoted;
 POOL_ON_PHONE is off pending Will's decision.
 
+The premarket lane keeps its own loop state in its own folder, on its two sums from the settled open
+(lane.PREMARKET). Every one of its reads forecasts the same window, the half hour after 09:34, so each
+counts the same in its day rather than by the share of a window no earlier read covered. It learns
+nothing yet: its sums are not blended, so no read has the clock blend50 needs, and no price-only
+reference for the window from the settled open has been validated (clock.py); each read's snapshot
+is left out with the reason, and each session is logged as not applied, every read excluded.
+
 Files, beside the lane's records:
     pool_30.json, pool_60.json   the state per horizon: weights, tables, e-processes, statuses, the watermark
+                                 (pool_10.json and pool_30.json on the premarket lane)
     pool_log.jsonl               one line per horizon per session applied or refused, with its manifest
 """
 from __future__ import annotations
@@ -294,7 +302,7 @@ def shown(hour: dict, snaps: dict[str, dict], state_primary: dict) -> dict:
         p = s["pool"]
         by[h] = {**by.get(h, {}), "pick": max(p, key=p.get), "probabilities": p, "blend50_exact": s["blend50_exact"]}
     out = {**hour, "by": by, "shown_source": SHOWN_POOL}
-    prim = by.get(LIVE.primary)
+    prim = by.get(hour.get("primary") or LIVE.primary)
     if prim:
         out.update({"pick": prim["pick"], "probabilities": prim["probabilities"]})
     return out
@@ -442,13 +450,15 @@ def statuses(state: dict) -> list[dict]:
     return changes
 
 
-def apply_session(state: dict, day: str, reads: list[dict], minutes: int, primary: bool, harm_60: dict | None) -> dict:
+def apply_session(state: dict, day: str, reads: list[dict], minutes: int, primary: bool, harm_60: dict | None,
+                  same_window: bool = False) -> dict:
     """One sealed session for one horizon, ``reads`` being its included ``{"row_ts", "snapshot",
     "outcome"}``: the day-mean losses, the weights steps, the tables, the e-processes, and on the
     primary horizon the statuses and the phone's promotion (vetoed while ``harm_60`` is at VETO_E).
-    Returns what the log keeps."""
+    ``same_window``: every read forecasts one window (a lane graded from the settled open), so each
+    counts the same in the day. Returns what the log keeps."""
     reads = sorted(reads, key=lambda r: r["row_ts"])
-    c = coverage([parse_ts(r["row_ts"]) for r in reads], minutes)
+    c = [1.0] * len(reads) if same_window else coverage([parse_ts(r["row_ts"]) for r in reads], minutes)
     s_day = math.fsum(c)
     snaps, ys = [r["snapshot"] for r in reads], [r["outcome"] for r in reads]
     experts = [{n: floored(f) for n, f in s["experts"].items()} for s in snaps]
@@ -623,7 +633,8 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE) -> dict[s
                 body["membership"] = membership(state, reads[-1]["snapshot"]["members"], day)
                 primary = h == lane.primary
                 body.update(apply_session(state, day, reads, minutes, primary,
-                                          states[order[0]]["phone"]["harm_60"] if primary and h != order[0] else None))
+                                          states[order[0]]["phone"]["harm_60"] if primary and h != order[0] else None,
+                                          lane.graded_from_settled_open))
             # rounded after every session, as saved, so one night at a time and a rebuild agree to the bit
             states[h] = json.loads(_canonical(state))
             _log(out_dir, {**head, "horizon": h, "applied": bool(reads), **_rounded(body)})
@@ -652,9 +663,9 @@ class PoolWeights(QuestionWeights):
         self.pool = pool or {}
 
     @classmethod
-    def learn(cls, graded: list[dict], allowed: dict[str, set[str]], out_dir: Path | None = None) -> "PoolWeights":
-        applied = update(out_dir) if out_dir is not None else {}
-        state = load_state(out_dir, LIVE.horizons[LIVE.primary][0]) if out_dir is not None else cold_state()
+    def learn(cls, graded: list[dict], allowed: dict[str, set[str]], out_dir: Path | None = None, lane: Lane = LIVE) -> "PoolWeights":
+        applied = update(out_dir, lane=lane) if out_dir is not None else {}
+        state = load_state(out_dir, lane.horizons[lane.primary][0]) if out_dir is not None else cold_state()
         n = Counter(qid for g in graded for qid, p in (g.get("fresh") or {}).items() if qid in allowed and str(p) in allowed[qid])
         block = {side: _prob(state["block"][side]) for side in SIDES}
         questions = {}

@@ -275,3 +275,46 @@ def test_the_loop_leaves_out_what_the_read_recorded_beyond_the_tier_1_tag():
     assert pool.event_inside({"event": None, "learn_exclude": jolts}, 30)
     assert not pool.event_inside({"event": {"within_30": True}, "learn_exclude": {"30": False}}, 30)
     assert pool.event_inside({"event": {"within_30": True}}, 30)                       # a record from before learn_exclude
+
+
+# ---- the premarket lane: its own state, one window a day
+
+def test_reads_forecasting_one_window_count_the_same_in_their_day():
+    """The premarket reads all forecast the half hour after the settled open: by their own clocks the 09:05
+    read would cover only the part of its window the 08:48 read did not."""
+    by_clock, same = cold_state(), cold_state()
+    for state in (by_clock, same):
+        membership(state, MEMBERS, "2026-09-18")
+    reads = [{"row_ts": at(hh, mm).isoformat(), "snapshot": _snap(same, t=at(hh, mm)), "outcome": "up"} for hh, mm in ((8, 48), (9, 5), (9, 28))]
+    assert apply_session(by_clock, "2026-09-18", reads, 30, True, None)["coverage"] == pytest.approx([1.0, 17 / 30, 23 / 30])
+    assert apply_session(same, "2026-09-18", reads, 30, True, None, same_window=True)["coverage"] == [1.0, 1.0, 1.0]
+
+
+def test_the_premarket_loop_keeps_its_own_files_and_learns_nothing_from_reads_without_a_snapshot(tmp_path):
+    from spx_jev.lane import PREMARKET
+    out = PREMARKET.folder(tmp_path)
+    (out / "hour").mkdir(parents=True)
+    left_out = {"left_out": "no time-of-day odds this read, so today's blend is JEV alone and blend50 cannot be formed"}
+    recs = [{"row_ts": at(hh, mm).isoformat(), "by": {"open_30": {"probabilities": SHOWN}}, "pool": {h: left_out for h in PREMARKET.horizons}}
+            for hh, mm in ((8, 48), (9, 28))]
+    (out / "hour" / "2026-09-18.jsonl").write_text("".join(json.dumps(r) + "\n" for r in recs))
+    (out / "grades.jsonl").write_text("".join(json.dumps({"row_ts": r["row_ts"], "horizons": ["open_10", "open_30"], "pending": [], "skipped": {},
+                                                           "open_10": {"band": "up"}, "open_30": {"band": "up"}}) + "\n" for r in recs))
+    assert update(out, today="2026-09-21", lane=PREMARKET) == {"open_30": "2026-09-18: applied, 0 reads", "open_10": "2026-09-18: applied, 0 reads"}
+    assert sorted(p.name for p in out.glob("pool_*")) == ["pool_10.json", "pool_30.json", "pool_log.jsonl"]
+    assert not list(tmp_path.glob("spx_jev/pool_*"))
+    log = [json.loads(l) for l in (out / pool.LOG_NAME).read_text().splitlines()]
+    assert {l["applied"] for l in log} == {False} and set(log[0]["manifest"]["excluded"].values()) == {f"no snapshot: {left_out['left_out']}"}
+    w = pool.PoolWeights.learn([], {"q1": {"up"}}, out, PREMARKET)
+    assert w.pool["last_session_applied"] == "2026-09-18" and w.pool["applied"] == {"open_30": "nothing new to apply", "open_10": "nothing new to apply"}
+
+
+def test_the_pool_on_the_phone_takes_the_primary_the_sum_names(monkeypatch):
+    state = cold_state()
+    state["phone"]["shows"] = "pool"
+    snaps = {"open_10": _snap(state, jev={"up": 0.1, "flat": 0.8, "down": 0.1}), "open_30": _snap(state)}
+    hour = {"pick": "flat", "probabilities": SHOWN, "primary": "open_30",
+            "by": {"open_10": {"pick": "flat", "probabilities": SHOWN}, "open_30": {"pick": "flat", "probabilities": SHOWN}}}
+    monkeypatch.setattr(pool, "POOL_ON_PHONE", True)
+    on = shown(hour, snaps, state)
+    assert on["probabilities"] == snaps["open_30"]["pool"] != snaps["open_10"]["pool"]
