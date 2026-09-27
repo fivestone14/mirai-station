@@ -343,7 +343,7 @@ def _at_extremes(scene: Scene, ls: LabelSet) -> None:
         return
     new_high, new_low = today.high > before.high, today.low < before.low
     if not new_high and not new_low:
-        ls.omit("breadth.at_extremes", f"no new session high or low in the last {NEW_EXTREME_RECENT_MIN} minutes")
+        ls.omit("breadth.at_extremes", f"no new session high or low in the last {NEW_EXTREME_RECENT_MIN} minutes", ended=True)
         return
     is_high = new_high and (not new_low or today.high_at >= today.low_at)
     word, made_at, spx_extreme, before_at = (("high", today.high_at, today.high, before.high_at) if is_high else

@@ -566,7 +566,7 @@ def _session_extreme_recent(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> N
     if today.low < before.low:
         found.append((today.low_at, news("low", today.low_at, today.low, before.low, before.low_at)))
     if not found:
-        ls.omit("price.session_extreme_recent", f"no new session high or low in the last {NEW_EXTREME_RECENT_MIN} minutes")
+        ls.omit("price.session_extreme_recent", f"no new session high or low in the last {NEW_EXTREME_RECENT_MIN} minutes", ended=True)
         return
     ls.put("price.session_extreme_recent", ruled(anchor, "; ".join(words for _, words in sorted(found, reverse=True))))
 

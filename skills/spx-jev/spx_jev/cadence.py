@@ -225,12 +225,22 @@ def plan(doc: dict, last: dict, cad: dict, now: datetime, not_due: dict[str, str
     return skip, held
 
 
-def fill_missing(doc: dict, skipped: dict, last: dict, cad: dict, now: datetime, held: dict) -> dict[str, dict]:
-    """A live question skipped for a missing label keeps its held answer, if one is young enough."""
+def missing_paths(why: str) -> list[str]:
+    """The labels a "missing ..." skip reason (ask.build_requests) names."""
+    return why[len("missing "):].split(", ") if why.startswith("missing ") else []
+
+
+def fill_missing(doc: dict, skipped: dict, last: dict, cad: dict, now: datetime, held: dict,
+                 ended: set[str] | frozenset[str] = frozenset()) -> dict[str, dict]:
+    """A live question skipped for a missing label keeps its held answer, if one is young enough; not when
+    a label it misses was left out because its condition is over (``ended``, LabelSet.ended): the shock
+    has passed, and an answer about it would outlive it."""
     by_id = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
     for gid, qs in skipped.items():
         for qid, why in qs.items():
             if qid == "*" or qid in held or not str(why).startswith("missing"):
+                continue
+            if ended.intersection(missing_paths(str(why))):
                 continue
             q = by_id.get(qid)
             if not q or q.get("status") != "live":

@@ -143,7 +143,7 @@ def _wall_touch_effort(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) ->
     recent = [(touched, began[key], key) for key, touched in last_touched.items()
               if scene.now - touched <= timedelta(minutes=WINDOW_30_MIN)]
     if not recent:
-        ls.omit("levels.wall_touch_effort", f"no heavy strike was touched in the last {WINDOW_30_MIN} minutes")
+        ls.omit("levels.wall_touch_effort", f"no heavy strike was touched in the last {WINDOW_30_MIN} minutes", ended=True)
         return
     _, when, (kind, level) = max(recent)
     side = WALL_SIDES[kind]

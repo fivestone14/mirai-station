@@ -66,6 +66,17 @@ def test_a_missing_label_keeps_the_held_answer():
     assert one_sentence(BY_ID[q], held[q]).endswith("buying, JEV was 80% sure (held since 11:02 ET, not re-asked)")
 
 
+def test_a_label_left_out_because_its_condition_is_over_holds_nothing():
+    """At 14:00 the 13:30 shock has left the lookback: the shock questions are not held at their 13:30 answers."""
+    now = at(14, 0)
+    last = {q: {"row_ts": at(13, 30).isoformat(), "answer": {"pick": "inside_range", "probabilities": {"inside_range": 0.8}}}
+            for q in ("shock_at_extreme", "tick_lean_vs_usual")}
+    skipped = {"shocks_and_news": {"shock_at_extreme": "missing shock.burst, shock.vs_day_range"},
+               "breadth": {"tick_lean_vs_usual": "missing breadth.tick_side_vs_usual"}}
+    held = fill_missing(DOC, skipped, last, {"questions": {}}, now, {}, {"shock.burst", "shock.vs_day_range"})
+    assert set(held) == {"tick_lean_vs_usual"}
+
+
 def test_what_the_schedule_does_not_ask_holds_by_its_kind():
     """A day constant holds all day, a question held from the other lane holds that lane's answer, and an
     hourly one off its hour holds while young; shadow questions are never held."""

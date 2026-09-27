@@ -511,8 +511,9 @@ def _shocks(scene: Scene, anchor: SigmaRuler | None, windows: list[Burst], burst
         _vs_day_range(scene, anchor, burst, ls)
         _cross_asset(scene, anchor, burst, ls)
         return
+    # no shock in the lookback is the shock over, not unmeasured: its questions hold no earlier answer
     for path in SHOCK_LABELS:
-        ls.omit(path, why)
+        ls.omit(path, why, ended=bool(recent))
     ls.sleep("shock_state", why)
 
 

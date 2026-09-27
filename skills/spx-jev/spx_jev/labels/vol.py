@@ -315,7 +315,8 @@ def _vix_vs_price(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
 def _atm_iv_residual(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
     """Same-day at-the-money vol's 30-minute change less what price's move alone would do to it (ATM_IV_PER_SIGMA)."""
     if scene.minutes_to_close < ZERO_DTE_LAST_HOUR_MIN:
-        ls.omit("vol.atm_iv_residual", "the last hour of the 0DTE book: its implied volatility follows the expiry clock, not the market")
+        ls.omit("vol.atm_iv_residual", "the last hour of the 0DTE book: its implied volatility follows the expiry clock, not the market",
+                ended=True)
         return
     ruler = sigma_anchor(scene)
     got = _change(today, scene.now, WINDOW_30_MIN, lambda p: p.atm_iv)
@@ -378,7 +379,7 @@ def _vix_on_shock(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
     since = scene.now - timedelta(minutes=SHOCK_LOOKBACK_MIN)
     shocks = [b for b in shock_bursts(judged_windows(scene, ruler.points, EVENT_DIGEST_MIN)) if b.end > since]
     if not shocks:
-        ls.omit(path, f"no shock in the last {SHOCK_LOOKBACK_MIN} minutes (shock.burst)")
+        ls.omit(path, f"no shock in the last {SHOCK_LOOKBACK_MIN} minutes (shock.burst)", ended=True)
         return
     shock = max(shocks, key=lambda b: abs(b.move))
     lead = shock.start - timedelta(minutes=SHOCK_LEAD_MIN)

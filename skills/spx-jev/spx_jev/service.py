@@ -59,7 +59,8 @@ from zoneinfo import ZoneInfo
 from . import archive, pool
 from .ask import build_requests, confidence, load_questions, pick, send, send_all
 from .baseline import Baseline
-from .cadence import cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, plan, save_last
+from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, missing_paths, plan,
+                      save_last)
 from .clock import blend as clock_blend, odds as clock_odds
 from .events import tag as event_tag
 from .expiry import calendar_of
@@ -474,7 +475,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         skip, held = plan(doc, last, cad, now, skip, borrowed_answers(state_dir, doc, lane), read_slot(lane, now), learned=lane.cadence)
     requests, skipped = build_requests(state, doc, skip=skip, gates=labels.gates)
     if do_send and lane.cadence:
-        held = fill_missing(doc, skipped, last, cad, now, held)
+        held = fill_missing(doc, skipped, last, cad, now, held, labels.ended)
     answers, send_seconds, hour, hour_rec, hour_reply = None, None, None, None, None
     if do_send:
         t0 = _clock.monotonic()
@@ -495,9 +496,11 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         fresh = {qid: answer_entry(named_levels(by_id.get(qid, {}), ans))
                  for a in answers.values() for qid, ans in (a.get("answers") or {}).items()}
         answered = {**held, **fresh}
-        # live questions skipped for a label the builder could not measure, and not covered by a held answer
+        # live questions skipped for a label the builder could not measure, and not covered by a held answer;
+        # one whose label was left out because its condition is over is asleep, not missing
         missing = [qid for g in skipped.values() for qid, why in g.items()
-                   if qid in live_ids and str(why).startswith("missing") and qid not in held]
+                   if qid in live_ids and str(why).startswith("missing") and qid not in held
+                   and not labels.ended.intersection(missing_paths(str(why)))]
         hour_doc = load_hour_doc(lane=lane)
         hour_rec, hour, hour_reply = sum_the_hour(doc, hour_doc, answered, QuestionWeights.load(out_dir), fresh, missing, lane, unit)
         send_seconds = round(_clock.monotonic() - t0, 3)      # JEV's round trips only; the blend below is code
