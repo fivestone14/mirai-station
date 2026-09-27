@@ -573,7 +573,8 @@ def _css_code(html):
 
 
 def test_no_phone_page_reads_a_viewport_unit():
-    for name, html in (("index.html", PHONE), ("thread.html", THREAD), ("jev.html", (M / "jev.html").read_text())):
+    for name, html in (("index.html", PHONE), ("thread.html", THREAD), ("jev.html", (M / "jev.html").read_text()),
+                       ("jev-spx.html", (M / "jev-spx.html").read_text())):
         css = _css_code(html)
         found = _UNIT.findall(css)
         # the ONE permitted use is the fallback value of the token itself
@@ -596,8 +597,9 @@ def test_both_pages_measure_the_height_before_anything_paints():
     two copies for the same reason the palette is (a shared file is a full
     re-fetch on every open over the tunnel), so the copies are pinned equal."""
     a, b, j = _measure_script(PHONE), _measure_script(THREAD), _measure_script((M / "jev.html").read_text())
-    assert a and b and j, "a page has lost the script at the top of <body>"
-    assert a == b == j, "the phone pages measure the height differently"
+    x = _measure_script((M / "jev-spx.html").read_text())
+    assert a and b and j and x, "a page has lost the script at the top of <body>"
+    assert a == b == j == x, "the phone pages measure the height differently"
     for need in ("window.innerHeight", "setProperty('--app-h'", "'resize'",
                  "'orientationchange'", "visualViewport"):
         assert need in a, need
@@ -1014,9 +1016,12 @@ def test_what_the_script_hides_stays_hidden():
     thread_js = "\n".join(re.findall(r"(?s)<script>(.*?)</script>", THREAD))
     jev_html = (M / "jev.html").read_text()
     jev_js = "\n".join(re.findall(r"(?s)<script>(.*?)</script>", jev_html))
+    spx_html = (M / "jev-spx.html").read_text()
+    spx_js = "\n".join(re.findall(r"(?s)<script>(.*?)</script>", spx_html))
     for name, html, js, need in (("index.html", PHONE, PAGE, {"chg", "lastscan", "load", "hh"}),
                                  ("thread.html", THREAD, thread_js, {"load"}),
-                                 ("jev.html", jev_html, jev_js, {"load", "poll"})):
+                                 ("jev.html", jev_html, jev_js, {"load", "poll"}),
+                                 ("jev-spx.html", spx_html, spx_js, {"load", "poll"})):
         hidden = _hidden_by_script(html, js)
         assert need <= set(hidden), f"{name}: the hides are no longer where this test reads them"
         rules = [(part.strip(), decls) for sel, decls in _flat_rules(_css_code(html))
