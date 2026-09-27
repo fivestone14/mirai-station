@@ -15,7 +15,7 @@ import pytest
 
 from conftest import DAY, at, bars_from_closes, flat_bars, make_row, prior_sessions, write_state
 from spx_jev.cuts import (GAP_RANK_MIN_SESSIONS, GAP_RULE_SIGMA, GIVEBACK_THIRD, NOISE_EDGE_SIGMA, NOISE_LOOKBACK, OPEN_CONTESTED_CROSSES,
-                          OPEN_MOVE_SIGMA, RANGE_TOP_SHARE)
+                          RANGE_TOP_SHARE, RULER_FLOOR_SIGMA)
 from spx_jev.labels.gap_open import build_gap_open_labels
 from spx_jev.labels.measures import bar_time
 from spx_jev.labels.rulers import SigmaRuler
@@ -337,32 +337,65 @@ def test_the_noise_band_needs_14_sessions_with_a_trusted_ruler(scene_factory):
 
 # ---- open.path and open.settled_open_crosses
 
-def test_the_opening_path_firm_fading_and_rotating(scene_factory):
-    # settled open 7700; 09:35 dips to 7699, then up to 7718 by 09:54, back to 7714
-    path = [7700.0] * 5 + [7699.0, 7701.0] + [7701.0 + i for i in range(1, 18)] + [7714.0] * 30
-    got, _, _ = labels(scene(scene_factory, at(9, 55), path, row_over={"prior_close": 7680.0}))
+# settled open 7700; 09:35 dips to 7699, then up a point a minute to 7718 by 09:53, back to 7714: each of the last
+# three 5-minute slices at 09:55 ranges 5 to 6 points, so the tape unit is 6 points (0.075 sigma)
+PATH = [7700.0] * 5 + [7699.0, 7701.0] + [7701.0 + i for i in range(1, 18)] + [7714.0] * 30
+UNIT = "(one tape unit = the typical 5-minute swing right now, 0.07 sigma)"
+
+
+def test_the_opening_path_firm_fading_and_rotating_in_tape_units(scene_factory):
+    got, _, _ = labels(scene(scene_factory, at(9, 55), PATH, row_over={"prior_close": 7680.0}))
     assert got["open.path"] == (
         "20 minutes after the settled open, price reached 0.23 sigma above it and 0.02 sigma below it, crossed it once, and gave back "
-        "24% of its high, under the stall line; it now sits 0.17 sigma above it, beyond the 0.10 sigma opening move rule on the up side, "
-        "on the gap's side")
-    got, _, _ = labels(scene(scene_factory, at(9, 55), path, spot=7712.0, row_over={"prior_close": 7720.0}))   # 6.5 of 18.5 points back
+        f"24% of its high, under the stall line; price is now 2.3 tape units above the settled open {UNIT}, more than one tape unit "
+        "away on the up side, on the gap's side")
+    got, _, _ = labels(scene(scene_factory, at(9, 55), PATH, spot=7712.0, row_over={"prior_close": 7720.0}))   # 6.5 of 18.5 points back
     assert ("gave back 35% of its high, at or past the stall line" in got["open.path"] and GIVEBACK_THIRD == 0.33
-            and got["open.path"].endswith("on the up side, against the gap's side"))
-    got, _, _ = labels(scene(scene_factory, at(9, 55), path, spot=7700.0 + OPEN_MOVE_SIGMA * SIGMA, row_over={"prior_close": 7699.0}))
-    assert got["open.path"] == ("20 minutes after the settled open, price reached 0.23 sigma above it and 0.02 sigma below it and crossed "
-                                "it once; it now sits 0.10 sigma above it, within the 0.10 sigma opening move rule")
+            and got["open.path"].endswith("more than one tape unit away on the up side, against the gap's side"))
     down = [7700.0] * 5 + [7700.0 - i for i in range(1, 21)]
     got, _, _ = labels(scene(scene_factory, at(9, 55), down, row_over={"prior_close": 7699.0}))
-    assert got["open.path"].endswith("gave back 2% of its low, under the stall line; it now sits 0.25 sigma below it, beyond the "
-                                     "0.10 sigma opening move rule on the down side, with no real gap this morning")
+    assert got["open.path"].endswith(f"gave back 2% of its low, under the stall line; price is now 3.3 tape units below the settled open "
+                                     f"{UNIT}, more than one tape unit away on the down side, with no real gap this morning")
+
+
+@pytest.mark.parametrize("spot, verdict", [
+    (7706.0, f"and crossed it once; price is now 1.0 tape units above the settled open {UNIT}, within one tape unit"),
+    (7694.0, f"and crossed it once; price is now 1.0 tape units below the settled open {UNIT}, within one tape unit"),
+    (7706.01, f"at or past the stall line; price is now 1.0 tape units above the settled open {UNIT}, more than one tape unit away on "
+              "the up side, with no real gap this morning"),
+])
+def test_the_opening_path_is_rotating_at_exactly_one_tape_unit_and_away_past_it(scene_factory, spot, verdict):
+    got, _, _ = labels(scene(scene_factory, at(9, 55), PATH, spot=spot, row_over={"prior_close": 7699.0}))
+    assert got["open.path"].endswith(verdict)
+
+
+def test_the_opening_path_unit_is_the_one_at_the_read(scene_factory):
+    # a 20-point bar at 09:55 has not finished at the 09:55 read: the unit and the sentence ignore it
+    wild = PATH[:25] + [7734.0] + PATH[26:]
+    got, _, _ = labels(scene(scene_factory, at(9, 55), PATH, spot=7714.0))
+    assert labels(scene(scene_factory, at(9, 55), wild, spot=7714.0))[0]["open.path"] == got["open.path"]
+
+
+def test_the_opening_path_unit_at_its_floor_says_so(scene_factory):
+    got, _, _ = labels(scene(scene_factory, at(9, 55), [7700.0] * 55, spot=7703.0))
+    assert RULER_FLOOR_SIGMA == 0.03 and got["open.path"].endswith(
+        "price is now 1.2 tape units above the settled open (one tape unit = the typical 5-minute swing right now, 0.03 sigma, at its floor), "
+        "more than one tape unit away on the up side, with no real gap this morning")
+
+
+def test_the_opening_path_is_omitted_without_a_live_tape_unit(scene_factory):
+    _, omitted, _ = labels(scene(scene_factory, at(9, 44), PATH))
+    assert omitted["open.path"] == "the tape unit is held until 09:45, when three 5-minute slices first exist"
+    _, omitted, _ = labels(scene(scene_factory, at(9, 55), PATH[:19]))                          # no bar since 09:48
+    assert omitted["open.path"] == "no tape unit this read: the bars have stopped"
 
 
 def test_the_opening_path_never_reaches_a_negative_distance(scene_factory):
-    sc = scene(scene_factory, at(9, 40), [7700.0] * 5 + [7702.0, 7703.0, 7704.0, 7705.0, 7706.0])
+    sc = scene(scene_factory, at(9, 45), [7700.0] * 5 + [7702.0, 7703.0, 7704.0, 7705.0, 7706.0] + [7706.0] * 5)
     sc.bars[5].update(open=7701.0, low=7700.5)                                                   # the 09:35 bar opens above the settled open
     got, _, _ = labels(sc)
-    assert got["open.path"].startswith("5 minutes after the settled open, price reached 0.08 sigma above it and 0.00 sigma below it "
-                                       "and never crossed it")
+    assert got["open.path"].startswith("10 minutes after the settled open, price reached 0.08 sigma above it and 0.00 sigma below it, "
+                                       "never crossed it")
 
 
 def test_the_settled_open_crossings_and_the_contested_rule(scene_factory):

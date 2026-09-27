@@ -104,7 +104,6 @@ GAP_LARGE_SIGMA = 0.4  # large gap line; old 0.80 fired on 2-3 of 59 days
 GAP_HALF_SHARE = 0.5  # half-way share for gap kept, shock giveback, reaction giveback
 GAP_TOUCH_SIGMA = 0.02  # touch tolerance for yesterday's close
 GAP_RANK_MIN_SESSIONS = 10  # fewest prior sessions with a trusted ruler to rank the gap's size against
-OPEN_MOVE_SIGMA = 0.1  # opening drive rule from the settled open (about one held tape unit, ruler_hold_sigma 0.12)
 GIVEBACK_THIRD = 0.33  # stall line for an opening drive
 RANGE_TOP_SHARE = 0.75  # top quarter of today's range
 RANGE_BOTTOM_SHARE = 0.25  # bottom quarter of today's range

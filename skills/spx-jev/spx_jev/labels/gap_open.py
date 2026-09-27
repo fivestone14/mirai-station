@@ -3,9 +3,10 @@ first minutes against the settled open (open.*), and the overnight futures sessi
 
 Every distance is in the morning anchor (rulers.sigma_anchor), and a sentence measured on an estimated
 anchor says so. The gap is the settled open (the 09:34 close) against the row's ``prior_close``, and its
-size is ranked in thirds against the same gap on the prior sessions, never against a fixed cut. Each
-label's sentence, how it is computed and its source are in spec/question_set.json ``labels``; the
-overnight labels wait for a feed (DARK).
+size is ranked in thirds against the same gap on the prior sessions, never against a fixed cut; whether
+price has moved away from the settled open is judged in today's tape unit (rulers.ruler), not a fixed cut
+either. Each label's sentence, how it is computed and its source are in spec/question_set.json ``labels``;
+the overnight labels wait for a feed (DARK).
 """
 from __future__ import annotations
 
@@ -13,14 +14,14 @@ from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 
 from ..cuts import (GAP_HALF_SHARE, GAP_RANK_MIN_SESSIONS, GAP_RULE_SIGMA, GAP_TOUCH_SIGMA, GIVEBACK_THIRD, NOISE_EDGE_SIGMA,
-                    NOISE_LOOKBACK, ONE_CROSS, OPEN_CONTESTED_CROSSES, OPEN_MOVE_SIGMA, RANGE_BOTTOM_SHARE, RANGE_TOP_SHARE,
-                    WINDOW_30_MIN, WINDOW_60_MIN)
+                    NOISE_LOOKBACK, ONE_CROSS, OPEN_CONTESTED_CROSSES, RANGE_BOTTOM_SHARE, RANGE_TOP_SHARE, WINDOW_30_MIN,
+                    WINDOW_60_MIN)
 from ..state_builder import Scene, first_row
 from .label_set import LabelSet
 from .measures import (ET, ONE_MINUTE, SETTLED_OPEN_BAR, bar_time, bars_between, bars_finished_between, close_at, day_high_low,
                        is_num, session_extremes, settled_open)
 from .ranks import rank_against, rank_days, same_clock_values
-from .rulers import NO_ANCHOR, SigmaRuler, ruled, sigma_anchor, typical_move
+from .rulers import NO_ANCHOR, RULER_HOLD_UNTIL, SigmaRuler, ruled, ruler, sigma_anchor, typical_move
 from .words import above_or_below, minutes_ago, pct, plural, sig, third
 
 LABELS = ("gap.size", "gap.fill_progress", "gap.morning_vs_gap", "gap.reach_distance",
@@ -360,7 +361,9 @@ def _crosses(bars: list[dict], level: float) -> int:
 
 def _path(scene: Scene, anchor: SigmaRuler | None, gap: Gap | None, ls: LabelSet) -> None:
     """The opening's path from the settled open: how far each way it reached, how often it crossed, how
-    much of its furthest reach on price's side it gave back, and where price sits now."""
+    much of its furthest reach on price's side it gave back, and where price sits now in today's tape
+    unit: more than one unit from the open is away from it, within one is rotating. Omitted while the
+    unit is held (before 09:45 it is the same fixed number every day) and when the bars have stopped."""
     so, since = settled_open(scene.bars), _since_settled(scene)
     if so is None or not since:
         ls.omit("open.path", "no finished bar after the settled open yet")
@@ -368,7 +371,14 @@ def _path(scene: Scene, anchor: SigmaRuler | None, gap: Gap | None, ls: LabelSet
     if anchor is None:
         ls.omit("open.path", NO_ANCHOR)
         return
-    points = anchor.points
+    unit = ruler(scene.bars, anchor.points, scene.now)
+    if unit is None:
+        ls.omit("open.path", "no tape unit this read: the bars have stopped")
+        return
+    if unit["source"] == "held":
+        ls.omit("open.path", f"the tape unit is held until {RULER_HOLD_UNTIL:%H:%M}, when three 5-minute slices first exist")
+        return
+    points, unit_points = anchor.points, float(unit["unit_points"])
     hi, lo = day_high_low(since, scene.spot)
     hi, lo = max(hi, so), min(lo, so)           # bars that never traded back to the open reached nothing on that side
     now_d = (scene.spot - so) / points
@@ -376,17 +386,19 @@ def _path(scene: Scene, anchor: SigmaRuler | None, gap: Gap | None, ls: LabelSet
     crosses = _crosses(since, so)
     crossed = "never crossed it" if crosses == 0 else "crossed it once" if crosses == 1 else f"crossed it {crosses} times"
     reached = f"{minutes} after the settled open, price reached {sig((hi - so) / points)} above it and {sig((so - lo) / points)} below it"
-    if abs(now_d) <= OPEN_MOVE_SIGMA:
+    floor = ", at its floor" if unit["source"] == "floor" else ""
+    where = (f"price is now {abs(scene.spot - so) / unit_points:.1f} tape units {above_or_below(now_d)} the settled open "
+             f"(one tape unit = the typical 5-minute swing right now, {sig(unit_points / points)}{floor})")
+    if abs(scene.spot - so) <= unit_points:
         history = f"{reached} and {crossed}"
-        where = f"it now sits {sig(abs(now_d))} {above_or_below(now_d)} it, within the {sig(OPEN_MOVE_SIGMA)} opening move rule"
+        where += ", within one tape unit"
     else:
         up = now_d > 0
         reach = (hi - so) if up else (so - lo)
         giveback = ((hi - scene.spot) if up else (scene.spot - lo)) / reach
         line = "under the stall line" if giveback < GIVEBACK_THIRD else "at or past the stall line"
         history = f"{reached}, {crossed}, and gave back {pct(giveback)} of its {'high' if up else 'low'}, {line}"
-        where = (f"it now sits {sig(abs(now_d))} {above_or_below(now_d)} it, beyond the {sig(OPEN_MOVE_SIGMA)} opening move rule "
-                 f"on the {'up' if up else 'down'} side")
+        where += f", more than one tape unit away on the {'up' if up else 'down'} side"
         if gap is not None:
             where += (", with no real gap this morning" if not gap.real else
                       ", on the gap's side" if up == (gap.size > 0) else ", against the gap's side")

@@ -101,7 +101,7 @@
   },
   "labels": 121,
   "labels_built": 3,
-  "constants": 167,
+  "constants": 166,
   "label_availability": {
    "live": 68,
    "cheap_add": 38,
@@ -208,12 +208,6 @@
   "gap_rank_min_sessions": {
    "value": 10,
    "note": "fewest prior sessions with a trusted ruler to rank the gap's size against",
-   "cuts_json_name": null,
-   "in_cuts_py": false
-  },
-  "open_move_sigma": {
-   "value": 0.1,
-   "note": "opening drive rule from the settled open (about one held tape unit, ruler_hold_sigma 0.12)",
    "cuts_json_name": null,
    "in_cuts_py": false
   },
@@ -1248,43 +1242,43 @@
       "opening_five_minute"
      ],
      "status": "live",
-     "cadence": "every 5 min 09:40-10:30 (code weights by minutes-since-open bucket; the 09:50-10:05 bucket carries the effect)",
+     "cadence": "every 5 min 09:45-10:30, from the first read with a live tape unit (code weights by minutes-since-open bucket; the 09:50-10:05 bucket carries the effect)",
      "ask": "Which side of the settled open does the opening favour now?",
-     "instructions": "Read `open.path`. Where price is now decides first. Check rotating first. Which side of the settled open does the opening favour now?",
+     "instructions": "Read `open.path`. Where price is now, in tape units from the settled open, decides first. Check rotating first. Which side of the settled open does the opening favour now?",
      "options": [
       {
        "name": "up_firm",
-       "description": "now more than {open_move_sigma} sigma above the open, and it has given back less than the stall line of its high"
+       "description": "now more than one tape unit above the open, and it has given back less than the stall line of its high"
       },
       {
        "name": "up_fading",
-       "description": "now more than {open_move_sigma} sigma above the open, but it has given back the stall line or more of its high"
+       "description": "now more than one tape unit above the open, but it has given back the stall line or more of its high"
       },
       {
        "name": "rotating",
-       "description": "within {open_move_sigma} sigma of the open now"
+       "description": "within one tape unit of the open now"
       },
       {
        "name": "down_fading",
-       "description": "now more than {open_move_sigma} sigma below the open, but it has given back the stall line or more of its low"
+       "description": "now more than one tape unit below the open, but it has given back the stall line or more of its low"
       },
       {
        "name": "down_firm",
-       "description": "now more than {open_move_sigma} sigma below the open, and it has given back less than the stall line of its low"
+       "description": "now more than one tape unit below the open, and it has given back less than the stall line of its low"
       }
      ],
      "criteria": {
-      "up_firm": "now > +{open_move_sigma}, giveback < {giveback_third}",
-      "up_fading": "now > +{open_move_sigma}, giveback >= {giveback_third}",
-      "rotating": "|now - open| <= {open_move_sigma} (checked first)",
+      "up_firm": "now - open > +1 tape unit, giveback < {giveback_third}",
+      "up_fading": "now - open > +1 tape unit, giveback >= {giveback_third}",
+      "rotating": "|now - open| <= 1 tape unit (checked first)",
       "down_fading": "mirror of up_fading below the open",
       "down_firm": "mirror of up_firm below the open"
      },
      "labels_needed": [
       {
        "name": "open.path",
-       "example": "20 minutes after the settled open, price reached 0.22 sigma above it and 0.04 below it, crossed it once, and gave back 18% of its high, under the stall line; it now sits 0.18 sigma above it, beyond the 0.10 sigma opening move rule on the up side, on the gap's side",
-       "computed_how": "settled open = 09:34 close; high/low since, giveback share against giveback_third ('under / at or past the stall line'), where price sits now against open_move_sigma on each side, gap-side clause",
+       "example": "20 minutes after the settled open, price reached 0.22 sigma above it and 0.04 sigma below it, crossed it once, and gave back 18% of its high, under the stall line; price is now 1.6 tape units above the settled open (one tape unit = the typical 5-minute swing right now, 0.11 sigma), more than one tape unit away on the up side, on the gap's side",
+       "computed_how": "settled open = 09:34 close; high/low since, giveback share against giveback_third ('under / at or past the stall line'), where price sits now in today's tape unit (rulers.ruler: the median high-low range of the last three finished 5-minute slices, floored at ruler_floor_sigma, in the morning anchor): more than one unit either side is away, within one (inclusive) rotating; gap-side clause; omitted while the unit is held (before 09:45) or the bars have stopped",
        "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json)",
        "availability": "live",
        "label_built": false,
@@ -1298,7 +1292,7 @@
      "schedule": {
       "opening_five_minute": {
        "every_min": 5,
-       "from": "09:40",
+       "from": "09:45",
        "to": "10:30"
       }
      }
@@ -9511,8 +9505,8 @@
   },
   {
    "name": "open.path",
-   "example": "20 minutes after the settled open, price reached 0.22 sigma above it and 0.04 below it, crossed it once, and gave back 18% of its high, under the stall line; it now sits 0.18 sigma above it, beyond the 0.10 sigma opening move rule on the up side, on the gap's side",
-   "computed_how": "settled open = 09:34 close; high/low since, giveback share against giveback_third ('under / at or past the stall line'), where price sits now against open_move_sigma on each side, gap-side clause",
+   "example": "20 minutes after the settled open, price reached 0.22 sigma above it and 0.04 sigma below it, crossed it once, and gave back 18% of its high, under the stall line; price is now 1.6 tape units above the settled open (one tape unit = the typical 5-minute swing right now, 0.11 sigma), more than one tape unit away on the up side, on the gap's side",
+   "computed_how": "settled open = 09:34 close; high/low since, giveback share against giveback_third ('under / at or past the stall line'), where price sits now in today's tape unit (rulers.ruler: the median high-low range of the last three finished 5-minute slices, floored at ruler_floor_sigma, in the morning anchor): more than one unit either side is away, within one (inclusive) rotating; gap-side clause; omitted while the unit is held (before 09:45) or the bars have stopped",
    "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json)",
    "availability": "live",
    "label_built": false,
@@ -11757,6 +11751,13 @@
    "decision": "accepted",
    "reason": "ranked, not cut: today's gap size is placed against the same gap on up to the last 20 prior sessions (sessions with an estimated anchor left out, at least gap_rank_min_sessions of them, else gap.size is omitted) and answered in thirds, small, typical or large, instead of the fixed gap_rule_sigma and gap_large_sigma lines; gap_rule_sigma still decides a real gap for gap.fill_progress, gap.morning_vs_gap and gap_side_now, and gap_large_sigma still names the premarket futures bands.",
    "source": "owner decision"
+  },
+  {
+   "subject": "opening_side",
+   "action": "reword",
+   "decision": "accepted",
+   "reason": "away from the open is judged in today's live tape unit, not a fixed cut: more than one tape unit above or below the settled open is away (firm or fading by the giveback against the stall line, unchanged), within one tape unit rotating; open.path states the distance in tape units and what one unit is right now. Before 09:45 the unit is held at ruler_hold_sigma 0.12, the same number every day, so open.path is omitted there and the question starts at 09:45, the first read with three finished 5-minute slices. open_move_sigma (0.10) removed: nothing else read it.",
+   "source": "owner decision 2026-09-27"
   }
  ],
  "unresolved": [

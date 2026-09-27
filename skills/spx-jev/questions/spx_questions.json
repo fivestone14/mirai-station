@@ -75,15 +75,15 @@
      "schedule": {
       "opening_five_minute": {
        "every_min": 5,
-       "from": "09:40",
+       "from": "09:45",
        "to": "10:30"
       }
      },
      "horizon": "10min_opening",
-     "cadence": "every 5 min 09:40-10:30 (code weights by minutes-since-open bucket; the 09:50-10:05 bucket carries the effect)",
+     "cadence": "every 5 min 09:45-10:30, from the first read with a live tape unit (code weights by minutes-since-open bucket; the 09:50-10:05 bucket carries the effect)",
      "code_answer": true,
      "ask": "Which side of the settled open does the opening favour now?",
-     "instructions": "Read `open.path`. Where price is now decides first. Check rotating first. Which side of the settled open does the opening favour now?",
+     "instructions": "Read `open.path`. Where price is now, in tape units from the settled open, decides first. Check rotating first. Which side of the settled open does the opening favour now?",
      "options": [
       "up_firm",
       "up_fading",
@@ -92,16 +92,16 @@
       "down_firm"
      ],
      "criteria": {
-      "up_firm": "now more than {open_move_sigma} sigma above the open, and it has given back less than the stall line of its high",
-      "up_fading": "now more than {open_move_sigma} sigma above the open, but it has given back the stall line or more of its high",
-      "rotating": "within {open_move_sigma} sigma of the open now",
-      "down_fading": "now more than {open_move_sigma} sigma below the open, but it has given back the stall line or more of its low",
-      "down_firm": "now more than {open_move_sigma} sigma below the open, and it has given back less than the stall line of its low"
+      "up_firm": "now more than one tape unit above the open, and it has given back less than the stall line of its high",
+      "up_fading": "now more than one tape unit above the open, but it has given back the stall line or more of its high",
+      "rotating": "within one tape unit of the open now",
+      "down_fading": "now more than one tape unit below the open, but it has given back the stall line or more of its low",
+      "down_firm": "now more than one tape unit below the open, and it has given back less than the stall line of its low"
      },
      "code_criteria": {
-      "up_firm": "now > +{open_move_sigma}, giveback < {giveback_third}",
-      "up_fading": "now > +{open_move_sigma}, giveback >= {giveback_third}",
-      "rotating": "|now - open| <= {open_move_sigma} (checked first)",
+      "up_firm": "now - open > +1 tape unit, giveback < {giveback_third}",
+      "up_fading": "now - open > +1 tape unit, giveback >= {giveback_third}",
+      "rotating": "|now - open| <= 1 tape unit (checked first)",
       "down_fading": "mirror of up_fading below the open",
       "down_firm": "mirror of up_firm below the open"
      },
