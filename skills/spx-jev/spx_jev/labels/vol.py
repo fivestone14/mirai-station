@@ -14,12 +14,14 @@ from .. import events
 from ..cuts import (ATM_RESID_VOLPTS, BOTTOM_FIFTH, BOUNCE_SIGMA, EVENT_DIGEST_MIN, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW,
                     FRONT_SHIFT_PTS, HALF_RANK, IV_FLAT_BAND_PTS, LOADED_RATIO, MIN_RANK_SESSIONS, MOVE_RULE_SIGMA,
                     NEAR_LOW_SIGMA, ONE_RATIO, PAIR_MOVE_SIGMA, REALIZED_QUIET_RATIO, REALIZED_WILD_RATIO, RULER_HIGH, RULER_LOW,
-                    RV_HOT, SKEW_FLAT_RANK, SKEW_RESID_CUT, SKEW_STEEP_RANK, STRADDLE_CHEAP, STRADDLE_REPRICE_SHARE,
-                    STRADDLE_RICH, STRESS_HOLD_SHARE, STRESS_RETREAT_SHARE, TICK_CLUSTER, TICK_EXTREME, TOP_FIFTH, VIX_CURVE_FLAT,
-                    VIX_CURVE_NEAR_FLAT, VIX_GAP_RESID_PTS, VIX_JUMP_PCT, VIX_JUMP_PCT_10, VIX_MOVE_PCT, VIX_MOVE_PCT_10,
-                    VIX_RESID_PCT, VIX_STILL_PCT, VIX_STILL_PCT_10, WINDOW_10_MIN, WINDOW_30_MIN, ZERO_DTE_LAST_HOUR_MIN)
+                    RV_HOT, SHOCK_LOOKBACK_MIN, SKEW_FLAT_RANK, SKEW_RESID_CUT, SKEW_STEEP_RANK, STRADDLE_CHEAP,
+                    STRADDLE_REPRICE_SHARE, STRADDLE_RICH, STRESS_HOLD_SHARE, STRESS_RETREAT_SHARE, TICK_CLUSTER, TICK_EXTREME,
+                    TOP_FIFTH, VIX_CURVE_FLAT, VIX_CURVE_NEAR_FLAT, VIX_GAP_RESID_PTS, VIX_JUMP_PCT, VIX_JUMP_PCT_10,
+                    VIX_MOVE_PCT, VIX_MOVE_PCT_10, VIX_RESID_PCT, VIX_SHOCK_RESID, VIX_STILL_PCT, VIX_STILL_PCT_10, WINDOW_10_MIN,
+                    WINDOW_30_MIN, ZERO_DTE_LAST_HOUR_MIN)
 from ..sessions import session_close, session_minutes
 from ..state_builder import MarketContext, Scene, row_days
+from .events_shocks import _bursts, _judged_windows
 from .label_set import LabelSet
 from .measures import (ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, day_high_low, is_num, session_extremes,
                        settled_open)
@@ -55,6 +57,8 @@ AFTERNOON_ANCHOR = time(14, 0)
 TAPE_SLICE_MIN, TAPE_SLICES = 5, 6
 # The calendar's events that load the day's straddle before them: the Fed's decision and the chair's set pieces.
 LOADING_EVENTS = ("FOMC", "FED_CHAIR_TESTIMONY", "FED_CHAIR_JACKSON_HOLE")
+# VIX's reaction to a shock is measured from this many minutes before the burst began (the set's words).
+SHOCK_LEAD_MIN = 6
 # A real move, for how long the tape has been still: MOVE_RULE_SIGMA within this many minutes (context.time_since_last_move's).
 REAL_MOVE_MIN = 10
 # The context job snapshots the VIX family every minute: a value older than this means it stopped.
@@ -84,6 +88,7 @@ def build_vol_labels(scene: Scene) -> LabelSet:
     _vix_vs_price(scene, today, ls)
     _atm_iv_residual(scene, today, ls)
     _vix_overnight_surprise(scene, today, ls)
+    _vix_on_shock(scene, today, ls)
     _straddle_reprice(scene, today, ls)
     _straddle_vs_clock(scene, today, ls)
     _ruler_event_load(scene, today, ls)
@@ -357,6 +362,39 @@ def _vix_overnight_surprise(scene: Scene, today: list[DiaryPoint], ls: LabelSet)
            f"VIX's first print today was {first:.2f}, {abs(first - last):.2f} {'above' if first >= last else 'below'} yesterday's last "
            f"{last:.2f}; after this morning's {sig(abs(gap))} gap {'up' if gap >= 0 else 'down'} it would normally sit near {implied:.2f}, "
            f"so it is {shown:.2f} points {'richer' if resid >= 0 else 'cheaper'} than the gap implies, {words}{_ruled(ruler)}")
+
+
+def _vix_on_shock(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
+    """VIX since just before the last hour's largest burst, less what price's move over the same span explains
+    (VIX_PER_SIGMA). The burst is the shock family's own (shock.burst), found the same way, so both read one shock."""
+    path = "vol.vix_on_shock"
+    ruler = sigma_anchor(scene)
+    if ruler is None:
+        ls.omit(path, "no morning sigma ruler to find a shock with")
+        return
+    since = scene.now - timedelta(minutes=SHOCK_LOOKBACK_MIN)
+    shocks = [b for b in _bursts(_judged_windows(scene, ruler.points, EVENT_DIGEST_MIN)) if b.end > since]
+    if not shocks:
+        ls.omit(path, f"no shock in the last {SHOCK_LOOKBACK_MIN} minutes (shock.burst)")
+        return
+    shock = max(shocks, key=lambda b: abs(b.move))
+    lead = shock.start - timedelta(minutes=SHOCK_LEAD_MIN)
+    before, ref = point_at(today, lead), close_at(scene.bars, lead)
+    if before is None or before.vix is None or today[-1].vix is None or ref is None:
+        ls.omit(path, f"no diary VIX and finished bar {SHOCK_LEAD_MIN} minutes before the shock, or no diary VIX now")
+        return
+    d = today[-1].vix - before.vix
+    move = (scene.spot - ref) / ruler.points
+    explained = VIX_PER_SIGMA * move
+    resid = d - explained
+    if abs(resid) >= VIX_SHOCK_RESID:
+        shown, words = abs(resid), f"past the {VIX_SHOCK_RESID:g}-point rule"
+    else:
+        shown, words = min(abs(resid), VIX_SHOCK_RESID - 0.01), f"within the {VIX_SHOCK_RESID:g}-point rule"
+    ls.put(path,
+           f"since just before the shock, at {_clock(lead)}, VIX {'rose' if d >= 0 else 'fell'} {abs(d):.2f} points; the {sig(abs(move))} "
+           f"{'drop' if move < 0 else 'rise'} alone would {'lift' if explained >= 0 else 'lower'} it {abs(explained):.2f}, so fear rose "
+           f"{shown:.2f} points {'more' if resid >= 0 else 'less'} than price explains, {words}{_ruled(ruler)}")
 
 
 # ----------------------------------------------------------------------------- the straddle and the ruler

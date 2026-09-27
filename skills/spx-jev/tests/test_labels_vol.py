@@ -211,6 +211,40 @@ def test_the_opening_vix_waits_for_the_settled_open_and_needs_the_prior_diary(sc
     assert labels(no_state)[1]["vol.vix_overnight_surprise"] == "needs the diary VIX on today's first row and the prior session's last"
 
 
+# ---- vol.vix_on_shock: VIX since just before the shock family's burst
+
+def shocked(now_min: int = 151, drop: float = 18.0) -> list[dict]:
+    """Closes jittering half a point from the open, then an ``drop``-point fall over the five bars from 11:37,
+    then jittering again: a 0.24 sigma burst many times the hour before's minute-to-minute movement."""
+    closes = []
+    for i in range(now_min):
+        base = 7700.0 - drop * min(max(i - 126, 0), 5) / 5
+        closes.append(base + 0.5 * (i % 2))
+    return bars_from_closes(closes)
+
+
+@pytest.mark.parametrize("vix_now, words", [
+    (15.52, "VIX rose 0.52 points; the 0.24 sigma drop alone would lift it 0.26, so fear rose 0.26 points more than price explains, "
+            "past the 0.15-point rule"),
+    (15.30, "VIX rose 0.30 points; the 0.24 sigma drop alone would lift it 0.26, so fear rose 0.04 points more than price explains, "
+            "within the 0.15-point rule"),
+    (15.05, "VIX rose 0.05 points; the 0.24 sigma drop alone would lift it 0.26, so fear rose 0.21 points less than price explains, "
+            "past the 0.15-point rule"),
+])
+def test_the_vix_reaction_to_a_shock_is_judged_beyond_what_the_drop_explains(scene_factory, vix_now, words):
+    now = at(12, 1)
+    rows = [morning(), diary_row(at(11, 30, ss=40), 15.0), diary_row(at(11, 33), 15.4)]     # the 11:33 row is after 11:31
+    scene = scene_factory(now, shocked(), row_over={"range_ruler": ruler_block(vix_now)}, rows_before=rows)
+    assert labels(scene)[0]["vol.vix_on_shock"] == f"since just before the shock, at 11:31, {words}"
+
+
+def test_the_vix_reaction_is_omitted_without_a_shock_in_the_last_hour(scene_factory):
+    quiet = scene_factory(at(12, 1), shocked(drop=0.0), rows_before=[morning()])
+    assert labels(quiet)[1]["vol.vix_on_shock"] == "no shock in the last 60 minutes (shock.burst)"
+    later = scene_factory(at(12, 50), shocked(now_min=200), rows_before=[morning(), diary_row(at(11, 30, ss=40), 15.0)])
+    assert labels(later)[1]["vol.vix_on_shock"] == "no shock in the last 60 minutes (shock.burst)"
+
+
 # ---- the straddle: vol.straddle_reprice_30, vol.straddle_vs_clock, vol.ruler_event_load
 
 def minutes_left(t) -> float:
