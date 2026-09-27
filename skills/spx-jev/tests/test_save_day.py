@@ -60,7 +60,7 @@ def test_a_failed_day_is_reported_and_costs_only_itself(tmp_path, monkeypatch, c
     monkeypatch.setattr(save_day, "days_to_save", lambda now: [date(2026, 9, 17), date(2026, 9, 18)])
     assert save_day.main(["--state-dir", str(tmp_path)]) == 1
     err = capsys.readouterr()
-    assert "2026-09-17 failed: ConnectionError" in err.err and "1 of 2 days saved" in err.out
+    assert "2026-09-17 failed: SaveFailed: SPX bars: ConnectionError" in err.err and "1 of 2 days saved" in err.out
     assert (tmp_path / "spx_jev" / "context" / "bars" / f"{DAY}.jsonl").exists()
     assert not (tmp_path / "spx_jev" / "context" / "bars" / "2026-09-17.jsonl").exists()
 
@@ -76,3 +76,20 @@ def test_a_session_short_of_its_minutes_is_short_and_a_full_one_is_not(tmp_path)
     assert save_day.session_bars_short(tmp_path, d)
     bars.append_day(tmp_path, DAY, flat_bars(390), at(16, 30) + timedelta(hours=1))
     assert not save_day.session_bars_short(tmp_path, d)
+
+
+def test_a_market_symbol_schwab_refuses_still_leaves_spx_its_day(tmp_path, monkeypatch, capsys):
+    calls = []
+    _schwab(monkeypatch, calls)
+    served = schwab.minute_bars
+
+    def refuses_one(symbol, start, end):
+        if symbol == "$VOLSPD":
+            raise ConnectionError("400 refused")
+        return served(symbol, start, end)
+    monkeypatch.setattr(schwab, "minute_bars", refuses_one)
+    monkeypatch.setattr(save_day, "days_to_save", lambda now: [date.fromisoformat(DAY)])
+    bars.append_day(tmp_path, DAY, flat_bars(200), at(16, 30))
+    assert save_day.main(["--state-dir", str(tmp_path)]) == 1
+    assert "market bars: ConnectionError: 400 refused" in capsys.readouterr().err
+    assert len(load_bars(tmp_path, DAY)) == 390

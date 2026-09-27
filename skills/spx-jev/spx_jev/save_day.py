@@ -51,11 +51,28 @@ def session_bars_short(state_dir: Path, day: date) -> bool:
     return len(load_jsonl(bars.bars_path(state_dir, day.isoformat()))) < session_minutes(noon)
 
 
+class SaveFailed(RuntimeError):
+    """One or both of a day's saves failed; the other ran all the same."""
+
+
 def save_day(state_dir: Path, day: date, now: datetime) -> dict:
-    """One session: the market feed's minute bars, unless on disk, and SPX's, when its file is short.
+    """One session: SPX's minute bars, when its file is short, and the market feed's, unless on disk.
+    Each save runs whatever the other did, so one market symbol Schwab refuses never costs SPX its day;
+    a failure in either is raised (SaveFailed) once both have run.
     ``{"day", "context": path or None, "spx_bars_added": n}``."""
-    written = market_context.backfill_day(state_dir, day)
-    added = bars.append_day(state_dir, day.isoformat(), bars.fetch_session(day), now) if session_bars_short(state_dir, day) else 0
+    failed = []
+    added, written = 0, None
+    try:
+        if session_bars_short(state_dir, day):
+            added = bars.append_day(state_dir, day.isoformat(), bars.fetch_session(day), now)
+    except Exception as e:
+        failed.append(f"SPX bars: {type(e).__name__}: {e}")
+    try:
+        written = market_context.backfill_day(state_dir, day)
+    except Exception as e:
+        failed.append(f"market bars: {type(e).__name__}: {e}")
+    if failed:
+        raise SaveFailed("; ".join(failed))
     return {"day": day.isoformat(), "context": str(written) if written else None, "spx_bars_added": added}
 
 
