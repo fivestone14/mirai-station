@@ -617,7 +617,11 @@ def test_an_unsent_jev_read_says_why_and_when_the_next_call_is():
     last = _page(pre_card("09:28", sent=False, unsent_reason="not sent: this run was not asked to send"), et("09:29"))
     assert last["state"] == ["not sent: this run was not asked to send"]
     assert _card_parts(last)[2] == ["big", "Up 38%"]
-    assert ["tag", "The call from the 05:48 read; the 06:28 read is a snapshot and asks nothing."] in _card_parts(last)
+    assert ["tag", "The call from the 05:48 read; the 06:28 read was not sent."] in _card_parts(last)
+    # sent, but its sum made no call (premarket.newest_call keeps only sums with a pick): the 08:48 call is carried
+    failed = _page(pre_card("09:28", hour={**CALL_0848, "read_at": et("08:48", PRE_DAY, "04")}), et("09:29"))
+    assert failed["state"] == ["1 of 2 answered"] and _card_parts(failed)[2] == ["big", "Up 38%"]
+    assert ["tag", "The call from the 05:48 read; the 06:28 read made none."] in _card_parts(failed)
     assert _card_parts(_page(pre_card("09:28", sent=False, hour=None), et("09:29")))[3] == ["skip", "No call before the open"]
     # a JEV read with nothing to ask names its checkpoint on the market clock; the chip gives it in the viewer's zone
     empty = pre_card("08:48", sent=False, unsent_reason="nothing to ask at the 08:48 ET read")

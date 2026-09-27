@@ -1183,8 +1183,8 @@ details .q{margin-top:8px}
     update(); tickers.push(update);
     return box;
   }
-  // the call: its pick as the big number, its shape in words, the odds bar; a snapshot read carries the newest
-  // call and says whose it is; before the first call, when it comes
+  // the call: its pick as the big number, its shape in words, the odds bar; a read that made no call (a snapshot,
+  // or a JEV read unsent or with no sum) carries the newest call and says whose it is; before the first call, when it comes
   function preCall(p, box){
     var h = p.hour, pr = h && h.probabilities;
     if(pr){
@@ -1193,7 +1193,8 @@ details .q{margin-top:8px}
       if(s){ var sh = el('div', 'shape', s.title); sh.appendChild(el('span', null, ': ' + s.words)); box.appendChild(sh); }
       box.appendChild(oddsBar(pr, top));
       if(h.read_at && h.read_at !== p.row_ts)
-        box.appendChild(tag('the call from the ' + viewerTime(h.read_at) + ' read; the ' + viewerTime(p.row_ts) + ' read is a snapshot and asks nothing.'));
+        box.appendChild(tag('the call from the ' + viewerTime(h.read_at) + ' read; the ' + viewerTime(p.row_ts) + ' read ' +
+                            (!preJevRead(p) ? 'is a snapshot and asks nothing.' : p.sent ? 'made none.' : 'was not sent.')));
       return;
     }
     var row = Date.parse(p.row_ts), jev = (p.schedule && p.schedule.jev_reads) || [];
