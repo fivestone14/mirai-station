@@ -201,7 +201,7 @@ def _morning_vs_gap(scene: Scene, gap: Gap | None, why: str, ls: LabelSet) -> No
     ls.put("gap.morning_vs_gap", ruled(
            gap.anchor,
            f"from the settled open to {LATE_MORNING:%H:%M} price {'rose' if m >= 0 else 'fell'} {sig(abs(m))}, "
-           f"{'with' if m * gap.size > 0 else 'against'} this morning's {sig(abs(gap.size))} gap {gap.side} "
+           f"{'with' if m * gap.size > 0 else 'against' if m else 'neither with nor against'} this morning's {sig(abs(gap.size))} gap {gap.side} "
            f"(past the {sig(GAP_RULE_SIGMA)} gap rule), and {'touched' if touched else 'did not touch'} yesterday's close; "
            f"it now sits {sig(abs(now_d))} {_where(now_d)} it"))
 

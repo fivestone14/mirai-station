@@ -145,6 +145,8 @@ def test_the_morning_counts_once_its_1129_bar_has_finished(scene_factory):
     assert omitted["gap.morning_vs_gap"] == "the morning runs to 11:30 and its last bar has not finished"
     got, _, _ = labels(scene(scene_factory, at(11, 30), closes))
     assert got["gap.morning_vs_gap"].startswith("from the settled open to 11:30 price rose 0.05 sigma, with")
+    got, _, _ = labels(scene(scene_factory, at(11, 30), opening(7732.0, [7732.0] * 145)))
+    assert got["gap.morning_vs_gap"].startswith("from the settled open to 11:30 price rose 0.00 sigma, neither with nor against this morning's")
     late_touch = opening(7732.0, [7736.0] * 115 + [7700.0] + [7736.0] * 29)                     # the 11:30 bar is after the morning
     got, _, _ = labels(scene(scene_factory, at(12, 0), late_touch))
     assert "and did not touch yesterday's close" in got["gap.morning_vs_gap"]
