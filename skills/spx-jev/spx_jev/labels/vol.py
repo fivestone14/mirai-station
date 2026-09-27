@@ -24,7 +24,7 @@ from ..cuts import (ATM_RESID_VOLPTS, BOTTOM_FIFTH, BOUNCE_SIGMA, EVENT_DIGEST_M
                     WINDOW_30_MIN, ZERO_DTE_LAST_HOUR_MIN)
 from ..sessions import session_close, session_minutes
 from ..state_builder import MarketContext, Scene, row_days
-from .events_shocks import _bursts, _judged_windows
+from .events_shocks import judged_windows, shock_bursts
 from .label_set import LabelSet
 from .measures import (ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, day_high_low, is_num, session_extremes,
                        settled_open)
@@ -377,7 +377,7 @@ def _vix_on_shock(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
         ls.omit(path, "no morning sigma ruler to find a shock with")
         return
     since = scene.now - timedelta(minutes=SHOCK_LOOKBACK_MIN)
-    shocks = [b for b in _bursts(_judged_windows(scene, ruler.points, EVENT_DIGEST_MIN)) if b.end > since]
+    shocks = [b for b in shock_bursts(judged_windows(scene, ruler.points, EVENT_DIGEST_MIN)) if b.end > since]
     if not shocks:
         ls.omit(path, f"no shock in the last {SHOCK_LOOKBACK_MIN} minutes (shock.burst)")
         return

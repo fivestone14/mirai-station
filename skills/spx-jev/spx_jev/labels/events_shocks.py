@@ -68,8 +68,8 @@ NOON = 12                   # the opening lane's speaker clause speaks of the mo
 def build_events_shocks_labels(scene: Scene) -> LabelSet:
     ls = LabelSet()
     anchor = sigma_anchor(scene)
-    windows = _judged_windows(scene, anchor.points, EVENT_DIGEST_MIN) if anchor else []
-    bursts = _bursts(windows)
+    windows = judged_windows(scene, anchor.points, EVENT_DIGEST_MIN) if anchor else []
+    bursts = shock_bursts(windows)
     today = scene.now.astimezone(ET).date()
     through = events.covered_through()
     if through is None or today > through:
@@ -443,7 +443,7 @@ def _move_over(bars: list[dict], then: datetime, sigma: float | None) -> float |
     return abs(b - a) / sigma if sigma and a is not None and b is not None else None
 
 
-def _judged_windows(scene: Scene, anchor: float, lookback_min: int) -> list[Burst]:
+def judged_windows(scene: Scene, anchor: float, lookback_min: int) -> list[Burst]:
     """Every 5-minute window from the settled open that ended in the last ``lookback_min`` minutes and
     could be judged: against the hour before it, or before that hour exists against the same five
     minutes of the prior sessions."""
@@ -479,7 +479,7 @@ def _judged_windows(scene: Scene, anchor: float, lookback_min: int) -> list[Burs
     return out
 
 
-def _bursts(windows: list[Burst]) -> list[Burst]:
+def shock_bursts(windows: list[Burst]) -> list[Burst]:
     """The windows that passed the shock rule, overlapping ones taken as one burst, each by its largest move."""
     groups: list[list[Burst]] = []
     for w in sorted((w for w in windows if w.passed), key=lambda w: w.end):
