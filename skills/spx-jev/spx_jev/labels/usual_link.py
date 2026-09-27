@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Callable
 
-from ..cuts import BOTTOM_FIFTH, MIN_RANK_SESSIONS, TOP_FIFTH, WINDOW_30_MIN
+from ..cuts import MIN_RANK_SESSIONS, WINDOW_30_MIN
 from ..sessions import session_open
 from .measures import ET, ONE_MINUTE, bar_time
 from .ranks import SameClockRank, rank_against, same_clock_values
@@ -179,14 +179,6 @@ def needs_link(symbols: list[str], index: str = SPX) -> str:
 
 def needs_rank(what: str, have: int) -> str:
     return f"needs {MIN_RANK_SESSIONS} prior sessions with {what} at this minute, have {have}"
-
-
-def fifth_side(rank: SameClockRank) -> int:
-    """+1 in the top fifth of the same-clock sessions, -1 in the bottom fifth, 0 in neither."""
-    return 1 if rank.share >= TOP_FIFTH else -1 if rank.share <= BOTTOM_FIFTH else 0
-
-
-FIFTH_WORDS = {1: "in the top fifth", -1: "in the bottom fifth", 0: "in neither the top nor the bottom fifth"}
 
 
 def minutes_back(end: datetime, minutes: int) -> int:

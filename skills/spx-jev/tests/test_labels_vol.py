@@ -375,7 +375,7 @@ def test_a_straddle_loaded_before_the_fed_reads_loaded(scene_factory, tmp_path, 
     scene = ruler_scene(scene_factory, tmp_path, FOMC_DAY, (11, 30), load=1.92, swell=1.88, prior_days=EVENT_PRIOR_DAYS)
     assert labels(scene)[0]["vol.ruler_event_load"] == (
         "loaded before an event: the same-day straddle prices a 30-minute move 1.92 times what the tape's recent 5-minute ranges "
-        "scale to, past the 1.5 loaded line, higher than 10 of the last 10 sessions at 11:30 (top fifth); on the event calendar "
+        "scale to, past the 1.5 loaded line, higher than 10 of the last 10 sessions at 11:30 (in the top fifth); on the event calendar "
         "today: the Fed's rate decision at 14:00, the Fed chair's press conference at 14:30; the Fed's rate decision is still ahead; "
         "this morning's sigma ruler is 1.88 times its 10-session median, past the 1.3 swollen line")
 
@@ -407,7 +407,7 @@ def released_scene(scene_factory, tmp_path, monkeypatch, prior_before_fed: float
 def test_a_tape_outrunning_its_usual_against_the_pre_release_straddle_reads_released(scene_factory, tmp_path, monkeypatch):
     assert labels(released_scene(scene_factory, tmp_path, monkeypatch, prior_before_fed=1.0))[0]["vol.ruler_event_load"] == (
         "released after an event: the same-day straddle prices a 30-minute move 0.90 times what the tape's recent 5-minute ranges "
-        "scale to, under the 1.5 loaded line, higher than 4 of the last 10 sessions at 14:32 (between the fifths); on the event "
+        "scale to, under the 1.5 loaded line, higher than 4 of the last 10 sessions at 14:32 (between the top and bottom fifths); on the event "
         "calendar today: the Fed's rate decision at 14:00, the Fed chair's press conference at 14:30; the Fed's rate decision came "
         "out 32 minutes ago, inside the 120-minute digest window; the tape now moves 1.25 times its usual against the straddle "
         "priced just before it, over the one-to-one line; this morning's sigma ruler is 1.40 times its 10-session median, "
@@ -499,8 +499,8 @@ def realized_scene(scene_factory, today: list[dict], steps=range(1, 11)):
 
 
 @pytest.mark.parametrize("step, standing", [
-    (5.5, "more than 5 of the last 10 sessions at this time of day, between the bottom and top fifths"),
-    (9.5, "more than 9 of the last 10 sessions at this time of day, top fifth"),
+    (5.5, "more than 5 of the last 10 sessions at this time of day, between the top and bottom fifths"),
+    (9.5, "more than 9 of the last 10 sessions at this time of day, in the top fifth"),
     (12.0, "more than every one of the last 10 sessions at this time of day"),
 ])
 def test_the_realized_swing_is_ranked_against_the_same_half_hour(scene_factory, step, standing):
@@ -514,7 +514,7 @@ def test_a_bottom_fifth_swing_says_when_the_last_real_move_ended(scene_factory):
     flat = [7700.0] * 180
     coiled = labels(realized_scene(scene_factory, bars_from_closes(flat, wick=0.0)))[0]["vol.realized_vs_clock"]
     assert coiled == ("over the last 30 minutes SPX's realized swing was 0.00 sigma, more than 0 of the last 10 sessions at this time "
-                      "of day, bottom fifth; price has made no real move (0.09 sigma within 10 minutes) today, none for at least the last "
+                      "of day, in the bottom fifth; price has made no real move (0.09 sigma within 10 minutes) today, none for at least the last "
                       "30 minutes")
     once = labels(realized_scene(scene_factory, bars_from_closes(drift(flat, 165))))[0]["vol.realized_vs_clock"]
     assert once.endswith("bottom fifth; the last real move (0.09 sigma within 10 minutes) ended 5 minutes ago, inside the last 30 "
@@ -658,13 +658,13 @@ def curve_state(tmp_path, clock=(10, 2)):
 
 @pytest.mark.parametrize("ratio, front, words", [
     (0.835, 15.2, "VIX is 0.83 times three-month VIX, under the 0.95 near-flat line; flatter than 6 of the last 10 sessions at this time, "
-                  "between the fifths; nine-day VIX is 0.95 of VIX, under the inversion line"),
+                  "between the top and bottom fifths; nine-day VIX is 0.95 of VIX, under the inversion line"),
     (0.77, 15.2, "VIX is 0.77 times three-month VIX, under the 0.95 near-flat line; flatter than 0 of the last 10 sessions at this time, "
-                 "bottom fifth; nine-day VIX is 0.95 of VIX, under the inversion line"),
+                 "in the bottom fifth; nine-day VIX is 0.95 of VIX, under the inversion line"),
     (0.96, 15.2, "VIX is 0.96 times three-month VIX, at or over the 0.95 near-flat line and under the 1.00 inversion line; flatter than 10 "
-                 "of the last 10 sessions at this time, top fifth; nine-day VIX is 0.95 of VIX, under the inversion line"),
+                 "of the last 10 sessions at this time, in the top fifth; nine-day VIX is 0.95 of VIX, under the inversion line"),
     (1.02, 16.5, "VIX is 1.02 times three-month VIX, at or over the 1.00 inversion line; flatter than 10 of the last 10 sessions at this "
-                 "time, top fifth; nine-day VIX is 1.03 of VIX, at or over the inversion line"),
+                 "time, in the top fifth; nine-day VIX is 1.03 of VIX, at or over the inversion line"),
 ])
 def test_the_vix_curve_reads_its_fixed_lines_then_its_rank(scene_factory, tmp_path, ratio, front, words):
     now = at(10, 2)

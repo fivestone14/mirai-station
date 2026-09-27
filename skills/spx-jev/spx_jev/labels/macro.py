@@ -17,9 +17,10 @@ from ..sessions import session_open
 from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import ONE_MINUTE
+from .ranks import FIFTH_WORDS, fifth_side
 from .rulers import NO_ANCHOR, sigma_anchor
-from .usual_link import (FIFTH_WORDS, SPX, AgainstIndex, Session, against_usual, beyond, beyond_rank, fifth_side, minutes_back, needs_link,
-                         needs_move, needs_rank)
+from .usual_link import (SPX, AgainstIndex, Session, against_usual, beyond, beyond_rank, minutes_back, needs_link, needs_move,
+                         needs_rank)
 from .words import listed, sig
 
 LABELS = ("xasset.bond_gap_30min", "xasset.macro_gap_30min", "xasset.oil_gap_30min", "flows.rebalance_side", "flows.etf_creations",

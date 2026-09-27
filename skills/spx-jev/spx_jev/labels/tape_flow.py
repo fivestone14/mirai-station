@@ -41,7 +41,7 @@ from ..state_builder import (ET, OPTIONS_TAPE_MAX_AGE_MIN, OPTIONS_TAPE_SUBDIR, 
                              parse_ts)
 from .label_set import LabelSet
 from .measures import is_num, minute_of_day
-from .ranks import SameClockRank, rank_against, rank_at_slot
+from .ranks import fifth, rank_against, rank_at_slot
 from .rulers import sigma_anchor
 from .vol_sources import TAPE_LINE_START, TAPE_RAW_SUBDIR, tape_path
 from .words import pct, plural, sig, signed
@@ -351,10 +351,6 @@ def _lean(bullish: float, bearish: float, of_what: str) -> str:
     return f"neither side passed {line}: {pct(bull)} of {of_told} was calls bought or puts sold and {pct(bear)} puts bought or calls sold"
 
 
-def _fifth(rank: SameClockRank) -> str:
-    return "in the top fifth" if rank.share >= TOP_FIFTH else "in the bottom fifth" if rank.share <= BOTTOM_FIFTH else "between the bottom and top fifths"
-
-
 def _big_prints_10(today: TapeMinutes, opened: int, end: int, ls: LabelSet) -> None:
     w = _window(today, opened, end, WINDOW_10_MIN, "options.big_prints_10", ls)
     if w is None:
@@ -429,7 +425,7 @@ def _premium_pace_30(today: TapeMinutes, prior: list[TapeMinutes], opened: int, 
     if rank is None:
         ls.omit("options.premium_pace_30", _thin_base(base))
         return
-    ls.put("options.premium_pace_30", f"near-price 0DTE premium traded in the last {WINDOW_30_MIN} minutes is {_fifth(rank)} for this half hour, {rank.words()}")
+    ls.put("options.premium_pace_30", f"near-price 0DTE premium traded in the last {WINDOW_30_MIN} minutes is {fifth(rank)} for this half hour, {rank.words()}")
 
 
 def tape_minutes(state_dir: Path, day: str, start: int, end: int, clock: time) -> TapeMinutes | None:
@@ -550,7 +546,7 @@ def _quote_liquidity(scene: Scene, ls: LabelSet) -> None:
     book = "deep" if rank.share >= TOP_FIFTH else "thin" if rank.share <= BOTTOM_FIFTH else "middling"
     ls.put("options.quote_liquidity", f"over the last {QUOTE_WINDOW_MIN} minutes 25-40 delta same-day quotes have been {_cents(spread)} wide, "
                                       f"{width}, with a median {depth:.0f} contracts displayed, a {book} book for this time, "
-                                      f"{_fifth(rank)}, {rank.words()}")
+                                      f"{fifth(rank)}, {rank.words()}")
 
 
 def _strike_defense(scene: Scene, ls: LabelSet) -> None:
@@ -781,7 +777,7 @@ def _spy_pace_30(last30: float, base: list[float], ls: LabelSet) -> None:
         ls.omit("volume.spy_pace_30", f"needs {MIN_RANK_SESSIONS} prior sessions with SPY minute volumes at this minute, have {len(base)}")
         return
     ls.put("volume.spy_pace_30", f"SPY traded {last30 / statistics.median(base):.1f} times its usual volume for this half hour, "
-                                 f"{_fifth(rank)}, {rank.words()}")
+                                 f"{fifth(rank)}, {rank.words()}")
 
 
 @lru_cache(maxsize=4)

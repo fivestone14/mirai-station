@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Callable
 
-from ..cuts import MIN_RANK_SESSIONS
+from ..cuts import BOTTOM_FIFTH, MIN_RANK_SESSIONS, TOP_FIFTH
 from .measures import ET, ONE_MINUTE, bar_time
 from .words import third
 
@@ -67,3 +67,16 @@ def same_clock_values(scene: Scene, measure: Callable[[list[dict], datetime, flo
         if v is not None:
             out.append(v)
     return out
+
+
+# A rank in words by its fifth, as the question criteria name it; one wording for every label.
+FIFTH_WORDS = {1: "in the top fifth", -1: "in the bottom fifth", 0: "between the top and bottom fifths"}
+
+
+def fifth_side(rank: SameClockRank) -> int:
+    """+1 in the top fifth of the same-clock sessions, -1 in the bottom fifth, 0 in neither."""
+    return 1 if rank.share >= TOP_FIFTH else -1 if rank.share <= BOTTOM_FIFTH else 0
+
+
+def fifth(rank: SameClockRank) -> str:
+    return FIFTH_WORDS[fifth_side(rank)]

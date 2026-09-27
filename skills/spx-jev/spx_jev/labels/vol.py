@@ -14,7 +14,7 @@ from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
 
 from .. import events
-from ..cuts import (ATM_RESID_VOLPTS, BOTTOM_FIFTH, BOUNCE_SIGMA, EVENT_DIGEST_MIN, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW,
+from ..cuts import (ATM_RESID_VOLPTS, BOUNCE_SIGMA, EVENT_DIGEST_MIN, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW,
                     FRONT_SHIFT_PTS, HALF_RANK, IV_FLAT_BAND_PTS, LOADED_RATIO, MIN_RANK_SESSIONS, MOVE_RULE_SIGMA,
                     NEAR_LOW_SIGMA, ONE_RATIO, PAIR_MOVE_SIGMA, REALIZED_QUIET_RATIO, REALIZED_WILD_RATIO, RULER_HIGH, RULER_LOW,
                     RV_HOT, SHOCK_LOOKBACK_MIN, SKEW_FLAT_RANK, SKEW_RESID_CUT, SKEW_STEEP_RANK, STRADDLE_CHEAP,
@@ -28,7 +28,7 @@ from .events_shocks import judged_windows, shock_bursts
 from .label_set import LabelSet
 from .measures import (ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, day_high_low, is_num, session_extremes,
                        settled_open)
-from .ranks import SameClockRank, rank_against, same_clock_values
+from .ranks import SameClockRank, fifth, rank_against, same_clock_values
 from .rulers import SigmaRuler, normal_day_sigma, sigma_anchor
 from .vol_sources import ROW_MAX_GAP, DiaryPoint, Skew, diary_point, minute_floor, point_at, prior_diary, skew_at
 from .words import pct, plural, sig, signed
@@ -418,10 +418,6 @@ def _ranked_prior_days(scene: Scene) -> list[str]:
     return [d for d in scene.prior_bars if not ((r := scene.prior_rulers.get(d)) is not None and r.estimated)]
 
 
-def _fifth(rank: SameClockRank) -> str:
-    return "top fifth" if rank.share >= TOP_FIFTH else "bottom fifth" if rank.share <= BOTTOM_FIFTH else "between the fifths"
-
-
 def _minutes_left(t: datetime) -> float:
     return (session_close(t) - t).total_seconds() / 60.0
 
@@ -595,7 +591,7 @@ def _ruler_event_load(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> No
                        f"between the {RULER_LOW:g} compressed and {RULER_HIGH:g} swollen lines")
     ls.put(path,
            f"{verdict}: the same-day straddle prices a 30-minute move {load_words}, higher than {rank.higher_than} of the last "
-           f"{rank.of} sessions at {_clock(scene.now)} ({_fifth(rank)}); {event_words}; this morning's sigma ruler is {swell_words}"
+           f"{rank.of} sessions at {_clock(scene.now)} ({fifth(rank)}); {event_words}; this morning's sigma ruler is {swell_words}"
            f"{_ruled(anchor)}")
 
 
@@ -656,10 +652,8 @@ def _realized_vs_clock(scene: Scene, ls: LabelSet) -> None:
         return
     if rank.higher_than == rank.of:
         standing = f"more than every one of the last {rank.of} sessions at this time of day"
-    elif rank.share >= TOP_FIFTH or rank.share <= BOTTOM_FIFTH:
-        standing = f"more than {rank.higher_than} of the last {rank.of} sessions at this time of day, {_fifth(rank)}"
     else:
-        standing = f"more than {rank.higher_than} of the last {rank.of} sessions at this time of day, between the bottom and top fifths"
+        standing = f"more than {rank.higher_than} of the last {rank.of} sessions at this time of day, {fifth(rank)}"
     ls.put("vol.realized_vs_clock",
            f"over the last {REALIZED_WINDOW_MIN} minutes SPX's realized swing was {sig(value)}, {standing}; "
            f"{_stillness(scene, ruler.points)}{_ruled(ruler)}")
@@ -826,7 +820,7 @@ def _vix_curve(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
     inverted = sum(1 for points in diaries.values() if any(p.vix_ts and p.vix_ts >= VIX_CURVE_FLAT for p in points))
     record = (f"the curve has not inverted on any of the last {len(diaries)} sessions" if not inverted
               else f"the curve inverted on {inverted} of the last {len(diaries)} sessions")
-    ls.put(path, f"VIX is {level}; flatter than {rank.higher_than} of the last {rank.of} sessions at this time, {_fifth(rank)}; "
+    ls.put(path, f"VIX is {level}; flatter than {rank.higher_than} of the last {rank.of} sessions at this time, {fifth(rank)}; "
                  f"nine-day VIX is {nine_words}; {record}")
 
 

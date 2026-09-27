@@ -94,7 +94,7 @@ def test_semis_ahead_either_way(jump, verdict):
     assert "usually move 1.6 times" in s and ("higher than 10 of the last 10" if jump > 0 else "higher than 0 of the last 10") in s
 
 
-@pytest.mark.parametrize("between, verdict, beats", [(7.5, "ahead upward: in the top fifth", 8), (6.5, "in line: in neither the top nor the bottom fifth", 7)])
+@pytest.mark.parametrize("between, verdict, beats", [(7.5, "ahead upward: in the top fifth", 8), (6.5, "in line: between the top and bottom fifths", 7)])
 def test_semis_top_fifth_boundary(between, verdict, beats):
     """Prior day k drifts in order of k, so a drift between day 7's and day 8's beats 8 of the 10: the top fifth exactly."""
     got, _, _ = labels(read(move_points=10.5, drifts={"SMH": prior_drift(0) + between * DRIFT_STEP}))
@@ -136,7 +136,7 @@ def test_the_opening_tells_rank_semis_and_financials_over_10_minutes():
         "their usual multiple of the index, broke away downward, in the bottom fifth for this time, higher than # of the last # "
         "sessions at this minute")
     quiet, _, _ = labels(read())
-    assert quiet["tells.sector_lead_10m"].count("moved in line, in neither the top nor the bottom fifth for this time") == 2
+    assert quiet["tells.sector_lead_10m"].count("moved in line, between the top and bottom fifths for this time") == 2
 
 
 def test_the_opening_tells_need_a_price_10_minutes_back():

@@ -23,9 +23,10 @@ from ..market_context import SYMBOLS
 from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, SETTLED_OPEN_BAR, bar_time, settled_open, yesterdays_bars
+from .ranks import FIFTH_WORDS, fifth_side
 from .rulers import NO_ANCHOR, sigma_anchor
-from .usual_link import (FIFTH_WORDS, SPX, AgainstIndex, Session, UsualLink, against_usual, beyond, beyond_rank, fifth_side, minutes_back,
-                         needs_link, needs_move, needs_rank)
+from .usual_link import (SPX, AgainstIndex, Session, UsualLink, against_usual, beyond, beyond_rank, minutes_back, needs_link, needs_move,
+                         needs_rank)
 from .words import listed, pct, sig, signed
 
 LABELS = ("leaders.equal_weight_vs_cap_30m", "leaders.heavyweight_gap", "leaders.megacap_cohesion_30m", "leaders.pull_vs_rest_30m",

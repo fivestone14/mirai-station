@@ -59,7 +59,7 @@ BOND = ("over the last # minutes long Treasury prices (TLT) {moved} than the ind
 @pytest.mark.parametrize("jump, moved, fifth, verdict", [
     (0.002, "rose more", "in the top fifth", "so bonds are ahead in the stocks-down direction; the Treasury cash market is open"),
     (-0.002, "fell more", "in the bottom fifth", "so bonds are ahead in the stocks-up direction; the Treasury cash market is open"),
-    (0.0, "rose more", "in neither the top nor the bottom fifth", "bonds are in line with the index; the Treasury cash market is open"),
+    (0.0, "rose more", "between the top and bottom fifths", "bonds are in line with the index; the Treasury cash market is open"),
 ])
 def test_bonds_ahead_of_the_index_either_way_or_in_line(jump, moved, fifth, verdict):
     got, _ = labels(read(jumps={"TLT": {JUMP: jump}}))
@@ -67,7 +67,7 @@ def test_bonds_ahead_of_the_index_either_way_or_in_line(jump, moved, fifth, verd
     assert shape(s) == BOND.format(moved=moved, fifth=fifth, verdict=verdict)
 
 
-@pytest.mark.parametrize("jump, fifth", [(0.002, "in the top fifth"), (0.0, "in neither the top nor the bottom fifth")])
+@pytest.mark.parametrize("jump, fifth", [(0.002, "in the top fifth"), (0.0, "between the top and bottom fifths")])
 def test_bonds_on_a_loose_link_say_it_is_too_loose(jump, fifth):
     """A loose link is too loose to say, whether or not the move reached a fifth: bond_catchup's in_line needs a tight link."""
     scene = read(jumps={"TLT": {JUMP: jump}}, loose=True)
@@ -131,7 +131,7 @@ def test_the_first_read_measures_the_link_over_the_session_so_far():
 @pytest.mark.parametrize("jump, verdict", [
     (0.002, "rose more than the index's move usually brings it, oil ran up: in the top fifth"),
     (-0.002, "fell more than the index's move usually brings it, oil ran down: in the bottom fifth"),
-    (0.00005, "rose more than the index's move usually brings it, an ordinary amount given the index: in neither the top nor the bottom fifth"),
+    (0.00005, "rose more than the index's move usually brings it, an ordinary amount given the index: between the top and bottom fifths"),
 ])
 def test_oil_against_its_usual_multiple(jump, verdict):
     got, _ = labels(read(jumps={"USO": {JUMP: jump}}))
@@ -178,7 +178,7 @@ def test_the_complex_ahead_in_the_stocks_up_direction():
 
 def test_the_complex_in_line_and_ahead_downward():
     got, _ = labels(read())
-    assert "the complex is in line with the index, in neither the top nor the bottom fifth" in got["xasset.macro_gap_30min"]
+    assert "the complex is in line with the index, between the top and bottom fifths" in got["xasset.macro_gap_30min"]
     got, _ = labels(read(jumps={"HYG": {JUMP: -0.004}, "USO": {JUMP: -0.004}}))
     assert "the complex is ahead of the index in the stocks-down direction, in the bottom fifth" in got["xasset.macro_gap_30min"]
 

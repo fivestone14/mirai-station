@@ -152,7 +152,7 @@ def paced(size: int, day: str = DAY, until: datetime = NOW) -> list[dict]:
 
 @pytest.mark.parametrize("size, beaten, pace, burst", [
     (9, 6, "in the top fifth", "in the top fifth"),
-    (4, 2, "between the bottom and top fifths", "under the top fifth"),
+    (4, 2, "between the top and bottom fifths", "under the top fifth"),
     (1, 0, "in the bottom fifth", "under the top fifth"),
 ])
 def test_premium_is_ranked_against_the_same_minutes_of_the_prior_sessions(scene_factory, tmp_path, size, beaten, pace, burst):
@@ -311,7 +311,7 @@ def quote_scene(scene_factory, root: Path, today: list[dict], prior_days: tuple[
     (250.0, 0.1, PRIOR_DAYS, "10 cents wide, their usual width for this time, with a median 250 contracts displayed, a deep book for this time, "
                              "in the top fifth, higher than 6 of the last 6 sessions at this minute"),
     (150.0, 0.2, PRIOR_DAYS, "20 cents wide, wider than their usual 10 cents for this time, with a median 150 contracts displayed, "
-                             "a middling book for this time, between the bottom and top fifths, higher than 3 of the last 6 sessions at this minute"),
+                             "a middling book for this time, between the top and bottom fifths, higher than 3 of the last 6 sessions at this minute"),
     (110.0, 0.05, PRIOR_DAYS[:5], "5 cents wide, tighter than their usual 10 cents for this time, with a median 110 contracts displayed, "
                                   "a thin book for this time, in the bottom fifth, higher than 1 of the last 5 sessions at this minute"),
 ])
@@ -452,7 +452,7 @@ def volume_scene(scene_factory, root: Path, today: dict[str, float], prior_days:
      "2.0 times its usual volume for this half hour, in the top fifth, higher than 6 of the last 6 sessions at this minute"),
     (1000.0, "20.0% of today's volume in the last 30 minutes, between the 17.2% light line and the 22.6% heavy line for 12:00 "
              "(middle third of the last 6 sessions)",
-     "1.0 times its usual volume for this half hour, between the bottom and top fifths, higher than 3 of the last 6 sessions at this minute"),
+     "1.0 times its usual volume for this half hour, between the top and bottom fifths, higher than 3 of the last 6 sessions at this minute"),
     (300.0, "7.0% of today's volume in the last 30 minutes, below the 17.2% light line for 12:00 (bottom third of the last 6 sessions)",
      "0.3 times its usual volume for this half hour, in the bottom fifth, higher than 0 of the last 6 sessions at this minute"),
 ])
