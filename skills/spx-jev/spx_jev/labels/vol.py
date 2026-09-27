@@ -11,13 +11,13 @@ from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
 
 from .. import events
-from ..cuts import (ATM_RESID_VOLPTS, BOTTOM_FIFTH, BOUNCE_SIGMA, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, EVENT_DIGEST_MIN, FRONT_SHIFT_PTS, HALF_RANK,
-                    IV_FLAT_BAND_PTS, LOADED_RATIO, MIN_RANK_SESSIONS, MOVE_RULE_SIGMA, NEAR_LOW_SIGMA, ONE_RATIO, PAIR_MOVE_SIGMA, REALIZED_QUIET_RATIO,
-                    REALIZED_WILD_RATIO, RULER_HIGH, RULER_LOW, RV_HOT, SKEW_FLAT_RANK, SKEW_RESID_CUT,
-                    SKEW_STEEP_RANK, STRADDLE_CHEAP, STRADDLE_REPRICE_SHARE, STRADDLE_RICH,
-                    STRESS_HOLD_SHARE, STRESS_RETREAT_SHARE, TICK_CLUSTER, TICK_EXTREME, TOP_FIFTH, VIX_CURVE_FLAT, VIX_CURVE_NEAR_FLAT, VIX_GAP_RESID_PTS, VIX_JUMP_PCT, VIX_JUMP_PCT_10, VIX_MOVE_PCT,
-                    VIX_MOVE_PCT_10, VIX_RESID_PCT, VIX_STILL_PCT, VIX_STILL_PCT_10, WINDOW_10_MIN, WINDOW_30_MIN,
-                    ZERO_DTE_LAST_HOUR_MIN)
+from ..cuts import (ATM_RESID_VOLPTS, BOTTOM_FIFTH, BOUNCE_SIGMA, EVENT_DIGEST_MIN, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW,
+                    FRONT_SHIFT_PTS, HALF_RANK, IV_FLAT_BAND_PTS, LOADED_RATIO, MIN_RANK_SESSIONS, MOVE_RULE_SIGMA,
+                    NEAR_LOW_SIGMA, ONE_RATIO, PAIR_MOVE_SIGMA, REALIZED_QUIET_RATIO, REALIZED_WILD_RATIO, RULER_HIGH, RULER_LOW,
+                    RV_HOT, SKEW_FLAT_RANK, SKEW_RESID_CUT, SKEW_STEEP_RANK, STRADDLE_CHEAP, STRADDLE_REPRICE_SHARE,
+                    STRADDLE_RICH, STRESS_HOLD_SHARE, STRESS_RETREAT_SHARE, TICK_CLUSTER, TICK_EXTREME, TOP_FIFTH, VIX_CURVE_FLAT,
+                    VIX_CURVE_NEAR_FLAT, VIX_GAP_RESID_PTS, VIX_JUMP_PCT, VIX_JUMP_PCT_10, VIX_MOVE_PCT, VIX_MOVE_PCT_10,
+                    VIX_RESID_PCT, VIX_STILL_PCT, VIX_STILL_PCT_10, WINDOW_10_MIN, WINDOW_30_MIN, ZERO_DTE_LAST_HOUR_MIN)
 from ..sessions import session_close, session_minutes
 from ..state_builder import MarketContext, Scene, row_days
 from .label_set import LabelSet
@@ -48,6 +48,13 @@ REALIZED_MIN_BARS = 25
 VIX_PER_SIGMA = -1.08
 ATM_IV_PER_SIGMA = -2.2
 VIX_PER_GAP_SIGMA = -1.7
+# The VIX that closes the session is read against the early afternoon: the newest row by 14:00.
+AFTERNOON_ANCHOR = time(14, 0)
+# What the tape delivers over 30 minutes: the median high-to-low range of the last six finished 5-minute
+# slices, scaled from 5 minutes to 30 by the square root of time.
+TAPE_SLICE_MIN, TAPE_SLICES = 5, 6
+# The calendar's events that load the day's straddle before them: the Fed's decision and the chair's set pieces.
+LOADING_EVENTS = ("FOMC", "FED_CHAIR_TESTIMONY", "FED_CHAIR_JACKSON_HOLE")
 # A real move, for how long the tape has been still: MOVE_RULE_SIGMA within this many minutes (context.time_since_last_move's).
 REAL_MOVE_MIN = 10
 # The context job snapshots the VIX family every minute: a value older than this means it stopped.
@@ -63,14 +70,6 @@ SKEW_RANK_SESSIONS = 10
 # How far the one-remaining-sd put-call tilt (a share of at-the-money vol) moves with price, fitted once on
 # the lob-flow tape of the 21 sessions to 2026-09-25 (230 half hours, morning anchor; not refitted yet).
 SKEW_PER_SIGMA = -0.19
-# The VIX that closes the session is read against the early afternoon: the newest row by 14:00.
-AFTERNOON_ANCHOR = time(14, 0)
-# What the tape delivers over 30 minutes: the median high-to-low range of the last six finished 5-minute
-# slices, scaled from 5 minutes to 30 by the square root of time.
-TAPE_SLICE_MIN, TAPE_SLICES = 5, 6
-# The calendar's events that load the day's straddle before them: the Fed's decision and the chair's set pieces.
-LOADING_EVENTS = ("FOMC", "FED_CHAIR_TESTIMONY", "FED_CHAIR_JACKSON_HOLE")
-
 
 def build_vol_labels(scene: Scene) -> LabelSet:
     ls = LabelSet()

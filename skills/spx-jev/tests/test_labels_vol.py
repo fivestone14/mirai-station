@@ -672,14 +672,14 @@ def write_tape(root, day: str, lines: list[dict], archived: bool = False):
         (folder / "tape.jsonl").write_text(text)
 
 
-def skew_scene(scene_factory, tmp_path, slope: float, clock=(9, 50), prior_slopes=tuple(0.5 * k for k in range(2, 12)), extra=()):
+def skew_scene(scene_factory, tmp_path, slope: float, clock=(9, 50), prior_slopes=tuple(0.5 * k for k in range(2, 12))):
     """A read at ``clock`` on a tape quoting today's smile at ``slope``, the prior sessions' at ``prior_slopes``
     (their tapes archived), each prior session with a trusted anchor."""
     now = at(*clock, ss=15)
     days = PRIOR_DAYS[:len(prior_slopes)]
     for d, s in zip(days, prior_slopes):
         write_tape(tmp_path, d, smile_quotes(at(*clock, day=d), s), archived=True)
-    write_tape(tmp_path, DAY, [*smile_quotes(at(*clock), slope), *extra])
+    write_tape(tmp_path, DAY, smile_quotes(at(*clock), slope))
     scene = scene_factory(now, flat_bars(int((now - at(9, 30)).total_seconds() // 60)), rows_before=[morning()],
                           prior_bars={d: flat_bars(390, day=d) for d in days})
     return replace(scene, state_dir=tmp_path, prior_rulers={d: SigmaRuler(SIGMA, "anchor") for d in days})
@@ -689,12 +689,6 @@ def tilt_and_gate(scene):
     got = build_vol_labels(scene)
     return got.state.get("skew", {}).get("put_tilt_vs_usual"), got.omitted.get("skew.put_tilt_vs_usual"), got.gates["put_tilt_vs_clock"]
 
-
-
-def shift_scene(scene_factory, tmp_path, slope_then: float, slope_now: float, drop: float):
-    now = at(12, 30, ss=15)
-    write_tape(tmp_path, DAY, [*smile_quotes(at(12, 0), slope_then), *smile_quotes(at(12, 30), slope_now)])
-    return replace(scene_factory(now, fall_then_now(now, drop), rows_before=[morning()]), state_dir=tmp_path)
 
 
 
