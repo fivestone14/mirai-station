@@ -10,10 +10,9 @@ from dataclasses import replace
 
 import pytest
 
-from conftest import at, bars_from_closes, make_row, prior_sessions
+from conftest import DAY, at, bars_from_closes, make_row, prior_sessions
 from spx_jev.cuts import (GAP_LARGE_SIGMA, GAP_RULE_SIGMA, GIVEBACK_THIRD, NOISE_EDGE_SIGMA, NOISE_LOOKBACK, OPEN_CONTESTED_CROSSES,
                           OPEN_MOVE_SIGMA, RANGE_TOP_SHARE)
-from spx_jev.labels import gap_open
 from spx_jev.labels.gap_open import build_gap_open_labels
 from spx_jev.labels.rulers import SigmaRuler
 
@@ -22,12 +21,12 @@ PRIOR_CLOSE = 7700.0
 OPENED = "measured at 09:35 because the 09:30 print uses stale prices"
 
 
-def scene(scene_factory, now, closes, spot=None, row_over=None, anchored=True, **kw):
+def scene(scene_factory, now, closes, spot=None, row_over=None, anchored=True, day=DAY, **kw):
     """A read at ``now`` over ``closes`` from 09:30 (bars after ``now`` are on file but unfinished)."""
     over = {"sigma": SIGMA, "prior_close": PRIOR_CLOSE, **(row_over or {})}
-    early = [make_row(at(9, 31), closes[0], **over)] if anchored else []
-    spot = spot if spot is not None else closes[min(len(closes), int((now - at(9, 30)).total_seconds() // 60)) - 1]
-    return scene_factory(now, bars_from_closes(closes), row_over=over, rows_before=early, spot=spot, **kw)
+    early = [make_row(at(9, 31, day), closes[0], **over)] if anchored else []
+    spot = spot if spot is not None else closes[min(len(closes), int((now - at(9, 30, day)).total_seconds() // 60)) - 1]
+    return scene_factory(now, bars_from_closes(closes, day=day), row_over=over, rows_before=early, spot=spot, **kw)
 
 
 def labels(sc):
@@ -122,7 +121,7 @@ def test_a_touch_in_a_bar_that_has_not_finished_does_not_count(scene_factory):
     got, _, _ = labels(scene(scene_factory, at(11, 0, ss=30), closes, spot=7720.0))
     assert "it has not touched yesterday's close" in got["gap.fill_progress"]
     got, _, _ = labels(scene(scene_factory, at(11, 1), closes, spot=7720.0))
-    assert "it first touched yesterday's close (within 0.02 sigma) 0 minutes ago" in got["gap.fill_progress"]
+    assert "it first touched yesterday's close (within 0.02 sigma) within the last minute" in got["gap.fill_progress"]
 
 
 # ---- gap.morning_vs_gap
@@ -153,7 +152,7 @@ def test_the_morning_counts_once_its_1129_bar_has_finished(scene_factory):
 
 # ---- gap.reach_distance
 
-def test_yesterdays_close_in_sigma_and_in_typical_hour_moves(scene_factory, monkeypatch):
+def test_yesterdays_close_in_sigma_and_in_typical_hour_moves(scene_factory):
     # flat 1-point bars: the tape unit is floored at 0.03 sigma, 2.4 points, so an hour's tape reach is 2.4 * sqrt(12);
     # the straddle left, 16.4 points over 240 minutes, reaches 16.4 / 0.68 * sqrt(60 / 240) in an hour
     closes = opening(7724.0, [7724.0] * 160)
@@ -161,8 +160,8 @@ def test_yesterdays_close_in_sigma_and_in_typical_hour_moves(scene_factory, monk
     reach = (2.4 * 12 ** 0.5 * 16.4 / 0.68 * 0.5) ** 0.5
     assert got["gap.reach_distance"] == f"yesterday's close is 0.30 sigma below price, {24.0 / reach:.1f} typical 60-minute moves away"
     assert f"{24.0 / reach:.1f}" == "2.4"
-    monkeypatch.setattr(gap_open.events, "tag", lambda now: {"soonest_min": 20})               # an event ahead: the tape alone
-    got, _, _ = labels(scene(scene_factory, at(12, 0), closes))
+    fomc = "2026-10-28"                                                                       # the Fed at 14:00: the tape alone
+    got, _, _ = labels(scene(scene_factory, at(12, 0, fomc), closes, day=fomc))
     assert got["gap.reach_distance"] == "yesterday's close is 0.30 sigma below price, 2.9 typical 60-minute moves away"
 
 
@@ -171,7 +170,7 @@ def test_the_reach_distance_needs_the_straddle_and_a_running_tape(scene_factory)
     _, omitted, _ = labels(scene(scene_factory, at(12, 0), closes, row_over={"range_ruler": {"em_open": 22.0}}))
     assert omitted["gap.reach_distance"] == "row carries no straddle left (range_ruler.em_points)"
     _, omitted, _ = labels(scene(scene_factory, at(12, 0), closes[:140], spot=7724.0))            # the last bar finished at 11:50
-    assert omitted["gap.reach_distance"] == "no tape unit: no bar finished in the last 5 minutes"
+    assert omitted["gap.reach_distance"] == "no tape unit this read: the bars have stopped"
 
 
 # ---- open.fresh_extreme
