@@ -1,5 +1,8 @@
 """The price family: where price is and how it has moved (price.*), and the momentum reads of the last
-half hour (momentum.*)."""
+half hour (momentum.*).
+
+The final question set's labels a family does not write yet are listed after its built ones; each one's sentence,
+how it is computed and its source are in spec/question_set.json ``labels``, and the registry omits it as not built."""
 from __future__ import annotations
 
 import statistics
@@ -14,7 +17,11 @@ from .words import pct, plural, sig, signed, third
 
 LABELS = ("price.recent_move", "price.day_range_position", "price.vs_vwap", "price.vs_prior_close", "price.minute_width",
           "price.vs_yesterday", "price.vs_day_before", "price.multi_day_position",
-          "momentum.rsi_1min", "momentum.rsi_5min", "momentum.pace", "momentum.closes", "momentum.pauses", "momentum.path_efficiency")
+          "momentum.rsi_1min", "momentum.rsi_5min", "momentum.pace", "momentum.closes", "momentum.pauses", "momentum.path_efficiency",
+          "price.afternoon_leg", "price.day_character", "price.day_move", "price.day_move_split", "price.hour_one_way", "price.move_shape",
+          "price.prior_close_push", "price.session_extreme_recent", "price.vwap_reach")
+GATES = ("prior_close_push_fade", "average_reach_30")
+DARK: dict[str, str] = {}
 
 
 

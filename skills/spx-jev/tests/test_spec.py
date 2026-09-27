@@ -10,6 +10,7 @@ import json
 import re
 from pathlib import Path
 
+from conftest import measured
 from spx_jev.labels.registry import build_labels
 
 SPEC = Path(__file__).resolve().parent.parent / "spec" / "labels.json"
@@ -22,7 +23,7 @@ def spec():
 
 def _produced(scene):
     labels = build_labels(scene)
-    state, omitted = labels.state, labels.omitted
+    state, omitted = labels.state, measured(labels.omitted)
     assert omitted == {}, omitted
     return {f"{g}.{k}" for g, labels in state.items() for k in labels}
 

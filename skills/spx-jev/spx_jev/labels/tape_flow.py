@@ -1,4 +1,8 @@
-"""The tape and flow family: what is trading in today's 0DTE book and who is taking which side (options.*)."""
+"""The tape and flow family: what is trading in today's 0DTE book and who is taking which side (options.*), and
+SPY's own tape and quote (volume.*, liquidity.*).
+
+The final question set's labels a family does not write yet are listed after its built ones; each one's sentence,
+how it is computed and its source are in spec/question_set.json ``labels``, and the registry omits it as not built."""
 from __future__ import annotations
 
 from ..cuts import BUSIEST_STRIKE_SHARE, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, MIN_RANK_SESSIONS, TURNOVER_HIGH, TURNOVER_LOW
@@ -8,7 +12,12 @@ from .measures import is_num
 from .ranks import rank_at_slot
 from .words import pct, signed
 
-LABELS = ("options.turnover", "options.call_put_split", "options.aggressor_side", "options.new_activity")
+LABELS = ("options.turnover", "options.call_put_split", "options.aggressor_side", "options.new_activity",
+          "options.big_prints_10", "options.call_put_shift_10m", "options.flow_lean_30", "options.premium_burst_5m",
+          "options.premium_pace_30", "options.quote_liquidity", "options.strike_defense", "volume.spy_last30_share",
+          "volume.spy_pace_30", "liquidity.spy_quote", "liquidity.spy_book_lean")
+GATES = ("opening_premium_burst",)
+DARK = {"liquidity.spy_book_lean": "the lob-flow collector saves no per-minute SPY bid and ask sizes or order-flow imbalance"}
 
 
 def build_tape_flow_labels(scene: Scene) -> LabelSet:

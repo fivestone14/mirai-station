@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import measured
 from spx_jev.ask import (DEFAULT_QUESTIONS, build_requests, confidence, constants_named, get_path, load_questions, paths_in, pick,
                          summarize)
 from spx_jev.cuts import QUESTION_CONSTANTS
@@ -145,7 +146,7 @@ def test_every_question_reads_only_labels_the_spec_knows():
 
 def test_every_live_question_is_asked_on_a_full_read(full_scene):
     labels = build_labels(full_scene)
-    state, omitted = labels.state, labels.omitted
+    state, omitted = labels.state, measured(labels.omitted)
     assert omitted == {}, omitted
     doc = load_questions(DEFAULT_QUESTIONS)
     reqs, skipped = build_requests(state, doc)

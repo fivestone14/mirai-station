@@ -11,6 +11,8 @@ from .measures import ONE_MINUTE, bar_time
 from .words import pct, plural
 
 LABELS = ("context.symbol", "context.units", "context.horizon", "context.session_progress", "context.time_since_last_move")
+GATES: tuple[str, ...] = ()
+DARK: dict[str, str] = {}
 
 UNITS = ("all distances are in sigma, today's expected move for the S&P 500 index; "
          "a plus sign means above price and a minus sign means below price. "

@@ -1,4 +1,5 @@
-"""What a label family hands back: its sentences, the ones it left out and why, and the figures behind some."""
+"""What a label family hands back: its sentences, the ones it left out and why, the figures behind some,
+and the sleep gates it decided."""
 from __future__ import annotations
 
 from typing import Any
@@ -9,13 +10,15 @@ class LabelSet:
 
     ``omitted`` maps a path to the reason it could not be written. ``figures`` maps a path to the figure
     behind its sentence (its kind, its number, its cut and the verdict it landed on) so the phone can draw
-    the fact rather than print it; JEV never sees a figure.
+    the fact rather than print it; JEV never sees a figure. ``gates`` maps a gated question's id (one whose
+    ``sleep_when`` a family judges) to None when it is awake this read, or to why it sleeps.
     """
 
     def __init__(self) -> None:
         self.state: dict[str, dict[str, Any]] = {}
         self.omitted: dict[str, str] = {}
         self.figures: dict[str, dict] = {}
+        self.gates: dict[str, str | None] = {}
 
     def put(self, path: str, sentence: str, *, figure: dict | None = None) -> None:
         group, key = path.split(".", 1)
@@ -26,6 +29,12 @@ class LabelSet:
     def omit(self, path: str, reason: str) -> None:
         self.omitted[path] = reason
 
+    def wake(self, question_id: str) -> None:
+        self.gates[question_id] = None
+
+    def sleep(self, question_id: str, reason: str) -> None:
+        self.gates[question_id] = reason
+
     def paths(self) -> set[str]:
         """Every label path this set wrote or omitted."""
         return {f"{g}.{k}" for g, labels in self.state.items() for k in labels} | set(self.omitted)
@@ -35,3 +44,4 @@ class LabelSet:
             self.state.setdefault(group, {}).update(labels)
         self.omitted.update(other.omitted)
         self.figures.update(other.figures)
+        self.gates.update(other.gates)

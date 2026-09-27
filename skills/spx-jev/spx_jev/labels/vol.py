@@ -1,5 +1,8 @@
 """The volatility family: implied volatility, realized against priced movement, the expected move and the
-VIX curve (iv.*)."""
+VIX curve (iv.*), and the VIX family, the straddle and the skew (vol.*, skew.*).
+
+The final question set's labels a family does not write yet are listed after its built ones; each one's sentence,
+how it is computed and its source are in spec/question_set.json ``labels``, and the registry omits it as not built."""
 from __future__ import annotations
 
 import math
@@ -12,7 +15,13 @@ from .label_set import LabelSet
 from .measures import ONE_MINUTE, bar_time, bars_finished_between, day_high_low, is_num
 from .words import pct, sig, signed
 
-LABELS = ("iv.trend_30min", "iv.vs_realized_30", "iv.expected_move_used", "iv.move_sides", "iv.term_structure")
+LABELS = ("iv.trend_30min", "iv.vs_realized_30", "iv.expected_move_used", "iv.move_sides", "iv.term_structure",
+          "vol.atm_iv_residual", "vol.front_fear_shift", "vol.realized_vs_clock", "vol.realized_vs_clock_rank", "vol.ruler_event_load",
+          "vol.straddle_reprice_30", "vol.straddle_vs_clock", "vol.stress_path", "vol.term_structure", "vol.vix_change_30",
+          "vol.vix_on_shock", "vol.vix_overnight_surprise", "vol.vix_since_1400", "vol.vix_vs_price", "vol.vvix_vs_vix",
+          "vol.vvix_with_move", "skew.put_tilt_vs_usual", "skew.shift_vs_price")
+GATES = ("put_tilt_vs_clock",)
+DARK: dict[str, str] = {}
 
 FULL_SESSION_MIN = 390          # a full session's minutes: sigma is a full day's expected move
 # Realized against priced movement over the last 30 minutes: the realized path from the 1-minute

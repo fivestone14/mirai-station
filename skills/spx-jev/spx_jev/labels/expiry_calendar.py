@@ -1,5 +1,8 @@
 """The expiry and calendar family: which book expires when and which book the weight sits in (expiry.*),
-from expiry.py."""
+from expiry.py, and the calendar around it (calendar.*).
+
+The final question set's labels a family does not write yet are listed after its built ones; each one's sentence,
+how it is computed and its source are in spec/question_set.json ``labels``, and the registry omits it as not built."""
 from __future__ import annotations
 
 from ..cuts import ZERO_DTE_LAST_HOUR_MIN
@@ -9,7 +12,11 @@ from .label_set import LabelSet
 from .measures import is_num
 from .words import pct, plural
 
-LABELS = ("expiry.settle_clock", "expiry.opex_today", "expiry.dated_weight", "expiry.today_vs_week")
+LABELS = ("expiry.settle_clock", "expiry.opex_today", "expiry.dated_weight", "expiry.today_vs_week",
+          "calendar.event_cycle", "calendar.expiry_phase", "calendar.month_turn", "expiry.next_book_magnet", "expiry.quarter_end_strikes")
+GATES: tuple[str, ...] = ()
+DARK = {"expiry.next_book_magnet": "the SPX scan writes no 1DTE slice, so tomorrow's book is not on the row",
+        "expiry.quarter_end_strikes": "the dated-book pull drops the expiring quarter-end band, so its strikes are not on the row"}
 
 
 def build_expiry_calendar_labels(scene: Scene) -> LabelSet:

@@ -67,6 +67,13 @@ def make_row(ts: datetime, spot: float, sigma: float = 75.0, **over) -> dict:
     return row
 
 
+def measured(omitted: dict[str, str]) -> dict[str, str]:
+    """The omissions of the labels that are built: without the labels no code writes yet and the dark ones,
+    which the registry omits on every read."""
+    from spx_jev.labels.registry import NOT_BUILT
+    return {k: v for k, v in omitted.items() if v != NOT_BUILT and not v.startswith("dark: ")}
+
+
 def context_line(ts: datetime, quotes: dict[str, float] | None = None, bars: dict[str, tuple[datetime, float]] | None = None) -> dict:
     """One market-context snapshot line as market_context.snapshot writes it."""
     return {"ts": ts.isoformat(timespec="seconds"),

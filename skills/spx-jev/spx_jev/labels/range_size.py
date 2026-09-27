@@ -1,5 +1,8 @@
 """The range family: how wide the day has been and where price sits in it (range.*), and on the opening
-lane the stretch since the lane's last read in tape units (tape.*)."""
+lane the stretch since the lane's last read in tape units (tape.*).
+
+The final question set's labels a family does not write yet are listed after its built ones; each one's sentence,
+how it is computed and its source are in spec/question_set.json ``labels``, and the registry omits it as not built."""
 from __future__ import annotations
 
 from datetime import timedelta
@@ -13,7 +16,10 @@ from .ranks import rank_at_slot
 from .words import plural, sig, third, units_of
 
 LABELS = ("range.box_status", "range.today_vs_normal", "range.prior_level_touches", "range.session_shape", "range.nearest_level",
-          "tape.move_since_read", "tape.range_since_read")
+          "tape.move_since_read", "tape.range_since_read",
+          "range.first_hour", "range.hour_vs_clock", "range.pace_vs_priced", "ruler.flat_band_reach", "tape.unit_vs_normal")
+GATES: tuple[str, ...] = ()
+DARK: dict[str, str] = {}
 
 # The opening box is the first 30 minutes; a break is past the move bar (measures.move_bar).
 OPENING_BOX_MIN = 30

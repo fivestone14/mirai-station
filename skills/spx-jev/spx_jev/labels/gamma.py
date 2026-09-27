@@ -1,4 +1,7 @@
-"""The gamma family: the dealers' options book against price, its walls, its weight and its ladder (gex.*)."""
+"""The gamma family: the dealers' options book against price, its walls, its weight and its ladder (gex.*).
+
+The final question set's labels a family does not write yet are listed after its built ones; each one's sentence,
+how it is computed and its source are in spec/question_set.json ``labels``, and the registry omits it as not built."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -11,7 +14,12 @@ from .measures import is_num, walls
 from .words import ordinal, pct, plural, sig
 
 LABELS = ("gex.weight_side", "gex.air_to_wall", "gex.wall_thickness", "gex.heaviest_strike_grip", "gex.delta_weight_side",
-          "gex.expiry_roll", "gex.ladder_state", "gex.wall_touch_volume")
+          "gex.expiry_roll", "gex.ladder_state", "gex.wall_touch_volume",
+          "gex.balance_vs_yesterday", "gex.book_balance", "gex.charm_wall_distance", "gex.cushion_if_moved", "gex.flip_distance",
+          "gex.magnet_distance", "gex.settle_pull", "gex.wall_box", "gex.walls_since_30min", "gex.weight_both_books")
+GATES = ("book_vs_pace", "settle_pull_side")
+DARK = {"gex.cushion_if_moved": "the row carries no cushion: sliding the gamma flip by half a sigma needs the full options chain, "
+                                "which the scan has and the diary does not write (gex_views.cushion_up and cushion_down)"}
 
 # A wall touch's SPY volume (gex.wall_touch_volume) is described while its verdict is this recent.
 WALL_TOUCH_RECENT_MIN = 30
