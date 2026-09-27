@@ -43,7 +43,7 @@ runtime/viewstation/static/m/*.apk
 # repo a `git commit -a` would publish today's.
 skills/mirai-left-eye/state.json
 
-# Secrets kept out of git: the JEV key lives in skills/sndk-jev/.env (see .env.example)
+# Secrets kept out of git: the JEV key lives in skills/sndk-jev/.env and skills/spx-jev/.env (see .env.example)
 .env
 .env.*
 !.env.example

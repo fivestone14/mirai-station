@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mirai-station.spx-jev</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-spx-jev.sh</string>
+  </array>
+
+  <!-- The SPX JEV decision service: a separate job from the left-eye scanner, never on its path.
+       Fires at two minutes past each half-hour mark of the session, 09:32 to 16:02 ET (14 entries), so
+       JEV reads once per 30-minute mark on the newest SPX diary row; the runner waits until that row is
+       at least 20 s old, and its market gate skips the 16:02 fire on a normal day. Reads the diary, the
+       bars and the market context; writes only state/spx_jev/. The key is read by the service itself
+       from the git-ignored skills/spx-jev/.env, never from this file. Staged, not installed: copy to
+       runtime/launchd/ and name it in install-launchd.sh to hire it.
+       NOTE: launchd's StartCalendarInterval uses SYSTEM-LOCAL time and ignores the
+       TZ env var below. This box runs on Pacific, so Hour=6 Minute=32 == 06:32 PT == 09:32 ET
+       year-round (PT is ET minus 3h through DST). -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>32</integer></dict>
+    <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>2</integer></dict>
+    <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>32</integer></dict>
+    <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>2</integer></dict>
+    <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>32</integer></dict>
+    <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>2</integer></dict>
+    <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>32</integer></dict>
+    <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>2</integer></dict>
+    <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>32</integer></dict>
+    <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>2</integer></dict>
+    <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>32</integer></dict>
+    <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>2</integer></dict>
+    <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>32</integer></dict>
+    <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>2</integer></dict>
+  </array>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/mirai-station.spx-jev.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/mirai-station.spx-jev.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key>
+    <string>America/New_York</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mirai-station.spx-jev-bars</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-spx-jev-bars.sh</string>
+  </array>
+
+  <!-- The SPX live-bars sidecar: every 60 s during market hours (and twelve minutes after the close) fetch
+       today's 1-min SPX session in one call and append the finished minutes not yet on disk to
+       state/spx_jev/bars/{date}.jsonl, so the opening lane and the grader have today's bars before the
+       16:15 ET session file exists. The runner's market gate keeps it to market hours. launchd will not
+       run two copies at once. Staged, not installed. -->
+  <key>StartInterval</key>
+  <integer>60</integer>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/mirai-station.spx-jev-bars.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/mirai-station.spx-jev-bars.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key>
+    <string>America/New_York</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>
