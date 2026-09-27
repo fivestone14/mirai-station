@@ -158,12 +158,28 @@ def _vs_vwap(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
         line = "past" if abs(d) >= VWAP_STRETCH_SIGMA else "short of"
         text = (f"price is {sig(abs(d))} {verdict} the day's volume-weighted average price, more than the {MOVE_RULE_SIGMA} sigma move rule, "
                 f"{line} the {VWAP_STRETCH_SIGMA} sigma stretch line")
-    touched = [b for b in scene.bars if float(b["low"]) <= vwap <= float(b["high"])]
-    if touched:
-        text += f"; it last traded at the average {minutes_ago(scene.now, bar_time(touched[-1]) + ONE_MINUTE)}"
+    touched = _last_at_average(scene)
+    if touched is not None:
+        text += f"; it last traded at the average {minutes_ago(scene.now, touched)}"
     else:
         text += "; it has not traded at the average today"
     ls.put("price.vs_vwap", ruled(anchor, text), figure=fig)
+
+
+def _last_at_average(scene: Scene) -> datetime | None:
+    """When the newest finished bar that spanned the day's average finished. The average drifts through the
+    day, so each bar is judged against the one the diary carried when it finished (the newest row stamped by
+    then), never against this row's."""
+    known = [(datetime.fromisoformat(r["ts"]), float(r["vwap"])) for r in scene.rows_today if is_num(r.get("vwap")) and r["vwap"] > 0]
+    last, i, vwap = None, 0, None
+    for b in scene.bars:
+        done = bar_time(b) + ONE_MINUTE
+        while i < len(known) and known[i][0] <= done:
+            vwap = known[i][1]
+            i += 1
+        if vwap is not None and float(b["low"]) <= vwap <= float(b["high"]):
+            last = done
+    return last
 
 
 def _vs_prior_close(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:

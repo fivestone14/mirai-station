@@ -115,8 +115,10 @@ def test_the_range_position_needs_a_range(scene_factory):
 # ---- price.vs_vwap
 
 def _vwap_scene(scene_factory, vwap):
-    """A read at 11:00 that stepped from 7700 to 7715 at 10:30 (the 10:30 bar's low still reaches 7699.5)."""
-    return _move_scene(scene_factory, 15.0, row_over={"vwap": vwap})
+    """A read at 11:00 that stepped from 7700 to 7715 at 10:30 (the 10:30 bar's low still reaches 7699.5), with the
+    day's average at ``vwap`` since the morning's row."""
+    return scene_factory(at(11, 0, ss=5), bars_from_closes([7700.0] * 60 + [7715.0] * 30), row_over={"vwap": vwap},
+                         rows_before=[make_row(at(9, 31), 7700.0, vwap=vwap)])
 
 
 @pytest.mark.parametrize("vwap, sentence", [
@@ -134,6 +136,17 @@ def _vwap_scene(scene_factory, vwap):
 def test_price_against_the_days_average(scene_factory, vwap, sentence):
     state, _, _ = _labels(_vwap_scene(scene_factory, vwap))
     assert state["price.vs_vwap"] == sentence
+
+
+def test_each_bar_is_judged_against_the_average_known_when_it_finished(scene_factory):
+    """Price stepped 7700, 7720, 7740 at 10:00 and 10:30 while the average drifted up behind it to 7720: the bars
+    at 7720 sat on today's average, but the average was 7700 or 7706 then, so the last touch is the 10:00 bar."""
+    rows = [make_row(at(9, 31), 7700.0, vwap=7700.0), make_row(at(10, 5), 7720.0, vwap=7706.0), make_row(at(10, 35), 7740.0, vwap=7712.0)]
+    scene = scene_factory(at(11, 0, ss=5), bars_from_closes([7700.0] * 30 + [7720.0] * 30 + [7740.0] * 30), row_over={"vwap": 7720.0},
+                          rows_before=rows)
+    assert _labels(scene)[0]["price.vs_vwap"] == ("price is 0.27 sigma above the day's volume-weighted average price, more than the 0.09 "
+                                                  "sigma move rule, past the 0.25 sigma stretch line; it last traded at the average 59 "
+                                                  "minutes ago")
 
 
 def test_no_vwap_on_the_row_omits_the_average_labels_and_sleeps_the_reach_question(scene_factory):
