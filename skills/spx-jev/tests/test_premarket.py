@@ -209,6 +209,18 @@ def test_a_read_without_a_ruler_writes_why_builds_nothing_and_asks_nothing(tmp_p
     assert c["ruler"] == read["ruler"] and c["unsent_reason"].startswith("nothing to ask at the 09:28 ET read: no pre-open ruler")
 
 
+def test_the_cards_freshness_is_how_old_the_futures_were_at_the_read(tmp_path, jev, monkeypatch):
+    state = _station(tmp_path / "fresh")
+    c = run_checkpoint(state, PREMARKET.folder(state), DOC, False, at(9, 28), "09:28", save=False)
+    assert c["freshness"] == {"age_s": 0, "stale": False, "spot_from": "futures", "note": "built on /ES 0 minutes old"}
+    def refused(*a, **kw):
+        raise RuntimeError("Schwab refused")
+    monkeypatch.setattr(overnight, "save_nights", refused)
+    state = _station(tmp_path / "stale", now=at(9, 0))                  # the newest /ES bar is 28 minutes old
+    c = run_checkpoint(state, PREMARKET.folder(state), DOC, False, at(9, 28), "09:28")
+    assert c["freshness"] == {"age_s": 28 * 60, "stale": True, "spot_from": "prior_close",
+                              "note": "/ES's newest bar is 28 minutes old at the read; the night's save failed: RuntimeError: Schwab refused"}
+
 def test_every_time_on_the_card_is_a_full_timestamp(tmp_path, jev):
     state = _station(tmp_path)
     c = run_checkpoint(state, PREMARKET.folder(state), DOC, True, at(9, 28), "09:28", save=False)

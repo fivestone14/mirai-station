@@ -368,6 +368,29 @@ def story_so_far(out_dir: Path, day: str) -> list[dict]:
     return out
 
 
+def freshness(scene: Scene | None, record: dict) -> dict:
+    """How old the night's /ES was at the read and what the spot stood on, as the live card's freshness says
+    how old its row was: stale when /ES has no bar within READ_STALE_MIN minutes of the read, or the spot fell
+    back to SPX's prior close (futures_spot). The note names a failed save of the night."""
+    read_at = parse_ts(record["row_ts"])
+    last = (record["night"]["seen"].get(FUTURES) or {}).get("last")
+    age_s = round((read_at - parse_ts(last)).total_seconds()) if last else None
+    spot_from = scene.row["spot_from"] if scene else None
+    failed = (record["night"]["saved"] or {}).get("failed") or []
+    if age_s is None:
+        note = f"no {FUTURES} bar on file by the read"
+    elif age_s > READ_STALE_MIN * 60:
+        note = f"{FUTURES}'s newest bar is {age_s // 60} minutes old at the read"
+    elif spot_from == "prior_close":
+        note = f"the spot is SPX's prior close: {FUTURES} has no bar at the close or rolled since"
+    else:
+        note = f"built on {FUTURES} {age_s // 60} minutes old"
+    stale = age_s is None or age_s > READ_STALE_MIN * 60 or spot_from == "prior_close"
+    if stale and failed:
+        note += f"; the night's save failed: {', '.join(failed)}"
+    return {"age_s": age_s, "stale": stale, "spot_from": spot_from, "note": note}
+
+
 def _fact(record: dict, path: str) -> dict | None:
     """A label as a fact row's body: its verdict in a word, its sentence in plain words, its figure to draw."""
     label = get_path(record["state"], path)
@@ -411,7 +434,6 @@ def card(scene: Scene | None, record: dict, doc: dict, out_dir: Path, unsent_rea
                         record["sent"], record["send_seconds"], unsent_reason=unsent_reason, lane=PREMARKET)
     start = market_at(day, SETTLED_OPEN_BAR)
     call = newest_call(out_dir, day.isoformat())
-    age_s = round((now - read_at.astimezone(timezone.utc)).total_seconds())
     return {
         **{k: live[k] for k in LIVE_CARD_KEYS},
         "symbol": "SPX",
@@ -420,7 +442,7 @@ def card(scene: Scene | None, record: dict, doc: dict, out_dir: Path, unsent_rea
         "generated_at": now.isoformat(timespec="seconds"),
         "row_ts": record["row_ts"],
         "checkpoint": market_at(day, record["checkpoint"]).isoformat(),
-        "freshness": {"age_s": age_s, "stale": age_s > service.STALE_ROW_S},
+        "freshness": freshness(scene, record),
         "sent": record["sent"],
         **({} if record["sent"] else {"unsent_reason": unsent_reason}),
         "model": live["model"] or (call or {}).get("model"),
