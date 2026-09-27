@@ -1,19 +1,27 @@
-"""The range family: how wide the day has been and where price sits in it (range.*), and on the opening
-lane the stretch since the lane's last read in tape units (tape.*).
+"""The range family: how wide the day has been and where price sits in it (range.*), how far a typical
+half hour reaches now (ruler.*), the tape unit against the same minute of the prior sessions and, on the
+opening lane, the stretch since the lane's last read in tape units (tape.*).
 
-The final question set's labels a family does not write yet are listed after its built ones; each one's sentence,
-how it is computed and its source are in spec/question_set.json ``labels``, and the registry omits it as not built."""
+The final question set's labels are measured on the morning anchor (rulers.sigma_anchor); the ones built
+before it keep the row's sigma. Each set label's sentence, how it is computed and its source are in
+spec/question_set.json ``labels``."""
 from __future__ import annotations
 
-from datetime import timedelta
+import math
+import statistics
+from datetime import datetime, timedelta
 
-from ..cuts import MIN_RANK_SESSIONS, MOVE_RULE_SIGMA, SHAPE_CUT_SIGMA, TAPE_BIG_UNITS, TAPE_FLAT_UNITS, WALL_NEAR_SIGMA
+from ..cuts import (FLAT_REACH_NARROW_30, FLAT_REACH_WIDE_30, IB_BREAK_SIGMA, IB_EXTEND_SIGMA, MIN_RANK_SESSIONS, MOVE_RULE_SIGMA,
+                    NEXT_30_FLAT_BAND_SIGMA, ONE_RATIO, RANGE_PACE_SLEEPY, RANGE_PACE_WILD, RULER_FLOOR_SIGMA, SHAPE_CUT_SIGMA,
+                    TAPE_BIG_UNITS, TAPE_FLAT_UNITS, THIRD_HI, WALL_NEAR_SIGMA, WINDOW_30_MIN, WINDOW_60_MIN)
+from ..events import WORDS as EVENT_KINDS, starts_on
 from ..state_builder import Scene
 from .label_set import LabelSet
-from .measures import (MIN_RANGE_SESSIONS, RANGE_PRIOR_SESSIONS, bar_time, bars_between, bars_finished_between, close_at,
-                       day_high_low, high_low_close, is_num, minute_of_day, move_bar, stretch, stretch_range, walls)
-from .ranks import rank_at_slot
-from .words import plural, sig, third, units_of
+from .measures import (ET, MIN_RANGE_SESSIONS, ONE_MINUTE, RANGE_PRIOR_SESSIONS, bar_time, bars_between, bars_finished_between,
+                       close_at, day_high_low, high_low_close, is_num, minute_of_day, move_bar, stretch, stretch_range, walls)
+from .ranks import rank_against, rank_at_slot, same_clock_values
+from .rulers import RULER_HOLD_UNTIL, RULER_SLICE_MIN, RULER_SLICES, SigmaRuler, ruler, sigma_anchor, slice_range, straddle_left
+from .words import pct, plural, sig, third, units_of
 
 LABELS = ("range.box_status", "range.today_vs_normal", "range.prior_level_touches", "range.session_shape", "range.nearest_level",
           "tape.move_since_read", "tape.range_since_read",
@@ -23,6 +31,15 @@ DARK: dict[str, str] = {}
 
 # The opening box is the first 30 minutes; a break is past the move bar (measures.move_bar).
 OPENING_BOX_MIN = 30
+# The set's labels measured on the morning anchor, omitted together when the day has none.
+ANCHORED = ("range.first_hour", "range.hour_vs_clock", "range.pace_vs_priced", "ruler.flat_band_reach")
+NO_ANCHOR = "no morning sigma ruler: no row by 09:40, no live sigma and no VIX at the settled open"
+FULL_SESSION_MIN = 390          # sigma is a full session's expected move
+FIRST_HOUR_MIN = 60
+# An hour's range counts once two thirds of its minutes are on file, as a 30-minute window needs 20 bars.
+HOUR_MIN_BARS = 40
+# Today's straddle left prices this share of a one-sigma move for the rest of the day (the set's reach formula).
+STRADDLE_PER_SIGMA = 0.68
 
 
 def build_range_size_labels(scene: Scene) -> LabelSet:
@@ -33,7 +50,56 @@ def build_range_size_labels(scene: Scene) -> LabelSet:
     _session_shape(scene, ls)
     _nearest_level(scene, ls)
     _since_last_read(scene, ls)
+    anchor = sigma_anchor(scene)
+    _unit_vs_normal(scene, anchor, ls)
+    if anchor is None:
+        for path in ANCHORED:
+            ls.omit(path, NO_ANCHOR)
+        return ls
+    _first_hour(scene, anchor, ls)
+    _hour_vs_clock(scene, anchor, ls)
+    _pace_vs_priced(scene, anchor, ls)
+    _flat_band_reach(scene, anchor, ls)
     return ls
+
+
+def ruled(anchor: SigmaRuler, sentence: str) -> str:
+    """A sentence measured on an estimated morning ruler says so."""
+    return f"{sentence} (ruler estimated)" if anchor.estimated else sentence
+
+
+def minutes_ago(now: datetime, then: datetime) -> str:
+    """How long before ``now`` a thing finished, in whole minutes."""
+    minutes = int((now - then).total_seconds() // 60)
+    return "within the last minute" if minutes == 0 else f"{plural(minutes, 'minute')} ago"
+
+
+def typical_move(scene: Scene, anchor: SigmaRuler, minutes: int) -> tuple[float | None, str]:
+    """How far SPX typically moves over the next ``minutes`` now, in points, and what the figure combines;
+    None with the reason when it cannot be measured. The tape's reach is the tape unit grown by the square
+    root of time; the straddle's is what today's straddle still prices, as a one-sigma move, spread over the
+    minutes left. The two combine as their geometric mean, and the tape stands alone while a scheduled
+    event is still ahead today, since the straddle prices the event rather than an ordinary half hour."""
+    unit = ruler(scene.bars, anchor.points, scene.now)
+    if unit is None:
+        return None, "no tape unit this read: the bars have stopped"
+    tape = float(unit["unit_points"]) * math.sqrt(minutes / RULER_SLICE_MIN)
+    if _event_ahead(scene):
+        return tape, "the tape alone, with a scheduled event still ahead today"
+    em = straddle_left(scene)
+    if em is None:
+        return None, "row carries no straddle left (range_ruler.em_points)"
+    left = scene.minutes_to_close
+    if left <= 0:
+        return None, "the session has closed"
+    straddle = em / STRADDLE_PER_SIGMA * math.sqrt(min(minutes, left) / left)
+    return math.sqrt(tape * straddle), "tape and straddle combined"
+
+
+def _event_ahead(scene: Scene) -> bool:
+    """A tier-1 event starting after now and before today's close; one at the close itself is not ahead of the straddle."""
+    day = scene.now.astimezone(ET).date()
+    return any(scene.now < start < scene.session_close for kind in EVENT_KINDS if (start := starts_on(day, kind)) is not None)
 
 
 def _box_status(scene: Scene, ls: LabelSet) -> None:
@@ -231,3 +297,137 @@ def _since_last_read(scene: Scene, ls: LabelSet) -> None:
         return
     ls.put("tape.range_since_read", f"the range {lead}, is {value:.1f} points, {units_of(value / u, u)}, "
                                     f"in the {rank['band']} for this minute, higher than {rank['higher_than']} of {rank['of']} prior sessions")
+
+
+def _first_hour(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
+    """Where price is against the first hour's range, then what the bars since did with its edges: a break is
+    a bar more than the break buffer past an edge, its reach the furthest any bar went past it."""
+    open_t, a = scene.session_open, anchor.points
+    end = open_t + timedelta(minutes=FIRST_HOUR_MIN)
+    first = bars_between(scene.bars, open_t, end)
+    if len(first) < FIRST_HOUR_MIN:
+        ls.omit("range.first_hour", f"needs the first hour's {FIRST_HOUR_MIN} finished bars, have {len(first)}")
+        return
+    hi, lo = max(float(b["high"]) for b in first), min(float(b["low"]) for b in first)
+    later = [b for b in scene.bars if bar_time(b) >= end]
+    buffer = IB_BREAK_SIGMA * a
+    above = [b for b in later if float(b["high"]) > hi + buffer]
+    below = [b for b in later if float(b["low"]) < lo - buffer]
+    spot = scene.spot
+    if spot > hi:
+        where = f"price is above the first hour's high, {sig((spot - hi) / a)} beyond it"
+    elif spot < lo:
+        where = f"price is below the first hour's low, {sig((lo - spot) / a)} beyond it"
+    else:
+        where = f"price is {'back ' if above or below else ''}inside the first hour's range"
+    since = f"since {end.astimezone(ET):%H:%M}"
+
+    def broke(breaks: list[dict], edge: str, reach: float) -> str:
+        line = "at or past" if reach >= IB_EXTEND_SIGMA else "short of"
+        return (f"{edge} {minutes_ago(scene.now, bar_time(breaks[0]) + ONE_MINUTE)}, reached {sig(reach)} beyond it, "
+                f"{line} the {IB_EXTEND_SIGMA} sigma extension line")
+
+    reach_up = (max(float(b["high"]) for b in above) - hi) / a if above else 0.0
+    reach_dn = (lo - min(float(b["low"]) for b in below)) / a if below else 0.0
+    if above and below:
+        history = f"{since} price broke both edges: {broke(above, 'above its high', reach_up)}; and {broke(below, 'below its low', reach_dn)}"
+    elif above:
+        history = f"{since} price broke {broke(above, 'above its high', reach_up)}, and never broke its low"
+    elif below:
+        history = f"{since} price broke {broke(below, 'below its low', reach_dn)}, and never broke its high"
+    else:
+        history = f"{since} no bar has gone more than the {IB_BREAK_SIGMA} sigma break buffer past either edge"
+    ls.put("range.first_hour", ruled(anchor, f"{where}; the first hour spanned {sig((hi - lo) / a)}; {history}"))
+
+
+def _hour_range(bars: list[dict], then: datetime, sigma: float | None) -> float | None:
+    """The high-low range of the hour to ``then``, in sigma; None short of HOUR_MIN_BARS bars or without a ruler."""
+    win = bars_finished_between(bars, then - timedelta(minutes=WINDOW_60_MIN), then)
+    return stretch_range(win) / sigma if sigma and len(win) >= HOUR_MIN_BARS else None
+
+
+def _hour_vs_clock(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
+    if scene.minutes_since_open < WINDOW_60_MIN:
+        ls.omit("range.hour_vs_clock", f"needs {WINDOW_60_MIN} minutes of session")
+        return
+    value = _hour_range(scene.bars, scene.now, anchor.points)
+    if value is None:
+        ls.omit("range.hour_vs_clock", f"needs {HOUR_MIN_BARS} finished bars in the last {WINDOW_60_MIN} minutes")
+        return
+    base = same_clock_values(scene, _hour_range)
+    rank = rank_against(value, base)
+    if rank is None:
+        ls.omit("range.hour_vs_clock", f"needs {MIN_RANK_SESSIONS} prior sessions with a morning ruler at this minute, have {len(base)}")
+        return
+    line = "past" if rank.share >= THIRD_HI else "short of"
+    ls.put("range.hour_vs_clock", ruled(anchor, f"the last hour's high-low range is {sig(value)}, wider than {rank.higher_than} of the last "
+                                                f"{rank.of} sessions at this time of day ({pct(rank.share)}), {line} the {pct(THIRD_HI)} wide line"))
+
+
+def _pace_vs_priced(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
+    """Today's range against a one-sigma move scaled to the minutes since the open by the square root of time."""
+    if not scene.bars:
+        ls.omit("range.pace_vs_priced", "no finished bars yet")
+        return
+    minutes = min(scene.minutes_since_open, FULL_SESSION_MIN)
+    hi, lo = day_high_low(scene.bars, scene.spot)
+    ratio = (hi - lo) / (anchor.points * math.sqrt(minutes / FULL_SESSION_MIN))
+    if ratio < RANGE_PACE_SLEEPY:
+        band = f"under the line, below the {RANGE_PACE_SLEEPY:g} under line"
+    elif ratio < ONE_RATIO:
+        band = f"near the line, between the {RANGE_PACE_SLEEPY:g} under line and {ONE_RATIO:g}"
+    elif ratio < RANGE_PACE_WILD:
+        band = f"over the line, between {ONE_RATIO:g} and the {RANGE_PACE_WILD:g} far-over line"
+    else:
+        band = f"far over the line, past the {RANGE_PACE_WILD:g} far-over line"
+    ls.put("range.pace_vs_priced", ruled(anchor, f"today's range so far is {ratio:.2f} of a one-sigma move for the {int(minutes)} minutes "
+                                                 f"since the open: {band}"))
+
+
+def _flat_band_reach(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
+    reach, how = typical_move(scene, anchor, WINDOW_30_MIN)
+    if reach is None:
+        ls.omit("ruler.flat_band_reach", how)
+        return
+    typical = reach / anchor.points
+    cover = NEXT_30_FLAT_BAND_SIGMA / typical
+    if cover < FLAT_REACH_NARROW_30:
+        band = f"under the {FLAT_REACH_NARROW_30:.2f} narrow line"
+    elif cover > FLAT_REACH_WIDE_30:
+        band = f"over the {FLAT_REACH_WIDE_30:.2f} wide line"
+    else:
+        band = f"between the {FLAT_REACH_NARROW_30:.2f} narrow line and the {FLAT_REACH_WIDE_30:.2f} wide line"
+    ls.put("ruler.flat_band_reach", ruled(anchor, f"the next-30-minute flat band is {sig(NEXT_30_FLAT_BAND_SIGMA)}; a typical 30-minute move "
+                                                  f"now ({how}) is {sig(typical)}, so the band covers {cover:.2f} of it, {band}"))
+
+
+def _unit_vs_normal(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None:
+    """The tape unit in sigma against the same three slices on each prior session, in that session's sigma.
+    Written only on the bar clock, as the other tape labels are: the opening lane is the one that reads it."""
+    if not scene.bar_clock:
+        return
+    if anchor is None:
+        ls.omit("tape.unit_vs_normal", NO_ANCHOR)
+        return
+    unit = ruler(scene.bars, anchor.points, scene.now)
+    if unit is None:
+        ls.omit("tape.unit_vs_normal", "no tape unit this read: the bars have stopped")
+        return
+    if unit["source"] == "held":
+        ls.omit("tape.unit_vs_normal", f"the tape unit is held until {RULER_HOLD_UNTIL:%H:%M}, when three 5-minute slices first exist")
+        return
+
+    def unit_sigma(bars: list[dict], then: datetime, sigma: float | None) -> float | None:
+        ranges = [slice_range(bars, minute_of_day(then) - RULER_SLICE_MIN * k) for k in range(RULER_SLICES)]
+        return statistics.median(ranges) / sigma if sigma and all(r is not None for r in ranges) else None
+
+    base = same_clock_values(scene, unit_sigma)
+    value = float(unit["unit_points"]) / anchor.points
+    rank = rank_against(value, base)
+    if rank is None:
+        ls.omit("tape.unit_vs_normal", f"needs {MIN_RANK_SESSIONS} prior sessions with a morning ruler at this minute, have {len(base)}")
+        return
+    floor = f", at its {RULER_FLOOR_SIGMA} sigma floor" if unit["source"] == "floor" else ""
+    wider = f"all {rank.of}" if rank.higher_than == rank.of else str(rank.higher_than)
+    ls.put("tape.unit_vs_normal", ruled(anchor, f"the tape unit (the middle of the last three 5-minute ranges) is {sig(value)}{floor}, wider than "
+                                                f"{wider} of the last {rank.of} sessions at {scene.now.astimezone(ET):%H:%M}, in the {third(rank.share)} third"))
