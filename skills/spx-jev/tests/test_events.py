@@ -74,7 +74,8 @@ def test_the_shipped_calendar_reaches_the_year_end_with_each_tier_on_its_clock()
 
 
 def test_the_releases_before_the_open_reach_back_to_august_each_from_its_source():
-    """The premarket lane's report window (story.release_minute) reads these rows on any day, so August is listed too."""
+    """August is listed ahead of covers_from: story.release_minute reads these rows on any day, while a label that asks
+    events.uncovered first sees them only from covers_from."""
     events._load.cache_clear()
     doc = json.loads(events.CALENDAR.read_text(encoding="utf-8"))
     rows = [e for e in doc["events"] if e["tier"] == events.PRE_OPEN]

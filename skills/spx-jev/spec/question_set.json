@@ -8578,7 +8578,7 @@
        "name": "overnight.gap_origin",
        "example": "futures are 0.44 sigma above their 16:00 price, top third; against the same stretch on the last 20 nights the Europe morning moved most unusually, larger than 19 of 20, top third; the report window was quiet: made in Europe",
        "computed_how": "each stretch of the night (story.py: after_close, asia, europe_open, europe_morning, pre_report, report_window, last_stretch; an unfinished one cut at the read's clock) measured on /ES (night_ranks.window_move) and ranked by |move| in percent against the same stretch on up to the last {night_rank_count} nights (night_ranks.prior_window_nights); the stretch ranked most unusual names the option: after_close or asia made_early, europe_open or europe_morning made_in_europe, report_window made_at_release on a day with a report before the open, pre_report or last_stretch made_late (and report_window on a day with no report); a stretch across a roll or without its bars is left out",
-       "source": "the overnight store (state/spx_jev/overnight/{day}.jsonl): Schwab /ES extended-hours 1- and 5-minute bars as the read saw them, contract stamped; calendar pre_open rows (from 2026-08-01) for the release minute",
+       "source": "the overnight store (state/spx_jev/overnight/{day}.jsonl): Schwab /ES extended-hours 1- and 5-minute bars as the read saw them, contract stamped; calendar pre_open rows (listed from 2026-08-01, read only on a day the calendar covers: from covers_from, 2026-09-01) for the release minute",
        "availability": "cheap_add",
        "label_built": false,
        "needs_engine_edit": false
@@ -8716,7 +8716,7 @@
        "name": "overnight.release_reaction",
        "example": "the 08:30 jobs report moved futures up 0.22 sigma of the pre-open ruler by 08:45, larger than 17 of the last 20 mornings' moves in that window, top third; since then they have given back 60% of it, past the half line",
        "computed_how": "/ES from the release minute (story.release_minute: the first pre_open calendar row after 08:00 and before 08:45) to 08:45, ranked by |move| in percent against the same window on the last {night_rank_count} days, report or not (night_ranks.prior_window_nights), the bottom third shrugged; then 08:45 to the read against that reaction, judged against the {gap_half_share} half line; in the pre-open ruler; a window across a roll is left out. Asked on every report day, claims-only mornings included",
-       "source": "the overnight store's /ES bars + calendar pre_open rows (from 2026-08-01)",
+       "source": "the overnight store's /ES bars + calendar pre_open rows (listed from 2026-08-01, read only on a day the calendar covers: from covers_from, 2026-09-01)",
        "availability": "cheap_add",
        "label_built": false,
        "needs_engine_edit": false
@@ -8840,7 +8840,7 @@
        "name": "premarket.release_vs_night",
        "example": "futures are now 0.08 sigma below their 16:00 price; before the 08:30 jobs report they were 0.23 above, top third; the report's first 15 minutes fell 0.31, higher than 18 of the last 20 days in that window, and carried them across the 16:00 price",
        "computed_how": "the net move from futures' 16:00 price at the release minute (story.release_minute) and at the report window's end (08:45); the report window's move ranked against the same window on all of the last {night_rank_count} days, report or not; the cross tested at 08:45; in the pre-open ruler",
-       "source": "the overnight store's /ES bars + calendar pre_open rows (from 2026-08-01)",
+       "source": "the overnight store's /ES bars + calendar pre_open rows (listed from 2026-08-01, read only on a day the calendar covers: from covers_from, 2026-09-01)",
        "availability": "cheap_add",
        "label_built": false,
        "needs_engine_edit": false
@@ -10498,7 +10498,7 @@
    "name": "overnight.gap_origin",
    "example": "futures are 0.44 sigma above their 16:00 price, top third; against the same stretch on the last 20 nights the Europe morning moved most unusually, larger than 19 of 20, top third; the report window was quiet: made in Europe",
    "computed_how": "each stretch of the night (story.py: after_close, asia, europe_open, europe_morning, pre_report, report_window, last_stretch; an unfinished one cut at the read's clock) measured on /ES (night_ranks.window_move) and ranked by |move| in percent against the same stretch on up to the last {night_rank_count} nights (night_ranks.prior_window_nights); the stretch ranked most unusual names the option: after_close or asia made_early, europe_open or europe_morning made_in_europe, report_window made_at_release on a day with a report before the open, pre_report or last_stretch made_late (and report_window on a day with no report); a stretch across a roll or without its bars is left out",
-   "source": "the overnight store (state/spx_jev/overnight/{day}.jsonl): Schwab /ES extended-hours 1- and 5-minute bars as the read saw them, contract stamped; calendar pre_open rows (from 2026-08-01) for the release minute",
+   "source": "the overnight store (state/spx_jev/overnight/{day}.jsonl): Schwab /ES extended-hours 1- and 5-minute bars as the read saw them, contract stamped; calendar pre_open rows (listed from 2026-08-01, read only on a day the calendar covers: from covers_from, 2026-09-01) for the release minute",
    "availability": "cheap_add",
    "label_built": false,
    "needs_engine_edit": false
@@ -10534,7 +10534,7 @@
    "name": "overnight.release_reaction",
    "example": "the 08:30 jobs report moved futures up 0.22 sigma of the pre-open ruler by 08:45, larger than 17 of the last 20 mornings' moves in that window, top third; since then they have given back 60% of it, past the half line",
    "computed_how": "/ES from the release minute (story.release_minute: the first pre_open calendar row after 08:00 and before 08:45) to 08:45, ranked by |move| in percent against the same window on the last {night_rank_count} days, report or not (night_ranks.prior_window_nights), the bottom third shrugged; then 08:45 to the read against that reaction, judged against the {gap_half_share} half line; in the pre-open ruler; a window across a roll is left out. Asked on every report day, claims-only mornings included",
-   "source": "the overnight store's /ES bars + calendar pre_open rows (from 2026-08-01)",
+   "source": "the overnight store's /ES bars + calendar pre_open rows (listed from 2026-08-01, read only on a day the calendar covers: from covers_from, 2026-09-01)",
    "availability": "cheap_add",
    "label_built": false,
    "needs_engine_edit": false
@@ -11002,7 +11002,7 @@
    "name": "premarket.release_vs_night",
    "example": "futures are now 0.08 sigma below their 16:00 price; before the 08:30 jobs report they were 0.23 above, top third; the report's first 15 minutes fell 0.31, higher than 18 of the last 20 days in that window, and carried them across the 16:00 price",
    "computed_how": "the net move from futures' 16:00 price at the release minute (story.release_minute) and at the report window's end (08:45); the report window's move ranked against the same window on all of the last {night_rank_count} days, report or not; the cross tested at 08:45; in the pre-open ruler",
-   "source": "the overnight store's /ES bars + calendar pre_open rows (from 2026-08-01)",
+   "source": "the overnight store's /ES bars + calendar pre_open rows (listed from 2026-08-01, read only on a day the calendar covers: from covers_from, 2026-09-01)",
    "availability": "cheap_add",
    "label_built": false,
    "needs_engine_edit": false
