@@ -45,8 +45,10 @@ GRIP_CONCENTRATED_SHARE = 0.159
 # One strike holding more than this share of today's option volume is the busiest strike.
 BUSIEST_STRIKE_SHARE = 0.11
 
-# The sums (questions/spx_hour.json): flat within the band at the mark; large past the furthest-point cut.
+# The sums (questions/spx_hour.json): flat within the band at the mark.
 NEXT_30_FLAT_BAND_SIGMA = 0.07
+# Measured for the "reach 0.16 sigma within 30 minutes" tradeability outcome the set asks code to add; nothing
+# grades a large band yet, so nothing reads it (a clean-up candidate, as OUTLIER_DAY_SIGMA).
 NEXT_30_LARGE_BAND_SIGMA = 0.16
 NEXT_60_FLAT_BAND_SIGMA = 0.11
 # How often each band happened on SPX, in percent of reads (spec/cuts.json base_rates).
