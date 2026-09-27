@@ -509,6 +509,12 @@ def _medians(readings: list[tuple[datetime, float, float]], end: datetime) -> tu
     return (statistics.median(a for a, _ in win), statistics.median(b for _, b in win)) if win else None
 
 
+def _newest(readings: list[tuple[datetime, float, float]], end: datetime) -> tuple[float, float] | None:
+    """The newest reading's two numbers in the QUOTE_WINDOW_MIN minutes to ``end``; None with no reading."""
+    win = [(a, b) for ts, a, b in readings if end - timedelta(minutes=QUOTE_WINDOW_MIN) < ts <= end]
+    return win[-1] if win else None
+
+
 def _stopped(stamps: list[datetime], now: datetime) -> bool:
     """The collector wrote nothing in the OPTIONS_TAPE_MAX_AGE_MIN minutes to ``now``."""
     seen = [ts for ts in stamps if ts <= now]
@@ -596,8 +602,8 @@ def _strike_defense(scene: Scene, ls: LabelSet) -> None:
 
 def _spy_quote(scene: Scene, ls: LabelSet) -> None:
     """SPY's quoted spread and the size showing at its best bid and offer over the last 5 minutes, from the
-    collector's SPY stream; the size is ranked against the same 5 minutes of the prior sessions and never
-    stated in shares."""
+    collector's newest SPY reading, itself the median of its last 5 minutes of SPY quotes; the size is ranked
+    against the same reading on the prior sessions and never stated in shares."""
     if scene.state_dir is None:
         ls.omit("liquidity.spy_quote", "no state folder to read the lob-flow collector's SPY quote from")
         return
@@ -608,10 +614,10 @@ def _spy_quote(scene: Scene, ls: LabelSet) -> None:
     if _stopped([ts for ts, _, _ in record.spy], scene.now):
         ls.omit("liquidity.spy_quote", f"no SPY quote from the lob-flow collector in the last {OPTIONS_TAPE_MAX_AGE_MIN} minutes: its SPY stream stopped")
         return
-    spread, size = _medians(record.spy, scene.now)
+    spread, size = _newest(record.spy, scene.now)
     now_et = scene.now.astimezone(ET)
     base = [m[1] for d in scene.prior_bars if (r := collector_record(scene.state_dir, d)) is not None
-            and (m := _medians(r.spy, datetime.combine(date.fromisoformat(d), now_et.time(), tzinfo=ET))) is not None]
+            and (m := _newest(r.spy, datetime.combine(date.fromisoformat(d), now_et.time(), tzinfo=ET))) is not None]
     rank = rank_against(size, base)
     if rank is None:
         ls.omit("liquidity.spy_quote", f"needs {MIN_RANK_SESSIONS} prior sessions with the collector's SPY quote at this minute, have {len(base)}")

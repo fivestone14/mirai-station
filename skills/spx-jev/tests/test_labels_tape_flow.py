@@ -392,6 +392,14 @@ def test_spy_quote_reads_the_spread_against_its_lines_and_ranks_the_size(scene_f
     assert labels["liquidity.spy_quote"] == f"over the last 5 minutes SPY's quoted spread has been {sentence}"
 
 
+def test_spy_quote_reads_the_newest_reading_already_a_5_minute_median(scene_factory, tmp_path):
+    lines = readings(at(9, 59), size=300.0) + [spy_line(at(9, 59, ss=27), 0.02, 700.0)]
+    _, labels = read(record_scene(scene_factory, tmp_path, lines))
+    assert labels["liquidity.spy_quote"] == (
+        "over the last 5 minutes SPY's quoted spread has been 2 cents, its usual width; the size showing at SPY's best bid and offer "
+        "combined is in the top fifth for 10:00, higher than 6 of the last 6 sessions at this minute")
+
+
 def test_spy_quote_is_omitted_when_the_stream_stops_or_has_no_history(scene_factory, tmp_path):
     ls, _ = read(record_scene(scene_factory, tmp_path / "stopped", readings(at(9, 56))))
     assert ls.omitted["liquidity.spy_quote"] == "no SPY quote from the lob-flow collector in the last 3 minutes: its SPY stream stopped"
