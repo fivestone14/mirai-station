@@ -165,7 +165,7 @@ def test_a_full_read_asks_every_question_due_awake_and_with_its_labels(full_scen
     reqs, skipped = build_requests(labels.state, doc, skip=skip, gates=labels.gates)
     asked = {qid for r in reqs for qid in r["questions"]}
     expected = {qid for g in doc["groups"] for qid, q in g["questions"].items()
-                if q["status"] in ("live", "shadow") and qid not in skip and not q.get("sleep_when")
+                if q["status"] in ("live", "shadow") and qid not in skip and (not q.get("sleep_when") or labels.gates.get(qid, "") is None)
                 and all(get_path(labels.state, p) is not None for p in paths_in(q))}
     assert asked == expected and {"price_move_5way", "leg_vs_day_side"} <= asked
     kinds = ("dark:", "not on its schedule", "asked on its other lane", "held from its other lane", "a day constant", "asleep:", "missing ")

@@ -8,7 +8,8 @@ import pytest
 
 from conftest import (DAY, SECTORS, at, bars_from_closes, context_line, flat_bars, make_row, measured, options_tape_at,
                       prior_sessions, write_state)
-from spx_jev.cuts import IV_FLAT_BAND_PTS, MOVE_RULE_SIGMA, TAPE_BIG_UNITS, TAPE_FLAT_UNITS, WALL_NEAR_SIGMA, WALL_TOUCH_SIEGE_PERCENTILE
+from spx_jev.cuts import (IV_FLAT_BAND_PTS, MOVE_RULE_SIGMA, MOVE_STRONG_SIGMA, TAPE_BIG_UNITS, TAPE_FLAT_UNITS, WALL_NEAR_SIGMA,
+                           WALL_TOUCH_SIEGE_PERCENTILE)
 from spx_jev.labels.registry import build_labels
 from spx_jev.labels.rulers import ruler
 from spx_jev.state_builder import MarketContext, load_bars, load_market_context, load_options_tape, make_scene, prior_bar_days
@@ -25,7 +26,7 @@ def test_the_30_minute_move_is_judged_against_the_move_rule(scene_factory):
     now = at(11, 0, ss=5)
     up = MOVE_RULE_SIGMA * SIGMA * 1.5
     state, _ = _labels(scene_factory(now, bars_from_closes([7700.0] * 60 + [7700.0 + up] * 30)))
-    assert state["price"]["recent_move"] == f"over the last 30 minutes price rose {up / SIGMA:.2f} sigma, more than the {MOVE_RULE_SIGMA} sigma move rule"
+    assert state["price"]["recent_move"].startswith(f"over the last 30 minutes price rose {up / SIGMA:.2f} sigma, more than the {MOVE_RULE_SIGMA} sigma move rule")
     state, _ = _labels(scene_factory(now, flat_bars(90)))
     assert state["price"]["recent_move"].startswith(f"over the last 30 minutes price stayed within {MOVE_RULE_SIGMA} sigma")
     # the quiet read is a fact the momentum questions answer "no move" to, not a gap
@@ -49,7 +50,8 @@ def test_only_finished_bars_count(scene_factory):
 def test_the_figures_behind_the_situation_labels(full_scene):
     figures = build_labels(full_scene).figures
     assert set(figures) == {"price.recent_move", "price.vs_vwap", "gex.air_to_wall", "iv.trend_30min"}
-    assert figures["price.recent_move"] == {"kind": "signed", "value": 0.4, "band": MOVE_RULE_SIGMA, "unit": "sigma", "verdict": "rising"}
+    assert figures["price.recent_move"] == {"kind": "signed", "value": 0.4, "band": MOVE_RULE_SIGMA, "strong": MOVE_STRONG_SIGMA, "unit": "sigma",
+                                            "verdict": "rising"}
     assert figures["gex.air_to_wall"]["near"] == WALL_NEAR_SIGMA and figures["gex.air_to_wall"]["verdict"] == "heavy_strike_close"
     assert figures["iv.trend_30min"]["band"] == IV_FLAT_BAND_PTS and figures["iv.trend_30min"]["unit"] == "vol points"
 
