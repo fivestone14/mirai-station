@@ -167,6 +167,16 @@ def test_the_quoted_contract_is_the_newest_saves_by_the_read(tmp_path):
     assert night_ranks.quoted_contract(tmp_path, DAY, "/ZN", datetime.combine(DAY, time(17, 0), tzinfo=ET)) is None
 
 
+def test_a_save_whose_quote_failed_does_not_hide_a_roll_an_earlier_save_saw(tmp_path):
+    lines = [{"day": DAY.isoformat(), "saved_at": f"{DAY}T{hm}:00-04:00", "symbols": {"/ES": {"contract_quoted": c}}}
+             for hm, c in (("09:26", "/ESH27"), ("09:28", None))]
+    overnight.manifest_path(tmp_path).parent.mkdir(parents=True)
+    overnight.manifest_path(tmp_path).write_text("".join(json.dumps(line) + "\n" for line in lines))
+    quoted = night_ranks.quoted_contract(tmp_path, DAY, "/ES", datetime.combine(DAY, time(9, 28, 30), tzinfo=ET))
+    assert quoted == "/ESH27"
+    assert night_ranks.roll_pending({"current": {"/ES": "/ESZ26"}}, "/ES", quoted)
+
+
 def test_a_rewritten_night_is_read_afresh(tmp_path):
     for d in _nights_before(DAY, 20):
         _save(tmp_path, d, 0.2)

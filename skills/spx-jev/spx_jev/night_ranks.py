@@ -262,13 +262,12 @@ def _coverage(rows: list[dict], symbol: str, day: date, until: datetime) -> floa
 
 def quoted_contract(state_dir: Path, day: date, symbol: str, now: datetime) -> str | None:
     """The contract Schwab quoted ``symbol`` under at the newest save of the night into ``day`` made by ``now``
-    (the manifest's ``contract_quoted``), for rolls.pending; None when no save by then quoted it."""
-    saves = [line for line in load_jsonl(overnight.manifest_path(state_dir))
-             if line.get("day") == day.isoformat() and datetime.fromisoformat(line["saved_at"]) <= now]
-    if not saves:
-        return None
-    newest = max(saves, key=lambda line: datetime.fromisoformat(line["saved_at"]))
-    return ((newest.get("symbols") or {}).get(symbol) or {}).get("contract_quoted")
+    that quoted it (the manifest's ``contract_quoted``), for rolls.pending; a save whose quote call failed
+    is passed over, so it cannot hide a roll an earlier save saw. None when no save by then quoted it."""
+    quotes = [(datetime.fromisoformat(line["saved_at"]), quoted) for line in load_jsonl(overnight.manifest_path(state_dir))
+              if line.get("day") == day.isoformat() and datetime.fromisoformat(line["saved_at"]) <= now
+              and (quoted := ((line.get("symbols") or {}).get(symbol) or {}).get("contract_quoted"))]
+    return max(quotes)[1] if quotes else None
 
 
 def roll_pending(table: dict, symbol: str, quoted: str | None) -> str:
