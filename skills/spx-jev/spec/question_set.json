@@ -8548,7 +8548,7 @@
      "status": "live",
      "cadence": "at the 09:28 premarket read",
      "ask": "Which stretch of the night moved most unusually for its time?",
-     "instructions": "Read `overnight.gap_origin`. Where futures stand against their 16:00 price comes first. Which stretch of the night moved most unusually against the same stretch on the recent nights: early, in Europe, in the report window, or late?",
+     "instructions": "Read `overnight.gap_origin`. Where futures stand against their 16:00 price comes first. Which stretch of the night moved most unusually against the same stretch on the recent nights: early, in Europe, in the window after this morning's report, or late? On a morning with no report, the 08:30 to 08:45 stretch counts as late.",
      "options": [
       {
        "name": "made_early",
@@ -8560,11 +8560,11 @@
       },
       {
        "name": "made_at_release",
-       "description": "the most unusual stretch was the window after this morning's early report"
+       "description": "the most unusual stretch was the window after this morning's early report, on a morning with a report"
       },
       {
        "name": "made_late",
-       "description": "the most unusual stretch was the one before the report or the last one before the open"
+       "description": "the most unusual stretch was the one before the report or the last one before the open, or on a morning with no report the 08:30 to 08:45 stretch"
       }
      ],
      "criteria": {
@@ -12852,6 +12852,13 @@
    "action": "criteria",
    "decision": "accepted",
    "reason": "the stocks-up and stocks-down answers are the outer band on the side bitcoin's fitted multiple of the index or the futures points to, as the labels answer them, so a month when bitcoin goes against stocks flips the side instead of contradicting the rule.",
+   "source": "review of the premarket build 2026-09-27"
+  },
+  {
+   "subject": "gap_origin",
+   "action": "reword",
+   "decision": "accepted",
+   "reason": "on a morning with no report the report window (08:30 to 08:45) answers made_late, as the label codes it, and the options JEV reads now say so; made_at_release only on a morning with a report.",
    "source": "review of the premarket build 2026-09-27"
   }
  ],

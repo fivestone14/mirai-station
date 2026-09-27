@@ -5094,7 +5094,7 @@
      "sleep_when": "the move since futures' 16:00 price ranks at or under {third_lo} against the last {night_rank_count} nights (no real gap), fewer than {overnight_rank_min_nights} usable nights, a roll night, or /ES bars missing",
      "code_answer": true,
      "ask": "Which stretch of the night moved most unusually for its time?",
-     "instructions": "Read `overnight.gap_origin`. Where futures stand against their 16:00 price comes first. Which stretch of the night moved most unusually against the same stretch on the recent nights: early, in Europe, in the report window, or late?",
+     "instructions": "Read `overnight.gap_origin`. Where futures stand against their 16:00 price comes first. Which stretch of the night moved most unusually against the same stretch on the recent nights: early, in Europe, in the window after this morning's report, or late? On a morning with no report, the 08:30 to 08:45 stretch counts as late.",
      "options": [
       "made_early",
       "made_in_europe",
@@ -5104,8 +5104,8 @@
      "criteria": {
       "made_early": "the most unusual stretch was after the close or in Asia",
       "made_in_europe": "the most unusual stretch was Europe's open or the Europe morning",
-      "made_at_release": "the most unusual stretch was the window after this morning's early report",
-      "made_late": "the most unusual stretch was the one before the report or the last one before the open"
+      "made_at_release": "the most unusual stretch was the window after this morning's early report, on a morning with a report",
+      "made_late": "the most unusual stretch was the one before the report or the last one before the open, or on a morning with no report the 08:30 to 08:45 stretch"
      },
      "code_criteria": {
       "made_early": "the stretch whose |move| ranks highest against the same stretch on the last {night_rank_count} nights is after_close or asia",
