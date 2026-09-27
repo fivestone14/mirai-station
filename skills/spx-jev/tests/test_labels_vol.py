@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import replace
 from datetime import timedelta
 
 import pytest
 
 from conftest import at, bars_from_closes, flat_bars, make_row
+from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.labels.vol import build_vol_labels
 
 SIGMA = 75.0          # the morning anchor every fixture row carries
@@ -197,3 +199,157 @@ def test_the_opening_vix_waits_for_the_settled_open_and_needs_the_prior_diary(sc
     assert labels(with_prior_diary(tmp_path, before, "2026-09-17", 14.74))[1]["vol.vix_overnight_surprise"].startswith("needs the settled open")
     no_state = scene_factory(at(9, 35, ss=20), flat_bars(6, price=7733.0), rows_before=[diary_row(at(9, 30, ss=28), 15.29)])
     assert labels(no_state)[1]["vol.vix_overnight_surprise"] == "needs the diary VIX on today's first row and the prior session's last"
+
+
+# ---- the straddle: vol.straddle_reprice_30, vol.straddle_vs_clock, vol.ruler_event_load
+
+def minutes_left(t) -> float:
+    return (t.replace(hour=16, minute=0, second=0) - t).total_seconds() / 60.0
+
+
+def straddle_for_share(share: float, t, em_open: float = 22.06) -> float:
+    """The straddle left at ``t`` that is ``share`` times what the clock alone leaves of the opening straddle."""
+    return em_open * share * math.sqrt(minutes_left(t) / 390.0)
+
+
+def straddle_row(t, em_points: float, **over) -> dict:
+    return make_row(t, 7700.0, range_ruler=ruler_block(em_points=em_points), **over)
+
+
+def write_prior_diaries(root, rows_by_day: dict[str, list[dict]]):
+    (root / "reversion").mkdir(parents=True, exist_ok=True)
+    for day, rows in rows_by_day.items():
+        (root / "reversion" / f"{day}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    return root
+
+
+@pytest.mark.parametrize("em_then, words", [
+    (15.00, "ended 6.1% richer than the clock alone would have left it, past the 5% repricing line"),
+    (16.00, "ended 0.5% cheaper than the clock alone would have left it, within the 5% repricing line"),
+    (17.50, "ended 9.1% cheaper than the clock alone would have left it, past the 5% repricing line"),
+])
+def test_the_straddle_is_repriced_against_what_the_clock_alone_takes_off_it(scene_factory, em_then, words):
+    now = at(12, 30)                                   # 210 minutes left now, 240 then
+    scene = scene_factory(now, flat_bars(180), row_over={"range_ruler": ruler_block(em_points=15.0 * math.sqrt(210 / 240) * 1.061)},
+                          rows_before=[morning(), straddle_row(now - timedelta(minutes=30), em_then)])
+    assert labels(scene)[0]["vol.straddle_reprice_30"] == f"over the last 30 minutes the same-day straddle for the rest of today {words}"
+
+
+def test_the_repricing_is_omitted_without_the_straddle_30_minutes_ago(scene_factory):
+    now = at(12, 30)
+    scene = scene_factory(now, flat_bars(180), rows_before=[morning(), straddle_row(now - timedelta(minutes=50), 16.0)])
+    assert labels(scene)[1]["vol.straddle_reprice_30"] == "no straddle left on the rows now and about 30 minutes ago (range_ruler.em_points)"
+
+
+PRIOR_DAYS = [f"2026-09-{d:02d}" for d in range(17, 7, -1)]
+
+
+def usual_straddle_state(tmp_path, clock=(11, 40), shares=(0.9, 0.95, 1.0, 1.05, 1.1)):
+    """Prior diaries whose straddle at the clock is each of ``shares`` of the clock-scaled opening straddle,
+    and a later row on each at twice that, which a read at the clock must not see."""
+    rows = {}
+    for day, share in zip(PRIOR_DAYS, shares * 2):
+        t = at(*clock, day=day)
+        rows[day] = [straddle_row(at(9, 31, day=day), 22.06), straddle_row(t, straddle_for_share(share, t)),
+                     straddle_row(t + timedelta(minutes=1), 2 * straddle_for_share(share, t))]
+    return write_prior_diaries(tmp_path, rows)
+
+
+@pytest.mark.parametrize("share, words", [
+    (0.78, "0.78 times its usual share of the opening straddle at 11:40 (its median on the last 10 sessions), under the 0.85 cheap line"),
+    (1.00, "1.00 times its usual share of the opening straddle at 11:40 (its median on the last 10 sessions), between the 0.85 cheap and 1.15 rich lines"),
+    (1.30, "1.30 times its usual share of the opening straddle at 11:40 (its median on the last 10 sessions), over the 1.15 rich line"),
+])
+def test_the_straddle_left_is_judged_against_its_usual_share_at_this_minute(scene_factory, tmp_path, share, words):
+    now = at(11, 40)
+    prior = {d: flat_bars(390, day=d) for d in PRIOR_DAYS}
+    scene = scene_factory(now, flat_bars(130), row_over={"range_ruler": ruler_block(em_points=straddle_for_share(share, now))},
+                          rows_before=[morning()], prior_bars=prior)
+    scene = replace(scene, state_dir=usual_straddle_state(tmp_path))
+    assert labels(scene)[0]["vol.straddle_vs_clock"] == f"the same-day straddle for the rest of today is {words}"
+
+
+def test_the_straddle_against_the_clock_is_omitted_without_its_history(scene_factory, tmp_path):
+    now = at(11, 40)
+    prior = {d: flat_bars(390, day=d) for d in PRIOR_DAYS}
+    scene = scene_factory(now, flat_bars(130), rows_before=[morning()], prior_bars=prior)
+    assert labels(scene)[1]["vol.straddle_vs_clock"] == "no state folder to read the prior sessions' diaries from"
+    thin = replace(scene, state_dir=usual_straddle_state(tmp_path), prior_bars={d: prior[d] for d in PRIOR_DAYS[:4]})
+    assert labels(thin)[1]["vol.straddle_vs_clock"] == "needs 5 prior sessions with a straddle at this minute, have 4"
+    estimated = replace(scene, state_dir=tmp_path, prior_rulers={d: SigmaRuler(75.0, "vix") for d in PRIOR_DAYS[:6]})
+    assert labels(estimated)[1]["vol.straddle_vs_clock"] == "needs 5 prior sessions with a straddle at this minute, have 4"
+
+
+FOMC_DAY = "2026-10-28"                                # the shipped calendar's FOMC decision, 14:00
+EVENT_PRIOR_DAYS = [f"2026-10-{d:02d}" for d in range(27, 17, -1)]
+TAPE_30 = 1.0 * math.sqrt(6)                           # flat bars with a 1-point wick: every 5-minute slice ranges 1 point
+
+
+def straddle_for_load(load: float, t) -> float:
+    """The straddle left at ``t`` whose 30-minute share is ``load`` times what a flat tape delivers."""
+    return load * TAPE_30 * math.sqrt(minutes_left(t) / 30.0)
+
+
+def ruler_scene(scene_factory, tmp_path, day: str, clock: tuple[int, int], load: float, swell: float, rows_before=(), prior_days=None):
+    """A read at ``clock`` on ``day`` whose straddle prices ``load`` times the tape and whose anchor is ``swell``
+    times the prior sessions' (75); the prior sessions priced 0.5 to 1.4 times their tape at the clock."""
+    prior_days = prior_days or [f"{day[:8]}{int(day[8:]) - k:02d}" for k in range(1, 11)]
+    now = at(*clock, day=day)
+    rows = {}
+    for k, d in enumerate(prior_days):
+        t = at(*clock, day=d)
+        rows[d] = [straddle_row(at(9, 31, day=d), 22.06), straddle_row(t, straddle_for_load(0.5 + 0.1 * k, t))]
+    prior = {d: flat_bars(390, day=d, price=7700.0) for d in prior_days}
+    first = make_row(at(9, 31, day=day), 7700.0, sigma=75.0 * swell)
+    scene = scene_factory(now, flat_bars(int(minutes_left(at(9, 30, day=day)) - minutes_left(now)), day=day),
+                          row_over={"range_ruler": ruler_block(em_points=straddle_for_load(load, now)), "sigma": 75.0 * swell},
+                          rows_before=[first, *rows_before], prior_bars=prior)
+    return replace(scene, state_dir=write_prior_diaries(tmp_path, rows), prior_rulers={d: SigmaRuler(75.0, "anchor") for d in prior_days})
+
+
+def test_a_straddle_loaded_before_the_fed_reads_loaded(scene_factory, tmp_path):
+    scene = ruler_scene(scene_factory, tmp_path, FOMC_DAY, (11, 30), load=1.92, swell=1.88, prior_days=EVENT_PRIOR_DAYS)
+    assert labels(scene)[0]["vol.ruler_event_load"] == (
+        "loaded before an event: the same-day straddle prices a 30-minute move 1.92 times what the tape's recent 5-minute ranges "
+        "scale to, past the 1.5 loaded line, higher than 10 of the last 10 sessions at 11:30 (top fifth); the Fed's rate decision "
+        "is at 14:00, still ahead; this morning's sigma ruler is 1.88 times its 10-session median, past the 1.3 swollen line")
+
+
+def test_a_tape_outrunning_the_pre_release_straddle_reads_released(scene_factory, tmp_path):
+    before = straddle_row(at(13, 59, day=FOMC_DAY, ss=30), straddle_for_load(0.8, at(13, 59, day=FOMC_DAY, ss=30)))
+    scene = ruler_scene(scene_factory, tmp_path, FOMC_DAY, (14, 32), load=0.9, swell=1.4, rows_before=[before], prior_days=EVENT_PRIOR_DAYS)
+    assert labels(scene)[0]["vol.ruler_event_load"] == (
+        "released after an event: the same-day straddle prices a 30-minute move 0.90 times what the tape's recent 5-minute ranges "
+        "scale to, under the 1.5 loaded line, higher than 4 of the last 10 sessions at 14:32 (between the fifths); the Fed's rate "
+        "decision came out at 14:00, 32 minutes ago, inside the 120-minute digest window; the tape now moves 1.25 times what the "
+        "straddle priced just before it, over the one-to-one line; this morning's sigma ruler is 1.40 times its 10-session median, "
+        "past the 1.3 swollen line")
+
+
+@pytest.mark.parametrize("load, swell, verdict, words", [
+    (1.0, 1.40, "swollen with no event", "1.40 times its 10-session median, past the 1.3 swollen line"),
+    (1.0, 0.75, "compressed", "0.75 times its 10-session median, at or under the 0.8 compressed line"),
+    (1.0, 1.29, "normal", "1.29 times its 10-session median, between the 0.8 compressed and 1.3 swollen lines"),
+    (1.92, 1.00, "normal", "1.00 times its 10-session median, between the 0.8 compressed and 1.3 swollen lines"),
+])
+def test_without_an_event_the_ruler_reads_swollen_compressed_or_normal(scene_factory, tmp_path, load, swell, verdict, words):
+    scene = ruler_scene(scene_factory, tmp_path, "2026-09-18", (11, 30), load=load, swell=swell)
+    got = labels(scene)[0]["vol.ruler_event_load"]
+    assert got.startswith(f"{verdict}: ") and "no Fed event is on the calendar today" in got and got.endswith(f"sigma ruler is {words}")
+
+
+def test_the_ruler_rank_reads_only_what_each_prior_session_had_by_the_clock(scene_factory, tmp_path):
+    scene = ruler_scene(scene_factory, tmp_path, "2026-09-18", (11, 30), load=1.0, swell=1.0)
+    for bars in scene.prior_bars.values():
+        for b in bars[120:]:                           # from the 11:30 bar on, a wild tape the 11:30 read must not see
+            b["high"], b["low"] = b["close"] + 50.0, b["close"] - 50.0
+    assert "higher than 5 of the last 10 sessions at 11:30" in labels(scene)[0]["vol.ruler_event_load"]
+
+
+def test_the_ruler_is_omitted_without_its_parts(scene_factory, tmp_path):
+    scene = ruler_scene(scene_factory, tmp_path, "2026-09-18", (11, 30), load=1.0, swell=1.0)
+    assert labels(replace(scene, state_dir=None))[1]["vol.ruler_event_load"] == "no state folder to read the prior sessions' diaries from"
+    assert labels(replace(scene, prior_rulers={}))[1]["vol.ruler_event_load"] == (
+        "needs the morning sigma ruler and 5 prior sessions' trusted anchors for its normal")
+    assert labels(replace(scene, bars=scene.bars[:-5]))[1]["vol.ruler_event_load"] == (
+        "needs the straddle left on the row, 30 minutes of session left and six finished 5-minute slices")

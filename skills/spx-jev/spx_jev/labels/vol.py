@@ -6,16 +6,22 @@ how it is computed and its source are in spec/question_set.json ``labels``, and 
 from __future__ import annotations
 
 import math
+import statistics
 from collections.abc import Callable
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 
-from ..cuts import (ATM_RESID_VOLPTS, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, IV_FLAT_BAND_PTS, REALIZED_QUIET_RATIO, REALIZED_WILD_RATIO,
-                    VIX_CURVE_FLAT, VIX_GAP_RESID_PTS, VIX_JUMP_PCT, VIX_JUMP_PCT_10, VIX_MOVE_PCT, VIX_MOVE_PCT_10, VIX_RESID_PCT,
-                    VIX_STILL_PCT, VIX_STILL_PCT_10, WINDOW_10_MIN, WINDOW_30_MIN, ZERO_DTE_LAST_HOUR_MIN)
+from .. import events
+from ..cuts import (ATM_RESID_VOLPTS, BOTTOM_FIFTH, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, EVENT_DIGEST_MIN, IV_FLAT_BAND_PTS, LOADED_RATIO,
+                    MIN_RANK_SESSIONS, ONE_RATIO, REALIZED_QUIET_RATIO, REALIZED_WILD_RATIO, RULER_HIGH, RULER_LOW, STRADDLE_CHEAP,
+                    STRADDLE_REPRICE_SHARE, STRADDLE_RICH, TOP_FIFTH, VIX_CURVE_FLAT, VIX_GAP_RESID_PTS, VIX_JUMP_PCT,
+                    VIX_JUMP_PCT_10, VIX_MOVE_PCT, VIX_MOVE_PCT_10, VIX_RESID_PCT, VIX_STILL_PCT, VIX_STILL_PCT_10, WINDOW_10_MIN,
+                    WINDOW_30_MIN, ZERO_DTE_LAST_HOUR_MIN)
+from ..sessions import session_close, session_minutes
 from ..state_builder import Scene, row_days
 from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, day_high_low, is_num, settled_open
-from .rulers import SigmaRuler, sigma_anchor
+from .ranks import SameClockRank, rank_against
+from .rulers import SigmaRuler, normal_day_sigma, sigma_anchor
 from .vol_sources import DiaryPoint, diary_point, point_at, prior_diary
 from .words import pct, sig, signed
 
@@ -41,6 +47,11 @@ ATM_IV_PER_SIGMA = -2.2
 VIX_PER_GAP_SIGMA = -1.7
 # The VIX that closes the session is read against the early afternoon: the newest row by 14:00.
 AFTERNOON_ANCHOR = time(14, 0)
+# What the tape delivers over 30 minutes: the median high-to-low range of the last six finished 5-minute
+# slices, scaled from 5 minutes to 30 by the square root of time.
+TAPE_SLICE_MIN, TAPE_SLICES = 5, 6
+# The calendar's events that load the day's straddle before them: the Fed's decision and the chair's set pieces.
+LOADING_EVENTS = ("FOMC", "FED_CHAIR_TESTIMONY", "FED_CHAIR_JACKSON_HOLE")
 
 
 def build_vol_labels(scene: Scene) -> LabelSet:
@@ -56,6 +67,9 @@ def build_vol_labels(scene: Scene) -> LabelSet:
     _vix_vs_price(scene, today, ls)
     _atm_iv_residual(scene, today, ls)
     _vix_overnight_surprise(scene, today, ls)
+    _straddle_reprice(scene, today, ls)
+    _straddle_vs_clock(scene, today, ls)
+    _ruler_event_load(scene, today, ls)
     return ls
 
 
@@ -316,3 +330,183 @@ def _vix_overnight_surprise(scene: Scene, today: list[DiaryPoint], ls: LabelSet)
            f"VIX's first print today was {first:.2f}, {abs(first - last):.2f} {'above' if first >= last else 'below'} yesterday's last "
            f"{last:.2f}; after this morning's {sig(abs(gap))} gap {'up' if gap >= 0 else 'down'} it would normally sit near {implied:.2f}, "
            f"so it is {shown:.2f} points {'richer' if resid >= 0 else 'cheaper'} than the gap implies, {words}{_ruled(ruler)}")
+
+
+# ----------------------------------------------------------------------------- the straddle and the ruler
+
+def _clock(t: datetime) -> str:
+    return f"{t.astimezone(ET):%H:%M}"
+
+
+def _same_clock(scene: Scene, day: str) -> datetime:
+    """This read's clock minute on a prior session, market time."""
+    return datetime.combine(date.fromisoformat(day), scene.now.astimezone(ET).time(), tzinfo=ET)
+
+
+def _ranked_prior_days(scene: Scene) -> list[str]:
+    """The prior sessions a rank may use, newest first: a day whose morning ruler was estimated sits out
+    (as in ranks.same_clock_values)."""
+    return [d for d in scene.prior_bars if not ((r := scene.prior_rulers.get(d)) is not None and r.estimated)]
+
+
+def _fifth(rank: SameClockRank) -> str:
+    return "top fifth" if rank.share >= TOP_FIFTH else "bottom fifth" if rank.share <= BOTTOM_FIFTH else "between the fifths"
+
+
+def _minutes_left(t: datetime) -> float:
+    return (session_close(t) - t).total_seconds() / 60.0
+
+
+def _straddle_share(point: DiaryPoint | None) -> float | None:
+    """The straddle left at the point against the opening straddle scaled by the clock alone (the square
+    root of the session's minutes left): 1.0 is a straddle that has only decayed with time."""
+    if point is None or point.em_points is None or point.em_open is None or _minutes_left(point.ts) <= 0:
+        return None
+    return point.em_points / (point.em_open * math.sqrt(_minutes_left(point.ts) / session_minutes(point.ts)))
+
+
+def _straddle_reprice(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
+    """The straddle left now against the one 30 minutes ago, less what the clock alone would have taken off it."""
+    now, then = today[-1], point_at(today, scene.now - timedelta(minutes=WINDOW_30_MIN))
+    if then is None or now.em_points is None or then.em_points is None or _minutes_left(now.ts) <= 0:
+        ls.omit("vol.straddle_reprice_30", "no straddle left on the rows now and about 30 minutes ago (range_ruler.em_points)")
+        return
+    reprice = now.em_points / then.em_points / math.sqrt(_minutes_left(now.ts) / _minutes_left(then.ts)) - 1.0
+    if abs(reprice) > STRADDLE_REPRICE_SHARE:
+        shown, words = max(abs(reprice), STRADDLE_REPRICE_SHARE + 0.001), f"past the {pct(STRADDLE_REPRICE_SHARE)} repricing line"
+    else:
+        shown, words = abs(reprice), f"within the {pct(STRADDLE_REPRICE_SHARE)} repricing line"
+    ls.put("vol.straddle_reprice_30",
+           f"over the last 30 minutes the same-day straddle for the rest of today ended {shown * 100:.1f}% "
+           f"{'richer' if reprice >= 0 else 'cheaper'} than the clock alone would have left it, {words}")
+
+
+def _straddle_vs_clock(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
+    """The straddle's share of the opening straddle (_straddle_share) against its median on the prior sessions at this minute."""
+    share = _straddle_share(today[-1])
+    if share is None:
+        ls.omit("vol.straddle_vs_clock", "row carries no straddle left and opening straddle (range_ruler.em_points, em_open)")
+        return
+    if scene.state_dir is None:
+        ls.omit("vol.straddle_vs_clock", "no state folder to read the prior sessions' diaries from")
+        return
+    base = [s for d in _ranked_prior_days(scene)
+            if (s := _straddle_share(point_at(prior_diary(scene.state_dir, d), _same_clock(scene, d)))) is not None]
+    if len(base) < MIN_RANK_SESSIONS:
+        ls.omit("vol.straddle_vs_clock", f"needs {MIN_RANK_SESSIONS} prior sessions with a straddle at this minute, have {len(base)}")
+        return
+    ratio = share / statistics.median(base)
+    if ratio < STRADDLE_CHEAP:
+        shown, words = min(ratio, STRADDLE_CHEAP - 0.01), f"under the {STRADDLE_CHEAP:g} cheap line"
+    elif ratio > STRADDLE_RICH:
+        shown, words = max(ratio, STRADDLE_RICH + 0.01), f"over the {STRADDLE_RICH:g} rich line"
+    else:
+        shown, words = ratio, f"between the {STRADDLE_CHEAP:g} cheap and {STRADDLE_RICH:g} rich lines"
+    ls.put("vol.straddle_vs_clock",
+           f"the same-day straddle for the rest of today is {shown:.2f} times its usual share of the opening straddle at "
+           f"{_clock(scene.now)} (its median on the last {len(base)} sessions), {words}")
+
+
+def _straddle_30(point: DiaryPoint | None) -> float | None:
+    """The move the straddle left prices for the next 30 minutes, in points: the square root of time
+    scales the rest of the day down to 30 minutes."""
+    if point is None or point.em_points is None or _minutes_left(point.ts) < WINDOW_30_MIN:
+        return None
+    return point.em_points * math.sqrt(WINDOW_30_MIN / _minutes_left(point.ts))
+
+
+def _tape_30(bars: list[dict], t: datetime) -> float | None:
+    """What the tape delivers over 30 minutes at ``t``, in points (TAPE_SLICES); None when a slice has no bars."""
+    ranges = []
+    for k in range(TAPE_SLICES):
+        end = t - timedelta(minutes=TAPE_SLICE_MIN * k)
+        sl = bars_finished_between(bars, end - timedelta(minutes=TAPE_SLICE_MIN), end)
+        if not sl:
+            return None
+        ranges.append(max(float(b["high"]) for b in sl) - min(float(b["low"]) for b in sl))
+    return statistics.median(ranges) * math.sqrt(WINDOW_30_MIN / TAPE_SLICE_MIN)
+
+
+def _loading_event(scene: Scene) -> tuple[str, datetime] | None:
+    """Today's first calendar event that loads the straddle (LOADING_EVENTS), with when it starts."""
+    day = scene.now.astimezone(ET).date()
+    found = [(start, kind) for kind in LOADING_EVENTS if (start := events.starts_on(day, kind)) is not None]
+    if not found:
+        return None
+    start, kind = min(found)
+    return kind, start
+
+
+def _ruler_event_load(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
+    """Whether the day's priced movement is swollen by an event ahead, released by one just past, swollen or
+    compressed with none, or normal: the straddle's 30-minute move against what the tape delivers (ranked at
+    this minute), the calendar, and the morning anchor against its normal-day median."""
+    path = "vol.ruler_event_load"
+    priced, delivered = _straddle_30(today[-1]), _tape_30(scene.bars, scene.now)
+    if priced is None or not delivered:
+        ls.omit(path, "needs the straddle left on the row, 30 minutes of session left and six finished 5-minute slices")
+        return
+    anchor, normal = sigma_anchor(scene), normal_day_sigma(scene)
+    if anchor is None or normal is None:
+        ls.omit(path, f"needs the morning sigma ruler and {MIN_RANK_SESSIONS} prior sessions' trusted anchors for its normal")
+        return
+    if scene.state_dir is None:
+        ls.omit(path, "no state folder to read the prior sessions' diaries from")
+        return
+    base = []
+    for d in _ranked_prior_days(scene):
+        then = _same_clock(scene, d)
+        p, t = _straddle_30(point_at(prior_diary(scene.state_dir, d), then)), _tape_30(scene.prior_bars[d], then)
+        if p is not None and t:
+            base.append(p / t)
+    load = priced / delivered
+    rank = rank_against(load, base)
+    if rank is None:
+        ls.omit(path, f"needs {MIN_RANK_SESSIONS} prior sessions with a straddle and a tape at this minute, have {len(base)}")
+        return
+    swell = anchor.points / normal
+    sessions = sum(1 for r in scene.prior_rulers.values() if r is not None and not r.estimated)
+    event = _loading_event(scene)
+    released = ahead = False
+    if event is None:
+        event_words = "no Fed event is on the calendar today"
+    else:
+        kind, start = event
+        ago = round((scene.now - start).total_seconds() / 60.0)
+        if start > scene.now:
+            ahead, event_words = True, f"{events.words(kind)} is at {_clock(start)}, still ahead"
+        elif ago > EVENT_DIGEST_MIN:
+            event_words = f"{events.words(kind)} came out at {_clock(start)}, {ago} minutes ago, past the {EVENT_DIGEST_MIN}-minute digest window"
+        else:
+            before = _straddle_30(point_at(today, start))
+            pace = delivered / before if before else None
+            released = pace is not None and pace > ONE_RATIO
+            event_words = f"{events.words(kind)} came out at {_clock(start)}, {ago} minutes ago, inside the {EVENT_DIGEST_MIN}-minute digest window"
+            if pace is not None:
+                event_words += (f"; the tape now moves {max(pace, ONE_RATIO + 0.01):.2f} times what the straddle priced just before it, over the one-to-one line"
+                                if released else f"; the tape now moves {pace:.2f} times what the straddle priced just before it, at or under the one-to-one line")
+    if released:
+        verdict = "released after an event"
+    elif ahead and load >= LOADED_RATIO and rank.share >= TOP_FIFTH:
+        verdict = "loaded before an event"
+    elif event is None and swell >= RULER_HIGH:
+        verdict = "swollen with no event"
+    elif swell <= RULER_LOW:
+        verdict = "compressed"
+    else:
+        verdict = "normal"
+    if load >= LOADED_RATIO:
+        load_words = f"{load:.2f} times what the tape's recent 5-minute ranges scale to, past the {LOADED_RATIO:g} loaded line"
+    else:
+        load_words = f"{min(load, LOADED_RATIO - 0.01):.2f} times what the tape's recent 5-minute ranges scale to, under the {LOADED_RATIO:g} loaded line"
+    if swell >= RULER_HIGH:
+        swell_words = f"{swell:.2f} times its {sessions}-session median, past the {RULER_HIGH:g} swollen line"
+    elif swell <= RULER_LOW:
+        swell_words = f"{swell:.2f} times its {sessions}-session median, at or under the {RULER_LOW:g} compressed line"
+    else:
+        swell_words = (f"{_in_band(swell, RULER_LOW + 0.01, RULER_HIGH, 0.01):.2f} times its {sessions}-session median, "
+                       f"between the {RULER_LOW:g} compressed and {RULER_HIGH:g} swollen lines")
+    ls.put(path,
+           f"{verdict}: the same-day straddle prices a 30-minute move {load_words}, higher than {rank.higher_than} of the last "
+           f"{rank.of} sessions at {_clock(scene.now)} ({_fifth(rank)}); {event_words}; this morning's sigma ruler is {swell_words}"
+           f"{_ruled(anchor)}")
