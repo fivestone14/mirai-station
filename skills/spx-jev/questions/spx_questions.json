@@ -4720,7 +4720,7 @@
    ],
    "questions": {
     "seq_day_move_stage": {
-     "status": "dark",
+     "status": "live",
      "type": "choice",
      "serves": "direction",
      "lanes": [
@@ -4761,7 +4761,7 @@
      "why": "A move that keeps making new ground read after read differs from one whose high came two reads ago; no single-window question says which read the extreme came at."
     },
     "seq_breadth_drift": {
-     "status": "dark",
+     "status": "live",
      "type": "choice",
      "serves": "direction",
      "lanes": [
@@ -4816,7 +4816,7 @@
    ],
    "questions": {
     "btc_gap_30m": {
-     "status": "dark",
+     "status": "live",
      "type": "choice",
      "serves": "direction",
      "lanes": [
@@ -4853,7 +4853,7 @@
      "why": "The usual idea is that bitcoin is a fast risk gauge the index follows. Measured here, it runs the other way. When bitcoin has run ahead of the index in the last half hour, the index's next half hour leans slightly the opposite way. At the minute level the index leads bitcoin, not the reverse. The label reports the move and the link and does not say 'bitcoin leads', so the learning loop learns the sign."
     },
     "btc_gap_streak": {
-     "status": "dark",
+     "status": "live",
      "type": "choice",
      "serves": "direction",
      "lanes": [
@@ -4890,7 +4890,7 @@
      "why": "One half-hour of bitcoin drift can be noise. Three in a row in the same direction is a steadier sign that risk appetite outside stocks is moving differently from the index. The measured effect is small and, like btc_gap_30m, runs against bitcoin's direction."
     },
     "btc_link_today": {
-     "status": "dark",
+     "status": "live",
      "type": "choice",
      "serves": "regime",
      "lanes": [
@@ -4927,7 +4927,7 @@
      "why": "Bitcoin's tie to stocks comes and goes. Since 2020 the 60-session correlation of daily moves has run from -0.09 to 0.72. This year the 20-session figure fell from about 0.7 in March and April to 0.26 in August. A tight day says one risk mood is driving both markets. A loose day says bitcoin is on its own news, and its moves say little about stocks. This question tells the loop which days to trust the other bitcoin reads on."
     },
     "btc_five_day_lead": {
-     "status": "dark",
+     "status": "live",
      "type": "choice",
      "serves": "direction",
      "lanes": [
@@ -4986,7 +4986,7 @@
    ],
    "questions": {
     "overnight_move_vs_expected": {
-     "status": "dark",
+     "status": "live",
      "type": "choice",
      "serves": "direction",
      "lanes": [
@@ -5033,7 +5033,7 @@
      "why": "A signed pre-open read of the overnight vote: it leans slightly against the move for the first half hour and with it from 10:30; code learns both signs by clock bucket."
     },
     "pm_overnight_session": {
-     "status": "dark",
+     "status": "live",
      "type": "choice",
      "serves": "size",
      "lanes": [
@@ -5074,7 +5074,7 @@
      "why": "Volatility clusters overnight into the first hour, and futures pressing an edge at 09:28 set up an open outside the range: one read gives the 09:35 ten-minute call a size prior before any SPX bars exist."
     },
     "gap_origin": {
-     "status": "dark",
+     "status": "live",
      "type": "choice",
      "serves": "direction",
      "lanes": [
@@ -5119,7 +5119,7 @@
      "why": "Where the night's move was made: in replay the part made early (after the close, Asia) reversed in the first hour, while the Europe leg carried on to the close (Asia leg against the first 60 minutes -0.23). Each stretch is ranked against its own usual, since as a share of the gap past a fixed half line the answer was 'overnight' on 81% of days."
     },
     "night_vs_last_hour": {
-     "status": "dark",
+     "status": "live",
      "type": "choice",
      "serves": "direction",
      "lanes": [
@@ -5174,7 +5174,7 @@
    ],
    "questions": {
     "release_reaction_path": {
-     "status": "dark",
+     "status": "live",
      "type": "choice",
      "serves": "direction",
      "lanes": [
@@ -5219,7 +5219,7 @@
      "why": "News at 08:30 is priced within a minute, so its direction is in the gap; what carries into the open is whether the market kept trading through it. The size of the reaction rides in the label for the size book."
     },
     "overnight_bonds_vs_gap": {
-     "status": "dark",
+     "status": "live",
      "type": "choice",
      "serves": "direction",
      "lanes": [
@@ -5261,7 +5261,7 @@
      "why": "Overnight bonds reprice on news before cash stocks open; a gap that bonds did not match tends to trade back toward the bonds' side in the first hour. The sign and size of the link come from the last nights, never assumed. Bitcoin is its own question (btc_overnight_vs_futures)."
     },
     "release_vs_night": {
-     "status": "dark",
+     "status": "live",
      "type": "choice",
      "serves": "direction",
      "lanes": [
@@ -5305,7 +5305,7 @@
      "why": "The sequence at the report itself: whether the news confirmed or overturned what the night had priced. release_reaction_path covers the reaction against its own aftermath; this covers it against the night before."
     },
     "btc_overnight_vs_futures": {
-     "status": "dark",
+     "status": "live",
      "type": "choice",
      "serves": "direction",
      "lanes": [
@@ -5344,7 +5344,7 @@
      "why": "Bitcoin trades through the night and reacts to the same risk news as stocks. If it has moved further than futures, the thought is that stocks have not caught up yet. The data says futures already have: bitcoin's overnight move sits inside the gap (rank correlation +0.63 with the SPX open gap) and adds nothing after 09:30. It is here so the learning loop can confirm that, and because the owner asked for bitcoin in the pre-open read."
     },
     "btc_weekend_path": {
-     "status": "dark",
+     "status": "live",
      "type": "choice",
      "serves": "direction",
      "lanes": [
@@ -5401,7 +5401,7 @@
    ],
    "questions": {
     "overnight_arc": {
-     "status": "dark",
+     "status": "live",
      "type": "choice",
      "serves": "direction",
      "lanes": [
@@ -5448,7 +5448,7 @@
      "why": "Carries the night's sequence into a read with no memory: whether the first real move of the night was built on, held, faded or reversed is the shape a trader reads before the open."
     },
     "latest_leg_vs_night": {
-     "status": "dark",
+     "status": "live",
      "type": "choice",
      "serves": "direction",
      "lanes": [
@@ -5493,7 +5493,7 @@
      "why": "The 'what changed since the last read' question: it lets a read with no memory see the latest turn in the story."
     },
     "night_legs_agree": {
-     "status": "dark",
+     "status": "live",
      "type": "choice",
      "serves": "direction",
      "lanes": [

@@ -14,14 +14,14 @@
  "counts": {
   "questions": 128,
   "by_status": {
-   "live": 98,
-   "dark": 27,
+   "live": 116,
+   "dark": 9,
    "shadow": 3
   },
-  "live_market_questions": 98,
+  "live_market_questions": 116,
   "premarket_questions": 12,
-  "opening_lane_questions": 24,
-  "thirty_minute_lane_questions": 86,
+  "opening_lane_questions": 25,
+  "thirty_minute_lane_questions": 92,
   "groups_thirty_minute": 15,
   "groups_opening": 3,
   "groups_premarket": 3,
@@ -31,9 +31,9 @@
    "regime": 8
   },
   "by_serves_live": {
-   "size": 29,
-   "direction": 62,
-   "regime": 7
+   "size": 30,
+   "direction": 78,
+   "regime": 8
   },
   "by_group": {
    "opening_price": {
@@ -87,19 +87,19 @@
     "live": 6
    },
    "read_sequence": {
-    "dark": 2
+    "live": 2
    },
    "bitcoin": {
-    "dark": 4
+    "live": 4
    },
    "premarket_overnight": {
-    "dark": 4
+    "live": 4
    },
    "premarket_context": {
-    "dark": 5
+    "live": 5
    },
    "premarket_sequence": {
-    "dark": 3
+    "live": 3
    },
    "shadow_log": {
     "shadow": 3
@@ -8048,7 +8048,7 @@
      "lanes": [
       "thirty_minute"
      ],
-     "status": "dark",
+     "status": "live",
      "cadence": "every 30-minute read from 11:02",
      "ask": "Across the lane's last reads, is the day's move from the open still making new ground, stalled, or unwinding?",
      "instructions": "Read `seq.day_move_by_read`. Where price is now against the settled open decides first; the stage words decide the answer.",
@@ -8108,7 +8108,7 @@
      "lanes": [
       "thirty_minute"
      ],
-     "status": "dark",
+     "status": "live",
      "cadence": "every 30-minute read from 11:02",
      "ask": "Across the lane's last reads, has breadth built behind the day's move, faded under it, or tracked it?",
      "instructions": "Read `seq.breadth_by_read`. Where price is now against the settled open decides first. Do not say which way price went. Check fading_under_move first.",
@@ -8181,7 +8181,7 @@
      "lanes": [
       "thirty_minute"
      ],
-     "status": "dark",
+     "status": "live",
      "cadence": "every 30-minute read",
      "ask": "Did bitcoin run ahead of the index over the last half hour, and which way?",
      "instructions": "Read `xasset.btc_gap_30min`. Over the last {window_30_min} minutes, did bitcoin move further than the index's move would match, in the direction that has gone with stocks rising, or in the direction that has gone with stocks falling?",
@@ -8232,7 +8232,7 @@
      "lanes": [
       "thirty_minute"
      ],
-     "status": "dark",
+     "status": "live",
      "cadence": "every 30-minute read from 11:02 (needs three prior half-hours)",
      "ask": "Has bitcoin run ahead of the index the same way for three half-hours in a row?",
      "instructions": "Read `xasset.btc_gap_streak`. Across the last three 30-minute reads, did bitcoin run ahead of the index in the same direction every time, toward stocks rising or toward stocks falling?",
@@ -8286,7 +8286,7 @@
      "lanes": [
       "thirty_minute"
      ],
-     "status": "dark",
+     "status": "live",
      "cadence": "every other 30-minute read (hourly)",
      "ask": "Are bitcoin and the index trading together today more tightly than usual, or less?",
      "instructions": "Read `xasset.btc_link`. Since the open, have bitcoin and the index moved together minute by minute more tightly than on most of the last {night_rank_count} sessions, or more loosely?",
@@ -8341,7 +8341,7 @@
       "opening_five_minute",
       "thirty_minute"
      ],
-     "status": "dark",
+     "status": "live",
      "cadence": "once at the 09:35 read; answer held as a day constant through the 30-minute reads",
      "ask": "Over the last week, has bitcoin been lagging the index or running ahead of it?",
      "instructions": "Read `xasset.btc_five_day`. Over the last five sessions, has bitcoin done worse than its usual tie to the index would match (lagging) or better (running ahead)?",
@@ -8415,7 +8415,7 @@
      "lanes": [
       "premarket"
      ],
-     "status": "dark",
+     "status": "live",
      "cadence": "at the 09:28 premarket read",
      "ask": "Which way and how far have futures moved since their 16:00 price?",
      "instructions": "Read `overnight.es_move`. Where are S&P futures now against their 16:00 price, and how large is that move against the recent nights' moves to the same time?",
@@ -8485,7 +8485,7 @@
      "lanes": [
       "premarket"
      ],
-     "status": "dark",
+     "status": "live",
      "cadence": "at the 09:28 premarket read",
      "ask": "How wide has the night's futures session been?",
      "instructions": "Read `overnight.range_vs_normal`. How wide has the night's futures range been since the reopen, against the recent nights' ranges to the same time?",
@@ -8545,7 +8545,7 @@
      "lanes": [
       "premarket"
      ],
-     "status": "dark",
+     "status": "live",
      "cadence": "at the 09:28 premarket read",
      "ask": "Which stretch of the night moved most unusually for its time?",
      "instructions": "Read `overnight.gap_origin`. Where futures stand against their 16:00 price comes first. Which stretch of the night moved most unusually against the same stretch on the recent nights: early, in Europe, in the report window, or late?",
@@ -8612,7 +8612,7 @@
      "lanes": [
       "premarket"
      ],
-     "status": "dark",
+     "status": "live",
      "cadence": "at the 09:28 premarket read",
      "ask": "Is the night carrying on yesterday's last cash hour, or turning against it?",
      "instructions": "Read `premarket.vs_last_hour`. Where futures are now decides first. Did the night go the way SPX moved in yesterday's last hour, or against it?",
@@ -8683,7 +8683,7 @@
      "lanes": [
       "premarket"
      ],
-     "status": "dark",
+     "status": "live",
      "cadence": "at the 09:28 premarket read on a day with a report before the open",
      "ask": "What did futures do after this morning's early report?",
      "instructions": "Read `overnight.release_reaction`. Where futures stand against their 16:00 price comes first. How large was the first reaction to this morning's early report against the same window on recent mornings, and what did futures do after it? Check in order: shrugged, extended, faded, held.",
@@ -8752,7 +8752,7 @@
      "lanes": [
       "premarket"
      ],
-     "status": "dark",
+     "status": "live",
      "cadence": "at the 09:28 premarket read",
      "ask": "Did Treasury futures move further overnight than the S&P futures' move would match?",
      "instructions": "Read `overnight.bond_gap`. Where Treasury futures stand against their 16:00 price comes first. Do they point S&P futures further toward stocks-up than where S&P futures stand, further toward stocks-down, or in line?",
@@ -8811,7 +8811,7 @@
      "lanes": [
       "premarket"
      ],
-     "status": "dark",
+     "status": "live",
      "cadence": "at the 08:48 and 09:28 premarket reads on a day with a report before the open",
      "ask": "Did this morning's early report push the night's move further, undo part of it, or carry futures across their 16:00 price?",
      "instructions": "Read `premarket.release_vs_night`. Where futures are now decides first. Compare the report window's move with the night's move before it. Check crossed_price first.",
@@ -8873,7 +8873,7 @@
      "lanes": [
       "premarket"
      ],
-     "status": "dark",
+     "status": "live",
      "cadence": "at the 09:28 premarket read",
      "ask": "Did bitcoin move further overnight than S&P futures did, and which way?",
      "instructions": "Read `overnight.btc_vs_futures`. Since their 16:00 prices, did bitcoin move further than S&P futures' own move would match, in the direction that has gone with stocks rising, or in the direction that has gone with stocks falling?",
@@ -8930,7 +8930,7 @@
      "lanes": [
       "premarket"
      ],
-     "status": "dark",
+     "status": "live",
      "cadence": "at the 09:28 premarket read on the first session after a weekend or market holiday (the gate decides, never the schedule)",
      "ask": "After a big bitcoin weekend, did bitcoin keep going, hold, or turn back once S&P futures reopened?",
      "instructions": "Read `weekend.btc_path`. It gives bitcoin's weekend leg (from Friday's close until S&P futures reopened on Sunday evening) and its reopen leg (since the reopen). Taking the weekend leg's direction as the reference, did the reopen leg extend it, hold it, or turn back against it?",
@@ -9010,7 +9010,7 @@
      "lanes": [
       "premarket"
      ],
-     "status": "dark",
+     "status": "live",
      "cadence": "at the 09:28 premarket read",
      "ask": "What has happened to the night's first real move since it was made?",
      "instructions": "Read `premarket.where_now` and `premarket.arc`. Where futures are now against their 16:00 price decides first. Has the first leg that moved been built on, held, faded or reversed? Check in order: reversed, faded, built, held.",
@@ -9086,7 +9086,7 @@
      "lanes": [
       "premarket"
      ],
-     "status": "dark",
+     "status": "live",
      "cadence": "at the 08:48 and 09:28 premarket reads",
      "ask": "Since the previous checkpoint, did futures add to the night's move, give some back, or cross their 16:00 price?",
      "instructions": "Read `premarket.where_now` and `premarket.since_checkpoint`. Where futures are now against their 16:00 price decides first. Check crossed first.",
@@ -9158,7 +9158,7 @@
      "lanes": [
       "premarket"
      ],
-     "status": "dark",
+     "status": "live",
      "cadence": "at the 09:28 premarket read",
      "ask": "Did every stretch of the night that moved push the same way, or did the latest one turn?",
      "instructions": "Read `premarket.where_now` and `premarket.legs`. Counting only the legs that moved, did they all go the night's way? Check one_way first.",
@@ -12832,6 +12832,13 @@
    "decision": "accepted",
    "reason": "every lookback named night_rank_count; the premarket ones need overnight_rank_min_nights usable nights like every night rank; the sources are the overnight store's /MBT and the context job's /MBT quotes; /BTCV26 in the Monday prerequisites is /MBT.",
    "source": "work split decision 1"
+  },
+  {
+   "subject": "premarket, bitcoin and read-sequence questions",
+   "action": "status",
+   "decision": "accepted",
+   "reason": "dark -> live by the owner rule (unproven questions are live; dark only when data is missing): the premarket lane saves the overnight futures and builds their labels at every checkpoint, the context job quotes /MBT, and the read-sequence labels rebuild the lane's earlier reads from bars. btc_five_day_lead, btc_gap_30m, btc_gap_streak, btc_link_today, btc_overnight_vs_futures, btc_weekend_path, gap_origin, latest_leg_vs_night, night_legs_agree, night_vs_last_hour, overnight_arc, overnight_bonds_vs_gap, overnight_move_vs_expected, pm_overnight_session, release_reaction_path, release_vs_night, seq_breadth_drift, seq_day_move_stage. A question whose label is not built sleeps with the label omitted (not built yet) and is never asked.",
+   "source": "owner decision 2026-09-27; work split decision 9"
   }
  ],
  "unresolved": [
