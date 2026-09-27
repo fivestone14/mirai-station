@@ -68,7 +68,6 @@ def stubbed(monkeypatch, premarket_scene_factory):
 
     monkeypatch.setattr(replay.premarket, "make_premarket_scene", scene)
     monkeypatch.setattr(replay, "build_labels", labels)
-    monkeypatch.setattr(replay.premarket, "checkpoints", lambda day: replay.PREMARKET.schedule, raising=False)  # W8-INTERIM until W1 lands
 
 
 def _files(folder: Path) -> dict[str, float]:
@@ -198,3 +197,25 @@ def test_every_premarket_question_is_replayed_as_live():
     doc = replay.premarket_doc()
     qs = [q for g in doc["groups"] for q in g["questions"].values()]
     assert len(qs) == 12 and all(q["status"] == "live" and q["replayed_from"] in ("dark", "live", "shadow") for q in qs)
+
+
+def test_no_ruler_no_outcome(state):
+    for ruler in (None, 0.0, float("nan")):
+        assert replay.outcome(state, NIGHTS[0], ruler) == {"omitted": "no pre-open ruler"}
+
+
+def test_an_ask_with_no_code_answer_is_counted_not_graded():
+    reads, outcomes = _nights("overnight_move_vs_expected", ["up"] * 3, [0.1] * 3)
+    reads[0]["questions"]["overnight_move_vs_expected"]["answer"] = None
+    got = replay.judge("overnight_move_vs_expected", ORDERED_Q, "09:28", reads, outcomes)
+    assert got["unanswered"] == 1 and got["graded"] == 2
+
+
+def test_a_read_the_lane_could_not_make_is_kept_with_its_reason(state, monkeypatch):
+    def no_ruler(state_dir, now):
+        raise replay.premarket.NoPreOpenRead("no pre-open ruler: too few anchors")
+
+    monkeypatch.setattr(replay.premarket, "make_premarket_scene", no_ruler)
+    reads, oc = replay.replay_day(state, replay.premarket_doc(), NIGHTS[0])
+    assert all(r["omitted"] == "no read: no pre-open ruler: too few anchors" for r in reads)
+    assert oc == {"day": "2026-09-17", "calendar": None, "omitted": "no pre-open ruler"}

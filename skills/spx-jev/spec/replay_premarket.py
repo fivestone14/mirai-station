@@ -1,12 +1,14 @@
 """Replay the premarket lane over the saved nights and judge each premarket question against the open (read only).
 
     python3 spec/replay_premarket.py --out DIR                        # every saved night of the station's state
+    python3 spec/replay_premarket.py --out DIR --workers 8            # the nights spread over 8 processes
     python3 spec/replay_premarket.py --out DIR --report FILE --from 2026-07-06 --to 2026-09-25 --state-dir DIR
 
 Every night in the overnight store (state/spx_jev/overnight/, overnight.py) is read again at each of its
 day's checkpoints (premarket.checkpoints) the way the lane reads it: the scene before the open
 (premarket.make_premarket_scene), every label and gate (labels.registry.build_labels), and the requests
-the lane would send (ask.build_requests) with each question's schedule. Every premarket question is
+the lane would send (ask.build_requests) with the questions not due at the read left out (schedule.not_due);
+a read the lane could not make (premarket.NoPreOpenRead) is kept with its reason. Every premarket question is
 replayed as live whatever its status, so a dark question is judged before it goes live. A question's
 answer here is the code's: the verdict on its own label's figure (the label whose verdict is one of its
 options). JEV is never asked.
@@ -44,7 +46,10 @@ import re
 import statistics
 import sys
 from collections import Counter
+from concurrent.futures import ProcessPoolExecutor
+from contextlib import nullcontext
 from datetime import date, datetime, time, timedelta
+from itertools import repeat
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -53,7 +58,7 @@ from spx_jev.ask import build_requests, get_path, load_questions  # noqa: E402
 from spx_jev.labels.measures import ET, bar_time, is_num, settled_open  # noqa: E402
 from spx_jev.labels.registry import build_labels  # noqa: E402
 from spx_jev.lane import PREMARKET  # noqa: E402
-from spx_jev.schedule import asks_at  # noqa: E402
+from spx_jev.schedule import asks_at, not_due  # noqa: E402
 from spx_jev.state_builder import DEFAULT_STATE_DIR, load_bars, previous_session  # noqa: E402
 
 MIN_NIGHTS = 20
@@ -88,7 +93,7 @@ def outcome(state_dir: Path, day: date, ruler: float | None) -> dict:
     """What SPX did from the settled open, in the pre-open ruler ``ruler`` (points): ``{"settled_open",
     "prior_close", "gap", "open_10", "open_30", "open_60", "to_close", "range_30", "range_60"}``, a mark
     whose bar is missing left None; or ``{"omitted": why}``."""
-    if not is_num(ruler) or ruler <= 0:
+    if not is_num(ruler) or not ruler > 0:
         return {"omitted": "no pre-open ruler"}
     bars = load_bars(state_dir, day.isoformat())
     start = settled_open(bars)
@@ -139,15 +144,11 @@ def read(state_dir: Path, doc: dict, day: date, checkpoint: str) -> dict:
     out = {"day": day.isoformat(), "checkpoint": checkpoint}
     try:
         scene = premarket.make_premarket_scene(state_dir, now)
-    except ValueError as e:
-        return {**out, "omitted": f"no scene: {e}"}
-    if not is_num(scene.sigma) or scene.sigma <= 0:
-        return {**out, "omitted": "no pre-open ruler"}
+    except premarket.NoPreOpenRead as e:
+        return {**out, "omitted": f"no read: {e}"}
     labels = build_labels(scene)
-    reads = premarket.checkpoints(day)
     questions = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
-    skip = {qid: f"not on its schedule at the {checkpoint} ET read" for qid, q in questions.items()
-            if q.get("schedule") is not None and not asks_at(q["schedule"], checkpoint, day, reads)}
+    skip = not_due(doc, PREMARKET, now)
     requests, skipped = build_requests(labels.state, doc, skip=skip, gates=labels.gates)
     asked = {qid for r in requests for qid in r["questions"]}
     why = {qid: reason for g in skipped.values() for qid, reason in g.items()}
@@ -167,6 +168,13 @@ def read(state_dir: Path, doc: dict, day: date, checkpoint: str) -> dict:
         fates[qid] = fate
     return {**out, "ruler": round(scene.sigma, 4), "side": night_side(scene), "questions": fates,
             "figures": {p: f for p, f in labels.figures.items() if p.split(".")[0] in ("overnight", "premarket", "weekend")}}
+
+
+def replay_day(state_dir: Path, doc: dict, day: date) -> tuple[list[dict], dict]:
+    """Every checkpoint's read of one night, and what SPX did after the open in the ruler its reads stamped."""
+    reads = [read(state_dir, doc, day, c) for c in premarket.checkpoints(day)]
+    ruler = next((r["ruler"] for r in reversed(reads) if "ruler" in r), None)
+    return reads, {"day": day.isoformat(), "calendar": events.uncovered(day), **outcome(state_dir, day, ruler)}
 
 
 def replayable_days(state_dir: Path, first: date | None, last: date | None, now: datetime) -> list[date]:
@@ -285,6 +293,8 @@ def judge(qid: str, q: dict, checkpoint: str, reads: list[dict], outcomes: dict[
         by_answer[a] = {"n": len(rows), **{name: _mean_share([row[name] for row in rows]) for name in ["gap", *MOVES, *RANGES]}}
     out = {"question": qid, "checkpoint": checkpoint, "kind": kind, "judged_on": target, "status": q.get("replayed_from"),
            "fates": dict(fates), "reasons": reasons, "answers": dict(Counter(a for _, a, _ in graded)),
+           "unanswered": sum(1 for r in mine if "questions" in r and r["questions"][qid]["fate"] == "asked"
+                             and r["questions"][qid]["answer"] is None),
            "graded": len(pairs), "by_answer": by_answer}
     answers, values = [a for a, _ in pairs], [v for _, v in pairs]
     given = sum(1 for n in Counter(answers).values() if n >= MIN_PER_ANSWER)
@@ -349,6 +359,8 @@ def report(judged: list[dict], reads: list[dict], outcomes: dict[str, dict], day
                   f"Judged on {KIND_WORDS[j['kind']]}: {j['verdict']} ({j['basis']}).",
                   f"Fates: {', '.join(f'{k} {v}' for k, v in sorted(j['fates'].items()))}. "
                   f"Answers: {', '.join(f'{k} {v}' for k, v in sorted(j['answers'].items())) or 'none'}."]
+        if j["unanswered"]:
+            lines.append(f"Asked on {j['unanswered']} nights with no code answer: no label of the question's carried a verdict among its options.")
         for fate, top in j["reasons"].items():
             if top:
                 lines.append(f"Why {fate}: " + "; ".join(f"{why} ({n})" for why, n in top) + ".")
@@ -383,6 +395,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--report", help="the report's path (default {out}/report.md)")
     ap.add_argument("--from", dest="first", type=date.fromisoformat)
     ap.add_argument("--to", dest="last", type=date.fromisoformat)
+    ap.add_argument("--workers", type=int, default=1, help="processes to spread the nights over")
     args = ap.parse_args(argv)
     state_dir, out = Path(args.state_dir), Path(args.out)
     if out.resolve().is_relative_to(state_dir.resolve()):
@@ -392,12 +405,13 @@ def main(argv: list[str] | None = None) -> int:
         ap.error(f"no finished nights under {state_dir / overnight.OVERNIGHT_SUBDIR}")
     doc = premarket_doc()
     reads, outcomes = [], {}
-    for day in days:
-        mine = [read(state_dir, doc, day, c) for c in premarket.checkpoints(day)]
-        reads += mine
-        ruler = next((r["ruler"] for r in reversed(mine) if "ruler" in r), None)
-        outcomes[day.isoformat()] = {"day": day.isoformat(), "calendar": events.uncovered(day), **outcome(state_dir, day, ruler)}
-        print(f"{day}: {sum(1 for r in mine if 'questions' in r)} of {len(mine)} reads built", file=sys.stderr)
+    with ProcessPoolExecutor(args.workers) if args.workers > 1 else nullcontext() as pool:
+        run = pool.map if pool else map
+        nights = run(replay_day, repeat(state_dir), repeat(doc), days)
+        for day, (mine, oc) in zip(days, nights):
+            reads += mine
+            outcomes[day.isoformat()] = oc
+            print(f"{day}: {sum(1 for r in mine if 'questions' in r)} of {len(mine)} reads built", file=sys.stderr)
     judged = [judge(qid, q, c, reads, outcomes) for g in doc["groups"] for qid, q in g["questions"].items()
               for c in PREMARKET.schedule if q.get("schedule") is None or asks_at(q["schedule"], c, days[-1], PREMARKET.schedule)]
     out.mkdir(parents=True, exist_ok=True)
