@@ -62,7 +62,7 @@ from .baseline import Baseline
 from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, missing_paths, plan,
                       save_last)
 from .clock import blend as clock_blend, odds as clock_odds
-from .events import tag as event_tag
+from .events import learn_exclude, tag as event_tag
 from .expiry import calendar_of
 from .grade import live_options, mark_at, run as grade_run
 from .hour import answer_sentences, band_of, hour_request, hour_summary, load_hour_doc, named_levels
@@ -456,6 +456,8 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
     except Exception as e:  # a broken calendar must never cost the read
         log(f"the event calendar could not be read this run: {type(e).__name__}: {e}")
         event = None
+    # what the learning loop leaves out, per horizon, decided now so a later calendar edit cannot move it
+    learn = {"learn_exclude": learn_exclude(now, tuple(m for m, _ in lane.horizons.values()))} if lane.pool else {}
     day_name = scene.row["ts"][:10]
     by_id = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
     live_ids = {qid for qid, q in by_id.items() if q.get("status") == "live"}
@@ -545,7 +547,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         (out_dir / "hour").mkdir(parents=True, exist_ok=True)
         # a lane on the tape stores the bands JEV was told, in points, so the grader reads the same ones
         with open(out_dir / "hour" / f"{day_name}.jsonl", "a", encoding="utf-8") as f:
-            f.write(json.dumps({"row_ts": scene.row["ts"], "spot": scene.row.get("spot"), "sigma": scene.sigma, "event": event,
+            f.write(json.dumps({"row_ts": scene.row["ts"], "spot": scene.row.get("spot"), "sigma": scene.sigma, "event": event, **learn,
                                 **_stamp(lane, unit, band), **(hour or {}), **hour_rec}, ensure_ascii=False) + "\n")
     archive.append(lane.archive_folder(state_dir, out_dir), day_name, archive.ReadRecord(
         read_id=archive.read_id(lane.name, scene.row["ts"]), lane=lane.name, row_ts=scene.row["ts"], sent=do_send,

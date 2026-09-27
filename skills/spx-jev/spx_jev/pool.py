@@ -375,7 +375,12 @@ def graded_outcomes(grades: list[dict], horizons) -> dict[str, dict]:
 
 
 def event_inside(rec: dict, minutes: int) -> bool:
-    """A tier-1 event due inside the read's window or under way (events.tag covers the next 60 minutes)."""
+    """A scheduled event inside the read's window or under way, as the read's record says (events.learn_exclude,
+    written when the read was made); a record from before it carries only the tier-1 tag (events.tag covers
+    the next 60 minutes)."""
+    ex = rec.get("learn_exclude")
+    if isinstance(ex, dict) and str(minutes) in ex:
+        return bool(ex[str(minutes)])
     ev = rec.get("event") if isinstance(rec.get("event"), dict) else None
     return ev is not None and (minutes > 30 or bool(ev.get("within_30")))
 

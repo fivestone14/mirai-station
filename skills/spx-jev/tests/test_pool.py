@@ -237,3 +237,17 @@ def test_a_session_with_a_read_missing_its_snapshot_fails_closed_and_an_event_re
     del recs[1]["pool"]
     hour.write_text("".join(json.dumps(r) + "\n" for r in recs))
     assert update(tmp_path, today="2026-09-16")["next_30"] == "2026-09-15: some reads carry no snapshot; stopped"
+
+
+def test_the_loop_leaves_out_what_the_read_recorded_beyond_the_tier_1_tag():
+    """06's guardrails: a 10:00 release, a 14:00 one, a Fed speaker, a monthly expiry's close and the month's last
+    close keep a read out of the loop though the weights' tier-1 tag says nothing."""
+    from datetime import datetime
+    from spx_jev.events import ET, learn_exclude
+    jolts = learn_exclude(datetime(2026, 9, 29, 9, 32, tzinfo=ET), (30, 60))           # JOLTS at 10:00
+    opex = learn_exclude(datetime(2026, 10, 16, 15, 32, tzinfo=ET), (30, 60))          # a monthly expiry's close
+    assert jolts == {"30": True, "60": True} and opex == {"30": True, "60": True}
+    assert learn_exclude(datetime(2026, 10, 16, 14, 32, tzinfo=ET), (30, 60)) == {"30": False, "60": False}
+    assert pool.event_inside({"event": None, "learn_exclude": jolts}, 30)
+    assert not pool.event_inside({"event": {"within_30": True}, "learn_exclude": {"30": False}}, 30)
+    assert pool.event_inside({"event": {"within_30": True}}, 30)                       # a record from before learn_exclude

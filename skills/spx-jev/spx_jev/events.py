@@ -5,9 +5,11 @@ the phone, JEV never sees it, the sums are not suppressed, and a read with an ev
 minutes is graded but tallied apart and kept out of what the question weights learn from (grade.py),
 so a Fed minute cannot teach a question what an ordinary half hour looks like.
 
-The other tiers are for the event labels (labels/events_shocks.py) only: the releases before the open
+The other tiers are for the event labels (labels/events_shocks.py): the releases before the open
 (PRE_OPEN), the 10:00 and 14:00 releases (DATA_10AM, DATA_2PM) and the Fed officials' scheduled
-remarks (FED_SPEAKER). The calendar is kept by hand from ``covers_from`` through ``covers_through``;
+remarks (FED_SPEAKER). The learning loop keeps out more than the weights do (learn_exclude, 06's
+guardrails): the 10:00 and 14:00 releases and the Fed speakers too, and the close of a monthly
+expiry and of the month's last session. The calendar is kept by hand from ``covers_from`` through ``covers_through``;
 outside those days a label cannot tell a quiet day from an unlisted one, so it says so instead of
 reading the calendar (uncovered).
 """
@@ -21,10 +23,14 @@ from functools import lru_cache
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from .expiry import expiry_kinds, quarter_end_expiry
+from .sessions import session_close
+
 CALENDAR = Path(__file__).resolve().parent.parent / "calendar" / "events.json"
 ET = ZoneInfo("America/New_York")
 TIER = "1"
 PRE_OPEN, DATA_10AM, DATA_2PM, FED_SPEAKER = "pre_open", "data_10am", "data_2pm", "fed_speaker"
+LEARN_TIERS = frozenset({TIER, DATA_10AM, DATA_2PM, FED_SPEAKER})   # kept out of the learning loop (learn_exclude)
 WINDOW_MIN = 60          # tagged when due within the longer graded horizon
 HOLD_OUT_MIN = 30        # kept out of the weights when due within the primary one
 
@@ -190,3 +196,20 @@ def tag(now: datetime, path: Path | str = CALENDAR) -> dict | None:
     soonest = ev[0]["minutes"]
     return {"events": [{k: v for k, v in e.items() if k != "text"} for e in ev], "soonest_min": soonest,
             "within_30": soonest <= HOLD_OUT_MIN, "sentence": "a scheduled event is ahead: " + "; ".join(e["text"] for e in ev)}
+
+
+def learn_exclude(now: datetime, horizons: tuple[int, ...], path: Path | str = CALENDAR) -> dict[str, bool]:
+    """``{str(minutes): bool}`` per horizon: whether the learning loop leaves the read out of what it learns
+    (06's guardrails), written on the read's record when it is made. Out when a tier-1, 10:00, 14:00 or Fed
+    speaker row starts inside the window or is under way, or when the window reaches the close of a monthly
+    expiry or of the month's last session (quarter_end_expiry is the last trading day of any month)."""
+    d = now.astimezone(ET).date()
+    close = session_close(now.astimezone(ET))
+    at_close = bool(expiry_kinds(d)) or d == quarter_end_expiry(d.year, d.month)
+    rows = [e for e in _load(str(path)).events if e.tier in LEARN_TIERS]
+    out = {}
+    for minutes in horizons:
+        end = now + timedelta(minutes=minutes)
+        out[str(minutes)] = (any(now < e.start <= end or (e.end is not None and e.start <= now < e.end) for e in rows)
+                             or (at_close and now < close <= end))
+    return out

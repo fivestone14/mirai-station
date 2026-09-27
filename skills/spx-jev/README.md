@@ -54,7 +54,7 @@ returns a probability for each answer option. JEV makes no trading call.
 | `spx_jev/schwab.py` | The Schwab Link | The two feeds' calls through the station's shared client (REST only, never the lob-flow streamer), batched and spaced. |
 | `spec/question_set.json`, `spec/write_question_docs.py`, `questions/spx_questions.json` | The Questions | The final question set (115 questions, 121 labels, 166 constants, with its conventions and the review behind each question) and the step-2 doc both lanes ask from, written from it by `python3 spec/write_question_docs.py` (never edited by hand; `--check` says whether it is current, and a test holds it). No number is typed into them: every threshold is a name in braces filled from `cuts.py`, which must hold the set's constants to the number before the writer writes. |
 | `questions/spx_hour.json`, `questions/spx_lane_hour.json` | The Sums | The live lane's two sums, and the opening lane's five-way 10-minute sum. |
-| `calendar/events.json`, `spx_jev/events.py` | The Calendar | The scheduled events, kept by hand from `covers_from` through `covers_through`. Tier 1 (the Fed, rebalance closes, half days, copied from SNDK's calendar less SanDisk's own) tags the reads; the other tiers (the 08:30, 10:00 and 14:00 releases and the Fed's scheduled speakers) feed only the event labels. |
+| `calendar/events.json`, `spx_jev/events.py` | The Calendar | The scheduled events, kept by hand from `covers_from` through `covers_through`. Tier 1 (the Fed, rebalance closes, half days, copied from SNDK's calendar less SanDisk's own) tags the reads; the other tiers (the 08:30, 10:00 and 14:00 releases and the Fed's scheduled speakers) feed the event labels, and all but the 08:30 releases also keep reads out of the learning loop. |
 | `spec/labels.json` | The Label Spec | The 50 labels built before the final set, with source, logic, cut and a real sentence; a test pins it to the code. The set's own labels are specified in `spec/question_set.json`. |
 | `spec/cuts.json`, `spec/measure_cuts.py` | The Measurements | How each measured cut was found, with its percentile and sample size, and where each declared cut falls (the share of SPX and of SNDK observations under it). |
 | `launchd/*.plist.template`, `runtime/scripts/run-spx-jev*.sh` | The Jobs | Five staged jobs and their runners. Not installed. |
@@ -133,7 +133,10 @@ archive there too, under `archive/`.
   nothing against the wall clock.
 - **Scheduled events.** A read with a tier-1 event due within the hour carries
   it in its record and the card; JEV never sees it. One due within 30 minutes
-  is graded but never handed to the question weights.
+  is graded but never handed to the question weights. The learning loop
+  keeps out more (`events.learn_exclude`, written on the sum record): a
+  tier-1, 10:00, 14:00 or Fed-speaker row inside the window, and the close of
+  a monthly expiry or of the month's last session.
 - **Times on the card are full timestamps.** Every time field carries its
   date and offset (`2026-09-25T16:00:00-04:00`), never a bare clock, so the
   phone can show it in the viewer's own zone. Prose meant for a reader names
