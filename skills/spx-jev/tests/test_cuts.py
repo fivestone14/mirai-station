@@ -8,10 +8,15 @@ from pathlib import Path
 from spx_jev import cuts
 
 SPEC = Path(__file__).resolve().parent.parent / "spec" / "cuts.json"
+QUESTION_SET = Path(__file__).resolve().parent.parent / "spec" / "question_set.json"
 
 
 def _spec():
     return json.loads(SPEC.read_text(encoding="utf-8"))
+
+
+def _question_set_constants() -> dict:
+    return json.loads(QUESTION_SET.read_text(encoding="utf-8"))["constants"]
 
 
 def test_every_measured_cut_is_the_recorded_number():
@@ -48,10 +53,21 @@ def test_every_declared_cut_is_recorded_at_its_value_or_says_why_not():
     rates = d["base_rates"]
     measured = (set(d["cuts"]) | {f"{h}_{b}" for h in ("next_30", "next_60") for b in rates[h] if b.endswith("_pct")}
                 | {f"tape_{b}" for b in rates["next_10"] if b.endswith("_pct")})
-    declared = set(cuts.QUESTION_CONSTANTS) - measured
-    assert set(d["declared"]) | set(d["not_measured"]) == declared and not set(d["declared"]) & set(d["not_measured"])
+    # the question set records its own constants with their notes; only the cuts.py ones it does not name need a record here
+    unmeasured = set(cuts.QUESTION_CONSTANTS) - measured
+    recorded = set(d["declared"]) | set(d["not_measured"])
+    assert unmeasured - set(_question_set_constants()) <= recorded <= unmeasured and not set(d["declared"]) & set(d["not_measured"])
     for name, entry in d["declared"].items():
         assert entry["value"] == cuts.QUESTION_CONSTANTS[name], name
         for m, at in entry["measures"].items():
             assert at["how"] and at["n_spx"] > 0 and 0 <= at["spx_percentile"] <= 100, (name, m)
     assert all(why.strip() for why in d["not_measured"].values())
+
+
+def test_every_question_set_constant_is_in_cuts_py_at_its_value_and_type():
+    """The question set names 166 thresholds; each is a cuts.py constant of the same name, number and kind
+    (a whole number stays whole, so the words JEV reads print it as the set wrote it)."""
+    for name, entry in _question_set_constants().items():
+        assert name in cuts.QUESTION_CONSTANTS, f"{name} is in the question set but not in cuts.py"
+        value = cuts.QUESTION_CONSTANTS[name]
+        assert value == entry["value"] and type(value) is type(entry["value"]), (name, value, entry["value"])

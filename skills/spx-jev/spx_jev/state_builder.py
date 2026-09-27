@@ -34,7 +34,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .cuts import (BUSIEST_STRIKE_SHARE, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, GRIP_CONCENTRATED_SHARE, GRIP_SPREAD_SHARE,
-                   IV_FLAT_BAND_PTS, MINUTE_WIDTH_CUT, MOVE_RULE_SIGMA, OUTLIER_DAY_SIGMA, PACE_BIGGER, PACE_SMALLER,
+                   IV_FLAT_BAND_PTS, MIN_RANK_SESSIONS, MINUTE_WIDTH_CUT, MOVE_RULE_SIGMA, OUTLIER_DAY_SIGMA, PACE_BIGGER, PACE_SMALLER,
                    PATH_CHOPPY, PATH_ORDERLY, PAUSE_BRIEF_MIN, PAUSE_LONG_MIN, PULLBACK_SHARE, REALIZED_QUIET_RATIO,
                    REALIZED_WILD_RATIO, RSI_OVERBOUGHT, RSI_OVERSOLD, RULER_FLOOR_SIGMA, RULER_HOLD_SIGMA, SHAPE_CUT_SIGMA,
                    TAPE_BIG_UNITS, TAPE_FLAT_UNITS, TURNOVER_HIGH, TURNOVER_LOW, VIX_CURVE_FLAT, WALL_NEAR_SIGMA,
@@ -68,7 +68,6 @@ RSI_PERIOD = 14                 # Wilder's RSI over 14 closes
 # Baselines.
 MAX_BASELINE_SESSIONS = 20
 MIN_BARS_FOR_A_SESSION = 300
-MIN_RANK_SESSIONS = 5           # prior sessions a rank against the same minutes needs
 RANGE_PRIOR_SESSIONS = 5        # today's range against the prior sessions at the same time of day
 MIN_RANGE_SESSIONS = 3
 # The opening box is the first 30 minutes; a break is past the move bar, two typical minutes
