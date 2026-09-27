@@ -566,3 +566,76 @@ def test_the_vix_curve_is_omitted_without_its_parts(scene_factory, tmp_path):
     assert labels(no_ts)[1]["vol.term_structure"] == "row carries no VIX against three-month VIX (vix_ts)"
     assert labels(replace(scene, prior_bars=dict(list(prior.items())[:3])))[1]["vol.term_structure"] == (
         "needs 5 prior sessions with the VIX curve at this minute, have 3")
+
+
+# ---- vol.stress_path
+
+def tick_tape(now, lows_by_minutes_ago: dict[int, float]) -> MarketContext:
+    """NYSE TICK's minute bars, each finished the given minutes before ``now`` (a negative one after it)."""
+    return MarketContext({}, {"$TICK": sorted((now - timedelta(minutes=ago), {"high": 300.0, "low": low})
+                                              for ago, low in lows_by_minutes_ago.items())})
+
+
+SELLING = {3: -1100.0, 7: -1050.0, 12: -1300.0, 18: -1000.0, 25: -1150.0, 40: -1200.0, -1: -1500.0, 5: -600.0}
+
+
+def stress_scene(scene_factory, vix_open=20.7, vix_now=24.1, off_low=16.5, ticks=None, **row_over):
+    """A 12:30 read after a selloff: SPX's low made by the 11:39 bar, VIX's session high 25.0 at 11:42."""
+    now = at(12, 30)
+    low = 7679.5                                        # the 11:39 bar's close of 7680 less its wick
+    bars = bars_from_closes([7700.0] * 129 + [7680.0] + [low + off_low] * 51)
+    rows = [diary_row(at(9, 31), vix_open), diary_row(at(11, 42), 25.0), diary_row(at(12, 0), 24.5)]
+    scene = scene_factory(now, bars, row_over={"range_ruler": ruler_block(vix_now), **row_over}, rows_before=rows,
+                          market=tick_tape(now, SELLING if ticks is None else ticks))
+    return replace(scene, prior_rulers={d: SigmaRuler(SIGMA, "anchor") for d in PRIOR_DAYS[:5]})
+
+
+def test_a_selloff_reads_its_vix_retreat_its_bounce_and_its_tick_cluster(scene_factory):
+    assert labels(stress_scene(scene_factory))[0]["vol.stress_path"] == (
+        "VIX 24.1, up 3.4 points since the open; session high 25.0 at 11:42, it has given back 21% of its rise from there, short of "
+        "the 30% retreat share and at or past the 10% hold share; SPX sits 0.22 normal-day sigma above its session low from 11:40, past "
+        "the 0.15 bounce line; NYSE TICK printed at or below -1000 5 times in 30 minutes, at least the 3-reading cluster")
+
+
+@pytest.mark.parametrize("vix_now, words", [
+    (23.4, "it has given back 37% of its rise from there, past the 30% retreat share"),
+    (24.8, "it has given back 5% of its rise from there, short of the 10% hold share"),
+    (25.0, "it has given back 0% of its rise from there, short of the 10% hold share, and is at its session high now"),
+])
+def test_the_vix_retreat_is_judged_on_the_retreat_and_hold_shares(scene_factory, vix_now, words):
+    assert words in labels(stress_scene(scene_factory, vix_now=vix_now))[0]["vol.stress_path"]
+
+
+@pytest.mark.parametrize("off_low, words", [
+    (6.0, "0.08 normal-day sigma above its session low from 11:40, within the 0.1 near-low line"),
+    (9.0, "0.12 normal-day sigma above its session low from 11:40, beyond the 0.1 near-low line and short of the 0.15 bounce line"),
+])
+def test_the_distance_off_the_low_is_judged_on_the_near_low_and_bounce_lines(scene_factory, off_low, words):
+    assert f"SPX sits {words};" in labels(stress_scene(scene_factory, off_low=off_low))[0]["vol.stress_path"]
+
+
+def test_only_tick_bars_finished_in_the_last_30_minutes_count(scene_factory):
+    got = labels(stress_scene(scene_factory, ticks={3: -1100.0, 12: -1300.0, 40: -1200.0, -1: -1500.0}))[0]["vol.stress_path"]
+    assert got.endswith("NYSE TICK printed at or below -1000 2 times in 30 minutes, short of the 3-reading cluster")
+
+
+def test_a_day_is_stressed_by_its_vix_rise_its_prior_high_or_its_curve(scene_factory, tmp_path):
+    calm = stress_scene(scene_factory, vix_open=23.1)
+    assert labels(calm)[1]["vol.stress_path"] == ("not a stress day: VIX is +1.00 points from its open, under 2, with no prior diaries to "
+                                                  "compare it with, and 0.83 times three-month VIX, under 0.98")
+    assert "vol.stress_path" in labels(stress_scene(scene_factory, vix_open=23.1, vix_ts=0.99))[0]
+    history = write_prior_diaries(tmp_path, {d: [diary_row(at(10, 0, day=d), 22.0)] for d in PRIOR_DAYS[:5]})
+    over_prior_high = replace(calm, state_dir=history, prior_bars={d: flat_bars(390, day=d) for d in PRIOR_DAYS[:5]})
+    assert "vol.stress_path" in labels(over_prior_high)[0]
+    under = write_prior_diaries(tmp_path / "under", {d: [diary_row(at(10, 0, day=d), 26.0)] for d in PRIOR_DAYS[:5]})
+    assert labels(replace(over_prior_high, state_dir=under))[1]["vol.stress_path"] == (
+        "not a stress day: VIX is +1.00 points from its open, under 2, at or under its 26.00 high of the prior sessions, and 0.83 times "
+        "three-month VIX, under 0.98")
+
+
+def test_a_stress_day_without_tick_or_a_normal_day_sigma_is_omitted(scene_factory):
+    stressed = stress_scene(scene_factory)
+    assert labels(replace(stressed, market=None))[1]["vol.stress_path"] == (
+        "no NYSE TICK in the market context over the last 30 minutes (the context job)")
+    assert labels(replace(stressed, prior_rulers={}))[1]["vol.stress_path"] == (
+        "needs today's bars and 5 prior sessions' trusted anchors for the normal-day sigma")

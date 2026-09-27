@@ -11,16 +11,17 @@ from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
 
 from .. import events
-from ..cuts import (ATM_RESID_VOLPTS, BOTTOM_FIFTH, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, EVENT_DIGEST_MIN, FRONT_SHIFT_PTS, HALF_RANK,
-                    IV_FLAT_BAND_PTS, LOADED_RATIO, MIN_RANK_SESSIONS, MOVE_RULE_SIGMA, ONE_RATIO, PAIR_MOVE_SIGMA, REALIZED_QUIET_RATIO,
+from ..cuts import (ATM_RESID_VOLPTS, BOTTOM_FIFTH, BOUNCE_SIGMA, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, EVENT_DIGEST_MIN, FRONT_SHIFT_PTS, HALF_RANK,
+                    IV_FLAT_BAND_PTS, LOADED_RATIO, MIN_RANK_SESSIONS, MOVE_RULE_SIGMA, NEAR_LOW_SIGMA, ONE_RATIO, PAIR_MOVE_SIGMA, REALIZED_QUIET_RATIO,
                     REALIZED_WILD_RATIO, RULER_HIGH, RULER_LOW, RV_HOT, STRADDLE_CHEAP, STRADDLE_REPRICE_SHARE, STRADDLE_RICH,
-                    TOP_FIFTH, VIX_CURVE_FLAT, VIX_CURVE_NEAR_FLAT, VIX_GAP_RESID_PTS, VIX_JUMP_PCT, VIX_JUMP_PCT_10, VIX_MOVE_PCT,
+                    STRESS_HOLD_SHARE, STRESS_RETREAT_SHARE, TICK_CLUSTER, TICK_EXTREME, TOP_FIFTH, VIX_CURVE_FLAT, VIX_CURVE_NEAR_FLAT, VIX_GAP_RESID_PTS, VIX_JUMP_PCT, VIX_JUMP_PCT_10, VIX_MOVE_PCT,
                     VIX_MOVE_PCT_10, VIX_RESID_PCT, VIX_STILL_PCT, VIX_STILL_PCT_10, WINDOW_10_MIN, WINDOW_30_MIN,
                     ZERO_DTE_LAST_HOUR_MIN)
 from ..sessions import session_close, session_minutes
 from ..state_builder import MarketContext, Scene, row_days
 from .label_set import LabelSet
-from .measures import ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, day_high_low, is_num, settled_open
+from .measures import (ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, day_high_low, is_num, session_extremes,
+                       settled_open)
 from .ranks import SameClockRank, rank_against, same_clock_values
 from .rulers import SigmaRuler, normal_day_sigma, sigma_anchor
 from .vol_sources import DiaryPoint, diary_point, point_at, prior_diary
@@ -52,6 +53,10 @@ REAL_MOVE_MIN = 10
 QUOTE_MAX_AGE_MIN = 5
 # VVIX's leftover move is fitted on the prior sessions' half hours ending 10:30 to 15:30 (11 a session).
 VVIX_FIT_FIRST, VVIX_FIT_READS = time(10, 30), 11
+# A stress day, the only kind stress_path is written on (the set's words): VIX this many points over its open,
+# over its prior sessions' high, or VIX at this share of three-month VIX, all but inverted.
+STRESS_VIX_RISE_PTS = 2.0
+STRESS_CURVE = 0.98
 # The VIX that closes the session is read against the early afternoon: the newest row by 14:00.
 AFTERNOON_ANCHOR = time(14, 0)
 # What the tape delivers over 30 minutes: the median high-to-low range of the last six finished 5-minute
@@ -82,6 +87,7 @@ def build_vol_labels(scene: Scene) -> LabelSet:
     _vvix_with_move(scene, ls)
     _vvix_vs_vix(scene, ls)
     _vix_curve(scene, today, ls)
+    _stress_path(scene, today, ls)
     return ls
 
 
@@ -753,3 +759,62 @@ def _vix_curve(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
               else f"the curve inverted on {inverted} of the last {len(diaries)} sessions")
     ls.put(path, f"VIX is {level}; flatter than {rank.higher_than} of the last {rank.of} sessions at this time, {_fifth(rank)}; "
                  f"nine-day VIX is {nine_words}; {record}")
+
+
+# ----------------------------------------------------------------------------- a stress day's path
+
+def _stress_path(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
+    """On a stress day only (STRESS_VIX_RISE_PTS, the prior sessions' VIX high, STRESS_CURVE), how much of its
+    rise VIX has given back from its session high, how far SPX sits off its session low in normal-day sigma,
+    and how often NYSE TICK hit its selling extreme in the last 30 minutes. Any other day it is omitted, so
+    its question sleeps."""
+    path = "vol.stress_path"
+    now, opened, curve = today[-1].vix, today[0].vix, today[-1].vix_ts
+    if now is None or opened is None:
+        ls.omit(path, "no diary VIX now and at the open (range_ruler.vol_carry.vix)")
+        return
+    prior = [p.vix for d in scene.prior_bars for p in prior_diary(scene.state_dir, d) if p.vix] if scene.state_dir else []
+    prior_high = max(prior) if prior else None
+    rise = now - opened
+    if not (rise >= STRESS_VIX_RISE_PTS or (prior_high is not None and now > prior_high) or (curve is not None and curve >= STRESS_CURVE)):
+        high_words = (f"at or under its {prior_high:.2f} high of the prior sessions" if prior_high is not None
+                      else "with no prior diaries to compare it with")
+        curve_words = f", and {curve:.2f} times three-month VIX, under {STRESS_CURVE:g}" if curve is not None else ""
+        ls.omit(path, f"not a stress day: VIX is {rise:+.2f} points from its open, under {STRESS_VIX_RISE_PTS:g}, {high_words}{curve_words}")
+        return
+    lows, normal = session_extremes(scene.bars), normal_day_sigma(scene)
+    if lows is None or normal is None:
+        ls.omit(path, f"needs today's bars and {MIN_RANK_SESSIONS} prior sessions' trusted anchors for the normal-day sigma")
+        return
+    start = scene.now - timedelta(minutes=WINDOW_30_MIN)
+    tick_bars = scene.market.bars_between("$TICK", start, scene.now) if scene.market else []
+    ticks = [float(b["low"]) for b in tick_bars] or (scene.market.between("$TICK", start, scene.now) if scene.market else [])
+    if not ticks:
+        ls.omit(path, "no NYSE TICK in the market context over the last 30 minutes (the context job)")
+        return
+    peak = max(today, key=lambda p: p.vix or 0.0)            # max keeps the first of equal highs
+    if peak.vix <= opened:
+        vix_words = "VIX has not been above its open today"
+    else:
+        back = (peak.vix - now) / (peak.vix - opened)
+        if back >= STRESS_RETREAT_SHARE:
+            back_words = f"{pct(back)} of its rise from there, past the {pct(STRESS_RETREAT_SHARE)} retreat share"
+        elif back >= STRESS_HOLD_SHARE:
+            back_words = (f"{pct(_in_band(back, STRESS_HOLD_SHARE, STRESS_RETREAT_SHARE, 0.01))} of its rise from there, short of the "
+                          f"{pct(STRESS_RETREAT_SHARE)} retreat share and at or past the {pct(STRESS_HOLD_SHARE)} hold share")
+        else:
+            back_words = f"{pct(min(back, STRESS_HOLD_SHARE - 0.01))} of its rise from there, short of the {pct(STRESS_HOLD_SHARE)} hold share"
+        at_high = ", and is at its session high now" if back <= 0 else ""
+        vix_words = f"session high {peak.vix:.1f} at {_clock(peak.ts)}, it has given back {back_words}{at_high}"
+    off_low = (scene.spot - lows.low) / normal
+    if off_low >= BOUNCE_SIGMA:
+        low_words = f"{off_low:.2f} normal-day sigma above its session low from {_clock(lows.low_at)}, past the {BOUNCE_SIGMA:g} bounce line"
+    elif off_low > NEAR_LOW_SIGMA:
+        low_words = (f"{_in_band(off_low, NEAR_LOW_SIGMA + 0.01, BOUNCE_SIGMA, 0.01):.2f} normal-day sigma above its session low from "
+                     f"{_clock(lows.low_at)}, beyond the {NEAR_LOW_SIGMA:g} near-low line and short of the {BOUNCE_SIGMA:g} bounce line")
+    else:
+        low_words = f"{off_low:.2f} normal-day sigma above its session low from {_clock(lows.low_at)}, within the {NEAR_LOW_SIGMA:g} near-low line"
+    hits = sum(1 for t in ticks if t <= -TICK_EXTREME)
+    cluster = f"at least the {TICK_CLUSTER}-reading cluster" if hits >= TICK_CLUSTER else f"short of the {TICK_CLUSTER}-reading cluster"
+    ls.put(path, f"VIX {now:.1f}, {'up' if rise >= 0 else 'down'} {abs(rise):.1f} points since the open; {vix_words}; SPX sits {low_words}; "
+                 f"NYSE TICK printed at or below -{TICK_EXTREME} {plural(hits, 'time')} in 30 minutes, {cluster}")
