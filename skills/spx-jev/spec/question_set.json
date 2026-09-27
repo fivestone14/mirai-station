@@ -1665,7 +1665,7 @@
       "opening_five_minute"
      ],
      "status": "live",
-     "cadence": "every 5 min 09:35-10:30",
+     "cadence": "every 5 min 09:40-10:30",
      "ask": "Which way did the large same-day option trades of the last {window_10_min} minutes lean?",
      "instructions": "Read `options.big_prints_10`. Over the last {window_10_min} minutes, did large single same-day option trades happen, and which way did they lean?",
      "options": [
@@ -1710,7 +1710,7 @@
      "schedule": {
       "opening_five_minute": {
        "every_min": 5,
-       "from": "09:35",
+       "from": "09:40",
        "to": "10:30"
       }
      }
@@ -1725,7 +1725,7 @@
       "opening_five_minute"
      ],
      "status": "live",
-     "cadence": "every 5 min 09:40-10:30",
+     "cadence": "every 5 min 09:45-10:30",
      "ask": "Did new same-day option volume in the last {window_10_min} minutes shift to calls or to puts?",
      "instructions": "Read `options.call_put_shift_10m`. Over the last {window_10_min} minutes, did new same-day option volume lean clearly to calls or to puts compared with the day so far?",
      "options": [
@@ -1773,7 +1773,7 @@
      "schedule": {
       "opening_five_minute": {
        "every_min": 5,
-       "from": "09:40",
+       "from": "09:45",
        "to": "10:30"
       }
      }
@@ -11736,6 +11736,13 @@
    "action": "horizon",
    "decision": "accepted",
    "reason": "asked once a read, not once per horizon (nothing asks a question per horizon): the 30-minute clause decides and the question says so; the label also writes a 60-minute clause, now in the example, which no question reads until a 60-minute form is split out.",
+   "source": "integration review"
+  },
+  {
+   "subject": "big_print_lean_open / zero_dte_side_shift_open",
+   "action": "schedule",
+   "decision": "accepted",
+   "reason": "start when their labels can first be measured: big prints need a 10-minute window after the open (09:40), the call-put shift a diary row 10 minutes back and the first row lands after 09:30 (09:45); at the earlier reads the label was always left out and the question counted as missing.",
    "source": "integration review"
   }
  ],

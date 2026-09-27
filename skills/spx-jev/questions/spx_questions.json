@@ -365,12 +365,12 @@
      "schedule": {
       "opening_five_minute": {
        "every_min": 5,
-       "from": "09:35",
+       "from": "09:40",
        "to": "10:30"
       }
      },
      "horizon": "10min_opening",
-     "cadence": "every 5 min 09:35-10:30",
+     "cadence": "every 5 min 09:40-10:30",
      "code_answer": true,
      "ask": "Which way did the large same-day option trades of the last {window_10_min} minutes lean?",
      "instructions": "Read `options.big_prints_10`. Over the last {window_10_min} minutes, did large single same-day option trades happen, and which way did they lean?",
@@ -407,12 +407,12 @@
      "schedule": {
       "opening_five_minute": {
        "every_min": 5,
-       "from": "09:40",
+       "from": "09:45",
        "to": "10:30"
       }
      },
      "horizon": "10min_opening",
-     "cadence": "every 5 min 09:40-10:30",
+     "cadence": "every 5 min 09:45-10:30",
      "code_answer": true,
      "ask": "Did new same-day option volume in the last {window_10_min} minutes shift to calls or to puts?",
      "instructions": "Read `options.call_put_shift_10m`. Over the last {window_10_min} minutes, did new same-day option volume lean clearly to calls or to puts compared with the day so far?",
