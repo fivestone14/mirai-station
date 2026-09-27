@@ -62,7 +62,7 @@ from .clock import blend as clock_blend, odds as clock_odds
 from .events import tag as event_tag
 from .expiry import calendar_of
 from .grade import live_options, mark_at, run as grade_run
-from .hour import answer_sentences, band_of, hour_request, hour_summary, load_hour_doc
+from .hour import answer_sentences, band_of, hour_request, hour_summary, load_hour_doc, named_levels
 from .labels.registry import build_labels
 from .lane import LANES, LANES_BY_KEY, LIVE, Lane
 from .schedule import not_due, read_slot
@@ -340,15 +340,17 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
             entry = {"id": qid, "viewpoint": q.get("viewpoint", group["id"]), "status": q.get("status", "live"),
                      "ask": q.get("ask") or q["instructions"], "why": q.get("why", ""), "type": q["type"],
                      # the options in the question's own order, so the phone draws them in a fixed place;
-                     # a yes/no answer's pick is "true" or "false", a Score's levels are its legend words
+                     # a yes/no answer's pick is "true" or "false", a Score's levels are its option names
+                     # (hour.named_levels), else its criteria words
                      "options": (["true", "false"] if q["type"] == "noul" else list(crit) if isinstance(crit, dict)
+                                 else list(q["options"]) if q.get("options")
                                  else [plain(str(c)) for c in crit] if isinstance(crit, list) else [])}
             if q.get("status") == "live":
                 entry["cadence_min"] = cadence_of(cad, q, qid)
             asked_in = next((r["id"] for r in requests if qid in r["questions"]), None)
             fresh_a = next((a["answers"][qid] for a in (answers or {}).values() if qid in (a.get("answers") or {})), None)
             if fresh_a is not None:
-                entry["answer"] = answer_entry(fresh_a)
+                entry["answer"] = answer_entry(named_levels(q, fresh_a))
                 n_fresh += 1
             elif qid in held:
                 # not due, its label missing, or its group's request failed: the last fresh answer
@@ -478,7 +480,9 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
                     if h:
                         held[qid] = h
         # steps 3 and 4: fresh and held answers become sentences, two questions sum them
-        fresh = {qid: answer_entry(ans) for a in answers.values() for qid, ans in (a.get("answers") or {}).items()}
+        # a Score's levels are named as the question's options, so its pick is one the weights, the grader and the loop know
+        fresh = {qid: answer_entry(named_levels(by_id.get(qid, {}), ans))
+                 for a in answers.values() for qid, ans in (a.get("answers") or {}).items()}
         answered = {**held, **fresh}
         # live questions skipped for a label the builder could not measure, and not covered by a held answer
         missing = [qid for g in skipped.values() for qid, why in g.items()

@@ -95,6 +95,32 @@ def test_a_read_answers_holds_sums_and_grades(tmp_path, monkeypatch):
             assert CANARY not in p.read_text(), p
 
 
+def test_a_score_answer_reaches_the_card_the_store_and_the_sums_by_its_option_names(tmp_path, monkeypatch):
+    """JEV keys a score by level number with its criteria words as a legend; the read names the levels as the
+    question's options, so the pick the weights and the grader meet is one the question has."""
+    doc = {"version": "test", "groups": [
+        {"id": "g1", "reads": ["context", "price.recent_move"],
+         "questions": {"q_size": {"status": "live", "viewpoint": "volume_price", "type": "score", "ask": "How far has price moved?",
+                                  "instructions": "Read `price.recent_move`.", "options": ["none", "small", "large"],
+                                  "criteria": ["no move", "a small move", "a large move"]}}}]}
+
+    def sender(r, api_key=None, timeout=10.0):
+        return {"model": "fake-1", "answers": {"q_size": {
+            "type": "score", "score": 1.1, "confidence": 0.6, "legend": {"0": "no move", "1": "a small move", "2": "a large move"},
+            "probabilities": {"0": 0.2, "1": 0.7, "2": 0.1}}}}
+    from spx_jev.ask import send_all as real_send_all
+    state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
+    out = state / "spx_jev"
+    monkeypatch.setattr(service, "send_all", lambda requests, **kw: real_send_all(requests, api_key=CANARY, sender=sender))
+    monkeypatch.setattr(service, "send", _sums)
+    c = run_once(state, out, doc, True, DAY)
+    entry = c["questions"][0]
+    assert entry["options"] == ["none", "small", "large"]
+    assert entry["answer"]["pick"] == "small" and entry["answer"]["probabilities"] == {"none": 0.2, "small": 0.7, "large": 0.1}
+    assert json.loads((out / "last_asked.json").read_text())["q_size"]["answer"]["pick"] == "small"
+    assert json.loads((out / "hour" / f"{DAY}.jsonl").read_text().splitlines()[0])["fresh"] == {"q_size": "small"}
+
+
 def test_every_time_on_the_card_is_a_full_timestamp_with_its_offset(tmp_path, monkeypatch):
     """The phone shows times in the viewer's own zone, so no field may carry a bare market clock."""
     state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
