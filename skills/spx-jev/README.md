@@ -10,10 +10,10 @@ writes only under `state/spx_jev/`, never into the scanner's files, and never
 runs on the scan path.
 
 The mechanics are SNDK JEV's (`skills/sndk-jev/`), copied and adapted; the
-questions are the final SPX set (`spec/question_set.json`, 115 questions), whose
-labels are being built family by family: until a label is built, every question
-that reads it is skipped with the reason. Nothing here is installed yet (see "The
-jobs").
+questions are the final SPX set (`spec/question_set.json`, 115 questions). Every
+label they read is built except the dark ones, whose data no feed carries yet; a
+question whose label is dark, or missing on a read, is skipped with the reason.
+Nothing here is installed yet (see "The jobs").
 
 JEV reads words and cannot compare numbers. So every comparison happens here,
 in code, and is written out as a sentence with its threshold in it:
