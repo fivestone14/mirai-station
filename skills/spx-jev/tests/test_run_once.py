@@ -239,7 +239,7 @@ def test_a_live_read_writes_the_loops_forecasts_keeps_the_blend_on_the_phone_and
     assert snap["blend50_exact"] == {k: round(v, 4) for k, v in c["hour"]["probabilities"].items()}
     assert c["hour"]["shown_source"] == "blend50_exact" and rec["shown_source"] == "blend50_exact"
     read = json.loads((out / "archive" / f"{DAY}.jsonl").read_text().splitlines()[0])
-    assert read["schema_version"] == 2 and read["pool"]["next_60"]["experts"]
+    assert read["schema_version"] >= 2 and read["pool"]["next_60"]["experts"]
     # the day is over and both marks were graded in the same run: the loop learned it at once
     weights = json.loads((out / "weights.json").read_text())
     assert weights["pool"]["last_session_applied"] == DAY and weights["pool"]["phone"] == {**weights["pool"]["phone"], "shows": "blend", "on_phone": False}

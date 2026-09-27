@@ -69,6 +69,13 @@ def test_the_market_context_a_read_could_see_is_archived_with_when_each_value_wa
     assert all(set(v) == {"value", "known_at"} for v in seen.values())
 
 
+def test_a_read_of_a_lane_without_a_checkpoint_writes_the_premarket_fields_as_null(tmp_path):
+    rec = ReadRecord(read_id="live:t", lane="live", row_ts="t", sent=False, spot=7700.0, sigma=75.0, labels={}, omitted={}, requests=[],
+                     skipped={}, responses=None, hour_request=None, hour_response=None, hour=None, cadence={}, market_context=None, event=None)
+    line = json.loads(archive.append(tmp_path, DAY, rec).read_text())
+    assert _typed(line, ReadRecord) and line["checkpoint"] is None and line["night"] is None and line["schema_version"] == 3
+
+
 def test_a_close_out_record_is_typed(tmp_path):
     rec = CloseOutRecord(lane="tape", day=DAY, calls=[{"read": at(10, 30).isoformat()}], tally={"calls": 1, "graded": 1, "right": 0})
     path = archive.append(tmp_path, DAY, rec)

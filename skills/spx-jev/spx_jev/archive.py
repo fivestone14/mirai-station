@@ -6,13 +6,14 @@
 
 Three record kinds, each a dataclass below, each line carrying ``schema_version`` and ``kind``:
 
-    read       every run of either lane (sent or not): the complete labels and the omitted ones with
+    read       every run of every lane (sent or not): the complete labels and the omitted ones with
                their reasons, the exact requests sent to JEV and its exact replies, the sums request and
                reply, the sum as shown (with the blend), the cadence state (held, not due, asked), the
                market-context values the read could see, the tier-1 event tag, the learning loop's
-               forecasts on the live lane and, on the tape lane, the unit and the bands
+               forecasts, on the tape lane the unit and the bands, and on the premarket lane its
+               checkpoint, its pre-open ruler and the overnight bars it saw
     grade      one per graded horizon line the grader writes, keyed to its read by ``read_id``
-    close_out  the opening lane's grade-only run after its last read: the day's calls and tally
+    close_out  a scheduled lane's grade-only run after its last read: the day's calls and tally
 
 A read's ``read_id`` is its lane and its row's timestamp, the same key the grader and the card use,
 so a grade finds its read without a lookup table. Nothing secret is written: the key never reaches a
@@ -27,7 +28,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 2          # 2: a read carries the learning loop's forecasts (pool)
+SCHEMA_VERSION = 3          # 2: a read carries the learning loop's forecasts (pool); 3: a premarket read carries its checkpoint and the night it saw
 ARCHIVE_SUBDIR = Path("spx_jev") / "archive"
 
 
@@ -58,9 +59,11 @@ class ReadRecord:
     cadence: dict[str, Any]                      # {"from", "held": {qid: iso}, "not_due": {qid: reason}, "asked": [qid]}
     market_context: dict[str, dict] | None       # {symbol: {"value", "known_at"}} the read could see
     event: dict | None                           # the tier-1 event tag (events.py), never sent to JEV
-    ruler: dict | None = None                    # the tape lane's unit
+    ruler: dict | None = None                    # the tape lane's unit; the premarket lane's pre-open ruler, or why it has none
     band: dict | None = None                     # the tape lane's bands in points
-    pool: dict | None = None                     # the learning loop's forecasts per horizon (pool.snapshot), live lane
+    pool: dict | None = None                     # the learning loop's forecasts per horizon (pool.snapshot)
+    checkpoint: str | None = None                # the premarket lane's checkpoint, "HH:MM" market time
+    night: dict | None = None                    # the premarket lane's overnight store as the read saw it (premarket.night_seen)
     schema_version: int = SCHEMA_VERSION
     kind: str = "read"
     archived_at: str = field(default_factory=_now)
