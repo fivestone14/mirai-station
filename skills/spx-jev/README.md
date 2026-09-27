@@ -36,6 +36,8 @@ returns a probability for each answer option. JEV makes no trading call.
 | `spx_jev/cadence.py` | The Cadence | Which questions are due this read, what is held in between, and the daily recount. |
 | `spx_jev/hour.py` | The Sums | Rewrites the live answers as sentences and asks the sum questions over them in one request. |
 | `spx_jev/clock.py` | The Clock | How often price ended up, down or flat at this time of day over the last 20 SPX sessions, scored the way the grader scores a sum, and the half-and-half blend of JEV's sum with those odds. |
+| `spx_jev/scores.py` | The Scores | One way to score a three-way forecast: floored at 2% a side, and its log loss split exactly into a move part (did it move?) and a direction part (which way, given a move). |
+| `spx_jev/baseline.py`, `spec/fit_baseline.py`, `spec/baseline.json` | The Baseline | The price-only forecast the learning loop measures JEV against: the time-of-day odds, and the same odds split by how far SPX has moved today, counted once on the 41 qualifying sessions and frozen, with the leave-one-day-out validation that picked the reference (the time-of-day odds; the movement split lost out of sample). |
 | `spx_jev/grade.py` | The Grader | Reads the bars at each sum's mark, scores both sums, and hands the grades to the question weights. |
 | `spx_jev/weights.py` | The Weights | One interface, `QuestionWeights`, for how much each question counts in the sums. Neutral for now (every live question weighs 1.0); a learning method is being designed separately and drops in by overriding `learn`. |
 | `spx_jev/archive.py` | The Archive | The raw record for machine learning: every read, grade and close-out of both lanes, append only, one typed record per line. |

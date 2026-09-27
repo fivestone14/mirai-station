@@ -81,20 +81,20 @@ def _rule_key(hz: dict[str, tuple[int, float]]) -> str:
                        "step": STEP_MIN, "first": FIRST_READ.isoformat(), "row_age": ROW_MAX_AGE_MIN}, sort_keys=True)
 
 
-def day_counts(bars: list[dict], rows: list[dict], hz: dict[str, tuple[int, float]]) -> dict:
-    """``{qid: {phase: {up, down, flat}}}`` for one finished session: every replayed read graded by
-    the grader's own ``grade_one`` on the newest diary row at that minute."""
-    out = {qid: {p[0]: {o: 0 for o in OUTCOMES} for p in PHASES} for qid in hz}
+def replayed_reads(bars: list[dict], rows: list[dict], hz: dict[str, tuple[int, float]]) -> list[dict]:
+    """Every replayed read of one finished session, oldest first: ``{"row_ts", "phase", "spot", "sigma",
+    "bands": {qid: outcome}}``, each graded by the grader's own ``grade_one`` on the newest diary row
+    at that minute; a horizon the grader could not grade has no band."""
     if not bars or not rows:
-        return out
+        return []
     rows = [r for r in rows if isinstance(r.get("sigma"), (int, float)) and r["sigma"] > 0
             and isinstance(r.get("spot"), (int, float))]
     if not rows:
-        return out
+        return []
     stamps = [parse_ts(r["ts"]) for r in rows]
     t = parse_ts(bars[0]["ts"]).replace(hour=FIRST_READ.hour, minute=FIRST_READ.minute, second=0, microsecond=0)
     close = session_close(t)
-    k, seen = -1, set()
+    k, seen, out = -1, set(), []
     while t < close:
         while k + 1 < len(stamps) and stamps[k + 1] <= t:
             k += 1
@@ -103,12 +103,19 @@ def day_counts(bars: list[dict], rows: list[dict], hz: dict[str, tuple[int, floa
             rec = {"row_ts": rows[k]["ts"], "spot": rows[k]["spot"], "sigma": rows[k]["sigma"],
                    "by": {q: {"pick": "flat", "probabilities": {}} for q in hz}}
             g = grade_one(rec, bars) or {}
-            ph = phase_of(stamps[k])
-            for q in hz:
-                band = (g.get(q) or {}).get("band")
-                if band in OUTCOMES:
-                    out[q][ph][band] += 1
+            bands = {q: (g.get(q) or {}).get("band") for q in hz}
+            out.append({"row_ts": rows[k]["ts"], "phase": phase_of(stamps[k]), "spot": float(rows[k]["spot"]),
+                        "sigma": float(rows[k]["sigma"]), "bands": {q: b for q, b in bands.items() if b in OUTCOMES}})
         t += timedelta(minutes=STEP_MIN)
+    return out
+
+
+def day_counts(bars: list[dict], rows: list[dict], hz: dict[str, tuple[int, float]]) -> dict:
+    """``{qid: {phase: {up, down, flat}}}`` for one finished session: every replayed read's outcome."""
+    out = {qid: {p[0]: {o: 0 for o in OUTCOMES} for p in PHASES} for qid in hz}
+    for r in replayed_reads(bars, rows, hz):
+        for q, band in r["bands"].items():
+            out[q][r["phase"]][band] += 1
     return out
 
 
