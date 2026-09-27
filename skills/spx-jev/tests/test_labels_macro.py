@@ -14,7 +14,8 @@ from spx_jev.labels.macro import REBALANCE_SIDE_UNMEASURED, bond_market_closed, 
 from spx_jev.labels.registry import build_labels
 from spx_jev.labels.usual_link import Session
 from spx_jev.state_builder import MarketContext
-from usual_link_fixtures import NOW, READ_MINUTE, follow, index_closes, scene_with, shape
+import usual_link_fixtures
+from usual_link_fixtures import DRIFT_STEP, NOW, READ_MINUTE, follow, index_closes, scene_with, shape
 
 JUMP = 175
 MULTIPLES = {"TLT": -0.3, "/ZN": -0.2, "HYG": 0.3, "USO": 0.5, "GLD": 0.1, "/6E": 0.1}
@@ -136,6 +137,19 @@ def test_oil_against_its_usual_multiple(jump, verdict):
     got, _ = labels(read(jumps={"USO": {JUMP: jump}}))
     assert shape(got["xasset.oil_gap_30min"]) == (f"over the last # minutes crude oil (USO) {verdict} for this half hour, "
                                                  "higher than # of the last # sessions at this minute")
+
+
+def test_oil_above_its_multiple_but_below_the_usual_for_this_minute(monkeypatch):
+    """Every prior session ran further past its multiple at this minute, so a small rise ranks in the bottom fifth:
+    the sentence says why the rise still reads as oil running down."""
+    monkeypatch.setattr(usual_link_fixtures, "prior_drift", lambda k: (k + 1) * DRIFT_STEP)
+    closes = index_closes(10.5)
+    got, _ = labels(scene_with(closes, {s: follow(closes, m, drift=0.2 * DRIFT_STEP) for s, m in MULTIPLES.items()}, MULTIPLES))
+    assert got["xasset.oil_gap_30min"] == (
+        "over the last 30 minutes crude oil (USO) rose more than the index's move usually brings it, below the usual for this minute, "
+        "oil ran down: in the bottom fifth for this half hour, higher than 0 of the last 10 sessions at this minute")
+    assert "(TLT) rose more than the index's move usually brings them, below the usual for this minute, in the bottom fifth" in got[
+        "xasset.bond_gap_30min"]
 
 
 def test_oil_needs_its_history_and_a_fresh_price():

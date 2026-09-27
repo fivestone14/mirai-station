@@ -99,7 +99,7 @@ def _semis(against: AgainstIndex, ls: LabelSet) -> None:
     side = fifth_side(rank)
     verdict = {1: "ahead upward", -1: "ahead downward", 0: "in line"}[side]
     ls.put(path, f"chips ({SEMIS}) usually move {link.multiple:.1f} times the index; over the last {WINDOW_30_MIN} minutes they "
-                 f"{'beat' if value >= 0 else 'trailed'} that by {sig(abs(value))}, {verdict}: {FIFTH_WORDS[side]} for this half hour, "
+                 f"{'beat' if value >= 0 else 'trailed'} that by {sig(abs(value))}{against_usual(value, side)}, {verdict}: {FIFTH_WORDS[side]} for this half hour, "
                  f"{rank.words()}{against.ruler_note}")
 
 
@@ -115,8 +115,8 @@ def _sector_tells(against: AgainstIndex, ls: LabelSet) -> None:
         value, _, rank = got
         side = fifth_side(rank)
         verdict = {1: "broke away upward", -1: "broke away downward", 0: "moved in line"}[side]
-        parts.append(f"{name} ({symbol}) ran {sig(abs(value))} {'above' if value >= 0 else 'below'} their usual multiple of the index, "
-                     f"{verdict}, {FIFTH_WORDS[side]} for this time, {rank.words()}")
+        parts.append(f"{name} ({symbol}) ran {sig(abs(value))} {'above' if value >= 0 else 'below'} their usual multiple of the index"
+                     f"{against_usual(value, side)}, {verdict}, {FIFTH_WORDS[side]} for this time, {rank.words()}")
     ls.put(path, f"over the last {WINDOW_10_MIN} minutes " + "; ".join(parts) + against.ruler_note)
 
 
@@ -202,6 +202,14 @@ def _rotation(against: AgainstIndex, ls: LabelSet) -> None:
     rule = f"past the {ROTATION_GAP_SIGMA} sigma rotation rule" if abs(gap) > ROTATION_GAP_SIGMA else f"within the {ROTATION_GAP_SIGMA} sigma rotation rule"
     ls.put(path, f"over the last {WINDOW_30_MIN} minutes, after allowing for each sector's usual link to the index, {names[0]} "
                  f"{'beat' if gap >= 0 else 'trailed'} {names[1]} by {sig(abs(gap))}, {rule}{against.ruler_note}")
+
+
+def against_usual(value: float, side: int) -> str:
+    """What a sentence adds when a move beyond the usual multiple and its same-clock fifth point opposite ways
+    (the prior sessions at this minute sat mostly on one side of zero), so the fifth's verdict reads true."""
+    if not side or (value >= 0) == (side > 0):
+        return ""
+    return f", {'above' if side > 0 else 'below'} the usual for this minute"
 
 
 def listed(names: list[str]) -> str:

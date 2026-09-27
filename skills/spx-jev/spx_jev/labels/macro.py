@@ -16,7 +16,7 @@ from ..cuts import BOND_LINK_TIGHT, WINDOW_30_MIN, WINDOW_60_MIN
 from ..sessions import session_open
 from ..state_builder import Scene
 from .label_set import LabelSet
-from .leadership import listed
+from .leadership import against_usual, listed
 from .measures import ONE_MINUTE
 from .rulers import sigma_anchor
 from .usual_link import FIFTH_WORDS, SPX, AgainstIndex, Session, beyond, beyond_rank, fifth_side, needs_link, needs_move, needs_rank
@@ -137,7 +137,7 @@ def _bond_gap(against: AgainstIndex, ls: LabelSet) -> None:
         else:
             verdict = f"so bonds are ahead in the stocks-{'up' if side * corr > 0 else 'down'} direction; the Treasury cash market is open"
         ls.put(path, f"over the last {WINDOW_30_MIN} minutes {name} {'rose more' if value >= 0 else 'fell more'} than the index's move "
-                     f"usually brings them, {FIFTH_WORDS[side]} for this half hour, {rank.words()}; {link}; {verdict}{against.ruler_note}")
+                     f"usually brings them{against_usual(value, side)}, {FIFTH_WORDS[side]} for this half hour, {rank.words()}; {link}; {verdict}{against.ruler_note}")
         return
     ls.omit(path, "; or ".join(reasons))
 
@@ -152,7 +152,7 @@ def _oil_gap(against: AgainstIndex, ls: LabelSet) -> None:
     side = fifth_side(rank)
     verdict = {1: "oil ran up", -1: "oil ran down", 0: "an ordinary amount given the index"}[side]
     ls.put(path, f"over the last {WINDOW_30_MIN} minutes crude oil ({OIL}) {'rose more' if value >= 0 else 'fell more'} than the index's "
-                 f"move usually brings it, {verdict}: {FIFTH_WORDS[side]} for this half hour, {rank.words()}{against.ruler_note}")
+                 f"move usually brings it{against_usual(value, side)}, {verdict}: {FIFTH_WORDS[side]} for this half hour, {rank.words()}{against.ruler_note}")
 
 
 def _macro_gap(against: AgainstIndex, ls: LabelSet) -> None:

@@ -13,6 +13,7 @@ from spx_jev.labels.leadership import LABELS, WEIGHTS_FILE, build_leadership_lab
 from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.market_context import SYMBOLS
 from spx_jev.state_builder import MarketContext
+import usual_link_fixtures
 from usual_link_fixtures import DRIFT_STEP, NOW, READ_MINUTE, SIGMA, follow, index_closes, known, prior_drift, scene_with, shape
 
 JUMP = 175                     # a minute inside both the 30- and the 10-minute window before NOW
@@ -99,6 +100,18 @@ def test_semis_top_fifth_boundary(between, verdict, beats):
     got, _, _ = labels(read(move_points=10.5, drifts={"SMH": prior_drift(0) + between * DRIFT_STEP}))
     s = got["leaders.semis_vs_index_30m"]
     assert verdict in s and f"higher than {beats} of the last 10 sessions at this minute" in s
+
+
+def test_semis_above_their_multiple_but_below_the_usual_for_this_minute(monkeypatch):
+    """Every prior session ran further past its multiple at this minute, so a small beat ranks in the bottom fifth:
+    the sentence says why the beat still reads ahead downward."""
+    monkeypatch.setattr(usual_link_fixtures, "prior_drift", lambda k: (k + 1) * DRIFT_STEP)
+    got, _, _ = labels(read(move_points=10.5, drifts={"SMH": 0.2 * DRIFT_STEP, "XLF": 0.2 * DRIFT_STEP}))
+    assert got["leaders.semis_vs_index_30m"] == (
+        "chips (SMH) usually move 1.6 times the index; over the last 30 minutes they beat that by 0.01 sigma, below the usual for "
+        "this minute, ahead downward: in the bottom fifth for this half hour, higher than 0 of the last 10 sessions at this minute")
+    assert got["tells.sector_lead_10m"].count("above their usual multiple of the index, below the usual for this minute, "
+                                              "broke away downward, in the bottom fifth for this time") == 2
 
 
 def test_semis_rank_needs_enough_trusted_sessions():
