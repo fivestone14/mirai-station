@@ -1,19 +1,23 @@
-"""The premarket replay (spec/replay_premarket.py), offline: two synthetic nights replayed end to end without
-writing under the state dir, the outcomes from the settled open in the pre-open ruler, and the judging on
-made-up answers: a real link holds, an unrelated one is noise, a thin sample is too few."""
+"""The premarket replay (spec/replay_premarket.py), offline: two synthetic nights replayed through the harness
+(the lane's scene and labels stood in for) without writing under the state dir, one read through the lane's own
+label families, the outcomes from the settled open in the pre-open ruler, each sign-free question's reference,
+and the judging on made-up answers: a real link holds, an unrelated one is noise, a thin sample is too few,
+and a batch of unrelated ones names none as holding once adjusted for the batch."""
 from __future__ import annotations
 
 import importlib.util
 import json
 import random
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 import pytest
 
 from conftest import at, flat_bars, night_row
-from spx_jev import overnight
+from spx_jev import events, overnight
 from spx_jev.labels.label_set import LabelSet
+from spx_jev.labels.measures import ET
+from spx_jev.sessions import previous_trading_day
 from spx_jev.state_builder import load_jsonl
 
 SPEC = Path(__file__).resolve().parent.parent / "spec" / "replay_premarket.py"
@@ -74,7 +78,7 @@ def _files(folder: Path) -> dict[str, float]:
     return {str(p): p.stat().st_mtime_ns for p in folder.rglob("*")}
 
 
-def test_two_nights_replay_end_to_end_without_writing_under_the_state_dir(state, stubbed, tmp_path):
+def test_two_nights_replay_through_the_harness_without_writing_under_the_state_dir(state, stubbed, tmp_path):
     before = _files(state)
     out = tmp_path / "replay"
     assert replay.main(["--state-dir", str(state), "--out", str(out), "--report", str(tmp_path / "report.md")]) == 0
@@ -307,3 +311,63 @@ def test_a_read_the_lane_could_not_make_is_kept_with_its_reason(state, monkeypat
     assert all(r["omitted"] == "no read: no pre-open ruler: too few anchors" for r in reads)
     assert oc == {"day": "2026-09-17", "calendar": None, "omitted": "no pre-open ruler"}
 
+
+# ---- the lane's own labels ---------------------------------------------------------------------------
+
+LABELS_DAY = date(2026, 9, 24)                                      # a Thursday; its 20 prior nights run back past Labor Day
+
+
+def _es_night(day: date, pct_at, minutes: int) -> list[dict]:
+    """/ES bars of ``minutes`` through the night into ``day`` while the market trades, to 09:30, each at
+    6600 moved by ``pct_at(k)`` percent at its k-th bar."""
+    slots = overnight.expected_slots("/ES", minutes, overnight.night_window(day)[0], datetime.combine(day, time(9, 30), tzinfo=ET))
+    return [night_row("/ES", t, round(6600.0 * (1 + pct_at(k) / 100), 4), minutes=minutes, day=day.isoformat())
+            for k, t in enumerate(slots)]
+
+
+@pytest.fixture
+def labels_state(tmp_path, monkeypatch):
+    """Twenty prior nights of small seeded /ES random walks and tonight's /ES rising a percent, evenly: a night
+    whose net move ranks in the top third. The calendar covers the day with no report before the open."""
+    monkeypatch.setattr(events, "on_day", lambda day, path=None: [])
+    monkeypatch.setattr(events, "uncovered", lambda day, path=None: None)
+    days, d = [], LABELS_DAY
+    while len(days) < 20:
+        d = previous_trading_day(d)
+        days.append(d)
+    for seed, day in enumerate(days):
+        rng, walk = random.Random(seed), [0.0]
+        overnight.write_night(tmp_path, day.isoformat(), _es_night(day, lambda k: walk.append(walk[-1] + rng.gauss(0, 0.02)) or walk[-1], 5))
+    tonight = _es_night(LABELS_DAY, lambda k: k / 1000, 1)
+    overnight.write_night(tmp_path, LABELS_DAY.isoformat(), tonight)
+    return tmp_path
+
+
+def test_a_read_through_the_lanes_own_labels_gives_each_question_its_fate_and_code_answer(labels_state, monkeypatch,
+                                                                                         premarket_scene_factory):
+    """The scene in premarket.make_premarket_scene's shape, the labels the registry's families build: every
+    premarket question comes out with a fate, a reason where it is not asked, and an answer among its options
+    where it is; a sign-free one answered carries the side of its reference."""
+    def scene(state_dir, now):
+        return premarket_scene_factory(now, load_jsonl(overnight.night_path(state_dir, now.date().isoformat())),
+                                       prior_close=7500.0, sigma=75.0, state_dir=state_dir)
+
+    monkeypatch.setattr(replay.premarket, "make_premarket_scene", scene)
+    doc = replay.premarket_doc()
+    questions = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
+    got = replay.read(labels_state, doc, LABELS_DAY, "09:28")
+
+    assert set(got["questions"]) == set(questions)
+    for qid, fate in got["questions"].items():
+        assert fate["fate"] in ("asked", "asleep", "missing", "not_due")
+        if fate["fate"] in ("asleep", "missing"):
+            assert fate["why"], qid
+        if fate["answer"] is not None:
+            assert fate["answer"] in questions[qid]["options"], qid
+    assert got["questions"]["overnight_move_vs_expected"] == {"answer": "big_up", "fate": "asked"}
+    assert got["questions"]["pm_overnight_session"] == {"answer": "wide_night", "fate": "asked"}
+    for qid, answer in {"gap_origin": "made_early", "overnight_arc": "built", "night_legs_agree": "one_way",
+                        "latest_leg_vs_night": "added"}.items():
+        assert got["questions"][qid] == {"answer": answer, "fate": "asked", "side": 1}, qid
+    assert got["questions"]["release_reaction_path"]["fate"] == "asleep"
+    assert got["figures"]["premarket.where_now"]["verdict"] == "up"
