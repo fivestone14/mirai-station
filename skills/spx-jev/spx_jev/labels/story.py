@@ -266,12 +266,13 @@ def _where_now(night: NightSoFar, ls: LabelSet) -> None:
 
 
 def _legs(night: NightSoFar, legs: list[Leg], ls: LabelSet) -> None:
-    """Each leg oldest first, a quiet one (the bottom third) by name and one that moved by its side and size;
+    """Each leg oldest first, a quiet one (the bottom third) by name, finished quiet ones in a row named together
+    and the running one apart, and one that moved by its side and size;
     then night_legs_agree's verdict over the legs that moved, against the night's net move. The running leg
     counts, ranked against the same part of its window; the gate needs two finished legs that moved. No leg
     says its third or "added" (latest_leg_vs_night's option, read beside it), so seven legs fit a short sentence."""
     parts, after_first = [], False
-    for moved, run in groupby(legs, key=lambda leg: leg.moved):
+    for (moved, _), run in groupby(legs, key=lambda leg: (leg.moved, leg.finished)):
         run = list(run)
         if not moved:
             parts.append(f"{listed([night.leg_name(leg) for leg in run])} quiet{'' if run[-1].finished else ' so far'}")

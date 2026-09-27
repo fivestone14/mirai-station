@@ -206,6 +206,11 @@ def test_the_legs_run_oldest_first_each_quiet_run_named_once_and_the_running_leg
                                           "latest against the night's rise")
 
 
+def test_only_the_running_leg_is_quiet_so_far(premarket_scene_factory, nights_dir):
+    ls = read(premarket_scene_factory, nights_dir, {"asia": 1.0, "europe_morning": 0.6})
+    assert "; Europe's morning up 0.60; 08:00-08:30 and 08:30-08:45 quiet; since 08:45 quiet so far. " in said(ls, "premarket.legs")
+
+
 def test_one_finished_leg_that_moved_is_no_sequence(premarket_scene_factory, nights_dir):
     ls = read(premarket_scene_factory, nights_dir, {"asia": 1.0})
     assert ls.gates["night_legs_agree"] == "only one finished leg of the night moved"
