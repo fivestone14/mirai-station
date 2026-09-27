@@ -399,3 +399,13 @@ def test_every_question_group_has_a_heading_in_words():
     names = _run(decl + "console.log(JSON.stringify([ORDER, NAME]));", {})
     assert names[0] == shown and set(names[1]) == set(shown) and "_" not in "".join(names[1].values())
     assert "NAME[vp] || words(vp)" in _fn("paint")
+
+
+def test_the_folded_30_minute_line_counts_down_only_a_call_that_was_made():
+    """The 09:32 read asks nothing, so from 09:35 to 10:02 the opening view has no 30-minute call to time."""
+    js = ("var tickers = [], READ_MINUTES = [2, 32], LAST_READ_DEFAULT = '15:32';" + _fn("top1") + _fn("plusIso") + _fn("nextRead")
+          + _fn("foldLive") + "var f = foldLive(D.c); console.log(JSON.stringify([f.kids.map(function(k){ return k.textContent; }), tickers.length]));")
+    c = {"row_ts": "2026-09-28T09:31:20-04:00", "hour": None, "marks": {"next_30": "2026-09-28T10:00:00-04:00"},
+         "session": {"close": "2026-09-28T16:00:00-04:00", "last_read": "2026-09-28T15:32:00-04:00"}}
+    assert _run(js, {"now": "2026-09-28T09:52:00-04:00", "c": c}, LA) == [
+        ["30-min read 06:31", "No 30-minute call on this read, next read 07:02"], 0]

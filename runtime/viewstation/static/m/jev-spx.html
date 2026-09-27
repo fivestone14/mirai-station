@@ -945,8 +945,15 @@ details .q{margin-top:8px}
   function foldLive(c){
     var f = el('div', 'card fold'), h = c.hour, p = h && h.probabilities;
     f.appendChild(el('span', 'k', '30-min read ' + viewerTime(c.row_ts)));
-    if(p){ var top = h.pick || top1(p); f.appendChild(el('b', null, cap(top) + ' ' + pct(p[top]))); }
-    var left = el('span', 'l'); f.appendChild(left);
+    var left = el('span', 'l');
+    if(!p){
+      // the day's first read (09:32) asks nothing: there is no call to count down to
+      var nr = nextRead(Date.parse(c.session && c.session.last_read));
+      f.appendChild(left); left.textContent = 'No 30-minute call on this read' + (nr ? ', next read ' + viewerTime(nr) : '');
+      return f;
+    }
+    var top = h.pick || top1(p); f.appendChild(el('b', null, cap(top) + ' ' + pct(p[top])));
+    f.appendChild(left);
     var m30 = c.marks && c.marks.next_30 !== undefined ? c.marks.next_30 : plusIso(c.row_ts, 30);
     function update(){ left.textContent = m30 ? (leftWords(Date.parse(m30), Date.now()) || 'Window closed at ' + viewerTime(m30)) : 'Never graded'; }
     update(); tickers.push(update);
