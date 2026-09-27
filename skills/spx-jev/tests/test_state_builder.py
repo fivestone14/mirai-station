@@ -217,7 +217,9 @@ def test_the_bar_clock_stamps_the_read_at_the_newest_finished_bar(tmp_path):
     state = write_state(tmp_path, DAY, rows, bars_from_closes([7700.0 + i for i in range(40)]))
     scene = make_scene(state, DAY, bar_clock=True)
     assert scene.row["ts"] == at(10, 10).isoformat() and scene.row["spot"] == 7739.0 and scene.sigma == 75.0
-    assert scene.row["vwap"] == 7690.0 and "prior_close" not in scene.row and scene.unit["source"] == "tape"
+    # the opening lane's gap and straddle labels read yesterday's close and the straddle from the newest row
+    assert scene.row["vwap"] == 7690.0 and scene.row["prior_close"] == 7685.0 and scene.unit["source"] == "tape"
+    assert scene.row["range_ruler"]["em_points"] == 16.4 and scene.rows_today[0]["sigma_anchor"] == 75.0
 
 
 def test_the_market_context_joins_snapshots_and_backfilled_bars_by_when_each_was_known(tmp_path):

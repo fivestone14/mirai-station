@@ -27,7 +27,7 @@ from typing import Any
 
 SYMBOL = "SPX"
 # top-level fields the labeller reads, as they are on the row
-LABELLER_FIELDS = ("ts", "spot", "sigma", "vwap", "prior_close", "atm_iv", "vix_ts", "range_ruler", "adaptive_em",
+LABELLER_FIELDS = ("ts", "spot", "sigma", "sigma_anchor", "sigma_live", "vwap", "prior_close", "atm_iv", "vix_ts", "range_ruler", "adaptive_em",
                    "call_wall", "put_wall", "call_wall_tenor", "put_wall_tenor")
 # the fields read inside the row's nested views
 LABELLER_VIEWS = {

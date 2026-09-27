@@ -1,18 +1,38 @@
-"""The rulers a distance or a size is measured in.
+"""The rulers a distance or a size is measured in (the question set's conventions, "rulers").
 
-The tape unit, for the opening lane: the median high-to-low range of the last three finished 5-minute
-slices. Held at RULER_HOLD_SIGMA until 09:45, when three slices first exist; floored at
-RULER_FLOOR_SIGMA so a dead tape still has a unit; never capped, so a wild open is measured as wild.
+* The morning anchor (sigma_anchor, morning_ruler): distances and moves are in the day's sigma as the
+  scanner first set it, never the row's ``sigma``, which ratchets up with the live one. The anchor
+  counts only from a row stamped by ANCHOR_GUARD; without one the day's earliest ``sigma_live`` stands
+  in, else the settled open times the VIX over the square root of 252, and either is flagged
+  estimated ("ruler estimated"): ranks leave such a day out.
+* The live sigma (sigma_live): spot times at-the-money implied volatility over the square root of 252.
+* The straddle left (straddle_left, remaining_straddles): what today's 0DTE straddle still prices for the
+  rest of the day, in points, so the same distance reads as out of reach at 13:30 and inside the priced
+  move at 15:30. Only straddle questions use it.
+* The normal-day sigma (normal_day_sigma): the median morning anchor of up to the last 20 sessions, for
+  events, where today's own anchor is swollen by the event it prices.
+* The tape unit (ruler, tape_unit), for the opening lane: the median high-to-low range of the last three
+  finished 5-minute slices. Held at RULER_HOLD_SIGMA until 09:45, when three slices first exist;
+  floored at RULER_FLOOR_SIGMA so a dead tape still has a unit; never capped, so a wild open is
+  measured as wild.
 """
 from __future__ import annotations
 
+import math
 import statistics
+from dataclasses import dataclass
 from datetime import datetime, time, timedelta
+from typing import TYPE_CHECKING
 
-from ..cuts import RULER_FLOOR_SIGMA, RULER_HOLD_SIGMA
-from .measures import bars_finished_between, minute_of_day, slot
+from ..cuts import MIN_RANK_SESSIONS, RULER_FLOOR_SIGMA, RULER_HOLD_SIGMA
+from .measures import ET, SETTLED_OPEN_BAR, bars_finished_between, is_num, minute_of_day, settled_open, slot
 from .ranks import rank_at_slot
 
+if TYPE_CHECKING:
+    from ..state_builder import MarketContext, Scene
+
+TRADING_DAYS = 252
+ANCHOR_GUARD = time(9, 40)       # the anchor counts only from a row stamped by then
 RULER_SLICE_MIN = 5
 RULER_SLICES = 3
 RULER_HOLD_UNTIL = time(9, 45)
@@ -69,3 +89,74 @@ def tape_unit(bars: list[dict], sigma: float, now: datetime, prior_bars: dict[st
         if rank:
             unit["rank"] = rank
     return unit
+
+
+@dataclass(frozen=True)
+class SigmaRuler:
+    """A day's sigma in index points and where it came from: the scanner's ``anchor``, the earliest
+    ``live`` sigma, or the ``vix`` at the settled open. Anything but the anchor is an estimate."""
+    points: float
+    source: str
+
+    @property
+    def estimated(self) -> bool:
+        return self.source != "anchor"
+
+
+def morning_ruler(rows: list[dict], vix_at_open: float | None, open_price: float | None) -> SigmaRuler | None:
+    """The day's morning anchor from its diary rows (oldest first) with the guard and its fallbacks
+    (see the module note); None when not even the VIX and the settled open are known."""
+    first = rows[0] if rows else None
+    if first is not None and datetime.fromisoformat(first["ts"]).astimezone(ET).time() <= ANCHOR_GUARD:
+        anchor = first.get("sigma_anchor", first.get("sigma"))
+        if is_num(anchor) and anchor > 0:
+            return SigmaRuler(float(anchor), "anchor")
+    live = next((float(r["sigma_live"]) for r in rows if is_num(r.get("sigma_live")) and r["sigma_live"] > 0), None)
+    if live is not None:
+        return SigmaRuler(live, "live")
+    if vix_at_open and open_price:
+        return SigmaRuler(open_price * vix_at_open / 100.0 / math.sqrt(TRADING_DAYS), "vix")
+    return None
+
+
+def vix_at_settled_open(market: MarketContext | None, day: str) -> float | None:
+    """The VIX known when the settled open's bar finished."""
+    if market is None:
+        return None
+    done = datetime.combine(datetime.fromisoformat(day).date(), SETTLED_OPEN_BAR, tzinfo=ET) + timedelta(minutes=1)
+    return market.last("$VIX", done)
+
+
+def sigma_anchor(scene: Scene) -> SigmaRuler | None:
+    """Today's morning anchor, as far as this read can know it."""
+    day = scene.now.astimezone(ET).date().isoformat()
+    return morning_ruler(scene.rows_today, vix_at_settled_open(scene.market, day), settled_open(scene.bars))
+
+
+def sigma_live(scene: Scene) -> float | None:
+    """One trading day's expected move from the live implied volatility, in points: the row's
+    ``sigma_live``, else spot times its at-the-money IV over the square root of 252."""
+    live = scene.row.get("sigma_live")
+    if is_num(live) and live > 0:
+        return float(live)
+    iv = scene.row.get("atm_iv")
+    return scene.spot * float(iv) / math.sqrt(TRADING_DAYS) if is_num(iv) and iv > 0 else None
+
+
+def straddle_left(scene: Scene) -> float | None:
+    """What today's 0DTE straddle still prices for the rest of the day, in points (``range_ruler.em_points``)."""
+    em = (scene.row.get("range_ruler") or {}).get("em_points")
+    return float(em) if is_num(em) and em > 0 else None
+
+
+def remaining_straddles(scene: Scene, points: float) -> float | None:
+    """A distance in points as a count of what today's straddle still prices."""
+    em = straddle_left(scene)
+    return abs(points) / em if em else None
+
+
+def normal_day_sigma(scene: Scene) -> float | None:
+    """The median morning anchor of the prior sessions whose anchor was not estimated, in points; None
+    under MIN_RANK_SESSIONS of them."""
+    anchors = [r.points for r in scene.prior_rulers.values() if r is not None and not r.estimated]
+    return statistics.median(anchors) if len(anchors) >= MIN_RANK_SESSIONS else None

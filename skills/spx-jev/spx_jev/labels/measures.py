@@ -5,10 +5,16 @@ and close; a bar counts once its minute has finished (``ts`` plus one minute).
 from __future__ import annotations
 
 import statistics
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from datetime import datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
+ET = ZoneInfo("America/New_York")
 ONE_MINUTE = timedelta(minutes=1)
+# The settled open is the close of the 09:34 bar: the 09:30 print is made of stale opening quotes (a
+# median 0.115 sigma off), and 28% of a real gap is made after it.
+SETTLED_OPEN_BAR = time(9, 34)
 RSI_PERIOD = 14                 # Wilder's RSI over 14 closes
 # A move past two typical minutes (twice the median 1-minute range of the last 30 bars) is a real step.
 MOVE_BAR_MINUTES = 2
@@ -102,3 +108,29 @@ def wilder_rsi(closes: list[float], period: int = RSI_PERIOD) -> float | None:
         return 100.0
     rs = avg_g / avg_l
     return 100.0 - 100.0 / (1.0 + rs)
+
+
+def settled_open(bars: list[dict]) -> float | None:
+    """The day's settled open: the close of its 09:34 bar. None until that bar has finished (``bars``
+    holds finished bars only) or when the day has no 09:34 bar."""
+    return next((float(b["close"]) for b in bars if bar_time(b).time() == SETTLED_OPEN_BAR), None)
+
+
+@dataclass(frozen=True)
+class SessionExtremes:
+    """The session's high and low so far and when each was first made (the finish of the bar that made it)."""
+    high: float
+    high_at: datetime
+    low: float
+    low_at: datetime
+
+
+def session_extremes(bars: list[dict], since: datetime | None = None) -> SessionExtremes | None:
+    """The high and low of the bars that started at or after ``since`` (default all of them), with when
+    each was first made; None with no bars."""
+    win = [b for b in bars if since is None or bar_time(b) >= since]
+    if not win:
+        return None
+    hi = max(win, key=lambda b: float(b["high"]))      # max and min keep the first of equal extremes
+    lo = min(win, key=lambda b: float(b["low"]))
+    return SessionExtremes(float(hi["high"]), bar_time(hi) + ONE_MINUTE, float(lo["low"]), bar_time(lo) + ONE_MINUTE)
