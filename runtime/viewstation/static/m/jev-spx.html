@@ -17,6 +17,12 @@
   the first hour; while today's newest lane call is still open, that call leads
   the page and the 30-minute call folds to one line. Once it closes, the
   30-minute call leads again and the opening folds to its score for the day.
+  Before both, the pre-market lane (spx_jev.premarket) writes
+  state/spx_jev/lanes/premarket/latest.json at each of the night's checkpoints;
+  from the day's first pre-market read until the opening lane's first read
+  (09:35) that card leads the page alone: the clock to the open, the call
+  checked 10 and 30 minutes after the settled open, the story so far one chip
+  per read, and the night's facts in words.
 
   Times are the viewer's. Every time the SPX card carries is a full timestamp
   with its offset, so every time on this page is drawn in the phone's own zone
@@ -168,6 +174,25 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 .inplay .axis{stroke:var(--rule-soft);stroke-width:1}
 .inplay .now{stroke:var(--i);stroke-width:1.4;stroke-dasharray:3 3}
 .say{margin-top:8px;font:400 13.5px/1.45 var(--sans);color:var(--i-body);padding-left:10px;border-left:2px solid var(--s2)}
+/* before the open: the pre-market card's label row, its call in words, the story so far as chips in each
+   read's lean, and its facts as the situation's rows with the builder's sentence under each */
+.pre>.lab{margin-bottom:12px}
+.shape{margin-top:4px;font:700 15px/1.3 var(--sans);color:var(--i)}
+.shape span{font-weight:400;color:var(--i-mute)}
+.story .c-up{fill:var(--o-up)}
+.story .c-up_small{fill:var(--o-up-soft)}
+.story .c-flat{fill:var(--o-fl)}
+.story .c-down_small{fill:var(--o-dn-soft)}
+.story .c-down{fill:var(--o-dn)}
+.story .w-light{fill:#FFFFFF;font-size:10.5px;font-weight:700}
+.story .w-dark{fill:var(--i);font-size:10.5px;font-weight:700}
+.story .ring{fill:none;stroke:var(--i);stroke-width:1.4}
+.story .link{stroke:var(--rule-soft);stroke-width:1}
+.story .t-rep{fill:var(--i);font-size:9.5px;font-weight:700;letter-spacing:.06em}
+.story .t-p{fill:var(--i-body);font-size:10px}
+.story .t-p.last{font-weight:700;fill:var(--i)}
+.facts{margin-top:10px}
+.facts .sit-row{cursor:default}
 /* the call sheet: sheet.js's bottom sheet, its rules the same as the other pages' */
 .scrim{position:fixed;inset:0;z-index:30;background:rgba(22,26,23,.40);
        opacity:0;pointer-events:none;touch-action:none;transition:opacity .2s ease-out}
@@ -294,7 +319,7 @@ details .q{margin-top:8px}
 <div class="load" id="load"><i></i>Reading the card</div>
 <div id="state"></div>
 <main id="main" style="display:flex;flex-direction:column;gap:12px"></main>
-<p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are forecasts too, logged and never graded. Neither is a call. When a sum says blended, it is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent SPX sessions. Through the first hour the opening lane reads every 5 minutes and its 10-minute call, sized in tape units of index points, leads the page until its last call closes; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock. Every time here is in this phone's own time zone.</p>
+<p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are forecasts too, logged and never graded. Neither is a call. When a sum says blended, it is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent SPX sessions. Through the first hour the opening lane reads every 5 minutes and its 10-minute call, sized in tape units of index points, leads the page until its last call closes; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock. Before the open, the pre-market lane reads S&amp;P futures, 10-year bond futures, bitcoin futures and the morning&rsquo;s reports through the night and makes one call about the first half hour: where price stands 10 and 30 minutes after the first settled price, four minutes after the open. It is a forecast too, graded by the bars. Every time here is in this phone's own time zone.</p>
 
 <div class="scrim" data-sheet-close></div>
 <div class="sheet" id="jevSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="csTitle">
@@ -527,6 +552,9 @@ details .q{margin-top:8px}
   }
 
   function paint(c, ok){
+    // before the open the pre-market card leads alone, until the opening lane's first read takes over
+    if(preLeads(premarket, Date.now(), marketDay())){ paintPre(premarket, premarketOk); return; }
+    shownPre = false;
     document.getElementById('h1').textContent = (c.symbol || 'SPX') + ' \u00B7 JEV';
     var m = mins(c.row_ts);
     var old = m != null && m > STALE_MIN;
@@ -591,6 +619,11 @@ details .q{margin-top:8px}
   // Between cards the minutes still move: every tick updates each clock and each calls-in-play drawing,
   // and when the leading call changes (the opening's last call closes) the page is drawn again.
   function tick(){
+    if(preLeads(premarket, Date.now(), marketDay()) !== shownPre){
+      if(last) draw(last, lastOk);
+      else if(!preOnly()){ shownPre = false; tickers = []; $('main').textContent = ''; laneOnly(); }
+      return;
+    }
     if(!last){
       if(shownLeads && !laneLeads(tape, Date.now(), marketDay())){ shownLeads = false; tickers = []; $('main').textContent = ''; }
       tickers.forEach(function(f){ f(); });
@@ -602,6 +635,7 @@ details .q{margin-top:8px}
   // The same card again only moves the ages, so a reader mid-scroll is never handed a rebuilt page; after a
   // failed fetch or a station error it is drawn again once, so the failure's words leave with the failure.
   function ages(c){
+    if(shownPre) return;                          // the pre-market card leads and keeps its own ages
     var m = mins(c.row_ts), old = m != null && m > STALE_MIN;
     var sub = $('sub'); if(sub && !sub.classList.contains('err')) sub.textContent = subLine(c, m);
     var ageText = m == null ? '' : (m < 1 ? 'JUST NOW' : ageWord(m).toUpperCase());
@@ -618,6 +652,7 @@ details .q{margin-top:8px}
   }
   var inflight = false;
   function poll(){
+    pollPre();                                    // before the open, the pre-market card is fetched with it
     if(inflight) return;                          // one fetch at a time, whatever fired it
     inflight = true; polling(true);               // a refresh shows its spinner; it never blanks the card
     fetch(URL_, {cache:'no-store'}).then(function(r){
@@ -625,10 +660,10 @@ details .q{margin-top:8px}
       return r.json();
     }).then(function(j){
       if(j && j.kind === 'json' && j.data && j.data.questions){ arrived(j.data); }
-      else if(j && j.error){ say('the station said: ' + j.error); laneOnly(); }
+      else if(j && j.error){ say('the station said: ' + j.error); preOnly() || laneOnly(); }
       else if(last){ draw(last, false); }
-      else { say('no card yet: the JEV service has not written one'); laneOnly(); }
-    }).catch(function(e){ if(last) draw(last, false); else { say('could not read the card: ' + (e && e.message ? e.message : 'no reply')); laneOnly(); } })
+      else { say('no card yet: the JEV service has not written one'); preOnly() || laneOnly(); }
+    }).catch(function(e){ if(last) draw(last, false); else { say('could not read the card: ' + (e && e.message ? e.message : 'no reply')); preOnly() || laneOnly(); } })
       .finally(function(){ inflight = false; polling(false); });
   }
   // ---- the calls: every sum is a call that looks some minutes ahead, graded at its mark (the read's
@@ -1074,6 +1109,244 @@ details .q{margin-top:8px}
     if(!within(LANE_MARKS)) return;              // armed again by the first poll inside the window
     var ms = msToNextTapeMark(); if(ms == null) return;
     tapeTimer = setTimeout(function(){ tapeTimer = null; if(!document.hidden) pollTape(); armTapeMark(); }, Math.max(1000, ms));
+  }
+
+  // ---- before the open: the pre-market lane's card (skills/spx-jev, spx_jev.premarket), written at each of the
+  // night's checkpoints from 02:35 market time. It leads the page alone from the day's first pre-market read until
+  // the opening lane's first read takes over (the card's handover, 09:35); a card of another day is never drawn.
+  var PRE_URL = '/api/raw/file?root=state&path=spx_jev/lanes/premarket/latest.json';
+  var PRE_HOURS = ['02:35', '09:35'];       // fetched through the night's checkpoints, up to the hand-over
+  var PRE_LATE_MIN = 10;                    // a checkpoint's card lands within minutes of it; later than this it is missing
+  var premarket = null, premarketOk = true, shownPre = false, preInflight = false;
+  function preLeads(p, now, today){
+    return !!(p && p.lane === 'premarket' && today && p.day === today && now < Date.parse(p.handover));
+  }
+  // the checkpoint after the card's read, as an instant, once it is PRE_LATE_MIN overdue: the Mac slept or the job failed
+  function preMissed(p, now){
+    var row = Date.parse(p.row_ts);
+    var next = ((p.schedule && p.schedule.reads) || []).map(function(t){ return Date.parse(t); }).filter(function(t){ return t > row + 60000; })[0];
+    return next != null && now >= next + PRE_LATE_MIN * 60000 ? next : null;
+  }
+  // the JEV read the card's read was (its stamp), or null for a snapshot read, which asks nothing
+  function preJevRead(p){
+    var row = Date.parse(p.row_ts);
+    return ((p.schedule && p.schedule.jev_reads) || []).filter(function(t){
+      return row >= Date.parse(t) - 60000 && row < Date.parse(t) + PRE_LATE_MIN * 60000; })[0] || null;
+  }
+  // the state chips: a failed fetch, whether this read asked JEV and was sent, a missed checkpoint, old futures
+  function preState(p, ok, now){
+    var out = [], jev = (p.schedule && p.schedule.jev_reads) || [];
+    if(!ok) out.push('fetch failed, showing the last card');
+    var qs = p.questions || [];
+    if(p.sent) out.push(qs.filter(function(q){ return q.answer; }).length + ' of ' + qs.length + ' answered');
+    else if(preJevRead(p)) out.push('not sent: ' + (p.unsent_reason || 'no key on the station'));
+    else if(jev.length) out.push('snapshot, JEV at ' + jev.map(function(t){ return viewerTime(t); }).join(' and '));
+    var missed = preMissed(p, now);
+    if(missed != null) out.push('stale: the ' + viewerTime(missed) + ' read has not landed');
+    if(p.freshness && p.freshness.stale && p.freshness.age_s != null) out.push('futures ' + Math.round(p.freshness.age_s / 60) + ' min old at the read');
+    return out;
+  }
+  // the call in words, from the two sums' picks: how the first check (10 minutes on) opens, and whether the
+  // second (30 minutes on) keeps it
+  var OPENS = {up: 'Opens firm', down: 'Opens weak', flat: 'Opens quiet', unsure: 'Unclear at first'};
+  var THEN = {up: 'then rises', down: 'then falls', flat: 'then settles', unsure: 'then unclear'};
+  function shapeWords(first, second){
+    if(!(first in OPENS) || !(second in OPENS)) return null;
+    var same = first === second;
+    return {title: same ? (first === 'unsure' ? 'Unclear at both checks' : OPENS[first] + ', holds') : OPENS[first] + ', ' + THEN[second],
+            words: words(first) + ' at the first check, ' + (same ? 'still ' : '') + words(second) + ' at the second'};
+  }
+  function sumPick(s){ return s && s.probabilities ? s.pick || top1(s.probabilities) : null; }
+  function sumSaid(s){ var k = sumPick(s); return k ? cap(k) + ' ' + pct(s.probabilities[k]) : null; }
+  // the clock: from the night's first read to the open, how long is left, and when the call is checked
+  function preClock(p){
+    var open = Date.parse(p.open), first = Date.parse(((p.schedule && p.schedule.reads) || [])[0] || p.row_ts);
+    var box = el('div'), top = el('div', 'clock-top');
+    top.appendChild(el('span', null, 'Opens ' + viewerTime(open)));
+    var left = el('b'); top.appendChild(left); box.appendChild(top);
+    var track = el('div', 'clock-bar'), fill = el('i'); track.appendChild(fill); box.appendChild(track);
+    var sub = el('div', 'clock-sub'); sub.appendChild(el('span', null, 'Read ' + viewerTime(p.row_ts, {zone: true})));
+    sub.appendChild(el('span', null, 'Checked ' + viewerTime(p.marks[0]) + ' and ' + viewerTime(p.marks[1]))); box.appendChild(sub);
+    function update(){
+      var now = Date.now();
+      left.textContent = now < open ? untilWords(open - now) + ' to go' : 'Open now';
+      fill.style.width = Math.max(0, Math.min(100, (now - first) / Math.max(60000, open - first) * 100)).toFixed(1) + '%';
+    }
+    update(); tickers.push(update);
+    return box;
+  }
+  // the call: its pick as the big number, its shape in words, the odds bar; a snapshot read carries the newest
+  // call and says whose it is; before the first call, when it comes
+  function preCall(p, box){
+    var h = p.hour, pr = h && h.probabilities;
+    if(pr){
+      var top = h.pick || top1(pr), by = h.by || {}, s = shapeWords(sumPick(by.open_10), sumPick(by.open_30));
+      box.appendChild(el('div', 'big', cap(top) + ' ' + pct(pr[top])));
+      if(s){ var sh = el('div', 'shape', s.title); sh.appendChild(el('span', null, ': ' + s.words)); box.appendChild(sh); }
+      box.appendChild(oddsBar(pr, top));
+      if(h.read_at && h.read_at !== p.row_ts)
+        box.appendChild(tag('the call from the ' + viewerTime(h.read_at) + ' read; the ' + viewerTime(p.row_ts) + ' read is a snapshot and asks nothing.'));
+      return;
+    }
+    var row = Date.parse(p.row_ts), jev = (p.schedule && p.schedule.jev_reads) || [];
+    var next = jev.filter(function(t){ return Date.parse(t) > row + 60000; })[0];
+    box.appendChild(el('div', 'big', 'No call yet'));
+    if(h && h.error) box.appendChild(skipLine('no sum on the ' + viewerTime(p.row_ts) + ' read: ' + h.error));
+    box.appendChild(skipLine(next ? (jev.indexOf(next) ? 'next call at ' : 'first call at ') + viewerTime(next) : 'no call before the open'));
+  }
+  // when it is checked: both sums from the settled open (the card's start), each to its mark, on one clock from
+  // ten minutes before the open; the solid line is the open, the dashed one now
+  var CHECKS_LEAD_MIN = 10, CHECKS_TOP = 20;
+  function checksSvg(p, now){
+    var open = Date.parse(p.open), start = Date.parse(p.start), by = (p.hour && p.hour.by) || {};
+    var t0 = open - CHECKS_LEAD_MIN * 60000, t1 = Date.parse(p.marks[1]), end = t0 + (t1 - t0) * TRACK_W / NEWEST_END;
+    function x(t){ return (t - t0) / (end - t0) * TRACK_W; }
+    var rows = [['open_10', p.marks[0], 'b-now', 't-now'], ['open_30', p.marks[1], 'b-open', 't-open']];
+    var ay = CHECKS_TOP + rows.length * ROW_H + 4;
+    var svg = svgEl('svg', {viewBox: '0 0 300 ' + (ay + 32), 'class': 'inplay', role: 'img',
+                            'aria-label': 'Checked twice from the ' + viewerTime(start) + ' price: at ' + viewerTime(p.marks[0]) + ' and ' + viewerTime(p.marks[1])});
+    if(now >= t0 && now <= end){
+      var nx = x(now).toFixed(1);
+      svg.appendChild(svgEl('line', {x1: nx, y1: CHECKS_TOP - 2, x2: nx, y2: ay, 'class': 'now'}));
+      svg.appendChild(svgEl('text', {x: nx, y: ay + 27, 'text-anchor': 'middle', 'class': 't-now-l'}, 'now'));
+    }
+    var ox = x(open);
+    svg.appendChild(svgEl('line', {x1: ox.toFixed(1), y1: CHECKS_TOP - 2, x2: ox.toFixed(1), y2: ay, 'class': 'axis'}));
+    svg.appendChild(svgEl('text', {x: (ox + 4).toFixed(1), y: 11, 'class': 't-axis'}, 'open ' + viewerTime(open)));
+    rows.forEach(function(r, i){
+      var y = CHECKS_TOP + i * ROW_H, a = x(start), mark = Date.parse(r[1]), b = x(mark), name = sumSaid(by[r[0]]);
+      svg.appendChild(svgEl('rect', {x: a.toFixed(1), y: y, width: (b - a).toFixed(1), height: 21, rx: 5, 'class': r[2]}));
+      if(name){
+        if(!fits(name, b - a)) name = cap(sumPick(by[r[0]]));
+        if(fits(name, b - a)) svg.appendChild(svgEl('text', {x: (a + 5).toFixed(1), y: y + 14.5, 'class': r[3]}, name));
+      }
+      svg.appendChild(svgEl('text', {x: (b + 5).toFixed(1), y: y + 14.5, 'class': 't-side'}, Math.round((mark - start) / 60000) + ' min on'));
+    });
+    svg.appendChild(svgEl('line', {x1: 0, y1: ay, x2: TRACK_W, y2: ay, 'class': 'axis'}));
+    [start, Date.parse(p.marks[0]), t1].forEach(function(t){
+      svg.appendChild(svgEl('text', {x: x(t).toFixed(1), y: ay + 13, 'text-anchor': 'middle', 'class': 't-axis'}, viewerTime(t)));
+    });
+    return svg;
+  }
+  // the story so far: one chip per read today, oldest first, in its lean's colour, the newest ringed, REPORT over a
+  // read made after a report; under each its time and the call it made. The row has a place for each of the day's
+  // checkpoints, so the chips keep their size as the night fills it from the left. A lean too wide for its chip
+  // ("Down small" in six places) takes two lines, and then every chip does, so the row stays one height.
+  var CHIP_W = 56, CHIP_Y = 16;
+  function chipFits(text, width){ return text.length * 5.9 + 6 <= width; }   // 10.5px bold, about 5.9px a letter
+  function storySide(lean){ return /^up/.test(lean) ? 'up' : /^down/.test(lean) ? 'down' : 'flat'; }
+  function storyHead(story){
+    var sides = story.map(function(s){ return storySide(s.lean); });
+    var one = sides.every(function(x){ return x === sides[0]; });
+    return 'Story so far \u00B7 ' + story.length + (story.length === 1 ? ' read' : ' reads' + (one ? ', all ' + sides[0] : ''));
+  }
+  function storySvg(story, places){
+    var n = story.length, col = 300 / Math.max(n, places), cw = Math.min(CHIP_W, col - 4);
+    var two = story.some(function(s){ return !chipFits(cap(s.lean), cw); }), ch = two ? 30 : 21, low = CHIP_Y + ch;
+    var said = story.some(function(s){ return sumPick(s.call); });
+    var svg = svgEl('svg', {viewBox: '0 0 300 ' + (low + (said ? 32 : 20)), 'class': 'inplay story', role: 'img',
+                            'aria-label': story.map(function(s){ return viewerTime(s.at) + ' ' + cap(s.lean) + (s.report ? ', after the report' : '') +
+                              (sumSaid(s.call) ? ', call ' + sumSaid(s.call) : ''); }).join('; ')});
+    if(n > 1) svg.appendChild(svgEl('line', {x1: col / 2, y1: CHIP_Y + ch / 2, x2: col * (n - 0.5), y2: CHIP_Y + ch / 2, 'class': 'link'}));
+    story.forEach(function(s, i){
+      var cx = col * i + col / 2, last = i === n - 1, word = cap(s.lean), light = s.lean === 'up' || s.lean === 'down';
+      if(s.report) svg.appendChild(svgEl('text', {x: cx, y: 10, 'text-anchor': 'middle', 'class': 't-rep'}, 'REPORT'));
+      svg.appendChild(svgEl('rect', {x: (cx - cw / 2).toFixed(1), y: CHIP_Y, width: cw, height: ch, rx: 5, 'class': 'c-' + s.lean}));
+      if(last) svg.appendChild(svgEl('rect', {x: (cx - cw / 2 - 1.8).toFixed(1), y: CHIP_Y - 2.5, width: cw + 3.6, height: ch + 5, rx: 7, 'class': 'ring'}));
+      var lines = two && !chipFits(word, cw) ? word.split(' ') : [word];
+      lines.forEach(function(w, k){
+        var y = lines.length === 2 ? CHIP_Y + 12.5 + k * 11.5 : CHIP_Y + ch / 2 + 4;
+        svg.appendChild(svgEl('text', {x: cx, y: y, 'text-anchor': 'middle', 'class': light ? 'w-light' : 'w-dark'}, w));
+      });
+      svg.appendChild(svgEl('text', {x: cx, y: low + 15, 'text-anchor': 'middle', 'class': last ? 't-now-l' : 't-axis'}, viewerTime(s.at)));
+      var call = sumSaid(s.call);
+      if(call){
+        if(call.length * 5.6 + 4 > col) call = cap(sumPick(s.call));   // 10px, about 5.6px a letter
+        svg.appendChild(svgEl('text', {x: cx, y: low + 28, 'text-anchor': 'middle', 'class': 't-p' + (last ? ' last' : '')}, call));
+      }
+    });
+    return svg;
+  }
+  // the facts, in words: the situation's rows with no gauge, the builder's sentence under each; the report's row
+  // is named by its release time in the viewer's zone
+  function preFacts(p){
+    var box = el('div', 'facts');
+    (p.situation || []).forEach(function(r){
+      var row = el('div', 'sit-row'), top = el('div', 'sit-top');
+      top.appendChild(el('span', 'sit-t', r.key === 'report' && r.at ? viewerTime(r.at) + ' report' : r.title));
+      top.appendChild(el('b', 'sit-v', r.verdict || '')); row.appendChild(top);
+      if(r.sentence) row.appendChild(el('div', 'sit-c', sentence(marketWords(r.sentence, p.row_ts))));
+      box.appendChild(row);
+    });
+    return box;
+  }
+  // the page before the open: the header's words, the state chips, the mode, the 0DTE line, the pre-market card
+  // and, folded to one line, the opening reads that take over
+  function paintPre(p, ok){
+    tickers = []; shownPre = true; shownLeads = false;
+    $('h1').textContent = (p.symbol || 'SPX') + ' \u00B7 JEV';
+    var sub = $('sub'), st = $('state'), main = $('main');
+    sub.classList.remove('err'); main.textContent = '';
+    main.appendChild(el('div', 'mode', 'before the open'));
+    var ex = expiryLine(p); if(ex) main.appendChild(ex);
+    var card = el('div', 'card dashed pre'), age = el('span', 'r'), lab = el('div', 'lab');
+    lab.appendChild(el('span', null, 'before the open')); lab.appendChild(age); card.appendChild(lab);
+    card.appendChild(preClock(p));
+    preCall(p, card);
+    card.appendChild(el('div', 'inplay-h', 'When it is checked'));
+    var checks = el('div'); card.appendChild(checks);
+    card.appendChild(tag('both checks start from the price at ' + viewerTime(p.start) + ', ' +
+                         Math.round((Date.parse(p.start) - Date.parse(p.open)) / 60000) + ' minutes after the open.'));
+    if(p.story && p.story.length){
+      card.appendChild(el('div', 'inplay-h', storyHead(p.story)));
+      card.appendChild(storySvg(p.story, ((p.schedule && p.schedule.reads) || []).length));
+    }
+    card.appendChild(preFacts(p));
+    card.appendChild(tag('hands over to the 5-minute opening reads at ' + viewerTime(p.handover) + '.' +
+                         (p.hour && p.hour.probabilities ? ' A forecast, graded by the bars, never a call.' : '')));
+    main.appendChild(card);
+    var nf = el('div', 'card fold');
+    nf.appendChild(el('span', 'k', 'Opening reads')); nf.appendChild(el('b', null, 'First ' + viewerTime(p.handover)));
+    nf.appendChild(el('span', 'l', 'Every 5 min, 10-minute calls'));
+    main.appendChild(nf);
+    function update(){
+      var now = Date.now(), m = mins(p.row_ts);
+      sub.textContent = 'pre-market read ' + viewerTime(p.row_ts) + ', ' + ageWord(m) + ', open ' + viewerTime(p.open);
+      st.textContent = ''; preState(p, ok, now).forEach(function(w){ st.appendChild(el('span', 'state', w)); });
+      age.textContent = m == null ? '' : (m < 1 ? 'JUST NOW' : ageWord(m).toUpperCase());
+      age.classList.toggle('old', preMissed(p, now) != null);
+      checks.textContent = ''; checks.appendChild(checksSvg(p, now));
+    }
+    update(); tickers.push(update);
+  }
+  // No 30-minute card read yet: the pre-market card still leads before the open, drawn alone. False when it does not.
+  function preOnly(){
+    if(last || !preLeads(premarket, Date.now(), marketDay())) return false;
+    paintPre(premarket, premarketOk);
+    clearLoading();
+    return true;
+  }
+  // a new card, or a fetch that failed or recovered, is drawn only when the pre-market card leads or just did,
+  // so a card of another day never rebuilds the page under a reader
+  function redrawPre(){
+    if(!shownPre && !preLeads(premarket, Date.now(), marketDay())) return;
+    if(last) draw(last, lastOk); else if(!preOnly()) tick();
+  }
+  function pollPre(){
+    if(!within(PRE_HOURS)){ if(premarket){ premarket = null; if(shownPre) tick(); } return; }
+    if(preInflight) return;
+    preInflight = true;
+    fetch(PRE_URL, {cache:'no-store'}).then(function(r){
+      if(!r.ok) throw new Error('the station answered ' + r.status);
+      return r.json();
+    }).then(function(j){
+      var d = j && j.kind === 'json' && j.data && j.data.lane === 'premarket' ? j.data : null;
+      var changed = d && sig(d) !== sig(premarket), wasOk = premarketOk;
+      premarketOk = true;
+      if(changed) premarket = d;
+      if(changed || !wasOk) redrawPre();
+    }).catch(function(){ var wasOk = premarketOk; premarketOk = false; if(wasOk) redrawPre(); })
+      .finally(function(){ preInflight = false; });
   }
 
   // Refresh on its own: every POLL_MS while the page is in view, again the moment the page comes
