@@ -100,6 +100,18 @@ def test_the_due_and_digest_windows_are_inclusive_and_the_gate_sleeps_past_the_d
         "every scheduled event today came out more than 120 minutes ago"
 
 
+def test_the_press_conference_is_under_way_until_its_end_then_digested(scene_factory):
+    s = scene_at(scene_factory, at(14, 45, "2026-10-28"), FLAT)
+    state, _, gates = labels(s)
+    assert state["context.event_clock"] == (
+        "the Fed's rate decision came out at 14:00, 45 minutes ago, inside the 120-minute digest window; "
+        "the Fed chair's press conference is under way until 15:30, inside the 60-minute due window; "
+        "the Fed is in its pre-meeting quiet period")
+    assert gates["event_clock"] is None
+    assert ("the Fed chair's press conference began at 14:30, 60 minutes ago, inside the 120-minute digest window"
+            in labels(replace(s, now=at(15, 30, "2026-10-28")))[0]["context.event_clock"])
+
+
 def test_an_empty_day_is_written_and_its_gate_sleeps_and_the_quiet_period_is_named(scene_factory):
     state, _, gates = labels(scene_at(scene_factory, at(10, 32, "2026-10-13"), FLAT))
     assert state["context.event_clock"] == "nothing is scheduled today; the Fed is not in its pre-meeting quiet period"

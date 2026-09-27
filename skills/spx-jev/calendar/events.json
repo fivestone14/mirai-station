@@ -4,7 +4,8 @@
   "Kept by hand through covers_through; past that day the event labels say the calendar has run out rather than calling the day quiet. Extend it, from the sources each row names, before it runs out.",
   "tier 1: the Fed's rate decisions and press conferences, the Fed chair's testimony and keynotes, index rebalance, quarterly-expiry and quarter-end closes, half-day closes. The service tags a read with every tier-1 event due in the next 60 minutes (spx_jev/events.py); a read with one due in the next 30 minutes is graded but kept out of what the question weights learn from. Nothing is suppressed and JEV never sees the tag. Copied on 2026-09-26 from skills/sndk-jev/calendar/events.json, less SanDisk's own events.",
   "The other tiers feed only the event labels (spx_jev/labels/events_shocks.py): pre_open (the 08:30 releases: jobs, consumer and producer prices, PCE, GDP, retail sales, weekly jobless claims), data_10am (ISM, job openings, consumer confidence and sentiment), data_2pm (the Fed's minutes) and fed_speaker (the Board's own scheduled remarks from federalreserve.gov, hand-kept a week or two ahead; the regional presidents are not listed). A speaker row with q_and_a true takes audience or moderator questions.",
-  "A row with verified false follows a rule, not a published date, and the labels word it as expected."
+  "A row with verified false follows a rule, not a published date, and the labels word it as expected.",
+  "A row with end_et is under way from time_et until end_et: the service tags it and the labels read it as under way, not released. The Fed publishes no end time, so end_et is the usual length: the press conference an hour, the chair's testimony two and a half hours, the Jackson Hole speech half an hour. A speaker row without one is taken to run an hour."
  ],
  "built": "2026-09-27",
  "covers_through": "2026-12-31",
@@ -12,6 +13,7 @@
   {
    "date": "2026-07-14",
    "time_et": "10:00",
+   "end_et": "12:30",
    "kind": "FED_CHAIR_TESTIMONY",
    "scope": "market",
    "tier": 1,
@@ -22,6 +24,7 @@
   {
    "date": "2026-07-15",
    "time_et": "10:00",
+   "end_et": "12:30",
    "kind": "FED_CHAIR_TESTIMONY",
    "scope": "market",
    "tier": 1,
@@ -42,6 +45,7 @@
   {
    "date": "2026-07-29",
    "time_et": "14:30",
+   "end_et": "15:30",
    "kind": "FOMC_PRESSER",
    "scope": "market",
    "tier": 1,
@@ -52,6 +56,7 @@
   {
    "date": "2026-08-28",
    "time_et": "10:00",
+   "end_et": "10:30",
    "kind": "FED_CHAIR_JACKSON_HOLE",
    "scope": "market",
    "tier": 1,
@@ -173,6 +178,7 @@
   {
    "date": "2026-09-16",
    "time_et": "14:30",
+   "end_et": "15:30",
    "kind": "FOMC_PRESSER",
    "scope": "market",
    "tier": 1,
@@ -548,6 +554,7 @@
   {
    "date": "2026-10-28",
    "time_et": "14:30",
+   "end_et": "15:30",
    "kind": "FOMC_PRESSER",
    "scope": "market",
    "tier": 1,
@@ -855,6 +862,7 @@
   {
    "date": "2026-12-09",
    "time_et": "14:30",
+   "end_et": "15:30",
    "kind": "FOMC_PRESSER",
    "scope": "market",
    "tier": 1,

@@ -72,6 +72,15 @@ def test_the_shipped_calendar_reaches_the_year_end_with_each_tier_on_its_clock()
     assert [e.start.date() for e in rows if e.kind == "QUARTER_END"] == [date(2026, 9, 30), date(2026, 12, 31)]
 
 
+def test_the_shipped_calendars_press_conferences_testimony_and_jackson_hole_have_an_end_and_are_held_out_while_under_way():
+    events._load.cache_clear()
+    rows = events._load(str(events.CALENDAR)).events
+    assert all(e.end is not None for e in rows if e.kind in ("FOMC_PRESSER", "FED_CHAIR_TESTIMONY", "FED_CHAIR_JACKSON_HOLE"))
+    g = events.tag(t("2026-10-28T15:02"))
+    assert g["within_30"] is True and g["sentence"] == "a scheduled event is ahead: the Fed chair's press conference, under way until 15:30 ET"
+    assert events.tag(t("2026-10-28T15:30")) is None
+
+
 def test_other_tiers_are_read_by_the_labels_with_their_flags_and_never_tagged(tmp_path):
     p = _cal(tmp_path, [{"date": "2026-10-01", "time_et": "10:00", "kind": "ISM_MANUFACTURING", "tier": "data_10am", "verified": False},
                         {"date": "2026-10-01", "time_et": "10:00", "kind": "FED_GOVERNOR_SPEECH", "tier": "fed_speaker", "q_and_a": True},
