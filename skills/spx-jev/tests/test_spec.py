@@ -2,7 +2,9 @@
 
 Every label the spec calls "built" has to come out of the builder, and nothing the builder writes
 may be missing from the spec; "lane" labels come out on the tape lane only. So a label cannot be
-added or dropped on the page without the test going red.
+added or dropped on the page without the test going red. The final question set's own labels are
+specified in spec/question_set.json and measured by their families' tests: many are written only on
+some moments (a release, a shock, after 14:00), so one scene cannot measure them all.
 """
 from __future__ import annotations
 
@@ -14,6 +16,7 @@ from conftest import measured
 from spx_jev.labels.registry import build_labels
 
 SPEC = Path(__file__).resolve().parent.parent / "spec" / "labels.json"
+QUESTION_SET = Path(__file__).resolve().parent.parent / "spec" / "question_set.json"
 PATH = re.compile(r"^[a-z_]+\.[a-z_0-9]+$")
 
 
@@ -21,11 +24,20 @@ def spec():
     return json.loads(SPEC.read_text(encoding="utf-8"))
 
 
+def set_labels():
+    return {lab["name"] for lab in json.loads(QUESTION_SET.read_text(encoding="utf-8"))["labels"]}
+
+
 def _produced(scene):
+    """The labels.json labels the scene writes; each of them it omits fails, and so does any label it
+    writes that neither spec names."""
     labels = build_labels(scene)
+    specified = {lab["path"] for lab in spec()["labels"]}
     state, omitted = labels.state, measured(labels.omitted)
-    assert omitted == {}, omitted
-    return {f"{g}.{k}" for g, labels in state.items() for k in labels}
+    assert {p: why for p, why in omitted.items() if p in specified} == {}, omitted
+    written = {f"{g}.{k}" for g, labels in state.items() for k in labels}
+    assert written - specified - set_labels() == set(), "the code writes labels neither spec names"
+    return written & specified
 
 
 def test_spec_is_well_formed():
