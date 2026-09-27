@@ -11,14 +11,14 @@ from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
 
 from .. import events
-from ..cuts import (ATM_RESID_VOLPTS, BOTTOM_FIFTH, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, EVENT_DIGEST_MIN, IV_FLAT_BAND_PTS, LOADED_RATIO,
-                    MIN_RANK_SESSIONS, MOVE_RULE_SIGMA, ONE_RATIO, REALIZED_QUIET_RATIO, REALIZED_WILD_RATIO, RULER_HIGH, RULER_LOW,
-                    RV_HOT, STRADDLE_CHEAP,
-                    STRADDLE_REPRICE_SHARE, STRADDLE_RICH, TOP_FIFTH, VIX_CURVE_FLAT, VIX_GAP_RESID_PTS, VIX_JUMP_PCT,
-                    VIX_JUMP_PCT_10, VIX_MOVE_PCT, VIX_MOVE_PCT_10, VIX_RESID_PCT, VIX_STILL_PCT, VIX_STILL_PCT_10, WINDOW_10_MIN,
-                    WINDOW_30_MIN, ZERO_DTE_LAST_HOUR_MIN)
+from ..cuts import (ATM_RESID_VOLPTS, BOTTOM_FIFTH, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, EVENT_DIGEST_MIN, FRONT_SHIFT_PTS, HALF_RANK,
+                    IV_FLAT_BAND_PTS, LOADED_RATIO, MIN_RANK_SESSIONS, MOVE_RULE_SIGMA, ONE_RATIO, PAIR_MOVE_SIGMA, REALIZED_QUIET_RATIO,
+                    REALIZED_WILD_RATIO, RULER_HIGH, RULER_LOW, RV_HOT, STRADDLE_CHEAP, STRADDLE_REPRICE_SHARE, STRADDLE_RICH,
+                    TOP_FIFTH, VIX_CURVE_FLAT, VIX_CURVE_NEAR_FLAT, VIX_GAP_RESID_PTS, VIX_JUMP_PCT, VIX_JUMP_PCT_10, VIX_MOVE_PCT,
+                    VIX_MOVE_PCT_10, VIX_RESID_PCT, VIX_STILL_PCT, VIX_STILL_PCT_10, WINDOW_10_MIN, WINDOW_30_MIN,
+                    ZERO_DTE_LAST_HOUR_MIN)
 from ..sessions import session_close, session_minutes
-from ..state_builder import Scene, row_days
+from ..state_builder import MarketContext, Scene, row_days
 from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, day_high_low, is_num, settled_open
 from .ranks import SameClockRank, rank_against, same_clock_values
@@ -48,6 +48,10 @@ ATM_IV_PER_SIGMA = -2.2
 VIX_PER_GAP_SIGMA = -1.7
 # A real move, for how long the tape has been still: MOVE_RULE_SIGMA within this many minutes (context.time_since_last_move's).
 REAL_MOVE_MIN = 10
+# The context job snapshots the VIX family every minute: a value older than this means it stopped.
+QUOTE_MAX_AGE_MIN = 5
+# VVIX's leftover move is fitted on the prior sessions' half hours ending 10:30 to 15:30 (11 a session).
+VVIX_FIT_FIRST, VVIX_FIT_READS = time(10, 30), 11
 # The VIX that closes the session is read against the early afternoon: the newest row by 14:00.
 AFTERNOON_ANCHOR = time(14, 0)
 # What the tape delivers over 30 minutes: the median high-to-low range of the last six finished 5-minute
@@ -74,6 +78,10 @@ def build_vol_labels(scene: Scene) -> LabelSet:
     _straddle_vs_clock(scene, today, ls)
     _ruler_event_load(scene, today, ls)
     _realized_vs_clock(scene, ls)
+    _front_fear_shift(scene, ls)
+    _vvix_with_move(scene, ls)
+    _vvix_vs_vix(scene, ls)
+    _vix_curve(scene, today, ls)
     return ls
 
 
@@ -590,3 +598,158 @@ def _realized_vs_clock(scene: Scene, ls: LabelSet) -> None:
              f"{pace:.2f} times the usual pace for this half hour (its median on the last {len(base)} sessions at this time of day), "
              f"at or under the {RV_HOT:g} hot line")
     ls.put("vol.realized_vs_clock_rank", f"the last {REALIZED_WINDOW_MIN} minutes moved {words}{_ruled(ruler)}")
+
+
+# ----------------------------------------------------------------------------- the VIX family around SPX (the context job)
+
+def _quote(market: MarketContext | None, symbol: str, t: datetime) -> float | None:
+    return market.last(symbol, t, max_age_min=QUOTE_MAX_AGE_MIN) if market else None
+
+
+def _front_gap(market: MarketContext | None, t: datetime) -> float | None:
+    """Nine-day VIX less VIX at ``t``, in points."""
+    front, vix = _quote(market, "$VIX9D", t), _quote(market, "$VIX", t)
+    return None if front is None or vix is None else front - vix
+
+
+def _front_fear_shift(scene: Scene, ls: LabelSet) -> None:
+    """The 30-minute change in nine-day VIX less VIX, against the shift rule."""
+    now, then = _front_gap(scene.market, scene.now), _front_gap(scene.market, scene.now - timedelta(minutes=WINDOW_30_MIN))
+    if now is None or then is None:
+        ls.omit("vol.front_fear_shift", "no $VIX9D and $VIX in the market context now and 30 minutes ago (the context job)")
+        return
+    d = now - then
+    if abs(d) > FRONT_SHIFT_PTS:
+        shown, words = max(abs(d), FRONT_SHIFT_PTS + 0.01), f"beyond the {FRONT_SHIFT_PTS:g}-point rule"
+    else:
+        shown, words = abs(d), f"within the {FRONT_SHIFT_PTS:g}-point rule"
+
+    def side(gap: float) -> str:
+        return f"{abs(gap):.2f} {'under' if gap < 0 else 'over'} it"
+
+    ls.put("vol.front_fear_shift",
+           f"over the last 30 minutes nine-day VIX {'rose' if d >= 0 else 'fell'} {shown:.2f} points against the 30-day VIX, "
+           f"from {side(then)} to {side(now)}, {words}")
+
+
+def _vvix_with_move(scene: Scene, ls: LabelSet) -> None:
+    """The 30-minute SPX move against the pairing rule, and which way VVIX went meanwhile."""
+    ruler = sigma_anchor(scene)
+    move = _spx_move(scene, WINDOW_30_MIN, ruler) if ruler else None
+    a, b = _quote(scene.market, "$VVIX", scene.now - timedelta(minutes=WINDOW_30_MIN)), _quote(scene.market, "$VVIX", scene.now)
+    if move is None or a is None or b is None:
+        ls.omit("vol.vvix_with_move", "needs the morning sigma ruler, a finished bar 30 minutes ago and $VVIX in the market context now "
+                                      "and then (the context job)")
+        return
+    if abs(move) > PAIR_MOVE_SIGMA:
+        size = f"{sig(max(abs(move), PAIR_MOVE_SIGMA + 0.01))}, past the {PAIR_MOVE_SIGMA:g} sigma pairing rule"
+    else:
+        size = f"{sig(abs(move))}, within the {PAIR_MOVE_SIGMA:g} sigma pairing rule"
+    vvix = f"held at {b:.2f}" if b == a else f"{'rose' if b > a else 'fell'} {abs(b - a):.2f} points, from {a:.2f} to {b:.2f}"
+    ls.put("vol.vvix_with_move", f"over the last 30 minutes SPX {'fell' if move < 0 else 'rose'} {size}, and VVIX {vvix}{_ruled(ruler)}")
+
+
+def _half_hour(market: MarketContext | None, bars: list[dict], t: datetime, points: float) -> tuple[float, float, float, float] | None:
+    """``(SPX move in sigma, VIX change, VVIX change, VIX)`` over the 30 minutes to ``t``; None when a piece is missing."""
+    start = t - timedelta(minutes=WINDOW_30_MIN)
+    p0, p1 = close_at(bars, start), close_at(bars, t)
+    vix0, vix1 = _quote(market, "$VIX", start), _quote(market, "$VIX", t)
+    vv0, vv1 = _quote(market, "$VVIX", start), _quote(market, "$VVIX", t)
+    if None in (p0, p1, vix0, vix1, vv0, vv1):
+        return None
+    return (p1 - p0) / points, vix1 - vix0, vv1 - vv0, vix1
+
+
+def _fit_two(xs: list[tuple[float, float]], ys: list[float]) -> tuple[float, float, float] | None:
+    """Least squares ``y = a + b x1 + c x2``: ``(a, b, c)``, or None when the two inputs do not vary apart."""
+    n = len(ys)
+    m1, m2, my = sum(x[0] for x in xs) / n, sum(x[1] for x in xs) / n, sum(ys) / n
+    s11 = sum((x[0] - m1) ** 2 for x in xs)
+    s22 = sum((x[1] - m2) ** 2 for x in xs)
+    s12 = sum((x[0] - m1) * (x[1] - m2) for x in xs)
+    s1y = sum((x[0] - m1) * (y - my) for x, y in zip(xs, ys))
+    s2y = sum((x[1] - m2) * (y - my) for x, y in zip(xs, ys))
+    det = s11 * s22 - s12 * s12
+    if det <= 1e-12:
+        return None
+    b, c = (s1y * s22 - s2y * s12) / det, (s2y * s11 - s1y * s12) / det
+    return my - b * m1 - c * m2, b, c
+
+
+def _vvix_vs_vix(scene: Scene, ls: LabelSet) -> None:
+    """VVIX's 30-minute change less what SPX's move and VIX's change explain, fitted on the prior sessions' half
+    hours, its size ranked against the fit's own leftovers."""
+    path = "vol.vvix_vs_vix"
+    ruler = sigma_anchor(scene)
+    now = _half_hour(scene.market, scene.bars, scene.now, ruler.points) if ruler else None
+    if now is None:
+        ls.omit(path, "needs the morning sigma ruler, bars 30 minutes apart and $VIX and $VVIX in the market context now and then "
+                      "(the context job)")
+        return
+    xs, ys, sessions = [], [], 0
+    for d in _ranked_prior_days(scene):
+        prior, anchor = scene.prior_markets.get(d), scene.prior_rulers.get(d)
+        if prior is None or anchor is None:
+            continue
+        first = datetime.combine(date.fromisoformat(d), VVIX_FIT_FIRST, tzinfo=ET)
+        reads = [r for k in range(VVIX_FIT_READS)
+                 if (r := _half_hour(prior, scene.prior_bars[d], first + timedelta(minutes=WINDOW_30_MIN * k), anchor.points))]
+        sessions += bool(reads)
+        xs += [(r[0], r[1]) for r in reads]
+        ys += [r[2] for r in reads]
+    fit = _fit_two(xs, ys) if sessions >= MIN_RANK_SESSIONS else None
+    if fit is None:
+        ls.omit(path, f"needs {MIN_RANK_SESSIONS} prior sessions of $VIX and $VVIX to fit against, have {sessions}")
+        return
+    a, b, c = fit
+    move, dvix, dvvix, vix = now
+    explained = a + b * move + c * dvix
+    left = dvvix - explained
+    rank = rank_against(abs(left), [abs(y - (a + b * x1 + c * x2)) for (x1, x2), y in zip(xs, ys)])
+    band = ("top fifth" if rank.share >= TOP_FIFTH else "at or above the median, short of the top fifth" if rank.share >= HALF_RANK
+            else "under the median")
+    if abs(move) < MOVE_RULE_SIGMA and abs(dvix) / vix < VIX_STILL_PCT:
+        others = f"while SPX and VIX barely moved (SPX under the {MOVE_RULE_SIGMA:g} sigma move rule, VIX under the {_line(VIX_STILL_PCT)} still line)"
+    else:
+        others = f"while SPX or VIX also moved (SPX at or past the {MOVE_RULE_SIGMA:g} sigma move rule, or VIX at or past the {_line(VIX_STILL_PCT)} still line)"
+    ls.put(path,
+           f"over the last 30 minutes VVIX {'rose' if dvvix >= 0 else 'fell'} {abs(dvvix):.2f} points; VIX's and SPX's moves explain "
+           f"a {'rise' if explained >= 0 else 'fall'} of about {abs(explained):.2f}; the {abs(left):.2f} left over is bigger than "
+           f"{rank.higher_than} of {rank.of} half hours on the last {sessions} sessions, {band}, {others}{_ruled(ruler)}")
+
+
+def _vix_curve(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
+    """VIX against three-month VIX (the diary's vix_ts) against the near-flat and inversion lines, ranked
+    against the prior sessions at this minute, and nine-day VIX against VIX."""
+    path = "vol.term_structure"
+    ratio, front, vix = today[-1].vix_ts, _quote(scene.market, "$VIX9D", scene.now), _quote(scene.market, "$VIX", scene.now)
+    if ratio is None:
+        ls.omit(path, "row carries no VIX against three-month VIX (vix_ts)")
+        return
+    if front is None or vix is None:
+        ls.omit(path, "no $VIX9D and $VIX in the market context (the context job)")
+        return
+    if scene.state_dir is None:
+        ls.omit(path, "no state folder to read the prior sessions' diaries from")
+        return
+    diaries = {d: prior_diary(scene.state_dir, d) for d in scene.prior_bars}
+    base = [p.vix_ts for d in _ranked_prior_days(scene) if (p := point_at(diaries[d], _same_clock(scene, d))) and p.vix_ts]
+    rank = rank_against(ratio, base)
+    if rank is None:
+        ls.omit(path, f"needs {MIN_RANK_SESSIONS} prior sessions with the VIX curve at this minute, have {len(base)}")
+        return
+    if ratio >= VIX_CURVE_FLAT:
+        level = f"{ratio:.2f} times three-month VIX, at or over the {VIX_CURVE_FLAT:.2f} inversion line"
+    elif ratio >= VIX_CURVE_NEAR_FLAT:
+        level = (f"{min(ratio, VIX_CURVE_FLAT - 0.01):.2f} times three-month VIX, at or over the {VIX_CURVE_NEAR_FLAT:.2f} near-flat line "
+                 f"and under the {VIX_CURVE_FLAT:.2f} inversion line")
+    else:
+        level = f"{min(ratio, VIX_CURVE_NEAR_FLAT - 0.01):.2f} times three-month VIX, under the {VIX_CURVE_NEAR_FLAT:.2f} near-flat line"
+    nine = front / vix
+    nine_words = (f"{nine:.2f} of VIX, at or over the inversion line" if nine >= VIX_CURVE_FLAT
+                  else f"{min(nine, VIX_CURVE_FLAT - 0.01):.2f} of VIX, under the inversion line")
+    inverted = sum(1 for points in diaries.values() if any(p.vix_ts and p.vix_ts >= VIX_CURVE_FLAT for p in points))
+    record = (f"the curve has not inverted on any of the last {len(diaries)} sessions" if not inverted
+              else f"the curve inverted on {inverted} of the last {len(diaries)} sessions")
+    ls.put(path, f"VIX is {level}; flatter than {rank.higher_than} of the last {rank.of} sessions at this time, {_fifth(rank)}; "
+                 f"nine-day VIX is {nine_words}; {record}")

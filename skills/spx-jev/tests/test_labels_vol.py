@@ -11,6 +11,7 @@ import pytest
 from conftest import at, bars_from_closes, flat_bars, make_row
 from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.labels.vol import build_vol_labels
+from spx_jev.state_builder import MarketContext
 
 SIGMA = 75.0          # the morning anchor every fixture row carries
 
@@ -429,3 +430,139 @@ def test_the_realized_swing_is_omitted_without_its_bars_or_its_sessions(scene_fa
     thin = realized_scene(scene_factory, swinging(3.0), steps=range(1, 5))
     thin = replace(thin, prior_bars=dict(list(thin.prior_bars.items())[:4]))
     assert labels(thin)[1]["vol.realized_vs_clock"] == "needs 5 prior sessions with bars at this minute, have 4"
+
+
+# ---- the VIX family from the context job: vol.front_fear_shift, vol.vvix_with_move, vol.vvix_vs_vix, vol.term_structure
+
+def vix_family(now, **series) -> MarketContext:
+    """A MarketContext whose symbols ($ dropped from the keyword) take each value at the minutes before ``now`` given."""
+    return MarketContext({f"${name}": sorted((now - timedelta(minutes=ago), v) for ago, v in points.items())
+                          for name, points in series.items()})
+
+
+@pytest.mark.parametrize("front_now, words", [
+    (14.95, "fell 0.21 points against the 30-day VIX, from 0.84 under it to 1.05 under it, beyond the 0.15-point rule"),
+    (15.21, "rose 0.05 points against the 30-day VIX, from 0.84 under it to 0.79 under it, within the 0.15-point rule"),
+    (16.26, "rose 1.10 points against the 30-day VIX, from 0.84 under it to 0.26 over it, beyond the 0.15-point rule"),
+])
+def test_the_front_of_the_curve_is_judged_on_its_shift_against_vix(scene_factory, front_now, words):
+    now = at(12, 30, ss=10)
+    market = vix_family(now, VIX={30: 16.0, 1: 16.0}, VIX9D={30: 15.16, 1: front_now, -1: 30.0})    # the 12:31 value is not known yet
+    scene = scene_factory(now, flat_bars(180), rows_before=[morning()], market=market)
+    assert labels(scene)[0]["vol.front_fear_shift"] == f"over the last 30 minutes nine-day VIX {words}"
+
+
+def test_the_front_shift_is_omitted_when_the_context_job_stopped(scene_factory):
+    now = at(12, 30, ss=10)
+    stale = scene_factory(now, flat_bars(180), market=vix_family(now, VIX={30: 16.0, 1: 16.0}, VIX9D={30: 15.16, 20: 15.0}))
+    assert labels(stale)[1]["vol.front_fear_shift"] == "no $VIX9D and $VIX in the market context now and 30 minutes ago (the context job)"
+    assert "vol.front_fear_shift" in labels(scene_factory(now, flat_bars(180)))[1]
+
+
+@pytest.mark.parametrize("drop, vvix_now, words", [
+    (0.12, 88.9, "SPX fell 0.12 sigma, past the 0.05 sigma pairing rule, and VVIX rose 0.80 points, from 88.10 to 88.90"),
+    (0.12, 88.1, "SPX fell 0.12 sigma, past the 0.05 sigma pairing rule, and VVIX held at 88.10"),
+    (0.03, 87.6, "SPX fell 0.03 sigma, within the 0.05 sigma pairing rule, and VVIX fell 0.50 points, from 88.10 to 87.60"),
+])
+def test_the_spx_move_is_paired_with_the_way_vvix_went(scene_factory, drop, vvix_now, words):
+    now = at(12, 30, ss=10)
+    scene = scene_factory(now, fall_then_now(now, drop), rows_before=[morning()], market=vix_family(now, VVIX={30: 88.1, 1: vvix_now}))
+    assert labels(scene)[0]["vol.vvix_with_move"] == f"over the last 30 minutes {words}"
+
+
+# Orthogonal patterns: the SPX moves, VIX changes and leftovers of each four half hours of the fit history
+# are mutually uncorrelated and sum to nothing, so the fit finds VVIX = 1 + 2 x SPX + 3 x VIX exactly and
+# its leftovers are the fixture's own: four each of 0.01 to 0.22.
+SPX_PATTERN, VIX_PATTERN, LEFT_PATTERN = (1, 1, -1, -1), (1, -1, 1, -1), (1, -1, -1, 1)
+
+
+def vvix_history(days: list[str]):
+    bars, markets, g = {}, {}, 0
+    for day in days:
+        level, vix, vvix = [7700.0], [15.0], [90.0]           # at 10:00, then each half hour to 15:30
+        for _ in range(11):
+            x1, x2, e = 0.1 * SPX_PATTERN[g % 4], 0.2 * VIX_PATTERN[g % 4], 0.01 * (g // 4 + 1) * LEFT_PATTERN[g % 4]
+            level.append(level[-1] + SIGMA * x1)
+            vix.append(vix[-1] + x2)
+            vvix.append(vvix[-1] + 1 + 2 * x1 + 3 * x2 + e)
+            g += 1
+        marks = [at(10, 0, day=day) + timedelta(minutes=30 * m) for m in range(12)]
+        bars[day] = bars_from_closes([level[min(max((i + 1) // 30 - 1, 0), 11)] for i in range(390)], day=day)
+        markets[day] = MarketContext({"$VIX": list(zip(marks, vix)), "$VVIX": list(zip(marks, vvix))})
+    return bars, markets
+
+
+@pytest.mark.parametrize("drop, vix_now, left, words", [
+    (0.12, 15.35, 0.70, "VVIX rose 2.51 points; VIX's and SPX's moves explain a rise of about 1.81; the 0.70 left over is bigger than 88 of 88 "
+                        "half hours on the last 8 sessions, top fifth, while SPX or VIX also moved (SPX at or past the 0.09 sigma move rule, "
+                        "or VIX at or past the 0.6% still line)"),
+    (0.0, 15.05, 0.70, "VVIX rose 1.85 points; VIX's and SPX's moves explain a rise of about 1.15; the 0.70 left over is bigger than 88 of 88 "
+                       "half hours on the last 8 sessions, top fifth, while SPX and VIX barely moved (SPX under the 0.09 sigma move rule, "
+                       "VIX under the 0.6% still line)"),
+    (0.0, 15.05, -0.155, "VVIX rose 1.00 points; VIX's and SPX's moves explain a rise of about 1.15; the 0.15 left over is bigger than 60 of "
+                         "88 half hours on the last 8 sessions, at or above the median, short of the top fifth, while SPX and VIX barely moved "
+                         "(SPX under the 0.09 sigma move rule, VIX under the 0.6% still line)"),
+    (0.0, 15.05, 0.057, "VVIX rose 1.21 points; VIX's and SPX's moves explain a rise of about 1.15; the 0.06 left over is bigger than 20 of "
+                        "88 half hours on the last 8 sessions, under the median, while SPX and VIX barely moved (SPX under the 0.09 sigma "
+                        "move rule, VIX under the 0.6% still line)"),
+])
+def test_vvix_is_judged_on_what_spx_and_vix_leave_unexplained(scene_factory, drop, vix_now, left, words):
+    now = at(12, 30)
+    days = PRIOR_DAYS[:8]
+    bars, markets = vvix_history(days)
+    dvvix = 1 + 2 * -drop + 3 * (vix_now - 15.0) + left
+    market = vix_family(now, VIX={30: 15.0, 0: vix_now}, VVIX={30: 90.0, 0: 90.0 + dvvix})
+    scene = scene_factory(now, fall_then_now(now, drop) if drop else flat_bars(180), rows_before=[morning()], market=market, prior_bars=bars)
+    scene = replace(scene, prior_markets=markets, prior_rulers={d: SigmaRuler(SIGMA, "anchor") for d in days})
+    assert labels(scene)[0]["vol.vvix_vs_vix"] == f"over the last 30 minutes {words}"
+
+
+def test_vvix_is_omitted_without_its_history_or_todays_quotes(scene_factory):
+    now = at(12, 30)
+    days = PRIOR_DAYS[:4]
+    bars, markets = vvix_history(days)
+    market = vix_family(now, VIX={30: 15.0, 0: 15.1}, VVIX={30: 90.0, 0: 91.0})
+    scene = scene_factory(now, flat_bars(180), rows_before=[morning()], market=market, prior_bars=bars)
+    scene = replace(scene, prior_markets=markets, prior_rulers={d: SigmaRuler(SIGMA, "anchor") for d in days})
+    assert labels(scene)[1]["vol.vvix_vs_vix"] == "needs 5 prior sessions of $VIX and $VVIX to fit against, have 4"
+    assert labels(replace(scene, market=None))[1]["vol.vvix_vs_vix"].startswith("needs the morning sigma ruler, bars 30 minutes apart")
+
+
+def curve_state(tmp_path, clock=(10, 2)):
+    """Ten prior diaries whose VIX curve at the clock runs 0.78 to 0.87; one inverted late in its day."""
+    rows = {}
+    for k, day in enumerate(PRIOR_DAYS):
+        rows[day] = [make_row(at(9, 31, day=day), 7700.0), make_row(at(*clock, day=day), 7700.0, vix_ts=0.78 + 0.01 * k),
+                     make_row(at(15, 0, day=day), 7700.0, vix_ts=1.01 if k == 3 else 0.8)]
+    return write_prior_diaries(tmp_path, rows)
+
+
+@pytest.mark.parametrize("ratio, front, words", [
+    (0.835, 15.2, "VIX is 0.83 times three-month VIX, under the 0.95 near-flat line; flatter than 6 of the last 10 sessions at this time, "
+                  "between the fifths; nine-day VIX is 0.95 of VIX, under the inversion line"),
+    (0.77, 15.2, "VIX is 0.77 times three-month VIX, under the 0.95 near-flat line; flatter than 0 of the last 10 sessions at this time, "
+                 "bottom fifth; nine-day VIX is 0.95 of VIX, under the inversion line"),
+    (0.96, 15.2, "VIX is 0.96 times three-month VIX, at or over the 0.95 near-flat line and under the 1.00 inversion line; flatter than 10 "
+                 "of the last 10 sessions at this time, top fifth; nine-day VIX is 0.95 of VIX, under the inversion line"),
+    (1.02, 16.5, "VIX is 1.02 times three-month VIX, at or over the 1.00 inversion line; flatter than 10 of the last 10 sessions at this "
+                 "time, top fifth; nine-day VIX is 1.03 of VIX, at or over the inversion line"),
+])
+def test_the_vix_curve_reads_its_fixed_lines_then_its_rank(scene_factory, tmp_path, ratio, front, words):
+    now = at(10, 2)
+    scene = scene_factory(now, flat_bars(32), row_over={"vix_ts": ratio}, rows_before=[morning()],
+                          prior_bars={d: flat_bars(390, day=d) for d in PRIOR_DAYS}, market=vix_family(now, VIX={1: 16.0}, VIX9D={1: front}))
+    got = labels(replace(scene, state_dir=curve_state(tmp_path)))[0]["vol.term_structure"]
+    assert got == f"{words}; the curve inverted on 1 of the last 10 sessions"
+
+
+def test_the_vix_curve_is_omitted_without_its_parts(scene_factory, tmp_path):
+    now = at(10, 2)
+    prior = {d: flat_bars(390, day=d) for d in PRIOR_DAYS}
+    market = vix_family(now, VIX={1: 16.0}, VIX9D={1: 15.2})
+    scene = replace(scene_factory(now, flat_bars(32), rows_before=[morning()], prior_bars=prior, market=market), state_dir=curve_state(tmp_path))
+    assert labels(replace(scene, market=None))[1]["vol.term_structure"] == "no $VIX9D and $VIX in the market context (the context job)"
+    assert labels(replace(scene, state_dir=None))[1]["vol.term_structure"] == "no state folder to read the prior sessions' diaries from"
+    no_ts = replace(scene, rows_today=[*scene.rows_today[:-1], {k: v for k, v in scene.row.items() if k != "vix_ts"}])
+    assert labels(no_ts)[1]["vol.term_structure"] == "row carries no VIX against three-month VIX (vix_ts)"
+    assert labels(replace(scene, prior_bars=dict(list(prior.items())[:3])))[1]["vol.term_structure"] == (
+        "needs 5 prior sessions with the VIX curve at this minute, have 3")
