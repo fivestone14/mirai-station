@@ -217,9 +217,13 @@ def test_the_gap_is_placed_in_the_stretch_that_moved_most_unusually(tmp_path, re
 def test_the_report_window_is_the_release_only_on_a_report_day(tmp_path, read, calendar):
     _save_prior(tmp_path, _spread())
     knots = [(_at(8, 30), 0.0), (_at(8, 45), 1.0)]
-    assert _verdict(read(knots), "overnight.gap_origin") == "made_late"
+    quiet = read(knots)
+    assert _verdict(quiet, "overnight.gap_origin") == "made_late"
+    assert "the most unusual stretch was 08:30 to 08:45 (no report today), up" in quiet.state["overnight"]["gap_origin"]
     calendar.append(CLAIMS)
-    assert _verdict(read(knots), "overnight.gap_origin") == "made_at_release"
+    report = read(knots)
+    assert _verdict(report, "overnight.gap_origin") == "made_at_release"
+    assert "the most unusual stretch was the report window (08:30 to 08:45), up" in report.state["overnight"]["gap_origin"]
 
 
 def test_a_day_the_calendar_does_not_cover_has_no_report_window_to_place_the_gap_in(tmp_path, read, monkeypatch):

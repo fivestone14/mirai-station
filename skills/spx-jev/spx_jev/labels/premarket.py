@@ -179,7 +179,9 @@ def _range_vs_normal(scene: Scene, tonight: Tonight, pending: str, where: str, l
            figure={"kind": "rank", "value": round(s, 3), "cut": rank.band, "verdict": verdict})
 
 
-def _stretch_words(s: story.Stretch) -> str:
+def _stretch_words(s: story.Stretch, report: bool) -> str:
+    if s.name == "report_window" and not report:
+        return f"{_hm(s.start)} to {_hm(s.end)} (no report today)"
     return f"{STRETCH_WORDS[s.name]} ({_hm(s.start)} to {_hm(s.end)})"
 
 
@@ -205,10 +207,10 @@ def _gap_origin(scene: Scene, tonight: Tonight, net: RankedMove | None, why: str
         ls.omit(label, unknown)
         ls.sleep(gate, unknown)
         return
-    release = story.release_minute(tonight.day)
+    release, report = story.release_minute(tonight.day), bool(story.releases(tonight.day))
     ranked, left_out = [], []
     for s in story.stretches(tonight.day, tonight.at, release):
-        name = _stretch_words(s)
+        name = _stretch_words(s, report)
         move = window_move(scene.night, ES, s.start, s.end)
         if move is None:
             left_out.append(f"{name}, no price")
@@ -230,12 +232,12 @@ def _gap_origin(scene: Scene, tonight: Tonight, net: RankedMove | None, why: str
         return
     best = max(ranked, key=lambda r: (r.rank.share, abs(r.move.pct)))
     verdict = ORIGINS[best.stretch.name]
-    if verdict == "made_at_release" and not story.releases(tonight.day):
+    if verdict == "made_at_release" and not report:
         verdict = "made_late"
     s = tonight.sigma(best.move.pct)
     ls.put(label,
            _joined(f"{_where(tonight, net.move)}, a move {net.rank.words('moves to this time')}",
-                   f"the most unusual stretch was {_stretch_words(best.stretch)}, {'up' if s >= 0 else 'down'} {sig(abs(s))}, "
+                   f"the most unusual stretch was {_stretch_words(best.stretch, report)}, {'up' if s >= 0 else 'down'} {sig(abs(s))}, "
                    f"{best.rank.words('moves over the same stretch')}",
                    f"left out: {'; '.join(left_out)}" if left_out else ""),
            figure={"kind": "rank", "value": round(s, 3), "cut": best.rank.band, "verdict": verdict})
