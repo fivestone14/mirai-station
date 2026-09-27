@@ -399,7 +399,7 @@ def run(state_dir: Path, out_dir: Path, allowed: dict[str, set[str]], day: str |
             for g in new:
                 f.write(json.dumps(g, ensure_ascii=False) + "\n")
         for g in new:
-            archive.append(state_dir, g["row_ts"][:10], archive.GradeRecord(read_id=archive.read_id(lane.name, g["row_ts"]),
+            archive.append(lane.archive_folder(state_dir, out_dir), g["row_ts"][:10], archive.GradeRecord(read_id=archive.read_id(lane.name, g["row_ts"]),
                                                                             lane=lane.name, row_ts=g["row_ts"], grade=g))
     grades = load_jsonl(grades_path)
     weights = weights_from(grades, allowed, lane)

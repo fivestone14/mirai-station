@@ -1,6 +1,8 @@
 """The raw archive: everything a read saw, asked, was told and later scored, for machine learning.
 
     state/spx_jev/archive/{day}.jsonl    append only, never rewritten, one JSON object per line
+                                         (<out-dir>/archive/ for a run pointed at a folder of its own,
+                                         lane.Lane.archive_folder)
 
 Three record kinds, each a dataclass below, each line carrying ``schema_version`` and ``kind``:
 
@@ -85,9 +87,9 @@ class CloseOutRecord:
     archived_at: str = field(default_factory=_now)
 
 
-def append(state_dir: Path | str, day: str, record: ReadRecord | GradeRecord | CloseOutRecord) -> Path:
-    """Append one record to the day's archive file; the only write this module makes."""
-    path = Path(state_dir) / ARCHIVE_SUBDIR / f"{day}.jsonl"
+def append(folder: Path | str, day: str, record: ReadRecord | GradeRecord | CloseOutRecord) -> Path:
+    """Append one record to the day's file in the archive ``folder``; the only write this module makes."""
+    path = Path(folder) / f"{day}.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(asdict(record), ensure_ascii=False) + "\n")

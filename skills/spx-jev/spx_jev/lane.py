@@ -18,6 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from .archive import ARCHIVE_SUBDIR
 from .cuts import NEXT_30_FLAT_BAND_SIGMA, NEXT_60_FLAT_BAND_SIGMA
 
 QUESTIONS_DIR = Path(__file__).resolve().parent.parent / "questions"
@@ -50,6 +51,15 @@ class Lane:
         if self.tag and (out is None or out.resolve() == live.resolve()):
             raise ValueError(f"lane {self.name} has no folder of its own; it must not write into {live}")
         return out if out is not None else live
+
+    def archive_folder(self, state_dir: Path | str, out_dir: Path | str | None = None) -> Path:
+        """Where the lane's raw archive goes: the station's one archive, shared by both lanes, while the
+        lane writes into its own folder under the state dir; ``<out_dir>/archive`` when it was pointed
+        anywhere else, so a run into a scratch folder keeps every record it makes there."""
+        out = self.folder(state_dir, out_dir)
+        if out.resolve() == (Path(state_dir) / self.out_dir).resolve():
+            return Path(state_dir) / ARCHIVE_SUBDIR
+        return out / "archive"
 
 
 LIVE = Lane(name="live", out_dir=LIVE_DIR, questions=QUESTIONS_DIR / "spx_live.json", hour_doc=QUESTIONS_DIR / "spx_hour.json",

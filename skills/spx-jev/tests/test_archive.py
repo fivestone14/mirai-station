@@ -74,3 +74,30 @@ def test_a_close_out_record_is_typed(tmp_path):
     path = archive.append(tmp_path, DAY, rec)
     line = json.loads(path.read_text())
     assert _typed(line, CloseOutRecord) and line["kind"] == "close_out" and line["tally"]["calls"] == 1
+
+
+def _written(root):
+    return sorted(str(p.relative_to(root)) for p in root.rglob("*") if p.is_file())
+
+
+def test_a_replay_without_an_out_dir_writes_into_a_scratch_folder_never_the_station_records(tmp_path, monkeypatch):
+    import tempfile
+    monkeypatch.setattr(service, "load_env_file", lambda *a, **k: [])
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / "scratch"))
+    (tmp_path / "scratch").mkdir()
+    state = write_state(tmp_path / "station", DAY, [make_row(at(10, 35, ss=10), 7700.0)], flat_bars(70))
+    before = _written(state)
+    assert service.main(["--state-dir", str(state), "--day", DAY]) == 0
+    assert _written(state) == before                                     # the station's folders are as they were
+    (scratch,) = (tmp_path / "scratch").iterdir()
+    assert scratch.name.startswith(f"spx-jev-replay-{DAY}-live-")
+    assert {"latest.json", f"{DAY}.jsonl", f"archive/{DAY}.jsonl"} <= set(_written(scratch))
+
+
+def test_a_run_given_its_own_out_dir_keeps_its_archive_there(tmp_path, monkeypatch):
+    monkeypatch.setattr(service, "load_env_file", lambda *a, **k: [])
+    state = write_state(tmp_path / "station", DAY, [make_row(at(10, 35, ss=10), 7700.0)], flat_bars(70))
+    out = tmp_path / "trial"
+    assert service.main(["--state-dir", str(state), "--day", DAY, "--out-dir", str(out)]) == 0
+    assert json.loads((out / "archive" / f"{DAY}.jsonl").read_text())["kind"] == "read"
+    assert not (state / "spx_jev" / "archive").exists() and not (state / "spx_jev" / "latest.json").exists()

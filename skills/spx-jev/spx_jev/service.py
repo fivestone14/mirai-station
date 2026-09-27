@@ -19,7 +19,9 @@ can show it in the viewer's own zone; prose meant for a reader names the market 
 A sent run on today's newest row checks the wall clock: a row more than STALE_ROW_SKIP_MIN old is
 skipped (the scanner has stopped; the last card stays). The SPX row carries no separate options-book
 time (the book is rebuilt on every scan), so that one line covers the book too. A replay (--day)
-checks nothing against the wall clock. Every read carries the tier-1 events due within the hour
+checks nothing against the wall clock, and never writes into the station's records unless its
+--out-dir names them: without one it writes into a fresh scratch folder, archive included, and says
+where. Every read carries the tier-1 events due within the hour
 (events.py) in its record, its sum record and the card; JEV never sees them.
 
 A lane (lane.py) is the same run with its own docs, folder, clock and grader. The tape lane
@@ -29,7 +31,7 @@ same files under state/spx_jev/lanes/tape/, each record marked with the lane and
 
     python3 -m spx_jev.service            # one run on the newest row, not sent
     python3 -m spx_jev.service --send     # post to JEV; the key comes from .env
-    python3 -m spx_jev.service --day 2026-09-25   # replay a past day's newest row
+    python3 -m spx_jev.service --day 2026-09-25   # replay a past day's newest row, into a scratch folder
     python3 -m spx_jev.service --send --lane tape # the opening lane's read
 """
 from __future__ import annotations
@@ -39,6 +41,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time as _clock
 import traceback
 from datetime import datetime, time, timedelta, timezone
@@ -468,7 +471,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         with open(out_dir / "hour" / f"{day_name}.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps({"row_ts": scene.row["ts"], "spot": scene.row.get("spot"), "sigma": scene.sigma, "event": event,
                                 **_stamp(lane, unit, band), **(hour or {}), **hour_rec}, ensure_ascii=False) + "\n")
-    archive.append(state_dir, day_name, archive.ReadRecord(
+    archive.append(lane.archive_folder(state_dir, out_dir), day_name, archive.ReadRecord(
         read_id=archive.read_id(lane.name, scene.row["ts"]), lane=lane.name, row_ts=scene.row["ts"], sent=do_send,
         spot=float(scene.row["spot"]), sigma=scene.sigma, labels=state, omitted=omitted, requests=requests, skipped=skipped,
         responses=answers, hour_request=(hour_rec or {}).get("request"), hour_response=hour_reply, hour=hour,
@@ -511,14 +514,15 @@ def close_out(state_dir: Path, out_dir: Path, doc: dict, lane: Lane) -> dict | N
     c.update(calls_block(calls))
     c["closed_out_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     write_card(out_dir, c)
-    archive.append(state_dir, day, archive.CloseOutRecord(lane=lane.name, day=day, calls=calls, tally=c["tally"]))
+    archive.append(lane.archive_folder(state_dir, out_dir), day, archive.CloseOutRecord(lane=lane.name, day=day, calls=calls, tally=c["tally"]))
     return c
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="JEV decision service for SPX: one run on the newest diary row, output for the phone.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
-    ap.add_argument("--out-dir", default=None, help="default the lane's folder under <state-dir>: spx_jev, or spx_jev/lanes/<lane>")
+    ap.add_argument("--out-dir", default=None, help="default the lane's folder under <state-dir>: spx_jev, or spx_jev/lanes/<lane>; "
+                                                   "a replay (--day) defaults to a fresh scratch folder instead")
     ap.add_argument("--questions", default=None, help="default the lane's question doc")
     ap.add_argument("--day", help="build a past day's newest row instead of today's")
     ap.add_argument("--send", action="store_true", help="post to JEV; the key comes from .env or TYPESAFE_API_KEY")
@@ -534,6 +538,11 @@ def main(argv: list[str] | None = None) -> int:
         log(f"no TYPESAFE_API_KEY in the environment or in {ENV_FILE}: running unsent")
         do_send, unsent = False, "not sent: no key on this machine"
     state_dir = Path(args.state_dir)
+    if args.day and not args.out_dir:
+        # a replay writes records, sums, grades and the archive like a live read: never into the
+        # station's own folders unless --out-dir says so
+        args.out_dir = tempfile.mkdtemp(prefix=f"spx-jev-replay-{args.day}-{lane.name}-")
+        log(f"replay of {args.day}: writing under {args.out_dir}, not the station's records; --out-dir chooses the folder")
     out_dir = lane.folder(state_dir, args.out_dir)
     doc = load_questions(args.questions or lane.questions)
     if lane.close_out and not args.day and not args.loop and now_et().strftime("%H:%M") >= lane.close_out:

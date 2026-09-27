@@ -62,7 +62,8 @@ returns a probability for each answer option. JEV makes no trading call.
     python3 -m spx_jev.build --day 2026-09-25 --every 15 --out /tmp/states.jsonl
 
     python3 -m spx_jev.service                                # one run on the newest row, writes state/spx_jev/, no send
-    python3 -m spx_jev.service --day 2026-09-25               # replay a past day's newest row
+    python3 -m spx_jev.service --day 2026-09-25               # replay a past day's newest row, into a scratch folder
+    python3 -m spx_jev.service --day 2026-09-25 --out-dir /tmp/trial   # the same, into a folder you name
     python3 -m spx_jev.service --send                         # the key comes from .env
     python3 -m spx_jev.service --send --lane tape             # the opening lane
 
@@ -71,9 +72,10 @@ returns a probability for each answer option. JEV makes no trading call.
     python3 -m spx_jev.market_context --backfill 2026-08-10   # every past session's minute bars since then
     python3 -m spx_jev.save_day                               # after the close: today's full minute bars, and any missed day
 
-A replay writes into the state directory it is given, archive included, so
-point `--state-dir` at a scratch folder to try one without touching the
-station's records.
+A replay (`--day`) never writes into the station's records unless `--out-dir`
+names them: without one it writes its records, card, grades and archive into a
+fresh scratch folder and logs where. A run given its own `--out-dir` keeps its
+archive there too, under `archive/`.
 
 ## The rules it lives by
 
