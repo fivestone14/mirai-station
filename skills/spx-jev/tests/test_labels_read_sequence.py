@@ -91,6 +91,12 @@ def test_a_day_below_the_open_measures_its_giveback_on_its_own_side(scene_factor
     assert said(ls, "seq.day_move_by_read").endswith(": unwinding")
 
 
+def test_a_day_that_crossed_the_open_measures_its_furthest_point_on_either_side(scene_factory):
+    ls = read(scene_factory, {time(10, 2): 30.0, time(10, 32): 25.0, time(11, 2): -14.0, time(11, 32): -21.0})
+    assert said(ls, "seq.day_move_by_read").endswith("; 170% of its furthest, at 10:02, has been given back, top third of the last "
+                                                     "10 sessions for these reads: unwinding")
+
+
 def test_a_day_inside_the_move_rule_or_with_too_few_ranked_sessions_sleeps(scene_factory):
     flat = read(scene_factory, {**UP, time(11, 32): 5.0})
     assert flat.gates["seq_day_move_stage"] == "the day's move from the settled open is within the 0.09 sigma move rule"

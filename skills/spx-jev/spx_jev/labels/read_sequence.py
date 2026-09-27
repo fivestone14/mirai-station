@@ -134,13 +134,16 @@ def _decide(ls: LabelSet, qid: str, verdict: str | None, why: str | None) -> Non
 
 
 def _giveback(moves: list[float]) -> float | None:
-    """The share of the furthest point from the open among ``moves`` (on the last one's side) that the last has
-    given back; 0 when the last is the furthest, None when it sits at the open."""
-    side = 1 if moves[-1] > 0 else -1 if moves[-1] < 0 else 0
-    if not side:
+    """The share of the furthest point from the open among ``moves``, on whichever side it came, that the last
+    has given back (past 100% once the last has crossed the open); 0 when the last is the furthest, None when
+    none has left the open."""
+    peak = max(moves, key=abs)
+    if not peak:
         return None
-    peak = max(side * m for m in moves)
-    return (peak - side * moves[-1]) / peak
+    if abs(moves[-1]) >= abs(peak):
+        return 0.0
+    side = 1 if peak > 0 else -1
+    return (abs(peak) - side * moves[-1]) / abs(peak)
 
 
 def _day_move_by_read(scene: Scene, reads: Reads, ls: LabelSet) -> None:
@@ -160,7 +163,7 @@ def _day_move_by_read(scene: Scene, reads: Reads, ls: LabelSet) -> None:
     if share == 0:
         text += "; this read is its furthest from the open"
     elif share is not None:
-        peak = max(range(len(reads.moves)), key=lambda k: reads.side * reads.moves[k])
+        peak = max(range(len(reads.moves)), key=lambda k: abs(reads.moves[k]))
         text += f"; {pct(share)} of its furthest, at {reads.clocks[peak]:%H:%M}, has been given back"
         if rank is not None:
             text += f", {_band(rank)} of the last {rank.of} sessions for these reads"
