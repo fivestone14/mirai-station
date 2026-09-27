@@ -12,14 +12,16 @@ from __future__ import annotations
 
 import math
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from .. import events
-from ..cuts import EVENT_DIGEST_MIN, EVENT_DUE_MIN, SPEAKER_WINDOW_MIN, WINDOW_10_MIN
+from ..cuts import BRIEF_CONF_MIN, BRIEF_DIR_MIN, EVENT_DIGEST_MIN, EVENT_DUE_MIN, GAP_RULE_SIGMA, SPEAKER_WINDOW_MIN, WINDOW_10_MIN
 from ..events import Event
-from ..state_builder import Scene
+from ..state_builder import Scene, load_jsonl
 from .label_set import LabelSet
-from .measures import ET
-from .words import plural
+from .measures import ET, is_num, settled_open
+from .rulers import SigmaRuler, sigma_anchor
+from .words import plural, sig
 
 LABELS = ("context.event_clock", "event.reaction", "event.release_clock_10m", "event.statement_and_presser",
           "news.morning_brief", "news.intraday_headline", "shock.burst", "shock.cross_asset", "shock.vs_day_range")
@@ -28,8 +30,10 @@ DARK = {"news.intraday_headline": "no headline feed writes into state (a right-e
 
 CALENDAR_LABELS = ("context.event_clock", "event.release_clock_10m")
 CALENDAR_GATES = ("event_clock", "release_in_lane")
+NO_RULER = "no morning sigma ruler: no diary row by 09:40, no live sigma and no VIX at the settled open"
 
 SPEECH_MIN = 60             # a speaker row with no end time is taken to run an hour, remarks and questions
+BRIEF_SUBDIR = Path("market_expectation")
 NOON = 12                   # the opening lane's speaker clause speaks of the morning
 
 
@@ -37,6 +41,7 @@ NOON = 12                   # the opening lane's speaker clause speaks of the mo
 
 def build_events_shocks_labels(scene: Scene) -> LabelSet:
     ls = LabelSet()
+    anchor = sigma_anchor(scene)
     today = scene.now.astimezone(ET).date()
     through = events.covered_through()
     if through is None or today > through:
@@ -50,6 +55,7 @@ def build_events_shocks_labels(scene: Scene) -> LabelSet:
         day_events = events.on_day(today)
         _event_clock(scene, day_events, ls)
         _release_clock_10m(scene, day_events, ls)
+    _morning_brief(scene, anchor, ls)
     ls.sleep("news_headline", DARK["news.intraday_headline"])
     return ls
 
@@ -169,3 +175,57 @@ def _release_clock_10m(scene: Scene, day_events: list[Event], ls: LabelSet) -> N
         ls.wake("release_in_lane")
     else:
         ls.sleep("release_in_lane", f"nothing scheduled is due within {w} minutes or started within the last {w}")
+
+
+# ----------------------------------------------------------------------------- the morning brief
+
+def _morning_brief(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None:
+    """The morning news brief's lean against this morning's gap: the first brief of the day written for the
+    morning, from the learning log, which a midday redive never overwrites."""
+    path = "news.morning_brief"
+    if scene.state_dir is None:
+        ls.omit(path, "no state folder to read the morning brief from")
+        return
+    name = BRIEF_SUBDIR / f"learning-{scene.day}.jsonl"
+    briefs = sorted((b for b in load_jsonl(Path(scene.state_dir) / name)
+                     if b.get("kind") == "brief" and b.get("reason") == "morning" and isinstance(b.get("ts"), str)),
+                    key=lambda b: b["ts"])
+    if not briefs:
+        ls.omit(path, f"no morning brief in {name}")
+        return
+    brief, written = briefs[0], datetime.fromisoformat(briefs[0]["ts"])
+    if written > scene.now:
+        ls.omit(path, f"the morning brief was written at {_hm(written)}, after this read")
+        return
+    overall = brief.get("overall") if isinstance(brief.get("overall"), dict) else {}
+    lean, confidence = overall.get("direction"), overall.get("confidence")
+    if not is_num(lean) or not is_num(confidence):
+        ls.omit(path, "the morning brief carries no direction and confidence")
+        return
+    opened, prior = settled_open(scene.bars), scene.row.get("prior_close")
+    if anchor is None:
+        ls.omit(path, NO_RULER)
+        return
+    if opened is None:
+        ls.omit(path, "the settled open (the close of the 09:34 bar) has not finished yet")
+        return
+    if not is_num(prior):
+        ls.omit(path, "row carries no prior close")
+        return
+    gap = (opened - float(prior)) / anchor.points
+    leans = f"leans {'up' if lean > 0 else 'down'} {abs(lean):g}" if lean else "takes no side, 0"
+    no_view = abs(lean) < BRIEF_DIR_MIN or confidence < BRIEF_CONF_MIN
+    gap_past = abs(gap) >= GAP_RULE_SIGMA
+    if no_view:
+        verdict = "so the brief counts as no view"
+    elif not gap_past:
+        verdict = "so the brief takes a side the gap did not"
+    elif (lean > 0) == (gap > 0):
+        verdict = "so the brief leans the way the gap went"
+    else:
+        verdict = "so the brief leans against the way the gap went"
+    ls.put(path, f"the {_hm(written)} morning brief {leans} on a -1 to +1 scale, "
+                 f"{'under' if abs(lean) < BRIEF_DIR_MIN else 'past'} the {BRIEF_DIR_MIN:g} direction floor, with confidence "
+                 f"{confidence:g}, {'under' if confidence < BRIEF_CONF_MIN else 'past'} the {BRIEF_CONF_MIN:g} confidence floor; "
+                 f"this morning's gap was {sig(abs(gap))} {'up' if gap >= 0 else 'down'}{' (ruler estimated)' if anchor.estimated else ''}, "
+                 f"{'past' if gap_past else 'inside'} the {GAP_RULE_SIGMA:.2f} sigma gap rule, {verdict}")

@@ -8,6 +8,7 @@ four speakers), 10-02 (the jobs report), 10-13 (nothing), 10-20 (nothing, in the
 """
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from datetime import datetime, timedelta
 
@@ -145,3 +146,61 @@ def test_an_afternoon_with_nothing_left(scene_factory):
     state, _, _ = labels(scene_at(scene_factory, at(14, 0, "2026-10-13"), FLAT))
     assert state["event.release_clock_10m"] == ("nothing scheduled starts within 10 minutes of now; nothing more is scheduled in the "
                                                 "session; no more Fed speakers are scheduled today")
+
+
+# ---- news.morning_brief
+
+BRIEF_DAY = "2026-09-25"
+
+
+def brief_scene(scene_factory, tmp_path, now, direction=0.3, confidence=0.45, gap_points=30.0, lines=None):
+    """The 09-25 learning log as the market-expectation job writes it, and a settled open ``gap_points`` over
+    yesterday's close."""
+    folder = tmp_path / "market_expectation"
+    folder.mkdir(exist_ok=True)
+    if lines is None:
+        lines = [{"kind": "brief", "reason": "morning", "ts": "2026-09-25T09:00:01.728808-04:00",
+                  "overall": {"direction": direction, "magnitude": 0.7, "confidence": confidence}, "drift_cosine": None},
+                 {"kind": "eod_score", "predicted_dir": direction, "realized_move": 36.39, "won": True, "reliability": 0.0725}]
+    (folder / f"learning-{BRIEF_DAY}.jsonl").write_text("".join(json.dumps(x) + "\n" for x in lines))
+    closes = steps([(9, 30, 7704.13 + gap_points)], until=(10, 30))
+    return scene_at(scene_factory, now, closes, state_dir=tmp_path, prior_close=7704.13)
+
+
+def test_the_brief_restates_the_gap(scene_factory, tmp_path):
+    state, _, _ = labels(brief_scene(scene_factory, tmp_path, at(9, 35, BRIEF_DAY)))
+    assert state["news.morning_brief"] == (
+        "the 09:00 morning brief leans up 0.3 on a -1 to +1 scale, past the 0.2 direction floor, with confidence 0.45, past the "
+        "0.3 confidence floor; this morning's gap was 0.30 sigma up, past the 0.15 sigma gap rule, so the brief leans the way "
+        "the gap went")
+
+
+def test_the_brief_verdicts_at_their_floors_and_the_gap_rule(scene_factory, tmp_path):
+    now = at(9, 35, BRIEF_DAY)
+    against = labels(brief_scene(scene_factory, tmp_path, now, direction=-0.2, confidence=0.3))[0]["news.morning_brief"]
+    assert against.startswith("the 09:00 morning brief leans down 0.2 on a -1 to +1 scale, past the 0.2 direction floor, with "
+                              "confidence 0.3, past the 0.3 confidence floor;")
+    assert against.endswith("so the brief leans against the way the gap went")
+    weak = labels(brief_scene(scene_factory, tmp_path, now, direction=0.19))[0]["news.morning_brief"]
+    assert "leans up 0.19 on a -1 to +1 scale, under the 0.2 direction floor" in weak and weak.endswith("so the brief counts as no view")
+    unsure = labels(brief_scene(scene_factory, tmp_path, now, confidence=0.29))[0]["news.morning_brief"]
+    assert "with confidence 0.29, under the 0.3 confidence floor" in unsure and unsure.endswith("so the brief counts as no view")
+    at_rule = labels(brief_scene(scene_factory, tmp_path, now, gap_points=-15.0))[0]["news.morning_brief"]
+    assert at_rule.endswith("this morning's gap was 0.15 sigma down, past the 0.15 sigma gap rule, so the brief leans against the way "
+                            "the gap went")
+    inside = labels(brief_scene(scene_factory, tmp_path, now, gap_points=14.0))[0]["news.morning_brief"]
+    assert inside.endswith("0.14 sigma up, inside the 0.15 sigma gap rule, so the brief takes a side the gap did not")
+
+
+def test_the_brief_is_omitted_without_a_morning_entry_known_at_the_read(scene_factory, tmp_path):
+    now = at(9, 35, BRIEF_DAY)
+    assert labels(replace(brief_scene(scene_factory, tmp_path, now), state_dir=None))[1]["news.morning_brief"] == \
+        "no state folder to read the morning brief from"
+    redive = [{"kind": "brief", "reason": "redive", "ts": "2026-09-25T09:10:00-04:00", "overall": {"direction": 0.3, "confidence": 0.45}}]
+    assert labels(brief_scene(scene_factory, tmp_path, now, lines=redive))[1]["news.morning_brief"] == \
+        "no morning brief in market_expectation/learning-2026-09-25.jsonl"
+    late = [{"kind": "brief", "reason": "morning", "ts": "2026-09-25T09:40:00-04:00", "overall": {"direction": 0.3, "confidence": 0.45}}]
+    assert labels(brief_scene(scene_factory, tmp_path, now, lines=late))[1]["news.morning_brief"] == \
+        "the morning brief was written at 09:40, after this read"
+    unsettled = brief_scene(scene_factory, tmp_path, at(9, 34, BRIEF_DAY, ss=30))
+    assert labels(unsettled)[1]["news.morning_brief"] == "the settled open (the close of the 09:34 bar) has not finished yet"
