@@ -32,6 +32,7 @@ from ..market_context import SYMBOLS
 from ..state_builder import MarketContext, Scene, load_jsonl
 from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, is_num, session_extremes, settled_open
+from .range_size import ruled
 from .ranks import SameClockRank, rank_against, same_clock_values
 from .rulers import SigmaRuler, normal_day_sigma, sigma_anchor
 from .words import pct, plural, sig
@@ -561,8 +562,8 @@ def _vs_day_range(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) 
     word = "high" if up else "low"
     past = (extreme - old) * burst.side / anchor.points
     if past <= 0:
-        ls.put("shock.vs_day_range", f"the shock stayed inside the day's earlier range: its {word} stopped {sig(-past)} short of "
-                                     f"the earlier session {word}")
+        ls.put("shock.vs_day_range", ruled(anchor, f"the shock stayed inside the day's earlier range: its {word} stopped "
+                                                   f"{sig(-past)} short of the earlier session {word}"))
         return
     since = session_extremes(bars_finished_between(scene.bars, burst.start, scene.now))
     newest = since.high if up else since.low
@@ -571,9 +572,9 @@ def _vs_day_range(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) 
     back = (newest - scene.spot) * burst.side / anchor.points
     where = (f"{sig(back)} {'below' if up else 'above'} that new {word}" if round(back, 2) > 0 else
              f"at or {'above' if up else 'below'} that new {word}")
-    ls.put("shock.vs_day_range", f"the shock took price to a new session {word}, {sig(past)} {'over' if up else 'under'} the "
-                                 f"earlier {word}{pushed}, and price is {where}, {'within' if back <= MOVE_RULE_SIGMA else 'beyond'} the "
-                                 f"{MOVE_RULE_SIGMA:.2f} sigma move rule of it")
+    verdict = f"{'within' if back <= MOVE_RULE_SIGMA else 'beyond'} the {MOVE_RULE_SIGMA:.2f} sigma move rule of it"
+    ls.put("shock.vs_day_range", ruled(anchor, f"the shock took price to a new session {word}, {sig(past)} {'over' if up else 'under'} "
+                                               f"the earlier {word}{pushed}, and price is {where}, {verdict}"))
 
 
 # ----------------------------------------------------------------------------- what moved with a burst
@@ -662,10 +663,10 @@ def _cross_asset(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) -
                    f"the ten-year yield moved with its usual link to the index, short of the {RATES_SHOCK_BP} basis-point rule")
     semis_words = f"{'rose' if semis > 0 else 'fell'} {sig(abs(semis))} beyond theirs" if round(semis, 2) else "moved with their usual link"
     moved = "rose" if side > 0 else "fell"
-    ls.put(path, f"during the shock {rates_words}; "
+    ls.put(path, ruled(anchor, f"during the shock {rates_words}; "
                  f"semiconductors {semis_words}, {semis_verdict}; "
                  f"no megacap's share of it is measured, since their index weights are not on file; "
                  f"{with_it} of {len(sectors)} sector funds {moved} with it, "
                  f"{'at or past' if with_it >= SECTOR_BROAD else 'short of'} the {SECTOR_BROAD}-fund broad count, and NYSE TICK "
                  f"reached {round(tick)}, {tick_verdict}; "
-                 f"the defensive funds (staples, utilities, health care) {defensive_words}, {defensive_verdict}")
+                 f"the defensive funds (staples, utilities, health care) {defensive_words}, {defensive_verdict}"))

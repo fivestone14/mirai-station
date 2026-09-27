@@ -450,6 +450,13 @@ def test_a_burst_price_kept_extending_is_measured_back_from_the_newest_extreme(s
     assert beyond.endswith("and price is at or above that new high, within the 0.09 sigma move rule of it")
 
 
+def test_the_shocks_range_and_cross_asset_reads_say_when_the_ruler_is_estimated(scene_factory):
+    s = burst_scene(scene_factory, at(12, 2, BURST_DAY), after=6.0, anchor_row=False)
+    state, _, _ = labels(replace(s, market=burst_market(s)))
+    assert state["shock.vs_day_range"].endswith("within the 0.09 sigma move rule of it (ruler estimated)")
+    assert state["shock.cross_asset"].endswith("short of the 0.10 sigma defensive-bid rule (ruler estimated)")
+
+
 # ---- shock.cross_asset
 
 SECTORS = ("XLK", "XLF", "XLE", "XLV", "XLY", "XLI", "XLC", "XLP", "XLU", "XLB", "XLRE")
