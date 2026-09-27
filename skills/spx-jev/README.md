@@ -13,7 +13,8 @@ The mechanics are SNDK JEV's (`skills/sndk-jev/`), copied and adapted; the
 questions are the final SPX set (`spec/question_set.json`, 115 questions). Every
 label they read is built except the dark ones, whose data no feed carries yet; a
 question whose label is dark, or missing on a read, is skipped with the reason.
-Nothing here is installed yet (see "The jobs").
+Its five jobs are in `runtime/launchd/` and go live with the checklist in
+"Going live".
 
 JEV reads words and cannot compare numbers. So every comparison happens here,
 in code, and is written out as a sentence with its threshold in it:
@@ -58,7 +59,7 @@ returns a probability for each answer option. JEV makes no trading call.
 | `calendar/events.json`, `spx_jev/events.py` | The Calendar | The scheduled events, kept by hand from `covers_from` through `covers_through`. Tier 1 (the Fed, rebalance closes, half days, copied from SNDK's calendar less SanDisk's own) tags the reads; the other tiers (the 08:30, 10:00 and 14:00 releases and the Fed's scheduled speakers) feed the event labels, and all but the 08:30 releases also keep reads out of the learning loop. |
 | `spec/labels.json` | The Label Spec | The 50 labels built before the final set, with source, logic, cut and a real sentence; a test pins it to the code. The set's own labels are specified in `spec/question_set.json`. |
 | `spec/cuts.json`, `spec/measure_cuts.py` | The Measurements | How each measured cut was found, with its percentile and sample size, and where each declared cut falls (the share of SPX and of SNDK observations under it). |
-| `launchd/*.plist.template`, `runtime/scripts/run-spx-jev*.sh` | The Jobs | Five staged jobs and their runners. Not installed. |
+| `launchd/*.plist.template`, `runtime/launchd/com.mirai-station.spx-jev*.plist`, `runtime/scripts/run-spx-jev*.sh` | The Jobs | Five jobs, the copies of them `install-launchd.sh` loads, and their runners. |
 | `tests/` | The Proof | Offline pytest with synthetic rows, bars and market context. No network, no host state. |
 
 ## Run it
@@ -204,9 +205,9 @@ close-out, `closed_out_at`.
 
 ## The jobs
 
-Five launchd templates are staged in `launchd/` and none is installed. To
-hire one, copy it to `runtime/launchd/` as `<label>.plist` and name it in
-`install-launchd.sh` and `uninstall-launchd.sh`.
+Five launchd jobs, loaded by `runtime/scripts/install-launchd.sh` from
+`runtime/launchd/`. Each plist there is its template in `launchd/` byte for
+byte, and a test holds them equal, so a change is made to both.
 
 | Label | When (the box's Pacific clock; market time is three hours later) | Runner |
 |---|---|---|
@@ -221,10 +222,28 @@ loudly when the market-hours check itself cannot run, and stops at
 `SPX_JEV_DISABLE=1`. The day saver runs after the close by design, so it has
 no market-hours gate: the command saves market days only, and only a session
 that has closed. The key lives only in `skills/spx-jev/.env`, which is
-git-ignored, so a merge never brings it: before the first live read, run
-`cp .env.example .env && chmod 600 .env` in this folder and fill in
-`TYPESAFE_API_KEY` (the key in `skills/sndk-jev/.env`). Without it the service
-runs unsent and the card says "not sent: no key on this machine".
+git-ignored, so a merge never brings it. Without it the service runs unsent
+and the card says "not sent: no key on this machine".
+
+## Going live
+
+At the mini, in order:
+
+1. Merge: `git -C ~/.claude/plugins/mirai-station merge --ff-only spx-jev`.
+2. The key: in `~/.claude/plugins/mirai-station/skills/spx-jev`, run
+   `cp .env.example .env && chmod 600 .env` and fill in `TYPESAFE_API_KEY`
+   (the key in `skills/sndk-jev/.env`).
+3. The past sessions' market bars, from the same folder:
+   `~/.local/share/mirai-station/venv/bin/python -m spx_jev.market_context --backfill 2026-08-10`.
+4. Hire the jobs: `~/.claude/plugins/mirai-station/runtime/scripts/install-launchd.sh`
+   (it reloads every station job, the five here among them).
+5. Check: `launchctl list | grep spx-jev` shows five, and after the first fire
+   `/tmp/mirai-station.spx-jev*.err` is empty.
+
+To pause all five, `launchctl bootout gui/$UID/<label>` for each label above; `launchctl bootstrap gui/$UID ~/Library/LaunchAgents/<label>.plist`
+brings one back (docs/OPERATIONS.md, "Disabling temporarily", has the loop).
+`SPX_JEV_DISABLE=1` in the jobs' environment makes every runner exit 0 without
+running.
 
 ## Tests
 

@@ -27,6 +27,7 @@ launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.mirai-station.left-eye.p
 | Runtime/env messages   | `~/.claude/plugins/mirai-station/state/logs/runtime-YYYY-MM-DD.log` |
 | Hunter's own jsonl     | `~/.claude/plugins/mirai-station/skills/mirai-left-eye/logs/YYYY-MM-DD.jsonl` |
 | JEV decision service (`sndk-jev`: labels the newest SNDK row at :02 and :32, asks JEV, sums and grades, writes `state/jev/`) | `/tmp/mirai-station.sndk-jev.{out,err}`; its records under `~/.claude/plugins/mirai-station/state/jev/` |
+| SPX JEV decision service (`spx-jev`: the same beside the SPX diary at :02 and :32; `spx-jev-tape`, the opening lane; its feeds `spx-jev-bars`, `spx-jev-context` and `spx-jev-save-day`) | `/tmp/mirai-station.spx-jev*.{out,err}`; its records under `~/.claude/plugins/mirai-station/state/spx_jev/` |
 
 Quick health check:
 ```bash
@@ -117,7 +118,7 @@ python3 skills/mirai-left-eye/native_gex_feed.py --status          # confirm
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `launchctl list` shows `Status: 78` for an agent | exit code != 0; check stderr | `tail /tmp/mirai-station.<label>.err` |
-| `/tmp/mirai-station.<label>.err` has a line ending its market check with `FAILED (rc=N)` and the job exits 1 | the market-hours gate itself failed (venv, import). The gate exits 0 when the market is open and 3 when it is closed, and only 3 skips quietly. The gates of spx-jev and spx-jev-bars also exit 4 in the 13 minutes after the close, which runs the job once more: the day's last bars, and the live read's grade-only close-out | re-run `venv-bootstrap.sh`. Gated this way: sndk, sndk-read, sndk-bars, lob-collector, book-collector, sndk-jev, spx-jev, spx-jev-bars, spx-jev-context (the three staged, not yet installed), watch-left-eye (which still runs its alert pass before exiting 1) |
+| `/tmp/mirai-station.<label>.err` has a line ending its market check with `FAILED (rc=N)` and the job exits 1 | the market-hours gate itself failed (venv, import). The gate exits 0 when the market is open and 3 when it is closed, and only 3 skips quietly. The gates of spx-jev and spx-jev-bars also exit 4 in the 13 minutes after the close, which runs the job once more: the day's last bars, and the live read's grade-only close-out | re-run `venv-bootstrap.sh`. Gated this way: sndk, sndk-read, sndk-bars, lob-collector, book-collector, sndk-jev, spx-jev, spx-jev-bars, spx-jev-context, watch-left-eye (which still runs its alert pass before exiting 1) |
 | Phone: "SNDK reader silent" | the reader stopped writing read rows while the scanner still writes; a silent scanner is paged under its own name instead | `tail /tmp/mirai-station.sndk-read.err`; check `SNDK_READ_DISABLE`. "SNDK reader back" follows once a read row lands |
 | "schwab module not found" | venv not provisioned or wrong python | re-run `venv-bootstrap.sh`; confirm shebang resolves |
 | GEX read falls back to SPY-proxy every scan | expired Cassandra/ThetaData login | `native_gex_feed.py --login` (see above); auth-watch pings on this |
@@ -163,6 +164,9 @@ The launchd jobs pick up script changes on next fire (no restart needed). plist 
 launchctl disable gui/$UID/com.mirai-station.left-eye
 launchctl disable gui/$UID/com.mirai-station.auth-watch
 launchctl disable gui/$UID/com.mirai-station.sndk-jev      # or SNDK_JEV_DISABLE=1 in the job's environment
+for j in spx-jev spx-jev-tape spx-jev-bars spx-jev-context spx-jev-save-day; do
+  launchctl bootout gui/$UID/com.mirai-station.$j           # SPX JEV and its feeds; or SPX_JEV_DISABLE=1
+done
 # caffeinate left running so the mini is still reachable
 ```
 
@@ -171,4 +175,7 @@ Re-enable:
 launchctl enable gui/$UID/com.mirai-station.left-eye
 launchctl enable gui/$UID/com.mirai-station.auth-watch
 launchctl enable gui/$UID/com.mirai-station.sndk-jev
+for j in spx-jev spx-jev-tape spx-jev-bars spx-jev-context spx-jev-save-day; do
+  launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.mirai-station.$j.plist
+done
 ```

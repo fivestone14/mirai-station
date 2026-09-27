@@ -395,7 +395,7 @@ The SNDK reasoning **pause** is deliberately *not* a kill switch — see §2.
 ```bash
 cd ~/.claude/plugins/mirai-station
 ./runtime/scripts/venv-bootstrap.sh      # provision ~/.local/share/mirai-station/venv
-./runtime/scripts/install-launchd.sh     # symlink + bootstrap the 14 agents
+./runtime/scripts/install-launchd.sh     # symlink + bootstrap the 20 agents
 ```
 
 Then:
