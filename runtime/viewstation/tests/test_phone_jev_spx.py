@@ -690,8 +690,20 @@ def test_the_calls_shape_is_worded_from_both_sums_picks(first, second, title):
 def test_the_story_heading_says_all_one_way_only_when_it_is():
     js = "console.log(JSON.stringify(D.s.map(storyHead)));"
     got = _pre(js, {"s": [[{"lean": "up"}], [{"lean": "up_small"}, {"lean": "up"}], [{"lean": "down_small"}, {"lean": "down"}],
-                          [{"lean": "up"}, {"lean": "flat"}]]})
-    assert got == ["Story so far · 1 read", "Story so far · 2 reads, all up", "Story so far · 2 reads, all down", "Story so far · 2 reads"]
+                          [{"lean": "up"}, {"lean": "flat"}], [{"lean": None}, {"lean": "up"}], [{"lean": None}, {"lean": None}]]})
+    assert got == ["Story so far · 1 read", "Story so far · 2 reads, all up", "Story so far · 2 reads, all down", "Story so far · 2 reads",
+                   "Story so far · 2 reads, all up", "Story so far · 2 reads"]
+
+
+def test_a_read_whose_lean_was_not_measured_is_an_empty_dashed_chip():
+    """premarket.story_so_far writes lean null for a read without premarket.where_now (no pre-open ruler, say)."""
+    card = pre_card("03:35")
+    card["story"][0]["lean"] = None
+    svg = _pre("console.log(JSON.stringify(dump(storySvg(D.card.story, 6))));", {"card": card, "now": et("03:40")})
+    assert [k["attrs"]["class"] for k in svg["kids"] if k["tag"] == "rect" and k["attrs"]["class"].startswith("c-")] == ["c-none", "c-up"]
+    assert _texts(svg, "w-light") == ["Up"] and _texts(svg, "w-dark") == [] and "Null" not in json.dumps(svg)
+    assert svg["attrs"]["aria-label"] == "23:35 not measured; 00:35 Up"
+    assert "stroke-dasharray:33" in _rule(".story .c-none")
 
 
 def test_the_week_frankfurt_is_on_winter_time_moves_a_checkpoint_and_the_card_follows():
