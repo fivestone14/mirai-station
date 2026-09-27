@@ -343,7 +343,7 @@ def judge(qid: str, q: dict, checkpoint: str, reads: list[dict], outcomes: dict[
     pairs = [(a, row[target]) for _, a, row in graded if row[target] is not None]
     by_answer = {}
     for a in (ORDERED.get(qid) or q.get("options", [])):
-        rows = [row for _, x, row in graded if x == a]
+        rows = [row for _, x, row in graded if x == a and row[target] is not None]
         by_answer[a] = {"n": len(rows), **{name: _mean_share([row[name] for row in rows]) for name in ["gap", *MOVES, *RANGES]}}
     out = {"question": qid, "checkpoint": checkpoint, "kind": kind, "judged_on": target, "status": q.get("replayed_from"),
            "reference": REFERENCES[qid][0] if kind == "sign_free" else None,

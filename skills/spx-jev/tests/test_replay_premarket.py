@@ -182,6 +182,7 @@ def test_a_night_whose_reference_was_not_measured_is_counted_not_graded():
     sides = [None, None] + [1] * 22
     got = replay.judge("overnight_arc", SIGN_FREE_Q, "09:28", *_nights("overnight_arc", answers, [0.2] * 24, sides))
     assert got["unfolded"] == 2 and got["graded"] == 22
+    assert sum(row["n"] for row in got["by_answer"].values()) == got["graded"]
 
 
 def test_every_sign_free_premarket_question_has_a_reference():
