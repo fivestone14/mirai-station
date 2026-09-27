@@ -256,6 +256,15 @@ def test_a_small_reaction_is_shrugged_and_its_words_say_the_move_since(tmp_path,
     assert "the weekly jobless claims report at 08:30 moved them up 0.00 sigma by 08:45" in ls.state["overnight"]["release_reaction"]
 
 
+def test_an_earlier_report_opens_the_reaction_window_and_the_later_ones_are_counted(tmp_path, read, calendar):
+    _save_prior(tmp_path, _spread())
+    calendar.extend(events.Event(datetime(2026, 9, 24, h, m, tzinfo=ET), None, kind, events.PRE_OPEN)
+                    for h, m, kind in ((8, 15, "ADP"), (8, 30, "GDP"), (8, 30, "PCE")))
+    ls = read([(_at(8, 15), 0.0), (_at(8, 45), 0.8), (_at(9, 15), 1.3)])
+    assert "ADP's private payrolls report at 08:15 and 2 more by 08:30 moved them up" in ls.state["overnight"]["release_reaction"]
+    assert "over the same 30 minutes" in ls.state["overnight"]["release_reaction"]
+
+
 def test_a_claims_only_day_is_asked_and_a_day_without_a_report_sleeps(tmp_path, read, calendar):
     _save_prior(tmp_path, _spread())
     knots = [(_at(8, 30), 0.0), (_at(8, 45), 0.8)]
@@ -268,8 +277,8 @@ def test_a_read_before_the_window_closes_waits_for_it(tmp_path, read, calendar):
     _save_prior(tmp_path, _spread())
     calendar.append(CLAIMS)
     ls = read([(_at(8, 0), 0.4)], now=_at(8, 5))
-    assert ls.gates["release_reaction_path"] == ("the weekly jobless claims report comes out at 08:30 and its reaction window "
-                                                 "runs to 08:45, after this read")
+    assert ls.gates["release_reaction_path"] == ("the report window opens with the weekly jobless claims report at 08:30 and runs "
+                                                 "to 08:45, after this read")
 
 
 def test_missing_bars_around_the_report_put_it_to_sleep(tmp_path, premarket_scene_factory, calendar):

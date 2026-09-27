@@ -386,7 +386,7 @@ def _release_vs_night(night: NightSoFar, ls: LabelSet) -> None:
     if uncovered:
         _omit(ls, "release_vs_night", uncovered)
         return
-    due = [e for e in story.releases(night.day) if e.start.time() == night.release]
+    due = story.releases(night.day)
     if not due:
         ls.omit("premarket.release_vs_night", "no report before the open today", ended=True)
         ls.sleep("release_vs_night", "no report before the open today")
@@ -419,8 +419,7 @@ def _release_vs_night(night: NightSoFar, ls: LabelSet) -> None:
         verdict = "extended_night"
     ends = {"crossed_price": f"it carried them across their {night.start:%H:%M} price",
             "unwound_night": "it undid part of the night's move", "extended_night": "it went the night's way"}
-    reports = due[0].words + (f" and {len(due) - 1} more" if len(due) > 1 else "")
-    text = (f"futures are {night.where(night.net)}; before {reports} at {at:%H:%M} they were "
+    text = (f"futures are {night.where(night.net)}; before {story.report_words(due)} they were "
             f"{_sized(b)}, {_band(before_rank)}; by {end:%H:%M} they {_risen(r)} {sig(abs(r))}, "
             f"{_band(rank)} for that window")
     ls.put("premarket.release_vs_night", _ended(verdict, text, ends), figure=_figure(r, rank, verdict))

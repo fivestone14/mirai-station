@@ -57,6 +57,18 @@ def releases(day: date, path: Path | str = events.CALENDAR) -> list[events.Event
             if e.tier == events.PRE_OPEN and EUROPE_MORNING_END < e.start.time() < REPORT_WINDOW_END]
 
 
+def report_words(reports: list[events.Event]) -> str:
+    """The day's reports (releases) in a few words: the first named at its minute and the rest counted, with the
+    minute the last comes out when it is later: "the producer price report and 2 more at 08:30", "ADP's
+    private payrolls report at 08:15 and 2 more by 08:30"."""
+    first, rest = reports[0], reports[1:]
+    if not rest:
+        return f"{first.words} at {first.start:%H:%M}"
+    if rest[-1].start == first.start:
+        return f"{first.words} and {len(rest)} more at {first.start:%H:%M}"
+    return f"{first.words} at {first.start:%H:%M} and {len(rest)} more by {rest[-1].start:%H:%M}"
+
+
 def release_minute(day: date, path: Path | str = events.CALENDAR) -> time:
     """The minute the report window starts on ``day``: the first of its releases; NO_REPORT_MINUTE when there is none."""
     return min((e.start.time() for e in releases(day, path)), default=NO_REPORT_MINUTE)

@@ -36,7 +36,7 @@ from ..sessions import previous_trading_day
 from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import ET, is_num
-from .words import above_or_below, listed, pct, sig, third
+from .words import above_or_below, pct, sig, third
 
 LABELS = ("overnight.bond_gap", "overnight.es_move", "overnight.gap_origin", "overnight.range_vs_normal", "overnight.release_reaction")
 GATES = ("gap_origin", "overnight_bonds_vs_gap", "release_reaction_path")
@@ -262,11 +262,11 @@ def _release_reaction(scene: Scene, tonight: Tonight, es: Move | None, es_why: s
         omit("no report before the open on the calendar today")
         return
     release = story.release_minute(tonight.day)
-    names = listed([e.words for e in reports if e.start.time() == release])
+    names = story.report_words(reports)
     start, end = (datetime.combine(tonight.day, release, tzinfo=ET),
                   datetime.combine(tonight.day, story.REPORT_WINDOW_END, tzinfo=ET))
     if tonight.at < end:
-        omit(f"{names} comes out at {release:%H:%M} and its reaction window runs to {end:%H:%M}, after this read")
+        omit(f"the report window opens with {names} and runs to {end:%H:%M}, after this read")
         return
     if es is None:
         omit(es_why)
@@ -274,7 +274,7 @@ def _release_reaction(scene: Scene, tonight: Tonight, es: Move | None, es_why: s
     reaction, after = window_move(scene.night, ES, start, end), window_move(scene.night, ES, end, tonight.at)
     if (reaction is None or after is None or start - reaction.start_at > STALE or end - reaction.end_at > STALE
             or tonight.at - after.end_at > STALE):
-        omit(f"{ES} bars missing around {names} at {release:%H:%M}")
+        omit(f"{ES} bars missing around {names}")
         return
     if not rolls.same_contract(tonight.table, ES, reaction.start_at, after.end_at):
         omit(f"{ES} rolled to the next contract during the report's reaction")
@@ -303,7 +303,7 @@ def _release_reaction(scene: Scene, tonight: Tonight, es: Move | None, es_why: s
     s = tonight.sigma(reaction.pct)
     minutes = int((end - start).total_seconds() // 60)
     ls.put(label,
-           _joined(where, f"{names} at {release:%H:%M} moved them {'up' if s >= 0 else 'down'} {sig(abs(s))} by {end:%H:%M}, "
+           _joined(where, f"{names} moved them {'up' if s >= 0 else 'down'} {sig(abs(s))} by {end:%H:%M}, "
                           f"{rank.words(f'moves over the same {minutes} minutes')}", since),
            figure={"kind": "rank", "value": round(s, 3), "cut": rank.band, "verdict": verdict})
     ls.wake(gate)

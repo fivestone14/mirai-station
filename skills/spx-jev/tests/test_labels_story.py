@@ -408,3 +408,9 @@ def test_several_reports_at_the_minute_name_the_first_and_count_the_rest(premark
     calendar([("08:30", "PPI"), ("08:30", "RETAIL_SALES"), ("08:30", "JOBLESS_CLAIMS")])
     ls = read(premarket_scene_factory, nights_dir, {"europe_morning": 1.5}, jumps={time(8, 35): 1.0}, at=time(8, 48))
     assert "; before the producer price report and 2 more at 08:30 they were " in said(ls, "premarket.release_vs_night")
+
+
+def test_an_earlier_report_opens_the_window_and_the_later_ones_are_counted(premarket_scene_factory, nights_dir, calendar):
+    calendar([("08:15", "ADP"), ("08:30", "GDP"), ("08:30", "PCE")])      # 2026-09-30
+    ls = read(premarket_scene_factory, nights_dir, {"europe_morning": 1.5}, jumps={time(8, 35): 1.0}, at=time(8, 48))
+    assert "; before ADP's private payrolls report at 08:15 and 2 more by 08:30 they were " in said(ls, "premarket.release_vs_night")

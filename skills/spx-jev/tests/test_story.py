@@ -49,6 +49,7 @@ def test_the_report_window_starts_at_the_first_release_before_the_open(tmp_path)
     assert [e.kind for e in story.releases(date(2026, 9, 30), cal)] == ["ADP", "GDP"]
     assert story.release_minute(date(2026, 9, 30), cal) == time(8, 15)
     assert story.release_minute(date(2026, 10, 1), cal) == story.NO_REPORT_MINUTE and not story.releases(date(2026, 10, 1), cal)
+    assert story.report_words(story.releases(date(2026, 9, 30), cal)) == "ADP's private payrolls report at 08:15 and 1 more by 08:30"
 
 
 def test_the_night_starts_at_the_prior_sessions_close_1300_after_a_half_day():
