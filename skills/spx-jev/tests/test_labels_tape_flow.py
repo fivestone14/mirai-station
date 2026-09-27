@@ -169,6 +169,17 @@ def test_premium_is_ranked_against_the_same_minutes_of_the_prior_sessions(scene_
         None if not no_burst else f"the last 5 minutes' near-price 0DTE premium is under the top fifth for these minutes, {rank}")
 
 
+def test_a_multi_leg_trade_counts_as_premium_traded_but_has_no_side(scene_factory, tmp_path):
+    prior = {d: paced(2 + k, d, at(16, 0, d)) for k, d in enumerate(PRIOR_DAYS)}      # 2 to 7 lots a minute
+    packages = every_minute(DAY, NOW, side="sold", size=8, condition=130)              # legs of packages, at the bid
+    _, labels = read(tape_scene(scene_factory, tmp_path, NOW, paced(1) + packages, prior))
+    rank = "higher than 6 of the last 6 sessions at this minute"
+    assert labels["options.premium_pace_30"] == f"near-price 0DTE premium traded in the last 30 minutes is in the top fifth for this half hour, {rank}"
+    assert labels["options.premium_burst_5m"] == (
+        f"in the last 5 minutes near-price 0DTE premium traded was in the top fifth for these minutes, {rank}; "
+        "100% of its premium whose side could be told was calls bought or puts sold, past the 65% lean line")
+
+
 def test_premium_ranks_need_five_prior_sessions_with_a_whole_tape_at_this_minute(scene_factory, tmp_path):
     prior = {d: paced(2, d, at(16, 0, d)) for d in PRIOR_DAYS[:4]}
     prior[PRIOR_DAYS[4]] = paced(2, PRIOR_DAYS[4], at(9, 45, PRIOR_DAYS[4]))        # its collector stopped before this minute
@@ -192,6 +203,14 @@ def test_the_flow_lean_is_the_signed_premium_beyond_its_usual_level_for_the_half
     prior = {d: lean_day(d, 1 + k, 3, at(16, 0, d)) for k, d in enumerate(PRIOR_DAYS)}
     _, labels = read(tape_scene(scene_factory, tmp_path, NOW, lean_day(DAY, calls, puts, NOW), prior))
     assert labels["options.flow_lean_30"] == f"over the last 30 minutes the near-price 0DTE tape {sentence}"
+
+
+def test_the_flow_lean_is_omitted_when_no_side_could_be_told_or_without_five_prior_sessions(scene_factory, tmp_path):
+    ls, _ = read(tape_scene(scene_factory, tmp_path / "mid", NOW, every_minute(DAY, NOW)))                  # every trade at the mid
+    assert ls.omitted["options.flow_lean_30"] == "the side of no near-price 0DTE trade in the last 30 minutes could be told"
+    prior = {d: lean_day(d, 2, 3, at(16, 0, d)) for d in PRIOR_DAYS[:4]}
+    ls, _ = read(tape_scene(scene_factory, tmp_path / "four", NOW, lean_day(DAY, 5, 4, NOW), prior))
+    assert ls.omitted["options.flow_lean_30"] == "needs 5 prior sessions with a lob-flow tape at this minute, have 4"
 
 
 # ---- options.call_put_shift_10m
