@@ -113,6 +113,19 @@ def test_when_bitcoin_has_gone_against_stocks_its_run_up_is_ahead_in_the_stocks_
     assert ls.figures["overnight.btc_vs_futures"]["verdict"] == "btc_ahead_down" and ls.figures["overnight.btc_vs_futures"]["value"] > 0
 
 
+def test_one_night_far_out_does_not_turn_which_way_bitcoin_goes_with_stocks(tmp_path, premarket_scene_factory):
+    """Nights where bitcoin follows the futures twice over, but for the last, when it rose 8% as they fell 0.5%: a
+    least-squares fit turns the multiple negative on that one night."""
+    days = trading_days_before(DAY, 20)
+    for k, d in enumerate(days[:-1]):
+        es = (0.05 + 0.01 * k) * (1, -1, -1, 1)[k % 4]
+        write_night(tmp_path, d.isoformat(), night(d, es, 2 * es + (k - 9.5) / 200))
+    write_night(tmp_path, days[-1].isoformat(), night(days[-1], -0.5, 8.0))
+    ls = build_bitcoin_labels(premarket_read(premarket_scene_factory, tmp_path, 0.3, 2.6))
+    assert "over those nights bitcoin up has gone with stocks up" in written(ls)["overnight.btc_vs_futures"]
+    assert ls.figures["overnight.btc_vs_futures"]["verdict"] == "btc_ahead_up"
+
+
 def test_after_a_weekend_bitcoin_s_night_runs_from_the_futures_reopen_so_its_weekend_is_left_to_the_weekend_path(tmp_path, premarket_scene_factory):
     prior_nights(tmp_path, day=MONDAY)
     d = date.fromisoformat(MONDAY)

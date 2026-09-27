@@ -91,10 +91,11 @@ def rank_figure(value: float, cut: str, verdict: str) -> dict:
 
 
 def slope(pairs: list[tuple[float, float]]) -> float | None:
-    """The least-squares multiple of y on x over ``pairs``; None when x never moved."""
-    mx, my = statistics.fmean(x for x, _ in pairs), statistics.fmean(y for _, y in pairs)
-    var = sum((x - mx) ** 2 for x, _ in pairs)
-    return sum((x - mx) * (y - my) for x, y in pairs) / var if var else None
+    """The usual multiple of y on x over ``pairs``: the median of the slopes between every two of them (Theil-Sen),
+    so one night far out (bitcoin up 5% with futures down) cannot turn which way bitcoin goes with stocks, as it
+    turns a least-squares fit over twenty nights; None when x never moved."""
+    slopes = [(y2 - y1) / (x2 - x1) for k, (x1, y1) in enumerate(pairs) for x2, y2 in pairs[k + 1:] if x2 != x1]
+    return statistics.median(slopes) if slopes else None
 
 
 def correlation(pairs: list[tuple[float, float]]) -> float | None:
