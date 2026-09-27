@@ -19,7 +19,8 @@ can show it in the viewer's own zone; prose meant for a reader names the market 
 
 A sent run on today's newest row checks the wall clock: a row more than STALE_ROW_SKIP_MIN old is
 skipped (the scanner has stopped; the last card stays). The SPX row carries no separate options-book
-time (the book is rebuilt on every scan), so that one line covers the book too. A replay (--day)
+time (the book is rebuilt on every scan), so that one line covers the book too. The day's first
+read after 10:01 first waits for a row stamped from 10:01 (first_window_row). A replay (--day)
 checks nothing against the wall clock, and never writes into the station's records unless its
 --out-dir names them: without one it writes into a fresh scratch folder, archive included, and says
 where. Every read carries the tier-1 events due within the hour
@@ -67,8 +68,8 @@ from .hour import answer_sentences, band_of, hour_request, hour_summary, load_ho
 from .labels.registry import build_labels
 from .lane import LANES, LANES_BY_KEY, LIVE, Lane
 from .schedule import not_due, read_slot
-from .sessions import session_close
-from .state_builder import DEFAULT_STATE_DIR, load_bars, load_jsonl, make_scene, parse_ts
+from .sessions import session_close, session_open
+from .state_builder import DEFAULT_STATE_DIR, load_bars, load_jsonl, load_rows, make_scene, parse_ts
 from .weights import QuestionWeights
 
 # the situation the phone draws: four facts, each with a short title, the builder's verdict in a word, its
@@ -89,6 +90,11 @@ CALLS_SHOWN = 4                # the phone draws the newest calls on one clock, 
 # minute at no fixed second, so a wait under a minute spans one of its runs and the read stays in its minute.
 BAR_WAIT_S = 55
 BAR_POLL_S = 2.0
+# A 30-minute window needs a bar finished at its start, and the day's first finishes at 09:31: a row stamped
+# 10:00:xx has none. The first read after 10:01 waits for a row stamped from 10:01 (the scanner writes one about
+# every 75 s), so whether it gets its 30-minute labels never rests on when the scanner last looked.
+FIRST_WINDOW_MIN = 31
+ROW_WAIT_S = 90
 
 
 def log(msg: str) -> None:
@@ -574,6 +580,27 @@ def wait_for_bar(state_dir: Path, fire: datetime, timeout_s: float = BAR_WAIT_S,
         sleep(BAR_POLL_S)
 
 
+def wait_for_row(state_dir: Path, after: datetime, timeout_s: float = ROW_WAIT_S, sleep=_clock.sleep) -> bool:
+    """Wait until today's diary holds a row stamped at or after ``after``, at most ``timeout_s``. True
+    when it does; False after the wait, and the read goes on with the newest row on file."""
+    day = after.astimezone(ET).date().isoformat()
+    deadline = _clock.monotonic() + timeout_s
+    while True:
+        rows = load_rows(state_dir, day)
+        if rows and parse_ts(rows[-1]["ts"]) >= after:
+            return True
+        if _clock.monotonic() >= deadline:
+            return False
+        sleep(BAR_POLL_S)
+
+
+def first_window_row(now: datetime) -> datetime | None:
+    """The stamp the day's first read after the first 30-minute window waits for, when ``now`` is that
+    read (within the job's 30 minutes of it); None at every other read, which reads the diary as it is."""
+    first = session_open(now) + timedelta(minutes=FIRST_WINDOW_MIN)
+    return first if first <= now < first + timedelta(minutes=30) else None
+
+
 def write_card(out_dir: Path, c: dict) -> None:
     """Replace latest.json in one step, so the phone never reads half a card."""
     tmp = out_dir / "latest.json.tmp"
@@ -641,6 +668,9 @@ def main(argv: list[str] | None = None) -> int:
             fire = now_et().replace(second=0, microsecond=0)
             if not wait_for_bar(state_dir, fire):
                 log(f"no bar finished at {fire:%H:%M} after {BAR_WAIT_S} s: reading on the newest bar on file")
+        elif do_send and not args.day and (first := first_window_row(now_et())) is not None:
+            if not wait_for_row(state_dir, first):
+                log(f"no diary row stamped from {first:%H:%M} after {ROW_WAIT_S} s: reading on the newest row on file")
         try:
             c = run_once(state_dir, out_dir, doc, do_send, args.day, unsent, lane)
             if c["row_ts"] != last_row:

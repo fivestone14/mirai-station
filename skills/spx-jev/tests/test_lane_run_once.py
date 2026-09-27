@@ -174,3 +174,18 @@ def test_a_tape_read_waits_for_the_bar_that_finishes_at_its_minute(tmp_path):
     assert service.wait_for_bar(state, at(9, 40), sleep=bars_job_runs) is True and len(naps) == 1
     assert make_scene(state, DAY, bar_clock=True).now == at(9, 40)
     assert service.wait_for_bar(state, at(9, 41), timeout_s=0, sleep=bars_job_runs) is False   # no bar: the read goes on
+
+
+def test_the_first_read_after_1001_waits_for_a_row_its_30_minute_window_can_start_from(tmp_path):
+    """A row stamped 10:00:51 looks back to 09:30:51, before the first bar finished at 09:31: the 10:02 read
+    waits for the scanner's next row rather than lose its 30-minute labels."""
+    from spx_jev.state_builder import make_scene
+    rows = [make_row(at(9, 31), 7700.0), make_row(at(10, 0, ss=51), 7700.0)]
+    state = write_state(tmp_path, DAY, rows, bars_from_closes([7700.0] * 32))
+    first = service.first_window_row(at(10, 2))
+    assert first == at(10, 1) and service.first_window_row(at(9, 32)) is None and service.first_window_row(at(10, 32)) is None
+
+    def scanner_writes(_s):
+        write_state(tmp_path, DAY, [*rows, make_row(at(10, 2, ss=6), 7700.0)], bars_from_closes([7700.0] * 32))
+    assert service.wait_for_row(state, first, sleep=scanner_writes) is True
+    assert make_scene(state, DAY).now == at(10, 2, ss=6)
