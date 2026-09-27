@@ -1,11 +1,13 @@
 {
  "name": "spx-jev scheduled events",
  "how_to_use": [
-  "Kept by hand. The service tags a read with every tier-1 event due in the next 60 minutes (spx_jev/events.py); a read with one due in the next 30 minutes is graded but kept out of what the question weights learn from. Nothing is suppressed and JEV never sees the tag.",
-  "tier 1 only: the Fed's rate decisions and press conferences, the Fed chair's testimony and keynotes, index rebalance and quarterly-expiry closes, half-day closes. Copied on 2026-09-26 from skills/sndk-jev/calendar/events.json, less SanDisk's own events; the releases before the open (CPI, jobs) are not in-session events and are left out.",
-  "A row with verified false follows a rule, not a published date."
+  "Kept by hand through covers_through; past that day the event labels say the calendar has run out rather than calling the day quiet. Extend it, from the sources each row names, before it runs out.",
+  "tier 1: the Fed's rate decisions and press conferences, the Fed chair's testimony and keynotes, index rebalance, quarterly-expiry and quarter-end closes, half-day closes. The service tags a read with every tier-1 event due in the next 60 minutes (spx_jev/events.py); a read with one due in the next 30 minutes is graded but kept out of what the question weights learn from. Nothing is suppressed and JEV never sees the tag. Copied on 2026-09-26 from skills/sndk-jev/calendar/events.json, less SanDisk's own events.",
+  "The other tiers feed only the event labels (spx_jev/labels/events_shocks.py): pre_open (the 08:30 releases: jobs, consumer and producer prices, PCE, GDP, retail sales, weekly jobless claims), data_10am (ISM, job openings, consumer confidence and sentiment), data_2pm (the Fed's minutes) and fed_speaker (the Board's own scheduled remarks from federalreserve.gov, hand-kept a week or two ahead; the regional presidents are not listed). A speaker row with q_and_a true takes audience or moderator questions.",
+  "A row with verified false follows a rule, not a published date, and the labels word it as expected."
  ],
- "built": "2026-09-26",
+ "built": "2026-09-27",
+ "covers_through": "2026-12-31",
  "events": [
   {
    "date": "2026-07-14",
@@ -58,6 +60,107 @@
    "source": "https://www.federalreserve.gov/newsevents/2026-august.htm"
   },
   {
+   "date": "2026-09-01",
+   "time_et": "10:00",
+   "kind": "ISM_MANUFACTURING",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": false,
+   "source": "ISM rule (manufacturing the first business day, services the third, 10:00 ET); https://www.financecalendar.com/us-ism-services-pmi/"
+  },
+  {
+   "date": "2026-09-01",
+   "time_et": "10:00",
+   "kind": "JOLTS",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.bls.gov/schedule/news_release/jolts.htm"
+  },
+  {
+   "date": "2026-09-03",
+   "time_et": "08:30",
+   "kind": "JOBLESS_CLAIMS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": false,
+   "source": "Department of Labor rule (Thursdays 08:30 ET, the day before for a Thursday holiday)"
+  },
+  {
+   "date": "2026-09-03",
+   "time_et": "10:00",
+   "kind": "ISM_SERVICES",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": false,
+   "source": "ISM rule (manufacturing the first business day, services the third, 10:00 ET); https://www.financecalendar.com/us-ism-services-pmi/"
+  },
+  {
+   "date": "2026-09-04",
+   "time_et": "08:30",
+   "kind": "JOBS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bls.gov/schedule/2026/09_sched_list.htm"
+  },
+  {
+   "date": "2026-09-10",
+   "time_et": "08:30",
+   "kind": "JOBLESS_CLAIMS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": false,
+   "source": "Department of Labor rule (Thursdays 08:30 ET, the day before for a Thursday holiday)"
+  },
+  {
+   "date": "2026-09-10",
+   "time_et": "08:30",
+   "kind": "PPI",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bls.gov/schedule/2026/09_sched_list.htm"
+  },
+  {
+   "date": "2026-09-11",
+   "time_et": "08:30",
+   "kind": "CPI",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bls.gov/schedule/2026/09_sched_list.htm"
+  },
+  {
+   "date": "2026-09-11",
+   "time_et": "10:00",
+   "kind": "UMICH_SENTIMENT",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": false,
+   "source": "https://www.financecalendar.com/us-university-of-michigan-consumer-sentiment/ (finals); preliminary two weeks before (University of Michigan rule)",
+   "note": "preliminary reading"
+  },
+  {
+   "date": "2026-09-16",
+   "time_et": "08:30",
+   "kind": "RETAIL_SALES",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.census.gov/retail/release_schedule.html"
+  },
+  {
    "date": "2026-09-16",
    "time_et": "14:00",
    "kind": "FOMC",
@@ -76,6 +179,16 @@
    "in_session": true,
    "verified": true,
    "source": "https://www.federalreserve.gov/newsevents/2026-september.htm"
+  },
+  {
+   "date": "2026-09-17",
+   "time_et": "08:30",
+   "kind": "JOBLESS_CLAIMS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": false,
+   "source": "Department of Labor rule (Thursdays 08:30 ET, the day before for a Thursday holiday)"
   },
   {
    "date": "2026-09-18",
@@ -89,6 +202,340 @@
    "note": "quarterly expiry and the S&P quarterly rebalance trade this close"
   },
   {
+   "date": "2026-09-22",
+   "time_et": "09:30",
+   "kind": "FED_VICE_CHAIR_SUPERVISION_SPEECH",
+   "scope": "market",
+   "tier": "fed_speaker",
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-september.htm",
+   "q_and_a": true,
+   "note": "Vice Chair for Supervision Bowman: stress testing, a moderated discussion"
+  },
+  {
+   "date": "2026-09-23",
+   "time_et": "10:20",
+   "kind": "FED_VICE_CHAIR_SPEECH",
+   "scope": "market",
+   "tier": "fed_speaker",
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-september.htm",
+   "q_and_a": false,
+   "note": "Vice Chair Jefferson: discount window modernization and Treasury market functioning"
+  },
+  {
+   "date": "2026-09-24",
+   "time_et": "08:30",
+   "kind": "JOBLESS_CLAIMS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": false,
+   "source": "Department of Labor rule (Thursdays 08:30 ET, the day before for a Thursday holiday)"
+  },
+  {
+   "date": "2026-09-25",
+   "time_et": "10:00",
+   "kind": "UMICH_SENTIMENT",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": false,
+   "source": "https://www.financecalendar.com/us-university-of-michigan-consumer-sentiment/ (finals); preliminary two weeks before (University of Michigan rule)",
+   "note": "final reading"
+  },
+  {
+   "date": "2026-09-28",
+   "time_et": "10:05",
+   "kind": "FED_GOVERNOR_SPEECH",
+   "scope": "market",
+   "tier": "fed_speaker",
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-september.htm",
+   "q_and_a": false,
+   "note": "Governor Barr: economic outlook and housing"
+  },
+  {
+   "date": "2026-09-29",
+   "time_et": "10:00",
+   "kind": "CONSUMER_CONFIDENCE",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.conference-board.org/topics/consumer-confidence/"
+  },
+  {
+   "date": "2026-09-29",
+   "time_et": "10:00",
+   "kind": "JOLTS",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.bls.gov/schedule/news_release/jolts.htm"
+  },
+  {
+   "date": "2026-09-29",
+   "time_et": "12:40",
+   "kind": "FED_GOVERNOR_SPEECH",
+   "scope": "market",
+   "tier": "fed_speaker",
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-september.htm",
+   "q_and_a": true,
+   "note": "Governor Barr: economic outlook, a conversation"
+  },
+  {
+   "date": "2026-09-29",
+   "time_et": "13:25",
+   "kind": "FED_GOVERNOR_SPEECH",
+   "scope": "market",
+   "tier": "fed_speaker",
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-september.htm",
+   "q_and_a": false,
+   "note": "Governor Cook: AI and emerging technology"
+  },
+  {
+   "date": "2026-09-30",
+   "time_et": "08:30",
+   "kind": "GDP",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bea.gov/news/schedule"
+  },
+  {
+   "date": "2026-09-30",
+   "time_et": "08:30",
+   "kind": "PCE",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bea.gov/news/schedule"
+  },
+  {
+   "date": "2026-09-30",
+   "time_et": "15:00",
+   "kind": "FED_GOVERNOR_SPEECH",
+   "scope": "market",
+   "tier": "fed_speaker",
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-september.htm",
+   "q_and_a": false,
+   "note": "Governor Waller: payments"
+  },
+  {
+   "date": "2026-09-30",
+   "time_et": "16:00",
+   "kind": "QUARTER_END",
+   "scope": "index",
+   "tier": 1,
+   "in_session": false,
+   "verified": true,
+   "source": "exchange calendar (the quarter's last trading day; the quarter-end SPXW options settle at this close)"
+  },
+  {
+   "date": "2026-10-01",
+   "time_et": "08:30",
+   "kind": "JOBLESS_CLAIMS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": false,
+   "source": "Department of Labor rule (Thursdays 08:30 ET, the day before for a Thursday holiday)"
+  },
+  {
+   "date": "2026-10-01",
+   "time_et": "10:00",
+   "kind": "ISM_MANUFACTURING",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": false,
+   "source": "ISM rule (manufacturing the first business day, services the third, 10:00 ET); https://www.financecalendar.com/us-ism-services-pmi/"
+  },
+  {
+   "date": "2026-10-01",
+   "time_et": "10:00",
+   "kind": "FED_GOVERNOR_SPEECH",
+   "scope": "market",
+   "tier": "fed_speaker",
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-october.htm",
+   "q_and_a": false,
+   "note": "Governor Waller: Federal Reserve economic data"
+  },
+  {
+   "date": "2026-10-01",
+   "time_et": "13:30",
+   "kind": "FED_VICE_CHAIR_SPEECH",
+   "scope": "market",
+   "tier": "fed_speaker",
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-october.htm",
+   "q_and_a": false,
+   "note": "Vice Chair Jefferson: U.S. economy and monetary policy"
+  },
+  {
+   "date": "2026-10-01",
+   "time_et": "15:00",
+   "kind": "FED_VICE_CHAIR_SUPERVISION_SPEECH",
+   "scope": "market",
+   "tier": "fed_speaker",
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-october.htm",
+   "q_and_a": false,
+   "note": "Vice Chair for Supervision Bowman: modernizing financial regulation"
+  },
+  {
+   "date": "2026-10-01",
+   "time_et": "15:30",
+   "kind": "FED_GOVERNOR_SPEECH",
+   "scope": "market",
+   "tier": "fed_speaker",
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-october.htm",
+   "q_and_a": true,
+   "note": "Governor Cook: global central banking, a discussion"
+  },
+  {
+   "date": "2026-10-02",
+   "time_et": "08:30",
+   "kind": "JOBS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bls.gov/schedule/2026/10_sched_list.htm"
+  },
+  {
+   "date": "2026-10-05",
+   "time_et": "10:00",
+   "kind": "ISM_SERVICES",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": false,
+   "source": "ISM rule (manufacturing the first business day, services the third, 10:00 ET); https://www.financecalendar.com/us-ism-services-pmi/"
+  },
+  {
+   "date": "2026-10-07",
+   "time_et": "14:00",
+   "kind": "FOMC_MINUTES",
+   "scope": "market",
+   "tier": "data_2pm",
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.federalreserve.gov/newsevents/2026-october.htm",
+   "note": "minutes of the September 15-16 meeting"
+  },
+  {
+   "date": "2026-10-08",
+   "time_et": "08:30",
+   "kind": "JOBLESS_CLAIMS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": false,
+   "source": "Department of Labor rule (Thursdays 08:30 ET, the day before for a Thursday holiday)"
+  },
+  {
+   "date": "2026-10-09",
+   "time_et": "10:00",
+   "kind": "UMICH_SENTIMENT",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": false,
+   "source": "https://www.financecalendar.com/us-university-of-michigan-consumer-sentiment/ (finals); preliminary two weeks before (University of Michigan rule)",
+   "note": "preliminary reading"
+  },
+  {
+   "date": "2026-10-14",
+   "time_et": "08:30",
+   "kind": "CPI",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bls.gov/schedule/2026/10_sched_list.htm"
+  },
+  {
+   "date": "2026-10-15",
+   "time_et": "08:30",
+   "kind": "JOBLESS_CLAIMS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": false,
+   "source": "Department of Labor rule (Thursdays 08:30 ET, the day before for a Thursday holiday)"
+  },
+  {
+   "date": "2026-10-15",
+   "time_et": "08:30",
+   "kind": "PPI",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bls.gov/schedule/2026/10_sched_list.htm"
+  },
+  {
+   "date": "2026-10-15",
+   "time_et": "08:30",
+   "kind": "RETAIL_SALES",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.census.gov/retail/release_schedule.html"
+  },
+  {
+   "date": "2026-10-22",
+   "time_et": "08:30",
+   "kind": "JOBLESS_CLAIMS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": false,
+   "source": "Department of Labor rule (Thursdays 08:30 ET, the day before for a Thursday holiday)"
+  },
+  {
+   "date": "2026-10-23",
+   "time_et": "10:00",
+   "kind": "UMICH_SENTIMENT",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": false,
+   "source": "https://www.financecalendar.com/us-university-of-michigan-consumer-sentiment/ (finals); preliminary two weeks before (University of Michigan rule)",
+   "note": "final reading"
+  },
+  {
+   "date": "2026-10-27",
+   "time_et": "10:00",
+   "kind": "CONSUMER_CONFIDENCE",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": false,
+   "source": "The Conference Board rule (10:00 ET, the last Tuesday of the month); https://www.conference-board.org/topics/consumer-confidence/"
+  },
+  {
    "date": "2026-10-28",
    "time_et": "14:00",
    "kind": "FOMC",
@@ -107,6 +554,210 @@
    "in_session": true,
    "verified": true,
    "source": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+  },
+  {
+   "date": "2026-10-29",
+   "time_et": "08:30",
+   "kind": "GDP",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bea.gov/news/schedule"
+  },
+  {
+   "date": "2026-10-29",
+   "time_et": "08:30",
+   "kind": "JOBLESS_CLAIMS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": false,
+   "source": "Department of Labor rule (Thursdays 08:30 ET, the day before for a Thursday holiday)"
+  },
+  {
+   "date": "2026-10-29",
+   "time_et": "08:30",
+   "kind": "PCE",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bea.gov/news/schedule"
+  },
+  {
+   "date": "2026-11-02",
+   "time_et": "10:00",
+   "kind": "ISM_MANUFACTURING",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": false,
+   "source": "ISM rule (manufacturing the first business day, services the third, 10:00 ET); https://www.financecalendar.com/us-ism-services-pmi/"
+  },
+  {
+   "date": "2026-11-03",
+   "time_et": "10:00",
+   "kind": "JOLTS",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.bls.gov/schedule/news_release/jolts.htm"
+  },
+  {
+   "date": "2026-11-04",
+   "time_et": "10:00",
+   "kind": "ISM_SERVICES",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": false,
+   "source": "ISM rule (manufacturing the first business day, services the third, 10:00 ET); https://www.financecalendar.com/us-ism-services-pmi/"
+  },
+  {
+   "date": "2026-11-05",
+   "time_et": "08:30",
+   "kind": "JOBLESS_CLAIMS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": false,
+   "source": "Department of Labor rule (Thursdays 08:30 ET, the day before for a Thursday holiday)"
+  },
+  {
+   "date": "2026-11-06",
+   "time_et": "08:30",
+   "kind": "JOBS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bls.gov/schedule/2026/11_sched_list.htm"
+  },
+  {
+   "date": "2026-11-06",
+   "time_et": "10:00",
+   "kind": "UMICH_SENTIMENT",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": false,
+   "source": "https://www.financecalendar.com/us-university-of-michigan-consumer-sentiment/ (finals); preliminary two weeks before (University of Michigan rule)",
+   "note": "preliminary reading"
+  },
+  {
+   "date": "2026-11-10",
+   "time_et": "08:30",
+   "kind": "CPI",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bls.gov/schedule/2026/11_sched_list.htm"
+  },
+  {
+   "date": "2026-11-12",
+   "time_et": "08:30",
+   "kind": "JOBLESS_CLAIMS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": false,
+   "source": "Department of Labor rule (Thursdays 08:30 ET, the day before for a Thursday holiday)"
+  },
+  {
+   "date": "2026-11-13",
+   "time_et": "08:30",
+   "kind": "PPI",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bls.gov/schedule/2026/11_sched_list.htm"
+  },
+  {
+   "date": "2026-11-17",
+   "time_et": "08:30",
+   "kind": "RETAIL_SALES",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.census.gov/retail/release_schedule.html"
+  },
+  {
+   "date": "2026-11-18",
+   "time_et": "14:00",
+   "kind": "FOMC_MINUTES",
+   "scope": "market",
+   "tier": "data_2pm",
+   "in_session": true,
+   "verified": false,
+   "source": "Fed rule (minutes three weeks after the decision, 14:00 ET)",
+   "note": "minutes of the October 27-28 meeting"
+  },
+  {
+   "date": "2026-11-19",
+   "time_et": "08:30",
+   "kind": "JOBLESS_CLAIMS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": false,
+   "source": "Department of Labor rule (Thursdays 08:30 ET, the day before for a Thursday holiday)"
+  },
+  {
+   "date": "2026-11-20",
+   "time_et": "10:00",
+   "kind": "UMICH_SENTIMENT",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": false,
+   "source": "https://www.financecalendar.com/us-university-of-michigan-consumer-sentiment/ (finals); preliminary two weeks before (University of Michigan rule)",
+   "note": "final reading"
+  },
+  {
+   "date": "2026-11-24",
+   "time_et": "10:00",
+   "kind": "CONSUMER_CONFIDENCE",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": false,
+   "source": "The Conference Board rule (10:00 ET, the last Tuesday of the month); https://www.conference-board.org/topics/consumer-confidence/"
+  },
+  {
+   "date": "2026-11-25",
+   "time_et": "08:30",
+   "kind": "GDP",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bea.gov/news/schedule"
+  },
+  {
+   "date": "2026-11-25",
+   "time_et": "08:30",
+   "kind": "JOBLESS_CLAIMS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": false,
+   "source": "Department of Labor rule (Thursdays 08:30 ET, the day before for a Thursday holiday)",
+   "note": "Thanksgiving moves the release to Wednesday"
+  },
+  {
+   "date": "2026-11-25",
+   "time_et": "08:30",
+   "kind": "PCE",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bea.gov/news/schedule"
   },
   {
    "date": "2026-11-27",
@@ -131,6 +782,67 @@
    "note": "November review effective 12-01, trades the 11-30 close"
   },
   {
+   "date": "2026-12-01",
+   "time_et": "10:00",
+   "kind": "ISM_MANUFACTURING",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": false,
+   "source": "ISM rule (manufacturing the first business day, services the third, 10:00 ET); https://www.financecalendar.com/us-ism-services-pmi/"
+  },
+  {
+   "date": "2026-12-01",
+   "time_et": "10:00",
+   "kind": "JOLTS",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": true,
+   "source": "https://www.bls.gov/schedule/news_release/jolts.htm"
+  },
+  {
+   "date": "2026-12-03",
+   "time_et": "08:30",
+   "kind": "JOBLESS_CLAIMS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": false,
+   "source": "Department of Labor rule (Thursdays 08:30 ET, the day before for a Thursday holiday)"
+  },
+  {
+   "date": "2026-12-03",
+   "time_et": "10:00",
+   "kind": "ISM_SERVICES",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": false,
+   "source": "ISM rule (manufacturing the first business day, services the third, 10:00 ET); https://www.financecalendar.com/us-ism-services-pmi/"
+  },
+  {
+   "date": "2026-12-04",
+   "time_et": "08:30",
+   "kind": "JOBS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bls.gov/schedule/2026/12_sched_list.htm"
+  },
+  {
+   "date": "2026-12-04",
+   "time_et": "10:00",
+   "kind": "UMICH_SENTIMENT",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": false,
+   "source": "https://www.financecalendar.com/us-university-of-michigan-consumer-sentiment/ (finals); preliminary two weeks before (University of Michigan rule)",
+   "note": "preliminary reading"
+  },
+  {
    "date": "2026-12-09",
    "time_et": "14:00",
    "kind": "FOMC",
@@ -151,6 +863,26 @@
    "source": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
   },
   {
+   "date": "2026-12-10",
+   "time_et": "08:30",
+   "kind": "CPI",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bls.gov/schedule/2026/12_sched_list.htm"
+  },
+  {
+   "date": "2026-12-10",
+   "time_et": "08:30",
+   "kind": "JOBLESS_CLAIMS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": false,
+   "source": "Department of Labor rule (Thursdays 08:30 ET, the day before for a Thursday holiday)"
+  },
+  {
    "date": "2026-12-11",
    "time_et": "16:00",
    "kind": "RUSSELL_RECON",
@@ -159,6 +891,47 @@
    "in_session": true,
    "verified": true,
    "source": "https://www.lseg.com/en/media-centre/press-releases/ftse-russell/2026/ftse-russell-announces-december-2026-russell-us-indexes-reconstitution-schedule"
+  },
+  {
+   "date": "2026-12-15",
+   "time_et": "08:30",
+   "kind": "PPI",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bls.gov/schedule/2026/12_sched_list.htm"
+  },
+  {
+   "date": "2026-12-16",
+   "time_et": "08:30",
+   "kind": "RETAIL_SALES",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.census.gov/retail/release_schedule.html"
+  },
+  {
+   "date": "2026-12-17",
+   "time_et": "08:30",
+   "kind": "JOBLESS_CLAIMS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": false,
+   "source": "Department of Labor rule (Thursdays 08:30 ET, the day before for a Thursday holiday)"
+  },
+  {
+   "date": "2026-12-18",
+   "time_et": "10:00",
+   "kind": "UMICH_SENTIMENT",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": false,
+   "source": "https://www.financecalendar.com/us-university-of-michigan-consumer-sentiment/ (finals); preliminary two weeks before (University of Michigan rule)",
+   "note": "final reading"
   },
   {
    "date": "2026-12-18",
@@ -172,6 +945,36 @@
    "note": "S&P quarterly + Nasdaq-100 annual reconstitution trade this close"
   },
   {
+   "date": "2026-12-23",
+   "time_et": "08:30",
+   "kind": "GDP",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bea.gov/news/schedule"
+  },
+  {
+   "date": "2026-12-23",
+   "time_et": "08:30",
+   "kind": "PCE",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": true,
+   "source": "https://www.bea.gov/news/schedule"
+  },
+  {
+   "date": "2026-12-24",
+   "time_et": "08:30",
+   "kind": "JOBLESS_CLAIMS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": false,
+   "source": "Department of Labor rule (Thursdays 08:30 ET, the day before for a Thursday holiday)"
+  },
+  {
    "date": "2026-12-24",
    "time_et": "13:00",
    "kind": "HALF_DAY_CLOSE",
@@ -180,6 +983,47 @@
    "in_session": true,
    "verified": false,
    "source": "NYSE/Nasdaq holiday schedule"
+  },
+  {
+   "date": "2026-12-29",
+   "time_et": "10:00",
+   "kind": "CONSUMER_CONFIDENCE",
+   "scope": "market",
+   "tier": "data_10am",
+   "in_session": true,
+   "verified": false,
+   "source": "The Conference Board rule (10:00 ET, the last Tuesday of the month); https://www.conference-board.org/topics/consumer-confidence/"
+  },
+  {
+   "date": "2026-12-30",
+   "time_et": "14:00",
+   "kind": "FOMC_MINUTES",
+   "scope": "market",
+   "tier": "data_2pm",
+   "in_session": true,
+   "verified": false,
+   "source": "Fed rule (minutes three weeks after the decision, 14:00 ET)",
+   "note": "minutes of the December 8-9 meeting"
+  },
+  {
+   "date": "2026-12-31",
+   "time_et": "08:30",
+   "kind": "JOBLESS_CLAIMS",
+   "scope": "market",
+   "tier": "pre_open",
+   "in_session": false,
+   "verified": false,
+   "source": "Department of Labor rule (Thursdays 08:30 ET, the day before for a Thursday holiday)"
+  },
+  {
+   "date": "2026-12-31",
+   "time_et": "16:00",
+   "kind": "QUARTER_END",
+   "scope": "index",
+   "tier": 1,
+   "in_session": false,
+   "verified": true,
+   "source": "exchange calendar (the quarter's last trading day; the quarter-end SPXW options settle at this close)"
   }
  ]
 }
