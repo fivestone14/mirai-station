@@ -241,6 +241,10 @@ runs unsent and the card says "not sent: no key on this machine".
   side: such a question is held.
 - The learning loop runs, but the phone switch (`pool.POOL_ON_PHONE`) is off
   pending Will's decision, and its simulation acceptance gates (06) are not built.
+  Nor is 06's direction test (Primary B: the edge score, with day-level
+  e-processes for JEV against the reference and the pool against the exact
+  blend), or the per-forecast losses, Brier and edge score 06 adds to
+  `grades.jsonl`: whether JEV helps call SPX's direction has no test yet.
 - No market context is on disk yet: the breadth labels are omitted on every
   replay until the feed has run, and the backfill has not been run against the
   station.
