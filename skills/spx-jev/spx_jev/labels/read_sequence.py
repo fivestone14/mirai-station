@@ -3,16 +3,221 @@ bars and the market context as they stood at that read's minute, never from the 
 the day's move from the open at each read (seq.day_move_by_read) and the volume share of rising stocks at
 each read against the day's side (seq.breadth_by_read). Each label's sentence, how it is computed and its
 source are in spec/question_set.json ``labels``.
+
+The reads are the live lane's minutes (:02 and :32) from its first after the settled open (10:02, the
+set's thirty_minute_start), up to LISTED_READS of them ending with this read (BREADTH_READS for breadth,
+whose sentence carries two numbers a read); the earlier ones are taken
+at their scheduled minute, so a late or missed read changes nothing. The day's move is in the morning
+anchor from the settled open; what changed across the reads is ranked against the same read minutes on
+the prior sessions, never against a fixed line.
 """
 from __future__ import annotations
 
-from ..state_builder import Scene
+from dataclasses import dataclass
+from datetime import date, datetime, time
+
+from ..cuts import MOVE_RULE_SIGMA, THIRD_HI
+from ..lane import LIVE
+from ..state_builder import MarketContext, Scene
+from .breadth import FRESH_MIN
 from .label_set import LabelSet
+from .measures import ET, close_at, settled_open
+from .ranks import SameClockRank, rank_against, same_clock_values
+from .rulers import NO_ANCHOR, SigmaRuler, ruled, sigma_anchor
+from .words import above_or_below, listed, pct, sig, signed, third
 
 LABELS = ("seq.day_move_by_read", "seq.breadth_by_read")
 GATES = ("seq_day_move_stage", "seq_breadth_drift")
 DARK: dict[str, str] = {}
 
+LISTED_READS = 4                  # the reads the day's move lists, this one included
+BREADTH_READS = 3                 # the reads the breadth sentence lists, each with a share beside its move
+FIRST_READ = time(10, 2)          # the lane's first read after the 09:34 settled open
+MIN_EARLIER_READS = 2
+
 
 def build_read_sequence_labels(scene: Scene) -> LabelSet:
-    return LabelSet()
+    ls = LabelSet()
+    reads, why = _reads(scene)
+    if reads is None:
+        for path, qid in zip(LABELS, GATES):
+            ls.omit(path, why)
+            ls.sleep(qid, why)
+        return ls
+    _day_move_by_read(scene, reads, ls)
+    _breadth_by_read(scene, reads, ls)
+    return ls
+
+
+@dataclass(frozen=True)
+class Reads:
+    """This read and the lane's earlier ones listed with it, oldest first: their minutes and the day's move from
+    the settled open at each in the morning anchor, the last this read's own."""
+    day: date
+    clocks: list[time]
+    moves: list[float]
+    anchor: SigmaRuler
+
+    @property
+    def now(self) -> float:
+        return self.moves[-1]
+
+    @property
+    def side(self) -> int:
+        return 1 if self.now > 0 else -1 if self.now < 0 else 0
+
+    @property
+    def earlier(self) -> list[time]:
+        return self.clocks[:-1]
+
+    def last(self, n: int) -> Reads:
+        return Reads(self.day, self.clocks[-n:], self.moves[-n:], self.anchor)
+
+    def where(self) -> str:
+        return f"SPX is {sig(abs(self.now))} {above_or_below(self.now)} the settled open"
+
+
+def _earlier_clocks(now: datetime) -> list[time]:
+    """The lane's read minutes before this read's own, oldest first: its own is the lane's read nearest ``now``
+    (a live read is stamped at its diary row, a few minutes before its minute at most)."""
+    minute = now.hour * 60 + now.minute
+    reads = [time.fromisoformat(t) for t in LIVE.read_times()]
+    own = min(reads, key=lambda t: abs(t.hour * 60 + t.minute - minute))
+    return [t for t in reads if FIRST_READ <= t < own]
+
+
+def _day_moves(bars: list[dict], day: date, clocks: list[time], now_price: float, points: float) -> list[float] | None:
+    """The day's move from the settled open at each of ``clocks`` on ``day`` and then at ``now_price``, in ``points``;
+    None when the settled open or a read minute's price is not in ``bars``."""
+    so = settled_open(bars)
+    prices = [close_at(bars, datetime.combine(day, c, tzinfo=ET)) for c in clocks]
+    if so is None or any(p is None for p in prices):
+        return None
+    return [(p - so) / points for p in [*prices, now_price]]
+
+
+def _reads(scene: Scene) -> tuple[Reads | None, str]:
+    anchor = sigma_anchor(scene)
+    if anchor is None:
+        return None, NO_ANCHOR
+    if settled_open(scene.bars) is None:
+        return None, "no settled open yet: the 09:34 bar has not finished"
+    now = scene.now.astimezone(ET)
+    earlier = _earlier_clocks(now)
+    if len(earlier) < MIN_EARLIER_READS:
+        return None, f"needs {MIN_EARLIER_READS} earlier 30-minute reads today from {FIRST_READ:%H:%M}, have {len(earlier)}"
+    clocks = earlier[-(LISTED_READS - 1):]
+    moves = _day_moves(scene.bars, now.date(), clocks, scene.spot, anchor.points)
+    if moves is None:
+        return None, f"no SPX bar finished by one of the reads at {listed([f'{c:%H:%M}' for c in clocks])}"
+    return Reads(now.date(), [*clocks, now.time()], moves, anchor), ""
+
+
+def _band(rank: SameClockRank) -> str:
+    return f"{third(rank.share)} third"
+
+
+def _sleep_why(reads: Reads, rank: SameClockRank | None, base: list[float]) -> str | None:
+    """Why a read-sequence question sleeps: the day has not moved past the move rule, or too few prior sessions."""
+    if abs(reads.now) <= MOVE_RULE_SIGMA:
+        return f"the day's move from the settled open is within the {MOVE_RULE_SIGMA} sigma move rule"
+    if rank is None:
+        return f"only {len(base)} prior sessions measured at these read minutes"
+    return None
+
+
+def _decide(ls: LabelSet, qid: str, verdict: str | None, why: str | None) -> None:
+    if verdict is None:
+        ls.sleep(qid, why)
+    else:
+        ls.wake(qid)
+
+
+def _giveback(moves: list[float]) -> float | None:
+    """The share of the furthest point from the open among ``moves`` (on the last one's side) that the last has
+    given back; 0 when the last is the furthest, None when it sits at the open."""
+    side = 1 if moves[-1] > 0 else -1 if moves[-1] < 0 else 0
+    if not side:
+        return None
+    peak = max(side * m for m in moves)
+    return (peak - side * moves[-1]) / peak
+
+
+def _day_move_by_read(scene: Scene, reads: Reads, ls: LabelSet) -> None:
+    """The day's move at each listed read, then how much of its furthest point this read has given back,
+    ranked against the same read minutes on the prior sessions; seq_day_move_stage's verdict."""
+    def prior_giveback(bars: list[dict], then: datetime, _points: float | None) -> float | None:
+        price = close_at(bars, then)
+        moves = _day_moves(bars, then.date(), reads.earlier, price, 1.0) if price is not None else None
+        return _giveback(moves) if moves else None
+
+    base = same_clock_values(scene, prior_giveback)
+    share = _giveback(reads.moves)
+    rank = rank_against(share, base) if share is not None else None
+    why = _sleep_why(reads, rank, base)
+    stood = [f"{signed(m)} ({c:%H:%M})" for m, c in zip(reads.moves, reads.clocks)]
+    text = f"{reads.where()}; at the last {len(stood)} reads it stood {listed(stood)}"
+    if share == 0:
+        text += "; this read is its furthest from the open"
+    elif share is not None:
+        peak = max(range(len(reads.moves)), key=lambda k: reads.side * reads.moves[k])
+        text += f"; {pct(share)} of its furthest, at {reads.clocks[peak]:%H:%M}, has been given back"
+        if rank is not None:
+            text += f", {_band(rank)} of the last {rank.of} sessions for these reads"
+    verdict = None if why else "extending" if share == 0 else "stalled" if rank.share < THIRD_HI else "unwinding"
+    ls.put("seq.day_move_by_read", ruled(reads.anchor, f"{text}: {verdict}" if verdict else text))
+    _decide(ls, "seq_day_move_stage", verdict, why)
+
+
+def _day_upvol_share(mk: MarketContext, t: datetime) -> float | None:
+    """The day's share of NYSE volume in rising stocks at ``t``, from the $UVOL and $DVOL running totals since
+    09:30; None when either is not known within FRESH_MIN minutes of ``t`` or no volume has traded."""
+    up, down = mk.last("$UVOL", t, max_age_min=FRESH_MIN), mk.last("$DVOL", t, max_age_min=FRESH_MIN)
+    return up / (up + down) if up is not None and down is not None and up + down > 0 else None
+
+
+def _shares(mk: MarketContext, day: date, clocks: list[time], now: datetime) -> list[float] | None:
+    """The day's rising-stock volume share at each of ``clocks`` and at ``now``; None when one is missing."""
+    got = [_day_upvol_share(mk, datetime.combine(day, c, tzinfo=ET)) for c in clocks] + [_day_upvol_share(mk, now)]
+    return None if any(s is None for s in got) else got
+
+
+def _breadth_by_read(scene: Scene, reads: Reads, ls: LabelSet) -> None:
+    """The day's rising-stock volume share at each of the last reads beside the day's move, and how far it
+    shifted toward or away from the day's side across them, its size ranked against the same read minutes on
+    the prior sessions (every session with a market context: the ruler never touches the share);
+    seq_breadth_drift's verdict checks fading_under_move first, and needs the move not to have shrunk."""
+    reads = reads.last(BREADTH_READS)
+    shares = _shares(scene.market, reads.day, reads.earlier, scene.now) if scene.market else None
+    if shares is None:
+        why = "no NYSE up and down volume at every listed read: the market-context job stopped or has not saved it"
+        ls.omit("seq.breadth_by_read", why)
+        ls.sleep("seq_breadth_drift", why)
+        return
+    shift = (shares[-1] - shares[0]) * reads.side
+    clock = scene.now.astimezone(ET).time()
+    base = []
+    for day, mk in scene.prior_markets.items():
+        d = date.fromisoformat(day)
+        got = _shares(mk, d, reads.earlier, datetime.combine(d, clock, tzinfo=ET))
+        if got is not None:
+            base.append(abs(got[-1] - got[0]))
+    rank = rank_against(abs(shift), base)
+    why = _sleep_why(reads, rank, base)
+    verdict = None
+    if why is None:
+        big = rank.share >= THIRD_HI
+        if big and shift < 0 and reads.side * reads.now >= reads.side * reads.moves[0]:
+            verdict = "fading_under_move"
+        elif big and shift > 0:
+            verdict = "building_behind_move"
+        else:
+            verdict = "tracking"
+    text = (f"{reads.where()}, at {listed([f'{c:%H:%M}' for c in reads.clocks])} {listed([signed(m) for m in reads.moves])}, "
+            f"while the day's rising-stock volume share went {listed([pct(s) for s in shares])}: "
+            f"{abs(shift) * 100:.0f} points {'toward' if shift >= 0 else 'away from'} the day's side")
+    if rank is not None:
+        text += f", {_band(rank)} for these reads"
+    ends = {"fading_under_move": "fading under the move", "building_behind_move": "building behind the move", "tracking": "tracking the move"}
+    ls.put("seq.breadth_by_read", ruled(reads.anchor, f"{text}: {ends[verdict]}" if verdict else text))
+    _decide(ls, "seq_breadth_drift", verdict, why)
