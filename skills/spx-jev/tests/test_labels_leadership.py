@@ -7,7 +7,7 @@ from dataclasses import replace
 
 import pytest
 
-from conftest import DAY, at
+from conftest import DAY, at, bars_from_closes
 from spx_jev.cuts import MIN_RANK_SESSIONS
 from spx_jev.labels.leadership import LABELS, WEIGHTS_FILE, build_leadership_labels
 from spx_jev.labels.rulers import SigmaRuler
@@ -344,6 +344,8 @@ def test_no_label_moves_on_values_known_after_the_read(tmp_path):
     got, _, _ = labels(scene)
     assert set(got) == set(LABELS)
     assert labels(replace(scene, market=MarketContext(later)))[0] == got
+    spx_after = [c + (40.0 if i >= READ_MINUTE else 0.0) for i, c in enumerate(index_closes())]
+    assert labels(replace(scene, bars=bars_from_closes(spx_after)))[0] == got
 
 
 def test_an_estimated_ruler_says_so(tmp_path):

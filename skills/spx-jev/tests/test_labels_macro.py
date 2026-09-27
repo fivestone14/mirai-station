@@ -7,7 +7,7 @@ from datetime import date
 
 import pytest
 
-from conftest import at
+from conftest import at, bars_from_closes
 from spx_jev.cuts import MIN_RANK_SESSIONS
 from spx_jev.labels import macro
 from spx_jev.labels.macro import REBALANCE_SIDE_UNMEASURED, bond_market_closed, build_macro_labels, minute_link
@@ -204,3 +204,6 @@ def test_no_label_moves_on_values_known_after_the_read():
     assert labels(replace(scene, market=MarketContext(later)))[0] == got
     jumped_after, _ = labels(read(jumps={"TLT": {JUMP: 0.002, READ_MINUTE: -0.05}, "USO": {JUMP: -0.002}}))
     assert jumped_after == got
+    closes = index_closes(10.5)
+    spx_after = [c + (40.0 if i >= READ_MINUTE else 0.0) for i, c in enumerate(closes)]
+    assert labels(replace(scene, bars=bars_from_closes(spx_after)))[0] == got
