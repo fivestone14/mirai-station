@@ -3,17 +3,19 @@ before the open is ever graded from its own spot."""
 from __future__ import annotations
 
 import json
+from functools import partial
 
 import pytest
 
 from conftest import DAY, at, bars_from_closes, flat_bars, write_state
-from spx_jev import service
+from spx_jev import events, service
 from spx_jev.grade import grade_one, horizon_start, mark_at, run
 from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.lane import LIVE, PREMARKET, TAPE
 
 RULER = 100.0
 ALLOWED = {"q1": {"up", "down"}}
+TAG = events.tag
 
 
 def _climb():
@@ -86,6 +88,28 @@ def test_no_other_lane_grades_a_read_before_the_open_from_its_spot():
         g = grade_one(_rec(), _climb(), lane=lane, anchor=SigmaRuler(RULER, "anchor"))
         assert g == {"row_ts": at(9, 28).isoformat(), "graded": False,
                      "reason": "stamped before the open: a read before the open is never graded from its spot"}
+
+
+def _testimony_at(tmp_path, monkeypatch, time_et):
+    """A tier-1 row at ``time_et`` today, read in place of the shipped calendar."""
+    cal = tmp_path / "events.json"
+    cal.write_text(json.dumps({"events": [{"date": DAY, "time_et": time_et, "kind": "FED_CHAIR_TESTIMONY", "tier": 1}]}))
+    events._load.cache_clear()
+    monkeypatch.setattr(events, "tag", partial(TAG, path=cal))
+
+
+def test_an_event_inside_the_graded_window_is_flagged_though_the_read_came_earlier(tmp_path, monkeypatch):
+    _testimony_at(tmp_path, monkeypatch, "10:00")
+    rec = {**_rec(), "event": None}                   # 32 minutes after the 09:28 read, so the read's own tag missed it
+    g = grade_one(rec, _climb(), lane=PREMARKET, anchor=_anchor(rec))
+    assert g["event_within_30"] is True and "due in 25 minutes, at 10:00 ET" in g["event"]
+
+
+def test_an_event_the_read_saw_ahead_but_over_before_the_window_is_not_flagged(tmp_path, monkeypatch):
+    _testimony_at(tmp_path, monkeypatch, "09:00")
+    rec = {**_rec(8, 48), "event": events.tag(at(8, 48))}
+    assert rec["event"]["within_30"] is True
+    assert "event_within_30" not in grade_one(rec, _climb(), lane=PREMARKET, anchor=_anchor(rec))
 
 
 def _premarket_state(tmp_path, recs):

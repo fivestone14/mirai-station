@@ -57,7 +57,8 @@ mark needs the exact bar (bar_gap_min 0), and a finished day's bars that stop cl
 The premarket lane (graded_from_settled_open) reads before the open, so its read's own spot already
 knows the gap: its horizons run from the settled open instead, the close of the 09:34 bar, finished
 at 09:35, to the closes at 09:45 and 10:05 (the 09:44 and 10:04 bars), in the pre-open ruler stamped
-on the record (``ruler.points``). The line says where it was measured from (``from``). It waits
+on the record (``ruler.points``). The line says where it was measured from (``from``), and its event
+tag is taken at the settled open, over the window it is graded on, not at the read. It waits
 while the settled open or a mark has no bar, and a finished day without them closes it out. On
 every other lane a record stamped before its session's open is never graded from its spot: it is
 written as not graded.
@@ -85,7 +86,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import archive
+from . import archive, events
 from .ask import load_questions
 from .hour import FIVE
 from .labels.measures import SETTLED_OPEN_BAR, close_at, settled_open
@@ -318,7 +319,8 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
         out["from"] = {"settled_open": spot, "at": t0.isoformat()}
     if any("realized_sigma" in g for g in graded.values()):
         out["anchor"] = {"points": anchor.points, "source": anchor.source}
-    ev = rec.get("event") if isinstance(rec.get("event"), dict) else None
+    # a read before the open is tagged from its own clock, so the window it is graded over is tagged here
+    ev = events.tag(t0) if lane.graded_from_settled_open else rec.get("event") if isinstance(rec.get("event"), dict) else None
     if ev:
         out["event_within_30"] = bool(ev.get("within_30"))
         out["event"] = ev.get("sentence")
