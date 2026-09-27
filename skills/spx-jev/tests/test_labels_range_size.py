@@ -173,16 +173,19 @@ def _reach_scene(scene_factory, wick, em_points=16.4, day="2026-09-18", now=None
     return scene_factory(now, bars, rows_before=[first], row_over={"range_ruler": {"em_points": em_points}})
 
 
-def test_the_flat_band_against_a_typical_half_hour_of_tape_and_straddle(scene_factory):
-    # tape 3 points x sqrt(6) = 7.35, straddle 16.4 / 0.68 x sqrt(30 / 209.8) = 9.12: a typical 8.19 points, 0.11 sigma
+def test_the_flat_band_against_a_typical_half_hour_and_hour_of_tape_and_straddle(scene_factory):
+    # 30 minutes: tape 3 points x sqrt(6) = 7.35, straddle 16.4 / 0.68 x sqrt(30 / 209.8) = 9.12: a typical 8.19 points, 0.11 sigma
+    # 60 minutes: tape 3 points x sqrt(12) = 10.39, straddle 16.4 / 0.68 x sqrt(60 / 209.8) = 12.90: a typical 11.58 points, 0.15 sigma
     state, _ = _labels(_reach_scene(scene_factory, 1.5))
     assert state["ruler.flat_band_reach"] == ("the next-30-minute flat band is 0.07 sigma; a typical 30-minute move now (tape and straddle "
                                               "combined) is 0.11 sigma, so the band covers 0.64 of it, between the 0.53 narrow line and the "
-                                              "0.70 wide line")
+                                              "0.70 wide line; the next-60-minute flat band is 0.11 sigma; a typical 60-minute move is 0.15 "
+                                              "sigma, so the band covers 0.71 of it, between the 0.59 narrow line and the 0.77 wide line")
     assert state["ruler.flat_band_reach"] != _labels(_reach_scene(scene_factory, 1.5, em_points=40.0))[0]["ruler.flat_band_reach"]
-    assert _labels(_reach_scene(scene_factory, 4.0))[0]["ruler.flat_band_reach"].endswith("so the band covers 0.39 of it, under the 0.53 narrow line")
-    assert _labels(_reach_scene(scene_factory, 1.2, em_points=8.0))[0]["ruler.flat_band_reach"].endswith(
-        "so the band covers 1.03 of it, over the 0.70 wide line")
+    busy = _labels(_reach_scene(scene_factory, 4.0))[0]["ruler.flat_band_reach"]
+    assert "so the band covers 0.39 of it, under the 0.53 narrow line; " in busy and busy.endswith("0.44 of it, under the 0.59 narrow line")
+    dead = _labels(_reach_scene(scene_factory, 1.2, em_points=8.0))[0]["ruler.flat_band_reach"]
+    assert "so the band covers 1.03 of it, over the 0.70 wide line; " in dead and dead.endswith("1.14 of it, over the 0.77 wide line")
 
 
 def test_the_reach_lines_belong_to_the_middle(scene_factory, monkeypatch):
@@ -191,14 +194,15 @@ def test_the_reach_lines_belong_to_the_middle(scene_factory, monkeypatch):
     monkeypatch.setattr(range_size, "FLAT_REACH_WIDE_30", cover)
     assert "between the 0.53 narrow line" in _labels(scene)[0]["ruler.flat_band_reach"]
     monkeypatch.setattr(range_size, "FLAT_REACH_NARROW_30", cover)
-    assert "between the" in _labels(scene)[0]["ruler.flat_band_reach"]
+    assert f"between the {cover:.2f} narrow line and the {cover:.2f} wide line; " in _labels(scene)[0]["ruler.flat_band_reach"]
 
 
 def test_with_a_scheduled_event_still_ahead_the_tape_stands_alone(scene_factory):
     # 2026-09-16 carries the Fed's decision at 14:00 and its press conference at 14:30 (calendar/events.json)
     before = _labels(_reach_scene(scene_factory, 1.5, day="2026-09-16"))[0]["ruler.flat_band_reach"]
     assert before == ("the next-30-minute flat band is 0.07 sigma; a typical 30-minute move now (the tape alone, with a scheduled event "
-                      "still ahead today) is 0.10 sigma, so the band covers 0.71 of it, over the 0.70 wide line")
+                      "still ahead today) is 0.10 sigma, so the band covers 0.71 of it, over the 0.70 wide line; the next-60-minute flat "
+                      "band is 0.11 sigma; a typical 60-minute move is 0.14 sigma, so the band covers 0.79 of it, over the 0.77 wide line")
     after = _labels(_reach_scene(scene_factory, 1.5, day="2026-09-16", now=at(14, 45, day="2026-09-16", ss=10)))[0]["ruler.flat_band_reach"]
     assert "(tape and straddle combined)" in after
 

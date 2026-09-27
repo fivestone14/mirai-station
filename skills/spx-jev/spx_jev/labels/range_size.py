@@ -11,9 +11,10 @@ import math
 import statistics
 from datetime import datetime, timedelta
 
-from ..cuts import (FLAT_REACH_NARROW_30, FLAT_REACH_WIDE_30, IB_BREAK_SIGMA, IB_EXTEND_SIGMA, MIN_RANK_SESSIONS, MOVE_RULE_SIGMA,
-                    NEXT_30_FLAT_BAND_SIGMA, ONE_RATIO, RANGE_PACE_SLEEPY, RANGE_PACE_WILD, RULER_FLOOR_SIGMA, SHAPE_CUT_SIGMA,
-                    TAPE_BIG_UNITS, TAPE_FLAT_UNITS, THIRD_HI, WALL_NEAR_SIGMA, WINDOW_30_MIN, WINDOW_60_MIN)
+from ..cuts import (FLAT_REACH_NARROW_30, FLAT_REACH_NARROW_60, FLAT_REACH_WIDE_30, FLAT_REACH_WIDE_60, IB_BREAK_SIGMA, IB_EXTEND_SIGMA,
+                    MIN_RANK_SESSIONS, MOVE_RULE_SIGMA, NEXT_30_FLAT_BAND_SIGMA, NEXT_60_FLAT_BAND_SIGMA, ONE_RATIO, RANGE_PACE_SLEEPY,
+                    RANGE_PACE_WILD, RULER_FLOOR_SIGMA, SHAPE_CUT_SIGMA, TAPE_BIG_UNITS, TAPE_FLAT_UNITS, THIRD_HI, WALL_NEAR_SIGMA,
+                    WINDOW_30_MIN, WINDOW_60_MIN)
 from ..events import WORDS as EVENT_KINDS, starts_on
 from ..state_builder import Scene
 from .label_set import LabelSet
@@ -385,20 +386,27 @@ def _pace_vs_priced(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
 
 
 def _flat_band_reach(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
-    reach, how = typical_move(scene, anchor, WINDOW_30_MIN)
-    if reach is None:
-        ls.omit("ruler.flat_band_reach", how)
-        return
-    typical = reach / anchor.points
-    cover = NEXT_30_FLAT_BAND_SIGMA / typical
-    if cover < FLAT_REACH_NARROW_30:
-        band = f"under the {FLAT_REACH_NARROW_30:.2f} narrow line"
-    elif cover > FLAT_REACH_WIDE_30:
-        band = f"over the {FLAT_REACH_WIDE_30:.2f} wide line"
-    else:
-        band = f"between the {FLAT_REACH_NARROW_30:.2f} narrow line and the {FLAT_REACH_WIDE_30:.2f} wide line"
-    ls.put("ruler.flat_band_reach", ruled(anchor, f"the next-30-minute flat band is {sig(NEXT_30_FLAT_BAND_SIGMA)}; a typical 30-minute move "
-                                                  f"now ({how}) is {sig(typical)}, so the band covers {cover:.2f} of it, {band}"))
+    """The flat band against a typical move now, for each horizon flat_band_reach is asked at: the next 30 and 60 minutes."""
+    clauses = []
+    for minutes, band, narrow, wide in ((WINDOW_30_MIN, NEXT_30_FLAT_BAND_SIGMA, FLAT_REACH_NARROW_30, FLAT_REACH_WIDE_30),
+                                        (WINDOW_60_MIN, NEXT_60_FLAT_BAND_SIGMA, FLAT_REACH_NARROW_60, FLAT_REACH_WIDE_60)):
+        reach, how = typical_move(scene, anchor, minutes)
+        if reach is None:
+            ls.omit("ruler.flat_band_reach", how)
+            return
+        typical = reach / anchor.points
+        cover = band / typical
+        if cover < narrow:
+            line = f"under the {narrow:.2f} narrow line"
+        elif cover > wide:
+            line = f"over the {wide:.2f} wide line"
+        else:
+            line = f"between the {narrow:.2f} narrow line and the {wide:.2f} wide line"
+        # both horizons combine the same sources, so only the first says which
+        now = f"now ({how}) " if not clauses else ""
+        clauses.append(f"the next-{minutes}-minute flat band is {sig(band)}; a typical {minutes}-minute move {now}is {sig(typical)}, "
+                       f"so the band covers {cover:.2f} of it, {line}")
+    ls.put("ruler.flat_band_reach", ruled(anchor, "; ".join(clauses)))
 
 
 def _unit_vs_normal(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None:
