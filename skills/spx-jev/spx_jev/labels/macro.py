@@ -75,6 +75,11 @@ def link_span(end: datetime) -> int:
     return min(WINDOW_60_MIN, int((end - session_open(end) - ONE_MINUTE) / ONE_MINUTE))
 
 
+def link_words(end: datetime) -> str:
+    """When the link to ``end`` was measured, as a sentence says it."""
+    return "this hour" if link_span(end) == WINDOW_60_MIN else f"since {session_open(end) + ONE_MINUTE:%H:%M}"
+
+
 def link_need(span: int) -> int:
     """The minutes with both prices a link over ``span`` minutes needs."""
     return math.ceil(MIN_LINK_MINUTES * span / WINDOW_60_MIN)
@@ -119,7 +124,7 @@ def _bond_gap(against: AgainstIndex, ls: LabelSet) -> None:
             continue
         side = fifth_side(rank)
         tight = abs(corr) >= BOND_LINK_TIGHT
-        link = (f"this hour bond prices and stocks moved {'together' if corr >= 0 else 'in opposite directions'} minute by minute "
+        link = (f"{link_words(against.scene.now)} bond prices and stocks moved {'together' if corr >= 0 else 'in opposite directions'} minute by minute "
                 f"(link {corr:+.2f}, {'tight, at least' if tight else 'loose, under'} the {BOND_LINK_TIGHT} tight line): "
                 f"bond prices up has gone with stocks {'up' if corr >= 0 else 'down'}")
         if bond_market_closed(date.fromisoformat(against.scene.day)):
@@ -194,7 +199,7 @@ def _macro_gap(against: AgainstIndex, ls: LabelSet) -> None:
     ran = f"{' and '.join(sides)} what the index's {sig(abs(idx))} {'rise' if idx >= 0 else 'fall'} would match"
     verdict = {1: "ahead of the index in the stocks-up direction", -1: "ahead of the index in the stocks-down direction",
                0: "in line with the index"}[side]
-    ls.put(path, f"over the last {WINDOW_30_MIN} minutes {ran}: taken together, each signed by how it moved with stocks this hour, "
+    ls.put(path, f"over the last {WINDOW_30_MIN} minutes {ran}: taken together, each signed by how it moved with stocks {link_words(against.scene.now)}, "
                  f"the complex is {verdict}, {FIFTH_WORDS[side]} for this half hour, {rank.words()}{against.ruler_note}")
 
 
