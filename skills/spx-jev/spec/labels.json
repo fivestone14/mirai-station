@@ -434,10 +434,10 @@
    "from": "dex_views.dex_above_spot (the 0-to-7-day books)",
    "logic": "dealers' delta at strikes above price against below",
    "cut": "EVEN_SPLIT_LOW, EVEN_SPLIT_HIGH",
-   "reads_as": "63% of dealers' directional exposure across the 0-to-7-day books sits at strikes below price, most of it",
+   "reads_as": "63% of the directional exposure across the 0-to-7-day books, under the usual assumption that dealers hold the calls and are short the puts, sits at strikes below price, past the 40%-60% even band",
    "real": {
     "at": "2026-09-25 12:45",
-    "sentence": "63% of dealers' directional exposure across the 0-to-7-day books sits at strikes below price, most of it"
+    "sentence": "63% of the directional exposure across the 0-to-7-day books, under the usual assumption that dealers hold the calls and are short the puts, sits at strikes below price, past the 40%-60% even band"
    }
   },
   {
