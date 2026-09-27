@@ -224,6 +224,19 @@ def test_an_unsealed_session_stops_the_update_and_one_before_the_loop_is_passed_
     assert [l.get("why") for l in log] == ["no read carries a snapshot: before the loop"] * 2 + ["unsealed: a read still has a horizon to grade"]
 
 
+def test_a_state_made_under_other_constants_stops_the_update(tmp_path):
+    _write_session(tmp_path, "2026-09-14", [("up", "up")])
+    update(tmp_path, today="2026-09-15")
+    for name in ("pool_30.json", "pool_60.json"):
+        path = tmp_path / name
+        path.write_text(json.dumps({**json.loads(path.read_text()), "constants_hash": "deadbeefdeadbeef"}))
+    _write_session(tmp_path, "2026-09-15", [("up", "up")])
+    assert update(tmp_path, today="2026-09-16")["next_30"] == "constants changed; stopped"
+    assert json.loads((tmp_path / "pool_30.json").read_text())["last_session_applied"] == "2026-09-14"
+    log = [json.loads(l) for l in (tmp_path / pool.LOG_NAME).read_text().splitlines()]
+    assert log[-1]["applied"] is False and log[-1]["why"].startswith("constants changed")
+
+
 def test_a_session_with_a_read_missing_its_snapshot_fails_closed_and_an_event_read_is_left_out(tmp_path):
     _write_session(tmp_path, "2026-09-14", [("up", "up"), ("flat", "flat")], event_at=1)
     update(tmp_path, today="2026-09-15")

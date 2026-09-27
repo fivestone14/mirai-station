@@ -562,7 +562,8 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE) -> dict[s
     so the primary's promotion sees the same day's veto). A session is sealed once it is over and every
     read has a terminal grade at every horizon. An unsealed session, or one some of whose reads carry no
     snapshot, stops the run and is logged (fail closed); one none of whose reads carries a snapshot is
-    from before the loop and is passed over. A session already applied is never applied again.
+    from before the loop and is passed over. A session already applied is never applied again. A state
+    made under other constants (its constants_hash) stops the run before anything is applied.
     Returns ``{h: what happened}``."""
     out_dir = Path(out_dir)
     today = today or datetime.now(ET).date().isoformat()
@@ -570,6 +571,12 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE) -> dict[s
     order = sorted(lane.horizons, key=lambda h: -lane.horizons[h][0])
     states = {h: load_state(out_dir, lane.horizons[h][0]) for h in order}
     said = {h: "nothing new to apply" for h in order}
+    changed = [h for h in order if states[h].get("constants_hash") != CONSTANTS_HASH]
+    if changed:
+        # the constants are fixed for the trial (06): a state learned under others is not added to
+        _log(out_dir, {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "code": CODE_HASH, "applied": False,
+                       "why": f"constants changed since {', '.join(changed)} began: stopped, fail closed"})
+        return {h: "constants changed; stopped" for h in order}
     watermark = min((s["last_session_applied"] or "") for s in states.values())
     hour_dir = out_dir / "hour"
     for day in sorted(p.stem for p in hour_dir.glob("*.jsonl")) if hour_dir.exists() else []:
