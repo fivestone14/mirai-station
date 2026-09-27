@@ -644,9 +644,14 @@ def _cross_asset(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) -
     tick_verdict = (f"at or past the {TICK_EXTREME} extreme" if tick * side >= TICK_EXTREME else
                     f"past the {TICK_EXTREME} extreme but against the shock" if abs(tick) >= TICK_EXTREME else
                     f"short of the {TICK_EXTREME} extreme")
-    shelter = -statistics.fmean(defensive) * side
-    defensive_words = (f"moved {sig(abs(shelter))} {'against' if shelter > 0 else 'with'} the shock beyond their usual link"
-                       if round(shelter, 2) else "moved with their usual link to the index")
+    shelter = statistics.fmean(defensive)
+    defensive_words = (f"{'rose' if shelter > 0 else 'fell'} {sig(abs(shelter))} beyond their usual link, "
+                       f"{'with' if shelter * side > 0 else 'against'} the shock" if round(shelter, 2) else
+                       "moved with their usual link to the index")
+    bid_rule = f"the {SHOCK_GROUP_SIGMA:.2f} sigma defensive-bid rule"
+    defensive_verdict = (f"past {bid_rule}" if side < 0 and shelter >= SHOCK_GROUP_SIGMA else
+                         f"not {bid_rule}, which needs them rising against a falling index" if abs(shelter) >= SHOCK_GROUP_SIGMA else
+                         f"short of {bid_rule}")
     moved = "rose" if side > 0 else "fell"
     ls.put(path, f"during the shock the ten-year yield {'rose' if rates > 0 else 'fell'} {abs(rates):.1f} basis points beyond its usual "
                  f"link to the index, {'past' if abs(rates) >= RATES_SHOCK_BP else 'short of'} the {RATES_SHOCK_BP} basis-point rule; "
@@ -655,5 +660,4 @@ def _cross_asset(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) -
                  f"{with_it} of {len(sectors)} sector funds {moved} with it, "
                  f"{'at or past' if with_it >= SECTOR_BROAD else 'short of'} the {SECTOR_BROAD}-fund broad count, and NYSE TICK "
                  f"reached {round(tick)}, {tick_verdict}; "
-                 f"the defensive funds (staples, utilities, health care) {defensive_words}, "
-                 f"{'past' if shelter >= SHOCK_GROUP_SIGMA else 'short of'} the {SHOCK_GROUP_SIGMA:.2f} sigma rule")
+                 f"the defensive funds (staples, utilities, health care) {defensive_words}, {defensive_verdict}")

@@ -485,7 +485,21 @@ def test_what_moved_with_the_shock(scene_factory):
         "semiconductors rose 0.15 sigma beyond theirs, past the 0.10 sigma rule, the shock's way; no megacap's share of it is "
         "measured, since their index weights are not on file; 10 of 11 sector funds rose with it, at or past the 9-fund broad "
         "count, and NYSE TICK reached 1240, at or past the 1000 extreme; the defensive funds (staples, utilities, health care) "
-        "moved 0.11 sigma against the shock beyond their usual link, past the 0.10 sigma rule")
+        "fell 0.11 sigma beyond their usual link, against the shock, not the 0.10 sigma defensive-bid rule, which needs them "
+        "rising against a falling index")
+
+
+def test_defensives_rising_against_a_falling_index_are_the_defensive_bid(scene_factory):
+    s = burst_scene(scene_factory, at(12, 2, BURST_DAY), size=-12.0, after=-6.0)
+    text = labels(replace(s, market=burst_market(s, defensive_extra=11.0, tick=-1240.0)))[0]["shock.cross_asset"]
+    assert text.endswith("the defensive funds (staples, utilities, health care) rose 0.11 sigma beyond their usual link, "
+                         "against the shock, past the 0.10 sigma defensive-bid rule")
+    short = labels(replace(s, market=burst_market(s, defensive_extra=9.0, tick=-1240.0)))[0]["shock.cross_asset"]
+    assert short.endswith("rose 0.09 sigma beyond their usual link, against the shock, short of the 0.10 sigma defensive-bid rule")
+    rally = burst_scene(scene_factory, at(12, 2, BURST_DAY), after=6.0)
+    with_it = labels(replace(rally, market=burst_market(rally, defensive_extra=11.0)))[0]["shock.cross_asset"]
+    assert with_it.endswith("rose 0.11 sigma beyond their usual link, with the shock, not the 0.10 sigma defensive-bid rule, "
+                            "which needs them rising against a falling index")
 
 
 def test_the_cross_asset_rules_at_their_boundaries(scene_factory):
@@ -495,7 +509,7 @@ def test_the_cross_asset_rules_at_their_boundaries(scene_factory):
     assert "the ten-year yield rose 2.9 basis points beyond its usual link to the index, short of the 3 basis-point rule" in text
     assert "semiconductors fell 0.15 sigma beyond theirs, past the 0.10 sigma rule but against the shock" in text
     assert "8 of 11 sector funds rose with it, short of the 9-fund broad count, and NYSE TICK reached 999, short of the 1000 extreme" in text
-    assert text.endswith("moved with their usual link to the index, short of the 0.10 sigma rule")
+    assert text.endswith("moved with their usual link to the index, short of the 0.10 sigma defensive-bid rule")
     at_the_lines = labels(replace(s, market=burst_market(s, lagging=("XLRE", "XLB"), tick=1000.0)))[0]["shock.cross_asset"]
     assert "9 of 11 sector funds rose with it, at or past the 9-fund broad count, and NYSE TICK reached 1000, at or past" in at_the_lines
     wrong_way = labels(replace(s, market=burst_market(s, tick=-1100.0)))[0]["shock.cross_asset"]
