@@ -98,10 +98,11 @@ CODE_HASH = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:16]
 
 
 def question_version(q: dict) -> str:
-    """A question's version: its type, options and wording. Any change makes it a new question to the loop."""
-    crit = q.get("criteria")
-    body = {"type": q.get("type"), "options": sorted(crit) if isinstance(crit, dict) else crit,
-            "words": [q.get("ask"), q.get("instructions")]}
+    """A question's version: its type, options and wording, the criteria JEV is sent in full (with the cuts
+    filled into them) and the options in their order, which a score's list criteria are read by. Any change
+    makes it a new question to the loop."""
+    body = {"type": q.get("type"), "criteria": q.get("criteria"), "options": q.get("options"),
+            "code_criteria": q.get("code_criteria"), "words": [q.get("ask"), q.get("instructions")]}
     return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()[:12]
 
 

@@ -140,6 +140,20 @@ def test_a_question_joins_at_its_prior_share_leaves_to_the_archive_and_restarts_
     assert set(state["archived"]) == {"q_a@v1", "q_b@v1"} and state["family"] == ["q_a@v1", "q_b@v1", "q_a@v2"]
 
 
+def test_a_questions_version_changes_with_any_word_jev_is_sent_and_with_its_options_order():
+    from spx_jev.ask import load_questions
+    from spx_jev.lane import LIVE
+    by_id = {qid: q for g in load_questions(LIVE.questions, LIVE.key)["groups"] for qid, q in g["questions"].items()}
+    choice = next(q for q in by_id.values() if isinstance(q.get("criteria"), dict))
+    score = next(q for q in by_id.values() if isinstance(q.get("criteria"), list) and q.get("options"))
+    first = next(iter(choice["criteria"]))
+    reworded = {**choice, "criteria": {**choice["criteria"], first: "a different meaning"}}
+    reordered = {**score, "options": list(reversed(score["options"]))}
+    assert pool.question_version(reworded) != pool.question_version(choice)
+    assert pool.question_version(reordered) != pool.question_version(score)
+    assert pool.question_version(dict(choice)) == pool.question_version(choice)
+
+
 def test_the_pool_is_promoted_after_twenty_winning_days_and_the_phone_switch_stays_off(monkeypatch):
     state = cold_state()
     membership(state, MEMBERS, "2026-09-01")
