@@ -1,0 +1,712 @@
+{
+ "name": "spx-jev label spec",
+ "version": "0.1",
+ "date": "2026-09-26",
+ "purpose": "Every label the SPX state builder writes, with the logic and cut under it. Built labels are checked against the code by a test; lane labels are written by the tape lane only. Cut names are the constants in spx_jev/cuts.py and state_builder.py; the options-book labels name the book (expiry) they describe.",
+ "statuses": {
+  "built": "in state_builder.py today, writing sentences",
+  "lane": "written by the tape lane only: a read on the bar clock, never by the live lane"
+ },
+ "types": {
+  "distance": "how far, in sigma, today's expected move (tape labels: tape units)",
+  "rank": "where it sits against its own history at the same time of day",
+  "share": "one part against the whole, or one window against another",
+  "change": "against an earlier reading",
+  "count": "how many",
+  "state": "which of a few named situations"
+ },
+ "how_one_label_is_built": [
+  "pick the moment: one diary row is now, plus only the minutes that had already closed",
+  "take the raw numbers untouched (row_adapter keeps only the fields named); if one is missing, stop and record why",
+  "put the number on a scale: divide by sigma, or rank it against past sessions at this clock time",
+  "judge it against a cut from cuts.py, in code",
+  "write one sentence that carries the number, the cut and, for the options book, which expiry it describes",
+  "hand it to the packer, which gives each question only the sentences it names"
+ ],
+ "viewpoints": [
+  {
+   "id": "strikes",
+   "title": "The strikes and the books: weight, walls, which expiry holds them"
+  },
+  {
+   "id": "volume_price",
+   "title": "Price action (SPX prints no volume of its own)"
+  },
+  {
+   "id": "history",
+   "title": "Yesterday, the day before, the last five sessions"
+  },
+  {
+   "id": "indicators",
+   "title": "RSI, implied volatility and the VIX curve"
+  },
+  {
+   "id": "space_time",
+   "title": "Space and time: where price sits in the day, the session and the expiry calendar"
+  },
+  {
+   "id": "market",
+   "title": "The market around SPX: NYSE breadth and the sectors"
+  }
+ ],
+ "real_rows_note": "real sentences come from `python3 -m spx_jev.build --day 2026-09-25 --at 12:45` (and `--at 09:50 --lane tape` for the tape range); where nothing on disk could show a label (the breadth labels before any market-context snapshot, the move since the last read on a first read), real is null and reads_as is the test fixture's sentence",
+ "labels": [
+  {
+   "path": "context.symbol",
+   "viewpoint": "space_time",
+   "status": "built",
+   "type": "state",
+   "from": "constant",
+   "logic": "the index's name",
+   "cut": "none",
+   "reads_as": "SPX",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "SPX"
+   }
+  },
+  {
+   "path": "context.units",
+   "viewpoint": "space_time",
+   "status": "built",
+   "type": "state",
+   "from": "constant",
+   "logic": "the gloss on sigma, signs, options weight, walls, 0DTE, the opening box, RSI and the NYSE tick; the tape lane adds the tape unit",
+   "cut": "none",
+   "reads_as": "the gloss JEV reads first, on every request",
+   "real": null
+  },
+  {
+   "path": "context.horizon",
+   "viewpoint": "space_time",
+   "status": "built",
+   "type": "state",
+   "from": "the lane",
+   "logic": "the lane's primary horizon in words",
+   "cut": "none",
+   "reads_as": "the next 30 minutes",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "the next 30 minutes"
+   }
+  },
+  {
+   "path": "context.session_progress",
+   "viewpoint": "space_time",
+   "status": "built",
+   "type": "share",
+   "from": "the row's timestamp, the session's close",
+   "logic": "minutes since the open over the session's minutes, the fifth, and the phase (first hour, middle, last hour)",
+   "cut": "fifths; the first and last 60 minutes",
+   "reads_as": "50% of the session has passed, the third fifth; the middle of the session, 195 minutes after the open and 195 minutes before the close",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "50% of the session has passed, the third fifth; the middle of the session, 195 minutes after the open and 195 minutes before the close"
+   }
+  },
+  {
+   "path": "context.time_since_last_move",
+   "viewpoint": "space_time",
+   "status": "built",
+   "type": "count",
+   "from": "the minute bars, sigma",
+   "logic": "the last minute whose 10-minute close-to-close move reached the move rule, and how long ago",
+   "cut": "MOVE_RULE_SIGMA; under 10, 10 to 60, over 60 minutes",
+   "reads_as": "price last made a real move of 0.09 sigma within 10 minutes 11 minutes ago, between 10 and 60 minutes ago",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "price last made a real move of 0.09 sigma within 10 minutes 11 minutes ago, between 10 and 60 minutes ago"
+   }
+  },
+  {
+   "path": "price.recent_move",
+   "viewpoint": "volume_price",
+   "status": "built",
+   "type": "distance",
+   "from": "spot, the minute bars, sigma",
+   "logic": "(spot - close 30 minutes ago) / sigma",
+   "cut": "MOVE_RULE_SIGMA",
+   "reads_as": "over the last 30 minutes price stayed within 0.09 sigma of where it was, moving -0.05 sigma",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "over the last 30 minutes price stayed within 0.09 sigma of where it was, moving -0.05 sigma"
+   }
+  },
+  {
+   "path": "price.day_range_position",
+   "viewpoint": "space_time",
+   "status": "built",
+   "type": "share",
+   "from": "spot, today's bars",
+   "logic": "(spot - day low) / (day high - day low), the day's extremes including spot",
+   "cut": "thirds",
+   "reads_as": "price is in the top third of today's range so far, 88% of the way up from the low to the high",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "price is in the top third of today's range so far, 88% of the way up from the low to the high"
+   }
+  },
+  {
+   "path": "price.vs_vwap",
+   "viewpoint": "volume_price",
+   "status": "built",
+   "type": "distance",
+   "from": "spot, vwap, sigma",
+   "logic": "(spot - vwap) / sigma",
+   "cut": "MOVE_RULE_SIGMA",
+   "reads_as": "price is 0.25 sigma above the day's volume-weighted average price, more than the 0.09 sigma move rule",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "price is 0.25 sigma above the day's volume-weighted average price, more than the 0.09 sigma move rule"
+   }
+  },
+  {
+   "path": "price.vs_prior_close",
+   "viewpoint": "history",
+   "status": "built",
+   "type": "distance",
+   "from": "spot, prior_close, sigma",
+   "logic": "(spot - prior close) / sigma",
+   "cut": "MOVE_RULE_SIGMA, OUTLIER_DAY_SIGMA",
+   "reads_as": "price is 0.51 sigma above last night's close, within 0.53 sigma, an ordinary day so far",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "price is 0.51 sigma above last night's close, within 0.53 sigma, an ordinary day so far"
+   }
+  },
+  {
+   "path": "price.minute_width",
+   "viewpoint": "volume_price",
+   "status": "built",
+   "type": "share",
+   "from": "today's bars",
+   "logic": "the newest bar's high-low over today's median bar high-low",
+   "cut": "MINUTE_WIDTH_CUT",
+   "reads_as": "this minute's range is 1.2 times a typical minute today, within the 2-times cut",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "this minute's range is 1.2 times a typical minute today, within the 2-times cut"
+   }
+  },
+  {
+   "path": "price.vs_yesterday",
+   "viewpoint": "history",
+   "status": "built",
+   "type": "distance",
+   "from": "spot, yesterday's bars, sigma",
+   "logic": "spot against yesterday's high and low, in sigma",
+   "cut": "MOVE_RULE_SIGMA for at it",
+   "reads_as": "price is 0.31 sigma above yesterday's high, more than the 0.09 sigma move rule",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "price is 0.31 sigma above yesterday's high, more than the 0.09 sigma move rule"
+   }
+  },
+  {
+   "path": "price.vs_day_before",
+   "viewpoint": "history",
+   "status": "built",
+   "type": "distance",
+   "from": "spot, the day before's bars, sigma",
+   "logic": "spot against the day before's high, low and close, in sigma",
+   "cut": "MOVE_RULE_SIGMA for at it",
+   "reads_as": "price is inside the session before yesterday's range, 0.26 sigma below its high and 0.63 sigma above its low; it is 0.45 sigma above the session before yesterday's close",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "price is inside the session before yesterday's range, 0.26 sigma below its high and 0.63 sigma above its low; it is 0.45 sigma above the session before yesterday's close"
+   }
+  },
+  {
+   "path": "price.multi_day_position",
+   "viewpoint": "space_time",
+   "status": "built",
+   "type": "share",
+   "from": "spot, the last 5 sessions' bars, sigma",
+   "logic": "spot against the last 5 sessions' high and low: new ground, or the third it sits in",
+   "cut": "thirds; needs MIN_RANGE_SESSIONS",
+   "reads_as": "price is in the top third of the last 5 sessions' range, 77% of the way up from its low to its high, 0.52 sigma below that high and 1.74 sigma above their low",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "price is in the top third of the last 5 sessions' range, 77% of the way up from its low to its high, 0.52 sigma below that high and 1.74 sigma above their low"
+   }
+  },
+  {
+   "path": "range.box_status",
+   "viewpoint": "space_time",
+   "status": "built",
+   "type": "state",
+   "from": "today's bars, sigma",
+   "logic": "the first 30 minutes' high and low; a break is a close past the edge by two typical minutes",
+   "cut": "the move bar: MOVE_BAR_MINUTES times the median 1-minute range of the last 30 bars",
+   "reads_as": "price has broken above the opening box and sits 0.12 sigma beyond its top; the box is 0.34 sigma wide",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "price has broken above the opening box and sits 0.12 sigma beyond its top; the box is 0.34 sigma wide"
+   }
+  },
+  {
+   "path": "range.today_vs_normal",
+   "viewpoint": "history",
+   "status": "built",
+   "type": "rank",
+   "from": "today's bars, the last 5 sessions' bars",
+   "logic": "today's range over its open against the same clock time on each prior session",
+   "cut": "thirds; needs MIN_RANGE_SESSIONS",
+   "reads_as": "today's range so far is in the top third of the last 5 sessions at this time of day, larger than 4 of them",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "today's range so far is in the top third of the last 5 sessions at this time of day, larger than 4 of them"
+   }
+  },
+  {
+   "path": "range.prior_level_touches",
+   "viewpoint": "history",
+   "status": "built",
+   "type": "count",
+   "from": "today's bars, yesterday's bars",
+   "logic": "minutes today within two typical minutes of yesterday's high, low and close",
+   "cut": "the move bar",
+   "reads_as": "price has spent 74 minutes within reach of yesterday's high, 0 minutes within reach of yesterday's low and 56 minutes within reach of yesterday's close today, counting reach as two typical minutes of range",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "price has spent 74 minutes within reach of yesterday's high, 0 minutes within reach of yesterday's low and 56 minutes within reach of yesterday's close today, counting reach as two typical minutes of range"
+   }
+  },
+  {
+   "path": "range.session_shape",
+   "viewpoint": "space_time",
+   "status": "built",
+   "type": "state",
+   "from": "today's bars, sigma",
+   "logic": "extension from the open and giveback from the extreme, or the net move from the open",
+   "cut": "SHAPE_CUT_SIGMA",
+   "reads_as": "so far today price fell 0.22 sigma below the open then recovered 0.65 sigma of it, so the session has reversed up, past the 0.09 sigma cut",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "so far today price fell 0.22 sigma below the open then recovered 0.65 sigma of it, so the session has reversed up, past the 0.09 sigma cut"
+   }
+  },
+  {
+   "path": "range.nearest_level",
+   "viewpoint": "space_time",
+   "status": "built",
+   "type": "state",
+   "from": "vwap, today's and yesterday's bars, the walls, sigma",
+   "logic": "the nearest of the day's average, the day's high and low before the window, yesterday's high, low and close and the walls, and what price did at it in the last 30 minutes",
+   "cut": "MOVE_RULE_SIGMA reach, WALL_NEAR_SIGMA near",
+   "reads_as": "the nearest level is the day's high, 0.09 sigma above price, within the 0.09 sigma reach, untouched in the last 30 minutes",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "the nearest level is the day's high, 0.09 sigma above price, within the 0.09 sigma reach, untouched in the last 30 minutes"
+   }
+  },
+  {
+   "path": "iv.trend_30min",
+   "viewpoint": "indicators",
+   "status": "built",
+   "type": "change",
+   "from": "atm_iv on today's rows",
+   "logic": "at-the-money IV now minus about 30 minutes ago, in vol points; not described in the 0DTE book's last hour",
+   "cut": "IV_FLAT_BAND_PTS; ZERO_DTE_LAST_HOUR_MIN",
+   "reads_as": "over the last 30 minutes at-the-money implied volatility fell 0.84 vol points, more than the 0.8 point flat band",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "over the last 30 minutes at-the-money implied volatility fell 0.84 vol points, more than the 0.8 point flat band"
+   }
+  },
+  {
+   "path": "iv.vs_realized_30",
+   "viewpoint": "indicators",
+   "status": "built",
+   "type": "share",
+   "from": "the minute bars' closes, sigma",
+   "logic": "realized movement over 30 minutes against sigma times the square root of 30 over 390",
+   "cut": "REALIZED_QUIET_RATIO, REALIZED_WILD_RATIO",
+   "reads_as": "over the last 30 minutes price's realized movement, from its 1-minute closes, was 0.21 sigma, 0.77 times the 0.28 sigma move the options market prices for 30 minutes, over the 0.61-times cut, so wilder than priced",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "over the last 30 minutes price's realized movement, from its 1-minute closes, was 0.21 sigma, 0.77 times the 0.28 sigma move the options market prices for 30 minutes, over the 0.61-times cut, so wilder than priced"
+   }
+  },
+  {
+   "path": "iv.expected_move_used",
+   "viewpoint": "indicators",
+   "status": "built",
+   "type": "share",
+   "from": "range_ruler.em_consumed (else day range over em_open)",
+   "logic": "today's range over today's expected move",
+   "cut": "half, all",
+   "reads_as": "today's range so far has used 1.8 times today's expected move, more than all of it",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "today's range so far has used 1.8 times today's expected move, more than all of it"
+   }
+  },
+  {
+   "path": "iv.move_sides",
+   "viewpoint": "indicators",
+   "status": "built",
+   "type": "share",
+   "from": "adaptive_em.down_share",
+   "logic": "the expected move's split between down and up",
+   "cut": "EVEN_SPLIT_LOW, EVEN_SPLIT_HIGH",
+   "reads_as": "the day's expected move splits 52% down and 48% up, even within the 40% to 60% band",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "the day's expected move splits 52% down and 48% up, even within the 40% to 60% band"
+   }
+  },
+  {
+   "path": "iv.term_structure",
+   "viewpoint": "indicators",
+   "status": "built",
+   "type": "share",
+   "from": "vix_ts",
+   "logic": "the VIX over the three-month VIX",
+   "cut": "VIX_CURVE_FLAT",
+   "reads_as": "the VIX is 0.83 times the three-month VIX, below 1: near-term fear is priced under three-month fear, the calm shape",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "the VIX is 0.83 times the three-month VIX, below 1: near-term fear is priced under three-month fear, the calm shape"
+   }
+  },
+  {
+   "path": "gex.weight_side",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "share",
+   "from": "gex_views.gamma_above_spot, gamma_below_spot (today's 0DTE book)",
+   "logic": "gamma above over gamma above plus below",
+   "cut": "EVEN_SPLIT_LOW, EVEN_SPLIT_HIGH",
+   "reads_as": "today's 0DTE options weight is split about evenly above and below price, 59% above",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "today's 0DTE options weight is split about evenly above and below price, 59% above"
+   }
+  },
+  {
+   "path": "gex.air_to_wall",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "distance",
+   "from": "call_wall, put_wall (the operative walls: 0DTE first, else 1-to-7-day), sigma",
+   "logic": "distance to the nearer wall in sigma",
+   "cut": "WALL_NEAR_SIGMA",
+   "reads_as": "a heavy strike sits within 0.63 sigma of price: the put wall 0.56 sigma below price",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "a heavy strike sits within 0.63 sigma of price: the put wall 0.56 sigma below price"
+   }
+  },
+  {
+   "path": "gex.wall_thickness",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "share",
+   "from": "gex_views.call_wall_gamma_share or put_wall_gamma_share (today's 0DTE gamma walls)",
+   "logic": "the 0DTE gamma wall's share of the 0DTE book's weight, on the nearer wall's side",
+   "cut": "WALL_THIN_SHARE, WALL_THICK_SHARE",
+   "reads_as": "on the nearest wall's side, today's 0DTE put wall holds 4% of today's 0DTE options weight, middling, between the 3% thin cut and the 10% thick cut",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "on the nearest wall's side, today's 0DTE put wall holds 4% of today's 0DTE options weight, middling, between the 3% thin cut and the 10% thick cut"
+   }
+  },
+  {
+   "path": "gex.heaviest_strike_grip",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "share",
+   "from": "gex_views.pin_top_share (today's 0DTE book)",
+   "logic": "the heaviest strike's share of the 0DTE book's weight",
+   "cut": "GRIP_SPREAD_SHARE, GRIP_CONCENTRATED_SHARE",
+   "reads_as": "the single heaviest strike of today's 0DTE book holds 6% of its weight, middling, between the 4% and 16% cuts",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "the single heaviest strike of today's 0DTE book holds 6% of its weight, middling, between the 4% and 16% cuts"
+   }
+  },
+  {
+   "path": "gex.delta_weight_side",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "share",
+   "from": "dex_views.dex_above_spot (the 0-to-7-day books)",
+   "logic": "dealers' delta at strikes above price against below",
+   "cut": "EVEN_SPLIT_LOW, EVEN_SPLIT_HIGH",
+   "reads_as": "63% of dealers' directional exposure across the 0-to-7-day books sits at strikes below price, most of it",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "63% of dealers' directional exposure across the 0-to-7-day books sits at strikes below price, most of it"
+   }
+  },
+  {
+   "path": "gex.expiry_roll",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "state",
+   "from": "call_wall, put_wall, call_wall_tenor, put_wall_tenor (the 1-to-7-day walls)",
+   "logic": "whether the 1-to-7-day book's wall is the same strike as the operative wall, per side",
+   "cut": "same or different",
+   "reads_as": "on the put side the 1-to-7-day book's wall is a different strike from the nearest put wall",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "on the put side the 1-to-7-day book's wall is a different strike from the nearest put wall"
+   }
+  },
+  {
+   "path": "gex.ladder_state",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "state",
+   "from": "profile_ladder.state (today's 0DTE book)",
+   "logic": "the gamma ladder's state, verbatim",
+   "cut": "none",
+   "reads_as": "today's 0DTE gamma ladder is in the positive state",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "today's 0DTE gamma ladder is in the positive state"
+   }
+  },
+  {
+   "path": "options.turnover",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "share",
+   "from": "gex_views.vol_side_by_strike, oi_side_by_strike (today's 0DTE book)",
+   "logic": "contracts traded over standing open interest",
+   "cut": "TURNOVER_LOW, TURNOVER_HIGH",
+   "reads_as": "today's 0DTE contracts traded are 6.5 times their standing open position, more than 3 times it",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "today's 0DTE contracts traded are 6.5 times their standing open position, more than 3 times it"
+   }
+  },
+  {
+   "path": "options.call_put_split",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "share",
+   "from": "gex_views.vol_side_by_strike (today's 0DTE book)",
+   "logic": "calls' share of contracts traded",
+   "cut": "EVEN_SPLIT_LOW, EVEN_SPLIT_HIGH",
+   "reads_as": "52% of today's 0DTE contracts traded near price were calls, an even split within 40% to 60%",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "52% of today's 0DTE contracts traded near price were calls, an even split within 40% to 60%"
+   }
+  },
+  {
+   "path": "options.new_activity",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "share",
+   "from": "gex_views.vol_gross_by_strike (today's 0DTE book), spot",
+   "logic": "the busiest strike's share of option volume, and where it sits",
+   "cut": "BUSIEST_STRIKE_SHARE",
+   "reads_as": "today's 0DTE option volume is spread across strikes, no strike holding more than 11% of it; the busiest holds 6%",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "today's 0DTE option volume is spread across strikes, no strike holding more than 11% of it; the busiest holds 6%"
+   }
+  },
+  {
+   "path": "expiry.settle_clock",
+   "viewpoint": "space_time",
+   "status": "built",
+   "type": "count",
+   "from": "the read's time, the session calendar (expiry.todays_settle)",
+   "logic": "minutes to today's 0DTE settle, and whether that is inside the 0DTE book's last hour",
+   "cut": "ZERO_DTE_LAST_HOUR_MIN",
+   "reads_as": "today's 0DTE SPXW options settle at the 16:00 ET close, 195 minutes from now, before their last 60 minutes, when their gamma decays fastest",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "today's 0DTE SPXW options settle at the 16:00 ET close, 195 minutes from now, before their last 60 minutes, when their gamma decays fastest"
+   }
+  },
+  {
+   "path": "expiry.opex_today",
+   "viewpoint": "space_time",
+   "status": "built",
+   "type": "state",
+   "from": "the date, the session calendar (expiry.expiry_kinds)",
+   "logic": "an ordinary daily expiry, the monthly or the quarterly expiry, and the quarter-end; otherwise how far the next monthly is",
+   "cut": "the third Friday; the quarter's last trading day",
+   "reads_as": "today is an ordinary daily expiry; the next monthly expiry is 15 trading days away",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "today is an ordinary daily expiry; the next monthly expiry is 15 trading days away"
+   }
+  },
+  {
+   "path": "expiry.dated_weight",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "share",
+   "from": "dated_gex.bands (the monthly and quarter-end books, this morning's open interest)",
+   "logic": "which dated book holds the most gamma, and its share",
+   "cut": "the largest share; omitted unless this morning's pull is fresh",
+   "reads_as": "of the dated books pulled this morning (2 monthly, 1 quarter-end), the monthly expiry 21 days out holds the most options weight, 54% of their gamma",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "of the dated books pulled this morning (2 monthly, 1 quarter-end), the monthly expiry 21 days out holds the most options weight, 54% of their gamma"
+   }
+  },
+  {
+   "path": "expiry.today_vs_week",
+   "viewpoint": "strikes",
+   "status": "built",
+   "type": "state",
+   "from": "gex_views.regime (today's 0DTE book), regime_tenor (the 0-to-7-day book), regime_source",
+   "logic": "whether today's book and the week's read the same gamma regime",
+   "cut": "same or different",
+   "reads_as": "today's 0DTE book and the blended 0-to-7-day book both read long gamma, where dealers' hedging damps moves, so they agree",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "today's 0DTE book and the blended 0-to-7-day book both read long gamma, where dealers' hedging damps moves, so they agree"
+   }
+  },
+  {
+   "path": "momentum.rsi_1min",
+   "viewpoint": "indicators",
+   "status": "built",
+   "type": "state",
+   "from": "the minute bars' closes",
+   "logic": "Wilder RSI(14) on 1-minute closes",
+   "cut": "RSI_OVERSOLD, RSI_OVERBOUGHT",
+   "reads_as": "the 1-minute RSI is 55, between 30 and 70",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "the 1-minute RSI is 55, between 30 and 70"
+   }
+  },
+  {
+   "path": "momentum.rsi_5min",
+   "viewpoint": "indicators",
+   "status": "built",
+   "type": "state",
+   "from": "every fifth minute close",
+   "logic": "Wilder RSI(14) on 5-minute closes",
+   "cut": "RSI_OVERSOLD, RSI_OVERBOUGHT",
+   "reads_as": "the 5-minute RSI is 58, between 30 and 70",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "the 5-minute RSI is 58, between 30 and 70"
+   }
+  },
+  {
+   "path": "momentum.pace",
+   "viewpoint": "volume_price",
+   "status": "built",
+   "type": "share",
+   "from": "the minute bars, sigma",
+   "logic": "the last 10 minutes' move against the 10 before",
+   "cut": "PACE_BIGGER, PACE_SMALLER",
+   "reads_as": "the last 10 minutes moved 0.06 sigma, less than two thirds as far as the 10 minutes before, which moved 0.19 sigma",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "the last 10 minutes moved 0.06 sigma, less than two thirds as far as the 10 minutes before, which moved 0.19 sigma"
+   }
+  },
+  {
+   "path": "momentum.closes",
+   "viewpoint": "volume_price",
+   "status": "built",
+   "type": "count",
+   "from": "the last five bars, the 30-minute move",
+   "logic": "how many of the last five bars closed the move's way; no move under the move rule",
+   "cut": "MOVE_RULE_SIGMA",
+   "reads_as": "the last 30 minutes moved 0.05 sigma, under the 0.09 sigma move rule, so there is no move to judge",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "the last 30 minutes moved 0.05 sigma, under the 0.09 sigma move rule, so there is no move to judge"
+   }
+  },
+  {
+   "path": "momentum.pauses",
+   "viewpoint": "volume_price",
+   "status": "built",
+   "type": "state",
+   "from": "the last 30 minutes' bars",
+   "logic": "the longest stall without a new extreme and the deepest pullback as a share of the move's extent",
+   "cut": "PAUSE_BRIEF_MIN, PAUSE_LONG_MIN, PULLBACK_SHARE; MOVE_RULE_SIGMA",
+   "reads_as": "the last 30 minutes moved 0.05 sigma, under the 0.09 sigma move rule, so there is no move to judge",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "the last 30 minutes moved 0.05 sigma, under the 0.09 sigma move rule, so there is no move to judge"
+   }
+  },
+  {
+   "path": "momentum.path_efficiency",
+   "viewpoint": "volume_price",
+   "status": "built",
+   "type": "share",
+   "from": "the last 30 minutes' closes",
+   "logic": "net move over the distance travelled",
+   "cut": "PATH_CHOPPY, PATH_ORDERLY; MOVE_RULE_SIGMA",
+   "reads_as": "the last 30 minutes moved 0.05 sigma, under the 0.09 sigma move rule, so there is no move to judge",
+   "real": {
+    "at": "2026-09-25 12:45",
+    "sentence": "the last 30 minutes moved 0.05 sigma, under the 0.09 sigma move rule, so there is no move to judge"
+   }
+  },
+  {
+   "path": "breadth.advance_decline",
+   "viewpoint": "market",
+   "status": "built",
+   "type": "count",
+   "from": "market context: $ADD",
+   "logic": "NYSE advancing minus declining stocks at the newest known minute",
+   "cut": "zero",
+   "reads_as": "on the NYSE 326 more stocks are advancing than declining today, more up than down",
+   "real": null
+  },
+  {
+   "path": "breadth.tick_lean",
+   "viewpoint": "market",
+   "status": "built",
+   "type": "count",
+   "from": "market context: $TICK",
+   "logic": "how many of the last 30 minutes' NYSE tick readings sat above zero against below",
+   "cut": "a majority; needs MIN_TICK_MINUTES readings",
+   "reads_as": "over the last 30 minutes the NYSE tick read above zero 21 times and below zero 9 times of 30, leaning to buying",
+   "real": null
+  },
+  {
+   "path": "breadth.sectors_up",
+   "viewpoint": "market",
+   "status": "built",
+   "type": "count",
+   "from": "market context: the 11 sector funds",
+   "logic": "how many sector funds stand above their first value of the day",
+   "cut": "a majority; needs MIN_SECTORS",
+   "reads_as": "8 of 11 sector funds are above where they opened today, most of them",
+   "real": null
+  },
+  {
+   "path": "tape.move_since_read",
+   "viewpoint": "volume_price",
+   "status": "lane",
+   "type": "distance",
+   "from": "the bars since the lane's last read, the tape unit",
+   "logic": "net move since the last read in tape units",
+   "cut": "TAPE_FLAT_UNITS, TAPE_BIG_UNITS",
+   "reads_as": "since the last read, 5 minutes ago, price ended 5.0 points above it, 0.83 of a tape unit (6.0 points), more than the 0.42 cut and no more than 0.89, so it rose small",
+   "real": null
+  },
+  {
+   "path": "tape.range_since_read",
+   "viewpoint": "volume_price",
+   "status": "lane",
+   "type": "rank",
+   "from": "the bars since the last read, the prior sessions' bars at the same minutes",
+   "logic": "the stretch's high-low range placed against the same clock minutes on the prior sessions",
+   "cut": "thirds; needs MIN_RANK_SESSIONS",
+   "reads_as": "the range since the open, 20 minutes ago, is 22.5 points, 3.43 tape units (one is 6.6 points), in the middle third for this minute, higher than 13 of 20 prior sessions",
+   "real": {
+    "at": "2026-09-25 09:50 on the bar clock",
+    "sentence": "the range since the open, 20 minutes ago, is 22.5 points, 3.43 tape units (one is 6.6 points), in the middle third for this minute, higher than 13 of 20 prior sessions"
+   }
+  }
+ ]
+}

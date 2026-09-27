@@ -1,0 +1,258 @@
+{
+ "name": "spx-jev cuts, measured",
+ "measured_on": "2026-09-26",
+ "rule": "each SPX cut sits at the same percentile of the same measurement on SPX history as SNDK JEV's cut sits on SNDK history; base rates are counted on SPX with the SPX band",
+ "spx_sessions": [
+  "2026-07-10",
+  "2026-07-20",
+  "2026-07-21",
+  "2026-07-22",
+  "2026-07-23",
+  "2026-07-24",
+  "2026-07-27",
+  "2026-07-28",
+  "2026-07-29",
+  "2026-07-30",
+  "2026-07-31",
+  "2026-08-03",
+  "2026-08-04",
+  "2026-08-05",
+  "2026-08-06",
+  "2026-08-07",
+  "2026-08-10",
+  "2026-08-11",
+  "2026-08-12",
+  "2026-08-13",
+  "2026-08-17",
+  "2026-08-18",
+  "2026-08-19",
+  "2026-08-20",
+  "2026-08-21",
+  "2026-08-24",
+  "2026-08-25",
+  "2026-08-26",
+  "2026-08-27",
+  "2026-08-28",
+  "2026-08-31",
+  "2026-09-02",
+  "2026-09-03",
+  "2026-09-04",
+  "2026-09-08",
+  "2026-09-09",
+  "2026-09-10",
+  "2026-09-11",
+  "2026-09-14",
+  "2026-09-15",
+  "2026-09-16",
+  "2026-09-17",
+  "2026-09-18",
+  "2026-09-21",
+  "2026-09-22",
+  "2026-09-23",
+  "2026-09-24",
+  "2026-09-25"
+ ],
+ "sndk_sessions": [
+  "2026-08-26",
+  "2026-08-27",
+  "2026-08-28",
+  "2026-08-31",
+  "2026-09-01",
+  "2026-09-02",
+  "2026-09-03",
+  "2026-09-04",
+  "2026-09-08",
+  "2026-09-10",
+  "2026-09-11",
+  "2026-09-14",
+  "2026-09-15",
+  "2026-09-16",
+  "2026-09-17",
+  "2026-09-18",
+  "2026-09-21",
+  "2026-09-22",
+  "2026-09-23",
+  "2026-09-24",
+  "2026-09-25"
+ ],
+ "cuts": {
+  "move_rule_sigma": {
+   "value": 0.09,
+   "measure": "move30",
+   "sndk_cut": 0.15,
+   "percentile": 65.0,
+   "n_sndk": 1458,
+   "n_spx": 3275
+  },
+  "wall_near_sigma": {
+   "value": 0.63,
+   "measure": "wall_distance",
+   "sndk_cut": 0.5,
+   "percentile": 48.8,
+   "n_sndk": 3846,
+   "n_spx": 10947
+  },
+  "shape_cut_sigma": {
+   "value": 0.09,
+   "measure": "open_leg",
+   "sndk_cut": 0.3,
+   "percentile": 23.5,
+   "n_sndk": 1478,
+   "n_spx": 3321
+  },
+  "outlier_day_sigma": {
+   "value": 0.53,
+   "measure": "prior_close_gap",
+   "sndk_cut": 1.0,
+   "percentile": 68.8,
+   "n_sndk": 3846,
+   "n_spx": 12204
+  },
+  "iv_flat_band_pts": {
+   "value": 0.8,
+   "measure": "iv_change30",
+   "sndk_cut": 2.0,
+   "percentile": 50.4,
+   "n_sndk": 1188,
+   "n_spx": 1712
+  },
+  "realized_quiet_ratio": {
+   "value": 0.38,
+   "measure": "realized_ratio",
+   "sndk_cut": 0.7,
+   "percentile": 59.9,
+   "n_sndk": 1458,
+   "n_spx": 3275
+  },
+  "realized_wild_ratio": {
+   "value": 0.61,
+   "measure": "realized_ratio",
+   "sndk_cut": 1.3,
+   "percentile": 93.8,
+   "n_sndk": 1458,
+   "n_spx": 3275
+  },
+  "wall_thin_share": {
+   "value": 0.03,
+   "measure": "wall_share",
+   "sndk_cut": 0.05,
+   "percentile": 12.2,
+   "n_sndk": 3846,
+   "n_spx": 10946
+  },
+  "wall_thick_share": {
+   "value": 0.098,
+   "measure": "wall_share",
+   "sndk_cut": 0.15,
+   "percentile": 89.5,
+   "n_sndk": 3846,
+   "n_spx": 10946
+  },
+  "grip_spread_share": {
+   "value": 0.035,
+   "measure": "top_strike_share",
+   "sndk_cut": 0.1,
+   "percentile": 1.7,
+   "n_sndk": 3846,
+   "n_spx": 12203
+  },
+  "grip_concentrated_share": {
+   "value": 0.159,
+   "measure": "top_strike_share",
+   "sndk_cut": 0.2,
+   "percentile": 97.7,
+   "n_sndk": 3846,
+   "n_spx": 12203
+  },
+  "busiest_strike_share": {
+   "value": 0.11,
+   "measure": "busiest_strike_share",
+   "sndk_cut": 0.2,
+   "percentile": 93.1,
+   "n_sndk": 3742,
+   "n_spx": 10555
+  },
+  "next_30_flat_band_sigma": {
+   "value": 0.07,
+   "measure": "end30",
+   "sndk_cut": 0.12,
+   "percentile": 56.8,
+   "n_sndk": 1473,
+   "n_spx": 3321
+  },
+  "next_30_large_band_sigma": {
+   "value": 0.16,
+   "measure": "far30",
+   "sndk_cut": 0.3,
+   "percentile": 74.5,
+   "n_sndk": 1473,
+   "n_spx": 3321
+  },
+  "next_60_flat_band_sigma": {
+   "value": 0.11,
+   "measure": "end60",
+   "sndk_cut": 0.17,
+   "percentile": 57.4,
+   "n_sndk": 1347,
+   "n_spx": 3045
+  },
+  "ruler_hold_sigma": {
+   "value": 0.12,
+   "measure": "unit_at_0945",
+   "sndk_cut": 0.4,
+   "percentile": 57.1,
+   "n_sndk": 21,
+   "n_spx": 48
+  },
+  "ruler_floor_sigma": {
+   "value": 0.03,
+   "measure": "unit_opening",
+   "sndk_cut": 0.08,
+   "percentile": 0.0,
+   "n_sndk": 210,
+   "n_spx": 480
+  },
+  "tape_flat_units": {
+   "value": 0.42,
+   "measure": "tape_move10",
+   "sndk_cut": 0.35,
+   "percentile": 36.9,
+   "n_sndk": 252,
+   "n_spx": 576
+  },
+  "tape_big_units": {
+   "value": 0.89,
+   "measure": "tape_move10",
+   "sndk_cut": 0.7,
+   "percentile": 67.1,
+   "n_sndk": 252,
+   "n_spx": 576
+  }
+ },
+ "base_rates": {
+  "next_30": {
+   "up_pct": 24,
+   "down_pct": 21,
+   "flat_pct": 55,
+   "n": 3321
+  },
+  "next_60": {
+   "up_pct": 22,
+   "down_pct": 19,
+   "flat_pct": 59,
+   "n": 3045
+  },
+  "next_10": {
+   "down_big_pct": 18,
+   "down_small_pct": 17,
+   "flat_pct": 36,
+   "up_small_pct": 14,
+   "up_big_pct": 15,
+   "n": 576
+  }
+ },
+ "iv_change30_median_pts": {
+  "before_the_last_hour": 0.82,
+  "in_the_last_hour": 2.07
+ }
+}
