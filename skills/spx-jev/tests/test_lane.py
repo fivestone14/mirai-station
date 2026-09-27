@@ -1,4 +1,4 @@
-"""The lanes, their folders, and the staged launchd jobs held to the lanes' schedules."""
+"""The lanes, their folders, and the launchd jobs held to the lanes' schedules."""
 from __future__ import annotations
 
 import plistlib
@@ -60,7 +60,7 @@ def test_the_tape_job_fires_at_the_lanes_reads_and_its_close_out():
                                                 ("com.mirai-station.spx-jev-bars", "run-spx-jev-bars.sh", None),
                                                 ("com.mirai-station.spx-jev-context", "run-spx-jev-context.sh", None),
                                                 ("com.mirai-station.spx-jev-save-day", "run-spx-jev-save-day.sh", None)])
-def test_each_staged_job_runs_its_repo_script_and_logs_to_its_own_files(name, script, lane):
+def test_each_job_runs_its_repo_script_and_logs_to_its_own_files(name, script, lane):
     job = _job(name)
     command = job["ProgramArguments"][2]
     assert job["Label"] == name and command.split()[0].endswith(f"runtime/scripts/{script}")
@@ -70,10 +70,19 @@ def test_each_staged_job_runs_its_repo_script_and_logs_to_its_own_files(name, sc
     assert job["EnvironmentVariables"]["TZ"] == "America/New_York" and job["RunAtLoad"] is False
 
 
-def test_the_feeds_run_every_minute_the_day_is_saved_after_the_close_and_the_staged_jobs_are_not_installed():
+def test_the_feeds_run_every_minute_and_the_day_is_saved_after_the_close():
     assert _job("com.mirai-station.spx-jev-bars")["StartInterval"] == 60
     assert _job("com.mirai-station.spx-jev-context")["StartInterval"] == 60
     save = _job("com.mirai-station.spx-jev-save-day")["StartCalendarInterval"]
     assert (save["Hour"], save["Minute"]) == _pacific("16:20")        # after the bars feed's last run and gex-polarity's save
-    installer = (REPO / "runtime" / "scripts" / "install-launchd.sh").read_text()
-    assert "spx-jev" not in installer and not list((REPO / "runtime" / "launchd").glob("*spx-jev*"))
+
+
+def test_the_installed_plists_match_their_templates():
+    """runtime/launchd holds what install-launchd.sh loads; each SPX job there is its template byte for
+    byte, so the schedules the tests above hold are the ones launchd runs, and no SPX plist is loaded
+    that has no template."""
+    templates = {p.name.removesuffix(".template") for p in LAUNCHD.glob("*.plist.template")}
+    installed = {p.name for p in (REPO / "runtime" / "launchd").glob("com.mirai-station.spx-jev*.plist")}
+    assert len(templates) == 5 and installed == templates
+    for name in sorted(templates):
+        assert (REPO / "runtime" / "launchd" / name).read_bytes() == (LAUNCHD / f"{name}.template").read_bytes(), name

@@ -7,7 +7,7 @@
 # Gated on the market-status helper like run-sndk-bars.sh, plus the twelve minutes after the day's
 # real close (13:00 on a half day, none on a holiday), so the last bar of the day (15:59 finishes at
 # 16:00) still lands: the gate answers 4 when the market was live 13 minutes ago and is closed now.
-# Staged, not installed: skills/spx-jev/launchd/com.mirai-station.spx-jev-bars.plist.template.
+# Installed by install-launchd.sh (com.mirai-station.spx-jev-bars, every 60 s).
 # Kill switch: SPX_JEV_DISABLE=1 => exit-0 no-op.
 set -u
 _SELF="${BASH_SOURCE[0]}"

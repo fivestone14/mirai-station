@@ -33,6 +33,14 @@ PLISTS=(
   # The JEV opening lane (09-26): the same runner with `--lane tape`, every 5 minutes
   # 09:35 to 10:30 ET, writing only state/jev/lanes/tape/.
   "com.mirai-station.sndk-jev-tape.plist"
+  # The SPX JEV decision service: the same shape beside the left-eye scanner, writing
+  # only state/spx_jev/. The live read at :02 and :32, the opening lane, and the three feeds it
+  # reads (SPX minute bars, the market around SPX, and the day's full bars saved after the close).
+  "com.mirai-station.spx-jev.plist"
+  "com.mirai-station.spx-jev-tape.plist"
+  "com.mirai-station.spx-jev-bars.plist"
+  "com.mirai-station.spx-jev-context.plist"
+  "com.mirai-station.spx-jev-save-day.plist"
   "com.mirai-station.voice.plist"
 )
 

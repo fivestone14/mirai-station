@@ -5,7 +5,7 @@
 # as one line to state/spx_jev/context/{date}.jsonl (spx_jev/market_context.py). REST only, through
 # the station's shared client; the lob-flow streamer is never touched.
 # Gated on the market-status helper: market hours only.
-# Staged, not installed: skills/spx-jev/launchd/com.mirai-station.spx-jev-context.plist.template.
+# Installed by install-launchd.sh (com.mirai-station.spx-jev-context, every 60 s).
 # Kill switch: SPX_JEV_DISABLE=1 => exit-0 no-op.
 set -u
 _SELF="${BASH_SOURCE[0]}"

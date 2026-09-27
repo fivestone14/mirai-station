@@ -4,9 +4,9 @@
 # beside it, build the labels, ask JEV when a key is present, write state/spx_jev/{day}.jsonl and
 # state/spx_jev/latest.json for the phone. Same gates as run-sndk-jev.sh, so it is quiet outside
 # market hours; a separate job from the scanner, never imported by it.
-# Staged, not installed: the plists are templates under skills/spx-jev/launchd/
-# (com.mirai-station.spx-jev at :02 and :32; com.mirai-station.spx-jev-tape every 5 minutes 09:35 to
-# 10:30 ET, which runs this script with `--lane tape` and writes under state/spx_jev/lanes/tape/ only).
+# Installed by install-launchd.sh (com.mirai-station.spx-jev, :02 and :32). The opening lane's job
+# (com.mirai-station.spx-jev-tape, every 5 minutes 09:35 to 10:30 ET) runs the same script with
+# `--lane tape`; the service then writes under state/spx_jev/lanes/tape/ only.
 # The gate lets a fire through within 13 minutes after the day's real close: the live job's 16:02 fire
 # (13:02 on a half day), which the service runs as a grade-only close-out.
 # Kill switch: SPX_JEV_DISABLE=1 => exit-0 no-op.

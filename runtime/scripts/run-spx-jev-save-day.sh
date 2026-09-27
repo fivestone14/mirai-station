@@ -7,7 +7,7 @@
 # disk is never fetched again.
 # No market-hours gate: it runs after the close by design. The command itself saves market days
 # only, and only a session that has closed.
-# Staged, not installed: skills/spx-jev/launchd/com.mirai-station.spx-jev-save-day.plist.template.
+# Installed by install-launchd.sh (com.mirai-station.spx-jev-save-day, 16:20 ET).
 # Kill switch: SPX_JEV_DISABLE=1 => exit-0 no-op.
 set -u
 _SELF="${BASH_SOURCE[0]}"
