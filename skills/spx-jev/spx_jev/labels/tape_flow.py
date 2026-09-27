@@ -43,6 +43,7 @@ from .label_set import LabelSet
 from .measures import is_num, minute_of_day
 from .ranks import SameClockRank, rank_against, rank_at_slot
 from .rulers import sigma_anchor
+from .vol_sources import TAPE_LINE_START, TAPE_RAW_SUBDIR, tape_path
 from .words import pct, plural, sig, signed
 
 LABELS = ("options.turnover", "options.call_put_split", "options.aggressor_side", "options.new_activity",
@@ -52,8 +53,7 @@ LABELS = ("options.turnover", "options.call_put_split", "options.aggressor_side"
 GATES = ("opening_premium_burst",)
 DARK = {"liquidity.spy_book_lean": "the lob-flow collector saves no per-minute SPY bid and ask sizes or order-flow imbalance"}
 
-TAPE_RAW_SUBDIR = Path("lob_flow") / "raw"
-TAPE_LINE_START = b'{"ts_ms": '         # a trade line; the collector also writes gap markers
+TAPE_LINE_BYTES = TAPE_LINE_START.encode()   # the tape is read as bytes here, so only a line in the window is decoded
 OPTION_MULTIPLIER = 100
 MULTI_LEG_CONDITIONS = range(130, 145)   # OPRA's multi-leg and stock-option trade conditions (ThetaData 130-144)
 # Prints and quotes are in cents, so a print nearer the mid than this is at it: 5.70 inside 5.60/5.80 is 1e-15 off in floats.
@@ -432,11 +432,6 @@ def _premium_pace_30(today: TapeMinutes, prior: list[TapeMinutes], opened: int, 
     ls.put("options.premium_pace_30", f"near-price 0DTE premium traded in the last {WINDOW_30_MIN} minutes is {_fifth(rank)} for this half hour, {rank.words()}")
 
 
-def tape_path(state_dir: Path, day: str) -> Path | None:
-    folder = Path(state_dir) / TAPE_RAW_SUBDIR / day
-    return next((p for p in (folder / "tape.jsonl", folder / "tape.jsonl.gz") if p.exists()), None)
-
-
 def tape_minutes(state_dir: Path, day: str, start: int, end: int, clock: time) -> TapeMinutes | None:
     """A day's 0DTE tape as it was on file at ``clock`` market time, summed by the minute a trade printed in, for
     the minutes of day in [start, end); None when the day has no tape file."""
@@ -457,10 +452,10 @@ def _read_tape(path: str, mtime_ns: int, day: str, start: int, end: int, clock: 
     opener = gzip.open if path.endswith(".gz") else open
     with opener(path, "rb") as f:
         for line in f:
-            if not line.startswith(TAPE_LINE_START):
+            if not line.startswith(TAPE_LINE_BYTES):
                 continue
             try:
-                ts_ms = int(line[len(TAPE_LINE_START):line.index(b",")])
+                ts_ms = int(line[len(TAPE_LINE_BYTES):line.index(b",")])
             except ValueError:
                 continue
             if ts_ms > read_ms:

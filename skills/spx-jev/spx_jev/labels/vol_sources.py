@@ -84,12 +84,14 @@ Contract = tuple[float, str]          # (strike, "call" | "put")
 
 
 def tape_path(state_dir: Path, day: str) -> Path | None:
+    """The day's raw 0DTE tape, live or archived; None when the collector wrote none. The trade-flow labels
+    (tape_flow) read the same file."""
     folder = Path(state_dir) / TAPE_RAW_SUBDIR / day
     return next((p for p in (folder / "tape.jsonl", folder / "tape.jsonl.gz") if p.exists()), None)
 
 
-def tape_minutes(state_dir: Path, day: str, minute_ends: tuple[datetime, ...],
-                 clock: datetime) -> dict[datetime, dict[Contract, tuple[float, float]]] | None:
+def quotes_by_minute(state_dir: Path, day: str, minute_ends: tuple[datetime, ...],
+                     clock: datetime) -> dict[datetime, dict[Contract, tuple[float, float]]] | None:
     """For each minute end ``t`` (on a minute boundary), the newest ``(bid, ask)`` per contract quoted in
     ``(t - 1 minute, t]``, from the tape as it was on file at ``clock``: nothing after ``t`` counts, and no
     line written after ``clock``. None when the day has no tape file."""
@@ -242,7 +244,7 @@ def minute_floor(t: datetime) -> datetime:
 
 def skew_at(state_dir: Path, day: str, ends: tuple[datetime, ...], clock: datetime) -> dict[datetime, Skew | None] | None:
     """The smile at each minute end on ``day``'s tape as it was on file at ``clock``; None when the day has no tape."""
-    minutes = tape_minutes(state_dir, day, ends, clock)
+    minutes = quotes_by_minute(state_dir, day, ends, clock)
     if minutes is None:
         return None
     return {t: skew_from_quotes(q, t) if q else None for t, q in minutes.items()}
