@@ -4,25 +4,27 @@ overnight.price_vs_range); the premarket lane's overnight labels are labels/prem
 
 Every distance is in the morning anchor (rulers.sigma_anchor), and a sentence measured on an estimated
 anchor says so. The gap is the settled open (the 09:34 close) against the row's ``prior_close``, and its
-size is ranked in thirds against the same gap on the prior sessions, never against a fixed cut; whether
-price has moved away from the settled open is judged in today's tape unit (rulers.ruler), not a fixed cut
-either. Each label's sentence, how it is computed and its source are in spec/question_set.json ``labels``;
-the overnight range labels wait for a session read of the overnight store (DARK).
+size is ranked in thirds against the same gap on the prior sessions, never against a fixed cut: a real gap
+is one above the bottom third. The open's crossings are ranked in thirds against the same count to this
+minute on the prior sessions, and whether price has moved away from the settled open is judged in today's
+tape unit (rulers.ruler), not a fixed cut either. Each label's sentence, how it is computed and its source
+are in spec/question_set.json ``labels``; the overnight range labels wait for a session read of the
+overnight store (DARK).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 
-from ..cuts import (GAP_HALF_SHARE, GAP_RULE_SIGMA, GAP_TOUCH_SIGMA, GIVEBACK_THIRD, NOISE_EDGE_SIGMA, NOISE_LOOKBACK, ONE_CROSS,
-                    OPEN_CONTESTED_CROSSES, RANGE_BOTTOM_SHARE, RANGE_TOP_SHARE, WINDOW_30_MIN, WINDOW_60_MIN)
+from ..cuts import (GAP_HALF_SHARE, GAP_TOUCH_SIGMA, GIVEBACK_THIRD, NOISE_EDGE_SIGMA, NOISE_LOOKBACK, RANGE_BOTTOM_SHARE,
+                    RANGE_TOP_SHARE, WINDOW_30_MIN, WINDOW_60_MIN)
 from ..state_builder import Scene, first_row
 from .label_set import LabelSet
 from .measures import (ET, ONE_MINUTE, SETTLED_OPEN_BAR, bar_time, bars_between, bars_finished_between, close_at, day_high_low,
                        is_num, session_extremes, settled_open)
 from .ranks import SameClockRank, rank_days, rank_sessions, same_clock_values
 from .rulers import NO_ANCHOR, RULER_HOLD_UNTIL, SigmaRuler, ruled, ruler, sigma_anchor, typical_move
-from .words import above_or_below, minutes_ago, pct, plural, sig
+from .words import above_or_below, minutes_ago, pct, plural, sig, third
 
 LABELS = ("gap.size", "gap.fill_progress", "gap.morning_vs_gap", "gap.reach_distance",
           "open.fresh_extreme", "open.noise_band", "open.path", "open.settled_open_crosses",
@@ -41,6 +43,8 @@ LATE_MORNING = time(11, 30)
 OPENING_LANE_WINDOW_MIN = 5
 # The opening range the fresh-extreme label places price against: the first 15 minutes.
 OPENING_RANGE_MIN = 15
+# The open's crossings in the words of their thirds, as the question names them.
+CROSS_WORDS = {"bottom": "one-sided", "middle": "some crossing", "top": "contested"}
 
 
 def build_gap_open_labels(scene: Scene) -> LabelSet:
@@ -54,16 +58,19 @@ def build_gap_open_labels(scene: Scene) -> LabelSet:
     _fresh_extreme(scene, anchor, ls)
     _noise_band(scene, anchor, ls)
     _path(scene, anchor, gap, ls)
-    _settled_open_crosses(scene, anchor, ls)
+    prior_opens = _prior_opens(scene)
+    _settled_open_crosses(scene, anchor, prior_opens, ls)
     return ls
 
 
 @dataclass(frozen=True)
 class Gap:
-    """This morning's gap: yesterday's close, the settled open and the ruler it is measured in."""
+    """This morning's gap: yesterday's close, the settled open, the ruler it is measured in and its rank among
+    the prior sessions' gaps (gap_rank)."""
     prior_close: float
     settled_open: float
     anchor: SigmaRuler
+    rank: SameClockRank
 
     @property
     def size(self) -> float:
@@ -72,7 +79,12 @@ class Gap:
 
     @property
     def real(self) -> bool:
-        return abs(self.size) >= GAP_RULE_SIGMA
+        """A real gap is larger than the bottom third of the prior sessions' gaps."""
+        return third(self.rank.share) != "bottom"
+
+    def ranked(self) -> str:
+        """The gap's rank in words: "larger than 17 of the last 20 days' gaps, top third"."""
+        return f"larger than {self.rank.higher_than} of the last {self.rank.of} days' gaps, {self.rank.band}"
 
     @property
     def side(self) -> str:
@@ -80,7 +92,7 @@ class Gap:
 
 
 def _measure_gap(scene: Scene, anchor: SigmaRuler | None) -> tuple[Gap | None, str]:
-    """The gap, or None and why it cannot be measured."""
+    """The gap with its rank, or None and why it cannot be measured or ranked."""
     pc = scene.row.get("prior_close")
     if not is_num(pc) or pc <= 0:
         return None, "row carries no prior close"
@@ -89,7 +101,10 @@ def _measure_gap(scene: Scene, anchor: SigmaRuler | None) -> tuple[Gap | None, s
         return None, "no settled open yet: the 09:34 bar has not finished"
     if anchor is None:
         return None, NO_ANCHOR
-    return Gap(float(pc), so, anchor), ""
+    rank, no_rank = gap_rank(scene, (so - float(pc)) / anchor.points)
+    if rank is None:
+        return None, no_rank
+    return Gap(float(pc), so, anchor, rank), ""
 
 
 def _minutes_since_settled(scene: Scene) -> str:
@@ -150,16 +165,11 @@ def _size(scene: Scene, gap: Gap | None, why: str, ls: LabelSet) -> None:
         ls.omit("gap.size", why)
         return
     g = gap.size
-    rank, no_rank = gap_rank(scene, g)
-    if rank is None:
-        ls.omit("gap.size", no_rank)
-        return
     # the morning's straddle is the first row's em_open: what today's 0DTE priced before the gap was known
     em_open = next((float(em) for r in scene.rows_today if is_num(em := (r.get("range_ruler") or {}).get("em_open")) and em > 0), None)
     straddle = f"; {abs(gap.settled_open - gap.prior_close) / em_open:.1f} times this morning's same-day straddle" if em_open else ""
-    ls.put("gap.size", ruled(gap.anchor, f"this morning's gap of {sig(abs(g))} is larger than {rank.higher_than} of the last {rank.of} "
-                                         f"days' gaps, {rank.band}: price opened {above_or_below(g)} yesterday's close, "
-                                         f"measured at 09:35 because the 09:30 print uses stale prices{straddle}"))
+    ls.put("gap.size", ruled(gap.anchor, f"this morning's gap of {sig(abs(g))} is {gap.ranked()}: price opened {above_or_below(g)} "
+                                         f"yesterday's close, measured at 09:35 because the 09:30 print uses stale prices{straddle}"))
 
 
 def _fill_progress(scene: Scene, gap: Gap | None, why: str, ls: LabelSet) -> None:
@@ -173,8 +183,8 @@ def _fill_progress(scene: Scene, gap: Gap | None, why: str, ls: LabelSet) -> Non
     where = f"{sig(abs(now_d))} {above_or_below(now_d)} yesterday's close"
     if not gap.real:
         ls.put("gap.fill_progress", ruled(gap.anchor, f"there was no real gap: price opened {sig(abs(gap.size))} {above_or_below(gap.size)} "
-                                                      f"yesterday's close, within the {sig(GAP_RULE_SIGMA)} gap rule; it now sits {where}"))
-        ls.sleep("gap_fill_next_hour", f"no real gap: the settled open was within the {sig(GAP_RULE_SIGMA)} gap rule")
+                                                      f"yesterday's close, a gap {gap.ranked()}; it now sits {where}"))
+        ls.sleep("gap_fill_next_hour", f"no real gap: the settled open's gap was {gap.ranked()}")
         return
     kept = (scene.spot - gap.prior_close) / (gap.settled_open - gap.prior_close)
     touched = _first_touch(gap, _since_settled(scene))
@@ -188,7 +198,7 @@ def _fill_progress(scene: Scene, gap: Gap | None, why: str, ls: LabelSet) -> Non
         location = f"price sits {where}, through it, and keeps none of the {sig(abs(gap.size))} gap, {line}"
     touch = (f"it first touched yesterday's close (within {sig(GAP_TOUCH_SIGMA)}) {minutes_ago(scene.now, touched)}" if touched
              else f"it has not touched yesterday's close (within {sig(GAP_TOUCH_SIGMA)})")
-    ls.put("gap.fill_progress", ruled(gap.anchor, f"{head}: {location}; {touch}; the gap was past the {sig(GAP_RULE_SIGMA)} gap rule"))
+    ls.put("gap.fill_progress", ruled(gap.anchor, f"{head}: {location}; {touch}; the gap was {gap.ranked()}, a real gap"))
     if side.endswith("losing"):
         ls.wake("gap_fill_next_hour")
     else:
@@ -200,7 +210,7 @@ def _morning_vs_gap(scene: Scene, gap: Gap | None, why: str, ls: LabelSet) -> No
         ls.omit("gap.morning_vs_gap", why)
         return
     if not gap.real:
-        ls.omit("gap.morning_vs_gap", f"no real gap this morning: the settled open was within the {sig(GAP_RULE_SIGMA)} gap rule")
+        ls.omit("gap.morning_vs_gap", f"no real gap this morning: the settled open's gap was {gap.ranked()}")
         return
     late = scene.session_open.replace(hour=LATE_MORNING.hour, minute=LATE_MORNING.minute)
     late_close = next((float(b["close"]) for b in scene.bars if bar_time(b) == late - ONE_MINUTE), None)
@@ -214,7 +224,7 @@ def _morning_vs_gap(scene: Scene, gap: Gap | None, why: str, ls: LabelSet) -> No
            gap.anchor,
            f"from the settled open to {LATE_MORNING:%H:%M} price {'rose' if m >= 0 else 'fell'} {sig(abs(m))}, "
            f"{'with' if m * gap.size > 0 else 'against' if m else 'neither with nor against'} this morning's {sig(abs(gap.size))} gap {gap.side} "
-           f"(past the {sig(GAP_RULE_SIGMA)} gap rule), and {'touched' if touched else 'did not touch'} yesterday's close; "
+           f"({gap.ranked()}), and {'touched' if touched else 'did not touch'} yesterday's close; "
            f"it now sits {sig(abs(now_d))} {above_or_below(now_d)} it"))
 
 
@@ -356,6 +366,19 @@ def _crosses(bars: list[dict], level: float) -> int:
     return count
 
 
+def _crossed(n: int) -> str:
+    """How often price crossed the settled open, in words."""
+    return "never crossed it" if n == 0 else "crossed it once" if n == 1 else f"crossed it {n} times"
+
+
+def _beats(rank: SameClockRank, more: str) -> str:
+    """How many of the prior sessions a rank beats, as "{more} than 17 of the last 20 sessions"; a rank that beats
+    none says so plainly."""
+    if rank.higher_than == 0:
+        return f"no {more} than any of the last {rank.of} sessions"
+    return f"{more} than {rank.higher_than} of the last {rank.of} sessions"
+
+
 def _path(scene: Scene, anchor: SigmaRuler | None, gap: Gap | None, ls: LabelSet) -> None:
     """The opening's path from the settled open: how far each way it reached, how often it crossed, how
     much of its furthest reach on price's side it gave back, and where price sits now in today's tape
@@ -380,8 +403,7 @@ def _path(scene: Scene, anchor: SigmaRuler | None, gap: Gap | None, ls: LabelSet
     hi, lo = max(hi, so), min(lo, so)           # bars that never traded back to the open reached nothing on that side
     now_d = (scene.spot - so) / points
     minutes = _minutes_since_settled(scene)
-    crosses = _crosses(since, so)
-    crossed = "never crossed it" if crosses == 0 else "crossed it once" if crosses == 1 else f"crossed it {crosses} times"
+    crossed = _crossed(_crosses(since, so))
     reached = f"{minutes} after the settled open, price reached {sig((hi - so) / points)} above it and {sig((so - lo) / points)} below it"
     floor = ", at its floor" if unit["source"] == "floor" else ""
     where = (f"price is now {abs(scene.spot - so) / unit_points:.1f} tape units {above_or_below(now_d)} the settled open "
@@ -402,7 +424,30 @@ def _path(scene: Scene, anchor: SigmaRuler | None, gap: Gap | None, ls: LabelSet
     ls.put("open.path", ruled(anchor, f"{history}; {where}"))
 
 
-def _settled_open_crosses(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None:
+@dataclass(frozen=True)
+class OpenSoFar:
+    """A session's settled open and its finished bars after it, to one clock minute."""
+    settled_open: float
+    since: list[dict]
+
+
+def _prior_opens(scene: Scene) -> list[OpenSoFar]:
+    """Each prior session's open to this read's clock minute, newest first: the base the open's crossings are
+    ranked on. A crossing count is the day's own price, which no ruler scales, so every session with a settled
+    open and a finished bar after it counts, its ruler estimated or not."""
+    clock = scene.now.astimezone(ET).time()
+    out = []
+    for day, bars in scene.prior_bars.items():
+        so, then = settled_open(bars), datetime.combine(date.fromisoformat(day), clock, tzinfo=ET)
+        start = then.replace(hour=SETTLED_OPEN_BAR.hour, minute=SETTLED_OPEN_BAR.minute) + ONE_MINUTE
+        if so is not None and (since := bars_finished_between(bars, start, then)):
+            out.append(OpenSoFar(so, since))
+    return out
+
+
+def _settled_open_crosses(scene: Scene, anchor: SigmaRuler | None, prior: list[OpenSoFar], ls: LabelSet) -> None:
+    """Where price sits against the settled open, then how often it has crossed it, ranked against the crossings
+    to this minute on the prior sessions (a tie is not beaten): the bottom third one-sided, the top contested."""
     so, since = settled_open(scene.bars), _since_settled(scene)
     if so is None or not since:
         ls.omit("open.settled_open_crosses", "no finished bar after the settled open yet")
@@ -411,13 +456,13 @@ def _settled_open_crosses(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet)
         ls.omit("open.settled_open_crosses", NO_ANCHOR)
         return
     n = _crosses(since, so)
-    if n <= ONE_CROSS:
-        verdict = f"no more than {ONE_CROSS} cross, one-sided"
-    elif n < OPEN_CONTESTED_CROSSES:
-        verdict = f"more than {ONE_CROSS} but under the {OPEN_CONTESTED_CROSSES}-cross contested rule"
-    else:
-        verdict = f"at or past the {OPEN_CONTESTED_CROSSES}-cross contested rule"
+    rank, no_rank = rank_sessions(n, [_crosses(o.since, o.settled_open) for o in prior], "bars from their settled open to this minute")
+    if rank is None:
+        ls.omit("open.settled_open_crosses", no_rank)
+        return
     d = (scene.spot - so) / anchor.points
-    minutes = _minutes_since_settled(scene)
-    ls.put("open.settled_open_crosses", ruled(anchor, f"since the settled open {minutes} ago price has crossed it {plural(n, 'time')}, "
-                                                      f"{verdict}; it now sits {sig(abs(d))} {above_or_below(d)} it"))
+    ls.put("open.settled_open_crosses", ruled(
+           anchor,
+           f"price sits {sig(abs(d))} {above_or_below(d)} the settled open; since it was set {_minutes_since_settled(scene)} ago price has "
+           f"{_crossed(n)}, {_beats(rank, 'more often')} had by this minute, {rank.band}: {CROSS_WORDS[third(rank.share)]}"))
+

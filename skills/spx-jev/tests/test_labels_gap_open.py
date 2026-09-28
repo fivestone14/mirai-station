@@ -1,6 +1,7 @@
 """The gap and open family (labels/gap_open.py): each label's sentence at its verdicts and their boundaries,
 its omissions, the gap_fill_next_hour gate both ways, and that a bar finishing after the read never counts.
-The gap's size is ranked against prior sessions whose first diary row is written into a tmp folder.
+The gap's size, and so whether it is real, is ranked against prior sessions whose first diary row is written
+into a tmp folder; the open's crossings against prior sessions' bars to the same minute.
 
 Every scene carries a 09:31 diary row, so the morning anchor is trusted (SIGMA points, 80 so that the cuts
 land on exact figures), and yesterday's close is PRIOR_CLOSE. Bars start at 09:30, one close a minute;
@@ -14,8 +15,7 @@ from datetime import date, time, timedelta
 import pytest
 
 from conftest import DAY, at, bars_from_closes, flat_bars, make_row, prior_sessions, write_state
-from spx_jev.cuts import (GAP_RULE_SIGMA, GIVEBACK_THIRD, NOISE_EDGE_SIGMA, NOISE_LOOKBACK, OPEN_CONTESTED_CROSSES,
-                          RANGE_TOP_SHARE, RULER_FLOOR_SIGMA, SAME_CLOCK_MIN_SESSIONS)
+from spx_jev.cuts import GIVEBACK_THIRD, NOISE_EDGE_SIGMA, NOISE_LOOKBACK, RANGE_TOP_SHARE, RULER_FLOOR_SIGMA, SAME_CLOCK_MIN_SESSIONS
 from spx_jev.labels.gap_open import build_gap_open_labels
 from spx_jev.labels.measures import bar_time
 from spx_jev.labels.rulers import SigmaRuler
@@ -67,11 +67,17 @@ def gap_history(root, gaps: list[float], newest: date = date(2026, 9, 17)) -> tu
     return bars, rulers
 
 
+def gapped(scene_factory, root, now, closes, gaps=TWENTY, **kw):
+    """A read as scene() makes it, with ``gaps`` as the prior sessions' gaps, so the gap is ranked and a real gap
+    is one above their bottom third."""
+    bars, trusted = gap_history(root, gaps)
+    return replace(scene(scene_factory, now, closes, prior_bars=bars, **kw), prior_rulers=trusted, state_dir=root)
+
+
 def sized(scene_factory, root, settled, gaps=TWENTY, rulers=None, now=None, **kw):
     """The 09:35 read (or one at ``now``) on a day settling its open at ``settled``, with ``gaps`` as the prior sessions' gaps."""
-    bars, trusted = gap_history(root, gaps)
-    sc = scene(scene_factory, now or at(9, 35), opening(settled, [settled] * 30), prior_bars=bars, **kw)
-    return replace(sc, prior_rulers={**trusted, **(rulers or {})}, state_dir=root)
+    sc = gapped(scene_factory, root, now or at(9, 35), opening(settled, [settled] * 30), gaps, **kw)
+    return replace(sc, prior_rulers={**sc.prior_rulers, **(rulers or {})})
 
 
 @pytest.mark.parametrize("settled, verdict", [
@@ -140,85 +146,106 @@ def test_the_gaps_size_is_ranked_only_against_sessions_before_today(tmp_path):
 
 # ---- gap.fill_progress and the gap_fill_next_hour gate
 
-def test_a_gap_that_keeps_the_half_line_untouched_is_still_open_and_its_fill_question_sleeps(scene_factory):
-    got, _, gates = labels(scene(scene_factory, at(11, 0), opening(7735.2, [7725.0] * 90)))
+def test_a_gap_that_keeps_the_half_line_untouched_is_still_open_and_its_fill_question_sleeps(scene_factory, tmp_path):
+    got, _, gates = labels(gapped(scene_factory, tmp_path, at(11, 0), opening(7735.2, [7725.0] * 90)))
     assert got["gap.fill_progress"] == (
         "the gap up is still open after 85 minutes: price sits 0.31 sigma above yesterday's close and keeps 71% of the 0.44 sigma gap, "
-        "at or above the half line; it has not touched yesterday's close (within 0.02 sigma); the gap was past the 0.15 sigma gap rule")
+        "at or above the half line; it has not touched yesterday's close (within 0.02 sigma); the gap was larger than 20 of the last 20 days' "
+        "gaps, top third, a real gap")
     assert gates["gap_fill_next_hour"] == "the gap up is still open, not losing ground"
 
 
-def test_the_half_line_and_the_touch_decide_whether_the_gap_is_losing_ground(scene_factory):
+def test_the_half_line_and_the_touch_decide_whether_the_gap_is_losing_ground(scene_factory, tmp_path):
     now = at(11, 0)
-    got, _, gates = labels(scene(scene_factory, now, opening(7732.0, [7716.0] * 90)))            # keeps exactly half
+    got, _, gates = labels(gapped(scene_factory, tmp_path, now, opening(7732.0, [7716.0] * 90)))            # keeps exactly half
     assert "keeps 50% of the 0.40 sigma gap, at or above the half line" in got["gap.fill_progress"]
     assert got["gap.fill_progress"].startswith("the gap up is still open") and gates["gap_fill_next_hour"] == "the gap up is still open, not losing ground"
-    got, _, gates = labels(scene(scene_factory, now, opening(7732.0, [7715.9] * 90)))
+    got, _, gates = labels(gapped(scene_factory, tmp_path, now, opening(7732.0, [7715.9] * 90)))
     assert got["gap.fill_progress"].startswith("the gap up is losing ground after 85 minutes: price sits 0.20 sigma above yesterday's "
                                                "close and keeps 50% of the 0.40 sigma gap, below the half line;")
     assert gates["gap_fill_next_hour"] is None
     # a bar low 1.6 points (0.02 sigma) above the close touches it; 1.7 does not
     touched = opening(7732.0, [7720.0] * 30 + [7702.1] + [7730.0] * 59)                        # the 10:05 bar's low is 7701.6
-    got, _, gates = labels(scene(scene_factory, now, touched))
+    got, _, gates = labels(gapped(scene_factory, tmp_path, now, touched))
     assert got["gap.fill_progress"] == (
         "the gap up is losing ground after 85 minutes: price sits 0.38 sigma above yesterday's close and keeps 94% of the 0.40 sigma gap, "
-        "at or above the half line; it first touched yesterday's close (within 0.02 sigma) 54 minutes ago; the gap was past the 0.15 "
-        "sigma gap rule")
+        "at or above the half line; it first touched yesterday's close (within 0.02 sigma) 54 minutes ago; the gap was larger than 19 "
+        "of the last 20 days' gaps, top third, a real gap")
     assert gates["gap_fill_next_hour"] is None
     untouched = opening(7732.0, [7720.0] * 30 + [7702.2] + [7730.0] * 59)
-    got, _, _ = labels(scene(scene_factory, now, untouched))
+    got, _, _ = labels(gapped(scene_factory, tmp_path, now, untouched))
     assert got["gap.fill_progress"].startswith("the gap up is still open")
 
 
-def test_a_gap_down_filled_through_the_close_and_a_day_with_no_real_gap(scene_factory):
-    got, _, gates = labels(scene(scene_factory, at(11, 0), opening(7668.0, [7690.0] * 60 + [7712.0] * 30)))
+def test_a_gap_down_filled_through_the_close_and_a_day_with_no_real_gap(scene_factory, tmp_path):
+    got, _, gates = labels(gapped(scene_factory, tmp_path, at(11, 0), opening(7668.0, [7690.0] * 60 + [7712.0] * 30)))
     assert got["gap.fill_progress"] == (
         "the gap down is losing ground after 85 minutes: price sits 0.15 sigma above yesterday's close, through it, and keeps none of the "
-        "0.40 sigma gap, below the half line; it first touched yesterday's close (within 0.02 sigma) 24 minutes ago; the gap was past the "
-        "0.15 sigma gap rule")
+        "0.40 sigma gap, below the half line; it first touched yesterday's close (within 0.02 sigma) 24 minutes ago; the gap was larger than "
+        "19 of the last 20 days' gaps, top third, a real gap")
     assert gates["gap_fill_next_hour"] is None
-    got, omitted, gates = labels(scene(scene_factory, at(11, 0), opening(7708.0, [7712.0] * 90)))
-    assert got["gap.fill_progress"] == ("there was no real gap: price opened 0.10 sigma above yesterday's close, within the 0.15 sigma gap "
-                                        "rule; it now sits 0.15 sigma above yesterday's close")
-    assert gates["gap_fill_next_hour"] == "no real gap: the settled open was within the 0.15 sigma gap rule"
-    assert omitted["gap.morning_vs_gap"] == "no real gap this morning: the settled open was within the 0.15 sigma gap rule"
+    got, omitted, gates = labels(gapped(scene_factory, tmp_path, at(11, 0), opening(7708.0, [7712.0] * 90)))
+    bottom = "larger than 4 of the last 20 days' gaps, bottom third"
+    assert got["gap.fill_progress"] == (f"there was no real gap: price opened 0.10 sigma above yesterday's close, a gap {bottom}; "
+                                        "it now sits 0.15 sigma above yesterday's close")
+    assert gates["gap_fill_next_hour"] == f"no real gap: the settled open's gap was {bottom}"
+    assert omitted["gap.morning_vs_gap"] == f"no real gap this morning: the settled open's gap was {bottom}"
 
 
-def test_a_touch_in_a_bar_that_has_not_finished_does_not_count(scene_factory):
+@pytest.mark.parametrize("settled, real", [(7710.4, False), (7712.0, True), (7689.6, False), (7688.0, True)])
+def test_a_real_gap_is_one_above_the_bottom_third_of_the_prior_sessions_gaps(scene_factory, tmp_path, settled, real):
+    # 0.13 sigma beats 6 of the twenty prior gaps (bottom third), 0.15 beats 7 (middle third), either way
+    sc = gapped(scene_factory, tmp_path, at(12, 0), opening(settled, [settled] * 150))
+    got, omitted, gates = labels(sc)
+    assert got["gap.fill_progress"].startswith("the gap" if real else "there was no real gap")
+    assert (gates["gap_fill_next_hour"] or "").startswith("no real gap") is not real
+    assert ("gap.morning_vs_gap" in got) is real and ("gap.morning_vs_gap" in omitted) is not real
+
+
+def test_whether_the_gap_is_real_waits_for_its_rank(scene_factory, tmp_path):
+    need = "its rank needs 10 prior sessions with a trusted morning ruler, a settled open and yesterday's close, have 9"
+    _, omitted, gates = labels(gapped(scene_factory, tmp_path, at(12, 0), opening(7732.0, [7736.0] * 160), gaps=TWENTY[:9]))
+    assert omitted["gap.fill_progress"] == omitted["gap.morning_vs_gap"] == omitted["gap.size"] == need
+    assert gates["gap_fill_next_hour"] == f"no gap to fill: {need}"
+
+
+def test_a_touch_in_a_bar_that_has_not_finished_does_not_count(scene_factory, tmp_path):
     closes = opening(7732.0, [7720.0] * 85 + [7700.0] + [7720.0] * 10)                         # the 11:00 bar dips to the close
-    got, _, _ = labels(scene(scene_factory, at(11, 0, ss=30), closes, spot=7720.0))
+    got, _, _ = labels(gapped(scene_factory, tmp_path, at(11, 0, ss=30), closes, spot=7720.0))
     assert "it has not touched yesterday's close" in got["gap.fill_progress"]
-    got, _, _ = labels(scene(scene_factory, at(11, 1), closes, spot=7720.0))
+    got, _, _ = labels(gapped(scene_factory, tmp_path, at(11, 1), closes, spot=7720.0))
     assert "it first touched yesterday's close (within 0.02 sigma) within the last minute" in got["gap.fill_progress"]
 
 
 # ---- gap.morning_vs_gap
 
-def test_the_morning_against_the_gap_from_the_settled_open_to_1130(scene_factory):
+def test_the_morning_against_the_gap_from_the_settled_open_to_1130(scene_factory, tmp_path):
     with_gap = opening(7732.0, [7736.0] * 115 + [7730.0] * 30)                                    # 11:29 closes at 7736
-    got, _, _ = labels(scene(scene_factory, at(12, 0), with_gap))
+    got, _, _ = labels(gapped(scene_factory, tmp_path, at(12, 0), with_gap))
     assert got["gap.morning_vs_gap"] == (
-        "from the settled open to 11:30 price rose 0.05 sigma, with this morning's 0.40 sigma gap up (past the 0.15 sigma gap rule), "
+        "from the settled open to 11:30 price rose 0.05 sigma, with this morning's 0.40 sigma gap up (larger than 19 of the last 20 days' gaps, top "
+        "third), "
         "and did not touch yesterday's close; it now sits 0.38 sigma above it")
     faded = opening(7732.0, [7701.0] + [7716.0] * 114 + [7720.0] * 30)
-    got, _, _ = labels(scene(scene_factory, at(12, 0), faded))
+    got, _, _ = labels(gapped(scene_factory, tmp_path, at(12, 0), faded))
     assert got["gap.morning_vs_gap"] == (
-        "from the settled open to 11:30 price fell 0.20 sigma, against this morning's 0.40 sigma gap up (past the 0.15 sigma gap rule), "
+        "from the settled open to 11:30 price fell 0.20 sigma, against this morning's 0.40 sigma gap up (larger than 19 of the last 20 days' gaps, top "
+        "third), "
         "and touched yesterday's close; it now sits 0.25 sigma above it")
 
 
-def test_the_morning_counts_once_its_1129_bar_has_finished(scene_factory):
+def test_the_morning_counts_once_its_1129_bar_has_finished(scene_factory, tmp_path):
     closes = opening(7732.0, [7736.0] * 145)
-    _, omitted, _ = labels(scene(scene_factory, at(11, 29, ss=59), closes))
+    _, omitted, _ = labels(gapped(scene_factory, tmp_path, at(11, 29, ss=59), closes))
     assert omitted["gap.morning_vs_gap"] == "the morning runs to 11:30 and its last bar has not finished"
-    got, _, _ = labels(scene(scene_factory, at(11, 30), closes))
+    got, _, _ = labels(gapped(scene_factory, tmp_path, at(11, 30), closes))
     assert got["gap.morning_vs_gap"].startswith("from the settled open to 11:30 price rose 0.05 sigma, with")
-    got, _, _ = labels(scene(scene_factory, at(11, 30), opening(7732.0, [7732.0] * 145)))
+    got, _, _ = labels(gapped(scene_factory, tmp_path, at(11, 30), opening(7732.0, [7732.0] * 145)))
     assert got["gap.morning_vs_gap"].startswith("from the settled open to 11:30 price rose 0.00 sigma, neither with nor against this morning's")
     late_touch = opening(7732.0, [7736.0] * 115 + [7700.0] + [7736.0] * 29)                     # the 11:30 bar is after the morning
-    got, _, _ = labels(scene(scene_factory, at(12, 0), late_touch))
+    got, _, _ = labels(gapped(scene_factory, tmp_path, at(12, 0), late_touch))
     assert "and did not touch yesterday's close" in got["gap.morning_vs_gap"]
-    stalled = scene(scene_factory, at(11, 32), closes)
+    stalled = gapped(scene_factory, tmp_path, at(11, 32), closes)
     stalled.bars[:] = [b for b in stalled.bars if bar_time(b) < at(11, 20)]                   # the 11:2x bars never arrived
     _, omitted, _ = labels(stalled)
     assert omitted["gap.morning_vs_gap"] == "the morning runs to 11:30 and its last bar has not finished"
@@ -343,17 +370,17 @@ PATH = [7700.0] * 5 + [7699.0, 7701.0] + [7701.0 + i for i in range(1, 18)] + [7
 UNIT = "(one tape unit = the typical 5-minute swing right now, 0.07 sigma)"
 
 
-def test_the_opening_path_firm_fading_and_rotating_in_tape_units(scene_factory):
-    got, _, _ = labels(scene(scene_factory, at(9, 55), PATH, row_over={"prior_close": 7680.0}))
+def test_the_opening_path_firm_fading_and_rotating_in_tape_units(scene_factory, tmp_path):
+    got, _, _ = labels(gapped(scene_factory, tmp_path, at(9, 55), PATH, row_over={"prior_close": 7680.0}))
     assert got["open.path"] == (
         "20 minutes after the settled open, price reached 0.23 sigma above it and 0.02 sigma below it, crossed it once, and gave back "
         f"24% of its high, under the stall line; price is now 2.3 tape units above the settled open {UNIT}, more than one tape unit "
         "away on the up side, on the gap's side")
-    got, _, _ = labels(scene(scene_factory, at(9, 55), PATH, spot=7712.0, row_over={"prior_close": 7720.0}))   # 6.5 of 18.5 points back
+    got, _, _ = labels(gapped(scene_factory, tmp_path, at(9, 55), PATH, spot=7712.0, row_over={"prior_close": 7720.0}))   # 6.5 of 18.5 points back
     assert ("gave back 35% of its high, at or past the stall line" in got["open.path"] and GIVEBACK_THIRD == 0.33
             and got["open.path"].endswith("more than one tape unit away on the up side, against the gap's side"))
     down = [7700.0] * 5 + [7700.0 - i for i in range(1, 21)]
-    got, _, _ = labels(scene(scene_factory, at(9, 55), down, row_over={"prior_close": 7699.0}))
+    got, _, _ = labels(gapped(scene_factory, tmp_path, at(9, 55), down, row_over={"prior_close": 7699.0}))
     assert got["open.path"].endswith(f"gave back 2% of its low, under the stall line; price is now 3.3 tape units below the settled open "
                                      f"{UNIT}, more than one tape unit away on the down side, with no real gap this morning")
 
@@ -364,8 +391,8 @@ def test_the_opening_path_firm_fading_and_rotating_in_tape_units(scene_factory):
     (7706.01, f"at or past the stall line; price is now 1.0 tape units above the settled open {UNIT}, more than one tape unit away on "
               "the up side, with no real gap this morning"),
 ])
-def test_the_opening_path_is_rotating_at_exactly_one_tape_unit_and_away_past_it(scene_factory, spot, verdict):
-    got, _, _ = labels(scene(scene_factory, at(9, 55), PATH, spot=spot, row_over={"prior_close": 7699.0}))
+def test_the_opening_path_is_rotating_at_exactly_one_tape_unit_and_away_past_it(scene_factory, tmp_path, spot, verdict):
+    got, _, _ = labels(gapped(scene_factory, tmp_path, at(9, 55), PATH, spot=spot, row_over={"prior_close": 7699.0}))
     assert got["open.path"].endswith(verdict)
 
 
@@ -376,8 +403,8 @@ def test_the_opening_path_unit_is_the_one_at_the_read(scene_factory):
     assert labels(scene(scene_factory, at(9, 55), wild, spot=7714.0))[0]["open.path"] == got["open.path"]
 
 
-def test_the_opening_path_unit_at_its_floor_says_so(scene_factory):
-    got, _, _ = labels(scene(scene_factory, at(9, 55), [7700.0] * 55, spot=7703.0))
+def test_the_opening_path_unit_at_its_floor_says_so(scene_factory, tmp_path):
+    got, _, _ = labels(gapped(scene_factory, tmp_path, at(9, 55), [7700.0] * 55, spot=7703.0))
     assert RULER_FLOOR_SIGMA == 0.03 and got["open.path"].endswith(
         "price is now 1.2 tape units above the settled open (one tape unit = the typical 5-minute swing right now, 0.03 sigma, at its floor), "
         "more than one tape unit away on the up side, with no real gap this morning")
@@ -398,23 +425,56 @@ def test_the_opening_path_never_reaches_a_negative_distance(scene_factory):
                                        "never crossed it")
 
 
-def test_the_settled_open_crossings_and_the_contested_rule(scene_factory):
-    def crossings(n: int) -> list[float]:
-        return [7700.0] * 5 + [7702.0 if k % 2 == 0 else 7698.0 for k in range(n + 1)] + [7700.0 + (1 if n % 2 == 0 else -1) * 2] * 30
+def crossing_closes(n: int) -> list[float]:
+    """Settling the open at 7700, then crossing it ``n`` times a minute apart, then holding on the last side."""
+    return [7700.0] * 5 + [7702.0 if k % 2 == 0 else 7698.0 for k in range(n + 1)] + [7700.0 + (1 if n % 2 == 0 else -1) * 2] * 60
 
-    got, _, _ = labels(scene(scene_factory, at(9, 56), crossings(1)))
-    assert got["open.settled_open_crosses"] == ("since the settled open 21 minutes ago price has crossed it 1 time, no more than 1 cross, "
-                                                "one-sided; it now sits 0.03 sigma below it")
-    got, _, _ = labels(scene(scene_factory, at(9, 56), crossings(OPEN_CONTESTED_CROSSES - 1)))
-    assert "crossed it 5 times, more than 1 but under the 6-cross contested rule" in got["open.settled_open_crosses"]
-    got, _, _ = labels(scene(scene_factory, at(9, 56), crossings(OPEN_CONTESTED_CROSSES)))
-    assert got["open.settled_open_crosses"] == ("since the settled open 21 minutes ago price has crossed it 6 times, at or past the 6-cross "
-                                                "contested rule; it now sits 0.03 sigma above it")
-    # a close back on the open keeps its side; a crossing bar that has not finished does not count
+
+def prior_days(n: int) -> list[str]:
+    return [(date(2026, 9, 17) - timedelta(days=k)).isoformat() for k in range(n)]
+
+
+def history(paths: list[list[float]]) -> dict[str, list[dict]]:
+    """Prior sessions, newest first from 2026-09-17, one per path of closes from 09:30."""
+    return {day: bars_from_closes(closes, day=day) for day, closes in zip(prior_days(len(paths)), paths)}
+
+
+# Twenty prior sessions crossing their settled open 0 to 19 times by 09:56: 6 crossings are more than 6 of them (bottom
+# third), 7 more than 7 (middle third), 14 more than 14 (top third); a count level with a session's does not beat it.
+CROSSED = history([crossing_closes(n) for n in range(20)])
+
+
+@pytest.mark.parametrize("n, verdict", [
+    (1, "crossed it once, more often than 1 of the last 20 sessions had by this minute, bottom third: one-sided"),
+    (6, "crossed it 6 times, more often than 6 of the last 20 sessions had by this minute, bottom third: one-sided"),
+    (7, "crossed it 7 times, more often than 7 of the last 20 sessions had by this minute, middle third: some crossing"),
+    (13, "crossed it 13 times, more often than 13 of the last 20 sessions had by this minute, middle third: some crossing"),
+    (14, "crossed it 14 times, more often than 14 of the last 20 sessions had by this minute, top third: contested"),
+])
+def test_the_settled_open_crossings_are_ranked_against_the_prior_sessions_at_this_minute(scene_factory, n, verdict):
+    got, _, _ = labels(scene(scene_factory, at(9, 56), crossing_closes(n), prior_bars=CROSSED))
+    side = "above" if n % 2 == 0 else "below"
+    assert got["open.settled_open_crosses"] == f"price sits 0.03 sigma {side} the settled open; since it was set 21 minutes ago price has {verdict}"
+
+
+def test_the_crossings_count_a_close_on_the_open_as_its_side_and_never_an_unfinished_bar(scene_factory):
     level = [7700.0] * 5 + [7702.0, 7700.0, 7702.0] + [7702.0] * 18 + [7698.0] * 10              # the 09:56 bar crosses
-    got, _, _ = labels(scene(scene_factory, at(9, 56), level, spot=7702.0))
-    assert "crossed it 0 times, no more than 1 cross, one-sided" in got["open.settled_open_crosses"]
-    got, _, _ = labels(scene(scene_factory, at(9, 57), level, spot=7698.0))
-    assert "crossed it 1 time, no more than 1 cross, one-sided" in got["open.settled_open_crosses"]
-    _, omitted, _ = labels(scene(scene_factory, at(9, 35), level))
+    got, _, _ = labels(scene(scene_factory, at(9, 56), level, spot=7702.0, prior_bars=CROSSED))
+    assert got["open.settled_open_crosses"] == ("price sits 0.03 sigma above the settled open; since it was set 21 minutes ago price has "
+                                                "never crossed it, no more often than any of the last 20 sessions had by this minute, "
+                                                "bottom third: one-sided")
+    got, _, _ = labels(scene(scene_factory, at(9, 57), level, spot=7698.0, prior_bars=CROSSED))
+    assert "crossed it once, more often than 1 of the last 20 sessions had by this minute, bottom third" in got["open.settled_open_crosses"]
+    _, omitted, _ = labels(scene(scene_factory, at(9, 35), level, prior_bars=CROSSED))
     assert omitted["open.settled_open_crosses"] == omitted["open.path"] == "no finished bar after the settled open yet"
+
+
+def test_the_crossings_rank_needs_ten_prior_sessions_and_keeps_those_with_an_estimated_ruler(scene_factory):
+    need = "its rank needs 10 prior sessions with bars from their settled open to this minute, have 9"
+    _, omitted, _ = labels(scene(scene_factory, at(9, 56), crossing_closes(7), prior_bars=history([crossing_closes(n) for n in range(9)])))
+    assert omitted["open.settled_open_crosses"] == need
+    # a crossing count is the day's own price, which no ruler scales: an estimated ruler keeps the session in
+    sc = scene(scene_factory, at(9, 56), crossing_closes(7), prior_bars=CROSSED)
+    got, _, _ = labels(replace(sc, prior_rulers={day: SigmaRuler(SIGMA, "live") for day in CROSSED}))
+    assert "more often than 7 of the last 20 sessions had by this minute, middle third" in got["open.settled_open_crosses"]
+
