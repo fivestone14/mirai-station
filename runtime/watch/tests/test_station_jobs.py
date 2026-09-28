@@ -418,10 +418,11 @@ def test_a_gate_that_cannot_answer_fails_the_job_out_loud(tmp_path, script, pyth
 # every Monday's first read and fire Saturday's.
 
 PREMARKET_JOB, PREMARKET_SCRIPT = "com.mirai-station.spx-jev-premarket", "run-spx-jev-premarket.sh"
+DEADMAN_JOB, DEADMAN_SCRIPT = "com.mirai-station.spx-premarket-deadman", "run-spx-premarket-deadman.sh"
 
 
-def _run_premarket(tmp_path, local_day, new_york_day, env=None):
-    """Run a copy of the pre-market run script in a stand-in station whose `date +%u` answers
+def _run_premarket(tmp_path, local_day, new_york_day, env=None, script=PREMARKET_SCRIPT):
+    """Run a copy of ``script``, the pre-market run script unless named, in a stand-in station whose `date +%u` answers
     `new_york_day` under TZ=America/New_York and `local_day` on the box's own clock. The venv
     python only records its launch. Returns the finished process and the recorded launches."""
     root, venv, launched = tmp_path / "station", tmp_path / "venv", tmp_path / "launched"
@@ -430,13 +431,13 @@ def _run_premarket(tmp_path, local_day, new_york_day, env=None):
     _file(scripts / "env.sh",
           'export MIRAI_STATION_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"\n'
           f'export MIRAI_STATION_VENV="{venv}"\n')
-    shutil.copy2(SCRIPTS / PREMARKET_SCRIPT, scripts / PREMARKET_SCRIPT)
+    shutil.copy2(SCRIPTS / script, scripts / script)
     _file(tmp_path / "bin" / "date",
           '#!/bin/sh\nif [ "$*" = "+%u" ]; then\n'
           f'  if [ "$TZ" = America/New_York ]; then echo {new_york_day}; else echo {local_day}; fi\n'
           '  exit 0\nfi\nexec /bin/date "$@"\n', 0o755)
     _file(venv / "bin" / "python", f'#!/bin/sh\necho "$*" >> "{launched}"\n', 0o755)
-    done = subprocess.run(["/bin/bash", str(scripts / PREMARKET_SCRIPT)], capture_output=True, text=True,
+    done = subprocess.run(["/bin/bash", str(scripts / script)], capture_output=True, text=True,
                           env={"PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin", "HOME": str(tmp_path), **(env or {})},
                           timeout=60)
     return done, launched.read_text() if launched.exists() else ""
@@ -467,6 +468,31 @@ def test_the_premarket_job_reads_on_new_york_weekdays(tmp_path, local_day, new_y
 
 def test_the_premarket_kill_switch_starts_nothing(tmp_path):
     done, launched = _run_premarket(tmp_path, 1, 1, env={"SPX_JEV_DISABLE": "1"})
+    assert (done.returncode, done.stderr, launched) == (0, "", "")
+
+
+# The lane's dead-man's switch (watch/intraday/spx_premarket_deadman.py) runs every 5 minutes in its own
+# process: its market-day and time-of-day gates are inside run(), and its run script skips only what the
+# lane's own does, the New York weekend and the kill switch, so it never pages a night the lane was told to skip.
+
+def test_the_premarket_deadman_is_hired_and_samples_faster_than_a_read_is_owed():
+    from watch.intraday import spx_premarket_deadman
+    assert f"{DEADMAN_JOB}.plist" in _shell_array(SCRIPTS / "install-launchd.sh", "PLISTS")
+    assert DEADMAN_JOB in _shell_array(SCRIPTS / "uninstall-launchd.sh", "PLISTS")
+    job = _job(LAUNCHD / f"{DEADMAN_JOB}.plist")
+    assert _run_script(job) == SCRIPTS / DEADMAN_SCRIPT
+    assert job["StartInterval"] < spx_premarket_deadman.OWED_AFTER_MIN * 60
+
+
+@pytest.mark.parametrize("local_day, new_york_day, checks", [(7, 1, True), (1, 1, True), (5, 6, False), (6, 6, False)])
+def test_the_premarket_deadman_checks_on_new_york_weekdays(tmp_path, local_day, new_york_day, checks):
+    done, launched = _run_premarket(tmp_path, local_day, new_york_day, script=DEADMAN_SCRIPT)
+    assert (done.returncode, done.stderr) == (0, "")
+    assert launched == ("-m watch.intraday.spx_premarket_deadman\n" if checks else "")
+
+
+def test_the_premarket_kill_switch_silences_its_deadman(tmp_path):
+    done, launched = _run_premarket(tmp_path, 1, 1, env={"SPX_JEV_DISABLE": "1"}, script=DEADMAN_SCRIPT)
     assert (done.returncode, done.stderr, launched) == (0, "", "")
 
 

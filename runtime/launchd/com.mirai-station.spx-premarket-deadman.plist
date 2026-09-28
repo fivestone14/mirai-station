@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mirai-station.spx-premarket-deadman</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-spx-premarket-deadman.sh</string>
+  </array>
+
+  <!-- Every 5 minutes. A pre-market read is owed 15 minutes after its checkpoint (the lane's
+       5-minute late line plus a read's worst run), so a miss is paged within 20 minutes of the
+       checkpoint, while the next checkpoint is still ahead.
+
+       SEPARATE FROM THE LANE ON PURPOSE. The pre-market job fires on calendar times and a
+       checkpoint it misses is never read later; a check inside that job dies with it. This
+       process imports nothing from spx_jev, reads no feed and calls no model: its only inputs
+       are the lane's card and read file. -->
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/mirai-station.spx-premarket-deadman.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/mirai-station.spx-premarket-deadman.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key>
+    <string>America/New_York</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

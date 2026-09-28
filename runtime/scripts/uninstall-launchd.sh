@@ -24,6 +24,7 @@ PLISTS=(
   "com.mirai-station.spx-jev"
   "com.mirai-station.spx-jev-tape"
   "com.mirai-station.spx-jev-premarket"
+  "com.mirai-station.spx-premarket-deadman"
   "com.mirai-station.spx-jev-bars"
   "com.mirai-station.spx-jev-context"
   "com.mirai-station.spx-jev-save-day"

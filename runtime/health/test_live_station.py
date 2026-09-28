@@ -40,6 +40,8 @@ SNDK_JOBS = ("com.mirai-station.sndk", "com.mirai-station.sndk-read",
              "com.mirai-station.sndk-bars", "com.mirai-station.sndk-deadman",
              "com.mirai-station.viewstation")
 SPX_PREMARKET_JOB = "com.mirai-station.spx-jev-premarket"
+# the pre-market lane's dead-man's switch (watch/intraday/spx_premarket_deadman.py): pages what premarket_fired fails
+SPX_PREMARKET_DEADMAN = "com.mirai-station.spx-premarket-deadman"
 # A pre-market read is owed this long after its checkpoint's late line (premarket.LATE_FIRE_MIN): its
 # worst run is the night's save, eight Schwab calls each given up after 30 seconds, then JEV's calls
 # with a retry each
@@ -861,6 +863,16 @@ def test_premarket_limits_are_the_values_the_lane_runs_on(monkeypatch):
                                                  "first_checkpoint": PREMARKET.schedule[0], "close_out": PREMARKET.close_out}
 
 
+def test_the_premarket_pager_holds_the_lane_to_the_limits_this_review_does(monkeypatch):
+    """The dead-man's switch imports nothing from spx_jev, so its copies of the lane's limits are held to it here."""
+    monkeypatch.syspath_prepend(str(_RUNTIME.parent / "skills" / "spx-jev"))
+    from spx_jev import premarket
+    from spx_jev.lane import PREMARKET
+    from watch.intraday import spx_premarket_deadman as pager
+    assert (pager.FIRST_CHECKPOINT, pager.CLOSE_OUT, pager.LATE_FIRE_MIN, pager.RUN_MIN) == \
+        (PREMARKET.schedule[0], PREMARKET.close_out, premarket.LATE_FIRE_MIN, PREMARKET_RUN_MIN)
+
+
 # --- live tests against the running station (read-only) ---------------------------
 
 live = pytest.mark.skipif(os.environ.get("MIRAI_LIVE") != "1",
@@ -886,7 +898,7 @@ def station():
     """The station launchd is running: its job listings, repo root and today's clock."""
     listing = _run("launchctl", "list").stdout
     prints = {}
-    for label in SNDK_JOBS + (SPX_PREMARKET_JOB,):
+    for label in SNDK_JOBS + (SPX_PREMARKET_JOB, SPX_PREMARKET_DEADMAN):
         shown = _run("launchctl", "print", f"gui/{os.getuid()}/{label}", check=False)
         if shown.returncode == 0:
             prints[label] = shown.stdout
@@ -923,7 +935,8 @@ def test_live_sndk_jobs_are_loaded(station):
 
 @live
 def test_live_spx_premarket_job_is_loaded(station):
-    _hold(jobs_loaded(station.listing, (SPX_PREMARKET_JOB,), "SPX pre-market"), f"launchctl list | grep {SPX_PREMARKET_JOB}")
+    _hold(jobs_loaded(station.listing, (SPX_PREMARKET_JOB, SPX_PREMARKET_DEADMAN), "SPX pre-market"),
+          "launchctl list | grep -E 'spx-jev-premarket|spx-premarket-deadman'")
 
 
 @live
