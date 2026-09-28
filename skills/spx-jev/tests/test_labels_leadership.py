@@ -4,6 +4,7 @@ minute of the prior sessions, point in time."""
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import replace
 
 import pytest
@@ -31,6 +32,7 @@ MULTIPLES = {"SPY": 1.0, "RSP": 0.66, "SMH": 1.6, "QQQ": 1.2, "IWM": 1.1, "XLF":
 # by a move above the bottom third of its own: a count of them ranks with a spread.
 ALTERNATE_SECTORS = {s: 1.0 if k % 2 == 0 else -1.0 for k, s in enumerate(SYMBOLS["sectors"])}
 ALTERNATE_NAMES = {s: 1.0 if k % 2 == 0 else -1.0 for k, s in enumerate(NAMES)}
+CANCELLING_JUMPS = {s: {JUMP: 0.01 if k % 2 else -0.01} for k, s in enumerate(NAMES)}   # half the names jump up, half down
 HEAVY_DAYS = 17                # prior days enough for 11 sessions whose trading day before is on file too
 
 
@@ -282,17 +284,43 @@ def test_the_largest_names_move_together(tmp_path):
 
 
 def test_one_name_supplies_the_index_move(tmp_path):
-    got, _, _ = labels(weighed(tmp_path, move_points=10.5, jumps={"AAPL": {JUMP: 0.01}}))
-    assert "AAPL alone supplied" in got["leaders.megacap_cohesion_30m"] and "past the 33% one-name share" in got["leaders.megacap_cohesion_30m"]
+    got, _, _ = labels(weighed(tmp_path, move_points=40.0, jumps={"AAPL": {JUMP: 0.04}}))
+    s = got["leaders.megacap_cohesion_30m"]
+    assert "AAPL alone supplied 59% of the index's 0.54 sigma rise, past the 33% one-name share" in s and s.endswith("top third: a real move")
 
 
 def test_the_largest_names_cancelling_on_a_flat_index(tmp_path):
-    jumps = {s: {JUMP: 0.01 if k % 2 else -0.01} for k, s in enumerate(NAMES)}
-    got, _, _ = labels(weighed(tmp_path, jumps=jumps, drift_scales=ALTERNATE_NAMES))
+    got, _, _ = labels(weighed(tmp_path, jumps=CANCELLING_JUMPS, drift_scales=ALTERNATE_NAMES))
     s = got["leaders.megacap_cohesion_30m"]
     assert s.startswith("over the last 30 minutes 4 of the 8 largest stocks rose and 4 fell, each by a move above the bottom third of its own")
     assert "the larger count, 4, is higher than 0 of the last 10 sessions at this minute, bottom third: not moving together" in s
     assert s.endswith("the index's move was higher than 0 of the last 10 sessions at this minute, bottom third: no real move")
+
+
+def cohesion_answer(sentence: str) -> str:
+    """The megacap_cohesion option the label's sentence answers, by the question's criteria in their order: one_name
+    first, then together_up / together_down, then cancelling, else drifting."""
+    up, down = map(int, re.match(r"over the last \d+ minutes (\d+) of the \d+ largest stocks rose and (\d+) fell", sentence).groups())
+    if "one-name share" in sentence and ", past the " in sentence and sentence.endswith(": a real move"):
+        return "one_name"
+    together = re.search(r": moving together (up|down);", sentence)
+    if together:
+        return f"together_{together.group(1)}"
+    return "cancelling" if up >= 2 and down >= 2 else "drifting"
+
+
+@pytest.mark.parametrize("kw, answer", [
+    ({"move_points": 60.0, "drift_scales": ALTERNATE_NAMES}, "together_up"),
+    ({"move_points": -60.0, "drift_scales": ALTERNATE_NAMES}, "together_down"),
+    ({"move_points": 40.0, "jumps": {"AAPL": {JUMP: 0.04}}}, "one_name"),
+    ({"move_points": 40.0, "jumps": {"AAPL": {JUMP: 0.04}}, "drift_scales": ALTERNATE_NAMES}, "one_name"),  # moving together up too
+    ({"jumps": CANCELLING_JUMPS, "drift_scales": ALTERNATE_NAMES}, "cancelling"),
+    ({"move_points": 10.5, "jumps": {"AAPL": {JUMP: 0.01}}}, "drifting"),         # past the one-name share of no real move
+    ({}, "drifting"),
+])
+def test_the_megacap_sentence_answers_one_option_by_the_criteria_order(tmp_path, kw, answer):
+    got, _, _ = labels(weighed(tmp_path, **kw))
+    assert cohesion_answer(got["leaders.megacap_cohesion_30m"]) == answer
 
 
 @pytest.mark.parametrize("move, jump, lead, rest, verdict", [
