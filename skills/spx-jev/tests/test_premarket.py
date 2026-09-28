@@ -306,11 +306,14 @@ def command(monkeypatch, jev, tmp_path_factory):
     monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
     monkeypatch.setattr(overnight, "save_nights", lambda state_dir, days, now: saves.append((days, now)) or [
         {"added": 3, "failed": ["/BTC 1-min: RuntimeError: refused"]}])
+    waited = []
+    # the bar the close-out waits for, and how many grading runs came before the wait
+    monkeypatch.setattr(service, "wait_for_bar", lambda state_dir, fire: waited.append((fire, len(jev["graded"]))) or True)
 
     def run(now, *args):
         monkeypatch.setattr(service, "now_et", lambda: now)
         return premarket.main([*args, "--questions", str(questions)])
-    run.saves = saves
+    run.saves, run.waited = saves, waited
     return run
 
 
@@ -340,6 +343,21 @@ def test_a_fire_saves_the_night_reads_once_and_the_close_out_grades(tmp_path, co
     assert c["closed_out_at"] and c["tally"]["calls"] == 1 and jev["graded"] == [PREMARKET, PREMARKET]
     lines = _lines(state / "spx_jev" / "archive" / f"{DAY}.jsonl")
     assert [l["kind"] for l in lines] == ["read", "close_out"] and lines[1]["lane"] == "premarket"
+
+
+def test_the_close_out_waits_for_the_bar_its_last_check_ends_on_and_a_replay_does_not(tmp_path, command, jev):
+    """The 10:04 check (open_30) is graded off the bar that finishes at 10:05, which the bars job writes up to a minute
+    or so later: on 09-28 the 10:06 close-out ran before it landed and left the lane's main call ungraded all day. The
+    close-out now waits for that bar before it grades, as the tape lane's read waits for its own; a replay's bars
+    are all on file."""
+    state = _station(tmp_path)
+    assert premarket.last_check(date.fromisoformat(DAY)) == at(10, 5)
+    assert command(at(9, 28, ss=4), "--state-dir", str(state), "--send") == 0
+    assert command(at(10, 6, ss=3), "--state-dir", str(state), "--send") == 0
+    assert command.waited == [(at(10, 5), 1)]                  # the read's grading run, then the wait, then the close-out's
+    assert jev["graded"] == [PREMARKET, PREMARKET]
+    assert command(at(12, 0), "--state-dir", str(state), "--day", DAY, "--at", "10:06", "--out-dir", str(tmp_path / "trial")) == 0
+    assert command.waited == [(at(10, 5), 1)]
 
 
 def test_a_replay_saves_nothing_and_writes_only_where_it_is_told(tmp_path, command):

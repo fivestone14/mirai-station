@@ -32,8 +32,8 @@ close cannot be formed writes its record with the reason, builds no labels and a
     state/spx_jev/lanes/premarket/grades.jsonl, weights.json   (grade.py; the lane keeps no learning loop, lane.PREMARKET.pool)
     state/spx_jev/archive/{day}.jsonl                 its ReadRecord and CloseOutRecord lines, lane "premarket"
 
-The close-out at 10:06 grades the morning's calls from the settled open (grade.run) and refreshes the card's
-calls and tally. Every time on the card is a full timestamp with its offset. A replay (--day with --at) saves
+The close-out at 10:06 waits up to service.BAR_WAIT_S for the bar its 10:04 check ends on (last_check), grades
+the morning's calls from the settled open (grade.run) and refreshes the card's calls and tally. Every time on the card is a full timestamp with its offset. A replay (--day with --at) saves
 nothing, checks nothing against the wall clock, and writes into a fresh scratch folder unless --out-dir names one.
 """
 from __future__ import annotations
@@ -129,6 +129,13 @@ def due(now: datetime) -> tuple[str | None, str]:
     if late >= LATE_FIRE_MIN:
         return None, f"{local:%H:%M} ET is {late} minutes after the {last} ET {kind}, past the {LATE_FIRE_MIN}-minute line: a late fire reads nothing"
     return last, f"the {last} ET {kind}"
+
+
+def last_check(day: date) -> datetime:
+    """When the day's last check is graded: the finish of the bar its longest horizon ends on, counted from the
+    settled open (grade.settled_open_at), 10:05 ET. The bars job writes that bar up to a minute or so later, so the
+    10:06 close-out waits for it (service.wait_for_bar) rather than leave the lane's main call ungraded for the day."""
+    return grade.settled_open_at(day) + timedelta(minutes=max(m for m, _ in PREMARKET.horizons.values()))
 
 
 def jev_reads(doc: dict, day: date) -> list[str]:
@@ -508,6 +515,9 @@ def main(argv: list[str] | None = None) -> int:
     day = now.astimezone(ET).date().isoformat()
     try:
         if checkpoint == PREMARKET.close_out:
+            last = last_check(now.astimezone(ET).date())
+            if not args.day and not service.wait_for_bar(state_dir, last):
+                service.log(f"the bar finishing at {last:%H:%M} is not on file after {service.BAR_WAIT_S} s: grading what is")
             c = service.close_out(state_dir, out_dir, doc, PREMARKET, day)
             service.log(f"premarket lane closed out: {c['tally']['right']} of {c['tally']['graded']} graded calls right, "
                         f"{c['tally']['calls']} calls" if c else "premarket lane: nothing to close out today")
