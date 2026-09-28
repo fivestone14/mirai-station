@@ -647,7 +647,7 @@ def realized_scene(scene_factory, today: list[dict], steps=range(1, 11), prior=N
     return replace(scene, prior_rulers={d: SigmaRuler(SIGMA, "anchor") for d in prior})
 
 
-REAL_MOVE = "a 10-minute move above the bottom third of the same minutes on the last sessions"
+STILL = "its largest 10-minute move inside them was 0.00 sigma, larger than 0 of the last 10 sessions' largest in the same half hour, "
 
 
 @pytest.mark.parametrize("step, standing", [
@@ -658,36 +658,31 @@ REAL_MOVE = "a 10-minute move above the bottom third of the same minutes on the 
 def test_the_realized_swing_is_ranked_against_the_same_half_hour(scene_factory, step, standing):
     swing = step * math.sqrt(30) / SIGMA
     assert labels(realized_scene(scene_factory, swinging(step)))[0]["vol.realized_vs_clock"] == (
-        f"over the last 30 minutes SPX's realized swing was {swing:.2f} sigma, {standing}; price has made no real move "
-        f"({REAL_MOVE}) today, none for at least the last 30 minutes")
+        f"over the last 30 minutes SPX's realized swing was {swing:.2f} sigma, {standing}; {STILL}bottom third: no real move")
 
 
-def test_a_bottom_fifth_swing_says_when_the_last_real_move_ended(scene_factory):
-    """The prior sessions never move over ten minutes, so any 10-minute move today is above their bottom third."""
-    flat = [7700.0] * 180
-    coiled = labels(realized_scene(scene_factory, bars_from_closes(flat, wick=0.0)))[0]["vol.realized_vs_clock"]
-    assert coiled == ("over the last 30 minutes SPX's realized swing was 0.00 sigma, more than 0 of the last 10 sessions at this time "
-                      f"of day, in the bottom fifth; price has made no real move ({REAL_MOVE}) today, none for at least the last "
-                      "30 minutes")
-    once = labels(realized_scene(scene_factory, bars_from_closes(drift(flat, 150))))[0]["vol.realized_vs_clock"]
-    assert once.endswith(f"bottom fifth; the last real move ({REAL_MOVE}) ended 11 minutes ago, inside the last 30 minutes; before that "
-                         "there was none since the open")
-    twice = labels(realized_scene(scene_factory, bars_from_closes(drift(drift(flat, 100), 150))))[0]["vol.realized_vs_clock"]
-    assert twice.endswith("ended 11 minutes ago, inside the last 30 minutes; before that there was none for 32 minutes")
-    long_ago = labels(realized_scene(scene_factory, bars_from_closes(drift(flat, 100))))[0]["vol.realized_vs_clock"]
-    assert "ended 61 minutes ago, at least 30 minutes ago" in long_ago
+def climbing() -> dict[str, list[dict]]:
+    """Ten prior sessions climbing steadily, 1 to 10 points every ten minutes, and swinging 20 points every minute:
+    the half hour's largest 10-minute move is 1 to 10 points, and its swing over any calm day's."""
+    return {d: bars_from_closes([7700.0 + k * i / 10 + (20.0 if i % 2 else 0.0) for i in range(390)], day=d)
+            for d, k in zip(PRIOR_DAYS, range(1, 11))}
 
 
 @pytest.mark.parametrize("points, words", [
-    (7.0, f"price has made no real move ({REAL_MOVE}) today"),
-    (14.0, f"the last real move ({REAL_MOVE}) ended 18 minutes ago"),
+    (2.5, "0.03 sigma, larger than 2 of the last 10 sessions' largest in the same half hour, bottom third: no real move"),
+    (5.5, "0.07 sigma, larger than 5 of the last 10 sessions' largest in the same half hour, middle third: a real move"),
+    (10.5, "0.14 sigma, larger than 10 of the last 10 sessions' largest in the same half hour, top third: a real move"),
 ])
-def test_a_real_move_is_one_above_the_bottom_third_of_the_same_minutes(scene_factory, points, words):
-    """The prior sessions climb a point a minute, ten points every ten minutes: a 7-point climb today is under all of
-    them, a 14-point one over all of them."""
-    prior = {d: bars_from_closes([7700.0 + i for i in range(390)], day=d) for d in PRIOR_DAYS}
-    got = labels(realized_scene(scene_factory, bars_from_closes(drift([7700.0] * 180, 150, points=points)), prior=prior))[0]
-    assert words in got["vol.realized_vs_clock"]
+def test_a_real_move_is_the_half_hours_largest_10_minute_move_above_the_bottom_third_of_the_same_half_hour(scene_factory, points, words):
+    """Today is flat but for one climb from 12:00, so its swing is in the bottom fifth: coiled with no real move, quiet with one."""
+    got = labels(realized_scene(scene_factory, bars_from_closes(drift([7700.0] * 180, 150, points=points)), prior=climbing()))[0]
+    assert got["vol.realized_vs_clock"].endswith(f"in the bottom fifth; its largest 10-minute move inside them was {words}")
+
+
+def test_a_move_before_the_half_hour_is_no_real_move_inside_it(scene_factory):
+    """A 14-point climb from 11:10 to 11:20, before the window: every 10-minute move inside it is nothing."""
+    got = labels(realized_scene(scene_factory, bars_from_closes(drift([7700.0] * 180, 100, points=14.0)), prior=climbing()))[0]
+    assert got["vol.realized_vs_clock"].endswith(f"in the bottom fifth; {STILL}bottom third: no real move")
 
 
 @pytest.mark.parametrize("step, words", [

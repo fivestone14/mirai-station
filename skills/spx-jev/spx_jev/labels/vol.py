@@ -29,7 +29,7 @@ from ..sessions import next_trading_day, session_close, session_minutes
 from ..state_builder import MarketContext, Scene, first_row, row_days
 from .events_shocks import judged_windows, shock_bursts
 from .label_set import LabelSet
-from .measures import (ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, day_high_low, is_num, minute_of_day,
+from .measures import (ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, day_high_low, is_num, move_size,
                        session_extremes, settled_open)
 from .ranks import (SameClockRank, fifth, move_rank, rank_against, rank_days, rank_sessions, same_clock_market,
                     same_clock_values, tick_bands_by_minute, tick_bursts)
@@ -68,8 +68,8 @@ TAPE_SLICE_MIN, TAPE_SLICES = 5, 6
 LOADING_EVENTS = ("FOMC", "FED_CHAIR_TESTIMONY", "FED_CHAIR_JACKSON_HOLE")
 # VIX's reaction to a shock is measured from this many minutes before the burst began (the set's words).
 SHOCK_LEAD_MIN = 6
-# A real move, for how long the tape has been still: a move over this many minutes above the bottom third of the
-# same minutes on the prior sessions.
+# A real move, for whether the half hour was still: its largest move over this many minutes above the bottom
+# third of the same half hour's largest on the prior sessions.
 REAL_MOVE_MIN = 10
 # The context job snapshots the VIX family every minute: a value older than this means it stopped.
 QUOTE_MAX_AGE_MIN = 5
@@ -723,43 +723,18 @@ def _realized_30(bars: list[dict], then: datetime, points: float | None) -> floa
     return math.sqrt(sum((b - a) ** 2 for a, b in zip(closes, closes[1:]))) / points
 
 
-def _real_move_sizes(bars: list[dict], points: float) -> dict[int, float]:
-    """The size of the REAL_MOVE_MIN-minute move to each bar's close, in sigma of ``points``, by the bar's minute
-    of day, oldest first."""
-    closes = [float(b["close"]) for b in bars]
-    return {minute_of_day(bar_time(bars[i])): abs(closes[i] - closes[i - REAL_MOVE_MIN]) / points
-            for i in range(REAL_MOVE_MIN, len(bars))}
-
-
-def _stillness(scene: Scene, points: float) -> str:
-    """When the last real move ended and how long the tape was still before it began, with whether the last one
-    is inside the last 30 minutes. A real move is a REAL_MOVE_MIN-minute move above the bottom third of the same
-    minutes on the prior sessions, each in its own ruler; a minute too few of them reach is no move."""
-    prior = [_real_move_sizes(scene.prior_bars[d], r.points) for d in rank_days(scene) if (r := scene.prior_rulers.get(d))]
-    moved = []
-    for minute, size in _real_move_sizes(scene.bars, points).items():
-        rank, _ = rank_sessions(size, [p[minute] for p in prior if minute in p], "")
-        if rank is not None and rank.band != "bottom third":
-            moved.append(minute)
-    rule = f"a {REAL_MOVE_MIN}-minute move above the bottom third of the same minutes on the last sessions"
-    if not moved:
-        return f"price has made no real move ({rule}) today, none for at least the last {WINDOW_30_MIN} minutes"
-    last = moved[-1]
-    ended_at = datetime.combine(scene.now.astimezone(ET).date(), time(last // 60, last % 60), tzinfo=ET) + ONE_MINUTE
-    ago = (scene.now - ended_at).total_seconds() / 60.0
-    ended = "under a minute ago" if ago < 1 else f"{plural(round(ago), 'minute')} ago"
-    when = f"inside the last {WINDOW_30_MIN} minutes" if ago < WINDOW_30_MIN else f"at least {WINDOW_30_MIN} minutes ago"
-    first = last
-    while first - 1 in moved:
-        first -= 1
-    earlier = [m for m in moved if m < first]
-    before = f"before that there was none for {plural(first - earlier[-1], 'minute')}" if earlier else "before that there was none since the open"
-    return f"the last real move ({rule}) ended {ended}, {when}; {before}"
+def _largest_move_30(bars: list[dict], then: datetime, points: float | None) -> float | None:
+    """The largest REAL_MOVE_MIN-minute move inside the 30 minutes to ``then``, in sigma of ``points``: the
+    measure a real move is ranked on (measures.move_size, each end inside the window)."""
+    moves = [m for k in range(REALIZED_WINDOW_MIN - REAL_MOVE_MIN + 1)
+             if (m := move_size(bars, then - timedelta(minutes=k), points, REAL_MOVE_MIN)) is not None]
+    return max(moves) if moves else None
 
 
 def _realized_vs_clock(scene: Scene, ls: LabelSet) -> None:
     """The last 30 minutes' realized swing in the morning anchor, ranked against the same half hour on the
-    prior sessions (vol.realized_vs_clock) and as a multiple of their median (vol.realized_vs_clock_rank)."""
+    prior sessions, with whether a real move came inside it (vol.realized_vs_clock), and the swing as a multiple
+    of their median (vol.realized_vs_clock_rank)."""
     ruler = sigma_anchor(scene)
     value = _realized_30(scene.bars, scene.now, ruler.points if ruler else None)
     if value is None:
@@ -776,9 +751,17 @@ def _realized_vs_clock(scene: Scene, ls: LabelSet) -> None:
         standing = f"more than every one of the last {rank.of} sessions at this time of day"
     else:
         standing = f"more than {rank.higher_than} of the last {rank.of} sessions at this time of day, {fifth(rank)}"
-    ls.put("vol.realized_vs_clock",
-           f"over the last {REALIZED_WINDOW_MIN} minutes SPX's realized swing was {sig(value)}, {standing}; "
-           f"{_stillness(scene, ruler.points)}{_ruled(ruler)}")
+    largest = _largest_move_30(scene.bars, scene.now, ruler.points)
+    move, why = (rank_sessions(largest, same_clock_values(scene, _largest_move_30), "bars at this minute") if largest is not None
+                 else (None, f"needs a finished bar {REAL_MOVE_MIN} minutes before one in the last {REALIZED_WINDOW_MIN} minutes"))
+    if move is None:
+        ls.omit("vol.realized_vs_clock", why)
+    else:
+        ls.put("vol.realized_vs_clock",
+               f"over the last {REALIZED_WINDOW_MIN} minutes SPX's realized swing was {sig(value)}, {standing}; its largest "
+               f"{REAL_MOVE_MIN}-minute move inside them was {sig(largest)}, larger than {move.higher_than} of the last {move.of} "
+               f"sessions' largest in the same half hour, {move.band}: {'no real move' if move.band == 'bottom third' else 'a real move'}"
+               f"{_ruled(ruler)}")
     usual = statistics.median(base[:rank.of])
     if usual <= 0:
         ls.omit("vol.realized_vs_clock_rank", "the prior sessions' usual swing at this minute is zero")
