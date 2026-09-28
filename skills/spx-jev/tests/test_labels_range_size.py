@@ -43,8 +43,8 @@ def _swinging_sessions(amplitudes: list[float]) -> dict[str, list[dict]]:
 # ---- range.first_hour
 
 FIRST_HOUR = [7700.0] + [7690.0, 7710.0] * 29 + [7700.0]          # 60 bars from 09:30: high 7710, low 7690, 0.27 sigma
-# How far past the first hour's high each prior session had gone by 11:00, in points; 0 is no break.
-PRIOR_REACHES = [0.0, 0.0, 0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 35.0, 40.0]
+# How far past the first hour's high each prior session had gone by 11:00, in points; 0 is no break, and not in the base.
+PRIOR_REACHES = [0.0, 0.0, 0.0, 3.0, 4.0, 6.0, 8.0, 10.0, 15.0, 20.0, 25.0, 35.0, 40.0]
 
 
 def _breaking_sessions(reaches: list[float]) -> dict[str, list[dict]]:
@@ -64,19 +64,19 @@ def test_the_first_hour_says_where_price_is_then_ranks_how_far_it_went_past_an_e
     state, _ = _labels(_first_hour_scene(scene_factory, ramp))
     assert state["range.first_hour"] == ("price is above the first hour's high, 0.40 sigma beyond it; the first hour spanned 0.27 sigma; "
                                          "since 10:30 price broke above its high 27 minutes ago, reached 0.40 sigma beyond it, further "
-                                         "than 8 of the last 10 sessions had gone past their first hour by this minute, top third, and "
-                                         "never broke its low")
-    stalled = [7710.0 + i for i in range(1, 11)] + [7720.0] * 20      # 10 points past: beyond the three sessions that never broke and the 5
+                                         "than 8 of the 10 first-hour breaks the last 13 sessions had made by this minute, top third, "
+                                         "and never broke its low")
+    stalled = [7710.0 + i for i in range(1, 11)] + [7720.0] * 20      # 10 points past: beyond four breaks, and no count for the three with none
     state, _ = _labels(_first_hour_scene(scene_factory, stalled))
-    assert state["range.first_hour"].endswith("reached 0.13 sigma beyond it, further than 4 of the last 10 sessions had gone past their "
-                                              "first hour by this minute, middle third, and never broke its low")
+    assert state["range.first_hour"].endswith("reached 0.13 sigma beyond it, further than 4 of the 10 first-hour breaks the last 13 "
+                                              "sessions had made by this minute, middle third, and never broke its low")
 
 
 def test_a_reach_ties_with_a_session_that_went_as_far_and_the_break_buffer_is_no_break(scene_factory):
-    as_far = [7710.0 + i for i in range(1, 21)] + [7730.0] * 10       # 20 points past: level with one session, beyond six
+    as_far = [7710.0 + i for i in range(1, 21)] + [7730.0] * 10       # 20 points past: level with one break, beyond six
     state, _ = _labels(_first_hour_scene(scene_factory, as_far))
-    assert "reached 0.27 sigma beyond it, further than 6 of the last 10 sessions had gone past their first hour by this minute, middle third" \
-        in state["range.first_hour"]
+    assert "reached 0.27 sigma beyond it, further than 6 of the 10 first-hour breaks the last 13 sessions had made by this minute, middle " \
+           "third" in state["range.first_hour"]
     on_buffer = [7712.25] * 30                                        # exactly the 0.03 sigma buffer past the high: no break
     state, _ = _labels(_first_hour_scene(scene_factory, on_buffer, spot=7705.0, prior={}))
     assert state["range.first_hour"] == ("price is inside the first hour's range; the first hour spanned 0.27 sigma; since 10:30 no bar "
@@ -92,16 +92,21 @@ def test_a_break_back_inside_and_a_break_both_ways(scene_factory):
     state, _ = _labels(_first_hour_scene(scene_factory, both))
     assert state["range.first_hour"] == ("price is below the first hour's low, 0.13 sigma beyond it; the first hour spanned 0.27 sigma; "
                                          "since 10:30 price broke both edges: above its high 27 minutes ago, reached 0.13 sigma beyond it, "
-                                         "further than 4 of the last 10 sessions had gone past their first hour by this minute, middle "
-                                         "third; and below its low 7 minutes ago, reached 0.13 sigma beyond it, further than 4 of the last "
-                                         "10 sessions had gone past their first hour by this minute, middle third")
+                                         "further than 4 of the 10 first-hour breaks the last 13 sessions had made by this minute, middle "
+                                         "third; and below its low 7 minutes ago, reached 0.13 sigma beyond it, further than 4 of the 10 "
+                                         "first-hour breaks the last 13 sessions had made by this minute, middle third")
 
 
-def test_a_break_waits_for_ten_ranked_sessions_and_the_first_hour_for_its_sixty_bars(scene_factory):
+def test_a_break_price_is_beyond_waits_for_ten_prior_breaks_and_the_first_hour_for_its_sixty_bars(scene_factory):
     ramp = [7710.0 + i for i in range(1, 31)]
-    nine = _breaking_sessions(PRIOR_REACHES[:9])
+    nine = _breaking_sessions([0.0] + PRIOR_REACHES[:3] + PRIOR_REACHES[4:])        # 13 sessions, 9 of them past their first hour
     _, omitted = _labels(_first_hour_scene(scene_factory, ramp, prior=nine))
-    assert omitted["range.first_hour"] == "its rank needs 10 prior sessions with a morning ruler and a first hour of bars at this minute, have 9"
+    assert omitted["range.first_hour"] == "its rank needs 10 prior sessions with a first-hour break by this minute, have 9"
+    # a break price is back inside, or one of two, is not judged by its reach: said without a rank
+    failed = [7710.0 + i for i in range(1, 11)] + [7700.0] * 20
+    state, _ = _labels(_first_hour_scene(scene_factory, failed, prior=nine))
+    assert state["range.first_hour"] == ("price is back inside the first hour's range; the first hour spanned 0.27 sigma; since 10:30 price "
+                                         "broke above its high 27 minutes ago, reached 0.13 sigma beyond it, and never broke its low")
     _, omitted = _labels(_scene(scene_factory, at(10, 20, ss=5), flat_bars(50)))
     assert omitted["range.first_hour"] == "needs the first hour's 60 finished bars, have 50"
 

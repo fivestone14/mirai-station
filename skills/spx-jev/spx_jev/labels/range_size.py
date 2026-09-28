@@ -13,8 +13,8 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Callable
 
-from ..cuts import (IB_BREAK_SIGMA, MOVE_RULE_SIGMA, NEXT_30_FLAT_BAND_SIGMA, NEXT_60_FLAT_BAND_SIGMA, RULER_FLOOR_SIGMA, SAME_CLOCK_MIN_SESSIONS,
-                    SHAPE_CUT_SIGMA, TAPE_BIG_UNITS, TAPE_FLAT_UNITS, WALL_NEAR_SIGMA, WINDOW_30_MIN, WINDOW_60_MIN)
+from ..cuts import (IB_BREAK_SIGMA, MOVE_RULE_SIGMA, NEXT_30_FLAT_BAND_SIGMA, NEXT_60_FLAT_BAND_SIGMA, NIGHT_RANK_COUNT, RULER_FLOOR_SIGMA,
+                    SAME_CLOCK_MIN_SESSIONS, SHAPE_CUT_SIGMA, TAPE_BIG_UNITS, TAPE_FLAT_UNITS, WALL_NEAR_SIGMA, WINDOW_30_MIN, WINDOW_60_MIN)
 from ..sessions import session_open
 from ..state_builder import Scene
 from .label_set import LabelSet
@@ -289,7 +289,7 @@ def _first_hour_breaks(bars: list[dict], open_t: datetime, points: float) -> Fir
 
 def _first_hour_reach(bars: list[dict], then: datetime, sigma: float | None) -> float | None:
     """How far a session had gone past its first hour's range by ``then``, either way, in its own sigma: 0
-    when no bar had broken an edge. The base a break's reach is ranked against."""
+    when no bar had broken an edge. The sessions above 0 are the base a break's reach is ranked against."""
     breaks = _first_hour_breaks(bars, session_open(then), sigma) if sigma else None
     return max(breaks.reach_up, breaks.reach_down) / sigma if breaks else None
 
@@ -297,7 +297,8 @@ def _first_hour_reach(bars: list[dict], then: datetime, sigma: float | None) -> 
 def _first_hour(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
     """Where price is against the first hour's range, then what the bars since did with its edges: a break is
     a bar more than the break buffer past an edge, its reach the furthest any bar went past it, ranked
-    against how far the last sessions had gone past their first hour by this minute."""
+    against how far the last sessions that had broken their first hour by this minute had gone past it. A
+    session with no break yet is no reach to beat: counted, every break would rank high early in the day."""
     open_t, a = scene.session_open, anchor.points
     breaks = _first_hour_breaks(scene.bars, open_t, a)
     if breaks is None:
@@ -305,15 +306,22 @@ def _first_hour(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
         ls.omit("range.first_hour", f"needs the first hour's {FIRST_HOUR_MIN} finished bars, have {len(first)}")
         return
     hi, lo, above, below = breaks.high, breaks.low, breaks.above, breaks.below
-    base = same_clock_values(scene, _first_hour_reach) if above or below else []
+    base = same_clock_values(scene, _first_hour_reach)[:NIGHT_RANK_COUNT] if above or below else []
+    broken = [reach for reach in base if reach]
     ranks: dict[str, SameClockRank] = {}
+    unranked = None
     for side, reach in (("up", breaks.reach_up), ("down", breaks.reach_down)):
         if reach:
-            ranks[side], why = rank_sessions(reach / a, base, "a morning ruler and a first hour of bars at this minute")
-            if why:
-                ls.omit("range.first_hour", why)
-                return
+            rank, why = rank_sessions(reach / a, broken, "a first-hour break by this minute")
+            if rank is None:
+                unranked = why
+            else:
+                ranks[side] = rank
     spot = scene.spot
+    # only a one-sided break that price is still beyond is judged by its reach (extending or stalling)
+    if unranked and bool(above) != bool(below) and (spot > hi if above else spot < lo):
+        ls.omit("range.first_hour", unranked)
+        return
     if spot > hi:
         where = f"price is above the first hour's high, {sig((spot - hi) / a)} beyond it"
     elif spot < lo:
@@ -322,12 +330,13 @@ def _first_hour(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
         where = f"price is {'back ' if above or below else ''}inside the first hour's range"
     since = f"since {breaks.end.astimezone(ET):%H:%M}"
 
-    def broke(bars: list[dict], edge: str, reach: float, rank: SameClockRank) -> str:
-        return (f"{edge} {minutes_ago(scene.now, bar_time(bars[0]) + ONE_MINUTE)}, reached {sig(reach / a)} beyond it, further than "
-                f"{rank.higher_than} of the last {rank.of} sessions had gone past their first hour by this minute, {rank.band}")
+    def broke(bars: list[dict], edge: str, reach: float, rank: SameClockRank | None) -> str:
+        ranked = (f", further than {rank.higher_than} of the {rank.of} first-hour breaks the last {len(base)} sessions had made by this "
+                  f"minute, {rank.band}" if rank else "")
+        return f"{edge} {minutes_ago(scene.now, bar_time(bars[0]) + ONE_MINUTE)}, reached {sig(reach / a)} beyond it{ranked}"
 
-    up = broke(above, "above its high", breaks.reach_up, ranks["up"]) if above else ""
-    down = broke(below, "below its low", breaks.reach_down, ranks["down"]) if below else ""
+    up = broke(above, "above its high", breaks.reach_up, ranks.get("up")) if above else ""
+    down = broke(below, "below its low", breaks.reach_down, ranks.get("down")) if below else ""
     if above and below:
         history = f"{since} price broke both edges: {up}; and {down}"
     elif above:
