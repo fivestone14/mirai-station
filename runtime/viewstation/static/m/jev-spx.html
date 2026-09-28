@@ -503,17 +503,28 @@ details .q{margin-top:8px}
   }
   // one bar: each option's share of the width; the words under it name each option whose words fit its
   // share of the row, and bold the pick. The row is ODDS_TRACK_PX wide in the narrowest card on the owner's
-  // 360px phone (a dashed one), less ODDS_GAP_PX between options; LETTER_PX is the widest letter the shipped
-  // face gives a label ("Down 0%" in bold, 7.87px a letter in Chrome), so a label drawn is never cut
-  var ODDS_TRACK_PX = 294, ODDS_GAP_PX = 2, LETTER_PX = 7.9;
+  // 360px phone (a dashed one), less ODDS_GAP_PX between options, and flex shares it out by the odds' sum
+  // when that is over 1. A word is as wide as its letters' advances in the shipped face (pjs-153fc85b7029.woff2,
+  // thousandths of an em at weight 400, and 700 for the pick) at the row's ODDS_FONT_PX: never more than a
+  // 64th of a pixel short of what Chrome draws for any odds word, so a word drawn is whole and one that fits
+  // is drawn. A letter not in the table counts a whole em.
+  var ODDS_TRACK_PX = 294, ODDS_GAP_PX = 2, ODDS_FONT_PX = 11.5;
+  var ODDS_LETTERS = ' %0123456789DFUabegilmnoprstuw';
+  var ODDS_EM = {400: [170, 974, 732, 371, 600, 609, 630, 616, 597, 543, 628, 597, 742, 581, 700, 572, 667, 615, 662, 229, 229, 908, 573, 655, 667, 338, 509, 388, 573, 797], 700: [178, 1046, 708, 403, 597, 611, 654, 615, 602, 559, 632, 602, 740, 586, 718, 580, 672, 612, 652, 252, 252, 924, 593, 652, 672, 374, 514, 413, 593, 883]};
+  function oddsWidth(text, bold){
+    var em = ODDS_EM[bold ? 700 : 400], w = 0;
+    for(var i = 0; i < text.length; i++){ var j = ODDS_LETTERS.indexOf(text.charAt(i)); w += j < 0 ? 1000 : em[j]; }
+    return w * ODDS_FONT_PX / 1000;
+  }
   function oddsBar(o, pick){
     var box = el('div'), bar = el('div', 'odds-bar'), lab = el('div', 'odds-lab'), keys = oddsKeys(o);
-    var room = ODDS_TRACK_PX - ODDS_GAP_PX * (keys.length - 1);
+    var total = keys.reduce(function(s, k){ return s + Math.max(0, o[k] || 0); }, 0);
+    var room = (ODDS_TRACK_PX - ODDS_GAP_PX * (keys.length - 1)) / Math.max(1, total);
     keys.forEach(function(k){
       var w = Math.max(0, o[k] || 0), seg = el('i', 'o-' + k), word = el('span', k === pick ? 'pick' : null);
       seg.style.flex = w + ' 1 0'; word.style.flex = w + ' 1 0';
       var text = cap(k) + ' ' + pct(w);
-      if(text.length * LETTER_PX <= w * room) word.textContent = text;
+      if(oddsWidth(text, k === pick) <= w * room) word.textContent = text;
       bar.appendChild(seg); lab.appendChild(word);
     });
     bar.setAttribute('role', 'img');

@@ -155,7 +155,7 @@ def _sheet(c, now, tz=LA):
       function tag(t){ return el('div', 'tag', sentence(t)); }
       function bar(name, p, pick){ var b = el('div', 'bar' + (pick ? ' pick' : '')); b.textContent = name.replace(/_/g, ' ') + ' ' + Math.round(p * 100) + '%'; return b; }
     """
-    js = (stubs + _var("ODDS_ORDER") + _var("ODDS_TRACK_PX") + _fn("oddsKeys") + _fn("oddsBar") + _fn("unitsWords") + _fn("movedWords") +
+    js = (stubs + _odds() + _fn("unitsWords") + _fn("movedWords") +
           _fn("openCall") + "openCall(D.c, {}); console.log(JSON.stringify({title: nodes.csTitle.textContent, body: dump(nodes.csBody)}));")
     return _run(js, {"c": c, "now": now}, tz)
 
@@ -319,33 +319,49 @@ def test_the_page_fits_the_owners_360px_phone():
     assert _W["Read 06:50 GMT+5:30 … Graded 07:00"] <= card
     # the drawings are 300 wide in their own units and scale to the card, so they never run past it
     assert "width:100%;height:auto" in _rule(".inplay") and "viewBox: '0 0 300 '" in _fn("callsSvg")
-    assert _var("ODDS_TRACK_PX").strip() == "var ODDS_TRACK_PX = 294, ODDS_GAP_PX = 2, LETTER_PX = 7.9;"
+    assert _var("ODDS_TRACK_PX").strip() == "var ODDS_TRACK_PX = 294, ODDS_GAP_PX = 2, ODDS_FONT_PX = 11.5;"
     assert 294 == card - 2 * 1                                  # the narrowest card holding odds: a dashed one, 1px border a side
+    assert "font:40011.5px/" in _rule(".odds-lab")              # ODDS_FONT_PX, the size the odds words are measured at
 
 
-# Chrome at 360 with the shipped face (Plus Jakarta Sans): the odds words that were drawn and cut by a pixel or more
-# (in bold when the pick), and the widest a letter of any odds word runs, "Down 0%" in bold
-_ODDS_W = {("Down", 0.20, False): 60.19, ("Down", 0.20, True): 61.95, ("Down", 0.18, True): 58.84, ("Up", 0.14, True): 42.2}
-_WIDEST_LETTER = 7.87
+# Chrome at 360 with the shipped face (Plus Jakarta Sans) loaded: odds words as drawn, in bold when the pick. The
+# first four were cut by a pixel or more at their share under the rule of 290px and 6.4px a letter; the rest fit their
+# share and were left out under the rule of 7.9px a letter, "Unsure 27%" in 77px among them
+_ODDS_W = {("Down 20%", False): 60.1875, ("Down 20%", True): 61.953125, ("Down 18%", True): 58.828125, ("Up 14%", True): 42.203125,
+           ("Unsure 27%", False): 64.34375, ("Unsure 25%", False): 65.1875, ("Flat 16%", False): 44.421875, ("Up 15%", True): 41.75,
+           ("Down small 31%", False): 86.234375, ("Up big 100%", True): 71.125}
+
+
+def _odds():
+    return (_var("ODDS_ORDER") + _var("ODDS_TRACK_PX") + _var("ODDS_LETTERS") + _var("ODDS_EM") + _fn("oddsKeys") + _fn("oddsWidth") +
+            _fn("oddsBar"))
+
+
+def test_an_odds_words_width_is_the_shipped_faces_to_a_64th_of_a_pixel():
+    got = _run(_odds() + "console.log(JSON.stringify(D.w.map(function(w){ return oddsWidth(w[0], w[1]); })));",
+               {"w": [list(k) for k in _ODDS_W]})
+    for (word, bold), est in zip(_ODDS_W, got):
+        assert _ODDS_W[word, bold] - 1 / 64 <= est <= _ODDS_W[word, bold] + 1.2, f"{word} bold={bold}: {est:.2f}px, Chrome {_ODDS_W[word, bold]}"
 
 
 @pytest.mark.parametrize("tz", [LA, TOKYO])
-def test_an_odds_word_is_drawn_only_where_it_fits_whole_on_the_owners_phone(tz):
+def test_an_odds_word_is_drawn_exactly_where_it_fits_whole_on_the_owners_phone(tz):
     """The odds row's words are named only where they fit their share of the row. At 360 "Down 20%" ran a pixel or
     more past its 20% share in the pre-market card (dashed, so 294 wide less a 2px gap between the four options),
-    shared with the live card; the rule now counts the real row and the widest letter, so a word drawn is whole."""
-    assert float(re.search(r"LETTER_PX = ([\d.]+);", _var("ODDS_TRACK_PX")).group(1)) >= _WIDEST_LETTER
-    for (word, share, bold), width in _ODDS_W.items():
-        rest = (1 - share) / 3
-        o = {"down": share if word == "Down" else rest, "up": share if word == "Up" else rest, "flat": rest, "unsure": rest}
-        pick = word.lower() if bold else "flat"
-        got = _run(_var("ODDS_ORDER") + _var("ODDS_TRACK_PX") + _fn("oddsKeys") + _fn("oddsBar") +
-                   "console.log(JSON.stringify(dump(oddsBar(D.o, D.pick))));", {"o": o, "pick": pick}, tz)
-        shown = {k["text"].split(" ")[0]: k["text"] for k in got["kids"][1]["kids"] if k["text"]}
-        room = share * (294 - 2 * 3)
-        assert word not in shown, f"{word} {share:.0%} is drawn in {room:.1f}px but is {width}px wide"
-    wide = _run(_var("ODDS_ORDER") + _var("ODDS_TRACK_PX") + _fn("oddsKeys") + _fn("oddsBar") +
-                "console.log(JSON.stringify(dump(oddsBar(D.o, 'down'))));", {"o": {"down": 0.25, "flat": 0.45, "up": 0.25, "unsure": 0.05}}, tz)
+    shared with the live card; each word is now measured in the shipped face, so a word drawn is whole and a word
+    that fits, "Unsure 27%" in 77px, is drawn."""
+    for (word, bold), width in _ODDS_W.items():
+        key, share = word.rsplit(" ", 1)[0].lower().replace(" ", "_"), int(word.rsplit(" ", 1)[1][:-1]) / 100
+        keys = ["down_big", "down_small", "flat", "up_small", "up_big", "unsure"] if "_" in key else ["down", "flat", "up", "unsure"]
+        o = {k: share if k == key else (1 - share) / (len(keys) - 1) for k in keys}
+        pick = key if bold else next(k for k in keys if k != key)
+        got = dict(_run(_odds() + "var b = oddsBar(D.o, D.pick); "
+                        "console.log(JSON.stringify(oddsKeys(D.o).map(function(k, i){ return [k, b.kids[1].kids[i].textContent]; })));",
+                        {"o": o, "pick": pick}, tz))
+        room = share * (294 - 2 * (len(keys) - 1))
+        assert got[key] == (word if width <= room else ""), f"{word} is {width}px wide in {room:.1f}px of room"
+    wide = _run(_odds() + "console.log(JSON.stringify(dump(oddsBar(D.o, 'down'))));",
+                {"o": {"down": 0.25, "flat": 0.45, "up": 0.25, "unsure": 0.05}}, tz)
     assert [k["text"] for k in wide["kids"][1]["kids"]] == ["Down 25%", "Flat 45%", "Up 25%", ""]   # 72px of room: they fit
 
 
@@ -537,10 +553,10 @@ def pre_card(at="09:28", day=PRE_DAY, report=True, sent=None, checkpoints=CHECKP
     return {**card, **over}
 
 
-PRE_FNS = ("fits", "top1", "oddsKeys", "oddsBar", "tag", "skipLine", "ageWord", "mins", "untilWords", "expiryLine",
+PRE_FNS = ("fits", "top1", "oddsKeys", "oddsWidth", "oddsBar", "tag", "skipLine", "ageWord", "mins", "untilWords", "expiryLine",
            "preLeads", "preMissed", "preJevRead", "preJevDue", "preUnsent", "preState", "shapeWords", "sumPick", "sumSaid", "preClock",
            "preCall", "preRulerLine", "preStaleLine", "checksSvg", "chipFits", "storySide", "storyHead", "storySvg", "preFacts", "paintPre")
-PRE_VARS = ("ODDS_ORDER", "ODDS_TRACK_PX", "EXPIRY_TAGS", "PRE_LATE_MIN", "OPENS", "THEN", "CHECKS_LEAD_MIN", "CHIP_W")
+PRE_VARS = ("ODDS_ORDER", "ODDS_TRACK_PX", "ODDS_LETTERS", "ODDS_EM", "EXPIRY_TAGS", "PRE_LATE_MIN", "OPENS", "THEN", "CHECKS_LEAD_MIN", "CHIP_W")
 # the page's #h1, #sub, #state and #main, with the classList the pre-market card toggles
 PRE_DOM = """
 Object.defineProperty(Node.prototype, 'classList', {get: function(){ var n = this; function has(){ return (n.attrs['class'] || '').split(' ').filter(Boolean); }
