@@ -47,12 +47,15 @@ def station(monkeypatch, tmp_path):
             self.renew_delay_s = 0.0
             self.on_renew = None
             self.bearers: list[str] = []
+            self.refresh_tokens_sent: list[str] = []
 
         def handle(self, request):
             if str(request.url) == TOKEN_ENDPOINT:
                 if self.on_renew:
                     self.on_renew()
                 time.sleep(self.renew_delay_s)
+                self.refresh_tokens_sent.append(
+                    dict(httpx.QueryParams(request.content.decode()))["refresh_token"])
                 self.renewals += 1
                 return httpx.Response(200, json={
                     "access_token": f"renewed-{self.renewals}", "refresh_token": "refresh",
@@ -62,9 +65,9 @@ def station(monkeypatch, tmp_path):
 
     schwab = FakeSchwab()
 
-    def save(access_token, expires_in_s):
-        vault.save_token({"creation_timestamp": int(time.time()) - 86400, "token": {
-            "access_token": access_token, "refresh_token": "refresh", "token_type": "Bearer",
+    def save(access_token, expires_in_s, logged_in_s_ago=86400, refresh_token="refresh"):
+        vault.save_token({"creation_timestamp": int(time.time()) - logged_in_s_ago, "token": {
+            "access_token": access_token, "refresh_token": refresh_token, "token_type": "Bearer",
             "expires_in": 1800, "expires_at": int(time.time()) + expires_in_s}})
 
     def build():
@@ -114,6 +117,20 @@ def test_jobs_renewing_at_the_same_moment_wait_on_the_lock(station):
 
     assert schwab.renewals == 1
     assert schwab.bearers == ["Bearer renewed-1"] * 4
+
+
+def test_a_client_built_before_a_re_login_renews_under_the_new_login_s_date(station):
+    vault, schwab, save, build = station
+    save("old", expires_in_s=-60, logged_in_s_ago=8 * 86400, refresh_token="refresh-old")
+    client = build()
+    save("new-login", expires_in_s=60, logged_in_s_ago=0, refresh_token="refresh-new")
+    logged_in_at = vault.load_token()["creation_timestamp"]
+
+    client.get_quote("SPY")
+
+    assert schwab.renewals == 1
+    assert schwab.refresh_tokens_sent == ["refresh-new"]
+    assert vault.load_token()["creation_timestamp"] == logged_in_at
 
 
 def test_the_renewal_is_made_under_the_lock(station):

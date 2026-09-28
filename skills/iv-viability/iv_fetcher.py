@@ -224,8 +224,12 @@ def _share_renewal(client) -> None:
         if not session.token.is_expired(leeway=session.leeway):
             return True
         with vault.renewal_lock():
-            session.token = vault.load_token()["token"]
+            on_file = vault.load_token()
+            session.token = on_file["token"]
             client.token_metadata.token = session.token
+            # schwab-py stamps a renewed token with the client's login date, so a client built before a
+            # re-login must take the file's, or it would write the old login's date back over the new one.
+            client.token_metadata.creation_timestamp = on_file["creation_timestamp"]
             return renew(session.token)
 
     session.ensure_active_token = ensure_active_token
