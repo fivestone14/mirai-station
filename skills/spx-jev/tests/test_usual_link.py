@@ -3,14 +3,16 @@ move at this minute, and prices read point in time."""
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import timedelta
 
 import pytest
 
 from conftest import DAY, at
 from spx_jev.cuts import MIN_RANK_SESSIONS, SAME_CLOCK_MIN_SESSIONS
-from spx_jev.labels.usual_link import SPX, OwnMoves, Session, link_windows, usual_link
+from spx_jev.labels.rulers import SigmaRuler
+from spx_jev.labels.usual_link import SPX, AgainstIndex, OwnMoves, Session, link_windows, same_clock_sessions, usual_link
 from spx_jev.state_builder import MarketContext
-from usual_link_fixtures import DRIFT_STEP, NOW, index_closes, scene_with
+from usual_link_fixtures import DRIFT_STEP, NOW, SIGMA, index_closes, scene_with
 
 
 def test_the_usual_multiple_comes_back_from_the_prior_sessions():
@@ -56,3 +58,20 @@ def test_a_symbols_own_move_is_ranked_against_its_own_at_this_minute(monkeypatch
     assert OwnMoves(thin, ["SMH"], 30).rank("SMH", between) == (
         None, f"its rank needs {SAME_CLOCK_MIN_SESSIONS} prior sessions with a 30-minute move of SMH at this minute, have 9")
     assert OwnMoves(thin, ["SMH"], 30).above_bottom_third("SMH", between) is None
+
+
+def test_a_measure_in_no_ruler_keeps_the_sessions_a_sigma_measure_leaves_out():
+    """The newest prior day's ruler is estimated and the next one's diary is not on file: a move in SPX sigma
+    (AgainstIndex.same_clock) leaves both out; a return, a count or a link (same_clock_sessions) keeps every session,
+    newest first, each read at this minute."""
+    scene = scene_with(index_closes(), {}, {"SMH": 1.6})
+    days = list(scene.prior_bars)
+    rulers = {**scene.prior_rulers, days[0]: SigmaRuler(SIGMA, "vix")}
+    del rulers[days[1]]
+    scene = replace(scene, prior_rulers=rulers)
+    half = timedelta(minutes=30)
+    in_sigma = AgainstIndex(scene, SigmaRuler(SIGMA, "anchor")).same_clock(lambda s, then, share: s.move("SMH", then - half, then) / share)
+    returns = same_clock_sessions(scene, lambda s, then: s.move("SMH", then - half, then))
+    assert len(in_sigma) == len(days) - 2 and len(returns) == len(days)
+    assert same_clock_sessions(scene, lambda s, then: s.price(SPX, then)) == [
+        Session(scene.prior_bars[d], None).price(SPX, at(NOW.hour, NOW.minute, d)) for d in days]

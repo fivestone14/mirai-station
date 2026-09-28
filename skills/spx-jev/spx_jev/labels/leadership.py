@@ -28,7 +28,7 @@ from .measures import ET, ONE_MINUTE, SETTLED_OPEN_BAR, bar_time, settled_open, 
 from .ranks import FIFTH_WORDS, SameClockRank, fifth_side, move_rank, rank_days, rank_sessions, same_clock_market
 from .rulers import NO_ANCHOR, sigma_anchor
 from .usual_link import (SPX, AgainstIndex, OwnMoves, Session, UsualLink, against_usual, beyond, beyond_rank, minutes_back, needs_link,
-                         needs_move)
+                         needs_move, same_clock_sessions)
 from .words import listed, pct, sig, signed
 
 LABELS = ("leaders.equal_weight_vs_cap_30m", "leaders.heavyweight_gap", "leaders.megacap_cohesion_30m", "leaders.pull_vs_rest_30m",
@@ -242,7 +242,7 @@ def _sector_agreement(against: AgainstIndex, ls: LabelSet) -> None:
     def dispersion(index_move: float, moves: dict[str, float], sigma_share: float) -> float:
         return statistics.pstdev(beyond(links[s], moves[s], index_move) / sigma_share for s in funds)
 
-    def then_count(s: Session, then: datetime, _sigma_share: float) -> float | None:
+    def then_count(s: Session, then: datetime) -> float | None:
         got = _moves_to(s, then, funds)
         return None if got is None else with_index(*got)
 
@@ -251,7 +251,8 @@ def _sector_agreement(against: AgainstIndex, ls: LabelSet) -> None:
         return None if got is None else dispersion(*got, sigma_share)
     count, spread = with_index(index_move, moves), dispersion(index_move, moves, against.sigma_share)
     what = f"every sector fund and {SPX} over the half hour to this minute"
-    (count_rank, why), (spread_rank, spread_why) = against.rank(count, then_count, what), against.rank(spread, then_dispersion, what)
+    count_rank, why = rank_sessions(count, same_clock_sessions(against.scene, then_count), what)
+    spread_rank, spread_why = against.rank(spread, then_dispersion, what)
     if count_rank is None or spread_rank is None:
         ls.omit(path, why or spread_why)
         return

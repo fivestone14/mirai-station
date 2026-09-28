@@ -17,9 +17,10 @@ from ..sessions import session_open
 from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import ONE_MINUTE
-from .ranks import FIFTH_WORDS, fifth_side
+from .ranks import FIFTH_WORDS, fifth_side, rank_sessions
 from .rulers import NO_ANCHOR, sigma_anchor
-from .usual_link import SPX, AgainstIndex, Session, against_usual, beyond, beyond_rank, minutes_back, needs_link, needs_move
+from .usual_link import (SPX, AgainstIndex, Session, against_usual, beyond, beyond_rank, minutes_back, needs_link, needs_move,
+                         same_clock_sessions)
 from .words import listed, sig
 
 LABELS = ("xasset.bond_gap_30min", "xasset.macro_gap_30min", "xasset.oil_gap_30min", "flows.rebalance_side", "flows.etf_creations",
@@ -119,10 +120,11 @@ def _bond_gap(against: AgainstIndex, ls: LabelSet) -> None:
             reasons.append(needs_minute_link(f"{symbol} and {SPX}", against.scene.now))
             continue
 
-        def then_link(s: Session, then: datetime, _sigma_share: float, symbol: str = symbol) -> float | None:
+        def then_link(s: Session, then: datetime, symbol: str = symbol) -> float | None:
             c = minute_link(s, symbol, then)
             return None if c is None else abs(c)
-        link_rank, why = against.rank(abs(corr), then_link, f"a minute-by-minute link of {symbol} and {SPX} at this minute")
+        link_rank, why = rank_sessions(abs(corr), same_clock_sessions(against.scene, then_link),
+                                       f"a minute-by-minute link of {symbol} and {SPX} at this minute")
         if link_rank is None:
             reasons.append(why)
             continue
@@ -193,7 +195,7 @@ def _macro_gap(against: AgainstIndex, ls: LabelSet) -> None:
     if value is None:
         ls.omit(path, needs_minute_link(f"each of {', '.join(s for s, _ in COMPLEX)} and {SPX}", against.scene.now))
         return
-    rank, why = against.rank(value, lambda s, then, _sigma_share: lean(s, then), "every outside market and a link to each at this minute")
+    rank, why = rank_sessions(value, same_clock_sessions(against.scene, lean), "every outside market and a link to each at this minute")
     if rank is None:
         ls.omit(path, why)
         return

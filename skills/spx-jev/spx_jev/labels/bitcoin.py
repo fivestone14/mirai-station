@@ -38,8 +38,8 @@ from ..state_builder import MarketContext, Scene, load_bars
 from ..story import GLOBEX_REOPEN
 from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, bar_time
-from .ranks import FIFTH_WORDS, fifth_side, rank_sessions, same_clock_values
-from .usual_link import SPX, Session, UsualLink, beyond, needs_link, needs_move, usual_link
+from .ranks import FIFTH_WORDS, fifth_side, rank_sessions
+from .usual_link import SPX, Session, UsualLink, beyond, needs_link, needs_move, same_clock_sessions, usual_link
 from .words import above_or_below, listed, sig, third
 
 LABELS = ("overnight.btc_vs_futures", "weekend.btc_path", "xasset.btc_gap_30min", "xasset.btc_gap_streak", "xasset.btc_link",
@@ -441,9 +441,9 @@ class BitcoinAgainstIndex:
         return [s for s in (BITCOIN, SPX) if self.today.move(s, start, end) is None]
 
     def same_clock(self, measure: Callable[[Session, datetime], float | None]) -> list[float]:
-        """``measure(session, then)`` on each prior session at this read's minute (ranks.same_clock_values)."""
-        return same_clock_values(self.scene, lambda bars, then, _: measure(Session(bars, self.scene.prior_markets.get(then.date().isoformat())),
-                                                                           then))
+        """``measure(session, then)`` on each prior session at this read's minute (usual_link.same_clock_sessions: a
+        return or a link, which no ruler touches)."""
+        return same_clock_sessions(self.scene, measure)
 
     @property
     def with_stocks(self) -> str:

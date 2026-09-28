@@ -9,7 +9,9 @@ leadership and macro families measure every fund, stock and outside market by.
   so whether it moved is a rank against its own (above the bottom third), never a fixed line.
 
 Every size is ranked against the same measure at this minute on up to the last 20 sessions, needing 10
-(ranks.rank_sessions); the multiple is a fit and needs MIN_RANK_SESSIONS sessions.
+(ranks.rank_sessions); the multiple is a fit and needs MIN_RANK_SESSIONS sessions. A measure in SPX sigma
+leaves out a session whose morning ruler was estimated or is not on file (AgainstIndex.same_clock); one in
+no ruler, a return, a count or a link, keeps every session (same_clock_sessions).
 
 Point in time: SPX comes from the bars that finished by the moment, every other symbol from the market
 context as it was known then; a value older than VALUE_MAX_AGE_MIN is a stopped feed and counts as none.
@@ -95,6 +97,19 @@ def usual_link(scene: Scene, symbol: str, index: str = SPX) -> UsualLink | None:
         return None
     beta = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / var
     return UsualLink(beta, statistics.pstdev(y - beta * x for x, y in zip(xs, ys)), days)
+
+
+def same_clock_sessions(scene: Scene, measure: Callable[[Session, datetime], float | None]) -> list[float]:
+    """``measure(session, then)`` on each prior session at this read's clock minute, newest first, a measure that
+    returns None skipped: for a measure no ruler touches (a return, a count, a link), so unlike AgainstIndex.same_clock
+    no session sits out for an estimated or missing morning ruler."""
+    clock = scene.now.astimezone(ET).time()
+    out = []
+    for day, bars in scene.prior_bars.items():
+        v = measure(Session(bars, scene.prior_markets.get(day)), datetime.combine(date.fromisoformat(day), clock, tzinfo=ET))
+        if v is not None:
+            out.append(v)
+    return out
 
 
 class AgainstIndex:
