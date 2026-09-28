@@ -1150,8 +1150,8 @@ details .q{margin-top:8px}
     var reason = marketWords(omitted ? p.unsent_reason.replace(': ' + omitted, '') : p.unsent_reason, p.row_ts);
     return /^not sent\b/.test(reason) ? reason : 'not sent: ' + reason;
   }
-  // the state chips: a failed fetch, whether this read asked JEV and was sent, a missed checkpoint; none from the
-  // card's freshness, which is how long after its read the card was written, not how old the futures were
+  // the state chips: a failed fetch, whether this read asked JEV and was sent, a missed checkpoint; how old the
+  // futures were at the read is said under the call (preStaleLine), since its note can run past one chip's line
   function preState(p, ok, now){
     var out = [], jev = (p.schedule && p.schedule.jev_reads) || [];
     if(!ok) out.push('fetch failed, showing the last card');
@@ -1222,6 +1222,12 @@ details .q{margin-top:8px}
   function preRulerLine(p){
     var omitted = p.ruler && p.ruler.omitted;
     return omitted ? skipLine('nothing measured at the ' + viewerTime(p.row_ts) + ' read: ' + marketWords(omitted, p.row_ts)) : null;
+  }
+  // a read whose S&P futures were stale or missing (the card's freshness, their age at the read) says so and why,
+  // as the live card's stale chip does; null for a read on fresh futures
+  function preStaleLine(p){
+    var f = p.freshness;
+    return f && f.stale && f.note ? skipLine('futures stale at the ' + viewerTime(p.row_ts) + ' read: ' + marketWords(f.note, p.row_ts)) : null;
   }
   // when it is checked: both sums from the settled open (the card's start), each to its mark, on one clock from
   // ten minutes before the open; the solid line is the open, the dashed one now
@@ -1324,6 +1330,7 @@ details .q{margin-top:8px}
     card.appendChild(preClock(p));
     preCall(p, card);
     var unruled = preRulerLine(p); if(unruled) card.appendChild(unruled);
+    var stale = preStaleLine(p); if(stale) card.appendChild(stale);
     card.appendChild(el('div', 'inplay-h', 'When it is checked'));
     var checks = el('div'); card.appendChild(checks);
     card.appendChild(tag('both checks start from the price at ' + viewerTime(p.start) + ', ' +

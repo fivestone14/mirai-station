@@ -490,7 +490,7 @@ def pre_card(at="09:28", day=PRE_DAY, report=True, sent=None, checkpoints=CHECKP
 
 PRE_FNS = ("fits", "top1", "oddsKeys", "oddsBar", "tag", "skipLine", "ageWord", "mins", "untilWords", "expiryLine",
            "preLeads", "preMissed", "preJevRead", "preJevDue", "preUnsent", "preState", "shapeWords", "sumPick", "sumSaid", "preClock",
-           "preCall", "preRulerLine", "checksSvg", "chipFits", "storySide", "storyHead", "storySvg", "preFacts", "paintPre")
+           "preCall", "preRulerLine", "preStaleLine", "checksSvg", "chipFits", "storySide", "storyHead", "storySvg", "preFacts", "paintPre")
 PRE_VARS = ("ODDS_ORDER", "ODDS_TRACK_PX", "EXPIRY_TAGS", "PRE_LATE_MIN", "OPENS", "THEN", "CHECKS_LEAD_MIN", "CHIP_W")
 # the page's #h1, #sub, #state and #main, with the classList the pre-market card toggles
 PRE_DOM = """
@@ -645,9 +645,9 @@ def test_a_card_left_behind_by_a_sleeping_mac_says_which_read_is_missing():
     assert age["attrs"]["class"] == "r old"
     # a checkpoint only minutes late is not yet missing
     assert _page(pre_card("03:35"), et("08:10"))["state"] == ["snapshot, JEV at 05:48 and 06:28"]
-    # a card written long after its read (a replay) says nothing of it: freshness is not the futures' age
-    replayed = pre_card("08:05", freshness={"age_s": 206361, "stale": True})
-    assert _page(replayed, et("08:06"))["state"] == ["snapshot, JEV at 05:48 and 06:28"]
+    # stale futures are no chip: their age at the read is said under the call (test_a_read_on_stale_futures_says_so_under_the_call)
+    stale = pre_card("08:05", freshness={"age_s": 1380, "stale": True, "note": "/ES's newest bar is 23 minutes old at the read"})
+    assert _page(stale, et("08:06"))["state"] == ["snapshot, JEV at 05:48 and 06:28"]
     assert _page(pre_card("09:05"), et("09:06"), ok=False)["state"][0] == "fetch failed, showing the last card"
 
 
@@ -770,6 +770,14 @@ def test_the_week_frankfurt_is_on_winter_time_moves_a_checkpoint_and_the_card_fo
     card = pre_card("02:35", day="2026-10-27", checkpoints=week)
     got = _page(card, "2026-10-27T05:00:00-04:00")
     assert got["state"][-1] == "stale: the 01:35 read has not landed"
+
+
+def test_a_read_on_stale_futures_says_so_under_the_call():
+    stale = {"age_s": 1380, "stale": True, "spot_from": "futures", "note": "/ES's newest bar is 23 minutes old at the read"}
+    parts = _card_parts(_page(pre_card("03:35", freshness=stale), et("03:40"), TOKYO))
+    assert parts[2:5] == [["big", "No call yet"], ["skip", "First call at 21:48"],
+                          ["skip", "Futures stale at the 16:35 read: /ES's newest bar is 23 minutes old at the read"]]
+    assert "Futures stale" not in json.dumps(_card_parts(_page(pre_card("03:35"), et("03:40"))))     # fresh futures say nothing
 
 
 # ---- the pre-market card on the owner's 360px phone
