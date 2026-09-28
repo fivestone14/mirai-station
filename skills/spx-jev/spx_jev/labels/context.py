@@ -3,13 +3,17 @@ session stands. A read before the open (the premarket lane) says how long until 
 pre-open ruler its sizes are in, and has no cash move today to time."""
 from __future__ import annotations
 
-from ..cuts import MOVE_RULE_SIGMA, NIGHT_RANK_COUNT, RSI_OVERBOUGHT, RSI_OVERSOLD
+from datetime import datetime, time
+
+from ..cuts import NIGHT_RANK_COUNT, RSI_OVERBOUGHT, RSI_OVERSOLD
 from ..row_adapter import SYMBOL
 from ..sessions import session_minutes
 from ..state_builder import Scene
 from .label_set import LabelSet
-from .measures import ONE_MINUTE, bar_time
-from .words import pct, plural
+from .measures import ET, ONE_MINUTE, bar_time
+from .ranks import rank_days, rank_sessions
+from .rulers import NO_ANCHOR, ruled, sigma_anchor
+from .words import minutes_ago, pct, plural
 
 LABELS = ("context.symbol", "context.units", "context.horizon", "context.session_progress", "context.time_since_last_move")
 GATES: tuple[str, ...] = ()
@@ -24,6 +28,8 @@ UNITS = ("all distances are in sigma, today's expected move for the S&P 500 inde
          "0DTE means the options that expire today; the opening box is the first half hour's price range; "
          f"RSI is a 0 to 100 gauge of overbought (above {RSI_OVERBOUGHT}) or oversold (below {RSI_OVERSOLD}); "
          "the NYSE tick is how many NYSE stocks last traded up minus how many last traded down")
+# A strong move is a 10-minute move in the top third of the same 10 minutes on the prior sessions.
+MOVE_WINDOW_MIN = 10
 # Added to the gloss on the tape lane, where the stretch labels are sized by the tape unit.
 TAPE_UNITS = ("; a tape unit is the middle of the last three 5-minute price ranges, in index points, "
               "measured afresh at every read, and the labels that use it state it")
@@ -76,19 +82,51 @@ def _session_progress(scene: Scene, ls: LabelSet) -> None:
     ls.put("context.session_progress", f"{pct(frac)} of the session has passed, the {words} fifth; {phase}")
 
 
+def _ten_minute_moves(bars: list[dict], sigma: float) -> dict[time, float]:
+    """Each minute's unsigned 10-minute close-to-close move in sigma, keyed by the market-time minute its bar
+    started, from the close of the bar ten minutes before it; a minute without that bar has none."""
+    closes = {bar_time(b).astimezone(ET).time().replace(second=0): float(b["close"]) for b in bars}
+    out = {}
+    for minute, close in closes.items():
+        back = minute.hour * 60 + minute.minute - MOVE_WINDOW_MIN
+        before = closes.get(time(*divmod(back, 60))) if back >= 0 else None
+        if before is not None:
+            out[minute] = abs(close - before) / sigma
+    return out
+
+
 def _time_since_last_move(scene: Scene, ls: LabelSet) -> None:
-    bars = scene.bars
-    if len(bars) < 11:
-        ls.omit("context.time_since_last_move", "needs 10 minutes of finished bars")
+    """How long ago price last made a strong 10-minute move: the newest minute today whose 10-minute move ranks in the
+    top third of the same 10 minutes on the prior sessions (ranks.rank_sessions), each session's in its own ruler and
+    one whose ruler was estimated left out, as ranks.move_rank measures a move."""
+    anchor = sigma_anchor(scene)
+    if anchor is None:
+        ls.omit("context.time_since_last_move", NO_ANCHOR)
         return
-    closes = [float(x["close"]) for x in bars]
-    last_idx = None
-    for i in range(10, len(closes)):
-        if abs(closes[i] - closes[i - 10]) / scene.sigma >= MOVE_RULE_SIGMA:
-            last_idx = i
-    if last_idx is None:
-        ls.put("context.time_since_last_move", f"price has made no real move of {MOVE_RULE_SIGMA} sigma within 10 minutes at any point today, so the last real move is over 60 minutes ago or never")
+    today = _ten_minute_moves(scene.bars, anchor.points)
+    if not today:
+        ls.omit("context.time_since_last_move", f"needs {MOVE_WINDOW_MIN} minutes of finished bars")
         return
-    ago = (scene.now - (bar_time(bars[last_idx]) + ONE_MINUTE)).total_seconds() / 60.0
-    band = "under 10 minutes ago" if ago < 10 else "between 10 and 60 minutes ago" if ago <= 60 else "over 60 minutes ago"
-    ls.put("context.time_since_last_move", f"price last made a real move of {MOVE_RULE_SIGMA} sigma within 10 minutes {plural(round(ago), 'minute')} ago, {band}")
+    prior = [_ten_minute_moves(scene.prior_bars[d], r.points) for d in rank_days(scene) if (r := scene.prior_rulers.get(d))]
+    ranked, unranked = False, None
+    for minute in sorted(today, reverse=True):
+        rank, why = rank_sessions(today[minute], [moves[minute] for moves in prior if minute in moves],
+                                  f"a {MOVE_WINDOW_MIN}-minute move at that minute")
+        if rank is None:
+            unranked = unranked or why
+            continue
+        ranked = True
+        if rank.band != "top third":
+            continue
+        done = datetime.combine(scene.now.astimezone(ET).date(), minute, tzinfo=ET) + ONE_MINUTE
+        ago = (scene.now - done).total_seconds() / 60.0
+        band = "under 10 minutes ago" if ago < 10 else "between 10 and 60 minutes ago" if ago <= 60 else "over 60 minutes ago"
+        ls.put("context.time_since_last_move", ruled(anchor, f"price last made a strong {MOVE_WINDOW_MIN}-minute move for its minute "
+                                                             f"{minutes_ago(scene.now, done)}, {band}: {today[minute]:.2f} sigma, larger than "
+                                                             f"{rank.higher_than} of the last {rank.of} sessions at that minute, {rank.band}"))
+        return
+    if not ranked:
+        ls.omit("context.time_since_last_move", unranked)
+        return
+    ls.put("context.time_since_last_move", ruled(anchor, f"price has made no strong {MOVE_WINDOW_MIN}-minute move for its minute today: "
+                                                         f"none in the top third of the same {MOVE_WINDOW_MIN} minutes on the prior sessions"))
