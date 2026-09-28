@@ -384,20 +384,23 @@ def refresh_rolls(state_dir: Path, now: datetime, since: str | None = None) -> d
                     five[symbol][r["ts"]] = r
             finest = min((r["bar_minutes"] for r in mine), default=None)
             nights[symbol][day] = [r for r in mine if r["bar_minutes"] == finest and r["session"] != "regular"]
-    table = before = rolls.load(folder)
     quoted = {}
     try:
         quoted = schwab.front_contracts(list(SYMBOLS))
     except Exception as e:  # the table then keeps its own names; a first detection waits for a quote
         print(f"spx-jev-overnight :: quotes failed, contract names left as they were: {type(e).__name__}: {e}", file=sys.stderr)
-    for symbol in SYMBOLS:
-        found = rolls.detect(symbol, list(five[symbol].values()), references[rolls.REFERENCES[symbol]], nights[symbol])
-        table = rolls.merge(table, symbol, found, days[0], quoted.get(symbol))
-    changed = (table["current"], table["rolls"]) != (before["current"], before["rolls"])
-    table["detected_at"] = now.isoformat(timespec="seconds")
-    rolls.save(folder, table)
-    for day in saved_days(state_dir) if changed else []:
-        save_night(state_dir, date.fromisoformat(day), {}, quoted, table, now, [])
+    # a save stamps its night from the table while it holds the lock, and a restamp writes the same night files
+    # through the same temporary file: the table and the restamps are one step under it
+    with saving(state_dir):
+        table = before = rolls.load(folder)
+        for symbol in SYMBOLS:
+            found = rolls.detect(symbol, list(five[symbol].values()), references[rolls.REFERENCES[symbol]], nights[symbol])
+            table = rolls.merge(table, symbol, found, days[0], quoted.get(symbol))
+        changed = (table["current"], table["rolls"]) != (before["current"], before["rolls"])
+        table["detected_at"] = now.isoformat(timespec="seconds")
+        rolls.save(folder, table)
+        for day in saved_days(state_dir) if changed else []:
+            save_night(state_dir, date.fromisoformat(day), {}, quoted, table, now, [])
     return table
 
 

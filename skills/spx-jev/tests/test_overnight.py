@@ -226,6 +226,21 @@ def test_the_daily_re_scan_keeps_a_roll_once_its_span_starts_on_the_roll_day(tmp
     assert len(_manifest(tmp_path)) == len(manifest)                                     # nothing restamped, nothing written
 
 
+def test_a_roll_refresh_waits_for_a_save_already_writing_the_store(tmp_path, served):
+    """The 16:20 job's roll refresh restamps night files through the same temporary file a save writes: it waits
+    for the save lock (a premarket read's save, say) before it writes the table or any night."""
+    _store_with_a_roll(tmp_path, served, date(2026, 9, 14), t("2026-09-13", 18, 0))
+    before = _rows(tmp_path, "2026-09-11")
+    done = threading.Event()
+    with overnight.saving(tmp_path):
+        worker = threading.Thread(target=lambda: overnight.refresh_rolls(tmp_path, t("2026-09-25", 16, 20)) and done.set())
+        worker.start()
+        assert not done.wait(0.3)
+        assert not rolls.table_path(tmp_path / "spx_jev" / "overnight").exists() and _rows(tmp_path, "2026-09-11") == before
+    worker.join(5)
+    assert done.is_set() and {r["contract"] for r in _rows(tmp_path, "2026-09-11")} == {"/ESU26"}
+
+
 def test_the_daily_run_saves_the_night_in_progress_and_the_last_week():
     morning = overnight.days_to_save(t("2026-09-22", 9, 26))
     evening = overnight.days_to_save(t("2026-09-22", 16, 20))
