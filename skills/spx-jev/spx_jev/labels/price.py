@@ -144,7 +144,7 @@ def _level_distance(scene: Scene, anchor: SigmaRuler, rows: list[tuple[dict, flo
 
 
 def _recent_move(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> Ranked:
-    """The 30-minute move in sigma and its rank (ranks.move_rank), written as price.recent_move and returned for the
+    """The 30-minute move in sigma and its rank (as ranks.move_rank ranks it), written as price.recent_move and returned for the
     reads that judge it; its rank is None with the reason it was omitted when it was. On the live lane spot is the
     row's while the bars can stop, so the move needs a bar finished in the minute before the window and 20 in it, or
     it would be measured from wherever the tape stopped."""
@@ -164,12 +164,14 @@ def _recent_move(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> Ranked:
         ls.omit("price.recent_move", why)
         return Ranked(None, None, why)
     d = (scene.spot - ref) / anchor.points
-    rank, why = move_rank(scene, d, WINDOW_30_MIN)
+    # move_rank's rank, on a base built once here so the gauge's edges come from the sessions the verdict was ranked on
+    base = same_clock_values(scene, lambda bars, then, sigma: move_size(bars, then, sigma, WINDOW_30_MIN))
+    rank, why = rank_sessions(abs(d), base, f"a {WINDOW_30_MIN}-minute move at this minute")
     if rank is None:
         ls.omit("price.recent_move", why)
         return Ranked(d, None, why)
     verdict = "going_nowhere" if rank.band == "bottom third" else "rising" if d > 0 else "falling"
-    flat, strong = _band_edges(same_clock_values(scene, lambda bars, then, sigma: move_size(bars, then, sigma, WINDOW_30_MIN)))
+    flat, strong = _band_edges(base)
     fig = {"kind": "signed", "value": round(d, 3), "band": round(flat, 3), "strong": round(strong, 3), "unit": "sigma", "verdict": verdict}
     went = f"moved {signed(d)} sigma" if verdict == "going_nowhere" else f"{'rose' if d > 0 else 'fell'} {sig(abs(d))}"
     text = f"over the last 30 minutes price {went}, {_against(rank, 'larger')}: {MOVE_WORDS[rank.band]}"
