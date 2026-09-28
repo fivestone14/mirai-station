@@ -25,7 +25,7 @@ from ..sessions import session_open
 from ..state_builder import MarketContext, Scene
 from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, SETTLED_OPEN_BAR, bar_time, close_at, session_extremes, settled_open
-from .price import NEW_EXTREME_RECENT_MIN
+from .price import NEW_EXTREME_RECENT_MIN, _minutes_since_bar
 from .ranks import (SameClockRank, fifth_side, move_rank, rank_sessions, same_clock_market, same_clock_values, tick_bands_by_minute,
                     tick_bursts)
 from .rulers import NO_ANCHOR, sigma_anchor
@@ -344,13 +344,6 @@ def _day_upvol_share(scene: Scene, ls: LabelSet) -> None:
     ls.put("breadth.day_upvol_share", f"since the open {pct(share)} of NYSE volume went into rising stocks, {where}; {crossings}, {rotation}")
 
 
-def _minutes_since_settled_open(now: datetime) -> int:
-    """Whole minutes from the settled open (the 09:34 bar's close, known at 09:35) to ``now``: the window over
-    which ranks.move_rank sizes a move from the settled open, whose start is the 09:34 close on every day."""
-    known = datetime.combine(now.astimezone(ET).date(), SETTLED_OPEN_BAR, tzinfo=ET) + ONE_MINUTE
-    return int((now - known).total_seconds() // 60)
-
-
 def _spx_from_settled_open(scene: Scene) -> str:
     """Where SPX stands against its settled open and that move's rank at this minute (ranks.move_rank over the
     minutes since the settled open, as price.day_move judges it: its bottom third is near the open), for the
@@ -361,7 +354,7 @@ def _spx_from_settled_open(scene: Scene) -> str:
     move = (scene.spot - opened) / ruler.points
     estimated = " (ruler estimated)" if ruler.estimated else ""
     where = f"{sig(abs(move))} {'above' if move > 0 else 'below'} its settled open" if round(move, 2) else "at its settled open"
-    rank, _ = move_rank(scene, move, _minutes_since_settled_open(scene.now))
+    rank, _ = move_rank(scene, move, _minutes_since_bar(scene, SETTLED_OPEN_BAR))
     if rank is None:
         return f" while SPX is {where}{estimated}"
     return (f" while SPX is {where}, a move larger than {rank.higher_than} of the last {rank.of} sessions' moves from their "
