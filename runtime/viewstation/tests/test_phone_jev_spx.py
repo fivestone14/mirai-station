@@ -391,6 +391,16 @@ def test_the_blend_note_names_the_phase_by_its_hours_in_the_viewers_zone():
                    for span in ("09:00 to 11:00", "11:00 to the close", "before 07:00")]
 
 
+def test_the_reason_a_sum_stands_alone_gives_its_times_in_the_viewers_zone():
+    """clock.py says why the time-of-day odds were left out in market words ("a 13:00 half day"); the phone redraws
+    the time in the viewer's zone like every other."""
+    js = (_var("ODDS_ORDER") + _fn("oddsKeys") + _fn("top1") + _fn("oneAnswer") + _fn("phaseSpan") + _fn("howChart") +
+          "console.log(JSON.stringify(howChart(D.h, {used: false, why: D.why}, D.at).kids.slice(-1)[0].textContent));")
+    got = _run(js, {"h": {"probabilities": {"up": 0.2, "down": 0.3, "flat": 0.5}}, "at": "2026-11-27T10:02:00-05:00",
+                    "now": "2026-11-27T10:05:00-05:00", "why": "a 13:00 half day; the time-of-day odds are counted on full sessions"}, LA)
+    assert got == "JEV\u2019s sum alone: a 10:00 half day; the time-of-day odds are counted on full sessions"
+
+
 def test_every_question_group_has_a_heading_in_words():
     """The groups are the SPX question file's, not SNDK's viewpoints: each has a plain name, none a raw id."""
     doc = json.loads((Path(__file__).resolve().parents[3] / "skills" / "spx-jev" / "questions" / "spx_questions.json").read_text())

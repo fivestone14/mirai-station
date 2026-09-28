@@ -542,7 +542,7 @@ details .q{margin-top:8px}
                                                   ' over the last ' + bl.sessions + ' sessions.')));
     } else {
       row('JEV', ' jev', h.probabilities);
-      if(bl && bl.why) g.appendChild(el('div', 'how-note', sentence('JEV\u2019s sum alone: ' + bl.why)));
+      if(bl && bl.why) g.appendChild(el('div', 'how-note', sentence('JEV\u2019s sum alone: ' + marketWords(bl.why, at))));
     }
     return g;
   }
