@@ -2,7 +2,8 @@
 
 Every check below holds the station to a limit its own code states (the dead-man's
 silence ceiling, first-row deadline and reader ceiling, the reader's stale-book and
-minute-log limits, each job's plist schedule, and "the dashboard serves the code on disk").
+minute-log limits, each job's plist schedule, the SPX pre-market lane's checkpoints and
+late line, and "the dashboard serves the code on disk").
 The check functions and their unit tests always run. The live tests only read the
 real station (launchd, its state/ directory, GET on 127.0.0.1:8787) and skip unless
 MIRAI_LIVE=1:
@@ -21,7 +22,7 @@ import re
 import subprocess
 import sys
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from xml.parsers.expat import ExpatError
 from zoneinfo import ZoneInfo
@@ -38,6 +39,11 @@ ET = ZoneInfo("America/New_York")
 SNDK_JOBS = ("com.mirai-station.sndk", "com.mirai-station.sndk-read",
              "com.mirai-station.sndk-bars", "com.mirai-station.sndk-deadman",
              "com.mirai-station.viewstation")
+SPX_PREMARKET_JOB = "com.mirai-station.spx-jev-premarket"
+# A pre-market read is owed this long after its checkpoint's late line (premarket.LATE_FIRE_MIN): its
+# worst run is the night's save, eight Schwab calls each given up after 30 seconds, then JEV's calls
+# with a retry each
+PREMARKET_RUN_MIN = 10
 DASHBOARD_URL = "http://127.0.0.1:8787/api/health"
 
 
@@ -86,6 +92,24 @@ def station_limits(root: Path) -> dict:
             "reader_silent_min": code_limit(deadman, "READER_SILENT_MIN"),
             "book_age_min": code_limit(reader, "MAX_BOOK_AGE_MIN"),
             "bar_record_min": code_limit(reader, "BAR_RECORD_STALE_MIN")}
+
+
+def lane_times(lane_py: Path, name: str) -> tuple[tuple[str, ...], str]:
+    """A lane's checkpoints and close-out, "HH:MM" market time, as spx_jev/lane.py defines them; parsed, not imported."""
+    for node in ast.parse(Path(lane_py).read_text()).body:
+        if (isinstance(node, ast.Assign) and [getattr(t, "id", None) for t in node.targets] == [name]
+                and isinstance(node.value, ast.Call)):
+            given = {k.arg: k.value for k in node.value.keywords}
+            if "schedule" in given and "close_out" in given:
+                return tuple(ast.literal_eval(given["schedule"])), ast.literal_eval(given["close_out"])
+    raise LookupError(f"{name} has no plain schedule and close_out in {lane_py}")
+
+
+def premarket_limits(root: Path) -> dict:
+    spx = Path(root) / "skills" / "spx-jev" / "spx_jev"
+    checkpoints, close_out = lane_times(spx / "lane.py", "PREMARKET")
+    return {"late_min": code_limit(spx / "premarket.py", "LATE_FIRE_MIN"),
+            "first_checkpoint": checkpoints[0], "close_out": close_out}
 
 
 # --- shared readers -------------------------------------------------------------
@@ -288,14 +312,49 @@ def deadman_quiet(state_path: Path, today: str) -> tuple[bool | None, str]:
     return True, "the dead-man's switch holds no open outage today"
 
 
-def jobs_loaded(launchctl_list_text: str, required_labels) -> tuple[bool, str]:
-    """Every SNDK Pro launchd job is loaded."""
+def premarket_fired(lane_dir: Path, now: datetime, first: str, close_out: str,
+                    late_min: float) -> tuple[bool | None, str]:
+    """On a market day the SPX pre-market job read at every checkpoint today's card names once it is
+    past the lane's late line and a read's run, and past the same after the close-out, that landed too."""
+    now = now.astimezone(ET)
+    day = now.date()
+    if now.weekday() >= 5 or day in market_status._market_holidays(day.year):
+        return None, f"skipped, {day} is not a market day"
+    owed_after = timedelta(minutes=late_min + PREMARKET_RUN_MIN)
+
+    def at(hhmm: str) -> datetime:
+        return datetime.combine(day, time.fromisoformat(hhmm), tzinfo=ET)
+    try:
+        card = json.loads((Path(lane_dir) / "latest.json").read_text())
+    except (OSError, ValueError):
+        card = None
+    if not isinstance(card, dict) or card.get("day") != day.isoformat():
+        if now < at(first) + owed_after:
+            return None, f"skipped, the first pre-market read is due at {first} ET"
+        return False, (f"no pre-market read today: the card is not today's, though the {first} ET "
+                       f"checkpoint's read was due by {at(first) + owed_after:%H:%M} ET")
+    read = {r.get("checkpoint") for r in _rows(Path(lane_dir) / f"{day.isoformat()}.jsonl")}
+    owed = [t.astimezone(ET) for t in map(_parse_ts, (card.get("schedule") or {}).get("reads") or [])
+            if t is not None and t + owed_after <= now]
+    problems = [f"no read at the {t:%H:%M} ET checkpoint" for t in owed if f"{t:%H:%M}" not in read]
+    closing = now >= at(close_out) + owed_after
+    if closing and not card.get("closed_out_at"):
+        problems.append(f"the {close_out} ET close-out has not landed on today's card")
+    if problems:
+        return False, "; ".join(problems) + f" (a read is owed {late_min:g} + {PREMARKET_RUN_MIN} min after its checkpoint)"
+    return True, (f"the pre-market job read at all {len(owed)} checkpoints due by {now:%H:%M} ET"
+                  + (" and closed out" if closing else ""))
+
+
+def jobs_loaded(launchctl_list_text: str, required_labels, what: str = "SNDK Pro") -> tuple[bool, str]:
+    """Every launchd job of ``what`` is loaded."""
     loaded = {parts[2] for parts in map(str.split, launchctl_list_text.splitlines())
               if len(parts) >= 3}
     missing = [label for label in required_labels if label not in loaded]
     if missing:
         return False, f"not loaded in launchd: {', '.join(missing)}"
-    return True, f"all {len(required_labels)} SNDK Pro jobs are loaded"
+    return True, (f"all {len(required_labels)} {what} jobs are loaded" if len(required_labels) > 1
+                  else f"the {what} job is loaded")
 
 
 def _print_field(launchctl_print_text: str, field: str) -> str | None:
@@ -741,6 +800,67 @@ def test_every_limit_the_live_checks_hold_is_the_value_the_code_runs_on(monkeypa
         "bar_record_min": sndk_read.BAR_RECORD_STALE_MIN}
 
 
+PRE_DAY = "2026-09-28"                                   # a Monday
+PRE_READS = ("02:35", "03:35", "08:05", "08:48", "09:05", "09:28")
+
+
+def _premarket(tmp_path: Path, read=PRE_READS, reads=PRE_READS, closed=True, day=PRE_DAY) -> Path:
+    """A pre-market lane folder: today's card naming the day's checkpoints, and a read on file at each of ``read``."""
+    lane = tmp_path / "premarket"
+    _write(lane / "latest.json", {"day": day, "lane": "premarket", "closed_out_at": "2026-09-28T14:06:04+00:00" if closed else None,
+                                  "schedule": {"reads": [f"{day}T{c}:00-04:00" for c in reads], "close_out": f"{day}T10:06:00-04:00"}})
+    _write(lane / f"{day}.jsonl", *[{"row_ts": f"{day}T{c}:04-04:00", "checkpoint": c} for c in read])
+    return lane
+
+
+def _pre_at(hhmm: str, day: str = PRE_DAY) -> datetime:
+    return datetime.fromisoformat(f"{day}T{hhmm}:00").replace(tzinfo=ET)
+
+
+def test_premarket_fired_passes_every_checkpoint_read_and_the_close_out(tmp_path):
+    ok, why = premarket_fired(_premarket(tmp_path), _pre_at("10:30"), "02:35", "10:06", 5)
+    assert ok is True and why == "the pre-market job read at all 6 checkpoints due by 10:30 ET and closed out"
+
+
+def test_premarket_fired_fails_a_missed_checkpoint_once_its_read_is_owed(tmp_path):
+    lane = _premarket(tmp_path, read=("02:35", "03:35", "08:48"), closed=False)
+    assert premarket_fired(lane, _pre_at("08:19"), "02:35", "10:06", 5)[0] is True       # 08:05 not owed until 08:20
+    ok, why = premarket_fired(lane, _pre_at("08:20"), "02:35", "10:06", 5)
+    assert ok is False and why.startswith("no read at the 08:05 ET checkpoint (a read is owed 5 + 10 min")
+
+
+def test_premarket_fired_fails_a_close_out_that_never_landed(tmp_path):
+    ok, why = premarket_fired(_premarket(tmp_path, closed=False), _pre_at("10:21"), "02:35", "10:06", 5)
+    assert ok is False and why.startswith("the 10:06 ET close-out has not landed on today's card")
+
+
+def test_premarket_fired_reads_europes_checkpoint_from_the_card(tmp_path):
+    """In the week Frankfurt keeps winter time the 03:35 checkpoint is 04:35 (premarket.checkpoints): the card names it."""
+    week = ("02:35", "04:35", "08:05", "08:48", "09:05", "09:28")
+    assert premarket_fired(_premarket(tmp_path, read=week, reads=week), _pre_at("10:30"), "02:35", "10:06", 5)[0] is True
+
+
+def test_premarket_fired_fails_a_night_with_no_read_after_the_first_is_owed(tmp_path):
+    lane = _premarket(tmp_path, day="2026-09-25")                                         # Friday's card on Monday
+    assert premarket_fired(lane, _pre_at("02:49"), "02:35", "10:06", 5)[0] is None
+    ok, why = premarket_fired(lane, _pre_at("02:50"), "02:35", "10:06", 5)
+    assert ok is False and why.startswith("no pre-market read today")
+
+
+@pytest.mark.parametrize("when", ["2026-09-26", "2026-11-26"])                          # a Saturday; Thanksgiving
+def test_premarket_fired_skips_a_day_the_market_is_shut(tmp_path, when):
+    ok, why = premarket_fired(_premarket(tmp_path, read=()), _pre_at("10:30", when), "02:35", "10:06", 5)
+    assert ok is None and why == f"skipped, {when} is not a market day"
+
+
+def test_premarket_limits_are_the_values_the_lane_runs_on(monkeypatch):
+    monkeypatch.syspath_prepend(str(_RUNTIME.parent / "skills" / "spx-jev"))
+    from spx_jev import premarket
+    from spx_jev.lane import PREMARKET
+    assert premarket_limits(_RUNTIME.parent) == {"late_min": premarket.LATE_FIRE_MIN,
+                                                 "first_checkpoint": PREMARKET.schedule[0], "close_out": PREMARKET.close_out}
+
+
 # --- live tests against the running station (read-only) ---------------------------
 
 live = pytest.mark.skipif(os.environ.get("MIRAI_LIVE") != "1",
@@ -766,7 +886,7 @@ def station():
     """The station launchd is running: its job listings, repo root and today's clock."""
     listing = _run("launchctl", "list").stdout
     prints = {}
-    for label in SNDK_JOBS:
+    for label in SNDK_JOBS + (SPX_PREMARKET_JOB,):
         shown = _run("launchctl", "print", f"gui/{os.getuid()}/{label}", check=False)
         if shown.returncode == 0:
             prints[label] = shown.stdout
@@ -799,6 +919,19 @@ def _skip_when_closed(now: datetime) -> None:
 @live
 def test_live_sndk_jobs_are_loaded(station):
     _hold(jobs_loaded(station.listing, SNDK_JOBS), "launchctl list | grep com.mirai-station")
+
+
+@live
+def test_live_spx_premarket_job_is_loaded(station):
+    _hold(jobs_loaded(station.listing, (SPX_PREMARKET_JOB,), "SPX pre-market"), f"launchctl list | grep {SPX_PREMARKET_JOB}")
+
+
+@live
+def test_live_spx_premarket_read_at_every_checkpoint(station):
+    limits = premarket_limits(station.root)
+    lane = station.state / "spx_jev" / "lanes" / "premarket"
+    _hold(premarket_fired(lane, station.now, limits["first_checkpoint"], limits["close_out"], limits["late_min"]),
+          f"cut -c1-80 {lane}/{station.day}.jsonl; tail -n 5 {_log(station, SPX_PREMARKET_JOB, 'stderr')}")
 
 
 @live

@@ -410,6 +410,66 @@ def test_a_gate_that_cannot_answer_fails_the_job_out_loud(tmp_path, script, pyth
     assert sum("FAILED" in line for line in done.stderr.splitlines()) == 1, done.stderr
 
 
+# --- the pre-market job ----------------------------------------------------------------
+# com.mirai-station.spx-jev-premarket has no market-hours gate: it reads before the open by
+# design, and its command refuses a fire that is off its checkpoints. The run script's one
+# skip is the weekend in New York time, because its 02:35 checkpoint fires at 23:35 the
+# evening before on the box's Pacific clock: a skip that read the box's clock would drop
+# every Monday's first read and fire Saturday's.
+
+PREMARKET_JOB, PREMARKET_SCRIPT = "com.mirai-station.spx-jev-premarket", "run-spx-jev-premarket.sh"
+
+
+def _run_premarket(tmp_path, local_day, new_york_day, env=None):
+    """Run a copy of the pre-market run script in a stand-in station whose `date +%u` answers
+    `new_york_day` under TZ=America/New_York and `local_day` on the box's own clock. The venv
+    python only records its launch. Returns the finished process and the recorded launches."""
+    root, venv, launched = tmp_path / "station", tmp_path / "venv", tmp_path / "launched"
+    scripts = root / "runtime" / "scripts"
+    (root / "skills" / "spx-jev").mkdir(parents=True)
+    _file(scripts / "env.sh",
+          'export MIRAI_STATION_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"\n'
+          f'export MIRAI_STATION_VENV="{venv}"\n')
+    shutil.copy2(SCRIPTS / PREMARKET_SCRIPT, scripts / PREMARKET_SCRIPT)
+    _file(tmp_path / "bin" / "date",
+          '#!/bin/sh\nif [ "$*" = "+%u" ]; then\n'
+          f'  if [ "$TZ" = America/New_York ]; then echo {new_york_day}; else echo {local_day}; fi\n'
+          '  exit 0\nfi\nexec /bin/date "$@"\n', 0o755)
+    _file(venv / "bin" / "python", f'#!/bin/sh\necho "$*" >> "{launched}"\n', 0o755)
+    done = subprocess.run(["/bin/bash", str(scripts / PREMARKET_SCRIPT)], capture_output=True, text=True,
+                          env={"PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin", "HOME": str(tmp_path), **(env or {})},
+                          timeout=60)
+    return done, launched.read_text() if launched.exists() else ""
+
+
+def test_the_premarket_job_is_hired_and_starts_its_run_script():
+    """The pre-market job is installed, removed with the rest, and starts the lane's run script."""
+    assert f"{PREMARKET_JOB}.plist" in _shell_array(SCRIPTS / "install-launchd.sh", "PLISTS")
+    assert PREMARKET_JOB in _shell_array(SCRIPTS / "uninstall-launchd.sh", "PLISTS")
+    assert _run_script(_job(LAUNCHD / f"{PREMARKET_JOB}.plist")) == SCRIPTS / PREMARKET_SCRIPT
+
+
+@pytest.mark.parametrize("local_day, new_york_day, reads", [
+    (7, 1, True),          # Sunday 23:35 on the box is Monday's 02:35 checkpoint in New York
+    (1, 1, True),
+    (4, 5, True),          # Thursday 23:35 on the box is Friday's 02:35
+    (5, 6, False),         # Friday 23:35 on the box is Saturday in New York: no read
+    (6, 6, False),
+])
+def test_the_premarket_job_reads_on_new_york_weekdays(tmp_path, local_day, new_york_day, reads):
+    """A New York weekday starts the lane's command with the station's state and --send; a New York
+    weekend exits 0 with nothing on stderr and starts nothing."""
+    done, launched = _run_premarket(tmp_path, local_day, new_york_day)
+    assert (done.returncode, done.stderr) == (0, "")
+    root = tmp_path / "station"
+    assert launched == (f"-m spx_jev.premarket --state-dir {root}/state --send\n" if reads else "")
+
+
+def test_the_premarket_kill_switch_starts_nothing(tmp_path):
+    done, launched = _run_premarket(tmp_path, 1, 1, env={"SPX_JEV_DISABLE": "1"})
+    assert (done.returncode, done.stderr, launched) == (0, "", "")
+
+
 _YEAR_IN_PATTERN = re.compile(r"(?<!\d)(19|20)\d\d(?!\d)")
 _PATTERN_CALLS = {"glob", "rglob", "fnmatch", "iglob"}
 
