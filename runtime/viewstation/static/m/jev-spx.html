@@ -701,12 +701,14 @@ details .q{margin-top:8px}
     var m = Math.ceil(s / 60);
     return m <= 1 ? 'Under 1 min left' : m + ' min left';
   }
+  // a graded call's verdict: an unsure pick made no call, so it is neither right nor wrong, as the tally counts it
+  function verdict(hit, pick){ return hit ? 'Right' : pick === 'unsure' ? 'Unsure' : 'Wrong'; }
   // what a call's row says beside its bar: time left while open, then what happened
   function callWords(c, now){
     if(!c.mark) return {text: 'Never graded'};
     var left = leftWords(Date.parse(c.mark), now);
     if(left) return {text: left};
-    if(c.outcome) return {text: 'Was ' + cap(c.outcome) + ' \u00B7 ', strong: c.hit ? 'Right' : 'Wrong'};
+    if(c.outcome) return {text: 'Was ' + cap(c.outcome) + ' \u00B7 ', strong: verdict(c.hit, c.pick)};
     if(c.closed) return {text: 'Not graded'};
     return {text: 'Grade pending'};
   }
@@ -824,9 +826,10 @@ details .q{margin-top:8px}
     body.textContent = '';
     var res = el('div', 'sh-caveat cs-result'), v = el('div', 'cs-verdict');
     if(c.outcome){
-      v.appendChild(el('b', null, c.hit ? 'Right' : 'Wrong')); v.appendChild(el('span', null, 'Result'));
+      v.appendChild(el('b', null, verdict(c.hit, c.pick))); v.appendChild(el('span', null, 'Result'));
       res.appendChild(v);
-      res.appendChild(el('p', null, 'It ended ' + cap(c.outcome) + '. The call said ' + cap(c.pick) + ' ' + pct(c.p) + '.'));
+      res.appendChild(el('p', null, 'It ended ' + cap(c.outcome) + '. The call said ' + cap(c.pick) + ' ' + pct(c.p) + '.'
+                                    + (c.pick === 'unsure' ? ' Unsure makes no call, so it is counted apart from the calls right and wrong.' : '')));
       var mv = movedWords(c); if(mv) res.appendChild(el('p', null, mv));
     } else if(!c.mark){
       v.appendChild(el('b', null, 'Never graded')); res.appendChild(v);
@@ -1075,13 +1078,15 @@ details .q{margin-top:8px}
     var r = t.schedule && t.schedule.reads;
     return !!(t.closed_out_at || (r && r.length && Date.parse(t.row_ts) >= Date.parse(r[r.length - 1]) - 60000));
   }
-  // after the opening: one line with the morning's score, counted by the service from the lane's grades
+  // after the opening: one line with the morning's score, counted by the service from the lane's grades; an unsure
+  // pick made no call, so it is counted apart and the score is of the calls committed to
   function openingDone(t){
     var y = t.tally, f = el('div', 'card fold');
-    var over = lastLaneRead(t);
+    var over = lastLaneRead(t), unsure = y.unsure || 0, rest = y.graded === y.calls ? '' : ', ' + (y.calls - y.graded) + ' still to grade';
     f.appendChild(el('span', 'k', over ? 'opening done' : 'opening lane, no call open'));
-    f.appendChild(el('span', 'l', y.graded === y.calls ? y.right + ' of ' + y.calls + ' calls right'
-                                   : y.right + ' of ' + y.graded + ' graded calls right, ' + (y.calls - y.graded) + ' still to grade'));
+    f.appendChild(el('span', 'l', unsure ? y.right + ' of ' + (y.graded - unsure) + ' committed calls right, ' + unsure + ' unsure' + rest
+                                  : y.graded === y.calls ? y.right + ' of ' + y.calls + ' calls right'
+                                  : y.right + ' of ' + y.graded + ' graded calls right' + rest));
     return f;
   }
   // No 30-minute card read yet (none written, or the station failed): the opening lane still leads while its call
@@ -1157,7 +1162,7 @@ details .q{margin-top:8px}
     f.appendChild(el('b', null, cap(top) + ' ' + pct(h.probabilities[top])));
     var said = PRE_CHECKS.map(function(k, i){
       var r = checks[k], at = viewerTime(p.marks[i]);
-      return r ? at + ' was ' + cap(r.outcome) + ', ' + (r.hit ? 'right' : 'wrong') : at + ' not graded yet';
+      return r ? at + ' was ' + cap(r.outcome) + ', ' + verdict(r.hit, r.pick).toLowerCase() : at + ' not graded yet';
     });
     f.appendChild(el('span', 'l', p.closed_out_at || Object.keys(checks).length ? said.join(' \u00B7 ')
                                   : 'Checked ' + viewerTime(p.marks[0]) + ' and ' + viewerTime(p.marks[1])));

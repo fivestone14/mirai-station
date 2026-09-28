@@ -112,10 +112,20 @@ def test_the_close_out_grades_the_last_calls_and_asks_jev_nothing(tmp_path, monk
     _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 82)
     assert service.main(["--state-dir", str(state), "--lane", "tape"]) == 0
     c = json.loads((out / "latest.json").read_text())
-    assert c["closed_out_at"] and c["tally"] == {"calls": 1, "graded": 1, "right": 1}
+    assert c["closed_out_at"] and c["tally"] == {"calls": 1, "graded": 1, "right": 1, "unsure": 0}
     assert (out / f"{DAY}.jsonl").read_text() == reads_before
     kinds = [json.loads(l)["kind"] for l in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
     assert kinds == ["read", "grade", "close_out"]                          # the read, its grade at the close-out, the close-out
+
+
+def test_an_unsure_pick_is_an_abstention_in_the_tally_and_its_words_never_a_wrong_call():
+    calls = ([{"pick": "unsure", "outcome": "down_big", "hit": False}] * 7 + [{"pick": "down_small", "outcome": "down_big", "hit": False}]
+             + [{"pick": "unsure"}, {"pick": "flat"}])                     # the last two not graded yet
+    tally = service.calls_block(calls)["tally"]
+    assert tally == {"calls": 10, "graded": 8, "right": 0, "unsure": 7}
+    assert service.tally_words(tally) == "0 of 1 committed calls right, 7 unsure, 2 still to grade"
+    assert service.tally_words({**tally, "calls": 8}) == "0 of 1 committed calls right, 7 unsure"
+    assert service.tally_words({"calls": 3, "graded": 3, "right": 2}) == "2 of 3 committed calls right, 0 unsure"   # a card from before
 
 
 SCHEDULED = {"groups": [{"id": "g1", "reads": ["context"], "questions": {

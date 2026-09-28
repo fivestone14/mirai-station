@@ -49,7 +49,7 @@ def _run(js, data=None, tz=LA):
         pytest.skip("node is not installed")
     script = ("const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + FIXED_NOW + FAKE_DOM
               + "".join(_fn(f) for f in ("viewerTime", "marketAt", "marketWords", "cap", "pct", "words", "startOf", "endOf",
-                                          "leftWords", "callWords", "laneLeads", "svgEl", "lastLaneRead", "hhmm", "marketClock",
+                                          "leftWords", "verdict", "callWords", "laneLeads", "svgEl", "lastLaneRead", "hhmm", "marketClock",
                                           "marketDay", "sentence"))
               + _var("VIEWER_FMT") + _var("NS") + _var("ROW_H") + js)
     out = subprocess.run([_NODE, "-e", script], input=json.dumps(data), capture_output=True, text=True, timeout=20,
@@ -183,6 +183,27 @@ def test_the_sheet_gives_the_reason_a_call_was_not_graded_in_the_viewers_zone():
          "odds": {"down_big": 0.05, "down_small": 0.12, "flat": 0.3, "up_small": 0.38, "up_big": 0.1, "unsure": 0.05}}
     assert [_flat_text(k) for k in _sheet(c, "2026-09-28T16:30:00-04:00")["body"]["kids"][0]["kids"]] == \
         ["Not graded", "Halted window: no settled open (the 06:34 bar) on a finished day."]
+
+
+def test_an_unsure_call_is_an_abstention_on_the_page_never_a_wrong_one():
+    """The service counts a graded call whose pick was unsure apart (service.calls_block): the morning's line says
+    how many of the committed calls were right and how many were unsure, and the call itself says Unsure, not Wrong."""
+    now = "2026-09-28T10:45:00-04:00"
+    unsure = call("09:50", "10:00", "unsure", 0.4, outcome="down_big", hit=False)
+    assert _run("console.log(JSON.stringify(callWords(D.c, Date.parse(D.now))));", {"c": unsure, "now": now}) == \
+        {"text": "Was Down big · ", "strong": "Unsure"}
+    sched = {"reads": ["2026-09-28T09:35:00-04:00", "2026-09-28T10:30:00-04:00"], "looks_ahead_min": 10}
+    lines = _run(_fn("openingDone") + "console.log(JSON.stringify(D.t.map(function(t){ return dump(openingDone(t)); })));", {"t": [
+        {"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": {"calls": 8, "graded": 8, "right": 0, "unsure": 7}},
+        {"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": {"calls": 9, "graded": 8, "right": 0, "unsure": 7}},
+        {"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": {"calls": 8, "graded": 8, "right": 5, "unsure": 0}},
+        {"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": {"calls": 8, "graded": 6, "right": 5}}]})
+    assert [_flat_text(l) for l in lines] == ["opening done0 of 1 committed calls right, 7 unsure",
+                                              "opening done0 of 1 committed calls right, 7 unsure, 1 still to grade",
+                                              "opening done5 of 8 calls right", "opening done5 of 6 graded calls right, 2 still to grade"]
+    sheet = _sheet({**unsure, "odds": {"down_big": 0.1, "down_small": 0.2, "flat": 0.2, "up_small": 0.05, "up_big": 0.05, "unsure": 0.4}}, now)
+    assert [_flat_text(k) for k in sheet["body"]["kids"][0]["kids"]][:2] == [
+        "UnsureResult", "It ended Down big. The call said Unsure 40%. Unsure makes no call, so it is counted apart from the calls right and wrong."]
 
 
 # ---- the schedule stays on the market clock
@@ -662,6 +683,8 @@ def _closed(**checks):
 @pytest.mark.parametrize("card, now, tz, want", [
     (pre_card("09:28"), et("09:50"), LA, "pre-market call 06:28Up 41%Checked 06:44 and 07:04"),
     (_closed(open_10={"outcome": "flat", "hit": False}), et("10:30"), LA, "pre-market call 06:28Up 41%06:44 was Flat, wrong · 07:04 not graded yet"),
+    (_closed(open_10={"outcome": "flat", "hit": False, "pick": "unsure"}, open_30={"outcome": "up", "hit": False, "pick": "down"}), et("10:30"), LA,
+     "pre-market call 06:28Up 41%06:44 was Flat, unsure · 07:04 was Up, wrong"),
     (_closed(open_10={"outcome": "up", "hit": True}, open_30={"outcome": "up", "hit": True}), et("10:30"), TOKYO,
      "pre-market call 22:28Up 41%22:44 was Up, right · 23:04 was Up, right"),
     (_closed(), et("12:00"), NY, "pre-market call 09:28Up 41%09:44 not graded yet · 10:04 not graded yet"),

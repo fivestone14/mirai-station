@@ -87,6 +87,7 @@ STALE_ROW_SKIP_MIN = 6.0       # a live read on a row older than this is skipped
 LAST_READ_BEFORE_CLOSE_MIN = 28   # the job reads at :02 and :32, so the day's last read is 28 minutes before the close
 UNSENT_DEFAULT = "not sent: this run was not asked to send"
 CALLS_SHOWN = 4                # the phone draws the newest calls on one clock, so an overlap is visible
+UNSURE = "unsure"              # a sum's pick that makes no call: the tally counts it apart
 # A read on the bar clock waits for the bar that finishes at its fire minute. The bars job runs once a
 # minute at no fixed second, so a wait under a minute spans one of its runs and the read stays in its minute.
 BAR_WAIT_S = 55
@@ -283,7 +284,7 @@ def day_calls(out_dir: Path, day: str, lane: Lane = LIVE) -> list[dict]:
     when it can never be graded. The mark is grade.mark_at's: the closing bar for a read that ends just
     past the close, None for one that ends later and is never graded, counted from the settled open on
     a lane graded from it. On that lane every call is checked at the same marks, so each carries
-    ``checks``, ``{horizon: {"outcome", "hit"}}`` for every horizon graded so far. A read whose sum got
+    ``checks``, ``{horizon: {"outcome", "hit", "pick"}}`` for every horizon graded so far. A read whose sum got
     no answer is not a call."""
     minutes = lane.horizons[lane.primary][0]
     grades: dict[str, dict] = {}
@@ -294,7 +295,7 @@ def day_calls(out_dir: Path, day: str, lane: Lane = LIVE) -> list[dict]:
             continue
         for h in lane.horizons:
             if isinstance(g.get(h), dict) and g[h].get("band"):
-                checks.setdefault(ts, {})[h] = {"outcome": g[h]["band"], "hit": bool(g[h].get("hit"))}
+                checks.setdefault(ts, {})[h] = {"outcome": g[h]["band"], "hit": bool(g[h].get("hit")), "pick": g[h].get("pick")}
         res = g.get(lane.primary)
         if isinstance(res, dict) and res.get("band"):
             # the move behind the outcome, in the units the sum was banded in: sigma on the live lane,
@@ -320,10 +321,20 @@ def day_calls(out_dir: Path, day: str, lane: Lane = LIVE) -> list[dict]:
 
 
 def calls_block(calls: list[dict]) -> dict:
-    """What the card carries of the day's calls: the newest CALLS_SHOWN, newest first, and the day's tally."""
+    """What the card carries of the day's calls: the newest CALLS_SHOWN, newest first, and the day's tally. A
+    graded call whose pick was "unsure" is an abstention, counted under ``unsure`` and never among the calls
+    right or wrong; the grades and their Brier scores still count it as the grader does."""
+    graded = [c for c in calls if "outcome" in c]
     return {"calls": calls[-CALLS_SHOWN:][::-1],
-            "tally": {"calls": len(calls), "graded": sum(1 for c in calls if "outcome" in c),
-                      "right": sum(1 for c in calls if c.get("hit"))}}
+            "tally": {"calls": len(calls), "graded": len(graded), "right": sum(1 for c in graded if c.get("hit")),
+                      "unsure": sum(1 for c in graded if c.get("pick") == UNSURE)}}
+
+
+def tally_words(tally: dict) -> str:
+    """A close-out's tally in words: '0 of 1 committed calls right, 7 unsure', and what is still to grade."""
+    unsure = tally.get("unsure", 0)
+    words = f"{tally['right']} of {tally['graded'] - unsure} committed calls right, {unsure} unsure"
+    return words + (f", {tally['calls'] - tally['graded']} still to grade" if tally["calls"] > tally["graded"] else "")
 
 
 def _stamp(lane: Lane, unit: dict | None, band: dict | None = None) -> dict:
@@ -687,8 +698,7 @@ def main(argv: list[str] | None = None) -> int:
         if after_close and not wait_for_bar(state_dir, session_close(now)):
             log(f"the closing bar is not on file after {BAR_WAIT_S} s: grading what is")
         c = close_out(state_dir, out_dir, doc, lane)
-        log(f"{lane.name} lane closed out: {c['tally']['right']} of {c['tally']['graded']} graded calls right, "
-            f"{c['tally']['calls']} calls" if c else f"{lane.name} lane: nothing to close out today")
+        log(f"{lane.name} lane closed out: {tally_words(c['tally'])}" if c else f"{lane.name} lane: nothing to close out today")
         return 0
     last_row = None
     while True:

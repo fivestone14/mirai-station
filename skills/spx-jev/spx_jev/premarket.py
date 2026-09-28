@@ -520,8 +520,7 @@ def main(argv: list[str] | None = None) -> int:
             if not args.day and not service.wait_for_bar(state_dir, last):
                 service.log(f"the bar finishing at {last:%H:%M} is not on file after {service.BAR_WAIT_S} s: grading what is")
             c = service.close_out(state_dir, out_dir, doc, PREMARKET, day)
-            service.log(f"premarket lane closed out: {c['tally']['right']} of {c['tally']['graded']} graded calls right, "
-                        f"{c['tally']['calls']} calls" if c else "premarket lane: nothing to close out today")
+            service.log(f"premarket lane closed out: {service.tally_words(c['tally'])}" if c else "premarket lane: nothing to close out today")
             return 0
         if not args.day and already_read(out_dir, day, checkpoint):
             service.log(f"premarket: the {checkpoint} ET checkpoint was already read today; card unchanged")
