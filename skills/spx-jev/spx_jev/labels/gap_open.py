@@ -83,7 +83,10 @@ class Gap:
         return third(self.rank.share) != "bottom"
 
     def ranked(self) -> str:
-        """The gap's rank in words: "larger than 17 of the last 20 days' gaps, top third"."""
+        """The gap's rank in words: "larger than 17 of the last 20 days' gaps, top third"; a gap that beats none
+        says so plainly."""
+        if self.rank.higher_than == 0:
+            return f"no larger than any of the last {self.rank.of} days' gaps, {self.rank.band}"
         return f"larger than {self.rank.higher_than} of the last {self.rank.of} days' gaps, {self.rank.band}"
 
     @property

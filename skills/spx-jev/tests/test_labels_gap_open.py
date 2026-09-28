@@ -93,6 +93,8 @@ def sized(scene_factory, root, settled, gaps=TWENTY, rulers=None, now=None, **kw
              f"{OPENED}; 1.6 times this morning's same-day straddle"),
     (7708.0, "0.10 sigma is larger than 4 of the last 20 days' gaps, bottom third: price opened above yesterday's close, "
              f"{OPENED}; 0.4 times this morning's same-day straddle"),              # level with the 0.10 gap: not larger than it
+    (7700.8, "0.01 sigma is no larger than any of the last 20 days' gaps, bottom third: price opened above yesterday's close, "
+             f"{OPENED}; 0.0 times this morning's same-day straddle"),
 ])
 def test_the_gaps_size_is_its_third_among_the_prior_sessions_gaps_whichever_way_it_went(scene_factory, tmp_path, settled, verdict):
     got, _, _ = labels(sized(scene_factory, tmp_path, settled))
