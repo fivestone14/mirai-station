@@ -183,6 +183,28 @@ def test_a_live_read_on_a_stalled_scanner_is_skipped_and_the_card_stays(tmp_path
     assert json.loads((state / "spx_jev" / "latest.json").read_text())["row_ts"] == "the last card"
 
 
+def test_a_sent_read_with_nothing_due_says_nothing_was_sent(tmp_path, monkeypatch, capsys):
+    """The 09:32 read asks nothing by schedule: the card still says the run was allowed to send, so the phone
+    does not call it unkeyed, but it asked JEV nothing, and its log line says so rather than "sent"."""
+    state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
+    monkeypatch.setattr(service, "send_all", _answers())
+    monkeypatch.setattr(service, "send", _sums)
+    monkeypatch.setattr(service, "not_due", lambda doc, lane, now, fired=None: {"q_dir": "not due", "q_two": "not due"})
+    quiet = run_once(state, state / "spx_jev", DOC, True, DAY)
+    assert quiet["sent"] and quiet["asked"] == 0 and quiet["hour"] is None
+    monkeypatch.setattr(service, "not_due", lambda doc, lane, now, fired=None: {})
+    asked = run_once(state, state / "spx_jev", DOC, True, DAY)
+    assert asked["asked"] == 2 and run_once(state, state / "spx_jev", DOC, False, DAY)["asked"] == 0
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", CANARY)
+    monkeypatch.setattr(service, "load_env_file", lambda *a, **k: [])
+    monkeypatch.setattr(service, "now_et", lambda: at(9, 32, ss=5))
+    for card, said in ((quiet, "answered 0/2 nothing due, nothing sent"), (asked, "answered 2/2 sent")):
+        monkeypatch.setattr(service, "run_once", lambda *a, card=card, **k: card)
+        assert service.main(["--state-dir", str(state)]) == 0
+        assert said in capsys.readouterr().err
+
+
 def test_an_unsent_run_says_why_and_holds_nothing(tmp_path):
     state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
     c = run_once(state, state / "spx_jev", DOC, False, DAY, unsent_reason="not sent: no key on this machine")

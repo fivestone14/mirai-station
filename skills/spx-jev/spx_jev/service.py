@@ -415,6 +415,8 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
         "labels": sum(len(v) for v in state.values()),
         "omitted": {k: plain(str(v)) for k, v in omitted.items()},
         "sent": sent,
+        # the questions this read put to JEV: none on a sent read when nothing was due (the 09:32 read)
+        "asked": sum(len(r["questions"]) for r in requests) if sent else 0,
         "send_seconds": send_seconds,
         "model": next((a.get("model") for a in (answers or {}).values() if isinstance(a, dict) and a.get("model")), None),
         "questions": qs,
@@ -715,8 +717,9 @@ def main(argv: list[str] | None = None) -> int:
             c = run_once(state_dir, out_dir, doc, do_send, args.day, unsent, lane)
             if c["row_ts"] != last_row:
                 n_ans = sum(1 for q in c["questions"] if q.get("answer"))
+                said = ("sent" if c["asked"] or c["hour"] is not None else "nothing due, nothing sent") if c["sent"] else "not sent"
                 log(f"row {c['row_ts'][11:19]} labels {c['labels']} answered {n_ans}/{len(c['questions'])} "
-                    f"{'sent' if c['sent'] else 'not sent'}{' STALE ROW' if c['freshness']['stale'] else ''} -> {out_dir / 'latest.json'}")
+                    f"{said}{' STALE ROW' if c['freshness']['stale'] else ''} -> {out_dir / 'latest.json'}")
                 last_row = c["row_ts"]
         except NoRowYet as e:   # a quiet skip, not a failure: the next tick will find the row
             log(f"skipping this tick: {e}")
