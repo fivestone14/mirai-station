@@ -968,39 +968,55 @@ def _off_low(bars: list[dict], then: datetime, sigma: float | None) -> float | N
     return (float(bars[-1]["close"]) - lows.low) / sigma if sigma and lows is not None else None
 
 
-def _beats_all(rank: SameClockRank) -> bool:
-    return rank.higher_than == rank.of
+def _record_rise(change: float, rank: SameClockRank) -> bool:
+    """A rise from the open higher than on every one of the prior sessions at this minute; a fall never is one."""
+    return change > 0 and rank.higher_than == rank.of
+
+
+def _rise_words(change: float, rank: SameClockRank, unit: str = "") -> str:
+    """Why a change from the open is not a record rise, for the not-a-stress-day reason."""
+    if change <= 0:
+        return f"{change:+.2f}{unit} from its open, not above it"
+    return (f"{change:+.2f}{unit} from its open, higher than {rank.higher_than} of the last {rank.of} sessions at this minute, "
+            f"not every one")
 
 
 def _stress_path(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
     """On a stress day only, how much of its rise VIX has given back from its session high, how far SPX sits off its
     session low against the same distance at this minute on the prior sessions, and how often NYSE TICK's lows
-    reached their minute's bottom burst band in the last 30 minutes. A stress day's VIX rise from its open, or its
-    VIX curve, is higher than on every one of the prior sessions at this minute, or VIX is over their highs; any
-    other day the label is omitted, so its question sleeps."""
+    reached their minute's bottom burst band in the last 30 minutes. A stress day's VIX, or its VIX curve, has risen
+    from the open by more than on every one of the prior sessions at this minute, or VIX is over their highs, or the
+    curve is at or over the inversion line; any other day the label is omitted, so its question sleeps. The curve's
+    level alone is no gauge: it drifts for weeks and tops its recent sessions on calm days."""
     path = "vol.stress_path"
-    now, opened, curve = today[-1].vix, today[0].vix, today[-1].vix_ts
+    now, opened, curve, curve_open = today[-1].vix, today[0].vix, today[-1].vix_ts, today[0].vix_ts
     if now is None or opened is None:
         ls.omit(path, "no diary VIX now and at the open (range_ruler.vol_carry.vix)")
         return
     rise = now - opened
     rise_rank, why = _diary_rank(scene, rise, lambda points, bars, then, sigma: points[-1].vix - points[0].vix
                                  if points[-1].vix and points[0].vix else None, "a diary VIX at the open and at this minute")
-    curve_rank = None
-    if rise_rank is not None and curve is not None:
-        curve_rank, why = _diary_rank(scene, curve, lambda points, bars, then, sigma: points[-1].vix_ts, "the VIX curve at this minute")
-    if rise_rank is None or (curve is not None and curve_rank is None):
+    shift = curve - curve_open if curve is not None and curve_open is not None else None
+    shift_rank = None
+    if rise_rank is not None and shift is not None:
+        shift_rank, why = _diary_rank(scene, shift, lambda points, bars, then, sigma: points[-1].vix_ts - points[0].vix_ts
+                                      if points[-1].vix_ts and points[0].vix_ts else None,
+                                      "the VIX curve at the open and at this minute")
+    if rise_rank is None or (shift is not None and shift_rank is None):
         ls.omit(path, why)
         return
     prior = [p.vix for d in scene.prior_bars for p in prior_diary(scene.state_dir, d) if p.vix]
     prior_high = max(prior) if prior else None
-    if not (_beats_all(rise_rank) or (prior_high is not None and now > prior_high) or (curve_rank and _beats_all(curve_rank))):
+    inverted = curve is not None and curve >= VIX_CURVE_FLAT
+    if not (_record_rise(rise, rise_rank) or (prior_high is not None and now > prior_high) or inverted
+            or (shift_rank and _record_rise(shift, shift_rank))):
         high_words = (f"at or under its {prior_high:.2f} high of the prior sessions" if prior_high is not None
                       else "with no prior diaries to compare it with")
-        curve_words = (f", and {curve:.2f} times three-month VIX, flatter than {curve_rank.higher_than} of the last {curve_rank.of} "
-                       f"sessions at this minute, not every one" if curve_rank else "")
-        ls.omit(path, f"not a stress day: VIX is {rise:+.2f} points from its open, higher than {rise_rank.higher_than} of the last "
-                      f"{rise_rank.of} sessions at this minute, not every one, {high_words}{curve_words}")
+        curve_words = (f", and {curve:.2f} times three-month VIX, under the {VIX_CURVE_FLAT:.2f} inversion line"
+                       if curve is not None else "")
+        if shift_rank:
+            curve_words += f", {_rise_words(shift, shift_rank)}"
+        ls.omit(path, f"not a stress day: VIX is {_rise_words(rise, rise_rank, ' points')}, {high_words}{curve_words}")
         return
     lows, ruler = session_extremes(scene.bars), sigma_anchor(scene)
     if lows is None or ruler is None:

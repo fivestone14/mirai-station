@@ -913,8 +913,8 @@ def tick_tape(now, lows_by_minutes_ago: dict[int, float]) -> MarketContext:
 
 
 def stress_history(vix: float = 26.0, n: int = 10):
-    """``n`` prior sessions at 12:30: VIX up 0.0 to 1.8 points from its open (at ``vix``), the VIX curve 0.80 to 0.89,
-    SPX 0.5 to 18.5 points above its session low, and NYSE TICK lows reaching -400 to -850 each minute from 12:00,
+    """``n`` prior sessions at 12:30: VIX up 0.0 to 1.8 points from its open (at ``vix``), the VIX curve 0.80 to 0.89
+    from 0.83 at the open (a change of -0.03 to +0.06), SPX 0.5 to 18.5 points above its session low, and NYSE TICK lows reaching -400 to -850 each minute from 12:00,
     so the bottom burst band at every minute is -827.5."""
     rows, bars, markets = {}, {}, {}
     for k, d in enumerate(PRIOR_DAYS[:n]):
@@ -928,12 +928,13 @@ def stress_history(vix: float = 26.0, n: int = 10):
 SELLING = {3: -1100.0, 7: -1050.0, 12: -1300.0, 18: -1000.0, 25: -1150.0, 40: -1200.0, -1: -1500.0, 5: -600.0}
 
 
-def stress_scene(scene_factory, root, vix_open=20.7, vix_now=24.1, off_low=16.5, ticks=None, prior_vix=26.0, **row_over):
+def stress_scene(scene_factory, root, vix_open=20.7, vix_now=24.1, off_low=16.5, ticks=None, prior_vix=26.0, curve_open=0.83,
+                 **row_over):
     """A 12:30 read after a selloff: SPX's low made by the 11:39 bar, VIX's session high 25.0 at 11:42."""
     now = at(12, 30)
     low = 7679.5                                        # the 11:39 bar's close of 7680 less its wick
     bars = bars_from_closes([7700.0] * 129 + [7680.0] + [low + off_low] * 51)
-    rows = [diary_row(at(9, 31), vix_open), diary_row(at(11, 42), 25.0), diary_row(at(12, 0), 24.5)]
+    rows = [diary_row(at(9, 31), vix_open, vix_ts=curve_open), diary_row(at(11, 42), 25.0), diary_row(at(12, 0), 24.5)]
     scene = scene_factory(now, bars, row_over={"range_ruler": ruler_block(vix_now), **row_over}, rows_before=rows,
                           market=tick_tape(now, SELLING if ticks is None else ticks))
     prior_rows, prior_bars, markets = stress_history(prior_vix)
@@ -984,15 +985,28 @@ def test_only_tick_bars_finished_in_the_last_30_minutes_count(scene_factory, tmp
                         "3-reading cluster")
 
 
-def test_a_day_is_stressed_by_a_vix_rise_or_curve_over_every_prior_session_or_vix_over_their_highs(scene_factory, tmp_path):
+def test_a_day_is_stressed_by_a_vix_or_curve_rise_over_every_prior_session_vix_over_their_highs_or_an_inverted_curve(
+        scene_factory, tmp_path):
     calm = stress_scene(scene_factory, tmp_path / "calm", vix_open=23.1)
     assert labels(calm)[1]["vol.stress_path"] == (
         "not a stress day: VIX is +1.00 points from its open, higher than 5 of the last 10 sessions at this minute, not every one, at "
-        "or under its 27.80 high of the prior sessions, and 0.83 times three-month VIX, flatter than 3 of the last 10 sessions at this "
-        "minute, not every one")
+        "or under its 27.80 high of the prior sessions, and 0.83 times three-month VIX, under the 1.00 inversion line, +0.00 from its "
+        "open, not above it")
     assert "vol.stress_path" in labels(stress_scene(scene_factory, tmp_path / "curve", vix_open=23.1, vix_ts=0.99))[0]
+    assert "vol.stress_path" in labels(stress_scene(scene_factory, tmp_path / "inverted", vix_open=23.1, curve_open=0.99,
+                                                    vix_ts=1.0))[0]
     assert "vol.stress_path" in labels(stress_scene(scene_factory, tmp_path / "high", vix_open=23.1, prior_vix=20.0))[0]
     assert "vol.stress_path" in labels(stress_scene(scene_factory, tmp_path / "rise", vix_open=21.0))[0]
+
+
+def test_a_curve_at_its_flattest_of_the_recent_sessions_with_vix_falling_is_no_stress_day(scene_factory, tmp_path):
+    """The curve's level drifts for weeks: 0.90 is flatter than every prior session at this minute, but it rose no
+    more since the open than half of them, and VIX is down on the day."""
+    calm = stress_scene(scene_factory, tmp_path, vix_open=24.5, curve_open=0.888, vix_ts=0.9)
+    assert labels(calm)[1]["vol.stress_path"] == (
+        "not a stress day: VIX is -0.40 points from its open, not above it, at or under its 27.80 high of the prior sessions, and "
+        "0.90 times three-month VIX, under the 1.00 inversion line, +0.01 from its open, higher than 5 of the last 10 sessions at "
+        "this minute, not every one")
 
 
 def test_a_stress_day_without_its_history_or_tick_is_omitted(scene_factory, tmp_path):
