@@ -171,7 +171,7 @@ def weekend_leg_side(scene, figures: dict) -> int | None:
     measured on the read's night the same way; None when the label was not written."""
     if "weekend.btc_path" not in figures:
         return None
-    legs = bitcoin.weekend_legs(scene.night, *bitcoin.weekend_edges(scene.now.astimezone(ET).date()), scene.now)
+    legs = bitcoin.weekend_legs(scene.night, *bitcoin.weekend_edges(scene.now.astimezone(ET).date(), scene.night), scene.now)
     return None if legs is None else bitcoin.way_of(legs[0].pct)
 
 
