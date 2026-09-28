@@ -198,12 +198,37 @@ def _build_client():
         token_state["token"] = new_token
         vault.save_token(new_token)
 
-    return client_from_access_functions(
+    client = client_from_access_functions(
         api_key=api_key,
         app_secret=app_secret,
         token_read_func=token_read,
         token_write_func=token_write,
     )
+    _share_renewal(client)
+    return client
+
+
+def _share_renewal(client) -> None:
+    """Make the client renew its access token under vault.renewal_lock().
+
+    Every station job builds its own client over the one token file, and authlib
+    renews inside a request once the 30-minute access token is within its leeway
+    of expiry, so each job used to renew on its own. A client whose token is due
+    now takes the lock and re-reads the file first: if a job ahead of it has
+    renewed, it uses that token and sends nothing; otherwise it renews and saves
+    before letting the next job in."""
+    session = client.session
+    renew = session.ensure_active_token
+
+    def ensure_active_token(token=None):
+        if not session.token.is_expired(leeway=session.leeway):
+            return True
+        with vault.renewal_lock():
+            session.token = vault.load_token()["token"]
+            client.token_metadata.token = session.token
+            return renew(session.token)
+
+    session.ensure_active_token = ensure_active_token
 
 
 def _fetch_chain(client, ticker: str, strike_count: int = 100,

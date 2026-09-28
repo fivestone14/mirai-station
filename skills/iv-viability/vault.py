@@ -11,6 +11,7 @@ Public surface:
     get_callback_url()   -> str
     load_token()         -> dict            (decrypts token file)
     save_token(token)    -> None            (encrypts + chmod 600)
+    renewal_lock()       -> FileLock        (one access-token renewal at a time)
     store_credentials(api_key, app_secret, callback_url) -> None
     wipe()               -> None
     rotate_key()         -> None
@@ -39,6 +40,10 @@ ACCOUNT_FERNET_KEY = "fernet_key"
 SKILL_DIR = Path(__file__).resolve().parent
 TOKEN_FILE = SKILL_DIR / ".schwab_token.json.enc"
 LOCK_FILE = SKILL_DIR / ".schwab_token.lock"
+RENEW_LOCK_FILE = SKILL_DIR / ".schwab_token.renew.lock"
+# A renewal is one HTTPS POST under httpx's 5 s timeout, so a queue of every
+# station job renewing in turn clears well inside this.
+RENEW_LOCK_WAIT_S = 60
 
 # THE VALUE, NOT JUST THE LABEL (2026-09-09). The original pattern matched the
 # WORDS — so `refresh_token=eyJhbGci...` scrubbed to `[REDACTED]=eyJhbGci...` and
@@ -418,6 +423,15 @@ def save_token(token: dict) -> None:
         _enforce_perms(TOKEN_FILE)
 
 
+def renewal_lock():
+    """The lock a client holds from deciding its access token is due to the new
+    one being saved. It is separate from LOCK_FILE, which save_token takes inside
+    it. A job that waited on it re-reads the token file before renewing, so the
+    renewal the job ahead of it made is used rather than repeated."""
+    FileLock = _import_filelock()
+    return FileLock(str(RENEW_LOCK_FILE), timeout=RENEW_LOCK_WAIT_S)
+
+
 def rotate_key() -> None:
     """Re-encrypt the existing token with a newly generated Fernet key."""
     token = load_token()  # decrypt with old key
@@ -436,8 +450,9 @@ def wipe() -> None:
         _delete(account)
     if TOKEN_FILE.exists():
         TOKEN_FILE.unlink()
-    if LOCK_FILE.exists():
-        LOCK_FILE.unlink()
+    for lock in (LOCK_FILE, RENEW_LOCK_FILE):
+        if lock.exists():
+            lock.unlink()
 
 
 # ---------------------------------------------------------------------------
