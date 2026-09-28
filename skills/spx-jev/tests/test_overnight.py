@@ -3,6 +3,7 @@ merge (idempotent, first save kept, bad bars flagged), the manifest's checks and
 from __future__ import annotations
 
 import json
+import threading
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -93,6 +94,17 @@ def test_a_save_keeps_only_the_nights_finished_bars_and_asks_for_extended_hours(
             row["session"], row["source"], row["flags"]) == (1, "2026-09-22", "/ES", "/ESZ26", "quote", 1, "regular",
                                                              "schwab_price_history", [])
     assert row["saved_at"] == now.isoformat(timespec="seconds") and len(lines) == 1
+
+
+def test_a_save_waits_for_one_already_writing_the_store(tmp_path, served):
+    served[("/ES", 1)] = _bars(t("2026-09-21", 15, 55), 1500)
+    saved = threading.Event()
+    with overnight.saving(tmp_path):
+        worker = threading.Thread(target=lambda: overnight.save_nights(tmp_path, [TUESDAY], t("2026-09-22", 9, 28)) and saved.set())
+        worker.start()
+        assert not saved.wait(0.3) and not overnight.night_path(tmp_path, "2026-09-22").exists()
+    worker.join(5)
+    assert saved.is_set() and _rows(tmp_path, "2026-09-22")
 
 
 def test_a_rerun_adds_nothing_and_a_later_read_adds_only_the_new_bars(tmp_path, served):

@@ -44,9 +44,11 @@ from __future__ import annotations
 
 import argparse
 import bisect
+import fcntl
 import json
 import sys
 import time as clock
+from contextlib import contextmanager
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -58,6 +60,7 @@ from .state_builder import DEFAULT_STATE_DIR, load_jsonl
 
 ET = ZoneInfo("America/New_York")
 OVERNIGHT_SUBDIR = Path("spx_jev") / "overnight"
+SAVE_LOCK = ".save.lock"               # held while nights merge and write: the 09:26 job and the 09:28 read can save at once
 SCHEMA_VERSION = 1
 SOURCE = "schwab_price_history"
 SYMBOLS = ("/ES", "/ZN", "/BTC", "/MBT")
@@ -332,13 +335,25 @@ def save_nights(state_dir: Path, days: list[date], now: datetime, fetch_from: da
         failed.append(f"quotes: {type(e).__name__}: {e}")
     got, refused = fetch(SYMBOLS, fetch_from or night_window(min(days))[0], now)
     failed += refused
-    table = rolls.load(Path(state_dir) / OVERNIGHT_SUBDIR)
     lines = []
-    for day in sorted(days):
-        line = save_night(state_dir, day, got, quoted, table, now, failed)
-        if line:
-            lines.append(line)
+    with saving(state_dir):
+        table = rolls.load(Path(state_dir) / OVERNIGHT_SUBDIR)
+        for day in sorted(days):
+            line = save_night(state_dir, day, got, quoted, table, now, failed)
+            if line:
+                lines.append(line)
     return lines
+
+
+@contextmanager
+def saving(state_dir: Path):
+    """The store's save lock, waited for: a Mac that slept through the 09:26 job and the 09:28 read fires both
+    on waking, and each merges into the same night's file and its one temporary file."""
+    folder = Path(state_dir) / OVERNIGHT_SUBDIR
+    folder.mkdir(parents=True, exist_ok=True)
+    with open(folder / SAVE_LOCK, "w") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        yield
 
 
 def saved_days(state_dir: Path) -> list[str]:
