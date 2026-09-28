@@ -100,6 +100,34 @@ def test_a_questions_tables_forget_a_session_it_slept_through():
     assert "q_b" not in state["tables"]                                    # never awake: no table made for it
 
 
+def test_a_questions_evidence_counts_only_the_reads_it_was_awake_on():
+    """Two questions that carry no information (each forecasts "no change" whenever awake), one awake all day
+    and one on 2 of 12 reads, beside one that knows the outcome: neither is credited with the block's skill
+    on the reads it slept through, so both end where they began."""
+    r = floored(CLOCK)
+    state = cold_state()
+    outcomes = ["up", "flat", "flat", "down", "flat", "up"] * 2
+    for d in range(30):
+        day = (at(10, 2, day="2026-10-01") + timedelta(days=d)).date().isoformat()
+        membership(state, {"q_skill": "v1", "q_all_day": "v1", "q_late": "v1"}, day)
+        reads = []
+        for i, y in enumerate(outcomes):
+            members = {NO_CHANGE: r, "q_skill": floored({k: 0.6 if k == y else 0.2 for k in CLOCK}), "q_all_day": r}
+            if i >= 10:
+                members["q_late"] = r
+            experts = {n: r for n in W0}
+            experts["questions"] = floored(pool.mixed(members, state["block"]))
+            reads.append({"row_ts": (at(10, 2, day=day) + timedelta(minutes=30 * i)).isoformat(), "outcome": y,
+                          "snapshot": {"experts": experts, "block_members": members, "q_probs": {q: {"a": 1.0} for q in members if q != NO_CHANGE},
+                                       "pool": r, "blend50_exact": CLOCK, "raw_clock": CLOCK}})
+        apply_session(state, day, reads, 30, True, None)
+    ev = state["evidence"]
+    for q in ("q_all_day", "q_late"):
+        assert ev[q]["days"] == 30
+        assert [ev[q][part][side]["e"] for part in ("move", "direction") for side in ("better", "worse")] == [1.0] * 4
+    assert ev["q_skill"]["move"]["better"]["e"] > 1.0 and ev["q_skill"]["direction"]["better"]["e"] > 1.0
+
+
 def test_a_score_answer_is_learned_by_its_level_names_like_a_choice():
     """A score named by its levels (hour.named_levels) is a soft answer over those names, and the day's
     tables count the outcome under each level as they do under a choice's options."""

@@ -27,7 +27,9 @@ was given before the outcome.
 The update, per horizon, on each sealed session after the last one applied: the reads' window
 coverage, each expert's day-mean move and direction loss, a capped exponential-weights step against
 R (in the block, against "no change"), Fixed-Share toward the prior, the block's per-question cap,
-the decaying tables, and day-level betting e-processes. A question is labelled earning only by e-BH
+the decaying tables, and day-level betting e-processes, a question's scored only over the reads it was
+awake on, against "no change" on those same reads (the weights step keeps its asleep reads, forecast by
+the awake members' mix, as sleeping experts do). A question is labelled earning only by e-BH
 over every question version ever tested; the pool becomes eligible for the phone only once its
 e-process against the exact blend reaches PROMOTE_E after MIN_DAYS days, and steps back on the same
 kind of test. It runs at the first grading run after a session ends (PoolWeights.learn).
@@ -513,11 +515,16 @@ def apply_session(state: dict, day: str, reads: list[dict], minutes: int, primar
         state["cal"]["E"][k] = CAL_DECAY * state["cal"]["E"][k] + day_mean(floored(s["raw_clock"])[k] for s in snaps)
     log["evidence"] = {}
     for q, ev in sorted(state["evidence"].items()):
-        if not any(q in s["q_probs"] for s in snaps):
+        # scored only over the reads it was awake on, against "no change" on those same reads: an asleep
+        # read's forecast is the other members' mix, which would credit or blame it for them
+        awake = [(ci, s["block_members"], y) for ci, s, y in zip(c, snaps, ys) if q in s["q_probs"]]
+        s_q = math.fsum(ci for ci, _, _ in awake)
+        if s_q <= 0:
             continue
         ev["days"] += 1
-        for part, side in (("move", "M"), ("direction", "D")):
-            x = day_score(block_loss[side][q], block_loss[side][NO_CHANGE])
+        for i, part in enumerate(("move", "direction")):
+            loss_q, loss_ref = (math.fsum(ci * losses(floored(m[n]), y)[i] for ci, m, y in awake) / s_q for n in (q, NO_CHANGE))
+            x = day_score(loss_q, loss_ref)
             bet(ev[part]["better"], x)
             bet(ev[part]["worse"], -x)
         log["evidence"][q] = {"days": ev["days"], **{part: {k: ev[part][k]["e"] for k in ("better", "worse")} for part in ("move", "direction")}}
