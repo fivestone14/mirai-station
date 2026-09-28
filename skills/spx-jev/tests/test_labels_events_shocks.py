@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from conftest import at, bars_from_closes, make_row, prior_sessions
 from spx_jev.labels.events_shocks import DARK, LABELS, build_events_shocks_labels
@@ -28,8 +28,8 @@ NORMAL = {f"2026-09-{d:02d}": SigmaRuler(100.0, "anchor") for d in range(21, 26)
 
 def sloped(n: int = 10) -> dict[str, list[dict]]:
     """``n`` prior sessions, 2026-09-17 back, the k-th rising 0.1 (k + 1) points a minute all day."""
-    return {f"2026-09-{17 - k:02d}": bars_from_closes([7700.0 + 0.1 * (k + 1) * i for i in range(390)], day=f"2026-09-{17 - k:02d}")
-            for k in range(n)}
+    days = [(date(2026, 9, 17) - timedelta(days=k)).isoformat() for k in range(n)]
+    return {d: bars_from_closes([7700.0 + 0.1 * (k + 1) * i for i in range(390)], day=d) for k, d in enumerate(days)}
 
 
 SLOPED = sloped()
@@ -456,9 +456,20 @@ def test_the_shock_rule_and_fresh_window_at_their_boundaries(scene_factory):
     _, omitted, gates = labels(burst_scene(scene_factory, at(12, 2, BURST_DAY), size=5.0, after=5.0))
     assert gates["shock_state"] == omitted["shock.burst"] == (
         "no five-minute move in the last 60 minutes passed the shock rule (larger than the biggest five-minute move of the hour "
-        "to that minute on 95% of recent sessions); the largest was 0.04 sigma, larger than the biggest five-minute move of the "
-        "hour to that minute on 8 of the last 10 sessions")
+        "to that minute on every one of up to the last 20 sessions); the largest was 0.04 sigma, larger than the biggest five-minute "
+        "move of the hour to that minute on 8 of the last 10 sessions")
     assert omitted["shock.vs_day_range"] == omitted["shock.cross_asset"] == omitted["shock.burst"]
+
+
+def test_the_shock_rule_beats_every_session_with_twenty_on_file(scene_factory):
+    # twenty SLOPED sessions' biggest five-minute moves run 0.005 to 0.100 sigma: beating 19 of them is no shock
+    twenty = sloped(20)
+    rulers = {d: SigmaRuler(100.0, "anchor") for d in twenty}
+    _, _, gates = labels(burst_scene(scene_factory, at(12, 2, BURST_DAY), size=10.2, after=10.2, prior_bars=twenty, prior_rulers=rulers))
+    assert gates["shock_state"].endswith("the largest was 0.10 sigma, larger than the biggest five-minute move of the hour to that "
+                                         "minute on 19 of the last 20 sessions")
+    state, _, _ = labels(burst_scene(scene_factory, at(12, 2, BURST_DAY), size=10.6, after=10.6, prior_bars=twenty, prior_rulers=rulers))
+    assert "on 20 of the last 20 sessions, past the shock rule;" in state["shock.burst"]
 
 
 def test_a_burst_older_than_the_lookback_no_longer_counts(scene_factory):

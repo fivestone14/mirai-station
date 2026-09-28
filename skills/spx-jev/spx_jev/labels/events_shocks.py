@@ -5,9 +5,9 @@ event.*), the morning brief and headlines (news.*), and unscheduled bursts seen 
   in the session and the Fed's speakers. Past the calendar's last kept day they are omitted, since an
   empty day there is unknown rather than quiet. A row whose date follows a rule is worded 'expected'.
 * A burst is a 5-minute move from the settled open larger than the biggest 5-minute move of the hour to
-  the same minute (SHOCK_LOOKBACK_MIN) on at least OPENING_BURST_SHARE of up to the last 20 sessions, each
-  in its own morning ruler (ranks.rank_sessions, needing SAME_CLOCK_MIN_SESSIONS of them): a shock for its
-  clock, never against a fixed cut. Ranked against each session's biggest move of the hour rather than
+  the same minute (SHOCK_LOOKBACK_MIN) on every one of up to the last 20 sessions, each in its own morning
+  ruler (ranks.rank_sessions, needing SAME_CLOCK_MIN_SESSIONS of them): a shock for its clock, never against
+  a fixed cut, and the same rule whether 10 or 20 sessions are on file. Ranked against each session's biggest move of the hour rather than
   its same five minutes, since a read looks back over an hour of windows: one in twenty of those would
   top the same five minutes on every session by chance alone, and the shock would be awake on three
   reads in four.
@@ -31,7 +31,7 @@ from pathlib import Path
 
 from .. import events
 from ..cuts import (BRIEF_CONF_MIN, BRIEF_DIR_MIN, EVENT_DIGEST_MIN, EVENT_DUE_MIN, FOLLOW_ON_MIN, GAP_HALF_SHARE, MIN_RANK_SESSIONS,
-                    NIGHT_RANK_COUNT, OPENING_BURST_SHARE, REACTION_EXTEND_SIGMA, SAME_CLOCK_MIN_SESSIONS, SHOCK_FRESH_MIN,
+                    NIGHT_RANK_COUNT, REACTION_EXTEND_SIGMA, SAME_CLOCK_MIN_SESSIONS, SHOCK_FRESH_MIN,
                     SHOCK_LOOKBACK_MIN, SPEAKER_WINDOW_MIN, TICK_BURST_PCT, WINDOW_10_MIN)
 from ..events import Event
 from ..market_context import SYMBOLS
@@ -510,8 +510,8 @@ def _hour_biggest(moves: list[dict[int, float]], end: datetime) -> list[float]:
 
 def judged_windows(scene: Scene, anchor: float, lookback_min: int) -> list[Burst]:
     """Every 5-minute window from the settled open that ended in the last ``lookback_min`` minutes, its move
-    ranked against the prior sessions' biggest 5-minute move in the hour to the same minute; a window short of
-    SAME_CLOCK_MIN_SESSIONS of them is not judged."""
+    ranked against the prior sessions' biggest 5-minute move in the hour to the same minute and passed when it
+    beats every one; a window short of SAME_CLOCK_MIN_SESSIONS of them is not judged."""
     bars, now = scene.bars, scene.now
     settled = scene.session_open + timedelta(minutes=BURST_MIN)
     moves = [_five_minute_moves(p, settled.astimezone(ET).time()) for p in _prior_sessions(scene)]
@@ -530,7 +530,7 @@ def judged_windows(scene: Scene, anchor: float, lookback_min: int) -> list[Burst
         if rank is None:
             continue
         high, low = max(float(x["high"]) for x in win), min(float(x["low"]) for x in win)
-        out.append(Burst(start, end, from_close, to_close, high, low, move, rank, rank.share >= OPENING_BURST_SHARE))
+        out.append(Burst(start, end, from_close, to_close, high, low, move, rank, rank.higher_than == rank.of))
     return out
 
 
@@ -569,7 +569,7 @@ def _shocks(scene: Scene, anchor: SigmaRuler | None, windows: list[Burst], burst
     elif not shocks:
         top = max(recent, key=lambda w: abs(w.move))
         why = (f"no five-minute move in the last {SHOCK_LOOKBACK_MIN} minutes passed the shock rule (larger than the biggest "
-               f"five-minute move of the hour to that minute on {pct(OPENING_BURST_SHARE)} of recent sessions); the largest was "
+               f"five-minute move of the hour to that minute on every one of up to the last {NIGHT_RANK_COUNT} sessions); the largest was "
                f"{sig(abs(top.move))}, {_hour_words(top.rank)}")
     else:
         burst = max(shocks, key=lambda b: abs(b.move))
