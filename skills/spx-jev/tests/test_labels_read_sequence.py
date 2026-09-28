@@ -6,7 +6,8 @@ minute from the bars, whenever this read was stamped.
 The morning anchor is SIGMA points (a 09:31 diary row), so ten points are 0.10 sigma. Every day settles its
 open at OPEN and moves along straight lines through the points of its ``path`` (a read minute -> points from
 the settled open at that minute). The ten prior sessions each stand 20 points up at 11:02 and have given back
-0% to 90% of it by 11:32, and their rising-stock volume share shifts one to ten points from 10:32 to 11:32."""
+0% to 90% of it by 11:32 (so at 11:32 they stand 20, 18, ... 2 points from their open: the sizes today's move is
+ranked against), and their rising-stock volume share shifts one to ten points from 10:32 to 11:32."""
 from __future__ import annotations
 
 from datetime import date, datetime, time
@@ -15,6 +16,7 @@ import pytest
 
 from conftest import DAY, ET, at, bars_from_closes, make_row
 from spx_jev.labels.read_sequence import build_read_sequence_labels
+from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.state_builder import MarketContext
 
 SIGMA = 100.0
@@ -59,6 +61,7 @@ def read(scene_factory, path: dict[time, float], now: datetime = at(11, 32), sha
                        spot=today[_minute(now.time()) - 1], market=shares_market(DAY, shares) if shares else None)
     sc.prior_markets = {d: shares_market(d, {time(10, 32): 0.6, time(11, 2): 0.6, time(11, 32): 0.6 + 0.01 * (k + 1)})
                         for k, d in enumerate(keep)}
+    sc.prior_rulers = {d: SigmaRuler(SIGMA, "anchor") for d in keep}
     return build_read_sequence_labels(sc)
 
 
@@ -105,12 +108,19 @@ def test_the_furthest_point_is_the_days_even_before_the_listed_reads(scene_facto
                                                 "been given back, top third of the last 10 sessions for these reads: unwinding")
 
 
-def test_a_day_inside_the_move_rule_or_with_too_few_ranked_sessions_sleeps(scene_factory):
-    flat = read(scene_factory, {**UP, time(11, 32): 5.0})
-    assert flat.gates["seq_day_move_stage"] == "the day's move from the settled open is within the 0.09 sigma move rule"
+def test_a_day_whose_move_ranks_in_the_bottom_third_or_is_not_ranked_sleeps(scene_factory):
+    flat = read(scene_factory, {**UP, time(11, 32): 5.0}, shares={time(10, 32): 0.7, time(11, 2): 0.6, time(11, 32): 0.5})   # 0.05 sigma: larger than 0.04 and 0.02
+    assert flat.gates["seq_day_move_stage"] == "the day's move from the settled open is in the bottom third of the last 10 sessions at this minute"
+    assert flat.gates["seq_breadth_drift"] == flat.gates["seq_day_move_stage"]
     assert not said(flat, "seq.day_move_by_read").endswith(("extending", "stalled", "unwinding"))
-    thin = read(scene_factory, {**UP, time(11, 32): 30.0}, prior_days=3)
-    assert thin.gates["seq_day_move_stage"] == "only 3 prior sessions measured at these read minutes"
+    edge = read(scene_factory, {**UP, time(11, 32): 9.0})                       # larger than 4 of the 10 (0.08 and below): the middle third
+    assert edge.gates["seq_day_move_stage"] is None
+    under = read(scene_factory, {**UP, time(11, 32): 7.0})                      # larger than 3 of the 10: still the bottom third
+    assert under.gates["seq_day_move_stage"] == flat.gates["seq_day_move_stage"]
+    thin = read(scene_factory, {**UP, time(11, 32): 30.0}, prior_days=9)
+    assert thin.gates["seq_day_move_stage"] == ("the day's move from the settled open is not ranked: its rank needs 10 prior sessions with a "
+                                                "117-minute move at this minute, have 9")
+    assert said(thin, "seq.day_move_by_read").startswith("SPX is 0.30 sigma above the settled open; at the last 4 reads")
 
 
 def test_fewer_than_two_earlier_reads_leave_the_sequence_out(scene_factory):

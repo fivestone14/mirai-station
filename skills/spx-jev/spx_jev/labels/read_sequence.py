@@ -9,23 +9,23 @@ set's thirty_minute_start) to this read; a sentence lists the last LISTED_READS 
 breadth, whose sentence carries two numbers a read), while the day's furthest point from the open is
 sought over them all. The earlier ones are taken
 at their scheduled minute, so a late or missed read changes nothing. The day's move is in the morning
-anchor from the settled open; what changed across the reads is ranked against the same read minutes on
-the prior sessions, never against a fixed line.
+anchor from the settled open, its size ranked against the same move to this minute on the last sessions
+(ranks.move_rank): in their bottom third the day has not moved, and both questions sleep. What changed
+across the reads is ranked against the same read minutes on the prior sessions, never against a fixed line.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, time
 
-from ..cuts import MOVE_RULE_SIGMA, THIRD_HI
 from ..lane import LIVE
 from ..state_builder import MarketContext, Scene
 from .breadth import FRESH_MIN
 from .label_set import LabelSet
-from .measures import ET, close_at, settled_open
-from .ranks import SameClockRank, rank_against, same_clock_values
+from .measures import ET, ONE_MINUTE, SETTLED_OPEN_BAR, close_at, settled_open
+from .ranks import SameClockRank, move_rank, rank_sessions, same_clock_values
 from .rulers import NO_ANCHOR, SigmaRuler, ruled, sigma_anchor
-from .words import above_or_below, listed, pct, sig, signed, third
+from .words import above_or_below, listed, pct, sig, signed
 
 LABELS = ("seq.day_move_by_read", "seq.breadth_by_read")
 GATES = ("seq_day_move_stage", "seq_breadth_drift")
@@ -53,11 +53,15 @@ def build_read_sequence_labels(scene: Scene) -> LabelSet:
 @dataclass(frozen=True)
 class Reads:
     """This read and the lane's earlier ones today, oldest first: their minutes and the day's move from the
-    settled open at each in the morning anchor, the last this read's own."""
+    settled open at each in the morning anchor, the last this read's own; with this read's move ranked
+    against the same move to this minute on the last sessions, or why it is not: the questions' gate, which
+    the sleep reason words (the sentences stay the figures)."""
     day: date
     clocks: list[time]
     moves: list[float]
     anchor: SigmaRuler
+    move_rank: SameClockRank | None
+    move_why: str | None
 
     @property
     def now(self) -> float:
@@ -72,7 +76,7 @@ class Reads:
         return self.clocks[:-1]
 
     def last(self, n: int) -> Reads:
-        return Reads(self.day, self.clocks[-n:], self.moves[-n:], self.anchor)
+        return Reads(self.day, self.clocks[-n:], self.moves[-n:], self.anchor, self.move_rank, self.move_why)
 
     def where(self) -> str:
         return f"SPX is {sig(abs(self.now))} {above_or_below(self.now)} the settled open"
@@ -110,20 +114,20 @@ def _reads(scene: Scene) -> tuple[Reads | None, str]:
     moves = _day_moves(scene.bars, now.date(), earlier, scene.spot, anchor.points)
     if moves is None:
         return None, f"no SPX bar finished by one of the reads at {listed([f'{c:%H:%M}' for c in earlier])}"
-    return Reads(now.date(), [*earlier, now.time()], moves, anchor), ""
+    # every session's move from its 09:34 close: the minutes back from this read land on that bar's finish
+    since_open = datetime.combine(now.date(), SETTLED_OPEN_BAR, tzinfo=ET) + ONE_MINUTE
+    rank, why = move_rank(scene, moves[-1], int((scene.now - since_open).total_seconds() // 60))
+    return Reads(now.date(), [*earlier, now.time()], moves, anchor, rank, why), ""
 
 
-def _band(rank: SameClockRank) -> str:
-    return f"{third(rank.share)} third"
-
-
-def _sleep_why(reads: Reads, rank: SameClockRank | None, base: list[float]) -> str | None:
-    """Why a read-sequence question sleeps: the day has not moved past the move rule, or too few prior sessions."""
-    if abs(reads.now) <= MOVE_RULE_SIGMA:
-        return f"the day's move from the settled open is within the {MOVE_RULE_SIGMA} sigma move rule"
-    if rank is None:
-        return f"only {len(base)} prior sessions measured at these read minutes"
-    return None
+def _sleep_why(reads: Reads, rank: SameClockRank | None, why: str | None) -> str | None:
+    """Why a read-sequence question sleeps: the day's move from the settled open is not ranked or ranks in the
+    bottom third for this minute (the day has not moved), or the question's own rank is missing (``why``)."""
+    if reads.move_rank is None:
+        return f"the day's move from the settled open is not ranked: {reads.move_why}"
+    if reads.move_rank.band == "bottom third":
+        return f"the day's move from the settled open is in the bottom third of the last {reads.move_rank.of} sessions at this minute"
+    return why if rank is None else None
 
 
 def _decide(ls: LabelSet, qid: str, verdict: str | None, why: str | None) -> None:
@@ -155,10 +159,10 @@ def _day_move_by_read(scene: Scene, reads: Reads, ls: LabelSet) -> None:
         moves = _day_moves(bars, then.date(), reads.earlier, price, 1.0) if price is not None else None
         return _giveback(moves) if moves else None
 
-    base = same_clock_values(scene, prior_giveback)
     share = _giveback(reads.moves)
-    rank = rank_against(share, base) if share is not None else None
-    why = _sleep_why(reads, rank, base)
+    rank, why = (rank_sessions(share, same_clock_values(scene, prior_giveback), "the day's move at these read minutes")
+                 if share is not None else (None, "the day has not left the settled open at any read"))
+    why = _sleep_why(reads, rank, why)
     listed_reads = reads.last(LISTED_READS)
     stood = [f"{signed(m)} ({c:%H:%M})" for m, c in zip(listed_reads.moves, listed_reads.clocks)]
     text = f"{reads.where()}; at the last {len(stood)} reads it stood {listed(stood)}"
@@ -169,8 +173,8 @@ def _day_move_by_read(scene: Scene, reads: Reads, ls: LabelSet) -> None:
         size = "" if reads.clocks[peak] in listed_reads.clocks else f"{signed(reads.moves[peak])} "
         text += f"; {pct(share)} of its furthest, {size}at {reads.clocks[peak]:%H:%M}, has been given back"
         if rank is not None:
-            text += f", {_band(rank)} of the last {rank.of} sessions for these reads"
-    verdict = None if why else "extending" if share == 0 else "stalled" if rank.share < THIRD_HI else "unwinding"
+            text += f", {rank.band} of the last {rank.of} sessions for these reads"
+    verdict = None if why else "extending" if share == 0 else "unwinding" if rank.band == "top third" else "stalled"
     ls.put("seq.day_move_by_read", ruled(reads.anchor, f"{text}: {verdict}" if verdict else text))
     _decide(ls, "seq_day_move_stage", verdict, why)
 
@@ -208,11 +212,11 @@ def _breadth_by_read(scene: Scene, reads: Reads, ls: LabelSet) -> None:
         got = _shares(mk, d, reads.earlier, datetime.combine(d, clock, tzinfo=ET))
         if got is not None:
             base.append(abs(got[-1] - got[0]))
-    rank = rank_against(abs(shift), base)
-    why = _sleep_why(reads, rank, base)
+    rank, why = rank_sessions(abs(shift), base, "NYSE up and down volume at these read minutes")
+    why = _sleep_why(reads, rank, why)
     verdict = None
     if why is None:
-        big = rank.share >= THIRD_HI
+        big = rank.band == "top third"
         if big and shift < 0 and reads.side * reads.now >= reads.side * reads.moves[0]:
             verdict = "fading_under_move"
         elif big and shift > 0:
@@ -223,7 +227,7 @@ def _breadth_by_read(scene: Scene, reads: Reads, ls: LabelSet) -> None:
             f"while the day's rising-stock volume share went {listed([pct(s) for s in shares])}: "
             f"{abs(shift) * 100:.0f} points {'toward' if shift >= 0 else 'away from'} the day's side")
     if rank is not None:
-        text += f", {_band(rank)} for these reads"
+        text += f", {rank.band} for these reads"
     ends = {"fading_under_move": "fading under the move", "building_behind_move": "building behind the move", "tracking": "tracking the move"}
     ls.put("seq.breadth_by_read", ruled(reads.anchor, f"{text}: {ends[verdict]}" if verdict else text))
     _decide(ls, "seq_breadth_drift", verdict, why)

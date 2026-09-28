@@ -30,7 +30,7 @@ from ..sessions import session_close
 from ..state_builder import Scene, prior_bar_days
 from .label_set import LabelSet
 from .measures import ET, close_at, is_num, yesterdays_bars
-from .ranks import SameClockRank, rank_against
+from .ranks import SameClockRank, rank_sessions
 from .words import above_or_below, listed, pct, sig, third
 
 LABELS = ("premarket.where_now", "premarket.legs", "premarket.arc", "premarket.since_checkpoint", "premarket.release_vs_night",
@@ -435,8 +435,8 @@ def _last_hour_pct(bars: list[dict], day: str) -> float | None:
 
 def _vs_last_hour(night: NightSoFar, ls: LabelSet) -> None:
     """Where futures stand, then SPX's move over yesterday's last cash hour, ranked against the last hours of the
-    NIGHT_RANK_COUNT full sessions before it, read from the store (the scene's prior sessions end at yesterday);
-    night_vs_last_hour asks whether the night carried it on."""
+    NIGHT_RANK_COUNT full sessions before it (ranks.rank_sessions: at least SAME_CLOCK_MIN_SESSIONS), read from the
+    store (the scene's prior sessions end at yesterday); night_vs_last_hour asks whether the night carried it on."""
     day, bars, why = yesterdays_bars(night.scene)
     hour = _last_hour_pct(bars, day) if bars else None
     if hour is None:
@@ -444,9 +444,9 @@ def _vs_last_hour(night: NightSoFar, ls: LabelSet) -> None:
         return
     before = prior_bar_days(night.scene.state_dir, day, limit=NIGHT_RANK_COUNT)
     base = [abs(v) for d, b in before.items() if (v := _last_hour_pct(b, d)) is not None]
-    rank = rank_against(abs(hour), base)
+    rank, why = rank_sessions(abs(hour), base, "a last hour on file")
     if rank is None:
-        _omit(ls, "night_vs_last_hour", f"yesterday's last hour is not ranked: {len(base)} prior sessions' last hours on file")
+        _omit(ls, "night_vs_last_hour", f"yesterday's last hour is not ranked: {why}")
         return
     s = night.sigma(hour)
     verdict, why = None, None

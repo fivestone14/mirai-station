@@ -105,11 +105,11 @@ def _last_hour(d: date, move: float) -> list[dict]:
     return bars_from_closes(closes, day=d.isoformat())
 
 
-def _write_last_hours(root) -> None:
-    """The 20 sessions before yesterday in the store, their last hours 0.02 to 0.40 percent, alternately down and up."""
+def _write_last_hours(root, sessions: int = 20) -> None:
+    """The ``sessions`` sessions before yesterday in the store, their last hours 0.02 to 0.40 percent, alternately down and up."""
     folder = root / SESSION_BARS_SUBDIR
     folder.mkdir(parents=True, exist_ok=True)
-    for k, d in enumerate(_prior_days(21)[1:], start=1):
+    for k, d in enumerate(_prior_days(sessions + 1)[1:], start=1):
         (folder / f"{d}-{SYMBOL}.json").write_text(json.dumps(_last_hour(d, 0.02 * k * (-1) ** k)))
 
 
@@ -358,6 +358,18 @@ def test_the_night_against_yesterdays_last_hour(premarket_scene_factory, nights_
 def test_a_quiet_last_hour_sleeps_the_last_hour_question(premarket_scene_factory, nights_dir):
     ls = read(premarket_scene_factory, nights_dir, {"asia": 1.5}, yesterday_pct=0.01)
     assert ls.gates["night_vs_last_hour"] == "yesterday's last hour was quiet, bottom third of the last 20 sessions' last hours"
+
+
+@pytest.mark.parametrize("sessions, ranked", [(10, True), (9, False)])
+def test_the_last_hour_is_ranked_on_ten_sessions_or_left_out(premarket_scene_factory, tmp_path, sessions, ranked):
+    _write_nights(tmp_path, _prior_days())
+    _write_last_hours(tmp_path, sessions)
+    ls = read(premarket_scene_factory, tmp_path, {"asia": 1.5}, yesterday_pct=0.5)
+    if ranked:
+        assert "top third of the last 10 sessions' last hours" in said(ls, "premarket.vs_last_hour")
+    else:
+        assert ls.omitted["premarket.vs_last_hour"] == ("yesterday's last hour is not ranked: its rank needs 10 prior sessions with "
+                                                        "a last hour on file, have 9")
 
 
 # ---- replay and length -----------------------------------------------------------------------------------
