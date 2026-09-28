@@ -72,12 +72,13 @@ def move_rank(scene: Scene, move: float, minutes: int) -> tuple[SameClockRank | 
 
 
 def rank_at_slot(value: float, base: list[float]) -> dict | None:
-    """rank_against in thirds, as the tape lane's labels and the tape unit word it ("in the top third for
-    this minute, higher than 15 of 20 prior sessions"); the dict rides on the records as it is."""
-    rank = rank_against(value, base)
+    """rank_sessions in thirds, as the tape lane's labels and the tape unit word it ("in the top third for
+    this minute, higher than 15 of 20 prior sessions"); the dict rides on the records as it is. None under
+    SAME_CLOCK_MIN_SESSIONS sessions."""
+    rank, _ = rank_sessions(value, base, "")
     if rank is None:
         return None
-    return {"band": f"{third(rank.share)} third", "higher_than": rank.higher_than, "of": rank.of}
+    return {"band": rank.band, "higher_than": rank.higher_than, "of": rank.of}
 
 
 def rank_days(scene: Scene) -> list[str]:

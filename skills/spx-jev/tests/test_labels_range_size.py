@@ -237,14 +237,16 @@ def test_the_tape_unit_is_ranked_in_sigma_against_the_same_minute(scene_factory)
 def test_the_context_line_carries_the_same_unit_rank_as_the_label(scene_factory):
     """One rank of the unit: the one the sum's context line carries (tape_unit) is the label's, in each
     session's own sigma with an estimated session left out, not a rank in points."""
-    prior = _swinging_sessions([2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5])
+    prior = _swinging_sessions([2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0])
     days = list(prior)
     rulers = {d: SigmaRuler(SIGMA * 2 if k < 3 else SIGMA, "anchor") for k, d in enumerate(days)}
     rulers[days[-1]] = SigmaRuler(SIGMA, "vix")
     scene = _unit_scene(scene_factory, at(10, 5), 2.6, prior, rulers=rulers)
     rank = tape_unit(scene)["rank"]
-    assert rank == {"band": "middle third", "higher_than": 3, "of": 9}
-    assert _labels(scene)[0]["tape.unit_vs_normal"].endswith("wider than 3 of the last 9 sessions at 10:05, in the middle third")
+    assert rank == {"band": "bottom third", "higher_than": 3, "of": 10}
+    assert _labels(scene)[0]["tape.unit_vs_normal"].endswith("wider than 3 of the last 10 sessions at 10:05, in the bottom third")
+    fewer = {d: rulers[d] for d in days[1:]}                                        # nine sessions left to rank against
+    assert "rank" not in tape_unit(_unit_scene(scene_factory, at(10, 5), 2.6, {d: prior[d] for d in days[1:]}, rulers=fewer))
 
 
 def test_the_tape_unit_is_not_described_while_held_or_off_the_bar_clock(scene_factory):
@@ -285,7 +287,7 @@ def test_a_bar_that_finishes_after_the_row_never_counts(tmp_path):
     """Loaded as the service loads a read at 12:30:30: the running 12:30 bar and every later one (a spike above the first
     hour, a new range, a wide slice) are on disk, and the set labels read as if they were not."""
     day, now = "2026-09-18", at(12, 30, ss=10)
-    prior = _swinging_sessions([2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0])
+    prior = _swinging_sessions([2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5])
     bars = bars_from_closes(FIRST_HOUR + [7700.0 + (i % 7) for i in range(120)], wick=0.5)
     later = bars_from_closes([7700.0] * 180 + [7900.0] * 30, wick=30.0)[180:]
     for k, b in enumerate(later):

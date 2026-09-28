@@ -83,7 +83,7 @@ def unit_rank(scene: Scene, unit: dict, anchor: SigmaRuler) -> dict | None:
     """The tape unit in today's morning ruler against the same minute on the prior sessions, each in its
     own ruler (unit_sigma, same_clock_values: a session with an estimated ruler is left out), placed in
     thirds (rank_at_slot). None while the unit is held (before 09:45 every day's unit is the same number)
-    and under MIN_RANK_SESSIONS sessions. The one rank of the unit: the context line and
+    and under SAME_CLOCK_MIN_SESSIONS sessions. The one rank of the unit: the context line and
     tape.unit_vs_normal both read it."""
     if unit.get("source") == "held":
         return None
