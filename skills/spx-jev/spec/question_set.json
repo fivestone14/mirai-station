@@ -8075,8 +8075,8 @@
      "labels_needed": [
       {
        "name": "seq.day_move_by_read",
-       "example": "SPX is 0.27 sigma above the settled open; at the last four reads it stood 0.12 (10:02), 0.31 (10:32), 0.38 (11:02) and 0.27 (11:32) above; the furthest point came at 11:02 and 29% has been given back, top third for 11:32: unwinding",
-       "computed_how": "(close at each earlier read minute - 09:34 close) / sigma_anchor, rebuilt from 1-min bars at the read minutes (not from saved records); last four reads; giveback ranked at the same clock",
+       "example": "SPX is 0.11 sigma below the settled open; at the last 3 reads it stood -0.11 (10:02), -0.28 (10:32) and -0.11 (11:00); 62% of its furthest, at 10:32, has been given back, top third of the last 19 sessions for these reads: unwinding",
+       "computed_how": "(close at each earlier read minute - 09:34 close) / sigma_anchor, rebuilt from 1-min bars at the read minutes (not from saved records); the last four reads listed; the furthest point from the settled open, on either side, sought over every read since 10:02 and named with its size when it came before the listed reads; the share given back since, ranked at the same reads over the prior sessions",
        "source": "SPX 1-min bars",
        "availability": "live",
        "label_built": false,
@@ -8135,8 +8135,8 @@
      "labels_needed": [
       {
        "name": "seq.breadth_by_read",
-       "example": "SPX is 0.36 sigma above the open; at 10:32, 11:02 and 11:32 it stood 0.20, 0.31 and 0.36 above while the day's rising-stock volume share was 71%, 64% and 58%: it slid 13 points while the move grew, top third over these minutes: fading under the move",
-       "computed_how": "cumulative $UVOL/($UVOL+$DVOL) since 09:30 at each read minute; change over the listed reads signed to the day's side; ranked at the same clock",
+       "example": "SPX is 0.12 sigma above the settled open, at 11:02, 11:32 and 12:01 -0.07, -0.02 and +0.12, while the day's rising-stock volume share went 42%, 49% and 55%: 12 points toward the day's side, top third for these reads: building behind the move",
+       "computed_how": "cumulative $UVOL/($UVOL+$DVOL) since 09:30 at each read minute; change over the last three reads signed to the day's side; ranked at the same clock",
        "source": "state/spx_jev/context/bars/{day}.jsonl + SPX 1-min bars",
        "availability": "live",
        "label_built": false,
@@ -8289,7 +8289,7 @@
      "status": "live",
      "cadence": "every other 30-minute read (hourly)",
      "ask": "Are bitcoin and the index trading together today more tightly than usual, or less?",
-     "instructions": "Read `xasset.btc_link`. Since the open, have bitcoin and the index moved together minute by minute more tightly than on most of the last {night_rank_count} sessions, or more loosely?",
+     "instructions": "Read `xasset.btc_link`. Since the open, have bitcoin and the index moved together five minutes by five minutes more tightly than on most of the last {night_rank_count} sessions, or more loosely?",
      "options": [
       {
        "name": "tight",
@@ -8308,7 +8308,7 @@
      "labels_needed": [
       {
        "name": "xasset.btc_link",
-       "example": "since the open bitcoin and the index have moved together minute by minute more tightly than on 17 of the last 20 sessions at this time (top third); over the last 20 sessions bitcoin up has gone with stocks up",
+       "example": "since 09:35 bitcoin futures (/MBT) and the index have moved together five minutes by five minutes more tightly than on most recent sessions: link +0.62, higher than 17 of the last 20 sessions at this minute, top third; over the last 20 sessions bitcoin up has gone with stocks up",
        "computed_how": "correlation of 5-minute returns (bitcoin vs SPX) from 09:35 to now, ranked against the same span on the prior 20 sessions; sign of the 20-session beta in words",
        "source": "as xasset.btc_gap_30min",
        "availability": "cheap_add",
@@ -8359,12 +8359,12 @@
       "btc_lagging": "five-session excess rank vs the last {night_rank_count} sessions <= {bottom_fifth}",
       "btc_ahead": "rank >= {top_fifth}"
      },
-     "sleep_when": "rank in the middle three fifths; fewer than {min_rank_sessions} prior sessions; a bitcoin roll inside the five sessions without a splice",
+     "sleep_when": "rank in the middle three fifths; fewer than {min_rank_sessions} prior sessions; a bitcoin roll inside the five sessions without a splice, or one pending",
      "labels_needed": [
       {
        "name": "xasset.btc_five_day",
        "example": "over the last five sessions bitcoin did 2.1 normal weeks worse than the index's move would match: bottom fifth of the last 20 sessions; the index itself rose 0.6 of a normal week",
-       "computed_how": "bitcoin's simple return over the last five sessions, close to close (the index's last bar at each session's close, 16:00 or 13:00 on a half day, and bitcoin's newest bar within {window_10_min} minutes before it), minus its usual multiple of the index's x SPX's five-session return; the multiple is fitted (bitcoin.slope) on bitcoin's daily returns against SPX's over the last {night_rank_count} + 5 sessions with both on one contract; ranked in fifths against the five sessions ending on each of up to the last {night_rank_count} sessions before; 'normal week' = median |five-session excess| over those",
+       "computed_how": "bitcoin's simple return over the last five sessions, close to close (the index's last bar at each session's close, 16:00 or 13:00 on a half day, and bitcoin's newest bar within {window_10_min} minutes before it), minus its usual multiple of the index's x SPX's five-session return; the multiple is fitted (bitcoin.slope) on bitcoin's daily returns against SPX's over the last {night_rank_count} + 5 sessions with both on one contract; ranked in fifths against the five sessions ending on each of up to the last {night_rank_count} sessions before; 'normal week' = median |five-session excess| over those; it sleeps while a roll is pending, and leaves the Thursday roll evening out of its daily moves",
        "source": "the overnight store's /MBT bars at each prior session's 16:00 (its nights reach back to March) and SPX's saved closes (state/reversion/bars); the roll guard applies (a five-session window across a /MBT roll is left out)",
        "availability": "cheap_add",
        "label_built": false,
@@ -8452,7 +8452,7 @@
       {
        "name": "overnight.es_move",
        "example": "at 09:28 S&P futures are 0.44 sigma of the pre-open ruler above their 16:00 price, a move larger than 15 of the last 20 nights' moves to this time, top third",
-       "computed_how": "/ES's newest close by the read against its close at futures' 16:00 price on the same contract (roll guard: a night the roll table puts a roll between the two prices is omitted, and so is one whose quoted contract the table has not reached), in the pre-open ruler (the median morning anchor of the last sessions, rulers.normal_day_sigma, stamped on the record); its size is |move| in percent of price ranked against the same move to the same minute on up to the last {night_rank_count} prior nights (roll, holiday and half-day, and short nights left out; at least {overnight_rank_min_nights} usable, else omitted), stated as 'larger than N of the last M nights' moves' and its third (bottom/middle/top); night_ranks.es_move; no straddle clause (no chain trades before the open)",
+       "computed_how": "/ES's newest close by the read against its close at futures' 16:00 price on the same contract (roll guard: a night the roll table puts a roll between the two prices is omitted, and so is one whose quoted contract the table has not reached), in the pre-open ruler (the median morning anchor of the last sessions, rulers.normal_day_sigma, stamped on the record); its size is |move| in percent of price ranked against the same move to the same minute on up to the last {night_rank_count} prior nights (roll, holiday and half-day, and short nights left out; at least {overnight_rank_min_nights} usable, else omitted), stated as 'larger than N of the last M nights' moves' and its third (bottom/middle/top); night_ranks.es_move; no straddle clause (no chain trades before the open); a night spanning a market holiday or following a half day is not ranked",
        "source": "the overnight store (state/spx_jev/overnight/{day}.jsonl): Schwab /ES extended-hours 1- and 5-minute bars as the read saw them, contract stamped",
        "availability": "cheap_add",
        "label_built": false,
@@ -8512,7 +8512,7 @@
       {
        "name": "overnight.range_vs_normal",
        "example": "since the 18:00 reopen S&P futures have ranged over 0.48 sigma of the pre-open ruler, wider than 16 of the last 20 nights' ranges to this time, top third: a wide night",
-       "computed_how": "/ES high-low range since the 18:00 reopen (bars the store's check flagged left out), in percent of price, ranked against the same range to the same minute on up to the last {night_rank_count} prior nights (roll, holiday and half-day, and short nights left out; at least {overnight_rank_min_nights} usable, else omitted) (night_ranks.window_range), in thirds; stated in the pre-open ruler. The thirds replace the fixed 0.7x and 1.3x lines of the 20-night median, which called 21% of nights quiet and 29% wide",
+       "computed_how": "/ES high-low range since the 18:00 reopen (bars the store's check flagged left out), in percent of price, ranked against the same range to the same minute on up to the last {night_rank_count} prior nights (roll, holiday and half-day, and short nights left out; at least {overnight_rank_min_nights} usable, else omitted) (night_ranks.window_range), in thirds; stated in the pre-open ruler. The thirds replace the fixed 0.7x and 1.3x lines of the 20-night median, which called 21% of nights quiet and 29% wide; a night spanning a market holiday or following a half day is not ranked",
        "source": "the overnight store (state/spx_jev/overnight/{day}.jsonl): Schwab /ES extended-hours 1- and 5-minute bars as the read saw them, contract stamped",
        "availability": "cheap_add",
        "label_built": false,
@@ -8576,8 +8576,8 @@
      "labels_needed": [
       {
        "name": "overnight.gap_origin",
-       "example": "futures are 0.44 sigma above their 16:00 price, top third; against the same stretch on the last 20 nights the Europe morning moved most unusually, larger than 19 of 20, top third; the report window was quiet: made in Europe",
-       "computed_how": "each stretch of the night (story.py: after_close, asia, europe_open, europe_morning, pre_report, report_window, last_stretch; an unfinished one cut at the read's clock) measured on /ES (night_ranks.window_move) and ranked by |move| in percent against the same stretch on up to the last {night_rank_count} nights (night_ranks.prior_window_nights); the stretch ranked most unusual names the option: after_close or asia made_early, europe_open or europe_morning made_in_europe, report_window made_at_release on a day with a report before the open, pre_report or last_stretch made_late (and report_window on a day with no report); a stretch across a roll or without its bars is left out",
+       "example": "at 09:28 S&P futures stand 0.50 sigma below their 16:00 price, a move larger than 12 of the last 17 nights' moves to this time, top third; the most unusual stretch was Asia's session (18:00 to 02:30), down 0.45 sigma, larger than 16 of the last 17 nights' moves over the same stretch, top third",
+       "computed_how": "each stretch of the night (story.py: after_close, asia, europe_open, europe_morning, pre_report, report_window, last_stretch; an unfinished one cut at the read's clock) measured on /ES (night_ranks.window_move) and ranked by |move| in percent against the same stretch on up to the last {night_rank_count} nights (night_ranks.prior_window_nights); the stretch ranked most unusual names the option: after_close or asia made_early, europe_open or europe_morning made_in_europe, report_window made_at_release on a day with a report before the open, pre_report or last_stretch made_late (and report_window on a day with no report); a stretch across a roll or without its bars is left out; a night spanning a market holiday or following a half day is not ranked; on a morning with no report the report window is named by its clock, '08:30 to 08:45 (no report today)'",
        "source": "the overnight store (state/spx_jev/overnight/{day}.jsonl): Schwab /ES extended-hours 1- and 5-minute bars as the read saw them, contract stamped; calendar pre_open rows (listed and read from pre_open_covers_from, 2026-08-01) for the release minute",
        "availability": "cheap_add",
        "label_built": false,
@@ -8595,7 +8595,7 @@
        ]
       }
      },
-     "sleep_when": "the move since futures' 16:00 price ranks at or under {third_lo} against the last {night_rank_count} nights (no real gap), fewer than {overnight_rank_min_nights} usable nights, a roll night, or /ES bars missing",
+     "sleep_when": "the move since futures' 16:00 price ranks at or under {third_lo} against the last {night_rank_count} nights (no real gap), fewer than {overnight_rank_min_nights} usable nights, a roll night, a day the event calendar's releases before the open do not cover, or /ES bars missing",
      "tags": [
       "SEQUENTIAL_READ"
      ]
@@ -8715,7 +8715,7 @@
       {
        "name": "overnight.release_reaction",
        "example": "the 08:30 jobs report moved futures up 0.22 sigma of the pre-open ruler by 08:45, larger than 17 of the last 20 mornings' moves in that window, top third; since then they have given back 60% of it, past the half line",
-       "computed_how": "/ES from the release minute (story.release_minute: the first pre_open calendar row after 08:00 and before 08:45) to 08:45, ranked by |move| in percent against the same window on the last {night_rank_count} days, report or not (night_ranks.prior_window_nights), the bottom third shrugged; then 08:45 to the read against that reaction, judged against the {gap_half_share} half line; in the pre-open ruler; a window across a roll is left out. Asked on every report day, claims-only mornings included",
+       "computed_how": "/ES from the release minute (story.release_minute: the first pre_open calendar row after 08:00 and before 08:45) to 08:45, ranked by |move| in percent against the same window on the last {night_rank_count} days, report or not (night_ranks.prior_window_nights), the bottom third shrugged; then 08:45 to the read against that reaction, judged against the {gap_half_share} half line; in the pre-open ruler; a window across a roll is left out. Asked on every report day, claims-only mornings included; a night spanning a market holiday or following a half day is not ranked",
        "source": "the overnight store's /ES bars + calendar pre_open rows (listed and read from pre_open_covers_from, 2026-08-01)",
        "availability": "cheap_add",
        "label_built": false,
@@ -8779,7 +8779,7 @@
       {
        "name": "overnight.bond_gap",
        "example": "at 09:28 ten-year Treasury futures stand 0.21% above their 16:00 price; over the last 20 nights they moved 0.18% per 1% in S&P futures, the other way, so they point S&P futures 0.35 sigma below where they stand, higher than 3 of the last 20 nights' readings, bottom third",
-       "computed_how": "/ZN's move in percent since futures' 16:00 price, divided by a fit's beta over the last {night_rank_count} nights (bonds' move per S&P futures' move, through zero, so the fit sets the sign and nothing is assumed), less the move /ES made: where bonds point S&P futures, less where they stand, in the pre-open ruler, ranked in thirds against the same reading on those nights (at least {overnight_rank_min_nights} with both measured on one contract); each move on one contract (rolls.same_contract); no bitcoin, which is btc_overnight_vs_futures",
+       "computed_how": "/ZN's move in percent since futures' 16:00 price, divided by a fit's beta over the last {night_rank_count} nights (bonds' move per S&P futures' move, through zero, so the fit sets the sign and nothing is assumed), less the move /ES made: where bonds point S&P futures, less where they stand, in the pre-open ruler, ranked in thirds against the same reading on those nights (at least {overnight_rank_min_nights} with both measured on one contract); each move on one contract (rolls.same_contract); no bitcoin, which is btc_overnight_vs_futures; a night spanning a market holiday or following a half day is not ranked; it sleeps when bonds and S&P futures show no steady link: leaving out a single night turns the fit's sign",
        "source": "the overnight store (state/spx_jev/overnight/{day}.jsonl): Schwab /ZN and /ES extended-hours bars, contract stamped",
        "availability": "cheap_add",
        "label_built": false,
@@ -8790,7 +8790,7 @@
      "evidence": "31 sessions: /ZN overnight residual vs first hour +0.43, open-to-close +0.39 (about 2.4 SE, small n). Bitcoin was taken out: on 119 nights it adds nothing beyond S&P futures, and a bitcoin reading in the opposite outer third forced in_line (bitcoin study 2026-09-27).",
      "origin": "new (review: cross-asset)",
      "code_answer": true,
-     "sleep_when": "fewer than {overnight_rank_min_nights} of the last nights with both futures measured on one contract, a roll between the two prices, bonds and S&P futures showing no link, or data missing",
+     "sleep_when": "fewer than {overnight_rank_min_nights} of the last nights with both futures measured on one contract, a roll between the two prices, bonds and S&P futures showing no link (leaving out a single night turns the fit's sign), or data missing",
      "schedule": {
       "premarket": {
        "at": [
@@ -8953,12 +8953,12 @@
       "held": "reopen-leg rank in the middle third",
       "reversed": "reopen-leg rank against the weekend leg's direction >= {third_hi}"
      },
-     "sleep_when": "weekend-leg rank vs the last {night_rank_count} weekends in the middle three fifths (an ordinary weekend); not the first session after a weekend or holiday; fewer than {overnight_rank_min_nights} prior weekends; a bitcoin roll across either leg; no trade in the last {window_60_min} minutes of the weekend leg (the Saturday maintenance window)",
+     "sleep_when": "weekend leg not in the top third by size of the last {night_rank_count} weekends (an ordinary weekend); not the first session after a weekend or holiday; fewer than {overnight_rank_min_nights} prior weekends; a bitcoin roll across either leg; no trade in the last {window_60_min} minutes of the weekend leg (the Saturday maintenance window)",
      "labels_needed": [
       {
        "name": "weekend.btc_path",
-       "example": "from Friday's 16:00 close to Sunday 18:00 bitcoin fell 2.6 of its normal weekends, bottom fifth of the last 20 weekends; since S&P futures reopened at 18:00 it has risen 0.9 of a normal reopen leg, top third against the weekend's fall: it turned back; S&P futures are down 0.3 of a normal night",
-       "computed_how": "two bitcoin legs, each a percent move between the last bars finished by the two times: the weekend leg from the prior session's close (16:00, or 13:00 after a half day) to the S&P futures' 18:00 reopen the evening before the read's session, and the reopen leg from there to the read. A price at the close or the read over {window_10_min} minutes old, or at the reopen over {window_60_min}, leaves it out. The weekend leg is ranked by size and sign in fifths against the last {night_rank_count} weekends (the first sessions after a weekend or holiday); the reopen leg, taken the weekend leg's way, in thirds against those weekends' reopen legs taken theirs: extended in the top third, reversed in the bottom, held between. Each is said in shares of its own median |leg| over those weekends; the sentence opens with where the S&P futures stand against their 16:00 price. Roll guard: Schwab's /BTC and /MBT history is one stitched front-month series; it switches contract at 18:00 ET on the Thursday before the last-Friday expiry and jumps up 0.28-0.53% against IBIT (7 of 7 rolls, Mar-Sep 2026), about a third of a normal night. The roll night is left out, and so is a read with a roll pending (rolls.pending).",
+       "example": "S&P futures stand 0.64 sigma above their 16:00 price; bitcoin futures (/MBT) fell 0.4 of its normal weekends from the Friday 16:00 close to the S&P futures' reopen at 18:00 Sunday, larger than 4 of the last 15 weekends by size, bottom third; since the reopen it has moved 4.0 of a normal reopen leg back against it, bottom third of those weekends' reopen legs taken their weekend's way: it turned back",
+       "computed_how": "two bitcoin legs, each a percent move between the last bars finished by the two times: the weekend leg from the prior session's close (16:00, or 13:00 after a half day) to the S&P futures' reopen after their longest halt since that close, found in their bars (Sunday 18:00 after a weekend), and the reopen leg from there to the read. A price at the close or the read over {window_10_min} minutes old, or at the reopen over {window_60_min}, leaves it out. The weekend leg is ranked by size against the last {night_rank_count} weekends, the top third a big weekend, (the first sessions after a weekend or holiday); the reopen leg, taken the weekend leg's way, in thirds against those weekends' reopen legs taken theirs: extended in the top third, reversed in the bottom, held between. Each is said in shares of its own median |leg| over those weekends; the sentence opens with where the S&P futures stand against their 16:00 price. Roll guard: Schwab's /BTC and /MBT history is one stitched front-month series; it switches contract at 18:00 ET on the Thursday before the last-Friday expiry and jumps up 0.28-0.53% against IBIT (7 of 7 rolls, Mar-Sep 2026), about a third of a normal night. The roll night is left out, and so is a read with a roll pending (rolls.pending).",
        "source": "the overnight store (state/spx_jev/overnight/{day}.jsonl): Schwab /MBT (micro bitcoin futures) 1- and 5-minute bars with extended hours, contract stamped (the front contract: /MBTV26 now, /MBTX26 from 18:00 ET Thu 10-29); /BTC is saved beside it as a cross-check (the same price, under 5 bars an hour on Saturdays). Before 2026-05-29 CME bitcoin futures were shut Fri 17:00 to Sun 18:00 ET, so older weekends have only the Sunday reopen gap and no path; only weekends from 2026-05-29 are ranked.",
        "availability": "cheap_add",
        "label_built": false,
@@ -9194,8 +9194,8 @@
       },
       {
        "name": "premarket.legs",
-       "example": "oldest first: after the close quiet; Asia up 0.24 sigma, top third; Europe's open quiet; Europe morning down 0.09, middle third, gave some back; report window up 0.12, top third, added; since 08:45 quiet. Of 3 legs that moved, all went with the night's rise: one way",
-       "computed_how": "the stretches of story.py tile futures' 16:00 price to the read: after the close (to 18:00), Asia (to Tokyo's close), Europe's open (to 30 minutes after Frankfurt's open), the Europe morning (to 08:00), before the report (to the release minute, 08:30 when there is none), the report window (to 08:45, every day) and the last stretch (to the read); exchange-local edges; each stretch's own size in the pre-open ruler and its own third against the same stretch over the last {night_rank_count} nights; neutral leg words (added / gave some back / quiet); a running stretch says 'so far'; an edge price older than {window_10_min} minutes merges the stretch with its neighbour and says so; a stretch across a roll is left out; ends with the code verdict for night_legs_agree",
+       "example": "oldest first: after hours quiet; Asia down 0.45 sigma; Europe's open up 0.05; Europe's morning down 0.18; before the report and the report window quiet; since 08:45 up 0.06 so far. 4 moved; the latest against the night's fall",
+       "computed_how": "the stretches of story.py tile futures' 16:00 price to the read: after the close (to 18:00), Asia (to Tokyo's close), Europe's open (to 30 minutes after Frankfurt's open), the Europe morning (to 08:00), before the report (to the release minute, 08:30 when there is none), the report window (to 08:45, every day) and the last stretch (to the read); exchange-local edges; each stretch's side and size in the pre-open ruler, ranked against the same stretch over the last {night_rank_count} nights: one in the bottom third is quiet, and quiet ones in a row are named together; no leg says its third or 'added' (latest_leg_vs_night's option, read beside it); on a morning with no report the two stretches around 08:30 are named by their clocks; only the running stretch says 'so far'; an edge price older than {window_10_min} minutes merges the stretch with its neighbour and says so; a stretch across a roll is left out; ends with the code verdict for night_legs_agree",
        "source": "state/spx_jev/overnight/{day}.jsonl (Schwab /ES extended-hours 1-min, as seen at the checkpoint, contract stamped)",
        "availability": "cheap_add",
        "label_built": false,
@@ -10479,7 +10479,7 @@
   {
    "name": "overnight.bond_gap",
    "example": "at 09:28 ten-year Treasury futures stand 0.21% above their 16:00 price; over the last 20 nights they moved 0.18% per 1% in S&P futures, the other way, so they point S&P futures 0.35 sigma below where they stand, higher than 3 of the last 20 nights' readings, bottom third",
-   "computed_how": "/ZN's move in percent since futures' 16:00 price, divided by a fit's beta over the last {night_rank_count} nights (bonds' move per S&P futures' move, through zero, so the fit sets the sign and nothing is assumed), less the move /ES made: where bonds point S&P futures, less where they stand, in the pre-open ruler, ranked in thirds against the same reading on those nights (at least {overnight_rank_min_nights} with both measured on one contract); each move on one contract (rolls.same_contract); no bitcoin, which is btc_overnight_vs_futures",
+   "computed_how": "/ZN's move in percent since futures' 16:00 price, divided by a fit's beta over the last {night_rank_count} nights (bonds' move per S&P futures' move, through zero, so the fit sets the sign and nothing is assumed), less the move /ES made: where bonds point S&P futures, less where they stand, in the pre-open ruler, ranked in thirds against the same reading on those nights (at least {overnight_rank_min_nights} with both measured on one contract); each move on one contract (rolls.same_contract); no bitcoin, which is btc_overnight_vs_futures; a night spanning a market holiday or following a half day is not ranked; it sleeps when bonds and S&P futures show no steady link: leaving out a single night turns the fit's sign",
    "source": "the overnight store (state/spx_jev/overnight/{day}.jsonl): Schwab /ZN and /ES extended-hours bars, contract stamped",
    "availability": "cheap_add",
    "label_built": false,
@@ -10488,7 +10488,7 @@
   {
    "name": "overnight.es_move",
    "example": "at 09:28 S&P futures are 0.44 sigma of the pre-open ruler above their 16:00 price, a move larger than 15 of the last 20 nights' moves to this time, top third",
-   "computed_how": "/ES's newest close by the read against its close at futures' 16:00 price on the same contract (roll guard: a night the roll table puts a roll between the two prices is omitted, and so is one whose quoted contract the table has not reached), in the pre-open ruler (the median morning anchor of the last sessions, rulers.normal_day_sigma, stamped on the record); its size is |move| in percent of price ranked against the same move to the same minute on up to the last {night_rank_count} prior nights (roll, holiday and half-day, and short nights left out; at least {overnight_rank_min_nights} usable, else omitted), stated as 'larger than N of the last M nights' moves' and its third (bottom/middle/top); night_ranks.es_move; no straddle clause (no chain trades before the open)",
+   "computed_how": "/ES's newest close by the read against its close at futures' 16:00 price on the same contract (roll guard: a night the roll table puts a roll between the two prices is omitted, and so is one whose quoted contract the table has not reached), in the pre-open ruler (the median morning anchor of the last sessions, rulers.normal_day_sigma, stamped on the record); its size is |move| in percent of price ranked against the same move to the same minute on up to the last {night_rank_count} prior nights (roll, holiday and half-day, and short nights left out; at least {overnight_rank_min_nights} usable, else omitted), stated as 'larger than N of the last M nights' moves' and its third (bottom/middle/top); night_ranks.es_move; no straddle clause (no chain trades before the open); a night spanning a market holiday or following a half day is not ranked",
    "source": "the overnight store (state/spx_jev/overnight/{day}.jsonl): Schwab /ES extended-hours 1- and 5-minute bars as the read saw them, contract stamped",
    "availability": "cheap_add",
    "label_built": false,
@@ -10496,8 +10496,8 @@
   },
   {
    "name": "overnight.gap_origin",
-   "example": "futures are 0.44 sigma above their 16:00 price, top third; against the same stretch on the last 20 nights the Europe morning moved most unusually, larger than 19 of 20, top third; the report window was quiet: made in Europe",
-   "computed_how": "each stretch of the night (story.py: after_close, asia, europe_open, europe_morning, pre_report, report_window, last_stretch; an unfinished one cut at the read's clock) measured on /ES (night_ranks.window_move) and ranked by |move| in percent against the same stretch on up to the last {night_rank_count} nights (night_ranks.prior_window_nights); the stretch ranked most unusual names the option: after_close or asia made_early, europe_open or europe_morning made_in_europe, report_window made_at_release on a day with a report before the open, pre_report or last_stretch made_late (and report_window on a day with no report); a stretch across a roll or without its bars is left out",
+   "example": "at 09:28 S&P futures stand 0.50 sigma below their 16:00 price, a move larger than 12 of the last 17 nights' moves to this time, top third; the most unusual stretch was Asia's session (18:00 to 02:30), down 0.45 sigma, larger than 16 of the last 17 nights' moves over the same stretch, top third",
+   "computed_how": "each stretch of the night (story.py: after_close, asia, europe_open, europe_morning, pre_report, report_window, last_stretch; an unfinished one cut at the read's clock) measured on /ES (night_ranks.window_move) and ranked by |move| in percent against the same stretch on up to the last {night_rank_count} nights (night_ranks.prior_window_nights); the stretch ranked most unusual names the option: after_close or asia made_early, europe_open or europe_morning made_in_europe, report_window made_at_release on a day with a report before the open, pre_report or last_stretch made_late (and report_window on a day with no report); a stretch across a roll or without its bars is left out; a night spanning a market holiday or following a half day is not ranked; on a morning with no report the report window is named by its clock, '08:30 to 08:45 (no report today)'",
    "source": "the overnight store (state/spx_jev/overnight/{day}.jsonl): Schwab /ES extended-hours 1- and 5-minute bars as the read saw them, contract stamped; calendar pre_open rows (listed and read from pre_open_covers_from, 2026-08-01) for the release minute",
    "availability": "cheap_add",
    "label_built": false,
@@ -10524,7 +10524,7 @@
   {
    "name": "overnight.range_vs_normal",
    "example": "since the 18:00 reopen S&P futures have ranged over 0.48 sigma of the pre-open ruler, wider than 16 of the last 20 nights' ranges to this time, top third: a wide night",
-   "computed_how": "/ES high-low range since the 18:00 reopen (bars the store's check flagged left out), in percent of price, ranked against the same range to the same minute on up to the last {night_rank_count} prior nights (roll, holiday and half-day, and short nights left out; at least {overnight_rank_min_nights} usable, else omitted) (night_ranks.window_range), in thirds; stated in the pre-open ruler. The thirds replace the fixed 0.7x and 1.3x lines of the 20-night median, which called 21% of nights quiet and 29% wide",
+   "computed_how": "/ES high-low range since the 18:00 reopen (bars the store's check flagged left out), in percent of price, ranked against the same range to the same minute on up to the last {night_rank_count} prior nights (roll, holiday and half-day, and short nights left out; at least {overnight_rank_min_nights} usable, else omitted) (night_ranks.window_range), in thirds; stated in the pre-open ruler. The thirds replace the fixed 0.7x and 1.3x lines of the 20-night median, which called 21% of nights quiet and 29% wide; a night spanning a market holiday or following a half day is not ranked",
    "source": "the overnight store (state/spx_jev/overnight/{day}.jsonl): Schwab /ES extended-hours 1- and 5-minute bars as the read saw them, contract stamped",
    "availability": "cheap_add",
    "label_built": false,
@@ -10533,7 +10533,7 @@
   {
    "name": "overnight.release_reaction",
    "example": "the 08:30 jobs report moved futures up 0.22 sigma of the pre-open ruler by 08:45, larger than 17 of the last 20 mornings' moves in that window, top third; since then they have given back 60% of it, past the half line",
-   "computed_how": "/ES from the release minute (story.release_minute: the first pre_open calendar row after 08:00 and before 08:45) to 08:45, ranked by |move| in percent against the same window on the last {night_rank_count} days, report or not (night_ranks.prior_window_nights), the bottom third shrugged; then 08:45 to the read against that reaction, judged against the {gap_half_share} half line; in the pre-open ruler; a window across a roll is left out. Asked on every report day, claims-only mornings included",
+   "computed_how": "/ES from the release minute (story.release_minute: the first pre_open calendar row after 08:00 and before 08:45) to 08:45, ranked by |move| in percent against the same window on the last {night_rank_count} days, report or not (night_ranks.prior_window_nights), the bottom third shrugged; then 08:45 to the read against that reaction, judged against the {gap_half_share} half line; in the pre-open ruler; a window across a roll is left out. Asked on every report day, claims-only mornings included; a night spanning a market holiday or following a half day is not ranked",
    "source": "the overnight store's /ES bars + calendar pre_open rows (listed and read from pre_open_covers_from, 2026-08-01)",
    "availability": "cheap_add",
    "label_built": false,
@@ -10991,8 +10991,8 @@
   },
   {
    "name": "premarket.legs",
-   "example": "oldest first: after the close quiet; Asia up 0.24 sigma, top third; Europe's open quiet; Europe morning down 0.09, middle third, gave some back; report window up 0.12, top third, added; since 08:45 quiet. Of 3 legs that moved, all went with the night's rise: one way",
-   "computed_how": "the stretches of story.py tile futures' 16:00 price to the read: after the close (to 18:00), Asia (to Tokyo's close), Europe's open (to 30 minutes after Frankfurt's open), the Europe morning (to 08:00), before the report (to the release minute, 08:30 when there is none), the report window (to 08:45, every day) and the last stretch (to the read); exchange-local edges; each stretch's own size in the pre-open ruler and its own third against the same stretch over the last {night_rank_count} nights; neutral leg words (added / gave some back / quiet); a running stretch says 'so far'; an edge price older than {window_10_min} minutes merges the stretch with its neighbour and says so; a stretch across a roll is left out; ends with the code verdict for night_legs_agree",
+   "example": "oldest first: after hours quiet; Asia down 0.45 sigma; Europe's open up 0.05; Europe's morning down 0.18; before the report and the report window quiet; since 08:45 up 0.06 so far. 4 moved; the latest against the night's fall",
+   "computed_how": "the stretches of story.py tile futures' 16:00 price to the read: after the close (to 18:00), Asia (to Tokyo's close), Europe's open (to 30 minutes after Frankfurt's open), the Europe morning (to 08:00), before the report (to the release minute, 08:30 when there is none), the report window (to 08:45, every day) and the last stretch (to the read); exchange-local edges; each stretch's side and size in the pre-open ruler, ranked against the same stretch over the last {night_rank_count} nights: one in the bottom third is quiet, and quiet ones in a row are named together; no leg says its third or 'added' (latest_leg_vs_night's option, read beside it); on a morning with no report the two stretches around 08:30 are named by their clocks; only the running stretch says 'so far'; an edge price older than {window_10_min} minutes merges the stretch with its neighbour and says so; a stretch across a roll is left out; ends with the code verdict for night_legs_agree",
    "source": "state/spx_jev/overnight/{day}.jsonl (Schwab /ES extended-hours 1-min, as seen at the checkpoint, contract stamped)",
    "availability": "cheap_add",
    "label_built": false,
@@ -11018,8 +11018,8 @@
   },
   {
    "name": "seq.day_move_by_read",
-   "example": "SPX is 0.27 sigma above the settled open; at the last four reads it stood 0.12 (10:02), 0.31 (10:32), 0.38 (11:02) and 0.27 (11:32) above; the furthest point came at 11:02 and 29% has been given back, top third for 11:32: unwinding",
-   "computed_how": "(close at each earlier read minute - 09:34 close) / sigma_anchor, rebuilt from 1-min bars at the read minutes (not from saved records); last four reads; giveback ranked at the same clock",
+   "example": "SPX is 0.11 sigma below the settled open; at the last 3 reads it stood -0.11 (10:02), -0.28 (10:32) and -0.11 (11:00); 62% of its furthest, at 10:32, has been given back, top third of the last 19 sessions for these reads: unwinding",
+   "computed_how": "(close at each earlier read minute - 09:34 close) / sigma_anchor, rebuilt from 1-min bars at the read minutes (not from saved records); the last four reads listed; the furthest point from the settled open, on either side, sought over every read since 10:02 and named with its size when it came before the listed reads; the share given back since, ranked at the same reads over the prior sessions",
    "source": "SPX 1-min bars",
    "availability": "live",
    "label_built": false,
@@ -11027,8 +11027,8 @@
   },
   {
    "name": "seq.breadth_by_read",
-   "example": "SPX is 0.36 sigma above the open; at 10:32, 11:02 and 11:32 it stood 0.20, 0.31 and 0.36 above while the day's rising-stock volume share was 71%, 64% and 58%: it slid 13 points while the move grew, top third over these minutes: fading under the move",
-   "computed_how": "cumulative $UVOL/($UVOL+$DVOL) since 09:30 at each read minute; change over the listed reads signed to the day's side; ranked at the same clock",
+   "example": "SPX is 0.12 sigma above the settled open, at 11:02, 11:32 and 12:01 -0.07, -0.02 and +0.12, while the day's rising-stock volume share went 42%, 49% and 55%: 12 points toward the day's side, top third for these reads: building behind the move",
+   "computed_how": "cumulative $UVOL/($UVOL+$DVOL) since 09:30 at each read minute; change over the last three reads signed to the day's side; ranked at the same clock",
    "source": "state/spx_jev/context/bars/{day}.jsonl + SPX 1-min bars",
    "availability": "live",
    "label_built": false,
@@ -11045,8 +11045,8 @@
   },
   {
    "name": "weekend.btc_path",
-   "example": "from Friday's 16:00 close to Sunday 18:00 bitcoin fell 2.6 of its normal weekends, bottom fifth of the last 20 weekends; since S&P futures reopened at 18:00 it has risen 0.9 of a normal reopen leg, top third against the weekend's fall: it turned back; S&P futures are down 0.3 of a normal night",
-   "computed_how": "two bitcoin legs, each a percent move between the last bars finished by the two times: the weekend leg from the prior session's close (16:00, or 13:00 after a half day) to the S&P futures' 18:00 reopen the evening before the read's session, and the reopen leg from there to the read. A price at the close or the read over {window_10_min} minutes old, or at the reopen over {window_60_min}, leaves it out. The weekend leg is ranked by size and sign in fifths against the last {night_rank_count} weekends (the first sessions after a weekend or holiday); the reopen leg, taken the weekend leg's way, in thirds against those weekends' reopen legs taken theirs: extended in the top third, reversed in the bottom, held between. Each is said in shares of its own median |leg| over those weekends; the sentence opens with where the S&P futures stand against their 16:00 price. Roll guard: Schwab's /BTC and /MBT history is one stitched front-month series; it switches contract at 18:00 ET on the Thursday before the last-Friday expiry and jumps up 0.28-0.53% against IBIT (7 of 7 rolls, Mar-Sep 2026), about a third of a normal night. The roll night is left out, and so is a read with a roll pending (rolls.pending).",
+   "example": "S&P futures stand 0.64 sigma above their 16:00 price; bitcoin futures (/MBT) fell 0.4 of its normal weekends from the Friday 16:00 close to the S&P futures' reopen at 18:00 Sunday, larger than 4 of the last 15 weekends by size, bottom third; since the reopen it has moved 4.0 of a normal reopen leg back against it, bottom third of those weekends' reopen legs taken their weekend's way: it turned back",
+   "computed_how": "two bitcoin legs, each a percent move between the last bars finished by the two times: the weekend leg from the prior session's close (16:00, or 13:00 after a half day) to the S&P futures' reopen after their longest halt since that close, found in their bars (Sunday 18:00 after a weekend), and the reopen leg from there to the read. A price at the close or the read over {window_10_min} minutes old, or at the reopen over {window_60_min}, leaves it out. The weekend leg is ranked by size against the last {night_rank_count} weekends, the top third a big weekend, (the first sessions after a weekend or holiday); the reopen leg, taken the weekend leg's way, in thirds against those weekends' reopen legs taken theirs: extended in the top third, reversed in the bottom, held between. Each is said in shares of its own median |leg| over those weekends; the sentence opens with where the S&P futures stand against their 16:00 price. Roll guard: Schwab's /BTC and /MBT history is one stitched front-month series; it switches contract at 18:00 ET on the Thursday before the last-Friday expiry and jumps up 0.28-0.53% against IBIT (7 of 7 rolls, Mar-Sep 2026), about a third of a normal night. The roll night is left out, and so is a read with a roll pending (rolls.pending).",
    "source": "the overnight store (state/spx_jev/overnight/{day}.jsonl): Schwab /MBT (micro bitcoin futures) 1- and 5-minute bars with extended hours, contract stamped (the front contract: /MBTV26 now, /MBTX26 from 18:00 ET Thu 10-29); /BTC is saved beside it as a cross-check (the same price, under 5 bars an hour on Saturdays). Before 2026-05-29 CME bitcoin futures were shut Fri 17:00 to Sun 18:00 ET, so older weekends have only the Sunday reopen gap and no path; only weekends from 2026-05-29 are ranked.",
    "availability": "cheap_add",
    "label_built": false,
@@ -11072,7 +11072,7 @@
   },
   {
    "name": "xasset.btc_link",
-   "example": "since the open bitcoin and the index have moved together minute by minute more tightly than on 17 of the last 20 sessions at this time (top third); over the last 20 sessions bitcoin up has gone with stocks up",
+   "example": "since 09:35 bitcoin futures (/MBT) and the index have moved together five minutes by five minutes more tightly than on most recent sessions: link +0.62, higher than 17 of the last 20 sessions at this minute, top third; over the last 20 sessions bitcoin up has gone with stocks up",
    "computed_how": "correlation of 5-minute returns (bitcoin vs SPX) from 09:35 to now, ranked against the same span on the prior 20 sessions; sign of the 20-session beta in words",
    "source": "as xasset.btc_gap_30min",
    "availability": "cheap_add",
@@ -11082,7 +11082,7 @@
   {
    "name": "xasset.btc_five_day",
    "example": "over the last five sessions bitcoin did 2.1 normal weeks worse than the index's move would match: bottom fifth of the last 20 sessions; the index itself rose 0.6 of a normal week",
-   "computed_how": "bitcoin's simple return over the last five sessions, close to close (the index's last bar at each session's close, 16:00 or 13:00 on a half day, and bitcoin's newest bar within {window_10_min} minutes before it), minus its usual multiple of the index's x SPX's five-session return; the multiple is fitted (bitcoin.slope) on bitcoin's daily returns against SPX's over the last {night_rank_count} + 5 sessions with both on one contract; ranked in fifths against the five sessions ending on each of up to the last {night_rank_count} sessions before; 'normal week' = median |five-session excess| over those",
+   "computed_how": "bitcoin's simple return over the last five sessions, close to close (the index's last bar at each session's close, 16:00 or 13:00 on a half day, and bitcoin's newest bar within {window_10_min} minutes before it), minus its usual multiple of the index's x SPX's five-session return; the multiple is fitted (bitcoin.slope) on bitcoin's daily returns against SPX's over the last {night_rank_count} + 5 sessions with both on one contract; ranked in fifths against the five sessions ending on each of up to the last {night_rank_count} sessions before; 'normal week' = median |five-session excess| over those; it sleeps while a roll is pending, and leaves the Thursday roll evening out of its daily moves",
    "source": "the overnight store's /MBT bars at each prior session's 16:00 (its nights reach back to March) and SPX's saved closes (state/reversion/bars); the roll guard applies (a five-session window across a /MBT roll is left out)",
    "availability": "cheap_add",
    "label_built": false,
@@ -12873,6 +12873,20 @@
    "action": "label text",
    "decision": "accepted",
    "reason": "the report labels read the calendar's releases before the open from pre_open_covers_from, 2026-08-01, where they are listed, not from covers_from, so August's report mornings are asked.",
+   "source": "review of the premarket build 2026-09-27"
+  },
+  {
+   "subject": "premarket.legs, seq.day_move_by_read, seq.breadth_by_read, overnight.gap_origin, overnight.bond_gap, overnight labels",
+   "action": "label text",
+   "decision": "accepted",
+   "reason": "each example is a sentence the code writes and each computed_how says how it is built now: the legs by side and size with quiet ones named, the furthest point on either side over every read since 10:02, gap_origin's clock name on a morning with no report, bonds' sign test, and no rank for a night across a market holiday or after a half day.",
+   "source": "review of the premarket build 2026-09-27"
+  },
+  {
+   "subject": "btc_link_today, btc_weekend_path, btc_five_day_lead, overnight_bonds_vs_gap, gap_origin",
+   "action": "reword",
+   "decision": "accepted",
+   "reason": "the instructions and sleep_when texts follow the labels: the link is five minutes by five minutes, a big weekend is the top third by size, the five sessions also sleep while a roll is pending, bonds sleep when a single night turns the fit's sign, and gap_origin sleeps on a day the calendar's releases before the open do not cover.",
    "source": "review of the premarket build 2026-09-27"
   }
  ],

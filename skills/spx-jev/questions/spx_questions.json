@@ -4908,7 +4908,7 @@
      "sleep_when": "link rank in the middle third; before 10:32 (too few minutes)",
      "code_answer": true,
      "ask": "Are bitcoin and the index trading together today more tightly than usual, or less?",
-     "instructions": "Read `xasset.btc_link`. Since the open, have bitcoin and the index moved together minute by minute more tightly than on most of the last {night_rank_count} sessions, or more loosely?",
+     "instructions": "Read `xasset.btc_link`. Since the open, have bitcoin and the index moved together five minutes by five minutes more tightly than on most of the last {night_rank_count} sessions, or more loosely?",
      "options": [
       "tight",
       "loose"
@@ -4950,7 +4950,7 @@
       "thirty_minute": "day"
      },
      "cadence": "once at the 09:35 read; answer held as a day constant through the 30-minute reads",
-     "sleep_when": "rank in the middle three fifths; fewer than {min_rank_sessions} prior sessions; a bitcoin roll inside the five sessions without a splice",
+     "sleep_when": "rank in the middle three fifths; fewer than {min_rank_sessions} prior sessions; a bitcoin roll inside the five sessions without a splice, or one pending",
      "code_answer": true,
      "ask": "Over the last week, has bitcoin been lagging the index or running ahead of it?",
      "instructions": "Read `xasset.btc_five_day`. Over the last five sessions, has bitcoin done worse than its usual tie to the index would match (lagging) or better (running ahead)?",
@@ -5091,7 +5091,7 @@
       "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
      "cadence": "at the 09:28 premarket read",
-     "sleep_when": "the move since futures' 16:00 price ranks at or under {third_lo} against the last {night_rank_count} nights (no real gap), fewer than {overnight_rank_min_nights} usable nights, a roll night, or /ES bars missing",
+     "sleep_when": "the move since futures' 16:00 price ranks at or under {third_lo} against the last {night_rank_count} nights (no real gap), fewer than {overnight_rank_min_nights} usable nights, a roll night, a day the event calendar's releases before the open do not cover, or /ES bars missing",
      "code_answer": true,
      "ask": "Which stretch of the night moved most unusually for its time?",
      "instructions": "Read `overnight.gap_origin`. Where futures stand against their 16:00 price comes first. Which stretch of the night moved most unusually against the same stretch on the recent nights: early, in Europe, in the window after this morning's report, or late? On a morning with no report, the 08:30 to 08:45 stretch counts as late.",
@@ -5236,7 +5236,7 @@
       "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
      "cadence": "at the 09:28 premarket read",
-     "sleep_when": "fewer than {overnight_rank_min_nights} of the last nights with both futures measured on one contract, a roll between the two prices, bonds and S&P futures showing no link, or data missing",
+     "sleep_when": "fewer than {overnight_rank_min_nights} of the last nights with both futures measured on one contract, a roll between the two prices, bonds and S&P futures showing no link (leaving out a single night turns the fit's sign), or data missing",
      "code_answer": true,
      "ask": "Did Treasury futures move further overnight than the S&P futures' move would match?",
      "instructions": "Read `overnight.bond_gap`. Where Treasury futures stand against their 16:00 price comes first. Do they point S&P futures further toward stocks-up than where S&P futures stand, further toward stocks-down, or in line?",
@@ -5361,7 +5361,7 @@
       "premarket": "10 and 30 minutes from the 09:34 settled open (the premarket lane's open_10 and open_30)"
      },
      "cadence": "at the 09:28 premarket read on the first session after a weekend or market holiday (the gate decides, never the schedule)",
-     "sleep_when": "weekend-leg rank vs the last {night_rank_count} weekends in the middle three fifths (an ordinary weekend); not the first session after a weekend or holiday; fewer than {overnight_rank_min_nights} prior weekends; a bitcoin roll across either leg; no trade in the last {window_60_min} minutes of the weekend leg (the Saturday maintenance window)",
+     "sleep_when": "weekend leg not in the top third by size of the last {night_rank_count} weekends (an ordinary weekend); not the first session after a weekend or holiday; fewer than {overnight_rank_min_nights} prior weekends; a bitcoin roll across either leg; no trade in the last {window_60_min} minutes of the weekend leg (the Saturday maintenance window)",
      "code_answer": true,
      "ref_side": "sign of the weekend leg (the learning loop folds on it)",
      "ask": "After a big bitcoin weekend, did bitcoin keep going, hold, or turn back once S&P futures reopened?",
