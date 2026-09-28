@@ -414,6 +414,17 @@ def test_the_hours_move_and_how_often_it_crossed_its_own_average(scene_factory, 
     assert _labels(_hour_scene(scene_factory, window))[0]["price.hour_one_way"] == sentence
 
 
+def test_an_estimated_session_sits_out_of_the_hours_move_but_not_its_crossings(scene_factory):
+    """A crossing count is the day's own price, which no ruler scales: an eleventh session on an estimated ruler
+    counts for the crossings, as it does for the half hour's path and the day's variance ratio, and not for the move."""
+    days = [f"2026-09-{d:02d}" for d in range(17, 6, -1)]
+    scene = _ranked(_scene(scene_factory, at(11, 0, ss=5), [7700.0] * 30 + [7700.0 + 0.5 * (k + 1) for k in range(60)]),
+                    days=days, estimated=days[:1])
+    text = _labels(scene)[0]["price.hour_one_way"]
+    assert "larger than 10 of the last 10 sessions at this minute, top third: a strong move" in text
+    assert text.endswith("more often than 0 of the last 11 sessions at this minute, bottom third: one-way")
+
+
 def test_the_one_way_hour_needs_an_hour(scene_factory):
     assert _labels(_scene(scene_factory, at(10, 20, ss=5), [7700.0] * 50))[1]["price.hour_one_way"] == \
         "needs 40 finished bars in the last 60 minutes and one before them"

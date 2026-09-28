@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import math
 import statistics
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
+from typing import Callable
 
 from ..cuts import (BOTTOM_FIFTH, GAP_HALF_SHARE, MINUTE_WIDTH_CUT, MOVE_BURST_SHARE, MOVE_RULE_SIGMA, NIGHT_RANK_COUNT, PACE_BIGGER,
                     PACE_SMALLER, PATH_CHOPPY, PATH_ORDERLY, PAUSE_BRIEF_MIN, PAUSE_LONG_MIN, PULLBACK_SHARE, RANGE_BOTTOM_SHARE,
@@ -112,6 +113,13 @@ def _minutes_since_bar(scene: Scene, bar: time) -> int:
     the close of its own ``bar``."""
     done = datetime.combine(scene.now.astimezone(ET).date(), bar, tzinfo=ET) + ONE_MINUTE
     return int((scene.now - done).total_seconds() // 60)
+
+
+def _same_clock_unscaled(scene: Scene, measure: Callable[[list[dict], datetime], float | None]) -> list[float]:
+    """same_clock_values for a measure no ruler scales (a count of crossings, a path's own efficiency, a ratio of the
+    day's own returns): every prior session with bars counts, its ruler estimated or not, as gap_open's crossings do,
+    since with no rulers none sits out."""
+    return same_clock_values(replace(scene, prior_rulers={}), lambda bars, then, sigma: measure(bars, then))
 
 
 def _same_clock_rows(scene: Scene) -> list[tuple[dict, float]]:
@@ -469,7 +477,7 @@ def _day_character(scene: Scene, ls: LabelSet) -> None:
     if ratio is None:
         ls.omit("price.day_character", why)
         return
-    rank, why = rank_sessions(ratio, same_clock_values(scene, lambda bars, then, sigma: _variance_ratio(bars, then)[0]),
+    rank, why = rank_sessions(ratio, _same_clock_unscaled(scene, lambda bars, then: _variance_ratio(bars, then)[0]),
                               "an hour of 5-minute returns since 10:00 at this minute")
     if rank is None:
         ls.omit("price.day_character", why)
@@ -543,7 +551,7 @@ def _hour_one_way(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
     if size is None:
         ls.omit("price.hour_one_way", why)
         return
-    count, why = rank_sessions(crosses, same_clock_values(scene, lambda bars, then, sigma: _hour_crosses(bars, then)),
+    count, why = rank_sessions(crosses, _same_clock_unscaled(scene, _hour_crosses),
                                "an hour of bars at this minute")
     if count is None:
         ls.omit("price.hour_one_way", why)
@@ -587,7 +595,7 @@ def _move_shape(scene: Scene, anchor: SigmaRuler, move30: Ranked, ls: LabelSet) 
     if efficiency is None:
         ls.omit("price.move_shape", "the half hour's minute closes travelled nothing, so there is no path to judge")
         return
-    path, why = rank_sessions(efficiency, same_clock_values(scene, lambda bars, then, sigma: _half_hour_efficiency(bars, then)),
+    path, why = rank_sessions(efficiency, _same_clock_unscaled(scene, _half_hour_efficiency),
                               "a half hour of bars at this minute")
     if path is None:
         ls.omit("price.move_shape", why)
