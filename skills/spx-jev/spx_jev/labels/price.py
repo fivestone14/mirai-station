@@ -6,22 +6,20 @@ before it keep the row's sigma. Each set label's sentence, how it is computed an
 spec/question_set.json ``labels``."""
 from __future__ import annotations
 
-import math
 import statistics
-from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
-from ..cuts import (BOTTOM_FIFTH, GAP_HALF_SHARE, MINUTE_WIDTH_CUT, MOVE_BURST_SHARE, MOVE_RULE_SIGMA, NIGHT_RANK_COUNT, PACE_BIGGER,
+from ..cuts import (AFTERNOON_LEG_SIGMA, BOTTOM_FIFTH, CLOSE_PUSH_SIGMA, DAY_SIDE_SIGMA, GAP_HALF_SHARE, MINUTE_WIDTH_CUT, MOVE_BURST_SHARE,
+                    MOVE_RULE_SIGMA, MOVE_STRONG_SIGMA, ONE_WAY_CROSSES, ONE_WAY_HOUR_SIGMA, OPEN_DAY_MOVE_SIGMA, PACE_BIGGER,
                     PACE_SMALLER, PATH_CHOPPY, PATH_ORDERLY, PAUSE_BRIEF_MIN, PAUSE_LONG_MIN, PULLBACK_SHARE, RANGE_BOTTOM_SHARE,
-                    RANGE_TOP_SHARE, RSI_OVERBOUGHT, RSI_OVERSOLD, TOP_FIFTH, WINDOW_30_MIN, WINDOW_60_MIN)
+                    RANGE_TOP_SHARE, RSI_OVERBOUGHT, RSI_OVERSOLD, TOP_FIFTH, VR_PIN, VR_TREND, WINDOW_30_MIN, WINDOW_60_MIN)
 from ..sessions import previous_trading_day
 from ..state_builder import Scene
-from .gamma import _diary_row_at
 from .label_set import LabelSet
-from .measures import (ET, HOUR_MIN_BARS, MIN_RANGE_SESSIONS, ONE_MINUTE, RANGE_PRIOR_SESSIONS, RSI_PERIOD, SETTLED_OPEN_BAR, bar_time,
-                       bars_finished_between, close_at, day_high_low, high_low_close, is_num, move_size, path_efficiency, session_extremes,
-                       settled_open, wilder_rsi, yesterdays_bars)
-from .ranks import SameClockRank, move_rank, rank_days, rank_sessions, same_clock_values
+from .measures import (ET, HOUR_MIN_BARS, MIN_RANGE_SESSIONS, ONE_MINUTE, RANGE_PRIOR_SESSIONS, RSI_PERIOD, bar_time, bars_finished_between, close_at,
+                       day_high_low, high_low_close, is_num, move_size, path_efficiency, session_extremes, settled_open, wilder_rsi,
+                       yesterdays_bars)
+from .ranks import rank_against, same_clock_values
 from .rulers import NO_ANCHOR, SigmaRuler, ruled, sigma_anchor, typical_move
 from .words import minutes_ago, pct, plural, sig, signed, third
 
@@ -36,11 +34,8 @@ DARK: dict[str, str] = {}
 # The set's labels measured on the morning anchor, omitted together (their gates asleep) when the day has none.
 ANCHORED = ("price.recent_move", "price.vs_vwap", "price.vs_prior_close", "price.afternoon_leg", "price.day_move", "price.day_move_split",
             "price.hour_one_way", "price.move_shape", "price.prior_close_push", "price.session_extreme_recent", "price.vwap_reach")
-# A move and a distance are sized by their third against the same minute on the prior sessions (ranks.rank_sessions),
-# and the sentence names the third in words: a move in the bottom third is no real move, one in the top third a strong
-# one; a distance in the bottom third is near the level, one in the top third far from it.
-MOVE_WORDS = {"bottom third": "no real move", "middle third": "a move", "top third": "a strong move"}
-DISTANCE_WORDS = {"bottom third": "near it", "middle third": "away from it", "top third": "far from it"}
+# Round one's stretch line for price against the day's average: a clause in the sentence, no question's threshold.
+VWAP_STRETCH_SIGMA = 0.25
 # A new session high or low this recent is news (round one's window for new_extreme_unconfirmed).
 NEW_EXTREME_RECENT_MIN = 15
 # The afternoon leg runs from the close of the 13:59 bar, the price at 14:00.
@@ -68,90 +63,25 @@ def build_price_labels(scene: Scene) -> LabelSet:
         for qid in GATES:
             ls.sleep(qid, NO_ANCHOR)
         return ls
-    rows = _same_clock_rows(scene)
-    to_close = _level_distance(scene, anchor, rows, "prior_close", "yesterday's close")
-    to_average = _level_distance(scene, anchor, rows, "vwap", "the day's average price")
-    move30 = _recent_move(scene, anchor, ls)
-    _vs_vwap(scene, anchor, to_average, ls)
-    _vs_prior_close(scene, anchor, to_close, ls)
-    _afternoon_leg(scene, anchor, move30.value, ls)
+    move30, no_move = _recent_move(scene, anchor, ls)
+    _vs_vwap(scene, anchor, ls)
+    _vs_prior_close(scene, anchor, ls)
+    _afternoon_leg(scene, anchor, move30, ls)
     _day_move(scene, anchor, ls)
-    _day_move_split(scene, anchor, to_close, ls)
+    _day_move_split(scene, anchor, ls)
     _hour_one_way(scene, anchor, ls)
-    _move_shape(scene, anchor, move30, ls)
-    _prior_close_push(scene, anchor, move30, to_close, ls)
+    _move_shape(scene, anchor, move30, no_move, ls)
+    _prior_close_push(scene, anchor, move30, no_move, ls)
     _session_extreme_recent(scene, anchor, ls)
-    _vwap_reach(scene, anchor, to_average, ls)
+    _vwap_reach(scene, anchor, ls)
     return ls
 
 
-@dataclass(frozen=True)
-class Ranked:
-    """A signed measure in sigma, its size's rank against the same minute on the prior sessions and the sizes it was
-    ranked against (``base``, newest first); ``rank`` is None, with ``why``, when the measure or its rank could not be had."""
-    value: float | None
-    rank: SameClockRank | None
-    why: str | None
-    base: tuple[float, ...] = ()
-
-
-def _against(rank: SameClockRank, word: str) -> str:
-    """A rank in the owner's words: "larger than 17 of the last 20 sessions at this minute, top third"."""
-    return f"{word} than {rank.higher_than} of the last {rank.of} sessions at this minute, {rank.band}"
-
-
-def _band_edges(base: tuple[float, ...] | list[float]) -> tuple[float, float]:
-    """The largest value still in the bottom third of the recent sessions in ``base`` and the largest still short of
-    the top third, as rank_sessions and SameClockRank.band place a value: the edges the phone's gauge shades."""
-    s = sorted(base[:NIGHT_RANK_COUNT])
-    return s[math.ceil(len(s) / 3) - 1], s[2 * len(s) // 3]
-
-
-def _minutes_since_bar(scene: Scene, bar: time) -> int:
-    """Whole minutes from the finish of today's ``bar`` to now: over them move_rank measures each session's move from
-    the close of its own ``bar``."""
-    done = datetime.combine(scene.now.astimezone(ET).date(), bar, tzinfo=ET) + ONE_MINUTE
-    return int((scene.now - done).total_seconds() // 60)
-
-
-def _same_clock_rows(scene: Scene) -> list[tuple[dict, float]]:
-    """Each prior session's diary row at this read's clock minute with its morning ruler in points, newest first, up
-    to NIGHT_RANK_COUNT of them: the rows the distances to yesterday's close and to the day's average are ranked on,
-    each from the row's own spot. A session whose ruler was estimated or is not on file (ranks.rank_days), or with
-    no row near the minute, is left out."""
-    if scene.state_dir is None:
-        return []
-    clock = scene.now.astimezone(ET).time()
-    out = []
-    for day in rank_days(scene):
-        ruler = scene.prior_rulers.get(day)
-        row = _diary_row_at(scene.state_dir, day, datetime.combine(date.fromisoformat(day), clock, tzinfo=ET)) if ruler else None
-        if row is not None and is_num(row.get("spot")):
-            out.append((row, ruler.points))
-        if len(out) == NIGHT_RANK_COUNT:
-            break
-    return out
-
-
-def _level_distance(scene: Scene, anchor: SigmaRuler, rows: list[tuple[dict, float]], key: str, name: str) -> Ranked:
-    """Price's signed distance from the level the row carries under ``key``, and the size of that distance against the
-    same distance at this minute on the prior sessions' rows (_same_clock_rows)."""
-    level = scene.row.get(key)
-    if not is_num(level) or level <= 0:
-        return Ranked(None, None, f"row carries no {key.replace('_', ' ')}")
-    d = (scene.spot - float(level)) / anchor.points
-    if scene.state_dir is None:
-        return Ranked(d, None, "no state folder to read the prior sessions' diaries from")
-    base = [abs(float(r["spot"]) - float(r[key])) / points for r, points in rows if is_num(r.get(key)) and r[key] > 0]
-    rank, why = rank_sessions(abs(d), base, f"{name} on a diary row at this minute")
-    return Ranked(d, rank, why, tuple(base))
-
-
-def _recent_move(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> Ranked:
-    """The 30-minute move in sigma and its rank (ranks.move_rank), written as price.recent_move and returned for the
-    reads that judge it; its rank is None with the reason it was omitted when it was. On the live lane spot is the
-    row's while the bars can stop, so the move needs a bar finished in the minute before the window and 20 in it, or
-    it would be measured from wherever the tape stopped."""
+def _recent_move(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> tuple[float | None, str | None]:
+    """The 30-minute move in sigma, written as price.recent_move and returned for the reads that judge it; None
+    with the reason it was omitted when it was. On the live lane spot is the row's while the bars can stop, so
+    the move needs a bar finished in the minute before the window and 20 in it, or it would be measured from
+    wherever the tape stopped."""
     back = scene.now - timedelta(minutes=WINDOW_30_MIN)
     ref, win = close_at(scene.bars, back), bars_finished_between(scene.bars, back, scene.now)
     if scene.minutes_since_open < WINDOW_30_MIN:
@@ -166,24 +96,28 @@ def _recent_move(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> Ranked:
         why = None
     if why is not None:
         ls.omit("price.recent_move", why)
-        return Ranked(None, None, why)
+        return None, why
     d = (scene.spot - ref) / anchor.points
-    rank, why = move_rank(scene, d, WINDOW_30_MIN)
-    if rank is None:
-        ls.omit("price.recent_move", why)
-        return Ranked(d, None, why)
-    verdict = "going_nowhere" if rank.band == "bottom third" else "rising" if d > 0 else "falling"
-    flat, strong = _band_edges(same_clock_values(scene, lambda bars, then, sigma: move_size(bars, then, sigma, WINDOW_30_MIN)))
-    fig = {"kind": "signed", "value": round(d, 3), "band": round(flat, 3), "strong": round(strong, 3), "unit": "sigma", "verdict": verdict}
-    went = f"moved {signed(d)} sigma" if verdict == "going_nowhere" else f"{'rose' if d > 0 else 'fell'} {sig(abs(d))}"
-    text = f"over the last 30 minutes price {went}, {_against(rank, 'larger')}: {MOVE_WORDS[rank.band]}"
+    verdict = "going_nowhere" if abs(d) <= MOVE_RULE_SIGMA else "rising" if d > 0 else "falling"
+    fig = {"kind": "signed", "value": round(d, 3), "band": MOVE_RULE_SIGMA, "strong": MOVE_STRONG_SIGMA, "unit": "sigma", "verdict": verdict}
+    verb = "rose" if d > 0 else "fell"
+    if verdict == "going_nowhere":
+        text = f"over the last 30 minutes price stayed within {MOVE_RULE_SIGMA} sigma of where it was, moving {signed(d)} sigma"
+    elif abs(d) > MOVE_STRONG_SIGMA:
+        text = f"over the last 30 minutes price {verb} {sig(abs(d))}, past the {MOVE_STRONG_SIGMA:.2f} sigma strong line"
+    else:
+        text = (f"over the last 30 minutes price {verb} {sig(abs(d))}, more than the {MOVE_RULE_SIGMA} sigma move rule "
+                f"and short of the {MOVE_STRONG_SIGMA:.2f} sigma strong line")
+    rank = rank_against(abs(d), same_clock_values(scene, lambda bars, then, sigma: move_size(bars, then, sigma, WINDOW_30_MIN)))
+    if rank is not None:
+        text += f"; bigger than {rank.higher_than} of the last {rank.of} sessions in this half hour"
     hi, lo = day_high_low(win, scene.spot)
     if hi > lo:
         pos = (scene.spot - lo) / (hi - lo)
         where = "in the top fifth of" if pos >= TOP_FIFTH else "in the bottom fifth of" if pos <= BOTTOM_FIFTH else "between the top and bottom fifths of"
         text += f"; the half hour closed {where} its own range"
     ls.put("price.recent_move", ruled(anchor, text), figure=fig)
-    return Ranked(d, rank, None)
+    return d, None
 
 
 def _day_range_position(scene: Scene, ls: LabelSet) -> None:
@@ -204,17 +138,21 @@ def _day_range_position(scene: Scene, ls: LabelSet) -> None:
     ls.put("price.day_range_position", f"price is {band}, {pct(pos)} of the way up")
 
 
-def _vs_vwap(scene: Scene, anchor: SigmaRuler, to_average: Ranked, ls: LabelSet) -> None:
-    """Price against the day's average, its distance sized against the same minute on the prior sessions: in the
-    bottom third it is at the average."""
-    d, rank = to_average.value, to_average.rank
-    if rank is None:
-        ls.omit("price.vs_vwap", to_average.why)
+def _vs_vwap(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
+    vwap = scene.row.get("vwap")
+    if not is_num(vwap) or vwap <= 0:
+        ls.omit("price.vs_vwap", "row carries no vwap")
         return
-    verdict = "at_it" if rank.band == "bottom third" else "above" if d > 0 else "below"
-    fig = {"kind": "signed", "value": round(d, 3), "band": round(_band_edges(to_average.base)[0], 3), "unit": "sigma", "verdict": verdict}
-    text = (f"price is {sig(abs(d))} {'above' if d >= 0 else 'below'} the day's volume-weighted average price, "
-            f"{_against(rank, 'further from it')}: {'at the average' if verdict == 'at_it' else DISTANCE_WORDS[rank.band]}")
+    vwap = float(vwap)
+    d = (scene.spot - vwap) / anchor.points
+    verdict = "at_it" if abs(d) < MOVE_RULE_SIGMA else "above" if d > 0 else "below"
+    fig = {"kind": "signed", "value": round(d, 3), "band": MOVE_RULE_SIGMA, "unit": "sigma", "verdict": verdict}
+    if verdict == "at_it":
+        text = f"price is within {MOVE_RULE_SIGMA} sigma of the day's volume-weighted average price, {signed(d)} sigma from it"
+    else:
+        line = "past" if abs(d) >= VWAP_STRETCH_SIGMA else "short of"
+        text = (f"price is {sig(abs(d))} {verdict} the day's volume-weighted average price, more than the {MOVE_RULE_SIGMA} sigma move rule, "
+                f"{line} the {VWAP_STRETCH_SIGMA} sigma stretch line")
     touched = _last_at_average(scene)
     if touched is not None:
         text += f"; it last traded at the average {minutes_ago(scene.now, touched)}"
@@ -239,15 +177,14 @@ def _last_at_average(scene: Scene) -> datetime | None:
     return last
 
 
-def _vs_prior_close(scene: Scene, anchor: SigmaRuler, to_close: Ranked, ls: LabelSet) -> None:
-    """Price against yesterday's close, the distance sized against the same minute on the prior sessions: in the
-    bottom third it is near the close."""
-    d, rank = to_close.value, to_close.rank
-    if rank is None:
-        ls.omit("price.vs_prior_close", to_close.why)
+def _vs_prior_close(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
+    pc = scene.row.get("prior_close")
+    if not is_num(pc) or pc <= 0:
+        ls.omit("price.vs_prior_close", "row carries no prior close")
         return
-    ls.put("price.vs_prior_close", ruled(anchor, f"price is {sig(abs(d))} {'above' if d >= 0 else 'below'} yesterday's close, "
-                                                 f"{_against(rank, 'further from it')}: {DISTANCE_WORDS[rank.band]}"))
+    d = (scene.spot - float(pc)) / anchor.points
+    rule = f"more than the {DAY_SIDE_SIGMA:.2f} sigma day-side rule" if abs(d) > DAY_SIDE_SIGMA else f"within the {DAY_SIDE_SIGMA:.2f} sigma day-side rule"
+    ls.put("price.vs_prior_close", ruled(anchor, f"price is {sig(abs(d))} {'above' if d >= 0 else 'below'} yesterday's close, {rule}"))
 
 
 def _minute_width(scene: Scene, ls: LabelSet) -> None:
@@ -417,24 +354,16 @@ def _went(d: float) -> str:
     return f"rose {sig(d)}" if d > 0 else f"fell {sig(-d)}" if d < 0 else "did not move"
 
 
-def _since(d: float, rank: SameClockRank) -> str:
-    """A move since a moment and its rank in the owner's words: "risen 0.21 sigma, larger than 17 of the last 20
-    sessions at this minute, top third: a strong move"; a move in the bottom third keeps its sign in the figure."""
-    went = f"moved {signed(d)} sigma" if rank.band == "bottom third" else f"{'risen' if d > 0 else 'fallen'} {sig(abs(d))}"
-    return f"{went}, {_against(rank, 'larger')}: {MOVE_WORDS[rank.band]}"
-
-
 def _afternoon_leg(scene: Scene, anchor: SigmaRuler, move30: float | None, ls: LabelSet) -> None:
     start = next((float(b["close"]) for b in scene.bars if bar_time(b).astimezone(ET).time() == AFTERNOON_FROM_BAR), None)
     if start is None:
         ls.omit("price.afternoon_leg", f"no finished {AFTERNOON_FROM_BAR:%H:%M} bar: the afternoon leg starts at 14:00")
         return
     d = (scene.spot - start) / anchor.points
-    rank, why = move_rank(scene, d, _minutes_since_bar(scene, AFTERNOON_FROM_BAR))
-    if rank is None:
-        ls.omit("price.afternoon_leg", why)
-        return
-    text = f"since 14:00 price has {_since(d, rank)}"
+    if abs(d) > AFTERNOON_LEG_SIGMA:
+        text = f"since 14:00 price has {'risen' if d > 0 else 'fallen'} {sig(abs(d))}, more than the {AFTERNOON_LEG_SIGMA} sigma afternoon-leg rule"
+    else:
+        text = f"since 14:00 price has stayed within the {AFTERNOON_LEG_SIGMA} sigma afternoon-leg rule, moving {signed(d)} sigma"
     context = []
     pc = scene.row.get("prior_close")
     if is_num(pc) and pc > 0:
@@ -450,45 +379,37 @@ def _afternoon_leg(scene: Scene, anchor: SigmaRuler, move30: float | None, ls: L
     ls.put("price.afternoon_leg", ruled(anchor, text))
 
 
-def _variance_ratio(bars: list[dict], then: datetime) -> tuple[float | None, str]:
-    """The variance ratio of the day's overlapping 30-minute returns against its 5-minute returns from 10:00 to ``then``:
-    over one, moves have built on each other; under one, they have cancelled. Lo and MacKinlay's bias-corrected form,
-    one drift for both and unbiased variances, so a random walk reads one at any hour rather than well under it on a
-    morning's dozen returns. None, with the reason, before an hour of varied returns."""
-    t = datetime.combine(then.astimezone(ET).date(), CHARACTER_FROM, tzinfo=ET)
+def _day_character(scene: Scene, ls: LabelSet) -> None:
+    """The variance ratio of the day's overlapping 30-minute returns against its 5-minute returns since 10:00:
+    over one, moves have built on each other; under one, they have cancelled. Lo and MacKinlay's bias-corrected
+    form, one drift for both and unbiased variances, so a random walk reads one at any hour rather than well
+    under it on a morning's dozen returns."""
+    t = datetime.combine(scene.now.astimezone(ET).date(), CHARACTER_FROM, tzinfo=ET)
     marks = []
-    while t <= then:
-        marks.append(close_at(bars, t))
+    while t <= scene.now:
+        marks.append(close_at(scene.bars, t))
         t += timedelta(minutes=CHARACTER_STEP_MIN)
     closes = [c for c in marks if c is not None]
     steps = WINDOW_30_MIN // CHARACTER_STEP_MIN
     if len(closes) - 1 < CHARACTER_MIN_STEPS:
-        return None, f"needs {CHARACTER_MIN_STEPS} 5-minute returns since 10:00, have {max(len(closes) - 1, 0)}"
+        ls.omit("price.day_character", f"needs {CHARACTER_MIN_STEPS} 5-minute returns since 10:00, have {max(len(closes) - 1, 0)}")
+        return
     returns = [b - a for a, b in zip(closes, closes[1:])]
     n, drift = len(returns), statistics.fmean(returns)
     short = statistics.variance(returns, drift)
     if short <= 0:
-        return None, "the 5-minute returns since 10:00 have not varied"
+        ls.omit("price.day_character", "the 5-minute returns since 10:00 have not varied")
+        return
     overlapping = sum((closes[i + steps] - closes[i] - steps * drift) ** 2 for i in range(n - steps + 1))
-    return overlapping / (steps * (n - steps + 1) * (1 - steps / n)) / short, ""
-
-
-def _day_character(scene: Scene, ls: LabelSet) -> None:
-    """The day's variance ratio (_variance_ratio) against the same ratio at this minute on the prior sessions: in the
-    top third moves have built on each other more than usual for this time of day, in the bottom third they have
-    cancelled more."""
-    ratio, why = _variance_ratio(scene.bars, scene.now)
-    if ratio is None:
-        ls.omit("price.day_character", why)
-        return
-    rank, why = rank_sessions(ratio, same_clock_values(scene, lambda bars, then, sigma: _variance_ratio(bars, then)[0]),
-                              "an hour of 5-minute returns since 10:00 at this minute")
-    if rank is None:
-        ls.omit("price.day_character", why)
-        return
-    word = {"bottom third": "cancelling", "middle third": "mixed", "top third": "building"}[rank.band]
-    ls.put("price.day_character", f"so far today, 30-minute stretches have been {ratio:.2f} times what their 5-minute pieces would suggest, "
-                                  f"{_against(rank, 'higher')}: {word}")
+    ratio = overlapping / (steps * (n - steps + 1) * (1 - steps / n)) / short
+    lead = f"so far today, 30-minute stretches have been {ratio:.2f} times"
+    if ratio > VR_TREND:
+        ls.put("price.day_character", f"{lead} larger than their 5-minute pieces would suggest, above the {VR_TREND:.2f} building line")
+    elif ratio < VR_PIN:
+        ls.put("price.day_character", f"{lead} as large as their 5-minute pieces would suggest, below the {VR_PIN:.2f} cancelling line")
+    else:
+        ls.put("price.day_character", f"{lead} what their 5-minute pieces would suggest, between the {VR_PIN:.2f} cancelling line "
+                                      f"and the {VR_TREND:.2f} building line")
 
 
 def _day_move(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
@@ -497,29 +418,33 @@ def _day_move(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
         ls.omit("price.day_move", "no settled open yet: the 09:34 bar has not finished")
         return
     d = (scene.spot - opened) / anchor.points
-    rank, why = move_rank(scene, d, _minutes_since_bar(scene, SETTLED_OPEN_BAR))
-    if rank is None:
-        ls.omit("price.day_move", why)
+    lead = f"since the settled 09:35 open SPX has {'risen' if d > 0 else 'fallen'} {sig(abs(d))}"
+    if abs(d) > OPEN_DAY_MOVE_SIGMA:
+        rules = f"more than the {MOVE_RULE_SIGMA} sigma move rule and past the {OPEN_DAY_MOVE_SIGMA:.2f} sigma open-day line"
+    elif abs(d) > MOVE_RULE_SIGMA:
+        rules = f"more than the {MOVE_RULE_SIGMA} sigma move rule and within the {OPEN_DAY_MOVE_SIGMA:.2f} sigma open-day line"
+    else:
+        lead = f"since the settled 09:35 open SPX has moved {signed(d)} sigma"
+        rules = f"within the {MOVE_RULE_SIGMA} sigma move rule and the {OPEN_DAY_MOVE_SIGMA:.2f} sigma open-day line"
+    ls.put("price.day_move", ruled(anchor, f"{lead}, {rules}"))
+
+
+def _day_move_split(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
+    pc, opened = scene.row.get("prior_close"), settled_open(scene.bars)
+    if not is_num(pc) or pc <= 0:
+        ls.omit("price.day_move_split", "row carries no prior close")
         return
-    ls.put("price.day_move", ruled(anchor, f"since the settled 09:35 open SPX has {_since(d, rank)}"))
-
-
-def _day_move_split(scene: Scene, anchor: SigmaRuler, to_close: Ranked, ls: LabelSet) -> None:
-    """The day's distance from yesterday's close, sized against the same minute on the prior sessions, split into the
-    opening gap and the trading since the open; once it is away from the close, which of the two made most of it."""
-    opened = settled_open(scene.bars)
-    if to_close.value is not None and opened is None:
+    if opened is None:
         ls.omit("price.day_move_split", "no settled open yet: the 09:34 bar has not finished")
         return
-    if to_close.rank is None:
-        ls.omit("price.day_move_split", to_close.why)
-        return
-    a, pc, day, rank = anchor.points, float(scene.row["prior_close"]), to_close.value, to_close.rank
-    gap, since = (opened - pc) / a, (scene.spot - opened) / a
-    text = (f"SPX is {sig(abs(day))} {'above' if day >= 0 else 'below'} yesterday's close, {_against(rank, 'further from it')}: "
-            f"{DISTANCE_WORDS[rank.band]}; {sig(abs(gap))} {'up' if gap >= 0 else 'down'} came from the opening gap and "
+    a = anchor.points
+    day, gap, since = (scene.spot - float(pc)) / a, (opened - float(pc)) / a, (scene.spot - opened) / a
+    side = "above" if day >= 0 else "below"
+    rule = "more than" if abs(day) > DAY_SIDE_SIGMA else "within"
+    text = (f"SPX is {sig(abs(day))} {side} yesterday's close, {rule} the {DAY_SIDE_SIGMA:.2f} sigma day-side rule: "
+            f"{sig(abs(gap))} {'up' if gap >= 0 else 'down'} came from the opening gap and "
             f"{sig(abs(since))} {'up' if since >= 0 else 'down'} from trading since the open")
-    if rank.band != "bottom third":
+    if abs(day) > DAY_SIDE_SIGMA:
         share = gap / day
         if share >= GAP_HALF_SHARE:
             text += f", so the gap is {pct(share)} of the day's move, at least half: most of it came from the gap"
@@ -530,61 +455,34 @@ def _day_move_split(scene: Scene, anchor: SigmaRuler, to_close: Ranked, ls: Labe
     ls.put("price.day_move_split", ruled(anchor, text))
 
 
-def _hour_crosses(bars: list[dict], then: datetime) -> int | None:
-    """How often the 1-minute closes of the hour to ``then`` crossed their own mean; None without HOUR_MIN_BARS bars in
-    the hour and one finished before it."""
-    back = then - timedelta(minutes=WINDOW_60_MIN)
-    win = bars_finished_between(bars, back, then)
-    if close_at(bars, back) is None or len(win) < HOUR_MIN_BARS:
-        return None
+def _hour_one_way(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
+    back = scene.now - timedelta(minutes=WINDOW_60_MIN)
+    ref = close_at(scene.bars, back)
+    win = bars_finished_between(scene.bars, back, scene.now)
+    if ref is None or len(win) < HOUR_MIN_BARS:
+        ls.omit("price.hour_one_way", f"needs {HOUR_MIN_BARS} finished bars in the last {WINDOW_60_MIN} minutes and one before them")
+        return
+    d = (scene.spot - ref) / anchor.points
     closes = [float(b["close"]) for b in win]
     mean = statistics.fmean(closes)
     sides = [c > mean for c in closes if c != mean]
-    return sum(1 for a, b in zip(sides, sides[1:]) if a != b)
+    crosses = sum(1 for a, b in zip(sides, sides[1:]) if a != b)
+    size = "past" if abs(d) >= ONE_WAY_HOUR_SIGMA else "short of"
+    count = "fewer than" if crosses < ONE_WAY_CROSSES else "at or past"
+    ls.put("price.hour_one_way", ruled(anchor, f"over the last {WINDOW_60_MIN} minutes price {_went(d)} and crossed its own hourly average "
+                                               f"{plural(crosses, 'time')}, {count} the {ONE_WAY_CROSSES}-cross one-way rule, "
+                                               f"{size} the {ONE_WAY_HOUR_SIGMA:.2f} sigma one-way size"))
 
 
-def _hour_one_way(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
-    """The hour's move and how often it crossed its own average, each against the same hour on the prior sessions:
-    a move out of the bottom third is a move, and crosses in the bottom third are one-way."""
-    crosses = _hour_crosses(scene.bars, scene.now)
-    if crosses is None:
-        ls.omit("price.hour_one_way", f"needs {HOUR_MIN_BARS} finished bars in the last {WINDOW_60_MIN} minutes and one before them")
-        return
-    d = (scene.spot - close_at(scene.bars, scene.now - timedelta(minutes=WINDOW_60_MIN))) / anchor.points
-    size, why = move_rank(scene, d, WINDOW_60_MIN)
-    if size is None:
-        ls.omit("price.hour_one_way", why)
-        return
-    count, why = rank_sessions(crosses, same_clock_values(scene, lambda bars, then, sigma: _hour_crosses(bars, then)),
-                               "an hour of bars at this minute")
-    if count is None:
-        ls.omit("price.hour_one_way", why)
-        return
-    way = "one-way" if count.band == "bottom third" else "two-way"
-    ls.put("price.hour_one_way", ruled(anchor, f"over the last {WINDOW_60_MIN} minutes price {_went(d)}, {_against(size, 'larger')}: "
-                                               f"{MOVE_WORDS[size.band]}; it crossed its own hourly average {plural(crosses, 'time')}, "
-                                               f"{_against(count, 'more often')}: {way}"))
-
-
-def _half_hour_efficiency(bars: list[dict], then: datetime) -> float | None:
-    """The path efficiency (measures.path_efficiency) of the half hour to ``then``, from the close before it through
-    each minute's close; None without 20 bars in it."""
-    back = then - timedelta(minutes=WINDOW_30_MIN)
-    ref, win = close_at(bars, back), bars_finished_between(bars, back, then)
-    return path_efficiency([ref] + [float(b["close"]) for b in win]) if ref is not None and len(win) >= 20 else None
-
-
-def _move_shape(scene: Scene, anchor: SigmaRuler, move30: Ranked, ls: LabelSet) -> None:
+def _move_shape(scene: Scene, anchor: SigmaRuler, move30: float | None, no_move: str | None, ls: LabelSet) -> None:
     """How the half hour's move was made: the largest of its six 5-minute chunks as a share of the net move,
-    and its path efficiency, the net move over the distance the minute closes travelled, against the same half
-    hour on the prior sessions: in the bottom third it was choppy."""
-    if move30.rank is None:
-        ls.omit("price.move_shape", f"no 30-minute move to shape: {move30.why}")
+    and its path efficiency, the net move over the distance the minute closes travelled."""
+    if move30 is None:
+        ls.omit("price.move_shape", f"no 30-minute move to shape: {no_move}")
         return
-    d, size = move30.value, move30.rank
-    if size.band == "bottom third":
-        ls.put("price.move_shape", ruled(anchor, f"the last half hour moved {signed(d)} sigma, {_against(size, 'larger')}: "
-                                                 f"no real move to shape"))
+    if abs(move30) <= MOVE_RULE_SIGMA:
+        ls.put("price.move_shape", ruled(anchor, f"the last half hour moved {signed(move30)} sigma, within the {MOVE_RULE_SIGMA} sigma move rule: "
+                                                 f"no move to shape"))
         return
     back = scene.now - timedelta(minutes=WINDOW_30_MIN)
     marks = [close_at(scene.bars, back + timedelta(minutes=CHUNK_MIN * k)) for k in range(WINDOW_30_MIN // CHUNK_MIN)] + [scene.spot]
@@ -594,54 +492,50 @@ def _move_shape(scene: Scene, anchor: SigmaRuler, move30: Ranked, ls: LabelSet) 
         return
     net = scene.spot - marks[0]
     burst = max((b - a) / net for a, b in zip(marks, marks[1:]))
-    efficiency = path_efficiency([marks[0]] + [float(b["close"]) for b in win] + [scene.spot])
-    path, why = rank_sessions(efficiency, same_clock_values(scene, lambda bars, then, sigma: _half_hour_efficiency(bars, then)),
-                              "a half hour of bars at this minute")
-    if path is None:
-        ls.omit("price.move_shape", why)
-        return
+    path = [marks[0]] + [float(b["close"]) for b in win] + [scene.spot]
+    efficiency = path_efficiency(path)
     burst_line = "past" if burst >= MOVE_BURST_SHARE else "short of"
-    ls.put("price.move_shape", ruled(anchor, f"the last half hour {_went(d)}, {_against(size, 'larger')}: {MOVE_WORDS[size.band]}; one "
-                                             f"5-minute stretch made {pct(burst)} of it, {burst_line} the {pct(MOVE_BURST_SHARE)} burst line; "
-                                             f"its net move was {efficiency:.2f} of the distance travelled, {_against(path, 'more one-way')}"
-                                             + (": choppy" if path.band == "bottom third" else "")))
+    choppy_line = "under" if efficiency < PATH_CHOPPY else "above"
+    ls.put("price.move_shape", ruled(anchor, f"the last half hour {_went(move30)}; one 5-minute stretch made {pct(burst)} of it, {burst_line} the "
+                                             f"{pct(MOVE_BURST_SHARE)} burst line; its net move was {efficiency:.2f} of the distance travelled, "
+                                             f"{choppy_line} the {PATH_CHOPPY:.2f} choppy line"))
 
 
-def _prior_close_push(scene: Scene, anchor: SigmaRuler, move30: Ranked, to_close: Ranked, ls: LabelSet) -> None:
-    """The half hour's move against yesterday's close, where price sits from it, and whether the closes crossed it in
-    the half hour and today; prior_close_push_fade is awake only on a push toward it that is a move (out of the bottom
-    third of the same half hour on the prior sessions) and ends near the close (the bottom third of the same distance)
-    or crossed it."""
-    if to_close.value is None or move30.rank is None or to_close.rank is None:
-        why = to_close.why if to_close.value is None or move30.rank is not None else f"no 30-minute move to judge: {move30.why}"
+def _prior_close_push(scene: Scene, anchor: SigmaRuler, move30: float | None, no_move: str | None, ls: LabelSet) -> None:
+    """The half hour's move against yesterday's close, where price sits from it, and whether the closes
+    crossed it in the half hour and today; prior_close_push_fade is awake only on a push toward it past the
+    move rule that ends within the push distance or crossed it."""
+    pc = scene.row.get("prior_close")
+    if not is_num(pc) or pc <= 0 or move30 is None:
+        why = "row carries no prior close" if not is_num(pc) or pc <= 0 else f"no 30-minute move to judge: {no_move}"
         ls.omit("price.prior_close_push", why)
         ls.sleep("prior_close_push_fade", why)
         return
-    d, size, dist, near = move30.value, move30.rank, to_close.value, to_close.rank
-    pc = float(scene.row["prior_close"])
+    pc, a = float(pc), anchor.points
     back = scene.now - timedelta(minutes=WINDOW_30_MIN)
     ref = close_at(scene.bars, back)
-    toward = (pc - ref) * d > 0
+    toward = (pc - ref) * move30 > 0
+    dist = (scene.spot - pc) / a
     started_below = ref < pc
     half_hour = [ref] + [float(b["close"]) for b in bars_finished_between(scene.bars, back, scene.now)] + [scene.spot]
     today = [float(scene.bars[0]["open"])] + [float(b["close"]) for b in scene.bars] + [scene.spot]
     crossed_now = any((x < pc) != (y < pc) for x, y in zip(half_hour, half_hour[1:]))
     crossed_today = any((x < pc) != (y < pc) for x, y in zip(today, today[1:]))
-    text = (f"over the last 30 minutes price {_went(d)} {'toward' if toward else 'away from'} yesterday's close, "
-            f"{_against(size, 'larger')}: {MOVE_WORDS[size.band]}; it now sits {sig(abs(dist))} {'above' if dist >= 0 else 'below'} it, "
-            f"{_against(near, 'further from it')}: {DISTANCE_WORDS[near.band]}")
+    rule = "past" if abs(move30) > MOVE_RULE_SIGMA else "within"
+    inside = "inside" if abs(dist) <= CLOSE_PUSH_SIGMA else "beyond"
+    text = (f"over the last 30 minutes price {_went(move30)} {'toward' if toward else 'away from'} yesterday's close, {rule} the "
+            f"{MOVE_RULE_SIGMA} sigma move rule; it now sits {sig(abs(dist))} {'above' if dist >= 0 else 'below'} it, {inside} the "
+            f"{CLOSE_PUSH_SIGMA} sigma push distance")
     if crossed_now:
         through = (scene.spot < pc) != started_below
         text += f"; it crossed it in the last 30 minutes and is {'still through it' if through else 'back on its starting side'}"
     else:
         text += "; it has not crossed it in the last 30 minutes" + (", though it did earlier today" if crossed_today else " or today")
     ls.put("price.prior_close_push", ruled(anchor, text))
-    if not toward or size.band == "bottom third":
-        ls.sleep("prior_close_push_fade", "the last 30 minutes made no real move toward yesterday's close: none toward it, or one in the "
-                                          "bottom third of the same half hour on the prior sessions")
-    elif near.band != "bottom third" and not crossed_now:
-        ls.sleep("prior_close_push_fade", "price is not near yesterday's close (out of the bottom third of the same distance on the prior "
-                                          "sessions) and has not crossed it in the last 30 minutes")
+    if not (toward and abs(move30) > MOVE_RULE_SIGMA):
+        ls.sleep("prior_close_push_fade", f"the last 30 minutes did not move toward yesterday's close past the {MOVE_RULE_SIGMA} sigma move rule")
+    elif abs(dist) > CLOSE_PUSH_SIGMA and not crossed_now:
+        ls.sleep("prior_close_push_fade", f"price is beyond {CLOSE_PUSH_SIGMA} sigma of yesterday's close and has not crossed it in the last 30 minutes")
     else:
         ls.wake("prior_close_push_fade")
 
@@ -669,23 +563,24 @@ def _session_extreme_recent(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> N
     ls.put("price.session_extreme_recent", ruled(anchor, "; ".join(words for _, words in sorted(found, reverse=True))))
 
 
-def _vwap_reach(scene: Scene, anchor: SigmaRuler, to_average: Ranked, ls: LabelSet) -> None:
-    """How far the day's average is, in sigma and in typical 30-minute moves; average_reach_30 is awake only while
-    price is away from it: out of the bottom third of the same distance on the prior sessions."""
-    if to_average.rank is None:
-        ls.omit("price.vwap_reach", to_average.why)
-        ls.sleep("average_reach_30", to_average.why)
+def _vwap_reach(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
+    """How far the day's average is, in sigma and in typical 30-minute moves; average_reach_30 is awake
+    only while price is more than the move rule from it."""
+    vwap = scene.row.get("vwap")
+    if not is_num(vwap) or vwap <= 0:
+        ls.omit("price.vwap_reach", "row carries no vwap")
+        ls.sleep("average_reach_30", "row carries no vwap")
         return
-    d, rank = -to_average.value, to_average.rank
-    if rank.band == "bottom third":
-        ls.sleep("average_reach_30", "price is near the day's volume-weighted average price: in the bottom third of the same distance "
-                                     "on the prior sessions at this minute")
+    d = (float(vwap) - scene.spot) / anchor.points
+    if abs(d) <= MOVE_RULE_SIGMA:
+        ls.sleep("average_reach_30", f"price is within {MOVE_RULE_SIGMA} sigma of the day's volume-weighted average price")
     else:
         ls.wake("average_reach_30")
     reach, how = typical_move(scene, anchor, WINDOW_30_MIN)
     if reach is None:
         ls.omit("price.vwap_reach", how)
         return
+    rule = "past" if abs(d) > MOVE_RULE_SIGMA else "within"
     ls.put("price.vwap_reach", ruled(anchor, f"the day's volume-weighted average price is {sig(abs(d))} {'above' if d >= 0 else 'below'} price, "
-                                             f"{_against(rank, 'further')}: {DISTANCE_WORDS[rank.band]}, {abs(d) * anchor.points / reach:.1f} "
-                                             f"typical 30-minute moves away"))
+                                             f"{rule} the {MOVE_RULE_SIGMA} sigma move rule, {abs(d) * anchor.points / reach:.1f} typical "
+                                             f"30-minute moves away"))
