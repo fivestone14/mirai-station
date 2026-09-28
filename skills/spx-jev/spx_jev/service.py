@@ -96,6 +96,11 @@ BAR_POLL_S = 2.0
 # every 75 s), so whether it gets its 30-minute labels never rests on when the scanner last looked.
 FIRST_WINDOW_MIN = 31
 ROW_WAIT_S = 90
+# JEV's round trips for one read end well inside the tape lane's 5-minute slot however JEV fails (ask.send): the
+# groups retry only until SEND_GROUPS_S after the read's first request, room for three tries after two timeouts,
+# and the sums only until SEND_READ_S, so a read's sends take under a minute at worst.
+SEND_GROUPS_S = 35.0
+SEND_READ_S = 58.0
 
 
 def log(msg: str) -> None:
@@ -178,11 +183,11 @@ def answer_entry(a: dict) -> dict:
 
 def sum_the_hour(doc: dict, hour_doc: dict, answered: dict[str, dict], weights: QuestionWeights,
                  fresh: dict[str, dict] | None = None, missing: list[str] | None = None,
-                 lane: Lane = LIVE, unit: dict | None = None) -> tuple[dict, dict | None, dict | None]:
+                 lane: Lane = LIVE, unit: dict | None = None, deadline: float | None = None) -> tuple[dict, dict | None, dict | None]:
     """Steps 3 and 4: sentences from the answers, the lane's sum questions over them, one reply from
-    JEV. Returns the hour record (what was used, what was fresh, what was left out or missing, the
-    request), JEV's summary and its reply untouched, for the archive. A lane on the tape needs its
-    ``unit`` to price the bands: without one there is no sum to ask."""
+    JEV, retried until ``deadline`` (ask.send). Returns the hour record (what was used, what was fresh,
+    what was left out or missing, the request), JEV's summary and its reply untouched, for the archive.
+    A lane on the tape needs its ``unit`` to price the bands: without one there is no sum to ask."""
     sentences, left_out = answer_sentences(doc, answered, weights)
     fresh = fresh if fresh is not None else answered
     by_id = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
@@ -196,7 +201,7 @@ def sum_the_hour(doc: dict, hour_doc: dict, answered: dict[str, dict], weights: 
         return {**base, "request": None, "no_sum": "no tape unit this read: the bars have stopped, so the bands cannot be priced"}, None, None
     req = hour_request(sentences, hour_doc, lane=lane, ruler=unit)
     try:
-        reply = send(req)
+        reply = send(req, deadline=deadline)
     except Exception as e:  # send() scrubs the key and turns the network into RuntimeError; be safe anyway
         reply = {"error": str(e) if isinstance(e, RuntimeError) else f"{type(e).__name__}: {e}"}
     return {**base, "request": req}, hour_summary(reply, lane), reply
@@ -491,7 +496,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
     answers, send_seconds, hour, hour_rec, hour_reply = None, None, None, None, None
     if do_send:
         t0 = _clock.monotonic()
-        answers = send_all(requests)
+        answers = send_all(requests, deadline=t0 + SEND_GROUPS_S)
         for r in requests:
             err = (answers.get(r["id"]) or {}).get("error")
             if not err:
@@ -514,7 +519,8 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
                    if qid in live_ids and str(why).startswith("missing") and qid not in held
                    and not labels.ended.intersection(missing_paths(str(why)))]
         hour_doc = load_hour_doc(lane=lane)
-        hour_rec, hour, hour_reply = sum_the_hour(doc, hour_doc, answered, QuestionWeights.load(out_dir), fresh, missing, lane, unit)
+        hour_rec, hour, hour_reply = sum_the_hour(doc, hour_doc, answered, QuestionWeights.load(out_dir), fresh, missing, lane, unit,
+                                                  t0 + SEND_READ_S)
         send_seconds = round(_clock.monotonic() - t0, 3)      # JEV's round trips only; the blend below is code
         if hour is not None and lane.clock_blend:
             # the sum the phone shows and the grader scores is JEV's sum blended half and half with

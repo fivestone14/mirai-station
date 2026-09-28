@@ -239,10 +239,11 @@ def save_the_night(state_dir: Path, now: datetime) -> dict:
 
 # ---- the read ------------------------------------------------------------------------------------
 
-def sum_the_read(doc: dict, fresh: dict[str, dict], missing: list[str], out_dir: Path) -> tuple[dict, dict | None, dict | None]:
+def sum_the_read(doc: dict, fresh: dict[str, dict], missing: list[str], out_dir: Path,
+                 deadline: float | None = None) -> tuple[dict, dict | None, dict | None]:
     """Steps 3 and 4 before the open: the read's answers as sentences, and the two sums over them from the
-    settled open (SUM_CONTEXT says so in the request). Returns what service.sum_the_hour returns: the hour
-    record, JEV's summary, and its reply untouched."""
+    settled open (SUM_CONTEXT says so in the request), retried until ``deadline`` (ask.send). Returns what
+    service.sum_the_hour returns: the hour record, JEV's summary, and its reply untouched."""
     sentences, left_out = answer_sentences(doc, fresh, QuestionWeights.load(out_dir))
     by_id = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
     base = {"used": {qid: fresh[qid]["pick"] for qid in sentences},
@@ -252,7 +253,7 @@ def sum_the_read(doc: dict, fresh: dict[str, dict], missing: list[str], out_dir:
         return {**base, "request": None}, None, None
     req = hour_request(sentences, load_hour_doc(lane=PREMARKET), context=SUM_CONTEXT, lane=PREMARKET)
     try:
-        reply = send(req)
+        reply = send(req, deadline=deadline)
     except Exception as e:  # send() scrubs the key and turns the network into RuntimeError; be safe anyway
         reply = {"error": str(e) if isinstance(e, RuntimeError) else f"{type(e).__name__}: {e}"}
     return {**base, "request": req}, hour_summary(reply, PREMARKET), reply
@@ -284,7 +285,7 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
     answers = send_seconds = hour = hour_rec = hour_reply = None
     if do_send and requests:
         t0 = _clock.monotonic()
-        answers = send_all(requests)
+        answers = send_all(requests, deadline=t0 + service.SEND_GROUPS_S)
         for r in requests:
             if err := (answers.get(r["id"]) or {}).get("error"):
                 service.log(f"group {r['id']} got no answer: {err}")
@@ -294,7 +295,7 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
         missing = [qid for g in skipped.values() for qid, why in g.items()
                    if by_id.get(qid, {}).get("status") == "live" and str(why).startswith("missing")
                    and not labels.ended.intersection(missing_paths(str(why)))]
-        hour_rec, hour, hour_reply = sum_the_read(doc, fresh, missing, out_dir)
+        hour_rec, hour, hour_reply = sum_the_read(doc, fresh, missing, out_dir, t0 + service.SEND_READ_S)
         send_seconds = round(_clock.monotonic() - t0, 3)
         if hour is not None and PREMARKET.clock_blend:
             # each sum blended half and half with how the same window after the settled open ended on prior sessions

@@ -188,19 +188,33 @@ def build_requests(state: dict, doc: dict, skip: dict[str, str] | None = None,
     return requests, skipped
 
 
-RETRY_HTTP = (429, 500, 502, 503, 504, 529)    # a second try is worth it; a 4xx is not (529 is TypeSafe's "overloaded")
-# TypeSafe asks for a pause before retrying a 429 or 529 rather than an immediate retry: wait its Retry-After,
-# else RETRY_WAIT_S, never more than RETRY_WAIT_MAX_S, so a five-minute read is never held up for long.
+RETRY_HTTP = (429, 500, 502, 503, 504, 529)    # another try is worth it; a 4xx is not (529 is TypeSafe's "overloaded")
+RETRIES = 2
+# TypeSafe asks for a pause before retrying a 429 or 529 rather than an immediate retry: the first retry waits
+# its Retry-After, else RETRY_WAIT_S, never more than RETRY_WAIT_MAX_S; a timeout or a dropped connection is
+# retried at once.
 RETRY_WAIT_S = 1.0
 RETRY_WAIT_MAX_S = 2.0
+# Every later retry comes a few seconds on, whatever failed: on 09-28 a try straight after a failure often met
+# the same stuck or overloaded JEV, and a few seconds later it had cleared. Its Retry-After is honoured within
+# these bounds, so a five-minute read is never held up for long.
+LAST_RETRY_WAIT_S = 4.0
+LAST_RETRY_WAIT_MIN_S = 3.0
+LAST_RETRY_WAIT_MAX_S = 5.0
 
 
-def retry_wait(headers) -> float:
-    """Seconds to wait before retrying an HTTP error: its Retry-After in seconds, capped; RETRY_WAIT_S without one."""
+def retry_wait(headers, attempt: int = 1) -> float:
+    """Seconds to wait before retry number ``attempt``: an HTTP error's Retry-After in seconds within the
+    retry's bounds, else the retry's own pause. ``headers`` is None for a timeout or a dropped connection,
+    which the first retry does not wait for."""
+    late = attempt > 1
+    if headers is None and not late:
+        return 0.0
+    low, default, high = (LAST_RETRY_WAIT_MIN_S, LAST_RETRY_WAIT_S, LAST_RETRY_WAIT_MAX_S) if late else (0.0, RETRY_WAIT_S, RETRY_WAIT_MAX_S)
     try:
-        return max(0.0, min(float((headers or {}).get("Retry-After")), RETRY_WAIT_MAX_S))
+        return max(low, min(float((headers or {}).get("Retry-After")), high))
     except (TypeError, ValueError):
-        return RETRY_WAIT_S
+        return default
 
 
 def _scrub(text: str, key: str | None) -> str:
@@ -209,16 +223,31 @@ def _scrub(text: str, key: str | None) -> str:
 
 
 def send(request: dict, api_key: str | None = None, timeout: float = 10.0, url: str = JEV_URL,
-         model: str = JEV_MODEL, retries: int = 1) -> dict:
-    """POST one request to JEV and return the parsed answer. One more try on a timeout, a dropped
-    connection or a 429/5xx, after a short pause on an HTTP error (retry_wait). Every failure becomes a RuntimeError with the key scrubbed out, so a
-    caller that catches RuntimeError has caught everything the network can throw."""
+         model: str = JEV_MODEL, retries: int = RETRIES, deadline: float | None = None) -> dict:
+    """POST one request to JEV and return the parsed answer. Up to ``retries`` more tries on a timeout, a
+    dropped connection or a 429/5xx, each after its pause (retry_wait); with a ``deadline`` (a time.monotonic()
+    reading) a retry is made only when its pause and a full ``timeout`` end by it. Every failure becomes a
+    RuntimeError with the key scrubbed out, so a caller that catches RuntimeError has caught everything the
+    network can throw."""
     key = api_key or os.environ.get(API_KEY_ENV)
     if not key:
         raise RuntimeError(f"set {API_KEY_ENV} in the environment before sending")
     body = json.dumps({"model": model, "state": request["state"], "questions": request["questions"]}).encode("utf-8")
+
+    def another_try(attempt: int, headers) -> bool:
+        """Pause for retry ``attempt`` and say yes, or say no when there is none left or no time for it."""
+        if attempt > retries:
+            return False
+        pause = retry_wait(headers, attempt)
+        if deadline is not None and time.monotonic() + pause + timeout > deadline:
+            return False
+        if pause:
+            time.sleep(pause)
+        return True
+
     attempt = 0
     while True:
+        attempt += 1
         req = urllib.request.Request(url, data=body, method="POST", headers={
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
@@ -230,28 +259,30 @@ def send(request: dict, api_key: str | None = None, timeout: float = 10.0, url: 
         except urllib.error.HTTPError as e:
             # the body is quoted in the error; scrub before the cut so a key can never straddle it
             detail = _scrub(e.read().decode("utf-8", errors="replace"), key)[:400]
-            if e.code in RETRY_HTTP and attempt < retries:
-                attempt += 1
-                time.sleep(retry_wait(e.headers))
+            if e.code in RETRY_HTTP and another_try(attempt, e.headers or {}):
                 continue
-            raise RuntimeError(f"JEV returned HTTP {e.code} for group {request['id']}: {detail}") from None
+            raise RuntimeError(f"JEV returned HTTP {e.code} for group {request['id']}{_tries(attempt)}: {detail}") from None
         except (OSError, http.client.HTTPException) as e:
             # a timeout, a refused or dropped connection, a failed handshake (URLError is an OSError)
-            if attempt < retries:
-                attempt += 1
+            if another_try(attempt, None):
                 continue
-            raise RuntimeError(f"JEV unreachable for group {request['id']}: {type(e).__name__}: {_scrub(str(e), key)[:200]}") from None
+            raise RuntimeError(f"JEV unreachable for group {request['id']}{_tries(attempt)}: {type(e).__name__}: {_scrub(str(e), key)[:200]}") from None
         except ValueError as e:
             raise RuntimeError(f"JEV answered group {request['id']} with something that is not JSON: {_scrub(str(e), key)[:200]}") from None
 
 
+def _tries(n: int) -> str:
+    return f" after {n} tries" if n > 1 else ""
+
+
 def send_all(requests: list[dict], api_key: str | None = None, timeout: float = 10.0, workers: int = 12,
-             sender=None) -> dict[str, dict]:
+             sender=None, deadline: float | None = None) -> dict[str, dict]:
     """POST every request at the same time and return ``{request id: answer or {"error": ...}}``.
 
     JEV scores each question independently and the requests share nothing, so the
     round trips of a read collapse into one wait. A failed request records its
-    error and never blocks the others, whatever the failure was.
+    error and never blocks the others, whatever the failure was. ``deadline`` is
+    send's, for every request.
     """
     from concurrent.futures import ThreadPoolExecutor
     sender = sender or send
@@ -261,7 +292,7 @@ def send_all(requests: list[dict], api_key: str | None = None, timeout: float = 
 
     def one(req: dict) -> tuple[str, dict]:
         try:
-            return req["id"], sender(req, api_key=api_key, timeout=timeout)
+            return req["id"], sender(req, api_key=api_key, timeout=timeout, deadline=deadline)
         except Exception as e:  # one group must never take the whole read down
             msg = str(e) if isinstance(e, RuntimeError) else f"{type(e).__name__}: {e}"
             return req["id"], {"error": _scrub(msg, key)}

@@ -38,7 +38,7 @@ def _answers(failing=()):
     key in the message, so the scrub in send_all is what the test exercises."""
     from spx_jev.ask import send_all as real_send_all
 
-    def sender(r, api_key=None, timeout=10.0):
+    def sender(r, api_key=None, timeout=10.0, deadline=None):
         if r["id"] in failing:
             raise TimeoutError(f"handshake timed out, key {CANARY} not at fault")
         return {"model": "fake-1", "answers": {
@@ -108,7 +108,7 @@ def test_a_score_answer_reaches_the_card_the_store_and_the_sums_by_its_option_na
                                   "instructions": "Read `price.recent_move`.", "options": ["none", "small", "large"],
                                   "criteria": ["no move", "a small move", "a large move"]}}}]}
 
-    def sender(r, api_key=None, timeout=10.0):
+    def sender(r, api_key=None, timeout=10.0, deadline=None):
         return {"model": "fake-1", "answers": {"q_size": {
             "type": "score", "score": 1.1, "confidence": 0.6, "legend": {"0": "no move", "1": "a small move", "2": "a large move"},
             "probabilities": {"0": 0.2, "1": 0.7, "2": 0.1}}}}

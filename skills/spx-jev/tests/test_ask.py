@@ -207,16 +207,17 @@ def test_send_turns_every_network_failure_into_a_scrubbed_runtime_error(monkeypa
     import urllib.error
     from spx_jev import ask
     key = "apikey_" + "a" * 24 + "_" + "b" * 24
-    calls = []
+    calls, naps = [], []
 
     def urlopen_timeout(req, timeout=0):
         calls.append("t")
         raise TimeoutError("timed out")
     monkeypatch.setattr(ask.urllib.request, "urlopen", urlopen_timeout)
+    monkeypatch.setattr(ask.time, "sleep", naps.append)
     with pytest.raises(RuntimeError) as e:
         ask.send({"id": "g", "state": {}, "questions": {}}, api_key=key)
-    assert "unreachable" in str(e.value) and "TimeoutError" in str(e.value) and key not in str(e.value)
-    assert calls == ["t", "t"], "one retry on a timeout"
+    assert "unreachable" in str(e.value) and "after 3 tries" in str(e.value) and "TimeoutError" in str(e.value) and key not in str(e.value)
+    assert calls == ["t", "t", "t"] and naps == [4.0], "a timeout is retried at once, then once more a few seconds on"
 
     class Body:
         def read(self):
@@ -268,10 +269,94 @@ def test_an_overloaded_or_rate_limited_jev_is_retried_once_after_a_short_pause(m
     assert len(calls) == 2 and naps == [waited]
 
 
+class _Answer:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self):
+        return b'{"answers": {}}'
+
+
+class _Busy:
+    def read(self):
+        return b"busy"
+
+    def close(self):
+        pass
+
+
+@pytest.mark.parametrize("code, headers, waited", [(529, {}, [1.0, 4.0]), (503, {"Retry-After": "30"}, [2.0, 5.0]),
+                                                    (429, {"Retry-After": "0"}, [3.0])])
+def test_a_jev_still_failing_after_the_first_retry_is_tried_once_more_a_few_seconds_on(monkeypatch, code, headers, waited):
+    import urllib.error
+    from spx_jev import ask
+    calls, naps = [], []
+
+    def urlopen(req, timeout=0):
+        calls.append(req)
+        if len(calls) < 3:
+            raise urllib.error.HTTPError("u", code, "busy", headers, _Busy())
+        return _Answer()
+    monkeypatch.setattr(ask.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(ask.time, "sleep", naps.append)
+    assert ask.send({"id": "g", "state": {}, "questions": {}}, api_key="k") == {"answers": {}}
+    assert len(calls) == 3 and naps == waited
+
+
+class _Clock:
+    """time.monotonic and time.sleep for ask.send on one fake clock, a try that times out costing its timeout."""
+    def __init__(self):
+        self.t = 0.0
+
+    def monotonic(self):
+        return self.t
+
+    def sleep(self, s):
+        self.t += s
+
+
+def test_a_retry_is_made_only_when_it_can_end_by_the_deadline(monkeypatch):
+    from spx_jev import ask
+    clock, calls = _Clock(), []
+
+    def urlopen(req, timeout=0):
+        calls.append(clock.t)
+        clock.t += timeout
+        raise TimeoutError("timed out")
+    monkeypatch.setattr(ask.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(ask, "time", clock)
+    with pytest.raises(RuntimeError, match="after 2 tries"):
+        ask.send({"id": "g", "state": {}, "questions": {}}, api_key="k", deadline=25.0)
+    assert calls == [0.0, 10.0], "the last retry would end at 34 s, past the 25 s deadline"
+
+
+def test_a_read_whose_every_request_times_out_still_ends_inside_a_minute(monkeypatch):
+    """The worst read: every group request and the sums time out on every try. The groups get all three
+    tries inside SEND_GROUPS_S, the sums what is left of SEND_READ_S, and the read ends under 60 s."""
+    from spx_jev import ask, service
+    clock, tries = _Clock(), {}
+
+    def urlopen(req, timeout=0):
+        rid = json.loads(req.data)["questions"]
+        tries.setdefault(next(iter(rid)), []).append(clock.t)
+        clock.t += timeout
+        raise TimeoutError("timed out")
+    monkeypatch.setattr(ask.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(ask, "time", clock)
+    out = ask.send_all([{"id": "g", "state": {}, "questions": {"q": {}}}], api_key="k", deadline=service.SEND_GROUPS_S)
+    assert "after 3 tries" in out["g"]["error"] and tries["q"] == [0.0, 10.0, 24.0]
+    with pytest.raises(RuntimeError, match="after 2 tries"):
+        ask.send({"id": "hour", "state": {}, "questions": {"next_10": {}}}, api_key="k", deadline=service.SEND_READ_S)
+    assert tries["next_10"] == [34.0, 44.0] and clock.t < 60.0
+
+
 def test_send_all_sends_every_request_together_and_keeps_errors():
     from spx_jev.ask import send_all
 
-    def fake(req, api_key=None, timeout=10.0):
+    def fake(req, api_key=None, timeout=10.0, deadline=None):
         if req["id"] == "slow":
             raise TimeoutError("handshake operation timed out")
         return {"model": "jev-1", "answers": {q: {"type": "noul", "noul": 0.9} for q in req["questions"]}}
