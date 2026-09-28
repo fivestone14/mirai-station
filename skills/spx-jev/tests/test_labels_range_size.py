@@ -229,7 +229,7 @@ def _reach_scene(scene_factory, wick, em_points=16.4, day="2026-09-18", now=None
     return replace(scene, prior_rulers=_anchored(prior), state_dir=state_dir)
 
 
-def test_the_flat_band_against_a_typical_half_hour_and_hour_ranked_against_the_same_minute(scene_factory, tmp_path):
+def test_the_flat_band_against_a_typical_half_hour_ranked_against_the_same_minute_and_an_hour_as_a_figure(scene_factory, tmp_path):
     # 30 minutes: tape 3 points x sqrt(6) = 7.35, straddle 16.4 / 0.68 x sqrt(30 / 209.8) = 9.12: a typical 8.19 points, 0.11 sigma
     # 60 minutes: tape 3 points x sqrt(12) = 10.39, straddle 16.4 / 0.68 x sqrt(60 / 209.8) = 12.90: a typical 11.58 points, 0.15 sigma
     # the prior sessions with a wider tape (wicks past 1.5) have a larger typical move, so the band covers less of theirs
@@ -237,8 +237,7 @@ def test_the_flat_band_against_a_typical_half_hour_and_hour_ranked_against_the_s
     assert state["ruler.flat_band_reach"] == ("the next-30-minute flat band is 0.07 sigma; a typical 30-minute move now (tape and straddle "
                                               "combined) is 0.11 sigma, so the band covers 0.64 of it, more than on 6 of the last 10 "
                                               "sessions at this time of day, middle third; the next-60-minute flat band is 0.11 sigma; a "
-                                              "typical 60-minute move is 0.15 sigma, so the band covers 0.71 of it, more than on 6 of the "
-                                              "last 10 sessions at this time of day, middle third")
+                                              "typical 60-minute move is 0.15 sigma, so the band covers 0.71 of it")
     busy = _labels(_reach_scene(scene_factory, 4.0, state_dir=tmp_path))[0]["ruler.flat_band_reach"]
     assert "so the band covers 0.39 of it, more than on 0 of the last 10 sessions at this time of day, bottom third; " in busy
     dead = _labels(_reach_scene(scene_factory, 1.2, em_points=8.0, state_dir=tmp_path))[0]["ruler.flat_band_reach"]

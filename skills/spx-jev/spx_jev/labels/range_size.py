@@ -394,8 +394,9 @@ def _pace_vs_priced(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
 
 def _flat_band_reach(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
     """The flat band against a typical move now, for each horizon flat_band_reach is asked at: the next 30 and
-    60 minutes, each share ranked against the band's share of a typical move at this minute on the last
-    sessions (_prior_cover)."""
+    60 minutes. The 30-minute share is ranked against the band's share of a typical move at this minute on the
+    last sessions (_prior_cover); the 60-minute share is only a figure, since on every session its typical move
+    is the 30-minute one grown by the same clock-set factor, so its rank would repeat the 30-minute one."""
     clauses = []
     for minutes, band in ((WINDOW_30_MIN, NEXT_30_FLAT_BAND_SIGMA), (WINDOW_60_MIN, NEXT_60_FLAT_BAND_SIGMA)):
         reach, how = typical_move(scene, anchor, minutes)
@@ -404,16 +405,18 @@ def _flat_band_reach(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
             return
         typical = reach / anchor.points
         cover = band / typical
-        rank, why = rank_sessions(cover, same_clock_values(scene, _prior_cover(scene, band, minutes)),
-                                  f"a typical {minutes}-minute move at this minute")
-        if rank is None:
-            ls.omit("ruler.flat_band_reach", why)
-            return
         # both horizons combine the same sources, so only the first says which
         now = f"now ({how}) " if not clauses else ""
-        clauses.append(f"the next-{minutes}-minute flat band is {sig(band)}; a typical {minutes}-minute move {now}is {sig(typical)}, "
-                       f"so the band covers {cover:.2f} of it, more than on {rank.higher_than} of the last {rank.of} sessions at this "
-                       f"time of day, {rank.band}")
+        clause = (f"the next-{minutes}-minute flat band is {sig(band)}; a typical {minutes}-minute move {now}is {sig(typical)}, "
+                  f"so the band covers {cover:.2f} of it")
+        if minutes == WINDOW_30_MIN:
+            rank, why = rank_sessions(cover, same_clock_values(scene, _prior_cover(scene, band, minutes)),
+                                      f"a typical {minutes}-minute move at this minute")
+            if rank is None:
+                ls.omit("ruler.flat_band_reach", why)
+                return
+            clause += f", more than on {rank.higher_than} of the last {rank.of} sessions at this time of day, {rank.band}"
+        clauses.append(clause)
     ls.put("ruler.flat_band_reach", ruled(anchor, "; ".join(clauses)))
 
 
