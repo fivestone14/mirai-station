@@ -151,7 +151,7 @@ def test_the_options_tape_is_ranked_against_the_same_minute_and_omitted_when_the
     _, omitted = _labels(replace(full_scene, options_tape=stale))
     assert omitted["options.aggressor_side"].startswith("no reading of the 0DTE options tape")
     _, omitted = _labels(replace(full_scene, options_tape=options_tape_at(full_scene.now, prior_days=prior[:4])))
-    assert omitted["options.aggressor_side"] == "needs 5 prior sessions with an options tape reading at this minute, have 4"
+    assert omitted["options.aggressor_side"] == "its rank needs 10 prior sessions with an options tape reading at this minute, have 4"
 
 
 def _touch(kind, level, verdict=None, effort=None, status="engaged", outcome=None):

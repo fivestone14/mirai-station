@@ -18,7 +18,9 @@ The other sources: the collector's quote sweeps (``sweeps.jsonl`` beside the tap
 (``state/lob_flow/agg/{day}.jsonl``: the refill test and SPY's quote), the diary's same-day volume by strike,
 and SPY's volume by minute as the siege box keeps it (``state/siege/baseline.json``), since the market-context
 job saves SPY's quote live but not its minute bars. Every one is read point in time and ranked against the same
-minutes of the prior sessions, never a fixed size.
+minutes of up to the last 20 prior sessions, needing 10 of them (ranks.rank_sessions), never a fixed size: what a
+large trade is, which way premium leaned, how far the swing to calls went, how wide SPY's quote is, how near a
+contested strike sits and how well it was refilled.
 
 The final question set's labels a family does not write yet are listed after its built ones; each one's sentence,
 how it is computed and its source are in spec/question_set.json ``labels``, and the registry omits it as not built."""
@@ -27,21 +29,20 @@ from __future__ import annotations
 import gzip
 import json
 import statistics
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from functools import lru_cache
 from pathlib import Path
 
-from ..cuts import (BIG_LEAN_SHARE, BIG_MIN_PRINTS, BIG_PRINT_LOTS, BOTTOM_FIFTH, BUSIEST_STRIKE_SHARE, CALL_PUT_SHIFT_SHARE,
-                    DEFENSE_MIN_EVENTS, DEFENSE_NEAR_SIGMA, DEFENSE_REFILL_SHARE, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, FLOW_LEAN_RANK,
-                    MIN_RANK_SESSIONS, SPY_SPREAD_TIGHT, SPY_SPREAD_WIDE, THIN_VOLUME_PCT, THIRD_HI, THIRD_LO, TOP_FIFTH, TURNOVER_HIGH,
+from ..cuts import (BIG_MIN_PRINTS, BOTTOM_FIFTH, BUSIEST_STRIKE_SHARE, DEFENSE_MIN_EVENTS, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, FLOW_LEAN_RANK,
+                    HALF_RANK, NIGHT_RANK_COUNT, SAME_CLOCK_MIN_SESSIONS, SPY_SPREAD_TIGHT, THIN_VOLUME_PCT, TOP_FIFTH, TURNOVER_HIGH,
                     TURNOVER_LOW, WINDOW_10_MIN, WINDOW_30_MIN)
 from ..row_adapter import labeller_row
 from ..state_builder import (ET, OPTIONS_TAPE_MAX_AGE_MIN, OPTIONS_TAPE_SUBDIR, OPTIONS_TAPE_WINDOW_MIN, ROWS_SUBDIR, Scene, load_jsonl,
                              parse_ts)
 from .label_set import LabelSet
-from .measures import is_num, minute_of_day
-from .ranks import fifth, percentile, rank_against, rank_at_slot
+from .measures import close_at, is_num, minute_of_day
+from .ranks import fifth, rank_sessions, same_clock_values
 from .rulers import sigma_anchor
 from .vol_sources import TAPE_LINE_START, TAPE_RAW_SUBDIR, tape_path
 from .words import pct, plural, sig, signed
@@ -60,6 +61,9 @@ MULTI_LEG_CONDITIONS = range(130, 145)   # OPRA's multi-leg and stock-option tra
 AT_MID_TOLERANCE = 1e-6
 # The premium burst's window: the opening lane reads every 5 minutes, so a burst is the stretch since the last read.
 BURST_WINDOW_MIN = 5
+# A large trade is one at or above the size this share of the single trades in the same minutes stayed at or under on
+# the recent sessions: the largest one in a thousand, 40 to 60 lots at the open, some 10 to 30 trades in 10 minutes.
+BIG_PRINT_PCT = 0.999
 TAPE_LABELS = ("options.big_prints_10", "options.flow_lean_30", "options.premium_burst_5m", "options.premium_pace_30")
 # The diary writes a row about every 75 seconds: one further than this before the moment it stands for means the scanner paused.
 ROW_SLACK_MIN = 5
@@ -125,16 +129,16 @@ def _aggressor_side(scene: Scene, ls: LabelSet) -> None:
     now_et = scene.now.astimezone(ET)
     base = [r[0] for d in scene.prior_bars
             if (r := tape.at(now_et.replace(year=int(d[:4]), month=int(d[5:7]), day=int(d[8:10])))) is not None]
-    rank = rank_at_slot(tilt, base)
+    rank, why = rank_sessions(tilt, base, "an options tape reading at this minute")
     if rank is None:
-        ls.omit("options.aggressor_side", f"needs {MIN_RANK_SESSIONS} prior sessions with an options tape reading at this minute, have {len(base)}")
+        ls.omit("options.aggressor_side", why)
         return
     shown = round(tilt, 2) or 0.0          # the lean is the sign of the tilt as the sentence prints it
     lean = ("toward buying calls and selling puts" if shown > 0 else "toward buying puts and selling calls" if shown < 0 else "neither way")
     ls.put("options.aggressor_side",
            f"over the last {OPTIONS_TAPE_WINDOW_MIN} minutes the 0DTE options tape leaned {lean}, a tilt of {signed(tilt)} on a scale "
            f"from -1 to +1 with each trade weighted by its delta, resting on the {pct(determinate)} of that flow whose side could be told; "
-           f"in the {rank['band']} for this minute, higher than {rank['higher_than']} of {rank['of']} prior sessions")
+           f"in the {rank.band} for this minute, higher than {rank.higher_than} of {rank.of} prior sessions")
 
 
 def _new_activity(scene: Scene, gv: dict, ls: LabelSet) -> None:
@@ -181,9 +185,21 @@ def _new_contracts(books: list[tuple[datetime, Book]], end: datetime) -> tuple[B
     return now, sum(now[k][0] - then[k][0] for k in common), sum(now[k][1] - then[k][1] for k in common)
 
 
+def _call_shares(book: Book, calls: float, puts: float) -> tuple[float, float]:
+    """The call share of the new contracts and of the day's; the first less the second is the swing to calls."""
+    day_calls, day_puts = sum(c for c, _ in book.values()), sum(p for _, p in book.values())
+    return calls / (calls + puts), day_calls / (day_calls + day_puts)
+
+
+# The swing's verdict by the third it ranks in at this minute: a signed measure, its top third the calls' side.
+SHIFT_WORDS = {"top third": "a shift to calls for this time", "middle third": "no shift for this time",
+               "bottom third": "a shift to puts for this time"}
+
+
 def _call_put_shift_10m(scene: Scene, ls: LabelSet) -> None:
-    """The call share of the last 10 minutes' new same-day volume against the day's, and whether that new volume
-    is too thin to judge against the same 10 minutes of the prior sessions."""
+    """The call share of the last 10 minutes' new same-day volume against the day's, the swing between them ranked
+    against the same swing at this minute on the prior sessions, and whether that new volume is too thin to judge
+    against the same 10 minutes of the prior sessions."""
     books = [(parse_ts(r["ts"]), _book(r)) for r in scene.rows_today]
     got = _new_contracts(books, scene.now)
     if got is None:
@@ -203,25 +219,29 @@ def _call_put_shift_10m(scene: Scene, ls: LabelSet) -> None:
         ls.omit("options.call_put_shift_10m", "no state folder to read the prior sessions' diaries from")
         return
     clock = scene.now.astimezone(ET).time()
-    base = []
+    base_new, base_swing = [], []
     for d in scene.prior_bars:
         then = _new_contracts(_prior_books(scene.state_dir, d, clock), datetime.combine(date.fromisoformat(d), clock, tzinfo=ET))
         if then is not None:
-            base.append(then[1] + then[2])
-    rank = rank_against(new, base)
-    if rank is None:
-        ls.omit("options.call_put_shift_10m", f"needs {MIN_RANK_SESSIONS} prior sessions' diaries at this minute, have {len(base)}")
+            base_new.append(then[1] + then[2])
+            if then[1] + then[2] > 0:
+                new_share, day_share = _call_shares(*then)
+                base_swing.append(new_share - day_share)
+    what = "diary rows at this minute and 10 minutes before"
+    new_share, day_share = _call_shares(book, calls, puts)
+    thin_rank, why = rank_sessions(new, base_new, what)
+    shift_rank, shift_why = rank_sessions(new_share - day_share, base_swing, what)
+    if thin_rank is None or shift_rank is None:
+        ls.omit("options.call_put_shift_10m", why or shift_why)
         return
-    day_calls, day_puts = sum(c for c, _ in book.values()), sum(p for _, p in book.values())
-    new_share, day_share = calls / new, day_calls / (day_calls + day_puts)
     points = round(new_share * 100) - round(day_share * 100)      # the swing between the two shares as the sentence prints them
-    line_points = round(CALL_PUT_SHIFT_SHARE * 100)
-    swing = (f"a {abs(points)}-point swing to {'calls' if points > 0 else 'puts'}" if points else "no swing either way")
-    swing += f", {'past' if abs(points) > line_points else 'within'} the {line_points}-point shift line"
-    thin = ("new volume was above the too-thin line for this time, so it is not too thin to judge" if rank.share >= THIN_VOLUME_PCT else
-            f"new volume was under the too-thin line for this time, {rank.words()}, too thin to judge")
+    article = "an" if abs(points) in (8, 11, 18) or 80 <= abs(points) < 90 else "a"      # "an 11-point swing"
+    said = f"{article} {abs(points)}-point swing to {'calls' if points > 0 else 'puts'}" if points else "no swing either way"
+    thin = ("new volume was above the too-thin line for this time, so it is not too thin to judge" if thin_rank.share >= THIN_VOLUME_PCT else
+            f"new volume was under the too-thin line for this time, {thin_rank.words()}, too thin to judge")
     ls.put("options.call_put_shift_10m", f"in the last {WINDOW_10_MIN} minutes {pct(new_share)} of new same-day option volume was calls, "
-                                         f"against {pct(day_share)} since the open: {swing}; {thin}")
+                                         f"against {pct(day_share)} since the open: {said}, {shift_rank.words()}, "
+                                         f"{shift_rank.band}: {SHIFT_WORDS[shift_rank.band]}; {thin}")
 
 
 @lru_cache(maxsize=64)
@@ -256,20 +276,43 @@ def _prior_books(state_dir: Path, day: str, clock: time) -> list[tuple[datetime,
 # ----------------------------------------------------------------------------- the 0DTE tape
 
 @dataclass
+class SizeFlow:
+    """The single trades of one size, or of a size and up: how many printed, and the premium of those whose side
+    could be told, split by which way it leans."""
+    prints: int = 0
+    bullish: float = 0.0
+    bearish: float = 0.0
+
+    def add(self, other: SizeFlow) -> None:
+        self.prints += other.prints
+        self.bullish += other.bullish
+        self.bearish += other.bearish
+
+
+@dataclass
 class TapeFlow:
     """Premium traded over a stretch of the 0DTE tape, in dollars: all of it, and the single-leg part whose
-    side could be told, split by which way it leans (calls bought or puts sold is bullish); the same for the
-    single trades of BIG_PRINT_LOTS or more."""
+    side could be told, split by which way it leans (calls bought or puts sold is bullish); and the single trades
+    by their size in lots, so a large trade is told by the sizes of the prior sessions, not by a fixed size."""
     premium: float = 0.0
     bullish: float = 0.0
     bearish: float = 0.0
-    big_prints: int = 0
-    big_bullish: float = 0.0
-    big_bearish: float = 0.0
+    by_lots: dict[float, SizeFlow] = field(default_factory=dict)
 
     def add(self, other: TapeFlow) -> None:
-        for k, v in vars(other).items():
-            setattr(self, k, getattr(self, k) + v)
+        self.premium += other.premium
+        self.bullish += other.bullish
+        self.bearish += other.bearish
+        for lots, flow in other.by_lots.items():
+            self.by_lots.setdefault(lots, SizeFlow()).add(flow)
+
+    def from_lots(self, lots: float) -> SizeFlow:
+        """The single trades of ``lots`` or more, summed."""
+        out = SizeFlow()
+        for size, flow in self.by_lots.items():
+            if size >= lots:
+                out.add(flow)
+        return out
 
 
 @dataclass(frozen=True)
@@ -303,7 +346,7 @@ def _tape_labels(scene: Scene, ls: LabelSet) -> None:
         return
     prior = [m for d in scene.prior_bars if (m := tape_minutes(scene.state_dir, d, start, end, clock)) is not None]
     opened = minute_of_day(scene.session_open.astimezone(ET))
-    _big_prints_10(today, opened, end, ls)
+    _big_prints_10(today, prior, opened, end, ls)
     _flow_lean_30(today, prior, opened, end, ls)
     _premium_burst_5m(today, prior, opened, end, ls)
     _premium_pace_30(today, prior, opened, end, ls)
@@ -332,34 +375,68 @@ def _window(today: TapeMinutes, opened: int, end: int, minutes: int, path: str, 
     return w
 
 
-def _thin_base(base: list) -> str:
-    return f"needs {MIN_RANK_SESSIONS} prior sessions with a lob-flow tape at this minute, have {len(base)}"
+# What a tape rank's prior sessions need, as its omission names it.
+TAPE_AT_MINUTE = "a whole lob-flow tape at this minute"
+# A lean's verdict by the third its bullish share ranks in at this minute: a signed measure, its top third the bullish side.
+LEAN_WORDS = {"top third": "a bullish lean", "middle third": "no lean", "bottom third": "a bearish lean"}
 
 
-def _lean(bullish: float, bearish: float, of_what: str) -> str:
-    """Which side the premium whose side could be told leaned to, against the big_lean_share lean line."""
-    line = f"the {pct(BIG_LEAN_SHARE)} lean line"
+def _bullish_share(bullish: float, bearish: float) -> float | None:
+    """The share of the premium whose side could be told that was calls bought or puts sold; None when none could be told."""
     told = bullish + bearish
-    if told <= 0:
-        return f"neither side passed {line}: the side of none of {of_what} could be told"
-    bull, bear = bullish / told, bearish / told
-    of_told = f"{of_what} whose side could be told"
-    if bull > BIG_LEAN_SHARE:
-        return f"{pct(bull)} of {of_told} was calls bought or puts sold, past {line}"
-    if bear > BIG_LEAN_SHARE:
-        return f"{pct(bear)} of {of_told} was puts bought or calls sold, past {line}"
-    return f"neither side passed {line}: {pct(bull)} of {of_told} was calls bought or puts sold and {pct(bear)} puts bought or calls sold"
+    return bullish / told if told > 0 else None
 
 
-def _big_prints_10(today: TapeMinutes, opened: int, end: int, ls: LabelSet) -> None:
+def _lean(share: float | None, base: list[float], of_what: str, what: str) -> tuple[str | None, str | None]:
+    """Which way ``of_what`` leaned, by the third its bullish share ranks in against ``base``, the same share on the
+    prior sessions: the words, or None and why the rank could not be made (rank_sessions, with ``what``)."""
+    if share is None:
+        return f"the side of none of {of_what} could be told: no lean", None
+    rank, why = rank_sessions(share, base, what)
+    if rank is None:
+        return None, why
+    return (f"{pct(share)} of {of_what} whose side could be told was calls bought or puts sold, {rank.words()}, "
+            f"{rank.band}: {LEAN_WORDS[rank.band]}"), None
+
+
+def _big_print_lots(windows: list[TapeFlow]) -> float | None:
+    """The size in lots that BIG_PRINT_PCT of the single trades in ``windows``, pooled, stayed at or under: the
+    smallest large trade. None with no single trade."""
+    counts: dict[float, int] = {}
+    for w in windows:
+        for lots, flow in w.by_lots.items():
+            counts[lots] = counts.get(lots, 0) + flow.prints
+    need, seen = BIG_PRINT_PCT * sum(counts.values()), 0
+    for lots in sorted(counts):
+        seen += counts[lots]
+        if seen >= need and seen > 0:
+            return lots
+    return None
+
+
+def _big_prints_10(today: TapeMinutes, prior: list[TapeMinutes], opened: int, end: int, ls: LabelSet) -> None:
+    """The single trades of the last 10 minutes at or above the large-trade size of these minutes on the prior
+    sessions, and which way their premium leaned against the same trades' lean on those sessions."""
     w = _window(today, opened, end, WINDOW_10_MIN, "options.big_prints_10", ls)
     if w is None:
         return
-    trades = f"over the last {WINDOW_10_MIN} minutes {plural(w.big_prints, 'single near-price 0DTE trade')} of {BIG_PRINT_LOTS} lots or more printed"
-    if w.big_prints < BIG_MIN_PRINTS:
+    windows = [pw for p in prior if (pw := p.window(end - WINDOW_10_MIN, end)) is not None][:NIGHT_RANK_COUNT]
+    lots = _big_print_lots(windows)
+    if len(windows) < SAME_CLOCK_MIN_SESSIONS or lots is None:
+        ls.omit("options.big_prints_10", f"its large-trade size needs {SAME_CLOCK_MIN_SESSIONS} prior sessions with {TAPE_AT_MINUTE}, have {len(windows)}")
+        return
+    big = w.from_lots(lots)
+    trades = (f"over the last {WINDOW_10_MIN} minutes {plural(big.prints, 'single near-price 0DTE trade')} of {lots:g} lots or more printed, "
+              f"the largest {1 - BIG_PRINT_PCT:.1%} of single trades in these minutes on the last {len(windows)} sessions")
+    if big.prints < BIG_MIN_PRINTS:
         ls.put("options.big_prints_10", f"{trades}, fewer than the {BIG_MIN_PRINTS}-trade minimum")
         return
-    ls.put("options.big_prints_10", f"{trades}, at least the {BIG_MIN_PRINTS}-trade minimum; {_lean(w.big_bullish, w.big_bearish, 'their premium')}")
+    base = [v for pw in windows if (b := pw.from_lots(lots)).prints >= BIG_MIN_PRINTS and (v := _bullish_share(b.bullish, b.bearish)) is not None]
+    lean, why = _lean(_bullish_share(big.bullish, big.bearish), base, "their premium", f"{BIG_MIN_PRINTS} or more large trades at this minute")
+    if lean is None:
+        ls.omit("options.big_prints_10", why)
+        return
+    ls.put("options.big_prints_10", f"{trades}, at least the {BIG_MIN_PRINTS}-trade minimum; {lean}")
 
 
 def _signed_share(w: TapeFlow) -> float | None:
@@ -379,11 +456,11 @@ def _flow_lean_30(today: TapeMinutes, prior: list[TapeMinutes], opened: int, end
         ls.omit("options.flow_lean_30", f"the side of no near-price 0DTE trade in the last {WINDOW_30_MIN} minutes could be told")
         return
     base = [v for p in prior if (pw := p.window(end - WINDOW_30_MIN, end)) is not None and (v := _signed_share(pw)) is not None]
-    rank = rank_against(lean, base)
+    rank, why = rank_sessions(lean, base, TAPE_AT_MINUTE)
     if rank is None:
-        ls.omit("options.flow_lean_30", _thin_base(base))
+        ls.omit("options.flow_lean_30", why)
         return
-    beyond = round(lean - statistics.median(base), 2) or 0.0     # the side is the sign as the sentence prints it
+    beyond = round(lean - statistics.median(base[:rank.of]), 2) or 0.0     # the side is the sign as the sentence prints it
     side = "toward buying calls and selling puts" if beyond > 0 else "toward buying puts and selling calls"
     how = (f"leaned {side} by {abs(beyond):.2f} of signed premium {'above' if beyond > 0 else 'below'} its usual level" if beyond else
            "leaned no further either way than its usual level")
@@ -394,19 +471,20 @@ def _flow_lean_30(today: TapeMinutes, prior: list[TapeMinutes], opened: int, end
 
 
 def _premium_burst_5m(today: TapeMinutes, prior: list[TapeMinutes], opened: int, end: int, ls: LabelSet) -> None:
-    """The last 5 minutes' premium against the same minutes on the prior sessions, and which way it leaned; the
-    opening burst question wakes only for a top-fifth burst."""
+    """The last 5 minutes' premium against the same minutes on the prior sessions, and which way it leaned against
+    the same minutes' lean on those sessions, burst or not; the opening burst question wakes only for a top-fifth burst."""
     w = _window(today, opened, end, BURST_WINDOW_MIN, "options.premium_burst_5m", ls)
     if w is None:
         ls.sleep("opening_premium_burst", ls.omitted["options.premium_burst_5m"])
         return
-    base = [pw.premium for p in prior if (pw := p.window(end - BURST_WINDOW_MIN, end)) is not None and pw.premium > 0]
-    rank = rank_against(w.premium, base)
-    if rank is None:
-        ls.omit("options.premium_burst_5m", _thin_base(base))
-        ls.sleep("opening_premium_burst", _thin_base(base))
+    windows = [pw for p in prior if (pw := p.window(end - BURST_WINDOW_MIN, end)) is not None]
+    rank, why = rank_sessions(w.premium, [pw.premium for pw in windows if pw.premium > 0], TAPE_AT_MINUTE)
+    lean, lean_why = _lean(_bullish_share(w.bullish, w.bearish), [v for pw in windows if (v := _bullish_share(pw.bullish, pw.bearish)) is not None],
+                           "its premium", TAPE_AT_MINUTE)
+    if rank is None or lean is None:
+        ls.omit("options.premium_burst_5m", why or lean_why)
+        ls.sleep("opening_premium_burst", why or lean_why)
         return
-    lean = _lean(w.bullish, w.bearish, "its premium")
     head = f"in the last {BURST_WINDOW_MIN} minutes near-price 0DTE premium traded was"
     if rank.share >= TOP_FIFTH:
         ls.put("options.premium_burst_5m", f"{head} in the top fifth for these minutes, {rank.words()}; {lean}")
@@ -421,9 +499,9 @@ def _premium_pace_30(today: TapeMinutes, prior: list[TapeMinutes], opened: int, 
     if w is None:
         return
     base = [pw.premium for p in prior if (pw := p.window(end - WINDOW_30_MIN, end)) is not None and pw.premium > 0]
-    rank = rank_against(w.premium, base)
+    rank, why = rank_sessions(w.premium, base, TAPE_AT_MINUTE)
     if rank is None:
-        ls.omit("options.premium_pace_30", _thin_base(base))
+        ls.omit("options.premium_pace_30", why)
         return
     ls.put("options.premium_pace_30", f"near-price 0DTE premium traded in the last {WINDOW_30_MIN} minutes is {fifth(rank)} for this half hour, {rank.words()}")
 
@@ -475,9 +553,8 @@ def _add_trade(flow: TapeFlow, t: dict) -> None:
     flow.premium += premium
     if t.get("condition") in MULTI_LEG_CONDITIONS:
         return
-    big = size >= BIG_PRINT_LOTS
-    if big:
-        flow.big_prints += 1
+    single = flow.by_lots.setdefault(float(size), SizeFlow())
+    single.prints += 1
     bid, ask = t.get("bid"), t.get("ask")
     if t.get("right") not in ("call", "put") or not is_num(bid) or not is_num(ask) or ask < bid:
         return
@@ -486,10 +563,10 @@ def _add_trade(flow: TapeFlow, t: dict) -> None:
         return
     if (past_mid > 0) == (t["right"] == "call"):
         flow.bullish += premium
-        flow.big_bullish += premium if big else 0.0
+        single.bullish += premium
     else:
         flow.bearish += premium
-        flow.big_bearish += premium if big else 0.0
+        single.bearish += premium
 
 
 # ----------------------------------------------------------------------------- the collector's quotes and defense
@@ -536,11 +613,11 @@ def _quote_liquidity(scene: Scene, ls: LabelSet) -> None:
     clock = scene.now.astimezone(ET).time()
     base = [m for d in scene.prior_bars if (sw := quote_sweeps(scene.state_dir, d)) is not None
             and (m := _medians(sw.near, datetime.combine(date.fromisoformat(d), clock, tzinfo=ET))) is not None]
-    rank = rank_against(depth, [b[0] for b in base])
+    rank, why = rank_sessions(depth, [b[0] for b in base], "lob-flow quote sweeps at this minute")
     if rank is None:
-        ls.omit("options.quote_liquidity", f"needs {MIN_RANK_SESSIONS} prior sessions with lob-flow quote sweeps at this minute, have {len(base)}")
+        ls.omit("options.quote_liquidity", why)
         return
-    now_c, usual_c = round(spread * 100), round(statistics.median(b[1] for b in base) * 100)
+    now_c, usual_c = round(spread * 100), round(statistics.median(b[1] for b in base[:rank.of]) * 100)
     width = (f"wider than their usual {_cents(usual_c / 100)} for this time" if now_c > usual_c else
              f"tighter than their usual {_cents(usual_c / 100)} for this time" if now_c < usual_c else "their usual width for this time")
     book = "deep" if rank.share >= TOP_FIFTH else "thin" if rank.share <= BOTTOM_FIFTH else "middling"
@@ -549,11 +626,37 @@ def _quote_liquidity(scene: Scene, ls: LabelSet) -> None:
                                       f"{fifth(rank)}, {rank.words()}")
 
 
+def _contested(record: CollectorRecord, t: datetime, spot: float) -> tuple[float, int, int] | None:
+    """The refill test's newest reading by ``t``: of the strikes hit DEFENSE_MIN_EVENTS times or more, the nearest to
+    ``spot`` as ``(strike, hits, refilled)``; None with no such strike, or with no reading in the
+    OPTIONS_TAPE_MAX_AGE_MIN minutes to ``t``."""
+    seen = [(ts, x) for ts, x in record.defense if ts <= t]
+    if not seen or t - seen[-1][0] > timedelta(minutes=OPTIONS_TAPE_MAX_AGE_MIN):
+        return None
+    hits = [(float(v["strike"]), int(v["n_events"]) + int(v["n_unrecovered"]), int(v["n_events"])) for v in seen[-1][1].values()
+            if isinstance(v, dict) and all(is_num(v.get(k)) for k in ("strike", "n_events", "n_unrecovered"))]
+    contested = [h for h in hits if h[1] >= DEFENSE_MIN_EVENTS]
+    return min(contested, key=lambda h: abs(h[0] - spot)) if contested else None
+
+
+def _prior_contested(state_dir: Path, bars: list[dict], then: datetime) -> tuple[float, int, int] | None:
+    """A prior session's nearest contested strike at ``then`` as ``(points from price, hits, refilled)``, or None."""
+    record, spot = collector_record(state_dir, then.date().isoformat()), close_at(bars, then)
+    got = _contested(record, then, spot) if record is not None and spot is not None else None
+    return (got[0] - spot, got[1], got[2]) if got is not None else None
+
+
+# Whether market makers held a contested strike: its refill share at or above the middle of the same minute's on the
+# recent sessions (HALF_RANK), since the question's two answers a side split the sessions in halves.
+DEFENSE_WORDS = {True: "at or above the middle: defended", False: "below the middle: abandoned"}
+
+
 def _strike_defense(scene: Scene, ls: LabelSet) -> None:
     """Of the book's magnet and walls, the only strikes the collector runs its refill test at, the nearest whose
     same-day quotes keep getting hit, over the collector's last 15 minutes of trades: a hit is a trade that ate the
     size showing at the touch, refilled when that size came back at the same price (within a tick) at any point
-    in those 15 minutes, so the refill share says nothing of how fast."""
+    in those 15 minutes, so the refill share says nothing of how fast. Its distance from price and its refill share
+    are each ranked against the nearest contested strike's at this minute on the prior sessions."""
     if scene.state_dir is None:
         ls.omit("options.strike_defense", "no state folder to read the lob-flow collector's record from")
         return
@@ -568,33 +671,47 @@ def _strike_defense(scene: Scene, ls: LabelSet) -> None:
     if ruler is None:
         ls.omit("options.strike_defense", "no sigma ruler for today to measure the strike's distance in")
         return
-    defense = [x for ts, x in record.defense if ts <= scene.now][-1]
-    hits = [(float(v["strike"]), int(v["n_events"]) + int(v["n_unrecovered"]), int(v["n_events"])) for v in defense.values()
-            if isinstance(v, dict) and all(is_num(v.get(k)) for k in ("strike", "n_events", "n_unrecovered"))]
-    contested = [h for h in hits if h[1] >= DEFENSE_MIN_EVENTS]
-    if not contested:
+    got = _contested(record, scene.now, scene.spot)
+    if got is None:
         ls.omit("options.strike_defense", f"none of the book's magnet and walls, the strikes the collector tests, "
                                           f"was hit {DEFENSE_MIN_EVENTS} times or more in its last {OPTIONS_TAPE_WINDOW_MIN} minutes")
         return
-    strike, hit, refilled = min(contested, key=lambda h: abs(h[0] - scene.spot))
+    strike, hit, refilled = got
     d = (strike - scene.spot) / ruler.points
-    where = f"{sig(abs(d))} {'above' if d >= 0 else 'below'} price"
-    if abs(d) > DEFENSE_NEAR_SIGMA:
-        ls.omit("options.strike_defense", f"the nearest of the book's magnet and walls hit {DEFENSE_MIN_EVENTS} times or more is {where}, beyond the {DEFENSE_NEAR_SIGMA} sigma defense distance")
+
+    def distance(bars: list[dict], then: datetime, sigma: float | None) -> float | None:
+        prior = _prior_contested(scene.state_dir, bars, then)
+        return abs(prior[0]) / sigma if sigma and prior else None
+
+    far, why = rank_sessions(abs(d), same_clock_values(scene, distance), "a contested strike at this minute")
+    if far is None:
+        ls.omit("options.strike_defense", why)
         return
-    share = refilled / hit
+    clock = scene.now.astimezone(ET).time()
+    held_base = [p[2] / p[1] for day, bars in scene.prior_bars.items()
+                 if (p := _prior_contested(scene.state_dir, bars, datetime.combine(date.fromisoformat(day), clock, tzinfo=ET)))]
+    held, why = rank_sessions(refilled / hit, held_base, "a contested strike at this minute")
+    if held is None:
+        ls.omit("options.strike_defense", why)
+        return
+    where = (f"{sig(abs(d))} {'above' if d >= 0 else 'below'} price, farther than the nearest one on {far.higher_than} "
+             f"of the last {far.of} sessions at this minute, {far.band}")
+    if far.band == "top third":
+        ls.omit("options.strike_defense", f"the nearest of the book's magnet and walls hit {DEFENSE_MIN_EVENTS} times or more is {where}: out of reach")
+        return
     ls.put("options.strike_defense",
-           f"of the book's magnet and walls, the strikes the collector tests, the nearest where same-day quotes keep getting hit is {where}, inside the {DEFENSE_NEAR_SIGMA} sigma defense distance; "
+           f"of the book's magnet and walls, the strikes the collector tests, the nearest where same-day quotes keep getting hit is {where}: within reach; "
            f"it was hit {hit} times in the last {OPTIONS_TAPE_WINDOW_MIN} minutes, at least the {DEFENSE_MIN_EVENTS}-hit minimum; "
-           f"market makers refilled its quotes at price at some point in those {OPTIONS_TAPE_WINDOW_MIN} minutes on {refilled} of them ({pct(share)}), "
-           f"{'at least' if share >= DEFENSE_REFILL_SHARE else 'under'} the {pct(DEFENSE_REFILL_SHARE)} refill share"
+           f"market makers refilled its quotes at price at some point in those {OPTIONS_TAPE_WINDOW_MIN} minutes on {refilled} of them ({pct(refilled / hit)}), "
+           f"{held.words()}, {DEFENSE_WORDS[held.share >= HALF_RANK]}"
            f"{'; ruler estimated' if ruler.estimated else ''}")
 
 
 def _spy_quote(scene: Scene, ls: LabelSet) -> None:
     """SPY's quoted spread and the size showing at its best bid and offer over the last 5 minutes, from the
-    collector's newest SPY reading, itself the median of its last 5 minutes of SPY quotes; the size is ranked
-    against the same reading on the prior sessions and never stated in shares."""
+    collector's newest SPY reading, itself the median of its last 5 minutes of SPY quotes; each is ranked against
+    the same reading on the prior sessions, the spread in whole cents (SPY quotes in cents, so sessions at the
+    same width tie and none is beaten) and the size never stated in shares."""
     if scene.state_dir is None:
         ls.omit("liquidity.spy_quote", "no state folder to read the lob-flow collector's SPY quote from")
         return
@@ -607,16 +724,20 @@ def _spy_quote(scene: Scene, ls: LabelSet) -> None:
         return
     spread, size = _newest(record.spy, scene.now)
     now_et = scene.now.astimezone(ET)
-    base = [m[1] for d in scene.prior_bars if (r := collector_record(scene.state_dir, d)) is not None
+    base = [m for d in scene.prior_bars if (r := collector_record(scene.state_dir, d)) is not None
             and (m := _newest(r.spy, datetime.combine(date.fromisoformat(d), now_et.time(), tzinfo=ET))) is not None]
-    rank = rank_against(size, base)
-    if rank is None:
-        ls.omit("liquidity.spy_quote", f"needs {MIN_RANK_SESSIONS} prior sessions with the collector's SPY quote at this minute, have {len(base)}")
+    what = "the collector's SPY quote at this minute"
+    wide, why = rank_sessions(round(spread * 100), [round(b[0] * 100) for b in base], what)
+    rank, _ = rank_sessions(size, [b[1] for b in base], what)
+    if wide is None:
+        ls.omit("liquidity.spy_quote", why)
         return
-    width = "at or past the wide line" if spread >= SPY_SPREAD_WIDE else "at the tight tick" if spread < SPY_SPREAD_TIGHT else "its usual width"
+    width = ("at the tight tick" if spread < SPY_SPREAD_TIGHT else
+             "top third: wide for this time" if wide.band == "top third" else f"{wide.band}: its usual width for this time")
     # the spy_liquidity question's thin book is strictly under the bottom fifth
     fifth = "in the bottom fifth" if rank.share < BOTTOM_FIFTH else "in the top fifth" if rank.share >= TOP_FIFTH else "between the bottom and top fifths"
-    ls.put("liquidity.spy_quote", f"over the last {QUOTE_WINDOW_MIN} minutes SPY's quoted spread has been {_cents(spread)}, {width}; "
+    ls.put("liquidity.spy_quote", f"over the last {QUOTE_WINDOW_MIN} minutes SPY's quoted spread has been {_cents(spread)}, "
+                                  f"wider than on {wide.higher_than} of the last {wide.of} sessions at this minute, {width}; "
                                   f"the size showing at SPY's best bid and offer combined is {fifth} for {now_et:%H:%M}, {rank.words()}")
 
 
@@ -711,7 +832,7 @@ def _spy_volume_labels(scene: Scene, ls: LabelSet) -> None:
             ls.omit(path, f"the siege box has SPY volume for under half of the minutes since the open or of the last {WINDOW_30_MIN}")
         return
     prior = [v for d in scene.prior_bars if d in days and (v := _last30_and_day(days[d], opened, end)) is not None]
-    _spy_last30_share(scene, today, prior, ls)
+    _spy_last30_share(today, prior, ls)
     _spy_pace_30(today[0], [p[0] for p in prior], ls)
 
 
@@ -749,26 +870,27 @@ def _pct_tenths(x: float) -> str:
     return f"{x * 100:.1f}%"
 
 
-def _spy_last30_share(scene: Scene, today: tuple[float, float], prior: list[tuple[float, float]], ls: LabelSet) -> None:
-    base = [last30 / day for last30, day in prior]
-    if len(base) < MIN_RANK_SESSIONS:
-        ls.omit("volume.spy_last30_share", f"needs {MIN_RANK_SESSIONS} prior sessions with SPY minute volumes at this minute, have {len(base)}")
-        return
+SPY_VOLUME_AT_MINUTE = "SPY minute volumes at this minute"
+# The last half hour's share of the day's volume by the third it ranks in at this minute.
+SHARE_WORDS = {"top third": "heavy for this time", "middle third": "normal for this time", "bottom third": "light for this time"}
+
+
+def _spy_last30_share(today: tuple[float, float], prior: list[tuple[float, float]], ls: LabelSet) -> None:
     share = today[0] / today[1]
-    heavy, light = percentile(base, THIRD_HI), percentile(base, THIRD_LO)
-    clock, of = f"{scene.now.astimezone(ET):%H:%M}", f"of the last {len(base)} sessions"
-    band = (f"above the {_pct_tenths(heavy)} heavy line for {clock} (top third {of})" if share > heavy else
-            f"below the {_pct_tenths(light)} light line for {clock} (bottom third {of})" if share < light else
-            f"between the {_pct_tenths(light)} light line and the {_pct_tenths(heavy)} heavy line for {clock} (middle third {of})")
-    ls.put("volume.spy_last30_share", f"SPY traded {_pct_tenths(share)} of today's volume in the last {WINDOW_30_MIN} minutes, {band}")
+    rank, why = rank_sessions(share, [last30 / day for last30, day in prior], SPY_VOLUME_AT_MINUTE)
+    if rank is None:
+        ls.omit("volume.spy_last30_share", why)
+        return
+    ls.put("volume.spy_last30_share", f"SPY traded {_pct_tenths(share)} of today's volume in the last {WINDOW_30_MIN} minutes, "
+                                      f"{rank.words()}, {rank.band}: {SHARE_WORDS[rank.band]}")
 
 
 def _spy_pace_30(last30: float, base: list[float], ls: LabelSet) -> None:
-    rank = rank_against(last30, base)
+    rank, why = rank_sessions(last30, base, SPY_VOLUME_AT_MINUTE)
     if rank is None:
-        ls.omit("volume.spy_pace_30", f"needs {MIN_RANK_SESSIONS} prior sessions with SPY minute volumes at this minute, have {len(base)}")
+        ls.omit("volume.spy_pace_30", why)
         return
-    ls.put("volume.spy_pace_30", f"SPY traded {last30 / statistics.median(base):.1f} times its usual volume for this half hour, "
+    ls.put("volume.spy_pace_30", f"SPY traded {last30 / statistics.median(base[:rank.of]):.1f} times its usual volume for this half hour, "
                                  f"{fifth(rank)}, {rank.words()}")
 
 
