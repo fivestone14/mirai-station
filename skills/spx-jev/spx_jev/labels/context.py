@@ -3,7 +3,7 @@ session stands. A read before the open (the premarket lane) says how long until 
 pre-open ruler its sizes are in, and has no cash move today to time."""
 from __future__ import annotations
 
-from ..cuts import MOVE_RULE_SIGMA, RSI_OVERBOUGHT, RSI_OVERSOLD
+from ..cuts import MOVE_RULE_SIGMA, NIGHT_RANK_COUNT, RSI_OVERBOUGHT, RSI_OVERSOLD
 from ..row_adapter import SYMBOL
 from ..sessions import session_minutes
 from ..state_builder import Scene
@@ -16,7 +16,9 @@ GATES: tuple[str, ...] = ()
 DARK: dict[str, str] = {}
 
 UNITS = ("all distances are in sigma, today's expected move for the S&P 500 index; "
-         "a plus sign means above price and a minus sign means below price. "
+         "a plus sign means above price and a minus sign means below price; "
+         f"a size said 'at this minute' is ranked against the same measure at the same time of day on up to the last {NIGHT_RANK_COUNT} "
+         "sessions and named by its third: bottom, middle or top. "
          "Options weight means the hedging exposure of dealers, the market makers on the other side of the options, at each strike; "
          "a wall is a strike where that weight piles up, the nearest one standing in today's 0DTE book, else in the 1-to-7-day book; "
          "0DTE means the options that expire today; the opening box is the first half hour's price range; "
