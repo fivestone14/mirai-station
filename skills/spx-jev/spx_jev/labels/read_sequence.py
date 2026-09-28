@@ -22,7 +22,8 @@ from ..lane import LIVE
 from ..state_builder import MarketContext, Scene
 from .breadth import FRESH_MIN
 from .label_set import LabelSet
-from .measures import ET, ONE_MINUTE, SETTLED_OPEN_BAR, close_at, settled_open
+from .measures import ET, SETTLED_OPEN_BAR, close_at, settled_open
+from .price import _minutes_since_bar
 from .ranks import SameClockRank, move_rank, rank_sessions, same_clock_values
 from .rulers import NO_ANCHOR, SigmaRuler, ruled, sigma_anchor
 from .words import above_or_below, listed, pct, sig, signed
@@ -114,9 +115,8 @@ def _reads(scene: Scene) -> tuple[Reads | None, str]:
     moves = _day_moves(scene.bars, now.date(), earlier, scene.spot, anchor.points)
     if moves is None:
         return None, f"no SPX bar finished by one of the reads at {listed([f'{c:%H:%M}' for c in earlier])}"
-    # every session's move from its 09:34 close: the minutes back from this read land on that bar's finish
-    since_open = datetime.combine(now.date(), SETTLED_OPEN_BAR, tzinfo=ET) + ONE_MINUTE
-    rank, why = move_rank(scene, moves[-1], int((scene.now - since_open).total_seconds() // 60))
+    # every session's move from its 09:34 close, timed as price.day_move times it
+    rank, why = move_rank(scene, moves[-1], _minutes_since_bar(scene, SETTLED_OPEN_BAR))
     return Reads(now.date(), [*earlier, now.time()], moves, anchor, rank, why), ""
 
 
