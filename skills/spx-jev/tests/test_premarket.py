@@ -107,6 +107,12 @@ def test_a_fire_runs_only_within_five_minutes_after_a_checkpoint_before_the_open
     assert got == want, why
 
 
+def test_a_fire_a_few_seconds_early_is_its_checkpoints_read():
+    """launchd may fire a job a little before its minute: the 09:28 fire at 09:27:58 must not read as a late 09:05 one."""
+    assert due(at(9, 27, ss=58))[0] == "09:28" and due(at(2, 34, ss=55))[0] == "02:35" and due(at(10, 5, ss=58))[0] == "10:06"
+    assert due(at(9, 27, ss=0))[0] is None                          # a whole minute early is a late 09:05 fire
+
+
 def test_a_refused_fire_says_why():
     assert due(at(7, 0))[1] == "07:00 ET is 205 minutes after the 03:35 ET checkpoint, past the 5-minute line: a late fire reads nothing"
     assert due(at(9, 31))[1] == "09:31 ET is after the 09:30 open: a premarket read comes before it"

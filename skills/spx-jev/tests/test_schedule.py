@@ -23,6 +23,21 @@ def test_a_read_stands_for_its_lanes_latest_read_time_with_the_lanes_grace():
     assert read_slot(TAPE, at(10, 34)) == "10:30" and read_slot(TAPE, at(10, 35)) is None and read_slot(LIVE, at(16, 20)) == "16:02"
 
 
+def test_a_live_send_never_stands_for_a_read_time_its_job_had_not_reached():
+    """The grace is for a row stamped before its job fired, so a live send caps it at the fire: a 10:26:30 row
+    sent at 10:27 is a late 10:02 read and a 09:38 bar read at 09:38 the 09:35 read, not the reads to come.
+    A replay has only the row's clock; a fire a few seconds early is still its read."""
+    assert read_slot(LIVE, at(10, 26, ss=30)) == "10:32" and read_slot(TAPE, at(9, 38)) == "09:40"         # a replay
+    assert read_slot(LIVE, at(10, 26, ss=30), fired=at(10, 27)) == "10:02"
+    assert read_slot(TAPE, at(9, 38), fired=at(9, 38)) == "09:35"
+    assert read_slot(LIVE, at(9, 57), fired=at(10, 2)) == "10:02"                                          # the row before the fire
+    assert read_slot(LIVE, at(10, 1, ss=40), fired=at(10, 1, ss=58)) == "10:02"                            # launchd a little early
+    assert read_slot(LIVE, at(10, 1, ss=0), fired=at(10, 1, ss=0)) == "09:32"
+    assert "vol_curve_vs_usual" in not_due(LIVE_DOC, LIVE, at(10, 26, ss=30))                             # held as if at 10:32
+    assert "vol_curve_vs_usual" not in not_due(LIVE_DOC, LIVE, at(10, 26, ss=30), fired=at(10, 27))       # asked at 10:02
+    assert "gap_size" not in not_due(TAPE_DOC, TAPE, at(9, 38), fired=at(9, 38))
+
+
 def test_every_kind_of_entry():
     reads = LIVE.read_times()
     every = {"every_min": 60, "from": "10:02", "to": "15:32"}

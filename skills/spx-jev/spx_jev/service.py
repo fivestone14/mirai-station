@@ -465,8 +465,10 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
     # the schedule: a question is asked only at the reads its schedule names, on replays too. Sending,
     # a live question it does not ask holds its answer (a day constant all day, one held from the other
     # lane until its hour), and on a lane with a cadence a due one is asked afresh only when its cadence
-    # has elapsed. Without a key nothing is answered, so there is nothing to hold.
-    skip = not_due(doc, lane, now)
+    # has elapsed. Without a key nothing is answered, so there is nothing to hold. A live send's read is
+    # never one its job has not yet reached (schedule.read_slot); a replay has only its row's clock.
+    fired = now_et() if day is None and do_send else None
+    skip = not_due(doc, lane, now, fired)
     if lane.cadence:
         cad = ensure_cadence(out_dir, doc, day_name) if do_send else load_cadence(out_dir)
     else:
@@ -474,7 +476,8 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
     last, held = {}, {}
     if do_send:
         last = load_last(out_dir)
-        skip, held = plan(doc, last, cad, now, skip, borrowed_answers(state_dir, doc, lane), read_slot(lane, now), learned=lane.cadence)
+        skip, held = plan(doc, last, cad, now, skip, borrowed_answers(state_dir, doc, lane), read_slot(lane, now, fired),
+                          learned=lane.cadence)
     requests, skipped = build_requests(state, doc, skip=skip, gates=labels.gates)
     if do_send and lane.cadence:
         held = fill_missing(doc, skipped, last, cad, now, held, labels.ended)

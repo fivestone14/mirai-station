@@ -21,8 +21,11 @@ people and is never parsed.
 
 A read stands for the latest of its lane's read times at or before it (lane.read_times), allowing the
 lane's grace for a row or bar stamped a little before the job fired: the live lane's 10:01:40 row is its
-10:02 read, and a row at 12:45 still belongs to the 12:32 read. A moment a full spacing past the lane's
-last read is no read of that lane (the opening lane at noon).
+10:02 read, and a row at 12:45 still belongs to the 12:32 read. A live send passes the moment its job
+fired, which caps the grace: a read cannot stand for a read time its job has not reached, so a 10:26:30
+row sent at 10:27 is the 10:02 read, not the 10:32. A fire up to EARLY_FIRE before a read time is that
+read (launchd may fire a job a few seconds early). A moment a full spacing past the lane's last read is
+no read of that lane (the opening lane at noon).
 """
 from __future__ import annotations
 
@@ -35,6 +38,7 @@ if TYPE_CHECKING:
     from .lane import Lane
 
 KEYS = {"every_min", "from", "to", "days", "at", "hold", "then", "note", "hold_until"}
+EARLY_FIRE = timedelta(seconds=30)      # a job fired this long before a read time is that read
 FROM_EVENTS = {"after the press conference starts": "FOMC_PRESSER"}
 DAY_EVENTS = {"FOMC only": "FOMC"}
 
@@ -83,12 +87,15 @@ def _minutes(hhmm: str) -> int:
     return int(hhmm[:2]) * 60 + int(hhmm[3:])
 
 
-def read_slot(lane: Lane, now: datetime) -> str | None:
+def read_slot(lane: Lane, now: datetime, fired: datetime | None = None) -> str | None:
     """The lane read ``now`` stands for, as "HH:MM" market time; None before the lane's first read or a
-    full spacing after its last."""
+    full spacing after its last. ``fired``, the moment a live send's job fired, caps the grace."""
     local = now.astimezone(ET)
     reads = lane.read_times()
-    past = [r for r in reads if r <= (local + timedelta(minutes=lane.read_grace_min)).strftime("%H:%M")]
+    limit = local + timedelta(minutes=lane.read_grace_min)
+    if fired is not None:
+        limit = min(limit, fired.astimezone(ET) + EARLY_FIRE)
+    past = [r for r in reads if r <= limit.strftime("%H:%M")]
     if not past:
         return None
     spacing = _minutes(reads[-1]) - _minutes(reads[-2])
@@ -113,10 +120,11 @@ def asks_at(entry: dict, slot: str, day: date, reads: tuple[str, ...]) -> bool:
     return slot in window and (_minutes(slot) - _minutes(window[0])) % entry["every_min"] == 0
 
 
-def not_due(doc: dict, lane: Lane, now: datetime) -> dict[str, str]:
+def not_due(doc: dict, lane: Lane, now: datetime, fired: datetime | None = None) -> dict[str, str]:
     """``{question id: why}`` for every live and shadow question of the lane's doc that its schedule does not
-    ask at this read. A question with no schedule is asked on every read; dark questions are the packer's."""
-    slot = read_slot(lane, now)
+    ask at this read (``fired`` as read_slot's). A question with no schedule is asked on every read; dark
+    questions are the packer's."""
+    slot = read_slot(lane, now, fired)
     day = now.astimezone(ET).date()
     out = {}
     for g in doc["groups"]:

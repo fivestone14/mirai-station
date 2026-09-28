@@ -163,6 +163,26 @@ def test_a_day_constant_is_asked_at_0935_held_on_the_lane_and_borrowed_by_the_li
     assert at_1202["q_const"]["answer"] is None and at_1202["q_const"]["skipped"] == "held from its other lane only until 11:32 ET"
 
 
+def test_a_live_tape_send_stands_for_the_read_its_job_fired_at_and_a_replay_for_its_bar(tmp_path, monkeypatch):
+    """The 09:35 job reading at 09:38 (a bar that came late) is the 09:35 read, so its day constant is asked rather
+    than held from a 09:40 read that has not happened; a replay of that bar has only the bar's clock."""
+    from spx_jev.ask import load_questions
+    doc_path = tmp_path / "doc.json"
+    doc_path.write_text(json.dumps(SCHEDULED))
+    doc = load_questions(doc_path, TAPE.key)
+    root = tmp_path / "state"
+    _state(root, [make_row(at(9, 31), 7700.0)], 8)                        # bars 09:30..09:37: the read is stamped 09:38
+    monkeypatch.setattr(service, "send_all", _answers)
+    monkeypatch.setattr(service, "send", _sums([]))
+    monkeypatch.setattr(service, "today_et", lambda: DAY)
+    monkeypatch.setattr(service, "STALE_ROW_SKIP_MIN", 1e9)
+    monkeypatch.setattr(service, "now_et", lambda: at(9, 38, ss=5))
+    sent = {q["id"]: q for q in run_once(root, tmp_path / "sent", doc, True, None, lane=TAPE)["questions"]}
+    assert sent["q_const"]["answer"]["pick"] == "a" and sent["q_every"]["skipped"] == "not on its schedule at the 09:35 ET read"
+    replay = {q["id"]: q for q in run_once(root, tmp_path / "replay", doc, True, DAY, lane=TAPE)["questions"]}
+    assert replay["q_const"]["skipped"] == "a day constant: asked at 09:35 ET and held" and replay["q_every"]["answer"]["pick"] == "a"
+
+
 def test_a_tape_read_waits_for_the_bar_that_finishes_at_its_minute(tmp_path):
     """The bars job runs at no fixed second: at the 09:40 fire the file may end at 09:39, and a read on it
     would be stamped 09:39, a minute short of the 10-minute big-print window. The read waits for the bar."""

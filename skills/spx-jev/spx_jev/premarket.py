@@ -8,8 +8,8 @@
 The checkpoints are the lane's schedule in market time: 02:35 (Tokyo has closed), 03:35 (Europe's first
 half hour: Frankfurt's open plus 35 minutes, so 04:35 in a week Frankfurt keeps winter time and New York
 does not; checkpoints), 08:05, 08:48 (the report window has closed), 09:05 and 09:28. A fire runs only on
-a market day, within LATE_FIRE_MIN minutes after one of the day's checkpoints and before the open, or as
-soon after the 10:06 close-out (due); any other fire (a Mac that woke late, a weekend, a holiday) logs why
+a market day, from EARLY_FIRE before one of the day's checkpoints to LATE_FIRE_MIN minutes after it and
+before the open, or as near the 10:06 close-out (due); any other fire (a Mac that woke late, a weekend, a holiday) logs why
 and writes nothing.
 
 Every checkpoint is a read:
@@ -59,7 +59,7 @@ from .labels.registry import build_labels
 from .labels.rulers import normal_day_sigma
 from .lane import PREMARKET, TAPE
 from .night_ranks import READ_STALE_MIN, price_by
-from .schedule import asks_at, not_due
+from .schedule import EARLY_FIRE, asks_at, not_due
 from .sessions import is_trading_day, session_close, session_open
 from .state_builder import DEFAULT_STATE_DIR, Scene, load_jsonl, load_market_context, parse_ts, prior_sessions
 from .weights import QuestionWeights
@@ -111,12 +111,14 @@ def checkpoints(day: date) -> tuple[str, ...]:
 def due(now: datetime) -> tuple[str | None, str]:
     """What a fire at ``now`` runs: ``(checkpoint, why)``, the checkpoint being the lane's close_out for the
     grade-only run, or ``(None, why)`` when it runs nothing. A checkpoint is read within LATE_FIRE_MIN
-    minutes after it and never from the open on; the close-out within as long after it."""
+    minutes after it and never from the open on; the close-out within as long after it. A fire up to
+    EARLY_FIRE before either is that run, so launchd firing a few seconds early never reads the 09:28
+    checkpoint as a late 09:05 one."""
     local = now.astimezone(ET)
     day = local.date()
     if not is_trading_day(day):
         return None, f"{day} is not a market day"
-    passed = [c for c in (*checkpoints(day), PREMARKET.close_out) if market_at(day, c) <= local]
+    passed = [c for c in (*checkpoints(day), PREMARKET.close_out) if market_at(day, c) <= local + EARLY_FIRE]
     if not passed:
         return None, f"{local:%H:%M} ET is before the day's first checkpoint"
     last = passed[-1]
