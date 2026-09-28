@@ -176,6 +176,15 @@ def test_the_sheet_gives_the_result_in_index_points_at_the_viewers_time():
         ["Open22 min left", "It is graded at 00:02, against the bar at that minute."]
 
 
+def test_the_sheet_gives_the_reason_a_call_was_not_graded_in_the_viewers_zone():
+    """The grader writes its reason in market words ("no settled open (the 09:34 bar)"); the sheet redraws the time."""
+    c = {**call("09:45", "09:55", "up_small", 0.38,
+                closed="halted window: no settled open (the 09:34 bar) on a finished day"),
+         "odds": {"down_big": 0.05, "down_small": 0.12, "flat": 0.3, "up_small": 0.38, "up_big": 0.1, "unsure": 0.05}}
+    assert [_flat_text(k) for k in _sheet(c, "2026-09-28T16:30:00-04:00")["body"]["kids"][0]["kids"]] == \
+        ["Not graded", "Halted window: no settled open (the 06:34 bar) on a finished day."]
+
+
 # ---- the schedule stays on the market clock
 
 

@@ -816,7 +816,7 @@ details .q{margin-top:8px}
       res.appendChild(el('p', null, 'It ends past the close, so the bars never grade it.'));
     } else if(c.closed){
       v.appendChild(el('b', null, 'Not graded')); res.appendChild(v);
-      res.appendChild(el('p', null, sentence(c.closed) + '.'));
+      res.appendChild(el('p', null, sentence(marketWords(c.closed, c.read)) + '.'));
     } else if(now < Date.parse(c.mark)){
       v.appendChild(el('b', null, 'Open')); v.appendChild(el('span', null, leftWords(Date.parse(c.mark), now))); res.appendChild(v);
       res.appendChild(el('p', null, 'It is graded at ' + viewerTime(c.mark) + ', against the bar at that minute.'));
