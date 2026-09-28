@@ -13,10 +13,10 @@ never touches, keep every session (same_clock_market).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import TYPE_CHECKING, Callable
 
-from ..cuts import BOTTOM_FIFTH, MIN_RANK_SESSIONS, NIGHT_RANK_COUNT, SAME_CLOCK_MIN_SESSIONS, TOP_FIFTH
+from ..cuts import BOTTOM_FIFTH, MIN_RANK_SESSIONS, NIGHT_RANK_COUNT, SAME_CLOCK_MIN_SESSIONS, TICK_BURST_PCT, TOP_FIFTH
 from .measures import ET, ONE_MINUTE, bar_time, move_size
 from .words import third
 
@@ -132,3 +132,30 @@ def percentile(values: list[float], share: float) -> float:
     k = share * (len(s) - 1)
     lo = int(k)
     return s[lo] + (s[min(lo + 1, len(s) - 1)] - s[lo]) * (k - lo)
+
+
+def tick_bands_by_minute(scene: Scene) -> dict[time, tuple[float, float]]:
+    """The top and bottom burst bands of $TICK for each minute of the day: the TICK_BURST_PCT percentile of
+    the last NIGHT_RANK_COUNT prior sessions' bar highs at that minute and the mirror percentile of their
+    lows, where at least SAME_CLOCK_MIN_SESSIONS sessions have the bar. A $TICK reading judged at its minute,
+    never against a fixed +-1000."""
+    by_minute: dict[time, list[dict]] = {}
+    for mk in list(scene.prior_markets.values())[:NIGHT_RANK_COUNT]:
+        for _, bar in mk.bars.get("$TICK") or []:
+            by_minute.setdefault(bar_time(bar).astimezone(ET).time(), []).append(bar)
+    return {minute: (percentile([float(b["high"]) for b in bars], TICK_BURST_PCT),
+                     percentile([float(b["low"]) for b in bars], 1 - TICK_BURST_PCT))
+            for minute, bars in by_minute.items() if len(bars) >= SAME_CLOCK_MIN_SESSIONS}
+
+
+def tick_bursts(bands: dict[time, tuple[float, float]], bars: list[dict]) -> tuple[int, int] | None:
+    """How many of today's $TICK ``bars`` reached their minute's top band with their high, and the bottom band
+    with their low; None when a minute has no bands."""
+    up = down = 0
+    for bar in bars:
+        band = bands.get(bar_time(bar).astimezone(ET).time())
+        if band is None:
+            return None
+        up += float(bar["high"]) >= band[0]
+        down += float(bar["low"]) <= band[1]
+    return up, down

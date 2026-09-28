@@ -12,7 +12,8 @@ import pytest
 from conftest import DAY, at, bars_from_closes, context_line, flat_bars, make_row, prior_sessions, write_state
 from spx_jev.cuts import MIN_RANK_SESSIONS, NIGHT_RANK_COUNT, SAME_CLOCK_MIN_SESSIONS
 from spx_jev.labels.measures import move_size, path_efficiency, session_extremes, settled_open
-from spx_jev.labels.ranks import move_rank, rank_against, rank_sessions, same_clock_market, same_clock_values
+from spx_jev.labels.ranks import (move_rank, rank_against, rank_sessions, same_clock_market, same_clock_values, tick_bands_by_minute,
+                                  tick_bursts)
 from spx_jev.labels.rulers import (SigmaRuler, morning_ruler, normal_day_sigma, remaining_straddles, sigma_anchor, sigma_live,
                                    straddle_left)
 from spx_jev.row_adapter import labeller_row
@@ -128,6 +129,23 @@ def test_the_market_is_read_at_the_same_minute_of_each_prior_session_that_has_it
                days[2]: MarketContext({})}
     scene = replace(scene_factory(at(11, 0, ss=30), flat_bars(90)), prior_markets=markets)
     assert same_clock_market(scene, lambda mk, then: mk.last("$VOLD", then)) == [5.0, 7.0]
+
+
+def test_a_tick_reading_is_judged_against_the_same_minutes_band_on_ten_to_twenty_prior_sessions(scene_factory):
+    def session(day, reach):
+        bar = {"ts": at(10, 0, day=day).isoformat(), "open": 0.0, "high": reach, "low": -reach, "close": 0.0}
+        return MarketContext({"$TICK": [(at(10, 1, day=day), 0.0)]}, {"$TICK": [(at(10, 1, day=day), bar)]})
+    days = [f"2026-08-{d:02d}" for d in range(31, 9, -1)]                        # 22 sessions, newest first
+    markets = {d: session(d, 400.0 + 10.0 * k) for k, d in enumerate(days)}      # the two oldest reach 600 and 610
+    scene = replace(scene_factory(at(10, 30), flat_bars(60)), prior_markets=markets)
+    bands = tick_bands_by_minute(scene)
+    top, bottom = bands[at(10, 0).time()]
+    assert top == pytest.approx(580.5) and bottom == pytest.approx(-580.5)       # the 95th percentile of 400..590
+    today = [{"ts": at(10, 0).isoformat(), "open": 0.0, "high": 581.0, "low": -100.0, "close": 0.0}]
+    assert tick_bursts(bands, today) == (1, 0)
+    assert tick_bursts(bands, [dict(today[0], ts=at(10, 1).isoformat())]) is None      # no band for 10:01
+    nine = replace(scene, prior_markets=dict(list(markets.items())[:SAME_CLOCK_MIN_SESSIONS - 1]))
+    assert tick_bands_by_minute(nine) == {}
 
 
 def test_path_efficiency_is_the_net_move_over_the_distance_travelled():

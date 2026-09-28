@@ -23,7 +23,7 @@ from ..state_builder import MarketContext, Scene
 from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, bar_time, close_at, session_extremes, settled_open
 from .price import NEW_EXTREME_RECENT_MIN
-from .ranks import percentile, rank_against, same_clock_market
+from .ranks import rank_against, same_clock_market, tick_bands_by_minute, tick_bursts
 from .rulers import NO_ANCHOR, sigma_anchor
 from .words import pct, plural, sig, signed
 
@@ -76,7 +76,7 @@ def build_breadth_labels(scene: Scene) -> LabelSet:
     _at_extremes(scene, ls)
     _flip_after_release(scene, release, ls)
     _open_net_volume(scene, ls)
-    tick_bands = _tick_bands_by_minute(scene)
+    tick_bands = tick_bands_by_minute(scene)
     _opening_tick(scene, tick_bands, ls)
     _tick_extreme_5m(scene, tick_bands, ls)
     return ls
@@ -429,32 +429,6 @@ def _thrust_rank(thrust: float, base: list[float]) -> str:
     return f", a bigger fall than {rank.higher_than} of the last {rank.of} sessions at this minute" if rank else ""
 
 
-def _tick_bands_by_minute(scene: Scene) -> dict[time, tuple[float, float]]:
-    """The top and bottom burst bands of $TICK for each minute of the day: the TICK_BURST_PCT percentile of
-    the prior sessions' bar highs at that minute and the mirror percentile of their lows, where at least
-    MIN_RANK_SESSIONS sessions have the bar."""
-    by_minute: dict[time, list[dict]] = {}
-    for mk in scene.prior_markets.values():
-        for _, bar in mk.bars.get("$TICK") or []:
-            by_minute.setdefault(bar_time(bar).astimezone(ET).time(), []).append(bar)
-    return {minute: (percentile([float(b["high"]) for b in bars], TICK_BURST_PCT),
-                     percentile([float(b["low"]) for b in bars], 1 - TICK_BURST_PCT))
-            for minute, bars in by_minute.items() if len(bars) >= MIN_RANK_SESSIONS}
-
-
-def _tick_bursts(bands: dict[time, tuple[float, float]], bars: list[dict]) -> tuple[int, int] | None:
-    """How many of today's $TICK ``bars`` reached their minute's top band with their high, and the bottom band
-    with their low; None when a minute has no bands."""
-    up = down = 0
-    for bar in bars:
-        band = bands.get(bar_time(bar).astimezone(ET).time())
-        if band is None:
-            return None
-        up += float(bar["high"]) >= band[0]
-        down += float(bar["low"]) <= band[1]
-    return up, down
-
-
 def _fresh_tick_bars(scene: Scene, since: datetime) -> list[dict]:
     """Today's $TICK bars finished after ``since``; none when the newest is older than FRESH_MIN."""
     bars = scene.market.bars_between("$TICK", since, scene.now)
@@ -474,7 +448,7 @@ def _opening_tick(scene: Scene, bands: dict[time, tuple[float, float]], ls: Labe
     if not bars:
         ls.omit("breadth.opening_tick", f"no NYSE TICK bar in the last {FRESH_MIN} minutes: the market-context job stopped or has not saved it")
         return
-    bursts = _tick_bursts(bands, bars)
+    bursts = tick_bursts(bands, bars)
     if bursts is None:
         ls.omit("breadth.opening_tick", f"needs {MIN_RANK_SESSIONS} prior sessions of NYSE TICK bars at each minute since the open")
         return
@@ -491,7 +465,7 @@ def _tick_extreme_5m(scene: Scene, bands: dict[time, tuple[float, float]], ls: L
     """A TICK burst in the last five minutes and whether SPX followed it over the same minutes, a one-sided
     burst only by a move on its own side; the gate of tick_extreme_follow, which sleeps without a burst."""
     bars = _fresh_tick_bars(scene, scene.now - timedelta(minutes=TICK_BURST_WINDOW_MIN))
-    bursts = _tick_bursts(bands, bars) if bars else None
+    bursts = tick_bursts(bands, bars) if bars else None
     if bursts is None:
         why = (f"no NYSE TICK bar in the last {FRESH_MIN} minutes: the market-context job stopped or has not saved it" if not bars else
                f"needs {MIN_RANK_SESSIONS} prior sessions of NYSE TICK bars at each of the last {TICK_BURST_WINDOW_MIN} minutes")
