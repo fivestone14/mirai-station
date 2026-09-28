@@ -7,6 +7,10 @@ confidence at 10:00, two governors after noon), 10-01 (claims before the open, I
 four speakers), 10-02 (the jobs report), 10-13 (nothing), 10-20 (nothing, in the Fed's quiet period) and the
 10-28 decision; 10-06 lists only the trade balance and 09-30 ADP beside GDP and PCE, minor releases
 the session leaves out. Every day's own ruler and the normal-day sigma are 100 points, so a sigma is a point / 100.
+
+A burst, a reaction and the press conference are ranked against the same minutes on the prior sessions (SLOPED):
+the k-th (0 the newest) rises 0.1 (k + 1) points a minute all day, so it moves 0.005 (k + 1) sigma in five minutes
+and 0.015 (k + 1) in fifteen; a value beating 3 of the ten is the bottom third, 4 to 6 the middle, 7 or more the top.
 """
 from __future__ import annotations
 
@@ -22,22 +26,39 @@ from spx_jev.state_builder import MarketContext
 NORMAL = {f"2026-09-{d:02d}": SigmaRuler(100.0, "anchor") for d in range(21, 26)}
 
 
+def sloped(n: int = 10) -> dict[str, list[dict]]:
+    """``n`` prior sessions, 2026-09-17 back, the k-th rising 0.1 (k + 1) points a minute all day."""
+    return {f"2026-09-{17 - k:02d}": bars_from_closes([7700.0 + 0.1 * (k + 1) * i for i in range(390)], day=f"2026-09-{17 - k:02d}")
+            for k in range(n)}
+
+
+SLOPED = sloped()
+RULERS = {d: SigmaRuler(100.0, "anchor") for d in SLOPED}
+
+
 def minute(hh: int, mm: int) -> int:
     """The bar index of a clock minute: 09:30 is 0."""
     return (hh - 9) * 60 + mm - 30
 
 
-def steps(marks: list[tuple[int, int, float]], until: tuple[int, int] = (15, 59)) -> list[float]:
-    """Closes held at each mark's price from its minute on: [(9, 30, 7700.0), (10, 0, 7716.0)]."""
-    out, price = [], marks[0][2]
-    points = {minute(h, m): p for h, m, p in marks}
+def steps(marks: list[tuple], until: tuple[int, int] = (15, 59)) -> list[float]:
+    """Closes held at each mark's price from its minute on: [(9, 30, 7700.0), (10, 0, 7716.0)]; a mark with a fourth
+    number walks there evenly over that many minutes instead, a move too slow to be a burst: (11, 0, 7722.0, 30)."""
+    out, price, walk = [], marks[0][2], None
+    points = {minute(*mark[:2]): mark[2:] for mark in marks}
     for i in range(minute(*until) + 1):
-        price = points.get(i, price)
+        if i in points:
+            to, *over = points[i]
+            walk = (i, price, to, over[0]) if over else None
+            price = price if over else to
+        if walk:
+            start, frm, to, over = walk
+            price = frm + (to - frm) * min(i - start + 1, over) / over
         out.append(price)
     return out
 
 
-def scene_at(scene_factory, now, closes, *, prior_rulers=NORMAL, prior_bars=None, market=None, state_dir=None,
+def scene_at(scene_factory, now, closes, *, prior_rulers=RULERS, prior_bars=SLOPED, market=None, state_dir=None,
              anchor_row=True, spot=None, **row_over):
     day = now.date().isoformat()
     bars = bars_from_closes(closes, day=day)
@@ -192,30 +213,31 @@ JOLTS_DAY = "2026-09-29"
 
 
 def reaction_scene(scene_factory, now, spot_at_now, first_end=7716.0, day=JOLTS_DAY, start=(10, 0)):
-    """Price 7700 into the start, ``first_end`` 15 minutes on, ``spot_at_now`` from 11:00."""
+    """Price 7700 into the start, ``first_end`` 15 minutes on, walking to ``spot_at_now`` from 11:00 to 11:30."""
     h, m = start
-    return scene_at(scene_factory, now, steps([(9, 30, 7700.0), (h, m, first_end - 8.0), (h, m + 14, first_end), (11, 0, spot_at_now)]))
+    return scene_at(scene_factory, now, steps([(9, 30, 7700.0), (h, m, first_end - 8.0), (h, m + 14, first_end), (11, 0, spot_at_now, 30)]))
 
 
 def test_a_release_whose_move_extends_past_the_extension_rule(scene_factory):
     state, _, gates = labels(reaction_scene(scene_factory, at(11, 32, JOLTS_DAY), 7722.0))
     assert state["event.reaction"] == (
         "the reaction starts at 10:00 with the Conference Board's consumer confidence report and the job openings report; in its "
-        "first 15 minutes price rose 0.16 normal-day sigma, "
-        "past the 0.15 normal-day sigma reaction rule; since then it pushed 0.06 normal-day sigma further the same way, past the "
-        "0.05 normal-day sigma extension rule, and has given back none of it; this was scheduled economic data")
+        "first 15 minutes price rose 0.16 normal-day sigma, larger than 10 of the last 10 sessions over the same 15 minutes, top "
+        "third; since then it pushed 0.06 normal-day sigma further the same way, past the 0.05 normal-day sigma extension rule, "
+        "and has given back none of it; this was scheduled economic data")
     assert gates["move_reaction_path"] is None
 
 
-def test_the_reaction_rule_and_the_extension_and_half_lines_at_their_boundaries(scene_factory):
+def test_the_reaction_rank_and_the_extension_and_half_lines_at_their_boundaries(scene_factory):
     now = at(11, 32, JOLTS_DAY)
-    state, _, gates = labels(reaction_scene(scene_factory, now, 7720.0, first_end=7715.0))
-    assert "price rose 0.15 normal-day sigma, past the 0.15 normal-day sigma reaction rule" in state["event.reaction"]
+    state, _, gates = labels(reaction_scene(scene_factory, now, 7711.5, first_end=7706.5))
+    assert "price rose 0.07 normal-day sigma, larger than 4 of the last 10 sessions over the same 15 minutes, middle third" in state["event.reaction"]
     assert "pushed 0.05 normal-day sigma further the same way, short of the 0.05 normal-day sigma extension rule" in state["event.reaction"]
     assert gates["move_reaction_path"] is None
-    state, _, gates = labels(reaction_scene(scene_factory, now, 7714.0, first_end=7714.0))
-    assert "price rose 0.14 normal-day sigma, short of the 0.15 normal-day sigma reaction rule" in state["event.reaction"]
-    assert gates["move_reaction_path"] == "the first reaction moved 0.14 normal-day sigma, less than the 0.15 normal-day sigma reaction rule"
+    state, _, gates = labels(reaction_scene(scene_factory, now, 7705.0, first_end=7705.0))
+    assert "price rose 0.05 normal-day sigma, larger than 3 of the last 10 sessions over the same 15 minutes, bottom third" in state["event.reaction"]
+    assert gates["move_reaction_path"] == ("the first reaction moved 0.05 normal-day sigma, larger than 3 of the last 10 sessions over the same "
+                                           "15 minutes, bottom third")
     held = labels(reaction_scene(scene_factory, now, 7708.0))[0]["event.reaction"]
     assert "it has given back 50% of it, within the half line, and has not crossed back through where the reaction started" in held
     faded = labels(reaction_scene(scene_factory, now, 7707.9))[0]["event.reaction"]
@@ -237,9 +259,9 @@ def test_on_a_fed_day_the_reaction_starts_at_the_press_conference(scene_factory)
     s = fomc_scene(scene_factory, at(15, 2, FOMC_DAY), statement=7716.0, presser_end=7674.0, spot=7664.0)
     assert labels(s)[0]["event.reaction"] == (
         "the reaction starts at 14:30 with the Fed chair's press conference (the Fed's rate decision at 14:00 moved price 0.16 "
-        "normal-day sigma in its first 15 minutes); in its first 15 minutes price fell 0.26 normal-day sigma, past the 0.15 "
-        "normal-day sigma reaction rule; since then it pushed 0.10 normal-day sigma further the same way, past the 0.05 normal-day "
-        "sigma extension rule, and has given back none of it; this was a scheduled Fed event")
+        "normal-day sigma in its first 15 minutes); in its first 15 minutes price fell 0.26 normal-day sigma, larger than 10 of "
+        "the last 10 sessions over the same 15 minutes, top third; since then it pushed 0.10 normal-day sigma further the same "
+        "way, past the 0.05 normal-day sigma extension rule, and has given back none of it; this was a scheduled Fed event")
 
 
 def test_the_reaction_waits_for_its_first_fifteen_minutes_and_never_reads_a_later_bar(scene_factory):
@@ -251,11 +273,15 @@ def test_the_reaction_waits_for_its_first_fifteen_minutes_and_never_reads_a_late
     assert "price rose 0.16 normal-day sigma" in at_15 and "has given back none of it" in at_15   # spot is the 10:14 close
 
 
-def test_the_reaction_needs_the_normal_day_sigma(scene_factory):
+def test_the_reaction_needs_the_normal_day_sigma_and_ten_sessions_to_rank_it(scene_factory):
     s = replace(reaction_scene(scene_factory, at(11, 32, JOLTS_DAY), 7722.0), prior_rulers=dict(list(NORMAL.items())[:4]))
     _, omitted, gates = labels(s)
     assert omitted["event.reaction"] == "needs 5 prior sessions with a morning anchor for the normal-day sigma"
     assert gates["move_reaction_path"] == omitted["event.reaction"]
+    s = replace(reaction_scene(scene_factory, at(11, 32, JOLTS_DAY), 7722.0), prior_bars=sloped(9))
+    _, omitted, gates = labels(s)
+    assert omitted["event.reaction"] == gates["move_reaction_path"] == (
+        "its rank needs 10 prior sessions with a move from 10:00 to 10:15, have 9")
 
 
 # ---- event.statement_and_presser
@@ -264,27 +290,31 @@ FOMC_DAY = "2026-10-28"
 
 
 def fomc_scene(scene_factory, now, statement, presser_end, spot):
-    """7700 into 14:00, ``statement`` by 14:15, back to 7700 by 14:30, ``presser_end`` by 14:45, ``spot`` from 14:50."""
+    """7700 into 14:00, ``statement`` by 14:15, back to 7700 by 14:30, ``presser_end`` by 14:45, walking to ``spot`` from 14:50
+    to 15:00."""
     return scene_at(scene_factory, now, steps([(9, 30, 7700.0), (14, 14, statement), (14, 29, 7700.0), (14, 44, presser_end),
-                                               (14, 50, spot)]))
+                                               (14, 50, spot, 10)]))
 
 
 def test_the_press_conference_went_the_other_way_from_the_statement(scene_factory):
     s = fomc_scene(scene_factory, at(15, 2, FOMC_DAY), statement=7716.0, presser_end=7690.0, spot=7638.0)
     assert labels(s)[0]["event.statement_and_presser"] == (
-        "in the 15 minutes after the Fed's 14:00 statement price rose 0.16 normal-day sigma, past the 0.05 statement-quiet line; "
-        "since the chair's press conference began at 14:30 price has fallen 0.62 normal-day sigma, the other way, past the "
-        "0.15 presser rule")
+        "in the 15 minutes after the Fed's 14:00 statement price rose 0.16 normal-day sigma, larger than 10 of the last 10 sessions "
+        "over the same minutes, top third; since the chair's press conference began at 14:30 price has fallen 0.62 normal-day "
+        "sigma, the other way, larger than 10 of the last 10 sessions over the same minutes, top third")
 
 
-def test_the_statement_quiet_line_and_the_presser_rule_at_their_boundaries(scene_factory):
+def test_the_statement_and_the_press_conference_by_their_thirds(scene_factory):
+    # the prior sessions moved 0.015 (k + 1) over the statement's 15 minutes and 0.032 (k + 1) over the 32 since 14:30
     now = at(15, 2, FOMC_DAY)
-    quiet = labels(fomc_scene(scene_factory, now, statement=7704.0, presser_end=7690.0, spot=7684.0))[0]["event.statement_and_presser"]
-    assert ("price rose 0.04 normal-day sigma, inside the 0.05 statement-quiet line; since the chair's press conference began at 14:30 "
-            "price has fallen 0.16 normal-day sigma, past the 0.15 presser rule") in quiet
-    at_line = labels(fomc_scene(scene_factory, now, statement=7705.0, presser_end=7710.0, spot=7715.0))[0]["event.statement_and_presser"]
-    assert "rose 0.05 normal-day sigma, past the 0.05 statement-quiet line" in at_line
-    assert at_line.endswith("price has risen 0.15 normal-day sigma, the same way, within the 0.15 presser rule")
+    quiet = labels(fomc_scene(scene_factory, now, statement=7705.0, presser_end=7690.0, spot=7686.0))[0]["event.statement_and_presser"]
+    assert ("price rose 0.05 normal-day sigma, larger than 3 of the last 10 sessions over the same minutes, bottom third; since the "
+            "chair's press conference began at 14:30 price has fallen 0.14 normal-day sigma, larger than 4 of the last 10 sessions over "
+            "the same minutes, middle third") in quiet
+    flat = labels(fomc_scene(scene_factory, now, statement=7706.5, presser_end=7705.0, spot=7710.0))[0]["event.statement_and_presser"]
+    assert "rose 0.07 normal-day sigma, larger than 4 of the last 10 sessions over the same minutes, middle third" in flat
+    assert flat.endswith("price has risen 0.10 normal-day sigma, the same way, larger than 3 of the last 10 sessions over the same "
+                         "minutes, bottom third")
 
 
 def test_the_statement_and_presser_needs_a_fed_day_after_the_press_conference_began(scene_factory):
@@ -293,7 +323,8 @@ def test_the_statement_and_presser_needs_a_fed_day_after_the_press_conference_be
     assert labels(early)[1]["event.statement_and_presser"] == "the Fed chair's press conference starts at 14:30, after this read"
     # at 14:40 the 14:44 fall has not happened yet: price has not moved since the press conference began
     s = fomc_scene(scene_factory, at(14, 40, FOMC_DAY), statement=7716.0, presser_end=7690.0, spot=7638.0)
-    assert labels(s)[0]["event.statement_and_presser"].endswith("price has not moved, within the 0.15 presser rule")
+    assert labels(s)[0]["event.statement_and_presser"].endswith("price has not moved, larger than 0 of the last 10 sessions over the "
+                                                                "same minutes, bottom third")
 
 
 # ---- news.morning_brief
@@ -301,9 +332,20 @@ def test_the_statement_and_presser_needs_a_fed_day_after_the_press_conference_be
 BRIEF_DAY = "2026-09-25"
 
 
-def brief_scene(scene_factory, tmp_path, now, direction=0.3, confidence=0.45, gap_points=30.0, lines=None):
-    """The 09-25 learning log as the market-expectation job writes it, and a settled open ``gap_points`` over
-    yesterday's close."""
+def gap_history(root, n: int = 10) -> None:
+    """Each SLOPED session's first diary row, its prior close 0.05 (k + 1) sigma under its settled open: the gaps
+    this morning's is ranked against."""
+    (root / "reversion").mkdir(parents=True, exist_ok=True)
+    for k, (day, bars) in enumerate(list(SLOPED.items())[:n]):
+        opened = next(float(b["close"]) for b in bars if b["ts"].endswith("09:34:00-04:00"))
+        row = make_row(at(9, 31, day), opened, sigma=100.0, prior_close=opened - 5.0 * (k + 1))
+        (root / "reversion" / f"{day}.jsonl").write_text(json.dumps(row) + "\n")
+
+
+def brief_scene(scene_factory, tmp_path, now, direction=0.3, confidence=0.45, gap_points=30.0, lines=None, sessions=10):
+    """The 09-25 learning log as the market-expectation job writes it, a settled open ``gap_points`` over
+    yesterday's close, and ``sessions`` prior sessions' gaps of 0.05 to 0.50 sigma."""
+    gap_history(tmp_path, sessions)
     folder = tmp_path / "market_expectation"
     folder.mkdir(exist_ok=True)
     if lines is None:
@@ -319,11 +361,11 @@ def test_the_brief_restates_the_gap(scene_factory, tmp_path):
     state, _, _ = labels(brief_scene(scene_factory, tmp_path, at(9, 35, BRIEF_DAY)))
     assert state["news.morning_brief"] == (
         "the 09:00 morning brief leans up 0.3 on a -1 to +1 scale, past the 0.2 direction floor, with confidence 0.45, past the "
-        "0.3 confidence floor; this morning's gap was 0.30 sigma up, past the 0.15 sigma gap rule, so the brief leans the way "
-        "the gap went")
+        "0.3 confidence floor; this morning's gap was 0.30 sigma up, larger than 5 of the last 10 days' gaps, middle third, a real "
+        "gap, so the brief leans the way the gap went")
 
 
-def test_the_brief_verdicts_at_their_floors_and_the_gap_rule(scene_factory, tmp_path):
+def test_the_brief_verdicts_at_their_floors_and_the_gaps_third(scene_factory, tmp_path):
     now = at(9, 35, BRIEF_DAY)
     against = labels(brief_scene(scene_factory, tmp_path, now, direction=-0.2, confidence=0.3))[0]["news.morning_brief"]
     assert against.startswith("the 09:00 morning brief leans down 0.2 on a -1 to +1 scale, past the 0.2 direction floor, with "
@@ -333,11 +375,18 @@ def test_the_brief_verdicts_at_their_floors_and_the_gap_rule(scene_factory, tmp_
     assert "leans up 0.19 on a -1 to +1 scale, under the 0.2 direction floor" in weak and weak.endswith("so the brief counts as no view")
     unsure = labels(brief_scene(scene_factory, tmp_path, now, confidence=0.29))[0]["news.morning_brief"]
     assert "with confidence 0.29, under the 0.3 confidence floor" in unsure and unsure.endswith("so the brief counts as no view")
-    at_rule = labels(brief_scene(scene_factory, tmp_path, now, gap_points=-15.0))[0]["news.morning_brief"]
-    assert at_rule.endswith("this morning's gap was 0.15 sigma down, past the 0.15 sigma gap rule, so the brief leans against the way "
-                            "the gap went")
-    inside = labels(brief_scene(scene_factory, tmp_path, now, gap_points=14.0))[0]["news.morning_brief"]
-    assert inside.endswith("0.14 sigma up, inside the 0.15 sigma gap rule, so the brief takes a side the gap did not")
+    real = labels(brief_scene(scene_factory, tmp_path, now, gap_points=-21.0))[0]["news.morning_brief"]
+    assert real.endswith("this morning's gap was 0.21 sigma down, larger than 4 of the last 10 days' gaps, middle third, a real gap, "
+                         "so the brief leans against the way the gap went")
+    small = labels(brief_scene(scene_factory, tmp_path, now, gap_points=19.0))[0]["news.morning_brief"]
+    assert small.endswith("0.19 sigma up, larger than 3 of the last 10 days' gaps, bottom third, no real gap, so the brief "
+                          "takes a side the gap did not")
+
+
+def test_the_brief_needs_ten_prior_gaps(scene_factory, tmp_path):
+    scene = replace(brief_scene(scene_factory, tmp_path, at(9, 35, BRIEF_DAY), sessions=9), prior_bars=sloped(9))
+    assert labels(scene)[1]["news.morning_brief"] == ("its rank needs 10 prior sessions with a trusted morning ruler, a settled open "
+                                                      "and yesterday's close, have 9")
 
 
 def test_the_brief_is_omitted_without_a_morning_entry_known_at_the_read(scene_factory, tmp_path):
@@ -359,7 +408,7 @@ def test_the_brief_is_omitted_without_a_morning_entry_known_at_the_read(scene_fa
 BURST_DAY = "2026-10-13"
 
 
-def burst_scene(scene_factory, now, *, size=12.0, after=12.0, start=(11, 40), prior_rulers=NORMAL, **kw):
+def burst_scene(scene_factory, now, *, size=12.0, after=12.0, start=(11, 40), prior_rulers=RULERS, **kw):
     """A tape stepping half a point a minute, rising ``size`` points in the five minutes from ``start``, then held at
     ``after`` points over where it started from 11:50."""
     i0 = minute(*start)
@@ -370,29 +419,45 @@ def burst_scene(scene_factory, now, *, size=12.0, after=12.0, start=(11, 40), pr
     return scene_at(scene_factory, now, closes, prior_rulers=prior_rulers, **kw)
 
 
-def test_a_burst_the_hour_before_could_not_produce(scene_factory):
-    state, _, gates = labels(burst_scene(scene_factory, at(12, 2, BURST_DAY), after=5.5))
+def given_back(n: int = 10) -> dict[str, list[dict]]:
+    """``n`` prior sessions, 2026-09-17 back, flat at 7700 until a jump to 7760 at 10:00, then held 2 (k + 1) points
+    under it: at noon the k-th sits 0.005 + 0.02 (k + 1) sigma under its session high (the jump's bar reached 7760.5)."""
+    out = {}
+    for k in range(n):
+        day = f"2026-09-{17 - k:02d}"
+        out[day] = bars_from_closes(steps([(9, 30, 7700.0), (10, 0, 7760.0), (10, 1, 7760.0 - 2.0 * (k + 1))]), day=day)
+    return out
+
+
+GIVEN_BACK = given_back()
+
+
+def test_a_burst_larger_than_every_sessions_biggest_move_of_the_hour(scene_factory):
+    state, _, gates = labels(burst_scene(scene_factory, at(12, 2, BURST_DAY), after=5.5, prior_bars=GIVEN_BACK))
     assert state["shock.burst"] == (
-        "22 minutes ago price rose 0.12 sigma in 5 minutes, 8.2 times what the hour before's minute-to-minute movement would "
-        "produce, past the 3.0-times shock rule and the 0.10 sigma floor; one minute inside it was 5 times a normal minute; "
-        "not at a scheduled release time; the burst ended 17 minutes ago, older than the 10-minute fresh window; since then "
-        "price has given back 52% of it, past the half line")
+        "22 minutes ago price rose 0.12 sigma in 5 minutes, larger than the biggest five-minute move of the hour to that minute on "
+        "10 of the last 10 sessions, past the shock rule; not at a scheduled release time; the burst ended 17 minutes ago, older "
+        "than the 10-minute fresh window; since then price has given back 52% of it, past the half line")
     assert state["shock.vs_day_range"] == (
         "the shock took price to a new session high, 0.12 sigma over the earlier high, which price has since pushed 0.01 sigma "
-        "further, and price is 0.07 sigma below that new high, within the 0.09 sigma move rule of it")
+        "further, and price is 0.07 sigma below that new high, farther from it than 3 of the last 10 sessions sat from their own "
+        "session high at this minute, bottom third, so it is still at the new extreme")
     assert gates["shock_state"] is None
 
 
-def test_the_shock_rule_floor_and_fresh_window_at_their_boundaries(scene_factory):
+def test_the_shock_rule_and_fresh_window_at_their_boundaries(scene_factory):
     fresh = labels(burst_scene(scene_factory, at(11, 55, BURST_DAY)))[0]["shock.burst"]
     assert "the burst ended 10 minutes ago, inside the 10-minute fresh window; since then price has given back none of it" in fresh
     assert "ended 11 minutes ago, older than" in labels(burst_scene(scene_factory, at(11, 56, BURST_DAY)))[0]["shock.burst"]
-    _, omitted, gates = labels(burst_scene(scene_factory, at(12, 2, BURST_DAY), size=9.9, after=9.9))
+    # the SLOPED sessions' biggest five-minute moves are 0.005 to 0.050 sigma: beating all ten is a shock, nine is not
+    passed = labels(burst_scene(scene_factory, at(12, 2, BURST_DAY), size=5.6, after=5.6))[0]["shock.burst"]
+    assert passed.startswith("22 minutes ago price rose 0.05 sigma in 5 minutes, larger than the biggest five-minute move of the hour "
+                             "to that minute on 10 of the last 10 sessions, past the shock rule;")
+    _, omitted, gates = labels(burst_scene(scene_factory, at(12, 2, BURST_DAY), size=5.0, after=5.0))
     assert gates["shock_state"] == omitted["shock.burst"] == (
-        "no five-minute move in the last 60 minutes passed the shock rule; the largest was 0.09 sigma, 6.7 times the hour "
-        "before's movement")
-    _, omitted, _ = labels(burst_scene(scene_factory, at(12, 2, BURST_DAY), size=3.5, after=3.5))
-    assert omitted["shock.burst"].endswith("the largest was 0.03 sigma, 2.4 times the hour before's movement")
+        "no five-minute move in the last 60 minutes passed the shock rule (larger than the biggest five-minute move of the hour "
+        "to that minute on 95% of recent sessions); the largest was 0.04 sigma, larger than the biggest five-minute move of the "
+        "hour to that minute on 8 of the last 10 sessions")
     assert omitted["shock.vs_day_range"] == omitted["shock.cross_asset"] == omitted["shock.burst"]
 
 
@@ -408,24 +473,31 @@ def test_a_burst_finishing_after_the_read_never_counts(scene_factory):
     assert "0.12 sigma" not in labels(s)[0].get("shock.burst", "")
 
 
-def test_an_opening_burst_is_ranked_against_the_same_five_minutes(scene_factory):
-    prior = prior_sessions(8)
-    rulers = {**NORMAL, **{d: SigmaRuler(100.0, "anchor") for d in prior}}
-    s = burst_scene(scene_factory, at(10, 8, BURST_DAY), size=30.0, after=30.0, start=(9, 56), prior_bars=prior, prior_rulers=rulers)
+def test_an_opening_burst_is_ranked_from_the_settled_open(scene_factory):
+    s = burst_scene(scene_factory, at(10, 8, BURST_DAY), size=30.0, after=30.0, start=(9, 56))
     assert labels(s)[0]["shock.burst"] == (
-        "12 minutes ago price rose 0.29 sigma in 5 minutes, higher than 8 of the last 8 sessions over the same five minutes, "
-        "past the 95% opening-burst line and the 0.10 sigma floor; not at a scheduled release time; the burst ended 7 minutes "
-        "ago, inside the 10-minute fresh window; since then price has given back none of it, within the half line")
-    usual = burst_scene(scene_factory, at(10, 8, BURST_DAY), size=14.0, after=14.0, start=(9, 56), prior_bars=prior, prior_rulers=rulers)
-    assert labels(usual)[2]["shock_state"] == ("no five-minute move in the last 60 minutes passed the shock rule; the largest was "
-                                               "0.14 sigma")                # the prior sessions moved 0.15 over those minutes
-    early = burst_scene(scene_factory, at(9, 38, BURST_DAY), prior_bars=prior, prior_rulers=rulers)
+        "12 minutes ago price rose 0.29 sigma in 5 minutes, larger than the biggest five-minute move of the hour to that minute on "
+        "10 of the last 10 sessions, past the shock rule; not at a scheduled release time; the burst ended 7 minutes ago, inside "
+        "the 10-minute fresh window; since then price has given back none of it, within the half line")
+    usual = burst_scene(scene_factory, at(10, 8, BURST_DAY), size=3.5, after=3.5, start=(9, 56))
+    assert labels(usual)[2]["shock_state"].endswith("the largest was 0.03 sigma, larger than the biggest five-minute move of the hour "
+                                                    "to that minute on 6 of the last 10 sessions")
+    early = burst_scene(scene_factory, at(9, 38, BURST_DAY))
     assert labels(early)[1]["shock.burst"] == "the first five minutes after the settled open end at 09:40"
 
 
+def test_the_shock_needs_ten_prior_sessions_to_judge_a_window(scene_factory):
+    s = burst_scene(scene_factory, at(12, 2, BURST_DAY), prior_bars=sloped(9))
+    _, omitted, gates = labels(s)
+    assert gates["shock_state"] == omitted["shock.burst"] == (
+        "no five-minute window in the last 60 minutes could be judged: each is ranked against the biggest five-minute move of "
+        "the hour to its minute on up to the last 20 sessions and needs 10 of them with a trusted morning ruler")
+    estimated = replace(s, prior_bars=SLOPED, prior_rulers={**RULERS, "2026-09-17": SigmaRuler(100.0, "live")})
+    assert labels(estimated)[2]["shock_state"] == gates["shock_state"]
+
+
 def test_a_burst_at_a_release_names_it_and_an_estimated_ruler_says_so(scene_factory):
-    s = burst_scene(scene_factory, at(10, 32, "2026-10-01"), start=(10, 0), size=30.0, after=30.0, anchor_row=False,
-                    prior_bars=prior_sessions(8), prior_rulers={**NORMAL, **{d: SigmaRuler(100.0, "anchor") for d in prior_sessions(8)}})
+    s = burst_scene(scene_factory, at(10, 32, "2026-10-01"), start=(10, 0), size=30.0, after=30.0, anchor_row=False)
     text = labels(s)[0]["shock.burst"]
     assert text.startswith("32 minutes ago price rose 0.29 sigma (ruler estimated) in 5 minutes")
     assert "; inside the first 15 minutes after the ISM manufacturing report at 10:00;" in text
@@ -438,51 +510,57 @@ def test_the_shock_labels_need_a_ruler(scene_factory):
     assert omitted["shock.burst"] == omitted["shock.vs_day_range"] == omitted["shock.cross_asset"] == gates["shock_state"] == why
 
 
-def test_a_burst_inside_the_days_range_and_one_left_behind(scene_factory):
+def test_a_burst_inside_the_days_range_and_one_given_up(scene_factory):
     early_high = [7700.0 + 0.5 * (i % 2) + (20.0 if minute(10, 0) <= i < minute(10, 5) else 0.0) for i in range(minute(15, 59) + 1)]
     for i in range(minute(11, 40), len(early_high)):
         early_high[i] += 12.0 * min(i - minute(11, 40) + 1, 5) / 5
     inside = scene_at(scene_factory, at(12, 2, BURST_DAY), early_high)
     assert labels(inside)[0]["shock.vs_day_range"] == ("the shock stayed inside the day's earlier range: its high stopped 0.09 sigma "
                                                        "short of the earlier session high")
-    left = labels(burst_scene(scene_factory, at(12, 2, BURST_DAY), after=2.0))[0]["shock.vs_day_range"]
-    assert left.endswith("and price is 0.10 sigma below that new high, beyond the 0.09 sigma move rule of it")
+    left = labels(burst_scene(scene_factory, at(12, 2, BURST_DAY), after=2.0, prior_bars=GIVEN_BACK))[0]["shock.vs_day_range"]
+    assert left.endswith("and price is 0.10 sigma below that new high, farther from it than 4 of the last 10 sessions sat from their "
+                         "own session high at this minute, middle third, so it has given the new extreme up")
 
 
 def test_a_burst_price_kept_extending_is_measured_back_from_the_newest_extreme(scene_factory):
     closes = burst_scene(scene_factory, at(12, 2, BURST_DAY)).bars
     climb = [float(b["close"]) + 1.5 * min(max(i - minute(11, 49), 0), 10) for i, b in enumerate(closes)]   # 1.5 a minute to 12:00
-    s = scene_at(scene_factory, at(12, 2, BURST_DAY), climb)
+    s = scene_at(scene_factory, at(12, 2, BURST_DAY), climb, prior_bars=GIVEN_BACK)
     assert labels(s)[0]["shock.vs_day_range"] == (
         "the shock took price to a new session high, 0.12 sigma over the earlier high, which price has since pushed 0.15 sigma "
-        "further, and price is 0.01 sigma below that new high, within the 0.09 sigma move rule of it")
-    beyond = labels(scene_at(scene_factory, at(12, 2, BURST_DAY), climb, spot=7730.0))[0]["shock.vs_day_range"]
-    assert beyond.endswith("and price is at or above that new high, within the 0.09 sigma move rule of it")
+        "further, and price is 0.01 sigma below that new high, farther from it than 0 of the last 10 sessions sat from their own "
+        "session high at this minute, bottom third, so it is still at the new extreme")
+    beyond = labels(scene_at(scene_factory, at(12, 2, BURST_DAY), climb, spot=7730.0, prior_bars=GIVEN_BACK))[0]["shock.vs_day_range"]
+    assert "and price is at or above that new high, farther from it than 0 of the last 10 sessions" in beyond
 
 
 def test_the_shocks_range_and_cross_asset_reads_say_when_the_ruler_is_estimated(scene_factory):
     s = burst_scene(scene_factory, at(12, 2, BURST_DAY), after=6.0, anchor_row=False)
-    state, _, _ = labels(replace(s, market=burst_market(s)))
-    assert state["shock.vs_day_range"].endswith("within the 0.09 sigma move rule of it (ruler estimated)")
-    assert state["shock.cross_asset"].endswith("short of the 0.10 sigma defensive-bid rule (ruler estimated)")
+    state, _, _ = labels(replace(s, market=burst_market(s.bars), prior_markets=PRIOR_MARKETS))
+    assert state["shock.vs_day_range"].endswith("so it has given the new extreme up (ruler estimated)")
+    assert state["shock.cross_asset"].endswith("no defensive bid (ruler estimated)")
 
 
-# ---- shock.cross_asset
+# ---- shock.cross_asset (the SLOPED sessions' same five minutes: the yield 0.4 (k + 1) basis points, semiconductors
+# 0.01 (k + 1) sigma and the defensive funds 0.004 (k + 1) sigma against the index beyond their links, 9 - k % 5 sector
+# funds with the index, TICK's highs at 300 + 50 k and its lows the mirror)
 
 SECTORS = ("XLK", "XLF", "XLE", "XLV", "XLY", "XLI", "XLC", "XLP", "XLU", "XLB", "XLRE")
+CYCLICALS = tuple(x for x in SECTORS if x not in ("XLP", "XLU", "XLV"))
 
 
-def burst_market(scene, tnx_jump=0.041, smh_extra=0.0, defensive_extra=0.0, lagging=("XLRE",), tick=1240.0, drop=(),
-                 burst=(11, 40)):
+def burst_market(bars, day=BURST_DAY, tnx_jump=0.041, smh_extra=0.0, defensive_extra=0.0, lagging=("XLRE",), tick=1240.0, drop=(),
+                 burst=(11, 40), tick_low=None):
     """Every fund moving with the index minute by minute from 10:30, the ten-year yield flat, the NYSE TICK at 300;
     during the five-minute burst from ``burst`` the yield jumps, SMH and the defensive funds move ``extra`` index points
-    more, and the ``lagging`` sector funds fall."""
+    more, the ``lagging`` sector funds fall, and each TICK bar reaches ``tick`` (its low ``tick_low``, else the same)."""
     known: dict[str, list] = {}
-    start = at(*burst, BURST_DAY)
+    tick_bars: list = []
+    start = at(*burst, day)
     end = start + timedelta(minutes=5)
-    for b in scene.bars:
+    for b in bars:
         t = datetime.fromisoformat(b["ts"]) + timedelta(minutes=1)
-        if t < at(10, 30, BURST_DAY):
+        if t < at(10, 30, day):
             continue
         spx, during = float(b["close"]), start < t <= end
         known.setdefault("$TNX", []).append((t, 5.17 + (tnx_jump if t > start else 0.0)))
@@ -490,76 +568,97 @@ def burst_market(scene, tnx_jump=0.041, smh_extra=0.0, defensive_extra=0.0, lagg
         for x in SECTORS:
             extra = defensive_extra if x in ("XLP", "XLU", "XLV") else -20.0 if x in lagging else 0.0
             known.setdefault(x, []).append((t, (spx + (extra if t > start else 0.0)) / 80.0))
-        known.setdefault("$TICK", []).append((t, tick if during else 300.0))
+        high = tick if during else 300.0
+        low = (tick_low if tick_low is not None else tick) if during else 300.0
+        known.setdefault("$TICK", []).append((t, high))
+        tick_bars.append((t, {"ts": b["ts"], "open": low, "high": high, "low": low, "close": low}))
     for symbol in drop:
         known.pop(symbol)
-    return MarketContext(known)
+    return MarketContext(known, {"$TICK": tick_bars} if "$TICK" not in drop else {})
+
+
+PRIOR_MARKETS = {day: burst_market(bars, day, tnx_jump=0.004 * (k + 1), smh_extra=1.0 * (k + 1), defensive_extra=-0.4 * (k + 1),
+                                   lagging=CYCLICALS[:2 + k % 5], tick=300.0 + 50.0 * k, tick_low=-300.0 - 50.0 * k)
+                 for k, (day, bars) in enumerate(SLOPED.items())}
+
+
+def shock_with(s, **market):
+    return replace(s, market=burst_market(s.bars, **market), prior_markets=PRIOR_MARKETS)
 
 
 def test_what_moved_with_the_shock(scene_factory):
     s = burst_scene(scene_factory, at(12, 2, BURST_DAY), after=6.0)
-    state, _, _ = labels(replace(s, market=burst_market(s, smh_extra=15.0, defensive_extra=-11.0)))
+    state, _, _ = labels(shock_with(s, smh_extra=15.0, defensive_extra=-11.0))
     assert state["shock.cross_asset"] == (
-        "during the shock the ten-year yield rose 4.1 basis points beyond its usual link to the index, past the 3 basis-point rule; "
-        "semiconductors rose 0.15 sigma beyond theirs, past the 0.10 sigma rule, the shock's way; no megacap's share of it is "
-        "measured, since their index weights are not on file; 10 of 11 sector funds rose with it, at or past the 9-fund broad "
-        "count, and NYSE TICK reached 1240, at or past the 1000 extreme; the defensive funds (staples, utilities, health care) "
-        "fell 0.11 sigma beyond their usual link, against the shock, not the 0.10 sigma defensive-bid rule, which needs them "
-        "rising against a falling index")
+        "during the shock the ten-year yield rose 4.1 basis points beyond its usual link to the index, more than on 10 of the last "
+        "10 sessions over the same five minutes, in the top fifth; semiconductors rose 0.15 sigma beyond theirs, their move the "
+        "shock's way more than on 10 of the last 10 sessions over the same five minutes, in the top fifth, the shock's way; no "
+        "megacap's share of it is measured, since their index weights are not on file; 10 of 11 sector funds rose with it, more "
+        "than on 10 of the last 10 sessions over the same five minutes, in the top fifth, and NYSE TICK reached 1240, at or past "
+        "its top 5% band for those minutes, the shock's way; the defensive funds (staples, utilities, health care) fell 0.11 sigma "
+        "beyond their usual link, against the shock, their move against the index more than on 10 of the last 10 sessions over "
+        "the same five minutes, in the top fifth, not a defensive bid, which needs them rising against a falling index")
 
 
 def test_defensives_rising_against_a_falling_index_are_the_defensive_bid(scene_factory):
     s = burst_scene(scene_factory, at(12, 2, BURST_DAY), size=-12.0, after=-6.0)
-    text = labels(replace(s, market=burst_market(s, defensive_extra=11.0, tick=-1240.0)))[0]["shock.cross_asset"]
-    assert text.endswith("the defensive funds (staples, utilities, health care) rose 0.11 sigma beyond their usual link, "
-                         "against the shock, past the 0.10 sigma defensive-bid rule")
-    short = labels(replace(s, market=burst_market(s, defensive_extra=9.0, tick=-1240.0)))[0]["shock.cross_asset"]
-    assert short.endswith("rose 0.09 sigma beyond their usual link, against the shock, short of the 0.10 sigma defensive-bid rule")
-    rally = burst_scene(scene_factory, at(12, 2, BURST_DAY), after=6.0)
-    with_it = labels(replace(rally, market=burst_market(rally, defensive_extra=11.0)))[0]["shock.cross_asset"]
-    assert with_it.endswith("rose 0.11 sigma beyond their usual link, with the shock, not the 0.10 sigma defensive-bid rule, "
-                            "which needs them rising against a falling index")
+    text = labels(shock_with(s, defensive_extra=11.0, tick=-1240.0))[0]["shock.cross_asset"]
+    assert text.endswith("the defensive funds (staples, utilities, health care) rose 0.11 sigma beyond their usual link, against the "
+                         "shock, their move against the index more than on 10 of the last 10 sessions over the same five minutes, in "
+                         "the top fifth, a defensive bid")
+    assert "and NYSE TICK reached -1240, at or past its bottom 5% band for those minutes, the shock's way;" in text
+    short = labels(shock_with(s, defensive_extra=2.6, tick=-1240.0))[0]["shock.cross_asset"]
+    assert short.endswith("rose 0.03 sigma beyond their usual link, against the shock, their move against the index more than on 6 of "
+                          "the last 10 sessions over the same five minutes, short of the top fifth, no defensive bid")
 
 
-def test_the_cross_asset_rules_at_their_boundaries(scene_factory):
+def test_the_cross_asset_ranks_at_their_fifths(scene_factory):
     s = burst_scene(scene_factory, at(12, 2, BURST_DAY), after=6.0)
-    market = burst_market(s, tnx_jump=0.029, smh_extra=-15.0, lagging=("XLRE", "XLB", "XLC"), tick=999.0)
-    text = labels(replace(s, market=market))[0]["shock.cross_asset"]
-    assert "the ten-year yield rose 2.9 basis points beyond its usual link to the index, short of the 3 basis-point rule" in text
-    assert "semiconductors fell 0.15 sigma beyond theirs, past the 0.10 sigma rule but against the shock" in text
-    assert "8 of 11 sector funds rose with it, short of the 9-fund broad count, and NYSE TICK reached 999, short of the 1000 extreme" in text
-    assert text.endswith("moved with their usual link to the index, short of the 0.10 sigma defensive-bid rule")
-    at_the_lines = labels(replace(s, market=burst_market(s, lagging=("XLRE", "XLB"), tick=1000.0)))[0]["shock.cross_asset"]
-    assert "9 of 11 sector funds rose with it, at or past the 9-fund broad count, and NYSE TICK reached 1000, at or past" in at_the_lines
-    still = labels(replace(s, market=burst_market(s, tnx_jump=0.0004, smh_extra=0.4)))[0]["shock.cross_asset"]
-    assert still.startswith("during the shock the ten-year yield moved with its usual link to the index, short of the 3 basis-point "
-                            "rule; semiconductors moved with their usual link, short of the 0.10 sigma rule;")
-    wrong_way = labels(replace(s, market=burst_market(s, tick=-1100.0)))[0]["shock.cross_asset"]
-    assert "NYSE TICK reached -1100, past the 1000 extreme but against the shock;" in wrong_way
+    text = labels(shock_with(s, tnx_jump=0.029, smh_extra=-15.0, lagging=("XLRE", "XLB", "XLC"), tick=600.0))[0]["shock.cross_asset"]
+    assert ("the ten-year yield rose 2.9 basis points beyond its usual link to the index, more than on 7 of the last 10 sessions over "
+            "the same five minutes, short of the top fifth") in text
+    assert ("semiconductors fell 0.15 sigma beyond theirs, their move the shock's way more than on 0 of the last 10 sessions over the "
+            "same five minutes, in the bottom fifth, against the shock") in text
+    assert ("8 of 11 sector funds rose with it, more than on 6 of the last 10 sessions over the same five minutes, short of the top "
+            "fifth, and NYSE TICK reached 600, inside its 5% band for those minutes the shock's way;") in text
+    at_edge = labels(shock_with(s, tnx_jump=0.033, lagging=("XLRE", "XLB")))[0]["shock.cross_asset"]
+    assert "rose 3.3 basis points beyond its usual link to the index, more than on 8 of the last 10 sessions over the same five minutes, in the top fifth" in at_edge
+    still = labels(shock_with(s, tnx_jump=0.0004, smh_extra=0.4))[0]["shock.cross_asset"]
+    assert still.startswith("during the shock the ten-year yield moved with its usual link to the index, more than on 0 of the last 10 "
+                            "sessions over the same five minutes, short of the top fifth; semiconductors moved with their usual link, ")
+    wrong_way = labels(shock_with(s, tick=-1100.0))[0]["shock.cross_asset"]
+    assert "NYSE TICK reached 1240" not in wrong_way
+    assert "inside its 5% band for those minutes the shock's way, but past the other one, against the shock;" in wrong_way
 
 
 def test_the_cross_asset_label_is_omitted_without_its_markets(scene_factory):
     s = burst_scene(scene_factory, at(12, 2, BURST_DAY), after=6.0)
     assert labels(s)[1]["shock.cross_asset"] == "no market-context snapshot today"
-    assert labels(replace(s, market=burst_market(s, drop=("SMH",))))[1]["shock.cross_asset"] == \
-        "SMH has no value within 2 minutes of the burst's start and end"
-    assert labels(replace(s, market=burst_market(s, drop=("XLK", "XLF", "XLE"))))[1]["shock.cross_asset"] == \
-        "needs 9 of the 11 sector funds with a value at the burst's start and end, have 8"
-    late = MarketContext({k: [(t, v) for t, v in pts if t > at(11, 20, BURST_DAY)] for k, pts in burst_market(s).known.items()})
-    assert labels(replace(s, market=late))[1]["shock.cross_asset"] == \
+    assert labels(shock_with(s, drop=("SMH",)))[1]["shock.cross_asset"] == "SMH has no value within 2 minutes of the burst's start and end"
+    assert labels(shock_with(s, drop=("XLK",)))[1]["shock.cross_asset"] == \
+        "needs all 11 sector funds with a value at the burst's start and end, have 10"
+    late = MarketContext({k: [(t, v) for t, v in pts if t > at(11, 20, BURST_DAY)] for k, pts in burst_market(s.bars).known.items()},
+                         burst_market(s.bars).bars)
+    assert labels(replace(s, market=late, prior_markets=PRIOR_MARKETS))[1]["shock.cross_asset"] == \
         "needs 30 minutes of SMH in the hour before the burst to fit its link to the index, has 19"
+    assert labels(shock_with(s, drop=("$TICK",)))[1]["shock.cross_asset"] == "no NYSE TICK bar during the burst"
+    few = replace(shock_with(s), prior_markets=dict(list(PRIOR_MARKETS.items())[:9]))
+    assert labels(few)[1]["shock.cross_asset"] == "NYSE TICK's burst bands need 10 prior sessions with a TICK bar at the burst's minutes"
 
 
 def test_without_the_ten_year_yield_the_rest_of_the_shock_is_still_read(scene_factory):
     s = burst_scene(scene_factory, at(12, 2, BURST_DAY), after=6.0)
-    text = labels(replace(s, market=burst_market(s, drop=("$TNX",))))[0]["shock.cross_asset"]
+    text = labels(shock_with(s, drop=("$TNX",)))[0]["shock.cross_asset"]
     assert text.startswith("during the shock the ten-year yield is not measured ($TNX has no value within 2 minutes of the burst's "
                            "start and end); semiconductors ")
-    assert "10 of 11 sector funds rose with it, at or past the 9-fund broad count" in text
+    assert "10 of 11 sector funds rose with it, more than on 10 of the last 10 sessions over the same five minutes, in the top fifth" in text
     late = burst_scene(scene_factory, at(15, 32, BURST_DAY), start=(15, 10))
+    stopped = burst_market(late.bars, burst=(15, 10))
     stopped = MarketContext({k: [(t, v) for t, v in pts if k != "$TNX" or t <= at(15, 0, BURST_DAY)]    # its bars stop at 15:00
-                             for k, pts in burst_market(late, burst=(15, 10)).known.items()})
-    text = labels(replace(late, market=stopped))[0]["shock.cross_asset"]
+                             for k, pts in stopped.known.items()}, stopped.bars)
+    priors = {day: burst_market(bars, day, burst=(15, 10), lagging=CYCLICALS[:2 + k % 5], tick=300.0 + 50.0 * k, tick_low=-300.0 - 50.0 * k)
+              for k, (day, bars) in enumerate(SLOPED.items())}
+    text = labels(replace(late, market=stopped, prior_markets=priors))[0]["shock.cross_asset"]
     assert text.startswith("during the shock the ten-year yield is not measured ($TNX has no value within 2 minutes of the burst's "
                            "start and end); semiconductors ")
-    assert "NYSE TICK reached 1240, at or past the 1000 extreme" in text
+    assert "NYSE TICK reached 1240, at or past its top 5% band for those minutes, the shock's way" in text

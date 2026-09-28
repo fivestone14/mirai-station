@@ -4,35 +4,43 @@ event.*), the morning brief and headlines (news.*), and unscheduled bursts seen 
 * The calendar labels read calendar/events.json (events.py) for today: its releases before the open,
   in the session and the Fed's speakers. Past the calendar's last kept day they are omitted, since an
   empty day there is unknown rather than quiet. A row whose date follows a rule is worded 'expected'.
-* A burst is a 5-minute move far larger than the tape's own minutes: its size over the square root of
-  five normal minutes, a normal minute being the bipower 1-minute movement of the hour before it (from
-  the settled open), which a single jump barely lifts. A window without that hour (before 10:40) is
-  ranked against the same five minutes of the prior sessions instead.
+* A burst is a 5-minute move from the settled open larger than the biggest 5-minute move of the hour to
+  the same minute (SHOCK_LOOKBACK_MIN) on at least OPENING_BURST_SHARE of up to the last 20 sessions, each
+  in its own morning ruler (ranks.rank_sessions, needing SAME_CLOCK_MIN_SESSIONS of them): a shock for its
+  clock, never against a fixed cut. Ranked against each session's biggest move of the hour rather than
+  its same five minutes, since a read looks back over an hour of windows: one in twenty of those would
+  top the same five minutes on every session by chance alone, and the shock would be awake on three
+  reads in four.
 * A reaction (event.reaction, event.statement_and_presser) is measured in the normal-day sigma, the
-  median morning anchor of the prior sessions, because an event swells today's own anchor.
+  median morning anchor of the prior sessions, because an event swells today's own anchor; its size is
+  ranked against the same minutes on the prior sessions, event or not, each in its own ruler.
+* What moved with a burst (shock.cross_asset) is ranked against the same five minutes on the prior
+  sessions, each group's link to the index fitted over the hour before on each day as it is today.
 
 Each label's sentence, how it is computed and its source are in spec/question_set.json ``labels``; the
 headline feed is DARK.
 """
 from __future__ import annotations
 
+import bisect
 import math
 import statistics
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 from .. import events
-from ..cuts import (BRIEF_CONF_MIN, BRIEF_DIR_MIN, EVENT_DIGEST_MIN, EVENT_DUE_MIN, EVENT_REACTION_RULE, FOLLOW_ON_MIN, GAP_HALF_SHARE,
-                    GAP_RULE_SIGMA, MIN_RANK_SESSIONS, MOVE_RULE_SIGMA, OPENING_BURST_SHARE, PRESSER_RULE_SIGMA, RATES_SHOCK_BP, REACTION_EXTEND_SIGMA,
-                    SECTOR_BROAD, SHOCK_FLOOR_SIGMA, SHOCK_FRESH_MIN, SHOCK_GROUP_SIGMA, SHOCK_LOOKBACK_MIN, SHOCK_Z,
-                    SPEAKER_WINDOW_MIN, STATEMENT_QUIET_SIGMA, TICK_EXTREME, WINDOW_10_MIN)
+from ..cuts import (BRIEF_CONF_MIN, BRIEF_DIR_MIN, EVENT_DIGEST_MIN, EVENT_DUE_MIN, FOLLOW_ON_MIN, GAP_HALF_SHARE, MIN_RANK_SESSIONS,
+                    NIGHT_RANK_COUNT, OPENING_BURST_SHARE, REACTION_EXTEND_SIGMA, SAME_CLOCK_MIN_SESSIONS, SHOCK_FRESH_MIN,
+                    SHOCK_LOOKBACK_MIN, SPEAKER_WINDOW_MIN, TICK_BURST_PCT, WINDOW_10_MIN)
 from ..events import Event
 from ..market_context import SYMBOLS
 from ..state_builder import MarketContext, Scene, load_jsonl
+from .gap_open import gap_rank
 from .label_set import LabelSet
-from .measures import ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, is_num, session_extremes, settled_open
-from .ranks import SameClockRank, rank_against, same_clock_values
+from .measures import (ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, is_num, minute_of_day, move_size, session_extremes,
+                       settled_open)
+from .ranks import SameClockRank, fifth_side, rank_days, rank_sessions, same_clock_values, tick_bands_by_minute, tick_bursts
 from .rulers import NO_ANCHOR, SigmaRuler, normal_day_sigma, ruled, sigma_anchor
 from .words import pct, plural, sig
 
@@ -49,8 +57,7 @@ REACTION_MIN = 15           # a first reaction is the 15 minutes after its start
 FOLLOW_ON = {"FOMC_PRESSER": "FOMC"}   # a follow-on and the release it follows, when due within FOLLOW_ON_MIN of it
 SPEECH_MIN = 60             # a speaker row with no end time is taken to run an hour, remarks and questions
 BURST_MIN = 5
-BASELINE_MIN = 60           # the hour before a window sets its normal minute
-BASELINE_MIN_RETURNS = 50   # a few missing minutes do not stop that hour from setting it
+BASELINE_MIN = 60           # the hour before a burst, over which a market's link to the index is fitted
 FEED_MAX_AGE_MIN = 2        # a market value older than this at a burst's edge is a feed that had stopped
 LINK_MIN_MINUTES = 30       # fewest minutes in the hour before a burst to fit a market's link to the index
 DEFENSIVES = ("XLP", "XLU", "XLV")
@@ -214,6 +221,18 @@ def _nds_words(x: float) -> str:
     return f"{abs(x):.2f} normal-day sigma"
 
 
+def _window_rank(scene: Scene, size: float, start: datetime, end: datetime) -> tuple[SameClockRank | None, str | None]:
+    """A move's ``size`` from ``start`` to ``end`` against the same minutes on the prior sessions, event or not, each
+    in its own ruler (ranks.rank_sessions): how the reactions and the press conference are judged."""
+    minutes = (end - start).total_seconds() / 60.0
+    base = same_clock_values(replace(scene, now=end), lambda bars, then, sigma: move_size(bars, then, sigma, minutes))
+    return rank_sessions(abs(size), base, f"a move from {_hm(start)} to {_hm(end)}")
+
+
+def _larger(rank: SameClockRank, minutes: str = "the same minutes") -> str:
+    return f"larger than {rank.higher_than} of the last {rank.of} sessions over {minutes}, {rank.band}"
+
+
 def _reaction_kind(rows: list[Event]) -> str:
     """What started a reaction: the rows due at its start, or none for a burst at no scheduled time."""
     if not rows:
@@ -255,6 +274,11 @@ def _reaction(scene: Scene, day_events: list[Event], bursts: list[Burst], ls: La
         ls.sleep(gate, why)
         return
     first = (p1 - p0) / nds
+    rank, no_rank = _window_rank(scene, first, start, start + first_min)
+    if rank is None:
+        ls.omit(path, no_rank)
+        ls.sleep(gate, no_rank)
+        return
     named = " and ".join(_what(x) + ("" if x.verified else " (expected at that time)") for x in due)
     head = f"the reaction starts at {_hm(start)} with {named or 'a sudden burst'}"
     lead = next((r for r in scheduled if r.kind == FOLLOW_ON.get(e.kind)
@@ -263,18 +287,18 @@ def _reaction(scene: Scene, day_events: list[Event], bursts: list[Burst], ls: La
         r0, r1 = close_at(scene.bars, lead.start), close_at(scene.bars, lead.start + first_min)
         if r0 is not None and r1 is not None:
             head += f" ({lead.words} at {_hm(lead.start)} moved price {_nds_words((r1 - r0) / nds)} in its first {REACTION_MIN} minutes)"
-    rule = f"the {EVENT_REACTION_RULE:.2f} normal-day sigma reaction rule"
+    size = _larger(rank, f"the same {REACTION_MIN} minutes")
     if first == 0:
-        text = f"{head}; in its first {REACTION_MIN} minutes price did not move, short of {rule}"
+        text = f"{head}; in its first {REACTION_MIN} minutes price did not move, {size}"
     else:
         side = 1 if first > 0 else -1
         text = (f"{head}; in its first {REACTION_MIN} minutes price {'rose' if side > 0 else 'fell'} {_nds_words(first)}, "
-                f"{'past' if abs(first) >= EVENT_REACTION_RULE else 'short of'} {rule}; since then {_path_after(scene.spot, p0, p1, side, nds)}")
+                f"{size}; since then {_path_after(scene.spot, p0, p1, side, nds)}")
     ls.put(path, f"{text}; {_reaction_kind(due)}")
-    if abs(first) >= EVENT_REACTION_RULE:
+    if rank.band != "bottom third":
         ls.wake(gate)
     else:
-        ls.sleep(gate, f"the first reaction moved {_nds_words(first)}, less than {rule}")
+        ls.sleep(gate, f"the first reaction moved {_nds_words(first)}, {size}")
 
 
 def _during_first_reaction(burst: Burst, e: Event) -> bool:
@@ -328,14 +352,17 @@ def _statement_and_presser(scene: Scene, day_events: list[Event], ls: LabelSet) 
         ls.omit(path, "no finished bars at the statement and the press conference")
         return
     moved, since = (s1 - s0) / nds, (scene.spot - p0) / nds
+    said_rank, no_rank = _window_rank(scene, moved, statement.start, statement.start + first_min)
+    went_rank, no_went = _window_rank(scene, since, presser.start, now)
+    if said_rank is None or went_rank is None:
+        ls.omit(path, no_rank or no_went)
+        return
     said = ("did not move" if moved == 0 else f"{'rose' if moved > 0 else 'fell'} {_nds_words(moved)}")
-    quiet = abs(moved) < STATEMENT_QUIET_SIGMA
+    quiet = said_rank.band == "bottom third"
     way = "" if quiet or since == 0 else ", the same way" if (since > 0) == (moved > 0) else ", the other way"
     went = "has not moved" if since == 0 else f"has {'risen' if since > 0 else 'fallen'} {_nds_words(since)}{way}"
-    ls.put(path, f"in the {REACTION_MIN} minutes after the Fed's {_hm(statement.start)} statement price {said}, "
-                 f"{'inside' if quiet else 'past'} the {STATEMENT_QUIET_SIGMA:.2f} statement-quiet line; since the chair's press "
-                 f"conference began at {_hm(presser.start)} price {went}, "
-                 f"{'past' if abs(since) > PRESSER_RULE_SIGMA else 'within'} the {PRESSER_RULE_SIGMA:.2f} presser rule")
+    ls.put(path, f"in the {REACTION_MIN} minutes after the Fed's {_hm(statement.start)} statement price {said}, {_larger(said_rank)}; "
+                 f"since the chair's press conference began at {_hm(presser.start)} price {went}, {_larger(went_rank)}")
 
 
 # ----------------------------------------------------------------------------- the morning brief
@@ -374,9 +401,13 @@ def _morning_brief(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> Non
         ls.omit(path, "row carries no prior close")
         return
     gap = (opened - float(prior)) / anchor.points
+    rank, no_rank = gap_rank(scene, gap)
+    if rank is None:
+        ls.omit(path, no_rank)
+        return
     leans = f"leans {'up' if lean > 0 else 'down'} {abs(lean):g}" if lean else "takes no side, 0"
     no_view = abs(lean) < BRIEF_DIR_MIN or confidence < BRIEF_CONF_MIN
-    gap_past = abs(gap) >= GAP_RULE_SIGMA
+    gap_past = rank.band != "bottom third"
     if no_view:
         verdict = "so the brief counts as no view"
     elif not gap_past:
@@ -389,7 +420,8 @@ def _morning_brief(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> Non
                  f"{'under' if abs(lean) < BRIEF_DIR_MIN else 'past'} the {BRIEF_DIR_MIN:g} direction floor, with confidence "
                  f"{confidence:g}, {'under' if confidence < BRIEF_CONF_MIN else 'past'} the {BRIEF_CONF_MIN:g} confidence floor; "
                  f"this morning's gap was {sig(abs(gap))} {'up' if gap >= 0 else 'down'}{' (ruler estimated)' if anchor.estimated else ''}, "
-                 f"{'past' if gap_past else 'inside'} the {GAP_RULE_SIGMA:.2f} sigma gap rule, {verdict}")
+                 f"larger than {rank.higher_than} of the last {rank.of} days' gaps, {rank.band}, "
+                 f"{'a real gap' if gap_past else 'no real gap'}, {verdict}")
 
 
 # ----------------------------------------------------------------------------- bursts
@@ -397,8 +429,7 @@ def _morning_brief(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> Non
 @dataclass(frozen=True)
 class Burst:
     """A judged 5-minute window: from the close at ``start`` to the close of the bar finishing at ``end``,
-    its move in sigma, and what it was judged against: ``times_normal`` normal minutes (with its widest
-    minute in normal minutes) from the hour before, or its ``rank`` at the same five minutes."""
+    its move in sigma, and its ``rank`` against the prior sessions' biggest 5-minute move in the hour to ``end``."""
     start: datetime
     end: datetime
     from_close: float
@@ -406,9 +437,7 @@ class Burst:
     high: float
     low: float
     move: float
-    times_normal: float | None
-    widest_minute: float | None
-    rank: SameClockRank | None
+    rank: SameClockRank
     passed: bool
 
     @property
@@ -416,32 +445,76 @@ class Burst:
         return 1 if self.move > 0 else -1
 
 
-def _normal_minute(bars: list[dict], start: datetime) -> float | None:
-    """The bipower 1-minute movement of the BASELINE_MIN minutes before ``start``, in points."""
-    before = bars_finished_between(bars, start - timedelta(minutes=BASELINE_MIN), start)
-    first = close_at(bars, start - timedelta(minutes=BASELINE_MIN))
-    if first is None:
-        return None
-    closes = [first] + [float(b["close"]) for b in before]
-    moves = [abs(b - a) for a, b in zip(closes[:-1], closes[1:])]
-    if len(moves) < BASELINE_MIN_RETURNS:
-        return None
-    bipower = math.pi / 2 * statistics.fmean(a * b for a, b in zip(moves[:-1], moves[1:]))
-    return math.sqrt(bipower) if bipower > 0 else None
+@dataclass(frozen=True)
+class _Closes:
+    """A session's closes by when each bar finished, so the close at a moment (what measures.close_at finds) is
+    a lookup: every window of a read asks each prior session for its closes, and a scan of its bars each
+    time would cost a second a read."""
+    ends: list[datetime]
+    closes: list[float]
+
+    @classmethod
+    def of(cls, bars: list[dict]) -> _Closes:
+        return cls([bar_time(b) + ONE_MINUTE for b in bars], [float(b["close"]) for b in bars])
+
+    def at(self, t: datetime) -> float | None:
+        k = bisect.bisect_right(self.ends, t)
+        return self.closes[k - 1] if k else None
+
+    def between(self, start: datetime, end: datetime) -> list[tuple[datetime, float]]:
+        """The bars that finished in (start, end], as (when, close)."""
+        lo, hi = bisect.bisect_right(self.ends, start), bisect.bisect_right(self.ends, end)
+        return list(zip(self.ends[lo:hi], self.closes[lo:hi]))
 
 
-def _move_over(bars: list[dict], then: datetime, sigma: float | None) -> float | None:
-    """|the BURST_MIN minutes to ``then``| in a prior session's own sigma."""
-    a, b = close_at(bars, then - timedelta(minutes=BURST_MIN)), close_at(bars, then)
-    return abs(b - a) / sigma if sigma and a is not None and b is not None else None
+@dataclass(frozen=True)
+class _PriorSession:
+    """A prior session a rank in sigma may use (ranks.rank_days): its day, closes and own morning ruler in points."""
+    day: str
+    closes: _Closes
+    sigma: float
+
+    def at(self, t: datetime) -> datetime:
+        """``t``'s clock minute on this session, market time."""
+        return datetime.combine(date.fromisoformat(self.day), t.astimezone(ET).time(), tzinfo=ET)
+
+
+def _prior_sessions(scene: Scene) -> list[_PriorSession]:
+    """The prior sessions a same-clock rank reads, newest first; one without a ruler is left out, as
+    ranks.same_clock_values leaves it out."""
+    return [_PriorSession(day, _Closes.of(scene.prior_bars[day]), r.points) for day in rank_days(scene)
+            if (r := scene.prior_rulers.get(day)) is not None]
+
+
+def _five_minute_moves(p: _PriorSession, settled: time) -> dict[int, float]:
+    """|the 5-minute move| to the finish of each of a prior session's bars, from the settled open on, in its own
+    sigma, by the minute of day it finished."""
+    out = {}
+    for end, close in zip(p.closes.ends, p.closes.closes):
+        start = end - timedelta(minutes=BURST_MIN)
+        if start.astimezone(ET).time() >= settled and (a := p.closes.at(start)) is not None:
+            out[minute_of_day(end.astimezone(ET))] = abs(close - a) / p.sigma
+    return out
+
+
+def _hour_biggest(moves: list[dict[int, float]], end: datetime) -> list[float]:
+    """Each prior session's biggest 5-minute move that finished in the SHOCK_LOOKBACK_MIN minutes to ``end``'s clock."""
+    last = minute_of_day(end.astimezone(ET))
+    out = []
+    for m in moves:
+        hour = [v for k in range(last - SHOCK_LOOKBACK_MIN + 1, last + 1) if (v := m.get(k)) is not None]
+        if hour:
+            out.append(max(hour))
+    return out
 
 
 def judged_windows(scene: Scene, anchor: float, lookback_min: int) -> list[Burst]:
-    """Every 5-minute window from the settled open that ended in the last ``lookback_min`` minutes and
-    could be judged: against the hour before it, or before that hour exists against the same five
-    minutes of the prior sessions."""
+    """Every 5-minute window from the settled open that ended in the last ``lookback_min`` minutes, its move
+    ranked against the prior sessions' biggest 5-minute move in the hour to the same minute; a window short of
+    SAME_CLOCK_MIN_SESSIONS of them is not judged."""
     bars, now = scene.bars, scene.now
     settled = scene.session_open + timedelta(minutes=BURST_MIN)
+    moves = [_five_minute_moves(p, settled.astimezone(ET).time()) for p in _prior_sessions(scene)]
     out = []
     for b in bars:
         end = bar_time(b) + ONE_MINUTE
@@ -453,22 +526,11 @@ def judged_windows(scene: Scene, anchor: float, lookback_min: int) -> list[Burst
             continue
         to_close = float(win[-1]["close"])
         move = (to_close - from_close) / anchor
+        rank, _ = rank_sessions(abs(move), _hour_biggest(moves, end), "")
+        if rank is None:
+            continue
         high, low = max(float(x["high"]) for x in win), min(float(x["low"]) for x in win)
-        if start - timedelta(minutes=BASELINE_MIN) >= settled:
-            normal = _normal_minute(bars, start)
-            if normal is None:
-                continue
-            times = abs(to_close - from_close) / (math.sqrt(BURST_MIN) * normal)
-            closes = [from_close] + [float(x["close"]) for x in win]
-            widest = max(abs(y - x) for x, y in zip(closes[:-1], closes[1:])) / normal
-            out.append(Burst(start, end, from_close, to_close, high, low, move, times, widest, None,
-                             times >= SHOCK_Z and abs(move) >= SHOCK_FLOOR_SIGMA))
-        else:
-            rank = rank_against(abs(move), same_clock_values(replace(scene, now=end), _move_over))
-            if rank is None:
-                continue
-            out.append(Burst(start, end, from_close, to_close, high, low, move, None, None, rank,
-                             rank.share >= OPENING_BURST_SHARE and abs(move) >= SHOCK_FLOOR_SIGMA))
+        out.append(Burst(start, end, from_close, to_close, high, low, move, rank, rank.share >= OPENING_BURST_SHARE))
     return out
 
 
@@ -481,6 +543,10 @@ def shock_bursts(windows: list[Burst]) -> list[Burst]:
         else:
             groups.append([w])
     return [max(g, key=lambda w: abs(w.move)) for g in groups]
+
+
+def _hour_words(rank: SameClockRank) -> str:
+    return f"larger than the biggest five-minute move of the hour to that minute on {rank.higher_than} of the last {rank.of} sessions"
 
 
 def _shocks(scene: Scene, anchor: SigmaRuler | None, windows: list[Burst], bursts: list[Burst],
@@ -497,12 +563,14 @@ def _shocks(scene: Scene, anchor: SigmaRuler | None, windows: list[Burst], burst
     if not recent and scene.now < first_end:
         why = f"the first five minutes after the settled open end at {_hm(first_end)}"
     elif not recent:
-        why = (f"no five-minute window in the last {SHOCK_LOOKBACK_MIN} minutes could be judged: each needs the hour before it "
-               f"from the settled open, or before 10:40 {MIN_RANK_SESSIONS} prior sessions at its minute")
+        why = (f"no five-minute window in the last {SHOCK_LOOKBACK_MIN} minutes could be judged: each is ranked against the biggest "
+               f"five-minute move of the hour to its minute on up to the last {NIGHT_RANK_COUNT} sessions and needs "
+               f"{SAME_CLOCK_MIN_SESSIONS} of them with a trusted morning ruler")
     elif not shocks:
         top = max(recent, key=lambda w: abs(w.move))
-        why = (f"no five-minute move in the last {SHOCK_LOOKBACK_MIN} minutes passed the shock rule; the largest was "
-               f"{sig(abs(top.move))}" + (f", {top.times_normal:.1f} times the hour before's movement" if top.times_normal is not None else ""))
+        why = (f"no five-minute move in the last {SHOCK_LOOKBACK_MIN} minutes passed the shock rule (larger than the biggest "
+               f"five-minute move of the hour to that minute on {pct(OPENING_BURST_SHARE)} of recent sessions); the largest was "
+               f"{sig(abs(top.move))}, {_hour_words(top.rank)}")
     else:
         burst = max(shocks, key=lambda b: abs(b.move))
         ls.wake("shock_state")
@@ -520,14 +588,7 @@ def _burst_label(scene: Scene, anchor: SigmaRuler, burst: Burst, day_events: lis
     now = scene.now
     est = " (ruler estimated)" if anchor.estimated else ""
     head = (f"{plural(_minutes_between(burst.start, now), 'minute')} ago price {'rose' if burst.side > 0 else 'fell'} "
-            f"{sig(abs(burst.move))}{est} in {BURST_MIN} minutes")
-    if burst.times_normal is not None:
-        size = (f"{burst.times_normal:.1f} times what the hour before's minute-to-minute movement would produce, past the "
-                f"{SHOCK_Z:.1f}-times shock rule and the {SHOCK_FLOOR_SIGMA:.2f} sigma floor; one minute inside it was "
-                f"{burst.widest_minute:.0f} times a normal minute")
-    else:
-        size = (f"higher than {burst.rank.higher_than} of the last {burst.rank.of} sessions over the same five minutes, past the "
-                f"{pct(OPENING_BURST_SHARE)} opening-burst line and the {SHOCK_FLOOR_SIGMA:.2f} sigma floor")
+            f"{sig(abs(burst.move))}{est} in {BURST_MIN} minutes, {_hour_words(burst.rank)}, past the shock rule")
     if day_events is None:
         when = "whether it came at a scheduled time is unknown: the event calendar has run out"
     else:
@@ -539,12 +600,25 @@ def _burst_label(scene: Scene, anchor: SigmaRuler, burst: Burst, day_events: lis
              else f"older than the {SHOCK_FRESH_MIN}-minute fresh window")
     given = _share_given_back((burst.to_close - scene.spot) * burst.side / abs(burst.to_close - burst.from_close))
     ended_words = f"{plural(ended, 'minute')} ago" if ended else "just now"
-    ls.put("shock.burst", f"{head}, {size}; {when}; the burst ended {ended_words}, {fresh}; since then price has given back {given}")
+    ls.put("shock.burst", f"{head}; {when}; the burst ended {ended_words}, {fresh}; since then price has given back {given}")
+
+
+def _from_session_extreme(up: bool):
+    """How far a session's last close sits back from its session high (``up``) or low, in its own sigma: the
+    distance shock.vs_day_range ranks price's distance from the shock's new extreme against."""
+    def measure(bars: list[dict], _then: datetime, sigma: float | None) -> float | None:
+        ext = session_extremes(bars)
+        if ext is None or not sigma:
+            return None
+        last = float(bars[-1]["close"])
+        return ((ext.high - last) if up else (last - ext.low)) / sigma
+    return measure
 
 
 def _vs_day_range(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) -> None:
     """The burst's extreme against the session's high or low before it, and how far price sits back from the
-    new extreme now, the burst's own or one price has pushed on to since."""
+    new extreme now, the burst's own or one price has pushed on to since, against how far the prior sessions
+    sat from their own session extreme at this minute."""
     before = [b for b in scene.bars if bar_time(b) + ONE_MINUTE <= burst.start]
     earlier = session_extremes(before)
     if earlier is None:
@@ -561,105 +635,171 @@ def _vs_day_range(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) 
     since = session_extremes(bars_finished_between(scene.bars, burst.start, scene.now))
     newest = since.high if up else since.low
     further = (newest - extreme) * burst.side / anchor.points
-    pushed = f", which price has since pushed {sig(further)} further" if round(further, 2) else ""
     back = (newest - scene.spot) * burst.side / anchor.points
+    rank, no_rank = rank_sessions(max(back, 0.0), same_clock_values(scene, _from_session_extreme(up)),
+                                  f"a distance from its session {word} at this minute")
+    if rank is None:
+        ls.omit("shock.vs_day_range", no_rank)
+        return
+    pushed = f", which price has since pushed {sig(further)} further" if round(further, 2) else ""
     where = (f"{sig(back)} {'below' if up else 'above'} that new {word}" if round(back, 2) > 0 else
              f"at or {'above' if up else 'below'} that new {word}")
-    verdict = f"{'within' if back <= MOVE_RULE_SIGMA else 'beyond'} the {MOVE_RULE_SIGMA:.2f} sigma move rule of it"
+    verdict = ("so it is still at the new extreme" if rank.band == "bottom third" else "so it has given the new extreme up")
     ls.put("shock.vs_day_range", ruled(anchor, f"the shock took price to a new session {word}, {sig(past)} {'over' if up else 'under'} "
-                                               f"the earlier {word}{pushed}, and price is {where}, {verdict}"))
+                                               f"the earlier {word}{pushed}, and price is {where}, farther from it than "
+                                               f"{rank.higher_than} of the last {rank.of} sessions sat from their own session {word} "
+                                               f"at this minute, {rank.band}, {verdict}"))
 
 
 # ----------------------------------------------------------------------------- what moved with a burst
 
 def _change(symbol: str, a: float, b: float, spot: float, anchor: float) -> float:
-    """A move from ``a`` to ``b`` in the unit its rule reads: a yield in basis points, anything else as the
+    """A move from ``a`` to ``b`` in the unit its rank reads: a yield in basis points, anything else as the
     same return on the index, in its sigma."""
     return (b - a) * 100.0 if symbol == "$TNX" else (b / a - 1.0) * spot / anchor
 
 
-def _link(scene: Scene, mk: MarketContext, symbol: str, before: datetime, anchor: float) -> tuple[float | None, int]:
+def _link(index: _Closes, mk: MarketContext, symbol: str, before: datetime, spot: float, anchor: float) -> tuple[float | None, int]:
     """How far ``symbol`` moved per sigma of the index, minute by minute over the hour before ``before``
     (the slope through zero), and how many minutes it rests on; None under LINK_MIN_MINUTES of them."""
     pairs = []
-    for b in bars_finished_between(scene.bars, before - timedelta(minutes=BASELINE_MIN), before):
-        t = bar_time(b) + ONE_MINUTE
-        i0, i1 = close_at(scene.bars, t - ONE_MINUTE), float(b["close"])
+    for t, i1 in index.between(before - timedelta(minutes=BASELINE_MIN), before):
+        i0 = index.at(t - ONE_MINUTE)
         s0, s1 = mk.last(symbol, t - ONE_MINUTE, FEED_MAX_AGE_MIN), mk.last(symbol, t, FEED_MAX_AGE_MIN)
         if i0 is not None and s0 and s1 is not None:
-            pairs.append(((i1 - i0) / anchor, _change(symbol, s0, s1, scene.spot, anchor)))
+            pairs.append(((i1 - i0) / anchor, _change(symbol, s0, s1, spot, anchor)))
     across = sum(x * x for x, _ in pairs)
     if len(pairs) < LINK_MIN_MINUTES or across == 0:
         return None, len(pairs)
     return sum(x * y for x, y in pairs) / across, len(pairs)
 
 
+@dataclass(frozen=True)
+class _GroupMoves:
+    """One session's five minutes, each group's move beyond its link to the index: the index's ``side``, the
+    ten-year yield in basis points, semiconductors and the defensive funds' mean in index sigma, and how many
+    sector funds moved the index's way. A group left unmeasured is None, with why under its name in ``gaps``."""
+    side: int
+    rates: float | None
+    semis: float | None
+    shelter: float | None
+    with_it: int | None
+    gaps: dict[str, str]
+
+
+def _group_moves(index: _Closes, mk: MarketContext, start: datetime, end: datetime, anchor: float) -> _GroupMoves | None:
+    """What moved with the index from ``start`` to ``end``; None without the index's closes at both."""
+    i0, i1 = index.at(start), index.at(end)
+    if i0 is None or i1 is None:
+        return None
+    move = (i1 - i0) / anchor
+    gaps: dict[str, str] = {}
+
+    def beyond(symbol: str) -> float | None:
+        a, b = mk.last(symbol, start, FEED_MAX_AGE_MIN), mk.last(symbol, end, FEED_MAX_AGE_MIN)
+        if not a or b is None:
+            gaps[symbol] = f"{symbol} has no value within {FEED_MAX_AGE_MIN} minutes of the burst's start and end"
+            return None
+        beta, n = _link(index, mk, symbol, start, i0, anchor)
+        if beta is None:
+            gaps[symbol] = f"needs {LINK_MIN_MINUTES} minutes of {symbol} in the hour before the burst to fit its link to the index, has {n}"
+            return None
+        return _change(symbol, a, b, i0, anchor) - beta * move
+
+    side = 1 if move > 0 else -1
+    rates, semis, defensive = beyond("$TNX"), beyond("SMH"), [beyond(x) for x in DEFENSIVES]
+    sectors = [(a, b) for x in SYMBOLS["sectors"] if (a := mk.last(x, start, FEED_MAX_AGE_MIN)) and (b := mk.last(x, end, FEED_MAX_AGE_MIN)) is not None]
+    if len(sectors) < len(SYMBOLS["sectors"]):
+        gaps["sectors"] = (f"needs all {len(SYMBOLS['sectors'])} sector funds with a value at the burst's start and end, "
+                           f"have {len(sectors)}")
+    return _GroupMoves(side, rates, semis, None if None in defensive else statistics.fmean(defensive),
+                       sum(1 for a, b in sectors if (b - a) * side > 0) if "sectors" not in gaps else None, gaps)
+
+
+def _prior_group_moves(scene: Scene, burst: Burst) -> list[_GroupMoves]:
+    """The same five minutes as ``burst`` on each prior session with a market context, in its own ruler, newest first."""
+    out = []
+    for p in _prior_sessions(scene):
+        mk = scene.prior_markets.get(p.day)
+        if mk is not None and (m := _group_moves(p.closes, mk, p.at(burst.start), p.at(burst.end), p.sigma)) is not None:
+            out.append(m)
+    return out
+
+
+def _more_than(rank: SameClockRank) -> str:
+    return f"more than on {rank.higher_than} of the last {rank.of} sessions over the same five minutes"
+
+
+def _top_fifth(rank: SameClockRank) -> str:
+    return f"{'in' if fifth_side(rank) > 0 else 'short of'} the top fifth"
+
+
 def _cross_asset(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) -> None:
-    """Each group's move during the burst beyond its usual link to the index, against the rule its
-    fingerprint names: the ten-year yield, semiconductors, the sector funds with the NYSE TICK, the
-    defensive funds. The megacaps' share needs their index weights, which no file carries yet. The yield's
-    bars stop at 15:00, so without it the label says so and still reads the index-side groups."""
+    """Each group's move during the burst beyond its usual link to the index, ranked against the same five minutes on
+    the prior sessions, event or not: the ten-year yield, semiconductors, the sector funds with the NYSE TICK against
+    its burst bands for those minutes, the defensive funds. A group passes its rank in the top fifth. The megacaps'
+    share needs their index weights, which no file carries yet. The yield's bars stop at 15:00, so without it the
+    label says so and still reads the index-side groups."""
     path, mk = "shock.cross_asset", scene.market
     if mk is None:
         ls.omit(path, "no market-context snapshot today")
         return
-    s, e, side, pts = burst.start, burst.end, burst.side, anchor.points
-    gaps: list[str] = []
-
-    def beyond(symbol: str) -> float | None:
-        a, b = mk.last(symbol, s, FEED_MAX_AGE_MIN), mk.last(symbol, e, FEED_MAX_AGE_MIN)
-        if not a or b is None:
-            gaps.append(f"{symbol} has no value within {FEED_MAX_AGE_MIN} minutes of the burst's start and end")
-            return None
-        beta, n = _link(scene, mk, symbol, s, pts)
-        if beta is None:
-            gaps.append(f"needs {LINK_MIN_MINUTES} minutes of {symbol} in the hour before the burst to fit its link to the index, has {n}")
-            return None
-        return _change(symbol, a, b, scene.spot, pts) - beta * burst.move
-
-    rates = beyond("$TNX")
-    rates_gap = gaps.pop() if gaps else None
-    semis, defensive = beyond("SMH"), [beyond(x) for x in DEFENSIVES]
+    now = _group_moves(_Closes.of(scene.bars), mk, burst.start, burst.end, anchor.points)
+    gaps = {k: v for k, v in now.gaps.items() if k != "$TNX"}
     if gaps:
-        ls.omit(path, gaps[0])
+        ls.omit(path, next(iter(gaps.values())))
         return
-    sectors = [(mk.last(x, s, FEED_MAX_AGE_MIN), mk.last(x, e, FEED_MAX_AGE_MIN)) for x in SYMBOLS["sectors"]]
-    sectors = [(a, b) for a, b in sectors if a and b is not None]
-    if len(sectors) < SECTOR_BROAD:
-        ls.omit(path, f"needs {SECTOR_BROAD} of the {len(SYMBOLS['sectors'])} sector funds with a value at the burst's start and end, "
-                      f"have {len(sectors)}")
+    tick_bars = mk.bars_between("$TICK", burst.start, burst.end)
+    if not tick_bars:
+        ls.omit(path, "no NYSE TICK bar during the burst")
         return
-    ticks = [bar["high"] if side > 0 else bar["low"] for bar in mk.bars_between("$TICK", s, e)] or mk.between("$TICK", s, e)
-    if not ticks:
-        ls.omit(path, "no NYSE TICK reading during the burst")
+    reached = tick_bursts(tick_bands_by_minute(scene), tick_bars)
+    if reached is None:
+        ls.omit(path, f"NYSE TICK's burst bands need {SAME_CLOCK_MIN_SESSIONS} prior sessions with a TICK bar at the burst's minutes")
         return
-    tick = max(ticks) if side > 0 else min(ticks)
-    with_it = sum(1 for a, b in sectors if (b - a) * side > 0)
-    semis_verdict = (f"past the {SHOCK_GROUP_SIGMA:.2f} sigma rule, the shock's way" if semis * side >= SHOCK_GROUP_SIGMA else
-                     f"past the {SHOCK_GROUP_SIGMA:.2f} sigma rule but against the shock" if abs(semis) >= SHOCK_GROUP_SIGMA else
-                     f"short of the {SHOCK_GROUP_SIGMA:.2f} sigma rule")
-    tick_verdict = (f"at or past the {TICK_EXTREME} extreme" if tick * side >= TICK_EXTREME else
-                    f"past the {TICK_EXTREME} extreme but against the shock" if abs(tick) >= TICK_EXTREME else
-                    f"short of the {TICK_EXTREME} extreme")
-    shelter = statistics.fmean(defensive)
-    defensive_words = (f"{'rose' if shelter > 0 else 'fell'} {sig(abs(shelter))} beyond their usual link, "
-                       f"{'with' if shelter * side > 0 else 'against'} the shock" if round(shelter, 2) else
-                       "moved with their usual link to the index")
-    bid_rule = f"the {SHOCK_GROUP_SIGMA:.2f} sigma defensive-bid rule"
-    defensive_verdict = (f"past {bid_rule}" if side < 0 and shelter >= SHOCK_GROUP_SIGMA else
-                         f"not {bid_rule}, which needs them rising against a falling index" if abs(shelter) >= SHOCK_GROUP_SIGMA else
-                         f"short of {bid_rule}")
-    rates_words = (f"the ten-year yield is not measured ({rates_gap})" if rates is None else
-                   f"the ten-year yield {'rose' if rates > 0 else 'fell'} {abs(rates):.1f} basis points beyond its usual link to the "
-                   f"index, {'past' if abs(rates) >= RATES_SHOCK_BP else 'short of'} the {RATES_SHOCK_BP} basis-point rule"
-                   if round(rates, 1) else
-                   f"the ten-year yield moved with its usual link to the index, short of the {RATES_SHOCK_BP} basis-point rule")
-    semis_words = f"{'rose' if semis > 0 else 'fell'} {sig(abs(semis))} beyond theirs" if round(semis, 2) else "moved with their usual link"
+    prior = _prior_group_moves(scene, burst)
+    side = now.side
+    what = "{} over the same five minutes"
+    semis, no_semis = rank_sessions(now.semis * side, [m.semis * m.side for m in prior if m.semis is not None], what.format("SMH"))
+    shelter, no_shelter = rank_sessions(-now.shelter * side, [-m.shelter * m.side for m in prior if m.shelter is not None],
+                                        what.format("the defensive funds"))
+    sectors, no_sectors = rank_sessions(now.with_it, [m.with_it for m in prior if m.with_it is not None], what.format("every sector fund"))
+    if semis is None or shelter is None or sectors is None:
+        ls.omit(path, no_semis or no_shelter or no_sectors)
+        return
+    if now.rates is None:
+        rates_words = f"the ten-year yield is not measured ({now.gaps['$TNX']})"
+    else:
+        rates, no_rates = rank_sessions(abs(now.rates), [abs(m.rates) for m in prior if m.rates is not None], what.format("$TNX"))
+        moved = (f"{'rose' if now.rates > 0 else 'fell'} {abs(now.rates):.1f} basis points beyond its usual link to the index"
+                 if round(now.rates, 1) else "moved with its usual link to the index")
+        rates_words = (f"the ten-year yield {moved}, not ranked ({no_rates})" if rates is None else
+                       f"the ten-year yield {moved}, {_more_than(rates)}, {_top_fifth(rates)}")
+    semis_moved = (f"{'rose' if now.semis > 0 else 'fell'} {sig(abs(now.semis))} beyond theirs" if round(now.semis, 2) else
+                   "moved with their usual link")
+    semis_way = {1: ", the shock's way", -1: ", against the shock"}.get(fifth_side(semis), "")
+    semis_verdict = (f"in the top fifth{semis_way}" if fifth_side(semis) > 0 else f"in the bottom fifth{semis_way}"
+                     if fifth_side(semis) < 0 else "between the top and bottom fifths")
+    up, down = reached
+    tick_hit = up if side > 0 else down
+    tick_against = down if side > 0 else up
+    tick = max(float(b["high"]) for b in tick_bars) if side > 0 else min(float(b["low"]) for b in tick_bars)
+    band = f"{pct(1 - TICK_BURST_PCT)} band for those minutes"
+    tick_verdict = (f"at or past its {'top' if side > 0 else 'bottom'} {band}, the shock's way" if tick_hit else
+                    f"inside its {band} the shock's way, but past the other one, against the shock" if tick_against else
+                    f"inside its {band} the shock's way")
+    shelter_moved = (f"{'rose' if now.shelter > 0 else 'fell'} {sig(abs(now.shelter))} beyond their usual link, "
+                     f"{'with' if now.shelter * side > 0 else 'against'} the shock" if round(now.shelter, 2) else
+                     "moved with their usual link to the index")
+    bid = fifth_side(shelter) > 0
+    shelter_verdict = ("a defensive bid" if bid and side < 0 else
+                       "not a defensive bid, which needs them rising against a falling index" if bid else
+                       "no defensive bid")
     moved = "rose" if side > 0 else "fell"
     ls.put(path, ruled(anchor, f"during the shock {rates_words}; "
-                 f"semiconductors {semis_words}, {semis_verdict}; "
+                 f"semiconductors {semis_moved}, their move the shock's way {_more_than(semis)}, {semis_verdict}; "
                  f"no megacap's share of it is measured, since their index weights are not on file; "
-                 f"{with_it} of {len(sectors)} sector funds {moved} with it, "
-                 f"{'at or past' if with_it >= SECTOR_BROAD else 'short of'} the {SECTOR_BROAD}-fund broad count, and NYSE TICK "
-                 f"reached {round(tick)}, {tick_verdict}; "
-                 f"the defensive funds (staples, utilities, health care) {defensive_words}, {defensive_verdict}"))
+                 f"{now.with_it} of {len(SYMBOLS['sectors'])} sector funds {moved} with it, {_more_than(sectors)}, {_top_fifth(sectors)}, "
+                 f"and NYSE TICK reached {round(tick)}, {tick_verdict}; "
+                 f"the defensive funds (staples, utilities, health care) {shelter_moved}, their move against the index "
+                 f"{_more_than(shelter)}, {_top_fifth(shelter)}, {shelter_verdict}"))

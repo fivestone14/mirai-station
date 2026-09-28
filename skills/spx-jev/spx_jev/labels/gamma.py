@@ -6,26 +6,32 @@ the flip, where call positions carry more gamma (it matches the flip side on all
 30 sessions). Every sentence names the expiry book it reads; the flip, the magnet, the charm wall and the gamma
 walls are today's same-day (0DTE) book, ``net_by_strike_tenor`` the 1-to-7-day book.
 
+A distance, a width or a share the question set judges is ranked against the same measure on each prior session's
+diary row at this minute (up to the last 20, needing 10, ranks.rank_sessions), each distance in its session's own
+ruler, and worded by its third: the owner's rule, never a fixed cut.
+
 The final question set's labels a family does not write yet are listed after its built ones; each one's sentence,
 how it is computed and its source are in spec/question_set.json ``labels``, and the registry omits it as not built."""
 from __future__ import annotations
 
 import json
 import re
+import statistics
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from typing import Callable
 
-from ..cuts import (BOX_TIGHT_SIGMA, BOX_WIDE_SIGMA, CHARM_NEAR_HI, CHARM_NEAR_LO, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, FLIP_FAR_SIGMA,
-                    GRIP_CONCENTRATED_SHARE, GRIP_SPREAD_SHARE, HALF_RANK, MAGNET_NEAR_SIGMA, MAGNET_SEAT_SIGMA, MIN_RANK_SESSIONS,
-                    PIN_HUG_HI, PIN_REACH_FAR, SETTLE_SEAT_SIGMA, WALL_NEAR_SIGMA, WALL_THICK_SHARE, WALL_THIN_SHARE,
-                    WALL_TOUCH_QUIET_PERCENTILE, WALL_TOUCH_SIEGE_PERCENTILE, WINDOW_30_MIN)
+from ..cuts import (EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, GRIP_CONCENTRATED_SHARE, GRIP_SPREAD_SHARE, HALF_RANK, SETTLE_SEAT_SIGMA,
+                    WALL_NEAR_SIGMA, WALL_THICK_SHARE, WALL_THIN_SHARE, WALL_TOUCH_QUIET_PERCENTILE, WALL_TOUCH_SIEGE_PERCENTILE,
+                    WINDOW_30_MIN)
 from ..expiry import settle_at, todays_settle
 from ..row_adapter import labeller_row
 from ..sessions import next_trading_day
 from ..state_builder import ROWS_SUBDIR, Scene, row_days
 from .label_set import LabelSet
 from .measures import ET, bars_finished_between, is_num, walls
-from .ranks import rank_against
+from .ranks import SameClockRank, rank_sessions
 from .rulers import NO_ANCHOR, SigmaRuler, remaining_straddles, sigma_anchor
 from .words import above_or_below, ordinal, pct, plural, sig
 
@@ -67,17 +73,18 @@ def build_gamma_labels(scene: Scene) -> LabelSet:
     _wall_touch_volume(scene, ls)
     ruler = sigma_anchor(scene)
     earlier = _row_minutes_ago(scene, WINDOW_30_MIN)
+    prior = prior_books(scene)
     _book_balance(scene, gv, ruler, ls)
     _balance_vs_yesterday(scene, gv, ls)
-    _flip_distance(scene, gv, ruler, earlier, ls)
-    _weight_both_books(scene, gv, ls)
-    _magnet_distance(scene, gv, ruler, earlier, ls)
-    _settle_pull(scene, gv, ruler, ls)
-    _charm_wall_distance(scene, gv, ruler, ls)
-    _wall_box(scene, ruler, earlier, ls)
+    _flip_distance(scene, gv, ruler, earlier, prior, ls)
+    _weight_both_books(scene, gv, prior, ls)
+    _magnet_distance(scene, gv, ruler, earlier, prior, ls)
+    _settle_pull(scene, gv, ruler, prior, ls)
+    _charm_wall_distance(scene, gv, ruler, prior, ls)
+    _wall_box(scene, ruler, earlier, prior, ls)
     _walls_since_30min(scene, ruler, earlier, ls)
     _book_vs_pace_gate(scene, ls)
-    _settle_pull_gate(scene, gv, ruler, ls)
+    _settle_pull_gate(scene, gv, ruler, prior, ls)
     return ls
 
 
@@ -248,6 +255,62 @@ def _diary_row_at(state_dir: Path, day: str, then: datetime) -> dict | None:
     return row if row and datetime.fromisoformat(row["ts"]) >= then - timedelta(minutes=ROW_SLACK_MIN) else None
 
 
+@dataclass(frozen=True)
+class PriorBook:
+    """A prior session's diary row at this read's clock minute (``then``, market time), with its morning ruler."""
+    day: str
+    row: dict
+    ruler: SigmaRuler | None
+    then: datetime
+
+
+def prior_books(scene: Scene) -> list[PriorBook] | None:
+    """Each prior session's diary row at this read's clock minute, newest first, read once a read for every rank of
+    the book; None without a state folder. A session whose ruler was estimated is left out, as ranks.rank_days
+    leaves it out; the days are the ones with a ruler, since the book is read from the diary, not the bars."""
+    if scene.state_dir is None:
+        return None
+    clock = scene.now.astimezone(ET).time()
+    out = []
+    for day, ruler in scene.prior_rulers.items():
+        if ruler is not None and ruler.estimated:
+            continue
+        then = datetime.combine(date.fromisoformat(day), clock, tzinfo=ET)
+        if (row := _diary_row_at(scene.state_dir, day, then)) is not None:
+            out.append(PriorBook(day, row, ruler, then))
+    return out
+
+
+def _book_rank(prior: list[PriorBook] | None, value: float, measure: Callable[[PriorBook], float | None],
+               what: str) -> tuple[SameClockRank | None, str | None]:
+    """``value`` against ``measure`` on each prior session's row at this minute (ranks.rank_sessions), ``what`` naming
+    what a session's row needed; the reason instead without a state folder or with too few sessions."""
+    if prior is None:
+        return None, "no state folder to read the prior sessions' diaries from"
+    return rank_sessions(value, [v for book in prior if (v := measure(book)) is not None], f"{what} at this minute")
+
+
+def _distance_to(key: str) -> Callable[[PriorBook], float | None]:
+    """How far a prior row's same-day ``key`` level sat from its spot, in its session's own ruler."""
+    def measure(book: PriorBook) -> float | None:
+        level, spot = (book.row.get("gex_views") or {}).get(key), book.row.get("spot")
+        return abs(float(level) - float(spot)) / book.ruler.points if book.ruler and is_num(level) and is_num(spot) else None
+    return measure
+
+
+def _farther(rank: SameClockRank) -> str:
+    """A distance's rank in words: "farther from price than on 4 of the last 20 sessions at this minute, bottom third"."""
+    return f"farther from price than on {rank.higher_than} of the last {rank.of} sessions at this minute, {rank.band}"
+
+
+# A share of the book above price by its third: the side the weight leans to, or neither.
+LEANS = {"top third": "weighted above price", "bottom third": "weighted below price", "middle third": "no lean either side"}
+
+
+def _share_words(rank: SameClockRank, also: str = "") -> str:
+    return f"a larger share than on {rank.higher_than} of the last {rank.of} sessions at this minute, {rank.band}: {also}{LEANS[rank.band]}"
+
+
 def _book_balance(scene: Scene, gv: dict, ruler: SigmaRuler | None, ls: LabelSet) -> None:
     """Which positions carry more gamma at price in today's same-day book, by open interest (``regime``) and
     by today's volume (``regime_0dte_vol``), and how far away the open-interest balance tips (the flip)."""
@@ -310,9 +373,10 @@ def _balance_vs_yesterday(scene: Scene, gv: dict, ls: LabelSet) -> None:
     ls.put("gex.balance_vs_yesterday", f"by open interest the same-day book {then} at yesterday's close and {now}, {DEALERS}, {verdict}")
 
 
-def _flip_distance(scene: Scene, gv: dict, ruler: SigmaRuler | None, earlier: dict | None, ls: LabelSet) -> None:
-    """Price against the gamma flip of today's same-day book, and whether it crossed since the row 30 minutes ago.
-    Never says what the flip does to price."""
+def _flip_distance(scene: Scene, gv: dict, ruler: SigmaRuler | None, earlier: dict | None, prior: list[PriorBook] | None,
+                   ls: LabelSet) -> None:
+    """Price against the gamma flip of today's same-day book, its distance ranked against the prior sessions' at this
+    minute (the top third far), and whether it crossed since the row 30 minutes ago. Never says what the flip does to price."""
     if gv.get("regime_source") != "0dte" or gv.get("regime") not in BALANCE:
         ls.omit("gex.flip_distance", "row carries no balance for today's same-day book")
         return
@@ -331,63 +395,92 @@ def _flip_distance(scene: Scene, gv: dict, ruler: SigmaRuler | None, earlier: di
         ls.omit("gex.flip_distance", f"no diary row from {WINDOW_30_MIN} minutes ago carries a gamma flip")
         return
     d = (scene.spot - float(flip)) / ruler.points
+    rank, no_rank = _book_rank(prior, abs(d), _distance_to("flip"), "a gamma flip")
+    if rank is None:
+        ls.omit("gex.flip_distance", no_rank)
+        return
     crossed = (d >= 0) != (float(earlier["spot"]) >= float(then_flip))
-    reach = f"within the {FLIP_FAR_SIGMA} sigma far line" if abs(d) <= FLIP_FAR_SIGMA else f"beyond the {FLIP_FAR_SIGMA} sigma far line"
+    reach = f"{_farther(rank)}: {'far from the flip' if rank.band == 'top third' else 'near the flip'}"
     cross = (f"it has crossed the flip in the last {WINDOW_30_MIN} minutes" if crossed else
              f"it has not crossed the flip in the last {WINDOW_30_MIN} minutes")
     ls.put("gex.flip_distance", f"price is {sig(abs(d))} {above_or_below(d)} the gamma flip, the level where today's same-day book switches between "
                                 f"call-heavy and put-heavy gamma {DEALERS}; {reach}; {cross}{_estimated(ruler)}")
 
 
-def _even_band(share_above: float) -> tuple[str, str]:
-    """Which side of the even band a book's gamma sits on (below, above or even), and in words."""
-    band = f"the {pct(EVEN_SPLIT_LOW)}-{pct(EVEN_SPLIT_HIGH)} even band"
-    if share_above < EVEN_SPLIT_LOW:
-        return "below", f"sits {pct(1.0 - share_above)} below price, past {band} on the below side"
-    if share_above >= EVEN_SPLIT_HIGH:
-        return "above", f"sits {pct(share_above)} above price, past {band} on the above side"
-    return "even", f"splits {pct(share_above)} above and {pct(1.0 - share_above)} below price, inside {band}"
-
-
-def _weight_both_books(scene: Scene, gv: dict, ls: LabelSet) -> None:
-    """Where the gamma sits against price in today's same-day book (``gamma_above_spot``) and in the 1-to-7-day
-    book (``net_by_strike_tenor``, today's expiry excluded), a strike at price counted on neither side."""
+def _today_share(gv: dict) -> float | None:
+    """The share of today's same-day book's gamma above price (``gamma_above_spot``)."""
     above, below = gv.get("gamma_above_spot"), gv.get("gamma_below_spot")
-    if not (is_num(above) and is_num(below) and above + below > 0):
-        ls.omit("gex.weight_both_books", "row carries no gamma above and below price for today's same-day book")
-        return
+    return float(above) / float(above + below) if is_num(above) and is_num(below) and above + below > 0 else None
+
+
+def _week_share(gv: dict, spot: float) -> float | None:
+    """The share of the 1-to-7-day book's gamma above price (``net_by_strike_tenor``, today's expiry excluded), a
+    strike at price counted on neither side."""
     tenor = [(float(x[0]), abs(float(x[1]))) for x in gv.get("net_by_strike_tenor") or []
              if isinstance(x, (list, tuple)) and len(x) >= 2 and is_num(x[0]) and is_num(x[1])]
-    week_above = sum(v for k, v in tenor if k > scene.spot)
-    week_total = week_above + sum(v for k, v in tenor if k < scene.spot)
-    if week_total <= 0:
+    above = sum(v for k, v in tenor if k > spot)
+    total = above + sum(v for k, v in tenor if k < spot)
+    return above / total if total > 0 else None
+
+
+def _prior_share(share: Callable[[dict, float], float | None]) -> Callable[[PriorBook], float | None]:
+    def measure(book: PriorBook) -> float | None:
+        spot = book.row.get("spot")
+        return share(book.row.get("gex_views") or {}, float(spot)) if is_num(spot) else None
+    return measure
+
+
+def _weight_both_books(scene: Scene, gv: dict, prior: list[PriorBook] | None, ls: LabelSet) -> None:
+    """Where the gamma sits against price in today's same-day book and in the 1-to-7-day book: each book's share above
+    price ranked against the same book's at this minute on the prior sessions, its top third weighted above price and
+    its bottom third below."""
+    today, week = _today_share(gv), _week_share(gv, scene.spot)
+    if today is None:
+        ls.omit("gex.weight_both_books", "row carries no gamma above and below price for today's same-day book")
+        return
+    if week is None:
         ls.omit("gex.weight_both_books", "row carries no gamma by strike for the 1-to-7-day book")
         return
-    (today_side, today), (week_side, week) = _even_band(float(above) / float(above + below)), _even_band(week_above / week_total)
-    also = "also " if today_side == week_side else ""
-    ls.put("gex.weight_both_books", f"today's same-day options gamma {today}; the 1-to-7-day book (today's expiry excluded) {also}{week}")
+    today_rank, no_today = _book_rank(prior, today, _prior_share(lambda g, _spot: _today_share(g)), "today's same-day book's gamma split")
+    week_rank, no_week = _book_rank(prior, week, _prior_share(_week_share), "the 1-to-7-day book's gamma by strike")
+    if today_rank is None or week_rank is None:
+        ls.omit("gex.weight_both_books", no_today or no_week)
+        return
+    also = "also " if today_rank.band == week_rank.band else ""
+    ls.put("gex.weight_both_books", f"today's same-day options gamma has {pct(today)} of it above price, {_share_words(today_rank)}; "
+                                    f"the 1-to-7-day book (today's expiry excluded) has {pct(week)} of it above price, "
+                                    f"{_share_words(week_rank, also)}")
 
 
-def _grip_base(scene: Scene) -> list[float]:
-    """The top-strike share on each prior session's diary at this read's clock minute, market time; a session
-    whose ruler was estimated is left out, as ranks.rank_days leaves it out; the days are the ones with a ruler,
-    since the share is read from the diary, not the bars."""
-    clock = scene.now.astimezone(ET).time()
-    out = []
-    for day, ruler in scene.prior_rulers.items():
-        if ruler is not None and ruler.estimated:
-            continue
-        row = _diary_row_at(scene.state_dir, day, datetime.combine(date.fromisoformat(day), clock, tzinfo=ET))
-        share = ((row or {}).get("gex_views") or {}).get("pin_top_share")
-        if is_num(share):
-            out.append(float(share))
-    return out
+def _grip(book: PriorBook) -> float | None:
+    share = (book.row.get("gex_views") or {}).get("pin_top_share")
+    return float(share) if is_num(share) else None
 
 
-def _magnet_distance(scene: Scene, gv: dict, ruler: SigmaRuler | None, earlier: dict | None, ls: LabelSet) -> None:
-    """The heaviest strike of today's same-day book: how far, how strong its grip is against the same minute of
-    the prior sessions (grip climbs all day, so no fixed cut), whether it is the strike of 30 minutes ago, and how
-    much of the last 30 minutes price spent seated on it."""
+def _mean_distance(bars: list[dict], magnet: float, sigma: float) -> float:
+    """How far the closes of ``bars`` sat from ``magnet`` on average, in sigma."""
+    return statistics.fmean(abs(float(b["close"]) - magnet) for b in bars) / sigma
+
+
+def _hug_on(prior_bars: dict[str, list[dict]]) -> Callable[[PriorBook], float | None]:
+    """How far a prior session's closes over the half hour to this minute sat from its heaviest strike at this minute,
+    on average, in its own ruler."""
+    def measure(book: PriorBook) -> float | None:
+        magnet = (book.row.get("gex_views") or {}).get("magnet")
+        window = bars_finished_between(prior_bars.get(book.day) or [], book.then - timedelta(minutes=WINDOW_30_MIN), book.then)
+        return _mean_distance(window, float(magnet), book.ruler.points) if book.ruler and is_num(magnet) and window else None
+    return measure
+
+
+# The heaviest strike's distance by its third, as magnet_seat's options name it.
+SEATS = {"bottom third": "seated on it", "middle third": "near it", "top third": "away from it"}
+
+
+def _magnet_distance(scene: Scene, gv: dict, ruler: SigmaRuler | None, earlier: dict | None, prior: list[PriorBook] | None,
+                     ls: LabelSet) -> None:
+    """The heaviest strike of today's same-day book: how far, how strong its grip is, whether it is the strike of 30
+    minutes ago, and how close price sat to it over the last 30 minutes, each ranked against the same minute of the
+    prior sessions (grip climbs all day and so do the distances' spreads, so no fixed cut)."""
     magnet, grip = gv.get("magnet"), gv.get("pin_top_share")
     if not is_num(magnet) or not is_num(grip):
         ls.omit("gex.magnet_distance", "row carries no heaviest strike or top-strike share for today's same-day book")
@@ -403,33 +496,37 @@ def _magnet_distance(scene: Scene, gv: dict, ruler: SigmaRuler | None, earlier: 
     if not window:
         ls.omit("gex.magnet_distance", f"no minute bar finished in the last {WINDOW_30_MIN} minutes")
         return
-    if scene.state_dir is None:
-        ls.omit("gex.magnet_distance", "no state folder to read the prior sessions' diaries from")
-        return
-    base = _grip_base(scene)
-    rank = rank_against(float(grip), base)
-    if rank is None:
-        ls.omit("gex.magnet_distance", f"its grip needs {MIN_RANK_SESSIONS} prior sessions' diaries at this minute, have {len(base)}")
-        return
     d = (float(magnet) - scene.spot) / ruler.points
-    seat = (f"inside the {MAGNET_SEAT_SIGMA} sigma seat distance" if abs(d) < MAGNET_SEAT_SIGMA else
-            f"between the {MAGNET_SEAT_SIGMA} sigma seat and {MAGNET_NEAR_SIGMA} sigma near distances" if abs(d) < MAGNET_NEAR_SIGMA else
-            f"beyond the {MAGNET_NEAR_SIGMA} sigma near distance")
-    median = "at or above the median" if rank.share >= HALF_RANK else "below the median"
+    hug = _mean_distance(window, float(magnet), ruler.points)
+    seat, no_seat = _book_rank(prior, abs(d), _distance_to("magnet"), "a heaviest same-day strike")
+    grip_rank, no_grip = _book_rank(prior, float(grip), _grip, "a top-strike share")
+    hug_rank, no_hug = _book_rank(prior, hug, _hug_on(scene.prior_bars), "a heaviest same-day strike and the half hour's bars")
+    if seat is None or grip_rank is None or hug_rank is None:
+        ls.omit("gex.magnet_distance", no_seat or no_grip or no_hug)
+        return
+    median = "at or above the median" if grip_rank.share >= HALF_RANK else "below the median"
     same = "the same strike as" if float(magnet) == float(then_magnet) else "a different strike from"
-    seated = sum(1 for b in window if abs(float(b["close"]) - float(magnet)) < MAGNET_SEAT_SIGMA * ruler.points)
-    hug = f"at or past the {PIN_HUG_HI} hug share" if seated / len(window) >= PIN_HUG_HI else f"short of the {PIN_HUG_HI} hug share"
+    held = "held there" if hug_rank.band == "bottom third" else "not held there"
     ls.put("gex.magnet_distance",
-           f"today's heaviest same-day strike (the magnet) sits {sig(abs(d))} {above_or_below(d)} price, {seat}; its grip (top-strike share) is "
-           f"stronger than on {rank.higher_than} of the last {rank.of} sessions at {scene.now.astimezone(ET):%H:%M} ET, {median}; "
-           f"it is {same} {WINDOW_30_MIN} minutes ago; price spent {seated} of the last {plural(len(window), 'minute')} within the seat "
-           f"distance of it, {hug}{_estimated(ruler)}")
+           f"today's heaviest same-day strike (the magnet) sits {sig(abs(d))} {above_or_below(d)} price, {_farther(seat)}: "
+           f"{SEATS[seat.band]}; its grip (top-strike share) is stronger than on {grip_rank.higher_than} of the last {grip_rank.of} "
+           f"sessions at {scene.now.astimezone(ET):%H:%M} ET, {median}; it is {same} {WINDOW_30_MIN} minutes ago; over the last "
+           f"{plural(len(window), 'minute')} price sat {sig(hug)} from it on average, farther than on {hug_rank.higher_than} of the last "
+           f"{hug_rank.of} sessions at this minute, {hug_rank.band}: {held}{_estimated(ruler)}")
 
 
-def _settle_pull(scene: Scene, gv: dict, ruler: SigmaRuler | None, ls: LabelSet) -> None:
+def _straddles_to_magnet(book: PriorBook) -> float | None:
+    """How far a prior row's heaviest strike sat from its spot, in what that day's straddle still priced."""
+    magnet, spot = (book.row.get("gex_views") or {}).get("magnet"), book.row.get("spot")
+    em = (book.row.get("range_ruler") or {}).get("em_points")
+    return abs(float(magnet) - float(spot)) / float(em) if is_num(magnet) and is_num(spot) and is_num(em) and em > 0 else None
+
+
+def _settle_pull(scene: Scene, gv: dict, ruler: SigmaRuler | None, prior: list[PriorBook] | None, ls: LabelSet) -> None:
     """The heaviest strike of today's same-day book against price in sigma and in what today's straddle still
     prices before the settle (the same distance is out of reach at 13:30 and inside the priced move at 15:30),
-    with the book's gamma-weighted centre beside it."""
+    that count ranked against the prior sessions' at this minute (the top third out of reach), with the book's
+    gamma-weighted centre beside it."""
     settle = todays_settle(scene.now)
     magnet, centre = gv.get("magnet"), gv.get("pin_centroid")
     if settle is None:
@@ -445,9 +542,14 @@ def _settle_pull(scene: Scene, gv: dict, ruler: SigmaRuler | None, ls: LabelSet)
     if straddles is None:
         ls.omit("gex.settle_pull", "row carries no straddle left for today's same-day book")
         return
+    rank, no_rank = _book_rank(prior, straddles, _straddles_to_magnet, "a heaviest same-day strike and a straddle left")
+    if rank is None:
+        ls.omit("gex.settle_pull", no_rank)
+        return
     d = (float(magnet) - scene.spot) / ruler.points
     seat = f"inside the {SETTLE_SEAT_SIGMA} sigma seat distance" if abs(d) <= SETTLE_SEAT_SIGMA else f"outside the {SETTLE_SEAT_SIGMA} sigma seat distance"
-    reach = f"within the {PIN_REACH_FAR} reach line" if straddles < PIN_REACH_FAR else f"at or beyond the {PIN_REACH_FAR} reach line"
+    reach = (f"more than on {rank.higher_than} of the last {rank.of} sessions at this minute, {rank.band}: "
+             f"{'out of reach' if rank.band == 'top third' else 'in reach'}")
     if is_num(centre):
         c = (float(centre) - scene.spot) / ruler.points
         centre_words = (f"the gamma-weighted centre of the book sits {sig(abs(c))} {above_or_below(c)} price, "
@@ -462,9 +564,13 @@ def _settle_pull(scene: Scene, gv: dict, ruler: SigmaRuler | None, ls: LabelSet)
            f"the options settle in {plural(left, 'minute')}{_estimated(ruler)}")
 
 
-def _charm_wall_distance(scene: Scene, gv: dict, ruler: SigmaRuler | None, ls: LabelSet) -> None:
-    """Where the charm wall of today's same-day book sits against price; a location only, never a direction
-    (the scanner suspends the charm direction word)."""
+# The charm wall's distance by its third, as afternoon_charm_wall's options name it.
+CHARM_REACH = {"bottom third": "at price", "middle third": "near price", "top third": "far from price"}
+
+
+def _charm_wall_distance(scene: Scene, gv: dict, ruler: SigmaRuler | None, prior: list[PriorBook] | None, ls: LabelSet) -> None:
+    """Where the charm wall of today's same-day book sits against price, its distance ranked against the prior
+    sessions' at this minute; a location only, never a direction (the scanner suspends the charm direction word)."""
     wall = gv.get("charm_wall")
     if not is_num(wall):
         ls.omit("gex.charm_wall_distance", "row carries no charm wall for today's same-day book")
@@ -473,9 +579,11 @@ def _charm_wall_distance(scene: Scene, gv: dict, ruler: SigmaRuler | None, ls: L
         ls.omit("gex.charm_wall_distance", NO_ANCHOR)
         return
     d = (float(wall) - scene.spot) / ruler.points
-    band = (f"within the {CHARM_NEAR_LO} sigma near-low distance" if abs(d) < CHARM_NEAR_LO else
-            f"between the {CHARM_NEAR_LO} near-low and {CHARM_NEAR_HI} near-high distances" if abs(d) <= CHARM_NEAR_HI else
-            f"beyond the {CHARM_NEAR_HI} sigma near-high distance")
+    rank, no_rank = _book_rank(prior, abs(d), _distance_to("charm_wall"), "a charm wall")
+    if rank is None:
+        ls.omit("gex.charm_wall_distance", no_rank)
+        return
+    band = f"{_farther(rank)}: {CHARM_REACH[rank.band]}"
     straddles = remaining_straddles(scene, float(wall) - scene.spot)
     away = f", {straddles:.1f} remaining straddles away" if straddles is not None else ""
     ls.put("gex.charm_wall_distance", f"the charm wall of today's same-day book (the strike where its delta decay piles up) sits "
@@ -489,9 +597,18 @@ def _gamma_walls(row: dict | None) -> tuple[float, float] | None:
     return (float(call), float(put)) if is_num(call) and is_num(put) else None
 
 
-def _wall_box(scene: Scene, ruler: SigmaRuler | None, earlier: dict | None, ls: LabelSet) -> None:
-    """The width of the box between the two heaviest strikes of today's same-day book, and whether every diary row
-    since the one 30 minutes ago carried the same two strikes."""
+def _box_width(book: PriorBook) -> float | None:
+    strikes = _gamma_walls(book.row)
+    return (strikes[0] - strikes[1]) / book.ruler.points if strikes and book.ruler else None
+
+
+# The box's width by its third, as wall_box's options name it.
+BOXES = {"bottom third": "a tight box", "middle third": "a middling box", "top third": "a wide box"}
+
+
+def _wall_box(scene: Scene, ruler: SigmaRuler | None, earlier: dict | None, prior: list[PriorBook] | None, ls: LabelSet) -> None:
+    """The width of the box between the two heaviest strikes of today's same-day book, ranked against the prior
+    sessions' at this minute, and whether every diary row since the one 30 minutes ago carried the same two strikes."""
     now, then = _gamma_walls(scene.row), _gamma_walls(earlier)
     if now is None:
         ls.omit("gex.wall_box", "row carries no heaviest call-side and put-side strikes for today's same-day book")
@@ -503,9 +620,11 @@ def _wall_box(scene: Scene, ruler: SigmaRuler | None, earlier: dict | None, ls: 
         ls.omit("gex.wall_box", f"no diary row from {WINDOW_30_MIN} minutes ago carries the heaviest call-side and put-side strikes")
         return
     width = (now[0] - now[1]) / ruler.points
-    band = (f"under the {BOX_TIGHT_SIGMA} sigma tight width" if width < BOX_TIGHT_SIGMA else
-            f"between the {BOX_TIGHT_SIGMA} sigma tight and {BOX_WIDE_SIGMA} sigma wide widths" if width <= BOX_WIDE_SIGMA else
-            f"past the {BOX_WIDE_SIGMA} sigma wide width")
+    rank, no_rank = _book_rank(prior, width, _box_width, "the heaviest call-side and put-side strikes")
+    if rank is None:
+        ls.omit("gex.wall_box", no_rank)
+        return
+    band = f"wider than on {rank.higher_than} of the last {rank.of} sessions at this minute, {rank.band}: {BOXES[rank.band]}"
     since = datetime.fromisoformat(earlier["ts"])
     between = {w for r in scene.rows_today if datetime.fromisoformat(r["ts"]) >= since and (w := _gamma_walls(r)) is not None}
     change = (f"a heavy strike has changed in the last {WINDOW_30_MIN} minutes" if now != then else
@@ -549,15 +668,18 @@ def _book_vs_pace_gate(scene: Scene, ls: LabelSet) -> None:
         ls.wake("book_vs_pace")
 
 
-def _settle_pull_gate(scene: Scene, gv: dict, ruler: SigmaRuler | None, ls: LabelSet) -> None:
+def _settle_pull_gate(scene: Scene, gv: dict, ruler: SigmaRuler | None, prior: list[PriorBook] | None, ls: LabelSet) -> None:
     """settle_pull_side sleeps while magnet_seat's code answer is held_on_magnet or seated_fresh: the heaviest
-    strike inside the seat distance."""
+    strike's distance in the bottom third of the prior sessions' at this minute."""
     magnet = gv.get("magnet")
     if not is_num(magnet) or ruler is None:
         ls.sleep("settle_pull_side", "no heaviest same-day strike or no sigma ruler to place it")
         return
     d = abs(float(magnet) - scene.spot) / ruler.points
-    if d < MAGNET_SEAT_SIGMA:
-        ls.sleep("settle_pull_side", f"price sits {sig(d)} from today's heaviest same-day strike, inside the {MAGNET_SEAT_SIGMA} sigma seat distance")
+    seat, no_seat = _book_rank(prior, d, _distance_to("magnet"), "a heaviest same-day strike")
+    if seat is None:
+        ls.sleep("settle_pull_side", f"whether price is seated on today's heaviest same-day strike is not known: {no_seat}")
+    elif seat.band == "bottom third":
+        ls.sleep("settle_pull_side", f"price sits {sig(d)} from today's heaviest same-day strike, {_farther(seat)}: {SEATS[seat.band]}")
     else:
         ls.wake("settle_pull_side")
