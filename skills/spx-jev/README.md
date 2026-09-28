@@ -235,8 +235,8 @@ The before-the-open card (`lanes/premarket/latest.json`) carries the day, the
 read's checkpoint, `freshness` (how old /ES was at the read and what the spot
 stood on), the pre-open `ruler`, the open, the settled open (`start`), the
 `marks` and the `handover` at 09:35, the day's `schedule` of reads and JEV
-reads, `hour` (the newest call, with `read_at`, and `hour_error` when this read's
-own sum failed), `story` (one chip per read, the report read marked), the
+reads, `hour` (the newest call, with `read_at`), `hour_error` when this read's
+own sum failed, `story` (one chip per read, the report read marked), the
 `situation` facts, the questions, and the day's calls. The SPX phone page
 (`runtime/viewstation/static/m/jev-spx.html`) leads with it from the day's first
 pre-market read until the 09:35 hand-over, every time in the viewer's own zone.
