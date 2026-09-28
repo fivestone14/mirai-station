@@ -154,8 +154,8 @@ archive there too, under `archive/`.
   the expiry clock rather than the market, so the IV trend is not described
   then.
 - **Safety check.** A sent read on today's newest row, when that row is more
-  than 6 minutes old, is skipped (the scanner has stopped; the last card
-  stays). The SPX row has no separate options-book time (the book is rebuilt
+  than 6 minutes old, is skipped (the SPX diary is not being written; the last
+  card stays). The SPX row has no separate options-book time (the book is rebuilt
   on every scan), so that one check covers the book too. A replay checks
   nothing against the wall clock.
 - **Scheduled events.** A read with a tier-1 event due within the hour carries
