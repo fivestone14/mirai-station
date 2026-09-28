@@ -3,8 +3,11 @@
 
 Schwab's breadth series as the context job saves them: $TICK and $TRIN are read a minute at a time; $UVOL and
 $DVOL (the NYSE's up and down volume) and $VOLD and $VOLSPD (net volume, NYSE-wide and in S&P 500 members) are
-running totals since 09:30, so a window's volume is the total at its end less the total at its start. A size is
-judged against the same minute of the prior sessions' market context (``scene.prior_markets``).
+running totals since 09:30, so a window's volume is the total at its end less the total at its start. Every
+measure is ranked against the same measure at the same minute on up to the last 20 prior sessions' market context
+(``scene.prior_markets``; ranks.rank_sessions, needing SAME_CLOCK_MIN_SESSIONS of them, else the label is omitted
+with the reason) and said by its third, never against a fixed line: a measure with a side leans to buying in its
+top third and to selling in its bottom third. SPX's own move beside a breadth read is ranked by ranks.move_rank.
 
 Each label's sentence, how it is computed and its source are in spec/question_set.json ``labels``; the Nasdaq label
 is DARK, since no Nasdaq breadth series is served."""
@@ -14,16 +17,14 @@ import statistics
 from datetime import datetime, time, timedelta
 
 from .. import events
-from ..cuts import (CHOP_CROSSES, DAY_ONE_SIDED, EVENT_DIGEST_MIN, MEMBER_SPLIT_Z, MIN_RANK_SESSIONS, OPEN_CLUSTER_MIN,
-                    OPEN_DAY_MOVE_SIGMA, OPEN_TICK_LEAN, OPEN_VOL_Z, SMALLCAP_CONFIRM_SIGMA, TICK_BURST_PCT, TICK_FAR_BAND,
-                    TICK_FOLLOW_SIGMA, TICK_USUAL_BAND, TRIN_HIGH, TRIN_LOW, UPVOL_LEAN_HI, UPVOL_LEAN_LO, WINDOW_10_MIN,
-                    WINDOW_30_MIN, WINDOW_60_MIN)
+from ..cuts import EVENT_DIGEST_MIN, OPEN_CLUSTER_MIN, SAME_CLOCK_MIN_SESSIONS, TICK_BURST_PCT, WINDOW_10_MIN, WINDOW_30_MIN, WINDOW_60_MIN
 from ..sessions import session_open
 from ..state_builder import MarketContext, Scene
 from .label_set import LabelSet
-from .measures import ET, ONE_MINUTE, bar_time, close_at, session_extremes, settled_open
+from .measures import ET, ONE_MINUTE, SETTLED_OPEN_BAR, bar_time, close_at, session_extremes, settled_open
 from .price import NEW_EXTREME_RECENT_MIN
-from .ranks import rank_against, same_clock_market, tick_bands_by_minute, tick_bursts
+from .ranks import (SameClockRank, fifth_side, move_rank, rank_sessions, same_clock_market, same_clock_values, tick_bands_by_minute,
+                    tick_bursts)
 from .rulers import NO_ANCHOR, sigma_anchor
 from .words import pct, plural, sig, signed
 
@@ -50,6 +51,7 @@ TICK_BURST_WINDOW_MIN = 5
 RELEASE_TIERS = (events.TIER, events.DATA_10AM, events.DATA_2PM)
 NOT_RELEASES = events.AT_THE_CLOSE | {"FOMC_PRESSER"}
 NET_VOLUME = {"$VOLD": "NYSE net volume", "$VOLSPD": "S&P 500 members' net volume"}
+THIRDS = ("bottom third", "middle third", "top third")
 
 
 def build_breadth_labels(scene: Scene) -> LabelSet:
@@ -131,45 +133,40 @@ def _upvol_share(mk: MarketContext, start: datetime, end: datetime) -> float | N
     return up / (up + down) if up + down > 0 else None
 
 
-def _upvol_lean(share: float) -> str:
-    """The share against the lean lines, judged as the sentence prints it."""
-    shown = round(share, 2)
-    if shown > UPVOL_LEAN_HI:
-        return f"past the {pct(UPVOL_LEAN_HI)} lean line on the buy side"
-    if shown < UPVOL_LEAN_LO:
-        return f"past the {pct(UPVOL_LEAN_LO)} lean line on the sell side"
-    return f"inside the {pct(UPVOL_LEAN_LO)} to {pct(UPVOL_LEAN_HI)} even band"
+def _ranked(rank: SameClockRank, where: str = "at this minute") -> str:
+    """A rank in the owner's words: "higher than 17 of the last 20 sessions at this minute, top third"."""
+    return f"higher than {rank.higher_than} of the last {rank.of} sessions {where}, {rank.band}"
+
+
+def _lean(rank: SameClockRank, where: str = "at this minute") -> str:
+    """A measure with a side by its third: the top third leans to buying, the bottom third to selling."""
+    side = {"top third": "leaning to buying", "bottom third": "leaning to selling"}.get(rank.band, "no lean")
+    return f"{_ranked(rank, where)}: {side}"
 
 
 def _millions(shares: float) -> str:
     return f"{signed(shares / 1e6, 0)}M"
 
 
-def _net_volume_z(scene: Scene, symbol: str, ls: LabelSet, path: str) -> tuple[float, float] | None:
-    """A net-volume running total now and how many of its usual swings that is: the total over the spread
-    of the same total at this clock on the prior sessions (0.00 at the open on every day, so the spread is
-    the whole of a usual day's lean). Omits ``path`` with the reason and returns None when either is
-    missing."""
+def _net_volume_rank(scene: Scene, symbol: str, ls: LabelSet, path: str) -> tuple[float, SameClockRank] | None:
+    """A net-volume running total now, with its side, and its rank against the same total at this minute on
+    the prior sessions (0 at the open on every day, so the rank is of the whole day's lean so far). Omits
+    ``path`` with the reason and returns None when either is missing."""
     value = _running_total(scene.market, symbol, scene.now)
     if value is None:
         ls.omit(path, f"no {NET_VOLUME[symbol]} ({symbol}) known within {FRESH_MIN} minutes of now: the market-context job "
                       f"stopped or has not saved it")
         return None
-    base = same_clock_market(scene, lambda mk, then: _running_total(mk, symbol, then))
-    if len(base) < MIN_RANK_SESSIONS:
-        ls.omit(path, f"needs {MIN_RANK_SESSIONS} prior sessions with {NET_VOLUME[symbol]} ({symbol}) at this minute, have {len(base)}")
+    rank, why = rank_sessions(value, same_clock_market(scene, lambda mk, then: _running_total(mk, symbol, then)),
+                              f"{NET_VOLUME[symbol]} ({symbol}) at this minute")
+    if rank is None:
+        ls.omit(path, why)
         return None
-    swing = statistics.stdev(base)
-    if swing <= 0:
-        ls.omit(path, f"{NET_VOLUME[symbol]} ({symbol}) stood the same at this minute on every prior session: no usual swing to size it by")
-        return None
-    return value, round(value / swing, 2)
+    return value, rank
 
 
-def _swings(value: float, z: float, clock: str) -> str:
-    """A net-volume total and its size against the usual swing at this clock, with its side."""
-    side = " on the buy side" if z > 0 else " on the sell side" if z < 0 else ""
-    return f"{_millions(value)}, {abs(z):.2f} times the usual swing for {clock}{side}"
+def _net_volume(symbol: str, value: float, rank: SameClockRank) -> str:
+    return f"{NET_VOLUME[symbol]} is {_millions(value)}, {_lean(rank)}"
 
 
 def _tick_share_above_zero(mk: MarketContext, now: datetime) -> float | None:
@@ -178,31 +175,50 @@ def _tick_share_above_zero(mk: MarketContext, now: datetime) -> float | None:
     return sum(1 for v in ticks if v > 0) / len(ticks) if len(ticks) >= MIN_TICK_MINUTES else None
 
 
+def _trin_mean(mk: MarketContext, now: datetime) -> float | None:
+    """The mean of the last 30 minutes' $TRIN closes; None under MIN_TRIN_MINUTES of them."""
+    trin = mk.between("$TRIN", now - timedelta(minutes=WINDOW_30_MIN), now)
+    return statistics.fmean(trin) if len(trin) >= MIN_TRIN_MINUTES else None
+
+
+def _at_clock(scene: Scene, t: datetime, then: datetime) -> datetime:
+    """``t`` today moved to the same clock on the prior session whose read-clock moment is ``then``: how a
+    window that does not end at the read (a release's, an extreme's) is found on the prior sessions."""
+    return then - (scene.now - t)
+
+
 # ----------------------------------------------------------------------------- the last 30 minutes
 
+def _five_levels(rank: SameClockRank) -> str:
+    """A rank on five levels, as a question with an outer tail on each side needs it: the top and bottom fifths,
+    the rest of the top and bottom thirds, and the middle third."""
+    fifth = fifth_side(rank)
+    if fifth:
+        return f"in the {'top' if fifth > 0 else 'bottom'} fifth"
+    if rank.band == "middle third":
+        return "in the middle third"
+    return f"in the {rank.band}, short of the {rank.band.split()[0]} fifth"
+
+
 def _tick_side_vs_usual(scene: Scene, ls: LabelSet) -> None:
-    """The share of the last 30 minutes' TICK closes above zero against the median share at this clock on
-    the prior sessions: raw TICK sits below zero most of the time, so only the usual for the half hour says
-    which side it leaned."""
+    """The share of the last 30 minutes' TICK closes above zero, ranked against the same share at this minute on
+    the prior sessions on five levels: raw TICK sits below zero most of the time, so only the usual for the half
+    hour says which side it leaned. The median share is written beside it as the usual."""
     ticks = scene.market.between("$TICK", scene.now - timedelta(minutes=WINDOW_30_MIN), scene.now)
     if len(ticks) < MIN_TICK_MINUTES:
         ls.omit("breadth.tick_side_vs_usual", f"needs {MIN_TICK_MINUTES} NYSE TICK readings in the last {WINDOW_30_MIN} minutes, have {len(ticks)}")
         return
     base = same_clock_market(scene, _tick_share_above_zero)
-    if len(base) < MIN_RANK_SESSIONS:
-        ls.omit("breadth.tick_side_vs_usual", f"needs {MIN_RANK_SESSIONS} prior sessions with NYSE TICK readings in this half hour, have {len(base)}")
-        return
     above = sum(1 for v in ticks if v > 0)
-    gap = round(above / len(ticks) - statistics.median(base), 2) or 0.0
-    against = "the same as usual" if gap == 0 else f"{abs(gap):.2f} {'more' if gap > 0 else 'less'} than usual"
-    if abs(gap) <= TICK_USUAL_BAND:
-        band = f"within the usual band ({TICK_USUAL_BAND:.2f})"
-    elif abs(gap) <= TICK_FAR_BAND:
-        band = f"past the usual band ({TICK_USUAL_BAND:.2f}), inside the far band ({TICK_FAR_BAND:.2f})"
-    else:
-        band = f"past the far band ({TICK_FAR_BAND:.2f})"
+    rank, why = rank_sessions(above / len(ticks), base, "NYSE TICK readings in this half hour")
+    if rank is None:
+        ls.omit("breadth.tick_side_vs_usual", why)
+        return
+    gap = round(above / len(ticks) - statistics.median(base[:rank.of]), 2) or 0.0
+    against = "the same as the usual share" if gap == 0 else f"{abs(gap):.2f} {'more' if gap > 0 else 'less'} than the usual share"
     ls.put("breadth.tick_side_vs_usual",
-           f"over the last {WINDOW_30_MIN} minutes NYSE TICK sat above zero {above} of {len(ticks)} minutes, {against} for this half hour: {band}")
+           f"over the last {WINDOW_30_MIN} minutes NYSE TICK sat above zero {above} of {len(ticks)} minutes, {against} for this half "
+           f"hour; {rank.words()}, {_five_levels(rank)}")
 
 
 def _upvol_share_30m(scene: Scene, ls: LabelSet) -> None:
@@ -211,23 +227,32 @@ def _upvol_share_30m(scene: Scene, ls: LabelSet) -> None:
         ls.omit("breadth.upvol_share_30m", f"no NYSE up and down volume known both {WINDOW_30_MIN} minutes ago and now, within "
                                            f"{FRESH_MIN} minutes of each: the market-context job stopped or has not saved them")
         return
+    rank, why = rank_sessions(share, same_clock_market(scene, lambda mk, then: _upvol_share(mk, then - timedelta(minutes=WINDOW_30_MIN), then)),
+                              f"NYSE up and down volume over the {WINDOW_30_MIN} minutes to this minute")
+    if rank is None:
+        ls.omit("breadth.upvol_share_30m", why)
+        return
     ls.put("breadth.upvol_share_30m",
-           f"over the last {WINDOW_30_MIN} minutes {pct(share)} of NYSE volume traded in rising stocks, {_upvol_lean(share)}")
+           f"over the last {WINDOW_30_MIN} minutes {pct(share)} of NYSE volume traded in rising stocks, {_lean(rank)}")
 
 
 def _volume_vs_count_30m(scene: Scene, ls: LabelSet) -> None:
-    trin = scene.market.between("$TRIN", scene.now - timedelta(minutes=WINDOW_30_MIN), scene.now)
-    if len(trin) < MIN_TRIN_MINUTES:
-        ls.omit("breadth.volume_vs_count_30m", f"needs {MIN_TRIN_MINUTES} NYSE TRIN readings in the last {WINDOW_30_MIN} minutes, have {len(trin)}")
+    """Mean $TRIN over the half hour ranked at this minute: TRIN is the advancers' share of the count over their
+    share of the volume, so its bottom third is volume leaning to rising stocks beyond their count, for this
+    time of day, and its top third to falling stocks."""
+    mean = _trin_mean(scene.market, scene.now)
+    if mean is None:
+        have = len(scene.market.between("$TRIN", scene.now - timedelta(minutes=WINDOW_30_MIN), scene.now))
+        ls.omit("breadth.volume_vs_count_30m", f"needs {MIN_TRIN_MINUTES} NYSE TRIN readings in the last {WINDOW_30_MIN} minutes, have {have}")
         return
-    mean = round(statistics.fmean(trin), 2)
-    if mean < TRIN_LOW:
-        verdict = f"under the {TRIN_LOW} line: volume per rising stock ran heavier than volume per falling stock"
-    elif mean > TRIN_HIGH:
-        verdict = f"over the {TRIN_HIGH} line: volume per falling stock ran heavier than volume per rising stock"
-    else:
-        verdict = f"between the {TRIN_LOW} and {TRIN_HIGH} lines: volume per rising stock and per falling stock matched"
-    ls.put("breadth.volume_vs_count_30m", f"over the last {WINDOW_30_MIN} minutes NYSE TRIN averaged {mean:.2f}, {verdict}")
+    rank, why = rank_sessions(mean, same_clock_market(scene, _trin_mean), f"{MIN_TRIN_MINUTES} NYSE TRIN readings in this half hour")
+    if rank is None:
+        ls.omit("breadth.volume_vs_count_30m", why)
+        return
+    verdict = {"bottom third": "volume ran heavier in rising stocks, against their count, than usual for this half hour",
+               "top third": "volume ran heavier in falling stocks, against their count, than usual for this half hour"}.get(
+        rank.band, "volume in rising and falling stocks matched their counts as usual for this half hour")
+    ls.put("breadth.volume_vs_count_30m", f"over the last {WINDOW_30_MIN} minutes NYSE TRIN averaged {mean:.2f}, {_ranked(rank)}: {verdict}")
 
 
 # ----------------------------------------------------------------------------- the day so far
@@ -236,93 +261,142 @@ def _times(n: int) -> str:
     return "once" if n == 1 else "twice" if n == 2 else f"{n} times"
 
 
-def _crossings(n: int) -> str:
-    return f"the 30-minute share crossed 50% {_times(n)} today" if n else "the 30-minute share has not crossed 50% today"
+def _half_hours(now: datetime) -> list[datetime]:
+    """The ends of the whole half hours since the open, up to ``now``: the marks the reads take them at."""
+    opened = session_open(now)
+    return [opened + timedelta(minutes=WINDOW_30_MIN * k) for k in range(1, int((now - opened) / timedelta(minutes=WINDOW_30_MIN)) + 1)]
+
+
+def _crossings(mk: MarketContext, now: datetime) -> int | None:
+    """How often the share of one whole half hour since the open landed on the other side of even (50%) from
+    the half hour before it, so a share hovering at 50% is not counted as rotation minute by minute; None when
+    no half hour's share is known."""
+    shares = [v for end in _half_hours(now) if (v := _upvol_share(mk, end - timedelta(minutes=WINDOW_30_MIN), end)) is not None]
+    if not shares:
+        return None
+    sides = [v > 0.5 for v in shares if v != 0.5]
+    return sum(1 for a, b in zip(sides, sides[1:]) if a != b)
+
+
+def _day_share_rank(scene: Scene, t: datetime) -> tuple[float | None, SameClockRank | None, str | None]:
+    """The day's share of NYSE volume in rising stocks from the open to ``t``, and its rank against the same share
+    at ``t``'s clock on the prior sessions or the reason it has none."""
+    share = _upvol_share(scene.market, scene.session_open, t)
+    if share is None:
+        return None, None, f"no NYSE up and down volume known within {FRESH_MIN} minutes of {t.astimezone(ET):%H:%M}"
+    base = same_clock_market(scene, lambda mk, then: _upvol_share(mk, session_open(then), _at_clock(scene, t, then)))
+    return share, *rank_sessions(share, base, "NYSE up and down volume since the open at this minute")
+
+
+def _one_sided(rank: SameClockRank) -> str:
+    """The day's share by its fifth: one-sided in the top or bottom fifth, else its third."""
+    fifth = fifth_side(rank)
+    return f"{_five_levels(rank)}: one-sided on the {'buy' if fifth > 0 else 'sell'} side" if fifth else rank.band
 
 
 def _day_upvol_share(scene: Scene, ls: LabelSet) -> None:
-    """The day's share of NYSE volume in rising stocks against the one-sided line, where it stood earlier when
-    it is not one-sided now, and how often the share of one half hour since the open landed on the other side
-    of even from the half hour before it. The half hours are taken whole, as the reads take them, so a share
-    hovering at 50% is not counted as rotation minute by minute; the day's share is looked back on from half
-    an hour in, before which it swings on the first minutes' thin volume."""
-    mk, now, opened = scene.market, scene.now, scene.session_open
-    settled = opened + timedelta(minutes=WINDOW_30_MIN)
+    """The day's share of NYSE volume in rising stocks ranked at this minute, one-sided in the top or bottom
+    fifth; where it stood earlier when it is not one-sided now, at each whole half hour's mark ranked at that
+    mark; and how often the half hours' shares crossed even, ranked against the same count at this minute. The
+    day's share is looked back on from half an hour in, before which it swings on the first minutes' thin volume."""
+    now = scene.now
+    settled = scene.session_open + timedelta(minutes=WINDOW_30_MIN)
     if now < settled:
         ls.omit("breadth.day_upvol_share", f"needs {WINDOW_30_MIN} minutes of session")
         return
-    share = _upvol_share(mk, opened, now)
+    share, rank, why = _day_share_rank(scene, now)
     if share is None:
         ls.omit("breadth.day_upvol_share", f"no NYSE up and down volume known within {FRESH_MIN} minutes of now: the market-context "
                                            f"job stopped or has not saved them")
         return
-    minutes = [t for t, _ in mk.known.get("$UVOL") or [] if settled <= t <= now]
-    day_shares = [(t, v) for t in minutes if (v := _upvol_share(mk, opened, t)) is not None]
-    half_hours = [opened + timedelta(minutes=WINDOW_30_MIN * k) for k in range(1, int((now - opened) / timedelta(minutes=WINDOW_30_MIN)) + 1)]
-    sides = [v > 0.5 for end in half_hours if (v := _upvol_share(mk, end - timedelta(minutes=WINDOW_30_MIN), end)) is not None and v != 0.5]
-    crossed = sum(1 for a, b in zip(sides, sides[1:]) if a != b)
-    one_sided_low = round(1 - DAY_ONE_SIDED, 2)
-
-    def one_sided(v: float) -> bool:
-        return round(v, 2) >= DAY_ONE_SIDED or round(v, 2) <= one_sided_low
-
-    shown = round(share, 2)
-    if shown >= DAY_ONE_SIDED:
-        where = f"past the {pct(DAY_ONE_SIDED)} one-sided share on the buy side"
-    elif shown <= one_sided_low:
-        where = f"past the {pct(one_sided_low)} one-sided share on the sell side"
-    else:
-        where = f"short of the {pct(one_sided_low)} and {pct(DAY_ONE_SIDED)} one-sided shares, {_upvol_lean(share)}"
-        earlier = [(t, v) for t, v in day_shares if one_sided(v)]
+    crossed = _crossings(scene.market, now)
+    if crossed is None:
+        ls.omit("breadth.day_upvol_share", f"no NYSE up and down volume known at a whole half hour's mark since the open, within "
+                                           f"{FRESH_MIN} minutes of it")
+        return
+    crossed_rank, no_crossed_rank = rank_sessions(crossed, same_clock_market(scene, _crossings), "NYSE up and down volume since the open")
+    if rank is None or crossed_rank is None:
+        ls.omit("breadth.day_upvol_share", why or no_crossed_rank)
+        return
+    where = f"{rank.words()}, {_one_sided(rank)}"
+    if not fifth_side(rank):
+        marks = [(t, *_day_share_rank(scene, t)[:2]) for t in _half_hours(now) if t < now]
+        earlier = [(t, v, r) for t, v, r in marks if r is not None and fifth_side(r)]
         if earlier:
-            t, v = max(earlier, key=lambda tv: abs(tv[1] - 0.5))
-            where += f"; earlier today it stood past a one-sided share, at {pct(v)} at {t.astimezone(ET):%H:%M}"
+            t, v, r = max(earlier, key=lambda e: abs(e[1] - 0.5))
+            where += (f"; earlier today it stood one-sided, at {pct(v)} at {t.astimezone(ET):%H:%M}, in the "
+                      f"{'top' if fifth_side(r) > 0 else 'bottom'} fifth for that minute")
         else:
-            where += f"; it has not stood past a one-sided share since {settled.astimezone(ET):%H:%M}"
-    rotation = f"{'at or past' if crossed >= CHOP_CROSSES else 'under'} the {CHOP_CROSSES}-crossing rotation rule"
-    ls.put("breadth.day_upvol_share",
-           f"since the open {pct(share)} of NYSE volume went into rising stocks, {where}; {_crossings(crossed)}, {rotation}")
+            where += f"; it has not stood one-sided at a half hour's mark since {settled.astimezone(ET):%H:%M}"
+    rotation = (f"more often than {crossed_rank.higher_than} of the last {crossed_rank.of} sessions by this minute, {crossed_rank.band}"
+                f"{': rotating' if crossed_rank.band == 'top third' else ''}")
+    crossings = f"the 30-minute share crossed 50% {_times(crossed)} today" if crossed else "the 30-minute share has not crossed 50% today"
+    ls.put("breadth.day_upvol_share", f"since the open {pct(share)} of NYSE volume went into rising stocks, {where}; {crossings}, {rotation}")
+
+
+def _minutes_since_settled_open(now: datetime) -> int:
+    """Whole minutes from the settled open (the 09:34 bar's close, known at 09:35) to ``now``: the window over
+    which ranks.move_rank sizes a move from the settled open, whose start is the 09:34 close on every day."""
+    known = datetime.combine(now.astimezone(ET).date(), SETTLED_OPEN_BAR, tzinfo=ET) + ONE_MINUTE
+    return int((now - known).total_seconds() // 60)
 
 
 def _spx_from_settled_open(scene: Scene) -> str:
-    """Where SPX stands against its settled open, judged against the open-day line as price.day_move judges
-    it, for the members' net volume to be read beside; empty before the 09:34 bar has finished or without a
-    ruler."""
+    """Where SPX stands against its settled open and that move's rank at this minute (ranks.move_rank over the
+    minutes since the settled open, as price.day_move judges it: its bottom third is near the open), for the
+    members' net volume to be read beside; empty before the 09:34 bar has finished or without a ruler."""
     opened, ruler = settled_open(scene.bars), sigma_anchor(scene)
     if opened is None or ruler is None:
         return ""
     move = (scene.spot - opened) / ruler.points
     estimated = " (ruler estimated)" if ruler.estimated else ""
-    if abs(move) > OPEN_DAY_MOVE_SIGMA:
-        return (f" while SPX is {sig(abs(move))} {'above' if move > 0 else 'below'} its settled open, past the "
-                f"{OPEN_DAY_MOVE_SIGMA:.2f} sigma open-day line{estimated}")
-    return f" while SPX is {signed(move)} sigma from its settled open, within the {OPEN_DAY_MOVE_SIGMA:.2f} sigma open-day line{estimated}"
+    where = f"{sig(abs(move))} {'above' if move > 0 else 'below'} its settled open" if round(move, 2) else "at its settled open"
+    rank, _ = move_rank(scene, move, _minutes_since_settled_open(scene.now))
+    if rank is None:
+        return f" while SPX is {where}{estimated}"
+    return (f" while SPX is {where}, a move larger than {rank.higher_than} of the last {rank.of} sessions' moves from their "
+            f"settled opens at this minute, {rank.band}{': near the open' if rank.band == 'bottom third' else ''}{estimated}")
 
 
 def _members_net_day(scene: Scene, ls: LabelSet) -> None:
-    members = _net_volume_z(scene, "$VOLSPD", ls, "breadth.members_net_day")
-    nyse = _net_volume_z(scene, "$VOLD", ls, "breadth.members_net_day") if members else None
+    """S&P 500 members' net volume since the open against SPX's move from its settled open, and against NYSE's
+    net volume by their thirds at this minute: a higher third is stronger, a lower one weaker."""
+    members = _net_volume_rank(scene, "$VOLSPD", ls, "breadth.members_net_day")
+    nyse = _net_volume_rank(scene, "$VOLD", ls, "breadth.members_net_day") if members else None
     if members is None or nyse is None:
         return
-    clock = f"{scene.now.astimezone(ET):%H:%M}"
     shown = round(members[0] / 1e6)
     sign = "above zero" if shown > 0 else "below zero" if shown < 0 else "at zero"
-    gap = round(members[1] - nyse[1], 2) or 0.0
-    if abs(gap) > MEMBER_SPLIT_Z:
-        split = f"S&P 500 net volume runs {abs(gap):.2f} swings {'stronger' if gap > 0 else 'weaker'} than NYSE's, past the {MEMBER_SPLIT_Z} split line"
+    apart = THIRDS.index(members[1].band) - THIRDS.index(nyse[1].band)
+    if apart:
+        split = (f"S&P 500 net volume runs {'stronger' if apart > 0 else 'weaker'} than NYSE's, in a "
+                 f"{'higher' if apart > 0 else 'lower'} third ({members[1].band} against {nyse[1].band})")
     else:
-        split = f"S&P 500 net volume is matched with NYSE's, {abs(gap):.2f} swings apart, within the {MEMBER_SPLIT_Z} split line"
+        split = f"S&P 500 net volume is matched with NYSE's, both in the {nyse[1].band}"
     ls.put("breadth.members_net_day",
-           f"since the open S&P 500 members' net volume is {_swings(*members, clock)}, {sign}{_spx_from_settled_open(scene)}; "
-           f"NYSE net volume is {_swings(*nyse, clock)}; {split}")
+           f"since the open {_net_volume('$VOLSPD', *members)}, {sign}{_spx_from_settled_open(scene)}; "
+           f"{_net_volume('$VOLD', *nyse)}; {split}")
+
+
+def _small_caps_apart(mk: MarketContext | None, bars: list[dict], t: datetime, points: float | None, high: bool) -> float | None:
+    """How far small caps (IWM) stood at ``t`` from their own session high (``high``) or low so far, in SPX sigma:
+    IWM's share off its extreme times SPX's level at ``t`` over the day's ruler in points. None without IWM near
+    ``t``, an SPX close or a ruler."""
+    small_caps = mk.between("IWM", session_open(t), t) if mk else []
+    then, spx = mk.last("IWM", t, max_age_min=FRESH_MIN) if mk else None, close_at(bars, t)
+    if not small_caps or then is None or spx is None or not points:
+        return None
+    own = max(small_caps) if high else min(small_caps)
+    return abs(own - then) / own * spx / points
 
 
 def _at_extremes(scene: Scene, ls: LabelSet) -> None:
     """At the new session extreme price.session_extreme_recent names: NYSE net volume against where it stood
-    at the earlier extreme it beat, and small caps (IWM) against their own extreme so far, in SPX sigma. The
-    earlier extreme is the session's as it stood NEW_EXTREME_RECENT_MIN minutes before the read, and each is
-    stamped with its bar's start minute, as that label takes and stamps them, so the two name one earlier
-    extreme."""
+    at the earlier extreme it beat, and small caps (IWM) against their own extreme so far, in SPX sigma, ranked
+    against the same distance at that minute on the prior sessions, each in its own ruler (the bottom third
+    confirms). The earlier extreme is the session's as it stood NEW_EXTREME_RECENT_MIN minutes before the read,
+    and each is stamped with its bar's start minute, as that label takes and stamps them, so the two name one
+    earlier extreme."""
     mk = scene.market
     cut = scene.now - timedelta(minutes=NEW_EXTREME_RECENT_MIN)
     before, today = session_extremes([b for b in scene.bars if bar_time(b) + ONE_MINUTE <= cut]), session_extremes(scene.bars)
@@ -334,34 +408,39 @@ def _at_extremes(scene: Scene, ls: LabelSet) -> None:
         ls.omit("breadth.at_extremes", f"no new session high or low in the last {NEW_EXTREME_RECENT_MIN} minutes", ended=True)
         return
     is_high = new_high and (not new_low or today.high_at >= today.low_at)
-    word, made_at, spx_extreme, before_at = (("high", today.high_at, today.high, before.high_at) if is_high else
-                                             ("low", today.low_at, today.low, before.low_at))
+    word, made_at, before_at = ("high", today.high_at, before.high_at) if is_high else ("low", today.low_at, before.low_at)
     ruler = sigma_anchor(scene)
     if ruler is None:
         ls.omit("breadth.at_extremes", NO_ANCHOR)
         return
     net_now, net_before = _running_total(mk, "$VOLD", made_at), _running_total(mk, "$VOLD", before_at)
-    small_caps, small_caps_then = mk.between("IWM", scene.session_open, made_at), mk.last("IWM", made_at, max_age_min=FRESH_MIN)
+    apart = _small_caps_apart(mk, scene.bars, made_at, ruler.points, is_high)
     at_clock, before_clock = (f"{(t - ONE_MINUTE).astimezone(ET):%H:%M}" for t in (made_at, before_at))
     if net_now is None or net_before is None:
         ls.omit("breadth.at_extremes", f"no NYSE net volume ($VOLD) known within {FRESH_MIN} minutes of both SPX {word}s, "
                                        f"{before_clock} and {at_clock}")
         return
-    if not small_caps or small_caps_then is None:
+    if apart is None:
         ls.omit("breadth.at_extremes", f"no small-cap (IWM) price known within {FRESH_MIN} minutes of the SPX {word} at {at_clock}")
+        return
+    base = same_clock_values(scene, lambda bars, then, points: _small_caps_apart(scene.prior_markets.get(then.date().isoformat()), bars,
+                                                                                 _at_clock(scene, made_at, then), points, is_high))
+    rank, why = rank_sessions(apart, base, f"small caps (IWM), SPX bars and a trusted morning ruler at {at_clock}")
+    if rank is None:
+        ls.omit("breadth.at_extremes", why)
         return
     now_m, before_m = round(net_now / 1e6), round(net_before / 1e6)
     reached = now_m >= before_m if is_high else now_m <= before_m
     level = "level with" if now_m == before_m else "above" if now_m > before_m else "below"
-    own = max(small_caps) if is_high else min(small_caps)
-    apart = round(abs(own - small_caps_then) / own * spx_extreme / ruler.points, 2)
-    confirm = f"{'within' if apart <= SMALLCAP_CONFIRM_SIGMA else 'past'} the {SMALLCAP_CONFIRM_SIGMA} sigma confirm rule"
-    iwm = (f"at their own session {word}" if apart == 0 else
-           f"{sig(apart)} {'below' if is_high else 'above'} their own session {word}")
+    shown = round(apart, 2)
+    iwm = (f"at their own session {word}" if shown == 0 else
+           f"{sig(shown)} {'below' if is_high else 'above'} their own session {word}")
+    confirm = "confirming" if rank.band == "bottom third" else "not confirming"
     ls.put("breadth.at_extremes",
            f"when SPX made its new session {word} at {at_clock}, NYSE net volume was {_millions(net_now)}, {level} the "
            f"{_millions(net_before)} where it stood at the previous {word} at {before_clock}, {'reaching' if reached else 'short of'} "
-           f"that level, and small caps (IWM) were {iwm}, {confirm}{'; ruler estimated' if ruler.estimated else ''}")
+           f"that level, and small caps (IWM) were {iwm}, further from it than {rank.higher_than} of the last {rank.of} sessions at "
+           f"{at_clock}, {rank.band}: {confirm}{'; ruler estimated' if ruler.estimated else ''}")
 
 
 # ----------------------------------------------------------------------------- around a release
@@ -373,39 +452,52 @@ def _latest_release(scene: Scene) -> events.Event | None:
                  and scene.now - e.start <= timedelta(minutes=EVENT_DIGEST_MIN)), None)
 
 
+def _window_share_rank(scene: Scene, start: datetime, end: datetime) -> tuple[float | None, SameClockRank | None, str | None]:
+    """The share of NYSE volume in rising stocks from ``start`` to ``end`` today, and its rank against the same
+    window, same clock and length, on the prior sessions, release or not, or the reason it has none."""
+    share = _upvol_share(scene.market, start, end)
+    if share is None:
+        return None, None, None
+    base = same_clock_market(scene, lambda mk, then: _upvol_share(mk, _at_clock(scene, start, then), _at_clock(scene, end, then)))
+    return share, *rank_sessions(share, base, f"NYSE up and down volume from {start.astimezone(ET):%H:%M} to {end.astimezone(ET):%H:%M}")
+
+
 def _flip_after_release(scene: Scene, release: events.Event | None, ls: LabelSet) -> None:
-    """The share of NYSE volume in rising stocks since the release against the hour before it (from the open
-    when the release came in the first hour), each against the lean lines."""
+    """The share of NYSE volume in rising stocks since the release and in the hour before it (from the open when
+    the release came in the first hour), each ranked against the same minutes on the prior sessions."""
     if release is None:
         ls.omit("breadth.flip_after_release", f"no in-session release in the last {EVENT_DIGEST_MIN} minutes")
         return
     before_from = max(release.start - timedelta(minutes=WINDOW_60_MIN), scene.session_open)
-    since, before = _upvol_share(scene.market, release.start, scene.now), _upvol_share(scene.market, before_from, release.start)
+    since, since_rank, no_since = _window_share_rank(scene, release.start, scene.now)
+    before, before_rank, no_before = _window_share_rank(scene, before_from, release.start)
     released = f"{release.start.astimezone(ET):%H:%M}"
     if since is None or before is None:
         ls.omit("breadth.flip_after_release", f"no NYSE up and down volume known within {FRESH_MIN} minutes of {released} and of now: "
                                               f"the market-context job stopped or has not saved them")
+        return
+    if since_rank is None or before_rank is None:
+        ls.omit("breadth.flip_after_release", no_since or no_before)
         return
     ago = round((scene.now - release.start).total_seconds() / 60)
     lead = round((release.start - before_from).total_seconds() / 60)
     before_words = "in the hour before it" if lead == WINDOW_60_MIN else f"in the {plural(lead, 'minute')} before it, from the open,"
     ls.put("breadth.flip_after_release",
            f"since {release.words} at {released}, {plural(ago, 'minute')} ago, {pct(since)} of NYSE volume went into rising stocks, "
-           f"{_upvol_lean(since)}; {before_words} the share was {pct(before)}, {_upvol_lean(before)}")
+           f"{_lean(since_rank, 'over the same minutes')}; {before_words} the share was {pct(before)}, {_lean(before_rank, 'over the same minutes')}")
 
 
 # ----------------------------------------------------------------------------- the opening lane
 
 def _open_net_volume(scene: Scene, ls: LabelSet) -> None:
-    """NYSE and S&P 500 members' net volume since the open, each in usual swings for this minute against the
-    lean line, and advancers minus decliners over the last 10 minutes ranked against the same minutes."""
-    nyse = _net_volume_z(scene, "$VOLD", ls, "breadth.open_net_volume")
-    members = _net_volume_z(scene, "$VOLSPD", ls, "breadth.open_net_volume") if nyse else None
+    """NYSE and S&P 500 members' net volume since the open, each ranked against the same total at this minute on
+    the prior sessions (the top third buying, the bottom third selling), and advancers minus decliners over the
+    last 10 minutes ranked against the same minutes."""
+    nyse = _net_volume_rank(scene, "$VOLD", ls, "breadth.open_net_volume")
+    members = _net_volume_rank(scene, "$VOLSPD", ls, "breadth.open_net_volume") if nyse else None
     if nyse is None or members is None:
         return
-    clock = f"{scene.now.astimezone(ET):%H:%M}"
-    leans = [f"{NET_VOLUME[symbol]} is {_swings(value, z, clock)}, {'past' if abs(z) > OPEN_VOL_Z else 'within'} the {OPEN_VOL_Z} lean line"
-             for symbol, (value, z) in (("$VOLD", nyse), ("$VOLSPD", members))]
+    leans = [_net_volume("$VOLD", *nyse), _net_volume("$VOLSPD", *members)]
     thrust = _advancers_10m(scene.market, scene.now)
     if thrust is not None:
         leans.append(f"advancers minus decliners {'rose' if thrust > 0 else 'fell' if thrust < 0 else 'held'} {abs(thrust):.0f} in the "
@@ -421,11 +513,12 @@ def _advancers_10m(mk: MarketContext, now: datetime) -> float | None:
 
 def _thrust_rank(thrust: float, base: list[float]) -> str:
     """The $ADD change against the same minutes of the prior sessions; a fall is ranked by how far it fell,
-    so the steepest fall of them reads as the biggest, not as higher than none."""
+    so the steepest fall of them reads as the biggest, not as higher than none. Empty under
+    SAME_CLOCK_MIN_SESSIONS sessions."""
     if thrust >= 0:
-        rank = rank_against(thrust, base)
+        rank, _ = rank_sessions(thrust, base, "")
         return f", {rank.words()}" if rank else ""
-    rank = rank_against(-thrust, [-b for b in base])
+    rank, _ = rank_sessions(-thrust, [-b for b in base], "")
     return f", a bigger fall than {rank.higher_than} of the last {rank.of} sessions at this minute" if rank else ""
 
 
@@ -433,6 +526,12 @@ def _fresh_tick_bars(scene: Scene, since: datetime) -> list[dict]:
     """Today's $TICK bars finished after ``since``; none when the newest is older than FRESH_MIN."""
     bars = scene.market.bars_between("$TICK", since, scene.now)
     return bars if bars and scene.now - (bar_time(bars[-1]) + ONE_MINUTE) <= timedelta(minutes=FRESH_MIN) else []
+
+
+def _tick_mean_since_open(mk: MarketContext, now: datetime) -> float | None:
+    """The mean of the $TICK bars' closes from the open to ``now``; None without a bar."""
+    bars = mk.bars_between("$TICK", session_open(now), now)
+    return statistics.fmean(float(b["close"]) for b in bars) if bars else None
 
 
 def _burst_count(n: int, part: str, band: str) -> str:
@@ -443,32 +542,40 @@ def _burst_count(n: int, part: str, band: str) -> str:
             f"{OPEN_CLUSTER_MIN}-burst cluster count")
 
 
+def _no_tick_bands(minutes: str) -> str:
+    return f"needs {SAME_CLOCK_MIN_SESSIONS} prior sessions of NYSE TICK bars at each {minutes}"
+
+
 def _opening_tick(scene: Scene, bands: dict[time, tuple[float, float]], ls: LabelSet) -> None:
+    """The mean $TICK since the open, ranked against the same mean at this minute on the prior sessions (the top
+    third leans to buying, the bottom third to selling), and the bursts past each minute's burst bands."""
     bars = _fresh_tick_bars(scene, scene.session_open)
     if not bars:
         ls.omit("breadth.opening_tick", f"no NYSE TICK bar in the last {FRESH_MIN} minutes: the market-context job stopped or has not saved it")
         return
     bursts = tick_bursts(bands, bars)
     if bursts is None:
-        ls.omit("breadth.opening_tick", f"needs {MIN_RANK_SESSIONS} prior sessions of NYSE TICK bars at each minute since the open")
+        ls.omit("breadth.opening_tick", _no_tick_bands("minute since the open"))
         return
-    mean = round(statistics.fmean(float(b["close"]) for b in bars))
-    if abs(mean) > OPEN_TICK_LEAN:
-        lean = f"past the {OPEN_TICK_LEAN} lean line on the {'buy' if mean > 0 else 'sell'} side"
-    else:
-        lean = f"within the {OPEN_TICK_LEAN} lean line"
-    ls.put("breadth.opening_tick", f"since the open NYSE TICK averaged {mean:+d}, {lean}; {_burst_count(bursts[0], 'highs', 'top')}; "
-                                   f"{_burst_count(bursts[1], 'lows', 'bottom')}")
+    mean = _tick_mean_since_open(scene.market, scene.now)
+    rank, why = rank_sessions(mean, same_clock_market(scene, _tick_mean_since_open), "NYSE TICK bars since the open")
+    if rank is None:
+        ls.omit("breadth.opening_tick", why)
+        return
+    ls.put("breadth.opening_tick", f"since the open NYSE TICK averaged {round(mean):+d}, {_lean(rank)}; "
+                                   f"{_burst_count(bursts[0], 'highs', 'top')}; {_burst_count(bursts[1], 'lows', 'bottom')}")
 
 
 def _tick_extreme_5m(scene: Scene, bands: dict[time, tuple[float, float]], ls: LabelSet) -> None:
-    """A TICK burst in the last five minutes and whether SPX followed it over the same minutes, a one-sided
-    burst only by a move on its own side; the gate of tick_extreme_follow, which sleeps without a burst."""
+    """A TICK burst in the last five minutes and whether SPX followed it over the same minutes: a real move is one
+    outside the bottom third of the same five minutes on the prior sessions (ranks.move_rank), and a one-sided
+    burst is followed only by a real move on its own side; the gate of tick_extreme_follow, which sleeps without
+    a burst."""
     bars = _fresh_tick_bars(scene, scene.now - timedelta(minutes=TICK_BURST_WINDOW_MIN))
     bursts = tick_bursts(bands, bars) if bars else None
     if bursts is None:
         why = (f"no NYSE TICK bar in the last {FRESH_MIN} minutes: the market-context job stopped or has not saved it" if not bars else
-               f"needs {MIN_RANK_SESSIONS} prior sessions of NYSE TICK bars at each of the last {TICK_BURST_WINDOW_MIN} minutes")
+               _no_tick_bands(f"of the last {TICK_BURST_WINDOW_MIN} minutes"))
         ls.omit("breadth.tick_extreme_5m", why)
         ls.sleep("tick_extreme_follow", why)
         return
@@ -482,6 +589,10 @@ def _tick_extreme_5m(scene: Scene, bands: dict[time, tuple[float, float]], ls: L
     if ruler is None or then is None or latest is None:
         ls.omit("breadth.tick_extreme_5m", f"needs a finished SPX bar {TICK_BURST_WINDOW_MIN} minutes ago and a sigma ruler for today")
         return
+    rank, why = move_rank(scene, (latest - then) / ruler.points, TICK_BURST_WINDOW_MIN)
+    if rank is None:
+        ls.omit("breadth.tick_extreme_5m", why)
+        return
     band = pct(1 - TICK_BURST_PCT)
     if buying and selling:
         burst = f"high reached the top {band} band for its minute and its low reached the bottom {band} band (bursts both ways)"
@@ -492,13 +603,11 @@ def _tick_extreme_5m(scene: Scene, bands: dict[time, tuple[float, float]], ls: L
     else:
         burst = f"highs and lows stayed inside the top and bottom {band} bands for their minutes (no burst)"
     move = round((latest - then) / ruler.points, 2)
-    follow = f"the {TICK_FOLLOW_SIGMA} sigma follow line"
-    burst_side = 0 if buying == selling else 1 if buying else -1
-    if burst_side and move * burst_side < 0:
-        follow = f"against the burst, short of {follow}"
-    else:
-        follow = f"{'past' if abs(move) > TICK_FOLLOW_SIGMA else 'short of'} {follow}"
     spx = (f"SPX {'rose' if move > 0 else 'fell'} {sig(abs(move))} over the same {TICK_BURST_WINDOW_MIN} minutes" if move else
            f"SPX did not move over the same {TICK_BURST_WINDOW_MIN} minutes")
-    ls.put("breadth.tick_extreme_5m", f"in the last {TICK_BURST_WINDOW_MIN} minutes NYSE TICK's 1-minute {burst}; {spx}, {follow}"
+    size = (f"in the {rank.band} of the last {rank.of} sessions' {TICK_BURST_WINDOW_MIN}-minute moves at this minute (larger than "
+            f"{rank.higher_than} of them): {'no real move' if rank.band == 'bottom third' else 'a real move'}")
+    burst_side = 0 if buying == selling else 1 if buying else -1
+    against = ", against the burst" if burst_side and move * burst_side < 0 else ""
+    ls.put("breadth.tick_extreme_5m", f"in the last {TICK_BURST_WINDOW_MIN} minutes NYSE TICK's 1-minute {burst}; {spx}, {size}{against}"
                                       f"{'; ruler estimated' if ruler.estimated else ''}")
