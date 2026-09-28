@@ -68,6 +68,31 @@ def test_a_failed_token_renewal_is_named_with_the_reply_authlib_drops():
     assert '"trace":"abc-123"' in got and TOKEN not in got
 
 
+def test_a_timeout_after_a_good_quote_batch_is_not_named_with_that_batch_s_answer(monkeypatch):
+    monkeypatch.setattr(schwab, "CALL_SPACING_S", 0.0)
+
+    class _Client:
+        calls = 0
+
+        def get_quotes(self, batch):
+            _Client.calls += 1
+            if _Client.calls > 1:
+                raise TimeoutError("read timed out")
+            reply = _Reply(200, '{"SPY":{"quote":{"lastPrice":1}}}')
+            reply.raise_for_status = lambda: None
+            reply.json = lambda: {"SPY": {"quote": {"lastPrice": 1}}}
+            return reply
+
+    class _Fetcher:
+        @staticmethod
+        def _client():
+            return _Client()
+    monkeypatch.setattr(schwab, "_fetcher", lambda: _Fetcher)
+    with pytest.raises(TimeoutError) as caught:
+        schwab.quotes([f"S{i}" for i in range(schwab.QUOTE_BATCH + 1)])
+    assert feed_log.failure(caught.value) == "TimeoutError: read timed out"
+
+
 def test_a_failed_bars_run_is_dated_and_names_schwab_s_reply(tmp_path, monkeypatch, capsys):
     def broken(*a, **k):
         raise _HTTPStatusError(_Reply(503, "upstream down"))

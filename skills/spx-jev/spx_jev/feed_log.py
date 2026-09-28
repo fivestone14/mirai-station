@@ -32,15 +32,17 @@ def scrub(text: str) -> str:
 
 
 def _reply_of(e: BaseException):
-    """The HTTP reply behind ``e``: its own ``response``, or the ``resp`` local of the deepest frame that
-    raised it holding one (authlib's). None when there is none."""
+    """The HTTP reply behind ``e``: its own ``response``, or the ``resp`` local of the deepest authlib frame
+    that raised it holding one. None when there is none. Only authlib's frames are read: a feed's own
+    ``resp`` (schwab.quotes keeps each batch's there) can be an earlier call's good answer, not the failure."""
     reply = getattr(e, "response", None)
     if hasattr(reply, "status_code"):
         return reply
     tb, found = e.__traceback__, None
     while tb is not None:
         cand = tb.tb_frame.f_locals.get("resp")
-        if hasattr(cand, "status_code") and hasattr(cand, "text"):
+        if (tb.tb_frame.f_globals.get("__name__", "").startswith("authlib")
+                and hasattr(cand, "status_code") and hasattr(cand, "text")):
             found = cand
         tb = tb.tb_next
     return found
