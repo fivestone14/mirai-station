@@ -14,16 +14,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 
-from ..cuts import (GAP_HALF_SHARE, GAP_RANK_MIN_SESSIONS, GAP_RULE_SIGMA, GAP_TOUCH_SIGMA, GIVEBACK_THIRD, NOISE_EDGE_SIGMA,
-                    NOISE_LOOKBACK, ONE_CROSS, OPEN_CONTESTED_CROSSES, RANGE_BOTTOM_SHARE, RANGE_TOP_SHARE, WINDOW_30_MIN,
-                    WINDOW_60_MIN)
+from ..cuts import (GAP_HALF_SHARE, GAP_RULE_SIGMA, GAP_TOUCH_SIGMA, GIVEBACK_THIRD, NOISE_EDGE_SIGMA, NOISE_LOOKBACK, ONE_CROSS,
+                    OPEN_CONTESTED_CROSSES, RANGE_BOTTOM_SHARE, RANGE_TOP_SHARE, WINDOW_30_MIN, WINDOW_60_MIN)
 from ..state_builder import Scene, first_row
 from .label_set import LabelSet
 from .measures import (ET, ONE_MINUTE, SETTLED_OPEN_BAR, bar_time, bars_between, bars_finished_between, close_at, day_high_low,
                        is_num, session_extremes, settled_open)
-from .ranks import rank_against, rank_days, same_clock_values
+from .ranks import SameClockRank, rank_days, rank_sessions, same_clock_values
 from .rulers import NO_ANCHOR, RULER_HOLD_UNTIL, SigmaRuler, ruled, ruler, sigma_anchor, typical_move
-from .words import above_or_below, minutes_ago, pct, plural, sig, third
+from .words import above_or_below, minutes_ago, pct, plural, sig
 
 LABELS = ("gap.size", "gap.fill_progress", "gap.morning_vs_gap", "gap.reach_distance",
           "open.fresh_extreme", "open.noise_band", "open.path", "open.settled_open_crosses",
@@ -123,10 +122,10 @@ def _gap_side(gap: Gap, kept: float, touched: bool) -> str:
     return f"gap_{gap.side}_{'losing' if kept < GAP_HALF_SHARE or touched else 'intact'}"
 
 
-def _prior_gap_sizes(scene: Scene) -> list[float]:
-    """Each prior session's gap measured as today's is, unsigned: its settled open against the prior close on
-    its first diary row, in its own morning anchor. rank_days leaves out a session whose anchor was
-    estimated; one without an anchor, a settled open or a prior close on file is left out too."""
+def prior_gap_sizes(scene: Scene) -> list[float]:
+    """Each prior session's gap measured as today's is, unsigned, newest first: its settled open against the
+    prior close on its first diary row, in its own morning anchor. rank_days leaves out a session whose anchor
+    was estimated; one without an anchor, a settled open or a prior close on file is left out too."""
     out = []
     for day in rank_days(scene):
         ruler, so, rows = scene.prior_rulers.get(day), settled_open(scene.prior_bars[day]), first_row(scene.state_dir, day)
@@ -136,26 +135,30 @@ def _prior_gap_sizes(scene: Scene) -> list[float]:
     return out
 
 
+def gap_rank(scene: Scene, size: float) -> tuple[SameClockRank | None, str | None]:
+    """A gap of ``size`` sigma against the prior sessions' gaps (prior_gap_sizes) under the owner's rank rule
+    (ranks.rank_sessions): the one rank of the gap's size, for gap.size and every label that asks whether
+    there was a real gap."""
+    if scene.state_dir is None:
+        return None, "no state folder to read the prior sessions' closes from"
+    return rank_sessions(abs(size), prior_gap_sizes(scene), "a trusted morning ruler, a settled open and yesterday's close")
+
+
 def _size(scene: Scene, gap: Gap | None, why: str, ls: LabelSet) -> None:
     """How large this morning's gap was against the prior sessions' gaps, in thirds, then which way it went."""
     if gap is None:
         ls.omit("gap.size", why)
         return
-    if scene.state_dir is None:
-        ls.omit("gap.size", "no state folder to read the prior sessions' closes from")
-        return
-    base = _prior_gap_sizes(scene)
-    if len(base) < GAP_RANK_MIN_SESSIONS:
-        ls.omit("gap.size", f"its rank needs {GAP_RANK_MIN_SESSIONS} prior sessions with a trusted morning ruler, a settled open "
-                            f"and yesterday's close, have {len(base)}")
-        return
     g = gap.size
-    rank = rank_against(abs(g), base)
+    rank, no_rank = gap_rank(scene, g)
+    if rank is None:
+        ls.omit("gap.size", no_rank)
+        return
     # the morning's straddle is the first row's em_open: what today's 0DTE priced before the gap was known
     em_open = next((float(em) for r in scene.rows_today if is_num(em := (r.get("range_ruler") or {}).get("em_open")) and em > 0), None)
     straddle = f"; {abs(gap.settled_open - gap.prior_close) / em_open:.1f} times this morning's same-day straddle" if em_open else ""
     ls.put("gap.size", ruled(gap.anchor, f"this morning's gap of {sig(abs(g))} is larger than {rank.higher_than} of the last {rank.of} "
-                                         f"days' gaps, {third(rank.share)} third: price opened {above_or_below(g)} yesterday's close, "
+                                         f"days' gaps, {rank.band}: price opened {above_or_below(g)} yesterday's close, "
                                          f"measured at 09:35 because the 09:30 print uses stale prices{straddle}"))
 
 

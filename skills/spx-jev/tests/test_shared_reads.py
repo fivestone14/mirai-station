@@ -98,8 +98,8 @@ def test_the_owners_rank_takes_the_last_20_sessions_needs_10_and_says_its_third(
     assert rank_sessions(9.0, base, "a gap")[0].band == "bottom third"            # higher than 4 of 20
     assert rank_sessions(18.0, base, "a gap")[0].band == "middle third"           # higher than 12 of 20
     short = base[:SAME_CLOCK_MIN_SESSIONS - 1]
-    assert rank_sessions(1.0, short, "a gap") == (None, f"its rank needs {SAME_CLOCK_MIN_SESSIONS} prior sessions with a gap at "
-                                                        f"this minute, have {SAME_CLOCK_MIN_SESSIONS - 1}")
+    assert rank_sessions(1.0, short, "a gap") == (None, f"its rank needs {SAME_CLOCK_MIN_SESSIONS} prior sessions with a gap, "
+                                                        f"have {SAME_CLOCK_MIN_SESSIONS - 1}")
     assert rank_sessions(1.0, base[:SAME_CLOCK_MIN_SESSIONS], "a gap")[0].of == SAME_CLOCK_MIN_SESSIONS
 
 

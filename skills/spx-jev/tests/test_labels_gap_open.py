@@ -14,8 +14,8 @@ from datetime import date, time, timedelta
 import pytest
 
 from conftest import DAY, at, bars_from_closes, flat_bars, make_row, prior_sessions, write_state
-from spx_jev.cuts import (GAP_RANK_MIN_SESSIONS, GAP_RULE_SIGMA, GIVEBACK_THIRD, NOISE_EDGE_SIGMA, NOISE_LOOKBACK, OPEN_CONTESTED_CROSSES,
-                          RANGE_TOP_SHARE, RULER_FLOOR_SIGMA)
+from spx_jev.cuts import (GAP_RULE_SIGMA, GIVEBACK_THIRD, NOISE_EDGE_SIGMA, NOISE_LOOKBACK, OPEN_CONTESTED_CROSSES,
+                          RANGE_TOP_SHARE, RULER_FLOOR_SIGMA, SAME_CLOCK_MIN_SESSIONS)
 from spx_jev.labels.gap_open import build_gap_open_labels
 from spx_jev.labels.measures import bar_time
 from spx_jev.labels.rulers import SigmaRuler
@@ -94,7 +94,7 @@ def test_the_gaps_size_is_its_third_among_the_prior_sessions_gaps_whichever_way_
 
 
 def test_the_gaps_size_needs_ten_usable_prior_sessions_and_leaves_out_estimated_rulers(scene_factory, tmp_path):
-    assert GAP_RANK_MIN_SESSIONS == 10
+    assert SAME_CLOCK_MIN_SESSIONS == 10
     got, _, _ = labels(sized(scene_factory, tmp_path, 7712.0, gaps=TWENTY[:10]))
     assert got["gap.size"].startswith("this morning's gap of 0.15 sigma is larger than 7 of the last 10 days' gaps, top third:")
     need = "its rank needs 10 prior sessions with a trusted morning ruler, a settled open and yesterday's close, have 9"

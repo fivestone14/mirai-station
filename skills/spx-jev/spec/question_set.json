@@ -110,7 +110,7 @@
   },
   "labels": 135,
   "labels_built": 3,
-  "constants": 164,
+  "constants": 163,
   "label_availability": {
    "live": 70,
    "cheap_add": 55,
@@ -206,12 +206,6 @@
   "gap_touch_sigma": {
    "value": 0.02,
    "note": "touch tolerance for yesterday's close",
-   "cuts_json_name": null,
-   "in_cuts_py": false
-  },
-  "gap_rank_min_sessions": {
-   "value": 10,
-   "note": "fewest prior sessions with a trusted ruler to rank the gap's size against",
    "cuts_json_name": null,
    "in_cuts_py": false
   },
@@ -1210,7 +1204,7 @@
       {
        "name": "gap.size",
        "example": "this morning's gap of 0.44 sigma is larger than 17 of the last 20 days' gaps, top third: price opened above yesterday's close, measured at 09:35 because the 09:30 print uses stale prices; 1.4 times this morning's same-day straddle",
-       "computed_how": "|09:34 close - prior_close|/sigma_anchor ranked against the same gap on up to the last 20 prior sessions (each its settled open against the prior_close on its first diary row, in its own morning anchor; a session whose anchor was estimated is left out), stated as 'larger than N of the last M days' gaps' and its third (bottom/middle/top); omitted under gap_rank_min_sessions usable sessions; then the side it opened on; anchor guard: anchor only from a row stamped by 09:40, else 09:35 sigma_live, else spot*(VIX/100)/sqrt(252) (VIX is quoted in percent), flagged 'ruler estimated'",
+       "computed_how": "|09:34 close - prior_close|/sigma_anchor ranked against the same gap on up to the last 20 prior sessions (each its settled open against the prior_close on its first diary row, in its own morning anchor; a session whose anchor was estimated is left out), stated as 'larger than N of the last M days' gaps' and its third (bottom/middle/top); omitted under same_clock_min_sessions usable sessions; then the side it opened on; anchor guard: anchor only from a row stamped by 09:40, else 09:35 sigma_live, else spot*(VIX/100)/sqrt(252) (VIX is quoted in percent), flagged 'ruler estimated'",
        "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json); state/reversion/{day}.jsonl",
        "availability": "live",
        "label_built": false,
@@ -2827,7 +2821,7 @@
       {
        "name": "gap.size",
        "example": "this morning's gap of 0.44 sigma is larger than 17 of the last 20 days' gaps, top third: price opened above yesterday's close, measured at 09:35 because the 09:30 print uses stale prices; 1.4 times this morning's same-day straddle",
-       "computed_how": "|09:34 close - prior_close|/sigma_anchor ranked against the same gap on up to the last 20 prior sessions (each its settled open against the prior_close on its first diary row, in its own morning anchor; a session whose anchor was estimated is left out), stated as 'larger than N of the last M days' gaps' and its third (bottom/middle/top); omitted under gap_rank_min_sessions usable sessions; then the side it opened on; anchor guard: anchor only from a row stamped by 09:40, else 09:35 sigma_live, else spot*(VIX/100)/sqrt(252) (VIX is quoted in percent), flagged 'ruler estimated'",
+       "computed_how": "|09:34 close - prior_close|/sigma_anchor ranked against the same gap on up to the last 20 prior sessions (each its settled open against the prior_close on its first diary row, in its own morning anchor; a session whose anchor was estimated is left out), stated as 'larger than N of the last M days' gaps' and its third (bottom/middle/top); omitted under same_clock_min_sessions usable sessions; then the side it opened on; anchor guard: anchor only from a row stamped by 09:40, else 09:35 sigma_live, else spot*(VIX/100)/sqrt(252) (VIX is quoted in percent), flagged 'ruler estimated'",
        "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json); state/reversion/{day}.jsonl",
        "availability": "live",
        "label_built": false,
@@ -2889,7 +2883,7 @@
       {
        "name": "gap.size",
        "example": "this morning's gap of 0.44 sigma is larger than 17 of the last 20 days' gaps, top third: price opened above yesterday's close, measured at 09:35 because the 09:30 print uses stale prices; 1.4 times this morning's same-day straddle",
-       "computed_how": "|09:34 close - prior_close|/sigma_anchor ranked against the same gap on up to the last 20 prior sessions (each its settled open against the prior_close on its first diary row, in its own morning anchor; a session whose anchor was estimated is left out), stated as 'larger than N of the last M days' gaps' and its third (bottom/middle/top); omitted under gap_rank_min_sessions usable sessions; then the side it opened on; anchor guard: anchor only from a row stamped by 09:40, else 09:35 sigma_live, else spot*(VIX/100)/sqrt(252) (VIX is quoted in percent), flagged 'ruler estimated'",
+       "computed_how": "|09:34 close - prior_close|/sigma_anchor ranked against the same gap on up to the last 20 prior sessions (each its settled open against the prior_close on its first diary row, in its own morning anchor; a session whose anchor was estimated is left out), stated as 'larger than N of the last M days' gaps' and its third (bottom/middle/top); omitted under same_clock_min_sessions usable sessions; then the side it opened on; anchor guard: anchor only from a row stamped by 09:40, else 09:35 sigma_live, else spot*(VIX/100)/sqrt(252) (VIX is quoted in percent), flagged 'ruler estimated'",
        "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json); state/reversion/{day}.jsonl",
        "availability": "live",
        "label_built": false,
@@ -2963,7 +2957,7 @@
       {
        "name": "gap.size",
        "example": "this morning's gap of 0.44 sigma is larger than 17 of the last 20 days' gaps, top third: price opened above yesterday's close, measured at 09:35 because the 09:30 print uses stale prices; 1.4 times this morning's same-day straddle",
-       "computed_how": "|09:34 close - prior_close|/sigma_anchor ranked against the same gap on up to the last 20 prior sessions (each its settled open against the prior_close on its first diary row, in its own morning anchor; a session whose anchor was estimated is left out), stated as 'larger than N of the last M days' gaps' and its third (bottom/middle/top); omitted under gap_rank_min_sessions usable sessions; then the side it opened on; anchor guard: anchor only from a row stamped by 09:40, else 09:35 sigma_live, else spot*(VIX/100)/sqrt(252) (VIX is quoted in percent), flagged 'ruler estimated'",
+       "computed_how": "|09:34 close - prior_close|/sigma_anchor ranked against the same gap on up to the last 20 prior sessions (each its settled open against the prior_close on its first diary row, in its own morning anchor; a session whose anchor was estimated is left out), stated as 'larger than N of the last M days' gaps' and its third (bottom/middle/top); omitted under same_clock_min_sessions usable sessions; then the side it opened on; anchor guard: anchor only from a row stamped by 09:40, else 09:35 sigma_live, else spot*(VIX/100)/sqrt(252) (VIX is quoted in percent), flagged 'ruler estimated'",
        "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json); state/reversion/{day}.jsonl",
        "availability": "live",
        "label_built": false,
@@ -10116,7 +10110,7 @@
   {
    "name": "gap.size",
    "example": "this morning's gap of 0.44 sigma is larger than 17 of the last 20 days' gaps, top third: price opened above yesterday's close, measured at 09:35 because the 09:30 print uses stale prices; 1.4 times this morning's same-day straddle",
-   "computed_how": "|09:34 close - prior_close|/sigma_anchor ranked against the same gap on up to the last 20 prior sessions (each its settled open against the prior_close on its first diary row, in its own morning anchor; a session whose anchor was estimated is left out), stated as 'larger than N of the last M days' gaps' and its third (bottom/middle/top); omitted under gap_rank_min_sessions usable sessions; then the side it opened on; anchor guard: anchor only from a row stamped by 09:40, else 09:35 sigma_live, else spot*(VIX/100)/sqrt(252) (VIX is quoted in percent), flagged 'ruler estimated'",
+   "computed_how": "|09:34 close - prior_close|/sigma_anchor ranked against the same gap on up to the last 20 prior sessions (each its settled open against the prior_close on its first diary row, in its own morning anchor; a session whose anchor was estimated is left out), stated as 'larger than N of the last M days' gaps' and its third (bottom/middle/top); omitted under same_clock_min_sessions usable sessions; then the side it opened on; anchor guard: anchor only from a row stamped by 09:40, else 09:35 sigma_live, else spot*(VIX/100)/sqrt(252) (VIX is quoted in percent), flagged 'ruler estimated'",
    "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json); state/reversion/{day}.jsonl",
    "availability": "live",
    "label_built": false,

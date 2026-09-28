@@ -55,11 +55,11 @@ def rank_against(value: float, base: list[float]) -> SameClockRank | None:
 def rank_sessions(value: float, base: list[float], what: str) -> tuple[SameClockRank | None, str | None]:
     """``value`` against the same measure on up to the last NIGHT_RANK_COUNT prior sessions (``base``, newest
     first, as same_clock_values and same_clock_market give it): ``(rank, None)``, or ``(None, reason)`` under
-    SAME_CLOCK_MIN_SESSIONS of them, the reason naming ``what`` the sessions lacked. The rank every
+    SAME_CLOCK_MIN_SESSIONS of them, the reason naming ``what`` the sessions lacked ("a 30-minute move at this minute"). The rank every
     threshold that sizes or judges a market measure is replaced by, as night_ranks.rank_night is overnight."""
     recent = base[:NIGHT_RANK_COUNT]
     if len(recent) < SAME_CLOCK_MIN_SESSIONS:
-        return None, f"its rank needs {SAME_CLOCK_MIN_SESSIONS} prior sessions with {what} at this minute, have {len(recent)}"
+        return None, f"its rank needs {SAME_CLOCK_MIN_SESSIONS} prior sessions with {what}, have {len(recent)}"
     return SameClockRank(sum(1 for b in recent if b < value), len(recent)), None
 
 
@@ -68,7 +68,7 @@ def move_rank(scene: Scene, move: float, minutes: int) -> tuple[SameClockRank | 
     this clock on the prior sessions, each in its own ruler (rank_sessions): the one rank every family judges
     whether SPX moved by."""
     base = same_clock_values(scene, lambda bars, then, sigma: move_size(bars, then, sigma, minutes))
-    return rank_sessions(abs(move), base, f"a {minutes}-minute move")
+    return rank_sessions(abs(move), base, f"a {minutes}-minute move at this minute")
 
 
 def rank_at_slot(value: float, base: list[float]) -> dict | None:
