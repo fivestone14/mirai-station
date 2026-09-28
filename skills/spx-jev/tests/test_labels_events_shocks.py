@@ -456,8 +456,8 @@ def test_the_shock_rule_and_fresh_window_at_their_boundaries(scene_factory):
     _, omitted, gates = labels(burst_scene(scene_factory, at(12, 2, BURST_DAY), size=5.0, after=5.0))
     assert gates["shock_state"] == omitted["shock.burst"] == (
         "no five-minute move in the last 60 minutes passed the shock rule (larger than the biggest five-minute move of the hour "
-        "to that minute on every one of up to the last 20 sessions); the largest was 0.04 sigma, larger than the biggest five-minute "
-        "move of the hour to that minute on 8 of the last 10 sessions")
+        "to that minute, or from the settled open when that is shorter, on every one of up to the last 20 sessions); the largest "
+        "was 0.04 sigma, larger than the biggest five-minute move of the hour to that minute on 8 of the last 10 sessions")
     assert omitted["shock.vs_day_range"] == omitted["shock.cross_asset"] == omitted["shock.burst"]
 
 
@@ -487,14 +487,19 @@ def test_a_burst_finishing_after_the_read_never_counts(scene_factory):
 def test_an_opening_burst_is_ranked_from_the_settled_open(scene_factory):
     s = burst_scene(scene_factory, at(10, 8, BURST_DAY), size=30.0, after=30.0, start=(9, 56))
     assert labels(s)[0]["shock.burst"] == (
-        "12 minutes ago price rose 0.29 sigma in 5 minutes, larger than the biggest five-minute move of the hour to that minute on "
-        "10 of the last 10 sessions, past the shock rule; not at a scheduled release time; the burst ended 7 minutes ago, inside "
-        "the 10-minute fresh window; since then price has given back none of it, within the half line")
+        "12 minutes ago price rose 0.29 sigma in 5 minutes, larger than the biggest five-minute move from the settled open to that "
+        "minute on 10 of the last 10 sessions, past the shock rule; not at a scheduled release time; the burst ended 7 minutes "
+        "ago, inside the 10-minute fresh window; since then price has given back none of it, within the half line")
     usual = burst_scene(scene_factory, at(10, 8, BURST_DAY), size=3.5, after=3.5, start=(9, 56))
-    assert labels(usual)[2]["shock_state"].endswith("the largest was 0.03 sigma, larger than the biggest five-minute move of the hour "
-                                                    "to that minute on 6 of the last 10 sessions")
+    assert labels(usual)[2]["shock_state"].endswith("the largest was 0.03 sigma, larger than the biggest five-minute move from the "
+                                                    "settled open to that minute on 6 of the last 10 sessions")
     early = burst_scene(scene_factory, at(9, 38, BURST_DAY))
     assert labels(early)[1]["shock.burst"] == "the first five minutes after the settled open end at 09:40"
+    # the hour to a window ending 10:39 holds every window from the first, ending 09:40; to one ending 10:38 it is cut short
+    short = burst_scene(scene_factory, at(10, 45, BURST_DAY), size=30.0, after=30.0, start=(10, 33))
+    assert "the biggest five-minute move from the settled open to that minute on 10" in labels(short)[0]["shock.burst"]
+    full = burst_scene(scene_factory, at(10, 45, BURST_DAY), size=30.0, after=30.0, start=(10, 34))
+    assert "the biggest five-minute move of the hour to that minute on 10" in labels(full)[0]["shock.burst"]
 
 
 def test_the_shock_needs_ten_prior_sessions_to_judge_a_window(scene_factory):
@@ -502,7 +507,8 @@ def test_the_shock_needs_ten_prior_sessions_to_judge_a_window(scene_factory):
     _, omitted, gates = labels(s)
     assert gates["shock_state"] == omitted["shock.burst"] == (
         "no five-minute window in the last 60 minutes could be judged: each is ranked against the biggest five-minute move of "
-        "the hour to its minute on up to the last 20 sessions and needs 10 of them with a trusted morning ruler")
+        "the hour to its minute (from the settled open when that is shorter) on up to the last 20 sessions and needs 10 of them "
+        "with a trusted morning ruler")
     estimated = replace(s, prior_bars=SLOPED, prior_rulers={**RULERS, "2026-09-17": SigmaRuler(100.0, "live")})
     assert labels(estimated)[2]["shock_state"] == gates["shock_state"]
 

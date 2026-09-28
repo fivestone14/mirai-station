@@ -5,8 +5,8 @@ event.*), the morning brief and headlines (news.*), and unscheduled bursts seen 
   in the session and the Fed's speakers. Past the calendar's last kept day they are omitted, since an
   empty day there is unknown rather than quiet. A row whose date follows a rule is worded 'expected'.
 * A burst is a 5-minute move from the settled open larger than the biggest 5-minute move of the hour to
-  the same minute (SHOCK_LOOKBACK_MIN) on every one of up to the last 20 sessions, each in its own morning
-  ruler (ranks.rank_sessions, needing SAME_CLOCK_MIN_SESSIONS of them): a shock for its clock, never against
+  the same minute (SHOCK_LOOKBACK_MIN), or from the settled open when that is shorter, on every one of up to
+  the last 20 sessions, each in its own morning ruler (ranks.rank_sessions, needing SAME_CLOCK_MIN_SESSIONS of them): a shock for its clock, never against
   a fixed cut, and the same rule whether 10 or 20 sessions are on file. Ranked against each session's biggest move of the hour rather than
   its same five minutes, since a read looks back over an hour of windows: one in twenty of those would
   top the same five minutes on every session by chance alone, and the shock would be awake on three
@@ -545,8 +545,13 @@ def shock_bursts(windows: list[Burst]) -> list[Burst]:
     return [max(g, key=lambda w: abs(w.move)) for g in groups]
 
 
-def _hour_words(rank: SameClockRank) -> str:
-    return f"larger than the biggest five-minute move of the hour to that minute on {rank.higher_than} of the last {rank.of} sessions"
+def _hour_words(scene: Scene, w: Burst) -> str:
+    """A window's rank in words, naming the span its base was taken over: the hour to its minute, or from the settled
+    open to it while that is shorter (_hour_biggest's hour holds no window from before the settled open)."""
+    first_end = scene.session_open + timedelta(minutes=2 * BURST_MIN)
+    span = ("from the settled open to that minute" if w.end - timedelta(minutes=SHOCK_LOOKBACK_MIN - 1) < first_end
+            else "of the hour to that minute")
+    return f"larger than the biggest five-minute move {span} on {w.rank.higher_than} of the last {w.rank.of} sessions"
 
 
 def _shocks(scene: Scene, anchor: SigmaRuler | None, windows: list[Burst], bursts: list[Burst],
@@ -564,13 +569,14 @@ def _shocks(scene: Scene, anchor: SigmaRuler | None, windows: list[Burst], burst
         why = f"the first five minutes after the settled open end at {_hm(first_end)}"
     elif not recent:
         why = (f"no five-minute window in the last {SHOCK_LOOKBACK_MIN} minutes could be judged: each is ranked against the biggest "
-               f"five-minute move of the hour to its minute on up to the last {NIGHT_RANK_COUNT} sessions and needs "
+               f"five-minute move of the hour to its minute (from the settled open when that is shorter) on up to the last "
+               f"{NIGHT_RANK_COUNT} sessions and needs "
                f"{SAME_CLOCK_MIN_SESSIONS} of them with a trusted morning ruler")
     elif not shocks:
         top = max(recent, key=lambda w: abs(w.move))
         why = (f"no five-minute move in the last {SHOCK_LOOKBACK_MIN} minutes passed the shock rule (larger than the biggest "
-               f"five-minute move of the hour to that minute on every one of up to the last {NIGHT_RANK_COUNT} sessions); the largest was "
-               f"{sig(abs(top.move))}, {_hour_words(top.rank)}")
+               f"five-minute move of the hour to that minute, or from the settled open when that is shorter, on every one of up to "
+               f"the last {NIGHT_RANK_COUNT} sessions); the largest was {sig(abs(top.move))}, {_hour_words(scene, top)}")
     else:
         burst = max(shocks, key=lambda b: abs(b.move))
         ls.wake("shock_state")
@@ -588,7 +594,7 @@ def _burst_label(scene: Scene, anchor: SigmaRuler, burst: Burst, day_events: lis
     now = scene.now
     est = " (ruler estimated)" if anchor.estimated else ""
     head = (f"{plural(_minutes_between(burst.start, now), 'minute')} ago price {'rose' if burst.side > 0 else 'fell'} "
-            f"{sig(abs(burst.move))}{est} in {BURST_MIN} minutes, {_hour_words(burst.rank)}, past the shock rule")
+            f"{sig(abs(burst.move))}{est} in {BURST_MIN} minutes, {_hour_words(scene, burst)}, past the shock rule")
     if day_events is None:
         when = "whether it came at a scheduled time is unknown: the event calendar has run out"
     else:
