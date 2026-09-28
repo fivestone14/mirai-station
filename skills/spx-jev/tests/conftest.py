@@ -154,14 +154,18 @@ def options_tape_at(now: datetime, tilt: float = 0.05, prior_days: list[str] | N
 
 @pytest.fixture
 def full_scene(scene_factory):
-    """A moment at which every built label can be measured."""
+    """A moment at which every built label can be measured: its prior sessions each carry a trusted morning
+    ruler, so a measure ranked in each session's own ruler has the sessions the owner's rank rule needs."""
+    from dataclasses import replace
+    from spx_jev.labels.rulers import SigmaRuler
     sigma = 75.0
     closes = [7700.0 + (i % 5) for i in range(150)] + [7704.0 + sigma * 0.4 * (i + 1) / 30 for i in range(30)]
     now = at(12, 30, ss=10)
     earlier = make_row(now - timedelta(minutes=30), 7702.0, atm_iv=0.14)
     prior = prior_sessions()
-    return scene_factory(now, bars_from_closes(closes), rows_before=[earlier], prior_bars=prior, market=market_at(now),
-                         options_tape=options_tape_at(now, prior_days=list(prior)))
+    scene = scene_factory(now, bars_from_closes(closes), rows_before=[earlier], prior_bars=prior, market=market_at(now),
+                          options_tape=options_tape_at(now, prior_days=list(prior)))
+    return replace(scene, prior_rulers={d: SigmaRuler(sigma, "anchor") for d in prior})
 
 
 @pytest.fixture
