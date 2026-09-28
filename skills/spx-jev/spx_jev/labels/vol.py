@@ -31,8 +31,8 @@ from .events_shocks import judged_windows, shock_bursts
 from .label_set import LabelSet
 from .measures import (ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, day_high_low, is_num, move_size,
                        session_extremes, settled_open)
-from .ranks import (SameClockRank, fifth, move_rank, rank_against, rank_days, rank_sessions, same_clock_market,
-                    same_clock_values, tick_bands_by_minute, tick_bursts)
+from .ranks import (SameClockRank, fifth, move_rank, rank_days, rank_sessions, same_clock_market, same_clock_values,
+                    tick_bands_by_minute, tick_bursts)
 from .rulers import SigmaRuler, sigma_anchor
 from .vol_sources import (ROW_MAX_GAP, DiaryPoint, Skew, diary_point, minute_floor, point_at, prior_diary, prior_diary_by,
                           skew_at)
@@ -863,9 +863,9 @@ def _fit_two(xs: list[tuple[float, float]], ys: list[float]) -> tuple[float, flo
 
 def _vvix_vs_vix(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
     """VVIX's 30-minute change less what SPX's move and VIX's change explain, fitted on the prior sessions' half
-    hours, its size ranked against the fit's own leftovers; beside it whether SPX and VIX barely moved: each
-    one's 30-minute move in the bottom third of the same half hour on the prior sessions (ranks.move_rank, and
-    vix_stir's rank of the diary VIX)."""
+    hours, its size ranked against the fit's leftover over the same half hour on the prior sessions; beside it
+    whether SPX and VIX barely moved: each one's 30-minute move in the bottom third of the same half hour on the
+    prior sessions (ranks.move_rank, and vix_stir's rank of the diary VIX)."""
     path = "vol.vvix_vs_vix"
     ruler = sigma_anchor(scene)
     now = _half_hour(scene.market, scene.bars, scene.now, ruler.points) if ruler else None
@@ -873,7 +873,7 @@ def _vvix_vs_vix(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
         ls.omit(path, "needs the morning sigma ruler, bars 30 minutes apart and $VIX and $VVIX in the market context now and then "
                       "(the context job)")
         return
-    xs, ys, sessions = [], [], 0
+    xs, ys, sessions, same_clock = [], [], 0, []
     for d in rank_days(scene):
         prior, anchor = scene.prior_markets.get(d), scene.prior_rulers.get(d)
         if prior is None or anchor is None:
@@ -884,6 +884,8 @@ def _vvix_vs_vix(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
         sessions += bool(reads)
         xs += [(r[0], r[1]) for r in reads]
         ys += [r[2] for r in reads]
+        if here := _half_hour(prior, scene.prior_bars[d], _same_clock(scene.now, d), anchor.points):
+            same_clock.append(here)
     fit = _fit_two(xs, ys) if sessions >= MIN_RANK_SESSIONS else None
     if fit is None:
         ls.omit(path, f"needs {MIN_RANK_SESSIONS} prior sessions of $VIX and $VVIX to fit against, have {sessions}")
@@ -900,7 +902,11 @@ def _vvix_vs_vix(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
     move, dvix, dvvix, vix = now
     explained = a + b * move + c * dvix
     left = dvvix - explained
-    rank = rank_against(abs(left), [abs(y - (a + b * x1 + c * x2)) for (x1, x2), y in zip(xs, ys)])
+    rank, why = rank_sessions(abs(left), [abs(dv - (a + b * x1 + c * x2)) for x1, x2, dv, _ in same_clock],
+                              "$VIX and $VVIX at this minute and 30 minutes before")
+    if rank is None:
+        ls.omit(path, why)
+        return
     band = ("top fifth" if rank.share >= TOP_FIFTH else "at or above the median, short of the top fifth" if rank.share >= HALF_RANK
             else "under the median")
     if spx_rank.band == vix_rank.band == "bottom third":
@@ -910,7 +916,7 @@ def _vvix_vs_vix(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
     ls.put(path,
            f"over the last 30 minutes VVIX {'rose' if dvvix >= 0 else 'fell'} {abs(dvvix):.2f} points; VIX's and SPX's moves explain "
            f"a {'rise' if explained >= 0 else 'fall'} of about {abs(explained):.2f}; the {abs(left):.2f} left over is bigger than "
-           f"{rank.higher_than} of {rank.of} half hours on the last {sessions} sessions, {band}, {others}{_ruled(ruler)}")
+           f"on {rank.higher_than} of the last {rank.of} sessions at this minute, {band}, {others}{_ruled(ruler)}")
 
 
 def _vix_curve(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:

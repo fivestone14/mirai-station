@@ -789,12 +789,14 @@ def test_the_spx_and_vvix_pairing_is_omitted_under_ten_sessions(scene_factory):
 
 # Orthogonal patterns: the SPX moves, VIX changes and leftovers of each four half hours of the fit history
 # are mutually uncorrelated and sum to nothing, so the fit finds VVIX = 1 + 2 x SPX + 3 x VIX exactly and
-# its leftovers are the fixture's own: over twelve sessions, four each of 0.01 to 0.33.
+# its leftovers are the fixture's own: over twelve sessions, four each of 0.01 to 0.33. The half hour to
+# 12:30 left 0.02, 0.04, 0.07, 0.10, 0.13, 0.15, 0.18, 0.21, 0.24, 0.26, 0.29 and 0.32 over, newest first.
 SPX_PATTERN, VIX_PATTERN, LEFT_PATTERN = (1, 1, -1, -1), (1, -1, 1, -1), (1, -1, -1, 1)
 VVIX_DAYS = [f"2026-09-{d:02d}" for d in range(17, 5, -1)]
 
 
-def vvix_history(days: list[str]):
+def vvix_history(days: list[str], unquoted_at_1230=()):
+    """The fit history; on the ``unquoted_at_1230`` days the context job saved no VVIX at 12:30."""
     bars, markets, g = {}, {}, 0
     for day in days:
         level, vix, vvix = [7700.0], [15.0], [90.0]           # at 10:00, then each half hour to 15:30
@@ -806,15 +808,17 @@ def vvix_history(days: list[str]):
             g += 1
         marks = [at(10, 0, day=day) + timedelta(minutes=30 * m) for m in range(12)]
         bars[day] = bars_from_closes([level[min(max((i + 1) // 30 - 1, 0), 11)] for i in range(390)], day=day)
-        markets[day] = MarketContext({"$VIX": list(zip(marks, vix)), "$VVIX": list(zip(marks, vvix))})
+        markets[day] = MarketContext({"$VIX": list(zip(marks, vix)),
+                                      "$VVIX": [(t, v) for t, v in zip(marks, vvix) if day not in unquoted_at_1230 or t != at(12, 30, day=day)]})
     return bars, markets
 
 
-def vvix_scene(scene_factory, tmp_path, drop: float, vix_now: float, dvvix: float, diary_vix_now: float = 15.0, days=VVIX_DAYS):
+def vvix_scene(scene_factory, tmp_path, drop: float, vix_now: float, dvvix: float, diary_vix_now: float = 15.0, days=VVIX_DAYS,
+               unquoted_at_1230=()):
     """A 12:30 read against ``days`` of VVIX fit history, SPX there moving 0.1 sigma each half hour and its diary VIX
     moving 0.1% to 1.2% of its level: today's diary VIX goes from 15.0 to ``diary_vix_now`` over the half hour."""
     now = at(12, 30)
-    bars, markets = vvix_history(days)
+    bars, markets = vvix_history(days, unquoted_at_1230)
     market = vix_family(now, VIX={30: 15.0, 0: vix_now}, VVIX={30: 90.0, 0: 90.0 + dvvix})
     scene = scene_factory(now, fall_then_now(now, drop) if drop else flat_bars(180), row_over={"range_ruler": ruler_block(diary_vix_now)},
                           rows_before=[morning(), diary_row(at(12, 0), 15.0)], market=market, prior_bars=bars)
@@ -830,15 +834,15 @@ ALSO = "while SPX or VIX also moved (one or both 30-minute moves above the botto
 
 @pytest.mark.parametrize("drop, vix_now, left, diary_vix_now, words", [
     (0.12, 15.35, 0.70, 15.0, f"VVIX rose 2.51 points; VIX's and SPX's moves explain a rise of about 1.81; the 0.70 left over is bigger "
-                              f"than 132 of 132 half hours on the last 12 sessions, top fifth, {ALSO}"),
+                              f"than on 12 of the last 12 sessions at this minute, top fifth, {ALSO}"),
     (0.0, 15.05, 0.70, 15.0, f"VVIX rose 1.85 points; VIX's and SPX's moves explain a rise of about 1.15; the 0.70 left over is bigger "
-                             f"than 132 of 132 half hours on the last 12 sessions, top fifth, {BARELY}"),
+                             f"than on 12 of the last 12 sessions at this minute, top fifth, {BARELY}"),
     (0.0, 15.05, 0.70, 15.2, f"VVIX rose 1.85 points; VIX's and SPX's moves explain a rise of about 1.15; the 0.70 left over is bigger "
-                             f"than 132 of 132 half hours on the last 12 sessions, top fifth, {ALSO}"),
+                             f"than on 12 of the last 12 sessions at this minute, top fifth, {ALSO}"),
     (0.0, 15.05, -0.172, 15.0, f"VVIX rose 0.98 points; VIX's and SPX's moves explain a rise of about 1.15; the 0.17 left over is bigger "
-                               f"than 68 of 132 half hours on the last 12 sessions, at or above the median, short of the top fifth, {BARELY}"),
+                               f"than on 6 of the last 12 sessions at this minute, at or above the median, short of the top fifth, {BARELY}"),
     (0.0, 15.05, 0.057, 15.0, f"VVIX rose 1.21 points; VIX's and SPX's moves explain a rise of about 1.15; the 0.06 left over is bigger "
-                              f"than 20 of 132 half hours on the last 12 sessions, under the median, {BARELY}"),
+                              f"than on 2 of the last 12 sessions at this minute, under the median, {BARELY}"),
 ])
 def test_vvix_is_judged_on_what_spx_and_vix_leave_unexplained(scene_factory, tmp_path, drop, vix_now, left, diary_vix_now, words):
     dvvix = 1 + 2 * -drop + 3 * (vix_now - 15.0) + left
@@ -852,6 +856,9 @@ def test_vvix_is_omitted_without_its_history_or_todays_quotes(scene_factory, tmp
     assert labels(replace(scene, market=None))[1]["vol.vvix_vs_vix"].startswith("needs the morning sigma ruler, bars 30 minutes apart")
     fitted = vvix_scene(scene_factory, tmp_path / "nine", 0.0, 15.1, 1.0, days=VVIX_DAYS[:9])
     assert labels(fitted)[1]["vol.vvix_vs_vix"] == "its rank needs 10 prior sessions with a 30-minute move at this minute, have 9"
+    unquoted = vvix_scene(scene_factory, tmp_path / "unquoted", 0.0, 15.1, 1.0, unquoted_at_1230=VVIX_DAYS[:3])
+    assert labels(unquoted)[1]["vol.vvix_vs_vix"] == (
+        "its rank needs 10 prior sessions with $VIX and $VVIX at this minute and 30 minutes before, have 9")
 
 
 def curve_state(tmp_path, clock=(10, 2)):
