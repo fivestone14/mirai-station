@@ -179,6 +179,53 @@ def test_contracts_come_from_the_roll_table_and_a_new_quote_is_a_pending_roll(tm
     assert rolls.pending(table, "/ES", "/ESZ26")
 
 
+def _store_with_a_roll(state_dir, served, roll_day: date, switch: datetime) -> None:
+    """/ES 5-minute regular-session bars saved night by night over 08-17 to 09-25, their basis over $SPX (served)
+    stepping 0.8% from ``roll_day``, and the roll night's bars jumping at ``switch``."""
+    rows: dict[str, list[dict]] = {}
+    spx = []
+    d, i = date(2026, 8, 17), 0
+    while d <= date(2026, 9, 25):
+        if d.weekday() < 5:
+            index, basis = 6600.0 + 3 * i, (0.9 if d >= roll_day else 0.1) + 0.01 * (i % 3)
+            for ts in (t(d.isoformat(), 9, 30) + timedelta(minutes=5 * k) for k in range(78)):
+                spx.append({"ts": ts.isoformat(), "open": index, "high": index, "low": index, "close": index})
+                price = index * (1 + basis / 100)
+                rows.setdefault(d.isoformat(), []).append({"ts": ts, "price": price})
+            i += 1
+        d += timedelta(days=1)
+    for k in range(-6, 6):
+        ts = switch + timedelta(minutes=5 * k)
+        rows[roll_day.isoformat()].append({"ts": ts, "price": 6700.0 + (55.0 if k >= 0 else 0.0)})
+    for day, bars in rows.items():
+        overnight.write_night(state_dir, day, sorted(({
+            "schema_version": 1, "day": day, "ts": b["ts"].isoformat(), "symbol": "/ES", "contract": None, "contract_from": None,
+            "bar_minutes": 5, "open": b["price"], "high": b["price"], "low": b["price"], "close": b["price"], "volume": 1.0,
+            "session": session_of(b["ts"], date.fromisoformat(day)), "source": "test", "saved_at": "", "flags": []} for b in bars),
+            key=lambda r: r["ts"]))
+    served[("$SPX", 5)] = spx
+
+
+def test_the_daily_re_scan_keeps_a_roll_once_its_span_starts_on_the_roll_day(tmp_path, served):
+    """The 45-day re-scan from the roll day itself cannot see the step into it; the roll, the contract names and every
+    night's stamps stay as the first detection left them, and a restamp writes the night's manifest line."""
+    roll_day, switch = date(2026, 9, 14), t("2026-09-13", 18, 0)
+    _store_with_a_roll(tmp_path, served, roll_day, switch)
+    first = overnight.refresh_rolls(tmp_path, t("2026-09-25", 16, 20))
+    assert [(r["day"], r["from"], r["to"], r["at"]) for r in first["rolls"]] == [("2026-09-14", "/ESU26", "/ESZ26", switch.isoformat())]
+    stamps = {day: _rows(tmp_path, day) for day in overnight.saved_days(tmp_path)}
+    assert {r["contract"] for r in stamps["2026-09-11"]} == {"/ESU26"} and {r["contract"] for r in stamps["2026-09-15"]} == {"/ESZ26"}
+    assert {r["contract"] for r in stamps["2026-09-14"] if r["ts"] < switch.isoformat()} == {"/ESU26"}
+    manifest = _manifest(tmp_path)
+    assert sorted(l["day"] for l in manifest) == sorted(stamps) and all(l["added"] == 0 and l["restamped"] for l in manifest)
+    assert next(l for l in manifest if l["day"] == "2026-09-14")["symbols"]["/ES"]["bars"]["5"]["contracts"] == ["/ESU26", "/ESZ26"]
+    for since in ("2026-09-14", "2026-09-15"):
+        again = overnight.refresh_rolls(tmp_path, t("2026-10-27", 16, 20), since=since)
+        assert again["rolls"] == first["rolls"] and again["current"] == first["current"]
+        assert {day: _rows(tmp_path, day) for day in stamps} == stamps
+    assert len(_manifest(tmp_path)) == len(manifest)                                     # nothing restamped, nothing written
+
+
 def test_the_daily_run_saves_the_night_in_progress_and_the_last_week():
     morning = overnight.days_to_save(t("2026-09-22", 9, 26))
     evening = overnight.days_to_save(t("2026-09-22", 16, 20))

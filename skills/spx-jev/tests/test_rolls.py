@@ -59,7 +59,16 @@ def test_a_basis_step_in_the_roll_window_is_a_roll_at_its_switch_bar():
 def test_a_window_the_data_covers_without_a_step_is_listed():
     fut, ref = _es_history(date(2026, 12, 1))            # no step inside September's window
     found = rolls.detect("/ES", fut, ref, {})
-    assert found["rolls"] == [] and found["windows_without_roll"] == [["2026-09-11", "2026-09-18"]]
+    assert found["rolls"] == [] and found["windows_without_roll"] == [["2026-09-11", "2026-09-17"]]
+
+
+def test_the_es_expiry_friday_is_no_roll():
+    """The expiring contract's settlement steps the basis on the third Friday itself (09-18 by 5.1 times the typical
+    step): a step that day is rejected, so it cannot move the table onto a contract Schwab never quotes."""
+    fut, ref = _es_history(date(2026, 12, 1), stray_day=date(2026, 9, 18))
+    found = rolls.detect("/ES", fut, ref, {})
+    assert found["rolls"] == [] and [r["day"] for r in found["rejected"]] == ["2026-09-18", "2026-09-21"]
+    assert not rolls.in_roll_window("/ES", date(2026, 12, 18)) and rolls.in_roll_window("/ES", date(2026, 12, 14))
 
 
 def test_the_bond_basis_is_fitted_against_the_yield():
@@ -83,7 +92,7 @@ def test_contracts_are_named_back_from_the_quoted_one_in_the_products_cycle():
 
 
 def test_the_roll_windows_follow_each_products_calendar():
-    assert rolls.roll_window("/ES", 2026, 12) == (date(2026, 12, 11), date(2026, 12, 18))
+    assert rolls.roll_window("/ES", 2026, 12) == (date(2026, 12, 11), date(2026, 12, 17))       # the 12-18 expiry left out
     assert rolls.roll_window("/ES", 2026, 10) is None
     assert rolls.roll_window("/ZN", 2026, 11) == (date(2026, 11, 15), date(2026, 11, 30))
     assert rolls.roll_window("/MBT", 2026, 10) == (date(2026, 10, 23), date(2026, 10, 30))
@@ -125,3 +134,28 @@ def test_a_later_detection_advances_the_current_contract_and_keeps_older_rolls(t
     assert again["current"] == table["current"] and again["rolls"] == table["rolls"]
     rolls.save(tmp_path, again)
     assert rolls.load(tmp_path)["rolls"] == again["rolls"]
+
+
+def test_a_roll_the_re_scan_no_longer_sees_is_kept_and_the_contract_names_hold(tmp_path):
+    """The daily job re-detects its last 45 days, whose first day has no day before it to step from: once the
+    span starts on the roll day (10-27 for the 09-14 roll) the roll is not found again, and it stays."""
+    table = _table(tmp_path)
+    none = {"rolls": [], "rejected": [], "windows_without_roll": [], "typical_step": 0.01, "unit": "percent"}
+    for since in ("2026-09-14", "2026-09-15", "2026-10-20"):
+        table = rolls.merge(table, "/ES", none, since, "/ESZ26")
+        assert [(r["day"], r["from"], r["to"]) for r in table["rolls"]] == [("2026-09-14", "/ESU26", "/ESZ26")]
+        assert table["current"]["/ES"] == "/ESZ26"
+    assert not rolls.same_contract(table, "/ES", datetime(2026, 9, 11, 16, 0, tzinfo=ET), datetime(2026, 9, 14, 9, 28, tzinfo=ET))
+
+
+def test_a_roll_that_drops_under_the_line_and_is_found_again_moves_the_contract_once(tmp_path):
+    """The current contract is counted from the rolls, never stepped per run: a roll found, missed for a day
+    (its step under STEP_VS_TYPICAL) and found again is one roll."""
+    table = _table(tmp_path)
+    dec = {"rolls": [{"symbol": "/ES", "day": "2026-12-14", "at": "2026-12-13T18:00:00-05:00"}], "rejected": [],
+           "windows_without_roll": [], "typical_step": 0.01, "unit": "percent"}
+    none = {**dec, "rolls": []}
+    for found in (dec, none, dec, dec):
+        table = rolls.merge(table, "/ES", found, "2026-11-01", "/ESH27")
+        assert table["current"]["/ES"] == "/ESH27" and [r["day"] for r in table["rolls"]] == ["2026-09-14", "2026-12-14"]
+    assert not rolls.pending(table, "/ES", "/ESH27")

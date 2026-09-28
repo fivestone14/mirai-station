@@ -18,10 +18,13 @@ window the data covers without a step is listed under ``windows_without_roll``, 
 visible. Within the night before the step, the switch is the bar-to-bar jump furthest in the step's
 direction: that bar is the roll's ``at``, the first bar on the new contract.
 
-Contract names follow the product's month cycle: the table is named once from the contract Schwab
-quotes the root under (``/ESZ26``), walking back one contract per roll, and each later roll advances
-it by one. A quote that disagrees with the table's current contract is a roll the data has not shown
-yet (``pending``); the manifest carries it and the rank skips that night.
+A roll once found is kept for good: the daily job re-detects only its last weeks, whose first day has no
+day before it to step from, so a roll that has left the span, or whose step has fallen under the line,
+is history, never erased. Contract names follow the product's month cycle: the table is named once
+from the contract Schwab quotes the root under (``/ESZ26``), walking back one contract per roll, and
+the current contract is always the one before the first roll advanced by the number of rolls, so a
+roll found again never moves it twice. A quote that disagrees with the table's current contract is a
+roll the data has not shown yet (``pending``); the manifest carries it and the rank skips that night.
 
 The table lives beside the overnight store, ``state/spx_jev/overnight/rolls.json``, since the daily
 job rewrites it.
@@ -57,15 +60,16 @@ def _last_friday(year: int, month: int) -> date:
 
 def roll_window(symbol: str, year: int, month: int) -> tuple[date, date] | None:
     """The days a roll may land on in this month, or None when the product does not roll in it.
-    /ES: the week up to the quarterly contract's third-Friday expiry (Schwab moved on the Monday of
-    expiry week in March, June and September 2026). /ZN: the second half of the month before the
-    delivery month, where the first notice day pushes the market over. Bitcoin: the week up to the
-    monthly last-Friday expiry."""
+    /ES: the week up to the quarterly contract's third-Friday expiry, the expiry day left out (Schwab
+    moved on the Monday of expiry week in March, June and September 2026; the expiring contract's
+    settlement steps the basis on the Friday itself, 09-18 by 5.1 times the 45-day typical, which is no roll).
+    /ZN: the second half of the month before the delivery month, where the first notice day pushes
+    the market over. Bitcoin: the week up to the monthly last-Friday expiry."""
     if symbol == "/ES":
         if month % 3:
             return None
         f = _third_friday(year, month)
-        return f - timedelta(days=7), f
+        return f - timedelta(days=7), f - timedelta(days=1)
     if symbol == "/ZN":
         if month % 3 != 2:
             return None
@@ -193,17 +197,17 @@ def save(folder: Path, table: dict) -> Path:
 
 
 def merge(table: dict, symbol: str, found: dict, since: str, quoted: str | None) -> dict:
-    """The table with ``symbol``'s rolls from ``since`` on replaced by ``found`` (detect's answer over
-    that span). The current contract is the table's, advanced one per new roll after its last; on a
-    first detection, the quoted one."""
-    kept = [r for r in table["rolls"] if r["symbol"] == symbol and r["day"] < since]
-    old_last = max((r["day"] for r in table["rolls"] if r["symbol"] == symbol), default=None)
-    current = table["current"].get(symbol)
-    if current is None:
-        current = quoted
-    else:
-        current = shift_contract(current, symbol, sum(1 for r in found["rolls"] if old_last is None or r["day"] > old_last))
-    rolls = kept + found["rolls"]
+    """The table with ``found`` (detect's answer over the nights from ``since``) added to ``symbol``'s rolls:
+    every roll already in the table is kept, and one found again on its day replaces itself. The current
+    contract is the one before the symbol's first roll advanced one per roll; on a first detection, the
+    quoted one. The rejected steps and the windows without a roll from ``since`` on are ``found``'s."""
+    mine = sorted((r for r in table["rolls"] if r["symbol"] == symbol), key=lambda r: r["day"])
+    base = mine[0].get("from") if mine else table["current"].get(symbol)
+    by_day = {r["day"]: r for r in mine} | {r["day"]: r for r in found["rolls"]}
+    if base is None and quoted:
+        base = shift_contract(quoted, symbol, -len(by_day))
+    current = shift_contract(base, symbol, len(by_day)) if base else None
+    rolls = list(by_day.values())
     others = [r for r in table["rolls"] if r["symbol"] != symbol]
     return {
         "schema_version": SCHEMA_VERSION,

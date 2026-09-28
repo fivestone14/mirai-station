@@ -362,8 +362,9 @@ def saved_days(state_dir: Path) -> list[str]:
 
 def refresh_rolls(state_dir: Path, now: datetime, since: str | None = None) -> dict:
     """Re-detect every symbol's rolls over the nights saved from ``since`` (all, when None), fetching the
-    reference markets' 5-minute bars, write the table, and restamp every saved night whose contracts
-    changes (all of them, only when the rolls or the current contracts changed). Returns the table."""
+    reference markets' 5-minute bars, add them to the table (rolls.merge keeps every roll already found),
+    write it, and restamp every saved night whose contracts change, each with its manifest line as a save
+    writes it (all of them, only when the rolls or the current contracts changed). Returns the table."""
     folder = Path(state_dir) / OVERNIGHT_SUBDIR
     days = [d for d in saved_days(state_dir) if since is None or d >= since]
     if not days:
@@ -396,9 +397,7 @@ def refresh_rolls(state_dir: Path, now: datetime, since: str | None = None) -> d
     table["detected_at"] = now.isoformat(timespec="seconds")
     rolls.save(folder, table)
     for day in saved_days(state_dir) if changed else []:
-        rows = load_jsonl(night_path(state_dir, day))
-        if stamp(rows, table, quoted):
-            write_night(state_dir, day, rows)
+        save_night(state_dir, date.fromisoformat(day), {}, quoted, table, now, [])
     return table
 
 
