@@ -1196,9 +1196,11 @@ details .q{margin-top:8px}
     return box;
   }
   // the call: its pick as the big number, its shape in words, the odds bar; a read that made no call (a snapshot,
-  // or a JEV read unsent or with no sum) carries the newest call and says whose it is; before the first call, when it comes
+  // or a JEV read unsent or whose sum failed, the card's hour_error) carries the newest call and says whose it is and
+  // why; before the first call, when it comes
   function preCall(p, box){
     var h = p.hour, pr = h && h.probabilities;
+    var failed = p.hour_error && p.hour_error.read_at === p.row_ts ? 'made no sum: ' + p.hour_error.error : null;
     if(pr){
       var top = h.pick || top1(pr), by = h.by || {}, s = shapeWords(sumPick(by.open_10), sumPick(by.open_30));
       box.appendChild(el('div', 'big', cap(top) + ' ' + pct(pr[top])));
@@ -1206,12 +1208,13 @@ details .q{margin-top:8px}
       box.appendChild(oddsBar(pr, top));
       if(h.read_at && h.read_at !== p.row_ts)
         box.appendChild(tag('the call from the ' + viewerTime(h.read_at) + ' read; the ' + viewerTime(p.row_ts) + ' read ' +
-                            (!preJevRead(p) ? 'is a snapshot and asks nothing.' : p.sent ? 'made none.' : 'was not sent.')));
+                            (!preJevRead(p) ? 'is a snapshot and asks nothing.' : p.sent ? failed || 'made none.' : 'was not sent.')));
       return;
     }
     var row = Date.parse(p.row_ts), jev = (p.schedule && p.schedule.jev_reads) || [];
     var next = jev.filter(function(t){ return Date.parse(t) > row + 60000; })[0];
     box.appendChild(el('div', 'big', 'No call yet'));
+    if(failed) box.appendChild(skipLine('the ' + viewerTime(p.row_ts) + ' read ' + failed));
     box.appendChild(skipLine(next ? (jev.indexOf(next) ? 'next call at ' : 'first call at ') + viewerTime(next) : 'no call before the open'));
   }
   // a read with no pre-open ruler measured nothing (premarket.NoPreOpenRead): its chips are empty and it has no facts,

@@ -622,6 +622,13 @@ def test_an_unsent_jev_read_says_why_and_when_the_next_call_is():
     failed = _page(pre_card("09:28", hour={**CALL_0848, "read_at": et("08:48", PRE_DAY, "04")}), et("09:29"))
     assert failed["state"] == ["1 of 2 answered"] and _card_parts(failed)[2] == ["big", "Up 38%"]
     assert ["tag", "The call from the 05:48 read; the 06:28 read made none."] in _card_parts(failed)
+    # the lane put the failed sum's error on the card: the note says it, and with no earlier call so does the line under
+    error = {"read_at": et("09:28", PRE_DAY, "04"), "error": "JEV timed out after 60 s"}
+    errored = _page(pre_card("09:28", hour={**CALL_0848, "read_at": et("08:48", PRE_DAY, "04")}, hour_error=error), et("09:29"))
+    assert ["tag", "The call from the 05:48 read; the 06:28 read made no sum: JEV timed out after 60 s"] in _card_parts(errored)
+    alone = _page(pre_card("08:48", hour=None, hour_error={**error, "read_at": et("08:48", PRE_DAY, "04")}), et("08:49"))
+    assert _card_parts(alone)[2:5] == [["big", "No call yet"], ["skip", "The 05:48 read made no sum: JEV timed out after 60 s"],
+                                       ["skip", "Next call at 06:28"]]
     assert _card_parts(_page(pre_card("09:28", sent=False, hour=None), et("09:29")))[3] == ["skip", "No call before the open"]
     # a JEV read with nothing to ask names its checkpoint on the market clock; the chip gives it in the viewer's zone
     empty = pre_card("08:48", sent=False, unsent_reason="nothing to ask at the 08:48 ET read")
