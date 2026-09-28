@@ -72,6 +72,20 @@ def close_at(bars: list[dict], t: datetime) -> float | None:
     return float(cands[-1]["close"]) if cands else None
 
 
+def move_size(bars: list[dict], then: datetime, sigma: float | None, minutes: int) -> float | None:
+    """The size of the ``minutes`` move to ``then`` in sigma, unsigned, from the closes finished by then and
+    before: the measure a move is ranked on (ranks.move_rank). None without a ruler or either close."""
+    ref, last = close_at(bars, then - timedelta(minutes=minutes)), close_at(bars, then)
+    return abs(last - ref) / sigma if sigma and ref is not None and last is not None else None
+
+
+def path_efficiency(closes: list[float]) -> float | None:
+    """The net move over the distance travelled close to close, 0 to 1: near 1 one-way, near 0 choppy. None
+    when the closes travelled nothing."""
+    travel = sum(abs(b - a) for a, b in zip(closes[:-1], closes[1:]))
+    return abs(closes[-1] - closes[0]) / travel if travel > 0 else None
+
+
 def slot(bars: list[dict], start_min: int, end_min: int) -> list[dict]:
     """Bars whose minute of day falls in [start_min, end_min)."""
     return [b for b in bars if start_min <= minute_of_day(bar_time(b)) < end_min]

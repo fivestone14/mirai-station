@@ -17,7 +17,8 @@ from ..sessions import previous_trading_day
 from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import (ET, HOUR_MIN_BARS, MIN_RANGE_SESSIONS, ONE_MINUTE, RANGE_PRIOR_SESSIONS, RSI_PERIOD, bar_time, bars_finished_between, close_at,
-                       day_high_low, high_low_close, is_num, session_extremes, settled_open, wilder_rsi, yesterdays_bars)
+                       day_high_low, high_low_close, is_num, move_size, path_efficiency, session_extremes, settled_open, wilder_rsi,
+                       yesterdays_bars)
 from .ranks import rank_against, same_clock_values
 from .rulers import NO_ANCHOR, SigmaRuler, ruled, sigma_anchor, typical_move
 from .words import minutes_ago, pct, plural, sig, signed, third
@@ -76,12 +77,6 @@ def build_price_labels(scene: Scene) -> LabelSet:
     return ls
 
 
-def _move_30(bars: list[dict], then: datetime, sigma: float | None) -> float | None:
-    """The size of the 30-minute move to ``then`` in sigma, for the same-clock rank."""
-    ref, last = close_at(bars, then - timedelta(minutes=WINDOW_30_MIN)), close_at(bars, then)
-    return abs(last - ref) / sigma if sigma and ref is not None and last is not None else None
-
-
 def _recent_move(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> tuple[float | None, str | None]:
     """The 30-minute move in sigma, written as price.recent_move and returned for the reads that judge it; None
     with the reason it was omitted when it was. On the live lane spot is the row's while the bars can stop, so
@@ -113,7 +108,7 @@ def _recent_move(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> tuple[float 
     else:
         text = (f"over the last 30 minutes price {verb} {sig(abs(d))}, more than the {MOVE_RULE_SIGMA} sigma move rule "
                 f"and short of the {MOVE_STRONG_SIGMA:.2f} sigma strong line")
-    rank = rank_against(abs(d), same_clock_values(scene, _move_30))
+    rank = rank_against(abs(d), same_clock_values(scene, lambda bars, then, sigma: move_size(bars, then, sigma, WINDOW_30_MIN)))
     if rank is not None:
         text += f"; bigger than {rank.higher_than} of the last {rank.of} sessions in this half hour"
     hi, lo = day_high_low(win, scene.spot)
@@ -342,14 +337,11 @@ def _momentum(scene: Scene, ls: LabelSet) -> None:
     else:
         ls.put("momentum.pauses", f"during the last 30 minutes the move {word} ran without a pause longer than {PAUSE_BRIEF_MIN} minutes and gave back {pct(retrace)} of itself, less than a quarter")
 
-    wcloses = [float(x["close"]) for x in win]
-    net = abs(wcloses[-1] - wcloses[0])
-    travel = sum(abs(b - a) for a, b in zip(wcloses[:-1], wcloses[1:]))
-    if net <= 0 or travel <= 0:
+    eff = path_efficiency([float(x["close"]) for x in win])
+    if not eff:
         ls.omit("momentum.path_efficiency", "the window's closes netted nothing, so there is no path to judge")
         return
-    eff = net / travel
-    lead = f"over the last 30 minutes price travelled {travel / net:.1f} times its net move, path efficiency {pct(eff)}"
+    lead = f"over the last 30 minutes price travelled {1 / eff:.1f} times its net move, path efficiency {pct(eff)}"
     if eff >= PATH_ORDERLY:
         ls.put("momentum.path_efficiency", f"{lead}, orderly ({pct(PATH_ORDERLY)} or more)")
     elif eff >= PATH_CHOPPY:
@@ -501,7 +493,7 @@ def _move_shape(scene: Scene, anchor: SigmaRuler, move30: float | None, no_move:
     net = scene.spot - marks[0]
     burst = max((b - a) / net for a, b in zip(marks, marks[1:]))
     path = [marks[0]] + [float(b["close"]) for b in win] + [scene.spot]
-    efficiency = abs(net) / sum(abs(b - a) for a, b in zip(path, path[1:]))
+    efficiency = path_efficiency(path)
     burst_line = "past" if burst >= MOVE_BURST_SHARE else "short of"
     choppy_line = "under" if efficiency < PATH_CHOPPY else "above"
     ls.put("price.move_shape", ruled(anchor, f"the last half hour {_went(move30)}; one 5-minute stretch made {pct(burst)} of it, {burst_line} the "

@@ -10,9 +10,9 @@ from datetime import timedelta
 import pytest
 
 from conftest import DAY, at, bars_from_closes, context_line, flat_bars, make_row, prior_sessions, write_state
-from spx_jev.cuts import MIN_RANK_SESSIONS
-from spx_jev.labels.measures import session_extremes, settled_open
-from spx_jev.labels.ranks import rank_against, same_clock_values
+from spx_jev.cuts import MIN_RANK_SESSIONS, NIGHT_RANK_COUNT, SAME_CLOCK_MIN_SESSIONS
+from spx_jev.labels.measures import move_size, path_efficiency, session_extremes, settled_open
+from spx_jev.labels.ranks import move_rank, rank_against, rank_sessions, same_clock_market, same_clock_values
 from spx_jev.labels.rulers import (SigmaRuler, morning_ruler, normal_day_sigma, remaining_straddles, sigma_anchor, sigma_live,
                                    straddle_left)
 from spx_jev.row_adapter import labeller_row
@@ -87,6 +87,53 @@ def test_a_value_is_ranked_against_the_same_minute_of_trusted_sessions(scene_fac
     assert (rank.higher_than, rank.of, rank.share) == (7, 7, 1.0)
     assert rank.words() == "higher than 7 of the last 7 sessions at this minute"
     assert rank_against(1.0, values[:MIN_RANK_SESSIONS - 1]) is None
+
+
+
+def test_the_owners_rank_takes_the_last_20_sessions_needs_10_and_says_its_third():
+    base = [float(v) for v in range(NIGHT_RANK_COUNT + 5, 0, -1)]                # newest first; the 5 oldest fall outside
+    rank, why = rank_sessions(22.5, base, "a gap")
+    assert why is None and (rank.higher_than, rank.of) == (17, NIGHT_RANK_COUNT)
+    assert f"{rank.words()}, {rank.band}" == "higher than 17 of the last 20 sessions at this minute, top third"
+    assert rank_sessions(9.0, base, "a gap")[0].band == "bottom third"            # higher than 4 of 20
+    assert rank_sessions(18.0, base, "a gap")[0].band == "middle third"           # higher than 12 of 20
+    short = base[:SAME_CLOCK_MIN_SESSIONS - 1]
+    assert rank_sessions(1.0, short, "a gap") == (None, f"its rank needs {SAME_CLOCK_MIN_SESSIONS} prior sessions with a gap at "
+                                                        f"this minute, have {SAME_CLOCK_MIN_SESSIONS - 1}")
+    assert rank_sessions(1.0, base[:SAME_CLOCK_MIN_SESSIONS], "a gap")[0].of == SAME_CLOCK_MIN_SESSIONS
+
+
+def test_a_move_is_sized_from_the_closes_finished_by_then_and_ranked_in_each_sessions_own_ruler(scene_factory):
+    bars = bars_from_closes([7700.0 + i for i in range(60)])                     # 09:30 to 10:29, one point a minute
+    assert move_size(bars, at(10, 20), 10.0, 30) == pytest.approx(3.0)            # 10:19's close 7749 against 09:49's 7719
+    assert move_size(bars, at(10, 0), 10.0, 30) is None                           # no bar had finished by 09:30
+    assert move_size(bars, at(10, 20), None, 30) is None
+    prior = prior_sessions(12)
+    days = list(prior)
+    rulers = {d: SigmaRuler(75.0, "anchor") for d in days}
+    rulers[days[0]] = SigmaRuler(75.0, "vix")                                      # an estimated day sits out
+    scene = replace(scene_factory(at(11, 0), flat_bars(90), prior_bars=prior), prior_rulers=rulers)
+    sizes = same_clock_values(scene, lambda b, t, sigma: move_size(b, t, sigma, 30))
+    rank, why = move_rank(scene, -(max(sizes) + 0.01), 30)
+    assert why is None and (rank.higher_than, rank.of, rank.band) == (11, 11, "top third")
+    thin = replace(scene, prior_rulers={d: SigmaRuler(75.0, "live") for d in days[:3]} | {d: rulers[d] for d in days[3:]})
+    assert move_rank(thin, 0.5, 30) == (None, f"its rank needs {SAME_CLOCK_MIN_SESSIONS} prior sessions with a 30-minute move at "
+                                              f"this minute, have 9")
+
+
+def test_the_market_is_read_at_the_same_minute_of_each_prior_session_that_has_it(scene_factory):
+    days = list(prior_sessions(3))
+    markets = {days[0]: MarketContext({"$VOLD": [(at(10, 59, day=days[0]), 5.0), (at(11, 1, day=days[0]), 99.0)]}),
+               days[1]: MarketContext({"$VOLD": [(at(10, 30, day=days[1]), 7.0)]}),
+               days[2]: MarketContext({})}
+    scene = replace(scene_factory(at(11, 0, ss=30), flat_bars(90)), prior_markets=markets)
+    assert same_clock_market(scene, lambda mk, then: mk.last("$VOLD", then)) == [5.0, 7.0]
+
+
+def test_path_efficiency_is_the_net_move_over_the_distance_travelled():
+    assert path_efficiency([1.0, 2.0, 3.0]) == 1.0
+    assert path_efficiency([1.0, 3.0, 2.0, 4.0]) == pytest.approx(3.0 / 5.0)
+    assert path_efficiency([1.0, 2.0, 1.0]) == 0.0 and path_efficiency([2.0, 2.0]) is None
 
 
 # ---- the settled open and the session extremes

@@ -2,10 +2,13 @@
 
 SPX's size swings with the clock (the 09:30-10:30 range runs about twice the afternoon's), so a size is
 judged against what the same minute looked like on up to the last 20 sessions, never against a fixed
-cut: "higher than 17 of the last 20 sessions at this minute". A rank needs at least MIN_RANK_SESSIONS
-sessions. A session whose morning ruler was estimated (rulers.morning_ruler) is left out of every rank
-whose base is built on rank_days or same_clock_values: the sigma-scaled measures and the diary's own. The
-tape, breadth and SPY ranks, whose measures the ruler never touches, keep every session.
+cut: "higher than 17 of the last 20 sessions at this minute, top third". A rank needs at least
+MIN_RANK_SESSIONS sessions; the owner's rule for every threshold that sizes or judges a market measure
+(rank_sessions) takes up to the last NIGHT_RANK_COUNT sessions and needs SAME_CLOCK_MIN_SESSIONS of them,
+else the label is omitted with the reason. A session whose morning ruler was estimated
+(rulers.morning_ruler) is left out of every rank whose base is built on rank_days or same_clock_values:
+the sigma-scaled measures and the diary's own. The tape, breadth and SPY ranks, whose measures the ruler
+never touches, keep every session (same_clock_market).
 """
 from __future__ import annotations
 
@@ -13,12 +16,12 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Callable
 
-from ..cuts import BOTTOM_FIFTH, MIN_RANK_SESSIONS, TOP_FIFTH
-from .measures import ET, ONE_MINUTE, bar_time
+from ..cuts import BOTTOM_FIFTH, MIN_RANK_SESSIONS, NIGHT_RANK_COUNT, SAME_CLOCK_MIN_SESSIONS, TOP_FIFTH
+from .measures import ET, ONE_MINUTE, bar_time, move_size
 from .words import third
 
 if TYPE_CHECKING:
-    from ..state_builder import Scene
+    from ..state_builder import MarketContext, Scene
 
 
 @dataclass(frozen=True)
@@ -32,6 +35,11 @@ class SameClockRank:
         """The share of the prior sessions the value beats, 0 to 1: compare it with top_fifth, third_hi and the like."""
         return self.higher_than / self.of
 
+    @property
+    def band(self) -> str:
+        """The third the value sits in, as a verdict under the owner's rule words it: "top third"."""
+        return f"{third(self.share)} third"
+
     def words(self) -> str:
         return f"higher than {self.higher_than} of the last {self.of} sessions at this minute"
 
@@ -42,6 +50,25 @@ def rank_against(value: float, base: list[float]) -> SameClockRank | None:
     if len(base) < MIN_RANK_SESSIONS:
         return None
     return SameClockRank(sum(1 for b in base if b < value), len(base))
+
+
+def rank_sessions(value: float, base: list[float], what: str) -> tuple[SameClockRank | None, str | None]:
+    """``value`` against the same measure on up to the last NIGHT_RANK_COUNT prior sessions (``base``, newest
+    first, as same_clock_values and same_clock_market give it): ``(rank, None)``, or ``(None, reason)`` under
+    SAME_CLOCK_MIN_SESSIONS of them, the reason naming ``what`` the sessions lacked. The rank every
+    threshold that sizes or judges a market measure is replaced by, as night_ranks.rank_night is overnight."""
+    recent = base[:NIGHT_RANK_COUNT]
+    if len(recent) < SAME_CLOCK_MIN_SESSIONS:
+        return None, f"its rank needs {SAME_CLOCK_MIN_SESSIONS} prior sessions with {what} at this minute, have {len(recent)}"
+    return SameClockRank(sum(1 for b in recent if b < value), len(recent)), None
+
+
+def move_rank(scene: Scene, move: float, minutes: int) -> tuple[SameClockRank | None, str | None]:
+    """The size of SPX's ``minutes`` move to now, ``move`` in today's morning ruler, against the same minutes to
+    this clock on the prior sessions, each in its own ruler (rank_sessions): the one rank every family judges
+    whether SPX moved by."""
+    base = same_clock_values(scene, lambda bars, then, sigma: move_size(bars, then, sigma, minutes))
+    return rank_sessions(abs(move), base, f"a {minutes}-minute move")
 
 
 def rank_at_slot(value: float, base: list[float]) -> dict | None:
@@ -69,6 +96,18 @@ def same_clock_values(scene: Scene, measure: Callable[[list[dict], datetime, flo
         bars, ruler = scene.prior_bars[day], scene.prior_rulers.get(day)
         then = datetime.combine(date.fromisoformat(day), clock, tzinfo=ET)
         v = measure([b for b in bars if bar_time(b) + ONE_MINUTE <= then], then, ruler.points if ruler else None)
+        if v is not None:
+            out.append(v)
+    return out
+
+
+def same_clock_market(scene: Scene, measure: Callable[[MarketContext, datetime], float | None]) -> list[float]:
+    """``measure(market, then)`` on each prior session's market context at this read's clock minute, newest
+    first; a session without the context, or whose measure returns None, is skipped."""
+    clock = scene.now.astimezone(ET).time()
+    out = []
+    for day, mk in scene.prior_markets.items():
+        v = measure(mk, datetime.combine(date.fromisoformat(day), clock, tzinfo=ET))
         if v is not None:
             out.append(v)
     return out

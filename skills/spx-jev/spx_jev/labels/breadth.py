@@ -11,8 +11,7 @@ is DARK, since no Nasdaq breadth series is served."""
 from __future__ import annotations
 
 import statistics
-from datetime import date, datetime, time, timedelta
-from typing import Callable
+from datetime import datetime, time, timedelta
 
 from .. import events
 from ..cuts import (CHOP_CROSSES, DAY_ONE_SIDED, EVENT_DIGEST_MIN, MEMBER_SPLIT_Z, MIN_RANK_SESSIONS, OPEN_CLUSTER_MIN,
@@ -24,7 +23,7 @@ from ..state_builder import MarketContext, Scene
 from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, bar_time, close_at, session_extremes, settled_open
 from .price import NEW_EXTREME_RECENT_MIN
-from .ranks import percentile, rank_against
+from .ranks import percentile, rank_against, same_clock_market
 from .rulers import NO_ANCHOR, sigma_anchor
 from .words import pct, plural, sig, signed
 
@@ -117,17 +116,6 @@ def _sectors_up(scene: Scene, ls: LabelSet) -> None:
 
 # ----------------------------------------------------------------------------- shared reads
 
-def _same_clock(scene: Scene, measure: Callable[[MarketContext, datetime], float | None]) -> list[float]:
-    """``measure(market, then)`` on each prior session's market context at this read's clock minute."""
-    clock = scene.now.astimezone(ET).time()
-    out = []
-    for day, mk in scene.prior_markets.items():
-        v = measure(mk, datetime.combine(date.fromisoformat(day), clock, tzinfo=ET))
-        if v is not None:
-            out.append(v)
-    return out
-
-
 def _running_total(mk: MarketContext, symbol: str, t: datetime) -> float | None:
     """A running-total series ($UVOL, $DVOL, $VOLD, $VOLSPD) as it stood at ``t``: nothing yet at the open."""
     return 0.0 if t <= session_open(t) else mk.last(symbol, t, max_age_min=FRESH_MIN)
@@ -167,7 +155,7 @@ def _net_volume_z(scene: Scene, symbol: str, ls: LabelSet, path: str) -> tuple[f
         ls.omit(path, f"no {NET_VOLUME[symbol]} ({symbol}) known within {FRESH_MIN} minutes of now: the market-context job "
                       f"stopped or has not saved it")
         return None
-    base = _same_clock(scene, lambda mk, then: _running_total(mk, symbol, then))
+    base = same_clock_market(scene, lambda mk, then: _running_total(mk, symbol, then))
     if len(base) < MIN_RANK_SESSIONS:
         ls.omit(path, f"needs {MIN_RANK_SESSIONS} prior sessions with {NET_VOLUME[symbol]} ({symbol}) at this minute, have {len(base)}")
         return None
@@ -200,7 +188,7 @@ def _tick_side_vs_usual(scene: Scene, ls: LabelSet) -> None:
     if len(ticks) < MIN_TICK_MINUTES:
         ls.omit("breadth.tick_side_vs_usual", f"needs {MIN_TICK_MINUTES} NYSE TICK readings in the last {WINDOW_30_MIN} minutes, have {len(ticks)}")
         return
-    base = _same_clock(scene, _tick_share_above_zero)
+    base = same_clock_market(scene, _tick_share_above_zero)
     if len(base) < MIN_RANK_SESSIONS:
         ls.omit("breadth.tick_side_vs_usual", f"needs {MIN_RANK_SESSIONS} prior sessions with NYSE TICK readings in this half hour, have {len(base)}")
         return
@@ -421,7 +409,7 @@ def _open_net_volume(scene: Scene, ls: LabelSet) -> None:
     thrust = _advancers_10m(scene.market, scene.now)
     if thrust is not None:
         leans.append(f"advancers minus decliners {'rose' if thrust > 0 else 'fell' if thrust < 0 else 'held'} {abs(thrust):.0f} in the "
-                     f"last {WINDOW_10_MIN} minutes{_thrust_rank(thrust, _same_clock(scene, _advancers_10m))}")
+                     f"last {WINDOW_10_MIN} minutes{_thrust_rank(thrust, same_clock_market(scene, _advancers_10m))}")
     ls.put("breadth.open_net_volume", f"since {scene.session_open.astimezone(ET):%H:%M} " + "; ".join(leans))
 
 

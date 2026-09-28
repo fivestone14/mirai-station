@@ -109,6 +109,7 @@ GAP_TOUCH_SIGMA = 0.02  # touch tolerance for yesterday's close
 GAP_RANK_MIN_SESSIONS = 10  # fewest prior sessions with a trusted ruler to rank the gap's size against
 OVERNIGHT_RANK_MIN_NIGHTS = 10  # fewest usable prior nights (no roll, holiday or short night) to rank an overnight measure against
 NIGHT_RANK_COUNT = 20  # nights (or sessions, or weekends) a same-clock rank looks back over
+SAME_CLOCK_MIN_SESSIONS = 10  # fewest usable prior sessions to rank a session measure against at the same clock (the owner's rank rule)
 GIVEBACK_THIRD = 0.33  # stall line for an opening drive
 RANGE_TOP_SHARE = 0.75  # top quarter of today's range
 RANGE_BOTTOM_SHARE = 0.25  # bottom quarter of today's range

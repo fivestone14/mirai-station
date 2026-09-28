@@ -110,7 +110,7 @@
   },
   "labels": 135,
   "labels_built": 3,
-  "constants": 163,
+  "constants": 164,
   "label_availability": {
    "live": 70,
    "cheap_add": 55,
@@ -1150,6 +1150,12 @@
    "note": "nights (or sessions, or weekends) a same-clock rank looks back over",
    "cuts_json_name": null,
    "in_cuts_py": true
+  },
+  "same_clock_min_sessions": {
+   "value": 10,
+   "note": "fewest usable prior sessions to rank a session measure against at the same clock (the owner's rank rule)",
+   "cuts_json_name": null,
+   "in_cuts_py": false
   }
  },
  "groups": [
