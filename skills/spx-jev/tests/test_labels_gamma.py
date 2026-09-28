@@ -212,15 +212,15 @@ def test_a_ruler_that_is_not_the_morning_anchor_is_flagged_and_no_ruler_omits(sc
 def test_weight_both_books_on_the_same_side(scene_factory, history):
     state, _, _ = labels(gamma_scene(scene_factory), history)
     assert state["weight_both_books"] == ("today's same-day options gamma has 60% of it above price, a larger share than on 7 of the last 10 "
-                                          "sessions at this minute, top third: weighted above price; the 1-to-7-day book (today's expiry "
-                                          "excluded) has 60% of it above price, a larger share than on 7 of the last 10 sessions at this "
-                                          "minute, top third: also weighted above price")
+                                          "sessions at this minute, top third: more of it above price than usual; the 1-to-7-day book "
+                                          "(today's expiry excluded) has 60% of it above price, a larger share than on 7 of the last 10 "
+                                          "sessions at this minute, top third: also more of it above price than usual")
     state, _, _ = labels(gamma_scene(scene_factory, gamma_above_spot=300.0, gamma_below_spot=700.0,
                                      net_by_strike_tenor=[[7650.0, -6.9], [7700.0, 50.0], [7710.0, 3.1]]), history)
     assert state["weight_both_books"] == ("today's same-day options gamma has 30% of it above price, a larger share than on 3 of the last 10 "
-                                          "sessions at this minute, bottom third: weighted below price; the 1-to-7-day book (today's expiry "
-                                          "excluded) has 31% of it above price, a larger share than on 3 of the last 10 sessions at this "
-                                          "minute, bottom third: also weighted below price")
+                                          "sessions at this minute, bottom third: more of it below price than usual; the 1-to-7-day book "
+                                          "(today's expiry excluded) has 31% of it above price, a larger share than on 3 of the last 10 "
+                                          "sessions at this minute, bottom third: also more of it below price than usual")
 
 
 def test_weight_both_books_at_the_third_edges_and_the_strike_at_price_on_neither_side(scene_factory, history):
@@ -228,12 +228,25 @@ def test_weight_both_books_at_the_third_edges_and_the_strike_at_price_on_neither
     state, _, _ = labels(gamma_scene(scene_factory, gamma_above_spot=330.0, gamma_below_spot=670.0,
                                      net_by_strike_tenor=[[7650.0, -3.2], [7700.0, 50.0], [7750.0, 6.8]]), history)
     assert state["weight_both_books"] == ("today's same-day options gamma has 33% of it above price, a larger share than on 4 of the last 10 "
-                                          "sessions at this minute, middle third: no lean either side; the 1-to-7-day book (today's expiry "
+                                          "sessions at this minute, middle third: about as usual; the 1-to-7-day book (today's expiry "
                                           "excluded) has 68% of it above price, a larger share than on 7 of the last 10 sessions at this "
-                                          "minute, top third: weighted above price")
+                                          "minute, top third: more of it above price than usual")
     state, _, _ = labels(gamma_scene(scene_factory, gamma_above_spot=310.0, gamma_below_spot=690.0), history)
     assert state["weight_both_books"].startswith("today's same-day options gamma has 31% of it above price, a larger share than on 3 of the "
-                                                 "last 10 sessions at this minute, bottom third: weighted below price;")
+                                                 "last 10 sessions at this minute, bottom third: more of it below price than usual;")
+
+
+def test_weight_both_books_never_names_a_side_of_price_its_share_contradicts(scene_factory, tmp_path):
+    # prior shares of 0.02 to 0.38: 0.48 beats all ten, the top third, with most of the gamma still below price
+    history = book_history(tmp_path)
+    for k, day in enumerate(sorted(history["prior_bars"], reverse=True)):
+        low = 0.02 + 0.04 * k
+        write_diary(tmp_path, day, [make_row(at(h, m, day), 7700.0, SIGMA, gex_views=book(**{
+            **prior_book(k), "gamma_above_spot": 1000.0 * low, "gamma_below_spot": 1000.0 * (1.0 - low),
+            "net_by_strike_tenor": [[7650.0, -(1.0 - low)], [7700.0, 5.0], [7750.0, low]]})) for h, m in CLOCKS])
+    state, _, _ = labels(gamma_scene(scene_factory, gamma_above_spot=480.0, gamma_below_spot=520.0), history)
+    assert state["weight_both_books"].startswith("today's same-day options gamma has 48% of it above price, a larger share than on 10 of "
+                                                 "the last 10 sessions at this minute, top third: more of it above price than usual;")
 
 
 def test_weight_both_books_is_omitted_without_the_week_book(scene_factory, history):

@@ -303,8 +303,10 @@ def _farther(rank: SameClockRank) -> str:
     return f"farther from price than on {rank.higher_than} of the last {rank.of} sessions at this minute, {rank.band}"
 
 
-# A share of the book above price by its third: the side the weight leans to, or neither.
-LEANS = {"top third": "weighted above price", "bottom third": "weighted below price", "middle third": "no lean either side"}
+# A share of the book above price by its third: more of it above or below price than usual, never a side of price,
+# since a top-third share can still be under half.
+LEANS = {"top third": "more of it above price than usual", "bottom third": "more of it below price than usual",
+         "middle third": "about as usual"}
 
 
 def _share_words(rank: SameClockRank, also: str = "") -> str:
@@ -432,8 +434,8 @@ def _prior_share(share: Callable[[dict, float], float | None]) -> Callable[[Prio
 
 def _weight_both_books(scene: Scene, gv: dict, prior: list[PriorBook] | None, ls: LabelSet) -> None:
     """Where the gamma sits against price in today's same-day book and in the 1-to-7-day book: each book's share above
-    price ranked against the same book's at this minute on the prior sessions, its top third weighted above price and
-    its bottom third below."""
+    price ranked against the same book's at this minute on the prior sessions, its top third more of it above price
+    than usual and its bottom third more of it below."""
     today, week = _today_share(gv), _week_share(gv, scene.spot)
     if today is None:
         ls.omit("gex.weight_both_books", "row carries no gamma above and below price for today's same-day book")
