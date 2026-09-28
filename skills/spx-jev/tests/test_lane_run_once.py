@@ -84,6 +84,7 @@ def test_a_tape_read_writes_its_own_folder_and_is_graded_on_the_exact_bar_ten_mi
     grades = [json.loads(l) for l in (out / "grades.jsonl").read_text().splitlines() if l.strip()]
     assert len(grades) == 1 and grades[0]["band"] == "flat" and grades[0]["realized_points"] == 0.0
     assert c2["calls"][1]["outcome"] == "flat" and c2["calls"][1]["moved"] == {"realized_points": 0.0, "realized_units": 0.0}
+    assert not any("checks" in x for x in c2["calls"])                    # each call has its own mark: no shared checks
     assert json.loads((out / "weights.json").read_text())["lane"] == "tape"
 
 

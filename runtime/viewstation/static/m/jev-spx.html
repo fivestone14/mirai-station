@@ -22,7 +22,9 @@
   from the day's first pre-market read until the opening lane's first read
   (09:35) that card leads the page alone: the clock to the open, the call
   checked 10 and 30 minutes after the settled open, the story so far one chip
-  per read, and the night's facts in words.
+  per read, and the night's facts in words. After the hand-over the call folds
+  to one line, fetched until its 10:06 close-out lands, with each check's
+  result as it is graded.
 
   Times are the viewer's. Every time the SPX card carries is a full timestamp
   with its offset, so every time on this page is drawn in the phone's own zone
@@ -500,15 +502,18 @@ details .q{margin-top:8px}
     return order.filter(function(k){ return k in o; }).concat(Object.keys(o).filter(function(k){ return order.indexOf(k) < 0; }));
   }
   // one bar: each option's share of the width; the words under it name each option whose words fit its
-  // share of the bar (about ODDS_TRACK_PX wide in a card on the phone), and bold the pick
-  var ODDS_TRACK_PX = 290, LETTER_PX = 6.4;
+  // share of the row, and bold the pick. The row is ODDS_TRACK_PX wide in the narrowest card on the owner's
+  // 360px phone (a dashed one), less ODDS_GAP_PX between options; LETTER_PX is the widest letter the shipped
+  // face gives a label ("Down 0%" in bold, 7.87px a letter in Chrome), so a label drawn is never cut
+  var ODDS_TRACK_PX = 294, ODDS_GAP_PX = 2, LETTER_PX = 7.9;
   function oddsBar(o, pick){
     var box = el('div'), bar = el('div', 'odds-bar'), lab = el('div', 'odds-lab'), keys = oddsKeys(o);
+    var room = ODDS_TRACK_PX - ODDS_GAP_PX * (keys.length - 1);
     keys.forEach(function(k){
       var w = Math.max(0, o[k] || 0), seg = el('i', 'o-' + k), word = el('span', k === pick ? 'pick' : null);
       seg.style.flex = w + ' 1 0'; word.style.flex = w + ' 1 0';
       var text = cap(k) + ' ' + pct(w);
-      if(text.length * LETTER_PX <= w * ODDS_TRACK_PX) word.textContent = text;
+      if(text.length * LETTER_PX <= w * room) word.textContent = text;
       bar.appendChild(seg); lab.appendChild(word);
     });
     bar.setAttribute('role', 'img');
@@ -583,6 +588,7 @@ details .q{margin-top:8px}
       sumCard(c, main);
       if(tape && tape.lane === 'tape' && String(tape.row_ts || '').slice(0, 10) === marketDay() && tape.tally && tape.tally.calls) main.appendChild(openingDone(tape));
     }
+    if(preFolds(premarket, Date.now(), marketDay())) main.appendChild(preFold(premarket));
 
     main.appendChild(situationCard(c, ageText, old));
 
@@ -1077,6 +1083,7 @@ details .q{margin-top:8px}
     main.appendChild(laneCard(tape, tapeOk));
     var f = el('div', 'card fold'); f.appendChild(el('span', 'k', '30-min card')); f.appendChild(el('span', 'l', 'not read yet'));
     main.appendChild(f);
+    if(preFolds(premarket, Date.now(), marketDay())) main.appendChild(preFold(premarket));
     clearLoading();
     return true;
   }
@@ -1114,14 +1121,36 @@ details .q{margin-top:8px}
 
   // ---- before the open: the pre-market lane's card (skills/spx-jev, spx_jev.premarket), written at each of the
   // night's checkpoints from 02:35 market time. It leads the page alone from the day's first pre-market read until
-  // the opening lane's first read takes over (the card's handover, 09:35); a card of another day is never drawn.
+  // the opening lane's first read takes over (the card's handover, 09:35); then its call folds to one line, which
+  // gives each check's result once the 10:06 close-out has graded it. A card of another day is never drawn.
   var PRE_URL = '/api/raw/file?root=state&path=spx_jev/lanes/premarket/latest.json';
-  var PRE_HOURS = ['02:35', '09:35'];       // fetched through the night's checkpoints, up to the hand-over
+  var PRE_HOURS = ['02:35', '16:05'];       // fetched through the night and after the hand-over until the close-out lands;
+                                            // the folded call is kept through the session, as the opening's score is
   var PRE_LATE_MIN = 6;                     // the lane reads nothing 5 minutes or more after a checkpoint (premarket.LATE_FIRE_MIN),
                                             // and its run takes about a minute more: later than this the read is missing
   var premarket = null, premarketOk = true, shownPre = false, preInflight = false;
   function preLeads(p, now, today){
     return !!(p && p.lane === 'premarket' && today && p.day === today && now < Date.parse(p.handover));
+  }
+  // after the hand-over, today's call folds to one line; a day without a call has nothing to fold
+  function preFolds(p, now, today){
+    return !!(p && p.lane === 'premarket' && today && p.day === today && now >= Date.parse(p.handover) && p.hour && p.hour.probabilities);
+  }
+  // the folded call: its pick, then each check (the card's marks, 10 and 30 minutes after the settled open) as the
+  // close-out graded it on the call's own record, one it has not graded yet said so; before the close-out, when
+  var PRE_CHECKS = ['open_10', 'open_30'];
+  function preFold(p){
+    var h = p.hour, top = h.pick || top1(h.probabilities), f = el('div', 'card fold');
+    var call = (p.calls || []).filter(function(c){ return c.read === h.read_at; })[0], checks = (call && call.checks) || {};
+    f.appendChild(el('span', 'k', 'pre-market call ' + viewerTime(h.read_at || p.row_ts)));
+    f.appendChild(el('b', null, cap(top) + ' ' + pct(h.probabilities[top])));
+    var said = PRE_CHECKS.map(function(k, i){
+      var r = checks[k], at = viewerTime(p.marks[i]);
+      return r ? at + ' was ' + cap(r.outcome) + ', ' + (r.hit ? 'right' : 'wrong') : at + ' not graded yet';
+    });
+    f.appendChild(el('span', 'l', p.closed_out_at || Object.keys(checks).length ? said.join(' \u00B7 ')
+                                  : 'Checked ' + viewerTime(p.marks[0]) + ' and ' + viewerTime(p.marks[1])));
+    return f;
   }
   // the checkpoint after the card's read, as an instant, once it is PRE_LATE_MIN overdue: the Mac slept or the job failed
   function preMissed(p, now){
@@ -1364,15 +1393,17 @@ details .q{margin-top:8px}
     clearLoading();
     return true;
   }
-  // a new card, or a fetch that failed or recovered, is drawn only when the pre-market card leads or just did,
-  // so a card of another day never rebuilds the page under a reader
+  // a new card, or a fetch that failed or recovered, is drawn only when the pre-market card leads, just did, or
+  // folds under the session's cards, so a card of another day never rebuilds the page under a reader
   function redrawPre(){
-    if(!shownPre && !preLeads(premarket, Date.now(), marketDay())) return;
-    if(last) draw(last, lastOk); else if(!preOnly()) tick();
+    var now = Date.now(), today = marketDay();
+    if(!shownPre && !preLeads(premarket, now, today) && !preFolds(premarket, now, today)) return;
+    if(last) draw(last, lastOk); else if(!preOnly() && !laneOnly()) tick();
   }
   function pollPre(){
-    if(!within(PRE_HOURS)){ if(premarket){ premarket = null; if(shownPre) tick(); } return; }
-    if(preInflight) return;
+    if(!within(PRE_HOURS)){ if(premarket){ premarket = null; if(shownPre) tick(); else if(last) draw(last, lastOk); } return; }
+    // today's close-out has landed: the card is final, so the page stops asking for it
+    if(preInflight || (premarket && premarket.day === marketDay() && premarket.closed_out_at)) return;
     preInflight = true;
     fetch(PRE_URL, {cache:'no-store'}).then(function(r){
       if(!r.ok) throw new Error('the station answered ' + r.status);

@@ -319,7 +319,34 @@ def test_the_page_fits_the_owners_360px_phone():
     assert _W["Read 06:50 GMT+5:30 … Graded 07:00"] <= card
     # the drawings are 300 wide in their own units and scale to the card, so they never run past it
     assert "width:100%;height:auto" in _rule(".inplay") and "viewBox: '0 0 300 '" in _fn("callsSvg")
-    assert _var("ODDS_TRACK_PX").strip() == "var ODDS_TRACK_PX = 290, LETTER_PX = 6.4;" and 290 <= card
+    assert _var("ODDS_TRACK_PX").strip() == "var ODDS_TRACK_PX = 294, ODDS_GAP_PX = 2, LETTER_PX = 7.9;"
+    assert 294 == card - 2 * 1                                  # the narrowest card holding odds: a dashed one, 1px border a side
+
+
+# Chrome at 360 with the shipped face (Plus Jakarta Sans): the odds words that were drawn and cut by a pixel or more
+# (in bold when the pick), and the widest a letter of any odds word runs, "Down 0%" in bold
+_ODDS_W = {("Down", 0.20, False): 60.19, ("Down", 0.20, True): 61.95, ("Down", 0.18, True): 58.84, ("Up", 0.14, True): 42.2}
+_WIDEST_LETTER = 7.87
+
+
+@pytest.mark.parametrize("tz", [LA, TOKYO])
+def test_an_odds_word_is_drawn_only_where_it_fits_whole_on_the_owners_phone(tz):
+    """The odds row's words are named only where they fit their share of the row. At 360 "Down 20%" ran a pixel or
+    more past its 20% share in the pre-market card (dashed, so 294 wide less a 2px gap between the four options),
+    shared with the live card; the rule now counts the real row and the widest letter, so a word drawn is whole."""
+    assert float(re.search(r"LETTER_PX = ([\d.]+);", _var("ODDS_TRACK_PX")).group(1)) >= _WIDEST_LETTER
+    for (word, share, bold), width in _ODDS_W.items():
+        rest = (1 - share) / 3
+        o = {"down": share if word == "Down" else rest, "up": share if word == "Up" else rest, "flat": rest, "unsure": rest}
+        pick = word.lower() if bold else "flat"
+        got = _run(_var("ODDS_ORDER") + _var("ODDS_TRACK_PX") + _fn("oddsKeys") + _fn("oddsBar") +
+                   "console.log(JSON.stringify(dump(oddsBar(D.o, D.pick))));", {"o": o, "pick": pick}, tz)
+        shown = {k["text"].split(" ")[0]: k["text"] for k in got["kids"][1]["kids"] if k["text"]}
+        room = share * (294 - 2 * 3)
+        assert word not in shown, f"{word} {share:.0%} is drawn in {room:.1f}px but is {width}px wide"
+    wide = _run(_var("ODDS_ORDER") + _var("ODDS_TRACK_PX") + _fn("oddsKeys") + _fn("oddsBar") +
+                "console.log(JSON.stringify(dump(oddsBar(D.o, 'down'))));", {"o": {"down": 0.25, "flat": 0.45, "up": 0.25, "unsure": 0.05}}, tz)
+    assert [k["text"] for k in wide["kids"][1]["kids"]] == ["Down 25%", "Flat 45%", "Up 25%", ""]   # 72px of room: they fit
 
 
 # ---- the SNDK | SPX switch
@@ -375,13 +402,16 @@ def test_a_good_fetch_after_a_failed_one_clears_the_failure_though_the_card_is_t
 def test_the_opening_lane_is_drawn_while_the_30_minute_card_cannot_be_read():
     """Monday's first morning with no 30-minute card on file: the open 5-minute call still leads, drawn alone;
     once a 30-minute card has been read, paint draws both and this draws nothing."""
-    js = ("var last = D.last, tape = D.tape, tapeOk = true, tickers = [], shownLeads = false, MAIN = el('div', 'main');"
+    js = ("var last = D.last, tape = D.tape, premarket = D.premarket || null, tapeOk = true, tickers = [], shownLeads = false, MAIN = el('div', 'main');"
           "function $(id){ return MAIN; } function clearLoading(){} function laneCard(t, ok){ return el('div', 'lane', t.row_ts); }"
-          + _fn("laneOnly") +
+          + _fn("top1") + _fn("preFolds") + _var("PRE_CHECKS") + _fn("preFold") + _fn("laneOnly") +
           "var drew = laneOnly(); console.log(JSON.stringify([drew, shownLeads, MAIN.kids.map(function(k){ return k.textContent; })]));")
     tape = {"lane": "tape", "row_ts": "2026-09-28T10:00:00-04:00", "calls": [call("10:00", "10:10", "flat", 0.4)]}
     drew = _run(js, {"now": "2026-09-28T10:05:00-04:00", "last": None, "tape": tape})
     assert drew == [True, True, ["opening · a call every 5 min", "2026-09-28T10:00:00-04:00", "30-min cardnot read yet"]]
+    # the pre-market call, handed over, folds under them
+    drew = _run(js, {"now": "2026-09-28T10:05:00-04:00", "last": None, "tape": tape, "premarket": pre_card("09:28")})
+    assert drew[2][-1] == "pre-market call 06:28Up 41%Checked 06:44 and 07:04"
     assert _run(js, {"now": "2026-09-28T10:05:00-04:00", "last": {"row_ts": "x"}, "tape": tape})[0] is False
     assert _run(js, {"now": "2026-09-28T10:11:00-04:00", "last": None, "tape": tape})[0] is False    # the call has closed
 
@@ -549,7 +579,9 @@ def _texts(svg, cls=None):
 def test_the_page_reads_the_premarket_card_and_it_leads_before_the_open():
     assert "var PRE_URL = '/api/raw/file?root=state&path=spx_jev/lanes/premarket/latest.json';" in JS
     assert "fetch(PRE_URL, {cache:'no-store'})" in JS and "within(PRE_HOURS)" in _fn("pollPre")
-    assert "PRE_HOURS = ['02:35', '09:35']" in JS
+    assert "PRE_HOURS = ['02:35', '16:05']" in JS
+    # after the hand-over the card is fetched until today's close-out lands, then left as it is
+    assert "premarket.day === marketDay() && premarket.closed_out_at)) return;" in _fn("pollPre")
     assert "pollPre();" in _fn("poll")
     # paint hands the whole page to the pre-market card while it leads; tick and the ages follow it
     assert _fn("paint").lstrip("\n").splitlines()[2] == \
@@ -595,6 +627,51 @@ def test_a_call_leads_the_card_with_its_shape_its_checks_and_the_story():
     assert "05:30 reportExtendedSince the 05:30 jobless claims" in facts
     assert parts[-1] == ["tag", "Hands over to the 5-minute opening reads at 06:35. A forecast, graded by the bars, never a call."]
     assert _flat_text(got["main"][3][1]) == "Opening readsFirst 06:35Every 5 min, 10-minute calls"
+
+
+def _fold(card, now, tz=LA):
+    js = (_fn("preFolds") + _var("PRE_CHECKS") + _fn("preFold") +
+          "console.log(JSON.stringify({folds: preFolds(D.card, Date.now(), marketDay()),"
+          " fold: preFolds(D.card, Date.now(), marketDay()) ? dump(preFold(D.card)) : null}));")
+    return _run(PRE_DOM + "".join(_fn(f) for f in PRE_FNS) + "".join(_var(v) for v in PRE_VARS) + js, {"card": card, "now": now}, tz)
+
+
+def _closed(**checks):
+    """The card after the 10:06 close-out: the newest call carries each check graded so far (service.day_calls)."""
+    read = et("09:28", s="04")
+    return pre_card("09:28", closed_out_at="2026-09-28T14:06:04+00:00",
+                    calls=[{"read": read, "mark": et("10:05"), "minutes": 30, "pick": "up", "p": 0.41, "checks": checks}])
+
+
+@pytest.mark.parametrize("card, now, tz, want", [
+    (pre_card("09:28"), et("09:50"), LA, "pre-market call 06:28Up 41%Checked 06:44 and 07:04"),
+    (_closed(open_10={"outcome": "flat", "hit": False}), et("10:30"), LA, "pre-market call 06:28Up 41%06:44 was Flat, wrong · 07:04 not graded yet"),
+    (_closed(open_10={"outcome": "up", "hit": True}, open_30={"outcome": "up", "hit": True}), et("10:30"), TOKYO,
+     "pre-market call 22:28Up 41%22:44 was Up, right · 23:04 was Up, right"),
+    (_closed(), et("12:00"), NY, "pre-market call 09:28Up 41%09:44 not graded yet · 10:04 not graded yet"),
+])
+def test_after_the_hand_over_the_call_folds_to_one_line_with_each_checks_result(card, now, tz, want):
+    """The call is checked at 09:44 and 10:04 and the close-out grades both at 10:06: once the opening lane takes
+    over, the card is still fetched until that close-out lands, and its call folds to a line under the session's
+    cards giving each check's result, in the viewer's zone, as the live card's folded line gives its call."""
+    got = _fold(card, now, tz)
+    assert got["folds"] is True and _flat_text(got["fold"]) == want
+    assert got["fold"]["attrs"]["class"] == "card fold"
+
+
+@pytest.mark.parametrize("card, now", [
+    (pre_card("09:28"), et("09:34")),                                        # it still leads the page
+    (pre_card("09:28", day="2026-09-25"), et("10:30")),                      # Friday's card on Monday
+    (pre_card("08:05"), et("10:30")),                                        # no call made today: nothing to fold
+])
+def test_no_fold_while_the_card_leads_on_another_day_or_without_a_call(card, now):
+    assert _fold(card, now)["folds"] is False
+
+
+def test_the_fold_follows_the_session_cards_and_the_opening_lane_alone():
+    assert "if(preFolds(premarket, Date.now(), marketDay())) main.appendChild(preFold(premarket));" in _fn("paint")
+    assert "if(preFolds(premarket, Date.now(), marketDay())) main.appendChild(preFold(premarket));" in _fn("laneOnly")
+    assert "!preFolds(premarket, now, today)) return;" in _fn("redrawPre")
 
 
 def test_the_checks_drawing_names_both_sums_from_the_settled_open_in_the_viewers_zone():
@@ -827,3 +904,19 @@ def test_the_premarket_card_fits_the_owners_360px_phone():
     assert _PRE_W["Read 13:05 GMT+5:30"] + _PRE_W["Checked 19:14 and 19:34"] <= card
     assert "viewBox: '0 0 300 '" in _fn("checksSvg") and "viewBox: '0 0 300 '" in _fn("storySvg")
     assert "'class': 'inplay'" in _fn("checksSvg") and "'class': 'inplay story'" in _fn("storySvg")
+
+
+# Chrome at 360 with the shipped face: the folded call's parts at their widest (the viewer's zone changes no width,
+# a time having no zone name here); .fold wraps between parts, so each must fit the fold alone
+_FOLD_W = {"PRE-MARKET CALL 09:28": 159.81, "Unsure 100%": 96.67,
+           "09:44 was Down, wrong · 10:04 was Down, wrong": 288.66, "09:44 was Flat, wrong · 10:04 not graded yet": 260.52}
+
+
+def test_the_folded_premarket_call_fits_the_owners_360px_phone():
+    """Checked in Chrome at 360 after the close-out in Los Angeles, Tokyo, New York and Kolkata: nothing past the
+    page and nothing clipped; the label and the pick share one row, the results take the next."""
+    column = 360 - 2 * 16
+    inner = column - 2 * float(re.search(r"padding:12px([\d.]+)px", _rule(".fold")).group(1))
+    assert "flex-wrap:wrap" in _rule(".fold")
+    assert _FOLD_W["PRE-MARKET CALL 09:28"] + 12 + _FOLD_W["Unsure 100%"] <= inner
+    assert all(w <= inner for k, w in _FOLD_W.items() if " · " in k)
