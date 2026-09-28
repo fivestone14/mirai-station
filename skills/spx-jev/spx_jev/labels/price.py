@@ -594,7 +594,11 @@ def _move_shape(scene: Scene, anchor: SigmaRuler, move30: Ranked, ls: LabelSet) 
         return
     net = scene.spot - marks[0]
     burst = max((b - a) / net for a, b in zip(marks, marks[1:]))
-    efficiency = path_efficiency([marks[0]] + [float(b["close"]) for b in win] + [scene.spot])
+    # measured on the finished bars alone, as each prior session's is, never to the row's spot
+    efficiency = _half_hour_efficiency(scene.bars, scene.now)
+    if efficiency is None:
+        ls.omit("price.move_shape", "the half hour's minute closes travelled nothing, so there is no path to judge")
+        return
     path, why = rank_sessions(efficiency, same_clock_values(scene, lambda bars, then, sigma: _half_hour_efficiency(bars, then)),
                               "a half hour of bars at this minute")
     if path is None:

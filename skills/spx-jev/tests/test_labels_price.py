@@ -454,6 +454,15 @@ def test_a_path_is_judged_against_the_same_half_hour_on_the_prior_sessions(scene
                                               "at this minute, middle third")
 
 
+def test_the_path_is_measured_on_the_finished_bars_as_the_prior_sessions_are(scene_factory):
+    """The row's spot runs past the last bar: 3 points back from its 7712 close would add travel today's path is not
+    ranked on, since each prior session's half hour ends at a bar close."""
+    window = [7700.0 + 0.6 * (k + 1) for k in range(10)] + [7706.0 - 0.6 * (k + 1) for k in range(10)] + [7700.0 + 1.2 * (k + 1) for k in range(10)]
+    scene = _ranked(_scene(scene_factory, at(11, 0, ss=5), [7700.0] * 60 + window, spot=7709.0), _zigzag_then_ramp)
+    assert _labels(scene)[0]["price.move_shape"].endswith("its net move was 0.50 of the distance travelled, more one-way than 6 of the "
+                                                          "last 10 sessions at this minute, middle third")
+
+
 def test_the_shape_needs_a_half_hour(scene_factory):
     assert _labels(_scene(scene_factory, at(9, 50), [7700.0] * 20))[1]["price.move_shape"] == \
         "no 30-minute move to shape: needs 30 minutes of session"
