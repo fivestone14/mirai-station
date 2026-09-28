@@ -19,17 +19,18 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from . import schwab
+from .feed_log import failure, log
 from .sessions import SESSION_CLOSE, SESSION_OPEN
 from .state_builder import DEFAULT_STATE_DIR, LIVE_BARS_SUBDIR, load_jsonl
 
 ET = ZoneInfo("America/New_York")
 SYMBOL = "SPX"
+JOB = "spx-jev-bars"
 
 
 def bars_path(state_dir: Path, day: str) -> Path:
@@ -75,10 +76,10 @@ def run(state_dir: Path, day: str | None = None, now: datetime | None = None) ->
     try:
         bars = fetch_session(d)
     except Exception as e:  # a failed fetch is a skipped run; the next run fills the gap
-        print(f"spx-jev-bars :: fetch failed for {d}: {type(e).__name__}: {e}", file=sys.stderr)
+        log(JOB, f"fetch failed for {d}: {failure(e)}", err=True)
         return 1
     n = append_day(state_dir, d.isoformat(), bars, now)
-    print(f"spx-jev-bars :: {d} +{n} bars -> {bars_path(state_dir, d.isoformat())}")
+    log(JOB, f"{d} +{n} bars -> {bars_path(state_dir, d.isoformat())}")
     return 0
 
 

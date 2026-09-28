@@ -31,10 +31,12 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from . import schwab
+from .feed_log import failure, log
 from .sessions import SESSION_CLOSE, SESSION_OPEN
 from .state_builder import CONTEXT_SUBDIR, DEFAULT_STATE_DIR
 
 ET = ZoneInfo("America/New_York")
+JOB = "spx-jev-context"
 SYMBOLS = {
     "breadth": ("$TICK", "$ADD", "$TRIN", "$VOLD", "$UVOL", "$DVOL", "$VOLSPD"),
     "volatility": ("$VIX", "$VIX9D", "$VVIX", "$VIX3M", "$VIX1D"),
@@ -69,6 +71,7 @@ def snapshot(now: datetime) -> dict:
         line["quotes"] = {s: _quote_entry(q) for s, q in schwab.quotes(quoted).items()}
     except Exception as e:  # one failed call costs this minute's quotes, never the bars below
         line["failed"].append(f"quotes: {type(e).__name__}")
+        log(JOB, f"quotes failed: {failure(e)}", err=True)
     start, _ = _session(now.date())
     for symbol in BAR_SYMBOLS:
         time.sleep(schwab.CALL_SPACING_S)
@@ -76,6 +79,7 @@ def snapshot(now: datetime) -> dict:
             done = [b for b in schwab.minute_bars(symbol, start, now) if datetime.fromisoformat(b["ts"]) + timedelta(minutes=1) <= now]
         except Exception as e:
             line["failed"].append(f"{symbol}: {type(e).__name__}")
+            log(JOB, f"{symbol} bars failed: {failure(e)}", err=True)
             continue
         if done:
             line["bars"][symbol] = done[-1]
@@ -136,12 +140,12 @@ def main(argv: list[str] | None = None) -> int:
     state_dir, now = Path(args.state_dir), datetime.now(ET)
     if args.backfill:
         written = backfill(state_dir, date.fromisoformat(args.backfill), now.date() - timedelta(days=1))
-        print(f"spx-jev-context :: backfilled {len(written)} sessions under {state_dir / CONTEXT_SUBDIR / 'bars'}")
+        log(JOB, f"backfilled {len(written)} sessions under {state_dir / CONTEXT_SUBDIR / 'bars'}")
         return 0
     line = snapshot(now)
     path = append_snapshot(state_dir, line)
-    print(f"spx-jev-context :: {len(line['quotes'])} quotes, {len(line['bars'])} bars"
-          f"{', failed ' + ', '.join(line['failed']) if line['failed'] else ''} -> {path}")
+    log(JOB, f"{len(line['quotes'])} quotes, {len(line['bars'])} bars"
+             f"{', failed ' + ', '.join(line['failed']) if line['failed'] else ''} -> {path}")
     return 0 if line["quotes"] or line["bars"] else 1
 
 

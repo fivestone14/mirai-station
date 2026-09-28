@@ -32,12 +32,12 @@ sys.exit(0 if m.check(now).is_live else 4 if m.check(now - timedelta(minutes=13)
 GATE_RC=$?
 set -e
 if [[ $GATE_RC -eq 3 ]]; then
-  echo "spx-jev-bars :: market closed, skipping"
+  echo "$(date -u +%Y-%m-%dT%H:%M:%S+00:00) spx-jev-bars :: market closed, skipping"
   exit 0
 elif [[ $GATE_RC -eq 4 ]]; then
-  echo "spx-jev-bars :: after the close, fetching the day's last bars"
+  echo "$(date -u +%Y-%m-%dT%H:%M:%S+00:00) spx-jev-bars :: after the close, fetching the day's last bars"
 elif [[ $GATE_RC -ne 0 ]]; then
-  echo "spx-jev-bars :: market-hours check FAILED (rc=${GATE_RC}), no bars" >&2
+  echo "$(date -u +%Y-%m-%dT%H:%M:%S+00:00) spx-jev-bars :: market-hours check FAILED (rc=${GATE_RC}), no bars" >&2
   exit 1
 fi
 

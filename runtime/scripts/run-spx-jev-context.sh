@@ -24,10 +24,10 @@ set +e
 GATE_RC=$?
 set -e
 if [[ $GATE_RC -eq 3 ]]; then
-  echo "spx-jev-context :: market closed, skipping"
+  echo "$(date -u +%Y-%m-%dT%H:%M:%S+00:00) spx-jev-context :: market closed, skipping"
   exit 0
 elif [[ $GATE_RC -ne 0 ]]; then
-  echo "spx-jev-context :: market-hours check FAILED (rc=${GATE_RC}), no snapshot" >&2
+  echo "$(date -u +%Y-%m-%dT%H:%M:%S+00:00) spx-jev-context :: market-hours check FAILED (rc=${GATE_RC}), no snapshot" >&2
   exit 1
 fi
 
