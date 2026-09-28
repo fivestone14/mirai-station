@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import random
-import re
 import statistics
 from dataclasses import replace
 from datetime import datetime, time, timedelta
@@ -216,6 +215,14 @@ def test_the_distances_need_ten_prior_rows_at_this_minute(scene_factory, tmp_pat
     _, omitted, gates = _labels(_with_diaries(scene, tmp_path, days=PRIOR_DAYS[:9]))
     assert omitted["price.vs_prior_close"] == gates["prior_close_push_fade"] == (
         "its rank needs 10 prior sessions with yesterday's close on a diary row at this minute, have 9")
+    assert omitted["price.vs_vwap"] == "its rank needs 10 prior sessions with the day's average price on a diary row at this minute, have 9"
+
+
+def test_an_estimated_session_sits_out_of_the_distances(scene_factory, tmp_path):
+    """A distance in sigma is sized in each session's own ruler, so a session whose ruler was estimated sits out, as it
+    does of the move, though its diary row is on file."""
+    _, omitted, _ = _labels(_with_diaries(_ranked(_move_scene(scene_factory, 15.0), estimated=PRIOR_DAYS[:1]), tmp_path))
+    assert omitted["price.vs_prior_close"] == "its rank needs 10 prior sessions with yesterday's close on a diary row at this minute, have 9"
     assert omitted["price.vs_vwap"] == "its rank needs 10 prior sessions with the day's average price on a diary row at this minute, have 9"
 
 
