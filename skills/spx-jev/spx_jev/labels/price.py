@@ -16,12 +16,12 @@ from ..cuts import (BOTTOM_FIFTH, GAP_HALF_SHARE, MINUTE_WIDTH_CUT, MOVE_BURST_S
                     RANGE_TOP_SHARE, RSI_OVERBOUGHT, RSI_OVERSOLD, TOP_FIFTH, WINDOW_30_MIN, WINDOW_60_MIN)
 from ..sessions import previous_trading_day
 from ..state_builder import Scene
-from .gamma import _diary_row_at
+from .gamma import prior_books
 from .label_set import LabelSet
 from .measures import (ET, HOUR_MIN_BARS, MIN_RANGE_SESSIONS, ONE_MINUTE, RANGE_PRIOR_SESSIONS, RSI_PERIOD, SETTLED_OPEN_BAR, bar_time,
                        bars_finished_between, close_at, day_high_low, high_low_close, is_num, move_size, path_efficiency, session_extremes,
                        settled_open, wilder_rsi, yesterdays_bars)
-from .ranks import SameClockRank, move_rank, rank_days, rank_sessions, same_clock_values
+from .ranks import SameClockRank, move_rank, rank_sessions, same_clock_values
 from .rulers import NO_ANCHOR, SigmaRuler, ruled, sigma_anchor, typical_move
 from .words import minutes_ago, pct, plural, sig, signed, third
 
@@ -115,22 +115,10 @@ def _minutes_since_bar(scene: Scene, bar: time) -> int:
 
 
 def _same_clock_rows(scene: Scene) -> list[tuple[dict, float]]:
-    """Each prior session's diary row at this read's clock minute with its morning ruler in points, newest first, up
-    to NIGHT_RANK_COUNT of them: the rows the distances to yesterday's close and to the day's average are ranked on,
-    each from the row's own spot. A session whose ruler was estimated or is not on file (ranks.rank_days), or with
-    no row near the minute, is left out."""
-    if scene.state_dir is None:
-        return []
-    clock = scene.now.astimezone(ET).time()
-    out = []
-    for day in rank_days(scene):
-        ruler = scene.prior_rulers.get(day)
-        row = _diary_row_at(scene.state_dir, day, datetime.combine(date.fromisoformat(day), clock, tzinfo=ET)) if ruler else None
-        if row is not None and is_num(row.get("spot")):
-            out.append((row, ruler.points))
-        if len(out) == NIGHT_RANK_COUNT:
-            break
-    return out
+    """Each prior session's diary row at this read's clock minute (gamma.prior_books, estimated rulers left out) with
+    its morning ruler in points, newest first: the rows the distances to yesterday's close and to the day's average
+    are ranked on, each from the row's own spot. A session with no ruler on file, or no row near the minute, is out."""
+    return [(b.row, b.ruler.points) for b in prior_books(scene) or () if b.ruler is not None and is_num(b.row.get("spot"))]
 
 
 def _level_distance(scene: Scene, anchor: SigmaRuler, rows: list[tuple[dict, float]], key: str, name: str) -> Ranked:
