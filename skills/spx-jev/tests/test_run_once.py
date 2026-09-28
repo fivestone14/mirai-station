@@ -176,8 +176,10 @@ def test_a_live_read_on_a_stalled_scanner_is_skipped_and_the_card_stays(tmp_path
     (state / "spx_jev" / "latest.json").write_text('{"row_ts": "the last card"}')
     monkeypatch.setattr(service, "send_all", _answers())
     monkeypatch.setattr(service, "send", _sums)
-    with pytest.raises(service.NoRowYet, match="7.0 minutes old"):
+    with pytest.raises(service.NoRowYet, match="7.0 minutes old") as skipped:
         run_once(state, state / "spx_jev", DOC, True, None)
+    # the scanner can be running with no SPX quote to write (09-28's Schwab outage): the words name the diary
+    assert "the SPX diary has not been written since 11:53 ET" in str(skipped.value) and "scanner" not in str(skipped.value)
     assert json.loads((state / "spx_jev" / "latest.json").read_text())["row_ts"] == "the last card"
 
 

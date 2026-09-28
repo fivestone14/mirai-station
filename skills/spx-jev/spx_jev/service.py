@@ -18,7 +18,7 @@ Every time the card carries is a full timestamp with its offset, never a bare cl
 can show it in the viewer's own zone; prose meant for a reader names the market clock and says ET.
 
 A sent run on today's newest row checks the wall clock: a row more than STALE_ROW_SKIP_MIN old is
-skipped (the scanner has stopped; the last card stays). The SPX row carries no separate options-book
+skipped (the SPX diary is not being written; the last card stays). The SPX row carries no separate options-book
 time (the book is rebuilt on every scan), so that one line covers the book too. The day's first
 read after 10:01 first waits for a row stamped from 10:01 (first_window_row). A replay (--day)
 checks nothing against the wall clock, and never writes into the station's records unless its
@@ -83,7 +83,7 @@ VERDICT_WORDS = {"going_nowhere": "Flat", "rising": "Rising", "falling": "Fallin
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 ET = ZoneInfo("America/New_York")
 STALE_ROW_S = 15 * 60          # a card built on a row older than this says so
-STALE_ROW_SKIP_MIN = 6.0       # a live read on a row older than this is skipped: the scanner has stopped
+STALE_ROW_SKIP_MIN = 6.0       # a live read on a row older than this is skipped: the SPX diary is not being written
 LAST_READ_BEFORE_CLOSE_MIN = 28   # the job reads at :02 and :32, so the day's last read is 28 minutes before the close
 UNSENT_DEFAULT = "not sent: this run was not asked to send"
 CALLS_SHOWN = 4                # the phone draws the newest calls on one clock, so an overlap is visible
@@ -466,11 +466,13 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         # read of one moment would put a second sum on the card beside the first, which is the one graded
         raise NoRowYet(f"the row at {scene.row['ts'][11:19]} was already read; nothing new to read, card unchanged")
     if day is None and do_send:
-        # a live read on a stalled scanner would answer, sum and grade a row that no longer describes
-        # the market; skip it and leave the last card, whose age the phone shows
+        # a live read on a diary nothing is writing would answer, sum and grade a row that no longer describes the
+        # market; skip it and leave the last card, whose age the phone shows. The scanner may still be running: on
+        # 09-28 it ran through a Schwab outage with no SPX quote, so it wrote no row
         age_min = (datetime.now(timezone.utc) - parse_ts(scene.row["ts"]).astimezone(timezone.utc)).total_seconds() / 60.0
         if age_min > STALE_ROW_SKIP_MIN:
-            raise NoRowYet(f"the newest row is {age_min:.1f} minutes old, past the {STALE_ROW_SKIP_MIN:g}-minute line: the scanner has stopped; nothing sent, card unchanged")
+            raise NoRowYet(f"the newest row is {age_min:.1f} minutes old, past the {STALE_ROW_SKIP_MIN:g}-minute line: the SPX diary has not "
+                           f"been written since {scene.row['ts'][11:16]} ET; nothing sent, card unchanged")
     labels = build_labels(scene)
     state, omitted, figures = labels.state, labels.omitted, labels.figures
     now = parse_ts(scene.row["ts"])
