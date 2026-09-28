@@ -58,22 +58,28 @@ def known(day: str, series: dict[str, list[float]]) -> dict[str, list[tuple[date
     return {s: [(start + timedelta(minutes=i + 1), v) for i, v in enumerate(vals)] for s, vals in series.items()}
 
 
-def prior_markets(multiples: dict[str, float], wiggles: dict[str, float] | None = None) -> tuple[dict, dict]:
-    """PRIOR_DAYS prior sessions of SPX bars (newest first) and their market contexts."""
-    bars = prior_sessions(PRIOR_DAYS)
+def prior_markets(multiples: dict[str, float], wiggles: dict[str, float] | None = None,
+                  drift_scales: dict[str, float] | None = None, days: int = PRIOR_DAYS,
+                  wiggle_steps: dict[str, float] | None = None) -> tuple[dict, dict]:
+    """``days`` prior sessions of SPX bars and their market contexts, newest first; a symbol in ``drift_scales``
+    drifts that multiple of prior_drift, so two symbols' residuals can part on the prior days, and one in
+    ``wiggle_steps`` wiggles k steps more on prior day k, so its link to the index loosens day by day."""
+    bars = prior_sessions(days)
     closes = [sawtooth(i) for i in range(390)]
     markets = {}
     for k, day in enumerate(reversed(list(bars))):
-        markets[day] = MarketContext(known(day, {s: follow(closes, m, drift=0.0 if s in NO_DRIFT else prior_drift(k), wiggle=(wiggles or {}).get(s, 0.0))
-                                                 for s, m in multiples.items()}))
-    return bars, markets
+        drift = {s: 0.0 if s in NO_DRIFT else prior_drift(k) * (drift_scales or {}).get(s, 1.0) for s in multiples}
+        wiggle = {s: (wiggles or {}).get(s, 0.0) + k * (wiggle_steps or {}).get(s, 0.0) for s in multiples}
+        markets[day] = MarketContext(known(day, {s: follow(closes, m, drift=drift[s], wiggle=wiggle[s]) for s, m in multiples.items()}))
+    return bars, {day: markets[day] for day in bars}
 
 
 def scene_with(closes: list[float], today: dict[str, list[float]], multiples: dict[str, float], now: datetime = NOW,
-               wiggles: dict[str, float] | None = None, state_dir=None) -> Scene:
-    """A read at ``now`` on DAY with the anchor set by 09:40, today's market ``today`` and prior sessions in
-    which each symbol moved its ``multiples`` of the index."""
-    pbars, pmarkets = prior_markets(multiples, wiggles)
+               wiggles: dict[str, float] | None = None, state_dir=None, drift_scales: dict[str, float] | None = None,
+               days: int = PRIOR_DAYS, wiggle_steps: dict[str, float] | None = None) -> Scene:
+    """A read at ``now`` on DAY with the anchor set by 09:40, today's market ``today`` and ``days`` prior sessions
+    in which each symbol moved its ``multiples`` of the index."""
+    pbars, pmarkets = prior_markets(multiples, wiggles, drift_scales, days, wiggle_steps)
     bars = [b for b in bars_from_closes(closes) if datetime.fromisoformat(b["ts"]) + timedelta(minutes=1) <= now]
     spot = float(bars[-1]["close"])
     rows = [labeller_row(make_row(at(9, 32), closes[2], sigma=SIGMA)), labeller_row(make_row(now, spot, sigma=SIGMA))]

@@ -38,8 +38,8 @@ from ..state_builder import MarketContext, Scene, load_bars
 from ..story import GLOBEX_REOPEN
 from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, bar_time
-from .ranks import FIFTH_WORDS, fifth_side, rank_against, same_clock_values
-from .usual_link import SPX, Session, UsualLink, beyond, needs_link, needs_move, needs_rank, usual_link
+from .ranks import FIFTH_WORDS, fifth_side, rank_sessions, same_clock_values
+from .usual_link import SPX, Session, UsualLink, beyond, needs_link, needs_move, usual_link
 from .words import above_or_below, listed, sig, third
 
 LABELS = ("overnight.btc_vs_futures", "weekend.btc_path", "xasset.btc_gap_30min", "xasset.btc_gap_streak", "xasset.btc_link",
@@ -457,9 +457,9 @@ def gap_30(a: BitcoinAgainstIndex) -> Got:
     if value is None:
         return needs_move(a.missing(now - half, now), WINDOW_30_MIN)
     base = a.same_clock(lambda s, then: a.excess(s, then - half, then))
-    rank = rank_against(value, base)
+    rank, why = rank_sessions(value, base, f"{BITCOIN} and {SPX} over the half hour to this minute")
     if rank is None:
-        return needs_rank(f"{BITCOIN} and {SPX}", len(base))
+        return why
     usual = normal(base)
     if usual is None:
         return f"bitcoin's half hour not sized: {NO_NORMAL}"
@@ -486,9 +486,9 @@ def gap_streak(a: BitcoinAgainstIndex) -> Got:
         return None if any(g is None for g in got) else sum(got)
     total = sum(parts)
     base = a.same_clock(then_total)
-    rank = rank_against(total, base)
+    rank, why = rank_sessions(total, base, f"{BITCOIN} and {SPX} over the {STREAK_HALF_HOURS} half hours to this minute")
     if rank is None:
-        return needs_rank(f"{BITCOIN} and {SPX}", len(base))
+        return why
     usual = normal(base)
     if usual is None:
         return f"bitcoin's half hours not sized: {NO_NORMAL}"
@@ -525,9 +525,9 @@ def link_today(a: BitcoinAgainstIndex) -> Got:
     if corr is None:
         return f"needs {MIN_LINK_RETURNS} five-minute returns of {BITCOIN} and {SPX} since {LINK_FROM:%H:%M}"
     base = a.same_clock(five_minute_link)
-    rank = rank_against(corr, base)
+    rank, why = rank_sessions(corr, base, f"{BITCOIN} and {SPX} five minutes by five minutes since {LINK_FROM:%H:%M}")
     if rank is None:
-        return needs_rank(f"{BITCOIN} and {SPX}", len(base))
+        return why
     verdict = "tight" if rank.share >= THIRD_HI else "loose" if rank.share <= THIRD_LO else "usual"
     how = {"tight": "more tightly than on most recent sessions", "loose": "more loosely than on most recent sessions",
            "usual": "about as tightly as usual"}[verdict]
@@ -554,7 +554,7 @@ def session_closes(scene: Scene, store: NightStore, day: date, count: int) -> li
 
 def five_day(scene: Scene, store: NightStore) -> Got:
     """Bitcoin's last five sessions, close to close, beyond its usual daily multiple of the index's, ranked in fifths
-    against the five sessions ending on each of the last NIGHT_RANK_COUNT sessions before."""
+    against the five sessions ending on each of the last NIGHT_RANK_COUNT sessions before, needing SAME_CLOCK_MIN_SESSIONS."""
     if scene.state_dir is None:
         return "no overnight store to read bitcoin's session closes from"
     table = rolls.load(Path(scene.state_dir) / overnight.OVERNIGHT_SUBDIR)
@@ -584,11 +584,11 @@ def five_day(scene: Scene, store: NightStore) -> Got:
         return f"{rolls_on(thursday)}, so the last {FIVE_SESSIONS} sessions' move would be partly the spread between two contracts"
     index, btc = move(start, end)
     value = btc - multiple * index
-    prior = [m for k in range(FIVE_SESSIONS, len(closes) - 1) if (m := move(closes[k - FIVE_SESSIONS], closes[k]))]
+    prior = [m for k in range(len(closes) - 2, FIVE_SESSIONS - 1, -1) if (m := move(closes[k - FIVE_SESSIONS], closes[k]))]
     base = [b - multiple * i for i, b in prior]
-    rank = rank_against(value, base)
+    rank, why = rank_sessions(value, base, f"a {FIVE_SESSIONS}-session stretch of {BITCOIN} and {SPX} on one contract")
     if rank is None:
-        return f"needs {MIN_RANK_SESSIONS} prior {FIVE_SESSIONS}-session stretches with {BITCOIN} and {SPX} on one contract, have {len(base)}"
+        return why
     usual, usual_index = normal(base), normal([i for i, _ in prior])
     if usual is None or usual_index is None:
         return f"bitcoin's five sessions not sized: {NO_NORMAL}"

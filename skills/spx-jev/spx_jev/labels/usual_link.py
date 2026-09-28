@@ -3,10 +3,13 @@ leadership and macro families measure every fund, stock and outside market by.
 
 * The usual multiple (the beta): the slope of a symbol's 30-minute returns on the index's over the prior
   sessions on file (up to 20), on the clock's half hours from 10:00 to 16:00.
-* The own scale: the symbol's typical 30-minute move over the index's, so "past its own move rule" is
-  the move rule stretched to the symbol's size.
 * A move beyond the usual multiple (the residual) is the symbol's return less the multiple times the
   index's, written in SPX sigma: a share of the day's morning anchor.
+* Its own usual move (OwnMoves): the symbol's move over the same minutes to this clock on the prior
+  sessions, so "past its usual move" is a rank against its own, never a fixed line.
+
+Every size is ranked against the same measure at this minute on up to the last 20 sessions, needing 10
+(ranks.rank_sessions); the multiple is a fit and needs MIN_RANK_SESSIONS sessions.
 
 Point in time: SPX comes from the bars that finished by the moment, every other symbol from the market
 context as it was known then; a value older than VALUE_MAX_AGE_MIN is a stopped feed and counts as none.
@@ -22,7 +25,7 @@ from typing import TYPE_CHECKING, Callable
 from ..cuts import MIN_RANK_SESSIONS, WINDOW_30_MIN
 from ..sessions import session_open
 from .measures import ET, ONE_MINUTE, bar_time
-from .ranks import SameClockRank, rank_against, same_clock_values
+from .ranks import SameClockRank, rank_sessions, same_clock_market, same_clock_values
 from .rulers import SigmaRuler
 
 if TYPE_CHECKING:
@@ -58,7 +61,6 @@ class Session:
 @dataclass(frozen=True)
 class UsualLink:
     multiple: float     # the symbol's usual 30-minute return per unit of the index's (the beta)
-    scale: float        # its typical 30-minute move over the index's
     spread: float       # the standard deviation of its 30-minute return beyond the multiple
     sessions: int
 
@@ -89,12 +91,10 @@ def usual_link(scene: Scene, symbol: str, index: str = SPX) -> UsualLink | None:
         return None
     mx, my = statistics.fmean(xs), statistics.fmean(ys)
     var = sum((x - mx) ** 2 for x in xs)
-    typical = statistics.median(abs(x) for x in xs)
-    if var == 0 or typical == 0:
+    if var == 0:
         return None
     beta = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / var
-    return UsualLink(beta, statistics.median(abs(y) for y in ys) / typical,
-                     statistics.pstdev(y - beta * x for x, y in zip(xs, ys)), days)
+    return UsualLink(beta, statistics.pstdev(y - beta * x for x, y in zip(xs, ys)), days)
 
 
 class AgainstIndex:
@@ -137,10 +137,33 @@ class AgainstIndex:
             return measure(s, then, sigma_points / spot) if spot else None
         return same_clock_values(self.scene, on_day)
 
-    def rank(self, value: float, measure: Callable[[Session, datetime, float], float | None]) -> tuple[SameClockRank | None, int]:
-        """``value`` against the same measure at this minute of the prior sessions, and how many sessions carried it."""
-        base = self.same_clock(measure)
-        return rank_against(value, base), len(base)
+    def rank(self, value: float, measure: Callable[[Session, datetime, float], float | None],
+             what: str) -> tuple[SameClockRank | None, str | None]:
+        """``value`` against the same measure at this minute of the prior sessions (ranks.rank_sessions), or why it
+        has no rank, naming ``what`` the sessions lacked."""
+        return rank_sessions(value, self.same_clock(measure), what)
+
+
+class OwnMoves:
+    """Each symbol's own ``minutes`` move to this clock on the prior sessions, what "past its usual move" is
+    judged by: the size of a move ranked against the symbol's own at this minute. A return is in the symbol's
+    own units, which the index's ruler never touches, so every session with the market context counts
+    (ranks.same_clock_market)."""
+
+    def __init__(self, scene: Scene, symbols: list[str], minutes: int):
+        self.minutes = minutes
+        span = timedelta(minutes=minutes)
+        self.sizes = {s: [abs(m) for m in same_clock_market(scene, lambda mk, then, s=s: Session([], mk).move(s, then - span, then))]
+                      for s in symbols}
+
+    def rank(self, symbol: str, move: float) -> tuple[SameClockRank | None, str | None]:
+        return rank_sessions(abs(move), self.sizes[symbol], f"a {self.minutes}-minute move of {symbol} at this minute")
+
+    def past_usual(self, symbol: str, move: float) -> bool | None:
+        """Whether the size of ``move`` is above the bottom third of the symbol's own at this minute: the symbol
+        moved; None without the sessions to say."""
+        rank, _ = self.rank(symbol, move)
+        return None if rank is None else rank.band != "bottom third"
 
 
 def beyond(link: UsualLink, move: float, index_move: float) -> float:
@@ -163,10 +186,8 @@ def beyond_rank(against: AgainstIndex, symbol: str, minutes: int) -> tuple[float
         start = then - timedelta(minutes=minutes)
         m, i = s.move(symbol, start, then), s.move(SPX, start, then)
         return None if m is None or i is None else beyond(link, m, i) / sigma_share
-    rank, have = against.rank(value, then_beyond)
-    if rank is None:
-        return needs_rank(symbol, have)
-    return value, link, rank
+    rank, why = against.rank(value, then_beyond, f"{symbol} and {SPX} at this minute")
+    return (value, link, rank) if rank is not None else why
 
 
 def needs_move(symbols: list[str], minutes: int) -> str:
@@ -177,10 +198,6 @@ def needs_link(symbols: list[str], index: str = SPX) -> str:
     return f"needs {MIN_RANK_SESSIONS} prior sessions of half hours with {', '.join(symbols)} and {index} to know the usual multiple"
 
 
-def needs_rank(what: str, have: int) -> str:
-    return f"needs {MIN_RANK_SESSIONS} prior sessions with {what} at this minute, have {have}"
-
-
 def minutes_back(end: datetime, minutes: int) -> int:
     """``minutes``, or the minutes since the session's first finished minute (09:31) when a window of them to ``end``
     would start before it: at 09:40 the 10-minute window is the 9 since 09:31, on today and each prior day alike."""
@@ -188,8 +205,8 @@ def minutes_back(end: datetime, minutes: int) -> int:
 
 
 def against_usual(value: float, side: int) -> str:
-    """What a sentence adds when a move beyond the usual multiple and its same-clock fifth point opposite ways
-    (the prior sessions at this minute sat mostly on one side of zero), so the fifth's verdict reads true."""
+    """What a sentence adds when a signed value and the side of its same-clock rank (its fifth or its third) point
+    opposite ways (the prior sessions at this minute sat mostly on one side of zero), so the verdict reads true."""
     if not side or (value >= 0) == (side > 0):
         return ""
     return f", {'above' if side > 0 else 'below'} the usual for this minute"

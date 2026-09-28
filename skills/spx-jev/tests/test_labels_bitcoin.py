@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from conftest import DAY, ET, at, bars_from_closes, night_row
-from spx_jev.cuts import OVERNIGHT_RANK_MIN_NIGHTS, WINDOW_10_MIN
+from spx_jev.cuts import OVERNIGHT_RANK_MIN_NIGHTS, SAME_CLOCK_MIN_SESSIONS, WINDOW_10_MIN
 from spx_jev.labels import bitcoin
 from spx_jev.labels.bitcoin import GATE_OF, PREMARKET, NightStore, build_bitcoin_labels, prior_close
 from spx_jev.labels.registry import build_labels
@@ -420,6 +420,16 @@ def test_the_link_needs_the_morning_before_10_32():
     assert ls.omitted["xasset.btc_link"] == "needs 11 five-minute returns of /MBT and $SPX since 09:35"
 
 
+@pytest.mark.parametrize("path, what", [("xasset.btc_gap_30min", "/MBT and $SPX over the half hour to this minute"),
+                                        ("xasset.btc_gap_streak", "/MBT and $SPX over the 3 half hours to this minute"),
+                                        ("xasset.btc_link", "/MBT and $SPX five minutes by five minutes since 09:35")])
+def test_a_rank_under_ten_prior_sessions_omits_the_label_and_sleeps_its_question(path, what):
+    scene = session_read({175: 0.004})
+    _, ls = session_labels(replace(scene, prior_markets=dict(list(scene.prior_markets.items())[1:])))
+    why = f"its rank needs {SAME_CLOCK_MIN_SESSIONS} prior sessions with {what}, have {SAME_CLOCK_MIN_SESSIONS - 1}"
+    assert ls.omitted[path] == why and ls.gates[GATE_OF[path]] == why
+
+
 def test_a_stale_bitcoin_feed_sleeps_the_session_questions():
     scene = session_read()
     pts = scene.market.known["/MBT"]
@@ -450,11 +460,11 @@ def test_a_session_read_leaves_the_premarket_labels_alone(full_scene):
 
 # ---- in the session: the last five sessions -------------------------------------------------------
 
-def five_day_state(root: Path, last_five: float) -> None:
-    """26 sessions before DAY: the index up 0.1% a day with a 0.2% wobble, bitcoin twice that with a part of its own
+def five_day_state(root: Path, last_five: float, sessions: int = 26) -> None:
+    """``sessions`` sessions before DAY: the index up 0.1% a day with a 0.2% wobble, bitcoin twice that with a part of its own
     (0.1% times sin(1.5 k), which leaves the last five sessions mid-rank), and over them ``last_five`` percent more a day."""
     spx, btc = 7000.0, MBT
-    days = trading_days_before(DAY, 26)
+    days = trading_days_before(DAY, sessions)
     (root / "reversion" / "bars").mkdir(parents=True, exist_ok=True)
     for k, d in enumerate(days):
         index_day = 0.001 + 0.002 * (-1) ** k
@@ -481,6 +491,16 @@ def test_bitcoin_s_last_five_sessions_against_the_index(tmp_path, scene_factory,
     assert s.startswith(f"over the last 5 sessions bitcoin futures (/MBT) did ") and f"normal weeks {word} than the index's move would match, {fifth} " in s
     assert ls.figures["xasset.btc_five_day"]["verdict"] == verdict
     assert (ls.gates["btc_five_day_lead"] is None) == (verdict != "in_line")
+
+
+def test_five_sessions_under_ten_prior_stretches_are_not_ranked(tmp_path, scene_factory):
+    """20 sessions on file hold 9 five-session stretches before the last one on one contract (the stretches across the
+    roll evening sit out): too few to rank it against."""
+    five_day_state(tmp_path, -1.0, sessions=20)
+    ls = build_bitcoin_labels(five_day_read(scene_factory, tmp_path))
+    why = (f"its rank needs {SAME_CLOCK_MIN_SESSIONS} prior sessions with a 5-session stretch of /MBT and $SPX on one contract, "
+           f"have {SAME_CLOCK_MIN_SESSIONS - 1}")
+    assert ls.omitted["xasset.btc_five_day"] == why and ls.gates["btc_five_day_lead"] == why
 
 
 def test_a_roll_inside_the_five_sessions_sleeps_the_question(tmp_path, scene_factory):

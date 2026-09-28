@@ -3,8 +3,8 @@ and the flows around it (xasset.*, flows.*, close.*).
 
 Each label's sentence, how it is computed and its source are in spec/question_set.json ``labels``. Every
 outside market is measured against its usual multiple of the index (usual_link) and ranked against the
-same half hour of the prior sessions. A label listed here and not written is omitted by the registry as
-not built; the paid feeds are DARK.
+same half hour of up to the last 20 sessions, as is how tightly bonds and stocks moved together this hour. A
+label listed here and not written is omitted by the registry as not built; the paid feeds are DARK.
 """
 from __future__ import annotations
 
@@ -12,15 +12,14 @@ import math
 import statistics
 from datetime import date, datetime, timedelta
 
-from ..cuts import BOND_LINK_TIGHT, WINDOW_30_MIN, WINDOW_60_MIN
+from ..cuts import WINDOW_30_MIN, WINDOW_60_MIN
 from ..sessions import session_open
 from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import ONE_MINUTE
 from .ranks import FIFTH_WORDS, fifth_side
 from .rulers import NO_ANCHOR, sigma_anchor
-from .usual_link import (SPX, AgainstIndex, Session, against_usual, beyond, beyond_rank, minutes_back, needs_link, needs_move,
-                         needs_rank)
+from .usual_link import SPX, AgainstIndex, Session, against_usual, beyond, beyond_rank, minutes_back, needs_link, needs_move
 from .words import listed, sig
 
 LABELS = ("xasset.bond_gap_30min", "xasset.macro_gap_30min", "xasset.oil_gap_30min", "flows.rebalance_side", "flows.etf_creations",
@@ -105,7 +104,8 @@ def minute_link(s: Session, symbol: str, end: datetime) -> float | None:
 
 def _bond_gap(against: AgainstIndex, ls: LabelSet) -> None:
     """Long Treasuries over the last 30 minutes beyond their usual multiple of the index, and whether this hour's
-    minute-by-minute link to stocks is tight enough to say which way that points."""
+    minute-by-minute link to stocks is tight enough to say which way that points: its size above the bottom third
+    of the same hour's link on the prior sessions."""
     path = "xasset.bond_gap_30min"
     reasons = []
     for symbol, name in BONDS:
@@ -118,12 +118,19 @@ def _bond_gap(against: AgainstIndex, ls: LabelSet) -> None:
         if corr is None:
             reasons.append(needs_minute_link(f"{symbol} and {SPX}", against.scene.now))
             continue
+
+        def then_link(s: Session, then: datetime, _sigma_share: float, symbol: str = symbol) -> float | None:
+            c = minute_link(s, symbol, then)
+            return None if c is None else abs(c)
+        link_rank, why = against.rank(abs(corr), then_link, f"a minute-by-minute link of {symbol} and {SPX} at this minute")
+        if link_rank is None:
+            reasons.append(why)
+            continue
         side = fifth_side(rank)
-        tight = abs(corr) >= BOND_LINK_TIGHT
+        tight = link_rank.band != "bottom third"
         link = (f"{link_words(against.scene.now)} bond prices and stocks moved {'together' if corr >= 0 else 'in opposite directions'} "
-                f"minute by minute "
-                f"(link {corr:+.2f}, {'tight, at least' if tight else 'loose, under'} the {BOND_LINK_TIGHT} tight line): "
-                f"bond prices up has gone with stocks {'up' if corr >= 0 else 'down'}")
+                f"minute by minute (link {corr:+.2f}, by size {link_rank.words()}, {link_rank.band}: "
+                f"{'tight enough to read' if tight else 'loose'}): bond prices up has gone with stocks {'up' if corr >= 0 else 'down'}")
         if bond_market_closed(date.fromisoformat(against.scene.day)):
             verdict = "the Treasury cash market is closed today for a bond-market holiday, so the link is too loose to read"
         elif not tight:
@@ -186,9 +193,9 @@ def _macro_gap(against: AgainstIndex, ls: LabelSet) -> None:
     if value is None:
         ls.omit(path, needs_minute_link(f"each of {', '.join(s for s, _ in COMPLEX)} and {SPX}", against.scene.now))
         return
-    rank, have = against.rank(value, lambda s, then, _sigma_share: lean(s, then))
+    rank, why = against.rank(value, lambda s, then, _sigma_share: lean(s, then), "every outside market and a link to each at this minute")
     if rank is None:
-        ls.omit(path, needs_rank("every outside market", have))
+        ls.omit(path, why)
         return
     side = fifth_side(rank)
     above = [n for s, n in COMPLEX if beyond(links[s], moves[s], index_move) >= 0]

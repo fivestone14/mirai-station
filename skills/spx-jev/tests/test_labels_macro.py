@@ -1,5 +1,6 @@
 """The macro family: bonds, oil and the pooled outside markets against their usual multiple of the index,
-ranked by the clock, point in time; the flows no feed carries."""
+ranked by the clock, with how tightly bonds moved with stocks this hour ranked the same way, point in time; the
+flows no feed carries."""
 from __future__ import annotations
 
 from dataclasses import replace
@@ -8,7 +9,7 @@ from datetime import date
 import pytest
 
 from conftest import at, bars_from_closes
-from spx_jev.cuts import MIN_RANK_SESSIONS
+from spx_jev.cuts import MIN_RANK_SESSIONS, SAME_CLOCK_MIN_SESSIONS
 from spx_jev.labels import macro
 from spx_jev.labels.macro import REBALANCE_SIDE_UNMEASURED, bond_market_closed, build_macro_labels, minute_link
 from spx_jev.labels.registry import build_labels
@@ -19,16 +20,17 @@ from usual_link_fixtures import DRIFT_STEP, NOW, READ_MINUTE, follow, index_clos
 
 JUMP = 175
 MULTIPLES = {"TLT": -0.3, "/ZN": -0.2, "HYG": 0.3, "USO": 0.5, "GLD": 0.1, "/6E": 0.1}
-LOOSE = 0.0004                 # a wiggle of TLT's own, with no multiple of the index, for a loose link
+# TLT wiggles k steps of its own on prior day k, so its minute-by-minute link to the index loosens day by day and
+# today's ranks with a spread; LOOSE is today's wiggle for a link looser than all but one of them.
+LINK_STEP = 0.0001
+LOOSE = 0.0008
 
 
 def read(jumps: dict[str, dict[int, float]] | None = None, drop: tuple[str, ...] = (), loose: bool = False, move_points: float = 10.5):
     closes = index_closes(move_points)
-    multiples = {**MULTIPLES, "TLT": 0.0} if loose else MULTIPLES
-    wiggles = {"TLT": LOOSE} if loose else None
-    today = {s: follow(closes, m, jumps=(jumps or {}).get(s), wiggle=(wiggles or {}).get(s, 0.0))
-             for s, m in multiples.items() if s not in drop}
-    return scene_with(closes, today, multiples, wiggles=wiggles)
+    today = {s: follow(closes, m, jumps=(jumps or {}).get(s), wiggle=LOOSE if loose and s == "TLT" else 0.0)
+             for s, m in MULTIPLES.items() if s not in drop}
+    return scene_with(closes, today, MULTIPLES, wiggle_steps={"TLT": LINK_STEP})
 
 
 def labels(scene):
@@ -53,30 +55,46 @@ def test_the_flows_no_feed_carries_are_omitted_with_why(full_scene):
 
 BOND = ("over the last # minutes long Treasury prices (TLT) {moved} than the index's move usually brings them, {fifth} for this half "
         "hour, higher than # of the last # sessions at this minute; this hour bond prices and stocks moved in opposite directions "
-        "minute by minute (link #, tight, at least the # tight line): bond prices up has gone with stocks down; {verdict}")
+        "minute by minute (link #, by size higher than # of the last # sessions at this minute, {third} third: tight enough to read): "
+        "bond prices up has gone with stocks down; {verdict}")
 
 
-@pytest.mark.parametrize("jump, moved, fifth, verdict", [
-    (0.002, "rose more", "in the top fifth", "so bonds are ahead in the stocks-down direction; the Treasury cash market is open"),
-    (-0.002, "fell more", "in the bottom fifth", "so bonds are ahead in the stocks-up direction; the Treasury cash market is open"),
-    (0.0, "rose more", "between the top and bottom fifths", "bonds are in line with the index; the Treasury cash market is open"),
+@pytest.mark.parametrize("jump, moved, fifth, third, verdict", [
+    (0.002, "rose more", "in the top fifth", "middle", "so bonds are ahead in the stocks-down direction; the Treasury cash market is open"),
+    (-0.002, "fell more", "in the bottom fifth", "middle", "so bonds are ahead in the stocks-up direction; the Treasury cash market is open"),
+    (0.0, "rose more", "between the top and bottom fifths", "top", "bonds are in line with the index; the Treasury cash market is open"),
 ])
-def test_bonds_ahead_of_the_index_either_way_or_in_line(jump, moved, fifth, verdict):
+def test_bonds_ahead_of_the_index_either_way_or_in_line(jump, moved, fifth, third, verdict):
+    """A link above the bottom third of the same hour's on the prior sessions is tight enough to say which way the gap points."""
     got, _ = labels(read(jumps={"TLT": {JUMP: jump}}))
     s = got["xasset.bond_gap_30min"]
-    assert shape(s) == BOND.format(moved=moved, fifth=fifth, verdict=verdict)
+    assert shape(s) == BOND.format(moved=moved, fifth=fifth, third=third, verdict=verdict)
 
 
 @pytest.mark.parametrize("jump, fifth", [(0.002, "in the top fifth"), (0.0, "between the top and bottom fifths")])
 def test_bonds_on_a_loose_link_say_it_is_too_loose(jump, fifth):
-    """A loose link is too loose to say, whether or not the move reached a fifth: bond_catchup's in_line needs a tight link."""
+    """A link in the bottom third is too loose to say, whether or not the move reached a fifth: bond_catchup's in_line needs a
+    tight link."""
     scene = read(jumps={"TLT": {JUMP: jump}}, loose=True)
     link = minute_link(Session(scene.bars, scene.market), "TLT", NOW)
-    assert abs(link) < 0.25
+    assert -0.45 < link < -0.35                                  # moved together more than not, yet looser than 9 of the 10 prior hours
     got, _ = labels(scene)
     s = got["xasset.bond_gap_30min"]
-    assert f"{fifth} for this half hour" in s and "loose, under the 0.25 tight line" in s
+    assert f"{fifth} for this half hour" in s and "by size higher than 1 of the last 10 sessions at this minute, bottom third: loose)" in s
     assert s.endswith("; the link is too loose to say which way that points; the Treasury cash market is open")
+
+
+def test_the_bond_link_rank_needs_ten_prior_hours():
+    """A prior session missing TLT's minutes before the read has no link to rank against: with 9 left the link is not
+    ranked and the label falls to the ten-year future."""
+    scene = read(drop=("/ZN",))
+    oldest = list(scene.prior_markets)[-1]
+    gapped = {s: [(t, v) for t, v in pts if s != "TLT" or not at(11, 35, oldest) < t < at(12, 0, oldest)]
+              for s, pts in scene.prior_markets[oldest].known.items()}
+    _, omitted = labels(replace(scene, prior_markets={**scene.prior_markets, oldest: MarketContext(gapped)}))
+    assert omitted["xasset.bond_gap_30min"] == (
+        f"its rank needs {SAME_CLOCK_MIN_SESSIONS} prior sessions with a minute-by-minute link of TLT and $SPX at this minute, "
+        f"have {SAME_CLOCK_MIN_SESSIONS - 1}; or needs a price for /ZN now and 30 minutes ago")
 
 
 def test_bonds_on_a_bond_market_holiday(monkeypatch):
@@ -154,6 +172,9 @@ def test_oil_above_its_multiple_but_below_the_usual_for_this_minute(monkeypatch)
 
 def test_oil_needs_its_history_and_a_fresh_price():
     scene = read()
+    nine = replace(scene, prior_markets=dict(list(scene.prior_markets.items())[1:]))
+    assert labels(nine)[1]["xasset.oil_gap_30min"] == (
+        f"its rank needs {SAME_CLOCK_MIN_SESSIONS} prior sessions with USO and $SPX at this minute, have {SAME_CLOCK_MIN_SESSIONS - 1}")
     no_history = replace(scene, prior_markets={d: MarketContext({s: v for s, v in m.known.items() if s != "USO"})
                                                for d, m in scene.prior_markets.items()})
     assert labels(no_history)[1]["xasset.oil_gap_30min"] == (
