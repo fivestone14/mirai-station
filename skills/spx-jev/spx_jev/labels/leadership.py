@@ -34,7 +34,8 @@ from .words import listed, pct, sig, signed
 LABELS = ("leaders.equal_weight_vs_cap_30m", "leaders.heavyweight_gap", "leaders.megacap_cohesion_30m", "leaders.pull_vs_rest_30m",
           "leaders.rotation_30m", "leaders.semis_vs_index_30m", "leaders.single_name_10m", "leaders.size_spread_day",
           "sectors.agreement_30m", "tells.sector_lead_10m")
-GATES = ("heavyweight_gap_split",)
+GATE_OF = {"leaders.heavyweight_gap": "heavyweight_gap_split", "leaders.single_name_10m": "single_name_shock"}  # each gated label's question
+GATES = tuple(GATE_OF.values())
 DARK: dict[str, str] = {}
 
 WEIGHTS_FILE = "spx_leaders/weights.json"
@@ -54,8 +55,7 @@ def build_leadership_labels(scene: Scene) -> LabelSet:
            NO_ANCHOR if ruler is None else None)
     if why:
         for path in LABELS:
-            ls.omit(path, why)
-        ls.sleep("heavyweight_gap_split", f"leaders.heavyweight_gap is not measured: {why}")
+            _unmeasured(ls, path, why)
         return ls
     against = AgainstIndex(scene, ruler)
     _equal_weight(against, ls)
@@ -67,13 +67,19 @@ def build_leadership_labels(scene: Scene) -> LabelSet:
     names = _largest_names(scene)
     if isinstance(names, str):
         for path in ("leaders.heavyweight_gap", "leaders.megacap_cohesion_30m", "leaders.pull_vs_rest_30m", "leaders.single_name_10m"):
-            ls.omit(path, names)
-        ls.sleep("heavyweight_gap_split", f"leaders.heavyweight_gap is not measured: {names}")
+            _unmeasured(ls, path, names)
         return ls
     _heavyweight_gap(against, names, ls)
     _megacaps(against, names, ls)
     _single_name(against, names, ls)
     return ls
+
+
+def _unmeasured(ls: LabelSet, path: str, why: str) -> None:
+    """Omit ``path`` with the reason, and sleep the question it gates, if any."""
+    ls.omit(path, why)
+    if path in GATE_OF:
+        ls.sleep(GATE_OF[path], f"{path} is not measured: {why}")
 
 
 def _equal_weight(against: AgainstIndex, ls: LabelSet) -> None:
@@ -358,26 +364,22 @@ def _heavyweight_gap(against: AgainstIndex, names: list[tuple[str, float]], ls: 
     """Each of the largest stocks' move from yesterday's close to the settled open, as its share of the index's
     gap, and the gap of the rest of the index, each ranked against the same on the prior sessions; the gate wakes
     when one name alone moved the index by a top-third contribution."""
-    path, qid = "leaders.heavyweight_gap", "heavyweight_gap_split"
-    scene = against.scene
-
-    def unmeasured(why: str) -> None:
-        ls.omit(path, why)
-        ls.sleep(qid, f"{path} is not measured: {why}")
+    path = "leaders.heavyweight_gap"
+    qid, scene = GATE_OF[path], against.scene
     opened = settled_open(scene.bars)
     if opened is None:
-        unmeasured(f"the settled open (the close of the {SETTLED_OPEN_BAR:%H:%M} bar) is not in yet")
+        _unmeasured(ls, path, f"the settled open (the close of the {SETTLED_OPEN_BAR:%H:%M} bar) is not in yet")
         return
     last_day, last_bars, why = yesterdays_bars(scene)
     if last_bars is None:
-        unmeasured(why)
+        _unmeasured(ls, path, why)
         return
     open_at = datetime.combine(date.fromisoformat(scene.day), SETTLED_OPEN_BAR, tzinfo=ET) + ONE_MINUTE
     overnight = _overnight(Session(last_bars, scene.prior_markets.get(last_day)), against.today, bar_time(last_bars[-1]) + ONE_MINUTE,
                            open_at, names)
     missing = [s for s, _ in names if s not in overnight]
     if missing:
-        unmeasured(f"needs a price for {', '.join(missing)} at yesterday's close and at the settled open")
+        _unmeasured(ls, path, f"needs a price for {', '.join(missing)} at yesterday's close and at the settled open")
         return
     name, shock, rest = _gap_split(overnight, names, opened / float(last_bars[-1]["close"]) - 1.0, against.ruler.points / opened)
     prior = _prior_gap_splits(scene, names)
@@ -385,7 +387,7 @@ def _heavyweight_gap(against: AgainstIndex, names: list[tuple[str, float]], ls: 
     shock_rank, why = rank_sessions(abs(shock), [p for p, _ in prior], what)
     rest_rank, _ = rank_sessions(abs(rest), [r for _, r in prior], what)
     if shock_rank is None or rest_rank is None:
-        unmeasured(why)
+        _unmeasured(ls, path, why)
         return
     weight, ret = dict(names)[name], overnight[name]
     shocked = shock_rank.band == TOP_THIRD
@@ -497,14 +499,14 @@ def _pull_vs_rest(against: AgainstIndex, names: list[tuple[str, float]], index_m
 def _single_name(against: AgainstIndex, names: list[tuple[str, float]], ls: LabelSet) -> None:
     """The largest stocks' 10-minute moves, each ranked against its own at this minute: the one furthest past its
     own is a name shock when it is larger than every one of the prior sessions', and whether the other large
-    names went the same way by a top-third move of their own."""
+    names went the same way by a top-third move of their own; the gate wakes on a name shock."""
     path = "leaders.single_name_10m"
     span = minutes_back(against.scene.now, WINDOW_10_MIN)
     symbols = [s for s, _ in names]
     moves = {s: against.move(s, span) for s in symbols}
     missing = [s for s, m in moves.items() if m is None]
     if missing:
-        ls.omit(path, needs_move(missing, span))
+        _unmeasured(ls, path, needs_move(missing, span))
         return
     own = OwnMoves(against.scene, symbols, span)
     ranks: dict[str, SameClockRank] = {}
@@ -512,11 +514,11 @@ def _single_name(against: AgainstIndex, names: list[tuple[str, float]], ls: Labe
     for s in symbols:
         rank, why = own.rank(s, moves[s])
         if rank is None:
-            ls.omit(path, why)
+            _unmeasured(ls, path, why)
             return
         usual = statistics.median(own.sizes[s])
         if not usual:
-            ls.omit(path, f"{s}'s usual {span}-minute move at this minute is zero on the prior sessions")
+            _unmeasured(ls, path, f"{s}'s usual {span}-minute move at this minute is zero on the prior sessions")
             return
         ranks[s], times[s] = rank, abs(moves[s]) / usual
     name = max(symbols, key=lambda s: (ranks[s].share, times[s]))
@@ -532,3 +534,8 @@ def _single_name(against: AgainstIndex, names: list[tuple[str, float]], ls: Labe
                  f"this time of day, by size {rank.words()}, {'every one: a name shock' if shock else 'not every one: no name shock'}, "
                  f"worth {signed(against.sigma(weight * ret))} sigma of SPX at its {weight * 100:.1f}% weight; {joined}, {spreading}"
                  f"{against.ruler_note}")
+    if shock:
+        ls.wake(GATE_OF[path])
+    else:
+        ls.sleep(GATE_OF[path], f"none of the {len(names)} largest stocks moved more over the last {span} minutes than on every one of its "
+                                f"own recent sessions at this minute (the furthest, {name}, {rank.words()})")
