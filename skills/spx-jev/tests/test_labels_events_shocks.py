@@ -222,22 +222,24 @@ def test_a_release_whose_move_extends_past_the_extension_rule(scene_factory):
     state, _, gates = labels(reaction_scene(scene_factory, at(11, 32, JOLTS_DAY), 7722.0))
     assert state["event.reaction"] == (
         "the reaction starts at 10:00 with the Conference Board's consumer confidence report and the job openings report; in its "
-        "first 15 minutes price rose 0.16 normal-day sigma, larger than 10 of the last 10 sessions over the same 15 minutes, top "
-        "third; since then it pushed 0.06 normal-day sigma further the same way, past the 0.05 normal-day sigma extension rule, "
-        "and has given back none of it; this was scheduled economic data")
+        "first 15 minutes price rose 0.16 normal-day sigma, larger than 10 of the last 10 sessions over the same 15 minutes, each "
+        "in its own sigma, top third; since then it pushed 0.06 normal-day sigma further the same way, past the 0.05 normal-day "
+        "sigma extension rule, and has given back none of it; this was scheduled economic data")
     assert gates["move_reaction_path"] is None
 
 
 def test_the_reaction_rank_and_the_extension_and_half_lines_at_their_boundaries(scene_factory):
     now = at(11, 32, JOLTS_DAY)
     state, _, gates = labels(reaction_scene(scene_factory, now, 7711.5, first_end=7706.5))
-    assert "price rose 0.07 normal-day sigma, larger than 4 of the last 10 sessions over the same 15 minutes, middle third" in state["event.reaction"]
+    assert ("price rose 0.07 normal-day sigma, larger than 4 of the last 10 sessions over the same 15 minutes, each in its own sigma, "
+            "middle third") in state["event.reaction"]
     assert "pushed 0.05 normal-day sigma further the same way, short of the 0.05 normal-day sigma extension rule" in state["event.reaction"]
     assert gates["move_reaction_path"] is None
     state, _, gates = labels(reaction_scene(scene_factory, now, 7705.0, first_end=7705.0))
-    assert "price rose 0.05 normal-day sigma, larger than 3 of the last 10 sessions over the same 15 minutes, bottom third" in state["event.reaction"]
+    assert ("price rose 0.05 normal-day sigma, larger than 3 of the last 10 sessions over the same 15 minutes, each in its own sigma, "
+            "bottom third") in state["event.reaction"]
     assert gates["move_reaction_path"] == ("the first reaction moved 0.05 normal-day sigma, larger than 3 of the last 10 sessions over the same "
-                                           "15 minutes, bottom third")
+                                           "15 minutes, each in its own sigma, bottom third")
     held = labels(reaction_scene(scene_factory, now, 7708.0))[0]["event.reaction"]
     assert "it has given back 50% of it, within the half line, and has not crossed back through where the reaction started" in held
     faded = labels(reaction_scene(scene_factory, now, 7707.9))[0]["event.reaction"]
@@ -260,8 +262,9 @@ def test_on_a_fed_day_the_reaction_starts_at_the_press_conference(scene_factory)
     assert labels(s)[0]["event.reaction"] == (
         "the reaction starts at 14:30 with the Fed chair's press conference (the Fed's rate decision at 14:00 moved price 0.16 "
         "normal-day sigma in its first 15 minutes); in its first 15 minutes price fell 0.26 normal-day sigma, larger than 10 of "
-        "the last 10 sessions over the same 15 minutes, top third; since then it pushed 0.10 normal-day sigma further the same "
-        "way, past the 0.05 normal-day sigma extension rule, and has given back none of it; this was a scheduled Fed event")
+        "the last 10 sessions over the same 15 minutes, each in its own sigma, top third; since then it pushed 0.10 normal-day "
+        "sigma further the same way, past the 0.05 normal-day sigma extension rule, and has given back none of it; this was a "
+        "scheduled Fed event")
 
 
 def test_the_reaction_waits_for_its_first_fifteen_minutes_and_never_reads_a_later_bar(scene_factory):
@@ -300,21 +303,22 @@ def test_the_press_conference_went_the_other_way_from_the_statement(scene_factor
     s = fomc_scene(scene_factory, at(15, 2, FOMC_DAY), statement=7716.0, presser_end=7690.0, spot=7638.0)
     assert labels(s)[0]["event.statement_and_presser"] == (
         "in the 15 minutes after the Fed's 14:00 statement price rose 0.16 normal-day sigma, larger than 10 of the last 10 sessions "
-        "over the same minutes, top third; since the chair's press conference began at 14:30 price has fallen 0.62 normal-day "
-        "sigma, the other way, larger than 10 of the last 10 sessions over the same minutes, top third")
+        "over the same minutes, each in its own sigma, top third; since the chair's press conference began at 14:30 price has "
+        "fallen 0.62 normal-day sigma, the other way, larger than 10 of the last 10 sessions over the same minutes, each in its "
+        "own sigma, top third")
 
 
 def test_the_statement_and_the_press_conference_by_their_thirds(scene_factory):
     # the prior sessions moved 0.015 (k + 1) over the statement's 15 minutes and 0.032 (k + 1) over the 32 since 14:30
     now = at(15, 2, FOMC_DAY)
     quiet = labels(fomc_scene(scene_factory, now, statement=7705.0, presser_end=7690.0, spot=7686.0))[0]["event.statement_and_presser"]
-    assert ("price rose 0.05 normal-day sigma, larger than 3 of the last 10 sessions over the same minutes, bottom third; since the "
-            "chair's press conference began at 14:30 price has fallen 0.14 normal-day sigma, larger than 4 of the last 10 sessions over "
-            "the same minutes, middle third") in quiet
+    assert ("price rose 0.05 normal-day sigma, larger than 3 of the last 10 sessions over the same minutes, each in its own sigma, "
+            "bottom third; since the chair's press conference began at 14:30 price has fallen 0.14 normal-day sigma, larger than 4 of "
+            "the last 10 sessions over the same minutes, each in its own sigma, middle third") in quiet
     flat = labels(fomc_scene(scene_factory, now, statement=7706.5, presser_end=7705.0, spot=7710.0))[0]["event.statement_and_presser"]
-    assert "rose 0.07 normal-day sigma, larger than 4 of the last 10 sessions over the same minutes, middle third" in flat
+    assert "rose 0.07 normal-day sigma, larger than 4 of the last 10 sessions over the same minutes, each in its own sigma, middle third" in flat
     assert flat.endswith("price has risen 0.10 normal-day sigma, the same way, larger than 3 of the last 10 sessions over the same "
-                         "minutes, bottom third")
+                         "minutes, each in its own sigma, bottom third")
 
 
 def test_the_statement_and_presser_needs_a_fed_day_after_the_press_conference_began(scene_factory):
@@ -324,7 +328,7 @@ def test_the_statement_and_presser_needs_a_fed_day_after_the_press_conference_be
     # at 14:40 the 14:44 fall has not happened yet: price has not moved since the press conference began
     s = fomc_scene(scene_factory, at(14, 40, FOMC_DAY), statement=7716.0, presser_end=7690.0, spot=7638.0)
     assert labels(s)[0]["event.statement_and_presser"].endswith("price has not moved, larger than 0 of the last 10 sessions over the "
-                                                                "same minutes, bottom third")
+                                                                "same minutes, each in its own sigma, bottom third")
 
 
 # ---- news.morning_brief

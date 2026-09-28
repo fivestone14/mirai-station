@@ -230,7 +230,9 @@ def _window_rank(scene: Scene, size: float, start: datetime, end: datetime) -> t
 
 
 def _larger(rank: SameClockRank, minutes: str = "the same minutes") -> str:
-    return f"larger than {rank.higher_than} of the last {rank.of} sessions over {minutes}, {rank.band}"
+    """A reaction's rank in words, saying the prior sessions were each sized in their own sigma, not the normal-day sigma
+    today's move is given in."""
+    return f"larger than {rank.higher_than} of the last {rank.of} sessions over {minutes}, each in its own sigma, {rank.band}"
 
 
 def _reaction_kind(rows: list[Event]) -> str:
