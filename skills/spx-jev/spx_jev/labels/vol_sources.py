@@ -2,8 +2,8 @@
 diary series (the VIX, the straddle and the VIX curve through each day), and the lob-flow collector's raw
 0DTE tape, whose quotes rebuild the same-day skew.
 
-* Prior diaries. A same-clock rank of the straddle or the VIX curve needs each prior session's rows, and
-  the Scene keeps only each day's first. They are read here, only for days before the one being built,
+* Prior diaries. A same-clock rank of a diary measure (the VIX, same-day vol, the straddle, the VIX curve)
+  needs each prior session's rows, and the Scene keeps only each day's first. They are read here, only for days before the one being built,
   and kept for the process: a past day's file never changes.
 * The tape. ``state/lob_flow/raw/{day}/tape.jsonl`` (``tape.jsonl.gz`` once the collector archives the
   day): one line per 0DTE SPXW trade, with the quote it printed into. Lines land up to two hours out of
@@ -76,6 +76,13 @@ def point_at(points: Sequence[DiaryPoint], t: datetime) -> DiaryPoint | None:
     says where things stood before a gap in the diary, not at ``t``."""
     done = [p for p in points if p.ts <= t]
     return done[-1] if done and done[-1].ts >= t - ROW_MAX_GAP else None
+
+
+def prior_diary_by(state_dir: Path, then: datetime) -> tuple[DiaryPoint, ...]:
+    """A finished session's diary points stamped by ``then`` (a moment of that session, market time), as its
+    read at that minute had them; none when the newest is further than ROW_MAX_GAP from it (point_at)."""
+    points = tuple(p for p in prior_diary(state_dir, then.date().isoformat()) if p.ts <= then)
+    return points if point_at(points, then) is not None else ()
 
 
 # ----------------------------------------------------------------------------- the tape
