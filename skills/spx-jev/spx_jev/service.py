@@ -331,10 +331,15 @@ def calls_block(calls: list[dict]) -> dict:
 
 
 def tally_words(tally: dict) -> str:
-    """A close-out's tally in words: '0 of 1 committed calls right, 7 unsure', and what is still to grade."""
+    """A close-out's tally in the phone's words (jev-spx.html openingDone): '0 of 1 committed calls right,
+    7 unsure' when a pick was unsure, else '2 of 3 calls right', and what is still to grade."""
     unsure = tally.get("unsure", 0)
-    words = f"{tally['right']} of {tally['graded'] - unsure} committed calls right, {unsure} unsure"
-    return words + (f", {tally['calls'] - tally['graded']} still to grade" if tally["calls"] > tally["graded"] else "")
+    rest = f", {tally['calls'] - tally['graded']} still to grade" if tally["calls"] > tally["graded"] else ""
+    if unsure:
+        return f"{tally['right']} of {tally['graded'] - unsure} committed calls right, {unsure} unsure{rest}"
+    if not rest:
+        return f"{tally['right']} of {tally['calls']} calls right"
+    return f"{tally['right']} of {tally['graded']} graded calls right{rest}"
 
 
 def _stamp(lane: Lane, unit: dict | None, band: dict | None = None) -> dict:

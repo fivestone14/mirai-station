@@ -125,7 +125,8 @@ def test_an_unsure_pick_is_an_abstention_in_the_tally_and_its_words_never_a_wron
     assert tally == {"calls": 10, "graded": 8, "right": 0, "unsure": 7}
     assert service.tally_words(tally) == "0 of 1 committed calls right, 7 unsure, 2 still to grade"
     assert service.tally_words({**tally, "calls": 8}) == "0 of 1 committed calls right, 7 unsure"
-    assert service.tally_words({"calls": 3, "graded": 3, "right": 2}) == "2 of 3 committed calls right, 0 unsure"   # a card from before
+    assert service.tally_words({"calls": 3, "graded": 3, "right": 2}) == "2 of 3 calls right"   # a card from before
+    assert service.tally_words({"calls": 4, "graded": 3, "right": 2, "unsure": 0}) == "2 of 3 graded calls right, 1 still to grade"
 
 
 SCHEDULED = {"groups": [{"id": "g1", "reads": ["context"], "questions": {
