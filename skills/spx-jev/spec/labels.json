@@ -109,13 +109,13 @@
    "viewpoint": "space_time",
    "status": "built",
    "type": "count",
-   "from": "the minute bars, sigma",
-   "logic": "the last minute whose 10-minute close-to-close move reached the move rule, and how long ago",
-   "cut": "MOVE_RULE_SIGMA; under 10, 10 to 60, over 60 minutes",
-   "reads_as": "price last made a real move of 0.09 sigma within 10 minutes 11 minutes ago, between 10 and 60 minutes ago",
+   "from": "the minute bars, the morning anchor (rulers.sigma_anchor), the prior sessions' bars and morning rulers",
+   "logic": "each minute's 10-minute close-to-close move in sigma today, ranked against the same minute's 10-minute move on up to the last 20 prior sessions (ranks.rank_sessions, needing 10), each in its own morning ruler, sessions whose ruler was estimated left out; the newest minute in the top third, and how long ago it finished; omitted when no minute today has 10 sessions to rank against",
+   "cut": "top third of the same 10 minutes on the prior sessions; under 10, 10 to 60, over 60 minutes",
+   "reads_as": "price last made a strong 10-minute move for its minute within the last minute, under 10 minutes ago: 0.11 sigma, larger than 19 of the last 19 sessions at that minute, top third",
    "real": {
-    "at": "2026-09-25 12:45",
-    "sentence": "price last made a real move of 0.09 sigma within 10 minutes 11 minutes ago, between 10 and 60 minutes ago"
+    "at": "2026-09-25 12:32",
+    "sentence": "price last made a strong 10-minute move for its minute within the last minute, under 10 minutes ago: 0.11 sigma, larger than 19 of the last 19 sessions at that minute, top third"
    }
   },
   {
@@ -125,11 +125,11 @@
    "type": "distance",
    "from": "spot, the minute bars, the morning anchor, the prior sessions' bars",
    "logic": "(spot - close 30 minutes ago) / the morning anchor; its size ranked against the same half hour of the prior sessions; where the half hour closed in its own range",
-   "cut": "MOVE_RULE_SIGMA, MOVE_STRONG_SIGMA; TOP_FIFTH, BOTTOM_FIFTH",
-   "reads_as": "over the last 30 minutes price stayed within 0.09 sigma of where it was, moving -0.05 sigma; bigger than 5 of the last 19 sessions in this half hour; the half hour closed between the top and bottom fifths of its own range",
+   "cut": "thirds of the same 30 minutes on the prior sessions (ranks.move_rank); TOP_FIFTH, BOTTOM_FIFTH",
+   "reads_as": "over the last 30 minutes price rose 0.13 sigma, larger than 16 of the last 19 sessions at this minute, top third: a strong move; the half hour closed between the top and bottom fifths of its own range",
    "real": {
-    "at": "2026-09-25 12:45",
-    "sentence": "over the last 30 minutes price stayed within 0.09 sigma of where it was, moving -0.05 sigma; bigger than 5 of the last 19 sessions in this half hour; the half hour closed between the top and bottom fifths of its own range"
+    "at": "2026-09-25 12:32",
+    "sentence": "over the last 30 minutes price rose 0.13 sigma, larger than 16 of the last 19 sessions at this minute, top third: a strong move; the half hour closed between the top and bottom fifths of its own range"
    }
   },
   {
@@ -153,11 +153,11 @@
    "type": "distance",
    "from": "spot, vwap, the morning anchor, today's bars",
    "logic": "(spot - vwap) / the morning anchor; the minutes since a finished bar's range last spanned vwap",
-   "cut": "MOVE_RULE_SIGMA, VWAP_STRETCH_SIGMA",
-   "reads_as": "price is 0.25 sigma above the day's volume-weighted average price, more than the 0.09 sigma move rule, past the 0.25 sigma stretch line; it last traded at the average 45 minutes ago",
+   "cut": "thirds of the same distance on the prior sessions' diary rows at this minute",
+   "reads_as": "price is 0.32 sigma above the day's volume-weighted average price, further from it than 17 of the last 18 sessions at this minute, top third: far from it; it last traded at the average 35 minutes ago",
    "real": {
-    "at": "2026-09-25 12:45",
-    "sentence": "price is 0.25 sigma above the day's volume-weighted average price, more than the 0.09 sigma move rule, past the 0.25 sigma stretch line; it last traded at the average 45 minutes ago"
+    "at": "2026-09-25 12:32",
+    "sentence": "price is 0.32 sigma above the day's volume-weighted average price, further from it than 17 of the last 18 sessions at this minute, top third: far from it; it last traded at the average 35 minutes ago"
    }
   },
   {
@@ -167,11 +167,11 @@
    "type": "distance",
    "from": "spot, prior_close, the morning anchor",
    "logic": "(spot - prior close) / the morning anchor",
-   "cut": "DAY_SIDE_SIGMA",
-   "reads_as": "price is 0.52 sigma above yesterday's close, more than the 0.20 sigma day-side rule",
+   "cut": "thirds of the same distance on the prior sessions' diary rows at this minute",
+   "reads_as": "price is 0.53 sigma above yesterday's close, further from it than 9 of the last 18 sessions at this minute, middle third: away from it",
    "real": {
-    "at": "2026-09-25 12:45",
-    "sentence": "price is 0.52 sigma above yesterday's close, more than the 0.20 sigma day-side rule"
+    "at": "2026-09-25 12:32",
+    "sentence": "price is 0.53 sigma above yesterday's close, further from it than 9 of the last 18 sessions at this minute, middle third: away from it"
    }
   },
   {
@@ -249,13 +249,13 @@
    "viewpoint": "history",
    "status": "built",
    "type": "rank",
-   "from": "today's bars, the last 5 sessions' bars",
-   "logic": "today's range over its open against the same clock time on each prior session",
-   "cut": "thirds; needs MIN_RANGE_SESSIONS",
-   "reads_as": "today's range so far is in the top third of the last 5 sessions at this time of day, larger than 4 of them",
+   "from": "today's bars, up to the last NIGHT_RANK_COUNT sessions' bars",
+   "logic": "today's range over its open against the same share at the same clock time on each prior session, ranked (ranks.rank_sessions)",
+   "cut": "rank against the same minute on up to the last NIGHT_RANK_COUNT sessions, thirds; needs SAME_CLOCK_MIN_SESSIONS",
+   "reads_as": "today's range so far is 0.73% of its opening price, larger than 17 of the last 20 sessions at this time of day, top third",
    "real": {
     "at": "2026-09-25 12:45",
-    "sentence": "today's range so far is in the top third of the last 5 sessions at this time of day, larger than 4 of them"
+    "sentence": "today's range so far is 0.73% of its opening price, larger than 17 of the last 20 sessions at this time of day, top third"
    }
   },
   {
@@ -433,11 +433,11 @@
    "type": "share",
    "from": "dex_views.dex_above_spot (the 0-to-7-day books)",
    "logic": "dealers' delta at strikes above price against below",
-   "cut": "EVEN_SPLIT_LOW, EVEN_SPLIT_HIGH",
-   "reads_as": "63% of the directional exposure across the 0-to-7-day books, under the usual assumption that dealers hold the calls and are short the puts, sits at strikes below price, past the 40%-60% even band",
+   "cut": "none: ranks.rank_sessions against the same share at this minute on up to the last 20 sessions' diary rows, needing SAME_CLOCK_MIN_SESSIONS; thirds",
+   "reads_as": "37% of the directional exposure across the 0-to-7-day books, under the usual assumption that dealers hold the calls and are short the puts, sits at strikes above price, a larger share than on 5 of the last 18 sessions at this minute, bottom third: more of it below price than usual",
    "real": {
     "at": "2026-09-25 12:45",
-    "sentence": "63% of the directional exposure across the 0-to-7-day books, under the usual assumption that dealers hold the calls and are short the puts, sits at strikes below price, past the 40%-60% even band"
+    "sentence": "37% of the directional exposure across the 0-to-7-day books, under the usual assumption that dealers hold the calls and are short the puts, sits at strikes above price, a larger share than on 5 of the last 18 sessions at this minute, bottom third: more of it below price than usual"
    }
   },
   {
@@ -517,7 +517,7 @@
    "type": "rank",
    "from": "the lob-flow collector's per-minute record, state/lob_flow/agg/{day}.jsonl (today's 0DTE SPXW trades over the last 15 minutes, each signed by where it printed inside the quote), today and the prior sessions",
    "logic": "the delta-weighted tilt from buying puts and selling calls (-1) to buying calls and selling puts (+1), with the share of the flow whose side could be told, placed against the same minute on the prior sessions; omitted when the newest reading is more than OPTIONS_TAPE_MAX_AGE_MIN old",
-   "cut": "thirds; needs MIN_RANK_SESSIONS",
+   "cut": "thirds against up to the last 20 sessions; needs SAME_CLOCK_MIN_SESSIONS",
    "reads_as": "over the last 15 minutes the 0DTE options tape leaned toward buying calls and selling puts, a tilt of +0.05 on a scale from -1 to +1 with each trade weighted by its delta, resting on the 60% of that flow whose side could be told; in the top third for this minute, higher than 8 of 10 prior sessions",
    "real": {
     "at": "2026-09-24 09:45",
@@ -729,7 +729,7 @@
    "type": "rank",
    "from": "the bars since the last read, the prior sessions' bars at the same minutes",
    "logic": "the stretch's high-low range placed against the same clock minutes on the prior sessions",
-   "cut": "thirds; needs MIN_RANK_SESSIONS",
+   "cut": "thirds against the same minutes on up to the last NIGHT_RANK_COUNT sessions (rank_at_slot); needs SAME_CLOCK_MIN_SESSIONS",
    "reads_as": "the range since the open, 20 minutes ago, is 22.5 points, 3.43 tape units (one is 6.6 points), in the middle third for this minute, higher than 13 of 20 prior sessions",
    "real": {
     "at": "2026-09-25 09:50 on the bar clock",

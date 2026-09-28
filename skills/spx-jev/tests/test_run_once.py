@@ -7,7 +7,7 @@ from datetime import datetime
 
 import pytest
 
-from conftest import DAY, at, flat_bars, make_row, write_state
+from conftest import DAY, PRIOR_DAYS, at, flat_bars, make_row, write_prior_rows, write_state
 from spx_jev import archive, service
 from spx_jev.service import run_once
 
@@ -26,7 +26,11 @@ BARE_CLOCK = re.compile(r"^\d\d:\d\d$")
 
 
 def _state(tmp_path, rows, n_bars):
-    return write_state(tmp_path, DAY, rows, flat_bars(n_bars), {d: flat_bars(390, day=d) for d in ("2026-09-16", "2026-09-17")})
+    """The day's rows and bars over ten flat prior sessions, each with a trusted morning ruler, so the moves the
+    questions read are ranked against the same minute."""
+    prior = {d: flat_bars(390, day=d) for d in PRIOR_DAYS}
+    write_prior_rows(tmp_path, {d: [make_row(at(9, 31, day=d), 7700.0)] for d in prior})
+    return write_state(tmp_path, DAY, rows, flat_bars(n_bars), prior)
 
 
 def _answers(failing=()):

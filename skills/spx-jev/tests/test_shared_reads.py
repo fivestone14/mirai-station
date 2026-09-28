@@ -12,7 +12,7 @@ import pytest
 from conftest import DAY, at, bars_from_closes, context_line, flat_bars, make_row, prior_sessions, write_state
 from spx_jev.cuts import MIN_RANK_SESSIONS, NIGHT_RANK_COUNT, SAME_CLOCK_MIN_SESSIONS
 from spx_jev.labels.measures import move_size, path_efficiency, session_extremes, settled_open
-from spx_jev.labels.ranks import (move_rank, rank_against, rank_sessions, same_clock_market, same_clock_values, tick_bands_by_minute,
+from spx_jev.labels.ranks import (move_rank, rank_sessions, same_clock_market, same_clock_values, tick_bands_by_minute,
                                   tick_bursts)
 from spx_jev.labels.rulers import (SigmaRuler, morning_ruler, normal_day_sigma, remaining_straddles, sigma_anchor, sigma_live,
                                    straddle_left)
@@ -70,7 +70,7 @@ def test_the_normal_day_sigma_is_the_median_of_trusted_anchors(scene_factory):
 # ---- the same-clock rank
 
 def test_a_value_is_ranked_against_the_same_minute_of_trusted_sessions(scene_factory):
-    prior = prior_sessions(8)
+    prior = prior_sessions(12)
     now = at(11, 0, ss=30)
     days = list(prior)
     rulers = {d: SigmaRuler(75.0, "anchor") for d in days}
@@ -82,12 +82,13 @@ def test_a_value_is_ranked_against_the_same_minute_of_trusted_sessions(scene_fac
         seen.append((then, len(bars), sigma))
         return float(bars[-1]["close"]) / sigma
     values = same_clock_values(scene, last_close_in_sigma)
-    assert len(values) == 7 and all(n == 90 and s == 75.0 for _, n, s in seen)       # 09:30..10:59 finished by 11:00:30
+    assert len(values) == 11 and all(n == 90 and s == 75.0 for _, n, s in seen)      # 09:30..10:59 finished by 11:00:30
     assert seen[0][0].isoformat() == f"{days[1]}T11:00:30-04:00"
-    rank = rank_against(max(values) + 1, values)
-    assert (rank.higher_than, rank.of, rank.share) == (7, 7, 1.0)
-    assert rank.words() == "higher than 7 of the last 7 sessions at this minute"
-    assert rank_against(1.0, values[:MIN_RANK_SESSIONS - 1]) is None
+    rank, _ = rank_sessions(max(values) + 1, values, "a close")
+    assert (rank.higher_than, rank.of, rank.share) == (11, 11, 1.0)
+    assert rank.words() == "higher than 11 of the last 11 sessions at this minute"
+    assert rank_sessions(1.0, values[:SAME_CLOCK_MIN_SESSIONS - 1], "a close") == (
+        None, f"its rank needs {SAME_CLOCK_MIN_SESSIONS} prior sessions with a close, have {SAME_CLOCK_MIN_SESSIONS - 1}")
 
 
 

@@ -455,7 +455,7 @@ def test_the_prior_sessions_read_from_the_overnight_store_as_from_their_market_c
 def test_a_session_read_leaves_the_premarket_labels_alone(full_scene):
     ls = build_bitcoin_labels(full_scene)
     assert ls.paths() == set(SESSION) and set(ls.gates) == {GATE_OF[p] for p in SESSION}
-    assert ls.omitted["xasset.btc_five_day"] == "no overnight store to read bitcoin's session closes from"
+    assert ls.omitted["xasset.btc_five_day"] == "needs 5 daily moves of /MBT and $SPX on one contract to know the usual multiple, have 0"
 
 
 # ---- in the session: the last five sessions -------------------------------------------------------

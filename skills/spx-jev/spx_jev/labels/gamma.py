@@ -67,13 +67,13 @@ def build_gamma_labels(scene: Scene) -> LabelSet:
     near = _air_to_wall(scene, ls)
     _wall_thickness(gv, near, ls)
     _heaviest_strike_grip(gv, ls)
-    _delta_weight_side(scene, ls)
     _expiry_roll(scene, ls)
     _ladder_state(scene, ls)
     _wall_touch_volume(scene, ls)
     ruler = sigma_anchor(scene)
     earlier = _row_minutes_ago(scene, WINDOW_30_MIN)
     prior = prior_books(scene)
+    _delta_weight_side(scene, prior, ls)
     _book_balance(scene, gv, ruler, ls)
     _balance_vs_yesterday(scene, gv, ls)
     _flip_distance(scene, gv, ruler, earlier, prior, ls)
@@ -141,21 +141,6 @@ def _heaviest_strike_grip(gv: dict, ls: LabelSet) -> None:
             f"spread thin, below the {pct(GRIP_SPREAD_SHARE)} cut" if top < GRIP_SPREAD_SHARE else
             f"middling, between the {pct(GRIP_SPREAD_SHARE)} and {pct(GRIP_CONCENTRATED_SHARE)} cuts")
     ls.put("gex.heaviest_strike_grip", f"the single heaviest strike of today's 0DTE book holds {pct(top)} of its weight, {band}")
-
-
-def _delta_weight_side(scene: Scene, ls: LabelSet) -> None:
-    above = (scene.row.get("dex_views") or {}).get("dex_above_spot")
-    if not is_num(above):
-        ls.omit("gex.delta_weight_side", "row carries no delta split")
-        return
-    exposure = f"the directional exposure across the 0-to-7-day books, {DEALERS},"
-    band = f"the {pct(EVEN_SPLIT_LOW)}-{pct(EVEN_SPLIT_HIGH)} even band"
-    if above >= EVEN_SPLIT_HIGH:
-        ls.put("gex.delta_weight_side", f"{pct(above)} of {exposure} sits at strikes above price, past {band}")
-    elif above < EVEN_SPLIT_LOW:
-        ls.put("gex.delta_weight_side", f"{pct(1.0 - above)} of {exposure} sits at strikes below price, past {band}")
-    else:
-        ls.put("gex.delta_weight_side", f"{exposure} splits {pct(above)} above price and {pct(1.0 - above)} below, inside {band}")
 
 
 def _expiry_roll(scene: Scene, ls: LabelSet) -> None:
@@ -452,6 +437,25 @@ def _weight_both_books(scene: Scene, gv: dict, prior: list[PriorBook] | None, ls
     ls.put("gex.weight_both_books", f"today's same-day options gamma has {pct(today)} of it above price, {_share_words(today_rank)}; "
                                     f"the 1-to-7-day book (today's expiry excluded) has {pct(week)} of it above price, "
                                     f"{_share_words(week_rank, also)}")
+
+
+def _delta_share(book: PriorBook) -> float | None:
+    above = (book.row.get("dex_views") or {}).get("dex_above_spot")
+    return float(above) if is_num(above) else None
+
+
+def _delta_weight_side(scene: Scene, prior: list[PriorBook] | None, ls: LabelSet) -> None:
+    """The share of dealers' delta at strikes above price, ranked against the same share at this minute on the prior sessions."""
+    above = (scene.row.get("dex_views") or {}).get("dex_above_spot")
+    if not is_num(above):
+        ls.omit("gex.delta_weight_side", "row carries no delta split")
+        return
+    rank, no_rank = _book_rank(prior, float(above), _delta_share, "a delta split")
+    if rank is None:
+        ls.omit("gex.delta_weight_side", no_rank)
+        return
+    ls.put("gex.delta_weight_side", f"{pct(above)} of the directional exposure across the 0-to-7-day books, {DEALERS}, sits at strikes "
+                                    f"above price, {_share_words(rank)}")
 
 
 def _grip(book: PriorBook) -> float | None:

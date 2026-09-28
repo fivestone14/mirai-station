@@ -2,10 +2,9 @@
 
 SPX's size swings with the clock (the 09:30-10:30 range runs about twice the afternoon's), so a size is
 judged against what the same minute looked like on up to the last 20 sessions, never against a fixed
-cut: "higher than 17 of the last 20 sessions at this minute, top third". A rank needs at least
-MIN_RANK_SESSIONS sessions; the owner's rule for every threshold that sizes or judges a market measure
-(rank_sessions) takes up to the last NIGHT_RANK_COUNT sessions and needs SAME_CLOCK_MIN_SESSIONS of them,
-else the label is omitted with the reason. A session whose morning ruler was estimated
+cut: "higher than 17 of the last 20 sessions at this minute, top third". The owner's rule for every
+threshold that sizes or judges a market measure (rank_sessions) takes up to the last NIGHT_RANK_COUNT
+sessions and needs SAME_CLOCK_MIN_SESSIONS of them, else the label is omitted with the reason. A session whose morning ruler was estimated
 (rulers.morning_ruler) is left out of every rank whose base is built on rank_days or same_clock_values:
 the sigma-scaled measures and the diary's own. The tape, breadth and SPY ranks, whose measures the ruler
 never touches, keep every session (same_clock_market).
@@ -16,7 +15,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time
 from typing import TYPE_CHECKING, Callable
 
-from ..cuts import BOTTOM_FIFTH, MIN_RANK_SESSIONS, NIGHT_RANK_COUNT, SAME_CLOCK_MIN_SESSIONS, TICK_BURST_PCT, TOP_FIFTH
+from ..cuts import BOTTOM_FIFTH, NIGHT_RANK_COUNT, SAME_CLOCK_MIN_SESSIONS, TICK_BURST_PCT, TOP_FIFTH
 from .measures import ET, ONE_MINUTE, bar_time, move_size
 from .words import third
 
@@ -42,14 +41,6 @@ class SameClockRank:
 
     def words(self) -> str:
         return f"higher than {self.higher_than} of the last {self.of} sessions at this minute"
-
-
-def rank_against(value: float, base: list[float]) -> SameClockRank | None:
-    """``value`` against one number per prior session; None under MIN_RANK_SESSIONS sessions, too thin to
-    rank, so the label is omitted and its question skipped rather than guessed."""
-    if len(base) < MIN_RANK_SESSIONS:
-        return None
-    return SameClockRank(sum(1 for b in base if b < value), len(base))
 
 
 def rank_sessions(value: float, base: list[float], what: str) -> tuple[SameClockRank | None, str | None]:

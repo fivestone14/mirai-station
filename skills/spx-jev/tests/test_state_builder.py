@@ -8,7 +8,7 @@ import pytest
 
 from conftest import (DAY, SECTORS, at, bars_from_closes, context_line, flat_bars, make_row, measured, options_tape_at,
                       prior_sessions, write_state)
-from spx_jev.cuts import (IV_FLAT_BAND_PTS, MOVE_RULE_SIGMA, MOVE_STRONG_SIGMA, TAPE_BIG_UNITS, TAPE_FLAT_UNITS, WALL_NEAR_SIGMA,
+from spx_jev.cuts import (IV_FLAT_BAND_PTS, TAPE_BIG_UNITS, TAPE_FLAT_UNITS, WALL_NEAR_SIGMA,
                            WALL_TOUCH_SIEGE_PERCENTILE)
 from spx_jev.labels.registry import build_labels
 from spx_jev.labels.rulers import ruler
@@ -22,13 +22,12 @@ def _labels(scene):
     return labels.state, measured(labels.omitted)
 
 
-def test_the_30_minute_move_is_judged_against_the_move_rule(scene_factory):
-    now = at(11, 0, ss=5)
-    up = MOVE_RULE_SIGMA * SIGMA * 1.5
-    state, _ = _labels(scene_factory(now, bars_from_closes([7700.0] * 60 + [7700.0 + up] * 30)))
-    assert state["price"]["recent_move"].startswith(f"over the last 30 minutes price rose {up / SIGMA:.2f} sigma, more than the {MOVE_RULE_SIGMA} sigma move rule")
-    state, _ = _labels(scene_factory(now, flat_bars(90)))
-    assert state["price"]["recent_move"].startswith(f"over the last 30 minutes price stayed within {MOVE_RULE_SIGMA} sigma")
+def test_the_30_minute_move_is_ranked_against_the_same_minute(full_scene, scene_factory):
+    state, _ = _labels(full_scene)
+    assert state["price"]["recent_move"].startswith("over the last 30 minutes price rose 0.40 sigma, larger than 10 of the last 10 sessions "
+                                                    "at this minute, top third: a strong move")
+    state, omitted = _labels(scene_factory(at(11, 0, ss=5), flat_bars(90)))
+    assert omitted["price.recent_move"] == "its rank needs 10 prior sessions with a 30-minute move at this minute, have 0"
     # the quiet read is a fact the momentum questions answer "no move" to, not a gap
     assert "no move to judge" in state["momentum"]["closes"] and "no move to judge" in state["momentum"]["path_efficiency"]
 
@@ -50,8 +49,9 @@ def test_only_finished_bars_count(scene_factory):
 def test_the_figures_behind_the_situation_labels(full_scene):
     figures = build_labels(full_scene).figures
     assert set(figures) == {"price.recent_move", "price.vs_vwap", "gex.air_to_wall", "iv.trend_30min"}
-    assert figures["price.recent_move"] == {"kind": "signed", "value": 0.4, "band": MOVE_RULE_SIGMA, "strong": MOVE_STRONG_SIGMA, "unit": "sigma",
-                                            "verdict": "rising"}
+    # every prior session moved about 0.38 sigma in this half hour, so its bottom and top thirds meet there
+    assert figures["price.recent_move"] == {"kind": "signed", "value": 0.4, "band": 0.38, "strong": 0.38, "unit": "sigma", "verdict": "rising"}
+    assert figures["price.vs_vwap"]["verdict"] == "above" and figures["price.vs_vwap"]["band"] == 0.107
     assert figures["gex.air_to_wall"]["near"] == WALL_NEAR_SIGMA and figures["gex.air_to_wall"]["verdict"] == "heavy_strike_close"
     assert figures["iv.trend_30min"]["band"] == IV_FLAT_BAND_PTS and figures["iv.trend_30min"]["unit"] == "vol points"
 

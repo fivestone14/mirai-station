@@ -34,9 +34,9 @@ from datetime import date, datetime, time, timedelta
 from functools import lru_cache
 from pathlib import Path
 
-from ..cuts import (BIG_MIN_PRINTS, BOTTOM_FIFTH, BUSIEST_STRIKE_SHARE, DEFENSE_MIN_EVENTS, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, FLOW_LEAN_RANK,
-                    HALF_RANK, NIGHT_RANK_COUNT, SAME_CLOCK_MIN_SESSIONS, SPY_SPREAD_TIGHT, THIN_VOLUME_PCT, TOP_FIFTH, TURNOVER_HIGH,
-                    TURNOVER_LOW, WINDOW_10_MIN, WINDOW_30_MIN)
+from ..cuts import (BIG_MIN_PRINTS, BIG_PRINT_PCT, BOTTOM_FIFTH, BUSIEST_STRIKE_SHARE, DEFENSE_MIN_EVENTS, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW,
+                    FLOW_LEAN_RANK, HALF_RANK, NIGHT_RANK_COUNT, SAME_CLOCK_MIN_SESSIONS, SPY_SPREAD_TIGHT, THIN_VOLUME_PCT, TOP_FIFTH,
+                    TURNOVER_HIGH, TURNOVER_LOW, WINDOW_10_MIN, WINDOW_30_MIN)
 from ..row_adapter import labeller_row
 from ..state_builder import (ET, OPTIONS_TAPE_MAX_AGE_MIN, OPTIONS_TAPE_SUBDIR, OPTIONS_TAPE_WINDOW_MIN, ROWS_SUBDIR, Scene, load_jsonl,
                              parse_ts)
@@ -61,9 +61,6 @@ MULTI_LEG_CONDITIONS = range(130, 145)   # OPRA's multi-leg and stock-option tra
 AT_MID_TOLERANCE = 1e-6
 # The premium burst's window: the opening lane reads every 5 minutes, so a burst is the stretch since the last read.
 BURST_WINDOW_MIN = 5
-# A large trade is one at or above the size this share of the single trades in the same minutes stayed at or under on
-# the recent sessions: the largest one in a thousand, 40 to 60 lots at the open, some 10 to 30 trades in 10 minutes.
-BIG_PRINT_PCT = 0.999
 TAPE_LABELS = ("options.big_prints_10", "options.flow_lean_30", "options.premium_burst_5m", "options.premium_pace_30")
 # The diary writes a row about every 75 seconds: one further than this before the moment it stands for means the scanner paused.
 ROW_SLACK_MIN = 5

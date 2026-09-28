@@ -5,11 +5,11 @@ overnight.price_vs_range); the premarket lane's overnight labels are labels/prem
 Every distance is in the morning anchor (rulers.sigma_anchor), and a sentence measured on an estimated
 anchor says so. The gap is the settled open (the 09:34 close) against the row's ``prior_close``, and its
 size is ranked in thirds against the same gap on the prior sessions, never against a fixed cut: a real gap
-is one above the bottom third. The open's crossings are ranked in thirds against the same count to this
-minute on the prior sessions, and whether price has moved away from the settled open is judged in today's
-tape unit (rulers.ruler), not a fixed cut either. Each label's sentence, how it is computed and its source
-are in spec/question_set.json ``labels``; the overnight range labels wait for a session read of the
-overnight store (DARK).
+is one above the bottom third. The open's crossings and how one-way its path has been are ranked in thirds
+against the same to this minute on the prior sessions, and whether price has moved away from the settled
+open is judged in today's tape unit (rulers.ruler), not a fixed cut either. Each label's sentence, how it is
+computed and its source are in spec/question_set.json ``labels``; the overnight range labels wait for a
+session read of the overnight store (DARK).
 """
 from __future__ import annotations
 
@@ -21,13 +21,13 @@ from ..cuts import (GAP_HALF_SHARE, GAP_TOUCH_SIGMA, GIVEBACK_THIRD, NOISE_EDGE_
 from ..state_builder import Scene, first_row
 from .label_set import LabelSet
 from .measures import (ET, ONE_MINUTE, SETTLED_OPEN_BAR, bar_time, bars_between, bars_finished_between, close_at, day_high_low,
-                       is_num, session_extremes, settled_open)
+                       is_num, path_efficiency, session_extremes, settled_open)
 from .ranks import SameClockRank, rank_days, rank_sessions, same_clock_values
 from .rulers import NO_ANCHOR, RULER_HOLD_UNTIL, SigmaRuler, ruled, ruler, sigma_anchor, typical_move
 from .words import above_or_below, minutes_ago, pct, plural, sig, third
 
 LABELS = ("gap.size", "gap.fill_progress", "gap.morning_vs_gap", "gap.reach_distance",
-          "open.fresh_extreme", "open.noise_band", "open.path", "open.settled_open_crosses",
+          "open.chop", "open.fresh_extreme", "open.noise_band", "open.path", "open.settled_open_crosses",
           "overnight.price_vs_range", "overnight.range")
 GATES = ("gap_fill_next_hour",)
 NO_OVERNIGHT = ("the overnight store (state/spx_jev/overnight/, saved at 09:26 ET) holds /ES's bars, "
@@ -43,8 +43,9 @@ LATE_MORNING = time(11, 30)
 OPENING_LANE_WINDOW_MIN = 5
 # The opening range the fresh-extreme label places price against: the first 15 minutes.
 OPENING_RANGE_MIN = 15
-# The open's crossings in the words of their thirds, as the question names them.
+# The open's crossings and its path in the words of their thirds, as the questions name them.
 CROSS_WORDS = {"bottom": "one-sided", "middle": "some crossing", "top": "contested"}
+CHOP_WORDS = {"bottom": "choppy", "middle": "mixed", "top": "one-way"}
 
 
 def build_gap_open_labels(scene: Scene) -> LabelSet:
@@ -60,6 +61,7 @@ def build_gap_open_labels(scene: Scene) -> LabelSet:
     _path(scene, anchor, gap, ls)
     prior_opens = _prior_opens(scene)
     _settled_open_crosses(scene, anchor, prior_opens, ls)
+    _chop(scene, anchor, prior_opens, ls)
     return ls
 
 
@@ -433,11 +435,16 @@ class OpenSoFar:
     settled_open: float
     since: list[dict]
 
+    @property
+    def closes(self) -> list[float]:
+        """The path from the settled open: the 09:34 close, then each close since."""
+        return [self.settled_open, *(float(b["close"]) for b in self.since)]
+
 
 def _prior_opens(scene: Scene) -> list[OpenSoFar]:
-    """Each prior session's open to this read's clock minute, newest first: the base the open's crossings are
-    ranked on. A crossing count is the day's own price, which no ruler scales, so every session with a settled
-    open and a finished bar after it counts, its ruler estimated or not."""
+    """Each prior session's open to this read's clock minute, newest first: the base the open's crossings and
+    its path are ranked on. A crossing count and a path's efficiency are the day's own price, which no ruler
+    scales, so every session with a settled open and a finished bar after it counts, its ruler estimated or not."""
     clock = scene.now.astimezone(ET).time()
     out = []
     for day, bars in scene.prior_bars.items():
@@ -469,3 +476,37 @@ def _settled_open_crosses(scene: Scene, anchor: SigmaRuler | None, prior: list[O
            f"price sits {sig(abs(d))} {above_or_below(d)} the settled open; since it was set {_minutes_since_settled(scene)} ago price has "
            f"{_crossed(n)}, {_beats(rank, 'more often')} had by this minute, {rank.band}: {CROSS_WORDS[third(rank.share)]}"))
 
+
+def _chop(scene: Scene, anchor: SigmaRuler | None, prior: list[OpenSoFar], ls: LabelSet) -> None:
+    """How one-way the path from the settled open has been: its net move over the distance its 1-minute closes
+    travelled (measures.path_efficiency), ranked against the same path to this minute on the prior sessions,
+    the bottom third choppy, the top one-way; the crossings of the open are said beside it as a fact."""
+    so, since = settled_open(scene.bars), _since_settled(scene)
+    if scene.now < scene.session_open.replace(hour=RULER_HOLD_UNTIL.hour, minute=RULER_HOLD_UNTIL.minute):
+        ls.omit("open.chop", f"the path since the open is judged from {RULER_HOLD_UNTIL:%H:%M}, when ten minutes of it exist")
+        return
+    if so is None or not since:
+        ls.omit("open.chop", "no finished bar after the settled open yet")
+        return
+    if anchor is None:
+        ls.omit("open.chop", NO_ANCHOR)
+        return
+    path = OpenSoFar(so, since)
+    efficiency = path_efficiency(path.closes)
+    if efficiency is None:
+        ls.omit("open.chop", "price has not moved from the settled open, so there is no path to judge")
+        return
+    base = [e for o in prior if (e := path_efficiency(o.closes)) is not None]
+    rank, no_rank = rank_sessions(efficiency, base, "bars from their settled open to this minute")
+    if rank is None:
+        ls.omit("open.chop", no_rank)
+        return
+    closes = path.closes
+    net = (closes[-1] - so) / anchor.points
+    travelled = sum(abs(b - a) for a, b in zip(closes[:-1], closes[1:])) / anchor.points
+    ls.put("open.chop", ruled(
+           anchor,
+           f"since the settled open {_minutes_since_settled(scene)} ago price travelled {sig(travelled)} to end {sig(abs(net))} "
+           f"{above_or_below(net)} it (path efficiency {efficiency:.2f}, the net move over the distance travelled) and "
+           f"{_crossed(_crosses(since, so))}; that path is {_beats(rank, 'more one-way')} at this minute, "
+           f"{rank.band}: {CHOP_WORDS[third(rank.share)]}"))

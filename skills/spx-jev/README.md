@@ -18,10 +18,13 @@ Its seven jobs are in `runtime/launchd/` and go live with the checklist in
 "Going live".
 
 JEV reads words and cannot compare numbers. So every comparison happens here,
-in code, and is written out as a sentence with its threshold in it:
+in code, and is written out as a sentence with what it was judged against in it. A size is never judged
+on a fixed line: it is ranked against the same measure at the same minute on up to the last 20 sessions,
+needing 10 of them, and said by its third:
 
-    price.recent_move = "over the last 30 minutes price rose 0.14 sigma, more than the 0.09 sigma move rule and
-                         short of the 0.20 sigma strong line; the half hour closed in the top fifth of its own range"
+    price.recent_move = "over the last 30 minutes price rose 0.13 sigma, larger than 16 of the last 19 sessions
+                         at this minute, top third: a strong move; the half hour closed between the top and
+                         bottom fifths of its own range"
 
 Sigma is the day's expected move for the S&P 500 index, so every distance is
 a share of a normal day. A question points at that label by name, and JEV
@@ -120,11 +123,13 @@ archive there too, under `archive/`.
 - **Every cut from SPX.** Each measured cut sits at the same percentile of
   the same measurement on SPX history as SNDK's cut sits on SNDK's history, so
   it keeps SNDK's meaning without SNDK's scale; SPX's intraday moves are small
-  against its sigma, so most land near half of SNDK's (the move rule is 0.09
-  sigma, the 30-minute flat band 0.07). The sums' base rates are counted on
-  SPX. `python3 spec/measure_cuts.py` re-measures, read only.
+  against its sigma, so most land near half of SNDK's (the 30-minute flat band
+  is 0.07 sigma). The sums' base rates are counted on SPX. `python3
+  spec/measure_cuts.py` re-measures, read only. These cuts grade the sums and
+  word the facts only the phone shows; nothing JEV is asked sizes a market
+  measure on one (the owner's rule, 2026-09-27).
 - **Thresholds in the words, from one number.** The question docs name their
-  thresholds in braces ("{move_rule_sigma}"); a name the code does not define
+  thresholds in braces ("{same_clock_min_sessions}"); a name the code does not define
   stops the load, and a test fails on any number typed into a doc.
 - **Every options label says which book.** SPX has an expiry every trading
   day. The weight, wall shares, heaviest strike, gamma ladder and option

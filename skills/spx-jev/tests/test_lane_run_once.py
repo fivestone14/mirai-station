@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from conftest import DAY, at, bars_from_closes, make_row, write_state
+from conftest import DAY, PRIOR_DAYS, at, bars_from_closes, make_row, write_prior_rows, write_state
 from spx_jev import grade, service
 from spx_jev.cuts import TAPE_BIG_UNITS, TAPE_FLAT_UNITS
 from spx_jev.lane import TAPE
@@ -24,8 +24,10 @@ ET = ZoneInfo("America/New_York")
 
 
 def _state(tmp_path, rows, n_bars):
-    """Bars with a 3-point wick, so the tape unit is measured (6 points a slice) rather than floored."""
-    prior = {d: bars_from_closes([7700.0] * 390, day=d) for d in ("2026-09-16", "2026-09-17")}
+    """Bars with a 3-point wick, so the tape unit is measured (6 points a slice) rather than floored, over ten flat prior
+    sessions with trusted morning rulers."""
+    prior = {d: bars_from_closes([7700.0] * 390, day=d) for d in PRIOR_DAYS}
+    write_prior_rows(tmp_path, {d: [make_row(at(9, 31, day=d), 7700.0)] for d in prior})
     return write_state(tmp_path, DAY, rows, bars_from_closes([7700.0] * n_bars, wick=3.0), prior)
 
 
@@ -65,11 +67,12 @@ def test_a_tape_read_writes_its_own_folder_and_is_graded_on_the_exact_bar_ten_mi
     c = run_once(state, out, DOC, True, DAY, lane=TAPE)
     assert json.loads((state / "spx_jev" / "latest.json").read_text()) == {"row_ts": "the live card"}
     assert c["lane"] == "tape" and c["row_ts"] == at(10, 40).isoformat()
-    assert c["ruler"] == {"unit_points": 6.0, "unit_sigma": 0.08, "slices_used": 3, "source": "tape"}
+    assert c["ruler"] == {"unit_points": 6.0, "unit_sigma": 0.08, "slices_used": 3, "source": "tape",
+                          "rank": {"band": "top third", "higher_than": 10, "of": 10}}      # the prior sessions' minutes span a point
     assert c["band"] == {"flat_points": round(TAPE_FLAT_UNITS * 6, 2), "big_points": round(TAPE_BIG_UNITS * 6, 2),
                          "flat_units": TAPE_FLAT_UNITS, "big_units": TAPE_BIG_UNITS}
     assert c["hour"]["primary"] == "next_10" and "blend" not in c["hour"] and c["hour"]["views"]["size"]["pick"] == "small"
-    assert seen[0]["state"]["context"]["unit"].startswith("one tape unit is 6.0 points;")
+    assert seen[0]["state"]["context"]["unit"].startswith("one tape unit is 6.0 points, in the top third for this minute")
     assert c["schedule"]["reads"][0] == at(9, 35).isoformat() and c["schedule"]["close_out"] == at(10, 42).isoformat()
     # the lane keeps its last answers for its day constants (asked at 09:35 and held), in its own folder
     assert json.loads((out / "last_asked.json").read_text())["q_dir"]["row_ts"] == at(10, 40).isoformat()

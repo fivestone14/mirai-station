@@ -23,7 +23,28 @@ NAMED = re.compile(r"\{[^{}]*\}")
 # what a premarket question may cut on: rank bands, how many nights it ranks against, the half-way share and the
 # one-to-one line (definitions, not lines), and window lengths; anything else is a fixed line (premarket-data-plan section 3)
 RANK_CONSTANTS = {"third_lo", "third_hi", "top_fifth", "bottom_fifth", "night_rank_count", "overnight_rank_min_nights",
-                  "gap_half_share", "one_ratio"}
+                  "same_clock_min_sessions", "gap_half_share", "one_ratio"}
+# the owner's rule (2026-09-27): no question JEV is asked sizes or judges a market measure on a fixed line; every
+# number its text names is one of these kinds, and a size is the measure's rank against the same clock on recent sessions
+DEFINITIONS = {
+    "rank band edges": {"third_lo", "third_hi", "top_fifth", "bottom_fifth", "half_rank", "skew_steep_rank", "skew_flat_rank",
+                        "flow_lean_rank", "tick_burst_pct", "thin_volume_pct", "big_print_pct", "wall_touch_siege_percentile"},
+    "lookbacks and counts": {"night_rank_count", "overnight_rank_min_nights", "same_clock_min_sessions", "big_min_prints",
+                             "defense_min_events", "open_cluster_min", "tick_cluster", "mega_count", "spread_count"},
+    "clocks and calendar": {"accept_minutes", "cross_lookback_min", "event_due_min", "event_digest_min", "speaker_window_min",
+                            "shock_lookback_min", "shock_fresh_min", "one_day", "opex_week_days", "after_opex_days",
+                            "rebal_window_days", "month_turn_days"},
+    "shares that define a word": {"gap_half_share", "giveback_third", "range_top_share", "range_bottom_share", "move_burst_share",
+                                  "mega_one_name_share", "one_name_share", "stress_retreat_share", "stress_hold_share",
+                                  "one_ratio"},
+    "touch tolerances": {"gap_touch_sigma", "ib_break_sigma", "noise_edge_sigma", "value_edge_sigma", "level_reach_sigma",
+                         "reaction_extend_sigma", "settle_seat_sigma", "outside_buffer_sigma", "vwap_touch_sigma",
+                         "round_near_sigma"},
+    # an inverted curve, SPY's one-cent tick, and the morning brief's own scale are not sizes of a market move
+    "fixed by what they mean": {"vix_curve_flat", "spy_spread_tight", "brief_dir_min", "brief_conf_min"},
+    # a break past a heavy strike is too rare to give a same-minute history to rank how far past against
+    "no history to rank against": {"wall_touch_sigma"},
+}
 
 
 def _texts(value):
@@ -277,7 +298,7 @@ def test_each_lane_asks_its_share_of_one_doc_with_its_own_schedule_and_horizon()
     live = {qid: q for g in load_questions(LANES["live"].questions, "thirty_minute")["groups"] for qid, q in g["questions"].items()}
     tape = {qid: q for g in load_questions(LANES["tape"].questions, "opening_five_minute")["groups"] for qid, q in g["questions"].items()}
     premarket = {qid: q for g in load_questions(LANES["premarket"].questions, "premarket")["groups"] for qid, q in g["questions"].items()}
-    assert len(live) == 104 and len(tape) == 27 and len(premarket) == 12 and "gap_size" not in live and "price_move_5way" not in tape
+    assert len(live) == 104 and len(tape) == 28 and len(premarket) == 12 and "gap_size" not in live and "price_move_5way" not in tape
     assert tape["vix_stir"]["schedule"] == {"every_min": 5, "from": "09:40", "to": "10:30"} and tape["vix_stir"]["horizon"] == "10min_opening"
     assert live["vix_stir"]["schedule"] == {"every_min": 30, "from": "10:02", "to": "15:32"} and live["vix_stir"]["horizon"] == "30min"
     assert tape["open_vs_prior_range"]["schedule"] == {"at": ["09:35"], "hold": True} and live["open_vs_prior_range"]["schedule"] == {"hold_until": "11:32"}
@@ -319,6 +340,22 @@ def test_a_premarket_question_ranks_against_the_last_nights_and_never_cuts_on_a_
             named = {n for key in ("instructions", "criteria", "code_criteria", "sleep_when") for t in _texts(q.get(key))
                      for n in constants_named(t)}
             fixed = {n for n in named - RANK_CONSTANTS if not re.fullmatch(r"window_\d+_min", n)}
+            assert not fixed, f"{qid} cuts on {sorted(fixed)}"
+
+
+def test_no_question_jev_is_asked_cuts_a_market_measure_on_a_fixed_line():
+    """Every number an asked question names (JEV's words, the code's rules and its sleep) is a definition, never a line a
+    measure is sized or judged against: those are ranks against the same clock on recent sessions."""
+    allowed = set().union(*DEFINITIONS.values())
+    assert allowed <= set(QUESTION_CONSTANTS), sorted(allowed - set(QUESTION_CONSTANTS))
+    raw = json.loads((QUESTIONS / "spx_questions.json").read_text())
+    for g in raw["groups"]:
+        for qid, q in g["questions"].items():
+            if q["status"] == "dark":
+                continue
+            named = {n for key in ("instructions", "criteria", "code_criteria", "sleep_when") for t in _texts(q.get(key))
+                     for n in constants_named(t)}
+            fixed = {n for n in named - allowed if not re.fullmatch(r"window_\d+_min", n)}
             assert not fixed, f"{qid} cuts on {sorted(fixed)}"
 
 

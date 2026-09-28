@@ -12,6 +12,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 ET = timezone(timedelta(hours=-4))
 DAY = "2026-09-18"
+# Ten trading days before DAY, newest first: enough prior sessions for a rank against the same minute.
+PRIOR_DAYS = ("2026-09-17", "2026-09-16", "2026-09-15", "2026-09-14", "2026-09-11", "2026-09-10", "2026-09-09", "2026-09-08",
+              "2026-09-04", "2026-09-03")
 SECTORS = ("XLK", "XLF", "XLE", "XLV", "XLY", "XLI", "XLC", "XLP", "XLU", "XLB", "XLRE")
 
 
@@ -98,6 +101,15 @@ def write_state(root: Path, day: str, rows: list[dict], bars: list[dict], prior_
     return root
 
 
+def write_prior_rows(root: Path, rows_by_day: dict[str, list[dict]]) -> Path:
+    """Prior sessions' diaries, each day's raw rows oldest first: a first row stamped by 09:40 gives the day its
+    trusted morning ruler, and a row near a read's clock gives the day's distances at that minute."""
+    (root / "reversion").mkdir(parents=True, exist_ok=True)
+    for d, rows in rows_by_day.items():
+        (root / "reversion" / f"{d}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    return root
+
+
 def market_at(now: datetime):
     """A MarketContext with the breadth figures a full read needs: advance-decline, a tick reading each
     of the last 30 minutes (21 above zero), and every sector's open and latest value (8 of 11 up)."""
@@ -153,9 +165,10 @@ def options_tape_at(now: datetime, tilt: float = 0.05, prior_days: list[str] | N
 
 
 @pytest.fixture
-def full_scene(scene_factory):
+def full_scene(scene_factory, tmp_path):
     """A moment at which every built label can be measured: its prior sessions each carry a trusted morning
-    ruler, so a measure ranked in each session's own ruler has the sessions the owner's rank rule needs."""
+    ruler, so a measure ranked in each session's own ruler has the sessions the owner's rank rule needs, and a
+    diary row a minute before this read's clock, for the distances ranked against the same minute."""
     from dataclasses import replace
     from spx_jev.labels.rulers import SigmaRuler
     sigma = 75.0
@@ -163,9 +176,11 @@ def full_scene(scene_factory):
     now = at(12, 30, ss=10)
     earlier = make_row(now - timedelta(minutes=30), 7702.0, atm_iv=0.14)
     prior = prior_sessions()
+    write_prior_rows(tmp_path, {d: [make_row(at(12, 29, day=d), 7700.0, prior_close=7700.0 - 3 * k, vwap=7700.0 - 2 * k)]
+                                for k, d in enumerate(prior, start=1)})
     scene = scene_factory(now, bars_from_closes(closes), rows_before=[earlier], prior_bars=prior, market=market_at(now),
                           options_tape=options_tape_at(now, prior_days=list(prior)))
-    return replace(scene, prior_rulers={d: SigmaRuler(sigma, "anchor") for d in prior})
+    return replace(scene, prior_rulers={d: SigmaRuler(sigma, "anchor") for d in prior}, state_dir=tmp_path)
 
 
 @pytest.fixture

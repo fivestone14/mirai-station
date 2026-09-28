@@ -412,18 +412,18 @@ def test_the_walls_ignore_a_row_too_far_from_30_minutes_ago(scene_factory):
         "no diary row from 30 minutes ago carries the heaviest call-side and put-side strikes"
 
 
-# ---- gex.delta_weight_side (reworded to the set's sentence)
+# ---- gex.delta_weight_side (the prior sessions' delta shares above price run 0.05 to 0.86 by 0.09)
 
-def test_delta_weight_side_at_the_even_band_edges(scene_factory):
+def test_delta_weight_side_by_the_prior_sessions_third(scene_factory, history):
     scene = gamma_scene(scene_factory)
 
     def sentence(above: float) -> str:
-        return labels(replace(scene, row={**scene.row, "dex_views": {"dex_above_spot": above}}))[0]["delta_weight_side"]
+        return labels(replace(scene, row={**scene.row, "dex_views": {"dex_above_spot": above}}), history)[0]["delta_weight_side"]
 
-    assert sentence(0.37) == f"63% of the directional exposure across the 0-to-7-day books, {DEALERS}, sits at strikes below price, past the 40%-60% even band"
-    assert sentence(0.60) == f"60% of the directional exposure across the 0-to-7-day books, {DEALERS}, sits at strikes above price, past the 40%-60% even band"
-    assert sentence(0.40) == (f"the directional exposure across the 0-to-7-day books, {DEALERS}, splits 40% above price and 60% below, inside the "
-                              f"40%-60% even band")
+    exposure = f"of the directional exposure across the 0-to-7-day books, {DEALERS}, sits at strikes above price"
+    assert sentence(0.31) == f"31% {exposure}, a larger share than on 3 of the last 10 sessions at this minute, bottom third: more of it below price than usual"
+    assert sentence(0.33) == f"33% {exposure}, a larger share than on 4 of the last 10 sessions at this minute, middle third: about as usual"
+    assert sentence(0.60) == f"60% {exposure}, a larger share than on 7 of the last 10 sessions at this minute, top third: more of it above price than usual"
 
 
 # ---- the gates

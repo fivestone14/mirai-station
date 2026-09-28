@@ -5,7 +5,7 @@ import json
 from dataclasses import fields
 from datetime import timedelta
 
-from conftest import DAY, at, flat_bars, make_row, write_state
+from conftest import DAY, PRIOR_DAYS, at, flat_bars, make_row, write_prior_rows, write_state
 from spx_jev import archive, service
 from spx_jev.archive import SCHEMA_VERSION, CloseOutRecord, GradeRecord, ReadRecord
 
@@ -42,7 +42,9 @@ def test_a_read_and_its_later_grade_land_in_the_archive_under_one_read_id(tmp_pa
     monkeypatch.setenv("TYPESAFE_API_KEY", CANARY)
     monkeypatch.setattr(service, "send_all", _send_all)
     monkeypatch.setattr(service, "send", _send)
-    state = write_state(tmp_path, DAY, [make_row(at(10, 35, ss=10), 7700.0)], flat_bars(70))
+    prior = {d: flat_bars(390, day=d) for d in PRIOR_DAYS}
+    write_prior_rows(tmp_path, {d: [make_row(at(9, 31, day=d), 7700.0)] for d in prior})
+    state = write_state(tmp_path, DAY, [make_row(at(10, 35, ss=10), 7700.0)], flat_bars(70), prior)
     service.run_once(state, state / "spx_jev", DOC, True, DAY)
     read = _lines(state)[0]
     assert _typed(read, ReadRecord) and read["kind"] == "read" and read["schema_version"] == SCHEMA_VERSION

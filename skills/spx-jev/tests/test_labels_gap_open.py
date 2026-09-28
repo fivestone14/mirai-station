@@ -1,7 +1,7 @@
 """The gap and open family (labels/gap_open.py): each label's sentence at its verdicts and their boundaries,
 its omissions, the gap_fill_next_hour gate both ways, and that a bar finishing after the read never counts.
 The gap's size, and so whether it is real, is ranked against prior sessions whose first diary row is written
-into a tmp folder; the open's crossings against prior sessions' bars to the same minute.
+into a tmp folder; the open's crossings and path against prior sessions' bars to the same minute.
 
 Every scene carries a 09:31 diary row, so the morning anchor is trusted (SIGMA points, 80 so that the cuts
 land on exact figures), and yesterday's close is PRIOR_CLOSE. Bars start at 09:30, one close a minute;
@@ -480,3 +480,56 @@ def test_the_crossings_rank_needs_ten_prior_sessions_and_keeps_those_with_an_est
     got, _, _ = labels(replace(sc, prior_rulers={day: SigmaRuler(SIGMA, "live") for day in CROSSED}))
     assert "more often than 7 of the last 20 sessions had by this minute, middle third" in got["open.settled_open_crosses"]
 
+
+# ---- open.chop
+
+def one_way_share(k: int) -> list[float]:
+    """Settling the open at 7700, then forty one-point minutes, 20 + k up and 20 - k down: the path nets 2k of the
+    40 points it travels by 10:15 (path efficiency k / 20), then holds."""
+    return [7700.0] * 5 + [7700.0 + i for i in range(1, 21 + k)] + [7720.0 + k - i for i in range(1, 21 - k)] + [7700.0 + 2 * k] * 30
+
+
+# Twenty prior paths to 10:15 with efficiencies 0 to 0.95: 0.30 is more one-way than 6 of them (bottom third), 0.35
+# than 7 (middle third), 0.70 than 14 (top third); an efficiency level with a session's does not beat it.
+PATHS = history([one_way_share(k) for k in range(20)])
+
+
+@pytest.mark.parametrize("k, verdict", [
+    (6, "travelled 0.50 sigma to end 0.15 sigma above it (path efficiency 0.30, the net move over the distance travelled) and never "
+        "crossed it; that path is more one-way than 6 of the last 20 sessions at this minute, bottom third: choppy"),
+    (7, "travelled 0.50 sigma to end 0.17 sigma above it (path efficiency 0.35, the net move over the distance travelled) and never "
+        "crossed it; that path is more one-way than 7 of the last 20 sessions at this minute, middle third: mixed"),
+    (13, "travelled 0.50 sigma to end 0.33 sigma above it (path efficiency 0.65, the net move over the distance travelled) and never "
+         "crossed it; that path is more one-way than 13 of the last 20 sessions at this minute, middle third: mixed"),
+    (14, "travelled 0.50 sigma to end 0.35 sigma above it (path efficiency 0.70, the net move over the distance travelled) and never "
+         "crossed it; that path is more one-way than 14 of the last 20 sessions at this minute, top third: one-way"),
+])
+def test_the_opens_path_is_ranked_against_the_prior_sessions_paths_at_this_minute(scene_factory, k, verdict):
+    got, _, _ = labels(scene(scene_factory, at(10, 15), one_way_share(k), prior_bars=PATHS, bar_clock=True))
+    assert got["open.chop"] == f"since the settled open 40 minutes ago price {verdict}"
+
+
+def test_a_path_back_and_forth_across_the_open_is_choppy(scene_factory):
+    got, _, _ = labels(scene(scene_factory, at(10, 15), crossing_closes(39), prior_bars=PATHS, bar_clock=True))
+    assert got["open.chop"] == (
+        "since the settled open 40 minutes ago price travelled 1.98 sigma to end 0.03 sigma below it (path efficiency 0.01, the net move "
+        "over the distance travelled) and crossed it 39 times; that path is more one-way than 1 of the last 20 sessions at this minute, "
+        "bottom third: choppy")
+
+
+def test_the_opens_path_is_judged_from_0945_on_ten_sessions_that_moved(scene_factory):
+    _, omitted, _ = labels(scene(scene_factory, at(9, 44), one_way_share(6), prior_bars=PATHS, bar_clock=True))
+    assert omitted["open.chop"] == "the path since the open is judged from 09:45, when ten minutes of it exist"
+    got, _, _ = labels(scene(scene_factory, at(9, 45), crossing_closes(9), prior_bars=PATHS, bar_clock=True))
+    assert got["open.chop"] == ("since the settled open 10 minutes ago price travelled 0.47 sigma to end 0.03 sigma below it (path "
+                                "efficiency 0.05, the net move over the distance travelled) and crossed it 9 times; that path is no more "
+                                "one-way than any of the last 20 sessions at this minute, bottom third: choppy")
+    # a prior session whose closes never moved has no path and is not counted; an estimated ruler keeps the session in
+    moved = history([one_way_share(k) for k in range(9)] + [[7700.0] * 60] * 5)
+    _, omitted, _ = labels(scene(scene_factory, at(10, 15), one_way_share(6), prior_bars=moved, bar_clock=True))
+    assert omitted["open.chop"] == "its rank needs 10 prior sessions with bars from their settled open to this minute, have 9"
+    sc = scene(scene_factory, at(10, 15), one_way_share(6), prior_bars=PATHS, bar_clock=True)
+    got, _, _ = labels(replace(sc, prior_rulers={day: SigmaRuler(SIGMA, "vix") for day in PATHS}))
+    assert got["open.chop"].endswith("more one-way than 6 of the last 20 sessions at this minute, bottom third: choppy")
+    _, omitted, _ = labels(scene(scene_factory, at(10, 15), [7700.0] * 60, prior_bars=PATHS, bar_clock=True))
+    assert omitted["open.chop"] == "price has not moved from the settled open, so there is no path to judge"
