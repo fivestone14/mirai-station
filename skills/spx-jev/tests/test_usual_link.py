@@ -42,7 +42,7 @@ def test_a_price_is_read_as_it_was_known_and_a_stopped_feed_counts_as_none():
 
 def test_a_symbols_own_move_is_ranked_against_its_own_at_this_minute(monkeypatch):
     """Prior day k drifts (k + 1) steps a minute past its multiple of the index's 30-minute fall, so its move is larger
-    by day: a move between day k's and day k + 1's is past its usual (above the bottom third) from beating 4 of the 10."""
+    by day: a move between day k's and day k + 1's is above the bottom third of its own from beating 4 of the 10."""
     import usual_link_fixtures
     monkeypatch.setattr(usual_link_fixtures, "prior_drift", lambda k: -(k + 1) * DRIFT_STEP)
     scene = scene_with(index_closes(), {}, {"SMH": 1.6})
@@ -50,9 +50,9 @@ def test_a_symbols_own_move_is_ranked_against_its_own_at_this_minute(monkeypatch
     sizes = sorted(own.sizes["SMH"])
     assert sizes == own.sizes["SMH"][::-1]                               # newest first, and the newest prior day drifted most
     between = (sizes[3] + sizes[4]) / 2
-    assert own.rank("SMH", -between)[0].higher_than == 4 and own.past_usual("SMH", -between) is True
-    assert own.past_usual("SMH", (sizes[2] + sizes[3]) / 2) is False     # beats 3 of 10: the bottom third, either way
+    assert own.rank("SMH", -between)[0].higher_than == 4 and own.above_bottom_third("SMH", -between) is True
+    assert own.above_bottom_third("SMH", (sizes[2] + sizes[3]) / 2) is False     # beats 3 of 10: the bottom third, either way
     thin = replace(scene, prior_markets=dict(list(scene.prior_markets.items())[1:]))
     assert OwnMoves(thin, ["SMH"], 30).rank("SMH", between) == (
         None, f"its rank needs {SAME_CLOCK_MIN_SESSIONS} prior sessions with a 30-minute move of SMH at this minute, have 9")
-    assert OwnMoves(thin, ["SMH"], 30).past_usual("SMH", between) is None
+    assert OwnMoves(thin, ["SMH"], 30).above_bottom_third("SMH", between) is None

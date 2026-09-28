@@ -5,8 +5,8 @@ leadership and macro families measure every fund, stock and outside market by.
   sessions on file (up to 20), on the clock's half hours from 10:00 to 16:00.
 * A move beyond the usual multiple (the residual) is the symbol's return less the multiple times the
   index's, written in SPX sigma: a share of the day's morning anchor.
-* Its own usual move (OwnMoves): the symbol's move over the same minutes to this clock on the prior
-  sessions, so "past its usual move" is a rank against its own, never a fixed line.
+* Its own moves (OwnMoves): the symbol's move over the same minutes to this clock on the prior sessions,
+  so whether it moved is a rank against its own (above the bottom third), never a fixed line.
 
 Every size is ranked against the same measure at this minute on up to the last 20 sessions, needing 10
 (ranks.rank_sessions); the multiple is a fit and needs MIN_RANK_SESSIONS sessions.
@@ -145,8 +145,8 @@ class AgainstIndex:
 
 
 class OwnMoves:
-    """Each symbol's own ``minutes`` move to this clock on the prior sessions, what "past its usual move" is
-    judged by: the size of a move ranked against the symbol's own at this minute. A return is in the symbol's
+    """Each symbol's own ``minutes`` move to this clock on the prior sessions, what whether it moved is judged
+    by: the size of a move ranked against the symbol's own at this minute. A return is in the symbol's
     own units, which the index's ruler never touches, so every session with the market context counts
     (ranks.same_clock_market)."""
 
@@ -159,9 +159,10 @@ class OwnMoves:
     def rank(self, symbol: str, move: float) -> tuple[SameClockRank | None, str | None]:
         return rank_sessions(abs(move), self.sizes[symbol], f"a {self.minutes}-minute move of {symbol} at this minute")
 
-    def past_usual(self, symbol: str, move: float) -> bool | None:
-        """Whether the size of ``move`` is above the bottom third of the symbol's own at this minute: the symbol
-        moved; None without the sessions to say."""
+    def above_bottom_third(self, symbol: str, move: float) -> bool | None:
+        """Whether the size of ``move`` is above the bottom third of the symbol's own at this minute (it beats
+        more than a third of them, so it may still be under their median): the symbol moved; None without the
+        sessions to say."""
         rank, _ = self.rank(symbol, move)
         return None if rank is None else rank.band != "bottom third"
 

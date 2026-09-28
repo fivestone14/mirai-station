@@ -236,8 +236,8 @@ def _sector_agreement(against: AgainstIndex, ls: LabelSet) -> None:
             return
 
     def with_index(index_move: float, moves: dict[str, float]) -> int:
-        """How many funds moved the index's way past their usual move, each judged against its own at this minute."""
-        return sum(1 for s in funds if index_move and (moves[s] > 0) == (index_move > 0) and own.past_usual(s, moves[s]))
+        """How many funds moved the index's way by a move above the bottom third of their own at this minute."""
+        return sum(1 for s in funds if index_move and (moves[s] > 0) == (index_move > 0) and own.above_bottom_third(s, moves[s]))
 
     def dispersion(index_move: float, moves: dict[str, float], sigma_share: float) -> float:
         return statistics.pstdev(beyond(links[s], moves[s], index_move) / sigma_share for s in funds)
@@ -255,8 +255,8 @@ def _sector_agreement(against: AgainstIndex, ls: LabelSet) -> None:
     if count_rank is None or spread_rank is None:
         ls.omit(path, why or spread_why)
         return
-    ls.put(path, f"over the last {WINDOW_30_MIN} minutes {count} of {len(funds)} sector funds moved the index's way past their usual move "
-                 f"(each above the bottom third of its own at this minute); that count is {count_rank.words()}, {count_rank.band}: "
+    ls.put(path, f"over the last {WINDOW_30_MIN} minutes {count} of {len(funds)} sector funds moved the index's way, each by a move above the "
+                 f"bottom third of its own at this minute; that count is {count_rank.words()}, {count_rank.band}: "
                  f"{'one way' if count_rank.band == TOP_THIRD else 'not one way'}; sector dispersion beyond each fund's usual multiple was "
                  f"{sig(spread)}, {spread_rank.words()}, {spread_rank.band}: {'wide' if spread_rank.band == TOP_THIRD else 'not wide'}"
                  f"{against.ruler_note}")
@@ -406,9 +406,9 @@ def _heavyweight_gap(against: AgainstIndex, names: list[tuple[str, float]], ls: 
 
 
 def _megacaps(against: AgainstIndex, names: list[tuple[str, float]], ls: LabelSet) -> None:
-    """The largest stocks over the last 30 minutes: how many moved together past their usual move, the one that
-    supplied most of the index's move, and their summed pull against the rest of the index, each ranked against
-    the same half hour of the prior sessions."""
+    """The largest stocks over the last 30 minutes: how many moved together, each by a move above the bottom third
+    of its own, the one that supplied most of the index's move, and their summed pull against the rest of the
+    index, each ranked against the same half hour of the prior sessions."""
     paths = ("leaders.megacap_cohesion_30m", "leaders.pull_vs_rest_30m")
     scene = against.scene
     symbols = tuple(s for s, _ in names)
@@ -431,9 +431,9 @@ def _megacaps(against: AgainstIndex, names: list[tuple[str, float]], ls: LabelSe
         return
 
     def one_way(moves: dict[str, float]) -> tuple[int, int]:
-        """How many names rose and how many fell past their usual move, each judged against its own at this minute."""
-        past = [s for s in symbols if own.past_usual(s, moves[s])]
-        return sum(1 for s in past if moves[s] > 0), sum(1 for s in past if moves[s] < 0)
+        """How many names rose and how many fell by a move above the bottom third of their own at this minute."""
+        moved = [s for s in symbols if own.above_bottom_third(s, moves[s])]
+        return sum(1 for s in moved if moves[s] > 0), sum(1 for s in moved if moves[s] < 0)
 
     def then_together(mk: MarketContext, then: datetime) -> float | None:
         s, start = Session([], mk), then - timedelta(minutes=WINDOW_30_MIN)
@@ -456,8 +456,8 @@ def _megacaps(against: AgainstIndex, names: list[tuple[str, float]], ls: LabelSe
         one = (f"{top} alone supplied {pct(part)} of the index's {sig(abs(idx))} {'rise' if idx > 0 else 'fall'}, "
                f"{'past' if part > MEGA_ONE_NAME_SHARE else 'under'} the {pct(MEGA_ONE_NAME_SHARE)} one-name share")
     real = "no real move" if index_rank.band == BOTTOM_THIRD else "a real move"
-    ls.put(path, f"over the last {WINDOW_30_MIN} minutes {up} of the {len(names)} largest stocks rose past their usual move and {down} fell "
-                 f"past it (each above the bottom third of its own at this minute); the larger count, {max(up, down)}, is "
+    ls.put(path, f"over the last {WINDOW_30_MIN} minutes {up} of the {len(names)} largest stocks rose and {down} fell, each by a move above the "
+                 f"bottom third of its own at this minute; the larger count, {max(up, down)}, is "
                  f"{together_rank.words()}, {together_rank.band}: {together}; {one}; the index's move was {index_rank.words()}, {index_rank.band}: {real}"
                  f"{against.ruler_note}")
 

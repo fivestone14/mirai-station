@@ -28,7 +28,7 @@ MULTIPLES = {"SPY": 1.0, "RSP": 0.66, "SMH": 1.6, "QQQ": 1.2, "IWM": 1.1, "XLF":
 
 
 # Every other fund or name drifts the other way on the prior days, so on each of them a different set of them moved
-# past its usual move: a count of them ranks with a spread.
+# by a move above the bottom third of its own: a count of them ranks with a spread.
 ALTERNATE_SECTORS = {s: 1.0 if k % 2 == 0 else -1.0 for k, s in enumerate(SYMBOLS["sectors"])}
 ALTERNATE_NAMES = {s: 1.0 if k % 2 == 0 else -1.0 for k, s in enumerate(NAMES)}
 HEAVY_DAYS = 17                # prior days enough for 11 sessions whose trading day before is on file too
@@ -210,11 +210,11 @@ def test_size_funds_wait_for_the_settled_open():
 # ---- the sector funds
 
 def test_sector_funds_moving_one_way():
-    """Alternate funds drift opposite ways on the prior days, so 6 or 5 of them moved past their usual on most of them."""
+    """Alternate funds drift opposite ways on the prior days, so 6 or 5 of them moved above the bottom third of their own on most of them."""
     got, _, _ = labels(read(move_points=60.0, drift_scales=ALTERNATE_SECTORS))
     assert shape(got["sectors.agreement_30m"]) == (
-        "over the last # minutes # of # sector funds moved the index's way past their usual move (each above the bottom third of "
-        "its own at this minute); that count is higher than # of the last # sessions at this minute, top third: one way; sector "
+        "over the last # minutes # of # sector funds moved the index's way, each by a move above the bottom third of "
+        "its own at this minute; that count is higher than # of the last # sessions at this minute, top third: one way; sector "
         "dispersion beyond each fund's usual multiple was # sigma, higher than # of the last # sessions at this minute, bottom third: "
         "not wide")
     assert "11 of 11 sector funds" in got["sectors.agreement_30m"] and "higher than 8 of the last 10" in got["sectors.agreement_30m"]
@@ -274,8 +274,8 @@ def weighed(tmp_path, **kw):
 def test_the_largest_names_move_together(tmp_path):
     got, _, _ = labels(weighed(tmp_path, move_points=60.0, drift_scales=ALTERNATE_NAMES))
     s = got["leaders.megacap_cohesion_30m"]
-    assert shape(s) == ("over the last # minutes # of the # largest stocks rose past their usual move and # fell past it (each above "
-                        "the bottom third of its own at this minute); the larger count, #, is higher than # of the last # sessions at "
+    assert shape(s) == ("over the last # minutes # of the # largest stocks rose and # fell, each by a move above "
+                        "the bottom third of its own at this minute; the larger count, #, is higher than # of the last # sessions at "
                         "this minute, top third: moving together up; NVDA alone supplied #% of the index's # sigma rise, under the #% "
                         "one-name share; the index's move was higher than # of the last # sessions at this minute, top third: a real move")
     assert s.startswith("over the last 30 minutes 8 of the 8 largest") and "the larger count, 8, is higher than 8 of the last 10" in s
@@ -290,7 +290,7 @@ def test_the_largest_names_cancelling_on_a_flat_index(tmp_path):
     jumps = {s: {JUMP: 0.01 if k % 2 else -0.01} for k, s in enumerate(NAMES)}
     got, _, _ = labels(weighed(tmp_path, jumps=jumps, drift_scales=ALTERNATE_NAMES))
     s = got["leaders.megacap_cohesion_30m"]
-    assert s.startswith("over the last 30 minutes 4 of the 8 largest stocks rose past their usual move and 4 fell past it")
+    assert s.startswith("over the last 30 minutes 4 of the 8 largest stocks rose and 4 fell, each by a move above the bottom third of its own")
     assert "the larger count, 4, is higher than 0 of the last 10 sessions at this minute, bottom third: not moving together" in s
     assert s.endswith("the index's move was higher than 0 of the last 10 sessions at this minute, bottom third: no real move")
 
