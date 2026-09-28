@@ -38,7 +38,7 @@ from .state_builder import load_jsonl
 
 SHORT_NIGHT_SHARE = 0.9          # of the median coverage of the symbol's candidate nights
 READ_STALE_MIN = 10              # the read price must come from a bar that finished at most this long before the read
-CACHED_NIGHT_FILES = 2 * (NIGHT_RANK_COUNT + 1)   # two symbols' last nights and tonight: /ES and /ZN on one read
+CACHED_NIGHT_FILES = 3 * (NIGHT_RANK_COUNT + 1)   # three symbols' last nights and tonight: /ES, /ZN and /MBT on one read
 
 
 @dataclass(frozen=True)
