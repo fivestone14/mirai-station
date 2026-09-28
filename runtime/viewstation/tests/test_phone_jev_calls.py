@@ -231,7 +231,7 @@ def _sheet(c, now):
       function bar(name, p, pick){ var b = el('div', 'bar' + (pick ? ' pick' : '')); b.textContent = name.replace(/_/g, ' ') + ' ' + Math.round(p * 100) + '%'; return b; }
       Date.now = function(){ return Date.parse(D.now); };
     """
-    js = (stubs + _var("ODDS_ORDER") + _var("ODDS_TRACK_PX") + _fn("oddsKeys") + _fn("oddsBar") + _fn("movedWords") + _fn("openCall") +
+    js = (stubs + _odds_js() + _fn("movedWords") + _fn("openCall") +
           "openCall(D.c, {}); console.log(JSON.stringify({title: nodes.csTitle.textContent, opened: !!nodes.opened, body: dump(nodes.csBody)}));")
     return _run(js, {"c": c, "now": now})
 
@@ -299,9 +299,13 @@ def test_a_card_without_marks_keeps_its_times_in_market_time():
     assert "toISOString" not in JS, "a UTC string would read five hours off in clock()"
 
 
+def _odds_js():
+    return (_var("ODDS_ORDER") + _var("ODDS_TRACK_PX") + _var("ODDS_LETTERS") + _var("ODDS_EM") + _fn("oddsKeys") + _fn("oddsWidth") +
+            _fn("oddsBar"))
+
+
 def _odds(o, pick):
-    js = _var("ODDS_ORDER") + _var("ODDS_TRACK_PX") + _fn("oddsKeys") + _fn("oddsBar") + "console.log(JSON.stringify(dump(oddsBar(D.o, D.pick))));"
-    return _run(js, {"o": o, "pick": pick})
+    return _run(_odds_js() + "console.log(JSON.stringify(dump(oddsBar(D.o, D.pick))));", {"o": o, "pick": pick})
 
 
 def test_the_odds_bar_runs_from_the_biggest_fall_to_the_biggest_rise_and_names_the_wide_ones():
@@ -314,6 +318,34 @@ def test_the_odds_bar_runs_from_the_biggest_fall_to_the_biggest_rise_and_names_t
     assert bar["attrs"]["aria-label"] == "Down big 5%, Down small 12%, Flat 30%, Up small 38%, Up big 10%, Unsure 5%"
     live = _odds({"up": 0.12, "down": 0.43, "flat": 0.39, "unsure": 0.06}, "down")
     assert [k["attrs"]["class"] for k in live["kids"][0]["kids"]] == ["o-down", "o-flat", "o-up", "o-unsure"]
+
+
+def test_the_odds_words_are_measured_as_the_spx_page_measures_them():
+    """The SPX page's fix (jev-spx.html): each odds word is measured in the shipped face at the row's size, in a row
+    as wide as the narrowest dashed card at 360. Both pages share the face, the row's CSS and the dashed cards the
+    odds sit in, so the SNDK page carries the same measure, word for word."""
+    from test_phone_jev_spx import JS as SPX_JS
+    for name in ("oddsWidth", "oddsBar"):
+        assert _fn(name) == re.search(r"\n  function %s\(.*?(?=\n  (?:function |var |//|[a-z]))" % name, SPX_JS, re.S).group(0)
+    for name in ("ODDS_TRACK_PX", "ODDS_LETTERS", "ODDS_EM"):
+        assert _var(name) == re.search(r"\n  var %s = .*?;" % name, SPX_JS).group(0)
+    assert "font:400 11.5px/1.2 var(--sans)" in JEV.split(".odds-lab{", 1)[1].split("}", 1)[0]
+    assert "var hc = el('div', 'card dashed');" in JEV and "var box = el('div', 'card dashed'), newest = t.calls[0]" in JEV
+
+
+def test_an_odds_word_is_drawn_exactly_where_it_fits_whole_on_the_owners_phone():
+    """At 360 the SNDK page counted 6.4px a letter over a 290px row, so "Down 20%" (60px in Chrome) was drawn in its 57.6px
+    share and cut. Measured in the shipped face, a word is drawn only where it fits whole, and one that fits is drawn."""
+    from test_phone_jev_spx import _ODDS_W
+    for (word, bold), width in _ODDS_W.items():
+        key, share = word.rsplit(" ", 1)[0].lower().replace(" ", "_"), int(word.rsplit(" ", 1)[1][:-1]) / 100
+        keys = ["down_big", "down_small", "flat", "up_small", "up_big", "unsure"] if "_" in key else ["down", "flat", "up", "unsure"]
+        o = {k: share if k == key else (1 - share) / (len(keys) - 1) for k in keys}
+        pick = key if bold else next(k for k in keys if k != key)
+        lab = _odds(o, pick)["kids"][1]
+        got = dict(zip(sorted(o, key=keys.index), (k["text"] for k in lab["kids"])))
+        room = share * (294 - 2 * (len(keys) - 1))
+        assert got[key] == (word if width <= room else ""), f"{word} is {width}px wide in {room:.1f}px of room"
 
 
 def _how(h, bl):
