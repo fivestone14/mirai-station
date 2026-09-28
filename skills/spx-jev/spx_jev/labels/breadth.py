@@ -1,9 +1,12 @@
 """The breadth family: the NYSE and the sector funds around the index (breadth.*), from the market context
 (market_context.py).
 
-Schwab's breadth series as the context job saves them: $TICK and $TRIN are read a minute at a time; $UVOL and
-$DVOL (the NYSE's up and down volume) and $VOLD and $VOLSPD (net volume, NYSE-wide and in S&P 500 members) are
-running totals since 09:30, so a window's volume is the total at its end less the total at its start. Every
+Schwab's breadth series as the context job saves them: $TICK and $TRIN are read a minute at a time. $UVOL and
+$DVOL (thousands of shares) are the day's volume so far in the NYSE stocks up, and down, on the day at that
+minute: a stock that turns takes its whole day's volume from one to the other, so neither only grows and their
+change over a window is not that window's volume; only from the open, where both start at nothing, do they give
+a share. $VOLD (their difference, in shares) and $VOLSPD (the same in S&P 500 members) are net volume, and a
+window's lean is the change in net volume from its start to its end. Every
 measure is ranked against the same measure at the same minute on up to the last 20 prior sessions' market context
 (``scene.prior_markets``; ranks.rank_sessions, needing SAME_CLOCK_MIN_SESSIONS of them, else the label is omitted
 with the reason) and said by its third, never against a fixed line: a measure with a side leans to buying in its
@@ -123,14 +126,18 @@ def _running_total(mk: MarketContext, symbol: str, t: datetime) -> float | None:
     return 0.0 if t <= session_open(t) else mk.last(symbol, t, max_age_min=FRESH_MIN)
 
 
-def _upvol_share(mk: MarketContext, start: datetime, end: datetime) -> float | None:
-    """The share of NYSE volume that went into rising stocks from ``start`` to ``end``; None when either
-    total is not known then or no volume traded."""
-    totals = [_running_total(mk, s, t) for s in ("$UVOL", "$DVOL") for t in (start, end)]
-    if any(v is None for v in totals):
-        return None
-    up, down = totals[1] - totals[0], totals[3] - totals[2]
-    return up / (up + down) if up + down > 0 else None
+def _day_upvol_share_at(mk: MarketContext, t: datetime) -> float | None:
+    """The share of the day's NYSE volume to ``t`` in stocks up on the day then; None when either total is not
+    known then or no volume has traded."""
+    up, down = _running_total(mk, "$UVOL", t), _running_total(mk, "$DVOL", t)
+    return up / (up + down) if up is not None and down is not None and up + down > 0 else None
+
+
+def _net_volume_change(mk: MarketContext, start: datetime, end: datetime) -> float | None:
+    """How far NYSE net volume ($VOLD) moved from ``start`` to ``end``, in shares: above zero leans to buying;
+    None when either end is not known."""
+    then, latest = _running_total(mk, "$VOLD", start), _running_total(mk, "$VOLD", end)
+    return None if then is None or latest is None else latest - then
 
 
 def _ranked(rank: SameClockRank, where: str = "at this minute") -> str:
@@ -222,18 +229,19 @@ def _tick_side_vs_usual(scene: Scene, ls: LabelSet) -> None:
 
 
 def _upvol_share_30m(scene: Scene, ls: LabelSet) -> None:
-    share = _upvol_share(scene.market, scene.now - timedelta(minutes=WINDOW_30_MIN), scene.now)
-    if share is None:
-        ls.omit("breadth.upvol_share_30m", f"no NYSE up and down volume known both {WINDOW_30_MIN} minutes ago and now, within "
-                                           f"{FRESH_MIN} minutes of each: the market-context job stopped or has not saved them")
+    """NYSE net volume's change over the last 30 minutes, ranked against the same change at this minute."""
+    change = _net_volume_change(scene.market, scene.now - timedelta(minutes=WINDOW_30_MIN), scene.now)
+    if change is None:
+        ls.omit("breadth.upvol_share_30m", f"no NYSE net volume ($VOLD) known both {WINDOW_30_MIN} minutes ago and now, within "
+                                           f"{FRESH_MIN} minutes of each: the market-context job stopped or has not saved it")
         return
-    rank, why = rank_sessions(share, same_clock_market(scene, lambda mk, then: _upvol_share(mk, then - timedelta(minutes=WINDOW_30_MIN), then)),
-                              f"NYSE up and down volume over the {WINDOW_30_MIN} minutes to this minute")
+    rank, why = rank_sessions(change, same_clock_market(scene, lambda mk, then: _net_volume_change(mk, then - timedelta(minutes=WINDOW_30_MIN), then)),
+                              f"NYSE net volume ($VOLD) over the {WINDOW_30_MIN} minutes to this minute")
     if rank is None:
         ls.omit("breadth.upvol_share_30m", why)
         return
     ls.put("breadth.upvol_share_30m",
-           f"over the last {WINDOW_30_MIN} minutes {pct(share)} of NYSE volume traded in rising stocks, {_lean(rank)}")
+           f"over the last {WINDOW_30_MIN} minutes NYSE net volume changed by {_millions(change)}, {_lean(rank)}")
 
 
 def _volume_vs_count_30m(scene: Scene, ls: LabelSet) -> None:
@@ -268,23 +276,23 @@ def _half_hours(now: datetime) -> list[datetime]:
 
 
 def _crossings(mk: MarketContext, now: datetime) -> int | None:
-    """How often the share of one whole half hour since the open landed on the other side of even (50%) from
-    the half hour before it, so a share hovering at 50% is not counted as rotation minute by minute; None when
-    no half hour's share is known."""
-    shares = [v for end in _half_hours(now) if (v := _upvol_share(mk, end - timedelta(minutes=WINDOW_30_MIN), end)) is not None]
-    if not shares:
+    """How often one whole half hour since the open changed NYSE net volume the other way from the half hour
+    before it, so net volume wobbling minute by minute is not counted as rotation; None when no half hour's
+    change is known."""
+    changes = [v for end in _half_hours(now) if (v := _net_volume_change(mk, end - timedelta(minutes=WINDOW_30_MIN), end)) is not None]
+    if not changes:
         return None
-    sides = [v > 0.5 for v in shares if v != 0.5]
+    sides = [v > 0 for v in changes if v != 0]
     return sum(1 for a, b in zip(sides, sides[1:]) if a != b)
 
 
 def _day_share_rank(scene: Scene, t: datetime) -> tuple[float | None, SameClockRank | None, str | None]:
     """The day's share of NYSE volume in rising stocks from the open to ``t``, and its rank against the same share
     at ``t``'s clock on the prior sessions or the reason it has none."""
-    share = _upvol_share(scene.market, scene.session_open, t)
+    share = _day_upvol_share_at(scene.market, t)
     if share is None:
         return None, None, f"no NYSE up and down volume known within {FRESH_MIN} minutes of {t.astimezone(ET):%H:%M}"
-    base = same_clock_market(scene, lambda mk, then: _upvol_share(mk, session_open(then), _at_clock(scene, t, then)))
+    base = same_clock_market(scene, lambda mk, then: _day_upvol_share_at(mk, _at_clock(scene, t, then)))
     return share, *rank_sessions(share, base, "NYSE up and down volume since the open at this minute")
 
 
@@ -297,7 +305,8 @@ def _one_sided(rank: SameClockRank) -> str:
 def _day_upvol_share(scene: Scene, ls: LabelSet) -> None:
     """The day's share of NYSE volume in rising stocks ranked at this minute, one-sided in the top or bottom
     fifth; where it stood earlier when it is not one-sided now, at each whole half hour's mark ranked at that
-    mark; and how often the half hours' shares crossed even, ranked against the same count at this minute. The
+    mark; and how often the half hours' net volume changes switched sign, ranked against the same count at this
+    minute. The
     day's share is looked back on from half an hour in, before which it swings on the first minutes' thin volume."""
     now = scene.now
     settled = scene.session_open + timedelta(minutes=WINDOW_30_MIN)
@@ -311,10 +320,10 @@ def _day_upvol_share(scene: Scene, ls: LabelSet) -> None:
         return
     crossed = _crossings(scene.market, now)
     if crossed is None:
-        ls.omit("breadth.day_upvol_share", f"no NYSE up and down volume known at a whole half hour's mark since the open, within "
-                                           f"{FRESH_MIN} minutes of it")
+        ls.omit("breadth.day_upvol_share", f"no NYSE net volume ($VOLD) known at both ends of a whole half hour since the open, "
+                                           f"within {FRESH_MIN} minutes of each")
         return
-    crossed_rank, no_crossed_rank = rank_sessions(crossed, same_clock_market(scene, _crossings), "NYSE up and down volume since the open")
+    crossed_rank, no_crossed_rank = rank_sessions(crossed, same_clock_market(scene, _crossings), "NYSE net volume ($VOLD) since the open")
     if rank is None or crossed_rank is None:
         ls.omit("breadth.day_upvol_share", why or no_crossed_rank)
         return
@@ -330,7 +339,8 @@ def _day_upvol_share(scene: Scene, ls: LabelSet) -> None:
             where += f"; it has not stood one-sided at a half hour's mark since {settled.astimezone(ET):%H:%M}"
     rotation = (f"more often than {crossed_rank.higher_than} of the last {crossed_rank.of} sessions by this minute, {crossed_rank.band}"
                 f"{': rotating' if crossed_rank.band == 'top third' else ''}")
-    crossings = f"the 30-minute share crossed 50% {_times(crossed)} today" if crossed else "the 30-minute share has not crossed 50% today"
+    crossings = (f"the half hours' NYSE net volume changes switched sign {_times(crossed)} today" if crossed else
+                 "the half hours' NYSE net volume changes have not switched sign today")
     ls.put("breadth.day_upvol_share", f"since the open {pct(share)} of NYSE volume went into rising stocks, {where}; {crossings}, {rotation}")
 
 
@@ -452,29 +462,29 @@ def _latest_release(scene: Scene) -> events.Event | None:
                  and scene.now - e.start <= timedelta(minutes=EVENT_DIGEST_MIN)), None)
 
 
-def _window_share_rank(scene: Scene, start: datetime, end: datetime) -> tuple[float | None, SameClockRank | None, str | None]:
-    """The share of NYSE volume in rising stocks from ``start`` to ``end`` today, and its rank against the same
-    window, same clock and length, on the prior sessions, release or not, or the reason it has none."""
-    share = _upvol_share(scene.market, start, end)
-    if share is None:
+def _window_change_rank(scene: Scene, start: datetime, end: datetime) -> tuple[float | None, SameClockRank | None, str | None]:
+    """NYSE net volume's change from ``start`` to ``end`` today, and its rank against the same window, same clock
+    and length, on the prior sessions, release or not, or the reason it has none."""
+    change = _net_volume_change(scene.market, start, end)
+    if change is None:
         return None, None, None
-    base = same_clock_market(scene, lambda mk, then: _upvol_share(mk, _at_clock(scene, start, then), _at_clock(scene, end, then)))
-    return share, *rank_sessions(share, base, f"NYSE up and down volume from {start.astimezone(ET):%H:%M} to {end.astimezone(ET):%H:%M}")
+    base = same_clock_market(scene, lambda mk, then: _net_volume_change(mk, _at_clock(scene, start, then), _at_clock(scene, end, then)))
+    return change, *rank_sessions(change, base, f"NYSE net volume ($VOLD) from {start.astimezone(ET):%H:%M} to {end.astimezone(ET):%H:%M}")
 
 
 def _flip_after_release(scene: Scene, release: events.Event | None, ls: LabelSet) -> None:
-    """The share of NYSE volume in rising stocks since the release and in the hour before it (from the open when
-    the release came in the first hour), each ranked against the same minutes on the prior sessions."""
+    """NYSE net volume's change since the release and over the hour before it (from the open when the release
+    came in the first hour), each ranked against the same minutes on the prior sessions."""
     if release is None:
         ls.omit("breadth.flip_after_release", f"no in-session release in the last {EVENT_DIGEST_MIN} minutes")
         return
     before_from = max(release.start - timedelta(minutes=WINDOW_60_MIN), scene.session_open)
-    since, since_rank, no_since = _window_share_rank(scene, release.start, scene.now)
-    before, before_rank, no_before = _window_share_rank(scene, before_from, release.start)
+    since, since_rank, no_since = _window_change_rank(scene, release.start, scene.now)
+    before, before_rank, no_before = _window_change_rank(scene, before_from, release.start)
     released = f"{release.start.astimezone(ET):%H:%M}"
     if since is None or before is None:
-        ls.omit("breadth.flip_after_release", f"no NYSE up and down volume known within {FRESH_MIN} minutes of {released} and of now: "
-                                              f"the market-context job stopped or has not saved them")
+        ls.omit("breadth.flip_after_release", f"no NYSE net volume ($VOLD) known within {FRESH_MIN} minutes of {released} and of now: "
+                                              f"the market-context job stopped or has not saved it")
         return
     if since_rank is None or before_rank is None:
         ls.omit("breadth.flip_after_release", no_since or no_before)
@@ -483,8 +493,9 @@ def _flip_after_release(scene: Scene, release: events.Event | None, ls: LabelSet
     lead = round((release.start - before_from).total_seconds() / 60)
     before_words = "in the hour before it" if lead == WINDOW_60_MIN else f"in the {plural(lead, 'minute')} before it, from the open,"
     ls.put("breadth.flip_after_release",
-           f"since {release.words} at {released}, {plural(ago, 'minute')} ago, {pct(since)} of NYSE volume went into rising stocks, "
-           f"{_lean(since_rank, 'over the same minutes')}; {before_words} the share was {pct(before)}, {_lean(before_rank, 'over the same minutes')}")
+           f"since {release.words} at {released}, {plural(ago, 'minute')} ago, NYSE net volume changed by {_millions(since)}, "
+           f"{_lean(since_rank, 'over the same minutes')}; {before_words} net volume changed by {_millions(before)}, "
+           f"{_lean(before_rank, 'over the same minutes')}")
 
 
 # ----------------------------------------------------------------------------- the opening lane

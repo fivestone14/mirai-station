@@ -2,8 +2,9 @@
 omissions, and that a value known after the read never counts.
 
 The market context is built as the context job saves it (market_context.py): $TICK and $TRIN a reading a
-minute, $UVOL and $DVOL (thousands of shares) and $VOLD and $VOLSPD (shares) running totals since 09:30,
-each value known once its minute has finished. Every verdict is a rank against the same measure at the same
+minute; $UVOL and $DVOL (thousands of shares) the day's volume in the stocks up and down on the day, $VOLD
+(shares) their difference and $VOLSPD (shares) the same in S&P 500 members, all from 0 at 09:30; each value
+known once its minute has finished. Every verdict is a rank against the same measure at the same
 minute on the last 20 prior sessions (needing 10), so each fixture carries 20 prior sessions whose measure
 steps evenly, and a rank's third turns between 6 and 7 sessions beaten (bottom to middle) and between 13 and 14
 (middle to top)."""
@@ -40,7 +41,9 @@ def running_totals(per_minute: list[float], day: str | None = None) -> list[tupl
 
 
 def upvol(up: list[float], down: list[float], day: str | None = None) -> dict[str, list[tuple[datetime, float]]]:
-    return {"$UVOL": running_totals(up, day), "$DVOL": running_totals(down, day)}
+    """Up and down volume from what each minute added, no stock turning, and NYSE net volume, their difference in shares."""
+    return {"$UVOL": running_totals(up, day), "$DVOL": running_totals(down, day),
+            "$VOLD": running_totals([(u - d) * 1000 for u, d in zip(up, down)], day)}
 
 
 def even_prior_upvol(shares: list[float]) -> dict[str, dict]:
@@ -108,13 +111,13 @@ def upvol_read(scene_factory, share: float, prior=USUAL_SHARES):
 
 def test_the_30_minute_up_volume_share_ranked_at_this_minute(scene_factory):
     assert sentence(upvol_read(scene_factory, 0.61), "breadth.upvol_share_30m") == (
-        "over the last 30 minutes 61% of NYSE volume traded in rising stocks, higher than 20 of the last 20 sessions at this minute, "
+        "over the last 30 minutes NYSE net volume changed by +66M, higher than 20 of the last 20 sessions at this minute, "
         "top third: leaning to buying")
     assert sentence(upvol_read(scene_factory, 0.38), "breadth.upvol_share_30m") == (
-        "over the last 30 minutes 38% of NYSE volume traded in rising stocks, higher than 0 of the last 20 sessions at this minute, "
+        "over the last 30 minutes NYSE net volume changed by -72M, higher than 0 of the last 20 sessions at this minute, "
         "bottom third: leaning to selling")
     assert sentence(upvol_read(scene_factory, 0.52), "breadth.upvol_share_30m") == (
-        "over the last 30 minutes 52% of NYSE volume traded in rising stocks, higher than 12 of the last 20 sessions at this minute, "
+        "over the last 30 minutes NYSE net volume changed by +12M, higher than 12 of the last 20 sessions at this minute, "
         "middle third: no lean")
 
 
@@ -132,17 +135,26 @@ def test_the_up_volume_share_turns_third_at_the_rank_edges(scene_factory):
 def test_the_30_minute_share_is_omitted_when_the_feed_stopped_or_under_ten_prior_sessions(scene_factory):
     stopped = {s: [(t, v) for t, v in pts if t <= NOW - timedelta(minutes=10)] for s, pts in upvol_last_30(0.61).items()}
     ls = read(scene_factory, NOW, stopped, even_prior_upvol(USUAL_SHARES))
-    assert ls.omitted["breadth.upvol_share_30m"] == ("no NYSE up and down volume known both 30 minutes ago and now, within 5 minutes "
-                                                     "of each: the market-context job stopped or has not saved them")
+    assert ls.omitted["breadth.upvol_share_30m"] == ("no NYSE net volume ($VOLD) known both 30 minutes ago and now, within 5 minutes "
+                                                     "of each: the market-context job stopped or has not saved it")
     assert upvol_read(scene_factory, 0.61, prior=USUAL_SHARES[:9]).omitted["breadth.upvol_share_30m"] == (
-        "its rank needs 10 prior sessions with NYSE up and down volume over the 30 minutes to this minute, have 9")
+        "its rank needs 10 prior sessions with NYSE net volume ($VOLD) over the 30 minutes to this minute, have 9")
     assert "higher than 10 of the last 10 sessions" in sentence(upvol_read(scene_factory, 0.61, prior=USUAL_SHARES[:10]), "breadth.upvol_share_30m")
 
 
 def test_a_minute_that_finishes_after_the_read_does_not_count_toward_the_share(scene_factory):
     selling_after = upvol_last_30(0.61, extra=(0.0, 900000.0))           # its bar finishes at 12:33
     assert sentence(read(scene_factory, NOW, selling_after, even_prior_upvol(USUAL_SHARES)),
-                    "breadth.upvol_share_30m").startswith("over the last 30 minutes 61%")
+                    "breadth.upvol_share_30m").startswith("over the last 30 minutes NYSE net volume changed by +66M")
+
+
+def test_a_stock_that_turns_down_moves_its_day_from_up_to_down_volume_and_the_window_reads_net_volume(scene_factory):
+    up = [5000.0] * (MINUTES_TO_NOW - 30) + [2000.0] * 30
+    down = [5000.0] * (MINUTES_TO_NOW - 30) + [8000.0] * 30
+    up[-20], down[-20] = up[-20] - 300000.0, down[-20] + 300000.0      # its whole day so far leaves $UVOL for $DVOL
+    text = sentence(read(scene_factory, NOW, upvol(up, down), even_prior_upvol(USUAL_SHARES)), "breadth.upvol_share_30m")
+    assert text == ("over the last 30 minutes NYSE net volume changed by -780M, higher than 0 of the last 20 sessions at this minute, "
+                    "bottom third: leaning to selling")
 
 
 # ---- breadth.volume_vs_count_30m
@@ -286,8 +298,8 @@ def day_share(scene_factory, blocks: list[tuple[int, float, float]], now: dateti
 def test_a_one_sided_day(scene_factory):
     assert sentence(day_share(scene_factory, [(182, 10000.0, 0.85)]), "breadth.day_upvol_share") == (
         "since the open 85% of NYSE volume went into rising stocks, higher than 20 of the last 20 sessions at this minute, in the top "
-        "fifth: one-sided on the buy side; the 30-minute share has not crossed 50% today, more often than 0 of the last 20 sessions "
-        "by this minute, bottom third")
+        "fifth: one-sided on the buy side; the half hours' NYSE net volume changes have not switched sign today, more often than 0 of "
+        "the last 20 sessions by this minute, bottom third")
     assert sentence(day_share(scene_factory, [(182, 10000.0, 0.18)]), "breadth.day_upvol_share").startswith(
         "since the open 18% of NYSE volume went into rising stocks, higher than 0 of the last 20 sessions at this minute, in the "
         "bottom fifth: one-sided on the sell side; ")
@@ -305,31 +317,32 @@ def test_a_day_that_faded_from_one_side_says_where_it_stood(scene_factory):
     faded = day_share(scene_factory, [(60, 10000.0, 0.9), (122, 20000.0, 0.4)])
     assert sentence(faded, "breadth.day_upvol_share") == (
         "since the open 50% of NYSE volume went into rising stocks, higher than 10 of the last 20 sessions at this minute, middle third; "
-        "earlier today it stood one-sided, at 90% at 10:00, in the top fifth for that minute; the 30-minute share crossed 50% once "
-        "today, more often than 5 of the last 20 sessions by this minute, bottom third")
+        "earlier today it stood one-sided, at 90% at 10:00, in the top fifth for that minute; the half hours' NYSE net volume changes "
+        "switched sign once today, more often than 5 of the last 20 sessions by this minute, bottom third")
     leaning = day_share(scene_factory, [(182, 10000.0, 0.51)], prior=even_prior_upvol(USUAL_SHARES))
     assert sentence(leaning, "breadth.day_upvol_share") == (
         "since the open 51% of NYSE volume went into rising stocks, higher than 11 of the last 20 sessions at this minute, middle third; "
-        "it has not stood one-sided at a half hour's mark since 10:00; the 30-minute share has not crossed 50% today, more often than "
-        "0 of the last 20 sessions by this minute, bottom third")
+        "it has not stood one-sided at a half hour's mark since 10:00; the half hours' NYSE net volume changes have not switched sign "
+        "today, more often than 0 of the last 20 sessions by this minute, bottom third")
 
 
 def test_a_rotating_day_is_the_top_third_of_the_crossings_by_this_minute(scene_factory):
     rotating = [(30, 10000.0, 0.7 if k % 2 == 0 else 0.3) for k in range(7)]
     assert sentence(day_share(scene_factory, rotating), "breadth.day_upvol_share").endswith(
-        "the 30-minute share crossed 50% 5 times today, more often than 20 of the last 20 sessions by this minute, top third: rotating")
+        "the half hours' NYSE net volume changes switched sign 5 times today, more often than 20 of the last 20 sessions by this minute, top third: rotating")
     three = [(30, 10000.0, 0.7 if k % 2 == 0 else 0.3) for k in range(4)] + [(62, 10000.0, 0.3)]
     assert sentence(day_share(scene_factory, three), "breadth.day_upvol_share").endswith(
-        "the 30-minute share crossed 50% 3 times today, more often than 15 of the last 20 sessions by this minute, top third: rotating")
+        "the half hours' NYSE net volume changes switched sign 3 times today, more often than 15 of the last 20 sessions by this minute, top third: rotating")
     twice = [(30, 10000.0, 0.7 if k % 2 == 0 else 0.3) for k in range(3)] + [(92, 10000.0, 0.7)]
     assert sentence(day_share(scene_factory, twice), "breadth.day_upvol_share").endswith(
-        "the 30-minute share crossed 50% twice today, more often than 10 of the last 20 sessions by this minute, middle third")
+        "the half hours' NYSE net volume changes switched sign twice today, more often than 10 of the last 20 sessions by this minute, middle third")
 
 
 def test_rotation_is_counted_between_whole_half_hours_not_minute_by_minute(scene_factory):
     hovering = [(1, 10000.0, 0.53 if i % 2 == 0 else 0.47) for i in range(182)]
     assert sentence(day_share(scene_factory, hovering), "breadth.day_upvol_share").endswith(
-        "the 30-minute share has not crossed 50% today, more often than 0 of the last 20 sessions by this minute, bottom third")
+        "the half hours' NYSE net volume changes have not switched sign today, more often than 0 of the last 20 sessions by this "
+        "minute, bottom third")
 
 
 def test_the_day_share_waits_half_an_hour_a_live_feed_and_ten_prior_sessions(scene_factory):
@@ -592,8 +605,8 @@ def test_breadth_flipped_after_the_fed(scene_factory, tmp_path, monkeypatch):
     ls = around_release(scene_factory, at(14, 40, ss=10), [(210, 0.5), (60, 0.63), (40, 0.38)])
     assert ls.gates["breadth_flip_after_release"] is None
     assert sentence(ls, "breadth.flip_after_release") == (
-        "since the Fed's rate decision at 14:00, 40 minutes ago, 38% of NYSE volume went into rising stocks, higher than 0 of the last "
-        "20 sessions over the same minutes, bottom third: leaning to selling; in the hour before it the share was 63%, higher than 20 of "
+        "since the Fed's rate decision at 14:00, 40 minutes ago, NYSE net volume changed by -96M, higher than 0 of the last 20 sessions "
+        "over the same minutes, bottom third: leaning to selling; in the hour before it net volume changed by +156M, higher than 20 of "
         "the last 20 sessions over the same minutes, top third: leaning to buying")
 
 
@@ -601,14 +614,14 @@ def test_breadth_flipped_to_buying_and_breadth_that_kept_its_side(scene_factory,
     calendar(tmp_path, monkeypatch, FOMC_AND_PRESSER)
     to_buying = around_release(scene_factory, at(14, 40, ss=10), [(210, 0.5), (60, 0.37), (40, 0.64)])
     assert sentence(to_buying, "breadth.flip_after_release").endswith(
-        "64% of NYSE volume went into rising stocks, higher than 20 of the last 20 sessions over the same minutes, top third: leaning "
-        "to buying; in the hour before it the share was 37%, higher than 0 of the last 20 sessions over the same minutes, bottom third: "
+        "NYSE net volume changed by +112M, higher than 20 of the last 20 sessions over the same minutes, top third: leaning to buying; "
+        "in the hour before it net volume changed by -156M, higher than 0 of the last 20 sessions over the same minutes, bottom third: "
         "leaning to selling")
     kept = around_release(scene_factory, at(14, 40, ss=10), [(210, 0.5), (60, 0.35), (40, 0.3)])
     assert sentence(kept, "breadth.flip_after_release").endswith(
-        "30% of NYSE volume went into rising stocks, higher than 0 of the last 20 sessions over the same minutes, bottom third: leaning "
-        "to selling; in the hour before it the share was 35%, higher than 0 of the last 20 sessions over the same minutes, bottom "
-        "third: leaning to selling")
+        "NYSE net volume changed by -160M, higher than 0 of the last 20 sessions over the same minutes, bottom third: leaning to "
+        "selling; in the hour before it net volume changed by -180M, higher than 0 of the last 20 sessions over the same minutes, "
+        "bottom third: leaning to selling")
 
 
 def test_each_side_of_the_release_is_ranked_against_the_same_minutes_on_the_prior_sessions(scene_factory, tmp_path, monkeypatch):
@@ -621,10 +634,10 @@ def test_each_side_of_the_release_is_ranked_against_the_same_minutes_on_the_prio
                                                                                               (40, 10000.0, 0.5)])))
     ls = build_breadth_labels(with_prior(scene, prior))
     assert sentence(ls, "breadth.flip_after_release").startswith(
-        "since the Fed's rate decision at 14:00, 40 minutes ago, 50% of NYSE volume went into rising stocks, higher than 10 of the last "
-        "20 sessions over the same minutes, middle third: no lean;")
+        "since the Fed's rate decision at 14:00, 40 minutes ago, NYSE net volume changed by +0M, higher than 10 of the last 20 sessions "
+        "over the same minutes, middle third: no lean;")
     thin = around_release(scene_factory, at(14, 40, ss=10), [(210, 0.5), (60, 0.63), (40, 0.38)], prior=USUAL_SHARES[:9])
-    assert thin.omitted["breadth.flip_after_release"] == ("its rank needs 10 prior sessions with NYSE up and down volume from 14:00 to "
+    assert thin.omitted["breadth.flip_after_release"] == ("its rank needs 10 prior sessions with NYSE net volume ($VOLD) from 14:00 to "
                                                           "14:40, have 9")
 
 
@@ -632,9 +645,9 @@ def test_a_release_in_the_first_hour_is_held_against_the_minutes_from_the_open(s
     calendar(tmp_path, monkeypatch, [("10:00", "ISM_MANUFACTURING", "data_10am")])
     ls = around_release(scene_factory, at(10, 32, ss=10), [(30, 0.55), (32, 0.6)])
     assert sentence(ls, "breadth.flip_after_release") == (
-        "since the ISM manufacturing report at 10:00, 32 minutes ago, 60% of NYSE volume went into rising stocks, higher than 20 of the "
-        "last 20 sessions over the same minutes, top third: leaning to buying; in the 30 minutes before it, from the open, the share was "
-        "55%, higher than 15 of the last 20 sessions over the same minutes, top third: leaning to buying")
+        "since the ISM manufacturing report at 10:00, 32 minutes ago, NYSE net volume changed by +64M, higher than 20 of the last 20 "
+        "sessions over the same minutes, top third: leaning to buying; in the 30 minutes before it, from the open, net volume changed by "
+        "+30M, higher than 15 of the last 20 sessions over the same minutes, top third: leaning to buying")
 
 
 def test_the_fed_chairs_jackson_hole_speech_is_a_release_and_other_fed_remarks_are_not(scene_factory, tmp_path, monkeypatch):
@@ -664,7 +677,7 @@ def test_a_release_still_to_come_and_volume_after_the_read_do_not_count(scene_fa
     calendar(tmp_path, monkeypatch, [("14:00", "FOMC", 1), ("14:50", "FED_CHAIR_TESTIMONY", 1)])
     ls = around_release(scene_factory, at(14, 40, ss=10), [(210, 0.5), (60, 0.63), (40, 0.38)], extra=(900000.0, 0.0))
     assert sentence(ls, "breadth.flip_after_release").startswith(
-        "since the Fed's rate decision at 14:00, 40 minutes ago, 38% of NYSE volume went into rising stocks")
+        "since the Fed's rate decision at 14:00, 40 minutes ago, NYSE net volume changed by -96M")
 
 
 def test_the_gate_is_decided_by_the_calendar_and_the_label_needs_the_volume(scene_factory, tmp_path, monkeypatch):
@@ -673,8 +686,8 @@ def test_the_gate_is_decided_by_the_calendar_and_the_label_needs_the_volume(scen
     assert no_context.gates["breadth_flip_after_release"] is None
     assert no_context.omitted["breadth.flip_after_release"] == "no market-context snapshot today"
     stopped = around_release(scene_factory, at(14, 40, ss=10), [(260, 0.5)])
-    assert stopped.omitted["breadth.flip_after_release"] == ("no NYSE up and down volume known within 5 minutes of 14:00 and of now: "
-                                                             "the market-context job stopped or has not saved them")
+    assert stopped.omitted["breadth.flip_after_release"] == ("no NYSE net volume ($VOLD) known within 5 minutes of 14:00 and of now: "
+                                                             "the market-context job stopped or has not saved it")
 
 
 # ---- the opening lane: breadth.open_net_volume, breadth.opening_tick, breadth.tick_extreme_5m and its gate
