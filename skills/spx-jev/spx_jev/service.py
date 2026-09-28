@@ -613,17 +613,17 @@ def write_card(out_dir: Path, c: dict) -> None:
     os.replace(tmp, out_dir / "latest.json")
 
 
-def close_out(state_dir: Path, out_dir: Path, doc: dict, lane: Lane) -> dict | None:
+def close_out(state_dir: Path, out_dir: Path, doc: dict, lane: Lane, day: str | None = None) -> dict | None:
     """A lane's run after its last read (lane.close_out): grade every mark that has passed and refresh
     the calls and the day's tally on the card the last read wrote. JEV is asked nothing and no read is
     recorded (the archive gets a close-out record), so the morning's last calls are graded the same
-    day. None when the lane did not read today."""
+    day. None when the lane did not read on ``day``, today unless a replay names one."""
     grade_run(state_dir, out_dir, live_options(doc), lane=lane)
     try:
         c = json.loads((out_dir / "latest.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    if str(c.get("row_ts", ""))[:10] != today_et():
+    if str(c.get("row_ts", ""))[:10] != (day or today_et()):
         return None
     day = c["row_ts"][:10]
     calls = day_calls(out_dir, day, lane)

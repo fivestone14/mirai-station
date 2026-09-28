@@ -469,26 +469,6 @@ def card(scene: Scene | None, record: dict, doc: dict, out_dir: Path, unsent_rea
     }
 
 
-def close_out(state_dir: Path, out_dir: Path, doc: dict, day: str) -> dict | None:
-    """The run at the lane's close_out: grade every mark that has passed (from the settled open) and refresh the
-    calls and the day's tally on the card the last read wrote. JEV is asked nothing and no read is recorded (the
-    archive gets a close-out record). None when the card is not ``day``'s: the lane did not read that morning."""
-    grade.run(state_dir, out_dir, grade.live_options(doc), lane=PREMARKET)
-    try:
-        c = json.loads((out_dir / "latest.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    if c.get("day") != day:
-        return None
-    calls = service.day_calls(out_dir, day, PREMARKET)
-    c.update(service.calls_block(calls))
-    c["closed_out_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    service.write_card(out_dir, c)
-    archive.append(PREMARKET.archive_folder(state_dir, out_dir), day,
-                   archive.CloseOutRecord(lane=PREMARKET.name, day=day, calls=calls, tally=c["tally"]))
-    return c
-
-
 def already_read(out_dir: Path, day: str, checkpoint: str) -> bool:
     """Whether the lane's day file holds a read at ``checkpoint``: a second fire there would ask JEV twice."""
     return any(r.get("checkpoint") == checkpoint for r in load_jsonl(out_dir / f"{day}.jsonl"))
@@ -526,7 +506,7 @@ def main(argv: list[str] | None = None) -> int:
     day = now.astimezone(ET).date().isoformat()
     try:
         if checkpoint == PREMARKET.close_out:
-            c = close_out(state_dir, out_dir, doc, day)
+            c = service.close_out(state_dir, out_dir, doc, PREMARKET, day)
             service.log(f"premarket lane closed out: {c['tally']['right']} of {c['tally']['graded']} graded calls right, "
                         f"{c['tally']['calls']} calls" if c else "premarket lane: nothing to close out today")
             return 0

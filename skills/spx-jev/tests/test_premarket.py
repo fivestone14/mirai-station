@@ -74,7 +74,11 @@ def jev(monkeypatch):
     seen = {"requests": [], "sums": [], "graded": []}
     monkeypatch.setattr(premarket, "send_all", _answers(seen["requests"]))
     monkeypatch.setattr(premarket, "send", _sums(seen["sums"]))
-    monkeypatch.setattr(grade, "run", lambda state_dir, out_dir, allowed, day=None, lane=None: seen["graded"].append(lane))
+
+    def graded(state_dir, out_dir, allowed, day=None, lane=None):
+        seen["graded"].append(lane)
+    monkeypatch.setattr(grade, "run", graded)
+    monkeypatch.setattr(service, "grade_run", graded)                  # the close-out's, as service imports it
     monkeypatch.setattr(story, "releases", lambda day: [])
     return seen
 
