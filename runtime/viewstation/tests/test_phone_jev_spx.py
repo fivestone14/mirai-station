@@ -1282,6 +1282,28 @@ def test_the_opening_card_leads_with_the_average_call_and_keeps_the_end_prices_s
     assert ["odds", "End-price question: a big move 15%"] in parts   # the size, from the end-price sum and said so; its direction is the call's
 
 
+def test_the_opening_card_says_its_ruler_row_is_the_end_price_questions_and_never_sizes_the_call():
+    """The opening call is the average over the next 10 minutes, flat within its own edge and with no size: the tape unit
+    row's second flat figure is the end-price question's and says so, and neither the card nor the footer says the call
+    is sized in tape units. The footer describes the pre-market call as the 30-minute average it is."""
+    hour = {"pick": "up_small", "probabilities": {"down_big": 0.05, "down_small": 0.1, "flat": 0.3, "up_small": 0.4, "up_big": 0.1, "unsure": 0.05},
+            "average": {**AVG, "primary": "average_10", "box": "next_10", "minutes": 10, "edge_points": 2.07}}
+    t = {"lane": "tape", "row_ts": "2026-09-28T10:40:00-04:00", "hour": hour, "calls": [call("10:40", "10:50", "up", 0.55)], "stretch": {},
+         "ruler": {"unit_points": 4.4, "source": "live"}, "band": {"flat_points": 3.3, "big_points": 8.8}}
+    js = (CARD_STUBS + "Object.defineProperty(Node.prototype, 'childNodes', {get: function(){ return this.kids; }});" + _odds() + _var("RULER_HELD_UNTIL")
+          + "".join(_fn(f) for f in ("top1", "tag", "skipLine", "averageWords", "endPriceRow", "laneCard"))
+          + "console.log(JSON.stringify(D.t.map(function(t){ return dump(laneCard(t, true)); })));")
+    old = {**t, "hour": {k: v for k, v in hour.items() if k != "average"}}
+    now, before = [_parts(d) for d in _run(js, {"t": [t, old], "now": "2026-09-28T10:42:00-04:00"})]
+    assert ["tag", "On the average price over the next 10 minutes, flat within \u00B12.07 points"] in now
+    assert ["odds", "End-price question:One tape unit 4.4 pointsFlat within 3.3 pointsBig beyond 8.8 points"] in now
+    assert ["odds", "One tape unit 4.4 pointsFlat within 3.3 pointsBig beyond 8.8 points"] in before   # a card with no average call
+    assert now[-1] == ["tag", "The 5-minute reads\u2019 call for the next 10 minutes: a forecast, graded by the bars, not a trade signal"]
+    foot = re.search(r'(?s)<p class="foot">(.*?)</p>', SPX).group(1)
+    assert "sized in tape units" not in foot and "in tape units" not in _fn("laneCard")
+    assert "the average price over the 30 minutes after the first settled price" in foot and "where price stands 10 and 30" not in foot
+
+
 def test_the_pre_market_call_and_its_fold_are_the_average_price_sums():
     avg = {**AVG, "pick": "down", "probabilities": {"up": 0.25, "flat": 0.3, "down": 0.45}, "primary": "open_average_30", "box": "open_30",
            "flat_points": 4.38, "edge_points": 2.59}
