@@ -320,7 +320,9 @@ From Python, in the station's venv:
                FROM calls c JOIN grades g USING (read_id, horizon) WHERE c.horizon = 'next_30'""").show()
     con.sql("SELECT day, table_name, reason, source FROM quarantine").show()
 
-Without the DuckDB file, over the Parquet directly:
+The views name the store's files by their full path, so a copied store is
+read over its Parquet directly, or given views of its own with
+`store.write_views(<copy>)`. Without the DuckDB file, over the Parquet directly:
 
     duckdb.sql(f"""SELECT symbol, count(*) FROM read_parquet('{STORE}/context_bars/*/*.parquet', hive_partitioning = true)
                    GROUP BY symbol""").show()

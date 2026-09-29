@@ -381,6 +381,15 @@ def test_the_command_builds_the_day_names_its_counts_and_writes_the_views(tmp_pa
     assert (store.store_dir(tmp_path) / store.DB_NAME).exists()
 
 
+def test_a_relative_state_dir_still_gives_views_that_read_from_anywhere(tmp_path, monkeypatch):
+    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path))
+    monkeypatch.chdir(tmp_path.parent)
+    assert store.main(["--state-dir", tmp_path.name, "--day", DAY]) == 0
+    monkeypatch.chdir(SKILL)
+    with duckdb.connect(str(store.store_dir(tmp_path) / store.DB_NAME), read_only=True) as con:
+        assert con.execute("SELECT count(*) FROM reads").fetchone() == (3,)
+
+
 def test_a_notebook_holding_the_duckdb_file_open_for_writing_leaves_the_views_but_does_not_fail_the_run(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(store, "CALENDAR", _state(tmp_path))
     assert store.main(["--state-dir", str(tmp_path), "--day", DAY]) == 0

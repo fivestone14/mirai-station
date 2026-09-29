@@ -1009,7 +1009,7 @@ def main(argv: list[str] | None = None) -> int:
     which.add_argument("--day", help="YYYY-MM-DD, rebuild one day")
     which.add_argument("--backfill", action="store_true", help="rebuild every market day with a raw file on disk")
     args = ap.parse_args(argv)
-    state_dir, now = Path(args.state_dir), datetime.now(ET)
+    state_dir, now = Path(args.state_dir).resolve(), datetime.now(ET)     # the views name their files by this path
     if args.day:
         days = [date.fromisoformat(args.day)]
     elif args.backfill:
