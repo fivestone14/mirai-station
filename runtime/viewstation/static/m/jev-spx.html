@@ -37,8 +37,9 @@
   No dark mode, because the glance has none. House rules kept: text goes in
   with textContent only, no emoji, no arrows, the row's time and age always
   shown, a failed fetch keeps the last card on screen and says so. Every answer
-  is a probability per option; the sum and the shadow questions are forecasts
-  graded later, drawn dashed with that said in words. Nothing here reads a
+  is a probability per option; the calls and the end-price sums are forecasts
+  graded later, the shadow questions forecasts asked and logged and never graded,
+  all drawn dashed with that said in words. Nothing here reads a
   viewport unit.
 -->
 <script>
@@ -323,7 +324,7 @@ details .q{margin-top:8px}
 <div class="load" id="load"><i></i>Reading the card</div>
 <div id="state"></div>
 <main id="main" style="display:flex;flex-direction:column;gap:12px"></main>
-<p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are forecasts too, logged and never graded. Neither is a call. A call is graded on the average price over its window: where each minute closed against the price at the read, averaged, in index points, and set against a flat band (the &plusmn; figure) narrower than an end price would get, because an average swings less than any one price. Its direction decides right or wrong; its size at the end price, where price stood highest and lowest (&ldquo;min 3&rdquo; is the window&rsquo;s third minute) and any sharp move are said beside it, and an unsure call is passed, never counted as a miss. For now each call also shows the old grade, on the end price alone, and a call the average could not grade stands on that, said so. The call is JEV&rsquo;s answer to that question itself: where the average will sit, up, flat or down within the &plusmn; figure, with no unsure; the old question on the end price is still asked beside it, in shadow, and shown muted as &ldquo;end price only&rdquo;. When a sum says blended, it is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent SPX sessions. Through the first hour the opening lane reads every 5 minutes and its 10-minute call, sized in tape units of index points, leads the page until its last call closes; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock. Before the open, the pre-market lane reads S&amp;P futures, 10-year bond futures, bitcoin futures and the morning&rsquo;s reports through the night and makes one call about the first half hour: where price stands 10 and 30 minutes after the first settled price, four minutes after the open. It is a forecast too, graded by the bars. Every time here is in this phone's own time zone.</p>
+<p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are shadow questions, asked and logged, never graded and never weighted. A call is a forecast, not a trade signal, graded on the average price over its window: where each minute closed against the price at the read, averaged, in index points, and set against a flat band (the &plusmn; figure) narrower than an end price would get, because an average swings less than any one price. Its direction decides right or wrong; its size at the end price, where price stood highest and lowest (&ldquo;min 3&rdquo; is the window&rsquo;s third minute) and any sharp move are said beside it, and an unsure call is passed, never counted as a miss. For now each call also shows the old grade, on the end price alone, and a call the average could not grade stands on that, said so. The call is JEV&rsquo;s answer to that question itself: where the average will sit, up, flat or down within the &plusmn; figure, with no unsure; the old question on the end price is still asked and graded beside it, and shown muted as &ldquo;end price only&rdquo;. When a sum says blended, it is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent SPX sessions. Through the first hour the opening lane reads every 5 minutes and its 10-minute call, sized in tape units of index points, leads the page until its last call closes; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock. Before the open, the pre-market lane reads S&amp;P futures, 10-year bond futures, bitcoin futures and the morning&rsquo;s reports through the night and makes one call about the first half hour: where price stands 10 and 30 minutes after the first settled price, four minutes after the open. It is a forecast too, graded by the bars. Every time here is in this phone's own time zone.</p>
 
 <div class="scrim" data-sheet-close></div>
 <div class="sheet" id="jevSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="csTitle">
@@ -367,7 +368,7 @@ details .q{margin-top:8px}
               dealer_regime:'dealer regime', gamma_map:'gamma map', levels_and_tape:'levels and tape', breadth:'breadth',
               leadership:'leadership', macro_and_calendar:'macro and calendar', shocks_and_news:'shocks and news', close:'the close',
               read_sequence:'the day, read by read', bitcoin:'bitcoin', premarket_overnight:'premarket and overnight',
-              premarket_context:'premarket context', premarket_sequence:'the night, read by read', shadow_log:'shadow log, never graded'};
+              premarket_context:'premarket context', premarket_sequence:'the night, read by read', shadow_log:'shadow log, never graded or weighted'};
   var last = null;
   var LOAD_MIN_MS = 260, LOAD_T0 = Date.now();   // the cover is held at least this long, never a stutter
   function clearLoading(){
@@ -480,7 +481,7 @@ details .q{margin-top:8px}
   function question(q, omitted, at){
     var box = el('div', 'q' + (q.status === 'shadow' ? ' shadow' : ''));
     box.appendChild(el('div', 'ask', q.ask));
-    if(q.status === 'shadow') box.appendChild(tag('shadow: a forecast, logged, never graded and never a call'));
+    if(q.status === 'shadow') box.appendChild(tag('shadow: asked and logged, never graded, never weighted'));
     var a = q.answer, held = q.held_from ? 'held since ' + viewerTime(q.held_from) + ', not re-asked' : '';
     // a Choice or a Score answer always carries its probabilities (a Score's are keyed by its option names)
     if(a && a.probabilities){
@@ -514,7 +515,7 @@ details .q{margin-top:8px}
   // a read whose average-price question got no answer calls the end-price question's pick, and says so
   var FALLBACK_WORDS = 'Average question unanswered: this is the end-price question\u2019s call';
   function fallbackLine(h){ return h && h.average && !h.average.probabilities ? skipLine('average question unanswered: showing the end-price call') : null; }
-  // the end-price sum beside the call, in shadow: asked and graded as before, never the call
+  // the end-price sum kept beside the call: asked and graded as before, never the call
   function endPriceRow(h){
     var p = h.probabilities, t = h.pick || top1(p), r = el('div', 'row60');
     r.appendChild(el('span', 'k', 'End price only')); r.appendChild(el('b', null, cap(t) + ' ' + pct(p[t])));
@@ -980,7 +981,7 @@ details .q{margin-top:8px}
     odds.appendChild(oddsBar(o, c.pick));
     oddsKeys(o).forEach(function(k){ odds.appendChild(bar(cap(k), o[k], k === c.pick)); });
     body.appendChild(odds);
-    body.appendChild(tag('a forecast, graded by the bars, never a call.'));
+    body.appendChild(tag('a forecast, graded by the bars, not a trade signal.'));
     MiraiSheet.open(from);
   }
   function inPlay(calls){
@@ -1026,7 +1027,7 @@ details .q{margin-top:8px}
         say60(); tickers.push(say60); hc.appendChild(r60);
       }
       hc.appendChild(tag('from ' + h.used + ' answers' + (h.left_out ? ', ' + h.left_out + ' left out' : '') + (h.missing ? ', ' + h.missing + ' missing a label' : '') +
-                         ' \u00B7 a forecast, graded by the bars, never a call'));
+                         ' \u00B7 a forecast, graded by the bars, not a trade signal'));
       main.appendChild(hc);
     } else {
       // a read with no sum says why: JEV's error when a sent read made none, otherwise that it made no call
@@ -1211,7 +1212,7 @@ details .q{margin-top:8px}
       ? 'Hands back to the 30-minute reads at ' + viewerTime(newest.mark) + ', when this last call closes.'
       : 'Hands back to the 30-minute reads when the last call closes, about ' + viewerTime(Date.parse(sch.reads[sch.reads.length - 1]) + sch.looks_ahead_min * 60000) + '.'));
     if(!ok) box.appendChild(tag('fetch failed, showing the last read'));
-    box.appendChild(tag('the 5-minute reads’ call for the next ' + newest.minutes + ' minutes, in tape units: a forecast, graded by the bars, never a call'));
+    box.appendChild(tag('the 5-minute reads’ call for the next ' + newest.minutes + ' minutes, in tape units: a forecast, graded by the bars, not a trade signal'));
     return box;
   }
   // the card's read is the lane's last of the day: it is stamped at a bar, which can be a minute behind the
@@ -1548,7 +1549,7 @@ details .q{margin-top:8px}
     }
     card.appendChild(preFacts(p));
     card.appendChild(tag('hands over to the 5-minute opening reads at ' + viewerTime(p.handover) + '.' +
-                         (p.hour && p.hour.probabilities ? ' A forecast, graded by the bars, never a call.' : '')));
+                         (p.hour && p.hour.probabilities ? ' A forecast, graded by the bars, not a trade signal.' : '')));
     main.appendChild(card);
     var nf = el('div', 'card fold');
     nf.appendChild(el('span', 'k', 'Opening reads')); nf.appendChild(el('b', null, 'First ' + viewerTime(p.handover)));

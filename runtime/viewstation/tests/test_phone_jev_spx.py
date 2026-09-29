@@ -226,7 +226,7 @@ def test_an_open_call_shows_its_average_so_far():
 
 
 def test_a_call_with_no_average_price_grade_stands_on_its_end_price_said_so():
-    """The average could not grade it (the shadow grade failed, or its window missed bars): the row and the sheet
+    """The average could not grade it (the average-price grade failed, or its window missed bars): the row and the sheet
     give the end price's verdict, marked as the end price's alone ("Ended", "End price only"), as the tally counts it
     (service.call_verdict), never "Grade pending" for ever."""
     live = {**call("10:32", "11:02", "flat", 0.7), "odds": {"up": 0.2, "down": 0.1, "flat": 0.7},
@@ -573,6 +573,22 @@ def test_the_footnote_says_once_what_the_average_over_the_window_is():
     assert "&plusmn;" in foot and "min 3" in foot
 
 
+def test_a_call_is_a_forecast_not_a_trade_signal_and_shadow_means_only_the_shadow_questions():
+    """The page named a thing "the call" and in the same view said it was "never a call", and called the end-price
+    sums "in shadow" though they are graded. A call is the graded forecast, said to be no trade signal; shadow is kept
+    for the shadow questions, asked and logged, never graded and never weighted (the question set's definition)."""
+    assert "never a call" not in SPX and "Neither is a call" not in SPX and "in shadow" not in SPX
+    assert JS.count("not a trade signal") == 4
+    foot = re.search(r'(?s)<p class="foot">(.*?)</p>', SPX).group(1)
+    assert "A call is a forecast, not a trade signal" in foot and "asked and logged, never graded and never weighted" in foot
+    js = ("function bar(){ return el('div'); }" + _fn("tag") + _fn("skipLine") + _fn("skipWhy") + _fn("question") +
+          "console.log(JSON.stringify(question(D.q, {}, D.at).kids.map(function(k){ return k.textContent; })));")
+    q = {"id": "tape_log", "status": "shadow", "ask": "Did the tape lean?", "options": ["up", "down"],
+         "answer": {"pick": "up", "probabilities": {"up": 0.6, "down": 0.4}}}
+    got = _run(js, {"q": q, "at": "2026-09-28T11:02:00-04:00"})
+    assert got[:2] == ["Did the tape lean?", "Shadow: asked and logged, never graded, never weighted"]
+
+
 # Chrome at 360 with the shipped face (Plus Jakarta Sans) loaded: odds words as drawn, in bold when the pick. The
 # first four were cut by a pixel or more at their share under the rule of 290px and 6.4px a letter; the rest fit their
 # share and were left out under the rule of 7.9px a letter, "Unsure 27%" in 77px among them
@@ -894,7 +910,7 @@ def test_a_call_leads_the_card_with_its_shape_its_checks_and_the_story():
     facts = [m for m in parts if m[0] == "facts"][0][1]
     assert facts.startswith("S&P futuresBigger nightS&P futures stand 0.62% above their 13:00 price")   # market words, the viewer's zone
     assert "05:30 reportExtendedSince the 05:30 jobless claims" in facts
-    assert parts[-1] == ["tag", "Hands over to the 5-minute opening reads at 06:35. A forecast, graded by the bars, never a call."]
+    assert parts[-1] == ["tag", "Hands over to the 5-minute opening reads at 06:35. A forecast, graded by the bars, not a trade signal."]
     assert _flat_text(got["main"][3][1]) == "Opening readsFirst 06:35Every 5 min, 10-minute calls"
 
 
@@ -1212,7 +1228,7 @@ def test_the_folded_premarket_call_fits_the_owners_360px_phone():
 
 
 # ---- the call on the average price (skills/spx-jev hour.average_summary): up, flat or down over the window, no unsure;
-# the end-price sum beside it, in shadow
+# the end-price sum kept beside it
 
 AVG = {"pick": "up", "probabilities": {"up": 0.55, "flat": 0.3, "down": 0.15}, "primary": "average_30", "box": "next_30",
        "minutes": 30, "flat_points": 5.25, "edge_points": 3.11}
