@@ -49,7 +49,7 @@ def _run(js, data=None, tz=LA):
         pytest.skip("node is not installed")
     script = ("const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + FIXED_NOW + FAKE_DOM
               + "".join(_fn(f) for f in ("viewerTime", "marketAt", "marketWords", "cap", "pct", "words", "startOf", "endOf",
-                                          "leftWords", "verdict", "callWords", "laneLeads", "svgEl", "lastLaneRead", "hhmm", "marketClock",
+                                          "leftWords", "verdict", "endPrice", "callWords", "laneLeads", "svgEl", "lastLaneRead", "hhmm", "marketClock",
                                           "marketDay", "sentence"))
               + _var("VIEWER_FMT") + _var("NS") + _var("ROW_H") + js)
     out = subprocess.run([_NODE, "-e", script], input=json.dumps(data), capture_output=True, text=True, timeout=20,
@@ -64,9 +64,25 @@ def call(read, mark, pick, p, **grade):
             "minutes": minutes, "pick": pick, "p": p, **grade}
 
 
+def graded(label, verdict, g=0.0, edge=1.59, **more):
+    """A call's ``integral`` as the service puts it on the card (service.day_integral): its grade on the average price."""
+    return {"graded": True, "label": label, "g": g, "edge": edge, "verdict": verdict, "running": [label] * 10,
+            "best": {"points": g, "minute": 10}, "worst": {"points": 0.0, "minute": 1}, **more}
+
+
 MORNING = [call("09:50", "10:00", "flat", 0.42), call("09:45", "09:55", "up_small", 0.38),
-           call("09:40", "09:50", "flat", 0.51, outcome="flat", hit=True),
-           call("09:35", "09:45", "down_small", 0.33, outcome="up_small", hit=False)]
+           call("09:40", "09:50", "flat", 0.51, integral=graded("flat", "right"), end_price={"outcome": "flat", "hit": True}),
+           call("09:35", "09:45", "down_small", 0.33, integral=graded("up", "wrong", 2.1), end_price={"outcome": "up_small", "hit": False})]
+# the owner's S9 at 10:30: down_small, the average -4.52 against 1.59 (down from the second minute on), the end price
+# down big, 10.15 points under the read
+S9 = {**call("10:30", "10:40", "down_small", 0.38),
+      "integral": {"graded": True, "label": "down", "g": -4.52, "edge": 1.59, "verdict": "right", "margin": 2.844,
+                   "size": {"band": "down_big", "size": "big", "call": "small", "right": False},
+                   "best": {"points": -0.93, "minute": 1}, "worst": {"points": -10.15, "minute": 10},
+                   "sharp_move": {"points": -3.44, "minute": 9, "higher_than": 12, "of": 20, "sharp": False, "note": "no sharp move"},
+                   "running": ["flat"] + ["down"] * 9},
+      "end_price": {"outcome": "down_big", "hit": False, "moved": {"realized_points": -10.15, "realized_units": 2.42}},
+      "odds": {"down_big": 0.2, "down_small": 0.38, "flat": 0.3, "up_small": 0.05, "up_big": 0.02, "unsure": 0.05}}
 
 
 # ---- the wiring
@@ -143,7 +159,7 @@ def test_the_calls_in_play_axis_and_tap_targets_read_in_the_viewers_zone():
     hits = [k for k in svg["kids"] if k["tag"] == "rect" and k["attrs"].get("class") == "hit"]
     assert hits[1]["attrs"]["aria-label"] == "The 22:45 call, Up small 38%: its odds and result"
     side = [t["text"] + "".join(k["text"] for k in t["kids"]) for t in texts if t["attrs"].get("class") == "t-side"]
-    assert side == ["9 min left", "4 min left", "Was Flat · Right", "Was Up small · Wrong"]
+    assert side == ["9 min left", "4 min left", "Was Flat · Right", "Was Up · Wrong"]
     assert all(float(t["attrs"]["x"]) <= 300 for t in texts)
 
 
@@ -155,25 +171,78 @@ def _sheet(c, now, tz=LA):
       function tag(t){ return el('div', 'tag', sentence(t)); }
       function bar(name, p, pick){ var b = el('div', 'bar' + (pick ? ' pick' : '')); b.textContent = name.replace(/_/g, ' ') + ' ' + Math.round(p * 100) + '%'; return b; }
     """
-    js = (stubs + _odds() + _fn("unitsWords") + _fn("movedWords") +
+    js = (stubs + _odds() + _var("MIN_WORD") + "".join(_fn(f) for f in ("unitsWords", "movedWords", "signed", "sizeWords", "pathWords", "sharpWords", "runningWords")) +
           _fn("openCall") + "openCall(D.c, {}); console.log(JSON.stringify({title: nodes.csTitle.textContent, body: dump(nodes.csBody)}));")
     return _run(js, {"c": c, "now": now}, tz)
 
 
-def test_the_sheet_gives_the_result_in_index_points_at_the_viewers_time():
+def _result(c, now, tz=LA):
+    return [_flat_text(k) for k in _sheet(c, now, tz)["body"]["kids"][0]["kids"]]
+
+
+def test_the_sheet_gives_the_average_price_verdict_the_size_and_the_path_with_the_end_price_muted_under_them():
+    """S9: right on the average price, its direction deciding, though the end price, down big against a small call,
+    is wrong; the size is a line of its own and the end price's verdict a muted one at the foot."""
+    got = _sheet(S9, "2026-09-28T10:45:00-04:00")
+    assert got["title"] == "The 07:30 call · looks 10 min ahead"
+    assert [_flat_text(k) for k in got["body"]["kids"][0]["kids"]] == [
+        "RightResult", "The average price over the window was Down. The call said Down small 38%.",
+        "Called small down, fell big.",
+        "Average \u22124.52 vs \u00B11.59 · best \u22120.93 at min\u00a01 · worst \u221210.15 at min\u00a010",
+        "The average so far: flat min\u00a01 · down min\u00a02\u201310.",
+        "End price only: Wrong, it ended Down big. Price ended 10.15 points lower at 07:40 than at the read, 2.42 tape units."]
+    assert got["body"]["kids"][0]["kids"][-1]["attrs"]["class"] == "cs-end"
+    # on the 30-minute box a call names no size: no size line
+    live = {**S9, "pick": "down", "integral": {**S9["integral"], "size": None}}
+    assert not any(t.startswith("Called") for t in _result(live, "2026-09-28T10:45:00-04:00"))
+
+
+def test_the_sheet_names_the_tier_and_a_sharp_move_once_the_service_has_them():
+    """The tier (service.day_integral, from the box's last 20 sessions) replaces the bare verdict; a sharp move is a note."""
+    sharp = {**S9, "integral": {**S9["integral"], "tier": "Strong right",
+                                "sharp_move": {"points": -3.44, "minute": 9, "higher_than": 20, "of": 20, "sharp": True}}}
+    got = _result(sharp, "2026-09-28T10:45:00-04:00")
+    assert got[0] == "Strong rightResult" and got[4] == (
+        "A sharp move: the biggest minute, \u22123.44 at min\u00a09, was bigger than the biggest in this window on 20 of the last 20 sessions.")
+    weak = _result({**S9, "integral": {**S9["integral"], "tier": "Weak"}}, "2026-09-28T10:45:00-04:00")
+    assert weak[0] == "WeakResult" and not any(t.startswith("A sharp move") for t in weak)
+
+
+def test_while_the_window_runs_the_sheet_says_the_grade_builds_and_the_end_price_waits():
+    live = {**call("10:32", "11:02", "flat", 0.7), "odds": {"up": 0.2, "down": 0.1, "flat": 0.7}}
+    assert _result(live, "2026-09-28T10:40:00-04:00", TOKYO) == \
+        ["Open22 min left", "It is graded at 00:02, on the average price over its window. The grade builds as the window runs."]
+    # the end price graded, the average still waiting on a bar: pending, the end price muted under it
+    waiting = {**live, "end_price": {"outcome": "flat", "hit": True, "moved": {"realized_sigma": 0.02}}}
+    assert _result(waiting, "2026-09-28T11:04:00-04:00", TOKYO) == [
+        "Grade pending", "The window closed at 00:02. The grade comes with the next run.",
+        "End price only: Right, it ended Flat. Price ended 0.02 of a normal day\u2019s move higher at 00:02 than at the read."]
+    assert _run("console.log(JSON.stringify(callWords(D.c, Date.parse(D.now))));", {"c": waiting, "now": "2026-09-28T11:04:00-04:00"}) == \
+        {"text": "Grade pending"}
+    holed = {**waiting, "integral": {"graded": False, "reason": "not graded: bars missing"}}
+    assert _result(holed, "2026-09-28T16:30:00-04:00")[:2] == ["Not graded", "The average price could not grade it: bars missing."]
+    assert _run("console.log(JSON.stringify(callWords(D.c, Date.parse(D.now))));", {"c": holed, "now": "2026-09-28T16:30:00-04:00"}) == \
+        {"text": "Not graded"}
+
+
+def test_a_card_from_before_the_average_price_grade_still_gives_its_end_price():
     c = {**call("09:45", "09:55", "up_small", 0.38, outcome="up_big", hit=False, moved={"realized_points": 8.22, "realized_units": 1.962}),
          "odds": {"down_big": 0.05, "down_small": 0.12, "flat": 0.3, "up_small": 0.38, "up_big": 0.1, "unsure": 0.05}}
-    got = _sheet(c, "2026-09-28T10:02:00-04:00")
-    assert got["title"] == "The 06:45 call · looks 10 min ahead"
-    assert [_flat_text(k) for k in got["body"]["kids"][0]["kids"]] == [
+    assert _result(c, "2026-09-28T10:02:00-04:00") == [
         "WrongResult", "It ended Up big. The call said Up small 38%.",
         "Price ended 8.22 points higher at 06:55 than at the read, 1.96 tape units."]
     small = {**c, "moved": {"realized_points": -1.5, "realized_units": 0.358}}
-    assert _flat_text(_sheet(small, "2026-09-28T10:02:00-04:00")["body"]["kids"][0]["kids"][2]) == \
-        "Price ended 1.50 points lower at 06:55 than at the read, 0.36 of a tape unit."
-    live = {**call("10:32", "11:02", "flat", 0.7), "odds": {"up": 0.2, "down": 0.1, "flat": 0.7}}
-    assert [_flat_text(k) for k in _sheet(live, "2026-09-28T10:40:00-04:00", TOKYO)["body"]["kids"][0]["kids"]] == \
-        ["Open22 min left", "It is graded at 00:02, against the bar at that minute."]
+    assert _result(small, "2026-09-28T10:02:00-04:00")[2] == "Price ended 1.50 points lower at 06:55 than at the read, 0.36 of a tape unit."
+    assert _run("console.log(JSON.stringify(callWords(D.c, Date.parse(D.now))));", {"c": c, "now": "2026-09-28T10:02:00-04:00"}) == \
+        {"text": "Was Up big · ", "strong": "Wrong"}
+
+
+def test_the_calls_row_gives_the_average_prices_verdict_its_direction_deciding():
+    """S9 called down small and fell big: right. S1 called flat and sat up on average though it ended flat: wrong."""
+    s1 = call("13:01", "13:31", "flat", 0.5, integral=graded("up", "wrong", 4.45, 3.19), end_price={"outcome": "flat", "hit": True})
+    got = _run("console.log(JSON.stringify(D.c.map(function(c){ return callWords(c, Date.parse(D.now)); })));",
+               {"c": [S9, s1], "now": "2026-09-28T14:00:00-04:00"})
+    assert got == [{"text": "Was Down · ", "strong": "Right"}, {"text": "Was Up · ", "strong": "Wrong"}]
 
 
 def test_the_sheet_gives_the_reason_a_call_was_not_graded_in_the_viewers_zone():
@@ -185,25 +254,39 @@ def test_the_sheet_gives_the_reason_a_call_was_not_graded_in_the_viewers_zone():
         ["Not graded", "Halted window: no settled open (the 06:34 bar) on a finished day."]
 
 
-def test_an_unsure_call_is_an_abstention_on_the_page_never_a_wrong_one():
-    """The service counts a graded call whose pick was unsure apart (service.calls_block): the morning's line says
-    how many of the committed calls were right and how many were unsure, and the call itself says Unsure, not Wrong."""
+def test_an_unsure_call_is_passed_on_the_page_with_its_lean_never_a_wrong_one():
+    """The service counts a call whose pick was unsure as passed (service.calls_block): the morning's line says how
+    many of the calls graded right or wrong were right, and the passes apart, as the close-out log does
+    (service.tally_words); the call itself says Passed and where it leaned, never Wrong. S8: the average sat down."""
     now = "2026-09-28T10:45:00-04:00"
-    unsure = call("09:50", "10:00", "unsure", 0.4, outcome="down_big", hit=False)
+    unsure = call("09:35", "09:45", "unsure", 0.4, integral=graded("down", "passed", -4.03, 2.41, lean={"direction": "flat", "p": 0.45}),
+                  end_price={"outcome": "down_small", "hit": False})
     assert _run("console.log(JSON.stringify(callWords(D.c, Date.parse(D.now))));", {"c": unsure, "now": now}) == \
-        {"text": "Was Down big · ", "strong": "Unsure"}
+        {"text": "Was Down · ", "strong": "Passed"}
     sched = {"reads": ["2026-09-28T09:35:00-04:00", "2026-09-28T10:30:00-04:00"], "looks_ahead_min": 10}
     lines = _run(_fn("openingDone") + "console.log(JSON.stringify(D.t.map(function(t){ return dump(openingDone(t)); })));", {"t": [
-        {"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": {"calls": 8, "graded": 8, "right": 0, "unsure": 7}},
-        {"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": {"calls": 9, "graded": 8, "right": 0, "unsure": 7}},
-        {"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": {"calls": 8, "graded": 8, "right": 5, "unsure": 0}},
-        {"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": {"calls": 8, "graded": 6, "right": 5}}]})
-    assert [_flat_text(l) for l in lines] == ["opening done0 of 1 committed calls right, 7 unsure",
-                                              "opening done0 of 1 committed calls right, 7 unsure, 1 still to grade",
-                                              "opening done5 of 8 calls right", "opening done5 of 6 graded calls right, 2 still to grade"]
-    sheet = _sheet({**unsure, "odds": {"down_big": 0.1, "down_small": 0.2, "flat": 0.2, "up_small": 0.05, "up_big": 0.05, "unsure": 0.4}}, now)
-    assert [_flat_text(k) for k in sheet["body"]["kids"][0]["kids"]][:2] == [
-        "UnsureResult", "It ended Down big. The call said Unsure 40%. Unsure makes no call, so it is counted apart from the calls right and wrong."]
+        {"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": {"calls": 4, "graded": 4, "right": 2, "passed": 1}},
+        {"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": {"calls": 6, "graded": 4, "right": 2, "passed": 1}},
+        {"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": {"calls": 8, "graded": 8, "right": 5, "passed": 0}},
+        {"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": {"calls": 8, "graded": 7, "right": 0, "passed": 7}}]})
+    assert [_flat_text(l) for l in lines] == ["opening done2 of 3 calls right · 1 passed",
+                                              "opening done2 of 3 calls right · 1 passed · 2 still to grade",
+                                              "opening done5 of 8 calls right", "opening done7 passed · 1 still to grade"]
+    sheet = _result({**unsure, "odds": {"down_big": 0.1, "down_small": 0.2, "flat": 0.2, "up_small": 0.05, "up_big": 0.05, "unsure": 0.4}}, now)
+    assert sheet[:2] == ["PassedLeaned flat 45%", "The average price over the window was Down. The call said Unsure 40%. Unsure makes no call, "
+                                                  "so it is passed: counted apart from the calls right and wrong, never as a miss."]
+    assert sheet[-1] == "End price only: Unsure, it ended Down small." and not any("Wrong" in t for t in sheet)
+
+
+def test_the_page_words_the_tally_as_the_close_out_log_does(monkeypatch):
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[3] / "skills" / "spx-jev"))
+    from spx_jev.service import tally_words
+    tallies = [{"calls": c, "graded": g, "right": r, "passed": p} for c, g, r, p in
+               ((4, 4, 2, 1), (6, 4, 2, 1), (8, 8, 5, 0), (8, 7, 0, 7), (3, 0, 0, 0), (2, 2, 0, 2))]
+    sched = {"reads": ["2026-09-28T09:35:00-04:00", "2026-09-28T10:30:00-04:00"], "looks_ahead_min": 10}
+    lines = _run(_fn("openingDone") + "console.log(JSON.stringify(D.t.map(function(t){ return openingDone(t).kids[1].textContent; })));",
+                 {"t": [{"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": t} for t in tallies]})
+    assert lines == [tally_words(t) for t in tallies]
 
 
 # ---- the schedule stays on the market clock
@@ -343,6 +426,53 @@ def test_the_page_fits_the_owners_360px_phone():
     assert _var("ODDS_TRACK_PX").strip() == "var ODDS_TRACK_PX = 294, ODDS_GAP_PX = 2, ODDS_FONT_PX = 11.5;"
     assert 294 == card - 2 * 1                                  # the narrowest card holding odds: a dashed one, 1px border a side
     assert "font:40011.5px/" in _rule(".odds-lab")              # ODDS_FONT_PX, the size the odds words are measured at
+
+
+# Chrome at 360 with the shipped face: a calls row's words after its bar (10.5px, the verdict bold), and the sheet's
+# verdict row (22px bold beside 11px capitals spaced .1em)
+_ROW_W = {"Down · Wrong": 69.65, "Down · Passed": 72.33, "Flat · Passed": 61.86, "Grade pending": 75.27, "Never graded": 68.17,
+          "Was Down · Passed": 95.38, "Was Down · Wrong": 92.69}
+_VERDICT_W = {"Strong right": 127.39, "Result": 46.70, "Passed": 77.14, "Leaned down 100%": 133.14}
+
+
+def test_the_newest_calls_verdict_fits_after_its_bar_on_the_owners_phone():
+    """Once the newest call is graded (the close-out), its words have 84 of the drawing's 300 after its bar, and
+    "Was Down · Passed" (95px in Chrome) would be cut at the card's edge: the newest row drops "Was", the rows
+    with room keep it. Checked in Chrome at 360x800 on the live card's close-out with no text past the drawing."""
+    calls = [call("10:30", "10:40", "unsure", 0.4, integral=graded("down", "passed")),
+             call("10:25", "10:35", "down", 0.5, integral=graded("down", "right")),
+             call("10:20", "10:30", "up", 0.5, integral=graded("down", "wrong")),
+             call("10:15", "10:25", "flat", 0.5, integral=graded("flat", "right"))]
+    js = _fn("fitting") + _fn("fits") + _fn("callsSvg") + "console.log(JSON.stringify(dump(callsSvg(D.calls, Date.parse(D.at)))));"
+    svg = _run(js, {"calls": calls, "at": "2026-09-28T10:43:00-04:00"}, LA)
+    side = [t for t in svg["kids"] if t["tag"] == "text" and t["attrs"].get("class") == "t-side"]
+    assert [t["text"] + "".join(k["text"] for k in t["kids"]) for t in side] == [
+        "Down · Passed", "Was Down · Right", "Was Down · Wrong", "Was Flat · Right"]
+    room = 300 - float(side[0]["attrs"]["x"])
+    assert room == 300 - (211 + 5) and _ROW_W["Was Down · Passed"] > room
+    for words in ("Down · Wrong", "Down · Passed", "Flat · Passed", "Grade pending", "Never graded"):
+        assert _ROW_W[words] <= room, f"{words!r} is cut after the newest bar at 360"
+    assert _ROW_W["Was Down · Wrong"] <= 300 - float(side[1]["attrs"]["x"])
+
+
+def test_the_sheets_new_lines_fit_or_wrap_on_the_owners_phone():
+    """The verdict row holds its word beside its label on one line at 360; every other line of the result is a
+    paragraph that wraps inside the sheet, never a line held to one row."""
+    assert "padding:10px20px" in _rule(".sheet") and "padding:13px14px" in _rule(".sh-caveat")
+    inside = 360 - 2 * 20 - 2 * 14
+    gap = _px(".cs-verdict", "gap")
+    for word, label in (("Strong right", "Result"), ("Passed", "Leaned down 100%")):
+        assert _VERDICT_W[word] + gap + _VERDICT_W[label] <= inside, f"{word} {label} runs past the sheet at 360"
+    for sel in (".cs-result p", ".cs-result p.cs-end", ".sh-caveat"):
+        assert "nowrap" not in _rule(sel) and "overflow" not in _rule(sel), sel
+    assert "flex-wrap:wrap" in _rule(".fold") and "nowrap" not in _rule(".fold .l")   # the morning's tally wraps under its name
+
+
+def test_the_footnote_says_once_what_the_average_over_the_window_is():
+    foot = re.search(r'(?s)<p class="foot">(.*?)</p>', SPX).group(1)
+    assert foot.count("average price over its window") == 1
+    assert "passed, never counted as a miss" in foot and "direction decides" in foot and "end price alone" in foot
+    assert "&plusmn;" in foot and "min 3" in foot
 
 
 # Chrome at 360 with the shipped face (Plus Jakarta Sans) loaded: odds words as drawn, in bold when the pick. The

@@ -223,6 +223,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 .cs-verdict b{font:700 22px/1.1 var(--sans);color:var(--i)}
 .cs-verdict span{font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-mute)}
 .cs-result p{margin:6px 0 0}
+.cs-result p.cs-end{margin-top:10px;font-size:13px;color:var(--i-mute)}   /* the end-price grade, kept beside it for now */
 .cs-odds{margin-top:16px}
 .inplay .hit{fill:transparent;cursor:pointer}
 .inplay .hit:focus-visible{outline:none;stroke:var(--px-ink);stroke-width:2}
@@ -322,7 +323,7 @@ details .q{margin-top:8px}
 <div class="load" id="load"><i></i>Reading the card</div>
 <div id="state"></div>
 <main id="main" style="display:flex;flex-direction:column;gap:12px"></main>
-<p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are forecasts too, logged and never graded. Neither is a call. When a sum says blended, it is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent SPX sessions. Through the first hour the opening lane reads every 5 minutes and its 10-minute call, sized in tape units of index points, leads the page until its last call closes; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock. Before the open, the pre-market lane reads S&amp;P futures, 10-year bond futures, bitcoin futures and the morning&rsquo;s reports through the night and makes one call about the first half hour: where price stands 10 and 30 minutes after the first settled price, four minutes after the open. It is a forecast too, graded by the bars. Every time here is in this phone's own time zone.</p>
+<p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are forecasts too, logged and never graded. Neither is a call. A call is graded on the average price over its window: where each minute closed against the price at the read, averaged, in index points, and set against a flat band (the &plusmn; figure) narrower than an end price would get, because an average swings less than any one price. Its direction decides right or wrong; its size, its best and worst minute (&ldquo;min 3&rdquo; is the window&rsquo;s third minute) and any sharp move are said beside it, and an unsure call is passed, never counted as a miss. For now each call also shows the old grade, on the end price alone. When a sum says blended, it is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent SPX sessions. Through the first hour the opening lane reads every 5 minutes and its 10-minute call, sized in tape units of index points, leads the page until its last call closes; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock. Before the open, the pre-market lane reads S&amp;P futures, 10-year bond futures, bitcoin futures and the morning&rsquo;s reports through the night and makes one call about the first half hour: where price stands 10 and 30 minutes after the first settled price, four minutes after the open. It is a forecast too, graded by the bars. Every time here is in this phone's own time zone.</p>
 
 <div class="scrim" data-sheet-close></div>
 <div class="sheet" id="jevSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="csTitle">
@@ -704,15 +705,21 @@ details .q{margin-top:8px}
     var m = Math.ceil(s / 60);
     return m <= 1 ? 'Under 1 min left' : m + ' min left';
   }
-  // a graded call's verdict: an unsure pick made no call, so it is neither right nor wrong, as the tally counts it
+  // a call's verdict at its end price: an unsure pick made no call, so it is neither right nor wrong
   function verdict(hit, pick){ return hit ? 'Right' : pick === 'unsure' ? 'Unsure' : 'Wrong'; }
-  // what a call's row says beside its bar: time left while open, then what happened
+  // the call's grade at its end price (``end_price``), kept beside the average-price grade (``integral``) for the
+  // side-by-side weeks; a card written before the average-price grade carries it on the call itself, and says it alone
+  function endPrice(c){ return c.end_price || (c.outcome ? c : null); }
+  // what a call's row says beside its bar: time left while open, then what the average price over the window did and
+  // the verdict, the call's direction deciding and an unsure call passed
   function callWords(c, now){
     if(!c.mark) return {text: 'Never graded'};
     var left = leftWords(Date.parse(c.mark), now);
     if(left) return {text: left};
-    if(c.outcome) return {text: 'Was ' + cap(c.outcome) + ' \u00B7 ', strong: verdict(c.hit, c.pick)};
-    if(c.closed) return {text: 'Not graded'};
+    var g = c.integral, ep = endPrice(c);
+    if(g && g.graded) return {text: 'Was ' + cap(g.label) + ' \u00B7 ', strong: cap(g.verdict)};
+    if(ep && !c.end_price) return {text: 'Was ' + cap(ep.outcome) + ' \u00B7 ', strong: verdict(ep.hit, c.pick)};
+    if(g || c.closed) return {text: 'Not graded'};
     return {text: 'Grade pending'};
   }
   // the lane leads while it has a call of today's still open
@@ -785,7 +792,9 @@ details .q{margin-top:8px}
       var name = cap(c.pick) + ' ' + pct(c.p);
       if(!fits(name, b - a)) name = cap(c.pick);
       if(fits(name, b - a)) svg.appendChild(svgEl('text', {x: (a + 5).toFixed(1), y: y + 14.5, 'class': 't-' + kind}, name));
-      var w = callWords(c, now), side = svgEl('text', {x: (b + 5).toFixed(1), y: y + 14.5, 'class': 't-side'}, w.text);
+      // the words run from b + 5 to the drawing's edge, 84 of its 300 after the newest bar: "Was" goes before a word is cut
+      var w = callWords(c, now), said = w.strong && !fits(w.text + w.strong, 295 - b) ? w.text.replace(/^Was /, '') : w.text;
+      var side = svgEl('text', {x: (b + 5).toFixed(1), y: y + 14.5, 'class': 't-side'}, said);
       if(w.strong) side.appendChild(svgEl('tspan', {'font-weight': '700'}, w.strong));
       svg.appendChild(side);
     });
@@ -809,43 +818,91 @@ details .q{margin-top:8px}
   // the result as the grader recorded it, in the units the sum was banded in: index points and tape units
   // on the opening lane, a share of a normal day's move on the 30-minute reads
   function unitsWords(x){ x = Math.abs(x); return x <= 1 ? x.toFixed(2) + ' of a tape unit' : x.toFixed(2) + ' tape units'; }
-  function movedWords(c){
-    var m = c.moved || {}, dir = function(x){ return x > 0 ? 'higher' : 'lower'; };
+  function movedWords(m, mark){
+    m = m || {};
+    var dir = function(x){ return x > 0 ? 'higher' : 'lower'; };
     if(m.realized_points != null){
       var u = m.realized_units != null ? ', ' + unitsWords(m.realized_units) : '';
-      return m.realized_points === 0 ? 'Price ended level with the read at ' + viewerTime(c.mark) + '.'
-        : 'Price ended ' + Math.abs(m.realized_points).toFixed(2) + ' points ' + dir(m.realized_points) + ' at ' + viewerTime(c.mark) + ' than at the read' + u + '.';
+      return m.realized_points === 0 ? 'Price ended level with the read at ' + viewerTime(mark) + '.'
+        : 'Price ended ' + Math.abs(m.realized_points).toFixed(2) + ' points ' + dir(m.realized_points) + ' at ' + viewerTime(mark) + ' than at the read' + u + '.';
     }
     if(m.realized_sigma != null){
-      return m.realized_sigma === 0 ? 'Price ended level with the read at ' + viewerTime(c.mark) + '.'
-        : 'Price ended ' + Math.abs(m.realized_sigma).toFixed(2) + ' of a normal day\u2019s move ' + dir(m.realized_sigma) + ' at ' + viewerTime(c.mark) + ' than at the read.';
+      return m.realized_sigma === 0 ? 'Price ended level with the read at ' + viewerTime(mark) + '.'
+        : 'Price ended ' + Math.abs(m.realized_sigma).toFixed(2) + ' of a normal day\u2019s move ' + dir(m.realized_sigma) + ' at ' + viewerTime(mark) + ' than at the read.';
     }
     return null;
   }
-  // a call's sheet: the result first when the bars have one, otherwise where the call stands; then its odds
+  // index points with their sign, a true minus sign for a fall
+  function signed(x){ return (x < 0 ? '\u2212' : '+') + Math.abs(x).toFixed(2); }
+  // the size the call named beside the size the end price moved, in the opening lane's five bands; it never decides
+  function sizeWords(pick, s){
+    return 'Called ' + s.call + ' ' + pick.split('_')[0] + ', ' + (s.band === 'flat' ? 'ended flat' : (/^up/.test(s.band) ? 'rose ' : 'fell ') + s.size) + '.';
+  }
+  // the path: the average against the flat band, then where price stood furthest up and furthest down against the
+  // read, each at its minute of the window; "min 9" never parts at the end of a line (MIN_WORD ends in a no-break space)
+  var MIN_WORD = 'min\u00A0';
+  function pathWords(g){
+    return 'Average ' + signed(g.g) + ' vs \u00B1' + g.edge.toFixed(2) + ' \u00B7 best ' + signed(g.best.points) + ' at ' + MIN_WORD + g.best.minute +
+           ' \u00B7 worst ' + signed(g.worst.points) + ' at ' + MIN_WORD + g.worst.minute;
+  }
+  // the biggest minute when it was sharp against the same window on the recent sessions: a note, never in the grade
+  function sharpWords(s){
+    return 'A sharp move: the biggest minute, ' + signed(s.points) + ' at ' + MIN_WORD + s.minute + ', was bigger than the biggest in this window on ' +
+           s.higher_than + ' of the last ' + s.of + ' sessions.';
+  }
+  // the average so far, minute by minute, told as its runs: flat for minutes 1 to 7, then down for 8 to 10
+  function runningWords(r){
+    var runs = [];
+    r.forEach(function(l, i){
+      var at = runs[runs.length - 1];
+      if(at && at.l === l) at.to = i + 1; else runs.push({l: l, from: i + 1, to: i + 1});
+    });
+    return 'The average so far: ' + runs.map(function(x){ return words(x.l) + ' ' + MIN_WORD + x.from + (x.to > x.from ? '\u2013' + x.to : ''); }).join(' \u00B7 ') + '.';
+  }
+  // a call's sheet: the result on the average price over the window first when the bars have one, with the size, the
+  // path, a sharp move and the average minute by minute, the end price's result muted under it; otherwise where the
+  // call stands; then its odds
   function openCall(c, from){
-    var now = Date.now(), body = $('csBody');
+    var now = Date.now(), body = $('csBody'), g = c.integral, ep = endPrice(c);
     $('csTitle').textContent = 'The ' + viewerTime(c.read) + ' call \u00B7 looks ' + c.minutes + ' min ahead';
     body.textContent = '';
     var res = el('div', 'sh-caveat cs-result'), v = el('div', 'cs-verdict');
-    if(c.outcome){
-      v.appendChild(el('b', null, verdict(c.hit, c.pick))); v.appendChild(el('span', null, 'Result'));
+    if(g && g.graded){
+      var passed = g.verdict === 'passed';
+      v.appendChild(el('b', null, g.tier || cap(g.verdict)));
+      v.appendChild(el('span', null, passed && g.lean ? 'Leaned ' + words(g.lean.direction) + ' ' + pct(g.lean.p) : 'Result'));
       res.appendChild(v);
-      res.appendChild(el('p', null, 'It ended ' + cap(c.outcome) + '. The call said ' + cap(c.pick) + ' ' + pct(c.p) + '.'
+      res.appendChild(el('p', null, 'The average price over the window was ' + cap(g.label) + '. The call said ' + cap(c.pick) + ' ' + pct(c.p) + '.'
+                                    + (passed ? ' Unsure makes no call, so it is passed: counted apart from the calls right and wrong, never as a miss.' : '')));
+      if(g.size && g.size.call) res.appendChild(el('p', null, sizeWords(c.pick, g.size)));
+      res.appendChild(el('p', null, pathWords(g)));
+      if(g.sharp_move && g.sharp_move.sharp) res.appendChild(el('p', null, sharpWords(g.sharp_move)));
+      if(g.running && g.running.length) res.appendChild(el('p', null, runningWords(g.running)));
+    } else if(ep && !c.end_price){
+      v.appendChild(el('b', null, verdict(ep.hit, c.pick))); v.appendChild(el('span', null, 'Result'));
+      res.appendChild(v);
+      res.appendChild(el('p', null, 'It ended ' + cap(ep.outcome) + '. The call said ' + cap(c.pick) + ' ' + pct(c.p) + '.'
                                     + (c.pick === 'unsure' ? ' Unsure makes no call, so it is counted apart from the calls right and wrong.' : '')));
-      var mv = movedWords(c); if(mv) res.appendChild(el('p', null, mv));
+      var mv = movedWords(ep.moved, c.mark); if(mv) res.appendChild(el('p', null, mv));
     } else if(!c.mark){
       v.appendChild(el('b', null, 'Never graded')); res.appendChild(v);
       res.appendChild(el('p', null, 'It ends past the close, so the bars never grade it.'));
     } else if(c.closed){
       v.appendChild(el('b', null, 'Not graded')); res.appendChild(v);
       res.appendChild(el('p', null, sentence(marketWords(c.closed, c.read)) + '.'));
+    } else if(g){
+      v.appendChild(el('b', null, 'Not graded')); res.appendChild(v);
+      res.appendChild(el('p', null, 'The average price could not grade it: ' + String(g.reason || 'not graded').replace(/^not graded: /, '') + '.'));
     } else if(now < Date.parse(c.mark)){
       v.appendChild(el('b', null, 'Open')); v.appendChild(el('span', null, leftWords(Date.parse(c.mark), now))); res.appendChild(v);
-      res.appendChild(el('p', null, 'It is graded at ' + viewerTime(c.mark) + ', against the bar at that minute.'));
+      res.appendChild(el('p', null, 'It is graded at ' + viewerTime(c.mark) + ', on the average price over its window. The grade builds as the window runs.'));
     } else {
       v.appendChild(el('b', null, 'Grade pending')); res.appendChild(v);
       res.appendChild(el('p', null, 'The window closed at ' + viewerTime(c.mark) + '. The grade comes with the next run.'));
+    }
+    if(c.end_price){
+      var em = movedWords(ep.moved, c.mark);
+      res.appendChild(el('p', 'cs-end', 'End price only: ' + verdict(ep.hit, c.pick) + ', it ended ' + cap(ep.outcome) + '.' + (em ? ' ' + em : '')));
     }
     body.appendChild(res);
     var odds = el('div', 'cs-odds'), o = c.odds || {};
@@ -1081,15 +1138,17 @@ details .q{margin-top:8px}
     var r = t.schedule && t.schedule.reads;
     return !!(t.closed_out_at || (r && r.length && Date.parse(t.row_ts) >= Date.parse(r[r.length - 1]) - 60000));
   }
-  // after the opening: one line with the morning's score, counted by the service from the lane's grades; an unsure
-  // pick made no call, so it is counted apart and the score is of the calls committed to
+  // after the opening: one line with the morning's score on the average price, counted by the service from the lane's
+  // grades: the calls right of those graded right or wrong, an unsure call passed and counted apart, then what is
+  // still to grade (service.tally_words, word for word)
   function openingDone(t){
-    var y = t.tally, f = el('div', 'card fold');
-    var over = lastLaneRead(t), unsure = y.unsure || 0, rest = y.graded === y.calls ? '' : ', ' + (y.calls - y.graded) + ' still to grade';
+    var y = t.tally, f = el('div', 'card fold'), over = lastLaneRead(t);
+    var passed = y.passed || 0, called = y.graded - passed, said = [];
+    if(called || !passed) said.push(y.right + ' of ' + called + ' calls right');
+    if(passed) said.push(passed + ' passed');
+    if(y.calls > y.graded) said.push((y.calls - y.graded) + ' still to grade');
     f.appendChild(el('span', 'k', over ? 'opening done' : 'opening lane, no call open'));
-    f.appendChild(el('span', 'l', unsure ? y.right + ' of ' + (y.graded - unsure) + ' committed calls right, ' + unsure + ' unsure' + rest
-                                  : y.graded === y.calls ? y.right + ' of ' + y.calls + ' calls right'
-                                  : y.right + ' of ' + y.graded + ' graded calls right' + rest));
+    f.appendChild(el('span', 'l', said.join(' \u00B7 ')));
     return f;
   }
   // No 30-minute card read yet (none written, or the station failed): the opening lane still leads while its call
