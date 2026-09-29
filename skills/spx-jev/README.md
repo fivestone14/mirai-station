@@ -14,7 +14,7 @@ The mechanics are SNDK JEV's (`skills/sndk-jev/`), copied and adapted; the
 questions are the final SPX set (`spec/question_set.json`, 129 questions). Every
 label they read is built except the dark ones, whose data no feed carries yet; a
 question whose label is dark, or missing on a read, is skipped with the reason.
-Its eight jobs are in `runtime/launchd/` and go live with the checklist in
+Its nine jobs are in `runtime/launchd/` and go live with the checklist in
 "Going live".
 
 JEV reads words and cannot compare numbers. So every comparison happens here,
@@ -73,7 +73,7 @@ returns a probability for each answer option. JEV makes no trading call.
 | `spec/labels.json` | The Label Spec | The 50 labels built before the final set, with source, logic, cut and a real sentence; a test pins it to the code. The set's own labels are specified in `spec/question_set.json`. |
 | `spec/cuts.json`, `spec/measure_cuts.py` | The Measurements | How each measured cut was found, with its percentile and sample size, and where each declared cut falls (the share of SPX and of SNDK observations under it). |
 | `spec/replay_premarket.py` | The Premarket Replay | Replays the premarket lane over the saved nights, read only, never asking JEV: each question's answer is its label's verdict, scored against SPX from the settled open. A sign-free question is scored along its own reference, and "holds" is Holm-adjusted across every question and read tested. |
-| `launchd/*.plist.template`, `runtime/launchd/com.mirai-station.spx-jev*.plist`, `runtime/scripts/run-spx-jev*.sh` | The Jobs | Eight jobs, the copies of them `install-launchd.sh` loads, and their runners. |
+| `launchd/*.plist.template`, `runtime/launchd/com.mirai-station.spx-jev*.plist`, `runtime/launchd/com.mirai-station.spx-premarket-deadman.plist`, `runtime/scripts/run-spx-jev*.sh`, `runtime/scripts/run-spx-premarket-deadman.sh` | The Jobs | Nine jobs: eight templates, the copies of them `install-launchd.sh` loads, and their runners; and the premarket lane's dead-man, station code (`runtime/watch/intraday/spx_premarket_deadman.py`) with its plist in `runtime/launchd/` only. |
 | `tests/` | The Proof | Offline pytest with synthetic rows, bars and market context. No network, no host state. |
 
 ## Run it
@@ -414,9 +414,10 @@ alone, the day read as a date:
 
 ## The jobs
 
-Eight launchd jobs, loaded by `runtime/scripts/install-launchd.sh` from
-`runtime/launchd/`. Each plist there is its template in `launchd/` byte for
-byte, and a test holds them equal, so a change is made to both.
+Nine launchd jobs, loaded by `runtime/scripts/install-launchd.sh` from
+`runtime/launchd/`. Each of the eight `spx-jev*` plists there is its template in
+`launchd/` byte for byte, and a test holds them equal, so a change is made to
+both. The dead-man is the station's own code and has no template.
 
 | Label | When (the box's Pacific clock; market time is three hours later) | Runner |
 |---|---|---|
@@ -428,6 +429,7 @@ byte, and a test holds them equal, so a change is made to both.
 | `com.mirai-station.spx-jev-overnight` | 06:26 and 13:20: before the open, and after the close | `run-spx-jev-overnight.sh` |
 | `com.mirai-station.spx-jev-premarket` | Sunday to Thursday 23:35; Monday to Friday 00:35, 01:35, 05:05, 05:48, 06:05, 06:28 and 07:06 | `run-spx-jev-premarket.sh` |
 | `com.mirai-station.spx-jev-store` | 13:40, once a day after the saves | `run-spx-jev-store.sh` |
+| `com.mirai-station.spx-premarket-deadman` | every 5 minutes; on a market day it pages the phone once for a premarket checkpoint with no read 15 minutes after it, and for a 10:06 ET close-out that has not landed, or left a call ungraded, by 10:21 ET | `run-spx-premarket-deadman.sh` |
 
 Each runner exits quietly on weekends and when the market is closed, fails
 loudly when the market-hours check itself cannot run, and stops at
@@ -453,11 +455,11 @@ At the mini, in order:
 3. The past sessions' market bars, from the same folder:
    `~/.local/share/mirai-station/venv/bin/python -m spx_jev.market_context --backfill 2026-08-10`.
 4. Hire the jobs: `~/.claude/plugins/mirai-station/runtime/scripts/install-launchd.sh`
-   (it reloads every station job, the eight here among them).
-5. Check: `launchctl list | grep spx-jev` shows eight, and after the first fire
+   (it reloads every station job, the nine here among them).
+5. Check: `launchctl list | grep -E 'spx-jev|spx-premarket'` shows nine, and after the first fire
    `/tmp/mirai-station.spx-jev*.err` is empty.
 
-To pause all eight, `launchctl bootout gui/$UID/<label>` for each label above; `launchctl bootstrap gui/$UID ~/Library/LaunchAgents/<label>.plist`
+To pause all nine, `launchctl bootout gui/$UID/<label>` for each label above; `launchctl bootstrap gui/$UID ~/Library/LaunchAgents/<label>.plist`
 brings one back (docs/OPERATIONS.md, "Disabling temporarily", has the loop).
 `SPX_JEV_DISABLE=1` in the jobs' environment makes every runner exit 0 without
 running.
