@@ -25,7 +25,7 @@ can show it in the viewer's own zone; prose meant for a reader names the market 
 A sent run on today's newest row checks the wall clock: a row more than STALE_ROW_SKIP_MIN old is
 skipped (the SPX diary is not being written; the last card stays). The SPX row carries no separate options-book
 time (the book is rebuilt on every scan), so that one line covers the book too. The day's first
-read after 10:01 first waits for a row stamped from 10:01 (first_window_row). A replay (--day)
+read after 10:01 first waits for a row stamped from 10:01, and the first after 10:31 for one from 10:31 (first_window_row). A replay (--day)
 checks nothing against the wall clock, and never writes into the station's records unless its
 --out-dir names them: without one it writes into a fresh scratch folder, archive included, and says
 where. Every read carries the tier-1 events due within the hour
@@ -103,8 +103,11 @@ BAR_WAIT_S = 55
 BAR_POLL_S = 2.0
 # A 30-minute window needs a bar finished at its start, and the day's first finishes at 09:31: a row stamped
 # 10:00:xx has none. The first read after 10:01 waits for a row stamped from 10:01 (the scanner writes one about
-# every 75 s), so whether it gets its 30-minute labels never rests on when the scanner last looked.
+# every 75 s), so whether it gets its 30-minute labels never rests on when the scanner last looked. The first
+# hour's labels (range.first_hour and those built on it) need its sixty bars, which a row stamped before 10:30
+# does not have, so the first read after 10:31 waits the same way for a row stamped from 10:31.
 FIRST_WINDOW_MIN = 31
+FIRST_HOUR_WINDOW_MIN = 61
 ROW_WAIT_S = 90
 # JEV's round trips for one read end well inside the tape lane's 5-minute slot however JEV fails (ask.send): the
 # groups retry only until SEND_GROUPS_S after the read's first request, room for three tries after two timeouts,
@@ -838,10 +841,13 @@ def wait_for_row(state_dir: Path, after: datetime, timeout_s: float = ROW_WAIT_S
 
 
 def first_window_row(now: datetime) -> datetime | None:
-    """The stamp the day's first read after the first 30-minute window waits for, when ``now`` is that
-    read (within the job's 30 minutes of it); None at every other read, which reads the diary as it is."""
-    first = session_open(now) + timedelta(minutes=FIRST_WINDOW_MIN)
-    return first if first <= now < first + timedelta(minutes=30) else None
+    """The stamp the day's first read after the first 30-minute window, or after the first hour, waits for, when
+    ``now`` is that read (within the job's 30 minutes of it); None at every other read, which reads the diary as it is."""
+    for minutes in (FIRST_WINDOW_MIN, FIRST_HOUR_WINDOW_MIN):
+        first = session_open(now) + timedelta(minutes=minutes)
+        if first <= now < first + timedelta(minutes=30):
+            return first
+    return None
 
 
 def write_card(out_dir: Path, c: dict) -> None:

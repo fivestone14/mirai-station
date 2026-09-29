@@ -372,12 +372,19 @@ def test_the_first_read_after_1001_waits_for_a_row_its_30_minute_window_can_star
     rows = [make_row(at(9, 31), 7700.0), make_row(at(10, 0, ss=51), 7700.0)]
     state = write_state(tmp_path, DAY, rows, bars_from_closes([7700.0] * 32))
     first = service.first_window_row(at(10, 2))
-    assert first == at(10, 1) and service.first_window_row(at(9, 32)) is None and service.first_window_row(at(10, 32)) is None
+    assert first == at(10, 1) and service.first_window_row(at(9, 32)) is None and service.first_window_row(at(11, 2)) is None
 
     def scanner_writes(_s):
         write_state(tmp_path, DAY, [*rows, make_row(at(10, 2, ss=6), 7700.0)], bars_from_closes([7700.0] * 32))
     assert service.wait_for_row(state, first, sleep=scanner_writes) is True
     assert make_scene(state, DAY).now == at(10, 2, ss=6)
+
+
+def test_the_1032_read_waits_for_a_row_that_holds_the_whole_first_hour():
+    """A row stamped 10:29:50 has 59 of the first hour's bars, so range.first_hour and the questions reading it come up
+    one bar short: the 10:32 read waits for a row stamped from 10:31, as the 10:02 read waits for one from 10:01."""
+    assert service.first_window_row(at(10, 32, ss=3)) == at(10, 31)
+    assert service.first_window_row(at(10, 2, ss=3)) == at(10, 1)
 
 
 def test_a_failing_shadow_grade_costs_neither_the_read_nor_the_close_out(tmp_path, monkeypatch, capsys):
