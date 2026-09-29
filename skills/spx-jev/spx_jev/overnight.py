@@ -24,7 +24,8 @@ Every save merges into the file and rewrites it whole (a crash leaves the old fi
 saved is kept as first saved, so a rerun adds nothing, and a re-fetch that disagrees with it is counted.
 A bar that fails a sanity check (low above open or close, high below them, a price at or under zero, a
 negative volume) is kept with its ``flags``, never dropped. The contract is the one the roll table
-(rolls.py) says Schwab's stitched series was on at that bar, else the one Schwab quotes the root under.
+(rolls.py) says Schwab's stitched series was on at the bar's last minute (a 5-minute bar a roll falls inside
+closed on the new contract), else the one Schwab quotes the root under.
 
 ``state/spx_jev/overnight/manifest.jsonl``, one line per save that changed a night: per symbol and
 resolution the bar count against the bars expected in the window (CME Globex hours, Sunday 18:00 to
@@ -213,10 +214,12 @@ def merge(existing: list[dict], fresh: list[dict]) -> tuple[list[dict], dict]:
 
 
 def stamp(rows: list[dict], table: dict, quoted: dict[str, str]) -> int:
-    """Set each row's contract from the roll table (else the quote); returns how many changed."""
+    """Set each row's contract from the roll table (else the quote), at the bar's last minute, so a 5-minute bar a
+    roll falls inside is stamped with the contract it closed on; returns how many changed."""
     changed = 0
     for r in rows:
-        contract, source = rolls.contract_at(table, r["symbol"], datetime.fromisoformat(r["ts"]), quoted.get(r["symbol"]))
+        last = datetime.fromisoformat(r["ts"]) + timedelta(minutes=r["bar_minutes"] - 1)
+        contract, source = rolls.contract_at(table, r["symbol"], last, quoted.get(r["symbol"]))
         if (r.get("contract"), r.get("contract_from")) != (contract, source):
             r["contract"], r["contract_from"] = contract, source
             changed += 1

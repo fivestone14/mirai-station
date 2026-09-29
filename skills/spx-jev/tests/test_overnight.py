@@ -179,6 +179,18 @@ def test_contracts_come_from_the_roll_table_and_a_new_quote_is_a_pending_roll(tm
     assert rolls.pending(table, "/ES", "/ESZ26")
 
 
+def test_a_five_minute_bar_a_roll_falls_inside_is_stamped_with_the_contract_it_closed_on(tmp_path, served):
+    """/MBT 08-27: the roll's first 1-minute bar was 17:06, so the 17:05 five-minute bar, every contract of it traded
+    after the switch, was stamped with the old contract. A bar is stamped at its last minute; here on /ES, rolled at 18:02."""
+    found = {"rolls": [{"symbol": "/ES", "day": "2026-09-14", "at": "2026-09-13T18:02:00-04:00"}], "rejected": [],
+             "windows_without_roll": [], "typical_step": 0.01, "unit": "percent"}
+    table = rolls.merge(rolls.load(tmp_path), "/ES", found, "2026-08-01", "/ESZ26")
+    bars = [{"symbol": "/ES", "ts": t("2026-09-13", 18, m).isoformat(), "bar_minutes": 5} for m in (0, 5)]
+    bars.append({"symbol": "/ES", "ts": t("2026-09-13", 18, 1).isoformat(), "bar_minutes": 1})
+    overnight.stamp(bars, table, {})
+    assert [b["contract"] for b in bars] == ["/ESZ26", "/ESZ26", "/ESU26"]
+
+
 def _store_with_a_roll(state_dir, served, roll_day: date, switch: datetime) -> None:
     """/ES 5-minute regular-session bars saved night by night over 08-17 to 09-25, their basis over $SPX (served)
     stepping 0.8% from ``roll_day``, and the roll night's bars jumping at ``switch``."""
