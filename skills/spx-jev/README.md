@@ -301,7 +301,9 @@ disagreement, between two equally good sources included, is quarantined.
 
 The nightly job (`com.mirai-station.spx-jev-store`, 16:40 ET) rebuilds the last
 week's market days. It writes the DuckDB file only when its views are missing
-or out of date, so a notebook holding it open read only never stops a run.
+or out of date, so a notebook holding it open read only never stops a run; one
+holding it open for writing leaves the views to the next run, with a line in
+the job's log, while the day's Parquet is still built.
 
 From Python, in the station's venv:
 

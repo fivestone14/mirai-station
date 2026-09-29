@@ -945,6 +945,11 @@ def _views_current(db: Path, store: Path) -> bool:
     return views >= set(BY_NAME) and meta == (SCHEMA_VERSION, str(store))
 
 
+def _held_open(e: duckdb.Error) -> bool:
+    """Another process has the DuckDB file open for writing (DuckDB has no exception of its own for this)."""
+    return isinstance(e, duckdb.IOException) and "Could not set lock" in str(e)
+
+
 def write_views(store: Path) -> bool:
     """A view per table over its day files, and ``meta`` (the schema version and the store it reads), in
     ``spx_jev.duckdb``; nothing is written when they are already there. True when the file was written."""
@@ -1031,8 +1036,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         wrote = write_views(store)
     except duckdb.Error as e:
-        print(f"spx-jev-store :: views not written to {store / DB_NAME}: {type(e).__name__}: {e}", file=sys.stderr)
-        return 1
+        if not _held_open(e):
+            print(f"spx-jev-store :: views not written to {store / DB_NAME}: {type(e).__name__}: {e}", file=sys.stderr)
+            return 1
+        # the Parquet is built; the views are the only thing waiting, and the next run writes them if they need it
+        print(f"spx-jev-store :: views left as they were: another process has {store / DB_NAME} open for writing",
+              file=sys.stderr)
+        wrote = False
     print(f"spx-jev-store :: {len(days) - failed} of {len(days)} days built under {store}; "
           + ", ".join(f"{t.name} {kept[t.name]} rows ({quarantined[t.name]} quarantined)" for t in TABLES)
           + (f"; raw_line {quarantined['raw_line']} quarantined" if quarantined["raw_line"] else "")

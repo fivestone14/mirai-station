@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import plistlib
+import subprocess
+import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -377,6 +379,22 @@ def test_the_command_builds_the_day_names_its_counts_and_writes_the_views(tmp_pa
     out = capsys.readouterr().out
     assert f"{DAY} reads 3, facts " in out and "grades 2 rows (0 quarantined)" in out and "views written" in out
     assert (store.store_dir(tmp_path) / store.DB_NAME).exists()
+
+
+def test_a_notebook_holding_the_duckdb_file_open_for_writing_leaves_the_views_but_does_not_fail_the_run(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path))
+    assert store.main(["--state-dir", str(tmp_path), "--day", DAY]) == 0
+    db = store.store_dir(tmp_path) / store.DB_NAME
+    holder = subprocess.Popen([sys.executable, "-c", f"import duckdb, sys; c = duckdb.connect({str(db)!r}); print('open', flush=True); "
+                               "sys.stdin.read()"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    try:
+        assert holder.stdout.readline().strip() == "open"
+        capsys.readouterr()
+        assert store.main(["--state-dir", str(tmp_path), "--day", DAY]) == 0
+        assert "views left as they were: another process has" in capsys.readouterr().err
+    finally:
+        holder.communicate("")
+    assert store.partition(store.store_dir(tmp_path), "reads", D).exists()
 
 
 def test_a_record_whose_parts_are_malformed_is_quarantined_and_the_rest_of_the_day_is_built(tmp_path, monkeypatch):
