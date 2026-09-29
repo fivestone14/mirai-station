@@ -135,3 +135,10 @@ def test_no_rule_promises_an_offline_grade_nothing_runs():
     d = json.loads(QUESTION_SET.read_text(encoding="utf-8"))
     rules = {q["id"]: json.dumps(q["criteria"]) for g in d["groups"] for q in g["questions"]}
     assert [qid for qid, rule in rules.items() if "graded offline" in rule] == []
+
+
+def test_the_question_doc_names_every_lane_that_asks_from_it():
+    from spx_jev.lane import LANES
+    doc = json.loads((QUESTION_SET.parent.parent / "questions" / "spx_questions.json").read_text(encoding="utf-8"))
+    assert doc["name"] == "SPX JEV questions, every lane"
+    assert all(lane.key in doc["how_to_use"] for lane in LANES.values())
