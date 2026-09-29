@@ -171,3 +171,15 @@ def test_the_sets_own_warnings_and_notes_name_only_what_exists():
     assert d["validation"]["warnings"] == expected
     notes = json.dumps([d["conventions"], [q.get("sleep_when") for q in questions]])
     assert not [name for name in ("session_progress", "DOC_TEXT", "parse_cadence") if name in notes]
+
+
+def test_the_refreshed_label_examples_read_the_way_the_code_writes_them():
+    """Examples once written for sentences the code never produced: each now opens the way its label's sentence does."""
+    shapes = {"premarket.since_checkpoint": r"futures are [\d.]+ sigma (above|below) their 16:00 price; since the \d\d:\d\d checkpoint ",
+              "premarket.vs_last_hour": r"futures are [\d.]+ sigma (above|below) their 16:00 price, \w+ third; yesterday SPX (rose|fell) ",
+              "xasset.btc_gap_streak": r"over the last \d half hours \(to \d\d:\d\d, "}
+    d = json.loads(QUESTION_SET.read_text(encoding="utf-8"))
+    labels = d["labels"] + [lab for g in d["groups"] for q in g["questions"] for lab in q["labels_needed"]]
+    examples = [(lab["name"], lab["example"]) for lab in labels if lab["name"] in shapes]
+    assert len({name for name, _ in examples}) == len(shapes)
+    assert [name for name, text in examples if not re.match(shapes[name], text)] == []

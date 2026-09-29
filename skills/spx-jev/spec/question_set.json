@@ -7595,7 +7595,7 @@
      "labels_needed": [
       {
        "name": "xasset.btc_gap_streak",
-       "example": "in each of the last three half-hours (10:32, 11:02, 11:32) bitcoin fell further than the index's move would match; together that is 2.3 times a normal 90-minute gap, bottom third at this time of day over the last 20 sessions",
+       "example": "over the last 3 half hours (to 11:01, 11:31 and 12:01) bitcoin futures (/MBT) went beyond the index's move by turns (rose more, fell more, rose more); together 1.3 times a normal 90-minute gap, top third for this time, higher than 16 of the last 20 sessions at this minute; over the last 20 sessions bitcoin up has gone with stocks up, so no streak",
        "computed_how": "the three latest xasset.btc_gap_30min excesses with their signs, summed, and the sum ranked against the same clock over the prior 20 sessions; shares of the median |90-minute excess|",
        "source": "as xasset.btc_gap_30min",
        "availability": "cheap_add",
@@ -7969,7 +7969,7 @@
      "labels_needed": [
       {
        "name": "premarket.vs_last_hour",
-       "example": "futures are now 0.22 sigma above their 16:00 price, top third; yesterday SPX fell 0.30 sigma in its last hour, top third of the last 20 last hours: the night turned against yesterday's close",
+       "example": "futures are 0.47 sigma below their 16:00 price, top third; yesterday SPX rose 0.08 sigma in its last hour, middle third of the last 20 sessions' last hours: the night turned against yesterday's last hour",
        "computed_how": "SPX 15:00-16:00 from saved SPX bars (state/reversion/bars), its |move| ranked over the last {night_rank_count} sessions (ranks.rank_sessions: at least {same_clock_min_sessions} of them, else omitted with the reason); /ES net since futures' 16:00 price as premarket.where_now, in the pre-open ruler",
        "source": "saved SPX bars + the overnight store's /ES bars",
        "availability": "cheap_add",
@@ -8448,7 +8448,7 @@
       },
       {
        "name": "premarket.since_checkpoint",
-       "example": "since the 08:48 checkpoint futures fell 0.09 sigma, top third for 08:48-09:28 over the last 20 nights, against the night's rise, still above their 16:00 price: the latest leg gave back",
+       "example": "futures are 0.50 sigma below their 16:00 price; since the 02:35 checkpoint they fell 0.02 sigma, bottom third for 02:35-03:35 over the last 19 nights, with the night's fall before it",
        "computed_how": "/ES from the lane's previous SCHEDULED checkpoint (03:35 moves to 04:35 in the week Frankfurt is on winter time and New York is not) to now, rebuilt from bars (never from the previous read's record, never from the time a late read fired); ranked against the same clock window over the last {night_rank_count} nights; the night's net before the leg; cross check against futures' 16:00 price; in the pre-open ruler",
        "source": "state/spx_jev/overnight/{day}.jsonl (Schwab /ES extended-hours 1-min, as seen at the checkpoint, contract stamped)",
        "availability": "cheap_add",
@@ -10178,7 +10178,7 @@
   },
   {
    "name": "premarket.since_checkpoint",
-   "example": "since the 08:48 checkpoint futures fell 0.09 sigma, top third for 08:48-09:28 over the last 20 nights, against the night's rise, still above their 16:00 price: the latest leg gave back",
+   "example": "futures are 0.50 sigma below their 16:00 price; since the 02:35 checkpoint they fell 0.02 sigma, bottom third for 02:35-03:35 over the last 19 nights, with the night's fall before it",
    "computed_how": "/ES from the lane's previous SCHEDULED checkpoint (03:35 moves to 04:35 in the week Frankfurt is on winter time and New York is not) to now, rebuilt from bars (never from the previous read's record, never from the time a late read fired); ranked against the same clock window over the last {night_rank_count} nights; the night's net before the leg; cross check against futures' 16:00 price; in the pre-open ruler",
    "source": "state/spx_jev/overnight/{day}.jsonl (Schwab /ES extended-hours 1-min, as seen at the checkpoint, contract stamped)",
    "availability": "cheap_add",
@@ -10202,7 +10202,7 @@
   },
   {
    "name": "premarket.vs_last_hour",
-   "example": "futures are now 0.22 sigma above their 16:00 price, top third; yesterday SPX fell 0.30 sigma in its last hour, top third of the last 20 last hours: the night turned against yesterday's close",
+   "example": "futures are 0.47 sigma below their 16:00 price, top third; yesterday SPX rose 0.08 sigma in its last hour, middle third of the last 20 sessions' last hours: the night turned against yesterday's last hour",
    "computed_how": "SPX 15:00-16:00 from saved SPX bars (state/reversion/bars), its |move| ranked over the last {night_rank_count} sessions (ranks.rank_sessions: at least {same_clock_min_sessions} of them, else omitted with the reason); /ES net since futures' 16:00 price as premarket.where_now, in the pre-open ruler",
    "source": "saved SPX bars + the overnight store's /ES bars",
    "availability": "cheap_add",
@@ -10250,7 +10250,7 @@
   },
   {
    "name": "xasset.btc_gap_streak",
-   "example": "in each of the last three half-hours (10:32, 11:02, 11:32) bitcoin fell further than the index's move would match; together that is 2.3 times a normal 90-minute gap, bottom third at this time of day over the last 20 sessions",
+   "example": "over the last 3 half hours (to 11:01, 11:31 and 12:01) bitcoin futures (/MBT) went beyond the index's move by turns (rose more, fell more, rose more); together 1.3 times a normal 90-minute gap, top third for this time, higher than 16 of the last 20 sessions at this minute; over the last 20 sessions bitcoin up has gone with stocks up, so no streak",
    "computed_how": "the three latest xasset.btc_gap_30min excesses with their signs, summed, and the sum ranked against the same clock over the prior 20 sessions; shares of the median |90-minute excess|",
    "source": "as xasset.btc_gap_30min",
    "availability": "cheap_add",
