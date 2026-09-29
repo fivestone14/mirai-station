@@ -173,7 +173,7 @@ def night_rows(state_dir: Path, day: str, now: datetime) -> list[dict]:
             if parse_ts(r["ts"]) + timedelta(minutes=r["bar_minutes"]) <= now]
 
 
-def prior_close(prior_day: tuple[str, list[dict]] | None) -> tuple[float, datetime]:
+def prior_close_at(prior_day: tuple[str, list[dict]] | None) -> tuple[float, datetime]:
     """SPX's close on the trading day before, and when it was made: the close of the bar that finished at
     that day's close (16:00, 13:00 after a half day)."""
     if prior_day is None:
@@ -210,7 +210,7 @@ def make_premarket_scene(state_dir: Path, now: datetime) -> Scene:
     now = now.astimezone(ET).replace(microsecond=0)
     day = overnight.night_for(now).isoformat()
     prior = prior_sessions(state_dir, day)
-    close_price, close_at = prior_close(prior["prior_day"])
+    close_price, close_at = prior_close_at(prior["prior_day"])
     night = night_rows(state_dir, day, now)
     spot = futures_spot(night, rolls.load(state_dir / overnight.OVERNIGHT_SUBDIR), close_price, close_at, now)
     row = {"ts": now.isoformat(timespec="seconds"), "spot": round(spot if spot is not None else close_price, 2), "sigma": None,
