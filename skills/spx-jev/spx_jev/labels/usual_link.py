@@ -55,18 +55,21 @@ class Session:
     none but the snapshots' quotes of the index ($SPX), today's live context, gives every symbol, SPX too, as the
     newest snapshot that quoted the index had it. A quote set against an SPX bar close up to 70 s newer measures the
     two over different stretches: at 09:40 on 2026-09-28 SMH's 09:30:05 quote against SPX's 09:31 close made its
-    0.17 sigma move beyond its link read 0.34. A context with neither, or a symbol with no bars, reads as it was
-    known (MarketContext.last)."""
+    0.17 sigma move beyond its link read 0.34. A snapshot taken before the session's first finished minute (09:31)
+    prices nothing: the prior sessions start at that minute's close, and the index quotes of 2026-09-28's 09:30:05
+    snapshot still stood at the prior close ($VIX9D) while the funds traded. A context with neither, or a symbol
+    with no bars, reads as it was known (MarketContext.last)."""
 
     def __init__(self, bars: list[dict], market: MarketContext | None):
         self.bars, self.market = bars, market
         self._finished = [bar_time(b) + ONE_MINUTE for b in bars]
         saved = market is not None and any(s not in BAR_SYMBOLS for s in market.bars)
-        self._quoted = [t for t, _ in market.known.get(SPX) or []] if market is not None and not saved else []
+        live = market is not None and not saved and SPX in market.known
+        self._quoted = [t for t, _ in market.known[SPX] if t >= session_open(t) + ONE_MINUTE] if live else None
         self._at: dict[str, dict[datetime, float]] = {}
 
     def price(self, symbol: str, t: datetime) -> float | None:
-        if self._quoted:
+        if self._quoted is not None:
             k = bisect.bisect_right(self._quoted, t)
             if not k or t - self._quoted[k - 1] > timedelta(minutes=VALUE_MAX_AGE_MIN):
                 return None

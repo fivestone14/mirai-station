@@ -2,6 +2,7 @@
 move at this minute, and prices read point in time."""
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from datetime import timedelta
 
@@ -11,7 +12,7 @@ from conftest import DAY, at
 from spx_jev.cuts import MIN_RANK_SESSIONS, SAME_CLOCK_MIN_SESSIONS
 from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.labels.usual_link import SPX, AgainstIndex, OwnMoves, Session, link_windows, same_clock_sessions, usual_link
-from spx_jev.state_builder import MarketContext
+from spx_jev.state_builder import MarketContext, load_market_context
 from usual_link_fixtures import DRIFT_STEP, NOW, SIGMA, index_closes, scene_with
 
 
@@ -86,15 +87,34 @@ def test_both_legs_of_a_move_are_priced_at_one_instant():
     different moments and SMH's move beyond its link doubled. Live, every symbol and the index come from the newest
     snapshot that quoted the index; a saved day reads every symbol at its bar close, as SPX's."""
     spx_bars = [_bar(at(9, 30), 7710.0), _bar(at(9, 31), 7715.0), _bar(at(9, 32), 7720.0)]
-    first, second = at(9, 30, ss=5), at(9, 31, ss=16)
-    live = MarketContext({SPX: [(first, 7700.0), (second, 7707.7)], "SMH": [(first, 605.83), (second, 605.83 * 1.001)],
-                          "$TICK": [(at(9, 31), 13.0)]}, {"$TICK": [(at(9, 31), _bar(at(9, 30), 13.0))]})
+    second, third = at(9, 31, ss=16), at(9, 32, ss=26)
+    live = MarketContext({SPX: [(second, 7700.0), (third, 7707.7)], "SMH": [(second, 605.83), (third, 605.83 * 1.001)],
+                          "$TICK": [(at(9, 32), 13.0)]}, {"$TICK": [(at(9, 32), _bar(at(9, 31), 13.0))]})
     s = Session(spx_bars, live)
-    assert s.price(SPX, at(9, 31)) == 7700.0 and s.price("SMH", at(9, 31)) == 605.83
-    assert s.move(SPX, at(9, 31), at(9, 32)) == pytest.approx(0.001) and s.move("SMH", at(9, 31), at(9, 32)) == pytest.approx(0.001)
-    assert s.price("XLK", at(9, 32)) is None and s.price(SPX, at(9, 37)) is None          # not quoted then; a stopped feed
-    saved = MarketContext({"SMH": [(first, 605.83), (at(9, 31), 604.705), (second, 606.435), (at(9, 32), 605.3)]},
+    assert s.price(SPX, at(9, 32)) == 7700.0 and s.price("SMH", at(9, 32)) == 605.83
+    assert s.move(SPX, at(9, 32), at(9, 33)) == pytest.approx(0.001) and s.move("SMH", at(9, 32), at(9, 33)) == pytest.approx(0.001)
+    assert s.price("XLK", at(9, 33)) is None and s.price(SPX, at(9, 38)) is None          # not quoted then; a stopped feed
+    saved = MarketContext({"SMH": [(at(9, 30, ss=5), 605.83), (at(9, 31), 604.705), (second, 606.435), (at(9, 32), 605.3)]},
                           {"SMH": [(at(9, 31), _bar(at(9, 30), 604.705)), (at(9, 32), _bar(at(9, 31), 605.3))]})
     s = Session(spx_bars, saved)
     assert s.price("SMH", at(9, 31, ss=30)) == 604.705 and s.price(SPX, at(9, 31, ss=30)) == 7710.0
     assert s.move("SMH", at(9, 31), at(9, 32)) == pytest.approx(605.3 / 604.705 - 1)
+
+
+def test_the_index_is_priced_from_no_snapshot_before_the_first_finished_minute_nor_one_still_at_its_prior_close(tmp_path):
+    """09-28's first snapshot, 09:30:05, still had index quotes at their prior close while the funds traded. Live, a
+    snapshot taken before 09:31 (the minute the prior sessions start from) prices nothing, and neither does one whose
+    $SPX stands exactly at its prior close: the opening window says it has no price rather than read the stale one."""
+    def quotes(taken, spx, smh):
+        return {"ts": taken.isoformat(), "failed": [], "bars": {},
+                "quotes": {SPX: {"last": spx, "close": 7742.32, "volume": 0, "quote_time": None},
+                           "SMH": {"last": smh, "close": 610.0, "volume": 0, "quote_time": None}}}
+    folder = tmp_path / "spx_jev" / "context"
+    folder.mkdir(parents=True)
+    lines = [quotes(at(9, 30, ss=5), 7725.0, 605.8), quotes(at(9, 31, ss=16), 7742.32, 606.1), quotes(at(9, 32, ss=26), 7722.0, 606.4)]
+    (folder / f"{DAY}.jsonl").write_text("".join(json.dumps(l) + "\n" for l in lines))
+    s = Session([_bar(at(9, 30), 7721.7), _bar(at(9, 31), 7720.5)], load_market_context(tmp_path, DAY))
+    assert s.price(SPX, at(9, 31)) is None and s.price("SMH", at(9, 31)) is None       # only the 09:30:05 snapshot by then
+    assert s.price(SPX, at(9, 32)) is None                                             # 09:31:16's index still at its close
+    assert s.price(SPX, at(9, 33)) == 7722.0 and s.price("SMH", at(9, 33)) == 606.4
+    assert s.move("SMH", at(9, 31), at(9, 33)) is None

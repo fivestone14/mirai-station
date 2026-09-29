@@ -44,6 +44,10 @@ FULL_SESSION_MIN = 390
 # (lob_flow.daemon.TAPE_WINDOW_MIN) and writes a line a minute, so an older newest line means it stopped.
 OPTIONS_TAPE_WINDOW_MIN = 15
 OPTIONS_TAPE_MAX_AGE_MIN = 3
+# The index's own quote in the market context (market_context.QUOTE_ONLY), what today's moves beside it are measured
+# against (labels/usual_link.Session). One at exactly its prior close has not printed since: an index quote can stand
+# there after the open (2026-09-28's 09:30:05 snapshot had $VIX9D at its close, 12.76; the next, 14.64).
+INDEX_QUOTE = "$SPX"
 
 
 # ----------------------------------------------------------------------------- loading
@@ -215,8 +219,9 @@ class MarketContext:
 
 def load_market_context(state_dir: Path, day: str) -> MarketContext | None:
     """The day's live snapshots and backfilled bars as one MarketContext, or None when neither exists.
-    A quote of zero is an empty shell (the breadth symbols' quotes) and is not a value, and a derived bar
-    (market_context.derived_vold) never stands in for a minute Schwab served its own bar for."""
+    A quote of zero is an empty shell (the breadth symbols' quotes) and is not a value, nor is the index's at its
+    prior close (INDEX_QUOTE), and a derived bar (market_context.derived_vold) never stands in for a minute Schwab
+    served its own bar for."""
     folder = Path(state_dir) / CONTEXT_SUBDIR
     snapshots, backfill = load_jsonl(folder / f"{day}.jsonl"), load_jsonl(folder / "bars" / f"{day}.jsonl")
     if not snapshots and not backfill:
@@ -241,7 +246,8 @@ def load_market_context(state_dir: Path, day: str) -> MarketContext | None:
             continue
         taken = parse_ts(line["ts"])
         for key, q in (line.get("quotes") or {}).items():
-            if isinstance(q, dict) and is_num(q.get("last")) and q["last"] != 0:
+            if isinstance(q, dict) and is_num(q.get("last")) and q["last"] != 0 \
+                    and not (key == INDEX_QUOTE and q["last"] == q.get("close")):
                 symbol = context_symbol(key)
                 known.setdefault(symbol, {})[taken] = context_value(symbol, float(q["last"]))
     return MarketContext({s: sorted(pts.items()) for s, pts in known.items()},

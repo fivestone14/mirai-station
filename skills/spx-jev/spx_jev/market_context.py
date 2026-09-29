@@ -36,7 +36,7 @@ from . import schwab
 from .feed_log import failure, log
 from .labels.measures import is_num
 from .sessions import SESSION_CLOSE, SESSION_OPEN
-from .state_builder import CONTEXT_SUBDIR, DEFAULT_STATE_DIR, load_jsonl
+from .state_builder import CONTEXT_SUBDIR, DEFAULT_STATE_DIR, INDEX_QUOTE, load_jsonl
 
 ET = ZoneInfo("America/New_York")
 JOB = "spx-jev-context"
@@ -53,7 +53,7 @@ SYMBOLS = {
 ALL_SYMBOLS = tuple(s for group in SYMBOLS.values() for s in group)
 # The index itself, quoted in every snapshot beside the rest and never backfilled (its bars are the SPX bar files):
 # today's moves of the other symbols are measured against it at the same instant (labels/usual_link.Session).
-QUOTE_ONLY = ("$SPX",)
+QUOTE_ONLY = (INDEX_QUOTE,)
 BAR_SYMBOLS = SYMBOLS["breadth"]          # quotes come back as empty shells: read the newest finished bar instead
 NO_HISTORY = ("$VIX1D",)                  # quoted, never kept by Schwab's history: only a live snapshot saves it
 FIRST_BACKFILL_DAY = "2026-08-10"         # the oldest minute Schwab still served on 2026-09-26
