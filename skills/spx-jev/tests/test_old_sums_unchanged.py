@@ -131,10 +131,14 @@ def run_fixture(tmp_path, monkeypatch, average_reply=None) -> dict[str, dict[str
     return {"live": _files(live, clock=True), "tape": _files(tape), "premarket": _files(pre)}
 
 
-def _old_path(weights: str) -> str:
-    """weights.json less the average-price loop's report, written as the grader writes it."""
+def _old_path(weights: str, lane: str) -> str:
+    """weights.json less what has been added beside the old path since, written as the grader writes it: the live
+    lane's average-price loop report, and each sum's hit rate on its committed calls."""
     w = json.loads(weights)
-    assert w.pop("pool_integral")["method"] == "pool_v1_integral"
+    if lane == "live" and LIVE.integral_loop:
+        assert w.pop("pool_integral")["method"] == "pool_v1_integral"
+    for s in w["sums"].values():
+        del s["committed_calls"], s["committed_hit_rate"]
     return json.dumps(w, ensure_ascii=False, indent=1)
 
 
@@ -143,8 +147,8 @@ def _same_as_before(got: dict) -> None:
     for lane in ("live", "tape", "premarket"):
         assert set(got[lane]) == set(want[lane]), lane
         for name, text in want[lane].items():
-            if lane == "live" and name == "weights.json" and LIVE.integral_loop:
-                assert _old_path(got[lane][name]) == text, f"{lane} {name} moved"
+            if name == "weights.json":
+                assert _old_path(got[lane][name], lane) == text, f"{lane} {name} moved"
                 continue
             assert got[lane][name] == text, f"{lane} {name} moved"
 

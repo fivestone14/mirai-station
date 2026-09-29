@@ -86,7 +86,7 @@ Outputs, all under the lane's folder (state/spx_jev/ for the live lane)
     grades.jsonl       one line per graded horizon of a record (append only, keyed by row_ts and
                        the ``horizons`` the line carries; the primary's line has its fields flat on top)
     weights.json       {"graded_runs": reads whose primary mark is graded, "primary",
-                        "sums": {qid: {"n", "hit_rate", "always_flat_hit_rate", "mean_brier", "bands",
+                        "sums": {qid: {"n", "hit_rate", "committed_calls", "committed_hit_rate", "always_flat_hit_rate", "mean_brier", "bands",
                                        "blended": {"n", "mean_brier_blend", "mean_brier_jev", "mean_brier_clock", "jev_hit_rate"},
                                        "event_reads": {"n", "mean_brier"}}},
                         "method", "min_weight", "questions": {qid: {"weight", "n", "in_step_3", "why"}},
@@ -376,11 +376,16 @@ def graded_horizons(lines: list[dict], lane: Lane = LIVE) -> dict[str, set[str]]
 
 def _tally(rows: list[dict]) -> dict:
     """A sum's record: the shown sum's hit rate and Brier, and, over the reads that were blended,
-    the same Brier for the blend, for JEV's own sum and for the clock alone, side by side."""
+    the same Brier for the blend, for JEV's own sum and for the clock alone, side by side. The hit rate
+    counts an unsure pick as a miss; ``committed_hit_rate`` beside it is over the ``committed_calls``
+    alone, the picks that were not unsure, as the card and the store count calls."""
     n = len(rows)
     if not n:
-        return {"n": 0, "hit_rate": None, "always_flat_hit_rate": None, "mean_brier": None, "bands": {}}
-    out = {"n": n, "hit_rate": round(sum(1 for g in rows if g["hit"]) / n, 3),
+        return {"n": 0, "hit_rate": None, "committed_calls": 0, "committed_hit_rate": None, "always_flat_hit_rate": None,
+                "mean_brier": None, "bands": {}}
+    committed = [g for g in rows if g.get("pick") not in (None, "unsure")]
+    out = {"n": n, "hit_rate": round(sum(1 for g in rows if g["hit"]) / n, 3), "committed_calls": len(committed),
+           "committed_hit_rate": round(sum(1 for g in committed if g["hit"]) / len(committed), 3) if committed else None,
            "always_flat_hit_rate": round(sum(1 for g in rows if g["band"] == "flat") / n, 3),
            "mean_brier": round(sum(g["brier"] for g in rows) / n, 4),
            "bands": dict(Counter(g["band"] for g in rows))}

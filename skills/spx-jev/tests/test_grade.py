@@ -102,6 +102,19 @@ def test_a_blended_sum_is_graded_beside_jevs_own_and_the_clocks():
     assert b["n"] == 1 and b["mean_brier_blend"] == g["brier"] and b["mean_brier_jev"] == g["jev_brier"]
 
 
+def test_an_unsure_pick_is_a_miss_in_the_hit_rate_and_no_call_in_the_committed_hit_rate_beside_it():
+    bars = flat_bars(390)
+    right = grade_one(_rec(11, 0, 7700.0, _by({"flat": 0.8, "unsure": 0.2}, "flat")), bars)
+    wrong = grade_one(_rec(12, 0, 7700.0, _by({"up": 0.8, "unsure": 0.2}, "up")), bars)
+    unsure = grade_one(_rec(13, 0, 7700.0, _by({"flat": 0.3, "unsure": 0.7}, "unsure")), bars)
+    s = weights_from([right, wrong, unsure], ALLOWED)["sums"]["next_30"]
+    assert s["n"] == 3 and s["hit_rate"] == round(1 / 3, 3)            # as it was: the unsure pick counts as a miss
+    assert s["committed_calls"] == 2 and s["committed_hit_rate"] == 0.5
+    assert weights_from([unsure], ALLOWED)["sums"]["next_30"]["committed_hit_rate"] is None
+    empty = weights_from([], ALLOWED)["sums"]["next_60"]
+    assert empty["committed_calls"] == 0 and empty["committed_hit_rate"] is None
+
+
 def test_every_weight_is_one_and_an_event_read_never_reaches_them():
     bars = flat_bars(390)
     ev = {"within_30": True, "sentence": "a scheduled event is ahead"}
