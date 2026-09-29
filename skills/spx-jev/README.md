@@ -330,6 +330,11 @@ read over its Parquet directly, or given views of its own with
     duckdb.sql(f"""SELECT symbol, count(*) FROM read_parquet('{STORE}/context_bars/*/*.parquet', hive_partitioning = true)
                    GROUP BY symbol""").show()
 
+`.show()`, `.df()` and `.arrow()` read any column. `.fetchall()` and
+`.fetchone()` hand back a timestamp as a Python datetime, which DuckDB builds
+with pytz: `venv-bootstrap.sh` installs it, and a venv without it raises
+"Required module 'pytz' failed to import" on any time column.
+
 Into pandas: `con.sql("SELECT * FROM answers").df()` (a map column such as
 `probabilities` arrives as a dict per row), or one table's folder with pandas
 alone, the day read as a date:
