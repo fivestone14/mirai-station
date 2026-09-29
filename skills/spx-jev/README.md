@@ -52,6 +52,7 @@ returns a probability for each answer option. JEV makes no trading call.
 | `spx_jev/weights.py` | The Weights | One interface, `QuestionWeights`, for how much each question counts in the sums. Every live question weighs 1.0: the neutral method on the tape lane, the learning loop on the live lane. |
 | `spx_jev/pool.py` | The Learning Loop | 06-learning-loop-design: at each live read, the forecasts it will score (the fixed mixes of JEV's sum with the price-only reference, today's blend, the clock, the question block "no change" competes in, the pool); once a session is sealed, one day's evidence moves the move and the direction weights apart, the tables and calibration decay, and day-level e-processes decide the "earning" labels (e-BH) and whether the pool replaces the blend on the phone. The phone switch, `POOL_ON_PHONE`, is on: the phone shows the pool only while it is promoted, and nothing is promoted until the simulation gates pass (`SIM_GATES_PASSED`). |
 | `spx_jev/archive.py` | The Archive | The raw record for machine learning: every read, grade and close-out of both lanes, append only, one typed record per line. |
+| `spx_jev/store.py` | The Learning Store | Each market day's raw files (the archive, the bars, the market feed, the overnight store, the roll table, the calendar) as typed Parquet under `state/spx_jev/store/`, every row checked and a refused one quarantined with its reason, with DuckDB views over it. Rebuilt nightly; the raw files are only read. |
 | `spx_jev/service.py` | The Service | One run per read: build, ask (when a key exists), sum, grade, write the record, the archive and the phone's card. |
 | `spx_jev/lane.py` | The Lanes | The settings one run takes. `LIVE` reads at :02 and :32 with the 30- and 60-minute sums, and its 16:02 fire (13:02 on a half day) is a close-out that grades the day's last calls; `TAPE` is the opening lane: every 5 minutes 09:35 to 10:30, each read stamped at the newest finished bar and sized in tape units, one five-way 10-minute sum priced in index points, every question its schedule asks asked afresh (its day constants at 09:35, then held), no blend, the exact bar at the mark, and a close-out at 10:42 that asks JEV nothing and grades the morning's last calls. It writes only under `state/spx_jev/lanes/tape/`. `PREMARKET` reads at the six checkpoints before the open, its two sums (`open_10`, `open_30`) graded from the settled open, unblended, with no learning loop and neutral weights, under `state/spx_jev/lanes/premarket/`. |
 | `spx_jev/premarket.py` | The Premarket Lane | Six checkpoints before the open (02:35; 03:35, or 04:35 in the week Frankfurt is on winter time and New York is not; 08:05, 08:48, 09:05, 09:28 ET). Each saves the night's futures and builds a scene without a diary row: SPX's prior close carried by /ES on one contract, sized in the pre-open ruler (the median morning anchor of the last sessions, stamped on every record). Every label is rebuilt from the bars at every read; JEV's earlier answers are never fed back. JEV is asked only where a question is due (08:48, 09:28). It writes its records, sums, the archive and the before-the-open card, refuses a fire 5 minutes or more late or from the open on, and closes out at 10:06, once the bar its 10:04 check ends on is on file (up to 55 s), grading from the settled open. |
@@ -103,6 +104,10 @@ returns a probability for each answer option. JEV makes no trading call.
     python3 -m spx_jev.build --day 2026-09-25 --at 09:28 --lane premarket
     python3 -m spx_jev.grade --lane premarket                 # grade the reads before the open
     python3 spec/replay_premarket.py --out /tmp/replay --workers 8   # the premarket questions over the saved nights, read only
+
+    python3 -m spx_jev.store                                  # the learning store: the last week's market days, today once saved
+    python3 -m spx_jev.store --day 2026-09-28                 # rebuild one day
+    python3 -m spx_jev.store --backfill                       # every market day with a raw file on disk
 
 A replay (`--day`) never writes into the station's records unless `--out-dir`
 names them: without one it writes its records, card, grades and archive into a
@@ -231,6 +236,7 @@ archive there too, under `archive/`.
   `session`, `source`, `saved_at`, `flags`); `overnight/manifest.jsonl`, one line per save
   that changed a night, with its checks; `overnight/rolls.json`, the roll table;
   `overnight/.save.lock`, held while a save merges and writes.
+- `store/`, the learning store built from all of the above (below).
 
 The card carries: `symbol`, `generated_at`, `row_ts`, `freshness`, `sigma`,
 `situation` (four facts with a verdict word and the figure to draw), `labels`,
@@ -253,6 +259,76 @@ own sum failed, `story` (one chip per read, the report read marked), the
 `situation` facts, the questions, and the day's calls. The SPX phone page
 (`runtime/viewstation/static/m/jev-spx.html`) leads with it from the day's first
 pre-market read until the 09:35 hand-over, every time in the viewer's own zone.
+
+## The learning store
+
+`spx_jev/store.py` turns each market day's raw files into typed tables for
+machine learning. The raw files stay the record: the store only reads them, and
+any day can be rebuilt from them whole.
+
+    state/spx_jev/store/<table>/day=YYYY-MM-DD/part-0.parquet   one file per table per built day, zero rows included
+    state/spx_jev/store/spx_jev.duckdb                          a view per table over those files, and `meta`
+
+| Table | One row per | What it holds |
+|---|---|---|
+| `reads` | read, any lane | `read_id` (lane and row time), `lane`, `row_ts`, `archived_at`, `minute_et` and `minutes_from_open`, `checkpoint`, `sent`, `model`, `spot`, `sigma`, the ruler (`ruler_source`, `ruler_points`, `ruler_unit_sigma`, `ruler_sessions`, `ruler_omitted`) and the opening lane's bands, the event tag, how many questions were `answered`, `lost`, `unsent`, `held`, `not_due`, `asleep`, `missing`, `dark`, `unread` or `other`, how many were `reasked`, the labels written, omitted and asleep, the sum's `sum_used`, `sum_left_out`, `sum_missing` and `sum_error`, and `skip_reasons` (question to why) |
+| `facts` | label, or market value, per read | `source` (`label` or `market_context`), `path`, `status` (`written`, `omitted` or `asleep`: omitted on a reason a question slept on), the sentence in `text`, the `reason` a label is missing, a market `value`, and `known_at` |
+| `answers` | question per read | `status` as counted on the read and its `reason`, `type`, `pick`, `confidence`, `probabilities` (option to probability; a yes/no as `true` and `false`), `score` and `noul` as JEV sent them, `question_hash` (the question exactly as JEV was sent it), `pool_version` (the learning loop's version of it), `held_from` and `held_found` for a held answer (its values are copied from the read that asked it), `reasked`, `reasked_from`, `reask_why` |
+| `calls` | sum per read | `horizon`, `minutes`, `mark`, `primary`, the time of day, what the card showed (`shown_source`, `shown_pick`, `shown_probs`), JEV alone (`jev_pick`, `jev_probs`), the time-of-day odds (`clock_probs`, `clock_n`), the blend (`blended`, `blend_jev_share`, `blend_phase`), the learning loop's mix (`pool_probs`, `pool_p_move`, `pool_p_up_given_move`, or why it was left out in `pool_left_out`), the opening lane's `direction_*` and `size_*` views, and `learn_exclude` |
+| `grades` | graded sum | `mark`, `outcome`, the realized move, `pick`, `abstained` (an unsure pick), `correct` (empty when abstained), `hit`, `brier`, `p_band`, JEV's and the clock's scores, the opening lane's direction and size scores, and the ruler it was graded in |
+| `spx_bars` | SPX minute | open, high, low, close, volume, and `source` (the saved session file kept over the bars feed's) |
+| `context_bars` | symbol and minute | the market feed's bars in the labels' units (a future under its root, `served_as` the contract; the yields in percent), `derived` and `derived_from` for a `$VOLD` built from `$UVOL` and `$DVOL`, `source` (the saved day kept over a live snapshot, Schwab's own `$VOLD` over a derived one), `known_at` and `written_at` |
+| `context_quotes` | symbol and snapshot | `last`, `prior_close`, `volume`, `taken_at` |
+| `overnight_bars` | futures bar | `symbol`, `contract`, `contract_from`, `bar_minutes`, the prices and volume, `session`, `saved_at`, `flags` |
+| `rolls` | roll, on the day it took effect | `symbol`, `from_contract`, `to_contract`, `at`, the basis step and its reference |
+| `events` | calendar row on the day | `starts_at`, `ends_at`, `kind`, `tier`, `in_session`, `verified`, `q_and_a`, `calendar_built` |
+| `quarantine` | refused row | `table` (`raw_line` for a line that is not a JSON object or an archive record in the wrong shape), `key`, `reason`, `source` (file and line), `row_json` |
+| `validation` | table per day | `rows_in`, `kept`, `duplicates`, `superseded`, `quarantined`, `reasons` (reason to count), `sources`, `store_schema`, `built_at` |
+
+Every table has `day`, from its folder. Times are instants shown in New York
+time. The column names and types are fixed by `store.TABLES` at schema version
+`store.SCHEMA_VERSION` (1), written into every file's metadata and into `meta`.
+
+Each row is typed column by column, then held to its table's checks: ranges,
+probabilities that sum to one, a bar's high above its low, and point in time
+(no fact known after its read, no grade written before its mark, no bar saved
+before it finished). A fact, answer, call or grade must belong to one of the
+day's kept reads. A refused row goes to `quarantine` with its reason, never
+dropped. Copies of a row that agree but for where they came from count as
+`duplicates`; where a table ranks its sources the better copy is kept and a
+disagreeing one counts as `superseded`; any other disagreement is quarantined.
+
+The nightly job (`com.mirai-station.spx-jev-store`, 16:40 ET) rebuilds the last
+week's market days. It writes the DuckDB file only when its views are missing
+or out of date, so a notebook holding it open read only never stops a run.
+
+From Python, in the station's venv:
+
+    from pathlib import Path
+    import duckdb
+    STORE = Path.home() / ".claude/plugins/mirai-station/state/spx_jev/store"
+    con = duckdb.connect(str(STORE / "spx_jev.duckdb"), read_only=True)
+    con.sql("SET TimeZone = 'America/New_York'")              # show times in market time
+    con.sql("SELECT day, lane, count(*) AS reads FROM reads GROUP BY ALL ORDER BY ALL").show()
+    con.sql("""SELECT question_id, avg(confidence) AS sure, count(*) AS n
+               FROM answers WHERE status = 'answered' GROUP BY question_id ORDER BY n DESC""").show()
+    con.sql("""SELECT c.row_ts, c.shown_pick, c.shown_probs['up'] AS p_up, c.jev_probs['up'] AS jev_up,
+                      g.outcome, g.correct
+               FROM calls c JOIN grades g USING (read_id, horizon) WHERE c.horizon = 'next_30'""").show()
+    con.sql("SELECT day, \"table\", reason, source FROM quarantine").show()
+
+Without the DuckDB file, over the Parquet directly:
+
+    duckdb.sql(f"""SELECT symbol, count(*) FROM read_parquet('{STORE}/context_bars/*/*.parquet', hive_partitioning = true)
+                   GROUP BY symbol""").show()
+
+Into pandas: `con.sql("SELECT * FROM answers").df()` (a map column such as
+`probabilities` arrives as a dict per row), or one table's folder with pandas
+alone, the day read as a date:
+
+    import pandas as pd, pyarrow as pa, pyarrow.dataset as ds
+    bars = pd.read_parquet(STORE / "spx_bars",
+                           partitioning=ds.partitioning(pa.schema([("day", pa.date32())]), flavor="hive"))
 
 ## The jobs
 
