@@ -223,7 +223,7 @@ def test_a_call_keeps_jev_alone_the_clock_the_blend_the_learned_mix_and_what_was
     c = calls[(f"live:{READ}", "next_30")]
     assert c["shown_source"] == "blend50_exact" and dict(c["jev_probs"])["up"] == 0.4 and c["clock_n"] == 180
     assert (c["blended"], c["blend_jev_share"], c["pool_p_move"], c["learn_exclude"]) == (True, 0.5, 0.5, True)
-    assert c["mark"] == at(11, 2) and c["primary"] is True
+    assert c["mark"] == at(11, 2) and c["is_primary"] is True
     assert calls[(f"live:{READ}", "next_60")]["pool_left_out"] == "JEV gave no probabilities for next_60"
     tape = calls[(f"tape:{TAPE_READ}", "next_10")]
     assert tape["shown_source"] == "jev" and tape["direction_pick"] == "down" and tape["mark"] == at(9, 50)
@@ -275,21 +275,21 @@ def test_every_refused_row_is_quarantined_with_its_reason_and_none_is_dropped(tm
     monkeypatch.setattr(store, "CALENDAR", _state(tmp_path, _bad_archive(), extra_lines=['{"kind": "read", "torn']))
     log = store.build_day(tmp_path, D, at(16, 45))
     bad = _table(tmp_path, "quarantine")
-    why = {(q["table"], q["key"]): q["reason"] for q in bad}
+    why = {(q["table_name"], q["key"]): q["reason"] for q in bad}
     assert why[("facts", f"live:{READ}|market_context|$VVIX")].startswith("known after its read")
     assert "outside 0 to 1" in why[("answers", f"live:{READ}|move_shape")]
     assert why[("reads", f"live:{EARLY}")] == "spot -1.0 is not above zero"
     assert why[("answers", f"live:{EARLY}|day_character")] == f"its read live:{EARLY} is not among the day's kept reads"
     assert why[("grades", f"live:{READ}|next_30")].startswith("graded before its mark")
     assert "is not among the day's kept reads" in why[("grades", "live:2026-09-18T11:02:00-04:00|next_30")]
-    assert sum(q["table"] == "raw_line" for q in bad) == 2                                        # the torn line and the unknown kind
+    assert sum(q["table_name"] == "raw_line" for q in bad) == 2                                        # the torn line and the unknown kind
     assert [g["outcome"] for g in _table(tmp_path, "grades") if g["lane"] == "live"] == ["down"]   # the regrade stands
     held = next(a for a in _table(tmp_path, "answers") if a["question_id"] == "day_character")
     assert held["status"] == "held"                                   # a held answer stays, though its source read was refused
     rows_in = {t: c["rows_in"] for t, c in log.items()}
     assert all(c["rows_in"] == c["kept"] + c["duplicates"] + c["superseded"] + c["quarantined"] for c in log.values()), log
     assert sum(c["quarantined"] for c in log.values()) == len(bad) and rows_in["raw_line"] == 2
-    validation = {v["table"]: v for v in _table(tmp_path, "validation")}
+    validation = {v["table_name"]: v for v in _table(tmp_path, "validation")}
     assert validation["grades"]["quarantined"] == 2 and validation["grades"]["store_schema"] == store.SCHEMA_VERSION
 
 
@@ -320,6 +320,11 @@ def test_an_outcome_is_held_to_its_lanes_bands():
     row = {"lane": "live", "horizon": "next_30", "outcome": "down_small"}
     assert "is not one of up, flat, down" in store._outcome(row)
     assert store._outcome({**row, "lane": "tape", "horizon": "next_10"}) is None
+
+
+def test_every_column_selects_in_plain_sql_none_a_duckdb_reserved_word():
+    keywords = dict(duckdb.sql("SELECT keyword_name, keyword_category FROM duckdb_keywords()").fetchall())
+    assert [(t.name, n) for t in store.BY_NAME.values() for n, _, _ in t.columns if keywords.get(n, "unreserved") != "unreserved"] == []
 
 
 def test_a_rebuild_leaves_the_raw_files_untouched_and_writes_the_same_rows(built):

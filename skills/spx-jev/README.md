@@ -274,16 +274,16 @@ any day can be rebuilt from them whole.
 | `reads` | read, any lane | `read_id` (lane and row time), `lane`, `row_ts`, `archived_at`, `minute_et` and `minutes_from_open`, `checkpoint`, `sent`, `model`, `spot`, `sigma`, the ruler (`ruler_source`, `ruler_points`, `ruler_unit_sigma`, `ruler_sessions`, `ruler_omitted`) and the opening lane's bands, the event tag, how many questions were `answered`, `lost`, `unsent`, `held`, `not_due`, `asleep`, `missing`, `dark`, `unread` or `other`, how many were `reasked`, the labels written, omitted and asleep, the sum's `sum_used`, `sum_left_out`, `sum_missing` and `sum_error`, and `skip_reasons` (question to why) |
 | `facts` | label, or market value, per read | `source` (`label` or `market_context`), `path`, `status` (`written`, `omitted` or `asleep`: omitted on a reason a question slept on), the sentence in `text`, the `reason` a label is missing, a market `value`, and `known_at` |
 | `answers` | question per read | `status` as counted on the read and its `reason`, `type`, `pick`, `confidence`, `probabilities` (option to probability; a yes/no as `true` and `false`), `score` and `noul` as JEV sent them, `question_hash` (the question exactly as JEV was sent it), `pool_version` (the learning loop's version of it), `held_from` and `held_found` for a held answer (its values are copied from the read that asked it; a lost ask whose last answer the sum read instead is `held`, its `reason` starting `lost`), `reasked` (empty for a read archived before the lane recorded its re-asks), `reasked_from`, `reask_why` |
-| `calls` | sum per read | `horizon`, `minutes`, `mark`, `primary`, the time of day, what the card showed (`shown_source`, `shown_pick`, `shown_probs`), JEV alone (`jev_pick`, `jev_probs`), the time-of-day odds (`clock_probs`, `clock_n`), the blend (`blended`, `blend_jev_share`, `blend_phase`), the learning loop's mix (`pool_probs`, `pool_p_move`, `pool_p_up_given_move`, or why it was left out in `pool_left_out`), the opening lane's `direction_*` and `size_*` views, and `learn_exclude` |
+| `calls` | sum per read | `horizon`, `minutes`, `mark`, `is_primary`, the time of day, what the card showed (`shown_source`, `shown_pick`, `shown_probs`), JEV alone (`jev_pick`, `jev_probs`), the time-of-day odds (`clock_probs`, `clock_n`), the blend (`blended`, `blend_jev_share`, `blend_phase`), the learning loop's mix (`pool_probs`, `pool_p_move`, `pool_p_up_given_move`, or why it was left out in `pool_left_out`), the opening lane's `direction_*` and `size_*` views, and `learn_exclude` |
 | `grades` | graded sum | `mark`, `outcome`, the realized move, `pick`, `abstained` (an unsure pick), `correct` (empty when abstained), `hit`, `brier`, `p_band`, JEV's and the clock's scores, the opening lane's direction and size scores, and the ruler it was graded in |
 | `spx_bars` | SPX minute | open, high, low, close, volume, and `source` (the saved session file kept over the bars feed's) |
 | `context_bars` | symbol and minute | the market feed's bars in the labels' units (a future under its root, `served_as` the contract; the yields in percent), `derived` and `derived_from` for a `$VOLD` built from `$UVOL` and `$DVOL`, `source` (the saved day kept over a live snapshot, Schwab's own `$VOLD` over a derived one), `known_at` and `written_at` |
 | `context_quotes` | symbol and snapshot | `last`, `prior_close`, `volume`, `taken_at` |
 | `overnight_bars` | futures bar | `symbol`, `contract`, `contract_from`, `bar_minutes`, the prices and volume, `session`, `saved_at`, `flags` |
-| `rolls` | roll, on the day it took effect | `symbol`, `from_contract`, `to_contract`, `at`, the basis step and its reference |
+| `rolls` | roll, on the day it took effect | `symbol`, `from_contract`, `to_contract`, `rolled_at`, the basis step and its reference |
 | `events` | calendar row on the day | `starts_at`, `ends_at`, `kind`, `tier`, `in_session`, `verified`, `q_and_a`, `calendar_built` |
-| `quarantine` | refused row | `table` (`raw_line` for a line that is not a JSON object or an archive record in the wrong shape), `key`, `reason`, `source` (file and line), `row_json` |
-| `validation` | table per day | `rows_in`, `kept`, `duplicates`, `superseded`, `quarantined`, `reasons` (reason to count), `sources`, `store_schema`, `built_at` |
+| `quarantine` | refused row | `table_name` (`raw_line` for a line that is not a JSON object or an archive record in the wrong shape), `key`, `reason`, `source` (file and line), `row_json` |
+| `validation` | table per day | `table_name`, `rows_in`, `kept`, `duplicates`, `superseded`, `quarantined`, `reasons` (reason to count), `sources`, `store_schema`, `built_at` |
 
 Every table has `day`, from its folder. Times are instants shown in New York
 time. The column names and types are fixed by `store.TABLES` at schema version
@@ -316,7 +316,7 @@ From Python, in the station's venv:
     con.sql("""SELECT c.row_ts, c.shown_pick, c.shown_probs['up'] AS p_up, c.jev_probs['up'] AS jev_up,
                       g.outcome, g.correct
                FROM calls c JOIN grades g USING (read_id, horizon) WHERE c.horizon = 'next_30'""").show()
-    con.sql("SELECT day, \"table\", reason, source FROM quarantine").show()
+    con.sql("SELECT day, table_name, reason, source FROM quarantine").show()
 
 Without the DuckDB file, over the Parquet directly:
 

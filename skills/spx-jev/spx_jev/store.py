@@ -42,7 +42,7 @@ copy that agrees but for where it came from is counted as a duplicate; where a t
 day's bar over a live snapshot's, Schwab's own $VOLD over a derived one) the better one is kept and a copy from
 a worse source that disagrees is counted as superseded; any other disagreement, two equally good sources
 included, is quarantined. Nothing is dropped without a count in ``validation`` or a row in ``quarantine``. A line of a raw
-file that is not a JSON object is quarantined under the table name ``raw_line``. The archive's ``close_out``
+file that is not a JSON object is quarantined under the table_name ``raw_line``. The archive's ``close_out``
 records restate the calls and grades already stored, so they are read past.
 
 Timestamps are stored as instants in New York time; the Treasury yields are in percent and a futures bar is
@@ -325,7 +325,7 @@ ANSWERS = Table("answers", _read_cols(
 
 CALLS = Table("calls", _read_cols(
     ("horizon", STR, True), ("minutes", INT, True), ("mark", TS, False), ("minute_et", INT, False),
-    ("minutes_from_open", INT, False), ("primary", BOOL, True), ("shown_source", STR, True), ("shown_pick", STR, False),
+    ("minutes_from_open", INT, False), ("is_primary", BOOL, True), ("shown_source", STR, True), ("shown_pick", STR, False),
     ("shown_probs", PROBS, True), ("shown_confidence", NUM, False), ("jev_pick", STR, False), ("jev_probs", PROBS, False),
     ("jev_confidence", NUM, False), ("clock_pick", STR, False), ("clock_probs", PROBS, False), ("clock_n", INT, False),
     ("blended", BOOL, False), ("blend_jev_share", NUM, False), ("blend_phase", STR, False), ("blend_sessions", INT, False),
@@ -383,12 +383,12 @@ OVERNIGHT_BARS = Table("overnight_bars", (("day", DAY, True), ("ts", TS, True), 
                        checks=(_is("bar_minutes", (1, 5)), _positive("open", "high", "low", "close"), _not_negative("volume"),
                                _bar_shape, _night_ends_by_close, _saved_after_finish))
 
-ROLLS = Table("rolls", (("day", DAY, True), ("symbol", STR, True), ("at", TS, False), ("from_contract", STR, True),
+ROLLS = Table("rolls", (("day", DAY, True), ("symbol", STR, True), ("rolled_at", TS, False), ("from_contract", STR, True),
                         ("to_contract", STR, True), ("basis_step", NUM, False), ("basis_unit", STR, False),
                         ("step_vs_typical", NUM, False), ("reference", STR, False), ("jump", NUM, False)),
               key=("symbol", "day"),
-              checks=(_roll_changes, lambda r: None if r["at"] is None or r["at"].astimezone(ET).date() <= r["day"]
-                      else f"at {r['at'].isoformat()} is after its day {r['day']}"))
+              checks=(_roll_changes, lambda r: None if r["rolled_at"] is None or r["rolled_at"].astimezone(ET).date() <= r["day"]
+                      else f"rolled_at {r['rolled_at'].isoformat()} is after its day {r['day']}"))
 
 EVENTS = Table("events", (("day", DAY, True), ("starts_at", TS, True), ("ends_at", TS, False), ("kind", STR, True),
                           ("tier", STR, True), ("scope", STR, False), ("in_session", BOOL, False), ("verified", BOOL, False),
@@ -396,10 +396,10 @@ EVENTS = Table("events", (("day", DAY, True), ("starts_at", TS, True), ("ends_at
                key=("kind", "starts_at"),
                checks=(_on_day("starts_at"), _ends_after_start))
 
-QUARANTINE = Table("quarantine", (("day", DAY, True), ("table", STR, True), ("key", STR, False), ("reason", STR, True),
+QUARANTINE = Table("quarantine", (("day", DAY, True), ("table_name", STR, True), ("key", STR, False), ("reason", STR, True),
                                   ("source", STR, True), ("row_json", STR, True)), key=())
 
-VALIDATION = Table("validation", (("day", DAY, True), ("table", STR, True), ("rows_in", INT, True), ("kept", INT, True),
+VALIDATION = Table("validation", (("day", DAY, True), ("table_name", STR, True), ("rows_in", INT, True), ("kept", INT, True),
                                   ("duplicates", INT, True), ("superseded", INT, True), ("quarantined", INT, True),
                                   ("reasons", COUNTS, True), ("sources", WORDS, True), ("store_schema", INT, True),
                                   ("built_at", TS, True)), key=())
@@ -479,7 +479,7 @@ class Raw:
 
 
 def _unreadable(day: date, source: str, value: Any, why: str) -> dict:
-    return {"day": day, "table": "raw_line", "key": None, "reason": why, "source": source, "row_json": _json(value) or "null"}
+    return {"day": day, "table_name": "raw_line", "key": None, "reason": why, "source": source, "row_json": _json(value) or "null"}
 
 
 def _asked_index(reads: list[tuple[str, dict]]) -> dict[tuple[str, str], dict]:
@@ -634,7 +634,7 @@ def _call_rows(base: dict, rec: dict, hour: dict, pool_snap: dict, hour_rec: dic
         except (TypeError, ValueError):
             mark = None
         out.append({**base, "horizon": h, "minutes": minutes, "mark": mark, "minute_et": minute_et, "minutes_from_open": from_open,
-                    "primary": h == lane.primary, "shown_source": hour.get("shown_source") or "jev", "shown_pick": b.get("pick"),
+                    "is_primary": h == lane.primary, "shown_source": hour.get("shown_source") or "jev", "shown_pick": b.get("pick"),
                     "shown_probs": b.get("probabilities"), "shown_confidence": b.get("confidence"),
                     "jev_pick": jev.get("pick"), "jev_probs": jev.get("probabilities"), "jev_confidence": jev.get("confidence"),
                     "clock_pick": clock.get("pick"), "clock_probs": clock.get("probabilities"), "clock_n": clock.get("n"),
@@ -771,7 +771,7 @@ def read_raw(state_dir: Path, day: date) -> Raw:
     elif doc:
         for i, r in enumerate(doc.get("rolls") or []):
             if isinstance(r, dict) and r.get("day") == iso:
-                rows["rolls"].append({"day": day, "symbol": r.get("symbol"), "at": r.get("at"), "from_contract": r.get("from"),
+                rows["rolls"].append({"day": day, "symbol": r.get("symbol"), "rolled_at": r.get("at"), "from_contract": r.get("from"),
                                       "to_contract": r.get("to"), **{k: r.get(k) for k in ("basis_step", "basis_unit",
                                                                                           "step_vs_typical", "reference", "jump")},
                                       "_source": f"{rel(table)}#rolls[{i}]"})
@@ -836,7 +836,7 @@ def validate(table: Table, rows: list[dict], reads: set[str] | None = None) -> t
         return {k: v for k, v in row.items() if k not in table.provenance}
 
     def refuse(raw: dict, why: str) -> None:
-        out.append({"day": raw.get("day"), "table": table.name, "key": _key_text(table, raw), "reason": why,
+        out.append({"day": raw.get("day"), "table_name": table.name, "key": _key_text(table, raw), "reason": why,
                     "source": raw.get("_source") or "", "row_json": json.dumps({k: v for k, v in raw.items() if k != "_source"},
                                                                                default=str, ensure_ascii=False, sort_keys=True)})
 
@@ -907,7 +907,7 @@ def build_day(state_dir: Path | str, day: date, now: datetime | None = None) -> 
     for table in TABLES:
         _write(store, table, day, kept[table.name])
     _write(store, QUARANTINE, day, quarantined)
-    _write(store, VALIDATION, day, [{"day": day, "table": name, **counts, "sources": raw.sources.get(name, []),
+    _write(store, VALIDATION, day, [{"day": day, "table_name": name, **counts, "sources": raw.sources.get(name, []),
                                      "store_schema": SCHEMA_VERSION, "built_at": now} for name, counts in log.items()])
     return log
 
