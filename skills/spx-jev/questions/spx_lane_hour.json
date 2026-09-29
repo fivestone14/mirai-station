@@ -15,7 +15,7 @@
   "next_10": {
    "type": "choice",
    "ask": "Where is price ten minutes from now, and how far?",
-   "why": "The lane's one sum: direction and size in a single answer, sized by the tape.",
+   "why": "The lane's end-price box, kept beside the call: direction and size in a single answer, sized by the tape, its size the call's second line.",
    "instructions": "Read `context.unit` for what one tape unit is in points right now and where the flat, small and big bands fall for this read, then `answers`, one sentence per question JEV has already answered about this moment, each ending with how sure it was. Taken together, where is price at the end of the next 10 minutes? Answer down_big, down_small, flat, up_small, up_big or unsure.",
    "criteria": {
     "down_big": "price ends more than {tape_big_units} of a tape unit below where it is now, the big band down; on this index's opening reads that happens about {tape_down_big_pct}% of the time",

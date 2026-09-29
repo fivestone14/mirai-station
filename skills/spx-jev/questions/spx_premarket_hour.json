@@ -21,7 +21,7 @@
   "open_30": {
    "type": "choice",
    "ask": "Where is price 30 minutes after the settled open?",
-   "why": "The lane's one call about the first half hour, the thing every premarket question was in service of.",
+   "why": "The lane's end-price box, kept beside the call: where price stands 30 minutes after the settled open, the box the lane's grades are keyed to.",
    "instructions": "Read `answers`, one sentence per question JEV has already answered about the night before the open, each ending with how sure it was. Taken together, where is price 30 minutes after the settled open (the close of the 09:34 bar), against the settled open itself? Answer up, down, flat or unsure.",
    "criteria": {
     "up": "price ends more than {next_30_flat_band_sigma} sigma above the settled open",

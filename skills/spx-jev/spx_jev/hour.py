@@ -2,9 +2,10 @@
 
     answers (step 2)  ->  answer_sentences()  ->  hour_request()  ->  JEV  ->  one reply, one answer per sum
 
-``next_30``, blended half and half with the time-of-day odds (clock.py), is the sum the phone
-shows and the one the question weights learn from; ``next_60`` rides on the same sentences in the
-same request, is blended the same way, and is graded beside it so the two horizons can be compared.
+``next_30``, blended half and half with the time-of-day odds (clock.py), is the lane's ``primary``:
+the end-price box the question weights and the learning loop learn from, kept beside the phone's
+call (the average-price sum, below); ``next_60`` rides on the same sentences in the same request,
+is blended the same way, and is graded beside it so the two horizons can be compared.
 
 The question weights (weights.QuestionWeights, written by the grader) decide which answers are
 worth a sentence: a question whose weight is under weights.MIN_WEIGHT is left out, with the reason

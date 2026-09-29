@@ -9,7 +9,7 @@
     python3 -m spx_jev.grade --integral-loop-dry-run   # what the loop would learn from the average-price grade, built in a scratch folder
 
 Two horizons are graded from the same record, each against its own band (lane.LIVE.horizons, from cuts.py):
-    next_30   30 minutes, flat within NEXT_30_FLAT_BAND_SIGMA   (the primary: the phone's sum)
+    next_30   30 minutes, flat within NEXT_30_FLAT_BAND_SIGMA   (the primary: the end-price box the weights and pools learn from)
     next_60   60 minutes, flat within NEXT_60_FLAT_BAND_SIGMA   (graded beside it, for the comparison)
 
 How a horizon is graded
@@ -32,8 +32,9 @@ The ruler
     (``anchor``: points and source); a read with no anchor at all is skipped for good.
 
 What is graded
-    The sum a record carries is the one the phone showed: JEV's sum blended with the time-of-day
-    odds (see clock.py). When the record also carries JEV's own sum and the clock's odds, each
+    The end-price sum a record carries is the one the card kept beside the call: JEV's sum blended
+    with the time-of-day odds (see clock.py). The call itself, the average-price sum, is graded apart
+    (the average-price grade, below). When the record also carries JEV's own sum and the clock's odds, each
     is scored beside it on the same outcome (``jev_brier``, ``jev_pick``, ``jev_hit``,
     ``clock_brier``), so the blend keeps having to earn its place against both of its parts.
 

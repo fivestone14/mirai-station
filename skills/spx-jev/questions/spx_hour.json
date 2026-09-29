@@ -9,7 +9,7 @@
   "next_30": {
    "type": "choice",
    "ask": "Where is price at the end of the next 30 minutes?",
-   "why": "The one thing every other question was in service of; the sum, not another part.",
+   "why": "The end-price box the question weights and the learning loop learn from, kept beside the call; the sum, not another part.",
    "instructions": "Read `answers`, one sentence per question JEV has already answered about this moment, each ending with how sure it was. Taken together, where is price at the end of the next 30 minutes? Answer up, down, flat or unsure.",
    "criteria": {
     "up": "price ends more than {next_30_flat_band_sigma} sigma above where it is now; on this index that happens about {next_30_up_pct}% of the time",

@@ -302,9 +302,10 @@ def snapshot(state: dict, baseline: "Baseline", h: str, now: datetime, jev: dict
 
 
 def shown(hour: dict, snaps: dict[str, dict], state_primary: dict) -> dict:
-    """The sum the phone shows and the grader scores: today's exact blend, unless POOL_ON_PHONE is set
-    and the pool was promoted on the primary horizon's evidence; then the pool at every horizon, the
-    exact blend kept beside it. The sum says which under ``shown_source``."""
+    """The end-price sums as the card keeps them beside the call and the grader scores them: today's
+    exact blend, unless POOL_ON_PHONE is set and the pool was promoted on the primary horizon's
+    evidence; then the pool at every horizon, the exact blend kept beside it. The sum says which under
+    ``shown_source``."""
     use_pool = POOL_ON_PHONE and state_primary["phone"]["shows"] == "pool" and all("pool" in s for s in snaps.values())
     if not use_pool:
         return {**hour, "shown_source": SHOWN_BLEND}

@@ -1,7 +1,8 @@
 """The clock: how often price ended up, down or flat at this time of day, and the blend with JEV's sum.
 
-Time of day was the biggest single lever SNDK JEV measured, so the sum the phone shows, and the one
-the grader scores, is JEV's sum blended with the time of day's odds on SPX's own prior sessions.
+Time of day was the biggest single lever SNDK JEV measured, so on the live lane the phone's call and
+the end-price sums kept beside it are each JEV's sum blended with the time of day's odds on SPX's own
+prior sessions, counted on the outcome each is graded on (the average-price odds, below).
 JEV's own answer rides beside it, untouched, and is graded too, as are the clock's odds, so the
 blend has to keep beating both of its parts.
 
