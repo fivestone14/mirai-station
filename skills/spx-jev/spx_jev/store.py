@@ -18,8 +18,9 @@ The tables, each defined in TABLES with its columns, its key and its checks:
     facts           one row per label per read, written, omitted or asleep, with the reason for a missing one,
                     and one per market-context value the read could see, with when it became known
     answers         one row per question per read: its status, JEV's probability per option, the pick, where a
-                    held answer came from, whether it was asked again after a lost ask, and the hash of the
-                    question exactly as JEV was sent it
+                    held answer came from (a lost ask the lane held its last answer for is held, its reason
+                    saying so), whether it was asked again after a lost ask, and the hash of the question
+                    exactly as JEV was sent it
     calls           one row per sum per read: JEV alone, the time-of-day odds, the blend, the learning loop's mix,
                     and which of them the card showed
     grades          one row per graded sum: the mark, the outcome, right, wrong or abstained, and the scores
@@ -551,12 +552,14 @@ def _read_rows(day: date, src: str, rec: dict, asked_by: dict, hours: dict) -> d
                             "pool_version": versions.get(qid), "held_from": None, "held_found": None, "reasked": False,
                             "reasked_from": None, "reask_why": None}
     for qid, since in held.items():
-        if qid in answers and answers[qid]["status"] in ("answered", "lost", "unsent"):
+        if qid in answers and answers[qid]["status"] == "answered":
             continue
         source = asked_by.get((qid, since))
         row = answers.get(qid) or {**base, "group_id": None, "question_id": qid, "reason": None, "pool_version": versions.get(qid),
                                    "reasked": False, "reasked_from": None, "reask_why": None}
-        answers[qid] = {**row, "status": "held", **_answer_fields((source or {}).get("answer")),
+        # a group that got no answer holds its questions' last answers, and the sum reads those (service.run_once)
+        reason = f"lost, its last answer held: {row['reason']}" if row.get("status") == "lost" else row["reason"]
+        answers[qid] = {**row, "status": "held", "reason": reason, **_answer_fields((source or {}).get("answer")),
                         "model": (source or {}).get("model"), "question_hash": (source or {}).get("hash"),
                         "held_from": since, "held_found": source is not None}
 

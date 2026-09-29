@@ -194,6 +194,21 @@ def test_each_question_of_a_read_has_its_status_its_options_and_the_question_it_
         {"shock_state": "asleep", "breadth_lean": "missing", "moc_side": "dark"}
 
 
+def test_a_lost_ask_the_lane_held_its_last_answer_for_is_stored_as_held_with_that_answer(tmp_path, monkeypatch):
+    rows = _day_archive()
+    early, read = rows[0], rows[1]
+    early["requests"].append({"id": "hour_shape", "state": {}, "questions": {"one_way_hour": Q_HOUR}})
+    early["responses"]["hour_shape"] = {"model": "jev-1.13.0", "answers": {"one_way_hour": {"type": "noul", "noul": 0.7}}}
+    read["cadence"]["held"]["one_way_hour"] = EARLY                  # the group timed out; the sum read the 10:02 answer
+    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path, rows))
+    store.build_day(tmp_path, D, at(16, 45))
+    a = {(r["read_id"], r["question_id"]): r for r in _table(tmp_path, "answers")}[(f"live:{READ}", "one_way_hour")]
+    assert (a["status"], a["held_from"], a["held_found"], a["pick"]) == ("held", datetime.fromisoformat(EARLY), True, "true")
+    assert a["reason"].startswith("lost, its last answer held: JEV unreachable") and a["group_id"] == "hour_shape"
+    r = {r["read_id"]: r for r in _table(tmp_path, "reads")}[f"live:{READ}"]
+    assert (r["lost"], r["held"]) == (0, 2)
+
+
 def test_a_call_keeps_jev_alone_the_clock_the_blend_the_learned_mix_and_what_was_shown(built):
     root, _ = built
     calls = {(c["read_id"], c["horizon"]): c for c in _table(root, "calls")}
