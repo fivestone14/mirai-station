@@ -1163,7 +1163,7 @@ details .q{margin-top:8px}
   var LANE_HOURS = ['09:33', '16:05'];      // fetched in market hours: it leads the morning, then leaves the day's score
   var LANE_MARKS = ['09:33', '10:46'];      // and a few seconds after each 5-minute mark while it reads and closes out
   var TAPE_STEP_MIN = 5;
-  var RULER_HELD_UNTIL = '09:45';           // market clock: the unit is held until three 5-minute slices exist (state_builder.RULER_HOLD_UNTIL)
+  var RULER_HELD_UNTIL = '09:45';           // market clock: the unit is held until three 5-minute slices exist (labels/rulers.py RULER_HOLD_UNTIL)
   var tape = null, tapeOk = true;
   function hhmm(t){ return (t.h < 10 ? '0' : '') + t.h + ':' + (t.m < 10 ? '0' : '') + t.m; }
   function marketDay(){
@@ -1306,7 +1306,8 @@ details .q{margin-top:8px}
     return !!(p && p.lane === 'premarket' && today && p.day === today && now >= Date.parse(p.handover) && p.hour && p.hour.probabilities);
   }
   // the folded call: its pick, then each check (the card's marks, 10 and 30 minutes after the settled open) as the
-  // close-out graded it on the call's own record, one it has not graded yet said so; before the close-out, when
+  // close-out graded it on the call's own record, one it has not graded yet said so; before the close-out, when the
+  // call is checked
   var PRE_CHECKS = ['open_10', 'open_30'];
   function preFold(p){
     var h = p.hour, a = callSum(h), top = a.pick || top1(a.probabilities), f = el('div', 'card fold');
