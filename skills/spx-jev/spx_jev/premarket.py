@@ -338,7 +338,8 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
         read_id=archive.read_id(PREMARKET.name, row_ts), lane=PREMARKET.name, row_ts=row_ts, sent=sent, spot=record["spot"],
         sigma=record["sigma"], labels=labels.state, omitted=labels.omitted, requests=requests, skipped=skipped, responses=answers,
         hour_request=(hour_rec or {}).get("request"), hour_response=hour_reply, hour=hour, pool=(hour_rec or {}).get("pool"),
-        cadence={"from": None, "held": {}, "not_due": skip, "asked": [qid for r in requests for qid in r["questions"]]},
+        cadence={"from": None, "held": {}, "not_due": skip, "asked": [qid for r in requests for qid in r["questions"]],
+                 "reasked": {}},
         market_context=futures_prices(rows, now), event=event, ruler=ruler, checkpoint=checkpoint, night=night))
     if sent:
         try:
