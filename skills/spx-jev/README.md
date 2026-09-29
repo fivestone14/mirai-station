@@ -3,9 +3,10 @@
 A **read-only sidecar** beside the left-eye scanner. Twice an hour on market
 days it reads the SPX diary rows the scanner already writes, today's minute
 bars and the market around the index, turns the numbers into plain-English
-labels, asks JEV the questions, sums the answers into a 30-minute and a
-60-minute forecast, grades the earlier forecasts against the bars, and writes
-the phone's card. A second lane reads every 5 minutes through the opening, and
+labels, asks JEV the questions, sums the answers into its call (where the
+average price over the next 30 minutes sits, with the 30- and 60-minute
+end-price sums kept beside it), grades the earlier calls against the bars,
+and writes the phone's card. A second lane reads every 5 minutes through the opening, and
 a third reads the night's futures at six checkpoints before the open. It
 writes only under `state/spx_jev/`, never into the scanner's files, and never
 runs on the scan path.
@@ -28,7 +29,7 @@ needing 10 of them, and said by its third:
 
 Sigma is the day's expected move for the S&P 500 index, so every distance is
 a share of a normal day. A question points at that label by name, and JEV
-returns a probability for each answer option. JEV makes no trading call.
+returns a probability for each answer option. A call is a forecast, not a trade signal.
 
 ## Glossary
 
@@ -44,17 +45,17 @@ returns a probability for each answer option. JEV makes no trading call.
 | `spx_jev/build.py` | The Command | `python -m spx_jev.build` for one moment, a replay of a day, or a live send. |
 | `spx_jev/schedule.py` | The Schedule | Which read a moment stands for, and which questions a lane asks at it, from each question's machine schedule (every N minutes in a window, at named reads, a day constant asked once and held, held from the other lane until an hour, FOMC days from the press conference). The free-text cadence is never parsed. |
 | `spx_jev/cadence.py` | The Cadence | What a question the schedule does not ask holds (a day constant all day, a borrowed answer until its hour, an hourly one while young), what the live lane's learned cadence thins out on top, the ask that got no answer asked again at the next read, and the daily recount. |
-| `spx_jev/hour.py` | The Sums | Rewrites the live answers as sentences and asks the sum questions over them in one request. |
-| `spx_jev/clock.py` | The Clock | How often price ended up, down or flat at this time of day over the last 20 SPX sessions, scored the way the grader scores a sum, and the half-and-half blend of JEV's sum with those odds. |
+| `spx_jev/hour.py` | The Sums | Rewrites the live answers as sentences and asks over them, in two requests sent at once, the call's question on the average price and the end-price sums kept beside it. |
+| `spx_jev/clock.py` | The Clock | How often price ended up, down or flat at this time of day over the last 20 SPX sessions, scored the way the grader scores a sum, and the half-and-half blend of JEV's sum with those odds; for the call, the same on the average price over its window. |
 | `spx_jev/scores.py` | The Scores | One way to score a three-way forecast: floored at 2% a side, and its log loss split exactly into a move part (did it move?) and a direction part (which way, given a move). |
 | `spx_jev/baseline.py`, `spec/fit_baseline.py`, `spec/baseline.json` | The Baseline | The price-only forecast the learning loop measures JEV against: the time-of-day odds, and the same odds split by how far SPX has moved today, counted once on the 41 qualifying sessions and frozen, with the leave-one-day-out validation that picked the reference (the time-of-day odds; the movement split lost out of sample). |
-| `spx_jev/grade.py` | The Grader | Reads the bars at each sum's mark, scores both sums, and hands the grades to the question weights. The premarket lane's sums are graded from the settled open (the close of the 09:34 bar, known at 09:35) to the 09:44 and 10:04 bars, in the pre-open ruler the read stamped, never from yesterday's close; no other lane grades a read stamped before the open. |
+| `spx_jev/grade.py` | The Grader | Reads the bars at each end-price sum's mark and scores it, grades the call and every graded window again on the average price over it (`integral.py`), and hands the grades to the question weights and both learning loops. The premarket lane's sums are graded from the settled open (the close of the 09:34 bar, known at 09:35) to the 09:44 and 10:04 bars, in the pre-open ruler the read stamped, never from yesterday's close; no other lane grades a read stamped before the open. |
 | `spx_jev/weights.py` | The Weights | One interface, `QuestionWeights`, for how much each question counts in the sums. Every live question weighs 1.0: the neutral method on the tape lane, the learning loop on the live lane. |
-| `spx_jev/pool.py` | The Learning Loop | 06-learning-loop-design: at each live read, the forecasts it will score (the fixed mixes of JEV's sum with the price-only reference, today's blend, the clock, the question block "no change" competes in, the pool); once a session is sealed, one day's evidence moves the move and the direction weights apart, the tables and calibration decay, and day-level e-processes decide the "earning" labels (e-BH) and whether the pool replaces the blend on the phone. The phone switch, `POOL_ON_PHONE`, is on: the phone shows the pool only while it is promoted, and nothing is promoted until the simulation gates pass (`SIM_GATES_PASSED`). |
+| `spx_jev/pool.py` | The Learning Loop | 06-learning-loop-design: at each live read, the forecasts it will score (the fixed mixes of JEV's sum with the price-only reference, today's blend, the clock, the question block "no change" competes in, the pool); once a session is sealed, one day's evidence moves the move and the direction weights apart, the tables and calibration decay, and day-level e-processes decide the "earning" labels (e-BH) and whether the pool replaces the blend. This is the end-price loop: its promotion reaches only the end-price sums kept beside the call. The call is the average-price loop's (`integral_loop.py`, 6b): once that loop is promoted, the call shows its pool. The switch, `POOL_ON_PHONE`, is on for both, and nothing is promoted until the simulation gates pass (`SIM_GATES_PASSED`). |
 | `spx_jev/archive.py` | The Archive | The raw record for machine learning: every read, grade and close-out of every lane, append only, one typed record per line. |
 | `spx_jev/store.py` | The Learning Store | Each market day's raw files (the archive, the bars, the market feed, the overnight store, the roll table, the calendar) as typed Parquet under `state/spx_jev/store/`, every row checked and a refused one quarantined with its reason, with DuckDB views over it. Rebuilt nightly; the raw files are only read. |
 | `spx_jev/service.py` | The Service | One run per read: build, ask (when a key exists), sum, grade, write the record, the archive and the phone's card. |
-| `spx_jev/lane.py` | The Lanes | The settings one run takes. `LIVE` reads at :02 and :32 with the 30- and 60-minute sums, and its 16:02 fire (13:02 on a half day) is a close-out that grades the day's last calls; `TAPE` is the opening lane: every 5 minutes 09:35 to 10:30, each read stamped at the newest finished bar and sized in tape units, one five-way 10-minute sum priced in index points, every question its schedule asks asked afresh (its day constants at 09:35, then held), no blend, the exact bar at the mark, and a close-out at 10:42 that asks JEV nothing and grades the morning's last calls. Its records, card, grades and weights are under `state/spx_jev/lanes/tape/`. `PREMARKET` reads at the six checkpoints before the open, its two sums (`open_10`, `open_30`) graded from the settled open, unblended, with no learning loop and neutral weights, under `state/spx_jev/lanes/premarket/`. Every lane archives into the one shared `state/spx_jev/archive/`, each record naming its lane. |
+| `spx_jev/lane.py` | The Lanes | The settings one run takes. `LIVE` reads at :02 and :32, its call the average price over the next 30 minutes (`average_30`) with the 30- and 60-minute end-price sums beside it, and its 16:02 fire (13:02 on a half day) is a close-out that grades the day's last calls; `TAPE` is the opening lane: every 5 minutes 09:35 to 10:30, each read stamped at the newest finished bar and sized in tape units, its call the average price over the next 10 minutes (`average_10`) with one five-way 10-minute end-price sum priced in index points beside it, every question its schedule asks asked afresh (its day constants at 09:35, then held), no blend, the exact bar at the mark, and a close-out at 10:42 that asks JEV nothing and grades the morning's last calls. Its records, card, grades and weights are under `state/spx_jev/lanes/tape/`. `PREMARKET` reads at the six checkpoints before the open, its call the average price over the first 30 minutes (`open_average_30`) with the end-price sums `open_10` and `open_30` beside it, all graded from the settled open, unblended, with no learning loop and neutral weights, under `state/spx_jev/lanes/premarket/`. Every lane archives into the one shared `state/spx_jev/archive/`, each record naming its lane. |
 | `spx_jev/premarket.py` | The Premarket Lane | Six checkpoints before the open (02:35; 03:35, or 04:35 in the week Frankfurt is on winter time and New York is not; 08:05, 08:48, 09:05, 09:28 ET). Each saves the night's futures and builds a scene without a diary row: SPX's prior close carried by /ES on one contract, sized in the pre-open ruler (the median morning anchor of the last sessions, stamped on every record). Every label is rebuilt from the bars at every read; JEV's earlier answers are never fed back. JEV is asked only where a question is due (08:48, 09:28). It writes its records, sums, the archive and the before-the-open card, refuses a fire 5 minutes or more late or from the open on, and closes out at 10:06, once the bar its 10:04 check ends on is on file (up to 55 s), grading from the settled open. |
 | `spx_jev/story.py`, `spx_jev/labels/story.py` | The Story So Far | The night's stretches fixed by each exchange's own clock (after the close, Asia, Europe's open and morning, before the report, the report window to 08:45, the last stretch), and the `premarket.*` labels told from them: where futures stand against their 16:00 price, the legs, the arc, the leg since the previous checkpoint, the report window against the night, and the night against yesterday's last hour, each ranked against the same window on the last 20 nights. |
 | `spx_jev/labels/premarket.py` | The Overnight Labels | `overnight.es_move`, `.range_vs_normal`, `.gap_origin`, `.release_reaction` (asked on every report day, claims-only days too) and `.bond_gap` (/ZN only), each ranked against the last 20 nights and refused across a roll or on a night that spans a market holiday or follows a half day. Before the open only. |
@@ -68,7 +69,7 @@ returns a probability for each answer option. JEV makes no trading call.
 | `spx_jev/night_ranks.py` | The Night Ranks | A night's measure against the same measure at the same minute on the last 20 nights, in thirds, leaving out roll, holiday and short nights; under 10 usable nights it is omitted with the reason. `night_move` and `ranked_move` measure and rank the move from the prior close on one contract; `window_move` and `window_range` with `prior_window_nights` and `prior_window_ranges` rank a stretch's move or high-low range against the same stretch on the last nights; `quoted_contract` reads the manifest for the roll guard. |
 | `spx_jev/schwab.py` | The Schwab Link | The feeds' calls through the station's shared client (REST only, never the lob-flow streamer), batched and spaced: 1- and 5-minute bars (regular hours unless a caller asks for extended hours), quotes, and the contract a futures root is quoted under. |
 | `spec/question_set.json`, `spec/write_question_docs.py`, `questions/spx_questions.json` | The Questions | The final question set (129 questions, 136 labels, 67 constants, with its conventions and the review behind each question) and the step-2 doc every lane asks from, written from it by `python3 spec/write_question_docs.py` (never edited by hand; `--check` says whether it is current, and a test holds it). No number is typed into them: every threshold is a name in braces filled from `cuts.py`, which must hold the set's constants to the number before the writer writes. |
-| `questions/spx_hour.json`, `questions/spx_lane_hour.json`, `questions/spx_premarket_hour.json` | The Sums | Each lane's call, where the average price over its window sits (up, flat or down, no unsure), and beside it in shadow the end-price sums as before: the live lane's two, the opening lane's five-way 10-minute sum, and the premarket lane's two from the settled open. |
+| `questions/spx_hour.json`, `questions/spx_lane_hour.json`, `questions/spx_premarket_hour.json` | The Sums | Each lane's call, where the average price over its window sits (up, flat or down, no unsure), and the end-price sums kept beside it, still graded and still what the question weights learn from: the live lane's two, the opening lane's five-way 10-minute sum, and the premarket lane's two from the settled open. |
 | `calendar/events.json`, `spx_jev/events.py` | The Calendar | The scheduled events, kept by hand from `covers_from` through `covers_through`. Tier 1 (the Fed, rebalance closes, half days, copied from SNDK's calendar less SanDisk's own) tags the reads; the other tiers (the 08:30, 10:00 and 14:00 releases and the Fed's scheduled speakers) feed the event labels, and all but the 08:30 releases also keep reads out of the learning loop. The releases before the open (08:30, and ADP at 08:15) are listed from `pre_open_covers_from`, 2026-08-01, and set the premarket lane's report window; the minor ones (`events.MINOR_PRE_OPEN`) are left out of the session's event labels. |
 | `spec/labels.json` | The Label Spec | The 50 labels built before the final set, with source, logic, cut and a real sentence; a test pins it to the code. The set's own labels are specified in `spec/question_set.json`. |
 | `spec/cuts.json`, `spec/measure_cuts.py` | The Measurements | How each measured cut was found, with its percentile and sample size, and where each declared cut falls (the share of SPX and of SNDK observations under it). |
@@ -103,7 +104,7 @@ returns a probability for each answer option. JEV makes no trading call.
     python3 -m spx_jev.premarket --day 2026-09-25 --at 10:06 --out-dir /tmp/trial   # grade that replay
     python3 -m spx_jev.build --day 2026-09-25 --at 09:28 --lane premarket
     python3 -m spx_jev.grade --lane premarket                 # grade the reads before the open
-    python3 -m spx_jev.grade --integral-backfill              # the shadow integral grade of past graded calls, from their bars
+    python3 -m spx_jev.grade --integral-backfill              # the average-price grade of past graded calls, from their bars
     python3 -m spx_jev.grade --integral-report                # per box, the flat share on the average price against the end price
     python3 -m spx_jev.grade --integral-loop-dry-run          # what the loop would learn from the average-price grade; writes nothing live
     python3 spec/replay_premarket.py --out /tmp/replay --workers 8   # the premarket questions over the saved nights, read only
@@ -202,8 +203,8 @@ archive there too, under `archive/`.
    band narrowed by `integral.factor`, rounded as told, and graded against
    that same edge), with the read's price and the window's real length (28
    minutes on the 15:32 read); no unsure. A reply that cannot be read is the
-   new sum's error and never costs the read. In shadow, asked exactly
-   as before: where price is in 30 minutes (flat within 0.07 sigma, 55% of
+   call's error and never costs the read. Beside it, the end-price sums,
+   asked exactly as before: where price is in 30 minutes (flat within 0.07 sigma, 55% of
    reads on SPX) and in 60 (flat within 0.11 sigma, 59%), up, down, flat or
    unsure.
 4b. The blend, code (`clock.py`): each end-price sum mixed half and half with
@@ -229,8 +230,13 @@ archive there too, under `archive/`.
    constants of its own, so neither loop can ever load the other's state.
    `weights.json` reports it under `pool_integral`, beside the end-price
    loop's report; the end-price loop keeps learning beside it, byte for
-   byte as with the switch off, since the phone's pool, its promotion and
-   demotion are the end price's: the phone never shows this loop's pool. A
+   byte as with the switch off, its promotion and demotion reaching only
+   the end-price sums kept beside the call. This loop's promotion decides
+   the call: until it is promoted the call shows its exact blend, and once
+   it clears the same evidence bar and the simulation gates
+   (`pool.SIM_GATES_PASSED`, off) the call shows this loop's pool at the
+   read, the exact blend beside it, with `shown_source` on `hour.average`
+   saying which (`integral_loop.shown`). A
    session is learnt at the first grading run after its reads' average-price
    grades are on file. The gate, 10 SPX sessions of average-price grades, is
    for trusting and promoting what it learns, not for learning:
@@ -252,14 +258,14 @@ archive there too, under `archive/`.
   the end price and on the average price, never mixed. `grades.jsonl`,
   `weights.json` (the sums' tallies, `method` and the per-question weights,
   the end-price loop's `pool` and the average-price loop's `pool_integral`),
-  `weights_log.jsonl`. `integral_grades.jsonl`, the integral grade, one line
+  `weights_log.jsonl`. `integral_grades.jsonl`, the average-price grade, one line
   per graded horizon (append only, keyed by the read, the horizon and
   `rule_version`), in every lane's folder: from `rule_version` 2 each line
   names the sum it graded (`sum`) and, for the call, carries its `scores`
   and the edge JEV was told (`edge_told`), from 3 the call is set against
   that edge; older lines still read, and a read graded under more than one
   version stands on its newest.
-- `pool_30.json`, `pool_60.json`, `pool_log.jsonl`: the learning loop's state
+- `pool_30.json`, `pool_60.json`, `pool_log.jsonl`: the end-price loop's state
   per horizon and one log line per horizon per session applied or refused.
 - `pool_30_integral.json`, `pool_integral_log.jsonl`: the same loop learnt
   from the average-price grade, written while its switch is on (6b, on).
@@ -268,7 +274,7 @@ archive there too, under `archive/`.
   id (lane and row timestamp), the labels and the omitted ones with reasons,
   the exact requests and JEV's exact replies, the sums request and reply, the
   average-price sum's (`average_request`, `average_response`, from version 5),
-  the sum as shown, the cadence state (held, not due, asked, and asked again
+  the end-price sums as shown and the call under `average`, the cadence state (held, not due, asked, and asked again
   after an ask that got no answer), the market-context values the read could
   see with when each was known, the event tag, on the live lane the learning
   loop's forecasts, and on the opening lane the unit
@@ -301,9 +307,10 @@ The card carries: `symbol`, `generated_at`, `row_ts`, `freshness`, `sigma`,
 `situation` (four facts with a verdict word and the figure to draw), `labels`,
 `omitted`, `sent`, `asked` (the questions the read put to JEV), `model`,
 `questions` (each with `answer` or `skipped`, and `held_from` when held),
-`hour` (the blended end-price sum with `jev`, `clock` and `blend`, and the
-call under `average`: its pick, odds, window and edge in points, blended the
-same way on the average price), `event`, `calls` and `tally` (the day's newest
+`hour` (the blended end-price sums with `jev`, `clock` and `blend`, kept
+beside the call, and the call under `average`: its pick, odds, window and edge
+in points, blended the same way on the average price, and `shown_source`, its
+exact blend or, once the average-price loop is promoted, that loop's pool), `event`, `calls` and `tally` (the day's newest
 calls, each the average-price sum's pick and odds where it answered, `sum`
 naming the one, and where it was asked and got no readable answer the
 end-price sum's, marked `average_missing` and graded on its end price; and
@@ -503,10 +510,11 @@ running.
 - Nothing works out the set's `code_answer`s yet, so re-asking a question when
   the code's answer changes (a schedule's `then`) is built only on the cadence
   side: such a question is held.
-- The learning loop's pool takes the phone once promoted (`pool.POOL_ON_PHONE`),
-  but its simulation acceptance gates (06) are not built, so nothing is promoted
+- Once promoted (`pool.POOL_ON_PHONE`), the average-price loop's pool is what
+  the call shows and the end-price loop's what the end-price sums show, but the
+  simulation acceptance gates (06) are not built, so nothing is promoted
   (`pool.SIM_GATES_PASSED` is off): the promotion evidence builds up and the
-  phone stays on the blend until they pass.
+  call stays on its blend until they pass.
   Nor is 06's direction test (Primary B: the edge score, with day-level
   e-processes for JEV against the reference and the pool against the exact
   blend), or the per-forecast losses, Brier and edge score 06 adds to
