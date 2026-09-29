@@ -182,6 +182,25 @@ def test_a_premarket_horizon_runs_from_the_settled_open_in_the_stamped_ruler():
     assert ten["edge"] == round(4.0 * integral.factor(10), 2) and ten["label"] == "up" and ten["verdict"] == "right" and "size" not in ten
 
 
+def test_the_premarket_0945_check_grades_the_call_the_card_shows_not_the_ten_minute_end_price_pick():
+    """The card shows the average-price call; its 09:45 check is that same pick over the first ten minutes, against the
+    ten-minute band narrowed for them, never the told 30-minute edge and never the 30-minute odds' scores."""
+    bars = bars_from_closes([7700.0] * 5 + [7700.0 + k for k in range(1, 386)])
+    call = {"pick": "down", "probabilities": {"up": 0.2, "flat": 0.2, "down": 0.6}, "edge_points": 3.55, "primary": "open_average_30"}
+    rec = {"row_ts": at(9, 28).isoformat(), "spot": 7600.0, "sigma": 100.0, "lane": "premarket", "ruler": {"kind": "pre_open", "points": 100.0},
+           "by": {"open_10": {"pick": "up", "probabilities": {"up": 0.6, "flat": 0.3, "down": 0.1}},
+                  "open_30": {"pick": "flat", "probabilities": {"up": 0.3, "flat": 0.5, "down": 0.2}}},
+           "average": call, "used": {}, "fresh": {}}
+    g = grade_one(rec, bars, lane=PREMARKET, anchor=SigmaRuler(100.0, "pre_open"))
+    ten, thirty = (integral_line(g, h, rec, bars, {}, PREMARKET) for h in ("open_10", "open_30"))
+    assert (ten["sum"], ten["pick"], ten["verdict"]) == ("open_average_30", "down", "wrong") and ten["end_label"] == "up"
+    assert ten["edge"] == round(4.0 * integral.factor(10), 2) and "scores" not in ten and "edge_told" not in ten
+    assert (thirty["sum"], thirty["pick"], thirty["edge"], thirty["edge_told"]) == ("open_average_30", "down", 3.55, 3.55) and "scores" in thirty
+    # a read whose average-price sum got no answer checks each box on its own end-price pick, as before
+    alone = integral_line(g, "open_10", {**rec, "average": {"error": "HTTP 529", "primary": "open_average_30"}}, bars, {}, PREMARKET)
+    assert (alone["sum"], alone["pick"]) == ("open_10", "up")
+
+
 def test_the_report_gives_each_box_its_flat_share_on_both_grades(tmp_path, capsys):
     out = tmp_path / "spx_jev"
     out.mkdir()

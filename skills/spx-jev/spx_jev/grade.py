@@ -567,6 +567,13 @@ def average_call(rec: dict | None, qid: str, lane: Lane = LIVE) -> dict | None:
     return avg
 
 
+def checked_call(rec: dict | None, qid: str, lane: Lane = LIVE) -> dict | None:
+    """The average-price sum's answer the average-price grade of horizon ``qid`` grades: average_call on the box it
+    forecasts, and on a lane graded from the settled open, whose every sum is checked at the same marks, the same
+    answer at each of them, so the 09:45 check grades the pick the card shows. None where average_call has none."""
+    return average_call(rec, lane.primary if lane.graded_from_settled_open and qid in lane.horizons else qid, lane)
+
+
 def told_edge(avg: dict | None) -> float | None:
     """The flat edge in points the average-price sum was told (hour.average_window), which its grade is set against, so
     the two can never part at the edge; None without one."""
@@ -604,7 +611,9 @@ def integral_line(line: dict, qid: str, rec: dict | None, bars: list[dict], prio
     record's ``band.flat_points``. Measured from the read's spot, or the settled open the line was measured from. The
     call graded is the average-price sum's where it answered (average_call), against the edge JEV was told (told_edge,
     kept as ``edge_told``) and with its scores (integral_scores), else the end-price sum's own; ``sum`` names the one
-    graded. A record whose average-price answer cannot be graded (bad_average) is written as not graded."""
+    graded. On a lane graded from the settled open a shorter check grades the same call (checked_call) against its own
+    window's narrowed band, unscored, since the call's odds and edge are for the box's window. A record whose
+    average-price answer cannot be graded (bad_average) is written as not graded."""
     head = {"row_ts": line["row_ts"], "horizon": qid, "rule_version": integral.RULE_VERSION}
     if rec is None:
         return {**head, "graded": False, "reason": "not graded: the read's sum record is not on file"}
@@ -617,18 +626,20 @@ def integral_line(line: dict, qid: str, rec: dict | None, bars: list[dict], prio
     ruler = (line.get("anchor") or {}).get("points") or rec.get("sigma")
     points = float(rec["band"]["flat_points"]) if flat == RECORD else flat * float(ruler)
     old = line[qid]
-    avg = average_call(rec, qid, lane)
+    avg = checked_call(rec, qid, lane)
+    own = avg is not None and qid == lane.primary          # the call's own box: its edge and odds are this window's
     if avg:
         pick, probs = avg["pick"], avg["probabilities"]
     else:
         pick, probs = old.get("pick"), ((rec.get("by") or {}).get(qid) or {}).get("probabilities") or {}
     out = {**head, "sum": lane.average if avg else qid,
-           **integral.grade_window(bars, prior, t0, int((t1 - t0).total_seconds() // 60), spot, points, pick, probs, told_edge(avg))}
+           **integral.grade_window(bars, prior, t0, int((t1 - t0).total_seconds() // 60), spot, points, pick, probs,
+                                   told_edge(avg) if own else None)}
     if out["graded"]:
         out["end_label"] = old["direction"] if flat == RECORD else old["band"]
         if flat == RECORD:
             out["size"] = _size_line(old)
-        if avg:
+        if own:
             out.update({"scores": integral_scores(avg, out["label"]), "edge_told": avg.get("edge_points")})
     return out
 
