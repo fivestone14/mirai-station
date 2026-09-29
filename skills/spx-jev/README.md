@@ -12,11 +12,11 @@ writes only under `state/spx_jev/`, never into the scanner's files, and never
 runs on the scan path.
 
 The mechanics are SNDK JEV's (`skills/sndk-jev/`), copied and adapted; the
-questions are the final SPX set (`spec/question_set.json`, 129 questions). Every
-label they read is built except the dark ones, whose data no feed carries yet; a
-question whose label is dark, or missing on a read, is skipped with the reason.
-Its nine jobs are in `runtime/launchd/` and go live with the checklist in
-"Going live".
+questions are the final SPX set (`spec/question_set.json`, 129 questions). A
+question whose data no feed carries yet, or whose label is not built, is dark
+and never asked, and says what it waits for; a question whose label is missing
+on a read is skipped with the reason. Its nine jobs are in `runtime/launchd/`;
+"Going live" says how they are set up.
 
 JEV reads words and cannot compare numbers. So every comparison happens here,
 in code, and is written out as a sentence with what it was judged against in it. A size is never judged
@@ -53,10 +53,10 @@ returns a probability for each answer option. A call is a forecast, not a trade 
 | `spx_jev/weights.py` | The Weights | One interface, `QuestionWeights`, for how much each question counts in the sums. Every live question weighs 1.0: the neutral method on the tape lane, the learning loop on the live lane. |
 | `spx_jev/pool.py` | The Learning Loop | 06-learning-loop-design: at each live read, the forecasts it will score (the fixed mixes of JEV's sum with the price-only reference, today's blend, the clock, the question block "no change" competes in, the pool); once a session is sealed, one day's evidence moves the move and the direction weights apart, the tables and calibration decay, and day-level e-processes decide the "earning" labels (e-BH) and whether the pool replaces the blend. This is the end-price loop: its promotion reaches only the end-price sums kept beside the call. The call is the average-price loop's (`integral_loop.py`, 6b): once that loop is promoted, the call shows its pool. The switch, `POOL_ON_PHONE`, is on for both, and nothing is promoted until the simulation gates pass (`SIM_GATES_PASSED`). |
 | `spx_jev/archive.py` | The Archive | The raw record for machine learning: every read, grade and close-out of every lane, append only, one typed record per line. |
-| `spx_jev/store.py` | The Learning Store | Each market day's raw files (the archive, the bars, the market feed, the overnight store, the roll table, the calendar) as typed Parquet under `state/spx_jev/store/`, every row checked and a refused one quarantined with its reason, with DuckDB views over it. Rebuilt nightly; the raw files are only read. |
+| `spx_jev/store.py` | The Learning Store | Each market day's raw files (the archive, the sum records, every lane's average-price grades, both learning loops' logs, the bars, the market feed, the overnight store, the roll table, the calendar) as typed Parquet under `state/spx_jev/store/`, every row checked and a refused one quarantined with its reason, with DuckDB views over it. Rebuilt nightly; the raw files are only read. |
 | `spx_jev/service.py` | The Service | One run per read: build, ask (when a key exists), sum, grade, write the record, the archive and the phone's card. |
 | `spx_jev/lane.py` | The Lanes | The settings one run takes. `LIVE` reads at :02 and :32, its call the average price over the next 30 minutes (`average_30`) with the 30- and 60-minute end-price sums beside it, and its 16:02 fire (13:02 on a half day) is a close-out that grades the day's last calls; `TAPE` is the opening lane: every 5 minutes 09:35 to 10:30, each read stamped at the newest finished bar and sized in tape units, its call the average price over the next 10 minutes (`average_10`) with one five-way 10-minute end-price sum priced in index points beside it, every question its schedule asks asked afresh (its day constants at 09:35, then held), no blend, the exact bar at the mark, and a close-out at 10:42 that asks JEV nothing and grades the morning's last calls. Its records, card, grades and weights are under `state/spx_jev/lanes/tape/`. `PREMARKET` reads at the six checkpoints before the open, its call the average price over the first 30 minutes (`open_average_30`) with the end-price sums `open_10` and `open_30` beside it, all graded from the settled open, unblended, with no learning loop and neutral weights, under `state/spx_jev/lanes/premarket/`. Every lane archives into the one shared `state/spx_jev/archive/`, each record naming its lane. |
-| `spx_jev/premarket.py` | The Premarket Lane | Six checkpoints before the open (02:35; 03:35, or 04:35 in the week Frankfurt is on winter time and New York is not; 08:05, 08:48, 09:05, 09:28 ET). Each saves the night's futures and builds a scene without a diary row: SPX's prior close carried by /ES on one contract, sized in the pre-open ruler (the median morning anchor of the last sessions, stamped on every record). Every label is rebuilt from the bars at every read; JEV's earlier answers are never fed back. JEV is asked only where a question is due (08:48, 09:28). It writes its records, sums, the archive and the before-the-open card, refuses a fire 5 minutes or more late or from the open on, and closes out at 10:06, once the bar its 10:04 check ends on is on file (up to 55 s), grading from the settled open. |
+| `spx_jev/premarket.py` | The Premarket Lane | Six checkpoints before the open (02:35; 03:35, or 04:35 in the week Frankfurt is on winter time and New York is not; 08:05, 08:48, 09:05, 09:28 ET). Each saves the night's futures and builds a scene without a diary row: SPX's prior close carried by /ES on one contract, sized in the pre-open ruler (the median morning anchor of the last sessions, stamped on every record). Every label is rebuilt from the bars at every read; JEV's earlier answers are never fed back. JEV is asked only where a question is due (08:48, 09:28). It writes its records, sums, the archive and the before-the-open card, refuses a fire 5 minutes or more late or from the open on, and closes out at 10:06, once the bar its 10:04 check ends on is on file (up to 68 s, `service.BAR_WAIT_S`), grading from the settled open. |
 | `spx_jev/story.py`, `spx_jev/labels/story.py` | The Story So Far | The night's stretches fixed by each exchange's own clock (after the close, Asia, Europe's open and morning, before the report, the report window to 08:45, the last stretch), and the `premarket.*` labels told from them: where futures stand against their 16:00 price, the legs, the arc, the leg since the previous checkpoint, the report window against the night, and the night against yesterday's last hour, each ranked against the same window on the last 20 nights. |
 | `spx_jev/labels/premarket.py` | The Overnight Labels | `overnight.es_move`, `.range_vs_normal`, `.gap_origin`, `.release_reaction` (asked on every report day, claims-only days too) and `.bond_gap` (/ZN only), each ranked against the last 20 nights and refused across a roll or on a night that spans a market holiday or follows a half day. Before the open only. |
 | `spx_jev/labels/bitcoin.py` | The Bitcoin Family | Micro bitcoin futures (/MBT) against the index. Before the open, its night beyond its usual multiple of /ES, and after a weekend or holiday its weekend and reopen legs; in the session, its half hour, three-half-hour streak, link since 09:35 and last five sessions. Each is ranked against the last nights or sessions, never across a roll, and refused while a roll is pending. |
@@ -73,6 +73,7 @@ returns a probability for each answer option. A call is a forecast, not a trade 
 | `calendar/events.json`, `spx_jev/events.py` | The Calendar | The scheduled events, kept by hand from `covers_from` through `covers_through`. Tier 1 (the Fed, rebalance closes, half days, copied from SNDK's calendar less SanDisk's own) tags the reads; the other tiers (the 08:30, 10:00 and 14:00 releases and the Fed's scheduled speakers) feed the event labels, and all but the 08:30 releases also keep reads out of the learning loop. The releases before the open (08:30, and ADP at 08:15) are listed from `pre_open_covers_from`, 2026-08-01, and set the premarket lane's report window; the minor ones (`events.MINOR_PRE_OPEN`) are left out of the session's event labels. |
 | `spec/labels.json` | The Label Spec | The 50 labels built before the final set, with source, logic, cut and a real sentence; a test pins it to the code. The set's own labels are specified in `spec/question_set.json`. |
 | `spec/cuts.json`, `spec/measure_cuts.py` | The Measurements | How each measured cut was found, with its percentile and sample size, and where each declared cut falls (the share of SPX and of SNDK observations under it). |
+| `spx_jev/reading_checks.py` | The Reading Checks | JEV's archived picks against the option a question's own labels name, where they name exactly one: a pick that differs is a misreading worth rewording the question or its label for, never a grade. Read only; no job runs it. |
 | `spec/replay_premarket.py` | The Premarket Replay | Replays the premarket lane over the saved nights, read only, never asking JEV: each question's answer is its label's verdict, scored against SPX from the settled open. A sign-free question is scored along its own reference, and "holds" is Holm-adjusted across every question and read tested. |
 | `launchd/*.plist.template`, `runtime/launchd/com.mirai-station.spx-jev*.plist`, `runtime/launchd/com.mirai-station.spx-premarket-deadman.plist`, `runtime/scripts/run-spx-jev*.sh`, `runtime/scripts/run-spx-premarket-deadman.sh` | The Jobs | Nine jobs: eight templates, the copies of them `install-launchd.sh` loads, and their runners; and the premarket lane's dead-man, station code (`runtime/watch/intraday/spx_premarket_deadman.py`) with its plist in `runtime/launchd/` only. |
 | `tests/` | The Proof | Offline pytest with synthetic rows, bars and market context. No network, no host state. |
@@ -108,6 +109,7 @@ returns a probability for each answer option. A call is a forecast, not a trade 
     python3 -m spx_jev.grade --integral-report                # per box, the flat share on the average price against the end price
     python3 -m spx_jev.grade --integral-loop-dry-run          # what the loop would learn from the average-price grade; writes nothing live
     python3 spec/replay_premarket.py --out /tmp/replay --workers 8   # the premarket questions over the saved nights, read only
+    python3 -m spx_jev.reading_checks --day 2026-09-29        # JEV's picks against the answers their labels name, read only
 
     python3 -m spx_jev.store                                  # the learning store: the last week's market days, today once saved
     python3 -m spx_jev.store --day 2026-09-28                 # rebuild one day
@@ -126,6 +128,10 @@ archive there too, under `archive/`.
   strike touched, not a stress day, the 0DTE book's last hour) is ended
   instead: the questions reading it are asleep, with that reason on the card,
   the record and the archive, and "missing" is kept for a real gap in the data.
+  A gate that could not measure what decides it (no snapshot on file, too few
+  sessions to rank against, a stopped feed, a roll) never sleeps its question:
+  the question is missing its label, so the gap shows on the card and in the
+  health reviews instead of passing for "nothing happened".
 - **Point in time.** `now` is the row's own timestamp. Only bars that finished
   before it count, prior sessions are only days before the day being built,
   and a market-context value counts only once it was known (a bar once its
@@ -304,16 +310,21 @@ archive there too, under `archive/`.
   overnight store and the calendar (below).
 
 The card carries: `symbol`, `generated_at`, `row_ts`, `freshness`, `sigma`,
-`situation` (four facts with a verdict word and the figure to draw), `labels`,
-`omitted`, `sent`, `asked` (the questions the read put to JEV), `model`,
-`questions` (each with `answer` or `skipped`, and `held_from` when held),
+`situation` (four facts with a verdict word and the figure to draw),
+`labels_count`, `omitted`, `sent`, `asked` (the questions the read put to JEV),
+`model`, `questions` (each with `answer` or `skipped`, a plain reason whose
+raw text stays in the archive, and `held_from` when held), `fresh_count` and
+`held_count`, `dark` with `dark_note`, `shadow_note`,
 `hour` (the blended end-price sums with `jev`, `clock` and `blend`, kept
 beside the call, and the call under `average`: its pick, odds, window and edge
 in points, blended the same way on the average price, and `shown_source`, its
 exact blend or, once the average-price loop is promoted, that loop's pool), `event`, `calls` and `tally` (the day's newest
 calls, each the average-price sum's pick and odds where it answered, `sum`
 naming the one, and where it was asked and got no readable answer the
-end-price sum's, marked `average_missing` and graded on its end price; and
+end-price sum's, marked `average_missing` and graded on its end price; a read
+whose end-price sums got no answer and whose average-price sum answered is a
+call in its own right, marked `end_price_missing` and graded on the average
+price over its window; and
 their grades: `integral`, the grade on the average price
 over the window from `integral_grades.jsonl`, with its label, points against
 the edge, verdict, size, path and, once the box has ten of its last 20
@@ -457,7 +468,7 @@ gate either: it builds market days only, and today only once the saves have run.
 no gate either: its command exits on a day the market is shut. Nor has the
 premarket lane: its command reads only on a market day, within 5 minutes after
 a checkpoint and before the open, so a holiday, a late fire after the Mac slept,
-or the 01:35 fire outside Frankfurt's winter-time week exits having written nothing. The key lives only in `skills/spx-jev/.env`, which is
+or the 01:35 fire (04:35 ET) outside Frankfurt's winter-time week exits having written nothing. The key lives only in `skills/spx-jev/.env`, which is
 git-ignored, so a merge never brings it. Without it the service runs unsent
 and the card says "not sent: no key on this machine".
 
@@ -495,18 +506,21 @@ running.
 
 ## Not done yet
 
-- Every label of the final set is built except the dark ones, which no feed
-  carries yet. Some built labels still wait on data nothing saves: the index
-  weights (`state/spx_leaders/weights.json`, the four largest-stock labels),
-  daily closes for the month- and quarter-end rebalance, and the /6E future
-  (the /ZN future is saved in the overnight store, not yet in the market feed).
-  The set's `monday_prerequisites` list the rest.
+- Every question whose data no feed carries yet, or whose label is not built,
+  is dark and says what it waits for (its `dark_reason`): among them the index
+  weights (`state/spx_leaders/weights.json`) for the four largest-stock
+  questions, the index's daily closes for the month-turn rebalance, and the
+  /6E future for the macro lean (the /ZN future is saved in the overnight
+  store, not yet in the market feed). The set's `monday_prerequisites` list
+  the rest.
 - The premarket lane keeps no learning loop and its weights are neutral: the
   settled-open odds forecast its window worse than even thirds, so its sums
-  stand unblended. `night_ranks.es_move` is read by nothing but its tests.
-- The premarket lane asks nothing again after an ask that got no answer: it
-  keeps no last-asked answers, and all but two of its questions are due only
-  at 09:28, its last checkpoint.
+  stand unblended.
+- The premarket lane keeps no last-asked answers, and all but two of its
+  questions are due only at 09:28, its last checkpoint. A group that got no
+  answer is asked once more within the same read while the second round and
+  the sums still fit before the open; a read too close to the open for both
+  asks once, and no later checkpoint asks its questions again.
 - Nothing works out the set's `code_answer`s yet, so re-asking a question when
   the code's answer changes (a schedule's `then`) is built only on the cadence
   side: such a question is held.
