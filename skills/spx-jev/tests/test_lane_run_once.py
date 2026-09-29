@@ -323,6 +323,27 @@ def test_a_live_tape_send_stands_for_the_read_its_job_fired_at_and_a_replay_for_
     assert replay["q_const"]["skipped"] == "a day constant: asked at 09:35 ET and held" and replay["q_every"]["answer"]["pick"] == "a"
 
 
+def test_a_grading_error_in_the_close_out_is_logged_and_the_card_and_record_are_still_written(tmp_path, monkeypatch, capsys):
+    """A grader that raises in the close-out once escaped with a traceback and no timestamp, and left the card
+    unrefreshed and no close-out record: it is logged like run_once's, and the close-out still does both."""
+    state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
+    _today(monkeypatch)
+    monkeypatch.setattr(service, "send_all", _answers)
+    monkeypatch.setattr(service, "send", _sums([]))
+    out = state / "spx_jev" / "lanes" / "tape"
+    run_once(state, out, DOC, True, DAY, lane=TAPE)
+
+    def broken(*a, **k):
+        raise KeyError("next_10")
+    monkeypatch.setattr(service, "grade_run", broken)
+    c = service.close_out(state, out, DOC, TAPE, DAY)
+    assert c["graded_at"] and c["tally"]["calls"] == 1
+    assert json.loads((out / "latest.json").read_text())["graded_at"] == c["graded_at"]
+    archived = [json.loads(l) for l in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
+    assert archived[-1]["kind"] == "close_out"
+    assert "spx-jev :: grading skipped this close-out: KeyError: 'next_10'" in capsys.readouterr().err
+
+
 def test_a_tape_read_waits_for_the_bar_that_finishes_at_its_minute(tmp_path):
     """The bars job runs at no fixed second: at the 09:40 fire the file may end at 09:39, and a read on it
     would be stamped 09:39, a minute short of the 10-minute big-print window. The read waits for the bar."""

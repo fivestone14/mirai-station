@@ -851,8 +851,12 @@ def close_out(state_dir: Path, out_dir: Path, doc: dict, lane: Lane, day: str | 
     not others. The card is stamped ``closed_out_at`` only once no call is left to grade: a mark whose bar has
     not come keeps it open, the phone keeps asking for it, and each live run tries again (retry_close_outs).
     A ``retry`` archives a close-out record only when its tally moved. None when the lane did not read
-    on ``day``, today unless a replay names one."""
-    grade_run(state_dir, out_dir, live_options(doc), lane=lane)
+    on ``day``, today unless a replay names one. A grading failure is logged, as run_once's is, and the card and
+    the close-out record are still written from what is on file."""
+    try:
+        grade_run(state_dir, out_dir, live_options(doc), lane=lane)
+    except Exception as e:  # grading must never stop the close-out's card
+        log(f"grading skipped this close-out: {type(e).__name__}: {e}\n{traceback.format_exc()}")
     try:
         c = json.loads((out_dir / "latest.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -945,11 +949,16 @@ def main(argv: list[str] | None = None) -> int:
         # the lane's reads are done for the day: the job's last fire only grades and refreshes the card
         if not wait_for_bar(state_dir, mark := last_mark(lane, now)):
             log(f"the bar finishing at {mark:%H:%M} is not on file after {BAR_WAIT_S} s: grading what is")
-        c = close_out(state_dir, out_dir, doc, lane)
-        log(f"{lane.name} lane closed out: {tally_words(c['tally'])}" if c else f"{lane.name} lane: nothing to close out today")
+        code = 0
+        try:
+            c = close_out(state_dir, out_dir, doc, lane)
+            log(f"{lane.name} lane closed out: {tally_words(c['tally'])}" if c else f"{lane.name} lane: nothing to close out today")
+        except Exception as e:  # a failed close-out is a logged failure; the live job's later runs try again (retry_close_outs)
+            log(f"{lane.name} lane's close-out failed: {type(e).__name__}: {e}\n{traceback.format_exc()}")
+            code = 1
         if retries:
             retry_close_outs(state_dir, now_et())
-        return 0
+        return code
     last_row, code = None, 0
     while True:
         if lane.bar_clock and do_send and not args.day:
