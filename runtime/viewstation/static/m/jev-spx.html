@@ -571,9 +571,10 @@ details .q{margin-top:8px}
   // the phase's hours in the viewer's zone, without its New York name: "lunch, 12:00 to 14:00" reads "09:00 to 11:00"
   // in Los Angeles, never "lunch, 09:00 to 11:00"
   function phaseSpan(words, at){ return marketWords(String(words).replace(/^[^,]*,\s*/, ''), at); }
-  // how the 30-minute call was made, drawn: JEV's own sum, the time of day's odds, and what is shown: the
-  // half-and-half, or the learning loop's learned mix once it is promoted onto the phone (shown_source),
-  // the half-and-half then kept beneath it
+  // how the 30-minute call was made, drawn: JEV's own answer, the time of day's odds, and what is shown: the
+  // half-and-half, or the average-price loop's learned mix once it is promoted (the call's own shown_source,
+  // integral_loop.shown), the half-and-half then kept beneath it. The end-price loop's promotion reaches only the
+  // end-price sums beside the call, never this chart
   function howChart(h, bl, at){
     var g = el('div', 'how');
     function row(key, cls, p){

@@ -787,7 +787,7 @@ def test_the_folded_30_minute_line_counts_down_only_a_call_that_was_made():
 
 
 def test_a_learned_mix_on_the_phone_is_named_as_such_with_the_half_and_half_kept_beneath():
-    """pool.shown swaps the learned mix into the headline odds, keeps the exact blend beside it and marks
+    """A loop's shown swaps the learned mix into the odds it shows, keeps the exact blend beside it and marks
     shown_source; the chart must name which one is shown and still draw the other."""
     js = (_var("ODDS_ORDER") + _fn("oddsKeys") + _fn("top1") + _fn("oneAnswer") + _fn("phaseSpan") + _fn("howChart") +
           "var g = howChart(D.h, {used: true, sessions: 19, phase_words: 'lunch, 12:00 to 14:00'}, D.at);"
@@ -802,6 +802,31 @@ def test_a_learned_mix_on_the_phone_is_named_as_such_with_the_half_and_half_kept
     assert got[8].startswith("Shown is the learned mix. It took over from half JEV, half time of day")
     blend = _run(js, {"h": {**h, "shown_source": "blend50_exact"}, "at": "2026-09-28T12:31:00-04:00", "now": "2026-09-28T12:35:00-04:00"}, LA)
     assert blend[::2][:3] == ["JEV", "Time of day", "Shown"] and len(blend) == 7 and blend[6].startswith("Shown is half JEV")
+
+
+def test_the_calls_chart_names_the_average_price_loops_learned_mix_and_never_the_end_price_loops(monkeypatch):
+    """Will's decision of 09-29: once the average-price loop's pool is promoted it is what the call shows
+    (integral_loop.shown marks hour.average with pool.SHOWN_POOL and keeps the exact blend beside it), and the
+    end-price loop's promotion reaches only the end-price sums. The call's chart reads the call's own shown_source,
+    so it names the learned mix for the first and never for the second."""
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[3] / "skills" / "spx-jev"))
+    from spx_jev.pool import SHOWN_BLEND, SHOWN_POOL
+    odds, half = {"up": 0.52, "flat": 0.33, "down": 0.15}, {"up": 0.45, "flat": 0.35, "down": 0.2}
+    blend = {"used": True, "jev_share": 0.5, "phase_words": "lunch, 12:00 to 14:00", "sessions": 19}
+    pooled = {**AVG, "pick": "up", "probabilities": odds, "blend50_exact": half, "blend": blend, "shown_source": SHOWN_POOL,
+              "jev": {"probabilities": {"up": 0.6, "flat": 0.3, "down": 0.1}, "confidence": 0.3},
+              "clock": {"probabilities": {"up": 0.3, "flat": 0.4, "down": 0.3}}}
+    end = {**END_30, "used": 12, "by": {"next_30": END_30}, "blend": blend, "jev": {"probabilities": END_30["probabilities"]},
+           "clock": {"probabilities": END_30["probabilities"]}}
+    c = {"row_ts": "2026-09-28T12:32:10-04:00", "marks": {"next_30": "2026-09-28T13:02:00-04:00"}, "calls": [],
+         "hour": {**end, "shown_source": SHOWN_BLEND, "average": pooled}}
+    how = next(v for k, v in _sum_card(c) if k == "how")
+    assert "Half & halfUp 45%Learned mixUp 52%" in how and "Shown is the learned mix" in how
+    # the end-price loop promoted, the call still on its blend: the chart says the call's half-and-half is shown
+    c["hour"] = {**end, "shown_source": SHOWN_POOL, "blend50_exact": half,
+                 "average": {**pooled, "probabilities": half, "pick": "up", "shown_source": SHOWN_BLEND}}
+    how = next(v for k, v in _sum_card(c) if k == "how")
+    assert "Learned mix" not in how and "ShownUp 45%" in how and "Shown is half JEV" in how
 
 
 # ---- before the open: the pre-market card (skills/spx-jev, spx_jev.premarket)
