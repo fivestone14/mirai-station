@@ -1563,6 +1563,21 @@ def test_a_signed_fact_that_rounds_to_nothing_says_no_change():
     assert got == ["No change", "Down 0.1 vol points", "No change", "Up 0.31 of a normal day\u2019s move", "No change"]
 
 
+def test_a_dark_question_names_its_own_reason_not_a_news_source_for_every_one():
+    """Every dark question sat under "dark, waiting for a news source", overnight_range_position and gamma_cushion among
+    them though neither waits for news. The heading says each waits for its own source, and each gives its reason when
+    the card carries one."""
+    live = {**MONDAY["live"], "dark": [
+        {"id": "overnight_range_position", "viewpoint": "levels_and_tape", "ask": "Where is price against the overnight futures range?",
+         "reason": "dark: the overnight store (saved at 09:26 ET) holds /ES's bars, but no session read measures the night's range yet"},
+        {"id": "news_headline", "viewpoint": "dark", "ask": "What kind of market news just came out?"}]}
+    got = _whole({"live": live, "tape": MONDAY["tape"], "premarket": MONDAY["premarket"]}, "2026-09-28T15:40:00-04:00")
+    (dark,) = [t for c, t in got["main"] if c == "details" and t.startswith("dark")]
+    assert dark.startswith("dark, each waiting for its source: 2") and "news source" not in dark
+    assert "Dark: the overnight store (saved at 06:26) holds /ES's bars, but no session read measures the night's range yet" in dark
+    assert dark.endswith("What kind of market news just came out?Dark until what it needs is on file")
+
+
 def test_questions_asked_and_lost_are_folded_apart_from_those_not_asked():
     """On 09-28 several reads lost a group to a 503 or a timeout, and its questions sat under "not asked this run" though
     they were asked: the service marks them "asked, no answer received" (service.card), and they fold on their own."""

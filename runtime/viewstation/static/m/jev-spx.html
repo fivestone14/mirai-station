@@ -665,9 +665,14 @@ details .q{margin-top:8px}
       f[1].forEach(function(q){ d.appendChild(question(q, omitted, c.row_ts)); }); main.appendChild(d);
     });
     if(c.dark && c.dark.length){
-      // dark: never asked, never counted; said once so nobody wonders where the news questions went
-      var dk = el('details'); dk.appendChild(el('summary', null, 'dark, waiting for a news source: ' + c.dark.length));
-      c.dark.forEach(function(q){ var b = el('div', 'q shadow'); b.appendChild(el('div', 'ask', q.ask)); b.appendChild(skipLine('dark until a news source is plugged in')); dk.appendChild(b); });
+      // dark: never asked, never counted; said once so nobody wonders where those questions went. Each waits for its
+      // own source, a feed or the code to read one: its reason as the card gives it (``reason``), its market clock in
+      // the viewer's zone, and on a card without one only that it waits
+      var dk = el('details'); dk.appendChild(el('summary', null, 'dark, each waiting for its source: ' + c.dark.length));
+      c.dark.forEach(function(q){
+        var b = el('div', 'q shadow'); b.appendChild(el('div', 'ask', q.ask));
+        b.appendChild(skipLine(q.reason ? marketWords(q.reason, c.row_ts) : 'dark until what it needs is on file')); dk.appendChild(b);
+      });
       main.appendChild(dk);
     }
   }
