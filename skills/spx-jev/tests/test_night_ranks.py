@@ -1,4 +1,4 @@
-"""The 20-night rank, offline: thirds, the minimum of usable nights, the skip rules, and es_move's guard."""
+"""The 20-night rank, offline: thirds, the minimum of usable nights, the skip rules, and the futures move's guard."""
 from __future__ import annotations
 
 import json
@@ -63,17 +63,23 @@ def test_a_night_well_under_the_usual_coverage_is_short():
     assert [n.day for n in nights if n.skip == "short"] == ["thin"]
 
 
-def test_es_move_ranks_the_nights_size_and_names_its_side(tmp_path):
+def _ranked(state_dir, now, quoted=None):
+    """ranked_move on /ES over the store at ``now``, as the premarket labels measure overnight.es_move."""
+    day, clock = now.date(), now.time().replace(second=0, microsecond=0)
+    table = rolls.load(state_dir / overnight.OVERNIGHT_SUBDIR)
+    return night_ranks.ranked_move(list(night_ranks._night_rows(state_dir, day, "/ES")), state_dir, day, "/ES", clock, table, quoted)
+
+
+def test_the_futures_move_is_ranked_by_its_size_against_the_last_nights(tmp_path):
     for k, d in enumerate(_nights_before(DAY, 20)):
         _save(tmp_path, d, 0.05 * (k + 1) * (-1) ** k)                                  # sizes 0.05% to 1.00%, both ways
     _save(tmp_path, DAY, -0.62)
-    out = night_ranks.es_move(tmp_path, datetime.combine(DAY, time(9, 27), tzinfo=ET))
-    assert out["side"] == "down" and out["move_pct"] == -0.62
-    assert out["rank"] == {"band": "middle third", "larger_than": 11, "of": 19}         # Labor Day's night (0.50%) sits out
-    assert out["words"] == "since 16:00 yesterday S&P futures are down, a move larger than 11 of the last 19 nights' moves to this time, middle third"
+    ranked, why = _ranked(tmp_path, datetime.combine(DAY, time(9, 27), tzinfo=ET))
+    assert why == "" and round(ranked.move.pct, 4) == -0.62 and ranked.move.start_at.strftime("%H:%M") == "16:00"
+    assert (ranked.rank.band, ranked.rank.larger_than, ranked.rank.of) == ("middle third", 11, 19)   # Labor Day's night (0.50%) sits out
 
 
-def test_es_move_refuses_a_night_across_a_roll_and_skips_roll_nights_in_its_base(tmp_path):
+def test_the_futures_move_refuses_a_night_across_a_roll_and_skips_roll_nights_in_its_base(tmp_path):
     prior = _nights_before(DAY, 20)
     for k, d in enumerate(prior):
         _save(tmp_path, d, 0.1 * (k + 1))
@@ -90,24 +96,23 @@ def test_es_move_refuses_a_night_across_a_roll_and_skips_roll_nights_in_its_base
     _save(tmp_path, DAY, 0.3)
     table["rolls"][0]["at"] = datetime.combine(DAY, time(2, 0), tzinfo=ET).isoformat()   # the roll falls inside tonight
     rolls.save(folder, table)
-    assert "rolled to the next contract" in night_ranks.es_move(tmp_path, datetime.combine(DAY, time(9, 27), tzinfo=ET))["omitted"]
+    assert "rolled to the next contract" in _ranked(tmp_path, datetime.combine(DAY, time(9, 27), tzinfo=ET))[1]
 
 
-def test_es_move_waits_for_a_roll_the_quote_shows_and_the_table_has_not_located(tmp_path):
+def test_the_futures_move_waits_for_a_roll_the_quote_shows_and_the_table_has_not_located(tmp_path):
     folder = tmp_path / overnight.OVERNIGHT_SUBDIR
     rolls.save(folder, {**rolls.load(folder), "current": {"/ES": "/ESZ26"}})
-    out = night_ranks.es_move(tmp_path, datetime.combine(DAY, time(9, 27), tzinfo=ET), quoted="/ESH27")
-    assert out["omitted"].startswith("Schwab quotes /ESH27 but the roll table is still on /ESZ26")
+    ranked, why = _ranked(tmp_path, datetime.combine(DAY, time(9, 27), tzinfo=ET), quoted="/ESH27")
+    assert ranked is None and why.startswith("Schwab quotes /ESH27 but the roll table is still on /ESZ26")
 
 
-def test_es_move_is_omitted_without_enough_nights_or_a_price(tmp_path):
+def test_the_futures_move_is_omitted_without_enough_nights_or_a_price(tmp_path):
     now = datetime.combine(DAY, time(9, 27), tzinfo=ET)
-    assert night_ranks.es_move(tmp_path, now)["omitted"].startswith("no /ES price")
+    assert _ranked(tmp_path, now)[1].startswith("no /ES price")
     for d in _nights_before(DAY, 5):
         _save(tmp_path, d, 0.2)
     _save(tmp_path, DAY, 0.3)
-    assert night_ranks.es_move(tmp_path, now)["omitted"].startswith("overnight move not ranked: only 5 usable of the last 20 nights")
-    assert night_ranks.es_move(tmp_path, datetime(2026, 9, 20, 9, 27, tzinfo=ET)) == {"omitted": "2026-09-20 is not a market day"}
+    assert _ranked(tmp_path, now)[1].startswith("overnight move not ranked: only 5 usable of the last 20 nights")
 
 
 def test_a_stretch_moves_between_the_newest_prices_by_its_edges_on_either_resolution():
@@ -182,9 +187,9 @@ def test_a_rewritten_night_is_read_afresh(tmp_path):
         _save(tmp_path, d, 0.2)
     _save(tmp_path, DAY, 0.3)
     now = datetime.combine(DAY, time(9, 27), tzinfo=ET)
-    assert night_ranks.es_move(tmp_path, now)["move_pct"] == 0.3
+    assert round(_ranked(tmp_path, now)[0].move.pct, 4) == 0.3
     _save(tmp_path, DAY, -0.45)
-    assert night_ranks.es_move(tmp_path, now)["move_pct"] == -0.45
+    assert round(_ranked(tmp_path, now)[0].move.pct, 4) == -0.45
 
 
 def test_ranked_move_reads_the_rows_it_is_given(tmp_path):

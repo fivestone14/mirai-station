@@ -15,7 +15,7 @@ normal night:
 
 At least OVERNIGHT_RANK_MIN_NIGHTS usable nights are needed; with fewer the measure is omitted with the
 reason, never guessed. ``night_move`` measures the move from the prior close to the read on one contract
-and ``ranked_move`` (``es_move`` over the store) ranks it; ``window_move`` and ``prior_window_nights`` rank
+and ``ranked_move`` ranks it; ``window_move`` and ``prior_window_nights`` rank
 any stretch of the night (story.py) against the same stretch on the last nights, and ``window_range`` and
 ``prior_window_ranges`` its high-low range, for the premarket lane's labels. A rank reads the last nights'
 files through a small cache keyed on each file's size and time, so the many measures of one read load
@@ -33,7 +33,7 @@ from typing import Callable
 from . import overnight, rolls
 from .cuts import NIGHT_RANK_COUNT, OVERNIGHT_RANK_MIN_NIGHTS
 from .labels.words import third
-from .sessions import is_trading_day, previous_trading_day
+from .sessions import previous_trading_day
 from .state_builder import load_jsonl
 
 SHORT_NIGHT_SHARE = 0.9          # of the median coverage of the symbol's candidate nights
@@ -308,21 +308,3 @@ def ranked_move(rows: list[dict], state_dir: Path, day: date, symbol: str, read_
     if rank is None:
         return None, f"overnight move not ranked: {why}"
     return RankedMove(move, rank), ""
-
-
-def es_move(state_dir: Path, now: datetime, quoted: str | None = None) -> dict:
-    """overnight.es_move's measure at ``now`` over the store (ranked_move on /ES): ``{"move_pct", "side",
-    "rank": {"band", "larger_than", "of"}, "words"}``, or ``{"omitted": reason}``."""
-    day, read_clock = now.date(), now.astimezone(overnight.ET).time().replace(second=0, microsecond=0)
-    if not is_trading_day(day):
-        return {"omitted": f"{day} is not a market day"}
-    table = rolls.load(Path(state_dir) / overnight.OVERNIGHT_SUBDIR)
-    ranked, why = ranked_move(list(_night_rows(state_dir, day, "/ES")), state_dir, day, "/ES", read_clock, table, quoted)
-    if ranked is None:
-        return {"omitted": why}
-    move, rank = ranked.move, ranked.rank
-    side = "up" if move.pct > 0 else "down" if move.pct < 0 else "unchanged"
-    close = move.start_at.strftime("%H:%M")
-    return {"move_pct": round(move.pct, 4), "side": side,
-            "rank": {"band": rank.band, "larger_than": rank.larger_than, "of": rank.of},
-            "words": f"since {close} yesterday S&P futures are {side}, a move {rank.words('moves to this time')}"}

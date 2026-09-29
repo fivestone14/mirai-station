@@ -48,7 +48,7 @@ import traceback
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
-from . import archive, clock, events, grade, overnight, pool, rolls, service, story
+from . import archive, events, grade, overnight, rolls, service, story
 from .ask import build_requests, get_path, load_questions, send, send_all
 from .cuts import MIN_RANK_SESSIONS
 from .expiry import calendar_of
@@ -349,20 +349,6 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
                    if by_id.get(qid, {}).get("status") == "live" and str(why).startswith("missing")]
         hour_rec, hour, hour_reply, average_reply = sum_the_read(doc, fresh, missing, out_dir, sums_by, average_window_of(ruler, scene.spot if scene else None))
         send_seconds = round(_clock.monotonic() - t0, 3)
-        if hour is not None and PREMARKET.clock_blend:
-            # each sum blended half and half with how the same window after the settled open ended on prior sessions
-            try:
-                hour = clock.blend(hour, clock.premarket_odds(state_dir, scene.prior_bars, now))
-            except Exception as e:  # the odds must never cost the read its sum
-                service.log(f"the settled-open odds were left out this run: {type(e).__name__}: {e}")
-                hour = {**hour, "blend": {"used": False, "why": f"the settled-open odds failed this run: {type(e).__name__}"}}
-        if hour is not None and PREMARKET.pool and isinstance(hour.get("by"), dict):
-            try:
-                hour_rec["pool"] = service.pool_snapshots(out_dir, hour, doc, fresh, set(fresh), now, PREMARKET)
-            except Exception as e:  # the loop must never cost the read its sum
-                service.log(f"the learning loop's snapshot was left out this run: {type(e).__name__}: {e}")
-                hour_rec["pool"] = {h: {"left_out": f"the snapshot failed this run: {type(e).__name__}"} for h in PREMARKET.horizons}
-            hour = pool.shown(hour, hour_rec["pool"], pool.load_state(out_dir, PREMARKET.horizons[PREMARKET.primary][0]))
         if hour is not None:
             hour = {**hour, "used": len(hour_rec["used"]), "left_out": len(hour_rec["left_out"]), "missing": len(missing)}
             if hour.get("error"):

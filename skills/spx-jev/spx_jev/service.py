@@ -979,11 +979,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--day", help="build a past day's newest row instead of today's")
     ap.add_argument("--send", action="store_true", help="post to JEV; the key comes from .env or TYPESAFE_API_KEY")
     ap.add_argument("--loop", type=int, metavar="SECONDS", help="keep running every N seconds (the launchd job does not use this)")
-    ap.add_argument("--lane", choices=sorted(LANES), default="live", help="live (:02 and :32, the default) or tape (the opening lane)")
+    # a read before the open has no diary row to build on: the premarket lane runs from its own module (premarket.py)
+    ap.add_argument("--lane", choices=sorted(k for k in LANES if k != "premarket"), default="live",
+                    help="live (:02 and :32, the default) or tape (the opening lane); python3 -m spx_jev.premarket reads before the open")
     args = ap.parse_args(argv)
-    if args.lane == "premarket":
-        # a read before the open has no diary row to build on: its scene, checkpoints and card are its own
-        ap.error("the premarket lane runs from its own module: python3 -m spx_jev.premarket")
     lane = LANES[args.lane]
     load_env_file()
     do_send = bool(args.send)
