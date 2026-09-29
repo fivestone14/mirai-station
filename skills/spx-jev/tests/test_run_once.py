@@ -266,6 +266,17 @@ def test_the_card_calls_the_call_a_forecast_not_a_trade_signal_and_keeps_shadow_
     assert "shadow questions are asked and logged, never graded and never weighted" in note
 
 
+def test_a_row_is_stale_past_the_skip_line_and_a_replay_is_never_called_stale(tmp_path):
+    """The card's own 15-minute stale line could never fire on a sent read, which the 6-minute skip line stops first,
+    and called every replay stale with "nothing newer has been scanned". An unsent run on the newest row is stale past
+    the skip line; a replay of a past day says its age is not measured."""
+    state = _state(tmp_path, [make_row(at(11, 32), 7700.0)], 120)
+    live = run_once(state, tmp_path / "now", DOC, False)["freshness"]
+    assert live["stale"] and live["note"].endswith("nothing newer has been scanned")
+    replay = run_once(state, tmp_path / "replay", DOC, False, DAY)["freshness"]
+    assert not replay["stale"] and replay["note"] == "a replay: its row's age is not measured against the clock"
+
+
 def test_the_sum_is_blended_with_the_time_of_day_once_there_are_enough_sessions(tmp_path, monkeypatch):
     from spx_jev.clock import JEV_SHARE, MIN_SESSIONS
     prior = {f"2026-09-{d:02d}": flat_bars(390, day=f"2026-09-{d:02d}") for d in range(1, MIN_SESSIONS + 1)}

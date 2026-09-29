@@ -91,8 +91,7 @@ VERDICT_WORDS = {"going_nowhere": "Flat", "rising": "Rising", "falling": "Fallin
                  "heavy_strike_close": "Close", "open_air": "Open air", "no_wall_in_reach": "None in reach"}
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 ET = ZoneInfo("America/New_York")
-STALE_ROW_S = 15 * 60          # a card built on a row older than this says so
-STALE_ROW_SKIP_MIN = 6.0       # a live read on a row older than this is skipped: the SPX diary is not being written
+STALE_ROW_SKIP_MIN = 6.0       # a live read on a row older than this is skipped, and an unsent card on one says it is stale
 LAST_READ_BEFORE_CLOSE_MIN = 28   # the job reads at :02 and :32, so the day's last read is 28 minutes before the close
 UNSENT_DEFAULT = "not sent: this run was not asked to send"
 CALLS_SHOWN = 4                # the phone draws the newest calls on one clock, so an overlap is visible
@@ -556,12 +555,14 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
          sent: bool, send_seconds: float | None, hour: dict | None = None, held: dict | None = None,
          cad: dict | None = None, unsent_reason: str = UNSENT_DEFAULT, event: dict | None = None,
          lane: Lane = LIVE, unit: dict | None = None, band: dict | None = None, calls: list[dict] | None = None,
-         figures: dict | None = None) -> dict:
+         figures: dict | None = None, replay: bool = False) -> dict:
     """The phone's document. Small, plain, and honest about what was and was not sent. It carries the
     day's newest calls with their grades and the day's tally (day_calls), so the phone draws the calls
     in play on one clock. A lane on the bar clock also carries its ``stretch``, the sentences the builder
     wrote about the stretch since the lane's last read, and a lane with a schedule carries it, so the
-    phone knows when the lane hands back to the live reads. Every time on it is a full timestamp."""
+    phone knows when the lane hands back to the live reads. Every time on it is a full timestamp. Its row is stale
+    past the live reads' skip line (STALE_ROW_SKIP_MIN), which only an unsent run can reach; a ``replay`` of a past
+    row is never measured against the clock."""
     now = datetime.now(timezone.utc)
     row_ts = parse_ts(scene.row["ts"])
     close = session_close(row_ts)
@@ -607,15 +608,17 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
                                     else "asked, no answer received") if sent else unsent_reason
             qs.append(entry)
     row_age_s = round((now - row_ts.astimezone(timezone.utc)).total_seconds())
+    stale = not replay and row_age_s > STALE_ROW_SKIP_MIN * 60
     return {
         "version": 1,
         "symbol": "SPX",
         "generated_at": now.isoformat(timespec="seconds"),
         "row_ts": scene.row["ts"],
         "freshness": {"row_age_s": row_age_s, "bars_used": len(scene.bars), "prior_sessions": len(scene.prior_bars),
-                      "stale": row_age_s > STALE_ROW_S,
-                      "note": (f"the newest row is {row_age_s // 60} minutes old; nothing newer has been scanned"
-                               if row_age_s > STALE_ROW_S else "built on a fresh row")},
+                      "stale": stale,
+                      "note": ("a replay: its row's age is not measured against the clock" if replay else
+                               f"the newest row is {row_age_s // 60} minutes old; nothing newer has been scanned" if stale else
+                               "built on a fresh row")},
         "sigma": scene.sigma,
         "situation": situation_rows(state, figures),
         "labels_count": sum(len(v) for v in state.values()),
@@ -847,7 +850,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         except Exception as e:  # grading must never stop the card
             log(f"grading skipped this run: {type(e).__name__}: {e}\n{traceback.format_exc()}")
     c = card(scene, state, omitted, doc, requests, skipped, answers, do_send, send_seconds, hour, held, cad, unsent_reason, event, lane, unit, band,
-             day_calls(out_dir, day_name, lane, scene), figures)
+             day_calls(out_dir, day_name, lane, scene), figures, replay=day is not None)
     write_card(out_dir, c)
     return c
 
