@@ -255,7 +255,7 @@ def test_the_bars_keep_one_row_a_minute_the_better_source_winning_and_every_copy
     assert _table(root, "context_quotes")[0]["prior_close"] == 15.9
     night = _table(root, "overnight_bars")
     assert [(b["ts"], b["prior_session"]) for b in night] == [(at(15, 55, day="2026-09-17"), True), (at(8, 0), False)]
-    assert night[1]["contract"] == "/ESZ26"
+    assert night[1]["contract"] == "/ESZ26" and night[1]["overnight_schema"] == 1      # the overnight file's version
     assert [r["to_contract"] for r in _table(root, "rolls")] == ["/ESZ26"]
     assert [(e["kind"], e["ends_at"]) for e in _table(root, "events")] == [("FED_SPEAKER", at(10, 30))]
 

@@ -380,7 +380,7 @@ CONTEXT_QUOTES = Table("context_quotes", (("day", DAY, True), ("symbol", STR, Tr
 OVERNIGHT_BARS = Table("overnight_bars", (("day", DAY, True), ("ts", TS, True), ("symbol", STR, True), ("contract", STR, False),
                                           ("contract_from", STR, False), ("bar_minutes", INT, True), ("prior_session", BOOL, True)) + _BAR
                        + (("session", STR, False), ("source", STR, False), ("saved_at", TS, True), ("flags", WORDS, False),
-                          ("store_schema", INT, False)),
+                          ("overnight_schema", INT, False)),
                        key=("symbol", "bar_minutes", "ts"),
                        checks=(_is("bar_minutes", (1, 5)), _positive("open", "high", "low", "close"), _not_negative("volume"),
                                _bar_shape, _night_ends_by_close, _saved_after_finish))
@@ -779,7 +779,7 @@ def read_raw(state_dir: Path, day: date) -> Raw:
         rows["overnight_bars"].append({**_bar_row(day, bar), "prior_session": ts < prior_close if ts else None,
                                        **{k: bar.get(k) for k in ("symbol", "contract", "contract_from", "bar_minutes",
                                                                   "session", "source", "saved_at", "flags")},
-                                       "store_schema": bar.get("schema_version"), "_source": w})
+                                       "overnight_schema": bar.get("schema_version"), "_source": w})
 
     table = rolls_path(state_dir / OVERNIGHT_SUBDIR)
     doc, readable = _json_file(table)
