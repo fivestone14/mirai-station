@@ -192,6 +192,9 @@ def test_on_the_loop_learns_from_the_average_price_label_beside_the_end_price_lo
     assert all(after[name] == (off / name).read_bytes() for name in END_PRICE_FILES)
     assert set(after) - set(_tree(off)) == set(INTEGRAL_FILES)                  # the switched loop's own two files, and no other
     assert json.loads(after["pool_30.json"])["last_session_applied"] == DAYS[-1]
+    # the weights keep the end-price loop's report, as with the switch off, and the switched loop's is beside it
+    assert {k: v for k, v in w.items() if k != "pool_integral"} == _learn(_write(tmp_path / "off2"), OFF)
+    w = w["pool_integral"]
     assert w["method"] == "pool_v1_integral" and w["pool"]["last_session_applied"] == DAYS[-1] and w["pool"]["phone"]["on_phone"] is False
     assert w["questions"]["q_a"]["days"] == 3 and w["questions"]["q_a"]["weight"] == 1.0
     state = json.loads((out / "pool_30_integral.json").read_text())

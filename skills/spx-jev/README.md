@@ -226,8 +226,9 @@ archive there too, under `archive/`.
    learning loop learns from the average-price grade (`integral_loop.py`):
    the call's odds, the time-of-day odds on the average price as its
    reference, its own state and log, stale and event reads left out, and
-   constants of its own, so neither loop can ever load the other's state. The
-   weights report it; the end-price loop keeps learning beside it, byte for
+   constants of its own, so neither loop can ever load the other's state.
+   `weights.json` reports it under `pool_integral`, beside the end-price
+   loop's report; the end-price loop keeps learning beside it, byte for
    byte as with the switch off, since the phone's pool, its promotion and
    demotion are the end price's: the phone never shows this loop's pool. A
    session is learnt at the first grading run after its reads' average-price
@@ -249,7 +250,8 @@ archive there too, under `archive/`.
 - `last_asked.json`, `cadence.json`, `clock_days.json`,
   `clock_integral_days.json`: the cadence and the clock's stored counts, on
   the end price and on the average price, never mixed. `grades.jsonl`,
-  `weights.json` (the sums' tallies, `method` and the per-question weights),
+  `weights.json` (the sums' tallies, `method` and the per-question weights,
+  the end-price loop's `pool` and the average-price loop's `pool_integral`),
   `weights_log.jsonl`. `integral_grades.jsonl`, the integral grade, one line
   per graded horizon (append only, keyed by the read, the horizon and
   `rule_version`), in every lane's folder: from `rule_version` 2 each line

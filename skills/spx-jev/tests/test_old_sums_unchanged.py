@@ -3,8 +3,8 @@ move a byte of what the old sums send, grade or teach, whatever the new question
 lane, run end to end with a fake JEV, against the files the code wrote for the same fixture before the average-price
 question existed (golden/old_sums.json): the sums request, grades.jsonl, weights.json, the learning loop's pool state
 and the time-of-day counts (clock_days.json), the live read's sums blended with them. With the live lane's average-price
-loop switched on, its weights.json reports that loop's standing (grade.weights_from): every other part of it, and the
-weights step 3 reads, are still the old path's to the byte, as is the end-price loop's own state."""
+loop switched on, weights.json carries that loop's report beside the rest under ``pool_integral`` (grade.weights_from):
+without it, the file is the old path's to the byte."""
 from __future__ import annotations
 
 import json
@@ -46,9 +46,6 @@ BAD_REPLIES = {
     "null odds": {"model": "fake-1", "answers": {q: {"type": "choice", "choice": None, "probabilities": {"up": None, "flat": "0.5"}}
                                                  for q in ("average_30", "average_10", "open_average_30")}},
 }
-# the parts of weights.json that name the loop reporting, and each question's standing in it: the average-price loop's
-# while the live lane's switch is on
-LOOP_REPORT = ("method", "pool")
 FIXED_MTIME = 1_789_000_000         # every input file's clock, so the time-of-day counts' file prints are the same on every run
 
 
@@ -134,11 +131,11 @@ def run_fixture(tmp_path, monkeypatch, average_reply=None) -> dict[str, dict[str
     return {"live": _files(live, clock=True), "tape": _files(tape), "premarket": _files(pre)}
 
 
-def _old_path(weights: str) -> dict:
-    """weights.json less the loop's report: the tallies, and each question's weight as step 3 reads it."""
+def _old_path(weights: str) -> str:
+    """weights.json less the average-price loop's report, written as the grader writes it."""
     w = json.loads(weights)
-    return {**{k: v for k, v in w.items() if k not in LOOP_REPORT},
-            "questions": {q: {k: e[k] for k in ("weight", "n", "in_step_3")} for q, e in w["questions"].items()}}
+    assert w.pop("pool_integral")["method"] == "pool_v1_integral"
+    return json.dumps(w, ensure_ascii=False, indent=1)
 
 
 def _same_as_before(got: dict) -> None:
@@ -147,8 +144,7 @@ def _same_as_before(got: dict) -> None:
         assert set(got[lane]) == set(want[lane]), lane
         for name, text in want[lane].items():
             if lane == "live" and name == "weights.json" and LIVE.integral_loop:
-                assert json.loads(got[lane][name])["method"] == "pool_v1_integral"
-                assert _old_path(got[lane][name]) == _old_path(text), f"{lane} {name} moved"
+                assert _old_path(got[lane][name]) == text, f"{lane} {name} moved"
                 continue
             assert got[lane][name] == text, f"{lane} {name} moved"
 

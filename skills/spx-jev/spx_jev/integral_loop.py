@@ -1,7 +1,8 @@
 """The learning loop on the average-price grade, switched on for the live lane (lane.Lane.integral_loop).
 
-Switched on, the grader runs this loop beside pool.PoolWeights and the question weights report it: the same experts,
-day-level update, e-processes, statuses and promotion (pool.py, read as a library, never changed here), learned on the
+Switched on, the grader runs this loop beside pool.PoolWeights and weights.json reports it under ``pool_integral``, beside
+the end-price loop's report: the same experts, day-level update, e-processes, statuses and promotion (pool.py, read as a
+library, never changed here), learned on the
 lane's primary box from the average-price sum's graded reads alone, each read's outcome the label integral_grades.jsonl
 gave it under this integral.RULE_VERSION, never the end price's band. The end-price loop keeps learning as before,
 since the phone's pool, its promotion and its demotion read it (pool.shown). Switched off, nothing here is imported,

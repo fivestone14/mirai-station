@@ -50,8 +50,9 @@ The question weights
     lane learns the loop there (pool.PoolWeights: every newly sealed session applied, each question's
     standing reported, every weight still 1.0); the tape and premarket lanes' weights are neutral. With the lane's
     integral_loop switch on (on the live lane) a second loop learns from the average-price grade beside it
-    (integral_loop.IntegralPoolWeights), in state of its own, and the weights report that one; the end-price loop
-    keeps learning, since the phone's pool is its.
+    (integral_loop.IntegralPoolWeights), in state of its own, reported beside the end-price loop's under
+    ``pool_integral``; the end-price loop keeps learning and its report stays where it was, since the phone's pool
+    is its.
 
 A lane (lane.py) grades by its own settings. The tape lane's one horizon is banded from the record
 itself: the tape unit measured at the read prices a flat and a big band in index points, and the
@@ -89,6 +90,8 @@ Outputs, all under the lane's folder (state/spx_jev/ for the live lane)
                                        "blended": {"n", "mean_brier_blend", "mean_brier_jev", "mean_brier_clock", "jev_hit_rate"},
                                        "event_reads": {"n", "mean_brier"}}},
                         "method", "min_weight", "questions": {qid: {"weight", "n", "in_step_3", "why"}},
+                        on the live lane "pool" (the end-price loop's) and, its switch on, "pool_integral" (the
+                        average-price loop's method, questions and pool, or {"failed": why}),
                         "new_this_run", "new_by_horizon", "closed_out"}
     weights_log.jsonl  one line per grading run that graded something: the tally and every weight that moved
     and every new line, once more, in the raw archive (archive.GradeRecord, keyed to its read)
@@ -436,23 +439,23 @@ def live_options(doc: dict | Path | str) -> dict[str, set[str]]:
 def weights_from(grades: list[dict], allowed: dict[str, set[str]], lane: Lane = LIVE, out_dir: Path | None = None) -> dict:
     """Each sum's tally from every grade line, and the question weights from the lines whose primary sum
     was graded, less those a scheduled event sat inside: the learning loop's (pool.PoolWeights, which
-    reads the lane's records in ``out_dir``; with the lane's integral_loop switch on it still learns, and
-    integral_loop.IntegralPoolWeights beside it gives the weights, the end-price loop's standing when it fails) on a lane
-    that learns it, else neutral. ``allowed`` is live_options(): only live questions are weighed, and only picks from their
-    current options count."""
+    reads the lane's records in ``out_dir``) on a lane that learns it, else neutral; with the lane's integral_loop switch
+    on, integral_loop.IntegralPoolWeights learns beside it and is reported under ``pool_integral``. ``allowed`` is
+    live_options(): only live questions are weighed, and only picks from their current options count."""
     primary = [g for g in grades if g.get("band")]
     sums = {qid: {**_tally([g[qid] for g in grades if isinstance(g.get(qid), dict)]), "event_reads": _events(grades, qid)}
             for qid in lane.horizons}
     graded = [g for g in primary if not g.get("event_within_30")]
     weights = PoolWeights.learn(graded, allowed, out_dir, lane) if lane.pool else QuestionWeights.learn(graded, allowed, out_dir)
+    out = {"graded_runs": len(primary), "primary": lane.primary, "sums": sums, **weights.as_json()}
     if lane.pool and lane.integral_loop:
-        # the end-price loop above keeps learning: the phone's pool, its promotion and its demotion read it
+        # the end-price loop above keeps learning and keeps its report: the phone's pool, its promotion and demotion read it
         try:
             from .integral_loop import IntegralPoolWeights   # only when switched on: it reads this module, through clock too
-            weights = IntegralPoolWeights.learn(graded, allowed, out_dir, lane)
+            out["pool_integral"] = IntegralPoolWeights.learn(graded, allowed, out_dir, lane).as_json()
         except Exception as e:  # the average-price loop must never cost a run its weights, the shadow grade or the card
             print(f"average-price loop failed: {type(e).__name__}: {e}", file=sys.stderr)
-    out = {"graded_runs": len(primary), "primary": lane.primary, "sums": sums, **weights.as_json()}
+            out["pool_integral"] = {"failed": f"{type(e).__name__}: {e}"}
     if lane.tag:
         out["lane"] = lane.tag
     return out

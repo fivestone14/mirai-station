@@ -93,7 +93,8 @@ def test_a_read_answers_holds_sums_and_grades(tmp_path, monkeypatch):
     grades = [json.loads(l) for l in (out / "grades.jsonl").read_text().splitlines() if l.strip()]
     assert len(grades) == 1 and grades[0]["horizons"] == ["next_30"] and grades[0]["band"] == "flat"
     weights = json.loads((out / "weights.json").read_text())
-    assert weights["method"] == "pool_v1_integral" and weights["questions"]["q_dir"] == {**weights["questions"]["q_dir"], "weight": 1.0, "n": 1}
+    assert weights["method"] == "pool_v1" and weights["questions"]["q_dir"] == {**weights["questions"]["q_dir"], "weight": 1.0, "n": 1}
+    assert weights["pool_integral"]["method"] == "pool_v1_integral"
     for p in out.rglob("*"):
         if p.is_file():
             assert CANARY not in p.read_text(), p
@@ -297,11 +298,14 @@ def test_a_live_read_writes_the_loops_forecasts_keeps_the_blend_on_the_phone_and
     learned = json.loads((out / "pool_30.json").read_text())
     assert learned["last_session_applied"] == DAY and learned["evidence"]["q_dir"]["days"] == 1 and learned["phone"]["shows"] == "blend"
     assert json.loads((out / "pool_60.json").read_text())["last_session_applied"] == DAY
-    # the average-price loop beside it, whose standing the weights report, passes the day over: no read had an average-price call
+    # the weights report it as they did, and the average-price loop beside it passes the day over: no read had an
+    # average-price call
     weights = json.loads((out / "weights.json").read_text())
-    assert weights["method"] == "pool_v1_integral" and weights["pool"]["last_session_applied"] == DAY
+    assert weights["method"] == "pool_v1" and weights["pool"]["last_session_applied"] == DAY and weights["questions"]["q_dir"]["days"] == 1
     assert weights["pool"]["phone"] == {**weights["pool"]["phone"], "shows": "blend", "on_phone": False}
-    assert weights["questions"]["q_dir"]["weight"] == 1.0 and "days" not in weights["questions"]["q_dir"]
+    beside = weights["pool_integral"]
+    assert beside["method"] == "pool_v1_integral" and beside["pool"]["last_session_applied"] == DAY and not beside["pool"]["phone"]["on_phone"]
+    assert beside["questions"]["q_dir"]["weight"] == 1.0 and "days" not in beside["questions"]["q_dir"]
     said = [json.loads(line) for line in (out / "pool_integral_log.jsonl").read_text().splitlines()]
     assert [(x["session"], x["applied"], x["why"]) for x in said] == [(DAY, False, "no read carries an average-price call: before the question")]
 
@@ -325,6 +329,7 @@ def test_a_failing_average_price_loop_costs_neither_the_read_nor_the_close_out(t
     assert "average-price loop failed: AttributeError" in capsys.readouterr().err
     weights = json.loads((out / "weights.json").read_text())
     assert weights["method"] == "pool_v1" and weights["pool"]["last_session_applied"] == DAY and weights["graded_runs"] == 1
+    assert weights["pool_integral"] == {"failed": "AttributeError: 'list' object has no attribute 'get'"}
     lines = (out / "integral_grades.jsonl").read_text().splitlines()
     assert {json.loads(line)["horizon"] for line in lines} == {"next_30", "next_60"}
     card = service.close_out(state, out, DOC, service.LIVE, DAY)
