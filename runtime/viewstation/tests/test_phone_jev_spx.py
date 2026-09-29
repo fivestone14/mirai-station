@@ -335,6 +335,20 @@ def test_a_call_closed_for_good_is_never_graded_on_the_page_not_still_to_grade()
                                               "opening done1 never graded"]
 
 
+def test_a_call_closed_at_its_end_price_but_graded_on_the_average_reads_graded_on_the_page():
+    """The opening lane's end price can close a call its average still grades (service.calls_block counts it graded, never
+    closed): its row and its sheet give the average's verdict, not "Not graded", and the morning's line counts it once."""
+    both = call("10:30", "10:40", "up", 0.5, integral=graded("up", "right"), closed="halted window: no bar at the mark on a finished day")
+    got = _run("console.log(JSON.stringify(callWords(D.c, Date.parse(D.now))));", {"c": both, "now": "2026-09-28T10:45:00-04:00"})
+    assert got == {"text": "Was Up \u00B7 ", "strong": "Right", "short": "Up \u00B7 "}
+    assert _result(both, "2026-09-28T10:45:00-04:00")[0] == "RightResult"
+    sched = {"reads": ["2026-09-29T09:35:00-04:00", "2026-09-29T10:30:00-04:00"], "looks_ahead_min": 10}
+    tally = {"calls": 2, "graded": 1, "right": 1, "passed": 0, "end_price_only": 0, "closed": 0}
+    line = _run(_fn("openingDone") + "console.log(JSON.stringify(dump(openingDone(D.t))));",
+                {"t": {"row_ts": "2026-09-29T10:30:00-04:00", "schedule": sched, "tally": tally}})
+    assert _flat_text(line) == "opening done1 of 1 calls right \u00B7 1 still to grade"
+
+
 def test_a_close_out_that_leaves_a_call_to_grade_still_redraws_the_page():
     """09-28: the close-out graded the pre-market open_10 check but not open_30, whose bar had not come, so the card kept
     its read's generated_at and no closed_out_at, and an open page kept the ungraded card until a later run graded

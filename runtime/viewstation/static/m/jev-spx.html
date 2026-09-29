@@ -1223,9 +1223,10 @@ details .q{margin-top:8px}
   }
   // after the opening: one line with the morning's score on the average price, counted by the service from the lane's
   // grades: the calls right of those graded right or wrong, an unsure call passed and counted apart, the calls that
-  // stood on the end price alone, then what is still to grade and, for a call closed for good (a halted window), what
-  // never will be (service.tally_words, word for word). A card from before the average-price grade counted its passes
-  // as unsure
+  // stood on the end price alone, then what is still to grade and, for a call closed for good (a halted window) with no
+  // verdict, what never will be (service.tally_words, word for word): a call closed at its end price but graded on the
+  // average is graded, as its row and sheet say (gradeOf before closed), never also never graded. A card from before
+  // the average-price grade counted its passes as unsure
   function openingDone(t){
     var y = t.tally, f = el('div', 'card fold'), over = lastLaneRead(t);
     var passed = y.passed != null ? y.passed : y.unsure || 0, called = y.graded - passed, closed = y.closed || 0;

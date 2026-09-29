@@ -486,13 +486,15 @@ def calls_block(calls: list[dict]) -> dict:
     average price over each window (call_verdict). Its direction decides a call right or wrong; an unsure one is
     passed, counted under ``passed`` and never among the calls right or wrong. A call with no average-price grade
     counts on its end price alone, and ``end_price_only`` says how many did; the grades and their Brier scores
-    still count every call as the grader does. A call closed for good (day_calls' ``closed``) is counted under
-    ``closed``: it will never be graded, so it is not still to grade."""
+    still count every call as the grader does. A call closed for good (day_calls' ``closed``) with no verdict is
+    counted under ``closed``: it will never be graded, so it is not still to grade. One closed at its end price and
+    graded on the average price (the opening lane's end price needs the mark's own minute, the average tolerates a
+    missing bar before it) is graded, and never also counted as closed."""
     verdicts = [v for c in calls if (v := call_verdict(c))]
     return {"calls": calls[-CALLS_SHOWN:][::-1],
             "tally": {"calls": len(calls), "graded": len(verdicts), "right": verdicts.count("right"), "passed": verdicts.count("passed"),
                       "end_price_only": sum(1 for c in calls if c.get("end_price_only")),
-                      "closed": sum(1 for c in calls if "closed" in c)}}
+                      "closed": sum(1 for c in calls if "closed" in c and not call_verdict(c))}}
 
 
 def still_to_grade(tally: dict) -> int:

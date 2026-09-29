@@ -208,6 +208,19 @@ def test_a_call_that_can_never_be_graded_is_counted_apart_never_as_still_to_grad
     assert service.tally_words(service.calls_block(calls[1:])["tally"]) == "1 never graded"
 
 
+def test_a_call_closed_at_its_end_price_but_graded_on_the_average_is_graded_never_also_never_graded():
+    """On the opening lane the end price needs the mark's own minute and the average price tolerates one missing bar
+    before it, so a call can be closed at its end price and still graded on the average. Counted as closed too, it left
+    an open call beside it with nothing still to grade: the close-out called the day finished and stopped retrying, and
+    the words said "1 of 1 calls right · 1 never graded" about the one call."""
+    both = {**_graded("up", "up"), "closed": "halted window: no bar at the mark on a finished day"}
+    del both["end_price"]
+    tally = service.calls_block([both, {"pick": "down"}])["tally"]
+    assert tally == {"calls": 2, "graded": 1, "right": 1, "passed": 0, "end_price_only": 0, "closed": 0}
+    assert service.still_to_grade(tally) == 1
+    assert service.tally_words(tally) == "1 of 1 calls right · 1 still to grade"
+
+
 SCHEDULED = {"groups": [{"id": "g1", "reads": ["context"], "questions": {
     "q_const": {"status": "live", "type": "choice", "lanes": ["opening_five_minute", "thirty_minute"],
                 "schedule": {"opening_five_minute": {"at": ["09:35"], "hold": True}, "thirty_minute": {"hold_until": "11:32"}},
