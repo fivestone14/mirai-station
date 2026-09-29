@@ -15,15 +15,18 @@ Direction decides. A call is right when its side is the label (up_small and up_b
 not, and an unsure call is passed, never a miss, with the side it leaned. The margin says by how much: the
 call's side of G over the edge, or for a flat call 1 - |G| / edge. Nothing weighs the late minutes more and
 nothing boosts a sharp move; the biggest minute is a note, ranked against the same window on the recent
-sessions ("top 2 of 21" is sharp). The running labels are the average so far against the same edge, one per
+sessions ("top 2 of 21" is sharp), each minute's move taken close to close as the sessions' are (the
+first from the bar before the window, when it is on file, since a read can land mid-minute). The running labels are the average so far against the same edge, one per
 minute, the last one being the label.
 
 The guards
     missing bars   up to INTEGRAL_MISSING_BARS_MAX of the window's bars may be missing, never the mark bar, and a
                    missing one stands at the midpoint of its neighbours; with more, the window is not graded
     bad ticks      a close that jumps at least the BAD_TICK_PCT share of the same window's 1-minute moves on the
-                   recent sessions and jumps back as far the next minute is replaced by the midpoint of the close
-                   before it and the open after it, and the line records each one
+                   recent sessions, and that the next minute neither opens near (its open as far away) nor closes
+                   near (its close jumping back as far), is replaced by the midpoint of the close before it and
+                   the open after it, and the line records each one. A real move, a release minute's, opens the
+                   next minute where it closed and is left alone
     stale read     a read whose spot no bar traded in the STALE_READ_MIN minutes up to its row minute is stale:
                    the line says so, and nothing that learns may read it
 The ranks look at up to the last NIGHT_RANK_COUNT sessions of the same clock window and need
@@ -114,8 +117,9 @@ def bad_tick_cut(base: list[list[float]]) -> float | None:
 
 
 def fix_bad_ticks(slots: list[dict | None], before: dict | None, cut: float | None) -> tuple[list[float | None], list[dict]]:
-    """The window's closes, None where a bar is missing, with each bad tick replaced, and the ticks replaced. A
-    tick needs both neighbours on file, so the mark bar, which has none after it inside the window, is never one."""
+    """The window's closes, None where a bar is missing, with each bad tick replaced, and the ticks replaced: a close
+    ``cut`` or more from the close before it and from the next minute's open, the next close jumping back ``cut`` or
+    more. A tick needs both neighbours on file, so the mark bar, which has none after it inside the window, is never one."""
     closes = [float(b["close"]) if b else None for b in slots]
     ticks = []
     if not cut:
@@ -125,7 +129,9 @@ def fix_bad_ticks(slots: list[dict | None], before: dict | None, cut: float | No
         if not (prev and bar and nxt):
             continue
         out, back = float(bar["close"]) - float(prev["close"]), float(nxt["close"]) - float(bar["close"])
-        if abs(out) >= cut and abs(back) >= cut and out * back < 0:
+        # the next minute opening near the close traded there: a real move, however fast it came back
+        opened_away = abs(float(nxt["open"]) - float(bar["close"])) >= cut
+        if abs(out) >= cut and abs(back) >= cut and out * back < 0 and opened_away:
             closes[k] = round((float(prev["close"]) + float(nxt["open"])) / 2, 2)
             ticks.append({"minute": k + 1, "ts": bar["ts"], "close": float(bar["close"]), "replaced_by": closes[k]})
     return closes, ticks
@@ -139,9 +145,10 @@ def stale_read(bars: list[dict], t0: datetime, spot: float) -> bool | None:
     return not any(float(b["low"]) <= spot <= float(b["high"]) for b in near)
 
 
-def sharp_move(x: list[float], base: list[list[float]]) -> dict:
-    """The window's biggest minute, against the biggest in the same window on the recent sessions (rank_sessions)."""
-    d = [x[0]] + [x[k] - x[k - 1] for k in range(1, len(x))]
+def sharp_move(closes: list[float], first_from: float, base: list[list[float]]) -> dict:
+    """The window's biggest minute, close to close from ``first_from`` (the close before the window), against the
+    biggest in the same window on the recent sessions (rank_sessions)."""
+    d = [c - p for p, c in zip([first_from, *closes], closes)]
     k = max(range(len(d)), key=lambda i: abs(d[i]))
     out = {"points": round(d[k], 2), "minute": k + 1}
     rank, why = rank_sessions(abs(d[k]), [max(moves) for moves in base], "this window's minutes on file")
@@ -158,9 +165,9 @@ def grade_window(bars: list[dict], prior: dict[str, list[dict]], t0: datetime, m
     """The integral grade of a call at ``spot`` over the ``minutes`` bars from ``t0``, against the flat band ``flat``
     in points, with ``prior`` the recent sessions' bars (newest first) the ranks read. A ``graded: False`` result
     names the minutes missing; its guard fields are filled all the same."""
-    slots = window(bars, t0, minutes)
+    slots, before = window(bars, t0, minutes), window(bars, t0 - ONE_MINUTE, 1)[0]
     base = same_window_moves(prior, t0, minutes)
-    closes, ticks = fix_bad_ticks(slots, window(bars, t0 - ONE_MINUTE, 1)[0], bad_tick_cut(base))
+    closes, ticks = fix_bad_ticks(slots, before, bad_tick_cut(base))
     missing = [k + 1 for k, c in enumerate(closes) if c is None]
     guards = {"bad_ticks": ticks, "stale_read": stale_read(bars, t0, spot)}
     if closes[-1] is None or len(missing) > INTEGRAL_MISSING_BARS_MAX:
@@ -180,7 +187,7 @@ def grade_window(bars: list[dict], prior: dict[str, list[dict]], t0: datetime, m
            "g": round(g, 2), "label": lab, "pick": pick, "direction": direction(pick), "verdict": verdict(pick, lab),
            "margin": margin(pick, g, edge), "running": running,
            "best": {"points": round(x[best], 2), "minute": best + 1}, "worst": {"points": round(x[worst], 2), "minute": worst + 1},
-           "sharp_move": sharp_move(x, base), "filled": missing, **guards}
+           "sharp_move": sharp_move(closes, float(before["close"]) if before else spot, base), "filled": missing, **guards}
     if out["verdict"] == "passed":
         out["lean"] = lean(probs or {})
     return out

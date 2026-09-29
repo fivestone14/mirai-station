@@ -153,6 +153,9 @@ def test_a_bad_tick_is_replaced_and_recorded_once_the_history_can_rank_it():
     assert r["label"] == "flat" and r["best"]["points"] == 0.5
     raw = grade_window(bars, _prior(1.0, n=5), t0, 10, 7700.0, 3.0, "flat")
     assert raw["bad_ticks"] == [] and raw["best"] == {"points": 30.0, "minute": 4}      # too little history: nothing corrected
+    real = _bars(t0, 7700.0, closes)                                # a release minute: the next one opens where it closed
+    real[4]["open"] = 7729.8
+    assert grade_window(real, _prior(1.0), t0, 10, 7700.0, 3.0, "flat")["bad_ticks"] == []
     held = [*closes[:4], 7730.0, *closes[5:]]                       # a jump that holds is a move, not a tick
     assert grade_window(_bars(t0, 7700.0, held), _prior(1.0), t0, 10, 7700.0, 3.0, "flat")["bad_ticks"] == []
     mark = [*closes[:3], 7700.0, *closes[4:9], 7730.0]              # the mark bar has no minute after it: never a tick
@@ -166,3 +169,13 @@ def test_a_spot_no_bar_traded_near_the_row_minute_is_a_stale_read():
     assert grade_window(before + window, {}, t0, 10, 7700.2, 3.0, "up")["stale_read"] is False
     assert grade_window(before + window, {}, t0, 10, 7690.0, 3.0, "up")["stale_read"] is True    # last traded 3 minutes back
     assert grade_window(window[1:], {}, t0, 10, 7690.0, 3.0, "up")["stale_read"] is None           # nothing on file to check
+
+
+def test_the_first_minutes_move_is_ranked_from_the_close_before_the_window_as_the_sessions_are():
+    """A read landing mid-minute at 7702: the first minute moved 2.5 from the bar before, not 0.5 from the spot."""
+    t0 = at(11, 0)
+    bars = _bars(t0 - timedelta(minutes=1), 7700.0, [7700.0, 7702.5, 7702.0, 7702.5, 7702.0, 7702.5, 7702.0, 7702.5, 7702.0, 7702.5, 7702.0])
+    r = grade_window(bars, _prior(1.0), t0, 10, 7702.0, 3.0, "flat")
+    assert (r["sharp_move"]["points"], r["sharp_move"]["minute"], r["sharp_move"]["sharp"]) == (2.5, 1, True)
+    no_bar_before = grade_window(bars[1:], _prior(1.0), t0, 10, 7702.0, 3.0, "flat")
+    assert (no_bar_before["sharp_move"]["points"], no_bar_before["sharp_move"]["sharp"]) == (0.5, False)   # from the spot
