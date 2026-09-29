@@ -3879,12 +3879,13 @@
      "cadence": "every 30-minute read from 10:32 (signal measured from 12:00; asked earlier so the weights learn the morning is weak)",
      "code_answer": true,
      "ask": "Since the open, have tech or small caps led the index?",
-     "instructions": "Read `leaders.size_spread_day`. Since the settled open, after allowing for each fund's usual swing against SPY, which group has led: the Nasdaq-100 fund QQQ, the small-cap fund IWM, both, or neither?",
+     "instructions": "Read `leaders.size_spread_day`. Since the settled open, after allowing for each fund's usual swing against SPY, which group has led: the Nasdaq-100 fund QQQ, the small-cap fund IWM, both, one ahead and one behind, or neither?",
      "options": [
       "tech_led",
       "small_led",
       "both_ahead",
       "both_behind",
+      "one_ahead_one_behind",
       "in_line"
      ],
      "criteria": {
@@ -3892,6 +3893,7 @@
       "small_led": "IWM is ahead of QQQ by a top-third margin for this time of day and above its usual swing",
       "both_ahead": "both are in the top third of their own since the open for this time of day and their spread is not in the top third",
       "both_behind": "both are in the bottom third of their own and their spread is not in the top third",
+      "one_ahead_one_behind": "one fund is in the top third of its own and the other in the bottom third, and their spread is not in the top third",
       "in_line": "none of the above"
      },
      "code_criteria": {
@@ -3899,6 +3901,7 @@
       "small_led": "|spread| top third, IWM ahead, and IWM's residual positive",
       "both_ahead": "|spread| below the top third; each residual (signed) in the top third of its own (rank >= {third_hi})",
       "both_behind": "|spread| below the top third; each residual in the bottom third (rank < {third_lo})",
+      "one_ahead_one_behind": "|spread| below the top third; one residual in the top third of its own (rank >= {third_hi}) and the other in the bottom third (rank < {third_lo})",
       "in_line": "otherwise"
      },
      "labels": [

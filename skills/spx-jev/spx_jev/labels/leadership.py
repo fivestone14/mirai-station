@@ -186,15 +186,19 @@ def _size_spread(against: AgainstIndex, ls: LabelSet) -> None:
         ls.omit(path, why)
         return
 
+    sides = {s: {TOP_THIRD: 1, BOTTOM_THIRD: -1}.get(ranks[s].band, 0) for s in SIZE_FUNDS}
+
     def fund(s: str) -> str:
-        v, rank = ahead[s], ranks[s]
-        side = {TOP_THIRD: 1, BOTTOM_THIRD: -1}.get(rank.band, 0)
+        v, rank, side = ahead[s], ranks[s], sides[s]
         word = {1: "ahead for this time of day", -1: "behind for this time of day", 0: "in line"}[side]
         return f"{s} is {sig(abs(v))} {'ahead' if v >= 0 else 'behind'}{against_usual(v, side)}, {rank.words()}, {rank.band}: {word}"
     if spread_rank.band == TOP_THIRD:
         lead = f"{first if spread > 0 else second} leads by {sig(abs(spread))}, by size {spread_rank.words()}, top third: a lead"
     else:
-        lead = f"the two are {sig(abs(spread))} apart, by size {spread_rank.words()}, {spread_rank.band}: neither leads"
+        # one fund ahead and the other behind with an ordinary gap between them is its own case: neither leads by size
+        split = sides[first] * sides[second] == -1
+        lead = (f"the two are {sig(abs(spread))} apart, by size {spread_rank.words()}, {spread_rank.band}: neither leads"
+                + (", one ahead and one behind" if split else ""))
     ls.put(path, f"since {start:%H:%M}, after allowing for their usual swing against {CAP_WEIGHT}, {fund(first)}; and {fund(second)}; "
                  f"{lead}{against.ruler_note}")
 

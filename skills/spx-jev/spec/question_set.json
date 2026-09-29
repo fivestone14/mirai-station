@@ -6122,7 +6122,7 @@
      "status": "live",
      "cadence": "every 30-minute read from 10:32 (signal measured from 12:00; asked earlier so the weights learn the morning is weak)",
      "ask": "Since the open, have tech or small caps led the index?",
-     "instructions": "Read `leaders.size_spread_day`. Since the settled open, after allowing for each fund's usual swing against SPY, which group has led: the Nasdaq-100 fund QQQ, the small-cap fund IWM, both, or neither?",
+     "instructions": "Read `leaders.size_spread_day`. Since the settled open, after allowing for each fund's usual swing against SPY, which group has led: the Nasdaq-100 fund QQQ, the small-cap fund IWM, both, one ahead and one behind, or neither?",
      "options": [
       {
        "name": "tech_led",
@@ -6141,6 +6141,10 @@
        "description": "both are in the bottom third of their own and their spread is not in the top third"
       },
       {
+       "name": "one_ahead_one_behind",
+       "description": "one fund is in the top third of its own and the other in the bottom third, and their spread is not in the top third"
+      },
+      {
        "name": "in_line",
        "description": "none of the above"
       }
@@ -6150,13 +6154,14 @@
       "small_led": "|spread| top third, IWM ahead, and IWM's residual positive",
       "both_ahead": "|spread| below the top third; each residual (signed) in the top third of its own (rank >= {third_hi})",
       "both_behind": "|spread| below the top third; each residual in the bottom third (rank < {third_lo})",
+      "one_ahead_one_behind": "|spread| below the top third; one residual in the top third of its own (rank >= {third_hi}) and the other in the bottom third (rank < {third_lo})",
       "in_line": "otherwise"
      },
      "labels_needed": [
       {
        "name": "leaders.size_spread_day",
        "example": "since 09:35, after allowing for their usual swing against SPY, QQQ is 0.16 sigma ahead, higher than 13 of the last 19 sessions at this minute, top third: ahead for this time of day; and IWM is 0.73 sigma behind, higher than 2 of the last 19 sessions at this minute, bottom third: behind for this time of day; QQQ leads by 0.89 sigma, by size higher than 17 of the last 19 sessions at this minute, top third: a lead",
-       "computed_how": "QQQ and IWM since the settled open (09:34 bar) beyond their 20-session beta x SPY, in SPX sigma; each residual signed and ranked against the same measure at this clock on up to the last {night_rank_count} sessions, needing {same_clock_min_sessions} (else the label is omitted with the reason); the spread between them unsigned, ranked the same way; top third of the spread = a lead",
+       "computed_how": "QQQ and IWM since the settled open (09:34 bar) beyond their 20-session beta x SPY, in SPX sigma; each residual signed and ranked against the same measure at this clock on up to the last {night_rank_count} sessions, needing {same_clock_min_sessions} (else the label is omitted with the reason); the spread between them unsigned, ranked the same way; top third of the spread = a lead; below it, one fund in the top third and the other in the bottom third = neither leads, one ahead and one behind",
        "source": "Schwab 1-min bars via market_context.py, saved by the context job to state/spx_jev/context/{day}.jsonl (live) and state/spx_jev/context/bars/{day}.jsonl (backfill: python -m spx_jev.market_context --backfill 2026-08-10); the symbol must be in market_context.SYMBOLS (QQQ, IWM, SPY)",
        "availability": "cheap_add",
        "needs_engine_edit": false
@@ -9561,7 +9566,7 @@
   {
    "name": "leaders.size_spread_day",
    "example": "since 09:35, after allowing for their usual swing against SPY, QQQ is 0.16 sigma ahead, higher than 13 of the last 19 sessions at this minute, top third: ahead for this time of day; and IWM is 0.73 sigma behind, higher than 2 of the last 19 sessions at this minute, bottom third: behind for this time of day; QQQ leads by 0.89 sigma, by size higher than 17 of the last 19 sessions at this minute, top third: a lead",
-   "computed_how": "QQQ and IWM since the settled open (09:34 bar) beyond their 20-session beta x SPY, in SPX sigma; each residual signed and ranked against the same measure at this clock on up to the last {night_rank_count} sessions, needing {same_clock_min_sessions} (else the label is omitted with the reason); the spread between them unsigned, ranked the same way; top third of the spread = a lead",
+   "computed_how": "QQQ and IWM since the settled open (09:34 bar) beyond their 20-session beta x SPY, in SPX sigma; each residual signed and ranked against the same measure at this clock on up to the last {night_rank_count} sessions, needing {same_clock_min_sessions} (else the label is omitted with the reason); the spread between them unsigned, ranked the same way; top third of the spread = a lead; below it, one fund in the top third and the other in the bottom third = neither leads, one ahead and one behind",
    "source": "Schwab 1-min bars via market_context.py, saved by the context job to state/spx_jev/context/{day}.jsonl (live) and state/spx_jev/context/bars/{day}.jsonl (backfill: python -m spx_jev.market_context --backfill 2026-08-10); the symbol must be in market_context.SYMBOLS (QQQ, IWM, SPY)",
    "availability": "cheap_add",
    "needs_engine_edit": false

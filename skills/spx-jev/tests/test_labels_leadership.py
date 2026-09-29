@@ -197,6 +197,23 @@ def test_size_funds_in_line_and_close_together():
         "# of the last # sessions at this minute, bottom third: neither leads")
 
 
+def test_one_size_fund_ahead_and_the_other_behind_with_an_ordinary_gap_is_its_own_case(monkeypatch):
+    """QQQ in the top third of its own, IWM in the bottom third of its own and the gap between them no wider than
+    usual: neither leads, and the label says one is ahead and one behind rather than leaving small_led to guess."""
+    from spx_jev.labels.ranks import SameClockRank
+    from spx_jev.labels.usual_link import AgainstIndex
+    ranked = {"QQQ and SPY since": SameClockRank(8, 10), "IWM and SPY since": SameClockRank(1, 10),
+              "QQQ, IWM and SPY since": SameClockRank(4, 10)}
+    real = AgainstIndex.rank
+    monkeypatch.setattr(AgainstIndex, "rank", lambda self, value, measure, what: next(
+        ((r, None) for key, r in ranked.items() if what.startswith(key)), None) or real(self, value, measure, what))
+    got, _, _ = labels(read(jumps={"QQQ": {JUMP: sigma_move(0.1)}, "IWM": {JUMP: -sigma_move(0.1)}}))
+    assert shape(got["leaders.size_spread_day"]).endswith(
+        "top third: ahead for this time of day; and IWM is # sigma behind, higher than # of the last # sessions at this minute, bottom "
+        "third: behind for this time of day; the two are # sigma apart, by size higher than # of the last # sessions at this minute, "
+        "middle third: neither leads, one ahead and one behind")
+
+
 def test_a_size_fund_ahead_of_its_multiple_but_behind_the_usual_for_this_minute(monkeypatch):
     monkeypatch.setattr(usual_link_fixtures, "prior_drift", lambda k: (k + 1) * DRIFT_STEP)
     got, _, _ = labels(read(drifts={"QQQ": 0.2 * DRIFT_STEP}))
