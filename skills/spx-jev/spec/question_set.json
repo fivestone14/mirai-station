@@ -2324,7 +2324,7 @@
       }
      ],
      "criteria": {
-      "true": "graded offline: a bar touches prior_close within {gap_touch_sigma} sigma",
+      "true": "a 1-minute bar within the window touches prior_close within {gap_touch_sigma} sigma, as gap.fill_progress counts a touch; no grader scores this outcome yet",
       "false": "otherwise"
      },
      "labels_needed": [
@@ -3147,7 +3147,7 @@
       }
      ],
      "criteria": {
-      "true": "graded offline: a bar's range spans vwap within {vwap_touch_sigma} sigma",
+      "true": "a 1-minute bar's range within the window spans the day's average price, an exact touch as price.vs_vwap counts one; no grader scores this outcome yet",
       "false": "otherwise"
      },
      "labels_needed": [
@@ -12322,7 +12322,7 @@
  "validation": {
   "errors": [],
   "warnings": [
-   "constants defined but unused in question text: sector_count",
+   "constants defined but unused in question text: sector_count, vwap_touch_sigma",
    "labels defined but unused: context.session_progress, context.time_since_last_move, overnight.now_location"
   ]
  }

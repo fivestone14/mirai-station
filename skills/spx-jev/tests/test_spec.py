@@ -128,3 +128,10 @@ def test_every_cut_the_spec_names_is_a_constant():
     for lab in spec()["labels"]:
         for name in re.findall(r"\b[A-Z][A-Z_0-9]{3,}\b", lab["cut"]):
             assert any(hasattr(m, name) for m in modules), f"{lab['path']} names {name}, which the code does not define"
+
+
+def test_no_rule_promises_an_offline_grade_nothing_runs():
+    """The grader scores the sums only: a question's rule says how its label counts the outcome, not that it is graded."""
+    d = json.loads(QUESTION_SET.read_text(encoding="utf-8"))
+    rules = {q["id"]: json.dumps(q["criteria"]) for g in d["groups"] for q in g["questions"]}
+    assert [qid for qid, rule in rules.items() if "graded offline" in rule] == []
