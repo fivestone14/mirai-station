@@ -339,7 +339,7 @@ def _tape_labels(scene: Scene, ls: LabelSet) -> None:
     if today is None:
         for path in OPTIONS_TAPE_LABELS:
             ls.omit(path, why)
-        ls.sleep("opening_premium_burst", why)
+        ls.unmeasured("opening_premium_burst")
         return
     prior = [m for d in scene.prior_bars if (m := tape_minutes(scene.state_dir, d, start, end, clock)) is not None]
     opened = minute_of_day(scene.session_open.astimezone(ET))
@@ -472,7 +472,7 @@ def _premium_burst_5m(today: TapeMinutes, prior: list[TapeMinutes], opened: int,
     the same minutes' lean on those sessions, burst or not; the opening burst question wakes only for a top-fifth burst."""
     w = _window(today, opened, end, BURST_WINDOW_MIN, "options.premium_burst_5m", ls)
     if w is None:
-        ls.sleep("opening_premium_burst", ls.omitted["options.premium_burst_5m"])
+        ls.unmeasured("opening_premium_burst")
         return
     windows = [pw for p in prior if (pw := p.window(end - BURST_WINDOW_MIN, end)) is not None]
     rank, why = rank_sessions(w.premium, [pw.premium for pw in windows if pw.premium > 0], TAPE_AT_MINUTE)
@@ -480,7 +480,7 @@ def _premium_burst_5m(today: TapeMinutes, prior: list[TapeMinutes], opened: int,
                            "its premium", TAPE_AT_MINUTE)
     if rank is None or lean is None:
         ls.omit("options.premium_burst_5m", why or lean_why)
-        ls.sleep("opening_premium_burst", why or lean_why)
+        ls.unmeasured("opening_premium_burst")
         return
     head = f"in the last {BURST_WINDOW_MIN} minutes near-price 0DTE premium traded was"
     if rank.share >= TOP_FIFTH:

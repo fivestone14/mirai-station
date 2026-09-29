@@ -41,11 +41,14 @@ MIN_EARLIER_READS = 2
 
 def build_read_sequence_labels(scene: Scene) -> LabelSet:
     ls = LabelSet()
-    reads, why = _reads(scene)
+    reads, why, early = _reads(scene)
     if reads is None:
         for path, qid in zip(LABELS, GATES):
             ls.omit(path, why)
-            ls.sleep(qid, why)
+            if early:
+                ls.sleep(qid, why)
+            else:
+                ls.unmeasured(qid)
         return ls
     _day_move_by_read(scene, reads, ls)
     _breadth_by_read(scene, reads, ls)
@@ -103,32 +106,39 @@ def _day_moves(bars: list[dict], day: date, clocks: list[time], now_price: float
     return [(p - so) / points for p in [*prices, now_price]]
 
 
-def _reads(scene: Scene) -> tuple[Reads | None, str]:
+def _reads(scene: Scene) -> tuple[Reads | None, str, bool]:
+    """This read and the earlier ones, or None, why, and whether it is only too early in the day to have them."""
     anchor = sigma_anchor(scene)
     if anchor is None:
-        return None, NO_ANCHOR
+        return None, NO_ANCHOR, False
     if settled_open(scene.bars) is None:
-        return None, "no settled open yet: the 09:34 bar has not finished"
+        return None, "no settled open yet: the 09:34 bar has not finished", True
     now = scene.now.astimezone(ET)
     earlier = _earlier_clocks(now)
     if len(earlier) < MIN_EARLIER_READS:
-        return None, f"needs {MIN_EARLIER_READS} earlier 30-minute reads today from {FIRST_READ:%H:%M}, have {len(earlier)}"
+        return None, f"needs {MIN_EARLIER_READS} earlier 30-minute reads today from {FIRST_READ:%H:%M}, have {len(earlier)}", True
     moves = _day_moves(scene.bars, now.date(), earlier, scene.spot, anchor.points)
     if moves is None:
-        return None, f"no SPX bar finished by one of the reads at {listed([f'{c:%H:%M}' for c in earlier])}"
+        return None, f"no SPX bar finished by one of the reads at {listed([f'{c:%H:%M}' for c in earlier])}", False
     # every session's move from its 09:34 close, timed as price.day_move times it
     rank, why = move_rank(scene, moves[-1], _minutes_since_bar(scene, SETTLED_OPEN_BAR))
-    return Reads(now.date(), [*earlier, now.time()], moves, anchor, rank, why), ""
+    return Reads(now.date(), [*earlier, now.time()], moves, anchor, rank, why), "", False
 
 
-def _sleep_why(reads: Reads, rank: SameClockRank | None, why: str | None) -> str | None:
-    """Why a read-sequence question sleeps: the day's move from the settled open is not ranked or ranks in the
-    bottom third for this minute (the day has not moved), or the question's own rank is missing (``why``)."""
+def _unranked(reads: Reads, rank: SameClockRank | None, why: str | None) -> str | None:
+    """Why a read-sequence question cannot be measured: the day's move from the settled open or the question's own
+    rank is missing (``why``). Its label is left out for it and the question is missing it, not asleep."""
     if reads.move_rank is None:
         return f"the day's move from the settled open is not ranked: {reads.move_why}"
+    return why if rank is None else None
+
+
+def _sleep_why(reads: Reads) -> str | None:
+    """Why a measured read-sequence question sleeps: the day's move ranks in the bottom third for this minute, so
+    the day has not moved."""
     if reads.move_rank.band == "bottom third":
         return f"the day's move from the settled open is in the bottom third of the last {reads.move_rank.of} sessions at this minute"
-    return why if rank is None else None
+    return None
 
 
 def _giveback(moves: list[float]) -> float | None:
@@ -156,7 +166,11 @@ def _day_move_by_read(scene: Scene, reads: Reads, ls: LabelSet) -> None:
     share = _giveback(reads.moves)
     rank, why = (rank_sessions(share, same_clock_values(scene, prior_giveback), "the day's move at these read minutes")
                  if share is not None else (None, "the day has not left the settled open at any read"))
-    why = _sleep_why(reads, rank, why)
+    if share is not None and (unranked := _unranked(reads, rank, why)):
+        ls.omit("seq.day_move_by_read", unranked)
+        ls.unmeasured("seq_day_move_stage")
+        return
+    why = why if share is None else _sleep_why(reads)
     listed_reads = reads.last(LISTED_READS)
     stood = [f"{signed(m)} ({c:%H:%M})" for m, c in zip(listed_reads.moves, listed_reads.clocks)]
     text = f"{reads.where()}; at the last {len(stood)} reads it stood {listed(stood)}"
@@ -197,7 +211,7 @@ def _breadth_by_read(scene: Scene, reads: Reads, ls: LabelSet) -> None:
         why = (left_out(scene.market, "$UVOL") or left_out(scene.market, "$DVOL") or
                "no NYSE up and down volume at every listed read: the market-context job stopped or has not saved it")
         ls.omit("seq.breadth_by_read", why)
-        ls.sleep("seq_breadth_drift", why)
+        ls.unmeasured("seq_breadth_drift")
         return
     shift = (shares[-1] - shares[0]) * reads.side
     clock = scene.now.astimezone(ET).time()
@@ -208,7 +222,11 @@ def _breadth_by_read(scene: Scene, reads: Reads, ls: LabelSet) -> None:
         if got is not None:
             base.append(abs(got[-1] - got[0]))
     rank, why = rank_sessions(abs(shift), base, "NYSE up and down volume at these read minutes")
-    why = _sleep_why(reads, rank, why)
+    if unranked := _unranked(reads, rank, why):
+        ls.omit("seq.breadth_by_read", unranked)
+        ls.unmeasured("seq_breadth_drift")
+        return
+    why = _sleep_why(reads)
     verdict = None
     if why is None:
         big = rank.band == "top third"

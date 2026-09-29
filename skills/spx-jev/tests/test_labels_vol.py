@@ -1112,7 +1112,7 @@ def skew_scene(scene_factory, tmp_path, slope: float, clock=(9, 50), prior_slope
 
 def tilt_and_gate(scene):
     got = build_vol_labels(scene)
-    return got.state.get("skew", {}).get("put_tilt_vs_usual"), got.omitted.get("skew.put_tilt_vs_usual"), got.gates["put_tilt_vs_clock"]
+    return got.state.get("skew", {}).get("put_tilt_vs_usual"), got.omitted.get("skew.put_tilt_vs_usual"), got.gates.get("put_tilt_vs_clock")
 
 
 @pytest.mark.parametrize("slope, words", [
@@ -1172,16 +1172,16 @@ def test_the_tilt_never_reads_a_line_written_after_the_read(scene_factory, tmp_p
     assert tilt_and_gate(scene)[0].startswith("same-day 25-delta puts are priced 1.6 vol points above 25-delta calls")
 
 
-def test_the_put_tilt_sleeps_its_question_with_the_reason_it_is_omitted(scene_factory, tmp_path):
+def test_a_put_tilt_that_cannot_be_ranked_leaves_its_question_missing_the_label_not_asleep(scene_factory, tmp_path):
     thin = skew_scene(scene_factory, tmp_path / "thin", 3.0, prior_slopes=tuple(0.5 * k for k in range(2, 11)))
     why = "its rank needs 10 prior sessions with 25-delta quotes on the tape at 09:50, have 9"
-    assert tilt_and_gate(thin) == (None, why, why)
+    assert tilt_and_gate(thin) == (None, why, None)
     later = skew_scene(scene_factory, tmp_path / "later", 3.0, clock=(9, 50))
     later = replace(later, now=at(10, 20, ss=15))
     why = "no fresh 25-delta put and call quotes on the lob-flow tape in the minute to 10:20"
-    assert tilt_and_gate(later) == (None, why, why)
+    assert tilt_and_gate(later) == (None, why, None)
     why = f"no lob-flow tape for {DAY} (state/lob_flow/raw)"
-    assert tilt_and_gate(replace(thin, state_dir=None)) == (None, why, why)
+    assert tilt_and_gate(replace(thin, state_dir=None)) == (None, why, None)
     assert labels(replace(thin, state_dir=None))[1]["skew.shift_vs_price"] == why
 
 

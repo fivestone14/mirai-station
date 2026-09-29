@@ -159,7 +159,7 @@ def test_the_night_is_refused_across_a_roll_and_a_prior_roll_night_sits_out(tmp_
     write_table(tmp_path, [mbt_roll(datetime(2026, 9, 17, 17, 10, tzinfo=ET))])
     ls = build_bitcoin_labels(premarket_read(premarket_scene_factory, tmp_path, 0.3, 2.6))
     why = ls.omitted["overnight.btc_vs_futures"]
-    assert why.startswith("bitcoin futures (/MBT) rolled to the next contract overnight") and ls.gates["btc_overnight_vs_futures"] == why
+    assert why.startswith("bitcoin futures (/MBT) rolled to the next contract overnight") and ls.gates["btc_overnight_vs_futures"] is None
     # the same roll a night earlier leaves tonight measured, against one night fewer
     write_table(tmp_path, [mbt_roll(datetime(2026, 9, 16, 17, 10, tzinfo=ET))])
     ls = build_bitcoin_labels(premarket_read(premarket_scene_factory, tmp_path, 0.3, 2.6))
@@ -206,13 +206,13 @@ def test_the_night_before_the_last_friday_expiry_is_refused_before_the_table_or_
     why = ls.omitted["overnight.btc_vs_futures"]
     assert why == ("bitcoin futures (/MBT) rolls to the next contract on the evening of Thursday 09-24, before Friday's expiry, so the "
                    "night since Thursday 16:00 would be partly the spread between two contracts")
-    assert ls.gates["btc_overnight_vs_futures"] == why
+    assert ls.gates["btc_overnight_vs_futures"] is None
     # the night before, into the Thursday, is measured
     ls = build_bitcoin_labels(premarket_read(premarket_scene_factory, tmp_path, 0.3, 2.6, day="2026-09-24"))
     assert "overnight.btc_vs_futures" in written(ls)
 
 
-def test_a_stale_bitcoin_feed_sleeps_the_question(tmp_path, premarket_scene_factory):
+def test_a_stale_bitcoin_feed_leaves_the_question_missing_its_label(tmp_path, premarket_scene_factory):
     prior_nights(tmp_path)
     d = date.fromisoformat(DAY)
     rows = night(d, 0.3, 2.6, until=time(9, 10))
@@ -220,7 +220,7 @@ def test_a_stale_bitcoin_feed_sleeps_the_question(tmp_path, premarket_scene_fact
     ls = build_bitcoin_labels(premarket_scene_factory(at(9, 28), rows, state_dir=tmp_path))
     why = ls.omitted["overnight.btc_vs_futures"]
     assert why == f"the newest bitcoin futures (/MBT) bar finished at 09:10, more than {WINDOW_10_MIN} minutes before the read"
-    assert ls.gates["btc_overnight_vs_futures"] == why
+    assert ls.gates["btc_overnight_vs_futures"] is None
 
 
 def test_too_few_nights_omit_the_label_with_the_reason(tmp_path, premarket_scene_factory):
@@ -424,21 +424,21 @@ def test_the_link_needs_the_morning_before_10_32():
 @pytest.mark.parametrize("path, what", [("xasset.btc_gap_30min", "/MBT and $SPX over the half hour to this minute"),
                                         ("xasset.btc_gap_streak", "/MBT and $SPX over the 3 half hours to this minute"),
                                         ("xasset.btc_link", "/MBT and $SPX five minutes by five minutes since 09:35")])
-def test_a_rank_under_ten_prior_sessions_omits_the_label_and_sleeps_its_question(path, what):
+def test_a_rank_under_ten_prior_sessions_omits_the_label_and_leaves_its_question_missing_it(path, what):
     scene = session_read({175: 0.004})
     _, ls = session_labels(replace(scene, prior_markets=dict(list(scene.prior_markets.items())[1:])))
     why = f"its rank needs {SAME_CLOCK_MIN_SESSIONS} prior sessions with {what}, have {SAME_CLOCK_MIN_SESSIONS - 1}"
-    assert ls.omitted[path] == why and ls.gates[GATE_OF[path]] == why
+    assert ls.omitted[path] == why and ls.gates[GATE_OF[path]] is None
 
 
-def test_a_stale_bitcoin_feed_sleeps_the_session_questions():
+def test_a_stale_bitcoin_feed_leaves_the_session_questions_missing_their_labels():
     scene = session_read()
     pts = scene.market.known["/MBT"]
     stale = replace(scene, market=MarketContext({**scene.market.known, "/MBT": [p for p in pts if p[0] <= NOW - timedelta(minutes=15)]}))
     _, ls = session_labels(stale)
     why = f"no bitcoin futures (/MBT) price in the last {WINDOW_10_MIN} minutes"
     for path in ("xasset.btc_gap_30min", "xasset.btc_gap_streak", "xasset.btc_link"):
-        assert ls.omitted[path] == why and ls.gates[GATE_OF[path]] == why
+        assert ls.omitted[path] == why and ls.gates[GATE_OF[path]] is None
 
 
 def test_the_prior_sessions_read_from_the_overnight_store_as_from_their_market_context(tmp_path):
@@ -501,15 +501,15 @@ def test_five_sessions_under_ten_prior_stretches_are_not_ranked(tmp_path, scene_
     ls = build_bitcoin_labels(five_day_read(scene_factory, tmp_path))
     why = (f"its rank needs {SAME_CLOCK_MIN_SESSIONS} prior sessions with a 5-session stretch of /MBT and $SPX on one contract, "
            f"have {SAME_CLOCK_MIN_SESSIONS - 1}")
-    assert ls.omitted["xasset.btc_five_day"] == why and ls.gates["btc_five_day_lead"] == why
+    assert ls.omitted["xasset.btc_five_day"] == why and ls.gates["btc_five_day_lead"] is None
 
 
-def test_a_roll_inside_the_five_sessions_sleeps_the_question(tmp_path, scene_factory):
+def test_a_roll_inside_the_five_sessions_leaves_the_question_missing_its_label(tmp_path, scene_factory):
     five_day_state(tmp_path, -1.0)
     write_table(tmp_path, [mbt_roll(datetime(2026, 9, 16, 17, 10, tzinfo=ET))])
     ls = build_bitcoin_labels(five_day_read(scene_factory, tmp_path))
     why = ls.omitted["xasset.btc_five_day"]
-    assert why.startswith("bitcoin futures (/MBT) rolled to the next contract inside the last 5 sessions") and ls.gates["btc_five_day_lead"] == why
+    assert why.startswith("bitcoin futures (/MBT) rolled to the next contract inside the last 5 sessions") and ls.gates["btc_five_day_lead"] is None
 
 
 def test_the_five_sessions_are_refused_while_the_quote_shows_a_roll_the_table_has_not_located(tmp_path, scene_factory):

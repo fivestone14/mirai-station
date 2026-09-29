@@ -46,6 +46,12 @@ class LabelSet:
     def sleep(self, question_id: str, reason: str) -> None:
         self.gates[question_id] = reason
 
+    def unmeasured(self, question_id: str) -> None:
+        """A gate that could not be measured: a fact nobody saw is not "nothing happened", so the question is not put
+        to sleep on it. It is left awake with the label it reads omitted for the same reason, so the read counts it
+        missing (ask.build_requests), which the health reviews see."""
+        self.gates[question_id] = None
+
     def decide(self, question_id: str, verdict: str | None, why: str | None) -> None:
         """Wake the question when its label reached a verdict, else sleep it on ``why``."""
         if verdict is None:

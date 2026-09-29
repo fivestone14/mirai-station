@@ -108,7 +108,7 @@ def test_the_furthest_point_is_the_days_even_before_the_listed_reads(scene_facto
                                                 "been given back, top third of the last 10 sessions for these reads: unwinding")
 
 
-def test_a_day_whose_move_ranks_in_the_bottom_third_or_is_not_ranked_sleeps(scene_factory):
+def test_a_day_whose_move_ranks_in_the_bottom_third_sleeps_and_one_not_ranked_is_missing(scene_factory):
     flat = read(scene_factory, {**UP, time(11, 32): 5.0}, shares={time(10, 32): 0.7, time(11, 2): 0.6, time(11, 32): 0.5})   # 0.05 sigma: larger than 0.04 and 0.02
     assert flat.gates["seq_day_move_stage"] == "the day's move from the settled open is in the bottom third of the last 10 sessions at this minute"
     assert flat.gates["seq_breadth_drift"] == flat.gates["seq_day_move_stage"]
@@ -118,9 +118,9 @@ def test_a_day_whose_move_ranks_in_the_bottom_third_or_is_not_ranked_sleeps(scen
     under = read(scene_factory, {**UP, time(11, 32): 7.0})                      # larger than 3 of the 10: still the bottom third
     assert under.gates["seq_day_move_stage"] == flat.gates["seq_day_move_stage"]
     thin = read(scene_factory, {**UP, time(11, 32): 30.0}, prior_days=9)
-    assert thin.gates["seq_day_move_stage"] == ("the day's move from the settled open is not ranked: its rank needs 10 prior sessions with a "
-                                                "117-minute move at this minute, have 9")
-    assert said(thin, "seq.day_move_by_read").startswith("SPX is 0.30 sigma above the settled open; at the last 4 reads")
+    assert thin.gates["seq_day_move_stage"] is None and thin.omitted["seq.day_move_by_read"] == (
+        "the day's move from the settled open is not ranked: its rank needs 10 prior sessions with a 117-minute move at this minute, have 9")
+    assert "seq.day_move_by_read" not in thin.state.get("seq", {})
 
 
 def test_fewer_than_two_earlier_reads_leave_the_sequence_out(scene_factory):
@@ -161,7 +161,7 @@ def test_the_breadth_shift_is_worded_and_ranked(scene_factory):
 def test_breadth_is_left_out_without_the_days_up_and_down_volume(scene_factory):
     ls = read(scene_factory, {**UP, time(11, 32): 50.0})
     assert ls.omitted["seq.breadth_by_read"].startswith("no NYSE up and down volume at every listed read")
-    assert ls.gates["seq_breadth_drift"] == ls.omitted["seq.breadth_by_read"]
+    assert ls.gates["seq_breadth_drift"] is None
 
 
 def test_a_session_read_accounts_for_both_labels(full_scene):

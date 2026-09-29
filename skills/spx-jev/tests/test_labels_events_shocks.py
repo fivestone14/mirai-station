@@ -152,12 +152,12 @@ def test_the_minor_releases_before_the_open_leave_the_session_as_it_was(scene_fa
     assert "ADP" not in clock
 
 
-def test_past_the_calendars_last_day_the_calendar_labels_are_omitted_and_their_gates_sleep(scene_factory):
+def test_past_the_calendars_last_day_the_calendar_labels_are_omitted_and_their_questions_missing(scene_factory):
     _, omitted, gates = labels(scene_at(scene_factory, at(10, 32, "2027-01-05"), FLAT))
     why = "the event calendar (calendar/events.json) is kept only through 2026-12-31: extend it"
     for path in ("context.event_clock", "event.release_clock_10m", "event.reaction", "event.statement_and_presser"):
         assert omitted[path] == why
-    assert gates["event_clock"] == gates["release_in_lane"] == gates["move_reaction_path"] == why
+    assert gates["event_clock"] is gates["release_in_lane"] is gates["move_reaction_path"] is None
 
 
 # ---- event.release_clock_10m
@@ -281,10 +281,10 @@ def test_the_reaction_needs_the_normal_day_sigma_and_ten_sessions_to_rank_it(sce
     s = replace(reaction_scene(scene_factory, at(11, 32, JOLTS_DAY), 7722.0), prior_rulers=dict(list(NORMAL.items())[:4]))
     _, omitted, gates = labels(s)
     assert omitted["event.reaction"] == "needs 5 prior sessions with a morning anchor for the normal-day sigma"
-    assert gates["move_reaction_path"] == omitted["event.reaction"]
+    assert gates["move_reaction_path"] is None
     s = replace(reaction_scene(scene_factory, at(11, 32, JOLTS_DAY), 7722.0), prior_bars=sloped(9))
     _, omitted, gates = labels(s)
-    assert omitted["event.reaction"] == gates["move_reaction_path"] == (
+    assert gates["move_reaction_path"] is None and omitted["event.reaction"] == (
         "its rank needs 10 prior sessions with a move from 10:00 to 10:15, have 9")
 
 
@@ -513,7 +513,7 @@ def test_an_opening_burst_is_ranked_from_the_settled_open(scene_factory):
 def test_the_shock_needs_ten_prior_sessions_to_judge_a_window(scene_factory):
     s = burst_scene(scene_factory, at(12, 2, BURST_DAY), prior_bars=sloped(9))
     _, omitted, gates = labels(s)
-    assert gates["shock_state"] == omitted["shock.burst"] == (
+    assert gates["shock_state"] is None and omitted["shock.burst"] == (
         "no five-minute window in the last 60 minutes could be judged: each is ranked against the biggest five-minute move of "
         "the hour to its minute (from the settled open when that is shorter) on up to the last 20 sessions and needs 10 of them "
         "with a trusted morning ruler")
@@ -532,7 +532,7 @@ def test_the_shock_labels_need_a_ruler(scene_factory):
     s = burst_scene(scene_factory, at(12, 2, BURST_DAY), anchor_row=False, sigma_live=None)
     _, omitted, gates = labels(s)
     why = "no morning sigma ruler: no row by 09:40, no live sigma and no VIX at the settled open"
-    assert omitted["shock.burst"] == omitted["shock.vs_day_range"] == omitted["shock.cross_asset"] == gates["shock_state"] == why
+    assert omitted["shock.burst"] == omitted["shock.vs_day_range"] == omitted["shock.cross_asset"] == why and gates["shock_state"] is None
 
 
 def test_a_burst_inside_the_days_range_and_one_given_up(scene_factory):

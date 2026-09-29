@@ -236,10 +236,10 @@ def test_a_break_that_ended_in_the_last_30_minutes_keeps_the_question_awake(scen
     assert gates["break_armed"] == "no break armed, and none expired or was called off in the last 30 minutes"
 
 
-def test_a_row_without_a_break_read_omits_the_label_and_sleeps_the_question(scene_factory):
+def test_a_row_without_a_break_read_omits_the_label_and_leaves_the_question_missing_it(scene_factory):
     _, omitted, gates = labels(scene(scene_factory, at(11, 0), [7700.0] * 90))
     assert omitted["levels.break_armed"] == "row carries no break read (level_reclaim.break_state)"
-    assert gates["break_armed"] == "row carries no break read"
+    assert gates["break_armed"] is None
     _, omitted, gates = labels(scene(scene_factory, at(11, 0), [7700.0] * 90, row_over=reclaim("cocked")))
     assert omitted["levels.break_armed"] == "the armed break carries no direction, level or arming time" and gates["break_armed"] is None
 

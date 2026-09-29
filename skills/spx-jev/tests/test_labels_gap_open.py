@@ -215,7 +215,7 @@ def test_whether_the_gap_is_real_waits_for_its_rank(scene_factory, tmp_path):
     need = "its rank needs 10 prior sessions with a trusted morning ruler, a settled open and yesterday's close, have 9"
     _, omitted, gates = labels(gapped(scene_factory, tmp_path, at(12, 0), opening(7732.0, [7736.0] * 160), gaps=TWENTY[:9]))
     assert omitted["gap.fill_progress"] == omitted["gap.morning_vs_gap"] == omitted["gap.size"] == need
-    assert gates["gap_fill_next_hour"] == f"no gap to fill: {need}"
+    assert gates["gap_fill_next_hour"] is None
 
 
 def test_a_touch_in_a_bar_that_has_not_finished_does_not_count(scene_factory, tmp_path):

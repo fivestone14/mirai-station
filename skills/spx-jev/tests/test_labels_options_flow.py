@@ -170,7 +170,7 @@ def test_the_tape_labels_are_omitted_without_a_tape_or_a_running_collector(scene
     scene = tape_scene(scene_factory, tmp_path, NOW, every_minute(DAY, NOW))
     ls, _ = read(replace(scene, state_dir=None))
     assert ls.omitted["options.big_prints_10"] == "no state folder to read the lob-flow collector's 0DTE tape from"
-    assert ls.gates["opening_premium_burst"] == "no state folder to read the lob-flow collector's 0DTE tape from"
+    assert ls.gates["opening_premium_burst"] is None
     ls, _ = read(replace(scene, now=at(10, 0, "2026-09-21")))
     assert ls.omitted["options.premium_pace_30"] == "no lob-flow tape for 2026-09-21 under lob_flow/raw: the collector did not run"
     stopped = tape_scene(scene_factory, tmp_path, NOW, every_minute(DAY, at(9, 57)))
@@ -244,7 +244,7 @@ def test_premium_ranks_need_ten_prior_sessions_with_a_whole_tape_at_this_minute(
     prior[PRIOR_DAYS[9]] = paced(2, PRIOR_DAYS[9], at(9, 45, PRIOR_DAYS[9]))        # its collector stopped before this minute
     ls, _ = read(tape_scene(scene_factory, tmp_path, NOW, paced(3), prior))
     assert ls.omitted["options.premium_pace_30"] == "its rank needs 10 prior sessions with a whole lob-flow tape at this minute, have 9"
-    assert ls.gates["opening_premium_burst"] == "its rank needs 10 prior sessions with a whole lob-flow tape at this minute, have 9"
+    assert ls.gates["opening_premium_burst"] is None
 
 
 # ---- options.flow_lean_30

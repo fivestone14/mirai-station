@@ -83,7 +83,7 @@ def build_events_shocks_labels(scene: Scene) -> LabelSet:
         for path in CALENDAR_LABELS:
             ls.omit(path, why)
         for qid in CALENDAR_GATES:
-            ls.sleep(qid, why)
+            ls.unmeasured(qid)
         day_events = None
     else:
         day_events = events.session_rows(today)
@@ -254,7 +254,7 @@ def _reaction(scene: Scene, day_events: list[Event], bursts: list[Burst], ls: La
     if nds is None:
         why = f"needs {MIN_RANK_SESSIONS} prior sessions with a morning anchor for the normal-day sigma"
         ls.omit(path, why)
-        ls.sleep(gate, why)
+        ls.unmeasured(gate)
         return
     now, first_min = scene.now, timedelta(minutes=REACTION_MIN)
     earliest, latest = now - timedelta(minutes=EVENT_DIGEST_MIN), now - first_min
@@ -274,13 +274,13 @@ def _reaction(scene: Scene, day_events: list[Event], bursts: list[Burst], ls: La
     if p0 is None or p1 is None:
         why = f"no finished bars around the reaction's start at {hm(start)}"
         ls.omit(path, why)
-        ls.sleep(gate, why)
+        ls.unmeasured(gate)
         return
     first = (p1 - p0) / nds
     rank, no_rank = _window_rank(scene, first, start, start + first_min)
     if rank is None:
         ls.omit(path, no_rank)
-        ls.sleep(gate, no_rank)
+        ls.unmeasured(gate)
         return
     named = " and ".join(_what(x) + ("" if x.verified else " (expected at that time)") for x in due)
     head = f"the reaction starts at {hm(start)} with {named or 'a sudden burst'}"
@@ -562,7 +562,7 @@ def _shocks(scene: Scene, anchor: SigmaRuler | None, windows: list[Burst], burst
     if anchor is None:
         for path in SHOCK_LABELS:
             ls.omit(path, NO_ANCHOR)
-        ls.sleep("shock_state", NO_ANCHOR)
+        ls.unmeasured("shock_state")
         return
     since = scene.now - timedelta(minutes=SHOCK_LOOKBACK_MIN)
     recent = [w for w in windows if w.end > since]
@@ -587,10 +587,14 @@ def _shocks(scene: Scene, anchor: SigmaRuler | None, windows: list[Burst], burst
         _vs_day_range(scene, anchor, burst, ls)
         _cross_asset(scene, anchor, burst, ls)
         return
-    # no shock in the lookback is the shock over, not unmeasured: its questions hold no earlier answer
+    # no shock in the lookback is the shock over, not unmeasured: its questions hold no earlier answer. With no window
+    # judged after the first five minutes the lookback was not measured at all, and the question is missing, not asleep.
     for path in SHOCK_LABELS:
         ls.omit(path, why, ended=bool(recent))
-    ls.sleep("shock_state", why)
+    if recent or scene.now < first_end:
+        ls.sleep("shock_state", why)
+    else:
+        ls.unmeasured("shock_state")
 
 
 def _burst_label(scene: Scene, anchor: SigmaRuler, burst: Burst, day_events: list[Event] | None, ls: LabelSet) -> None:

@@ -57,7 +57,7 @@ def test_a_series_far_off_its_own_history_is_taken_out_and_each_label_needing_it
         "NYSE TRIN ($TRIN) is Schwab's advancers over decliners divided by $UVOL over $DVOL, and NYSE up volume ($UVOL) reads ")
     for path in ("breadth.tick_lean", "breadth.tick_side_vs_usual", "breadth.tick_extreme_5m"):
         assert ls.omitted[path] == tick
-    assert ls.gates["tick_extreme_follow"] == tick
+    assert ls.gates["tick_extreme_follow"] is None
 
 
 def test_the_saved_sessions_pass_and_the_labels_read_them(scene_factory):

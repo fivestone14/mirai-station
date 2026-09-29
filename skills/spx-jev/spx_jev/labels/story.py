@@ -61,13 +61,13 @@ def build_story_labels(scene: Scene) -> LabelSet:
         for path in LABELS:
             ls.omit(path, why)
         for qid in GATES:
-            ls.sleep(qid, why)
+            ls.unmeasured(qid)
         return ls
     _where_now(night, ls)
     legs, why = night.legs()
     if legs is None:
-        _omit(ls, "night_legs_agree", why)
-        _omit(ls, "overnight_arc", why)
+        _missing(ls, "night_legs_agree", why)
+        _missing(ls, "overnight_arc", why)
     else:
         _legs(night, legs, ls)
         _arc(night, legs, ls)
@@ -231,9 +231,15 @@ def _figure(value: float, rank: NightRank | SameClockRank, verdict: str | None) 
 
 
 def _omit(ls: LabelSet, qid: str, why: str) -> None:
-    """The gated question's label left out and the question asleep, for one reason."""
+    """The gated question's label left out and the question asleep, for one reason: there is nothing to tell yet."""
     ls.omit(GATE_LABELS[qid], why)
     ls.sleep(qid, why)
+
+
+def _missing(ls: LabelSet, qid: str, why: str) -> None:
+    """The gated question's label left out because it could not be measured: the question is missing it, not asleep."""
+    ls.omit(GATE_LABELS[qid], why)
+    ls.unmeasured(qid)
 
 
 def _ended(verdict: str | None, text: str, ends: dict[str, str]) -> str:
@@ -342,14 +348,14 @@ def _since_checkpoint(night: NightSoFar, ls: LabelSet) -> None:
     leg, why = night.move(prev, night.now)
     before, before_rank, why_before = night.since_start(prev)
     if leg is None or before is None:
-        _omit(ls, "latest_leg_vs_night", f"the leg since the {prev:%H:%M} checkpoint: {why}" if leg is None
-              else f"the night at the {prev:%H:%M} checkpoint: {why_before}")
+        _missing(ls, "latest_leg_vs_night", f"the leg since the {prev:%H:%M} checkpoint: {why}" if leg is None
+                 else f"the night at the {prev:%H:%M} checkpoint: {why_before}")
         return
     start, clock = prev.time(), night.clock
     rank, why = night.rank(leg, ("since", start, clock),
                            lambda d: (datetime.combine(d, start, tzinfo=ET), datetime.combine(d, clock, tzinfo=ET)))
     if rank is None:
-        _omit(ls, "latest_leg_vs_night", f"the leg since the {prev:%H:%M} checkpoint is not ranked: {why}")
+        _missing(ls, "latest_leg_vs_night", f"the leg since the {prev:%H:%M} checkpoint is not ranked: {why}")
         return
     s, b = night.sigma(leg.pct), night.sigma(before.pct)
     verdict, why = None, None
@@ -377,7 +383,7 @@ def _release_vs_night(night: NightSoFar, ls: LabelSet) -> None:
     stood at the report; release_vs_night checks crossed_price first, tested at 08:45."""
     uncovered = events.uncovered(night.day, tier=events.PRE_OPEN)
     if uncovered:
-        _omit(ls, "release_vs_night", uncovered)
+        _missing(ls, "release_vs_night", uncovered)
         return
     due = story.releases(night.day)
     if not due:
@@ -392,11 +398,11 @@ def _release_vs_night(night: NightSoFar, ls: LabelSet) -> None:
     before, before_rank, why_before = night.since_start(at)
     after, _, why_after = night.since_start(end)
     if reaction is None or before is None or after is None:
-        _omit(ls, "release_vs_night", f"the report window: {why or why_before or why_after}")
+        _missing(ls, "release_vs_night", f"the report window: {why or why_before or why_after}")
         return
     rank, why = night.rank(reaction, (("report_window",), None), story.stretch_window("report_window", release=night.release))
     if rank is None:
-        _omit(ls, "release_vs_night", f"the report window is not ranked: {why}")
+        _missing(ls, "release_vs_night", f"the report window is not ranked: {why}")
         return
     r, b = night.sigma(reaction.pct), night.sigma(before.pct)
     verdict, why = None, None
@@ -433,13 +439,13 @@ def _vs_last_hour(night: NightSoFar, ls: LabelSet) -> None:
     day, bars, why = yesterdays_bars(night.scene)
     hour = _last_hour_pct(bars, day) if bars else None
     if hour is None:
-        _omit(ls, "night_vs_last_hour", f"yesterday's last hour: {why or 'no SPX bars at its start and end'}")
+        _missing(ls, "night_vs_last_hour", f"yesterday's last hour: {why or 'no SPX bars at its start and end'}")
         return
     before = prior_bar_days(night.scene.state_dir, day, limit=NIGHT_RANK_COUNT)
     base = [abs(v) for d, b in before.items() if (v := _last_hour_pct(b, d)) is not None]
     rank, why = rank_sessions(abs(hour), base, "a last hour on file")
     if rank is None:
-        _omit(ls, "night_vs_last_hour", f"yesterday's last hour is not ranked: {why}")
+        _missing(ls, "night_vs_last_hour", f"yesterday's last hour is not ranked: {why}")
         return
     s = night.sigma(hour)
     verdict, why = None, None

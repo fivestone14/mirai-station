@@ -78,7 +78,7 @@ def build_labels(scene: Scene) -> LabelSet:
             for path in family.labels:
                 got.omit(path, f"the {family.name} labels failed this read: {type(e).__name__}: {e}")
             for qid in family.gates:
-                got.sleep(qid, f"the {family.name} labels failed this read")
+                got.unmeasured(qid)
         stray = (got.paths() - set(family.labels)) | (set(got.gates) - set(family.gates))
         if stray:
             raise ValueError(f"the {family.name} family wrote labels or gates it does not own: {sorted(stray)}")

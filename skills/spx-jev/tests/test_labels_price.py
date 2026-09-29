@@ -134,7 +134,7 @@ def test_a_stopped_tape_leaves_the_half_hour_unmeasured(scene_factory, tmp_path)
     stopped = "the bars have stopped: no bar finished in the minute before the last 30 minutes"
     assert omitted["price.recent_move"] == stopped
     assert omitted["price.move_shape"] == f"no 30-minute move to shape: {stopped}"
-    assert omitted["price.prior_close_push"] == gates["prior_close_push_fade"] == f"no 30-minute move to judge: {stopped}"
+    assert omitted["price.prior_close_push"] == f"no 30-minute move to judge: {stopped}" and gates["prior_close_push_fade"] is None
     assert state["price.afternoon_leg"].startswith("since 14:00 price has risen") and "last 30 minutes" not in state["price.afternoon_leg"]
 
 
@@ -204,17 +204,17 @@ def test_each_bar_is_judged_against_the_average_known_when_it_finished(scene_fac
         "top third: far from it; it last traded at the average 59 minutes ago")
 
 
-def test_no_vwap_on_the_row_omits_the_average_labels_and_sleeps_the_reach_question(scene_factory, tmp_path):
+def test_no_vwap_on_the_row_omits_the_average_labels_and_leaves_the_reach_question_missing_them(scene_factory, tmp_path):
     _, omitted, gates = _labels(_vwap_scene(scene_factory, tmp_path, None))
-    assert omitted["price.vs_vwap"] == omitted["price.vwap_reach"] == gates["average_reach_30"] == "row carries no vwap"
+    assert omitted["price.vs_vwap"] == omitted["price.vwap_reach"] == "row carries no vwap" and gates["average_reach_30"] is None
 
 
 def test_the_distances_need_ten_prior_rows_at_this_minute(scene_factory, tmp_path):
     scene = _ranked(_move_scene(scene_factory, 15.0))
     _, omitted, gates = _labels(scene)
-    assert omitted["price.vs_vwap"] == gates["average_reach_30"] == "no state folder to read the prior sessions' diaries from"
+    assert omitted["price.vs_vwap"] == "no state folder to read the prior sessions' diaries from" and gates["average_reach_30"] is None
     _, omitted, gates = _labels(_with_diaries(scene, tmp_path, days=PRIOR_DAYS[:9]))
-    assert omitted["price.vs_prior_close"] == gates["prior_close_push_fade"] == (
+    assert gates["prior_close_push_fade"] is None and omitted["price.vs_prior_close"] == (
         "its rank needs 10 prior sessions with yesterday's close on a diary row at this minute, have 9")
     assert omitted["price.vs_vwap"] == "its rank needs 10 prior sessions with the day's average price on a diary row at this minute, have 9"
 
@@ -244,7 +244,7 @@ def test_no_prior_close_omits_every_label_that_reads_it(scene_factory, tmp_path)
     _, omitted, gates = _labels(_with_diaries(_ranked(_move_scene(scene_factory, 15.0, row_over={"prior_close": None})), tmp_path))
     assert {p: omitted[p] for p in ("price.vs_prior_close", "price.day_move_split", "price.prior_close_push")} == {
         p: "row carries no prior close" for p in ("price.vs_prior_close", "price.day_move_split", "price.prior_close_push")}
-    assert gates["prior_close_push_fade"] == "row carries no prior close"
+    assert gates["prior_close_push_fade"] is None
 
 
 # ---- price.afternoon_leg
@@ -615,11 +615,11 @@ def test_without_a_straddle_the_reach_is_omitted_and_its_gate_still_decided(scen
 
 # ---- every set label: the anchor, and nothing after the row
 
-def test_without_a_morning_ruler_the_anchored_labels_say_why_and_the_gates_sleep(scene_factory):
+def test_without_a_morning_ruler_the_anchored_labels_say_why_and_their_gated_questions_read_as_missing(scene_factory):
     scene = scene_factory(at(15, 2, ss=5), flat_bars(332), row_over={"sigma_live": None})
     _, omitted, gates = _labels(scene)
     assert {p: omitted[p] for p in ANCHORED} == {p: NO_ANCHOR for p in ANCHORED}
-    assert {q: gates[q] for q in GATES} == {q: NO_ANCHOR for q in GATES}
+    assert {q: gates[q] for q in GATES} == dict.fromkeys(GATES)
 
 
 def test_the_momentum_reads_keep_the_rows_sigma_with_or_without_a_morning_ruler(scene_factory):

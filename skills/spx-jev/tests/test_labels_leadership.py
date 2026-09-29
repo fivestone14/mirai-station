@@ -65,8 +65,8 @@ def labels(scene):
 def test_every_label_is_omitted_without_the_market_context():
     _, omitted, gates = labels(replace(read(), market=None))
     assert omitted == {p: "no market-context snapshot today" for p in LABELS}
-    assert gates == {"heavyweight_gap_split": "leaders.heavyweight_gap is not measured: no market-context snapshot today",
-                     "single_name_shock": "leaders.single_name_10m is not measured: no market-context snapshot today"}
+    # a fact that could not be measured is not "nothing happened": its question is left awake, missing the label
+    assert gates == {"heavyweight_gap_split": None, "single_name_shock": None}
 
 
 # ---- equal weight against cap weight
@@ -276,8 +276,7 @@ def test_the_largest_names_need_the_index_weights(tmp_path):
     _, omitted, gates = labels(read())
     megacap = ("leaders.heavyweight_gap", "leaders.megacap_cohesion_30m", "leaders.pull_vs_rest_30m", "leaders.single_name_10m")
     assert {p: omitted[p] for p in megacap} == {p: "no state folder to read the index weights from" for p in megacap}
-    assert gates == {"heavyweight_gap_split": "leaders.heavyweight_gap is not measured: no state folder to read the index weights from",
-                     "single_name_shock": "leaders.single_name_10m is not measured: no state folder to read the index weights from"}
+    assert gates == {"heavyweight_gap_split": None, "single_name_shock": None}
     _, omitted, _ = labels(replace(read(), state_dir=tmp_path))
     assert omitted["leaders.pull_vs_rest_30m"] == f"no index weights: {WEIGHTS_FILE} is not written yet"
     _, omitted, _ = labels(read(weights={"as_of": "2026-09-19", "weights": WEIGHTS}, tmp_path=tmp_path))
@@ -426,18 +425,18 @@ def test_the_heavyweight_gap_needs_ten_prior_sessions_with_the_session_before(tm
     _, omitted, gates = labels(gapped(tmp_path, "NVDA", 0.059, days=PRIOR_DAYS))
     why = (f"its rank needs {SAME_CLOCK_MIN_SESSIONS} prior sessions with yesterday's close, a settled open and every heavyweight's "
            "price at both, have 7")
-    assert omitted["leaders.heavyweight_gap"] == why and gates["heavyweight_gap_split"] == f"leaders.heavyweight_gap is not measured: {why}"
+    assert omitted["leaders.heavyweight_gap"] == why and gates["heavyweight_gap_split"] is None
 
 
 def test_the_heavyweight_gap_waits_for_the_settled_open(tmp_path):
     _, omitted, gates = labels(gapped(tmp_path, "NVDA", 0.059, now=at(9, 34, ss=30)))
     why = "the settled open (the close of the 09:34 bar) is not in yet"
-    assert omitted["leaders.heavyweight_gap"] == why and gates["heavyweight_gap_split"] == f"leaders.heavyweight_gap is not measured: {why}"
+    assert omitted["leaders.heavyweight_gap"] == why and gates["heavyweight_gap_split"] is None
     scene = gapped(tmp_path, "NVDA", 0.059)
     scene = replace(scene, market=MarketContext({s: pts for s, pts in scene.market.known.items() if s != "TSLA"}))
     _, omitted, gates = labels(scene)
     assert omitted["leaders.heavyweight_gap"] == "needs a price for TSLA at yesterday's close and at the settled open"
-    assert gates["heavyweight_gap_split"].startswith("leaders.heavyweight_gap is not measured")
+    assert gates["heavyweight_gap_split"] is None
 
 
 def test_the_heavyweight_gap_needs_yesterdays_bars(tmp_path):
@@ -447,7 +446,7 @@ def test_the_heavyweight_gap_needs_yesterdays_bars(tmp_path):
     _, omitted, gates = labels(replace(scene, prior_bars=older))
     why = "yesterday's bars are not on file: the newest stored session is 2026-09-16"
     assert omitted["leaders.heavyweight_gap"] == why
-    assert gates["heavyweight_gap_split"] == f"leaders.heavyweight_gap is not measured: {why}"
+    assert gates["heavyweight_gap_split"] is None
 
 
 # ---- every label, point in time, under the session count and without its inputs
@@ -487,7 +486,7 @@ def test_a_rank_under_ten_sessions_omits_its_label_with_the_reason(tmp_path, pat
     _, omitted, gates = labels(replace(scene, prior_markets=dict(list(scene.prior_markets.items())[1:])))
     assert omitted[path] == f"its rank needs {SAME_CLOCK_MIN_SESSIONS} prior sessions with {what}, have {SAME_CLOCK_MIN_SESSIONS - 1}"
     if path == "leaders.single_name_10m":
-        assert gates["single_name_shock"] == f"{path} is not measured: {omitted[path]}"
+        assert gates["single_name_shock"] is None
 
 
 @pytest.mark.parametrize("path, dropped, reason", [
@@ -502,4 +501,4 @@ def test_a_label_without_its_symbol_is_omitted_with_the_reason(tmp_path, path, d
     _, omitted, gates = labels(weighed(tmp_path, drop=(dropped,)))
     assert omitted[path] == reason
     if path == "leaders.single_name_10m":
-        assert gates["single_name_shock"] == f"{path} is not measured: {reason}"
+        assert gates["single_name_shock"] is None

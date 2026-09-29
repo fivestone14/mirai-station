@@ -678,7 +678,7 @@ def _settle_pull_gate(scene: Scene, gv: dict, ruler: SigmaRuler | None, prior: l
     strike's distance in the bottom third of the prior sessions' at this minute."""
     magnet = gv.get("magnet")
     if not is_num(magnet) or ruler is None:
-        ls.sleep("settle_pull_side", "no heaviest same-day strike or no sigma ruler to place it")
+        ls.unmeasured("settle_pull_side")       # gex.settle_pull is omitted for the same want
         return
     d = abs(float(magnet) - scene.spot) / ruler.points
     seat, no_seat = _book_rank(prior, d, _distance_to("magnet"), "a heaviest same-day strike")

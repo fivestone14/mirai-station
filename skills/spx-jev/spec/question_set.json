@@ -126,7 +126,7 @@
   "placeholders": "No number is written in instructions, option descriptions or criteria: every threshold is a {lower_case} name filled from spx_jev/cuts.py QUESTION_CONSTANTS (names match cuts.json where a measured cut exists; new names must be added to cuts.py, flagged in_cuts_py=false). Tokens 0DTE, 1DTE, S&P 500, Nasdaq-100, 0-to-7-day, 1-to-7-day, VIX9D, VIX3M, VIX1D are names, not numbers. Label example sentences carry the figure AND the rule it was judged against, so JEV never compares numbers.",
   "gamma_words": "No label or option says long/short gamma, dealer hedging, damp, calm or pin for the sign. The book is described as the call-vs-put gamma balance at price 'under the usual assumption that dealers hold the calls and are short the puts'; the flip is a price level. Code learns the mapping (regime equals price's side of the flip on 2460/2462 rows).",
   "sign_free_crosses": "Questions that cross a second signal with the move say agree / against / quiet, not up/down (price_move_5way is the one carrier of the move's sign). ref_side names the reference the learning loop should fold on.",
-  "gating": "A question whose default answer would be 'nothing happened' (no touch, no shock, not pinned, no release, too early) is asleep in code instead of carrying that option, so the default never enters the weights.",
+  "gating": "A question whose default answer would be 'nothing happened' (no touch, no shock, not pinned, no release, too early) is asleep in code instead of carrying that option, so the default never enters the weights. A gate never sleeps on a fact it could not measure (too few sessions to rank, data missing, a roll): the question is left awake and reads as missing its label, so a data gap is never counted as nothing happened and the health reviews see it.",
   "rulers": "Distances and moves in sigma_anchor (anchor guard; row.sigma ratchet removed from grader and labeller). Size by same-clock rank or the tape unit, never a fixed sigma cut. The straddle only inside straddle questions. Normal-day sigma (20-session median anchor) only for events. VIX points, basis points, TICK and shares keep their native units; no raw index points in sentences. Every size or judgement of a market measure is its rank against the same measure at the same clock on up to the last 20 prior sessions (night_rank_count), at least 10 usable (same_clock_min_sessions), said by its third (or fifth where the options need one) in plain words; a measure in sigma skips 'ruler estimated' days, one in its native units keeps every session; under the minimum the label is omitted with the reason, never judged on a fixed line. Fixed numbers stay only as definitions: window lengths, clock times, lookback and minimum counts, rank band edges, giveback shares that define a word, touch tolerances, unit conversions and freshness limits. A premarket read sizes in the pre-open ruler, the median morning anchor of the last sessions (rulers.normal_day_sigma), stamped on its record; the night's measures are ranked in percent of price against the same measure on the last 20 nights (night_rank_count), at least 10 usable (overnight_rank_min_nights), skipping roll, holiday and short nights.",
   "settled_open": "close of the 09:34 bar, never the 09:30 print (median 0.115 sigma stale; 28% of a real gap made after 09:30).",
   "cadence": "The live lane reads at :02 and :32 only (cadence.py); '30-minute read' means those. The opening lane reads every 5 minutes 09:35-10:30. The premarket lane saves the overnight futures and builds every label at six checkpoints before the open (02:35, 03:35, 08:05, 08:48, 09:05 and 09:28 ET; 03:35 moves to 04:35 in the week Frankfurt is on winter time and New York is not) and asks JEV only at the reads a question's schedule names (08:48 and 09:28); its call is the average price over the 30 minutes after the settled open (open_average_30 in questions/spx_premarket_hour.json), graded on that average against the settled open, with the end-price questions at 10 and 30 minutes on kept beside it and graded too; its answers are never held into the other lanes. A group request carries only its awake questions, so one group can serve both session lanes. Day constants are asked once and held.",
@@ -1297,7 +1297,6 @@
      "sources": [
       "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1107464"
      ],
-     "sleep_when": "fewer than {same_clock_min_sessions} prior sessions with quotes at this minute, or a needed option price missing (label omitted)",
      "schedule": {
       "opening_five_minute": {
        "every_min": 5,
@@ -1431,7 +1430,7 @@
      "evidence": "Round 1: one replay (n=252) with an opposite-sign effect; not replayed since. Unproven, so live under the owner's rule; overlap-list with big_print_lean_open.",
      "origin": "round1 deferred:opening_premium_burst (restored live; gated)",
      "code_answer": true,
-     "sleep_when": "premium rank < {top_fifth}, or fewer than {same_clock_min_sessions} prior sessions with a whole lob-flow tape at this minute",
+     "sleep_when": "premium rank < {top_fifth}",
      "schedule": {
       "opening_five_minute": {
        "every_min": 5,
@@ -1587,7 +1586,7 @@
       "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1786308",
       "https://spotgamma.com/nvidia-earnings-impact-august-2026/"
      ],
-     "sleep_when": "|largest single-name contribution| not in the top third of the last {night_rank_count} sessions' largest; fewer than {same_clock_min_sessions} prior sessions with yesterday's close, a settled open and every heavyweight's price",
+     "sleep_when": "|largest single-name contribution| not in the top third of the last {night_rank_count} sessions' largest",
      "schedule": {
       "opening_five_minute": {
        "at": [
@@ -2679,7 +2678,7 @@
      "origin": "review:prior_close_push_fade (restored live)",
      "ref_side": "side of yesterday's close price started from",
      "code_answer": true,
-     "sleep_when": "last-30 move not toward prior_close, or in the bottom third of the last {night_rank_count} sessions' |30-minute move| at this minute; or price out of the bottom third of the same distance from prior_close without a cross; or fewer than {same_clock_min_sessions} usable sessions for either rank",
+     "sleep_when": "last-30 move not toward prior_close, or in the bottom third of the last {night_rank_count} sessions' |30-minute move| at this minute; or price out of the bottom third of the same distance from prior_close without a cross; or the session has no half hour yet",
      "schedule": {
       "thirty_minute": {
        "at": [
@@ -3172,7 +3171,7 @@
      "evidence": "Review: reach is mostly fixed by distance; cut 'to keep groups at six', not disproven. Unproven, so live; overlap-list with vwap_side_vs_books.",
      "origin": "review:average_reach_30 (restored live)",
      "code_answer": false,
-     "sleep_when": "|spot - vwap| further than under a third of the last {night_rank_count} sessions' at this minute (bottom third), or fewer than {same_clock_min_sessions} usable sessions",
+     "sleep_when": "|spot - vwap| further than under a third of the last {night_rank_count} sessions' at this minute (bottom third)",
      "schedule": {
       "thirty_minute": {
        "every_min": 30,
@@ -6633,7 +6632,7 @@
      "sources": [
       "https://academic.oup.com/rfs/article/21/6/2535/1574138"
      ],
-     "sleep_when": "no five-minute window in the last {shock_lookback_min} minutes larger than the biggest five-minute move of the {shock_lookback_min} minutes to its minute (from the settled open when that is shorter) on every one of up to the last {night_rank_count} sessions, or fewer than {same_clock_min_sessions} sessions to rank it",
+     "sleep_when": "no five-minute window in the last {shock_lookback_min} minutes larger than the biggest five-minute move of the {shock_lookback_min} minutes to its minute (from the settled open when that is shorter) on every one of up to the last {night_rank_count} sessions, or the session's first five minutes are not over",
      "schedule": {
       "thirty_minute": {
        "every_min": 30,
@@ -6772,7 +6771,7 @@
      "origin": "round1:event_reaction_path (trigger widened; follow-on anchor; shadow -> live); merges release_first_move_follow",
      "ref_side": "first-reaction side",
      "code_answer": true,
-     "sleep_when": "the first reaction's move is in the bottom third of the same minutes' moves on the last {night_rank_count} sessions, event or not, or fewer than {same_clock_min_sessions} sessions to rank it",
+     "sleep_when": "no release, Fed remarks or burst in the digest window whose first reaction is over, or that first reaction's move is in the bottom third of the same minutes' moves on the last {night_rank_count} sessions, event or not",
      "schedule": {
       "thirty_minute": {
        "every_min": 30,
@@ -6997,7 +6996,7 @@
        "to": "10:30"
       }
      },
-     "sleep_when": "no top-{mega_count} name's |{window_10_min}-minute move| higher than every one of its own last {night_rank_count} sessions at this minute; fewer than {same_clock_min_sessions} prior sessions with that name; no index weights on file"
+     "sleep_when": "no top-{mega_count} name's |{window_10_min}-minute move| higher than every one of its own last {night_rank_count} sessions at this minute"
     }
    ]
   },
@@ -7415,7 +7414,7 @@
       "stalled": "furthest point earlier; giveback share rank at most {third_hi} vs the same read minutes over the last {night_rank_count} sessions",
       "unwinding": "furthest point earlier; giveback share rank above {third_hi}"
      },
-     "sleep_when": "|day move from the settled open| ranks below {third_lo} against the same move at this minute on the last {night_rank_count} sessions (bottom third) or is not ranked (fewer than {same_clock_min_sessions} sessions), fewer than two earlier reads today, or fewer than {same_clock_min_sessions} sessions ranked at these read minutes",
+     "sleep_when": "|day move from the settled open| ranks below {third_lo} against the same move at this minute on the last {night_rank_count} sessions (bottom third), the day has not left the settled open at any read, or fewer than two earlier reads today",
      "labels_needed": [
       {
        "name": "seq.day_move_by_read",
@@ -7474,7 +7473,7 @@
       "building_behind_move": "change toward the day's side ranked above {third_hi}",
       "tracking": "otherwise"
      },
-     "sleep_when": "|day move from the settled open| ranks below {third_lo} against the same move at this minute on the last {night_rank_count} sessions (bottom third) or is not ranked (fewer than {same_clock_min_sessions} sessions), fewer than two earlier reads today, or fewer than {same_clock_min_sessions} sessions ranked at these read minutes",
+     "sleep_when": "|day move from the settled open| ranks below {third_lo} against the same move at this minute on the last {night_rank_count} sessions (bottom third), or fewer than two earlier reads today",
      "labels_needed": [
       {
        "name": "seq.breadth_by_read",
@@ -7541,7 +7540,7 @@
       "btc_ahead_up": "the excess ranks in the outer fifth on the side that has gone with stocks rising, against the same clock over the last {night_rank_count} sessions: >= {top_fifth} while bitcoin's usual multiple of the index is at or above zero, <= {bottom_fifth} while it is below",
       "btc_ahead_down": "the outer fifth on the side that has gone with stocks falling: <= {bottom_fifth} while the multiple is at or above zero, >= {top_fifth} while it is below"
      },
-     "sleep_when": "excess rank in the middle three fifths; fewer than {same_clock_min_sessions} prior sessions at this clock; no bitcoin trade in the last {window_10_min} minutes",
+     "sleep_when": "excess rank in the middle three fifths",
      "labels_needed": [
       {
        "name": "xasset.btc_gap_30min",
@@ -7591,7 +7590,7 @@
       "streak_up": "the last three half-hour excesses all one sign, their sum ranking >= {third_hi} when all rose or <= {third_lo} when all fell, against the same clock over the last {night_rank_count} sessions, and that sign the side that has gone with stocks rising (rose while bitcoin's usual multiple of the index is at or above zero, fell while it is below)",
       "streak_down": "the same on the side that has gone with stocks falling (fell while the multiple is at or above zero, rose while it is below)"
      },
-     "sleep_when": "the three signs are mixed, or the summed excess is in the middle third; before 11:02; any of the three windows missing bitcoin data",
+     "sleep_when": "the three signs are mixed, or the summed excess is in the middle third",
      "labels_needed": [
       {
        "name": "xasset.btc_gap_streak",
@@ -7644,7 +7643,7 @@
       "tight": "today's link rank vs the last {night_rank_count} sessions at this clock >= {third_hi}",
       "loose": "rank <= {third_lo}"
      },
-     "sleep_when": "link rank in the middle third; before 10:32 (too few minutes)",
+     "sleep_when": "link rank in the middle third",
      "labels_needed": [
       {
        "name": "xasset.btc_link",
@@ -7698,7 +7697,7 @@
       "btc_lagging": "five-session excess rank vs the last {night_rank_count} sessions <= {bottom_fifth}",
       "btc_ahead": "rank >= {top_fifth}"
      },
-     "sleep_when": "rank in the middle three fifths; fewer than {same_clock_min_sessions} prior five-session stretches; a bitcoin roll inside the five sessions without a splice, or one pending",
+     "sleep_when": "rank in the middle three fifths",
      "labels_needed": [
       {
        "name": "xasset.btc_five_day",
@@ -7930,7 +7929,7 @@
        ]
       }
      },
-     "sleep_when": "the move since futures' 16:00 price ranks at or under {third_lo} against the last {night_rank_count} nights (no real gap), fewer than {overnight_rank_min_nights} usable nights, a roll night, a day the event calendar's releases before the open do not cover, or /ES bars missing",
+     "sleep_when": "the move since futures' 16:00 price ranks at or under {third_lo} against the last {night_rank_count} nights (no real gap), or the night spans a market holiday or follows a half day",
      "tags": [
       "SEQUENTIAL_READ"
      ]
@@ -7965,7 +7964,7 @@
       "carried_on": "sign(net since futures' 16:00 price) == sign(SPX's move in yesterday's last cash hour)",
       "turned_against": "otherwise"
      },
-     "sleep_when": "|SPX's move in yesterday's last cash hour| rank <= {third_lo} over the last {night_rank_count} sessions, |net| rank <= {third_lo}, or data missing (too few prior sessions' last hours on file to rank)",
+     "sleep_when": "|SPX's move in yesterday's last cash hour| rank <= {third_lo} over the last {night_rank_count} sessions, or |net| rank <= {third_lo}",
      "labels_needed": [
       {
        "name": "premarket.vs_last_hour",
@@ -8069,7 +8068,7 @@
        ]
       }
      },
-     "sleep_when": "no report before the open on the calendar today (a pre_open row after 08:00 and before 08:45; claims-only days are asked), fewer than {overnight_rank_min_nights} usable days, a roll inside the window, or /ES bars missing around it",
+     "sleep_when": "no report before the open on the calendar today (a pre_open row after 08:00 and before 08:45; claims-only days are asked), the report window ends after this read, or the night spans a market holiday or follows a half day",
      "tags": [
       "SEQUENTIAL_READ"
      ]
@@ -8122,7 +8121,7 @@
      "evidence": "31 sessions: /ZN overnight residual vs first hour +0.43, open-to-close +0.39 (about 2.4 SE, small n). Bitcoin was taken out: on 119 nights it adds nothing beyond S&P futures, and a bitcoin reading in the opposite outer third forced in_line (bitcoin study 2026-09-27).",
      "origin": "new (review: cross-asset)",
      "code_answer": true,
-     "sleep_when": "fewer than {overnight_rank_min_nights} of the last nights with both futures measured on one contract, a roll between the two prices, bonds and S&P futures showing no link (leaving out a single night turns the fit's sign), or data missing",
+     "sleep_when": "the night spans a market holiday or follows a half day, unlike the nights the bonds' fit is ranked against",
      "schedule": {
       "premarket": {
        "at": [
@@ -8166,7 +8165,7 @@
       "unwound_night": "sign(reaction) != sign(net at the release minute), no cross",
       "extended_night": "sign(reaction) == sign(net at the release minute)"
      },
-     "sleep_when": "no report before the open on the calendar today (claims-only days are asked), |reaction| rank <= {third_lo} vs the same window over the last {night_rank_count} days, |net at the release minute| rank <= {third_lo}, or data missing",
+     "sleep_when": "no report before the open on the calendar today (claims-only days are asked), the report window ends after this read, |reaction| rank <= {third_lo} vs the same window over the last {night_rank_count} days, or |net at the release minute| rank <= {third_lo}",
      "labels_needed": [
       {
        "name": "premarket.release_vs_night",
@@ -8222,7 +8221,7 @@
       "btc_ahead_up": "the gap to the futures ranks in the outer fifth on the side that has gone with stocks rising, against the last {night_rank_count} nights: >= {top_fifth} while bitcoin's usual multiple of the futures is at or above zero, <= {bottom_fifth} while it is below",
       "btc_ahead_down": "the outer fifth on the side that has gone with stocks falling: <= {bottom_fifth} while the multiple is at or above zero, >= {top_fifth} while it is below"
      },
-     "sleep_when": "excess rank in the middle three fifths; the Thursday bitcoin roll night or a roll pending; fewer than {overnight_rank_min_nights} clean prior nights; no /MBT trade in the last {window_10_min} minutes before the read",
+     "sleep_when": "excess rank in the middle three fifths",
      "labels_needed": [
       {
        "name": "overnight.btc_vs_futures",
@@ -8283,7 +8282,7 @@
       "held": "reopen-leg rank in the middle third",
       "reversed": "reopen-leg rank against the weekend leg's direction >= {third_hi}"
      },
-     "sleep_when": "weekend leg not in the top third by size of the last {night_rank_count} weekends (an ordinary weekend); not the first session after a weekend or holiday; fewer than {overnight_rank_min_nights} prior weekends; a bitcoin roll across either leg; no trade in the last {window_60_min} minutes of the weekend leg (the Saturday maintenance window)",
+     "sleep_when": "weekend leg not in the top third by size of the last {night_rank_count} weekends (an ordinary weekend), or not the first session after a weekend or holiday",
      "labels_needed": [
       {
        "name": "weekend.btc_path",
@@ -8367,7 +8366,7 @@
       "built": "kept share > {one_ratio}",
       "held": "{gap_half_share} <= kept share <= {one_ratio}"
      },
-     "sleep_when": "no leg with |move| rank > {third_lo} (a quiet night), a roll night, or /ES bars missing",
+     "sleep_when": "no leg with |move| rank > {third_lo} (a quiet night)",
      "labels_needed": [
       {
        "name": "premarket.where_now",
@@ -8436,7 +8435,7 @@
       "added": "sign(leg) == sign(net at previous checkpoint)",
       "gave_back": "otherwise"
      },
-     "sleep_when": "|leg| rank <= {third_lo} vs the same clock window over the last {night_rank_count} nights (a quiet leg), |net at previous checkpoint| rank <= {third_lo} (no direction to compare with), first checkpoint, or data missing",
+     "sleep_when": "|leg| rank <= {third_lo} vs the same clock window over the last {night_rank_count} nights (a quiet leg), |net at previous checkpoint| rank <= {third_lo} (no direction to compare with), or the first checkpoint",
      "labels_needed": [
       {
        "name": "premarket.where_now",
@@ -8506,7 +8505,7 @@
       "latest_against": "the latest leg with rank > {third_lo} has the opposite sign to net",
       "split_latest_with": "otherwise"
      },
-     "sleep_when": "fewer than two finished legs with rank > {third_lo}, |net| rank <= {third_lo}, or data missing",
+     "sleep_when": "fewer than two finished legs with rank > {third_lo}, or |net| rank <= {third_lo}",
      "labels_needed": [
       {
        "name": "premarket.where_now",
@@ -12322,7 +12321,7 @@
  "validation": {
   "errors": [],
   "warnings": [
-   "constants defined but unused in question text: min_rank_sessions, sector_count, vwap_touch_sigma"
+   "constants defined but unused in question text: overnight_rank_min_nights, min_rank_sessions, sector_count, vwap_touch_sigma"
   ]
  }
 }

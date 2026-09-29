@@ -186,7 +186,10 @@ def _fill_progress(scene: Scene, gap: Gap | None, why: str, ls: LabelSet) -> Non
     touched the close since the settled open; decides gap_fill_next_hour's gate from the same numbers."""
     if gap is None:
         ls.omit("gap.fill_progress", why)
-        ls.sleep("gap_fill_next_hour", f"no gap to fill: {why}")
+        if settled_open(scene.bars) is None:
+            ls.sleep("gap_fill_next_hour", f"no gap to fill: {why}")      # too early: the gap is not made yet
+        else:
+            ls.unmeasured("gap_fill_next_hour")
         return
     now_d = (scene.spot - gap.prior_close) / gap.anchor.points
     where = f"{sig(abs(now_d))} {above_or_below(now_d)} yesterday's close"

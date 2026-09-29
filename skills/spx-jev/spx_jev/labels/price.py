@@ -67,7 +67,7 @@ def build_price_labels(scene: Scene) -> LabelSet:
         for path in ANCHORED:
             ls.omit(path, NO_ANCHOR)
         for qid in GATES:
-            ls.sleep(qid, NO_ANCHOR)
+            ls.unmeasured(qid)
         return ls
     rows = _same_clock_rows(scene)
     to_close = _level_distance(scene, anchor, rows, "prior_close", "yesterday's close")
@@ -620,7 +620,10 @@ def _prior_close_push(scene: Scene, anchor: SigmaRuler, move30: Ranked, to_close
     if to_close.value is None or move30.rank is None or to_close.rank is None:
         why = to_close.why if to_close.value is None or move30.rank is not None else f"no 30-minute move to judge: {move30.why}"
         ls.omit("price.prior_close_push", why)
-        ls.sleep("prior_close_push_fade", why)
+        if scene.now < scene.session_open + timedelta(minutes=WINDOW_30_MIN):
+            ls.sleep("prior_close_push_fade", why)                  # too early: the session has no half hour yet
+        else:
+            ls.unmeasured("prior_close_push_fade")
         return
     d, size, dist, near = move30.value, move30.rank, to_close.value, to_close.rank
     pc = float(scene.row["prior_close"])
@@ -679,7 +682,7 @@ def _vwap_reach(scene: Scene, anchor: SigmaRuler, to_average: Ranked, ls: LabelS
     price is away from it: out of the bottom third of the same distance on the prior sessions."""
     if to_average.rank is None:
         ls.omit("price.vwap_reach", to_average.why)
-        ls.sleep("average_reach_30", to_average.why)
+        ls.unmeasured("average_reach_30")
         return
     d, rank = -to_average.value, to_average.rank
     if rank.band == "bottom third":

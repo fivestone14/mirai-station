@@ -125,7 +125,7 @@ def test_under_the_minimum_of_nights_the_move_is_omitted_with_the_reason(tmp_pat
     _save_prior(tmp_path, _spread(5))
     ls = read([(_at(9, 0), 1.2)])
     assert ls.omitted["overnight.es_move"].startswith("overnight move not ranked: only 5 usable of the last 20 nights")
-    assert ls.gates["gap_origin"].startswith("no overnight move to place: overnight move not ranked")
+    assert ls.gates["gap_origin"] is None and ls.omitted["overnight.gap_origin"].startswith("overnight move not ranked")
 
 
 def test_a_read_off_the_premarket_lane_writes_nothing():
@@ -169,8 +169,8 @@ def test_a_roll_tonight_refuses_every_measure_of_the_futures(tmp_path, read):
     rolled = "/ES rolled to the next contract overnight"
     assert ls.omitted["overnight.es_move"].startswith(rolled)
     assert ls.omitted["overnight.range_vs_normal"].startswith(rolled)
-    assert rolled in ls.gates["gap_origin"]
-    assert rolled in ls.gates["overnight_bonds_vs_gap"]
+    assert ls.gates["gap_origin"] is None and rolled in ls.omitted["overnight.gap_origin"]
+    assert ls.gates["overnight_bonds_vs_gap"] is None and rolled in ls.omitted["overnight.bond_gap"]
 
 
 def test_a_roll_night_in_the_base_sits_out_of_the_rank(tmp_path, read):
@@ -230,7 +230,7 @@ def test_a_day_the_calendar_does_not_cover_has_no_report_window_to_place_the_gap
     _save_prior(tmp_path, _spread())
     monkeypatch.setattr(events, "uncovered", lambda day, path=events.CALENDAR, tier=None: "the event calendar is kept only from 2026-10-01")
     ls = read([(_at(8, 0), 0.0), (_at(8, 25), 1.0)])
-    assert ls.gates["gap_origin"] == "where the report window falls is unknown: the event calendar is kept only from 2026-10-01"
+    assert ls.gates["gap_origin"] is None and ls.omitted["overnight.gap_origin"] == "where the report window falls is unknown: the event calendar is kept only from 2026-10-01"
     assert "overnight.gap_origin" in ls.omitted
 
 
@@ -285,13 +285,13 @@ def test_a_read_before_the_window_closes_waits_for_it(tmp_path, read, calendar):
                                                  "to 08:45, after this read")
 
 
-def test_missing_bars_around_the_report_put_it_to_sleep(tmp_path, premarket_scene_factory, calendar):
+def test_missing_bars_around_the_report_leave_it_missing(tmp_path, premarket_scene_factory, calendar):
     _save_prior(tmp_path, _spread())
     calendar.append(CLAIMS)
     night = [r for r in _rows(DAY, "/ES", ES_PRICE, _path(DAY, [(_at(9, 0), 0.5)]))
              if not _at(8, 0) <= datetime.fromisoformat(r["ts"]) < _at(8, 40)]
     ls = premarket.build_premarket_labels(premarket_scene_factory(READ, night, state_dir=tmp_path))
-    assert ls.gates["release_reaction_path"] == "/ES bars missing around the weekly jobless claims report at 08:30"
+    assert ls.gates["release_reaction_path"] is None and ls.omitted["overnight.release_reaction"] == "/ES bars missing around the weekly jobless claims report at 08:30"
 
 
 # ---- overnight.bond_gap --------------------------------------------------------------------------
@@ -318,22 +318,22 @@ def test_the_fits_sign_sets_which_way_bonds_point(tmp_path, read):
     assert "per 1% in S&P futures, the other way" in ls.state["overnight"]["bond_gap"]
 
 
-def test_bonds_unlinked_to_the_futures_sleep_rather_than_point_them_on_noise(tmp_path, read):
+def test_bonds_unlinked_to_the_futures_are_left_out_rather_than_point_them_on_noise(tmp_path, read):
     unlinked = [0.2 * (-1) ** (k // 2) for k in range(20)]     # each night's sign against the futures' alternates in pairs
     _save_prior(tmp_path, _spread(), unlinked)
     ls = read([(_at(9, 0), 0.5)], bond_knots=[(_at(9, 0), 0.1)])
-    assert ls.gates["overnight_bonds_vs_gap"] == ("bonds and S&P futures showed no steady link over the last 19 nights: "
+    assert ls.gates["overnight_bonds_vs_gap"] is None and ls.omitted["overnight.bond_gap"] == ("bonds and S&P futures showed no steady link over the last 19 nights: "
                                                   "leaving out a single night turns the fit's sign")
     assert "overnight.bond_gap" in ls.omitted
 
 
-def test_bonds_sleep_without_enough_nights_or_a_bond_price(tmp_path, read):
+def test_bonds_are_missing_without_enough_nights_or_a_bond_price(tmp_path, read):
     _save_prior(tmp_path, _spread())
     _save_prior(tmp_path, _spread(5), _bonds(0.3)[-5:])
     ls = read([(_at(9, 0), 0.5)], bond_knots=[(_at(9, 0), 0.5)])
-    assert ls.gates["overnight_bonds_vs_gap"] == ("the bonds' fit needs 10 of the last nights with /ES and /ZN both measured on "
+    assert ls.gates["overnight_bonds_vs_gap"] is None and ls.omitted["overnight.bond_gap"] == ("the bonds' fit needs 10 of the last nights with /ES and /ZN both measured on "
                                                   "one contract, has 5")
-    assert read([(_at(9, 0), 0.5)]).gates["overnight_bonds_vs_gap"].startswith("no /ZN price at its prior close")
+    assert read([(_at(9, 0), 0.5)]).omitted["overnight.bond_gap"].startswith("no /ZN price at its prior close")
 
 
 # ---- the family in the registry ------------------------------------------------------------------

@@ -438,6 +438,6 @@ def test_settle_pull_side_sleeps_while_price_is_seated_on_the_magnet(scene_facto
     assert gates["settle_pull_side"] == ("price sits 0.07 sigma from today's heaviest same-day strike, farther from price than on 1 of the last "
                                          "10 sessions at this minute, bottom third: seated on it")
     assert labels(gamma_scene(scene_factory, magnet=7700.0 - 0.21 * SIGMA), history)[2]["settle_pull_side"] is None
-    assert labels(gamma_scene(scene_factory, magnet=None), history)[2]["settle_pull_side"] == "no heaviest same-day strike or no sigma ruler to place it"
+    assert labels(gamma_scene(scene_factory, magnet=None), history)[2]["settle_pull_side"] is None      # missing gex.settle_pull, not asleep
     assert labels(gamma_scene(scene_factory, magnet=7705.0))[2]["settle_pull_side"] == (
         "whether price is seated on today's heaviest same-day strike is not known: no state folder to read the prior sessions' diaries from")

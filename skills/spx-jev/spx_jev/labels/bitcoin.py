@@ -63,7 +63,14 @@ NO_NORMAL = "every value it is ranked against is zero, so it has no normal size"
 KEPT = {"extended": "it kept going", "held": "it held about where the weekend left it", "reversed": "it turned back"}
 ROLL_EVENING = (time(17), time(18))  # the Thursday's daily break, where every bitcoin roll in the table landed (17:06 to 18:00)
 
-# What a label hands back: why it cannot be measured, or its sentence, its figure and why its gate sleeps (None: awake).
+
+class NotThere(str):
+    """Why a label has nothing to say because what it describes is not there today (no weekend before this
+    session): its question sleeps. Any other reason a label hands back is a fact that could not be measured."""
+
+
+# What a label hands back: why it cannot be measured (or, a NotThere, why there is nothing to measure), or its
+# sentence, its figure and why its gate sleeps (None: awake).
 Got = Union[str, tuple[str, dict, Optional[str]]]
 
 
@@ -71,9 +78,13 @@ def build_bitcoin_labels(scene: Scene) -> LabelSet:
     ls = LabelSet()
     for path, got in (_premarket_labels(scene) if scene.premarket else _session_labels(scene)).items():
         qid = GATE_OF[path]
+        if isinstance(got, NotThere):
+            ls.omit(path, got, ended=True)
+            ls.sleep(qid, got)
+            continue
         if isinstance(got, str):
             ls.omit(path, got)
-            ls.sleep(qid, got)
+            ls.unmeasured(qid)
             continue
         sentence, figure, asleep = got
         ls.put(path, sentence, figure=figure)
@@ -354,10 +365,10 @@ def weekend_path(scene: Scene, table: dict, futures: Move | str) -> Got:
     fall big), and its reopen leg taken the weekend's way, ranked in thirds against theirs: extended, held or reversed."""
     day = date.fromisoformat(scene.day)
     if not after_break(day):
-        return "not the first session after a weekend or a holiday"
+        return NotThere("not the first session after a weekend or a holiday")
     close, reopen = weekend_edges(day, scene.night)
     if close.date() < overnight.CRYPTO_ROUND_THE_CLOCK_FROM.date():
-        return f"CME bitcoin futures trade through the weekend only from {overnight.CRYPTO_ROUND_THE_CLOCK_FROM:%Y-%m-%d}"
+        return NotThere(f"CME bitcoin futures trade through the weekend only from {overnight.CRYPTO_ROUND_THE_CLOCK_FROM:%Y-%m-%d}")
     refused = pending_roll(scene, table, BITCOIN, f"the {NAME} night")
     if refused:
         return refused

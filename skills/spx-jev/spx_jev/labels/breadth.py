@@ -77,7 +77,7 @@ def build_breadth_labels(scene: Scene) -> LabelSet:
         for path in LABELS:
             if path not in DARK:
                 ls.omit(path, "no market-context snapshot today")
-        ls.sleep("tick_extreme_follow", "no market-context snapshot today")
+        ls.unmeasured("tick_extreme_follow")
         return ls
     _advance_decline(scene, ls)
     _tick_lean(scene, ls)
@@ -609,7 +609,7 @@ def _tick_extreme_5m(scene: Scene, bands: dict[time, tuple[float, float]], ls: L
                                                f"not saved it") if not bars else
                _no_tick_bands(f"of the last {TICK_BURST_WINDOW_MIN} minutes"))
         ls.omit("breadth.tick_extreme_5m", why)
-        ls.sleep("tick_extreme_follow", why)
+        ls.unmeasured("tick_extreme_follow")
         return
     buying, selling = bursts[0] > 0, bursts[1] > 0
     if buying or selling:

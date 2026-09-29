@@ -75,7 +75,7 @@ def _break_armed(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None:
     lr = scene.row.get("level_reclaim")
     if not lr or not lr.get("break_state"):
         ls.omit("levels.break_armed", "row carries no break read (level_reclaim.break_state)")
-        ls.sleep("break_armed", "row carries no break read")
+        ls.unmeasured("break_armed")
         return
     if lr["break_state"] == "cocked":
         ls.wake("break_armed")

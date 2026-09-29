@@ -107,3 +107,25 @@ def test_a_family_that_fails_omits_only_its_own_labels_with_the_failure(full_sce
     gamma = next(f for f in FAMILIES if f.name == "gamma")
     assert all(labels.omitted[p] == "the gamma labels failed this read: KeyError: 'gex_views'" for p in gamma.labels)
     assert "gex" not in labels.state and labels.state["price"]["recent_move"]
+    # a failure is not "nothing happened": the family's gated questions stay awake and read as missing their labels
+    assert gamma.gates and all(labels.gates[qid] is None for qid in gamma.gates)
+
+
+@pytest.mark.parametrize("sparse", [dict(market=None), dict(state_dir=None), dict(prior_bars={}, prior_rulers={}), dict(bars=[])])
+def test_a_gate_left_awake_for_want_of_data_leaves_its_question_missing_a_label(full_scene, lane_scene, premarket_scene, monkeypatch,
+                                                                                 sparse):
+    """LabelSet.unmeasured wakes a gate so its question reads as missing, never as asked: every question woken that way
+    reads a label the same read left out, and not as ended."""
+    woken: list[str] = []
+    real = LabelSet.unmeasured
+
+    def record(self, qid):
+        woken.append(qid)
+        real(self, qid)
+    monkeypatch.setattr(LabelSet, "unmeasured", record)
+    needs = {q["id"]: [lab["name"] for lab in q["labels_needed"]] for g in QUESTION_SET["groups"] for q in g["questions"]}
+    for base in (full_scene, lane_scene, premarket_scene):
+        woken.clear()
+        labels = build_labels(replace(base, **{k: v for k, v in sparse.items() if hasattr(base, k)}))
+        missing = {p for p in labels.omitted if p not in labels.ended}
+        assert [qid for qid in woken if not missing & set(needs[qid])] == []

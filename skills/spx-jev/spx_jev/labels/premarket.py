@@ -89,7 +89,11 @@ def build_premarket_labels(scene: Scene) -> LabelSet:
         for path in LABELS:
             ls.omit(path, why)
         for qid in GATES:
-            ls.sleep(qid, why)
+            # a holiday night is left out by rule, like the nights it is ranked against; any other want is a gap in the data
+            if why == HOLIDAY_NIGHT:
+                ls.sleep(qid, why)
+            else:
+                ls.unmeasured(qid)
         return ls
     quoted = quoted_contract(tonight.state_dir, tonight.day, ES, scene.now)
     es, es_why = night_move(scene.night, ES, tonight.day, tonight.clock, tonight.table, quoted)
@@ -103,6 +107,9 @@ def build_premarket_labels(scene: Scene) -> LabelSet:
     return ls
 
 
+HOLIDAY_NIGHT = "the night spans a market holiday or follows a half day, unlike the nights it would be ranked against"
+
+
 def _tonight(scene: Scene) -> tuple[Tonight | None, str]:
     if scene.state_dir is None:
         return None, "no state folder to read the last nights from"
@@ -111,7 +118,7 @@ def _tonight(scene: Scene) -> tuple[Tonight | None, str]:
         return None, "no pre-open ruler: the read carries no prior close or no median morning anchor"
     now = scene.now.astimezone(ET)
     if overnight.holiday_night(now.date()):
-        return None, "the night spans a market holiday or follows a half day, unlike the nights it would be ranked against"
+        return None, HOLIDAY_NIGHT
     return Tonight(now.date(), now.time().replace(second=0, microsecond=0),
                    rolls.load(Path(scene.state_dir) / overnight.OVERNIGHT_SUBDIR), Path(scene.state_dir),
                    float(pc) / 100.0 / scene.sigma), ""
@@ -189,7 +196,7 @@ def _gap_origin(scene: Scene, tonight: Tonight, net: RankedMove | None, why: str
     label, gate = "overnight.gap_origin", "gap_origin"
     if net is None:
         ls.omit(label, why)
-        ls.sleep(gate, f"no overnight move to place: {why}")
+        ls.unmeasured(gate)
         return
     if net.rank.share <= THIRD_LO:
         quiet = (f"the move since futures' {hm(net.move.start_at)} price is {net.rank.words('moves to this time')}: "
@@ -201,7 +208,7 @@ def _gap_origin(scene: Scene, tonight: Tonight, net: RankedMove | None, why: str
     if uncovered:
         unknown = f"where the report window falls is unknown: {uncovered}"
         ls.omit(label, unknown)
-        ls.sleep(gate, unknown)
+        ls.unmeasured(gate)
         return
     release, report = story.release_minute(tonight.day), bool(story.releases(tonight.day))
     ranked, left_out = [], []
@@ -224,7 +231,7 @@ def _gap_origin(scene: Scene, tonight: Tonight, net: RankedMove | None, why: str
     if not ranked:
         reason = f"no stretch of the night could be ranked: {'; '.join(left_out)}"
         ls.omit(label, reason)
-        ls.sleep(gate, reason)
+        ls.unmeasured(gate)
         return
     best = max(ranked, key=lambda r: (r.rank.share, abs(r.move.pct)))
     verdict = ORIGINS[best.stretch.name]
@@ -247,9 +254,13 @@ def _release_reaction(scene: Scene, tonight: Tonight, es: Move | None, es_why: s
     else held)."""
     label, gate = "overnight.release_reaction", "release_reaction_path"
 
-    def omit(reason: str) -> None:
+    def omit(reason: str, asleep: bool = False) -> None:
+        """The label left out; the question asleep when there is no reaction to read yet, else missing it."""
         ls.omit(label, reason)
-        ls.sleep(gate, reason)
+        if asleep:
+            ls.sleep(gate, reason)
+        else:
+            ls.unmeasured(gate)
 
     uncovered = events.uncovered(tonight.day, tier=events.PRE_OPEN)
     if uncovered:
@@ -257,14 +268,14 @@ def _release_reaction(scene: Scene, tonight: Tonight, es: Move | None, es_why: s
         return
     reports = story.releases(tonight.day)
     if not reports:
-        omit("no report before the open on the calendar today")
+        omit("no report before the open on the calendar today", asleep=True)
         return
     release = story.release_minute(tonight.day)
     names = story.report_words(reports)
     start, end = (datetime.combine(tonight.day, release, tzinfo=ET),
                   datetime.combine(tonight.day, story.REPORT_WINDOW_END, tzinfo=ET))
     if tonight.at < end:
-        omit(f"the report window opens with {names} and runs to {end:%H:%M}, after this read")
+        omit(f"the report window opens with {names} and runs to {end:%H:%M}, after this read", asleep=True)
         return
     if es is None:
         omit(es_why)
@@ -325,7 +336,7 @@ def _bond_gap(scene: Scene, tonight: Tonight, es: Move | None, es_why: str, ls: 
 
     def omit(reason: str) -> None:
         ls.omit(label, reason)
-        ls.sleep(gate, reason)
+        ls.unmeasured(gate)
 
     if es is None:
         omit(f"no S&P futures move to set bonds against: {es_why}")

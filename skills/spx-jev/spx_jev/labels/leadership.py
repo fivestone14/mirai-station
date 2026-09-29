@@ -76,10 +76,10 @@ def build_leadership_labels(scene: Scene) -> LabelSet:
 
 
 def _unmeasured(ls: LabelSet, path: str, why: str) -> None:
-    """Omit ``path`` with the reason, and sleep the question it gates, if any."""
+    """Omit ``path`` with the reason; the question it gates, if any, is missing it, not asleep."""
     ls.omit(path, why)
     if path in GATE_OF:
-        ls.sleep(GATE_OF[path], f"{path} is not measured: {why}")
+        ls.unmeasured(GATE_OF[path])
 
 
 def _equal_weight(against: AgainstIndex, ls: LabelSet) -> None:

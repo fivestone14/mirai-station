@@ -145,10 +145,10 @@ def test_a_session_read_tells_no_story(full_scene):
     assert not ls.paths() and not ls.gates
 
 
-def test_without_a_state_folder_every_label_is_left_out_and_every_gate_sleeps(premarket_scene):
+def test_without_a_state_folder_every_label_is_left_out_and_every_question_is_missing_it(premarket_scene):
     ls = build_story_labels(premarket_scene)
     assert set(ls.omitted) == set(LABELS) and set(ls.omitted.values()) == {"no state folder to read the last nights from"}
-    assert all(ls.gates.values())
+    assert ls.gates and not any(ls.gates.values())
 
 
 def test_too_few_nights_on_file_leaves_the_story_out_with_the_reason(premarket_scene_factory, tmp_path):
@@ -166,7 +166,7 @@ def test_a_night_across_a_roll_is_not_told(premarket_scene_factory, tmp_path):
                                                        "rolls": [{"symbol": "/ES", "day": at.date().isoformat(), "at": at.isoformat(),
                                                                   "from": "/ESU26", "to": "/ESZ26"}]})
     ls = read(premarket_scene_factory, tmp_path, {"asia": 1.0})
-    assert set(ls.omitted) == set(LABELS) and all(ls.gates.values())
+    assert set(ls.omitted) == set(LABELS) and ls.gates and not any(ls.gates.values())
     assert "the futures rolled to the next contract between 16:00 and 09:28" in ls.omitted["premarket.legs"]
 
 

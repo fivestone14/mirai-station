@@ -44,7 +44,7 @@ LABELS = ("iv.trend_30min", "iv.vs_realized_30", "iv.expected_move_used", "iv.mo
           "vol.straddle_reprice_30", "vol.straddle_vs_clock", "vol.stress_path", "vol.term_structure", "vol.vix_change",
           "vol.vix_on_shock", "vol.vix_overnight_surprise", "vol.vix_since_1400", "vol.vix_vs_price", "vol.vvix_vs_vix",
           "vol.vvix_with_move", "skew.put_tilt_vs_usual", "skew.shift_vs_price")
-GATES = ("put_tilt_vs_clock",)
+GATES: tuple[str, ...] = ()
 DARK: dict[str, str] = {}
 
 FULL_SESSION_MIN = 390          # a full session's minutes: sigma is a full day's expected move
@@ -1095,7 +1095,6 @@ def _skew(scene: Scene, ls: LabelSet) -> None:
         why = f"no lob-flow tape for {scene.day} (state/lob_flow/raw)"
         for path in paths:
             ls.omit(path, why)
-        ls.sleep("put_tilt_vs_clock", why)
         return
     prior = _prior_smiles(scene)
     _put_tilt(scene, smiles[at_min], at_min, prior, ls)
@@ -1139,14 +1138,12 @@ def _put_tilt(scene: Scene, smile: Skew | None, at_min: datetime, prior: dict[st
     if tilt is None:
         why = f"no fresh 25-delta put and call quotes on the lob-flow tape in the minute to {clock}"
         ls.omit(path, why)
-        ls.sleep("put_tilt_vs_clock", why)
         return
     tilts = [t for _, now in prior.values() if (t := _tilt(now)) is not None]
     wings = [w for _, now in prior.values() if (w := _wing(now)) is not None]
     rank, why = rank_sessions(tilt, tilts, f"25-delta quotes on the tape at {clock}")
     if rank is None:
         ls.omit(path, why)
-        ls.sleep("put_tilt_vs_clock", why)
         return
     gap = (smile.put_25 - smile.call_25) * 100.0
     if gap < 0:
@@ -1166,7 +1163,6 @@ def _put_tilt(scene: Scene, smile: Skew | None, at_min: datetime, prior: dict[st
     # under a call tilt the lead already gives the answer, which a flat verdict would contradict
     verdict = "" if gap < 0 else f": {_tilt_verdict(rank)} for this minute"
     ls.put(path, f"{lead}; its tilt beats {rank.higher_than} of the last {rank.of} sessions at {clock}{verdict}; {far}")
-    ls.wake("put_tilt_vs_clock")
 
 
 def _one_sd_tilt(smile: Skew | None) -> float | None:

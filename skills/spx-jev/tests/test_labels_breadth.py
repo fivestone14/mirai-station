@@ -857,20 +857,20 @@ def test_without_a_burst_the_gate_sleeps_and_the_label_says_so(scene_factory):
         "in the last 5 minutes NYSE TICK's 1-minute highs and lows stayed inside the top and bottom 5% bands for their minutes (no burst);")
 
 
-def test_the_burst_label_omitted_and_its_gate_asleep_without_what_it_needs(scene_factory):
+def test_the_burst_label_omitted_without_what_it_needs_leaves_its_question_missing_not_asleep(scene_factory):
     stopped = opening_tick_read(scene_factory, [BUY_BURST] * 9)
     reason = "no NYSE TICK bar in the last 5 minutes: the market-context job stopped or has not saved it"
-    assert stopped.omitted["breadth.tick_extreme_5m"] == reason and stopped.gates["tick_extreme_follow"] == reason
+    assert stopped.omitted["breadth.tick_extreme_5m"] == reason and stopped.gates["tick_extreme_follow"] is None
     thin = opening_tick_read(scene_factory, [BUY_BURST] * 15, prior={})
     reason = "needs 10 prior sessions of NYSE TICK bars at each of the last 5 minutes"
-    assert thin.omitted["breadth.tick_extreme_5m"] == reason and thin.gates["tick_extreme_follow"] == reason
+    assert thin.omitted["breadth.tick_extreme_5m"] == reason and thin.gates["tick_extreme_follow"] is None
     few_moves = opening_tick_read(scene_factory, [BUY_BURST] * 15, closes=SPX_UP_3, spx=dict(list(FIVE_MINUTE_MOVES.items())[:9]))
     assert few_moves.gates["tick_extreme_follow"] is None
     assert few_moves.omitted["breadth.tick_extreme_5m"] == "its rank needs 10 prior sessions with a 5-minute move at this minute, have 9"
     estimated = opening_tick_read(scene_factory, [BUY_BURST] * 15, closes=SPX_UP_3, anchored=False)
     assert sentence(estimated, "breadth.tick_extreme_5m").endswith(": a real move (ruler estimated)")
     no_context = build_breadth_labels(scene_factory(OPENING, flat_bars(15)))
-    assert no_context.gates["tick_extreme_follow"] == "no market-context snapshot today"
+    assert no_context.gates["tick_extreme_follow"] is None and no_context.omitted["breadth.tick_extreme_5m"] == "no market-context snapshot today"
 
 
 # The prior sessions' net volume at 09:44 steps from -95M to +95M by 10M (NYSE) and from -47.5M to +47.5M by 5M
