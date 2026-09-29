@@ -365,6 +365,16 @@ def test_a_tape_read_waits_for_the_bar_that_finishes_at_its_minute(tmp_path):
     assert service.wait_for_bar(state, at(9, 41), timeout_s=0, sleep=bars_job_runs) is False   # no bar: the read goes on
 
 
+def test_the_bar_wait_spans_a_bars_run_and_the_read_never_stands_on_a_bar_after_its_fire_minute(tmp_path):
+    """The bars job starts every 60 s plus its run time, so its second drifts and a 55-second wait begun a few seconds
+    after the fire missed it on some reads. The wait now runs past a minute, and a bar that finished after the fire
+    minute, which a wait that long can see, is never the one the read stands on."""
+    assert service.BAR_WAIT_S > 60
+    state = _state(tmp_path, [make_row(at(9, 31), 7700.0)], 11)          # bars 09:30 .. 09:40: the newest ends 09:41
+    assert run_once(state, tmp_path / "unsent", DOC, False, DAY, lane=TAPE)["row_ts"] == at(9, 41).isoformat()
+    assert run_once(state, tmp_path / "fired", DOC, False, DAY, lane=TAPE, fire=at(9, 40))["row_ts"] == at(9, 40).isoformat()
+
+
 def test_the_first_read_after_1001_waits_for_a_row_its_30_minute_window_can_start_from(tmp_path):
     """A row stamped 10:00:51 looks back to 09:30:51, before the first bar finished at 09:31: the 10:02 read
     waits for the scanner's next row rather than lose its 30-minute labels."""

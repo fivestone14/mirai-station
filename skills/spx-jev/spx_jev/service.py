@@ -100,9 +100,11 @@ UNSURE = "unsure"              # a sum's pick that makes no call: passed, never 
 # what the card carries of a call's average-price grade (integral.grade_window); the rest stays in its file
 INTEGRAL_ON_CARD = ("graded", "reason", "sum", "label", "g", "edge", "verdict", "margin", "lean", "size", "best", "worst", "sharp_move",
                     "running", "stale_read")
-# A read on the bar clock waits for the bar that finishes at its fire minute. The bars job runs once a
-# minute at no fixed second, so a wait under a minute spans one of its runs and the read stays in its minute.
-BAR_WAIT_S = 55
+# A read on the bar clock waits for the bar that finishes at its fire minute. The bars job runs every 60 s plus its
+# own run time, so its start second drifts, and the wait starts a few seconds after the fire: a wait over a minute
+# always spans one of its runs. The read is cut at its fire minute (run_once's ``fire``), so a bar that finishes
+# later, which a wait that long can see, is never the one it stands on.
+BAR_WAIT_S = 68
 BAR_POLL_S = 2.0
 # A 30-minute window needs a bar finished at its start, and the day's first finishes at 09:31: a row stamped
 # 10:00:xx has none. The first read after 10:01 waits for a row stamped from 10:01 (the scanner writes one about
@@ -655,10 +657,13 @@ def market_time(day_of: datetime, hhmm: str) -> str:
 
 
 def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, day: str | None = None,
-             unsent_reason: str = UNSENT_DEFAULT, lane: Lane = LIVE) -> dict:
+             unsent_reason: str = UNSENT_DEFAULT, lane: Lane = LIVE, fire: datetime | None = None) -> dict:
+    """One read of the lane on the newest row of ``day`` (today's when None), written to ``out_dir``; returns the card.
+    A read on the bar clock given the minute its job fired (``fire``) stands on the newest bar finished by then."""
     out_dir = lane.folder(state_dir, out_dir)     # a tagged lane without a folder of its own refuses here
+    cut = fire.astimezone(ET).time() if lane.bar_clock and fire is not None else None
     try:
-        scene = make_scene(state_dir, day, bar_clock=lane.bar_clock, horizon=f"the next {lane.horizons[lane.primary][0]} minutes")
+        scene = make_scene(state_dir, day, at=cut, bar_clock=lane.bar_clock, horizon=f"the next {lane.horizons[lane.primary][0]} minutes")
     except NoBarYet as e:
         # a lane on the bar clock with no bar today has nothing to stand on: the minute-bars job (spx-jev-bars) has
         # written none, as from the open on a day Schwab fails. A quiet skip; the next fire looks again
@@ -1012,6 +1017,7 @@ def main(argv: list[str] | None = None) -> int:
         return code
     last_row, code = None, 0
     while True:
+        fire = None
         if lane.bar_clock and do_send and not args.day:
             fire = now_et().replace(second=0, microsecond=0)
             if not wait_for_bar(state_dir, fire):
@@ -1020,7 +1026,7 @@ def main(argv: list[str] | None = None) -> int:
             if not wait_for_row(state_dir, first):
                 log(f"no diary row stamped from {first:%H:%M} after {ROW_WAIT_S} s: reading on the newest row on file")
         try:
-            c = run_once(state_dir, out_dir, doc, do_send, args.day, unsent, lane)
+            c = run_once(state_dir, out_dir, doc, do_send, args.day, unsent, lane, fire)
             if c["row_ts"] != last_row:
                 n_ans = sum(1 for q in c["questions"] if q.get("answer"))
                 said = ("sent" if c["asked"] or c["hour"] is not None else "nothing due, nothing sent") if c["sent"] else "not sent"
