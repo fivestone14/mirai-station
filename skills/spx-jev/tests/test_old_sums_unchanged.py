@@ -133,14 +133,15 @@ def run_fixture(tmp_path, monkeypatch, average_reply=None) -> dict[str, dict[str
 
 def _old_path(weights: str, lane: str) -> str:
     """weights.json less what has been added beside the old path since, written as the grader writes it: the live
-    lane's average-price loop report, and each sum's hit rate on its committed calls; the loop's experts under the names
-    they had before they were named by their source."""
+    lane's average-price loop report, the call's own record among the sums, and each sum's hit rate on its committed
+    calls; the loop's experts under the names they had before they were named by their source."""
     w = json.loads(weights)
     if lane == "live" and LIVE.integral_loop:
         assert w.pop("pool_integral")["method"] == "pool_v1_integral"
     if "pool" in w:
         back = {new: old for old, new in pool.LEGACY_NAMES.items()}
         w["pool"]["top"] = {side: dict(sorted((back.get(n, n), x) for n, x in top.items())) for side, top in w["pool"]["top"].items()}
+    assert w["sums"].pop({"live": LIVE, "tape": TAPE, "premarket": PREMARKET}[lane].average)["graded_on"] == "the average price"
     for s in w["sums"].values():
         del s["committed_calls"], s["committed_hit_rate"]
     return json.dumps(w, ensure_ascii=False, indent=1)

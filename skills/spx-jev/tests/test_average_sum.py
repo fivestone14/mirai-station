@@ -109,6 +109,20 @@ def test_a_live_read_calls_the_average_and_its_grade_grades_that_pick_with_its_s
     assert read["schema_version"] == archive.SCHEMA_VERSION == 5
 
 
+def test_weights_json_keeps_each_lanes_call_on_record_from_its_average_price_grades(fixture_run):
+    """The call on the phone has a lasting record beside the end-price sums': the live call's one read, flat called
+    and the average up, is a miss scored at its 1.26 Brier with JEV's own and the clock's beside it; each other lane's
+    call its own box's one read (the premarket's shorter check never counts twice)."""
+    live, tape, pre = fixture_run
+    w = json.loads((live / "weights.json").read_text())["sums"]["average_30"]
+    assert (w["n"], w["hit_rate"], w["committed_calls"], w["committed_hit_rate"], w["always_flat_hit_rate"]) == (1, 0.0, 1, 0.0, 0.0)
+    assert (w["mean_brier"], w["mean_log_loss"], w["bands"], w["event_reads"]) == (1.26, round(math.log(10), 4), {"up": 1}, {"n": 0, "mean_brier": None})
+    assert w["blended"] == {"n": 1, "mean_brier_blend": 1.26, "mean_brier_jev": 1.04, "mean_brier_clock": 2.0}
+    for folder, lane in ((tape, TAPE), (pre, PREMARKET)):
+        s = json.loads((folder / "weights.json").read_text())["sums"]
+        assert s[lane.average]["n"] == 1 and s[lane.average]["hit_rate"] == 0.0 and set(s) == {*lane.horizons, lane.average}
+
+
 def test_the_opening_call_is_the_average_and_its_size_stays_the_end_prices_second_line(fixture_run):
     _, tape, _ = fixture_run
     (line,) = _lines(tape / grade.INTEGRAL_NAME)

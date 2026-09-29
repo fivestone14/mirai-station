@@ -248,9 +248,27 @@ def _log(out_dir: Path, line: dict) -> None:
         f.write(json.dumps(line, ensure_ascii=False, sort_keys=True) + "\n")
 
 
+def learned_fresh(out_dir: Path) -> list[dict]:
+    """The fresh picks (the sum record's ``fresh``) of every read this loop has learned from: those its log lists as
+    included in a session it applied, each once."""
+    by_day: dict[str, set[str]] = {}
+    for x in load_jsonl(Path(out_dir) / LOG_NAME):
+        if x.get("applied"):
+            for ts in (x.get("manifest") or {}).get("included", []):
+                by_day.setdefault(ts[:10], set()).add(ts)
+    out, seen = [], set()
+    for day, stamps in sorted(by_day.items()):
+        for r in load_jsonl(Path(out_dir) / "hour" / f"{day}.jsonl"):
+            if r.get("row_ts") in stamps and r["row_ts"] not in seen:
+                seen.add(r["row_ts"])
+                out.append(r.get("fresh") or {})
+    return out
+
+
 class IntegralPoolWeights(pool.PoolWeights):
     """pool.PoolWeights on the average-price grade (its learn, mirrored): learn() applies every newly sealed session to
-    this loop's state and reports each live question's standing from it, every weight still 1.0. The phone never shows this pool: it reads the
+    this loop's state and reports each live question's standing from it, every weight still 1.0, and its ``n`` over the
+    reads this loop learned from (learned_fresh), not the end-price loop's. The phone never shows this pool: it reads the
     end-price loop's promotion (pool.shown), so ``on_phone`` is always false."""
 
     method = "pool_v1_integral"
@@ -260,7 +278,8 @@ class IntegralPoolWeights(pool.PoolWeights):
               lane: Lane = LIVE) -> "IntegralPoolWeights":
         applied = update(out_dir, lane=lane) if out_dir is not None else {}
         state = load_state(out_dir, lane) if out_dir is not None else cold_state()
-        n = Counter(qid for g in graded for qid, p in (g.get("fresh") or {}).items() if qid in allowed and str(p) in allowed[qid])
+        fresh = learned_fresh(out_dir) if out_dir is not None else []
+        n = Counter(qid for f in fresh for qid, p in f.items() if qid in allowed and str(p) in allowed[qid])
         block = {side: pool._prob(state["block"][side]) for side in pool.SIDES}
         questions = {}
         for qid in sorted(allowed):

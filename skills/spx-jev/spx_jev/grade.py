@@ -89,7 +89,11 @@ Outputs, all under the lane's folder (state/spx_jev/ for the live lane)
     weights.json       {"graded_runs": reads whose primary mark is graded, "primary",
                         "sums": {qid: {"n", "hit_rate", "committed_calls", "committed_hit_rate", "always_flat_hit_rate", "mean_brier", "bands",
                                        "blended": {"n", "mean_brier_blend", "mean_brier_jev", "mean_brier_clock", "jev_hit_rate"},
-                                       "event_reads": {"n", "mean_brier"}}},
+                                       "event_reads": {"n", "mean_brier"}},
+                                 the lane's average-price sum, the call: {"n", "graded_on", "hit_rate", "committed_calls",
+                                       "committed_hit_rate", "always_flat_hit_rate", "mean_brier", "mean_log_loss", "bands",
+                                       "blended": {"n", "mean_brier_blend", "mean_brier_jev", "mean_brier_clock"},
+                                       "event_reads"} (average_tally, after the run's average-price grade)},
                         "method", "min_weight", "questions": {qid: {"weight", "n", "in_step_3", "why"}},
                         on the live lane "pool" (the end-price loop's) and, its switch on, "pool_integral" (the
                         average-price loop's method, questions and pool, or {"failed": why}),
@@ -467,6 +471,43 @@ def weights_from(grades: list[dict], allowed: dict[str, set[str]], lane: Lane = 
     return out
 
 
+def average_tally(lines: list[dict], grades: list[dict], lane: Lane = LIVE) -> dict:
+    """The call's record beside the end-price sums' (_tally), from integral_grades.jsonl ``lines``: every read whose
+    average-price sum was graded on the average price over its box's window, a read graded under more than one rule
+    standing on its newest. Its hit rate is on the label's direction (an unsure pick, which the sum does not offer, a
+    miss there and no call in ``committed_hit_rate``), the flat share of the label, and the Brier and log loss of the
+    odds the phone showed; over the blended reads the same Brier for JEV's own odds and the clock's; and the reads a
+    scheduled event sat inside (their grades.jsonl line's ``event_within_30``) tallied apart."""
+    newest: dict[str, dict] = {}
+    for g in lines:
+        if g.get("horizon") == lane.primary and g.get("rule_version") in integral.READABLE_VERSIONS:
+            ts = str(g.get("row_ts", ""))
+            if ts not in newest or g["rule_version"] > newest[ts]["rule_version"]:
+                newest[ts] = g
+    rows = [g for g in newest.values() if g.get("graded") and g.get("sum") == lane.average and isinstance(g.get("scores"), dict)]
+    events = {g["row_ts"] for g in grades if g.get("event_within_30")}
+    inside = [g for g in rows if g["row_ts"] in events]
+    n = len(rows)
+    out = {"n": n, "graded_on": "the average price", "hit_rate": None, "committed_calls": 0, "committed_hit_rate": None,
+           "always_flat_hit_rate": None, "mean_brier": None, "mean_log_loss": None, "bands": {},
+           "event_reads": {"n": len(inside), "mean_brier": round(sum(g["scores"]["brier"] for g in inside) / len(inside), 4) if inside else None}}
+    if not n:
+        return out
+    committed = [g for g in rows if g.get("verdict") != "passed"]
+    out.update({"hit_rate": round(sum(1 for g in rows if g.get("verdict") == "right") / n, 3), "committed_calls": len(committed),
+                "committed_hit_rate": round(sum(1 for g in committed if g.get("verdict") == "right") / len(committed), 3) if committed else None,
+                "always_flat_hit_rate": round(sum(1 for g in rows if g["label"] == "flat") / n, 3),
+                "mean_brier": round(sum(g["scores"]["brier"] for g in rows) / n, 4),
+                "mean_log_loss": round(sum(g["scores"]["log_loss"] for g in rows) / n, 4), "bands": dict(Counter(g["label"] for g in rows))})
+    blended = [g["scores"] for g in rows if "jev_brier" in g["scores"] and "clock_brier" in g["scores"]]
+    if blended:
+        k = len(blended)
+        out["blended"] = {"n": k, "mean_brier_blend": round(sum(s["brier"] for s in blended) / k, 4),
+                          "mean_brier_jev": round(sum(s["jev_brier"] for s in blended) / k, 4),
+                          "mean_brier_clock": round(sum(s["clock_brier"] for s in blended) / k, 4)}
+    return out
+
+
 def log_weights(path: Path, before: dict, weights: dict, new: int) -> dict:
     """One line per grading run that graded something: the tallies, and every weight that moved."""
     changes = []
@@ -527,6 +568,17 @@ def run(state_dir: Path, out_dir: Path, allowed: dict[str, set[str]], day: str |
     weights["new_this_run"] = sum(1 for g in new if g.get("band"))
     weights["new_by_horizon"] = {q: sum(1 for g in new if q in (g.get("horizons") or [])) for q in lane.horizons}
     weights["closed_out"] = sum(1 for g in new if g.get("graded") is False)
+    try:
+        integral_run(state_dir, out_dir, lane, day)  # the average-price grade reads what was written above and writes only its own file
+    except Exception as e:  # the average-price grade must never cost a run its grades, the card or the close-out
+        print(f"integral shadow grade failed: {type(e).__name__}: {e}", file=sys.stderr)
+    if lane.average:
+        # the call's lasting record, from the average-price grades this run has just brought up to date
+        try:
+            weights["sums"][lane.average] = average_tally(load_jsonl(out_dir / INTEGRAL_NAME), grades, lane)
+        except Exception as e:  # nor may its record cost the run its weights
+            print(f"the call's record failed: {type(e).__name__}: {e}", file=sys.stderr)
+            weights["sums"][lane.average] = {"failed": f"{type(e).__name__}: {e}"}
     weights_path = out_dir / WEIGHTS_NAME
     before = {}
     if weights_path.is_file():
@@ -540,10 +592,6 @@ def run(state_dir: Path, out_dir: Path, allowed: dict[str, set[str]], day: str |
     tmp = weights_path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(weights, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, weights_path)                    # step 3 never sees a half file
-    try:
-        integral_run(state_dir, out_dir, lane, day)  # the average-price grade reads what was written above and writes only its own file
-    except Exception as e:  # the average-price grade must never cost a run its grades, the card or the close-out
-        print(f"integral shadow grade failed: {type(e).__name__}: {e}", file=sys.stderr)
     return weights
 
 
@@ -743,7 +791,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     w = run(state_dir, out_dir, live_options(load_questions(lane.questions, lane.key)), args.day, lane)
     for qid, s in w["sums"].items():
-        print(f"{qid}: graded {s['n']}; hit rate {s['hit_rate']} vs always-flat {s['always_flat_hit_rate']}; mean Brier {s['mean_brier']}; bands {s['bands']}",
+        print(f"{qid}: its record failed: {s['failed']}" if "failed" in s else
+              f"{qid}: graded {s['n']}; hit rate {s['hit_rate']} vs always-flat {s['always_flat_hit_rate']}; mean Brier {s['mean_brier']}; bands {s['bands']}",
               file=sys.stderr)
     left_out = sum(1 for v in w["questions"].values() if not v["in_step_3"])
     print(f"graded {w['new_this_run']} new, {w['graded_runs']} in all; {w['method']} weights on {len(w['questions'])} questions, "

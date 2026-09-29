@@ -261,6 +261,16 @@ def test_on_blended_reads_with_no_reference_on_file_stop_the_update_until_the_co
     assert json.loads((unblended / "pool_30_integral.json").read_text())["last_session_applied"] == DAYS[-1]
 
 
+def test_on_each_questions_count_is_over_the_reads_this_loop_learned_from_not_the_end_price_loops(tmp_path, clock):
+    """A stale read teaches the end-price loop and not this one, and a session still waiting on its average-price lines
+    teaches this one nothing yet: the counts say so, each loop's over its own reads."""
+    w = _learn(_write(tmp_path / "stale", stale_at=(DAYS[0], 0)))
+    assert w["questions"]["q_a"]["n"] == 9 and w["pool_integral"]["questions"]["q_a"]["n"] == 8
+    w = _learn(_write(tmp_path / "waiting", integral_lines=False))
+    assert w["questions"]["q_a"]["n"] == 9 and w["pool_integral"]["questions"]["q_a"]["n"] == 0
+    assert w["pool_integral"]["pool"]["last_session_applied"] is None
+
+
 def test_on_a_session_before_the_question_is_passed_over_and_an_ungraded_read_stops_the_update(tmp_path, clock):
     out = _write(tmp_path, {DAYS[0]: SESSIONS[DAYS[0]]}, average=False)
     _write(tmp_path, {DAYS[1]: SESSIONS[DAYS[1]]}, integral_lines=False)
