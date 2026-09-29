@@ -1019,13 +1019,13 @@
      ],
      "criteria": {
       "no_move": "the last half hour's move is in the bottom third of the recent sessions' half-hour moves at this time of day (no real move)",
-      "burst": "one five-minute stretch made most of the move",
+      "burst": "one five-minute stretch made most of the half hour's travel",
       "choppy": "price kept doubling back: its net move over the distance it travelled is in the bottom third of the same half hour on the recent sessions",
       "clean": "the move was spread across the half hour and went more one way than that (the middle or top third)"
      },
      "code_criteria": {
       "no_move": "|move| larger than under a third of the last {night_rank_count} sessions' |30-minute move| at this minute (bottom third)",
-      "burst": "largest five-minute chunk >= {move_burst_share} of the net move",
+      "burst": "largest five-minute chunk the move's way >= {move_burst_share} of the distance the six chunks travelled",
       "choppy": "path efficiency higher than under a third of the last {night_rank_count} sessions' 30-minute path efficiency at this minute (bottom third)",
       "clean": "otherwise"
      },

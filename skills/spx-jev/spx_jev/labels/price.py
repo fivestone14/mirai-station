@@ -573,8 +573,9 @@ def _half_hour_efficiency(bars: list[dict], then: datetime) -> float | None:
 
 
 def _move_shape(scene: Scene, anchor: SigmaRuler, move30: Ranked, ls: LabelSet) -> None:
-    """How the half hour's move was made: the largest of its six 5-minute chunks as a share of the net move,
-    and its path efficiency, the net move over the distance the minute closes travelled, against the same half
+    """How the half hour's move was made: the largest of its six 5-minute chunks the move's way as a share of the
+    distance the six travelled, so a spike the half hour gave back is the share of the path it was and never more
+    than all of it, and its path efficiency, the net move over the distance the minute closes travelled, against the same half
     hour on the prior sessions: in the bottom third it was choppy."""
     if move30.rank is None:
         ls.omit("price.move_shape", f"no 30-minute move to shape: {move30.why}")
@@ -590,8 +591,10 @@ def _move_shape(scene: Scene, anchor: SigmaRuler, move30: Ranked, ls: LabelSet) 
     if any(m is None for m in marks) or len(win) < 20:
         ls.omit("price.move_shape", "needs 30 minutes of finished bars")
         return
-    net = scene.spot - marks[0]
-    burst = max((b - a) / net for a, b in zip(marks, marks[1:]))
+    way = 1 if scene.spot >= marks[0] else -1
+    chunks = [(b - a) * way for a, b in zip(marks, marks[1:])]
+    travelled = sum(abs(c) for c in chunks)
+    burst = max(max(chunks), 0.0) / travelled if travelled else 0.0
     # measured on the finished bars alone, as each prior session's is, never to the row's spot
     efficiency = _half_hour_efficiency(scene.bars, scene.now)
     if efficiency is None:
@@ -604,7 +607,7 @@ def _move_shape(scene: Scene, anchor: SigmaRuler, move30: Ranked, ls: LabelSet) 
         return
     burst_line = "past" if burst >= MOVE_BURST_SHARE else "short of"
     ls.put("price.move_shape", ruled(anchor, f"the last half hour {_went(d)}, {_against(size, 'larger')}: {MOVE_WORDS[size.band]}; one "
-                                             f"5-minute stretch made {pct(burst)} of it, {burst_line} the {pct(MOVE_BURST_SHARE)} burst line; "
+                                             f"5-minute stretch covered {pct(burst)} of the half hour's 5-minute travel, {burst_line} the {pct(MOVE_BURST_SHARE)} burst line; "
                                              f"its net move was {efficiency:.2f} of the distance travelled, {_against(path, 'more one-way')}"
                                              + (": choppy" if path.band == "bottom third" else "")))
 

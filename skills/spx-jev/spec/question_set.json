@@ -1972,7 +1972,7 @@
       },
       {
        "name": "burst",
-       "description": "one five-minute stretch made most of the move"
+       "description": "one five-minute stretch made most of the half hour's travel"
       },
       {
        "name": "choppy",
@@ -1985,7 +1985,7 @@
      ],
      "criteria": {
       "no_move": "|move| larger than under a third of the last {night_rank_count} sessions' |30-minute move| at this minute (bottom third)",
-      "burst": "largest five-minute chunk >= {move_burst_share} of the net move",
+      "burst": "largest five-minute chunk the move's way >= {move_burst_share} of the distance the six chunks travelled",
       "choppy": "path efficiency higher than under a third of the last {night_rank_count} sessions' 30-minute path efficiency at this minute (bottom third)",
       "clean": "otherwise"
      },
@@ -2000,8 +2000,8 @@
       },
       {
        "name": "price.move_shape",
-       "example": "the last half hour rose 0.13 sigma, larger than 16 of the last 19 sessions at this minute, top third: a strong move; one 5-minute stretch made 114% of it, past the 80% burst line; its net move was 0.18 of the distance travelled, more one-way than 10 of the last 19 sessions at this minute, middle third",
-       "computed_how": "the price.recent_move rank first (bottom third: no real move to shape); then the largest of the six 5-minute chunks over the net 30-minute move (burst line move_burst_share, a share of the move's own net) and path efficiency = net over the sum of 1-minute moves, today's and each prior session's alike from the close before the half hour through its finished bar closes, ranked against the same measure to this clock on up to the last night_rank_count prior sessions (ranks.rank_sessions), stated as 'more one-way than N of the last M sessions at this minute' and its third (bottom/middle/top); ties are not beaten; omitted under same_clock_min_sessions usable sessions, with the reason; every prior session with bars counts, its ruler estimated or not, since no ruler scales this measure; bottom third = choppy",
+       "example": "the last half hour rose 0.13 sigma, larger than 16 of the last 19 sessions at this minute, top third: a strong move; one 5-minute stretch covered 81% of the half hour's 5-minute travel, past the 80% burst line; its net move was 0.18 of the distance travelled, more one-way than 10 of the last 19 sessions at this minute, middle third",
+       "computed_how": "the price.recent_move rank first (bottom third: no real move to shape); then the largest of the six 5-minute chunks the move's way over the distance the six chunks travelled (burst line move_burst_share; never over 100%, so a spike given back is not a burst) and path efficiency = net over the sum of 1-minute moves, today's and each prior session's alike from the close before the half hour through its finished bar closes, ranked against the same measure to this clock on up to the last night_rank_count prior sessions (ranks.rank_sessions), stated as 'more one-way than N of the last M sessions at this minute' and its third (bottom/middle/top); ties are not beaten; omitted under same_clock_min_sessions usable sessions, with the reason; every prior session with bars counts, its ruler estimated or not, since no ruler scales this measure; bottom third = choppy",
        "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json)",
        "availability": "live",
        "needs_engine_edit": false
@@ -9840,8 +9840,8 @@
   },
   {
    "name": "price.move_shape",
-   "example": "the last half hour rose 0.13 sigma, larger than 16 of the last 19 sessions at this minute, top third: a strong move; one 5-minute stretch made 114% of it, past the 80% burst line; its net move was 0.18 of the distance travelled, more one-way than 10 of the last 19 sessions at this minute, middle third",
-   "computed_how": "the price.recent_move rank first (bottom third: no real move to shape); then the largest of the six 5-minute chunks over the net 30-minute move (burst line move_burst_share, a share of the move's own net) and path efficiency = net over the sum of 1-minute moves, today's and each prior session's alike from the close before the half hour through its finished bar closes, ranked against the same measure to this clock on up to the last night_rank_count prior sessions (ranks.rank_sessions), stated as 'more one-way than N of the last M sessions at this minute' and its third (bottom/middle/top); ties are not beaten; omitted under same_clock_min_sessions usable sessions, with the reason; every prior session with bars counts, its ruler estimated or not, since no ruler scales this measure; bottom third = choppy",
+   "example": "the last half hour rose 0.13 sigma, larger than 16 of the last 19 sessions at this minute, top third: a strong move; one 5-minute stretch covered 81% of the half hour's 5-minute travel, past the 80% burst line; its net move was 0.18 of the distance travelled, more one-way than 10 of the last 19 sessions at this minute, middle third",
+   "computed_how": "the price.recent_move rank first (bottom third: no real move to shape); then the largest of the six 5-minute chunks the move's way over the distance the six chunks travelled (burst line move_burst_share; never over 100%, so a spike given back is not a burst) and path efficiency = net over the sum of 1-minute moves, today's and each prior session's alike from the close before the half hour through its finished bar closes, ranked against the same measure to this clock on up to the last night_rank_count prior sessions (ranks.rank_sessions), stated as 'more one-way than N of the last M sessions at this minute' and its third (bottom/middle/top); ties are not beaten; omitted under same_clock_min_sessions usable sessions, with the reason; every prior session with bars counts, its ruler estimated or not, since no ruler scales this measure; bottom third = choppy",
    "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json)",
    "availability": "live",
    "needs_engine_edit": false

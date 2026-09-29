@@ -453,24 +453,29 @@ def test_the_one_way_hour_needs_an_hour(scene_factory):
 @pytest.mark.parametrize("window, sentence", [
     ([7700.0] * 20 + [7712.0] * 10,
      "the last half hour rose 0.16 sigma, larger than 7 of the last 10 sessions at this minute, top third: a strong move; one 5-minute "
-     "stretch made 100% of it, past the 80% burst line; its net move was 1.00 of the distance travelled, more one-way than 10 of the last "
+     "stretch covered 100% of the half hour's 5-minute travel, past the 80% burst line; its net move was 1.00 of the distance travelled, "
+     "more one-way than 10 of the last "
      "10 sessions at this minute, top third"),
     ([7700.0 + 0.4 * (k + 1) for k in range(30)],
      "the last half hour rose 0.16 sigma, larger than 7 of the last 10 sessions at this minute, top third: a strong move; one 5-minute "
-     "stretch made 17% of it, short of the 80% burst line; its net move was 1.00 of the distance travelled, more one-way than 10 of the "
+     "stretch covered 17% of the half hour's 5-minute travel, short of the 80% burst line; its net move was 1.00 of the distance "
+     "travelled, more one-way than 10 of the "
      "last 10 sessions at this minute, top third"),
     ([7700.4, 7700.8, 7701.2, 7701.6, 7702.0] + [7702.0] * 15 + [7710.0] * 10,
      "the last half hour rose 0.13 sigma, larger than 6 of the last 10 sessions at this minute, middle third: a move; one 5-minute "
-     "stretch made 80% of it, past the 80% burst line; its net move was 1.00 of the distance travelled, more one-way than 10 of the last "
+     "stretch covered 80% of the half hour's 5-minute travel, past the 80% burst line; its net move was 1.00 of the distance travelled, "
+     "more one-way than 10 of the last "
      "10 sessions at this minute, top third"),
     ([7712.0 if k % 2 else 7690.0 for k in range(30)],
      "the last half hour rose 0.16 sigma, larger than 7 of the last 10 sessions at this minute, top third: a strong move; one 5-minute "
-     "stretch made 183% of it, past the 80% burst line; its net move was 0.02 of the distance travelled, more one-way than 0 of the last "
+     "stretch covered 18% of the half hour's 5-minute travel, short of the 80% burst line; its net move was 0.02 of the distance "
+     "travelled, more one-way than 0 of the last "
      "10 sessions at this minute, bottom third: choppy"),
     ([7700.0] * 30, "the last half hour moved +0.00 sigma, larger than 0 of the last 10 sessions at this minute, bottom third: no real move "
                     "to shape"),
 ])
 def test_how_the_half_hours_move_was_made(scene_factory, window, sentence):
+    # the zigzag's largest up stretch is under a fifth of the ground its stretches covered: choppy, never a burst of 183% of the move
     state, _, _ = _labels(_ranked(_scene(scene_factory, at(11, 0, ss=5), [7700.0] * 60 + window), _zigzag_then_ramp))
     assert state["price.move_shape"] == sentence
 
