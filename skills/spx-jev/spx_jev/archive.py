@@ -14,7 +14,9 @@ Three record kinds, each a dataclass below, each line carrying ``schema_version`
                the tier-1 event tag, the learning loop's forecasts, on the tape lane the unit and the bands, and
                on the premarket lane its checkpoint, its pre-open ruler and the overnight bars it saw
     grade      one per graded horizon line the grader writes, keyed to its read by ``read_id``
-    close_out  a scheduled lane's grade-only run after its last read: the day's calls and tally. From version 4
+    close_out  a lane's grade-only run after its last read (the live lane's after the close): the day's calls and
+               tally. A lane and day can have several, one from the close-out and one from each later retry whose tally
+               moved (service.retry_close_outs); the newest per lane and day stands. From version 4
                each call is graded on the average price over its window (``integral``), its end-price grade kept
                beside it under ``end_price`` (``end_price_only`` when it stands on that alone), and the tally counts
                the average price: ``right`` is right on the average, ``passed`` the unsure picks (``unsure`` up to

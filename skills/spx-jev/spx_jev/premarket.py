@@ -30,7 +30,8 @@ close cannot be formed writes its record with the reason, builds no labels and a
     state/spx_jev/lanes/premarket/hour/{day}.jsonl    one sum per read that asked JEV: what the grader grades
     state/spx_jev/lanes/premarket/latest.json         the card, shown from the day's first read until the tape lane's first
     state/spx_jev/lanes/premarket/grades.jsonl, weights.json   (grade.py; the lane keeps no learning loop, lane.PREMARKET.pool)
-    state/spx_jev/archive/{day}.jsonl                 its ReadRecord and CloseOutRecord lines, lane "premarket"
+    state/spx_jev/archive/{day}.jsonl                 its ReadRecord, GradeRecord and CloseOutRecord lines, lane "premarket",
+                                                      in the archive every lane shares
 
 The close-out at 10:06 waits up to service.BAR_WAIT_S for the bar its 10:04 check ends on (last_check), grades
 the morning's calls from the settled open (grade.run) and refreshes the card's calls and tally. Every time on the card is a full timestamp with its offset. A replay (--day with --at) saves

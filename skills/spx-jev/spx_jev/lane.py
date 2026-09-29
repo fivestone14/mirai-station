@@ -12,7 +12,8 @@ two sums are graded from the settled open, 10 and 30 minutes on, never from yest
 stand unblended: how that window ended on prior sessions (clock.premarket_odds, banded in each session's
 morning anchor) forecast it worse than even thirds. With no blend and no validated reference for the
 window, it keeps no learning loop and its weights are neutral. Everything under
-state/spx_jev/lanes/premarket/. Every step takes a lane and defaults to LIVE.
+state/spx_jev/lanes/premarket/. Each lane's raw archive is the exception: every lane appends to the one shared
+state/spx_jev/archive/ (archive_folder), each record naming its lane. Every step takes a lane and defaults to LIVE.
 
 Every lane asks from one question doc, each question on its own schedule per lane (schedule.py). A lane
 with a ``schedule`` names its reads in market time; the launchd job fires at each of them, and
@@ -36,7 +37,7 @@ from .archive import ARCHIVE_SUBDIR
 from .cuts import NEXT_30_FLAT_BAND_SIGMA, NEXT_60_FLAT_BAND_SIGMA, OPEN_10_FLAT_BAND_SIGMA
 
 QUESTIONS_DIR = Path(__file__).resolve().parent.parent / "questions"
-LIVE_DIR = "spx_jev"        # the live lane's folder under the state dir; no other lane may write there
+LIVE_DIR = "spx_jev"        # the live lane's folder under the state dir; no other lane writes its records there, only the shared archive/
 RECORD = "record"           # a horizon whose band is the one stored on each record, in points from the tape unit
 QUESTIONS = QUESTIONS_DIR / "spx_questions.json"   # every question of both lanes, generated from spec/question_set.json
 # The live job fires at :02 and :32 from 09:32 to 16:02 (launchd/com.mirai-station.spx-jev.plist.template).
