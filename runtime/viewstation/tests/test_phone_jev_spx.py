@@ -966,17 +966,25 @@ def _fold(card, now, tz=LA):
     return _run(PRE_DOM + "".join(_fn(f) for f in PRE_FNS) + "".join(_var(v) for v in PRE_VARS) + js, {"card": card, "now": now}, tz)
 
 
-def _closed(**checks):
-    """The card after the 10:06 close-out: the newest call carries each check graded so far (service.day_calls)."""
+def _closed(closed=None, **checks):
+    """The card after the close-out that left nothing to grade: the newest call carries each check graded (service.day_calls),
+    and ``closed``, the grader's reason, when it can never be graded."""
     read = et("09:28", s="04")
-    return pre_card("09:28", closed_out_at="2026-09-28T14:06:04+00:00",
-                    calls=[{"read": read, "mark": et("10:05"), "minutes": 30, "pick": "up", "p": 0.41, "checks": checks}])
+    return pre_card("09:28", closed_out_at="2026-09-28T14:06:04+00:00", graded_at="2026-09-28T14:06:04+00:00",
+                    calls=[{"read": read, "mark": et("10:05"), "minutes": 30, "pick": "up", "p": 0.41, "checks": checks,
+                            **({"closed": closed} if closed else {})}])
+
+
+def _partial(**checks):
+    """The card after a close-out run that left a check to grade: stamped graded_at, never closed_out_at."""
+    card = _closed(**checks)
+    return {k: v for k, v in card.items() if k != "closed_out_at"}
 
 
 @pytest.mark.parametrize("card, now, tz, want", [
     (pre_card("09:28"), et("09:50"), LA, "pre-market call 06:28Up 41%Checked 06:44 and 07:04"),
     # each check on the average price over its window, as the close-out log counts it, its end price only kept
-    (_closed(open_10={"outcome": "flat", "hit": True, "pick": "flat", "integral": graded("up", "wrong")}), et("10:30"), LA,
+    (_partial(open_10={"outcome": "flat", "hit": True, "pick": "flat", "integral": graded("up", "wrong")}), et("10:30"), LA,
      "pre-market call 06:28Up 41%06:44 was Up, wrong · 07:04 not graded yet"),
     (_closed(open_10={"outcome": "flat", "hit": False, "pick": "unsure", "integral": graded("down", "passed")},
              open_30={"outcome": "up", "hit": False, "pick": "down", "integral": graded("up", "wrong")}), et("10:30"), LA,
@@ -987,7 +995,13 @@ def _closed(**checks):
     # no average-price grade: the end price alone, said so, an unsure pick passed there too
     (_closed(open_10={"outcome": "flat", "hit": False}, open_30={"outcome": "flat", "hit": False, "pick": "unsure"}), et("10:30"), LA,
      "pre-market call 06:28Up 41%06:44 ended Flat, wrong · 07:04 ended Flat, passed"),
-    (_closed(), et("12:00"), NY, "pre-market call 09:28Up 41%09:44 not graded yet · 10:04 not graded yet"),
+    # closed out with a check ungraded: it never will be, said so, with the grader's reason in the viewer's zone
+    (_closed(), et("12:00"), NY, "pre-market call 09:28Up 41%09:44 not graded at the close-out · 10:04 not graded at the close-out"),
+    (_closed("halted window: no settled open (the 09:34 bar) on a finished day"), et("12:00"), LA,
+     "pre-market call 06:28Up 41%06:44 not graded at the close-out · 07:04 not graded at the close-out "
+     "(halted window: no settled open (the 06:34 bar) on a finished day)"),
+    (_closed("halted window: no bar at the mark", open_10={"outcome": "flat", "hit": True, "pick": "flat", "integral": graded("up", "wrong")}),
+     et("12:00"), LA, "pre-market call 06:28Up 41%06:44 was Up, wrong · 07:04 not graded at the close-out (halted window: no bar at the mark)"),
 ])
 def test_after_the_hand_over_the_call_folds_to_one_line_with_each_checks_result(card, now, tz, want):
     """The call is checked at 09:44 and 10:04 and the close-out grades both at 10:06: once the opening lane takes

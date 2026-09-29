@@ -1343,7 +1343,8 @@ details .q{margin-top:8px}
   }
   // the folded call: its pick, then each check (the card's marks, 10 and 30 minutes after the settled open) as the
   // close-out graded it on the call's own record, one it has not graded yet said so; before the close-out, when the
-  // call is checked
+  // call is checked. The card is stamped closed_out_at only once nothing is left to grade, so a check still ungraded
+  // then never will be: it says so, with the grader's reason when the call carries one (``closed``)
   var PRE_CHECKS = ['open_10', 'open_30'];
   function preFold(p){
     var h = p.hour, a = callSum(h), top = a.pick || top1(a.probabilities), f = el('div', 'card fold');
@@ -1351,11 +1352,14 @@ details .q{margin-top:8px}
     f.appendChild(el('span', 'k', 'pre-market call ' + viewerTime(h.read_at || p.row_ts)));
     f.appendChild(el('b', null, cap(top) + ' ' + pct(a.probabilities[top])));
     // each check on the average price over its own window from the settled open, or on its end price alone, said so
-    var said = PRE_CHECKS.map(function(k, i){
+    var never = false, said = PRE_CHECKS.map(function(k, i){
       var v = checks[k] && gradeOf(checks[k]), at = viewerTime(p.marks[i]);
-      return v ? at + (v.endOnly ? ' ended ' : ' was ') + cap(v.label) + ', ' + v.verdict.toLowerCase() : at + ' not graded yet';
+      if(v) return at + (v.endOnly ? ' ended ' : ' was ') + cap(v.label) + ', ' + v.verdict.toLowerCase();
+      never = never || !!p.closed_out_at;
+      return at + (p.closed_out_at ? ' not graded at the close-out' : ' not graded yet');
     });
-    f.appendChild(el('span', 'l', p.closed_out_at || Object.keys(checks).length ? said.join(' \u00B7 ')
+    var why = never && call && call.closed ? ' (' + marketWords(call.closed, h.read_at || p.row_ts) + ')' : '';
+    f.appendChild(el('span', 'l', p.closed_out_at || Object.keys(checks).length ? said.join(' \u00B7 ') + why
                                   : 'Checked ' + viewerTime(p.marks[0]) + ' and ' + viewerTime(p.marks[1])));
     return f;
   }
