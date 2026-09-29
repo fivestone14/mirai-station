@@ -67,6 +67,7 @@ TAPE_SLICE_MIN, TAPE_SLICES = 5, 6
 # The calendar's events that load the day's straddle before them: the Fed's decision and the chair's set pieces.
 # Any row of the calendar, of any tier, makes the day one with a scheduled event.
 LOADING_EVENTS = ("FOMC", "FED_CHAIR_TESTIMONY", "FED_CHAIR_JACKSON_HOLE")
+LOADING_WORDS = ", ".join(events.WORDS[k] for k in LOADING_EVENTS[:-1]) + f" or {events.WORDS[LOADING_EVENTS[-1]]}"
 # VIX's reaction to a shock is measured from this many minutes before the burst began (the set's words).
 SHOCK_LEAD_MIN = 6
 # A real move, for whether the half hour was still: its largest move over this many minutes above the bottom
@@ -702,6 +703,8 @@ def _ruler_event_load(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> No
         event_words = "nothing is on the event calendar today"
     else:
         event_words = "on the event calendar today: " + ", ".join(f"{e.words} at {_clock(e.start)}" for e in day_events)
+        if event is None:
+            event_words += f"; none of them is {LOADING_WORDS}"
     if event is not None:
         start = event.start
         ago = round((scene.now - start).total_seconds() / 60.0)

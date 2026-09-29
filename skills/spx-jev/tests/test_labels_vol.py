@@ -614,7 +614,18 @@ def test_a_swollen_ruler_on_a_release_day_is_not_swollen_with_no_event(scene_fac
     calendar(tmp_path, monkeypatch, "2026-09-18", [("08:30", "CPI", "pre_open"), ("10:00", "UMICH_SENTIMENT", "data_10am")])
     got = labels(ruler_scene(scene_factory, tmp_path, "2026-09-18", (11, 30), load=1.0, swell=1.40))[0]["vol.ruler_event_load"]
     assert got.startswith("normal: ") and ("; on the event calendar today: the consumer price report at 08:30, the University of "
-                                           "Michigan's consumer sentiment report at 10:00; this morning's sigma ruler is 1.40 times") in got
+                                           "Michigan's consumer sentiment report at 10:00; none of them is the Fed's rate decision, the "
+                                           "Fed chair's testimony or the Fed chair's Jackson Hole speech; this morning's sigma ruler is "
+                                           "1.40 times") in got
+
+
+def test_a_fed_speaker_day_says_no_row_loads_the_straddle_and_a_fed_day_does_not(scene_factory, tmp_path, monkeypatch):
+    calendar(tmp_path, monkeypatch, "2026-09-18", [("12:40", "FED_GOVERNOR_SPEECH", "fed_speaker")])
+    speaker = labels(ruler_scene(scene_factory, tmp_path, "2026-09-18", (11, 30), load=1.92, swell=1.40))[0]["vol.ruler_event_load"]
+    assert speaker.startswith("normal: ") and "; none of them is the Fed's rate decision" in speaker
+    calendar(tmp_path, monkeypatch, FOMC_DAY, FOMC_AND_PRESSER)
+    fed = labels(ruler_scene(scene_factory, tmp_path, FOMC_DAY, (11, 30), load=1.92, swell=1.88, prior_days=EVENT_PRIOR_DAYS))[0]
+    assert "none of them" not in fed["vol.ruler_event_load"]
 
 
 def test_the_ruler_is_omitted_past_the_calendars_last_kept_day(scene_factory, tmp_path, monkeypatch):

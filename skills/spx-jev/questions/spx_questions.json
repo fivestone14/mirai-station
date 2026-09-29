@@ -2269,16 +2269,16 @@
       "normal"
      ],
      "criteria": {
-      "loaded_before_event": "the straddle prices far more than the tape delivers, in the top fifth of the recent sessions at this minute, and a major event is still ahead today",
-      "released_after_event": "a major event came out within the digest window and the tape now moves more against the straddle priced beforehand than on most recent sessions (their top third)",
-      "swollen_no_event": "the morning ruler is in the top third of the recent sessions' morning rulers, with no scheduled event",
+      "loaded_before_event": "the straddle prices more against the tape than on most recent sessions at this minute (top fifth), and the Fed's rate decision, the Fed chair's testimony or the Fed chair's Jackson Hole speech is still ahead today",
+      "released_after_event": "the Fed's rate decision, the Fed chair's testimony or the Fed chair's Jackson Hole speech came out within the digest window and the tape now moves more against the straddle priced beforehand than on most recent sessions (their top third)",
+      "swollen_no_event": "the morning ruler is in the top third of the recent sessions' morning rulers, and nothing at all is on the event calendar today: no data release and no Fed speaker either",
       "compressed": "the morning ruler is in the bottom third of the recent sessions' morning rulers",
       "normal": "none of the above"
      },
      "code_criteria": {
-      "loaded_before_event": "straddle-priced over tape-delivered half-hour move ranked at this minute: share of the prior sessions it beats >= {top_fifth}, event ahead",
-      "released_after_event": "event within {event_digest_min}, the tape now over the pre-event straddle ranked against the same on the prior sessions: share > {third_hi}",
-      "swollen_no_event": "morning anchor ranked against the prior sessions' trusted anchors: share > {third_hi}, no event",
+      "loaded_before_event": "straddle-priced over tape-delivered half-hour move ranked at this minute: share of the prior sessions it beats >= {top_fifth}, a loading event (FOMC, Fed chair testimony, Jackson Hole) ahead",
+      "released_after_event": "a loading event within {event_digest_min}, the tape now over the pre-event straddle ranked against the same on the prior sessions: share > {third_hi}",
+      "swollen_no_event": "morning anchor ranked against the prior sessions' trusted anchors: share > {third_hi}, no calendar row of any kind today",
       "compressed": "share < {third_lo}",
       "normal": "otherwise"
      },

@@ -493,6 +493,18 @@ def test_the_opening_pace_options_jev_reads_name_the_thirds_its_two_labels_say()
     assert "wider than all" in q["criteria"][q["options"].index("very_busy")]
 
 
+def test_the_ruler_loaded_options_name_the_events_that_load_the_straddle_and_the_ratio_it_ranks():
+    """The label loads or releases only on the Fed's decision and the chair's set pieces, so the words JEV reads name them
+    (a data release or a Fed speaker is no such event), and the straddle is only ever ranked against the tape, never "far more"."""
+    raw = json.loads((QUESTIONS / "spx_questions.json").read_text())
+    q = next(g["questions"]["ruler_loaded"] for g in raw["groups"] if "ruler_loaded" in g["questions"])
+    words = q["criteria"]
+    assert not any("major event" in w or "far more" in w for w in words.values()), words
+    fed = "the Fed's rate decision, the Fed chair's testimony or the Fed chair's Jackson Hole speech"
+    assert fed in words["loaded_before_event"] and fed in words["released_after_event"]
+    assert "nothing at all is on the event calendar today" in words["swollen_no_event"]
+
+
 def test_a_group_over_the_cap_stops_the_load(tmp_path):
     q = {"type": "noul", "instructions": "Read `context.symbol`.", "criteria": {"true": "t", "false": "f"}}
     p = tmp_path / "doc.json"

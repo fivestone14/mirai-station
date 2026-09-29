@@ -3810,15 +3810,15 @@
      "options": [
       {
        "name": "loaded_before_event",
-       "description": "the straddle prices far more than the tape delivers, in the top fifth of the recent sessions at this minute, and a major event is still ahead today"
+       "description": "the straddle prices more against the tape than on most recent sessions at this minute (top fifth), and the Fed's rate decision, the Fed chair's testimony or the Fed chair's Jackson Hole speech is still ahead today"
       },
       {
        "name": "released_after_event",
-       "description": "a major event came out within the digest window and the tape now moves more against the straddle priced beforehand than on most recent sessions (their top third)"
+       "description": "the Fed's rate decision, the Fed chair's testimony or the Fed chair's Jackson Hole speech came out within the digest window and the tape now moves more against the straddle priced beforehand than on most recent sessions (their top third)"
       },
       {
        "name": "swollen_no_event",
-       "description": "the morning ruler is in the top third of the recent sessions' morning rulers, with no scheduled event"
+       "description": "the morning ruler is in the top third of the recent sessions' morning rulers, and nothing at all is on the event calendar today: no data release and no Fed speaker either"
       },
       {
        "name": "compressed",
@@ -3830,17 +3830,17 @@
       }
      ],
      "criteria": {
-      "loaded_before_event": "straddle-priced over tape-delivered half-hour move ranked at this minute: share of the prior sessions it beats >= {top_fifth}, event ahead",
-      "released_after_event": "event within {event_digest_min}, the tape now over the pre-event straddle ranked against the same on the prior sessions: share > {third_hi}",
-      "swollen_no_event": "morning anchor ranked against the prior sessions' trusted anchors: share > {third_hi}, no event",
+      "loaded_before_event": "straddle-priced over tape-delivered half-hour move ranked at this minute: share of the prior sessions it beats >= {top_fifth}, a loading event (FOMC, Fed chair testimony, Jackson Hole) ahead",
+      "released_after_event": "a loading event within {event_digest_min}, the tape now over the pre-event straddle ranked against the same on the prior sessions: share > {third_hi}",
+      "swollen_no_event": "morning anchor ranked against the prior sessions' trusted anchors: share > {third_hi}, no calendar row of any kind today",
       "compressed": "share < {third_lo}",
       "normal": "otherwise"
      },
      "labels_needed": [
       {
        "name": "vol.ruler_event_load",
-       "example": "normal: the same-day straddle prices a 30-minute move 0.34 times what the tape's recent 5-minute ranges scale to, higher than 1 of the last 17 sessions at 12:31 (in the bottom fifth); on the event calendar today: the University of Michigan's consumer sentiment report at 10:00; this morning's sigma ruler is 1.05 times its 19-session median, larger than 11 of the last 19 sessions' morning rulers, middle third",
-       "computed_how": "E30/T30 ratio ranked against the same at this minute on up to the last {night_rank_count} sessions (fifths); the morning anchor ranked against up to the last {night_rank_count} trusted anchors (thirds; the multiple of their median is the figure); after a Fed event inside the digest window, the tape over the pre-event straddle ranked against the same on those sessions (thirds); each at least {same_clock_min_sessions} sessions, else omitted (the release clause says why); the event clause needs context.event_clock",
+       "example": "normal: the same-day straddle prices a 30-minute move 0.34 times what the tape's recent 5-minute ranges scale to, higher than 1 of the last 17 sessions at 12:31 (in the bottom fifth); on the event calendar today: the University of Michigan's consumer sentiment report at 10:00; none of them is the Fed's rate decision, the Fed chair's testimony or the Fed chair's Jackson Hole speech; this morning's sigma ruler is 1.05 times its 19-session median, larger than 11 of the last 19 sessions' morning rulers, middle third",
+       "computed_how": "E30/T30 ratio ranked against the same at this minute on up to the last {night_rank_count} sessions (fifths); the morning anchor ranked against up to the last {night_rank_count} trusted anchors (thirds; the multiple of their median is the figure); after a Fed event inside the digest window, the tape over the pre-event straddle ranked against the same on those sessions (thirds); each at least {same_clock_min_sessions} sessions, else omitted (the release clause says why); the event clause names every calendar row today and, when none is one of the loading events (LOADING_EVENTS: FOMC, Fed chair testimony, Jackson Hole), says so; the event clause needs context.event_clock",
        "source": "state/reversion/{day}.jsonl; bars; calendar",
        "availability": "live",
        "label_built": false,
@@ -10289,8 +10289,8 @@
   },
   {
    "name": "vol.ruler_event_load",
-   "example": "normal: the same-day straddle prices a 30-minute move 0.34 times what the tape's recent 5-minute ranges scale to, higher than 1 of the last 17 sessions at 12:31 (in the bottom fifth); on the event calendar today: the University of Michigan's consumer sentiment report at 10:00; this morning's sigma ruler is 1.05 times its 19-session median, larger than 11 of the last 19 sessions' morning rulers, middle third",
-   "computed_how": "E30/T30 ratio ranked against the same at this minute on up to the last {night_rank_count} sessions (fifths); the morning anchor ranked against up to the last {night_rank_count} trusted anchors (thirds; the multiple of their median is the figure); after a Fed event inside the digest window, the tape over the pre-event straddle ranked against the same on those sessions (thirds); each at least {same_clock_min_sessions} sessions, else omitted (the release clause says why); the event clause needs context.event_clock",
+   "example": "normal: the same-day straddle prices a 30-minute move 0.34 times what the tape's recent 5-minute ranges scale to, higher than 1 of the last 17 sessions at 12:31 (in the bottom fifth); on the event calendar today: the University of Michigan's consumer sentiment report at 10:00; none of them is the Fed's rate decision, the Fed chair's testimony or the Fed chair's Jackson Hole speech; this morning's sigma ruler is 1.05 times its 19-session median, larger than 11 of the last 19 sessions' morning rulers, middle third",
+   "computed_how": "E30/T30 ratio ranked against the same at this minute on up to the last {night_rank_count} sessions (fifths); the morning anchor ranked against up to the last {night_rank_count} trusted anchors (thirds; the multiple of their median is the figure); after a Fed event inside the digest window, the tape over the pre-event straddle ranked against the same on those sessions (thirds); each at least {same_clock_min_sessions} sessions, else omitted (the release clause says why); the event clause names every calendar row today and, when none is one of the loading events (LOADING_EVENTS: FOMC, Fed chair testimony, Jackson Hole), says so; the event clause needs context.event_clock",
    "source": "state/reversion/{day}.jsonl; bars; calendar",
    "availability": "live",
    "label_built": false,
