@@ -179,3 +179,44 @@ def test_the_first_minutes_move_is_ranked_from_the_close_before_the_window_as_th
     assert (r["sharp_move"]["points"], r["sharp_move"]["minute"], r["sharp_move"]["sharp"]) == (2.5, 1, True)
     no_bar_before = grade_window(bars[1:], _prior(1.0), t0, 10, 7702.0, 3.0, "flat")
     assert (no_bar_before["sharp_move"]["points"], no_bar_before["sharp_move"]["sharp"]) == (0.5, False)   # from the spot
+
+
+def _window_moves(moves, day):
+    """A full session flat at 7700 but for the 11:00 window, whose ten minutes (from the 10:59 close) zigzag by ``moves``."""
+    closes, c = [7700.0] * 390, 7700.0
+    for k, m in enumerate(moves):
+        c += m if k % 2 == 0 else -m
+        closes[90 + k] = c
+    return bars_from_closes(closes, day=day)
+
+
+def test_the_bad_tick_cut_is_the_999th_permille_of_the_sessions_moves_not_a_lower_one():
+    """Twenty sessions whose 200 window moves run 0.05 to 10.00 points: the cut sits at 9.99. A 9.9-point spike and
+    back (about the 99th percentile) is a move and stands; a 12-point one is a tick."""
+    prior = {f"2026-08-{d:02d}": _window_moves([0.05 * (s * 10 + k + 1) for k in range(10)], f"2026-08-{d:02d}")
+             for s, d in enumerate(range(31, 11, -1))}
+    t0 = at(11, 0)
+    for spike, fixed in ((9.9, False), (12.0, True)):
+        bars = _bars(t0, 7700.0, [7700.0, 7700.0, 7700.0, 7700.0 + spike, 7700.0, 7700.0, 7700.0, 7700.0, 7700.0, 7700.0])
+        bars[4]["open"] = 7700.0                                    # the next minute opens back where it was
+        r = grade_window(bars, prior, t0, 10, 7700.0, 3.0, "flat")
+        assert bool(r["bad_ticks"]) is fixed, spike
+
+
+def test_a_sharp_move_is_the_top_2_of_21_and_no_lower():
+    """The window's biggest minute, 3 points, against sessions whose biggest was 1 point but for one or two at 5:
+    beating 19 of the last 20 is sharp, beating 18 is not."""
+    t0 = at(11, 0)
+    closes = [7700.0, 7700.5, 7703.5, 7703.0, 7703.5, 7703.0, 7703.5, 7703.0, 7703.5, 7703.0]
+    for busy, sharp in ((1, True), (2, False)):
+        prior = _prior(1.0)
+        for d in list(prior)[:busy]:
+            prior[d] = bars_from_closes([7700.0 + 5.0 * (i % 2) for i in range(390)], day=d)
+        r = grade_window(_bars(t0, 7700.0, closes), prior, t0, 10, 7700.0, 3.0, "up")["sharp_move"]
+        assert (r["higher_than"], r["of"], r["sharp"]) == (20 - busy, 20, sharp)
+
+
+def test_a_spot_last_traded_two_minutes_back_is_not_yet_stale():
+    t0 = at(11, 0)
+    bars = _bars(t0 - timedelta(minutes=2), 7690.0, [7690.0]) + _bars(t0 - timedelta(minutes=1), 7700.0, [7700.0, 7700.2])
+    assert grade_window(bars, {}, t0, 1, 7690.0, 3.0, "up")["stale_read"] is False

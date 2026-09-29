@@ -3,8 +3,10 @@ file, once, filled for past days by the backfill, while grades.jsonl, the weight
 what the grader wrote without it."""
 from __future__ import annotations
 
+import fcntl
 import json
 import shutil
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -12,7 +14,7 @@ import pytest
 
 from conftest import DAY, at, bars_from_closes, make_row, write_state
 from spx_jev import archive, grade, integral, pool
-from spx_jev.grade import INTEGRAL_NAME, grade_one, integral_line, integral_report, integral_run, main, run
+from spx_jev.grade import INTEGRAL_LOCK, INTEGRAL_NAME, grade_one, integral_line, integral_report, integral_run, main, run
 from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.lane import PREMARKET, TAPE
 
@@ -66,8 +68,9 @@ def _lines(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text().splitlines()]
 
 
-def _tree(root: Path, leave_out: str = INTEGRAL_NAME) -> dict[str, bytes]:
-    return {str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file() and p.name != leave_out}
+def _tree(root: Path) -> dict[str, bytes]:
+    """Every file under ``root`` but the side file and its lock."""
+    return {str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file() and p.name not in (INTEGRAL_NAME, INTEGRAL_LOCK)}
 
 
 def test_every_graded_horizon_gets_one_integral_line_and_a_second_run_writes_none(tmp_path, clock):
@@ -188,3 +191,55 @@ def test_a_line_graded_before_the_morning_anchor_is_measured_in_the_records_sigm
     assert integral_line(g, "next_30", rec, _climb(), {})["f"] == round(0.07 * SIGMA, 4)
     del g["anchor"]
     assert integral_line(g, "next_30", rec, _climb(), {})["f"] == round(0.07 * 80.0, 4)
+
+
+def test_the_side_file_only_ever_grows(tmp_path, clock):
+    """A second day's run appends its lines after the first day's, whose bytes stay exactly as they were."""
+    state = _state(tmp_path)
+    out = state / "spx_jev"
+    run(state, out, ALLOWED)
+    first = (out / INTEGRAL_NAME).read_bytes()
+    day2 = "2026-09-21"
+    write_state(state, day2, [make_row(at(9, 31, day=day2), 7700.0, sigma=SIGMA, sigma_anchor=SIGMA, sigma_live=SIGMA)],
+                bars_from_closes([7700.0] * 390, day=day2))
+    (out / "hour" / f"{day2}.jsonl").write_text(json.dumps({**_rec(11, 0), "row_ts": at(11, 0, day=day2).isoformat()}) + "\n")
+    clock("2026-09-22")
+    run(state, out, ALLOWED)
+    grown = (out / INTEGRAL_NAME).read_bytes()
+    added = [json.loads(line) for line in grown[len(first):].decode().splitlines()]
+    assert grown.startswith(first) and [(g["row_ts"][:10], g["horizon"]) for g in added] == [(day2, "next_30"), (day2, "next_60")]
+
+
+def test_a_line_under_an_older_rule_version_does_not_stand_for_this_one(tmp_path, clock):
+    state = _state(tmp_path, recs=[_rec(11, 0)])
+    out = state / "spx_jev"
+    old = {"row_ts": at(11, 0).isoformat(), "horizon": "next_30", "rule_version": integral.RULE_VERSION - 1, "graded": True, "label": "flat"}
+    (out / INTEGRAL_NAME).write_text(json.dumps(old) + "\n")
+    run(state, out, ALLOWED)
+    lines = _lines(out / INTEGRAL_NAME)
+    assert lines[0] == old and [(g["horizon"], g["rule_version"]) for g in lines[1:]] == [
+        ("next_30", integral.RULE_VERSION), ("next_60", integral.RULE_VERSION)]
+
+
+def test_a_stale_reads_flag_reaches_the_side_file(tmp_path, clock):
+    """A record whose spot, 7690, no bar near 11:00 traded (price stood at 7700): graded, and flagged for anything that learns."""
+    state = _state(tmp_path, recs=[_rec(11, 0, spot=7690.0)])
+    run(state, state / "spx_jev", ALLOWED)
+    assert {(g["stale_read"], g["graded"]) for g in _lines(state / "spx_jev" / INTEGRAL_NAME)} == {(True, True)}
+
+
+def test_a_backfill_waits_for_a_run_holding_the_side_file(tmp_path, clock, monkeypatch):
+    state = _state(tmp_path)
+    out = state / "spx_jev"
+    with monkeypatch.context() as m:
+        m.setattr(grade, "integral_run", lambda *a, **k: [])
+        run(state, out, ALLOWED)                                   # graded, the side file not yet filled
+    done = []
+    with open(out / INTEGRAL_LOCK, "w") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        worker = threading.Thread(target=lambda: done.append(integral_run(state, out)))
+        worker.start()
+        worker.join(0.3)
+        assert worker.is_alive() and not (out / INTEGRAL_NAME).exists()      # it waits for the lock
+    worker.join(5)
+    assert len(done[0]) == 4 and len(_lines(out / INTEGRAL_NAME)) == 4

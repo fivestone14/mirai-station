@@ -86,11 +86,13 @@ Outputs, all under the lane's folder (state/spx_jev/ for the live lane)
     and every new line, once more, in the raw archive (archive.GradeRecord, keyed to its read)
     integral_grades.jsonl  one line per graded horizon, the shadow integral grade (append only, keyed by row_ts,
                        ``horizon`` and ``rule_version``): integral.grade_window's fields, the end-price label
-                       (``end_label``) and, on a RECORD horizon, the five-band size line (``size``)
+                       (``end_label``) and, on a RECORD horizon, the five-band size line (``size``); beside it
+                       integral_grades.jsonl.lock, held while it is read and appended
 """
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import sys
@@ -118,6 +120,7 @@ BANDS = ("up", "flat", "down")      # "unsure" is a pick, never an outcome: its 
 SIZES = ("big", "small")
 WEIGHTS_LOG = "weights_log.jsonl"
 INTEGRAL_NAME = "integral_grades.jsonl"
+INTEGRAL_LOCK = f"{INTEGRAL_NAME}.lock"     # held while a run or a backfill reads, dedupes and appends the side file
 
 
 def _bar_before(bars: list[dict], t: datetime) -> dict:
@@ -551,34 +554,39 @@ def integral_run(state_dir: Path, out_dir: Path, lane: Lane = LIVE, day: str | N
     hold under this rule_version, from the day's bars; nothing else is written. A window with bars missing waits
     today, when they can still come, and is written as not graded on a finished day, so none is retried for ever
     and none is written twice. Returns the new lines."""
-    path = out_dir / INTEGRAL_NAME
-    have = {(g.get("row_ts"), g.get("horizon"), g.get("rule_version")) for g in load_jsonl(path)}
-    todo: dict[str, list[tuple[dict, str]]] = defaultdict(list)
-    for g in load_jsonl(out_dir / "grades.jsonl"):
-        for qid in g.get("horizons") or []:
-            if (g["row_ts"], qid, integral.RULE_VERSION) not in have and (day is None or g["row_ts"][:10] == day):
-                todo[g["row_ts"][:10]].append((g, qid))
-    today = datetime.now(ET).date().isoformat()
-    new = []
-    for d, items in sorted(todo.items()):
-        recs: dict[str, dict] = {}
-        for r in load_jsonl(out_dir / "hour" / f"{d}.jsonl"):
-            if isinstance(r.get("by"), dict):
-                recs.setdefault(r.get("row_ts"), r)   # the first of a row written twice is the one graded
-        bars, prior = load_bars(state_dir, d), prior_bar_days(state_dir, d)
-        for g, qid in items:
-            key = (g["row_ts"], qid, integral.RULE_VERSION)
-            if key in have:
-                continue
-            line = integral_line(g, qid, recs.get(g["row_ts"]), bars, prior, lane)
-            if line.get("reason") == integral.NOT_GRADED and d >= today:
-                continue                              # a hole today can still be filled: a later run grades it
-            new.append(line)
-            have.add(key)
-    if new:
-        with open(path, "a", encoding="utf-8") as f:
-            for line in new:
-                f.write(json.dumps(line, ensure_ascii=False) + "\n")
+    if not (out_dir / "grades.jsonl").exists():
+        return []
+    # a backfill by hand and a job's run can overlap: each reads what the other appended before it adds its own
+    with open(out_dir / INTEGRAL_LOCK, "w") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        path = out_dir / INTEGRAL_NAME
+        have = {(g.get("row_ts"), g.get("horizon"), g.get("rule_version")) for g in load_jsonl(path)}
+        todo: dict[str, list[tuple[dict, str]]] = defaultdict(list)
+        for g in load_jsonl(out_dir / "grades.jsonl"):
+            for qid in g.get("horizons") or []:
+                if (g["row_ts"], qid, integral.RULE_VERSION) not in have and (day is None or g["row_ts"][:10] == day):
+                    todo[g["row_ts"][:10]].append((g, qid))
+        today = datetime.now(ET).date().isoformat()
+        new = []
+        for d, items in sorted(todo.items()):
+            recs: dict[str, dict] = {}
+            for r in load_jsonl(out_dir / "hour" / f"{d}.jsonl"):
+                if isinstance(r.get("by"), dict):
+                    recs.setdefault(r.get("row_ts"), r)   # the first of a row written twice is the one graded
+            bars, prior = load_bars(state_dir, d), prior_bar_days(state_dir, d)
+            for g, qid in items:
+                key = (g["row_ts"], qid, integral.RULE_VERSION)
+                if key in have:
+                    continue
+                line = integral_line(g, qid, recs.get(g["row_ts"]), bars, prior, lane)
+                if line.get("reason") == integral.NOT_GRADED and d >= today:
+                    continue                              # a hole today can still be filled: a later run grades it
+                new.append(line)
+                have.add(key)
+        if new:
+            with open(path, "a", encoding="utf-8") as f:
+                for line in new:
+                    f.write(json.dumps(line, ensure_ascii=False) + "\n")
     return new
 
 
