@@ -17,7 +17,7 @@ from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import ONE_MINUTE, bar_time, bars_finished_between, close_at, high_low_close, is_num, settled_open, yesterdays_bars
 from .rulers import NO_ANCHOR, SigmaRuler, ruled, sigma_anchor
-from .words import above_or_below, minutes_ago, ordinal, pct, plural, sig
+from .words import above_or_below, minutes_ago, ordinal, pct, plural, sig, sig_beside
 
 LABELS = ("levels.break_armed", "levels.open_vs_prior_range", "levels.prior_day", "levels.prior_value", "levels.round_number",
           "levels.wall_touch_effort")
@@ -156,10 +156,10 @@ def _wall_touch_effort(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) ->
     touch_rule = sig(WALL_TOUCH_SIGMA)
     effort = _effort_words(judged.get((kind, level)))
     if past > WALL_TOUCH_SIGMA:
-        text = (f"price went through the {side} heavy strike, first touched {minutes_ago(scene.now, when)}, and sits {sig(past)} past it, "
+        text = (f"price went through the {side} heavy strike, first touched {minutes_ago(scene.now, when)}, and sits {sig_beside(past, WALL_TOUCH_SIGMA)} past it, "
                 f"more than the {touch_rule} touch rule, so it broke through")
     elif past < -WALL_TOUCH_SIGMA:
-        text = (f"price tested the {side} heavy strike {minutes_ago(scene.now, when)} and is now {sig(-past)} back from it, more than the "
+        text = (f"price tested the {side} heavy strike {minutes_ago(scene.now, when)} and is now {sig_beside(-past, WALL_TOUCH_SIGMA)} back from it, more than the "
                 f"{touch_rule} touch rule, so the strike held")
     elif not effort:
         ls.omit("levels.wall_touch_effort", f"price is still touching the {side} heavy strike and the siege box has not judged the "

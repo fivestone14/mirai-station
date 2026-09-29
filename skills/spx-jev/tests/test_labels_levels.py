@@ -287,6 +287,14 @@ def test_a_strike_that_held_or_broke(scene_factory):
                                                "0.12 sigma past it, more than the 0.10 sigma touch rule, so it broke through")
 
 
+def test_a_strike_just_past_the_touch_rule_never_reads_as_equal_to_it(scene_factory):
+    got, _, _ = labels(touch_scene(scene_factory, 7713.3, effort=None, verdict=None))       # 0.104 sigma through
+    assert got["levels.wall_touch_effort"].startswith("price went through the call-side heavy strike, first touched 12 minutes ago, "
+                                                      "and sits 0.104 sigma past it, more than the 0.10 sigma touch rule")
+    got, _, _ = labels(touch_scene(scene_factory, 7696.7))                                  # 0.104 sigma back
+    assert "is now 0.104 sigma back from it, more than the 0.10 sigma touch rule, so the strike held" in got["levels.wall_touch_effort"]
+
+
 def test_a_touch_that_began_before_the_half_hour_counts_while_it_lasts(scene_factory):
     got, _, _ = labels(touch_scene(scene_factory, 7700.0, began=WINDOW_30_MIN + 10))             # still engaged at the read
     assert got["levels.wall_touch_effort"].startswith("price tested the call-side heavy strike 40 minutes ago and is now 0.06 sigma "

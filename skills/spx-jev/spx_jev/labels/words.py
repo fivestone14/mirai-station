@@ -8,6 +8,12 @@ def sig(x: float) -> str:
     return f"{x:.2f} sigma"
 
 
+def sig_beside(x: float, rule: float) -> str:
+    """``x`` in sigma beside the rule it is judged against: to three decimals where two would print the rule's own
+    figure, so a distance past the rule never reads as equal to it ("0.10 past, more than the 0.10 rule")."""
+    return f"{x:.3f} sigma" if x != rule and f"{x:.2f}" == f"{rule:.2f}" else sig(x)
+
+
 def signed(x: float, nd: int = 2) -> str:
     """A signed number with no '-0.00': a tiny negative rounds to a plain +0.00."""
     r = round(x, nd) or 0.0
