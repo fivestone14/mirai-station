@@ -1,4 +1,4 @@
-"""The tape and flow family's labels over the station's own sources: the lob-flow collector's raw 0DTE tape. Every
+"""The options-flow family's labels over the station's own sources: the lob-flow collector's raw 0DTE tape. Every
 verdict is a rank against the same minute on the prior sessions, which needs 10 of them."""
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import pytest
 
 from conftest import DAY, at, flat_bars, make_row
 from spx_jev.labels.rulers import SigmaRuler
-from spx_jev.labels.tape_flow import build_tape_flow_labels
+from spx_jev.labels.options_flow import build_options_flow_labels
 
 PRIOR_DAYS = ("2026-09-17", "2026-09-16", "2026-09-15", "2026-09-14", "2026-09-11", "2026-09-10", "2026-09-09", "2026-09-08",
               "2026-09-04", "2026-09-03", "2026-09-02", "2026-09-01")
@@ -66,7 +66,7 @@ def tape_scene(scene_factory, root: Path, now: datetime, today: list[dict], prio
 
 
 def read(scene):
-    ls = build_tape_flow_labels(scene)
+    ls = build_options_flow_labels(scene)
     return ls, {f"{g}.{k}": v for g, labels in ls.state.items() for k, v in labels.items()}
 
 

@@ -8,7 +8,7 @@ diary series (the VIX, the straddle and the VIX curve through each day), and the
 * The tape. ``state/lob_flow/raw/{day}/tape.jsonl`` (``tape.jsonl.gz`` once the collector archives the
   day): one line per 0DTE SPXW trade, with the quote it printed into. Lines land up to two hours out of
   time order, so every line up to the read's clock is read (the first line stamped after it was written
-  after it, as tape_flow reads the tape, today and on the prior sessions alike) and only the minutes
+  after it, as options_flow reads the tape, today and on the prior sessions alike) and only the minutes
   asked for are kept: for each, the newest quote per contract in the minute before it.
 * The skew. Each quote's mid is turned into an implied volatility (Black's formula on the forward, time
   to the settle in calendar years, as the scanner's ``atm_iv``), the forward from put-call parity at the
@@ -92,7 +92,7 @@ Contract = tuple[float, str]          # (strike, "call" | "put")
 
 def tape_path(state_dir: Path, day: str) -> Path | None:
     """The day's raw 0DTE tape, live or archived; None when the collector wrote none. The trade-flow labels
-    (tape_flow) read the same file."""
+    (options_flow) read the same file."""
     folder = Path(state_dir) / TAPE_RAW_SUBDIR / day
     return next((p for p in (folder / "tape.jsonl", folder / "tape.jsonl.gz") if p.exists()), None)
 

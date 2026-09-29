@@ -35,6 +35,13 @@ def test_every_label_the_questions_read_and_every_gate_they_sleep_on_has_a_famil
         lab["name"]: next(f.name for f in FAMILIES if lab["name"] in f.labels) for lab in QUESTION_SET["labels"] if lab["availability"] == "dark"}
 
 
+def test_the_options_labels_belong_to_the_options_flow_family_and_no_family_is_named_for_the_tape():
+    """"Tape" is the opening lane's name and its price unit's; the family reading the 0DTE options trades is not it."""
+    owner = {p: f.name for f in FAMILIES for p in f.labels}
+    assert {owner[p] for p in owner if p.startswith("options.")} == {"options_flow"}
+    assert not [f.name for f in FAMILIES if "tape" in f.name]
+
+
 def test_a_renamed_label_says_what_it_measures_and_its_old_path_maps_to_the_new():
     owned = {p for f in FAMILIES for p in f.labels}
     assert registry.RENAMED == {"breadth.upvol_share_30m": "breadth.net_volume_change_30m", "vol.vix_change_30": "vol.vix_change"}

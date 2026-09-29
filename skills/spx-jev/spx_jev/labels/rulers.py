@@ -180,7 +180,7 @@ def ruled(anchor: SigmaRuler, sentence: str) -> str:
 
 def typical_move(scene: Scene, anchor: SigmaRuler, minutes: int) -> tuple[float | None, str]:
     """How far SPX typically moves over the next ``minutes`` now, in points, and what the figure combines;
-    None with the reason when it cannot be measured. The tape's reach is the tape unit grown by the square
+    None with the reason when it cannot be measured. The tape unit's reach is the unit grown by the square
     root of time; the straddle's is what today's straddle still prices, as a one-sigma move, spread over the
     minutes left. The two combine as their geometric mean, and the tape stands alone while a scheduled
     event is still ahead today, since the straddle prices the event rather than an ordinary half hour."""

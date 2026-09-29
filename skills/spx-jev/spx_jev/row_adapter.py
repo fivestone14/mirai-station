@@ -49,7 +49,7 @@ FAMILY_FIELDS: dict[str, tuple[str, ...]] = {
     "vol": (),
     "gamma": ("gex_views.flip", "gex_views.regime_0dte_vol", "gex_views.magnet", "gex_views.pin_centroid", "gex_views.charm_wall",
               "gex_views.call_wall_gamma", "gex_views.put_wall_gamma", "gex_views.net_by_strike_tenor"),
-    "tape_flow": (),
+    "options_flow": (),
     "expiry_calendar": (),
     "breadth": (),
     "leadership": (),

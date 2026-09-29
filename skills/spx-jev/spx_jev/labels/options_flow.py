@@ -1,4 +1,4 @@
-"""The tape and flow family: what is trading in today's 0DTE book and who is taking which side (options.*), and
+"""The options-flow family: what is trading in today's 0DTE book and who is taking which side (options.*), and
 SPY's own tape and quote (volume.*, liquidity.*).
 
 The 0DTE tape labels read the lob-flow collector's raw tape, ``state/lob_flow/raw/{day}/tape.jsonl``
@@ -61,7 +61,7 @@ MULTI_LEG_CONDITIONS = range(130, 145)   # OPRA's multi-leg and stock-option tra
 AT_MID_TOLERANCE = 1e-6
 # The premium burst's window: the opening lane reads every 5 minutes, so a burst is the stretch since the last read.
 BURST_WINDOW_MIN = 5
-TAPE_LABELS = ("options.big_prints_10", "options.flow_lean_30", "options.premium_burst_5m", "options.premium_pace_30")
+OPTIONS_TAPE_LABELS = ("options.big_prints_10", "options.flow_lean_30", "options.premium_burst_5m", "options.premium_pace_30")
 # The diary writes a row about every 75 seconds: one further than this before the moment it stands for means the scanner paused.
 ROW_SLACK_MIN = 5
 ROW_LINE_START = '{"ts": "'
@@ -77,7 +77,7 @@ MIN_WINDOW_COVERAGE = 0.5
 VOLUME_LABELS = ("volume.spy_last30_share", "volume.spy_pace_30")
 
 
-def build_tape_flow_labels(scene: Scene) -> LabelSet:
+def build_options_flow_labels(scene: Scene) -> LabelSet:
     ls = LabelSet()
     gv = scene.row.get("gex_views") or {}
     _turnover_and_split(gv, ls)
@@ -337,7 +337,7 @@ def _tape_labels(scene: Scene, ls: LabelSet) -> None:
     start = end - WINDOW_30_MIN
     today, why = _today_tape(scene, start, end, clock)
     if today is None:
-        for path in TAPE_LABELS:
+        for path in OPTIONS_TAPE_LABELS:
             ls.omit(path, why)
         ls.sleep("opening_premium_burst", why)
         return
