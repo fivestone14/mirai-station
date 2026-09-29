@@ -10,7 +10,7 @@ hand. On the way each question is keyed by its id inside its group, and:
 * JEV's ``criteria`` are the options' own words: a choice's and a yes/no's by option name, a score's as a
   list in level order. The set's ``criteria``, the rule code judges each option by, ride beside them as
   ``code_criteria``; the option names are kept in order as ``options``.
-* Every field the code reads is kept as the set wrote it: status, type, serves, lanes, the per-lane
+* Every field the code reads is kept as the set wrote it: status, dark_reason, type, serves, lanes, the per-lane
   schedule and horizon, cadence (for people), sleep_when, code_answer, ref_side, shadow_proof, and why;
   and ``ask``, the question in one short plain sentence that the sums read an answer after (hour.py)
   and the phone shows, never sent to JEV with the question itself.
@@ -42,7 +42,7 @@ from spx_jev.lane import LANES, QUESTIONS  # noqa: E402
 
 QUESTION_SET = SKILL / "spec" / "question_set.json"
 KEPT = ("status", "type", "serves", "lanes", "schedule", "horizon", "cadence", "sleep_when", "code_answer", "ref_side",
-        "shadow_proof", "ask", "instructions")
+        "shadow_proof", "ask", "instructions", "dark_reason")
 
 
 def jev_criteria(q: dict) -> dict | list:

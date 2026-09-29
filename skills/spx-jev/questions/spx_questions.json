@@ -683,7 +683,7 @@
    ],
    "questions": {
     "heavyweight_gap_split": {
-     "status": "live",
+     "status": "dark",
      "type": "choice",
      "serves": "direction",
      "lanes": [
@@ -710,6 +710,7 @@
      "code_answer": true,
      "ask": "Did the rest of the index gap the same way as the heavyweight that moved it?",
      "instructions": "Read `leaders.heavyweight_gap`. One of the largest index stocks moved the index by a top-third single-name contribution between yesterday's close and the settled open, against the recent sessions' largest. Did the rest of the index gap the same way, the other way, or barely move?",
+     "dark_reason": "the index weights of its largest stocks (state/spx_leaders/weights.json), which nothing writes yet",
      "options": [
       "shock_up_rest_up",
       "shock_down_rest_down",
@@ -2595,6 +2596,7 @@
      "code_answer": true,
      "ask": "How much room does the book's balance have before it tips?",
      "instructions": "Read `gex.cushion_if_moved`. Check puts_heavier_now first. Which describes how much room the book's balance has before it tips?",
+     "dark_reason": "the row carries no cushion: sliding the gamma flip by half a sigma needs the full options chain, which the scan has and the diary does not write (gex_views.cushion_up and cushion_down)",
      "options": [
       "puts_heavier_now",
       "sturdy",
@@ -3180,6 +3182,7 @@
      "code_answer": true,
      "ask": "Where is price against the overnight futures range?",
      "instructions": "Read `overnight.range` and `overnight.price_vs_range`. Where price is now decides first. Check in order: above, below, the two back-inside options, near an edge, middle.",
+     "dark_reason": "the overnight store (state/spx_jev/overnight/, saved at 09:26 ET) holds /ES's bars, but no session read measures the night's range from them yet",
      "options": [
       "above_overnight_high",
       "below_overnight_low",
@@ -3764,7 +3767,7 @@
      "why": "Index variance is component variance times correlation; rotation under a flat index is the best-grounded chop idea outside price."
     },
     "megacap_cohesion": {
-     "status": "live",
+     "status": "dark",
      "type": "choice",
      "serves": "size",
      "lanes": [
@@ -3782,6 +3785,7 @@
      "code_answer": true,
      "ask": "How did the largest index stocks move together over the last {window_30_min} minutes?",
      "instructions": "Read `leaders.megacap_cohesion_30m`. Check in order: one_name, together_up, together_down, cancelling, drifting. How did the largest index stocks move over the last {window_30_min} minutes?",
+     "dark_reason": "the index weights of its largest stocks (state/spx_leaders/weights.json), which nothing writes yet",
      "options": [
       "one_name",
       "together_up",
@@ -3809,7 +3813,7 @@
      "why": "Concentration flag. one_name almost never fired at the old rule (1.5% of windows); the basket now comes from weights, with TSLA in and Alphabet's two share classes combined."
     },
     "leaders_vs_rest": {
-     "status": "live",
+     "status": "dark",
      "type": "choice",
      "serves": "direction",
      "lanes": [
@@ -3827,6 +3831,7 @@
      "code_answer": true,
      "ask": "Which part of the index did the moving over the last {window_30_min} minutes?",
      "instructions": "Read `leaders.pull_vs_rest_30m`. Over the last {window_30_min} minutes, which part of the index did the moving: the largest names, the rest, both the same way, or the two pulling against each other?",
+     "dark_reason": "the index weights of its largest stocks (state/spx_leaders/weights.json), which nothing writes yet",
      "options": [
       "leaders_carry_up",
       "leaders_carry_down",
@@ -4001,7 +4006,7 @@
      "why": "Oil has moved against stocks in this tape; an oil jump the index has not absorbed has come before weakness. Code learns the sign; the label never says bullish or bearish."
     },
     "macro_lean": {
-     "status": "live",
+     "status": "dark",
      "type": "choice",
      "serves": "direction",
      "lanes": [
@@ -4019,6 +4024,7 @@
      "code_answer": true,
      "ask": "Are bonds, credit, oil, gold and the euro ahead of the index, and which way?",
      "instructions": "Read `xasset.macro_gap_30min` and `price.recent_move`. Taken together, are bonds, high-yield credit, oil, gold and the euro ahead of the index in the stocks-up direction, ahead in the stocks-down direction, or in line?",
+     "dark_reason": "minute bars for euro futures (/6E), which the market-context job (market_context.SYMBOLS) does not fetch",
      "options": [
       "complex_ahead_up",
       "complex_ahead_down",
@@ -4126,7 +4132,7 @@
      "why": "SPX lists an expiry every day, but the monthly is morning-settled (its gamma is gone after Friday's open) while the quarter-end book is close-settled. Split out of calendar_flow_day so the one-window rule no longer hides 09-30."
     },
     "month_turn_flow": {
-     "status": "live",
+     "status": "dark",
      "type": "choice",
      "serves": "direction",
      "lanes": [
@@ -4147,6 +4153,7 @@
      "code_answer": true,
      "ask": "Which month-turn flow is in play for the rest of today?",
      "instructions": "Read `calendar.month_turn` and `flows.rebalance_side`. Which month-turn flow is in play for the rest of today?",
+     "dark_reason": "the index's daily closes, which nothing saves, so the month-turn rebalance side (flows.rebalance_side) is never measured",
      "options": [
       "last_days_stocks_overweight",
       "last_days_stocks_underweight",
@@ -4424,7 +4431,7 @@
      "why": "With no headline feed, what moved with the shock says what kind of news it was (rates or Fed headline, AI or chip news, macro shock hitting everything, single-company news, flight to safety); each kind resolves differently."
     },
     "single_name_shock": {
-     "status": "live",
+     "status": "dark",
      "type": "choice",
      "serves": "direction",
      "lanes": [
@@ -4452,6 +4459,7 @@
      "code_answer": true,
      "ask": "Did the big stock's shock stay alone or spread to other giants?",
      "instructions": "Read `leaders.single_name_10m`. One of the largest index stocks just made a {window_10_min}-minute move larger than every one of its own recent sessions at this minute. Did it move alone, or did other giants join?",
+     "dark_reason": "the index weights of its largest stocks (state/spx_leaders/weights.json), which nothing writes yet",
      "options": [
       "shock_up_alone",
       "shock_down_alone",
@@ -5749,6 +5757,7 @@
      "code_answer": true,
      "ask": "Which side is the closing imbalance on, and is it large?",
      "instructions": "Read `close.moc_imbalance`. Which side is the published closing imbalance on, and is it large for today?",
+     "dark_reason": "no closing-auction imbalance feed (a paid feed), and no read after 15:32 to use it",
      "options": [
       "buy_large",
       "sell_large",
@@ -5788,6 +5797,7 @@
      "code_answer": true,
      "ask": "Have index ETFs been created or redeemed heavily today?",
      "instructions": "Read `flows.etf_creations`. Since the open, have index ETFs been created or redeemed heavily for this time of day?",
+     "dark_reason": "no intraday ETF creation feed",
      "options": [
       "heavy_creation",
       "heavy_redemption",
@@ -5828,6 +5838,7 @@
      "code_answer": false,
      "ask": "What kind of market news just came out?",
      "instructions": "Read `news.intraday_headline`. What kind of market news just came out, and is it new?",
+     "dark_reason": "no headline feed writes into state (a right-eye or Nexus writer is not built)",
      "options": [
       "macro_new",
       "company_new",
@@ -5867,6 +5878,7 @@
      "code_answer": true,
      "ask": "Did Nasdaq volume lean the same way as the NYSE?",
      "instructions": "Read `breadth.nasdaq_net_volume`. Over the last half hour has Nasdaq volume leaned to rising or falling stocks, and does it agree with NYSE?",
+     "dark_reason": "no Nasdaq breadth series: Schwab serves no $TICKQ or $TRINQ history, $ADDQ is not a symbol, $VOLQ is stale, and $UVOLQ and $DVOLQ are not probed",
      "options": [
       "nasdaq_leads_up",
       "nasdaq_leads_down",
@@ -5915,6 +5927,7 @@
      "code_answer": true,
      "ask": "Has the pressure at SPY's best prices been on the buy or the sell side?",
      "instructions": "Read `liquidity.spy_book_lean`. Over the last five minutes, has the pressure at SPY's best prices been on the buy side, the sell side, or balanced?",
+     "dark_reason": "the lob-flow collector saves no per-minute SPY bid and ask sizes or order-flow imbalance",
      "options": [
       "buyers_pressing",
       "sellers_pressing",
@@ -5955,6 +5968,7 @@
      "code_answer": true,
      "ask": "Where does tomorrow's heaviest strike sit as today's options run out?",
      "instructions": "Read `expiry.next_book_magnet`. Check next_priced_big first. As today's options run out, where does tomorrow's heaviest strike sit, and is tomorrow priced as a normal day?",
+     "dark_reason": "the SPX scan writes no 1DTE slice, so tomorrow's book is not on the row",
      "options": [
       "next_above_normal",
       "next_below_normal",
@@ -5997,6 +6011,7 @@
      "code_answer": true,
      "ask": "Where is price against today's largest quarter-end strikes?",
      "instructions": "Read `expiry.quarter_end_strikes`. Where does price sit against the largest strikes of the quarter-end options expiring today?",
+     "dark_reason": "the dated-book pull drops the expiring quarter-end band, so its strikes are not on the row",
      "options": [
       "near_short_call",
       "near_long_put",

@@ -14,14 +14,14 @@
  "counts": {
   "questions": 129,
   "by_status": {
-   "live": 117,
-   "dark": 9,
+   "live": 111,
+   "dark": 15,
    "shadow": 3
   },
-  "live_market_questions": 117,
+  "live_market_questions": 111,
   "premarket_questions": 12,
-  "opening_lane_questions": 26,
-  "thirty_minute_lane_questions": 92,
+  "opening_lane_questions": 24,
+  "thirty_minute_lane_questions": 86,
   "groups_thirty_minute": 15,
   "groups_opening": 3,
   "groups_premarket": 3,
@@ -31,8 +31,8 @@
    "regime": 9
   },
   "by_serves_live": {
-   "direction": 78,
-   "size": 30,
+   "direction": 73,
+   "size": 29,
    "regime": 9
   },
   "by_group": {
@@ -43,7 +43,8 @@
     "live": 8
    },
    "opening_context": {
-    "live": 4
+    "live": 3,
+    "dark": 1
    },
    "price_move": {
     "live": 6
@@ -75,13 +76,16 @@
     "live": 8
    },
    "leadership": {
-    "live": 6
+    "live": 4,
+    "dark": 2
    },
    "macro_and_calendar": {
-    "live": 6
+    "live": 4,
+    "dark": 2
    },
    "shocks_and_news": {
-    "live": 6
+    "live": 5,
+    "dark": 1
    },
    "close": {
     "live": 6
@@ -117,7 +121,7 @@
   }
  },
  "conventions": {
-  "status": "live = asked on its cadence and a candidate for the combiner weights from day one (every question not proven useless, by the owner's rule; the learning loop's weights sort them out). shadow = asked, logged and graded but kept out of the weights, used ONLY where there is proof the question does not help the direction call (each carries shadow_proof). dark = never asked because a feed or data is missing on Monday. A question that waits only on a build (a writer, a scan field) stays dark inside its home group; the dark group holds the feed-missing ones. Retired questions leave the set and are listed under 'retired'.",
+  "status": "live = asked on its cadence and a candidate for the combiner weights from day one (every question not proven useless, by the owner's rule; the learning loop's weights sort them out). shadow = asked, logged and graded but kept out of the weights, used ONLY where there is proof the question does not help the direction call (each carries shadow_proof). dark = never asked because a feed or data it needs is missing; its dark_reason names what. A question that waits only on a build (a writer, a scan field) stays dark inside its home group; the dark group holds the feed-missing ones. Retired questions leave the set and are listed under 'retired'.",
   "availability_vs_status": "label availability is separate: live labels are on the row/bars today; cheap_add labels need a Schwab series saved or a small builder/calendar change (all fetchable; build before Monday or the question sleeps with its label omitted); dark labels need a new feed.",
   "placeholders": "No number is written in instructions, option descriptions or criteria: every threshold is a {lower_case} name filled from spx_jev/cuts.py QUESTION_CONSTANTS (names match cuts.json where a measured cut exists; new names must be added to cuts.py, flagged in_cuts_py=false). Tokens 0DTE, 1DTE, S&P 500, Nasdaq-100, 0-to-7-day, 1-to-7-day, VIX9D, VIX3M, VIX1D are names, not numbers. Label example sentences carry the figure AND the rule it was judged against, so JEV never compares numbers.",
   "gamma_words": "No label or option says long/short gamma, dealer hedging, damp, calm or pin for the sign. The book is described as the call-vs-put gamma balance at price 'under the usual assumption that dealers hold the calls and are short the puts'; the flip is a price level. Code learns the mapping (regime equals price's side of the flip on 2460/2462 rows).",
@@ -1531,7 +1535,8 @@
       "opening_five_minute",
       "thirty_minute"
      ],
-     "status": "live",
+     "status": "dark",
+     "dark_reason": "the index weights of its largest stocks (state/spx_leaders/weights.json), which nothing writes yet",
      "cadence": "once at the 09:35 read on the settled open; answer held as a day constant through the lane and the 30-minute reads to 11:32",
      "ask": "Did the rest of the index gap the same way as the heavyweight that moved it?",
      "instructions": "Read `leaders.heavyweight_gap`. One of the largest index stocks moved the index by a top-third single-name contribution between yesterday's close and the settled open, against the recent sessions' largest. Did the rest of the index gap the same way, the other way, or barely move?",
@@ -4237,6 +4242,7 @@
       "thirty_minute"
      ],
      "status": "dark",
+     "dark_reason": "the row carries no cushion: sliding the gamma flip by half a sigma needs the full options chain, which the scan has and the diary does not write (gex_views.cushion_up and cushion_down)",
      "cadence": "every 30-minute read",
      "ask": "How much room does the book's balance have before it tips?",
      "instructions": "Read `gex.cushion_if_moved`. Check puts_heavier_now first. Which describes how much room the book's balance has before it tips?",
@@ -5074,6 +5080,7 @@
       "opening_five_minute"
      ],
      "status": "dark",
+     "dark_reason": "the overnight store (state/spx_jev/overnight/, saved at 09:26 ET) holds /ES's bars, but no session read measures the night's range from them yet",
      "cadence": "every 5 min 09:35-10:30, then every 30-minute read",
      "ask": "Where is price against the overnight futures range?",
      "instructions": "Read `overnight.range` and `overnight.price_vs_range`. Where price is now decides first. Check in order: above, below, the two back-inside options, near an edge, middle.",
@@ -5977,7 +5984,8 @@
      "lanes": [
       "thirty_minute"
      ],
-     "status": "live",
+     "status": "dark",
+     "dark_reason": "the index weights of its largest stocks (state/spx_leaders/weights.json), which nothing writes yet",
      "cadence": "every 30-minute read from 10:02",
      "ask": "How did the largest index stocks move together over the last {window_30_min} minutes?",
      "instructions": "Read `leaders.megacap_cohesion_30m`. Check in order: one_name, together_up, together_down, cancelling, drifting. How did the largest index stocks move over the last {window_30_min} minutes?",
@@ -6041,7 +6049,8 @@
      "lanes": [
       "thirty_minute"
      ],
-     "status": "live",
+     "status": "dark",
+     "dark_reason": "the index weights of its largest stocks (state/spx_leaders/weights.json), which nothing writes yet",
      "cadence": "every 30-minute read from 10:02",
      "ask": "Which part of the index did the moving over the last {window_30_min} minutes?",
      "instructions": "Read `leaders.pull_vs_rest_30m`. Over the last {window_30_min} minutes, which part of the index did the moving: the largest names, the rest, both the same way, or the two pulling against each other?",
@@ -6308,7 +6317,8 @@
      "lanes": [
       "thirty_minute"
      ],
-     "status": "live",
+     "status": "dark",
+     "dark_reason": "minute bars for euro futures (/6E), which the market-context job (market_context.SYMBOLS) does not fetch",
      "cadence": "every 30-minute read",
      "ask": "Are bonds, credit, oil, gold and the euro ahead of the index, and which way?",
      "instructions": "Read `xasset.macro_gap_30min` and `price.recent_move`. Taken together, are bonds, high-yield credit, oil, gold and the euro ahead of the index in the stocks-up direction, ahead in the stocks-down direction, or in line?",
@@ -6489,7 +6499,8 @@
      "lanes": [
       "thirty_minute"
      ],
-     "status": "live",
+     "status": "dark",
+     "dark_reason": "the index's daily closes, which nothing saves, so the month-turn rebalance side (flows.rebalance_side) is never measured",
      "cadence": "the 10:02, 12:02, 14:32 and 15:32 reads",
      "ask": "Which month-turn flow is in play for the rest of today?",
      "instructions": "Read `calendar.month_turn` and `flows.rebalance_side`. Which month-turn flow is in play for the rest of today?",
@@ -6937,7 +6948,8 @@
       "thirty_minute",
       "opening_five_minute"
      ],
-     "status": "live",
+     "status": "dark",
+     "dark_reason": "the index weights of its largest stocks (state/spx_leaders/weights.json), which nothing writes yet",
      "cadence": "every 30-minute read and lane read, awake only when a top-8 name's 10-minute move beat every one of its own last 20 sessions at this minute",
      "ask": "Did the big stock's shock stay alone or spread to other giants?",
      "instructions": "Read `leaders.single_name_10m`. One of the largest index stocks just made a {window_10_min}-minute move larger than every one of its own recent sessions at this minute. Did it move alone, or did other giants join?",
@@ -8753,6 +8765,7 @@
       "thirty_minute"
      ],
      "status": "dark",
+     "dark_reason": "no closing-auction imbalance feed (a paid feed), and no read after 15:32 to use it",
      "cadence": "would need a 15:52 read with an 8-minute horizon (last live read is 15:32)",
      "ask": "Which side is the closing imbalance on, and is it large?",
      "instructions": "Read `close.moc_imbalance`. Which side is the published closing imbalance on, and is it large for today?",
@@ -8808,6 +8821,7 @@
       "thirty_minute"
      ],
      "status": "dark",
+     "dark_reason": "no intraday ETF creation feed",
      "cadence": "every 30-minute read when a feed exists",
      "ask": "Have index ETFs been created or redeemed heavily today?",
      "instructions": "Read `flows.etf_creations`. Since the open, have index ETFs been created or redeemed heavily for this time of day?",
@@ -8862,6 +8876,7 @@
       "thirty_minute"
      ],
      "status": "dark",
+     "dark_reason": "no headline feed writes into state (a right-eye or Nexus writer is not built)",
      "cadence": "on each new headline once a writer exists",
      "ask": "What kind of market news just came out?",
      "instructions": "Read `news.intraday_headline`. What kind of market news just came out, and is it new?",
@@ -8917,6 +8932,7 @@
       "thirty_minute"
      ],
      "status": "dark",
+     "dark_reason": "no Nasdaq breadth series: Schwab serves no $TICKQ or $TRINQ history, $ADDQ is not a symbol, $VOLQ is stale, and $UVOLQ and $DVOLQ are not probed",
      "cadence": "every 30-minute read when a feed exists",
      "ask": "Did Nasdaq volume lean the same way as the NYSE?",
      "instructions": "Read `breadth.nasdaq_net_volume`. Over the last half hour has Nasdaq volume leaned to rising or falling stocks, and does it agree with NYSE?",
@@ -8975,6 +8991,7 @@
       "opening_five_minute"
      ],
      "status": "dark",
+     "dark_reason": "the lob-flow collector saves no per-minute SPY bid and ask sizes or order-flow imbalance",
      "cadence": "every 5-minute lane read and 30-minute read once persisted",
      "ask": "Has the pressure at SPY's best prices been on the buy or the sell side?",
      "instructions": "Read `liquidity.spy_book_lean`. Over the last five minutes, has the pressure at SPY's best prices been on the buy side, the sell side, or balanced?",
@@ -9037,6 +9054,7 @@
       "thirty_minute"
      ],
      "status": "dark",
+     "dark_reason": "the SPX scan writes no 1DTE slice, so tomorrow's book is not on the row",
      "cadence": "the 15:02 and 15:32 reads once a 1DTE slice is scanned",
      "ask": "Where does tomorrow's heaviest strike sit as today's options run out?",
      "instructions": "Read `expiry.next_book_magnet`. Check next_priced_big first. As today's options run out, where does tomorrow's heaviest strike sit, and is tomorrow priced as a normal day?",
@@ -9097,6 +9115,7 @@
       "thirty_minute"
      ],
      "status": "dark",
+     "dark_reason": "the dated-book pull drops the expiring quarter-end band, so its strikes are not on the row",
      "cadence": "every 30-minute read on the quarter's last trading day (09-30, 12-31) once the band is kept",
      "ask": "Where is price against today's largest quarter-end strikes?",
      "instructions": "Read `expiry.quarter_end_strikes`. Where does price sit against the largest strikes of the quarter-end options expiring today?",
@@ -9157,7 +9176,6 @@
    "fresh_extreme_5m",
    "open_contested",
    "opening_pace",
-   "heavyweight_gap_split",
    "open_net_volume_lean",
    "opening_tick_lean",
    "big_print_lean_open",
@@ -9170,7 +9188,6 @@
    "round_level_cross",
    "shock_state",
    "move_reaction_path",
-   "single_name_shock",
    "open_vs_prior_range",
    "vix_overnight_surprise",
    "brief_vs_tape",

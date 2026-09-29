@@ -107,6 +107,19 @@ def test_the_question_sets_counts_are_what_the_writer_works_out_from_it():
     assert not [lab["name"] for lab in labels if "label_built" in lab]
 
 
+def test_a_dark_question_names_what_it_waits_for_and_one_whose_data_is_never_saved_is_dark():
+    d = json.loads(QUESTION_SET.read_text(encoding="utf-8"))
+    questions = {q["id"]: q for g in d["groups"] for q in g["questions"]}
+    assert all(q.get("dark_reason", "").strip() for q in questions.values() if q["status"] == "dark")
+    assert not [qid for qid, q in questions.items() if q["status"] != "dark" and "dark_reason" in q]
+    # the index weights file, the euro futures and the daily closes are never saved, so these can never be asked
+    unsaved = {"megacap_cohesion": "spx_leaders/weights.json", "leaders_vs_rest": "spx_leaders/weights.json",
+               "heavyweight_gap_split": "spx_leaders/weights.json", "single_name_shock": "spx_leaders/weights.json",
+               "macro_lean": "/6E", "month_turn_flow": "daily closes"}
+    assert {qid: questions[qid]["status"] for qid in unsaved} == dict.fromkeys(unsaved, "dark")
+    assert all(source in questions[qid]["dark_reason"] for qid, source in unsaved.items())
+
+
 def test_every_cut_the_spec_names_is_a_constant():
     import importlib
     import pkgutil
