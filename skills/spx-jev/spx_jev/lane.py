@@ -24,8 +24,8 @@ question text all read one number. Beside its end-price sums every lane asks one
 the average price over its primary's window sits against the read (the settled open on the premarket
 lane), up, flat or down, with no unsure. It is the phone's call and what the average-price grade grades
 (grade.integral_line); the end-price sums are asked, graded and learnt from as before, in shadow. A lane's
-``integral_loop`` switch, off on every lane, has the learning loop learn from the average-price grade instead
-(integral_loop.py).
+``integral_loop`` switch, off on every lane, has a second learning loop learn from the average-price grade beside
+the end price's (integral_loop.py).
 """
 from __future__ import annotations
 
@@ -66,8 +66,8 @@ class Lane:
     graded_from_settled_open: bool = False           # its sums' horizons run from the settled open (the 09:34 close), not from the read
     average: str | None = None                       # the sum on the average price over the primary's window, up, flat or down, asked in
                                                      # its own request beside the end-price sums: the phone's call, graded on the average
-    integral_loop: bool = False                      # a lane that learns the loop learns it from the average-price grade (integral_loop.py),
-                                                     # never the end price: off until Will turns it on after its gate (README)
+    integral_loop: bool = False                      # a lane that learns the loop learns it from the average-price grade too (integral_loop.py),
+                                                     # beside the end price's: off until Will turns it on after its gate (README)
 
     def read_times(self) -> tuple[str, ...]:
         """The lane's reads, "HH:MM" market time: its schedule, or the live job's :02 and :32."""
@@ -97,7 +97,7 @@ LIVE = Lane(name="live", key="thirty_minute", out_dir=LIVE_DIR, questions=QUESTI
             primary="next_30", cadence=True, tag=None, pool=True, average="average_30",
             # the newest diary row can be up to the service's 6-minute staleness line old when the job fires
             read_grace_min=6,
-            # the loop learns from the end price; True hands it the average-price grade instead, with its own state (integral_loop.py)
+            # the loop learns from the end price; True has a second loop learn from the average-price grade beside it (integral_loop.py)
             integral_loop=False,
             # the 15:32 read's 30-minute mark and the 15:02 read's 60-minute one are the closing bar: the 16:02
             # fire (13:02 on a half day) grades them the same day

@@ -1,10 +1,11 @@
 """The learning loop on the average-price grade: built, and off until Will turns it on (lane.Lane.integral_loop).
 
-Switched on, the grader hands the question weights this loop instead of pool.PoolWeights: the same experts, day-level
-update, e-processes, statuses and promotion (pool.py, read as a library, never changed here), learned on the lane's
-primary box from the average-price sum's graded reads alone, each read's outcome the label integral_grades.jsonl gave
-it under this integral.RULE_VERSION, never the end price's band. Switched off, nothing here is imported, read or
-written. The gate for turning it on is GATE_SESSIONS SPX sessions of average-price grades; the dry run shows what the
+Switched on, the grader runs this loop beside pool.PoolWeights and the question weights report it: the same experts,
+day-level update, e-processes, statuses and promotion (pool.py, read as a library, never changed here), learned on the
+lane's primary box from the average-price sum's graded reads alone, each read's outcome the label integral_grades.jsonl
+gave it under this integral.RULE_VERSION, never the end price's band. The end-price loop keeps learning as before,
+since the phone's pool, its promotion and its demotion read it (pool.shown). Switched off, nothing here is imported,
+read or written. The gate for turning it on is GATE_SESSIONS SPX sessions of average-price grades; the dry run shows what the
 loop would learn before then:
 
     python3 -m spx_jev.grade --integral-loop-dry-run    # built from nothing in a scratch folder; no live file is written

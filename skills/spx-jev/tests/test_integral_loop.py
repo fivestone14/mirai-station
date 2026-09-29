@@ -1,7 +1,7 @@
 """The learning loop's switch to the average-price grade: off, the grader and the loop are exactly what they were and no
 file of the switched loop is made or read; on, the loop learns from the average-price label alone, into files of its
-own, the end-price loop's left as they were, and no flip of the switch ever mixes the two histories. The dry run
-builds it from the graded history without writing anything live."""
+own, the end-price loop learning beside it exactly as it does off, and no flip of the switch ever mixes the two
+histories. The dry run builds it from the graded history without writing anything live."""
 from __future__ import annotations
 
 import json
@@ -153,13 +153,17 @@ def test_with_the_switch_off_no_file_of_the_switched_loop_is_made_or_read(tmp_pa
 
 # ---- on
 
-def test_on_the_loop_learns_from_the_average_price_label_and_writes_only_its_own_files(tmp_path, clock):
-    out = _write(tmp_path / "out")
+def test_on_the_loop_learns_from_the_average_price_label_beside_the_end_price_loop_learning_as_it_does_off(tmp_path, clock):
+    """Switched on, the end-price loop, whose pool the phone shows and demotes, keeps learning to the byte what it learns
+    switched off; the switched loop writes only its own two files beside it."""
+    out, off = _write(tmp_path / "out"), _write(tmp_path / "off")
     before = _tree(out)
     w = _learn(out, ON)
+    _learn(off, LIVE)
     after = _tree(out)
-    assert set(after) - set(before) == set(INTEGRAL_FILES) and all(after[k] == v for k, v in before.items())
-    assert not any((out / name).exists() for name in END_PRICE_FILES)
+    assert set(after) - set(before) == set(INTEGRAL_FILES) | set(END_PRICE_FILES) and all(after[k] == v for k, v in before.items())
+    assert all(after[name] == (off / name).read_bytes() for name in END_PRICE_FILES)
+    assert json.loads(after["pool_30.json"])["last_session_applied"] == DAYS[-1]
     assert w["method"] == "pool_v1_integral" and w["pool"]["last_session_applied"] == DAYS[-1] and w["pool"]["phone"]["on_phone"] is False
     assert w["questions"]["q_a"]["days"] == 3 and w["questions"]["q_a"]["weight"] == 1.0
     state = json.loads((out / "pool_30_integral.json").read_text())
@@ -237,7 +241,8 @@ def test_neither_loop_ever_loads_the_others_state(tmp_path, clock):
 
 def test_flipping_the_switch_on_off_and_on_again_never_mixes_the_histories(tmp_path, clock):
     """Each loop picks up at its own watermark: after ON, OFF, ON the switched loop's state is the one it reaches kept
-    on from the start, and the end-price loop's the one it reaches kept off, to the byte."""
+    on from the start, and the end-price loop, learning whichever way the switch stands, the one it reaches kept off,
+    to the byte."""
     flipped, always_on, always_off = (_write(tmp_path / name) for name in ("flipped", "on", "off"))
     clock(DAYS[1])
     _learn(flipped, ON)
@@ -251,12 +256,9 @@ def test_flipping_the_switch_on_off_and_on_again_never_mixes_the_histories(tmp_p
         _learn(always_off, LIVE)
     assert (flipped / "pool_30_integral.json").read_bytes() == (always_on / "pool_30_integral.json").read_bytes()
     assert json.loads((flipped / "pool_30_integral.json").read_text())["last_session_applied"] == DAYS[2]
-    # the end-price loop, on for its one run, applied the two sessions sealed by then and nothing the switched loop learned
-    stopped_at = _write(tmp_path / "stopped_at")
-    pool.update(stopped_at, today=DAYS[2])
-    for name in ("pool_30.json", "pool_60.json"):
-        assert (flipped / name).read_bytes() == (stopped_at / name).read_bytes()
-    assert json.loads((always_off / "pool_30.json").read_text())["last_session_applied"] == DAYS[2]
+    for name in END_PRICE_FILES:
+        assert (flipped / name).read_bytes() == (always_off / name).read_bytes()
+    assert json.loads((flipped / "pool_30.json").read_text())["last_session_applied"] == DAYS[2]
 
 
 # ---- the dry run

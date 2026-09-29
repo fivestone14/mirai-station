@@ -212,11 +212,12 @@ archive there too, under `archive/`.
    sum's, an unsure one passed. That grade is the phone's verdict; nothing
    learns from it yet.
 6b. The switch, off (`integral_loop=False` on `LIVE` in `lane.py`): set it to
-   `True` and the learning loop learns from the average-price grade instead of
-   the end price (`integral_loop.py`): the call's odds, the time-of-day odds on
-   the average price as its reference, its own state and log, stale and event
-   reads left out, and constants of its own, so neither loop can ever load the
-   other's state; the end-price loop's files are then left as they are. The
+   `True` and a second learning loop learns from the average-price grade
+   (`integral_loop.py`): the call's odds, the time-of-day odds on the average
+   price as its reference, its own state and log, stale and event reads left
+   out, and constants of its own, so neither loop can ever load the other's
+   state. The weights report it; the end-price loop keeps learning beside it,
+   since the phone's pool, its promotion and demotion are the end price's. The
    gate is 10 SPX sessions of average-price grades; before switching, run
    `python3 -m spx_jev.grade --integral-loop-dry-run`, which builds the loop
    from nothing on the graded history in a scratch folder and prints what it
