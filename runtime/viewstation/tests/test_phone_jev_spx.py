@@ -1262,7 +1262,7 @@ def test_the_30_minute_card_leads_with_the_average_price_call_and_keeps_the_end_
     assert said == {"tag": "On the average price over the next 30 minutes, flat within \u00B13.11 points", "row60": "End-price questionFlat 80%"}
     how = next(v for k, v in parts if k == "how")
     assert how.startswith("JEVUp 55%") and how.endswith("JEV\u2019s sum alone: " + why) and "end-price clock" not in how
-    assert any(k == "row60" and v.startswith("Next 60 minUp 50%") for k, v in parts)
+    assert any(k == "row60" and v.startswith("Next 60 min, end priceUp 50%") for k, v in parts)   # an end-price sum, said so
     # a card from before the average-price sum leads with the end-price sum and has no shadow line
     old = _sum_card({**c, "hour": {k: v for k, v in hour.items() if k != "average"}})
     assert old[1] == ["big", "Flat 80%"] and not any(v.startswith(("End-price", "On the")) for _, v in old)

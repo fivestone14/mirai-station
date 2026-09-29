@@ -156,7 +156,7 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 .how-bar{display:flex;gap:1px;height:7px}
 .how-v{font:600 12.5px/1.2 var(--sans);color:var(--i-body);white-space:nowrap;text-align:right}
 .how-note{grid-column:1 / -1;font:400 12px/1.4 var(--sans);color:var(--i-mute)}
-/* the 60-minute call from the same read, one line at the foot of the 30-minute card */
+/* the 60-minute end-price sum from the same read, one line at the foot of the 30-minute card, as the end-price sum beside the call is */
 .row60{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-top:12px;padding-top:11px;border-top:1px solid var(--s2)}
 .row60 .k{font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
 .row60 b{font:700 14px/1.2 var(--sans);color:var(--i)}
@@ -1030,7 +1030,7 @@ details .q{margin-top:8px}
         var p60 = h60.probabilities, t60 = h60.pick || top1(p60);
         var m60 = marks.next_60 !== undefined ? marks.next_60 : plusIso(c.row_ts, 60);
         var r60 = el('div', 'row60'), l60 = el('span', 'l');
-        r60.appendChild(el('span', 'k', 'Next 60 min')); r60.appendChild(el('b', null, cap(t60) + ' ' + pct(p60[t60]))); r60.appendChild(l60);
+        r60.appendChild(el('span', 'k', 'Next 60 min, end price')); r60.appendChild(el('b', null, cap(t60) + ' ' + pct(p60[t60]))); r60.appendChild(l60);
         var say60 = function(){ l60.textContent = m60 ? (leftWords(Date.parse(m60), Date.now()) || 'Window closed at ' + viewerTime(m60)) : 'Ends past the close, never graded'; };
         say60(); tickers.push(say60); hc.appendChild(r60);
       }
