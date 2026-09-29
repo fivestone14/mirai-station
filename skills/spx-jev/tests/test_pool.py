@@ -219,7 +219,22 @@ def test_nineteen_winning_days_leave_the_phone_on_the_blend():
     assert shown(PHONE_HOUR, {"next_30": _snap(state)}, state)["shown_source"] == "blend50_exact"
 
 
+def test_without_the_simulation_gates_passed_no_amount_of_evidence_puts_the_pool_on_the_phone():
+    """06 requires the simulation's acceptance gates before any promotion: until they are marked passed,
+    evidence well past the bar leaves the phone on the blend and the log says why."""
+    assert pool.SIM_GATES_PASSED is False
+    state = cold_state()
+    membership(state, MEMBERS, "2026-09-01")
+    for d in range(1, 26):
+        day = f"2026-10-{d:02d}"
+        log = apply_session(state, day, _session(state, ["flat", "flat"], jev=SURE_FLAT, day=day), 30, True, None)
+    assert state["phone"]["promote"]["e"] >= pool.PROMOTE_E and state["phone"]["promote"]["n"] >= pool.MIN_DAYS
+    assert state["phone"]["shows"] == "blend" and log["phone"].startswith("held on the blend")
+    assert shown(PHONE_HOUR, {"next_30": _snap(state)}, state)["shown_source"] == "blend50_exact"
+
+
 def test_the_pool_is_promoted_after_twenty_winning_days_and_the_phone_shows_it_with_the_blend_beside_it(monkeypatch):
+    monkeypatch.setattr(pool, "SIM_GATES_PASSED", True)
     state = cold_state()
     membership(state, MEMBERS, "2026-09-01")
     _days(state, 1, 25, ["flat", "flat"])
@@ -232,7 +247,8 @@ def test_the_pool_is_promoted_after_twenty_winning_days_and_the_phone_shows_it_w
     assert shown(PHONE_HOUR, snaps, state) == {**PHONE_HOUR, "shown_source": "blend50_exact"}
 
 
-def test_a_promoted_pool_that_starts_losing_hands_the_phone_back_to_the_blend():
+def test_a_promoted_pool_that_starts_losing_hands_the_phone_back_to_the_blend(monkeypatch):
+    monkeypatch.setattr(pool, "SIM_GATES_PASSED", True)
     state = cold_state()
     membership(state, MEMBERS, "2026-09-01")
     _days(state, 1, 25, ["flat", "flat"])
