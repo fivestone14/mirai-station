@@ -194,9 +194,9 @@ def _day_range_position(scene: Scene, ls: LabelSet) -> None:
         return
     pos = (scene.spot - lo) / (hi - lo)
     if pos >= RANGE_TOP_SHARE:
-        band = f"in the top band of today's range so far (past the {pct(RANGE_TOP_SHARE)} line)"
+        band = f"in the top band of today's range so far (at or past the {pct(RANGE_TOP_SHARE)} line)"
     elif pos <= RANGE_BOTTOM_SHARE:
-        band = f"in the bottom band of today's range so far (below the {pct(RANGE_BOTTOM_SHARE)} line)"
+        band = f"in the bottom band of today's range so far (at or under the {pct(RANGE_BOTTOM_SHARE)} line)"
     else:
         band = f"between the bands of today's range so far (between the {pct(RANGE_BOTTOM_SHARE)} and {pct(RANGE_TOP_SHARE)} lines)"
     ls.put("price.day_range_position", f"price is {band}, {pct(pos)} of the way up")

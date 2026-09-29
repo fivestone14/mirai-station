@@ -775,7 +775,7 @@
       },
       {
        "name": "price.day_range_position",
-       "example": "price is in the top band of today's range so far (past the 75% line), 96% of the way up",
+       "example": "price is in the top band of today's range so far (at or past the 75% line), 96% of the way up",
        "computed_how": "built (engine) with thirds; reworded to the top/bottom band set by range_top_share / range_bottom_share",
        "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json)",
        "availability": "live",
@@ -9818,7 +9818,7 @@
   },
   {
    "name": "price.day_range_position",
-   "example": "price is in the top band of today's range so far (past the 75% line), 96% of the way up",
+   "example": "price is in the top band of today's range so far (at or past the 75% line), 96% of the way up",
    "computed_how": "built (engine) with thirds; reworded to the top/bottom band set by range_top_share / range_bottom_share",
    "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json)",
    "availability": "live",

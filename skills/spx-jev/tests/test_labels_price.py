@@ -147,10 +147,10 @@ def test_the_move_needs_20_bars_in_its_half_hour(scene_factory):
 # ---- price.day_range_position
 
 @pytest.mark.parametrize("spot, sentence", [
-    (7750.0, "price is in the top band of today's range so far (past the 75% line), 75% of the way up"),
-    (7790.0, "price is in the top band of today's range so far (past the 75% line), 95% of the way up"),
+    (7750.0, "price is in the top band of today's range so far (at or past the 75% line), 75% of the way up"),
+    (7790.0, "price is in the top band of today's range so far (at or past the 75% line), 95% of the way up"),
     (7700.0, "price is between the bands of today's range so far (between the 25% and 75% lines), 50% of the way up"),
-    (7650.0, "price is in the bottom band of today's range so far (below the 25% line), 25% of the way up"),
+    (7650.0, "price is in the bottom band of today's range so far (at or under the 25% line), 25% of the way up"),
 ])
 def test_where_price_sits_in_the_days_range(scene_factory, spot, sentence):
     state, _, _ = _labels(_scene(scene_factory, at(11, 0, ss=5), [7700.0, 7800.0, 7600.0] + [7700.0] * 87, wick=0.0, spot=spot))
