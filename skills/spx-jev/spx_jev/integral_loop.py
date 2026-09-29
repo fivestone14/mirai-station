@@ -1,12 +1,12 @@
-"""The learning loop on the average-price grade: built, and off until Will turns it on (lane.Lane.integral_loop).
+"""The learning loop on the average-price grade, switched on for the live lane (lane.Lane.integral_loop).
 
 Switched on, the grader runs this loop beside pool.PoolWeights and the question weights report it: the same experts,
 day-level update, e-processes, statuses and promotion (pool.py, read as a library, never changed here), learned on the
 lane's primary box from the average-price sum's graded reads alone, each read's outcome the label integral_grades.jsonl
 gave it under this integral.RULE_VERSION, never the end price's band. The end-price loop keeps learning as before,
 since the phone's pool, its promotion and its demotion read it (pool.shown). Switched off, nothing here is imported,
-read or written. The gate for turning it on is GATE_SESSIONS SPX sessions of average-price grades; the dry run shows what the
-loop would learn before then:
+read or written. The gate for trusting and promoting what it learns is GATE_SESSIONS SPX sessions of average-price grades;
+the dry run shows what the loop has learnt from the graded history, and how far the gate is:
 
     python3 -m spx_jev.grade --integral-loop-dry-run    # built from nothing in a scratch folder; no live file is written
 
@@ -55,7 +55,7 @@ from .sessions import SESSION_CLOSE, session_close
 from .state_builder import ET, load_jsonl, parse_ts
 
 LOOP_VERSION = 1                # bump when this loop's learning changes: a state from before stops the update
-GATE_SESSIONS = 10              # SPX sessions of average-price grades before Will decides whether to switch it on
+GATE_SESSIONS = 10              # SPX sessions of average-price grades before Will decides whether to trust what it learns
 LOG_NAME = "pool_integral_log.jsonl"
 CONSTANTS = {**pool.CONSTANTS, "outcome": "integral.label", "integral_rule": integral.RULE_VERSION,
              "reference_rule": clock.INTEGRAL_RULE_VERSION, "loop_version": LOOP_VERSION}

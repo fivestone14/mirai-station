@@ -49,7 +49,7 @@ The question weights
     read, goes to the question weights' learn, the one seam a learning method plugs into. The live
     lane learns the loop there (pool.PoolWeights: every newly sealed session applied, each question's
     standing reported, every weight still 1.0); the tape and premarket lanes' weights are neutral. With the lane's
-    integral_loop switch on (off on every lane) a second loop learns from the average-price grade beside it
+    integral_loop switch on (on the live lane) a second loop learns from the average-price grade beside it
     (integral_loop.IntegralPoolWeights), in state of its own, and the weights report that one; the end-price loop
     keeps learning, since the phone's pool is its.
 

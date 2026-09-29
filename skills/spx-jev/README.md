@@ -220,20 +220,26 @@ archive there too, under `archive/`.
    average price over it against the flat band narrowed to fit an average,
    its direction deciding: the call's pick where the average-price sum
    answered, with the Brier and log loss of its odds, else the end-price
-   sum's, an unsure one passed. That grade is the phone's verdict; nothing
-   learns from it yet.
-6b. The switch, off (`integral_loop=False` on `LIVE` in `lane.py`): set it to
-   `True` and a second learning loop learns from the average-price grade
-   (`integral_loop.py`): the call's odds, the time-of-day odds on the average
-   price as its reference, its own state and log, stale and event reads left
-   out, and constants of its own, so neither loop can ever load the other's
-   state. The weights report it; the end-price loop keeps learning beside it,
-   since the phone's pool, its promotion and demotion are the end price's. The
-   gate is 10 SPX sessions of average-price grades; before switching, run
-   `python3 -m spx_jev.grade --integral-loop-dry-run`, which builds the loop
-   from nothing on the graded history in a scratch folder and prints what it
+   sum's, an unsure one passed. That grade is the phone's verdict, and the
+   second loop (6b) learns from it.
+6b. The switch, on (`integral_loop=True` on `LIVE` in `lane.py`): a second
+   learning loop learns from the average-price grade (`integral_loop.py`):
+   the call's odds, the time-of-day odds on the average price as its
+   reference, its own state and log, stale and event reads left out, and
+   constants of its own, so neither loop can ever load the other's state. The
+   weights report it; the end-price loop keeps learning beside it, byte for
+   byte as with the switch off, since the phone's pool, its promotion and
+   demotion are the end price's: the phone never shows this loop's pool. A
+   session is learnt at the first grading run after its reads' average-price
+   grades are on file. The gate, 10 SPX sessions of average-price grades, is
+   for trusting and promoting what it learns, not for learning:
+   `python3 -m spx_jev.grade --integral-loop-dry-run` builds the loop from
+   nothing on the graded history in a scratch folder and prints what it
    learned (sessions and reads, what it left out and why, the weights, each
-   question's standing) without writing anything live.
+   question's standing, how far the gate is) without writing anything live.
+   Set the switch to `False` and the grader learns the end-price loop alone,
+   as before; this loop's files are left as they are, and it picks up at its
+   own watermark when switched back on.
 
 ## The files it writes, all under `state/spx_jev/`
 
@@ -254,7 +260,7 @@ archive there too, under `archive/`.
 - `pool_30.json`, `pool_60.json`, `pool_log.jsonl`: the learning loop's state
   per horizon and one log line per horizon per session applied or refused.
 - `pool_30_integral.json`, `pool_integral_log.jsonl`: the same loop learnt
-  from the average-price grade, written only while its switch is on (6b).
+  from the average-price grade, written while its switch is on (6b, on).
 - `archive/{day}.jsonl`: the raw archive for later machine learning, one line
   per record, append only, `schema_version` 5. A `read` record holds the read
   id (lane and row timestamp), the labels and the omitted ones with reasons,

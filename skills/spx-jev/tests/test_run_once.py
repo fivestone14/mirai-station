@@ -93,7 +93,7 @@ def test_a_read_answers_holds_sums_and_grades(tmp_path, monkeypatch):
     grades = [json.loads(l) for l in (out / "grades.jsonl").read_text().splitlines() if l.strip()]
     assert len(grades) == 1 and grades[0]["horizons"] == ["next_30"] and grades[0]["band"] == "flat"
     weights = json.loads((out / "weights.json").read_text())
-    assert weights["method"] == "pool_v1" and weights["questions"]["q_dir"] == {**weights["questions"]["q_dir"], "weight": 1.0, "n": 1}
+    assert weights["method"] == "pool_v1_integral" and weights["questions"]["q_dir"] == {**weights["questions"]["q_dir"], "weight": 1.0, "n": 1}
     for p in out.rglob("*"):
         if p.is_file():
             assert CANARY not in p.read_text(), p
@@ -293,11 +293,17 @@ def test_a_live_read_writes_the_loops_forecasts_keeps_the_blend_on_the_phone_and
     assert c["hour"]["shown_source"] == "blend50_exact" and rec["shown_source"] == "blend50_exact"
     read = json.loads((out / "archive" / f"{DAY}.jsonl").read_text().splitlines()[0])
     assert read["schema_version"] == archive.SCHEMA_VERSION and read["pool"]["next_60"]["experts"]
-    # the day is over and both marks were graded in the same run: the loop learned it at once
-    weights = json.loads((out / "weights.json").read_text())
-    assert weights["pool"]["last_session_applied"] == DAY and weights["pool"]["phone"] == {**weights["pool"]["phone"], "shows": "blend", "on_phone": False}
-    assert weights["questions"]["q_dir"]["days"] == 1 and weights["questions"]["q_dir"]["weight"] == 1.0
+    # the day is over and both marks were graded in the same run: the end-price loop learned it at once
+    learned = json.loads((out / "pool_30.json").read_text())
+    assert learned["last_session_applied"] == DAY and learned["evidence"]["q_dir"]["days"] == 1 and learned["phone"]["shows"] == "blend"
     assert json.loads((out / "pool_60.json").read_text())["last_session_applied"] == DAY
+    # the average-price loop beside it, whose standing the weights report, passes the day over: no read had an average-price call
+    weights = json.loads((out / "weights.json").read_text())
+    assert weights["method"] == "pool_v1_integral" and weights["pool"]["last_session_applied"] == DAY
+    assert weights["pool"]["phone"] == {**weights["pool"]["phone"], "shows": "blend", "on_phone": False}
+    assert weights["questions"]["q_dir"]["weight"] == 1.0 and "days" not in weights["questions"]["q_dir"]
+    said = [json.loads(line) for line in (out / "pool_integral_log.jsonl").read_text().splitlines()]
+    assert [(x["session"], x["applied"], x["why"]) for x in said] == [(DAY, False, "no read carries an average-price call: before the question")]
 
 
 def test_the_live_lanes_fire_after_the_close_grades_the_last_calls_and_asks_jev_nothing(tmp_path, monkeypatch):

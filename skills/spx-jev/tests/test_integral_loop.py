@@ -1,7 +1,8 @@
-"""The learning loop's switch to the average-price grade: off, the grader and the loop are exactly what they were and no
-file of the switched loop is made or read; on, the loop learns from the average-price label alone, into files of its
-own, the end-price loop learning beside it exactly as it does off, and no flip of the switch ever mixes the two
-histories. The dry run builds it from the graded history without writing anything live."""
+"""The learning loop's switch to the average-price grade, on for the live lane: on, the loop learns from the
+average-price label alone, into files of its own, the end-price loop learning beside it exactly as it does off; flipped
+back off, the grader and the loop are exactly what they were and no file of the switched loop is made or read; and no
+flip of the switch ever mixes the two histories. The dry run builds it from the graded history without writing
+anything live."""
 from __future__ import annotations
 
 import json
@@ -21,7 +22,7 @@ from spx_jev.clock import INTEGRAL_CACHE_NAME, MIN_SESSIONS, PHASES, _integral_r
 from spx_jev.grade import INTEGRAL_NAME, weights_from
 from spx_jev.lane import LANES, LIVE
 
-ON = replace(LIVE, integral_loop=True)
+ON, OFF = LIVE, replace(LIVE, integral_loop=False)
 ALLOWED = {"q_a": {"yes", "no"}}
 MEMBERS = {"q_a": "v1"}
 DAYS = ("2026-09-14", "2026-09-15", "2026-09-16")
@@ -132,7 +133,7 @@ def _tree(root: Path) -> dict[str, bytes]:
     return {str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
 
 
-def _learn(out: Path, lane_=LIVE) -> dict:
+def _learn(out: Path, lane_=ON) -> dict:
     return weights_from(grade.load_jsonl(out / "grades.jsonl"), ALLOWED, lane_, out)
 
 
@@ -140,12 +141,16 @@ def _log(out: Path) -> list[dict]:
     return [json.loads(line) for line in (out / integral_loop.LOG_NAME).read_text().splitlines()]
 
 
-# ---- off
+# ---- the switch
 
-def test_the_switch_is_off_on_every_lane():
-    """Will turns it on after the gate; until then no lane learns from the average-price grade."""
-    assert all(x.integral_loop is False for x in LANES.values()) and LIVE.pool and not lane.TAPE.pool
+def test_the_switch_is_on_for_the_live_lane_alone():
+    """The live lane, the one lane that learns the loop, learns it from the average-price grade too; the other lanes
+    keep no loop to switch. Its results are trusted, and the pool promoted, only after the gate (README 6b)."""
+    assert [name for name, x in LANES.items() if x.integral_loop] == ["live"] and LIVE.integral_loop is True
+    assert LIVE.pool and not any(x.pool for name, x in LANES.items() if name != "live")
 
+
+# ---- flipped back off
 
 def test_with_the_switch_off_no_file_of_the_switched_loop_is_made_or_read(tmp_path, clock, monkeypatch):
     """The grader learns the end-price loop exactly as before: the same weights and files with a switched loop's state
@@ -154,7 +159,7 @@ def test_with_the_switch_off_no_file_of_the_switched_loop_is_made_or_read(tmp_pa
     (beside / "pool_30_integral.json").write_text("{not a state")
     for name in ("update", "load_state", "dry_run"):
         monkeypatch.setattr(integral_loop, name, lambda *a, **k: pytest.fail("the switched loop was called with the switch off"))
-    w_plain, w_beside = _learn(plain), _learn(beside)
+    w_plain, w_beside = _learn(plain, OFF), _learn(beside, OFF)
     assert w_plain == w_beside and w_plain["method"] == "pool_v1" and w_plain["pool"]["last_session_applied"] == DAYS[-1]
     assert (beside / "pool_30_integral.json").read_text() == "{not a state"
     assert not any((plain / name).exists() for name in INTEGRAL_FILES) and not (beside / integral_loop.LOG_NAME).exists()
@@ -165,8 +170,10 @@ def test_with_the_switch_off_no_file_of_the_switched_loop_is_made_or_read(tmp_pa
 
 def test_with_the_switch_off_the_grader_never_imports_the_switched_loop(tmp_path):
     """In a fresh interpreter, the service, the clock and a grading run's learning leave the module unloaded."""
-    code = ("import sys; from pathlib import Path; from spx_jev import clock, grade, service; from spx_jev.lane import LIVE; "
-            f"grade.weights_from([], {{}}, LIVE, Path({str(tmp_path)!r})); print('spx_jev.integral_loop' in sys.modules)")
+    code = ("import sys; from dataclasses import replace; from pathlib import Path; from spx_jev import clock, grade, service; "
+            "from spx_jev.lane import LIVE; "
+            f"grade.weights_from([], {{}}, replace(LIVE, integral_loop=False), Path({str(tmp_path)!r})); "
+            "print('spx_jev.integral_loop' in sys.modules)")
     done = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parent.parent, capture_output=True, text=True, check=True)
     assert done.stdout.strip() == "False" and (tmp_path / "pool_30.json").exists()
 
@@ -179,10 +186,11 @@ def test_on_the_loop_learns_from_the_average_price_label_beside_the_end_price_lo
     out, off = _write(tmp_path / "out"), _write(tmp_path / "off")
     before = _tree(out)
     w = _learn(out, ON)
-    _learn(off, LIVE)
+    _learn(off, OFF)
     after = _tree(out)
     assert set(after) - set(before) == set(INTEGRAL_FILES) | set(END_PRICE_FILES) and all(after[k] == v for k, v in before.items())
     assert all(after[name] == (off / name).read_bytes() for name in END_PRICE_FILES)
+    assert set(after) - set(_tree(off)) == set(INTEGRAL_FILES)                  # the switched loop's own two files, and no other
     assert json.loads(after["pool_30.json"])["last_session_applied"] == DAYS[-1]
     assert w["method"] == "pool_v1_integral" and w["pool"]["last_session_applied"] == DAYS[-1] and w["pool"]["phone"]["on_phone"] is False
     assert w["questions"]["q_a"]["days"] == 3 and w["questions"]["q_a"]["weight"] == 1.0
@@ -283,13 +291,13 @@ def test_flipping_the_switch_on_off_and_on_again_never_mixes_the_histories(tmp_p
     clock(DAYS[1])
     _learn(flipped, ON)
     clock(DAYS[2])
-    _learn(flipped, LIVE)
+    _learn(flipped, OFF)
     clock(TODAY)
     _learn(flipped, ON)
     for day in (DAYS[1], DAYS[2], TODAY):
         clock(day)
         _learn(always_on, ON)
-        _learn(always_off, LIVE)
+        _learn(always_off, OFF)
     assert (flipped / "pool_30_integral.json").read_bytes() == (always_on / "pool_30_integral.json").read_bytes()
     assert json.loads((flipped / "pool_30_integral.json").read_text())["last_session_applied"] == DAYS[2]
     for name in END_PRICE_FILES:

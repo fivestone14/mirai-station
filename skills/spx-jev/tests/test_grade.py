@@ -108,7 +108,8 @@ def test_every_weight_is_one_and_an_event_read_never_reaches_them():
     g1 = grade_one({**_rec(13, 32, 7700.0, _by({"flat": 1.0}, "flat"), {"q1": "rising"}), "event": ev}, bars)
     g2 = grade_one(_rec(11, 0, 7700.0, _by({"flat": 1.0}, "flat"), {"q1": "falling", "q_retired": "x"}), bars)
     w = weights_from([g1, g2], ALLOWED)
-    assert g1["event_within_30"] is True and w["method"] == "pool_v1"                # the live lane learns the loop
+    # the live lane learns the loop, on the end price and, its switch on, on the average price, whose standing the weights report
+    assert g1["event_within_30"] is True and w["method"] == "pool_v1_integral"
     assert weights_from([g1, g2], ALLOWED, TAPE)["method"] == "neutral"
     assert w["questions"] == {"q1": {"weight": 1.0, "n": 1, "in_step_3": True, "why": w["questions"]["q1"]["why"]}}
     assert w["sums"]["next_30"]["n"] == 2 and w["sums"]["next_30"]["event_reads"]["n"] == 1
