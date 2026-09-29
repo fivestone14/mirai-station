@@ -111,6 +111,22 @@ def test_a_gated_question_is_asked_only_when_its_gate_says_awake():
     assert skipped["a"] == {"asleep": "asleep: no shock in the last hour", "undecided": "asleep: no label family decides its gate"}
 
 
+def test_a_question_whose_label_says_nothing_happened_is_asleep_on_that_reason_not_missing():
+    """No shock in the last hour is the shock question's quiet state, not a gap in the data: asleep, with the label's
+    own reason, whatever else it misses. A label left out for want of data stays missing."""
+    noul = {"type": "noul", "criteria": {"true": "t", "false": "f"}}
+    doc = {"groups": [{"id": "a", "reads": ["context", "shock", "vol", "breadth"], "questions": {
+        "shock_only": {**noul, "instructions": "Read `shock.burst`."},
+        "shock_and_gap": {**noul, "instructions": "Read `breadth.at_extremes` and `shock.burst`."},
+        "gap_only": {**noul, "instructions": "Read `breadth.at_extremes`."}}}]}
+    ended = {"shock.burst": "no five-minute move in the last 60 minutes passed the shock rule"}
+    reqs, skipped = build_requests({"context": {"symbol": "SPX"}}, doc, ended=ended)
+    assert reqs == [] and skipped["a"] == {
+        "shock_only": "asleep: no five-minute move in the last 60 minutes passed the shock rule",
+        "shock_and_gap": "asleep: no five-minute move in the last 60 minutes passed the shock rule",
+        "gap_only": "missing breadth.at_extremes", "*": "nothing to ask in this group this read"}
+
+
 def test_a_dark_question_is_never_asked():
     doc = {"groups": [{"id": "a", "reads": ["context"], "questions": {
         "q": {"status": "dark", "type": "noul", "instructions": "Read `context.symbol`.", "criteria": {"true": "t", "false": "f"}}}}]}

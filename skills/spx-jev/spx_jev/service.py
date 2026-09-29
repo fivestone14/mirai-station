@@ -59,8 +59,8 @@ from zoneinfo import ZoneInfo
 from . import archive, pool
 from .ask import build_requests, confidence, load_questions, pick, send, send_all
 from .baseline import Baseline
-from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, lost_today, missing_paths,
-                      plan, save_last)
+from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, lost_today, plan,
+                      save_last)
 from .clock import blend as clock_blend, odds as clock_odds
 from .events import learn_exclude, tag as event_tag
 from .expiry import calendar_of
@@ -510,9 +510,9 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         last = load_last(out_dir)
         skip, held = plan(doc, last, cad, now, skip, borrowed_answers(state_dir, doc, lane), read_slot(lane, now, fired),
                           learned=lane.cadence)
-    requests, skipped = build_requests(state, doc, skip=skip, gates=labels.gates)
+    requests, skipped = build_requests(state, doc, skip=skip, gates=labels.gates, ended=labels.ended_reasons())
     if do_send and lane.cadence:
-        held = fill_missing(doc, skipped, last, cad, now, held, labels.ended)
+        held = fill_missing(doc, skipped, last, cad, now, held)
     # the questions asked again because their last ask today got no answer, with that ask's read and why
     reasked = {qid: lost for r in requests for qid in r["questions"] if (lost := lost_today(last.get(qid), now))}
     if reasked:
@@ -541,11 +541,9 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         fresh = {qid: answer_entry(named_levels(by_id.get(qid, {}), ans))
                  for a in answers.values() for qid, ans in (a.get("answers") or {}).items()}
         answered = {**held, **fresh}
-        # live questions skipped for a label the builder could not measure, and not covered by a held answer;
-        # one whose label was left out because its condition is over is asleep, not missing
+        # live questions skipped for a label the builder could not measure, and not covered by a held answer
         missing = [qid for g in skipped.values() for qid, why in g.items()
-                   if qid in live_ids and str(why).startswith("missing") and qid not in held
-                   and not labels.ended.intersection(missing_paths(str(why)))]
+                   if qid in live_ids and str(why).startswith("missing") and qid not in held]
         hour_doc = load_hour_doc(lane=lane)
         hour_rec, hour, hour_reply = sum_the_hour(doc, hour_doc, answered, QuestionWeights.load(out_dir), fresh, missing, lane, unit,
                                                   t0 + SEND_READ_S)

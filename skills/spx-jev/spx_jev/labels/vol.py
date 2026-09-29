@@ -1005,7 +1005,7 @@ def _stress_path(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
                        if curve is not None else "")
         if shift_rank:
             curve_words += f", {_rise_words(shift, shift_rank)}"
-        ls.omit(path, f"not a stress day: VIX is {_rise_words(rise, rise_rank, ' points')}, {high_words}{curve_words}")
+        ls.omit(path, f"not a stress day: VIX is {_rise_words(rise, rise_rank, ' points')}, {high_words}{curve_words}", ended=True)
         return
     lows, ruler = session_extremes(scene.bars), sigma_anchor(scene)
     if lows is None or ruler is None:

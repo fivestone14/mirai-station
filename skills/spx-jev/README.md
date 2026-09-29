@@ -112,7 +112,11 @@ archive there too, under `archive/`.
 ## The rules it lives by
 
 - **Omit, never null.** A missing label means "not measured"; the packer skips
-  every question that needs it.
+  every question that needs it. A label left out because what it describes did
+  not happen (no shock in the last hour, no new session high or low, no heavy
+  strike touched, not a stress day, the 0DTE book's last hour) is ended
+  instead: the questions reading it are asleep, with that reason on the card,
+  the record and the archive, and "missing" is kept for a real gap in the data.
 - **Point in time.** `now` is the row's own timestamp. Only bars that finished
   before it count, prior sessions are only days before the day being built,
   and a market-context value counts only once it was known (a bar once its

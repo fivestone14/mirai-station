@@ -136,7 +136,8 @@ NO_GATE = "no label family decides its gate"
 
 
 def build_requests(state: dict, doc: dict, skip: dict[str, str] | None = None,
-                   gates: dict[str, str | None] | None = None) -> tuple[list[dict], dict[str, dict[str, str]]]:
+                   gates: dict[str, str | None] | None = None,
+                   ended: dict[str, str] | None = None) -> tuple[list[dict], dict[str, dict[str, str]]]:
     """Return ``(requests, skipped)``.
 
     ``requests`` is a list of ``{"id", "state", "questions"}`` ready for JEV.
@@ -144,12 +145,15 @@ def build_requests(state: dict, doc: dict, skip: dict[str, str] | None = None,
     including whole groups under the key ``"*"``. ``skip`` names questions to leave
     out with a reason of the caller's own (the schedule and the cadence). ``gates`` is
     the labels' sleep gates (LabelSet.gates): a question with ``sleep_when`` is asked
-    only when its gate says it is awake.
+    only when its gate says it is awake. ``ended`` is the labels left out because what
+    they describe is not there (LabelSet.ended_reasons): a question missing one of them
+    is asleep on its reason, since nothing happened, rather than missing a label.
     """
     requests: list[dict] = []
     skipped: dict[str, dict[str, str]] = {}
     skip = skip or {}
     gates = gates or {}
+    ended = ended or {}
     for group in doc["groups"]:
         gid = group["id"]
         slice_: dict = {}
@@ -175,7 +179,10 @@ def build_requests(state: dict, doc: dict, skip: dict[str, str] | None = None,
             missing = [p for p in paths_in(q) if get_path(state, p) is None]
             # a label the state has but this group does not read would leave JEV blind to it
             unread = [p for p in paths_in(q) if p not in missing and get_path(slice_, p) is None]
-            if missing:
+            over = next((ended[p] for p in missing if p in ended), None)
+            if over is not None:
+                skipped.setdefault(gid, {})[qid] = f"asleep: {over}"
+            elif missing:
                 skipped.setdefault(gid, {})[qid] = "missing " + ", ".join(missing)
             elif unread:
                 skipped.setdefault(gid, {})[qid] = "the group does not read " + ", ".join(unread)

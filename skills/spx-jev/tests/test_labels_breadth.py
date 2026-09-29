@@ -554,7 +554,7 @@ def test_the_extremes_omitted_without_a_new_extreme_or_a_series(scene_factory):
                               market=MarketContext({"$VOLD": per_minute([1e6] * 14)}))
     assert build_breadth_labels(too_early).omitted["breadth.at_extremes"] == "needs SPX bars from before the last 15 minutes"
     stale = read_bars(scene_factory, [7700.0 + i for i in range(20)] + [7710.0] * 162, {"$VOLD": per_minute([1e6] * 182)})
-    assert stale.omitted["breadth.at_extremes"] == "no new session high or low in the last 15 minutes"
+    assert stale.omitted["breadth.at_extremes"] == "no new session high or low in the last 15 minutes" and "breadth.at_extremes" in stale.ended
     no_iwm = read_bars(scene_factory, straight_up, {"$VOLD": per_minute([1e6] * 182)})
     assert no_iwm.omitted["breadth.at_extremes"] == "no small-cap (IWM) price known within 5 minutes of the SPX high at 12:31"
     no_net = read_bars(scene_factory, straight_up, {"$VOLD": per_minute([1e6] * 60), "IWM": per_minute([250.0] * 182)})

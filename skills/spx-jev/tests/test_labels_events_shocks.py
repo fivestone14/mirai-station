@@ -463,6 +463,9 @@ def test_the_shock_rule_and_fresh_window_at_their_boundaries(scene_factory):
         "to that minute, or from the settled open when that is shorter, on every one of up to the last 20 sessions); the largest "
         "was 0.04 sigma, larger than the biggest five-minute move of the hour to that minute on 8 of the last 10 sessions")
     assert omitted["shock.vs_day_range"] == omitted["shock.cross_asset"] == omitted["shock.burst"]
+    # no shock is the shock questions' quiet state, not a gap: they sleep on this reason (ask.build_requests)
+    quiet = build_events_shocks_labels(burst_scene(scene_factory, at(12, 2, BURST_DAY), size=5.0, after=5.0))
+    assert {"shock.burst", "shock.vs_day_range", "shock.cross_asset"} <= quiet.ended
 
 
 def test_the_shock_rule_beats_every_session_with_twenty_on_file(scene_factory):

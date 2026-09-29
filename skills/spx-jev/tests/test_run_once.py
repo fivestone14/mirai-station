@@ -205,6 +205,31 @@ def test_a_sent_read_with_nothing_due_says_nothing_was_sent(tmp_path, monkeypatc
         assert said in capsys.readouterr().err
 
 
+def test_a_question_whose_label_says_nothing_happened_sleeps_on_the_card_and_in_the_archive_and_is_not_missing(tmp_path, monkeypatch):
+    """No new session high or low is the extreme question's quiet state: the card, the record and the archive say it
+    is asleep and why, and the sum counts only the question whose label has no data (no market context) as missing."""
+    doc = {"version": "test", "groups": [
+        {"id": "g1", "reads": ["context", "price"], "questions": {
+            "q_dir": DOC["groups"][0]["questions"]["q_dir"],
+            "q_extreme": {"status": "live", "type": "noul", "ask": "Did the new extreme hold?",
+                          "instructions": "Read `price.session_extreme_recent`.", "criteria": {"true": "t", "false": "f"}}}},
+        {"id": "g2", "reads": ["context", "breadth"], "questions": {
+            "q_breadth": {"status": "live", "type": "noul", "ask": "Is breadth leaning?",
+                          "instructions": "Read `breadth.tick_lean`.", "criteria": {"true": "t", "false": "f"}}}}]}
+    state = _state(tmp_path, [make_row(at(9, 31), 7700.0), make_row(at(10, 35, ss=10), 7700.0)], 70)
+    out = state / "spx_jev"
+    monkeypatch.setattr(service, "send_all", _answers())
+    monkeypatch.setattr(service, "send", _sums)
+    c = run_once(state, out, doc, True, DAY)
+    q = {e["id"]: e for e in c["questions"]}
+    assert q["q_extreme"]["skipped"] == "asleep: no new session high or low in the last 15 minutes"
+    assert q["q_breadth"]["skipped"] == "missing breadth.tick_lean" and c["omitted"]["breadth.tick_lean"] == "no market-context snapshot today"
+    assert c["hour"]["missing"] == 1
+    rec = json.loads((out / f"{DAY}.jsonl").read_text())
+    [kept] = [json.loads(l) for l in (out / "archive" / f"{DAY}.jsonl").read_text().splitlines() if json.loads(l).get("kind") == "read"]
+    assert rec["skipped"]["g1"]["q_extreme"] == kept["skipped"]["g1"]["q_extreme"] == q["q_extreme"]["skipped"]
+
+
 def test_an_unsent_run_says_why_and_holds_nothing(tmp_path):
     state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
     c = run_once(state, state / "spx_jev", DOC, False, DAY, unsent_reason="not sent: no key on this machine")

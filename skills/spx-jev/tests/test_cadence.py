@@ -72,9 +72,12 @@ def test_a_label_left_out_because_its_condition_is_over_holds_nothing():
     now = at(14, 0)
     last = {q: {"row_ts": at(13, 30).isoformat(), "answer": {"pick": "inside_range", "probabilities": {"inside_range": 0.8}}}
             for q in ("shock_at_extreme", "tick_lean_vs_usual")}
-    skipped = {"shocks_and_news": {"shock_at_extreme": "missing shock.burst, shock.vs_day_range"},
-               "breadth": {"tick_lean_vs_usual": "missing breadth.tick_side_vs_usual"}}
-    held = fill_missing(DOC, skipped, last, {"questions": {}}, now, {}, {"shock.burst", "shock.vs_day_range"})
+    state = {"context": {"symbol": "SPX"}}
+    ended = {p: "no five-minute move in the last 60 minutes passed the shock rule" for p in ("shock.burst", "shock.vs_day_range")}
+    _, skipped = build_requests(state, DOC, skip={q: "not due" for q in BY_ID if q not in last}, ended=ended)
+    assert skipped["shocks_and_news"]["shock_at_extreme"].startswith("asleep: no five-minute move")
+    assert skipped["breadth"]["tick_lean_vs_usual"].startswith("missing breadth.")
+    held = fill_missing(DOC, skipped, last, {"questions": {}}, now, {})
     assert set(held) == {"tick_lean_vs_usual"}
 
 

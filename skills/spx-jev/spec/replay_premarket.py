@@ -200,7 +200,7 @@ def read(state_dir: Path, doc: dict, day: date, checkpoint: str) -> dict:
     labels = build_labels(scene)
     questions = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
     skip = not_due(doc, PREMARKET, now)
-    requests, skipped = build_requests(labels.state, doc, skip=skip, gates=labels.gates)
+    requests, skipped = build_requests(labels.state, doc, skip=skip, gates=labels.gates, ended=labels.ended_reasons())
     asked = {qid for r in requests for qid in r["questions"]}
     why = {qid: reason for g in skipped.values() for qid, reason in g.items()}
     fates = {}

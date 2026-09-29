@@ -281,6 +281,7 @@ def test_same_day_vol_is_not_judged_in_the_last_hour_or_without_its_rows(scene_f
     late = at(15, 2)
     scene = scene_factory(late, fall_then_now(late, 0.12, minutes=330), rows_before=[morning(), diary_row(late - timedelta(minutes=30))])
     assert labels(scene)[1]["vol.atm_iv_residual"].startswith("the last hour of the 0DTE book")
+    assert "vol.atm_iv_residual" in build_vol_labels(scene).ended            # the rule's quiet hour: its question sleeps
     now = at(12, 30, ss=10)
     no_iv = scene_factory(now, fall_then_now(now, 0.12), row_over={"atm_iv": None}, rows_before=[morning(), diary_row(now - timedelta(minutes=30))])
     assert labels(no_iv)[1]["vol.atm_iv_residual"].startswith("needs the morning sigma ruler")
@@ -388,6 +389,7 @@ def test_the_vix_reaction_to_a_shock_is_ranked_against_the_same_minutes_on_the_p
 def test_the_vix_reaction_is_omitted_without_a_shock_in_the_last_hour(scene_factory):
     quiet = scene_factory(at(12, 1), shocked(drop=0.0), rows_before=[morning()])
     assert labels(quiet)[1]["vol.vix_on_shock"] == "no shock in the last 60 minutes (shock.burst)"
+    assert "vol.vix_on_shock" in build_vol_labels(quiet).ended
     later = scene_factory(at(12, 50), shocked(now_min=200), rows_before=[morning(), diary_row(at(11, 30, ss=40), 15.0)])
     assert labels(later)[1]["vol.vix_on_shock"] == "no shock in the last 60 minutes (shock.burst)"
 
@@ -999,6 +1001,13 @@ def test_a_day_is_stressed_by_a_vix_or_curve_rise_over_every_prior_session_vix_o
                                                     vix_ts=1.0))[0]
     assert "vol.stress_path" in labels(stress_scene(scene_factory, tmp_path / "high", vix_open=23.1, prior_vix=20.0))[0]
     assert "vol.stress_path" in labels(stress_scene(scene_factory, tmp_path / "rise", vix_open=21.0))[0]
+
+
+def test_not_a_stress_day_is_the_stress_question_asleep_and_no_diary_vix_is_a_gap(scene_factory, tmp_path):
+    calm = build_vol_labels(stress_scene(scene_factory, tmp_path / "calm", vix_open=23.1))
+    assert calm.omitted["vol.stress_path"].startswith("not a stress day:") and "vol.stress_path" in calm.ended
+    blind = build_vol_labels(scene_factory(at(12, 30), flat_bars(180), rows_before=[diary_row(at(9, 31), None)]))
+    assert "vol.stress_path" in blind.omitted and "vol.stress_path" not in blind.ended
 
 
 def test_a_curve_at_its_flattest_of_the_recent_sessions_with_vix_falling_is_no_stress_day(scene_factory, tmp_path):

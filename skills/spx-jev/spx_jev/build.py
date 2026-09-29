@@ -36,7 +36,8 @@ def package(scene: Scene, doc: dict, lane: Lane) -> dict:
     """One moment's labels and the requests the lane would send: the questions its schedule asks at this
     read and whose gates are awake. Nothing is held here: a held answer needs the service's records."""
     labels = build_labels(scene)
-    requests, skipped = build_requests(labels.state, doc, skip=not_due(doc, lane, scene.now), gates=labels.gates)
+    requests, skipped = build_requests(labels.state, doc, skip=not_due(doc, lane, scene.now), gates=labels.gates,
+                                       ended=labels.ended_reasons())
     return {
         "row_ts": scene.row["ts"],
         "sigma": scene.sigma,

@@ -303,6 +303,9 @@ def test_the_wall_touch_is_omitted_without_a_recent_judged_touch_or_a_sound_feed
     assert omitted["levels.wall_touch_effort"] == "no heavy strike was touched in the last 30 minutes"
     _, omitted, _ = labels(touch_scene(scene_factory, 7700.0, kind="magnet", level=7700.0))
     assert omitted["levels.wall_touch_effort"] == "no heavy strike was touched in the last 30 minutes"
+    # no touch is the question's quiet state and sleeps; a touch the box has not judged yet is still missing its volume
+    assert "levels.wall_touch_effort" in build_levels_labels(scene(scene_factory, now, [7700.0] * 90, row_over=over, rows_before=ended)).ended
+    assert "levels.wall_touch_effort" not in build_levels_labels(touch_scene(scene_factory, 7700.0, effort=None, verdict=None)).ended
     for over, reason in ((siege(health="FEED-LOST"), "the siege box's SPY feed is FEED-LOST, not OK"),
                          (siege(baseline="warming"), "the siege box's volume baseline is warming, not yet robust"),
                          ({"siege": None}, "row carries no siege read")):
