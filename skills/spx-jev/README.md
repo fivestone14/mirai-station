@@ -293,7 +293,9 @@ archive there too, under `archive/`.
   `session`, `source`, `saved_at`, `flags`); `overnight/manifest.jsonl`, one line per save
   that changed a night, with its checks; `overnight/rolls.json`, the roll table;
   `overnight/.save.lock`, held while a save merges and writes.
-- `store/`, the learning store built from all of the above (below).
+- `store/`, the learning store built from the archive, the sum records, every lane's
+  `integral_grades.jsonl`, both learning loops' logs, the bars, the market feed, the
+  overnight store and the calendar (below).
 
 The card carries: `symbol`, `generated_at`, `row_ts`, `freshness`, `sigma`,
 `situation` (four facts with a verdict word and the figure to draw), `labels`,
@@ -343,11 +345,13 @@ any day can be rebuilt from them whole.
 
 | Table | One row per | What it holds |
 |---|---|---|
-| `reads` | read, any lane | `read_id` (lane and row time), `lane`, `row_ts`, `archived_at`, `minute_et` and `minutes_from_open`, `checkpoint`, `sent`, `model`, `spot`, `sigma`, the ruler (`ruler_source`, `ruler_points`, `ruler_unit_sigma`, `ruler_sessions`, `ruler_omitted`) and the opening lane's bands, the event tag, how many questions were `answered`, `lost`, `unsent`, `held`, `not_due`, `asleep`, `missing`, `dark`, `unread` or `other`, how many were `reasked`, the labels written, omitted and asleep, the sum's `sum_used`, `sum_left_out`, `sum_missing` and `sum_error`, and `skip_reasons` (question to why) |
-| `facts` | label, or market value, per read | `source` (`label` or `market_context`), `path`, `status` (`written`, `omitted` or `asleep`: omitted on a reason a question slept on), the sentence in `text`, the `reason` a label is missing, a market `value`, and `known_at` |
-| `answers` | question per read | `status` as counted on the read and its `reason`, `type`, `pick`, `confidence`, `probabilities` (option to probability; a yes/no as `true` and `false`), `score` and `noul` as JEV sent them, `question_hash` (the question exactly as JEV was sent it), `pool_version` (the learning loop's version of it), `held_from` and `held_found` for a held answer (its values are copied from the read that asked it; a lost ask whose last answer the sum read instead is `held`, its `reason` starting `lost`), `reasked` (empty for a read archived before the lane recorded its re-asks), `reasked_from`, `reask_why` |
-| `calls` | sum per read | `horizon`, `minutes`, `mark`, `is_primary`, the time of day, what the card showed (`shown_source`, `shown_pick`, `shown_probs`), JEV alone (`jev_pick`, `jev_probs`), the time-of-day odds (`clock_probs`, `clock_n`), the blend (`blended`, `blend_jev_share`, `blend_phase`), the learning loop's mix (`pool_probs`, `pool_p_move`, `pool_p_up_given_move`, or why it was left out in `pool_left_out`), the opening lane's `direction_*` and `size_*` views, and `learn_exclude` |
-| `grades` | graded sum | `mark`, `outcome`, the realized move, `pick`, `abstained` (an unsure pick), `correct` (empty when abstained), `hit`, `brier`, `p_band`, JEV's and the clock's scores, the opening lane's direction and size scores, and the ruler it was graded in |
+| `reads` | read, any lane | `read_id` (lane and row time), `lane`, `row_ts`, `archived_at`, `minute_et` and `minutes_from_open`, `checkpoint`, `sent`, `model`, `spot`, `sigma`, the ruler (`ruler_source`, `ruler_points`, `ruler_unit_sigma`, `ruler_sessions`, `ruler_omitted`) and the opening lane's bands, the event tag, how many questions were `answered`, `lost`, `unsent`, `held`, `not_due`, `asleep`, `missing`, `dark`, `unread` or `other`, how many were `reasked`, the labels written, omitted and asleep, the end-price sums' `sum_used`, `sum_left_out`, `sum_missing` and `sum_error`, the average-price sum's `average_error` (why the read has no call on the average price), and `skip_reasons` (question to why) |
+| `facts` | label, or market value, per read | `source` (`label` or `market_context`), `path` (a label archived under a name it has since lost is filed under its new one, `labels/registry.py`'s `RENAMED`), `status` (`written`, `omitted` or `asleep`: omitted on a reason a question slept on), the sentence in `text`, the `reason` a label is missing, a market `value`, and `known_at` |
+| `answers` | question per read | `status` as counted on the read and its `reason`, `type`, `pick`, `confidence`, `probabilities` (option to probability; a yes/no as `true` and `false`), `score` and `noul` as JEV sent them, `question_hash` (the question exactly as JEV was sent it), `pool_version` (the learning loop's version of it), `held_from` and `held_found` for a held answer (its values are copied from the read that asked it; a lost ask whose last answer the sum read instead is `held`, its `reason` starting `lost`), `reasked` (empty for a read archived before the lane recorded its re-asks), `reasked_from`, `reask_why`. The average-price sum's own question is a row too (`group_id` `average`, from archive version 5), left out of the read's question counts |
+| `calls` | sum per read | `sum_id` (`next_30`, `average_30` and the like), `horizon` (the box whose window it forecasts), `is_call` (the call the phone showed: the average-price sum's where it answered, else the end-price primary's), `minutes` (the call's window as it was told, 28 on the 15:32 read), `mark`, `is_primary` (the end-price box the weights and pools learn from), the time of day, the sum's final odds (`shown_source`, `shown_pick`, `shown_probs`: the blend, or the learning loop's mix once promoted), the call's `price`, `flat_points` and `edge_points`, JEV alone (`jev_pick`, `jev_probs`), the time-of-day odds (`clock_probs`, `clock_n`), the blend (`blended`, `blend_jev_share`, `blend_phase`), the end-price loop's mix (`pool_probs`, `pool_p_move`, `pool_p_up_given_move`, `pool_reference_version`, or why it was left out in `pool_left_out`), the opening lane's `direction_*` and `size_*` views, and `learn_exclude` |
+| `grades` | graded end-price sum | `mark`, `outcome`, the realized move, `pick`, `abstained` (an unsure pick), `correct` (empty when abstained), `hit`, `brier`, `p_band`, JEV's and the clock's scores, the opening lane's direction and size scores, and the ruler it was graded in |
+| `average_grades` | window graded on the average price, per lane | `horizon`, `sum_id` (the sum whose call it graded: the average-price sum's, else the end-price sum's), `rule_version` (a read graded under more than one stands on its newest; the older counts as `superseded`), `graded` and why not (`reason`, `minutes_missing`), `mark`, `from_price`, `flat_points`, `edge`, `edge_told`, `average_move` (the average against the read, in points), `outcome` and the end price's `end_outcome`, `pick`, `verdict` (`right`, `wrong` or `passed`), `abstained`, `correct` (empty when passed), `margin`, a passed call's `lean`, the `running` labels, the best, worst and sharpest minute, `minutes_filled`, `bad_ticks`, `stale_read`, the opening lane's size, and the scores (`brier`, `log_loss`, and JEV's and the clock's when blended) |
+| `pool_log` | learning-loop log line | `loop` (`end_price` from `pool_log.jsonl`, `average_price` from `pool_integral_log.jsonl`), `lane`, `horizon`, `session` (the day it learnt; the day is the line's own when it names none), `logged_at`, `applied` and `why` not, `reads`, `included` and `excluded`, the reference's change (`reference_from`, `reference_to`), `phone` (a promotion or demotion), `pool_loss` and `blend_loss`, and the whole line in `line_json` |
 | `spx_bars` | SPX minute | open, high, low, close, volume, and `source` (the saved session file kept over the bars feed's) |
 | `context_bars` | symbol and minute | the market feed's bars in the labels' units (a future under its root, `served_as` the contract; the yields in percent), `derived` and `derived_from` for a `$VOLD` built from `$UVOL` and `$DVOL`, `source` (the saved day kept over a live snapshot, Schwab's own `$VOLD` over a derived one), `known_at` and `written_at` |
 | `context_quotes` | symbol and snapshot | `last`, `prior_close`, `volume`, `taken_at` |
@@ -359,13 +363,13 @@ any day can be rebuilt from them whole.
 
 Every table has `day`, from its folder. Times are instants shown in New York
 time. The column names and types are fixed by `store.TABLES` at schema version
-`store.SCHEMA_VERSION` (2), written into every file's metadata and into `meta`.
+`store.SCHEMA_VERSION` (3), written into every file's metadata and into `meta`.
 
 Each row is typed column by column, then held to its table's checks: ranges,
 probabilities that sum to one, a bar's high above its low, and point in time
 (no fact known after its read, no grade written before its mark, no bar saved
-before it finished). A fact, answer, call or grade must belong to one of the
-day's kept reads. A refused row goes to `quarantine` with its reason, never
+before it finished, no session learnt before it closed). A fact, answer, call
+or grade must belong to one of the day's kept reads. A refused row goes to `quarantine` with its reason, never
 dropped. Copies of a row that agree but for where they came from count as
 `duplicates`; where a table ranks its sources the better copy is kept and a
 disagreeing one from a worse source counts as `superseded`; any other
@@ -390,9 +394,12 @@ From Python, in the station's venv:
     con.sql("SELECT day, lane, count(*) AS reads FROM reads GROUP BY ALL ORDER BY ALL").show()
     con.sql("""SELECT question_id, avg(confidence) AS sure, count(*) AS n
                FROM answers WHERE status = 'answered' GROUP BY question_id ORDER BY n DESC""").show()
-    con.sql("""SELECT c.row_ts, c.shown_pick, c.shown_probs['up'] AS p_up, c.jev_probs['up'] AS jev_up,
-                      g.outcome, g.correct
-               FROM calls c JOIN grades g USING (read_id, horizon) WHERE c.horizon = 'next_30'""").show()
+    con.sql("""SELECT c.row_ts, c.sum_id, c.shown_pick, c.shown_probs[c.shown_pick] AS p, a.outcome, a.verdict
+               FROM calls c JOIN average_grades a ON a.read_id = c.read_id AND a.sum_id = c.sum_id
+               WHERE c.is_call AND c.lane = 'live'""").show()               # the phone's calls and their grades
+    con.sql("""SELECT c.row_ts, c.shown_pick, c.jev_probs['up'] AS jev_up, g.outcome, g.correct
+               FROM calls c JOIN grades g ON g.read_id = c.read_id AND g.horizon = c.sum_id
+               WHERE c.sum_id = 'next_30'""").show()                        # the end-price sum at its mark
     con.sql("SELECT day, table_name, reason, source FROM quarantine").show()
 
 The views name the store's files by their full path, so a copied store is

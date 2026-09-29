@@ -181,6 +181,19 @@ def test_a_fact_is_written_omitted_or_asleep_on_the_reason_its_question_sleeps_o
     assert vix["source"] == "market_context" and vix["value"] == 16.2 and vix["known_at"] < datetime.fromisoformat(READ)
 
 
+def test_a_label_archived_under_its_old_name_is_filed_under_its_new_one(tmp_path, monkeypatch):
+    rows = _day_archive()
+    rows[0]["labels"]["breadth"] = {"upvol_share_30m": "over the last 30 minutes NYSE net volume changed by +12M"}
+    rows[1]["omitted"]["vol.vix_change_30"] = "no VIX 30 minutes ago"
+    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path, rows))
+    store.build_day(tmp_path, D, at(16, 45))
+    facts = {(f["read_id"], f["path"]): f for f in _table(tmp_path, "facts")}
+    net = facts[(f"live:{EARLY}", "breadth.net_volume_change_30m")]
+    assert (net["family"], net["name"], net["status"]) == ("breadth", "net_volume_change_30m", "written")
+    assert facts[(f"live:{READ}", "vol.vix_change")]["reason"] == "no VIX 30 minutes ago"
+    assert not any(p in ("breadth.upvol_share_30m", "vol.vix_change_30") for _, p in facts)
+
+
 def test_each_question_of_a_read_has_its_status_its_options_and_the_question_it_was_sent(built):
     root, _ = built
     ans = {(a["read_id"], a["question_id"]): a for a in _table(root, "answers")}
@@ -222,14 +235,147 @@ def test_a_read_archived_before_the_lane_recorded_its_re_asks_stores_them_as_unk
 
 def test_a_call_keeps_jev_alone_the_clock_the_blend_the_learned_mix_and_what_was_shown(built):
     root, _ = built
-    calls = {(c["read_id"], c["horizon"]): c for c in _table(root, "calls")}
+    calls = {(c["read_id"], c["sum_id"]): c for c in _table(root, "calls")}
     c = calls[(f"live:{READ}", "next_30")]
     assert c["shown_source"] == "blend50_exact" and dict(c["jev_probs"])["up"] == 0.4 and c["clock_n"] == 180
     assert (c["blended"], c["blend_jev_share"], c["pool_p_move"], c["learn_exclude"]) == (True, 0.5, 0.5, True)
-    assert c["mark"] == at(11, 2) and c["is_primary"] is True
+    assert c["mark"] == at(11, 2) and c["is_primary"] is True and c["is_call"] is True and c["pool_reference_version"] == "v1:x"
     assert calls[(f"live:{READ}", "next_60")]["pool_left_out"] == "JEV gave no probabilities for next_60"
     tape = calls[(f"tape:{TAPE_READ}", "next_10")]
     assert tape["shown_source"] == "jev" and tape["direction_pick"] == "down" and tape["mark"] == at(9, 50)
+
+
+AVG = {"pick": "down", "probabilities": {"up": 0.2, "flat": 0.3, "down": 0.5}, "confidence": None, "primary": "average_30",
+       "box": "next_30", "minutes": 28, "flat_points": 5.9, "edge_points": 3.5, "price": 6600.0, "model": "jev-1.13.0",
+       "by": {"average_30": {"pick": "down", "probabilities": {"up": 0.2, "flat": 0.3, "down": 0.5}, "confidence": None,
+                             "blended": True, "jev": {"pick": "down", "probabilities": {"up": 0.1, "flat": 0.2, "down": 0.7},
+                                                      "confidence": 0.6},
+                             "clock": {"pick": "flat", "probabilities": {"up": 0.3, "flat": 0.4, "down": 0.3}, "n": 110}}},
+       "blend": {"used": True, "jev_share": 0.5, "phase": "morning", "sessions": 19}}
+Q_AVG = {"type": "choice", "instructions": "Where does the average price sit?", "criteria": {"up": "above", "flat": "near", "down": "below"}}
+AVG_REPLY = {"model": "jev-1.13.0", "answers": {"average_30": {"type": "choice", "choice": "down", "confidence": 0.6,
+                                                               "probabilities": {"up": 0.1, "flat": 0.2, "down": 0.7}}}}
+
+
+def _with_average(rows: list[dict], hour: dict | None = None) -> list[dict]:
+    """The day's archive with the 10:32 read asking the average-price sum (archive version 5), its call ``hour``."""
+    read = rows[1]
+    read.update(schema_version=5, average_request={"id": "average", "state": {}, "questions": {"average_30": Q_AVG}},
+                average_response=AVG_REPLY, hour=hour if hour is not None else {**read["hour"], "average": AVG})
+    return rows
+
+
+def _integral(row_ts: str, rule: int = 3, **over) -> dict:
+    line = {"row_ts": row_ts, "horizon": "next_30", "rule_version": rule, "sum": "average_30", "graded": True, "minutes": 30,
+            "from": 6600.0, "f": 5.9, "factor": 0.5918, "edge": 3.5, "g": -4.2, "label": "down", "pick": "down",
+            "direction": "down", "verdict": "right", "margin": 1.2, "running": ["flat", "down"],
+            "best": {"points": 1.0, "minute": 2}, "worst": {"points": -6.0, "minute": 29},
+            "sharp_move": {"points": -2.0, "minute": 12, "higher_than": 15, "of": 20, "sharp": False, "note": "no sharp move"},
+            "filled": [7], "bad_ticks": [], "stale_read": False, "end_label": "down",
+            "scores": {"brier": 0.38, "log_loss": 0.69, "jev_brier": 0.14, "jev_log_loss": 0.36, "clock_brier": 0.74, "clock_log_loss": 1.2},
+            "edge_told": 3.5}
+    line.update(over)
+    return line
+
+
+def test_the_call_the_phone_showed_is_the_average_price_sums_with_its_odds_edge_and_window(tmp_path, monkeypatch):
+    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path, _with_average(_day_archive())))
+    store.build_day(tmp_path, D, at(16, 45))
+    calls = {(c["read_id"], c["sum_id"]): c for c in _table(tmp_path, "calls")}
+    c = calls[(f"live:{READ}", "average_30")]
+    assert (c["is_call"], c["horizon"], c["is_primary"], c["shown_pick"], dict(c["shown_probs"])["down"]) == (True, "next_30", False, "down", 0.5)
+    assert (c["minutes"], c["mark"], c["edge_points"], c["flat_points"], c["price"]) == (28, at(11, 2), 3.5, 5.9, 6600.0)
+    assert (c["shown_source"], dict(c["jev_probs"])["down"], c["clock_n"], c["blend_jev_share"], c["learn_exclude"]) == \
+        ("blend50_exact", 0.7, 110, 0.5, True)
+    assert calls[(f"live:{READ}", "next_30")]["is_call"] is False and calls[(f"live:{READ}", "next_60")]["is_call"] is False
+    assert calls[(f"tape:{TAPE_READ}", "next_10")]["is_call"] is True           # a read that never asked it calls its end price
+    ans = {(a["read_id"], a["question_id"]): a for a in _table(tmp_path, "answers")}[(f"live:{READ}", "average_30")]
+    assert (ans["group_id"], ans["status"], ans["pick"], ans["question_hash"]) == ("average", "answered", "down", store.question_hash(Q_AVG))
+    r = {r["read_id"]: r for r in _table(tmp_path, "reads")}[f"live:{READ}"]
+    assert (r["questions"], r["answered"], r["average_error"]) == (6, 1, None)     # the call's own question is not the doc's
+
+
+def test_a_read_whose_end_price_sums_failed_still_has_its_average_price_call(tmp_path, monkeypatch):
+    rows = _with_average(_day_archive(), hour={"error": "JEV unreachable for group hour: TimeoutError", "average": AVG})
+    rows[1]["hour_response"] = {"error": "JEV unreachable for group hour: TimeoutError"}
+    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path, rows))
+    store.build_day(tmp_path, D, at(16, 45))
+    calls = [c for c in _table(tmp_path, "calls") if c["read_id"] == f"live:{READ}"]
+    assert [(c["sum_id"], c["is_call"], c["shown_pick"]) for c in calls] == [("average_30", True, "down")]
+    r = {r["read_id"]: r for r in _table(tmp_path, "reads")}[f"live:{READ}"]
+    assert r["sum_error"].startswith("JEV unreachable") and r["average_error"] is None
+
+
+def test_a_read_whose_average_price_sum_failed_calls_its_end_price_and_says_why(tmp_path, monkeypatch):
+    rows = _with_average(_day_archive(), hour={**_day_archive()[1]["hour"], "average": {"error": "no average_30 answer",
+                                                                                          "primary": "average_30", "box": "next_30"}})
+    rows[1]["average_response"] = {"error": "JEV unreachable for group average: TimeoutError"}
+    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path, rows))
+    store.build_day(tmp_path, D, at(16, 45))
+    calls = {c["sum_id"]: c for c in _table(tmp_path, "calls") if c["read_id"] == f"live:{READ}"}
+    assert set(calls) == {"next_30", "next_60"} and calls["next_30"]["is_call"] is True
+    assert {r["read_id"]: r for r in _table(tmp_path, "reads")}[f"live:{READ}"]["average_error"] == "no average_30 answer"
+    ans = {(a["read_id"], a["question_id"]): a for a in _table(tmp_path, "answers")}[(f"live:{READ}", "average_30")]
+    assert (ans["status"], ans["reason"]) == ("lost", "JEV unreachable for group average: TimeoutError")
+
+
+def test_the_average_price_grade_is_stored_from_each_lanes_file_its_newest_rule_standing(tmp_path, monkeypatch):
+    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path, _with_average(_day_archive())))
+    folder = tmp_path / "spx_jev"
+    (folder / "integral_grades.jsonl").write_text("".join(json.dumps(g) + "\n" for g in (
+        _integral(READ, rule=2, label="flat", verdict="wrong"), _integral(READ),
+        {"row_ts": EARLY, "horizon": "next_30", "rule_version": 1, "graded": False, "reason": "not graded: bars missing",
+         "missing": [29, 30], "bad_ticks": [], "stale_read": False},
+        _integral("2026-09-17T10:32:00-04:00"))))
+    (folder / "lanes" / "tape").mkdir(parents=True)
+    (folder / "lanes" / "tape" / "integral_grades.jsonl").write_text(json.dumps(_integral(
+        TAPE_READ, horizon="next_10", sum="average_10", minutes=10, label="flat", verdict="passed", lean={"direction": "down", "p": 0.4},
+        size={"band": "flat", "size": "small", "call": None, "right": None})) + "\n")
+    log = store.build_day(tmp_path, D, at(16, 45))
+    grades = {g["read_id"]: g for g in _table(tmp_path, "average_grades")}
+    live = grades[f"live:{READ}"]
+    assert (live["rule_version"], live["sum_id"], live["outcome"], live["verdict"], live["correct"], live["abstained"]) == \
+        (3, "average_30", "down", "right", True, False)
+    assert (live["mark"], live["average_move"], live["edge_told"], live["minutes_filled"], live["brier"], live["running"]) == \
+        (at(11, 2), -4.2, 3.5, 1, 0.38, ["flat", "down"])
+    assert log["average_grades"]["superseded"] == 1                               # the rule-2 line, under the newer rule
+    early = grades[f"live:{EARLY}"]
+    assert (early["graded"], early["sum_id"], early["minutes_missing"], early["verdict"]) == (False, "next_30", 2, None)
+    tape = grades[f"tape:{TAPE_READ}"]
+    assert (tape["verdict"], tape["abstained"], tape["correct"], tape["lean"], tape["size_outcome"]) == ("passed", True, None, "down", "small")
+    assert len(grades) == 3                                                        # the other day's line is that day's
+
+
+def test_both_learning_loops_logs_are_stored_under_the_session_they_learnt_old_and_new_names_alike(tmp_path, monkeypatch):
+    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path))
+    folder = tmp_path / "spx_jev"
+    end = {"at": "2026-09-21T13:32:32+00:00", "session": DAY, "code": "c1", "horizon": "next_30", "applied": True, "reads": 11,
+           "manifest": {"included": ["a", "b"], "excluded": ["c"]}, "baseline_changed": {"from": "v1:old", "to": "v1:new"},
+           "pool_vs_blend": {"pool": 1.03, "blend50_exact": 1.1}}
+    (folder / "pool_log.jsonl").write_text("".join(json.dumps(x) + "\n" for x in (
+        end, {**end, "horizon": "next_60", "at": "2026-09-18T15:00:00-04:00"},             # before the session closed
+        {**end, "session": "2026-09-17"})))
+    (folder / "pool_integral_log.jsonl").write_text("".join(json.dumps(x) + "\n" for x in (
+        {"at": "2026-09-21T13:32:32+00:00", "session": DAY, "code": "c2", "horizon": "next_30", "applied": True, "reads": 9,
+         "manifest": {"included": ["a"], "excluded": []}, "reference_changed": {"from": "integral_clock:a", "to": "integral_clock:b"}},
+        {"at": "2026-09-18T20:40:00+00:00", "code": "c2", "applied": False, "why": "constants changed: stopped, fail closed"})))
+    log = store.build_day(tmp_path, D, at(16, 45))
+    rows = {(r["loop"], r["horizon"]): r for r in _table(tmp_path, "pool_log")}
+    assert set(rows) == {("end_price", "next_30"), ("average_price", "next_30"), ("average_price", None)}
+    assert (rows[("end_price", "next_30")]["reference_to"], rows[("end_price", "next_30")]["included"],
+            rows[("end_price", "next_30")]["pool_loss"]) == ("v1:new", 2, 1.03)
+    assert rows[("average_price", "next_30")]["reference_from"] == "integral_clock:a"
+    assert rows[("average_price", None)]["session"] is None and json.loads(rows[("average_price", None)]["line_json"])["code"] == "c2"
+    assert log["pool_log"]["quarantined"] == 1
+    assert _table(tmp_path, "quarantine")[0]["reason"].startswith("learnt at 2026-09-18T15:00:00-04:00, before its session closed")
+
+
+def test_a_calls_frozen_reference_is_read_under_its_new_name_and_its_old_one(tmp_path, monkeypatch):
+    rows = _day_archive()
+    rows[1]["pool"]["next_30"]["reference_version"] = rows[1]["pool"]["next_30"].pop("baseline")
+    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path, rows))
+    store.build_day(tmp_path, D, at(16, 45))
+    assert {c["sum_id"]: c["pool_reference_version"] for c in _table(tmp_path, "calls") if c["lane"] == "live" and c["read_id"] == f"live:{READ}"}["next_30"] == "v1:x"
 
 
 def test_a_grade_has_its_mark_outcome_and_an_unsure_pick_abstains_rather_than_counting_wrong(built):

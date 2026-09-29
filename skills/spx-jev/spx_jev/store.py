@@ -15,15 +15,20 @@ The tables, each defined in TABLES with its columns, its key and its checks:
 
     reads           one row per read of any lane (archive ``read`` records): its lane and times, its ruler, how
                     many questions were asked, answered, lost, held, not due, asleep, missing and dark, and why
-    facts           one row per label per read, written, omitted or asleep, with the reason for a missing one,
+    facts           one row per label per read, written, omitted or asleep, with the reason for a missing one, a
+                    label archived under a name it has since lost filed under its new one (labels.registry.RENAMED),
                     and one per market-context value the read could see, with when it became known
     answers         one row per question per read: its status, JEV's probability per option, the pick, where a
                     held answer came from (a lost ask the lane held its last answer for is held, its reason
                     saying so), whether it was asked again after a lost ask, and the hash of the question
                     exactly as JEV was sent it
-    calls           one row per sum per read: JEV alone, the time-of-day odds, the blend, the learning loop's mix,
-                    and which of them the card showed
-    grades          one row per graded sum: the mark, the outcome, right, wrong or abstained, and the scores
+    calls           one row per sum per read, the end-price sums and the average-price sum, which of them is the call
+                    the phone showed, and for each JEV alone, the time-of-day odds, the blend and the learning loop's mix
+    grades          one row per graded end-price sum: the mark, the outcome, right, wrong or abstained, and the scores
+    average_grades  one row per graded window on the average price (each lane's integral_grades.jsonl): the sum whose
+                    call it graded, the label, right, wrong or passed, the margin, the path and the scores
+    pool_log        one row per line of each learning loop's log, the end price's (pool_log.jsonl) and the average
+                    price's (pool_integral_log.jsonl), under the session it learnt
     spx_bars        SPX's minute bars (the saved session file, else the bars feed's)
     context_bars    the market feed's minute bars, a derived $VOLD marked, a saved day's bar kept over a live one
     context_quotes  the market feed's quotes, each as of its snapshot
@@ -45,7 +50,8 @@ a worse source that disagrees is counted as superseded; any other disagreement, 
 included, is quarantined. Nothing is dropped without a count in ``validation`` or a row in ``quarantine``. A line of a raw
 file that is not a JSON object, or whose parts are not the shapes its writer writes, is quarantined under
 the table_name ``raw_line``, and the rest of the day is built. The archive's ``close_out``
-records restate the calls and grades already stored, so they are read past.
+records restate what calls, grades and average_grades hold, read from the same sum records, grades.jsonl and
+integral_grades.jsonl, so they are read past.
 
 Timestamps are stored as instants in New York time; the Treasury yields are in percent and a futures bar is
 under its root (``/ES``), as the labels read them (state_builder.context_value, context_symbol).
@@ -68,11 +74,12 @@ import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from . import grade
+from . import grade, integral_loop, pool
 from .archive import ARCHIVE_SUBDIR
 from .ask import confidence as answer_confidence, pick as answer_pick
 from .events import CALENDAR, ET
 from .hour import FIVE
+from .labels.registry import RENAMED
 from .lane import LANES, RECORD
 from .overnight import OVERNIGHT_SUBDIR
 from .rolls import table_path as rolls_path
@@ -83,7 +90,7 @@ from .state_builder import (CONTEXT_SUBDIR, DEFAULT_STATE_DIR, LIVE_BARS_SUBDIR,
 STORE_SUBDIR = Path("spx_jev") / "store"
 DB_NAME = "spx_jev.duckdb"
 PART = "part-0.parquet"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3              # 3: the average-price call, its answer and grade, and both loops' logs; overnight_schema
 CATCH_UP_DAYS = 7              # a run rebuilds every market day this many calendar days back, so a late save is picked up
 BUILD_AFTER_CLOSE_MIN = 30     # today counts from its close plus this (16:30, 13:30 on a half day); the 16:40 job runs after the 16:20 saves either way
 PROB_SUM_TOLERANCE = 0.05      # JEV rounds each option to two places, so six options can sum to 0.97
@@ -272,6 +279,14 @@ def _roll_changes(r: dict) -> str | None:
     return None if r["from_contract"] != r["to_contract"] else f"a roll from {r['from_contract']} to itself"
 
 
+def _learnt_after_close(r: dict) -> str | None:
+    """Point in time: a loop learns a session only once it has closed (a line naming no session passes)."""
+    if r["session"] is None:
+        return None
+    close = session_close(datetime.combine(r["session"], datetime.min.time(), tzinfo=ET))
+    return None if r["logged_at"] >= close else f"learnt at {r['logged_at'].isoformat()}, before its session closed at {close.isoformat()}"
+
+
 def _ends_after_start(r: dict) -> str | None:
     return None if r["ends_at"] is None or r["ends_at"] > r["starts_at"] else "ends_at is not after starts_at"
 
@@ -287,6 +302,8 @@ def _night_ends_by_close(r: dict) -> str | None:
 
 
 LANE_NAMES = tuple(LANES)
+AVERAGE_OUTCOMES = ("up", "flat", "down")
+LOOPS = {"end_price": pool.LOG_NAME, "average_price": integral_loop.LOG_NAME}   # each learning loop and the log it keeps
 ANSWER_STATUSES = ("answered", "lost", "unsent", "held", "not_due", "asleep", "missing", "dark", "unread", "other")
 FACT_STATUSES = ("written", "omitted", "asleep")
 
@@ -299,7 +316,7 @@ READS = Table("reads", _read_cols(
     ("questions", INT, True), *((s, INT, True) for s in ANSWER_STATUSES), ("reasked", INT, False),
     ("labels_written", INT, True), ("labels_omitted", INT, True), ("labels_asleep", INT, True), ("market_values", INT, True),
     ("sum_used", INT, False), ("sum_left_out", INT, False), ("sum_missing", INT, False), ("sum_error", STR, False),
-    ("skip_reasons", TEXTS, False), ("ruler_json", STR, False), ("band_json", STR, False), ("event_json", STR, False),
+    ("average_error", STR, False), ("skip_reasons", TEXTS, False), ("ruler_json", STR, False), ("band_json", STR, False), ("event_json", STR, False),
     ("night_json", STR, False), ("archive_schema", INT, False)),
     key=("read_id",),
     checks=(_is("lane", LANE_NAMES), _read_id_matches, _on_day("row_ts"), _positive("spot", "sigma", "ruler_points"),
@@ -326,16 +343,17 @@ ANSWERS = Table("answers", _read_cols(
     of_read=True)
 
 CALLS = Table("calls", _read_cols(
-    ("horizon", STR, True), ("minutes", INT, True), ("mark", TS, False), ("minute_et", INT, False),
-    ("minutes_from_open", INT, False), ("is_primary", BOOL, True), ("shown_source", STR, True), ("shown_pick", STR, False),
-    ("shown_probs", PROBS, True), ("shown_confidence", NUM, False), ("jev_pick", STR, False), ("jev_probs", PROBS, False),
+    ("sum_id", STR, True), ("horizon", STR, True), ("is_call", BOOL, True), ("minutes", INT, True), ("mark", TS, False),
+    ("minute_et", INT, False), ("minutes_from_open", INT, False), ("is_primary", BOOL, True), ("shown_source", STR, True),
+    ("shown_pick", STR, False), ("shown_probs", PROBS, True), ("shown_confidence", NUM, False), ("price", NUM, False),
+    ("flat_points", NUM, False), ("edge_points", NUM, False), ("jev_pick", STR, False), ("jev_probs", PROBS, False),
     ("jev_confidence", NUM, False), ("clock_pick", STR, False), ("clock_probs", PROBS, False), ("clock_n", INT, False),
     ("blended", BOOL, False), ("blend_jev_share", NUM, False), ("blend_phase", STR, False), ("blend_sessions", INT, False),
     ("pool_probs", PROBS, False), ("pool_p_move", NUM, False), ("pool_p_up_given_move", NUM, False),
-    ("pool_state_hash", STR, False), ("pool_baseline", STR, False), ("pool_left_out", STR, False),
+    ("pool_state_hash", STR, False), ("pool_reference_version", STR, False), ("pool_left_out", STR, False),
     ("direction_pick", STR, False), ("direction_probs", PROBS, False), ("size_pick", STR, False), ("size_probs", PROBS, False),
     ("learn_exclude", BOOL, False), ("model", STR, False)),
-    key=("read_id", "horizon"),
+    key=("read_id", "sum_id"),
     checks=(_probabilities("shown_probs", "jev_probs", "clock_probs", "pool_probs", "direction_probs", "size_probs"),
             _within("pool_p_move", 0.0, 1.0), _within("pool_p_up_given_move", 0.0, 1.0),
             _not_after("row_ts", "mark", "marked before its read")),
@@ -354,6 +372,34 @@ GRADES = Table("grades", _read_cols(
             _within("clock_brier", 0.0, 2.0), _within("direction_brier", 0.0, 2.0), _within("size_brier", 0.0, 2.0),
             _not_after("row_ts", "mark", "marked before its read"), _not_after("mark", "archived_at", "graded before its mark")),
     of_read=True)
+
+AVERAGE_GRADES = Table("average_grades", _read_cols(
+    ("horizon", STR, True), ("sum_id", STR, True), ("rule_version", INT, True), ("graded", BOOL, True), ("reason", STR, False),
+    ("minutes", INT, False), ("mark", TS, False), ("from_price", NUM, False), ("flat_points", NUM, False), ("factor", NUM, False),
+    ("edge", NUM, False), ("edge_told", NUM, False), ("average_move", NUM, False), ("outcome", STR, False),
+    ("end_outcome", STR, False), ("pick", STR, False), ("direction", STR, False), ("verdict", STR, False),
+    ("abstained", BOOL, False), ("correct", BOOL, False), ("margin", NUM, False), ("lean", STR, False), ("lean_p", NUM, False),
+    ("running", WORDS, False), ("best_points", NUM, False), ("best_minute", INT, False), ("worst_points", NUM, False),
+    ("worst_minute", INT, False), ("sharp", BOOL, False), ("sharp_points", NUM, False), ("sharp_minute", INT, False),
+    ("sharp_higher_than", INT, False), ("sharp_of", INT, False), ("minutes_filled", INT, False), ("minutes_missing", INT, False),
+    ("bad_ticks", INT, False), ("stale_read", BOOL, False), ("size_outcome", STR, False), ("size_call", STR, False),
+    ("size_right", BOOL, False), ("brier", NUM, False), ("log_loss", NUM, False), ("jev_brier", NUM, False),
+    ("jev_log_loss", NUM, False), ("clock_brier", NUM, False), ("clock_log_loss", NUM, False)),
+    key=("read_id", "horizon"),
+    checks=(_is("lane", LANE_NAMES), _is("outcome", AVERAGE_OUTCOMES), _is("end_outcome", AVERAGE_OUTCOMES + FIVE),
+            _is("verdict", ("right", "wrong", "passed")), _within("brier", 0.0, 2.0), _within("jev_brier", 0.0, 2.0),
+            _within("clock_brier", 0.0, 2.0), _not_after("row_ts", "mark", "marked before its read")),
+    # a read graded under more than one rule stands on its newest; an older rule's line is counted as superseded
+    rank=lambda r: (-r["rule_version"],),
+    of_read=True)
+
+POOL_LOG = Table("pool_log", (("day", DAY, True), ("loop", STR, True), ("lane", STR, True), ("horizon", STR, False),
+                              ("session", DAY, False), ("logged_at", TS, True), ("code", STR, False), ("applied", BOOL, True),
+                              ("why", STR, False), ("reads", INT, False), ("included", INT, False), ("excluded", INT, False),
+                              ("reference_from", STR, False), ("reference_to", STR, False), ("phone", STR, False),
+                              ("pool_loss", NUM, False), ("blend_loss", NUM, False), ("line_json", STR, True)),
+                 key=("loop", "lane", "horizon", "logged_at"),
+                 checks=(_is("loop", LOOPS), _is("lane", LANE_NAMES), _learnt_after_close))
 
 _BAR = (("open", NUM, True), ("high", NUM, False), ("low", NUM, False), ("close", NUM, True), ("volume", NUM, False))
 
@@ -406,7 +452,7 @@ VALIDATION = Table("validation", (("day", DAY, True), ("table_name", STR, True),
                                   ("reasons", COUNTS, True), ("sources", WORDS, True), ("store_schema", INT, True),
                                   ("built_at", TS, True)), key=())
 
-TABLES = (READS, FACTS, ANSWERS, CALLS, GRADES, SPX_BARS, CONTEXT_BARS, CONTEXT_QUOTES, OVERNIGHT_BARS, ROLLS, EVENTS)
+TABLES = (READS, FACTS, ANSWERS, CALLS, GRADES, AVERAGE_GRADES, POOL_LOG, SPX_BARS, CONTEXT_BARS, CONTEXT_QUOTES, OVERNIGHT_BARS, ROLLS, EVENTS)
 BY_NAME = {t.name: t for t in TABLES + (QUARANTINE, VALIDATION)}
 
 
@@ -568,13 +614,17 @@ def _read_rows(day: date, src: str, rec: dict, asked_by: dict, hours: dict) -> d
                         "model": (source or {}).get("model"), "question_hash": (source or {}).get("hash"),
                         "held_from": since, "held_found": source is not None}
 
+    call_answers = _average_answers(base, rec, responses is not None and bool(rec.get("sent")))
     asleep_reasons = {str(why)[len("asleep:"):].strip() for why in skip_reasons.values() if str(why).startswith("asleep:")}
     facts = []
     for family, labels in (rec.get("labels") or {}).items():
         for name, text in (labels or {}).items():
-            facts.append({**base, "source": "label", "path": f"{family}.{name}", "family": family, "name": name,
+            path = RENAMED.get(f"{family}.{name}", f"{family}.{name}")
+            family_now, _, name_now = path.partition(".")
+            facts.append({**base, "source": "label", "path": path, "family": family_now, "name": name_now,
                           "status": "written", "text": text, "reason": None, "value": None, "known_at": row_ts})
     for path, why in (rec.get("omitted") or {}).items():
+        path = RENAMED.get(str(path), path)
         family, _, name = str(path).partition(".")
         facts.append({**base, "source": "label", "path": path, "family": family, "name": name or None,
                       "status": "asleep" if why in asleep_reasons else "omitted", "text": None, "reason": why,
@@ -591,6 +641,9 @@ def _read_rows(day: date, src: str, rec: dict, asked_by: dict, hours: dict) -> d
     counts = Counter(a["status"] for a in answers.values())
     minute_et, from_open = _clock(row_ts)
     hour_error = (rec.get("hour_response") or {}).get("error") if isinstance(rec.get("hour_response"), dict) else None
+    average = hour.get("average") if isinstance(hour.get("average"), dict) else {}
+    average_error = average.get("error") or ((rec.get("average_response") or {}).get("error")
+                                             if isinstance(rec.get("average_response"), dict) else None)
     model = hour.get("model") or next((r.get("model") for r in (responses or {}).values() if isinstance(r, dict) and r.get("model")), None)
     read = {**base, "archived_at": rec.get("archived_at"), "minute_et": minute_et, "minutes_from_open": from_open,
             "checkpoint": rec.get("checkpoint"), "sent": rec.get("sent"), "model": model, "spot": rec.get("spot"),
@@ -608,46 +661,94 @@ def _read_rows(day: date, src: str, rec: dict, asked_by: dict, hours: dict) -> d
             "market_values": sum(1 for f in facts if f["source"] == "market_context"),
             "sum_used": hour.get("used") if not isinstance(hour.get("used"), dict) else len(hour["used"]),
             "sum_left_out": hour.get("left_out"), "sum_missing": hour.get("missing"), "sum_error": hour_error,
+            "average_error": average_error,
             "skip_reasons": skip_reasons, "ruler_json": _json(rec.get("ruler")), "band_json": _json(rec.get("band")),
             "event_json": _json(rec.get("event")), "night_json": _json(rec.get("night")), "archive_schema": rec.get("schema_version")}
-    return {"reads": [read], "facts": facts, "answers": list(answers.values()),
+    return {"reads": [read], "facts": facts, "answers": list(answers.values()) + call_answers,
             "calls": _call_rows(base, rec, hour, pool_snap, hours.get((lane, row_ts)), minute_et, from_open)}
 
 
+def _average_answers(base: dict, rec: dict, sent: bool) -> list[dict]:
+    """The average-price sum's question as an answers row, from the read's ``average_request`` and ``average_response``
+    (archive version 5); none for a read that did not ask it. It is the call's own question, not one of the question
+    doc's, so the read's question counts leave it out."""
+    req = rec.get("average_request") if isinstance(rec.get("average_request"), dict) else {}
+    reply = rec.get("average_response") if isinstance(rec.get("average_response"), dict) else None
+    out = []
+    for qid, q in (req.get("questions") or {}).items():
+        a = ((reply or {}).get("answers") or {}).get(qid)
+        if not sent:
+            status, reason = "unsent", "the read was not sent to JEV"
+        elif reply is None or reply.get("error"):
+            status, reason = "lost", (reply or {}).get("error") or "no reply for the average-price sum"
+        elif not isinstance(a, dict):
+            status, reason = "lost", "JEV's reply carries no answer for it"
+        else:
+            status, reason = "answered", None
+        out.append({**base, "group_id": req.get("id"), "question_id": qid, "status": status, "reason": reason,
+                    **_answer_fields(a if status == "answered" else None),
+                    "model": reply.get("model") if status == "answered" else None, "question_hash": question_hash(q),
+                    "pool_version": None, "held_from": None, "held_found": None, "reasked": None, "reasked_from": None,
+                    "reask_why": None})
+    return out
+
+
 def _call_rows(base: dict, rec: dict, hour: dict, pool_snap: dict, hour_rec: dict | None, minute_et, from_open) -> list[dict]:
+    """One row per sum the read's summary holds: each end-price sum, and the average-price sum where JEV answered it.
+    The call is the row the phone showed: the average-price sum's when it answered (grade.average_call), else the
+    end-price primary's. A read whose end-price sums failed and whose average-price sum answered has that one row."""
     lane = LANES.get(rec.get("lane"))
     if lane is None or not hour:
         return []
     exclude = (hour_rec or {}).get("learn_exclude") or {}
-    blend = hour.get("blend") if isinstance(hour.get("blend"), dict) else {}
+    avg = grade.average_call(hour, lane.primary, lane)
+    call = lane.average if avg else lane.primary
+    sums = [(h, h, hour if h == hour.get("primary") else {}) for h in lane.horizons]
+    if avg:
+        sums.append((lane.average, lane.primary, avg))
     out = []
-    for h, (minutes, _) in lane.horizons.items():
-        b = (hour.get("by") or {}).get(h)
-        if not isinstance(b, dict) and h == hour.get("primary") and isinstance(hour.get("probabilities"), dict):
-            b = hour
+    for sum_id, h, top in sums:
+        b = (top.get("by") or {}).get(sum_id) if top is avg else (hour.get("by") or {}).get(h)
+        if not isinstance(b, dict) and isinstance(top.get("probabilities"), dict):
+            b = top
         if not isinstance(b, dict) or not isinstance(b.get("probabilities"), dict):
             continue
+        shown = avg if top is avg else hour
+        blend = shown.get("blend") if isinstance(shown.get("blend"), dict) else {}
         jev = b.get("jev") if b.get("blended") and isinstance(b.get("jev"), dict) else b
         clock = b.get("clock") if isinstance(b.get("clock"), dict) else {}
-        snap = pool_snap.get(h) if isinstance(pool_snap.get(h), dict) else {}
+        snap = pool_snap.get(h) if top is not avg and isinstance(pool_snap.get(h), dict) else {}
         views = b.get("views") if isinstance(b.get("views"), dict) else {}
+        minutes = lane.horizons[h][0]
         try:
             mark = grade.mark_at(base["row_ts"], minutes, lane)
         except (TypeError, ValueError):
             mark = None
-        out.append({**base, "horizon": h, "minutes": minutes, "mark": mark, "minute_et": minute_et, "minutes_from_open": from_open,
-                    "is_primary": h == lane.primary, "shown_source": hour.get("shown_source") or "jev", "shown_pick": b.get("pick"),
-                    "shown_probs": b.get("probabilities"), "shown_confidence": b.get("confidence"),
+        if top is avg:
+            # the call's own source when the service names one, else the blend when it was blended, else JEV alone
+            source = avg.get("shown_source") or (pool.SHOWN_BLEND if blend.get("used") else "jev")
+            shown_b = {"pick": avg.get("pick"), "probabilities": avg.get("probabilities"), "confidence": avg.get("confidence")}
+        else:
+            source, shown_b = hour.get("shown_source") or "jev", b
+        out.append({**base, "sum_id": sum_id, "horizon": h, "is_call": sum_id == call,
+                    "minutes": avg.get("minutes", minutes) if top is avg else minutes, "mark": mark, "minute_et": minute_et,
+                    "minutes_from_open": from_open, "is_primary": sum_id == lane.primary, "shown_source": source,
+                    "shown_pick": shown_b.get("pick"), "shown_probs": shown_b.get("probabilities"),
+                    "shown_confidence": shown_b.get("confidence"),
+                    **({"price": avg.get("price"), "flat_points": avg.get("flat_points"), "edge_points": avg.get("edge_points")}
+                       if top is avg else {}),
                     "jev_pick": jev.get("pick"), "jev_probs": jev.get("probabilities"), "jev_confidence": jev.get("confidence"),
                     "clock_pick": clock.get("pick"), "clock_probs": clock.get("probabilities"), "clock_n": clock.get("n"),
                     "blended": b.get("blended"), "blend_jev_share": blend.get("jev_share"), "blend_phase": blend.get("phase"),
                     "blend_sessions": blend.get("sessions"), "pool_probs": snap.get("pool"), "pool_p_move": snap.get("p_move"),
                     "pool_p_up_given_move": snap.get("p_up_given_move"), "pool_state_hash": snap.get("state_hash"),
-                    "pool_baseline": snap.get("baseline"), "pool_left_out": snap.get("left_out"),
+                    # the frozen reference's version, ``baseline`` on reads before the loops named it by its source
+                    "pool_reference_version": snap.get("reference_version", snap.get("baseline")),
+                    "pool_left_out": snap.get("left_out"),
                     "direction_pick": (views.get("direction") or {}).get("pick"),
                     "direction_probs": (views.get("direction") or {}).get("probabilities"),
                     "size_pick": (views.get("size") or {}).get("pick"), "size_probs": (views.get("size") or {}).get("probabilities"),
-                    "learn_exclude": exclude.get(str(minutes)), "model": hour.get("model")})
+                    "learn_exclude": exclude.get(str(minutes)), "model": shown.get("model")})
     return out
 
 
@@ -675,6 +776,60 @@ def _grade_rows(day: date, src: str, rec: dict) -> list[dict]:
                     "anchor_points": anchor.get("points"), "anchor_source": anchor.get("source"),
                     "from_settled_open": start.get("settled_open"), "from_at": start.get("at")})
     return out
+
+
+def _average_grade_row(day: date, src: str, lane_name: str, g: dict) -> dict:
+    """One line of a lane's integral_grades.jsonl: the grade on the average price over a window. ``sum`` names the
+    sum whose call it graded (a rule-1 line graded the end-price sum's, so it is the horizon's)."""
+    lane = LANES[lane_name]
+    h = g.get("horizon")
+    minutes = lane.horizons[h][0] if h in lane.horizons else None
+    try:
+        mark = grade.mark_at(g.get("row_ts"), minutes, lane) if minutes is not None else None
+    except (TypeError, ValueError):
+        mark = None
+    part = {k: g.get(k) if isinstance(g.get(k), dict) else {} for k in ("scores", "best", "worst", "sharp_move", "lean", "size")}
+    verdict = g.get("verdict")
+    return {"day": day, "read_id": f"{lane_name}:{g.get('row_ts')}", "lane": lane_name, "row_ts": g.get("row_ts"), "_source": src,
+            "horizon": h, "sum_id": g.get("sum") or h, "rule_version": g.get("rule_version"), "graded": g.get("graded"),
+            "reason": g.get("reason"), "minutes": g.get("minutes"), "mark": mark, "from_price": g.get("from"),
+            "flat_points": g.get("f"), "factor": g.get("factor"), "edge": g.get("edge"), "edge_told": g.get("edge_told"),
+            "average_move": g.get("g"), "outcome": g.get("label"), "end_outcome": g.get("end_label"), "pick": g.get("pick"),
+            "direction": g.get("direction"), "verdict": verdict, "abstained": None if verdict is None else verdict == "passed",
+            "correct": None if verdict in (None, "passed") else verdict == "right", "margin": g.get("margin"),
+            "lean": part["lean"].get("direction"), "lean_p": part["lean"].get("p"), "running": g.get("running"),
+            "best_points": part["best"].get("points"), "best_minute": part["best"].get("minute"),
+            "worst_points": part["worst"].get("points"), "worst_minute": part["worst"].get("minute"),
+            "sharp": part["sharp_move"].get("sharp"), "sharp_points": part["sharp_move"].get("points"),
+            "sharp_minute": part["sharp_move"].get("minute"), "sharp_higher_than": part["sharp_move"].get("higher_than"),
+            "sharp_of": part["sharp_move"].get("of"),
+            **{k: len(g[f]) if isinstance(g.get(f), list) else None
+               for k, f in (("minutes_filled", "filled"), ("minutes_missing", "missing"), ("bad_ticks", "bad_ticks"))},
+            "stale_read": g.get("stale_read"), "size_outcome": part["size"].get("size"), "size_call": part["size"].get("call"),
+            "size_right": part["size"].get("right"),
+            **{k: part["scores"].get(k) for k in ("brier", "log_loss", "jev_brier", "jev_log_loss", "clock_brier", "clock_log_loss")}}
+
+
+def _pool_log_row(day: date, src: str, loop: str, lane_name: str, line: dict) -> dict:
+    """One learning-loop log line: the session it learnt or refused, and why; the whole line kept in ``line_json``."""
+    manifest = line.get("manifest") if isinstance(line.get("manifest"), dict) else {}
+    # the reference's change, under the name the loops wrote it by: ``baseline_changed`` before they named it by its source
+    changed = next((line[k] for k in ("reference_changed", "baseline_changed") if isinstance(line.get(k), dict)), {})
+    losses = line.get("pool_vs_blend") if isinstance(line.get("pool_vs_blend"), dict) else {}
+    return {"day": day, "loop": loop, "lane": lane_name, "horizon": line.get("horizon"), "session": line.get("session"),
+            "logged_at": line.get("at"), "code": line.get("code"), "applied": line.get("applied"), "why": line.get("why"),
+            "reads": line.get("reads"),
+            **{k: len(manifest[k]) if isinstance(manifest.get(k), (list, dict)) else None for k in ("included", "excluded")},
+            "reference_from": changed.get("from"), "reference_to": changed.get("to"), "phone": line.get("phone"),
+            "pool_loss": losses.get("pool"), "blend_loss": losses.get("blend50_exact"), "line_json": _json(line), "_source": src}
+
+
+def _log_day(line: dict) -> str | None:
+    """The day a loop's log line is stored under: the session it learnt, else the New York day it was written."""
+    if isinstance(line.get("session"), str):
+        return line["session"]
+    t = _parse(line.get("at"))
+    return t.date().isoformat() if t else None
 
 
 def _bar_row(day: date, bar: dict, **more: Any) -> dict:
@@ -751,6 +906,16 @@ def read_raw(state_dir: Path, day: date) -> Raw:
     for w, r in archive:
         take(w, r, f"{r.get('kind')} record", lambda: _read_rows(day, w, r, asked_by, hours) if r.get("kind") == "read" else
              {"grades": _grade_rows(day, w, r)} if r.get("kind") == "grade" else {})
+    for name, lane in LANES.items():
+        folder = lane.folder(state_dir)
+        # these files hold every day: a line is the day's by its read, or by the session its loop learnt
+        for w, g in lines(folder / grade.INTEGRAL_NAME, "average_grades"):
+            if str(g.get("row_ts", ""))[:10] == iso:
+                take(w, g, "average-price grade", lambda: {"average_grades": [_average_grade_row(day, w, name, g)]})
+        for loop, log_name in LOOPS.items():
+            for w, line in lines(folder / log_name, "pool_log"):
+                if _log_day(line) == iso:
+                    take(w, line, "learning-loop log line", lambda: {"pool_log": [_pool_log_row(day, w, loop, name, line)]})
 
     session = state_dir / SESSION_BARS_SUBDIR / f"{iso}-{SYMBOL}.json"
     saved, readable = _json_file(session)
