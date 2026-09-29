@@ -7,12 +7,13 @@
 <title>SPX · JEV</title>
 <!--
   The SPX JEV decision card, beta: the SNDK JEV page (jev.html) laid out the
-  same, over the SPX service's cards. Reads state/spx_jev/latest.json and
-  state/spx_jev/lanes/tape/latest.json through the viewstation's existing
-  read-only raw-file route, so nothing in server.py changes for it. Both are
-  written by skills/spx-jev (its own launchd jobs), never by the scan.
+  same, over the SPX service's cards. Reads state/spx_jev/latest.json and the
+  tape and pre-market lanes' latest.json through the viewstation's existing
+  read-only raw-file route, so nothing in server.py changes for it. All three
+  are written by skills/spx-jev (its own launchd jobs), never by the scan.
 
-  Two modes, switched by the clock and the cards alone, as on the SNDK page.
+  Two modes in the session, switched by the clock and the cards alone, as on
+  the SNDK page, and the pre-market card before them.
   The opening lane (skills/spx-jev, --lane tape) reads every 5 minutes through
   the first hour; while today's newest lane call is still open, that call leads
   the page and the 30-minute call folds to one line. Once it closes, the
@@ -505,13 +506,14 @@ details .q{margin-top:8px}
     return box;
   }
 
-  // The sum on this page is JEV's sum blended half and half with how this time of day went on prior
-  // sessions (the service's clock); JEV's own sum and the clock's odds ride beside it. Two lines:
+  // A call on this page is JEV's answer blended half and half with how this time of day went on prior
+  // sessions (the service's clock); JEV's own answer and the clock's odds ride beside it. Two lines:
   // what the blend is made of, and each part's own leading answer, in the page's own option words.
   function top1(p){ return p ? Object.keys(p).sort(function(x, y){ return p[y] - p[x]; })[0] : null; }
   function oneAnswer(p){ var k = top1(p); return k ? cap(k) + ' ' + Math.round((p[k] || 0) * 100) + '%' : 'none'; }
   // the sum a card's call is: the average-price one (the service's hour.average: up, flat or down over the window, no
-  // unsure) once JEV answered it, else the end-price sum, as on a card from before it
+  // unsure) once JEV answered it, else the end-price sum, on a card from before it or a read whose average-price
+  // question got no answer
   function callSum(h){ return h && h.average && h.average.probabilities ? h.average : h; }
   // what the average-price call is measured on, and its flat edge in index points, for the line under its odds
   function averageWords(a, span){ return 'on the average price over ' + span + ', flat within \u00B1' + (+a.edge_points).toFixed(2) + ' points'; }
@@ -734,7 +736,7 @@ details .q{margin-top:8px}
     }).catch(function(e){ if(last) failedFetch(); else { say('could not read the card: ' + (e && e.message ? e.message : 'no reply')); preOnly() || laneOnly(); } })
       .finally(function(){ inflight = false; polling(false); });
   }
-  // ---- the calls: every sum is a call that looks some minutes ahead, graded at its mark (the read's
+  // ---- the calls: every call looks some minutes ahead, graded at its mark (the read's
   // minute plus those minutes, as the grader counts it). The page only counts minutes against the marks.
   var tickers = [], shownLeads = false, lastOk = true;
   function pct(x){ return Math.round((x || 0) * 100) + '%'; }
