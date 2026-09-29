@@ -40,6 +40,7 @@ from .gap_open import gap_rank
 from .label_set import LabelSet
 from .measures import (ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, is_num, minute_of_day, move_size, session_extremes,
                        settled_open)
+from .plausible import left_out
 from .ranks import SameClockRank, fifth_side, rank_days, rank_sessions, same_clock_values, tick_bands_by_minute, tick_bursts
 from .rulers import NO_ANCHOR, SigmaRuler, normal_day_sigma, ruled, sigma_anchor
 from .words import pct, plural, sig
@@ -759,7 +760,7 @@ def _cross_asset(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) -
         return
     tick_bars = mk.bars_between("$TICK", burst.start, burst.end)
     if not tick_bars:
-        ls.omit(path, "no NYSE TICK bar during the burst")
+        ls.omit(path, left_out(mk, "$TICK") or "no NYSE TICK bar during the burst")
         return
     reached = tick_bursts(tick_bands_by_minute(scene), tick_bars)
     if reached is None:

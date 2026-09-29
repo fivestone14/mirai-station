@@ -31,6 +31,7 @@ from .events_shocks import judged_windows, shock_bursts
 from .label_set import LabelSet
 from .measures import (ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, day_high_low, is_num, move_size,
                        session_extremes, settled_open)
+from .plausible import left_out
 from .ranks import (SameClockRank, fifth, move_rank, rank_days, rank_sessions, same_clock_market, same_clock_values,
                     tick_bands_by_minute, tick_bursts)
 from .rulers import SigmaRuler, sigma_anchor
@@ -1019,7 +1020,7 @@ def _stress_path(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
     start = scene.now - timedelta(minutes=WINDOW_30_MIN)
     tick_bars = scene.market.bars_between("$TICK", start, scene.now) if scene.market else []
     if not tick_bars:
-        ls.omit(path, "no NYSE TICK bars in the market context over the last 30 minutes (the context job)")
+        ls.omit(path, left_out(scene.market, "$TICK") or "no NYSE TICK bars in the market context over the last 30 minutes (the context job)")
         return
     bursts = tick_bursts(tick_bands_by_minute(scene), tick_bars)
     if bursts is None:

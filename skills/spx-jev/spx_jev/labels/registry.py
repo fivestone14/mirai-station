@@ -5,8 +5,8 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from ..state_builder import Scene
-from . import (bitcoin, breadth, context, events_shocks, expiry_calendar, gamma, gap_open, leadership, levels, macro, premarket, price,
-               range_size, read_sequence, story, tape_flow, vol)
+from . import (bitcoin, breadth, context, events_shocks, expiry_calendar, gamma, gap_open, leadership, levels, macro, plausible, premarket,
+               price, range_size, read_sequence, story, tape_flow, vol)
 from .label_set import LabelSet
 
 NOT_BUILT = "not built yet: no code writes this label"
@@ -60,7 +60,9 @@ def build_labels(scene: Scene) -> LabelSet:
     a session read leaves the premarket-only ones alone. A gate a family owns but did not decide sleeps, so a gated
     question is never asked before its gate exists. A family that fails costs only its own labels, each
     omitted with the failure as its reason, and its gates; a family that writes a label or decides a gate
-    it does not own is a bug in that family and stops the read."""
+    it does not own is a bug in that family and stops the read. Every family reads the market context after
+    plausible.checked has taken out the breadth series that do not read like their own history."""
+    scene = plausible.checked(scene)
     out = LabelSet()
     for family in FAMILIES:
         if scene.premarket and not family.premarket:
