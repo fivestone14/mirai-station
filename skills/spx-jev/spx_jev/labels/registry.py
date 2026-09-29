@@ -63,7 +63,7 @@ def build_labels(scene: Scene) -> LabelSet:
     before the open) runs only the families that serve it and accounts only for their premarket labels;
     a session read leaves the premarket-only ones alone. A gate a family owns but did not decide sleeps, so a gated
     question is never asked before its gate exists. A family that fails costs only its own labels, each
-    omitted with the failure as its reason, and its gates; a family that writes a label or decides a gate
+    omitted with the failure as its reason, and leaves its gated questions missing them (LabelSet.unmeasured); a family that writes a label or decides a gate
     it does not own is a bug in that family and stops the read. Every family reads the market context after
     plausible.checked has taken out the breadth series that do not read like their own history."""
     scene = plausible.checked(scene)

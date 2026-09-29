@@ -18,7 +18,7 @@ from spx_jev.labels.bitcoin import GATE_OF, PREMARKET, NightStore, build_bitcoin
 from spx_jev.labels.registry import build_labels
 from spx_jev.sessions import previous_trading_day
 from spx_jev.state_builder import MarketContext
-from usual_link_fixtures import NOW, follow, index_closes, known, scene_with, shape
+from usual_link_fixtures import NOW, follow, index_closes, scene_with, shape
 
 SESSION = ("xasset.btc_gap_30min", "xasset.btc_gap_streak", "xasset.btc_link", "xasset.btc_five_day")
 MONDAY = "2026-09-21"
@@ -489,7 +489,7 @@ def test_bitcoin_s_last_five_sessions_against_the_index(tmp_path, scene_factory,
     five_day_state(tmp_path, last_five)
     ls = build_bitcoin_labels(five_day_read(scene_factory, tmp_path))
     s = written(ls).get("xasset.btc_five_day")
-    assert s.startswith(f"over the last 5 sessions bitcoin futures (/MBT) did ") and f"normal weeks {word} than the index's move would match, {fifth} " in s
+    assert s.startswith("over the last 5 sessions bitcoin futures (/MBT) did ") and f"normal weeks {word} than the index's move would match, {fifth} " in s
     assert ls.figures["xasset.btc_five_day"]["verdict"] == verdict
     assert (ls.gates["btc_five_day_lead"] is None) == (verdict != "in_line")
 

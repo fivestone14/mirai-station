@@ -16,7 +16,8 @@ class LabelSet:
     answer given before it was about another moment, so the question holds none. ``figures`` maps a path to the figure
     behind its sentence (its kind, its number, its cut and the verdict it landed on) so the phone can draw
     the fact rather than print it; JEV never sees a figure. ``gates`` maps a gated question's id (one whose
-    ``sleep_when`` a family judges) to None when it is awake this read, or to why it sleeps.
+    ``sleep_when`` a family judges) to None when it is awake this read, or when its gate could not be measured
+    (``unmeasured``), or to why it sleeps.
     """
 
     def __init__(self) -> None:

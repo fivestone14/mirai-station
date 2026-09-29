@@ -14,7 +14,7 @@ from datetime import date, time, timedelta
 
 import pytest
 
-from conftest import DAY, at, bars_from_closes, flat_bars, make_row, prior_sessions, write_state
+from conftest import DAY, at, bars_from_closes, flat_bars, make_row, write_state
 from spx_jev.cuts import GIVEBACK_THIRD, RANGE_TOP_SHARE, RULER_FLOOR_SIGMA, SAME_CLOCK_MIN_SESSIONS
 from spx_jev.labels.gap_open import build_gap_open_labels
 from spx_jev.labels.measures import bar_time

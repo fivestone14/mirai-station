@@ -18,7 +18,7 @@ import json
 from dataclasses import replace
 from datetime import date, datetime, timedelta
 
-from conftest import at, bars_from_closes, make_row, prior_sessions
+from conftest import at, bars_from_closes, make_row
 from spx_jev.labels.events_shocks import DARK, LABELS, build_events_shocks_labels
 from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.labels.usual_link import SPX

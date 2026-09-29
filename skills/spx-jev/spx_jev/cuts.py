@@ -84,7 +84,7 @@ FOLLOW_ON_MIN = 45
 # this band 10 minutes on, and within NEXT_30_FLAT_BAND_SIGMA 30 minutes on. Not measured yet: the live
 # sum's 30-minute band scaled by the square root of 10 over 30.
 OPEN_10_FLAT_BAND_SIGMA = 0.04
-# The integral grade's guards (integral.py), each a count, a clock or a rank against the same window on the recent sessions.
+# The average-price grade's guards (integral.py), each a count, a clock or a rank against the same window on the recent sessions.
 INTEGRAL_MISSING_BARS_MAX = 1   # bars a window may miss and still be graded on its average, never the mark bar
 BAD_TICK_PCT = 0.999            # share of the same window's 1-minute moves a bad tick's jump, and its jump back, are at or above
 STALE_READ_MIN = 2              # a read whose spot no bar traded in this many minutes up to its row minute is stale
