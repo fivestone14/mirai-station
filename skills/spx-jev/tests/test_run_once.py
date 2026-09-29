@@ -330,6 +330,36 @@ def test_a_read_whose_end_price_sums_got_no_answer_keeps_the_answers_the_average
     assert c["hour"]["average"]["pick"] == "up" and [call["sum"] for call in c["calls"]] == ["average_30"]
 
 
+def _average_sums(req, **kw):
+    if req["id"] == "hour":
+        return _sums(req)
+    return {"model": "fake-1", "answers": {"average_30": {"type": "choice", "choice": "up", "confidence": 0.6,
+                                                         "probabilities": {"up": 0.6, "flat": 0.3, "down": 0.1}}}}
+
+
+def test_the_call_shows_what_the_average_price_loop_chooses_and_its_exact_blend_until_promoted(tmp_path, monkeypatch):
+    """The average-price loop's promotion decides what the call shows (integral_loop.shown): unpromoted, the exact
+    blend, said under shown_source; its choice, whatever it is, is what the card and the sum record carry."""
+    state = _state(tmp_path, [make_row(at(12, 2, ss=10), 7700.0)], 150)
+    monkeypatch.setattr(service, "send_all", _answers())
+    monkeypatch.setattr(service, "send", _average_sums)
+    c = run_once(state, state / "spx_jev", DOC, True, DAY)
+    assert c["hour"]["average"]["shown_source"] == "blend50_exact" and c["hour"]["average"]["pick"] == "up"
+    seen = []
+
+    def promoted(out_dir, average, own, now, lane):
+        seen.append((own, lane.name))
+        return {**average, "pick": "down", "probabilities": {"up": 0.1, "flat": 0.2, "down": 0.7},
+                "blend50_exact": average["probabilities"], "shown_source": "pool"}
+    from spx_jev import integral_loop
+    monkeypatch.setattr(integral_loop, "shown", promoted)
+    state2 = _state(tmp_path / "b", [make_row(at(12, 2, ss=10), 7700.0)], 150)
+    c = run_once(state2, state2 / "spx_jev", DOC, True, DAY)
+    rec = json.loads((state2 / "spx_jev" / "hour" / f"{DAY}.jsonl").read_text().splitlines()[0])
+    assert c["hour"]["average"]["shown_source"] == rec["average"]["shown_source"] == "pool"
+    assert c["calls"][0]["pick"] == "down" and seen == [(rec["pool"]["next_30"], "live")]
+
+
 def test_a_failing_average_price_loop_costs_neither_the_read_nor_the_close_out(tmp_path, monkeypatch, capsys):
     """The average-price loop's state unreadable as a state (a list): the read still grades and writes its card, the
     shadow grade still appends, the weights come from the end-price loop, and the close-out still refreshes the card."""

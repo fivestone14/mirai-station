@@ -33,8 +33,10 @@ where. Every read carries the tier-1 events due within the hour
 
 On the live lane every sum also carries the learning loop's forecasts (pool.snapshot): the fixed
 mixes of JEV's sum with the price-only reference, today's blend, the question block and the pool,
-scored once the session is sealed. The phone keeps the exact blend (``shown_source``) until the
-loop is promoted, then shows the pool with the blend beside it, until it is demoted (pool.POOL_ON_PHONE).
+scored once the session is sealed. The call keeps its exact blend (``shown_source`` on ``hour.average``)
+until the average-price loop is promoted, then shows that loop's pool with the blend beside it, until it
+is demoted (integral_loop.shown, pool.POOL_ON_PHONE); the end-price loop's promotion reaches only the
+end-price sums kept beside the call (pool.shown).
 
 A lane (lane.py) is the same run with its own docs, folder, clock and grader. The tape lane
 (``--lane tape``) stamps each read at the newest finished bar (a sent run first waits, under a minute,
@@ -774,6 +776,17 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
                 log(f"the clock on the average price was left out this run: {type(e).__name__}: {e}")
                 why = f"the time-of-day odds on the average price failed this run: {type(e).__name__}"
                 hour = {**hour, "average": {**hour["average"], "blend": {"used": False, "why": why}}}
+        if hour is not None and lane.integral_loop and "probabilities" in (hour.get("average") or {}):
+            # the call shows its exact blend until the average-price loop is promoted, then that loop's pool, the blend
+            # beside it (integral_loop.shown); the end-price loop's promotion reaches the end-price sums alone
+            try:
+                from . import integral_loop   # only when switched on, as the grader imports it
+                own = ((hour_rec.get("pool") or {}).get(lane.primary)) if hour_rec else None
+                hour = {**hour, "average": integral_loop.shown(out_dir, hour["average"], own, now, lane)}
+            except Exception as e:  # the loop must never cost the read its call
+                log(f"the average-price loop's choice was left out this run: {type(e).__name__}: {e}")
+                hour = {**hour, "average": {**hour["average"], "shown_source": pool.SHOWN_BLEND,
+                                            "shown_why": f"the average-price loop failed this run: {type(e).__name__}"}}
         if hour is not None:
             hour = {**hour, "used": len(hour_rec["used"]), "left_out": len(hour_rec["left_out"]), "missing": len(missing)}
             if hour.get("error"):
