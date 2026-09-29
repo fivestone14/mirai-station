@@ -271,6 +271,43 @@ def test_on_each_questions_count_is_over_the_reads_this_loop_learned_from_not_th
     assert w["pool_integral"]["pool"]["last_session_applied"] is None
 
 
+def _alone(out: Path, day: str, k: int, answers: bool = True) -> str:
+    """Read ``k`` of ``day`` as it is when only the end-price request failed: no end-price sums and no grades.jsonl
+    line, its end-price snapshot left out with, or without, the questions' answers, its average-price call graded."""
+    ts = (at(10, 2, day=day) + timedelta(minutes=30 * k)).isoformat()
+
+    def strip(r):
+        if r["row_ts"] != ts:
+            return r
+        del r["by"]
+        left = {"left_out": "JEV gave no probabilities for next_30"}
+        r["pool"] = {"next_30": {**left, **pool.answered({"q_a": {"yes": 0.5, "no": 0.5}}, MEMBERS, {"q_a"})} if answers else left}
+        return {**r, "error": "JEV returned HTTP 529 for group hour"}
+    _edit(out / "hour" / f"{day}.jsonl", strip)
+    lines = [json.loads(line) for line in (out / "grades.jsonl").read_text().splitlines()]
+    (out / "grades.jsonl").write_text("".join(json.dumps(g) + "\n" for g in lines if g["row_ts"] != ts))
+    return ts
+
+
+def test_on_a_call_whose_end_price_sums_got_no_answer_is_learned_once_its_own_line_is_on_file(tmp_path, clock):
+    """The call the phone showed is learned from like any other: its session waits for its average-price line, and it
+    is then included on the answers its snapshot kept; without them it is left out, saying why."""
+    out = _write(tmp_path / "out", {DAYS[0]: SESSIONS[DAYS[0]]})
+    ts = _alone(out, DAYS[0], 1)
+    held = [json.loads(line) for line in (out / INTEGRAL_NAME).read_text().splitlines()]
+    (out / INTEGRAL_NAME).write_text("".join(json.dumps(g) + "\n" for g in held if g["row_ts"] != ts))
+    assert integral_loop.update(out, TODAY) == {"next_30": f"{DAYS[0]}: unsealed; stopped"}
+    with open(out / INTEGRAL_NAME, "a") as f:
+        f.write("".join(json.dumps(g) + "\n" for g in held if g["row_ts"] == ts))
+    assert integral_loop.update(out, TODAY) == {"next_30": f"{DAYS[0]}: applied, 3 reads"}
+    assert ts in _log(out)[-1]["manifest"]["included"]
+    bare = _write(tmp_path / "bare", {DAYS[0]: SESSIONS[DAYS[0]]})
+    ts = _alone(bare, DAYS[0], 1, answers=False)
+    assert integral_loop.update(bare, TODAY) == {"next_30": f"{DAYS[0]}: applied, 2 reads"}
+    assert _log(bare)[-1]["manifest"]["excluded"] == {ts: "no answers on file: the read's end-price snapshot was left out"}
+    assert pool.update(bare, TODAY)["next_30"] == f"{DAYS[0]}: applied, 2 reads"    # the end-price loop never had it
+
+
 def test_on_a_session_before_the_question_is_passed_over_and_an_ungraded_read_stops_the_update(tmp_path, clock):
     out = _write(tmp_path, {DAYS[0]: SESSIONS[DAYS[0]]}, average=False)
     _write(tmp_path, {DAYS[1]: SESSIONS[DAYS[1]]}, integral_lines=False)

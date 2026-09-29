@@ -76,7 +76,9 @@ The average-price grade
     by integral.factor. On the box a lane's average-price sum forecasts (lane.average, the primary's) it
     grades that sum's call where JEV answered it, and scores its odds against the average-price label
     (integral_scores); elsewhere, and on a read from before the sum, it grades the end-price sum's own
-    call. Each line names the sum it graded (``sum``). It is written to its own file: grades.jsonl, the
+    call. Each line names the sum it graded (``sum``). A call whose end-price sums got no answer
+    (average_alone) has no horizon graded above; it is graded from its own window all the same
+    (alone_line), its line saying so under ``end_price``. It is written to its own file: grades.jsonl, the
     question weights and the end-price loop's state are exactly what they were without it, while the card
     grades the phone's call on it and the average-price loop (integral_loop.py) learns from it. A window with
     bars missing waits today and is written as not graded on a finished day; ``--integral-backfill`` fills
@@ -673,7 +675,7 @@ def integral_line(line: dict, qid: str, rec: dict | None, bars: list[dict], prio
     # a line graded before the morning anchor was measured in the record's sigma
     ruler = (line.get("anchor") or {}).get("points") or rec.get("sigma")
     points = float(rec["band"]["flat_points"]) if flat == RECORD else flat * float(ruler)
-    old = line[qid]
+    old = line.get(qid) or {}                               # none for a call whose end-price sums got no answer (alone_line)
     avg = checked_call(rec, qid, lane)
     own = avg is not None and qid == lane.primary          # the call's own box: its edge and odds are this window's
     if avg:
@@ -684,12 +686,51 @@ def integral_line(line: dict, qid: str, rec: dict | None, bars: list[dict], prio
            **integral.grade_window(bars, prior, t0, int((t1 - t0).total_seconds() // 60), spot, points, pick, probs,
                                    told_edge(avg) if own else None)}
     if out["graded"]:
-        out["end_label"] = old["direction"] if flat == RECORD else old["band"]
-        if flat == RECORD:
-            out["size"] = _size_line(old)
+        if old:
+            out["end_label"] = old["direction"] if flat == RECORD else old["band"]
+            if flat == RECORD:
+                out["size"] = _size_line(old)
         if own:
             out.update({"scores": integral_scores(avg, out["label"]), "edge_told": avg.get("edge_points")})
     return out
+
+
+def average_alone(rec: dict, lane: Lane = LIVE) -> bool:
+    """Whether a sum record's call stands on its average-price sum alone: JEV answered that sum (average_call) and gave
+    the end-price sums no answer for the lane's primary, so grade_one never grades the read and the average-price grade
+    grades the call from its own window (alone_line)."""
+    return average_call(rec, lane.primary, lane) is not None and ((rec.get("by") or {}).get(lane.primary) or {}).get("pick") is None
+
+
+ALONE = "no end-price answer: the end-price sums got none, so the call is graded on its own window"
+
+
+def alone_line(rec: dict, bars: list[dict], prior: dict[str, list[dict]], lane: Lane = LIVE, anchor: SigmaRuler | None = None) -> dict:
+    """The average-price grade of a call standing on its average-price sum alone (average_alone), over the window
+    grade_one would have graded the primary on: from the read's spot, or the settled open, to the primary's mark, in
+    ``anchor`` (read_anchor, or stamped_ruler on a lane graded from the settled open) or the record's band, as
+    integral_line grades any other. It says it had no end-price answer (``end_price``) and carries no end-price
+    label. A read that can never be graded says why, as grade_one would; one whose settled open is not on file carries
+    integral.NOT_GRADED, so today it waits for the bar."""
+    qid = lane.primary
+    head = {"row_ts": rec["row_ts"], "horizon": qid, "rule_version": integral.RULE_VERSION, "sum": lane.average, "end_price": ALONE}
+    minutes, flat = lane.horizons[qid]
+    t0 = horizon_start(rec["row_ts"], lane)
+    why = ("stamped before the open: a read before the open is never graded from its spot" if t0 < session_open(t0) else
+           "ends past the close" if mark_at(rec["row_ts"], minutes, lane) is None else
+           "no band on the record" if flat == RECORD and not _has_band(rec) else
+           ("no pre-open ruler on the record" if lane.graded_from_settled_open else
+            "no morning anchor: no diary row, live sigma or VIX to measure the move in") if flat != RECORD and anchor is None else None)
+    if why:
+        return {**head, "graded": False, "reason": f"not graded: {why}"}
+    line: dict = {"row_ts": rec["row_ts"]}
+    if lane.graded_from_settled_open:
+        if (spot := settled_open(bars)) is None:
+            return {**head, "graded": False, "reason": integral.NOT_GRADED}
+        line["from"] = {"settled_open": spot}
+    if anchor is not None:
+        line["anchor"] = {"points": anchor.points}
+    return {**integral_line(line, qid, rec, bars, prior, lane), "end_price": ALONE}
 
 
 def integral_run(state_dir: Path, out_dir: Path, lane: Lane = LIVE, day: str | None = None) -> list[dict]:
@@ -698,8 +739,10 @@ def integral_run(state_dir: Path, out_dir: Path, lane: Lane = LIVE, day: str | N
     today, when they can still come, and is written as not graded on a finished day, so none is retried for ever
     and none is written twice; a read whose average-price odds are not odds is written as not graded
     (BAD_PROBABILITIES), and one whose grading fails is logged and left for the next run, never holding back the
-    others. Returns the new lines."""
-    if not (out_dir / "grades.jsonl").exists():
+    others. A call standing on its average-price sum alone (average_alone), which grades.jsonl never grades, is graded
+    from its own window (alone_line) under the same rules. Returns the new lines."""
+    hour_dir = out_dir / "hour"
+    if not (out_dir / "grades.jsonl").exists() and not hour_dir.exists():
         return []
     # a backfill by hand and a job's run can overlap: each reads what the other appended before it adds its own
     with open(out_dir / INTEGRAL_LOCK, "w") as held:
@@ -711,20 +754,34 @@ def integral_run(state_dir: Path, out_dir: Path, lane: Lane = LIVE, day: str | N
             for qid in g.get("horizons") or []:
                 if (g["row_ts"], qid, integral.RULE_VERSION) not in have and (day is None or g["row_ts"][:10] == day):
                     todo[g["row_ts"][:10]].append((g, qid))
+        alone: dict[str, list[str]] = defaultdict(list)
+        for d in [day] if day else sorted(p.stem for p in hour_dir.glob("*.jsonl")) if hour_dir.exists() else []:
+            for r in load_jsonl(hour_dir / f"{d}.jsonl"):
+                if average_alone(r, lane) and (r["row_ts"], lane.primary, integral.RULE_VERSION) not in have and r["row_ts"] not in alone[d]:
+                    alone[d].append(r["row_ts"])
         today = datetime.now(ET).date().isoformat()
         new = []
-        for d, items in sorted(todo.items()):
+        for d in sorted(set(todo) | set(alone)):
             recs: dict[str, dict] = {}
-            for r in load_jsonl(out_dir / "hour" / f"{d}.jsonl"):
-                if isinstance(r.get("by"), dict):
+            for r in load_jsonl(hour_dir / f"{d}.jsonl"):
+                if isinstance(r.get("by"), dict) or average_alone(r, lane):
                     recs.setdefault(r.get("row_ts"), r)   # the first of a row written twice is the one graded
             bars, prior = load_bars(state_dir, d), prior_bar_days(state_dir, d)
-            for g, qid in items:
+            items = [(g, qid, None) for g, qid in todo.get(d, [])]
+            if alone.get(d):
+                # graded in the anchor the read could know, as grade.run measures it, or in its own stamped ruler
+                in_anchor = any(flat != RECORD for _, flat in lane.horizons.values()) and not lane.graded_from_settled_open
+                rows, market = (load_rows(state_dir, d), load_market_context(state_dir, d)) if in_anchor else ([], None)
+                for ts in alone[d]:
+                    anchor = stamped_ruler(recs[ts]) if lane.graded_from_settled_open else read_anchor(rows, bars, market, ts) if in_anchor else None
+                    items.append(({"row_ts": ts}, lane.primary, anchor))
+            for g, qid, anchor in items:
                 key = (g["row_ts"], qid, integral.RULE_VERSION)
                 if key in have:
                     continue
                 try:
-                    line = integral_line(g, qid, recs.get(g["row_ts"]), bars, prior, lane)
+                    line = (integral_line(g, qid, recs.get(g["row_ts"]), bars, prior, lane) if "horizons" in g else
+                            alone_line(recs[g["row_ts"]], bars, prior, lane, anchor))
                 except Exception as e:  # one read that cannot be graded must never hold back the rest of the batch
                     print(f"average-price grade of {g['row_ts']} {qid} failed: {type(e).__name__}: {e}", file=sys.stderr)
                     continue                              # nothing written: a later run tries it again
@@ -749,8 +806,9 @@ def integral_report(out_dir: Path, lane: Lane = LIVE) -> dict[str, dict]:
         mine = [g for g in lines if g.get("horizon") == qid]
         graded = [g for g in mine if g.get("graded")]
         n = len(graded)
+        ends = [g for g in graded if "end_label" in g]       # a call graded alone has no end-price label (alone_line)
         out[qid] = {"n": n, "flat_integral": round(sum(1 for g in graded if g["label"] == "flat") / n, 3) if n else None,
-                    "flat_end": round(sum(1 for g in graded if g["end_label"] == "flat") / n, 3) if n else None,
+                    "flat_end": round(sum(1 for g in ends if g["end_label"] == "flat") / len(ends), 3) if ends else None,
                     "stale": sum(1 for g in graded if g.get("stale_read")), "not_graded": len(mine) - n}
     return out
 
@@ -773,8 +831,9 @@ def main(argv: list[str] | None = None) -> int:
         # every lane's boxes from their own folders, or the one lane pointed at another folder
         for each, folder in ([(lane, out_dir)] if args.out_dir else [(x, x.folder(state_dir)) for x in LANES.values()]):
             for qid, r in integral_report(folder, each).items():
+                end = f"{r['flat_end']:.1%} on the end price" if r["flat_end"] is not None else "no end price to set it against"
                 print(f"{each.name} {qid}: " + (f"{r['n']} windows graded; flat {r['flat_integral']:.1%} on the average price against "
-                                                f"{r['flat_end']:.1%} on the end price; {r['stale']} stale reads, {r['not_graded']} not graded"
+                                                f"{end}; {r['stale']} stale reads, {r['not_graded']} not graded"
                                                 if r["n"] else f"no window graded on the average price yet; {r['not_graded']} not graded"))
         return 0
     if args.integral_loop_dry_run:

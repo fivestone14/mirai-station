@@ -26,11 +26,14 @@ before either outcome.
 
 The forecasts of a read are formed when its session is applied, from the state as of the last session applied, which
 is the state a read that day would have seen: nothing is written at the read. A session is sealed once every read's
-primary is terminal in grades.jsonl and each one graded there has its line in integral_grades.jsonl; an unsealed one
+primary is terminal in grades.jsonl and each one graded there has its line in integral_grades.jsonl, and every call
+standing on its average-price sum alone (grade.average_alone: its end-price sums got no answer) has its own; an unsealed one
 stops the update (fail closed), and one none of whose reads carries an average-price call is from before the question
 and is passed over. Left out, as the end-price loop leaves them out (pool._session_reads): a half day, a scheduled event inside the window
 (pool.event_inside), a read with no outcome; and here also a stale read (integral.stale_read), a read with no
-average-price call, and one whose answers or reference are not on file, each with its reason.
+average-price call, and one whose answers or reference are not on file, each with its reason. A call standing alone is
+learned like any other once its read's end-price snapshot carries the questions' answers (pool.answered), which
+the snapshot keeps even when JEV's end-price sum is missing.
 
 Its constants are pool's with this loop's outcome, the grade's rule, the reference's rule and LOOP_VERSION: a state
 learned under any others, an end-price state among them, stops the update before anything is applied, as pool.update
@@ -52,7 +55,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import clock, integral, pool
-from .grade import INTEGRAL_NAME, average_call
+from .grade import INTEGRAL_NAME, average_alone, average_call
 from .lane import LIVE, Lane
 from .sessions import SESSION_CLOSE, session_close
 from .state_builder import ET, load_jsonl, parse_ts
@@ -200,13 +203,15 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Pat
             continue
         recs, seen = [], set()
         for r in load_jsonl(hour_dir / f"{day}.jsonl"):
-            if isinstance(r.get("by"), dict) and r.get("row_ts") not in seen:
+            if (isinstance(r.get("by"), dict) or average_alone(r, lane)) and r.get("row_ts") not in seen:
                 seen.add(r["row_ts"])
                 recs.append(r)
         head = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "session": day, "code": CODE_HASH, "horizon": h}
-        # a read graded at the box in grades.jsonl waits for its average-price line; one closed out there needs none
-        unsealed = [r for r in recs if h not in outcomes.get(r["row_ts"], {}).get("done", set())
-                    or (h in outcomes[r["row_ts"]]["bands"] and r["row_ts"] not in lines)]
+        # a read graded at the box in grades.jsonl waits for its average-price line; one closed out there needs none; a
+        # call standing on its average-price sum alone, which grades.jsonl never grades, waits for its own line
+        unsealed = [r for r in recs if (r["row_ts"] not in lines if average_alone(r, lane) else
+                                        h not in outcomes.get(r["row_ts"], {}).get("done", set())
+                                        or (h in outcomes[r["row_ts"]]["bands"] and r["row_ts"] not in lines))]
         if recs and not any(average_call(r, h, lane) for r in recs):
             why = "no read carries an average-price call: before the question"
         elif unsealed:

@@ -309,6 +309,16 @@ def _r4(p: dict[str, float]) -> dict[str, float]:
     return {k: round(v, 4) for k, v in p.items()}
 
 
+def answered(answers: dict[str, dict[str, float]], members: dict[str, str], fresh: set[str]) -> dict:
+    """The questions' part of a snapshot: each awake live question's soft answer (``q_probs``), which were awake and
+    which fresh, and each live question's version (``members``). A snapshot left out because JEV gave the end-price
+    sum no answer still carries it, so the average-price loop can learn a call standing on its average-price sum
+    alone (integral_loop)."""
+    awake = sorted(q for q in answers if q in members)
+    return {"q_probs": {q: _r4(answers[q]) for q in awake}, "awake": awake, "fresh": sorted(q for q in fresh if q in awake),
+            "members": dict(sorted(members.items()))}
+
+
 def snapshot(state: dict, reference: "Baseline", h: str, now: datetime, jev: dict, live_clock: dict | None, shown: dict,
              answers: dict[str, dict[str, float]], members: dict[str, str], fresh: set[str], source: str = SOURCE) -> dict:
     """Every forecast of one horizon at one read, as the update will score it: the experts, the block's
@@ -329,7 +339,8 @@ def snapshot(state: dict, reference: "Baseline", h: str, now: datetime, jev: dic
     c = {k: float(live_clock.get(k, 0.0)) for k in OUTCOMES}
     jc = spread_unsure(jev, c)
     experts.update({"blend50": {k: 0.5 * jc[k] + 0.5 * c[k] for k in OUTCOMES}, source: raw, f"{source}_cal": r})
-    awake = sorted(q for q in answers if q in members)
+    part = answered(answers, members, fresh)
+    awake = part["awake"]
     member_f = {NO_CHANGE: floored(r), **{q: floored(tilted(r, answers[q], state["tables"].get(q), long_run)) for q in awake}}
     # a question that is not yet a member (it joins at the next update) is written down but not mixed
     experts["questions"] = mixed({n: f for n, f in member_f.items() if n == NO_CHANGE or n in state["members"]}, state["block"])
@@ -338,9 +349,7 @@ def snapshot(state: dict, reference: "Baseline", h: str, now: datetime, jev: dic
     return {"experts": {n: _r4(f) for n, f in experts.items()}, "block_members": {n: _r4(f) for n, f in member_f.items()},
             "pool": _r4(floored(pool)), "p_move": round(move_of(pool), 4), "p_up_given_move": round(direction_of(pool), 4),
             "blend50_exact": {k: round(float(v), 4) for k, v in shown.items() if isinstance(v, (int, float))},
-            f"raw_{source}": _r4(raw), "q_probs": {q: _r4(answers[q]) for q in awake}, "awake": awake,
-            "fresh": sorted(q for q in fresh if q in awake), "members": dict(sorted(members.items())),
-            "state_hash": state_hash(state), "reference_version": reference.version, "last_session_applied": state["last_session_applied"]}
+            f"raw_{source}": _r4(raw), **part, "state_hash": state_hash(state), "reference_version": reference.version, "last_session_applied": state["last_session_applied"]}
 
 
 def shown(hour: dict, snaps: dict[str, dict], state_primary: dict) -> dict:

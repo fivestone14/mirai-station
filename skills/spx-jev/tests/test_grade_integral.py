@@ -170,6 +170,51 @@ def test_the_verdict_is_the_averages_never_the_end_prices():
     assert line["end_label"] == "flat" and line["verdict"] == "wrong"
 
 
+AVERAGE_CALL = {"primary": "average_30", "box": "next_30", "pick": "up", "probabilities": {"up": 0.6, "flat": 0.3, "down": 0.1},
+                "minutes": 30, "flat_points": 5.25, "edge_points": 3.11}
+
+
+def test_a_call_whose_end_price_sums_got_no_answer_is_graded_on_its_own_window(tmp_path, clock):
+    """Only the end-price request failed: the phone shows the average-price call, so it is graded from its own window
+    as any call is, though grades.jsonl has nothing to grade; one whose window ends past the close says so for good."""
+    failed = {"row_ts": at(11, 0).isoformat(), "spot": 7700.0, "sigma": SIGMA, "error": "JEV returned HTTP 529 for group hour",
+              "average": AVERAGE_CALL, "used": {"q1": "rising"}, "fresh": {"q1": "rising"}}
+    half = {**_rec(12, 30), "error": "no next_30 answer", "average": AVERAGE_CALL}
+    del half["by"]["next_30"]
+    late = {**failed, "row_ts": at(15, 45).isoformat()}
+    state = _state(tmp_path, recs=[failed, half, late])
+    out = state / "spx_jev"
+    run(state, out, ALLOWED)
+    assert [(g["row_ts"], g["horizons"], g["skipped"]) for g in _lines(out / "grades.jsonl")] == [
+        (half["row_ts"], ["next_60"], {"next_30": "no answer for this sum"})]        # the end-price grade, as before
+    lines = {(g["row_ts"], g["horizon"]): g for g in _lines(out / INTEGRAL_NAME)}
+    assert set(lines) == {(failed["row_ts"], "next_30"), (half["row_ts"], "next_30"), (half["row_ts"], "next_60"), (late["row_ts"], "next_30")}
+    for ts in (failed["row_ts"], half["row_ts"]):
+        g = lines[(ts, "next_30")]
+        assert (g["sum"], g["graded"], g["pick"], g["label"], g["verdict"], g["edge"], g["edge_told"]) == ("average_30", True, "up", "up", "right", 3.11, 3.11)
+        assert g["end_price"] == grade.ALONE and "end_label" not in g and g["scores"]["brier"] == 0.26 and g["f"] == round(0.07 * SIGMA, 4)
+    assert lines[(half["row_ts"], "next_60")]["sum"] == "next_60"
+    assert (lines[(late["row_ts"], "next_30")]["graded"], lines[(late["row_ts"], "next_30")]["reason"]) == (False, "not graded: ends past the close")
+    before = (out / INTEGRAL_NAME).read_bytes()
+    run(state, out, ALLOWED)
+    assert (out / INTEGRAL_NAME).read_bytes() == before                             # graded once, as every window is
+    # the report has no end price to set them against; the 12:30 read's spot is 30 points under where price traded
+    assert integral_report(out)["next_30"] == {"n": 2, "flat_integral": 0.0, "flat_end": None, "stale": 1, "not_graded": 1}
+
+
+def test_a_call_graded_alone_waits_today_for_its_bars_like_any_other(tmp_path, clock):
+    failed = {"row_ts": at(11, 0).isoformat(), "spot": 7700.0, "sigma": SIGMA, "error": "timed out", "average": AVERAGE_CALL}
+    state = _state(tmp_path, bars=_climb()[:110], recs=[failed])
+    out = state / "spx_jev"
+    clock(DAY)
+    run(state, out, ALLOWED)
+    assert not (out / INTEGRAL_NAME).exists()                                        # its mark is ahead: a later run grades it
+    clock("2026-09-21")
+    run(state, out, ALLOWED)
+    (g,) = _lines(out / INTEGRAL_NAME)
+    assert (g["graded"], g["reason"], g["sum"]) == (False, integral.NOT_GRADED, "average_30")
+
+
 def test_a_premarket_horizon_runs_from_the_settled_open_in_the_stamped_ruler():
     bars = bars_from_closes([7700.0] * 5 + [7700.0 + k for k in range(1, 386)])
     by = {"open_10": {"pick": "up", "probabilities": {"up": 0.6, "flat": 0.3, "down": 0.1}},
