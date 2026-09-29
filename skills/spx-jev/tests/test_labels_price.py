@@ -10,6 +10,7 @@ import random
 import statistics
 from dataclasses import replace
 from datetime import datetime, time, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -280,6 +281,16 @@ def test_the_afternoon_leg_is_ranked_over_the_minutes_since_1400(scene_factory):
 
 
 # ---- price.day_character
+
+def test_the_days_character_is_first_asked_at_the_first_live_read_that_can_measure_it():
+    """Its label needs an hour of 5-minute returns from 10:00, so a read before that is always missing it."""
+    from spx_jev.lane import LIVE
+    doc = json.loads((Path(__file__).resolve().parent.parent / "spec" / "question_set.json").read_text(encoding="utf-8"))
+    q = next(q for g in doc["groups"] for q in g["questions"] if q["id"] == "day_character")
+    ready = (datetime.combine(datetime.now().date(), price.CHARACTER_FROM)
+             + timedelta(minutes=price.CHARACTER_MIN_STEPS * price.CHARACTER_STEP_MIN)).time()
+    assert q["schedule"]["thirty_minute"]["from"] == next(t for t in LIVE.read_times() if time.fromisoformat(t) > ready)
+
 
 BUILDING = ([2.0] * 6 + [-2.0] * 6) * 2
 CANCELLING = [2.0, -2.0] * 12

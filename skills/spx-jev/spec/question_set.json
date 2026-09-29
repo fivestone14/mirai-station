@@ -2163,7 +2163,7 @@
       "thirty_minute"
      ],
      "status": "live",
-     "cadence": "every 30-minute read from 10:02",
+     "cadence": "every 30-minute read from 11:02, the first its label can be measured on (an hour of 5-minute returns from 10:00)",
      "ask": "So far today, are the moves building or cancelling out?",
      "instructions": "Read `price.day_character`. So far today, have half-hour stretches built on their five-minute pieces more or less than on the recent sessions at this time of day?",
      "options": [
@@ -2202,7 +2202,7 @@
      "schedule": {
       "thirty_minute": {
        "every_min": 30,
-       "from": "10:02",
+       "from": "11:02",
        "to": "15:32"
       }
      }
