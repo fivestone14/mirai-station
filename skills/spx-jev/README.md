@@ -305,8 +305,9 @@ naming the one, and where it was asked and got no readable answer the
 end-price sum's, marked `average_missing` and graded on its end price; and
 their grades: `integral`, the grade on the average price
 over the window from `integral_grades.jsonl`, with its label, points against
-the edge, verdict, size, path and, once the box has ten sessions to rank it
-against, its strength `tier`; and `end_price`, the grade at the mark, with the
+the edge, verdict, size, path and, once the box has ten of its last 20
+sessions on file holding at least ten right calls to rank it against
+(`TIER_MIN_RIGHT_CALLS`), its strength `tier`; and `end_price`, the grade at the mark, with the
 end-price sum's own `pick` and `p`, kept beside it for the side-by-side weeks;
 a call with no average-price grade is marked `end_price_only` and stands on
 its end price until a later card finds the line, and an open call carries its
