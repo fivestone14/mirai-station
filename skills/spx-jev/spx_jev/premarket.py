@@ -17,9 +17,10 @@ Every checkpoint is a read:
 1. the night's overnight futures are saved into the store (overnight.save_nights), unless it is a replay;
 2. the scene (make_premarket_scene): a synthetic row priced off /ES, the pre-open ruler, and the night's bars
    finished by the read; the label families that serve a read before the open build from it;
-3. the questions due at the checkpoint (08:48 and 09:28 in the set) are asked when a key is present, and
-   their answers summed into open_10 and open_30, both measured from the settled open (the close of the
-   09:34 bar), never from yesterday's close;
+3. the questions due at the checkpoint (08:48 and 09:28 in the set) are asked when a key is present, a group that
+   got no answer once more while the read has time before the open, and their answers summed into the call,
+   open_average_30, the average price over the 30 minutes from the settled open (the close of the 09:34 bar), with
+   the end-price questions open_10 and open_30 beside it, all measured from that price, never from yesterday's close;
 4. the read, its sum, the archive and the card.
 
 No answer JEV gave earlier, and no earlier record, reaches a label: every read rebuilds the night from the

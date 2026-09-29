@@ -7,13 +7,15 @@ sums with the time-of-day odds (clock.py), grades them, and writes only under ``
     state/spx_jev/{day}.jsonl        every run, appended: the state, the requests, the answers
     state/spx_jev/hour/{day}.jsonl   the sums, one record per run: what step 6 grades
     state/spx_jev/latest.json        the phone's file: the newest run, small, self-describing
-    state/spx_jev/last_asked.json    the last fresh answer per question, for the cadence, and a later ask that got no answer
+    state/spx_jev/last_asked.json    the last fresh answer per question, for the cadence, a later ask that got no answer, and when it last slept
     state/spx_jev/cadence.json       how often each question is asked, recounted daily
     state/spx_jev/clock_days.json    the time-of-day counts per past session (see clock.py)
     state/spx_jev/clock_integral_days.json   the same on the average price, for the phone's call (clock.integral_odds)
     state/spx_jev/grades.jsonl, weights.json, weights_log.jsonl   step 6 (see grade.py, weights.py)
     state/spx_jev/archive/{day}.jsonl   the raw archive: every read, grade and close-out of every lane (archive.py)
-    state/spx_jev/pool_30.json, pool_60.json, pool_log.jsonl   the learning loop (pool.py)
+    state/spx_jev/pool_30.json, pool_60.json, pool_log.jsonl   the end-price learning loop (pool.py)
+    state/spx_jev/integral_grades.jsonl   the average-price grade of every call (grade.integral_run)
+    state/spx_jev/pool_30_integral.json, pool_integral_log.jsonl   the average-price learning loop (integral_loop.py)
 
 The phone's call is the average-price sum (hour.average_summary, under the sum's ``average``), asked
 in its own request beside the end-price sums; those are kept beside the call, asked, blended, graded
@@ -39,8 +41,8 @@ is demoted (integral_loop.shown, pool.POOL_ON_PHONE); the end-price loop's promo
 end-price sums kept beside the call (pool.shown).
 
 A lane (lane.py) is the same run with its own docs, folder, clock and grader. The tape lane
-(``--lane tape``) stamps each read at the newest finished bar (a sent run first waits, under a minute,
-for the bar that finishes at its fire minute: wait_for_bar), measures the tape unit
+(``--lane tape``) stamps each read at the newest finished bar by its fire minute (a sent run first waits, up to
+BAR_WAIT_S, for the bar that finishes at that minute: wait_for_bar), measures the tape unit
 (labels.rulers.tape_unit), asks what its schedule asks afresh, prices its sum's bands from the unit, and writes the
 same files under state/spx_jev/lanes/tape/, each record marked with the lane and the unit.
 

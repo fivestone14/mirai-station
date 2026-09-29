@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from spx_jev import overnight, rolls, schwab
-from spx_jev.overnight import SYMBOLS, Series, expected_open, holiday_night, night_window, session_of
+from spx_jev.overnight import SYMBOLS, expected_open, holiday_night, night_window, session_of
 
 ET = ZoneInfo("America/New_York")
 TUESDAY = date(2026, 9, 22)
