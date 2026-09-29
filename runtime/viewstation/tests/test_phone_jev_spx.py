@@ -386,13 +386,26 @@ def test_the_next_read_is_found_on_the_market_clock_and_drawn_in_the_viewers_zon
 
 def test_the_header_line_names_the_row_in_the_viewers_time_and_knows_the_close():
     js = ("var READ_MINUTES = [2, 32], GONE_MIN = 60, STALE_MIN = 35, ROW_LEAD_MIN = 4, LAST_READ_DEFAULT = '15:32';"
-          + _fn("nextRead") + _fn("ageWord") + _fn("subLine") + "console.log(JSON.stringify(subLine(D.c, D.m)));")
+          + _fn("nextRead") + _fn("ageWord") + _fn("cardCount") + _fn("subLine") + "console.log(JSON.stringify(subLine(D.c, D.m)));")
     c = {"row_ts": "2026-09-28T11:01:56-04:00", "labels": 43,
          "session": {"close": "2026-09-28T16:00:00-04:00", "last_read": "2026-09-28T15:32:00-04:00"}}
     assert _run(js, {"now": "2026-09-28T11:14:00-04:00", "c": c, "m": 12}, LA) == "row 08:01, 12 min ago, 43 labels, next read 08:32"
     last = {**c, "row_ts": "2026-09-28T15:31:56-04:00"}
     assert _run(js, {"now": "2026-09-28T16:10:00-04:00", "c": last, "m": 38}, LA) == "after the close, last row 12:31, 43 labels"
     assert _run(js, {"now": "2026-09-28T15:50:00-04:00", "c": last, "m": 18}, TOKYO).startswith("row 04:31, 18 min ago")
+    # the card's counts under their own names (service.card's labels_count), the bare name only on a card from before them
+    counted = {**{k: v for k, v in c.items() if k != "labels"}, "labels_count": 43}
+    assert _run(js, {"now": "2026-09-28T11:14:00-04:00", "c": counted, "m": 12}, LA) == "row 08:01, 12 min ago, 43 labels, next read 08:32"
+
+
+def test_the_answered_chip_reads_the_cards_counts_under_their_own_names():
+    """The card's fresh and held are counts, while a record's are the answers themselves (I25): the card writes
+    fresh_count and held_count, and the chip reads them, or the bare names on a card from before them."""
+    live = {k: v for k, v in MONDAY["live"].items() if k not in ("fresh", "held", "labels")}
+    answered = sum(1 for q in live["questions"] if q.get("answer"))
+    for c in ({**live, "fresh_count": 7, "held_count": 3, "labels_count": 119}, {**live, "fresh": 7, "held": 3, "labels": 119}):
+        got = _whole({"live": c, "tape": MONDAY["tape"], "premarket": MONDAY["premarket"]}, "2026-09-28T15:40:00-04:00")
+        assert got["state"][0] == f"{answered} of {len(c['questions'])} answered, 7 fresh on the 12:31 row"
 
 
 # Widths measured in Chrome with the shipped face at the header line's 13px: the stale line with its label count ran
@@ -405,7 +418,7 @@ def test_a_stale_header_line_keeps_its_next_read_on_the_owners_360px_phone():
     """Monday 10:10 ET: the 09:31 card was 39 minutes old, and its line was cut at "next read 07:…". A stale line
     drops the label count, which says least about an old card, so the next read fits."""
     js = ("var READ_MINUTES = [2, 32], GONE_MIN = 60, STALE_MIN = 35, ROW_LEAD_MIN = 4, LAST_READ_DEFAULT = '15:32';"
-          + _fn("nextRead") + _fn("ageWord") + _fn("subLine") + "console.log(JSON.stringify(subLine(D.c, D.m)));")
+          + _fn("nextRead") + _fn("ageWord") + _fn("cardCount") + _fn("subLine") + "console.log(JSON.stringify(subLine(D.c, D.m)));")
     c = {"row_ts": "2026-09-28T09:31:20-04:00", "labels": 125,
          "session": {"close": "2026-09-28T16:00:00-04:00", "last_read": "2026-09-28T15:32:00-04:00"}}
     stale = _run(js, {"now": "2026-09-28T10:10:00-04:00", "c": c, "m": 39}, LA)

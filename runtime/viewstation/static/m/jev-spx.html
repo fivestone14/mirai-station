@@ -433,11 +433,14 @@ details .q{margin-top:8px}
     if(m >= 60) return Math.floor(m / 60) + ' hr ' + (m % 60) + ' min ago';
     return m + ' min ago';
   }
+  // one of the card's counts: labels_count, fresh_count or held_count, or on a card written before them the count under
+  // the bare name, which the records use for the labels and answers themselves
+  function cardCount(c, k){ return c[k + '_count'] != null ? c[k + '_count'] : c[k]; }
   // an hour after a row past the day's last read (the card's session, instants both) there is nothing newer
   // to wait for, and after the close neither; an hour after any earlier row the card is stale. A stale line drops
   // the label count, so the next read still fits the one line on a 360px phone
   function subLine(c, m){
-    var at = viewerTime(c.row_ts), n = c.labels + ' labels', s = c.session || {};
+    var at = viewerTime(c.row_ts), n = cardCount(c, 'labels') + ' labels', s = c.session || {};
     var lr = Date.parse(s.last_read), closed = Date.now() >= Date.parse(s.close);
     if(m != null && (m > GONE_MIN || closed) && Date.parse(c.row_ts) >= lr - ROW_LEAD_MIN * 60000) return 'after the close, last row ' + at + ', ' + n;
     var next = nextRead(lr); var hint = next != null ? ', next read ' + viewerTime(next) : '';
@@ -614,7 +617,7 @@ details .q{margin-top:8px}
     var answered = c.questions.filter(function(q){ return q.answer; }).length;
     if(!ok) st.appendChild(el('span', 'state', 'fetch failed, showing the last card'));
     else if(!c.sent) st.appendChild(el('span', 'state', 'not sent: no key on the station'));
-    else st.appendChild(el('span', 'state', answered + ' of ' + c.questions.length + ' answered' + (c.held ? ', ' + c.fresh + ' fresh on the ' + viewerTime(c.row_ts) + ' row' : '')));
+    else st.appendChild(el('span', 'state', answered + ' of ' + c.questions.length + ' answered' + (cardCount(c, 'held') ? ', ' + cardCount(c, 'fresh') + ' fresh on the ' + viewerTime(c.row_ts) + ' row' : '')));
     // the service says in its own words when it built on a row nothing newer had replaced
     if(c.freshness && c.freshness.stale && c.freshness.note) st.appendChild(el('span', 'state', c.freshness.note));
     var main = document.getElementById('main'); main.textContent = '';
