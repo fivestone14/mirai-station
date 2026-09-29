@@ -390,6 +390,58 @@ def test_on_only_the_current_rule_versions_label_of_the_box_is_learned(tmp_path,
     assert (noisy / "pool_30_integral.json").read_bytes() == (base / "pool_30_integral.json").read_bytes()
 
 
+def _promoted(out: Path) -> None:
+    """This loop's state as it would stand once its pool had cleared the promotion bar and the simulation gates."""
+    state = integral_loop.load_state(out)
+    state["phone"].update({"shows": "pool", "since": DAYS[-1]})
+    integral_loop.save_state(out, LIVE, state)
+
+
+def test_on_the_call_shows_its_blend_until_this_loops_pool_is_promoted_then_the_pool_with_the_blend_beside_it(tmp_path, clock):
+    """Will's decision of 2026-09-29: the average-price loop's promotion decides what the call shows, never the
+    end-price loop's. The pool shown is the one the update forms for the same read, and the update learns the read
+    against the exact blend kept beside it."""
+    out = _write(tmp_path)
+    integral_loop.update(out, TODAY)
+    rec = grade.load_jsonl(out / "hour" / f"{DAYS[0]}.jsonl")[0]
+    now, own = datetime.fromisoformat(rec["row_ts"]).replace(day=17), rec["pool"]["next_30"]
+    call = {**rec["average"], "by": {"average_30": {"pick": rec["average"]["pick"], "probabilities": SHOWN_AVG}}}
+    assert integral_loop.shown(out, call, own, now) == {**call, "shown_source": pool.SHOWN_BLEND}
+    end_state = pool.load_state(out, 30)
+    end_state["phone"]["shows"] = "pool"                                  # the end-price loop's promotion reaches no call
+    pool.save_state(out, 30, end_state)
+    assert integral_loop.shown(out, call, own, now)["shown_source"] == pool.SHOWN_BLEND
+    assert _learn(out)["pool_integral"]["pool"]["phone"]["on_phone"] is False
+    _promoted(out)
+    got = integral_loop.shown(out, call, own, now)
+    cache, version = integral_loop.references(out)
+    want = pool.snapshot(integral_loop.load_state(out), integral_loop.reference(cache, TODAY, version), "next_30", now, JEV_AVG, CLOCK_AVG,
+                         SHOWN_AVG, own["q_probs"], own["members"], set(own["fresh"]), integral_loop.SOURCE)["pool"]
+    assert got["shown_source"] == pool.SHOWN_POOL and got["probabilities"] == want and got["pick"] == max(want, key=want.get)
+    assert got["blend50_exact"] == SHOWN_AVG and got["by"]["average_30"]["probabilities"] == want and got["jev"] == call["jev"]
+    assert grade.average_call({"average": got}, "next_30") is got                   # the grader grades what the phone shows
+    assert _learn(out)["pool_integral"]["pool"]["phone"]["on_phone"] is True
+    # the update learns a read that showed the pool against the blend it would have shown
+    ref = integral_loop.reference(cache, DAYS[0], version)
+    reads, _ = integral_loop._session_reads([{**rec, "average": got}], {rec["row_ts"]: {"graded": True, "label": "up"}},
+                                            integral_loop.cold_state(), ref, LIVE)
+    assert reads[0]["snapshot"]["blend50_exact"] == pytest.approx(SHOWN_AVG)
+    unblended = {**call, "blend": {"used": False, "why": "only 9 prior sessions"}}
+    held = integral_loop.shown(out, unblended, own, now)
+    assert held["shown_source"] == pool.SHOWN_BLEND and held["probabilities"] == SHOWN_AVG and "not blended" in held["shown_why"]
+    assert integral_loop.shown(out, {"error": "HTTP 529"}, own, now) == {"error": "HTTP 529"}
+
+
+def test_on_the_call_stays_on_its_blend_with_the_pool_off_the_phone(tmp_path, clock, monkeypatch):
+    out = _write(tmp_path)
+    integral_loop.update(out, TODAY)
+    _promoted(out)
+    monkeypatch.setattr(pool, "POOL_ON_PHONE", False)
+    rec = grade.load_jsonl(out / "hour" / f"{DAYS[0]}.jsonl")[0]
+    assert integral_loop.shown(out, rec["average"], rec["pool"]["next_30"], at(10, 2, day=TODAY))["shown_source"] == pool.SHOWN_BLEND
+    assert _learn(out)["pool_integral"]["pool"]["phone"]["on_phone"] is False
+
+
 def test_on_a_read_is_forecast_on_jevs_own_average_odds_the_shown_blend_and_its_fresh_answers(tmp_path):
     """JEV's own odds, not the blend the phone showed, are the JEV side of the mixes; the blend is blend50 as shown;
     the questions' answers and which were fresh are the read's own."""

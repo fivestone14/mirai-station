@@ -71,3 +71,17 @@ def test_every_question_set_constant_is_in_cuts_py_at_its_value_and_type():
         assert name in cuts.QUESTION_CONSTANTS, f"{name} is in the question set but not in cuts.py"
         value = cuts.QUESTION_CONSTANTS[name]
         assert value == entry["value"] and type(value) is type(entry["value"]), (name, value, entry["value"])
+
+
+def test_every_cut_is_read_by_the_code_or_named_in_a_question_doc():
+    """A constant nothing reads is a number that looks like a rule and decides nothing."""
+    import re
+    package = Path(cuts.__file__).parent
+    code = "\n".join(p.read_text(encoding="utf-8") for p in package.rglob("*.py") if p.name != "cuts.py")
+    own = Path(cuts.__file__).read_text(encoding="utf-8")
+    docs = "\n".join(p.read_text(encoding="utf-8") for p in (package.parent / "questions").glob("*.json"))
+    unread = {name for name in cuts.QUESTION_CONSTANTS
+              if not re.search(rf"\b{name.upper()}\b", code) and f"{{{name}}}" not in docs
+              and len(re.findall(rf"\b{name.upper()}\b", own)) < 2}
+    # sector_count is still one of the question set's constants, which the README counts
+    assert unread == {"sector_count"}

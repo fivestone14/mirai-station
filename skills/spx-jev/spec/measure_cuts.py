@@ -55,7 +55,6 @@ SNDK_CUTS = {
     "move_rule_sigma": ("move30", 0.15),
     "wall_near_sigma": ("wall_distance", 0.5),
     "shape_cut_sigma": ("open_leg", 0.30),
-    "outlier_day_sigma": ("prior_close_gap", 1.0),
     "iv_flat_band_pts": ("iv_change30", 2.0),
     "realized_quiet_ratio": ("realized_ratio", 0.7),
     "realized_wild_ratio": ("realized_ratio", 1.3),
@@ -65,7 +64,6 @@ SNDK_CUTS = {
     "grip_concentrated_share": ("top_strike_share", 0.20),
     "busiest_strike_share": ("busiest_strike_share", 0.20),
     "next_30_flat_band_sigma": ("end30", 0.12),
-    "next_30_large_band_sigma": ("far30", 0.30),
     "next_60_flat_band_sigma": ("end60", 0.17),
     "ruler_hold_sigma": ("unit_at_0945", 0.4),
     "ruler_floor_sigma": ("unit_opening", 0.08),
@@ -329,8 +327,6 @@ def measure(day_bars_rows: list[tuple[str, list[dict], list[dict]]], hold_sigma:
                         continue
                     obs[f"end{h}"].append(abs(c1 - c0) / sigma)
                     obs[f"signed_end{h}"].append((c1 - c0) / sigma)
-                    if h == 30:
-                        obs["far30"].append(max(max(b["high"] for b in win) - c0, c0 - min(b["low"] for b in win)) / sigma)
             t += timedelta(minutes=READ_STEP_MIN)
         for r in rows:
             _row_shares(r, obs)
@@ -343,8 +339,6 @@ def measure(day_bars_rows: list[tuple[str, list[dict], list[dict]]], hold_sigma:
                 share = gv.get("call_wall_gamma_share" if key == "call_wall" else "put_wall_gamma_share")
                 if _num(share):
                     obs["wall_share"].append(float(share))
-            if _num(r.get("prior_close")) and r["prior_close"] > 0:
-                obs["prior_close_gap"].append(abs(spot - float(r["prior_close"])) / sigma)
             if _num(gv.get("pin_top_share")):
                 obs["top_strike_share"].append(float(gv["pin_top_share"]))
             vols = [float(v[1]) for v in gv.get("vol_gross_by_strike") or [] if isinstance(v, (list, tuple)) and len(v) >= 2 and _num(v[1])]

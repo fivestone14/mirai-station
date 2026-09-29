@@ -4,9 +4,11 @@ Switched on, the grader runs this loop beside pool.PoolWeights and weights.json 
 the end-price loop's report: the same experts, day-level update, e-processes, statuses and promotion (pool.py, read as a
 library, never changed here), learned on the
 lane's primary box from the average-price sum's graded reads alone, each read's outcome the label integral_grades.jsonl
-gave it under this integral.RULE_VERSION, never the end price's band. The end-price loop keeps learning as before,
-since the phone's pool, its promotion and its demotion read it (pool.shown). Switched off, nothing here is imported,
-read or written. The gate for trusting and promoting what it learns is GATE_SESSIONS SPX sessions of average-price grades;
+gave it under this integral.RULE_VERSION, never the end price's band. The end-price loop keeps learning beside it,
+its promotion reaching only the end-price sums kept beside the call (pool.shown). This loop's promotion, once it
+clears the same evidence bar and the simulation gates (pool.SIM_GATES_PASSED), decides what the call shows: its pool,
+formed at the read as the update will form it, with the exact blend beside it (shown, Will's decision of
+2026-09-29). Switched off, nothing here is imported, read or written. The gate for trusting and promoting what it learns is GATE_SESSIONS SPX sessions of average-price grades;
 the dry run shows what the loop has learnt from the graded history, and how far the gate is:
 
     python3 -m spx_jev.grade --integral-loop-dry-run    # built from nothing in a scratch folder; no live file is written
@@ -129,6 +131,14 @@ def reference(cache: dict, day: str, version: str) -> Reference | None:
     return Reference(counted, version) if len(counted) >= clock.MIN_SESSIONS else None
 
 
+def references(out_dir: Path, lane: Lane = LIVE) -> tuple[dict, str]:
+    """The clock's stored counts on the average price (clock_integral_days.json, under its rule) and the version of
+    the reference they form, its counting rule and the odds' own constants: what reference() reads."""
+    key = clock._integral_rule_key(lane)
+    version = f"integral_clock:{hashlib.sha256(json.dumps([key, reference_constants()], sort_keys=True).encode()).hexdigest()[:16]}"
+    return clock._load_cache(Path(out_dir) / clock.INTEGRAL_CACHE_NAME, key), version
+
+
 def average_lines(out_dir: Path, lane: Lane = LIVE) -> dict[str, dict]:
     """``{row_ts: its line}`` of the primary box in integral_grades.jsonl under this rule_version, the first of each."""
     out: dict[str, dict] = {}
@@ -166,8 +176,10 @@ def _session_reads(recs: list[dict], lines: dict[str, dict], state: dict, ref: R
                                      "price before this one")
         else:
             blended = (avg.get("blend") or {}).get("used")
-            snap = pool.snapshot(state, ref, h, parse_ts(r["row_ts"]), avg["jev"]["probabilities"] if blended else avg["probabilities"],
-                                 avg["clock"]["probabilities"] if blended else None, avg["probabilities"],
+            # a call that showed this loop's pool keeps the exact blend beside it (shown), which is what blend50 was
+            exact = avg.get("blend50_exact") or avg["probabilities"]
+            snap = pool.snapshot(state, ref, h, parse_ts(r["row_ts"]), avg["jev"]["probabilities"] if blended else exact,
+                                 avg["clock"]["probabilities"] if blended else None, exact,
                                  own["q_probs"], own["members"], set(own["fresh"]), SOURCE)
             if "left_out" in snap:
                 excluded[r["row_ts"]] = f"no snapshot: {snap['left_out']}"
@@ -194,9 +206,7 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Pat
     said = {h: "nothing new to apply"}
     outcomes = pool.graded_outcomes(load_jsonl(out_dir / "grades.jsonl"), lane.horizons)
     lines = average_lines(out_dir, lane)
-    key = clock._integral_rule_key(lane)
-    cache = clock._load_cache(out_dir / clock.INTEGRAL_CACHE_NAME, key)
-    version = f"integral_clock:{hashlib.sha256(json.dumps([key, reference_constants()], sort_keys=True).encode()).hexdigest()[:16]}"
+    cache, version = references(out_dir, lane)
     hour_dir = out_dir / "hour"
     for day in sorted(p.stem for p in hour_dir.glob("*.jsonl")) if hour_dir.exists() else []:
         if day <= (state["last_session_applied"] or "") or day >= today:
@@ -248,6 +258,41 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Pat
     return said
 
 
+def shown(out_dir: Path, average: dict | None, own: dict | None, now: datetime, lane: Lane = LIVE) -> dict | None:
+    """The call as the phone shows it and the grader grades it: the average-price sum as it came, its exact blend,
+    unless pool.POOL_ON_PHONE is set and this loop's pool was promoted on its evidence (which needs
+    pool.SIM_GATES_PASSED); then this loop's pool at this read, formed as the update will form it (_session_reads:
+    the reference a read today could know, JEV's own and the clock's odds on the average price, and the answers the
+    read's end-price snapshot ``own`` kept), with the exact blend beside it as ``blend50_exact``. ``shown_source``
+    says which, pool.SHOWN_BLEND or pool.SHOWN_POOL; a promoted pool that cannot be formed at this read leaves the
+    call on its blend and says why under ``shown_why``. An average with no odds (its error) is returned as it came."""
+    if not isinstance(average, dict) or not isinstance(average.get("probabilities"), dict):
+        return average
+    on_blend = {**average, "shown_source": pool.SHOWN_BLEND}
+    state = load_state(out_dir, lane)
+    if not (pool.POOL_ON_PHONE and state.get("constants_hash") == CONSTANTS_HASH and state["phone"]["shows"] == "pool"):
+        return on_blend
+    own = own or {}
+    cache, version = references(out_dir, lane)
+    ref = reference(cache, now.astimezone(ET).date().isoformat(), version)
+    blended = (average.get("blend") or {}).get("used")
+    why = ("the call was not blended with the time-of-day odds" if not blended else
+           "no answers on file: the read's end-price snapshot was left out" if "members" not in own else
+           f"fewer than {clock.MIN_SESSIONS} sessions of time-of-day odds on the average price" if ref is None else None)
+    if why is None:
+        snap = pool.snapshot(state, ref, lane.primary, now, average["jev"]["probabilities"], average["clock"]["probabilities"],
+                             average["probabilities"], own["q_probs"], own["members"], set(own["fresh"]), SOURCE)
+        why = snap.get("left_out")
+    if why:
+        return {**on_blend, "shown_why": f"the average-price pool is promoted but cannot be formed at this read: {why}"}
+    p = snap["pool"]
+    pick = max(p, key=p.get)
+    by = dict(average.get("by") or {})
+    by[lane.average] = {**by.get(lane.average, {}), "pick": pick, "probabilities": p, "blend50_exact": average["probabilities"]}
+    return {**average, "pick": pick, "probabilities": p, "blend50_exact": average["probabilities"], "by": by,
+            "shown_source": pool.SHOWN_POOL}
+
+
 def _log(out_dir: Path, line: dict) -> None:
     with open(Path(out_dir) / LOG_NAME, "a", encoding="utf-8") as f:
         f.write(json.dumps(line, ensure_ascii=False, sort_keys=True) + "\n")
@@ -273,8 +318,8 @@ def learned_fresh(out_dir: Path) -> list[dict]:
 class IntegralPoolWeights(pool.PoolWeights):
     """pool.PoolWeights on the average-price grade (its learn, mirrored): learn() applies every newly sealed session to
     this loop's state and reports each live question's standing from it, every weight still 1.0, and its ``n`` over the
-    reads this loop learned from (learned_fresh), not the end-price loop's. The phone never shows this pool: it reads the
-    end-price loop's promotion (pool.shown), so ``on_phone`` is always false."""
+    reads this loop learned from (learned_fresh), not the end-price loop's. Once promoted, this pool is what the call
+    on the phone shows (shown), and ``on_phone`` says so."""
 
     method = "pool_v1_integral"
 
@@ -298,7 +343,7 @@ class IntegralPoolWeights(pool.PoolWeights):
             questions[qid] = entry
         top = {side: pool._prob(state["top"][side]) for side in pool.SIDES}
         return cls(questions, {"applied": applied, "last_session_applied": state["last_session_applied"],
-                               "phone": {"shows": state["phone"]["shows"], "on_phone": False,
+                               "phone": {"shows": state["phone"]["shows"], "on_phone": pool.POOL_ON_PHONE and state["phone"]["shows"] == "pool",
                                          "promote_e": state["phone"]["promote"]["e"], "days": state["phone"]["promote"]["n"]},
                                "top": top, "frozen": state["frozen"], "outcome": "average price"})
 

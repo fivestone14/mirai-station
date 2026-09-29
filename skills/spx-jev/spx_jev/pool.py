@@ -42,10 +42,12 @@ version as ``reference_version``. A state or a snapshot written before these nam
 2026-09-29) is read under them (renamed, legacy_snapshot).
 
 Nothing here changes JEV's prompt: every live question keeps its sentence and weighs 1.0 in step 3.
-The phone keeps today's exact 50/50 blend until the pool is promoted (at least MIN_DAYS days, its
-e-process against the blend at PROMOTE_E, and SIM_GATES_PASSED, the simulation 06 requires first);
-then it shows the pool, the blend kept beside it, and goes back to the blend by itself when the
-demotion e-process reaches DEMOTE_E. POOL_ON_PHONE turns that off.
+The end-price sums kept beside the call keep today's exact 50/50 blend until this loop's pool is
+promoted (at least MIN_DAYS days, its e-process against the blend at PROMOTE_E, and SIM_GATES_PASSED,
+the simulation 06 requires first); then they show the pool, the blend kept beside it, and go back to
+the blend by itself when the demotion e-process reaches DEMOTE_E (shown). The call the phone shows,
+the average-price sum, follows the average-price loop's own promotion by the same rules on the
+average-price grade (integral_loop.shown), never this one's. POOL_ON_PHONE turns both off.
 
 A lane graded from the settled open keeps its own loop state in its own folder, on its sums from the
 settled open. Every one of its reads forecasts the same window, the half hour after 09:34, so each
@@ -79,7 +81,7 @@ from .weights import QuestionWeights
 if TYPE_CHECKING:
     from .baseline import Baseline
 
-POOL_ON_PHONE = True            # show the pool on the phone while it is promoted: Will's decision, 2026-09-28
+POOL_ON_PHONE = True            # show a promoted pool on the phone, each loop's on its own sums: Will's decisions, 2026-09-28 and 29
 # 06 requires the spec-exact simulation's acceptance gates to pass before any promotion; they are not
 # built, so the promotion evidence builds up but the pool is not promoted until this is set
 SIM_GATES_PASSED = False

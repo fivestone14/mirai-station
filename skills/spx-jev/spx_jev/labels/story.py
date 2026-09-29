@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Callable
 
 from .. import events, overnight, rolls, story
-from ..cuts import GAP_HALF_SHARE, NIGHT_RANK_COUNT, THIRD_LO
+from ..cuts import GAP_HALF_SHARE, NIGHT_RANK_COUNT, ONE_RATIO, THIRD_LO
 from ..night_ranks import (READ_STALE_MIN, Move, Night, NightRank, prior_window_nights, price_by, quoted_contract, rank_night, roll_pending,
                            window_move)
 from ..sessions import session_close
@@ -319,7 +319,7 @@ def _arc(night: NightSoFar, legs: list[Leg], ls: LabelSet) -> None:
         verdict, end = "reversed", "the night reversed its first move"
     elif kept < GAP_HALF_SHARE:
         verdict, end = "faded", "the first move faded"
-    elif kept > 1:
+    elif kept > ONE_RATIO:
         verdict, end = "built", "later trading built on it"
     else:
         verdict, end = "held", "the first move held"

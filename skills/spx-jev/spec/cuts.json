@@ -100,14 +100,6 @@
    "n_sndk": 1478,
    "n_spx": 3321
   },
-  "outlier_day_sigma": {
-   "value": 0.53,
-   "measure": "prior_close_gap",
-   "sndk_cut": 1.0,
-   "percentile": 68.8,
-   "n_sndk": 3846,
-   "n_spx": 12204
-  },
   "iv_flat_band_pts": {
    "value": 0.8,
    "measure": "iv_change30",
@@ -177,14 +169,6 @@
    "measure": "end30",
    "sndk_cut": 0.12,
    "percentile": 56.8,
-   "n_sndk": 1473,
-   "n_spx": 3321
-  },
-  "next_30_large_band_sigma": {
-   "value": 0.16,
-   "measure": "far30",
-   "sndk_cut": 0.3,
-   "percentile": 74.5,
    "n_sndk": 1473,
    "n_spx": 3321
   },
