@@ -897,9 +897,10 @@ details .q{margin-top:8px}
       hc.appendChild(tag('from ' + h.used + ' answers' + (h.left_out ? ', ' + h.left_out + ' left out' : '') + (h.missing ? ', ' + h.missing + ' missing a label' : '') +
                          ' \u00B7 a forecast, graded by the bars, never a call'));
       main.appendChild(hc);
-    } else if(h && h.error){
+    } else {
+      // a read with no sum says why: JEV's error when a sent read made none, otherwise that it made no call
       var he = el('div', 'card dashed'); he.appendChild(labRow('next 30 minutes, the sum of the answers'));
-      he.appendChild(skipLine('no sum on the ' + viewerTime(c.row_ts) + ' read: ' + h.error));
+      he.appendChild(skipLine(h && h.error ? 'no sum on the ' + viewerTime(c.row_ts) + ' read: ' + h.error : noCallWords(c)));
       if(c.calls && c.calls.length) he.appendChild(inPlay(c.calls));
       main.appendChild(he);
     }
@@ -1005,17 +1006,17 @@ details .q{margin-top:8px}
     });
     return card;
   }
+  // a read with no 30-minute call (the day's first, 09:32, asks nothing): nothing to count down to, only the next read
+  function noCallWords(c){
+    var nr = nextRead(Date.parse(c.session && c.session.last_read));
+    return 'No 30-minute call on this read' + (nr ? ', next read ' + viewerTime(nr) : '');
+  }
   // the 30-minute call while the opening leads: one line, with its own minutes left
   function foldLive(c){
     var f = el('div', 'card fold'), h = c.hour, p = h && h.probabilities;
     f.appendChild(el('span', 'k', '30-min read ' + viewerTime(c.row_ts)));
     var left = el('span', 'l');
-    if(!p){
-      // the day's first read (09:32) asks nothing: there is no call to count down to
-      var nr = nextRead(Date.parse(c.session && c.session.last_read));
-      f.appendChild(left); left.textContent = 'No 30-minute call on this read' + (nr ? ', next read ' + viewerTime(nr) : '');
-      return f;
-    }
+    if(!p){ f.appendChild(left); left.textContent = noCallWords(c); return f; }
     var top = h.pick || top1(p); f.appendChild(el('b', null, cap(top) + ' ' + pct(p[top])));
     f.appendChild(left);
     var m30 = c.marks && c.marks.next_30 !== undefined ? c.marks.next_30 : plusIso(c.row_ts, 30);

@@ -490,7 +490,7 @@ def test_every_question_group_has_a_heading_in_words():
 def test_the_folded_30_minute_line_counts_down_only_a_call_that_was_made():
     """The 09:32 read asks nothing, so from 09:35 to 10:02 the opening view has no 30-minute call to time."""
     js = ("var tickers = [], READ_MINUTES = [2, 32], LAST_READ_DEFAULT = '15:32';" + _fn("top1") + _fn("plusIso") + _fn("nextRead")
-          + _fn("foldLive") + "var f = foldLive(D.c); console.log(JSON.stringify([f.kids.map(function(k){ return k.textContent; }), tickers.length]));")
+          + _fn("noCallWords") + _fn("foldLive") + "var f = foldLive(D.c); console.log(JSON.stringify([f.kids.map(function(k){ return k.textContent; }), tickers.length]));")
     c = {"row_ts": "2026-09-28T09:31:20-04:00", "hour": None, "marks": {"next_30": "2026-09-28T10:00:00-04:00"},
          "session": {"close": "2026-09-28T16:00:00-04:00", "last_read": "2026-09-28T15:32:00-04:00"}}
     assert _run(js, {"now": "2026-09-28T09:52:00-04:00", "c": c}, LA) == [
@@ -1050,3 +1050,21 @@ def test_a_diary_row_with_no_wall_draws_its_fact_in_words(tz):
     assert _flat_text(wall["kids"][0]) == "Nearest heavy strikeNone in reach"
     assert [k["attrs"].get("class") for k in rows["Price, last 30 min"]["kids"]] == ["sit-top", "sit-g", "sit-c"]
     assert any(c[0] == "vp" for c in got["main"]), "the questions are drawn below it"
+
+
+@pytest.mark.parametrize("tz, next_read", [(LA, "07:32"), (TOKYO, "23:32"), (KOLKATA, "20:02")])
+def test_a_live_card_with_no_sum_says_so_when_the_30_minute_call_leads(tz, next_read):
+    """Monday from 10:05 to about 10:17 the live 10:02 read and the lane's 10:00 to 10:10 reads were skipped: the page
+    held the 09:32 card, which asks nothing, and said "normal · a call every 30 min" over no call and no reason. It
+    says there is no call on this read and when the next read is, as the folded line does while the opening leads."""
+    live = {**MONDAY["live"], "row_ts": "2026-09-28T09:31:20-04:00", "generated_at": "2026-09-28T13:32:40+00:00", "hour": None,
+            "calls": [], "tally": None, "closed_out_at": None,
+            "marks": {"next_30": "2026-09-28T10:00:00-04:00", "next_60": "2026-09-28T10:30:00-04:00"}}
+    calls = [c for c in MONDAY["tape"]["calls"] if c["read"] <= "2026-09-28T09:55"]
+    tape = {**MONDAY["tape"], "row_ts": "2026-09-28T09:55:00-04:00", "calls": calls, "closed_out_at": None}
+    got = _whole({"live": live, "tape": tape}, "2026-09-28T10:10:00-04:00", tz)
+    assert not got["err"], got["sub"]
+    assert got["main"][0] == ["mode", "normal · a call every 30 min"]
+    card = next(d for c, d in zip(got["main"], got["dom"]) if c[0] == "card dashed")
+    assert _flat_text(card["kids"][1]) == f"No 30-minute call on this read, next read {next_read}"
+    assert [k["attrs"].get("class") for k in card["kids"]] == ["lab", "skip"]
