@@ -47,10 +47,12 @@ The schedule's ``every_min`` is the starting value until a recount exists; the d
 
 Files, under state/spx_jev/:
     cadence.json      {"recounted_from": day, "questions": {qid: {"minutes", "p25_hold_min", "changes", "reads", "why"}}}
-    last_asked.json   {qid: {"row_ts", "answer", "moved", "code_answer", "lost"}}   the newest fresh answer per question, how
-                      far it moved from the one before, the code's answer at that read for a question that has one
-                      (not written yet: see the note on ``then`` above), and, until a fresh answer replaces the
-                      entry, the ask since then that got no answer: {"row_ts", "why"}
+    last_asked.json   {qid: {"row_ts", "answer", "moved", "code_answer", "lost", "asleep"}}   the newest fresh answer per
+                      question, how far it moved from the one before, the code's answer at that read for a question
+                      that has one (not written yet: see the note on ``then`` above), and, until a fresh answer
+                      replaces the entry, the ask since then that got no answer: {"row_ts", "why"}, and the newest
+                      read at which the question slept (``asleep``, its row's timestamp): an answer from before
+                      its gate or its label said the thing it asked about was over is never held again
 """
 from __future__ import annotations
 
@@ -153,12 +155,30 @@ def is_due(entry: dict | None, now: datetime, minutes: int) -> bool:
     return age is None or age >= minutes - GRACE_MIN
 
 
+def slept_since(entry: dict | None) -> bool:
+    """Whether the question slept at a read after its last fresh answer (``asleep``, mark_asleep): what that answer
+    was about has ended, so it is never held again."""
+    try:
+        return bool(entry and entry.get("asleep") and entry.get("row_ts") and parse_ts(entry["asleep"]) >= parse_ts(entry["row_ts"]))
+    except ValueError:
+        return False
+
+
+def mark_asleep(last: dict, skipped: dict[str, dict[str, str]], live: set[str], row_ts: str) -> None:
+    """Stamp ``row_ts`` as ``asleep`` on the last-asked entry of every live question that slept at this read
+    (ask.build_requests' "asleep: " reasons), so no answer from before it is held again (slept_since)."""
+    for qs in skipped.values():
+        for qid, why in qs.items():
+            if qid in live and qid in last and str(why).startswith("asleep:"):
+                last[qid] = {**last[qid], "asleep": row_ts}
+
+
 def held_answer(entry: dict | None, now: datetime, minutes: int) -> dict | None:
     """The last fresh answer, stamped with the read it was given on (``held_from``, the full timestamp),
     while it is still young enough: up to twice the cadence, never under an hour, so a held answer is
-    never a stale one."""
+    never a stale one. Never one the question slept after (slept_since)."""
     age = _age_min(entry, now)
-    if age is None or age < 0 or not isinstance(entry.get("answer"), dict):
+    if age is None or age < 0 or not isinstance(entry.get("answer"), dict) or slept_since(entry):
         return None                     # a negative age is a replay of an earlier day: never hold a later answer
     if age > max(2 * minutes, 60) + GRACE_MIN:
         return None
@@ -167,9 +187,11 @@ def held_answer(entry: dict | None, now: datetime, minutes: int) -> dict | None:
 
 def held_today(entry: dict | None, now: datetime) -> dict | None:
     """The last fresh answer, stamped with its read (``held_from``), when it was given earlier the same day:
-    a day constant holds whatever its age."""
+    a day constant holds whatever its age, but never one the question slept after (slept_since)."""
     age = _age_min(entry, now)
     if age is None or age < 0 or not isinstance(entry.get("answer"), dict) or entry["row_ts"][:10] != now.isoformat()[:10]:
+        return None
+    if slept_since(entry):
         return None
     return {**entry["answer"], "held_from": entry["row_ts"]}
 

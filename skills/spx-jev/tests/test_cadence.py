@@ -6,8 +6,8 @@ from datetime import timedelta
 
 from conftest import at
 from spx_jev.ask import build_requests, load_questions
-from spx_jev.cadence import (CHANGE_CUT, cadence_of, distance, ensure_cadence, fill_missing, held_answer, is_due, plan, recount,
-                             snap, vector)
+from spx_jev.cadence import (CHANGE_CUT, cadence_of, distance, ensure_cadence, fill_missing, held_answer, is_due, mark_asleep, plan,
+                             recount, snap, vector)
 from spx_jev.hour import one_sentence
 from spx_jev.lane import LANES
 from spx_jev.schedule import not_due, read_slot
@@ -79,6 +79,24 @@ def test_a_label_left_out_because_its_condition_is_over_holds_nothing():
     assert skipped["breadth"]["tick_lean_vs_usual"].startswith("missing breadth.")
     held = fill_missing(DOC, skipped, last, {"questions": {}}, now, {})
     assert set(held) == {"tick_lean_vs_usual"}
+
+
+def test_an_answer_from_before_the_question_slept_never_comes_back_on_a_later_read():
+    """13:30 answers the shock question; at 14:00 the shock has left the lookback and it sleeps; at 14:30 its label
+    is missing, and its cadence would have held it: neither brings the 13:30 answer back. A fresh answer after the
+    sleep holds again."""
+    q = "shock_at_extreme"
+    last = {q: {"row_ts": at(13, 30).isoformat(), "answer": {"pick": "inside_range", "probabilities": {"inside_range": 0.8}}}}
+    ended = {p: "no five-minute move in the last 60 minutes passed the shock rule" for p in ("shock.burst", "shock.vs_day_range")}
+    _, skipped = build_requests({"context": {"symbol": "SPX"}}, DOC, skip={x: "not due" for x in BY_ID if x != q}, ended=ended)
+    mark_asleep(last, skipped, {q}, at(14, 0).isoformat())
+    assert last[q]["asleep"] == at(14, 0).isoformat()
+    missing = {"shocks_and_news": {q: "missing shock.burst"}}
+    assert fill_missing(DOC, missing, last, {"questions": {}}, at(14, 30), {}) == {}
+    assert q not in plan(DOC, last, {"questions": {q: {"minutes": 120}}}, at(14, 30))[1]
+    assert held_answer(last[q], at(14, 30), 120) is None
+    fresh = {q: {"row_ts": at(14, 30).isoformat(), "answer": last[q]["answer"]}}          # a fresh answer replaces the entry
+    assert fill_missing(DOC, missing, fresh, {"questions": {}}, at(15, 0), {})[q]["held_from"] == at(14, 30).isoformat()
 
 
 def test_what_the_schedule_does_not_ask_holds_by_its_kind():

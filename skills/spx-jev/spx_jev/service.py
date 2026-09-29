@@ -64,8 +64,8 @@ from zoneinfo import ZoneInfo
 from . import archive, ask, integral, pool
 from .ask import build_requests, confidence, load_questions, pick, send, send_all
 from .baseline import Baseline
-from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, lost_today, plan,
-                      save_last)
+from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, lost_today, mark_asleep,
+                      plan, save_last)
 from .clock import blend as clock_blend, integral_odds as clock_integral_odds, odds as clock_odds
 from .events import learn_exclude, tag as event_tag
 from .expiry import calendar_of
@@ -692,6 +692,9 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         skip, held = plan(doc, last, cad, now, skip, borrowed_answers(state_dir, doc, lane), read_slot(lane, now, fired),
                           learned=lane.cadence)
     requests, skipped = build_requests(state, doc, skip=skip, gates=labels.gates, ended=labels.ended_reasons())
+    if do_send:
+        # a question asleep this read holds nothing from before it again, whatever a later read finds
+        mark_asleep(last, skipped, live_ids, scene.row["ts"])
     if do_send and lane.cadence:
         held = fill_missing(doc, skipped, last, cad, now, held)
     # the questions asked again because their last ask today got no answer, with that ask's read and why
