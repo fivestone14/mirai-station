@@ -83,7 +83,9 @@ def test_a_tape_read_writes_its_own_folder_and_is_graded_on_the_exact_bar_ten_mi
     assert c2["row_ts"] == at(10, 50).isoformat() and "move_since_read" in c2["stretch"]
     grades = [json.loads(l) for l in (out / "grades.jsonl").read_text().splitlines() if l.strip()]
     assert len(grades) == 1 and grades[0]["band"] == "flat" and grades[0]["realized_points"] == 0.0
-    assert c2["calls"][1]["outcome"] == "flat" and c2["calls"][1]["moved"] == {"realized_points": 0.0, "realized_units": 0.0}
+    assert c2["calls"][1]["end_price"] == {"outcome": "flat", "hit": True, "moved": {"realized_points": 0.0, "realized_units": 0.0}}
+    graded = c2["calls"][1]["integral"]                                     # and on the average price over the same ten bars
+    assert (graded["label"], graded["g"], graded["edge"], graded["verdict"]) == ("flat", 0.0, 1.56, "right")
     assert not any("checks" in x for x in c2["calls"])                    # each call has its own mark: no shared checks
     assert json.loads((out / "weights.json").read_text())["lane"] == "tape"
 
@@ -112,21 +114,39 @@ def test_the_close_out_grades_the_last_calls_and_asks_jev_nothing(tmp_path, monk
     _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 82)
     assert service.main(["--state-dir", str(state), "--lane", "tape"]) == 0
     c = json.loads((out / "latest.json").read_text())
-    assert c["closed_out_at"] and c["tally"] == {"calls": 1, "graded": 1, "right": 1, "unsure": 0}
+    assert c["closed_out_at"] and c["tally"] == {"calls": 1, "graded": 1, "right": 1, "passed": 0}
     assert (out / f"{DAY}.jsonl").read_text() == reads_before
     kinds = [json.loads(l)["kind"] for l in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
     assert kinds == ["read", "grade", "close_out"]                          # the read, its grade at the close-out, the close-out
 
 
-def test_an_unsure_pick_is_an_abstention_in_the_tally_and_its_words_never_a_wrong_call():
-    calls = ([{"pick": "unsure", "outcome": "down_big", "hit": False}] * 7 + [{"pick": "down_small", "outcome": "down_big", "hit": False}]
-             + [{"pick": "unsure"}, {"pick": "flat"}])                     # the last two not graded yet
+def _graded(pick, label, g=None, edge=1.59, end=None):
+    """A call as day_calls gives it once both grades are in: the average price's ``label`` (its direction deciding)
+    and, by default, an end price that disagrees with it."""
+    verdict = "passed" if pick == "unsure" else "right" if pick.split("_")[0] == label else "wrong"
+    return {"pick": pick, "end_price": end or {"outcome": "up_big", "hit": False},
+            "integral": {"graded": True, "label": label, "g": g if g is not None else {"up": 3.0, "down": -3.0}.get(label, 0.0),
+                         "edge": edge, "verdict": verdict}}
+
+
+def test_the_tally_counts_the_average_price_grade_its_direction_deciding_and_passes_apart():
+    """The S9 call (down_small, the average -4.52 against 1.59, the end price down big) is right: its direction
+    decides, the size never does. An unsure call is passed, never a miss, and counts in neither the right nor the
+    graded directional calls; a call whose average is not graded yet is still to grade whatever its end price."""
+    s9 = _graded("down_small", "down", -4.52, end={"outcome": "down_big", "hit": False})
+    calls = [s9, _graded("flat", "up"), _graded("up", "up"), _graded("unsure", "flat"),
+             {"pick": "flat", "end_price": {"outcome": "flat", "hit": True}},            # the average waits on a bar
+             {"pick": "up", "integral": {"graded": False, "reason": "not graded: bars missing"}}]
     tally = service.calls_block(calls)["tally"]
-    assert tally == {"calls": 10, "graded": 8, "right": 0, "unsure": 7}
-    assert service.tally_words(tally) == "0 of 1 committed calls right, 7 unsure, 2 still to grade"
-    assert service.tally_words({**tally, "calls": 8}) == "0 of 1 committed calls right, 7 unsure"
-    assert service.tally_words({"calls": 3, "graded": 3, "right": 2}) == "2 of 3 calls right"   # a card from before
-    assert service.tally_words({"calls": 4, "graded": 3, "right": 2, "unsure": 0}) == "2 of 3 graded calls right, 1 still to grade"
+    assert tally == {"calls": 6, "graded": 4, "right": 2, "passed": 1}
+    assert service.tally_words(tally) == "2 of 3 calls right · 1 passed · 2 still to grade"
+    assert service.tally_words({**tally, "calls": 4}) == "2 of 3 calls right · 1 passed"
+    assert service.tally_words({"calls": 3, "graded": 3, "right": 2, "passed": 0}) == "2 of 3 calls right"
+    assert service.tally_words({"calls": 8, "graded": 7, "right": 0, "passed": 7}) == "7 passed · 1 still to grade"
+    assert service.tally_words({"calls": 2, "graded": 0, "right": 0, "passed": 0}) == "0 of 0 calls right · 2 still to grade"
+    # the end price never moves the tally: every call right at its mark and wrong on the average is wrong
+    wrong = [_graded("up", "down", end={"outcome": "up", "hit": True})] * 3
+    assert service.calls_block(wrong)["tally"] == {"calls": 3, "graded": 3, "right": 0, "passed": 0}
 
 
 SCHEDULED = {"groups": [{"id": "g1", "reads": ["context"], "questions": {
@@ -249,7 +269,9 @@ def test_a_failing_shadow_grade_costs_neither_the_read_nor_the_close_out(tmp_pat
     _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0), make_row(at(10, 45, ss=20), 7701.0)], 82)
     assert service.main(["--state-dir", str(state), "--lane", "tape"]) == 0
     card = json.loads((out / "latest.json").read_text())
-    assert card["closed_out_at"] and card["tally"]["calls"] == 2 and card["tally"]["graded"] == 1
+    # the end price graded the first call; with the average price not written, the tally has nothing graded yet
+    assert card["closed_out_at"] and card["tally"]["calls"] == 2 and card["tally"]["graded"] == 0
+    assert card["calls"][1]["end_price"]["outcome"] == "flat" and "integral" not in card["calls"][1]
     kinds = [json.loads(l)["kind"] for l in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
     assert kinds[-1] == "close_out" and not (out / "integral_grades.jsonl").exists()
     assert "integral shadow grade failed" in capsys.readouterr().err

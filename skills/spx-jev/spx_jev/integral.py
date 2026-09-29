@@ -17,7 +17,8 @@ call's side of G over the edge, or for a flat call 1 - |G| / edge. Nothing weigh
 nothing boosts a sharp move; the biggest minute is a note, ranked against the same window on the recent
 sessions ("top 2 of 21" is sharp), each minute's move taken close to close as the sessions' are (the
 first from the bar before the window, when it is on file, since a read can land mid-minute). The running labels are the average so far against the same edge, one per
-minute, the last one being the label.
+minute, the last one being the label. The strength (the phone's tier) ranks a right call's margin, as headroom past the
+line that made it right, against the right calls on the box's recent sessions: Strong right, Right or Weak by third.
 
 The guards
     missing bars   up to INTEGRAL_MISSING_BARS_MAX of the window's bars may be missing, never the mark bar, and a
@@ -43,9 +44,11 @@ from .cuts import (BAD_TICK_PCT, INTEGRAL_MISSING_BARS_MAX, NIGHT_RANK_COUNT, SA
                    STALE_READ_MIN)
 from .labels.measures import ET, ONE_MINUTE, bar_time
 from .labels.ranks import percentile, rank_sessions
+from .labels.words import third
 
 RULE_VERSION = 1        # bump when the grade's rule changes: a line is keyed by its read, its horizon and this
 NOT_GRADED = "not graded: bars missing"
+TIERS = {"top": "Strong right", "middle": "Right", "bottom": "Weak"}   # a right call's headroom by its third
 
 
 def factor(minutes: int) -> float:
@@ -75,6 +78,33 @@ def margin(pick, g: float, edge: float) -> float | None:
     if side is None:
         return None
     return round(1 - abs(g) / edge if side == "flat" else (g if side == "up" else -g) / edge, 3)
+
+
+def headroom(line: dict) -> float | None:
+    """How far a graded call cleared the line that decides it, in edges: a flat call's margin (from the edge in to the
+    read's price), an up or down call's margin less the edge it had to pass. Below zero it was wrong; None when it
+    was passed. The one scale a flat call and a sided one rank on together, since a sided call's margin passes 1
+    where it turns right and a flat call's passes 0."""
+    m = line.get("margin")
+    if m is None:
+        return None
+    return m if line.get("direction") == "flat" else m - 1
+
+
+def strength(line: dict, base: list[list[float]]) -> str | None:
+    """The tier of a graded call: Wrong when it was wrong, else where its headroom ranks among the right calls' on
+    the box's recent sessions (``base``, each session's right calls' headrooms, newest first), by third: Strong
+    right, Right or Weak. None for a passed call, and for every call while fewer than SAME_CLOCK_MIN_SESSIONS of
+    the last NIGHT_RANK_COUNT sessions are on file or they hold no right call."""
+    recent = base[:NIGHT_RANK_COUNT]
+    if len(recent) < SAME_CLOCK_MIN_SESSIONS or line.get("verdict") == "passed":
+        return None
+    if line.get("verdict") == "wrong":
+        return "Wrong"
+    pool = [h for session in recent for h in session]
+    if not pool:
+        return None
+    return TIERS[third(sum(1 for h in pool if h < headroom(line)) / len(pool))]
 
 
 def lean(probs: dict) -> dict | None:

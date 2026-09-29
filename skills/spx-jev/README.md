@@ -240,9 +240,13 @@ The card carries: `symbol`, `generated_at`, `row_ts`, `freshness`, `sigma`,
 `omitted`, `sent`, `asked` (the questions the read put to JEV), `model`,
 `questions` (each with `answer` or `skipped`, and `held_from` when held),
 `hour` (the blended sum with `jev`, `clock` and `blend`), `event`, `calls` and
-`tally` (the day's newest calls and their grades; a graded call whose pick was
-unsure is counted under `unsure`, an abstention, never among the calls right
-or wrong), `marks`, `session` (`close` and `last_read`), `expiries` (today's
+`tally` (the day's newest calls and their grades: `integral`, the grade on the
+average price over the window from `integral_grades.jsonl`, with its label,
+points against the edge, verdict, size, path and, once the box has ten sessions
+to rank it against, its strength `tier`; and `end_price`, the grade at the mark,
+kept beside it for the side-by-side weeks. The tally counts the average-price
+grade: a call's direction decides it, and an unsure call is `passed`, never
+among the calls right or wrong), `marks`, `session` (`close` and `last_read`), `expiries` (today's
 settle, the next expiry's, the next monthly's, and what expires today), and on
 the opening lane `lane`, `ruler`, `band`, `stretch`, `schedule` and, after the
 close-out, `closed_out_at`.

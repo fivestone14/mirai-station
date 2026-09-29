@@ -149,7 +149,7 @@ def test_the_days_calls_are_marked_from_the_settled_open(tmp_path):
     run(state, out, ALLOWED, lane=PREMARKET)
     calls = service.day_calls(out, DAY, PREMARKET)
     assert [c["mark"] for c in calls] == [f"{DAY}T10:05:00-04:00"] * 2
-    assert [(c["pick"], c["outcome"], c["hit"]) for c in calls] == [("flat", "up", False)] * 2
+    assert [(c["pick"], c["end_price"]["outcome"], c["end_price"]["hit"]) for c in calls] == [("flat", "up", False)] * 2
     # both checks of every call, so the phone can give the 09:44 result beside the 10:04 one
     assert [c["checks"] for c in calls] == [{"open_10": {"outcome": "up", "hit": True, "pick": "up"},
                                               "open_30": {"outcome": "up", "hit": False, "pick": "flat"}}] * 2

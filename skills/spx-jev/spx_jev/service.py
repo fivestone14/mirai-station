@@ -56,7 +56,7 @@ from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import archive, pool
+from . import archive, integral, pool
 from .ask import build_requests, confidence, load_questions, pick, send, send_all
 from .baseline import Baseline
 from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, missing_paths, plan,
@@ -64,7 +64,7 @@ from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_a
 from .clock import blend as clock_blend, odds as clock_odds
 from .events import learn_exclude, tag as event_tag
 from .expiry import calendar_of
-from .grade import live_options, mark_at, run as grade_run
+from .grade import INTEGRAL_NAME, live_options, mark_at, run as grade_run
 from .hour import answer_sentences, band_of, hour_request, hour_summary, load_hour_doc, named_levels
 from .labels.registry import build_labels
 from .lane import LANES, LANES_BY_KEY, LIVE, Lane
@@ -87,7 +87,9 @@ STALE_ROW_SKIP_MIN = 6.0       # a live read on a row older than this is skipped
 LAST_READ_BEFORE_CLOSE_MIN = 28   # the job reads at :02 and :32, so the day's last read is 28 minutes before the close
 UNSENT_DEFAULT = "not sent: this run was not asked to send"
 CALLS_SHOWN = 4                # the phone draws the newest calls on one clock, so an overlap is visible
-UNSURE = "unsure"              # a sum's pick that makes no call: the tally counts it apart
+# what the card carries of a call's average-price grade (integral.grade_window); the rest stays in its file
+INTEGRAL_ON_CARD = ("graded", "reason", "label", "g", "edge", "verdict", "margin", "lean", "size", "best", "worst", "sharp_move",
+                    "running")
 # A read on the bar clock waits for the bar that finishes at its fire minute. The bars job runs once a
 # minute at no fixed second, so a wait under a minute spans one of its runs and the read stays in its minute.
 BAR_WAIT_S = 55
@@ -276,17 +278,44 @@ def situation_rows(state: dict, figures: dict | None = None) -> list[dict]:
     return rows
 
 
+def day_integral(out_dir: Path, day: str, lane: Lane = LIVE) -> dict[str, dict]:
+    """The average-price grade (grade.integral_run) of each of the lane's primary calls on ``day``, by read, as the
+    card carries it (INTEGRAL_ON_CARD), a graded one with its strength ``tier`` (integral.strength) once the box's
+    sessions before ``day`` can rank it; a stale read is ranked but never ranked against. A read with no line yet
+    is left out: its window is open, or waits on a bar."""
+    lines = [g for g in load_jsonl(out_dir / INTEGRAL_NAME)
+             if g.get("horizon") == lane.primary and g.get("rule_version") == integral.RULE_VERSION]
+    past: dict[str, list[float]] = {}
+    for g in lines:
+        d = str(g.get("row_ts", ""))[:10]
+        if g.get("graded") and d < day and not g.get("stale_read"):
+            right = past.setdefault(d, [])            # a session with no right call is still a session
+            if g.get("verdict") == "right":
+                right.append(integral.headroom(g))
+    base = [past[d] for d in sorted(past, reverse=True)]
+    out: dict[str, dict] = {}
+    for g in lines:
+        ts = str(g.get("row_ts", ""))
+        if ts.startswith(day) and ts not in out:
+            out[ts] = {k: g[k] for k in INTEGRAL_ON_CARD if k in g}
+            if g.get("graded") and (tier := integral.strength(g, base)):
+                out[ts]["tier"] = tier
+    return out
+
+
 def day_calls(out_dir: Path, day: str, lane: Lane = LIVE) -> list[dict]:
-    """Every call of the lane's primary sum on ``day``, oldest first, with its grade when it has one: the
+    """Every call of the lane's primary sum on ``day``, oldest first, with its grades when it has them: the
     read's time, the mark it is graded at (the read's minute plus the horizon, as the grader counts it),
     the pick and its probability, every option's probability as the phone showed them (``odds``), then
-    ``outcome``, ``hit`` and the ``moved`` behind them once graded, or ``closed`` with the reason
-    when it can never be graded. The mark is grade.mark_at's: the closing bar for a read that ends just
-    past the close, None for one that ends later and is never graded, counted from the settled open on
-    a lane graded from it. On that lane every call is checked at the same marks, so each carries
-    ``checks``, ``{horizon: {"outcome", "hit", "pick"}}`` for every horizon graded so far. A read whose sum got
-    no answer is not a call."""
+    ``integral``, its grade on the average price over the window (day_integral), and ``end_price``, the
+    grade at the mark kept beside it for the side-by-side weeks (``outcome``, ``hit`` and the ``moved``
+    behind them), once graded, or ``closed`` with the reason when it can never be graded. The mark is
+    grade.mark_at's: the closing bar for a read that ends just past the close, None for one that ends later
+    and is never graded, counted from the settled open on a lane graded from it. On that lane every call is
+    checked at the same marks, so each carries ``checks``, ``{horizon: {"outcome", "hit", "pick"}}`` at the
+    end price for every horizon graded so far. A read whose sum got no answer is not a call."""
     minutes = lane.horizons[lane.primary][0]
+    integral_by = day_integral(out_dir, day, lane)
     grades: dict[str, dict] = {}
     checks: dict[str, dict] = {}
     for g in load_jsonl(out_dir / "grades.jsonl"):
@@ -300,8 +329,8 @@ def day_calls(out_dir: Path, day: str, lane: Lane = LIVE) -> list[dict]:
         if isinstance(res, dict) and res.get("band"):
             # the move behind the outcome, in the units the sum was banded in: sigma on the live lane,
             # points and tape units on the tape lane
-            grades[ts] = {"outcome": res["band"], "hit": bool(res.get("hit")),
-                          "moved": {k: res[k] for k in ("realized_sigma", "realized_points", "realized_units") if res.get(k) is not None}}
+            grades[ts] = {"end_price": {"outcome": res["band"], "hit": bool(res.get("hit")),
+                                        "moved": {k: res[k] for k in ("realized_sigma", "realized_points", "realized_units") if res.get(k) is not None}}}
         elif ts not in grades and lane.primary in (g.get("skipped") or {}):
             grades[ts] = {"closed": str(g["skipped"][lane.primary])}
         elif ts not in grades and g.get("graded") is False:
@@ -316,30 +345,31 @@ def day_calls(out_dir: Path, day: str, lane: Lane = LIVE) -> list[dict]:
         odds = {k: round(float(v), 4) for k, v in p.items() if isinstance(v, (int, float))}
         calls.append({"read": ts, "mark": mark.isoformat() if mark else None, "minutes": minutes,
                       "pick": r["pick"], "p": odds.get(r["pick"], 0.0), "odds": odds, **grades.get(ts, {}),
+                      **({"integral": integral_by[ts]} if ts in integral_by else {}),
                       **({"checks": checks.get(ts, {})} if lane.graded_from_settled_open else {})})
     return calls
 
 
 def calls_block(calls: list[dict]) -> dict:
-    """What the card carries of the day's calls: the newest CALLS_SHOWN, newest first, and the day's tally. A
-    graded call whose pick was "unsure" is an abstention, counted under ``unsure`` and never among the calls
-    right or wrong; the grades and their Brier scores still count it as the grader does."""
-    graded = [c for c in calls if "outcome" in c]
+    """What the card carries of the day's calls: the newest CALLS_SHOWN, newest first, and the day's tally on the
+    average price over each window. Its direction decides a call right or wrong; an unsure one is passed, counted
+    under ``passed`` and never among the calls right or wrong. A call the average price has not graded is still to
+    grade, whatever its end price; the grades and their Brier scores still count every call as the grader does."""
+    graded = [c["integral"] for c in calls if (c.get("integral") or {}).get("graded")]
     return {"calls": calls[-CALLS_SHOWN:][::-1],
-            "tally": {"calls": len(calls), "graded": len(graded), "right": sum(1 for c in graded if c.get("hit")),
-                      "unsure": sum(1 for c in graded if c.get("pick") == UNSURE)}}
+            "tally": {"calls": len(calls), "graded": len(graded), "right": sum(1 for g in graded if g["verdict"] == "right"),
+                      "passed": sum(1 for g in graded if g["verdict"] == "passed")}}
 
 
 def tally_words(tally: dict) -> str:
-    """A close-out's tally in the phone's words (jev-spx.html openingDone): '0 of 1 committed calls right,
-    7 unsure' when a pick was unsure, else '2 of 3 calls right', and what is still to grade."""
-    unsure = tally.get("unsure", 0)
-    rest = f", {tally['calls'] - tally['graded']} still to grade" if tally["calls"] > tally["graded"] else ""
-    if unsure:
-        return f"{tally['right']} of {tally['graded'] - unsure} committed calls right, {unsure} unsure{rest}"
-    if not rest:
-        return f"{tally['right']} of {tally['calls']} calls right"
-    return f"{tally['right']} of {tally['graded']} graded calls right{rest}"
+    """A close-out's tally in the phone's words (jev-spx.html openingDone): '2 of 3 calls right · 1 passed', the
+    passes apart, then what is still to grade; a morning of passes only is '3 passed'."""
+    passed = tally.get("passed", 0)
+    called = tally["graded"] - passed
+    parts = [f"{tally['right']} of {called} calls right"] if called or not passed else []
+    parts += [f"{passed} passed"] if passed else []
+    parts += [f"{tally['calls'] - tally['graded']} still to grade"] if tally["calls"] > tally["graded"] else []
+    return " · ".join(parts)
 
 
 def _stamp(lane: Lane, unit: dict | None, band: dict | None = None) -> dict:
