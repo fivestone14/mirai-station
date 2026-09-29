@@ -12,8 +12,11 @@ loop would learn before then:
 
 The reference R is the time-of-day odds counted on the average price (clock.integral_odds), as a read on the session
 could know them: the counts the clock stored in clock_integral_days.json for the counted sessions before it, read and
-never counted here, so no end-price count can reach it. Its version moves only with the counting rule, so the
-calibration carries from one session to the next as the counted sessions roll. JEV's sum is the average-price sum's own
+never counted here, so no end-price count can reach it. Its version moves only with the counting rule and the odds'
+own constants (REFERENCE_CONSTANTS), so the calibration carries from one session to the next as the counted sessions
+roll and starts again when either changes. A session whose blended reads have no reference on file (the counts were
+recounted under a new rule and no read has counted the days before it yet) stops the update, as an unsealed one does,
+rather than be passed over for good. JEV's sum is the average-price sum's own
 odds, blend50 its blend with those odds as the phone showed it, and the question block's answers are the ones the
 read's end-price snapshot wrote down (pool.snapshot's ``q_probs``, ``members``, ``fresh``): the same answers, given
 before either outcome.
@@ -22,7 +25,7 @@ The forecasts of a read are formed when its session is applied, from the state a
 is the state a read that day would have seen: nothing is written at the read. A session is sealed once every read's
 primary is terminal in grades.jsonl and each one graded there has its line in integral_grades.jsonl; an unsealed one
 stops the update (fail closed), and one none of whose reads carries an average-price call is from before the question
-and is passed over. Left out, as the end-price loop leaves them out: a half day, a scheduled event inside the window
+and is passed over. Left out, as the end-price loop leaves them out (pool._session_reads): a half day, a scheduled event inside the window
 (pool.event_inside), a read with no outcome; and here also a stale read (integral.stale_read), a read with no
 average-price call, and one whose answers or reference are not on file, each with its reason.
 
@@ -58,6 +61,12 @@ CONSTANTS = {**pool.CONSTANTS, "outcome": "integral.label", "integral_rule": int
              "reference_rule": clock.INTEGRAL_RULE_VERSION, "loop_version": LOOP_VERSION}
 CONSTANTS_HASH = hashlib.sha256(json.dumps(CONSTANTS, sort_keys=True).encode()).hexdigest()[:16]
 CODE_HASH = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:16]
+
+
+def reference_constants() -> dict:
+    """The numbers the reference's odds are formed with (clock.py): a change to one is a new reference."""
+    return {"shrink": clock.SHRINK, "min_sessions": clock.MIN_SESSIONS, "max_sessions": clock.MAX_SESSIONS,
+            "min_scored_reads": clock.MIN_SCORED_READS}
 
 
 def cold_state() -> dict:
@@ -124,7 +133,7 @@ def average_lines(out_dir: Path, lane: Lane = LIVE) -> dict[str, dict]:
 
 def _session_reads(recs: list[dict], lines: dict[str, dict], state: dict, ref: Reference | None,
                    lane: Lane) -> tuple[list[dict], dict[str, str]]:
-    """The session's included reads, each with its snapshot formed from ``state`` and its average-price label, and every
+    """pool._session_reads on the average price: the session's included reads, each with its snapshot formed from ``state`` and its average-price label, and every
     excluded one with its reason."""
     h, minutes = lane.primary, lane.horizons[lane.primary][0]
     half_day = session_close(parse_ts(recs[0]["row_ts"])).time() != SESSION_CLOSE
@@ -145,6 +154,7 @@ def _session_reads(recs: list[dict], lines: dict[str, dict], state: dict, ref: R
         elif "members" not in own:
             excluded[r["row_ts"]] = "no answers on file: the read's end-price snapshot was left out"
         elif ref is None:
+            # an unblended read had no odds to form a reference from; a blended one stops the update first (update)
             excluded[r["row_ts"]] = (f"no snapshot: fewer than {clock.MIN_SESSIONS} sessions of time-of-day odds on the average "
                                      "price before this one")
         else:
@@ -163,7 +173,7 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Pat
     """Apply every sealed session after the watermark, oldest first, to the primary box, reading the lane's records in
     ``out_dir`` and keeping the state and the log in ``into`` (``out_dir`` itself unless the dry run names another). A
     session already applied is never applied again, and a state made under other constants stops the run before
-    anything is applied. Returns ``{h: what happened}``, as pool.update does."""
+    anything is applied. Returns ``{h: what happened}``. Mirrors pool.update on the one box and the average-price label."""
     out_dir = Path(out_dir)
     into = Path(into) if into is not None else out_dir
     today = today or datetime.now(ET).date().isoformat()
@@ -179,7 +189,7 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Pat
     lines = average_lines(out_dir, lane)
     key = clock._integral_rule_key(lane)
     cache = clock._load_cache(out_dir / clock.INTEGRAL_CACHE_NAME, key)
-    version = f"integral_clock:{hashlib.sha256(key.encode()).hexdigest()[:16]}"
+    version = f"integral_clock:{hashlib.sha256(json.dumps([key, reference_constants()], sort_keys=True).encode()).hexdigest()[:16]}"
     hour_dir = out_dir / "hour"
     for day in sorted(p.stem for p in hour_dir.glob("*.jsonl")) if hour_dir.exists() else []:
         if day <= (state["last_session_applied"] or "") or day >= today:
@@ -201,11 +211,17 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Pat
             break
         else:
             why = None
+        ref = reference(cache, day, version)
+        if not why and ref is None and any(((average_call(r, h, lane) or {}).get("blend") or {}).get("used") for r in recs):
+            # the reads were blended with odds the clock counted, so the counts exist to be recounted: wait for them
+            _log(into, {**head, "applied": False, "why": "no reference on file for reads blended with one: stopped, fail closed"})
+            said = {h: f"{day}: no reference on file; stopped"}
+            break
         if why or not recs:
             state["last_session_applied"] = day
             _log(into, {**head, "applied": False, "why": why or "no reads"})
             continue
-        reads, excluded = _session_reads(recs, lines, state, reference(cache, day, version), lane)
+        reads, excluded = _session_reads(recs, lines, state, ref, lane)
         state["last_session_applied"] = day
         body: dict = {"manifest": {"included": [r["row_ts"] for r in reads], "excluded": excluded}}
         if reads:
@@ -229,8 +245,8 @@ def _log(out_dir: Path, line: dict) -> None:
 
 
 class IntegralPoolWeights(pool.PoolWeights):
-    """pool.PoolWeights on the average-price grade: learn() applies every newly sealed session to this loop's state and
-    reports each live question's standing from it, every weight still 1.0. The phone never shows this pool: it reads the
+    """pool.PoolWeights on the average-price grade (its learn, mirrored): learn() applies every newly sealed session to
+    this loop's state and reports each live question's standing from it, every weight still 1.0. The phone never shows this pool: it reads the
     end-price loop's promotion (pool.shown), so ``on_phone`` is always false."""
 
     method = "pool_v1_integral"
@@ -272,24 +288,30 @@ def dry_run(out_dir: Path, lane: Lane = LIVE, today: str | None = None) -> dict:
 
 
 def describe(run: dict, lane: Lane = LIVE) -> list[str]:
-    """dry_run's result in plain lines: the sessions and reads it learned from, what it left out and why, the pool's
-    weights, the phone's evidence against the blend and each question's standing against "no change"."""
+    """dry_run's result in plain lines: the sessions and reads it learned from, the sessions passed over (before the
+    question, or no reads) apart from those every read of which was left out, what it left out and why, the pool's
+    weights, its evidence against the blend with every promotion step pool.apply_session logged (a gate pool.py holds
+    promotion behind says so there), and each question's standing against "no change"."""
     state, log = run["state"], run["log"]
     applied = [x for x in log if x.get("applied")]
     left_out = Counter(why for x in log for why in (x.get("manifest") or {}).get("excluded", {}).values())
-    passed = sum(1 for x in log if x.get("applied") is False and x.get("session") and not x.get("why", "").startswith("unsealed"))
+    refused = [x for x in log if x.get("applied") is False and x.get("session")]
+    all_out = sum(1 for x in refused if "manifest" in x)
+    passed = sum(1 for x in refused if "manifest" not in x and not x["why"].startswith(("unsealed", "no reference")))
     gate = "met" if len(applied) >= GATE_SESSIONS else f"{GATE_SESSIONS - len(applied)} to go"
     out = [f"the {lane.name} lane's loop on the average-price grade, rebuilt in a scratch folder (nothing live was written): "
            f"{run['said'][lane.primary]}",
            f"sessions learned from: {len(applied)}, the gate is {GATE_SESSIONS} ({gate}); passed over: {passed}; "
-           f"last applied {state['last_session_applied'] or 'none'}",
+           f"every read left out: {all_out}; last applied {state['last_session_applied'] or 'none'}",
            f"reads learned from: {sum(len(x['manifest']['included']) for x in applied)}; left out: {sum(left_out.values())}"]
     out += [f"  {n} {why}" for why, n in left_out.most_common()]
     top = {side: pool._prob(state["top"][side]) for side in pool.SIDES}
     out.append("the pool's weights, move / direction: " + ", ".join(f"{n} {top['M'][n]:.3f} / {top['D'][n]:.3f}" for n in sorted(pool.W0)))
     phone = state["phone"]["promote"]
-    out.append(f"the pool against the blend: e {phone['e']:.2f} over {phone['n']} days (it would need {pool.PROMOTE_E:g} after "
-               f"{pool.MIN_DAYS} days); frozen: {state['frozen'] or 'no'}")
+    out.append(f"the pool against the blend: e {phone['e']:.2f} over {phone['n']} days (promotion needs {pool.PROMOTE_E:g} after "
+               f"{pool.MIN_DAYS} days, and any gate pool.py holds it behind); shows {state['phone']['shows']}; "
+               f"frozen: {state['frozen'] or 'no'}")
+    out += [f"  {x['session']}: {x['phone']}" for x in applied if x.get("phone")]
     block = {side: pool._prob(state["block"][side]) for side in pool.SIDES}
     for q, ev in sorted(state["evidence"].items()):
         vs = {side: block[side].get(q, 0.0) / block[side][pool.NO_CHANGE] for side in pool.SIDES}

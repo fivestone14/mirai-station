@@ -77,7 +77,7 @@ def _prior_counts(n: int = 12) -> dict[str, dict]:
     return {f"2026-08-{10 + k:02d}": _counts(1, 2, 1) for k in range(n)}
 
 
-def _write(out: Path, sessions: dict = SESSIONS, stale_at=None, event_at=None, average=True, integral_lines=True) -> Path:
+def _write(out: Path, sessions: dict = SESSIONS, stale_at=None, event_at=None, average=True, integral_lines=True, blended=True) -> Path:
     """Three live reads a session at 10:02, 10:32 and 11:02: each sum record with its end-price sums, the end-price loop's
     snapshots (whose answers the switched loop reads) and the average-price call, its grades.jsonl line and its
     average-price line, and the clock's stored counts on the average price for twelve sessions before them."""
@@ -95,10 +95,13 @@ def _write(out: Path, sessions: dict = SESSIONS, stale_at=None, event_at=None, a
                    "pool": {h: pool.snapshot(pool.cold_state(), FakeBaseline(), h, t, {"up": 0.5, "flat": 0.3, "down": 0.2},
                                              {"up": 0.2, "flat": 0.6, "down": 0.2}, {"up": 0.35, "flat": 0.45, "down": 0.2}, answers,
                                              MEMBERS, {"q_a"}) for h in ("next_30", "next_60")}}
-            if average:
+            if average and blended:
                 rec["average"] = {"primary": "average_30", "box": "next_30", "pick": max(SHOWN_AVG, key=SHOWN_AVG.get), "probabilities": SHOWN_AVG,
                                   "blend": {"used": True}, "jev": {"pick": "up", "probabilities": JEV_AVG},
                                   "clock": {"pick": "flat", "probabilities": CLOCK_AVG}, "edge_points": 3.11}
+            elif average:
+                rec["average"] = {"primary": "average_30", "box": "next_30", "pick": "up", "probabilities": JEV_AVG,
+                                  "blend": {"used": False, "why": "only 9 prior sessions"}, "edge_points": 3.11}
             recs.append(rec)
             grades.append({"row_ts": t.isoformat(), "horizons": ["next_30", "next_60"], "pending": [], "skipped": {}, "fresh": {"q_a": "yes"},
                            "band": band, "next_30": {"band": band, "pick": "up", "hit": band == "up", "brier": 0.5},
@@ -114,6 +117,12 @@ def _write(out: Path, sessions: dict = SESSIONS, stale_at=None, event_at=None, a
             with open(out / INTEGRAL_NAME, "a") as f:
                 f.write("".join(json.dumps(g) + "\n" for g in lines))
     return out
+
+
+def _edit(path: Path, change) -> None:
+    """Rewrite a jsonl file with ``change`` applied to each line."""
+    lines = [change(json.loads(line)) for line in path.read_text().splitlines()]
+    path.write_text("".join(json.dumps(line) + "\n" for line in lines))
 
 
 def _tree(root: Path) -> dict[str, bytes]:
@@ -198,7 +207,7 @@ def test_on_a_stale_read_and_an_event_read_are_left_out_as_the_loop_leaves_them_
 
 def test_on_its_reference_is_the_average_price_clock_of_the_sessions_before_each_one(tmp_path, clock):
     """A session's forecasts are formed from the stored counts of the sessions before it, never of its own day or
-    later; with fewer than the clock needs, its reads are left out and said so."""
+    later."""
     out = _write(tmp_path / "out")
     ref = integral_loop.reference(json.loads((out / INTEGRAL_CACHE_NAME).read_text())["days"], DAYS[0], "v")
     assert ref.clock("next_30", at(10, 2, day=DAYS[0])) == pytest.approx({"up": 0.25, "flat": 0.5, "down": 0.25})
@@ -207,11 +216,27 @@ def test_on_its_reference_is_the_average_price_clock_of_the_sessions_before_each
     integral_loop.update(out, "2026-09-15")
     integral_loop.update(later, "2026-09-15")
     assert (later / "pool_30_integral.json").read_bytes() == (out / "pool_30_integral.json").read_bytes()
-    thin = _write(tmp_path / "thin")
-    _cache(thin, _prior_counts(MIN_SESSIONS - 1))
-    integral_loop.update(thin, TODAY)
-    reasons = {why for x in _log(thin) for why in (x.get("manifest") or {}).get("excluded", {}).values()}
+
+
+def test_on_blended_reads_with_no_reference_on_file_stop_the_update_until_the_counts_are_back(tmp_path, clock):
+    """Counts recounted under a new rule, and not yet for the days before a session, must not pass that session over
+    for good: the update stops where it is, and applies it once the counts are back. An unblended read had no odds
+    to stand on, so it is left out and said so."""
+    out = _write(tmp_path / "out")
+    for counts in ({}, _prior_counts(MIN_SESSIONS - 1)):
+        _cache(out, counts)
+        assert integral_loop.update(out, TODAY) == {"next_30": f"{DAYS[0]}: no reference on file; stopped"}
+        assert json.loads((out / "pool_30_integral.json").read_text())["last_session_applied"] is None
+    assert _log(out)[-1] == {**_log(out)[-1], "applied": False, "session": DAYS[0],
+                             "why": "no reference on file for reads blended with one: stopped, fail closed"}
+    _cache(out, _prior_counts())
+    assert integral_loop.update(out, TODAY) == {"next_30": f"{DAYS[-1]}: applied, 3 reads"}
+    unblended = _write(tmp_path / "unblended", blended=False)
+    _cache(unblended, {})
+    integral_loop.update(unblended, TODAY)
+    reasons = {why for x in _log(unblended) for why in (x.get("manifest") or {}).get("excluded", {}).values()}
     assert reasons == {f"no snapshot: fewer than {MIN_SESSIONS} sessions of time-of-day odds on the average price before this one"}
+    assert json.loads((unblended / "pool_30_integral.json").read_text())["last_session_applied"] == DAYS[-1]
 
 
 def test_on_a_session_before_the_question_is_passed_over_and_an_ungraded_read_stops_the_update(tmp_path, clock):
@@ -261,6 +286,20 @@ def test_flipping_the_switch_on_off_and_on_again_never_mixes_the_histories(tmp_p
     assert json.loads((flipped / "pool_30.json").read_text())["last_session_applied"] == DAYS[2]
 
 
+def test_on_a_change_to_the_reference_odds_constants_starts_the_calibration_again(tmp_path, clock, monkeypatch):
+    """The odds' own numbers are part of the reference's version: a new shrink is a new reference, logged, and the
+    calibration after it is the one learned from that session alone."""
+    out = _write(tmp_path / "out")
+    integral_loop.update(out, DAYS[2])
+    monkeypatch.setattr("spx_jev.clock.SHRINK", 5.0)
+    integral_loop.update(out, TODAY)
+    last = _log(out)[-1]
+    assert last["session"] == DAYS[2] and last["baseline_changed"]["from"] != last["baseline_changed"]["to"]
+    alone = _write(tmp_path / "alone", {DAYS[2]: SESSIONS[DAYS[2]]})
+    integral_loop.update(alone, TODAY)
+    assert json.loads((out / "pool_30_integral.json").read_text())["cal"] == json.loads((alone / "pool_30_integral.json").read_text())["cal"]
+
+
 # ---- the dry run
 
 def test_the_dry_run_writes_nothing_live_and_learns_what_switching_on_would(tmp_path, clock, capsys):
@@ -283,3 +322,17 @@ def test_the_dry_run_writes_nothing_live_and_learns_what_switching_on_would(tmp_
 def test_the_dry_run_refuses_a_lane_with_no_loop(tmp_path, capsys):
     assert grade.main(["--lane", "tape", "--state-dir", str(tmp_path), "--integral-loop-dry-run"]) == 1
     assert "keeps no learning loop" in capsys.readouterr().err
+
+
+def test_the_dry_run_says_when_the_gate_is_met_and_keeps_passed_over_sessions_apart_from_left_out_ones(tmp_path, clock):
+    ten = [f"2026-09-{d:02d}" for d in (14, 15, 16, 17, 18, 21, 22, 23, 24, 25)]
+    for n, gate in ((10, "(met)"), (9, "(1 to go)")):
+        out = _write(tmp_path / str(n), {d: SESSIONS[DAYS[0]] for d in ten[:n]})
+        said = integral_loop.describe(integral_loop.dry_run(out, LIVE, "2026-09-28"))[1]
+        assert said.startswith(f"sessions learned from: {n}, the gate is 10 {gate}; passed over: 0; every read left out: 0")
+    mixed = _write(tmp_path / "mixed", {"2026-09-11": SESSIONS[DAYS[0]]}, average=False)
+    _write(mixed, {**SESSIONS, "2026-09-17": SESSIONS[DAYS[0]]})
+    _edit(mixed / "hour" / "2026-09-17.jsonl", lambda r: {**r, "event": {"within_30": True}})
+    said = integral_loop.describe(integral_loop.dry_run(mixed, LIVE, "2026-09-18"))
+    assert said[1].startswith("sessions learned from: 3, the gate is 10 (7 to go); passed over: 1; every read left out: 1")
+    assert "promotion needs 20 after 20 days, and any gate pool.py holds it behind" in said[-2]
