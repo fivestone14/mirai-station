@@ -323,18 +323,22 @@ def day_calls(out_dir: Path, day: str, lane: Lane = LIVE) -> list[dict]:
 def calls_block(calls: list[dict]) -> dict:
     """What the card carries of the day's calls: the newest CALLS_SHOWN, newest first, and the day's tally. A
     graded call whose pick was "unsure" is an abstention, counted under ``unsure`` and never among the calls
-    right or wrong; the grades and their Brier scores still count it as the grader does."""
+    right or wrong; the grades and their Brier scores still count it as the grader does. A call closed for good
+    (day_calls' ``closed``) is counted under ``closed``: it will never be graded, so it is not still to grade."""
     graded = [c for c in calls if "outcome" in c]
     return {"calls": calls[-CALLS_SHOWN:][::-1],
             "tally": {"calls": len(calls), "graded": len(graded), "right": sum(1 for c in graded if c.get("hit")),
-                      "unsure": sum(1 for c in graded if c.get("pick") == UNSURE)}}
+                      "unsure": sum(1 for c in graded if c.get("pick") == UNSURE),
+                      "closed": sum(1 for c in calls if "closed" in c)}}
 
 
 def tally_words(tally: dict) -> str:
     """A close-out's tally in the phone's words (jev-spx.html openingDone): '0 of 1 committed calls right,
-    7 unsure' when a pick was unsure, else '2 of 3 calls right', and what is still to grade."""
-    unsure = tally.get("unsure", 0)
-    rest = f", {tally['calls'] - tally['graded']} still to grade" if tally["calls"] > tally["graded"] else ""
+    7 unsure' when a pick was unsure, else '2 of 3 calls right', then what is still to grade and what never
+    will be."""
+    unsure, closed = tally.get("unsure", 0), tally.get("closed", 0)
+    pending = tally["calls"] - tally["graded"] - closed
+    rest = (f", {pending} still to grade" if pending > 0 else "") + (f", {closed} never graded" if closed else "")
     if unsure:
         return f"{tally['right']} of {tally['graded'] - unsure} committed calls right, {unsure} unsure{rest}"
     if not rest:

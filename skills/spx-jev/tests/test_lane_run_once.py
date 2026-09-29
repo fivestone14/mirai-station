@@ -112,7 +112,7 @@ def test_the_close_out_grades_the_last_calls_and_asks_jev_nothing(tmp_path, monk
     _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 82)
     assert service.main(["--state-dir", str(state), "--lane", "tape"]) == 0
     c = json.loads((out / "latest.json").read_text())
-    assert c["closed_out_at"] and c["tally"] == {"calls": 1, "graded": 1, "right": 1, "unsure": 0}
+    assert c["closed_out_at"] and c["tally"] == {"calls": 1, "graded": 1, "right": 1, "unsure": 0, "closed": 0}
     assert (out / f"{DAY}.jsonl").read_text() == reads_before
     kinds = [json.loads(l)["kind"] for l in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
     assert kinds == ["read", "grade", "close_out"]                          # the read, its grade at the close-out, the close-out
@@ -122,11 +122,23 @@ def test_an_unsure_pick_is_an_abstention_in_the_tally_and_its_words_never_a_wron
     calls = ([{"pick": "unsure", "outcome": "down_big", "hit": False}] * 7 + [{"pick": "down_small", "outcome": "down_big", "hit": False}]
              + [{"pick": "unsure"}, {"pick": "flat"}])                     # the last two not graded yet
     tally = service.calls_block(calls)["tally"]
-    assert tally == {"calls": 10, "graded": 8, "right": 0, "unsure": 7}
+    assert tally == {"calls": 10, "graded": 8, "right": 0, "unsure": 7, "closed": 0}
     assert service.tally_words(tally) == "0 of 1 committed calls right, 7 unsure, 2 still to grade"
     assert service.tally_words({**tally, "calls": 8}) == "0 of 1 committed calls right, 7 unsure"
     assert service.tally_words({"calls": 3, "graded": 3, "right": 2}) == "2 of 3 calls right"   # a card from before
     assert service.tally_words({"calls": 4, "graded": 3, "right": 2, "unsure": 0}) == "2 of 3 graded calls right, 1 still to grade"
+
+
+def test_a_call_that_can_never_be_graded_is_counted_apart_never_as_still_to_grade():
+    """A call closed for good (a halted window, no band on record) will never get a grade: counting it as still
+    to grade would promise one, beside its own row saying it was not graded."""
+    calls = [{"pick": "up", "outcome": "up", "hit": True}, {"pick": "down", "closed": "halted window: no bar at the mark on a finished day"}]
+    tally = service.calls_block(calls)["tally"]
+    assert tally == {"calls": 2, "graded": 1, "right": 1, "unsure": 0, "closed": 1}
+    assert service.tally_words(tally) == "1 of 1 graded calls right, 1 never graded"
+    assert service.tally_words({**tally, "calls": 3}) == "1 of 1 graded calls right, 1 still to grade, 1 never graded"
+    unsure = service.calls_block([{"pick": "unsure", "outcome": "flat", "hit": False}, *calls])["tally"]
+    assert service.tally_words(unsure) == "1 of 1 committed calls right, 1 unsure, 1 never graded"
 
 
 SCHEDULED = {"groups": [{"id": "g1", "reads": ["context"], "questions": {
