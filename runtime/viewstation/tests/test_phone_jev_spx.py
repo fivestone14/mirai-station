@@ -51,7 +51,7 @@ def _run(js, data=None, tz=LA):
               + "".join(_fn(f) for f in ("viewerTime", "marketAt", "marketWords", "cap", "pct", "words", "startOf", "endOf",
                                           "leftWords", "verdict", "callWords", "laneLeads", "svgEl", "lastLaneRead", "hhmm", "marketClock",
                                           "marketDay", "sentence"))
-              + _var("VIEWER_FMT") + _var("NS") + _var("ROW_H") + js)
+              + _var("VIEWER_FMT") + _var("WEEKDAYS") + _var("MARKET_TIME") + _var("NS") + _var("ROW_H") + js)
     out = subprocess.run([_NODE, "-e", script], input=json.dumps(data), capture_output=True, text=True, timeout=20,
                          env={**os.environ, "TZ": tz})
     assert out.returncode == 0, out.stderr
@@ -1106,3 +1106,27 @@ def test_the_newest_calls_result_is_never_cut_at_the_drawings_edge(outcome, hit,
     assert [s[1] + s[2] for s in sides[1:]] == ["Was Down · Right", "Was Flat · Right"]
     for x, text, strong in sides:
         assert x + _SIDE_W[text, strong] <= 300, f"{text}{strong} ends at {x + _SIDE_W[text, strong]:.1f}"
+
+
+@pytest.mark.parametrize("tz, reopen, close", [(LA, "Sun 15:00", "Fri 13:00"), (TOKYO, "Mon 07:00", "Sat 05:00"),
+                                               (NY, "Sun 18:00", "Fri 16:00"), (KOLKATA, "Mon 03:30", "Sat 01:30")])
+def test_a_market_time_with_its_weekday_is_drawn_on_the_viewers_day(tz, reopen, close):
+    """The builder names a weekend's times with New York's weekday ("reopened at 18:00 Sunday"). The page redrew the
+    time on the stamp's own day and left the weekday as written, so in Tokyo Monday's card said "07:00 Sunday" for what
+    was Monday 07:00 there. The time is found on its named weekday, the one on or before the stamp's, and both are
+    drawn in the viewer's zone."""
+    got = _run("console.log(JSON.stringify([marketWords(D.a, D.at), marketWords(D.b, D.at), marketWords('at 14:00 ET', D.at)]));",
+               {"at": "2026-09-28T09:28:05-04:00", "a": "since the S&P futures reopened at 18:00 Sunday bitcoin fell",
+                "b": "from the Friday 16:00 close to the S&P futures' reopen at 18:00 Sunday"}, tz)
+    assert got == [f"since the S&P futures reopened at {reopen} bitcoin fell",
+                   f"from the {close} close to the S&P futures' reopen at {reopen}", "at " + _run(
+                       "console.log(JSON.stringify(viewerTime('2026-09-28T14:00:00-04:00')));", {}, tz)]
+
+
+@pytest.mark.parametrize("tz, reopen", [(TOKYO, "Mon 07:00"), (KOLKATA, "Mon 03:30"), (LA, "Sun 15:00")])
+def test_mondays_premarket_bitcoin_fact_names_the_viewers_day(tz, reopen):
+    got = _whole({k: MONDAY[k] for k in ("live", "tape", "premarket")}, "2026-09-28T09:30:00-04:00", tz)
+    card = next(d for c, d in zip(got["main"], got["dom"]) if "pre" in c[0].split())
+    facts = _flat_text(next(k for k in card["kids"] if k["attrs"].get("class") == "facts"))
+    assert f"since the S&P futures reopened at {reopen} bitcoin futures (/MBT) fell" in facts
+    assert "Sunday" not in facts

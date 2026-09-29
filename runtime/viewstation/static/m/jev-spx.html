@@ -402,15 +402,24 @@ details .q{margin-top:8px}
       return (how.day ? p.weekday + ' ' : '') + ('0' + (+p.hour % 24)).slice(-2) + ':' + p.minute + (how.zone && p.timeZoneName ? ' ' + p.timeZoneName : '');
     } catch(e){ return '?'; }
   }
-  // A market-clock "HH:MM" on a stamp's day, as an instant: the stamp's own date and New York offset. For the
-  // few times the service still writes as market-clock words ("at 14:00 ET", "11:00 to 12:00"), which
-  // marketWords redraws in the viewer's zone.
-  function marketAt(iso, hhmm){
+  // A market-clock "HH:MM" on a stamp's day, or on the named weekday on or before it, as an instant: that date
+  // and the stamp's New York offset. For the few times the service still writes as market-clock words ("at 14:00
+  // ET", "11:00 to 12:00", "reopened at 18:00 Sunday"), which marketWords redraws in the viewer's zone, a named
+  // weekday redrawn as the viewer's: New York's Sunday 18:00 is Monday 07:00 in Tokyo.
+  var WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  var MARKET_TIME = /\b(?:(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday) )?(\d\d:\d\d)(?: ET)?(?: (Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday))?\b/g;
+  function marketAt(iso, hhmm, weekday){
     var m = /^(\d{4}-\d\d-\d\d)T.*?([+-]\d\d:\d\d|Z)$/.exec(iso || '');
-    return m ? Date.parse(m[1] + 'T' + hhmm + ':00' + m[2]) : NaN;
+    if(!m) return NaN;
+    var day = Date.parse(m[1] + 'T00:00:00Z');
+    if(weekday) day -= (new Date(day).getUTCDay() - WEEKDAYS.indexOf(weekday) + 7) % 7 * 86400000;
+    return Date.parse(new Date(day).toISOString().slice(0, 10) + 'T' + hhmm + ':00' + m[2]);
   }
   function marketWords(text, iso){
-    return String(text).replace(/\b(\d\d:\d\d)(?: ET)?\b/g, function(all, hhmm){ var t = marketAt(iso, hhmm); return isNaN(t) ? all : viewerTime(t); });
+    return String(text).replace(MARKET_TIME, function(all, before, hhmm, after){
+      var day = before || after, t = marketAt(iso, hhmm, day);
+      return isNaN(t) ? all : viewerTime(t, {day: !!day});
+    });
   }
   function sentence(s){ s = String(s); return s.charAt(0).toUpperCase() + s.slice(1); }
   // every note under a card, and every reason a question was skipped, reads as a sentence
