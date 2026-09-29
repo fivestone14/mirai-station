@@ -33,7 +33,8 @@ close cannot be formed writes its record with the reason, builds no labels and a
     state/spx_jev/archive/{day}.jsonl                 its ReadRecord, GradeRecord and CloseOutRecord lines, lane "premarket",
                                                       in the archive every lane shares
 
-The close-out at 10:06 waits up to service.BAR_WAIT_S for the bar its 10:04 check ends on (last_check), grades
+The close-out at 10:06 waits up to service.BAR_WAIT_S for the bar that finishes at 10:05, where its 30-minute check is
+measured (last_check), grades
 the morning's calls from the settled open (grade.run) and refreshes the card's calls and tally. Every time on the card is a full timestamp with its offset. A replay (--day with --at) saves
 nothing, checks nothing against the wall clock, and writes into a fresh scratch folder unless --out-dir names one.
 """
@@ -54,7 +55,6 @@ from .cuts import MIN_RANK_SESSIONS
 from .expiry import calendar_of
 from .hour import answer_sentences, average_request, average_window, hour_request, hour_summary, load_hour_doc, named_levels
 from .labels.label_set import LabelSet
-from .labels.measures import SETTLED_OPEN_BAR
 from .labels.registry import build_labels
 from .labels.rulers import normal_day_sigma
 from .lane import PREMARKET, TAPE
@@ -487,7 +487,7 @@ def card(scene: Scene | None, record: dict, doc: dict, out_dir: Path, unsent_rea
     basis = scene or Scene(row={"ts": record["row_ts"]}, rows_today=[], bars=[], prior_bars={}, now=read_at, sigma=0.0, premarket=True)
     live = service.card(basis, record["state"], record["omitted"], doc, record["requests"], record["skipped"], record["answers"],
                         record["sent"], record["send_seconds"], unsent_reason=unsent_reason, lane=PREMARKET)
-    start = market_at(day, SETTLED_OPEN_BAR)
+    start = grade.settled_open_at(day)
     call = newest_call(out_dir, day.isoformat())
     return {
         **{k: live[k] for k in LIVE_CARD_KEYS},
@@ -503,8 +503,8 @@ def card(scene: Scene | None, record: dict, doc: dict, out_dir: Path, unsent_rea
         "model": live["model"] or (call or {}).get("model"),
         "ruler": record["ruler"],
         "spot": record["spot"],
-        # the day's clock: the open, the settled open's bar both sums start from, the bars they end at, and
-        # the tape lane's first read, where the phone hands over
+        # the day's clock: the open, the settled open both sums start from (the close of its 09:34 bar, 09:35), the
+        # instants the grader checks them at (grade.mark_at), and the tape lane's first read, where the phone hands over
         "open": session_open(read_at).isoformat(),
         "start": start.isoformat(),
         "marks": [(start + timedelta(minutes=m)).isoformat() for m, _ in PREMARKET.horizons.values()],

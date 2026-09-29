@@ -121,7 +121,7 @@ PREMARKET = Lane(name="premarket", key="premarket", out_dir=f"{LIVE_DIR}/lanes/p
                  horizons={"open_10": (10, OPEN_10_FLAT_BAND_SIGMA), "open_30": (30, NEXT_30_FLAT_BAND_SIGMA)},
                  primary="open_30", cadence=False, tag="premarket", clock_blend=False, average="open_average_30",
                  schedule=("02:35", "03:35", "08:05", "08:48", "09:05", "09:28"),
-                 # the 30-minute mark is 10:04: the close-out at 10:06 finds its bar and grades the morning's calls
+                 # the 30-minute mark is 10:05, the close of the 10:04 bar: the close-out at 10:06 finds it and grades the morning's calls
                  close_out="10:06", graded_from_settled_open=True)
 
 LANES = {"live": LIVE, "tape": TAPE, "premarket": PREMARKET}

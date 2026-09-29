@@ -318,8 +318,11 @@ def test_every_time_on_the_card_is_a_full_timestamp(tmp_path, jev):
              *c["schedule"]["reads"], *c["schedule"]["jev_reads"], c["schedule"]["close_out"], c["hour"]["read_at"],
              *(s["at"] for s in c["story"])]
     assert all(datetime.fromisoformat(t).utcoffset() is not None for t in times)
-    assert (c["open"], c["start"], c["marks"], c["handover"]) == (at(9, 30).isoformat(), at(9, 34).isoformat(),
-                                                                  [at(9, 44).isoformat(), at(10, 4).isoformat()], at(9, 35).isoformat())
+    # the settled open and the checks at the grader's own instants (grade.mark_at), not the starts of the bars they close
+    assert (c["open"], c["start"], c["marks"], c["handover"]) == (at(9, 30).isoformat(), at(9, 35).isoformat(),
+                                                                  [at(9, 45).isoformat(), at(10, 5).isoformat()], at(9, 35).isoformat())
+    assert c["marks"] == [grade.mark_at(c["row_ts"], m, PREMARKET).isoformat() for m, _ in PREMARKET.horizons.values()]
+    assert c["marks"][1] == c["calls"][0]["mark"]
     assert c["checkpoint"] == at(9, 28).isoformat() and c["day"] == DAY and c["lane"] == "premarket"
 
 
