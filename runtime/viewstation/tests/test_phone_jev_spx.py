@@ -94,10 +94,14 @@ def test_the_page_reads_the_spx_cards_and_keeps_the_sndk_pages_modes():
     assert "fetch(URL_, {cache:'no-store'})" in JS and "fetch(TAPE_URL, {cache:'no-store'})" in JS
     assert "shownLeads = laneLeads(tape, Date.now(), marketDay());" in _fn("paint")
     assert "main.appendChild(laneCard(tape, tapeOk));" in _fn("paint") and "main.appendChild(foldLive(c));" in _fn("paint")
-    assert "sumCard(c, main);" in _fn("paint") and "openingDone(tape)" in _fn("paint")
+    assert "sumCard(c, main, count);" in _fn("paint") and "openingDone(tape)" in _fn("paint")
     assert "var ex = expiryLine(c); if(ex) main.appendChild(ex);" in _fn("paint")
     assert "laneLeads(tape, Date.now(), marketDay()) !== shownLeads" in _fn("tick")
     assert "setInterval(function(){ if(!document.hidden){ poll(); pollTape(); tick(); } }, POLL_MS);" in JS
+    # the live price rides the station's existing quote route, every SPOT_MS in a session the card is today's, and on load and waking
+    assert "var SPOT_URL = '/api/spot?ticker=SPX', SPOT_MS = 5000, SESSION_HOURS = ['09:30', '16:00'];" in JS
+    assert "setInterval(function(){ if(!document.hidden && todaysCard() && within(SESSION_HOURS)) pollSpot(); }, SPOT_MS);" in JS
+    assert "pollSpot();" in _fn("wake") and "poll(); pollTape(); pollSpot(); armMark(); armTapeMark();" in JS
     assert "LANE_HOURS = ['09:33', '16:05']" in JS and "within(LANE_HOURS)" in _fn("pollTape")
     assert "'jev.spx.folded'" in JS and "'jev.folded'" not in JS, "the SPX folds are kept apart from the SNDK ones"
     assert "<title>SPX · JEV</title>" in SPX and '<span id="h1">SPX &middot; JEV</span>' in SPX
@@ -421,7 +425,30 @@ def test_the_answered_chip_reads_the_cards_counts_under_their_own_names():
     answered = sum(1 for q in live["questions"] if q.get("answer"))
     for c in ({**live, "fresh_count": 7, "held_count": 3, "labels_count": 119}, {**live, "fresh": 7, "held": 3, "labels": 119}):
         got = _whole({"live": c, "tape": MONDAY["tape"], "premarket": MONDAY["premarket"]}, "2026-09-28T15:40:00-04:00")
-        assert got["state"][0] == f"{answered} of {len(c['questions'])} answered, 7 fresh on the 12:31 row"
+        # the chip closes the leading card, in its own box; the top keeps only trouble
+        card = next(d for k, d in zip(got["main"], got["dom"]) if k[0] == "card dashed")
+        assert card["kids"][-1]["attrs"]["class"] == "state answered"
+        assert _flat_text(card["kids"][-1]) == f"{answered} of {len(c['questions'])} answered, 7 fresh on the 12:31 row"
+        assert got["state"] == []
+
+
+def test_the_header_line_is_kept_for_a_stale_card_alone():
+    """Will's layout of 09-29: the row line under the title is gone. A fresh card and the day's last one after the
+    close say nothing there (the live price and the card's own clock do); a card gone stale mid-session still says so,
+    in subLine's words, and an error is still said there (say)."""
+    js = ("var READ_MINUTES = [2, 32], GONE_MIN = 60, STALE_MIN = 35, ROW_LEAD_MIN = 4, LAST_READ_DEFAULT = '15:32';"
+          + _fn("nextRead") + _fn("ageWord") + _fn("cardCount") + _fn("subLine") + _fn("staleLine")
+          + "console.log(JSON.stringify(staleLine(D.c, D.m)));")
+    c = {"row_ts": "2026-09-28T11:01:56-04:00", "labels_count": 43,
+         "session": {"close": "2026-09-28T16:00:00-04:00", "last_read": "2026-09-28T15:32:00-04:00"}}
+    assert _run(js, {"now": "2026-09-28T11:14:00-04:00", "c": c, "m": 12}, LA) == ""
+    assert _run(js, {"now": "2026-09-28T11:40:00-04:00", "c": c, "m": 38}, LA) == "row 08:01, 38 min ago, stale, next read 09:02"
+    last = {**c, "row_ts": "2026-09-28T15:31:56-04:00"}
+    assert _run(js, {"now": "2026-09-28T16:10:00-04:00", "c": last, "m": 38}, LA) == ""
+    # yesterday's last card in today's session (the service wrote nothing today) is said at the top
+    assert _run(js, {"now": "2026-09-29T11:00:00-04:00", "c": last, "m": 1168}, LA) == "after the close, last row 12:31, 43 labels"
+    assert "s.hidden = false;" in _fn("say") and "s.hidden = !text;" in _fn("setSub")
+    assert "setSub(staleLine(c, m));" in _fn("paint") and "setSub(staleLine(c, m));" in _fn("ages")
 
 
 # Widths measured in Chrome with the shipped face at the header line's 13px: the stale line with its label count ran
@@ -734,7 +761,7 @@ def test_the_opening_lane_is_drawn_while_the_30_minute_card_cannot_be_read():
           "var drew = laneOnly(); console.log(JSON.stringify([drew, shownLeads, MAIN.kids.map(function(k){ return k.textContent; })]));")
     tape = {"lane": "tape", "row_ts": "2026-09-28T10:00:00-04:00", "calls": [call("10:00", "10:10", "flat", 0.4)]}
     drew = _run(js, {"now": "2026-09-28T10:05:00-04:00", "last": None, "tape": tape})
-    assert drew == [True, True, ["opening · a call every 5 min", "2026-09-28T10:00:00-04:00", "30-min cardnot read yet"]]
+    assert drew == [True, True, ["2026-09-28T10:00:00-04:00", "30-min cardnot read yet"]]   # the mode chip heads the lane card
     # the pre-market call, handed over, folds under them
     drew = _run(js, {"now": "2026-09-28T10:05:00-04:00", "last": None, "tape": tape, "premarket": pre_card("09:28")})
     assert drew[2][-1] == "pre-market call 06:28Up 41%Checked 06:44 and 07:04"
@@ -745,22 +772,44 @@ def test_the_opening_lane_is_drawn_while_the_30_minute_card_cannot_be_read():
 def test_the_blend_note_names_the_phase_by_its_hours_in_the_viewers_zone():
     """clock.py names the phase in New York words and hours; in Los Angeles "lunch" would sit beside 09:00, so
     the page keeps only the hours, redrawn in the viewer's zone."""
-    js = (_var("ODDS_ORDER") + _fn("oddsKeys") + _fn("top1") + _fn("oneAnswer") + _fn("phaseSpan") + _fn("howChart") +
-          "console.log(JSON.stringify(D.w.map(function(w){ return howChart(D.h, {used: true, sessions: 19, phase_words: w}, D.at)"
+    js = (_how() + "console.log(JSON.stringify(D.w.map(function(w){ return howChart(D.h, {used: true, sessions: 19, phase_words: w}, D.at)"
           ".kids.slice(-1)[0].textContent; })));")
     h = {"probabilities": {"up": 0.2, "down": 0.3, "flat": 0.5}, "jev": {"probabilities": {"up": 0.2, "down": 0.3, "flat": 0.5}},
          "clock": {"probabilities": {"up": 0.2, "down": 0.3, "flat": 0.5}}}
     got = _run(js, {"h": h, "at": "2026-09-28T12:31:00-04:00", "now": "2026-09-28T12:35:00-04:00",
                     "w": ["lunch, 12:00 to 14:00", "the afternoon, 14:00 to the close", "the opening half hour, before 10:00"]}, LA)
-    assert got == [f"Shown is half JEV, half how this time of day ({span}) went over the last 19 sessions."
+    assert got == [f"The call above is half of each. Last 19 days looks only at this time of day ({span})."
                    for span in ("09:00 to 11:00", "11:00 to the close", "before 07:00")]
+
+
+def _how():
+    return (_var("ODDS_ORDER") + _fn("oddsKeys") + _fn("top1") + _fn("oneAnswer") + _fn("phaseSpan") + _fn("howBar") + _fn("tile")
+            + _fn("howChart"))
+
+
+def test_the_blend_is_drawn_as_two_tiles_and_only_the_time_of_day_one_opens_the_sheet():
+    """Will's layout of 09-29: the three rows (JEV, Time of day, Shown) fold into two tiles under the call, which is
+    what is shown. JEV's tile says how sure it was; the last sessions' tile opens the time-of-day sheet, and only when
+    the card carries its counts (the card's time_of_day), so a card without them draws a tile that is not a button."""
+    js = (_how() + "var opened = []; function openTod(tod, bl, at, from){ opened.push(from.tag); }"
+          "var g = howChart(D.h, {used: true, sessions: 19, phase: 'lunch', phase_words: 'lunch, 12:00 to 14:00'}, D.at, D.tod);"
+          "console.log(JSON.stringify(g.kids.map(function(k){ return [k.tag, k.attrs['class'], k.textContent]; })));")
+    h = {"probabilities": {"up": 0.13, "down": 0.5, "flat": 0.37}, "jev": {"probabilities": {"up": 0.05, "down": 0.85, "flat": 0.1}, "confidence": 0.78},
+         "clock": {"probabilities": {"up": 0.22, "down": 0.14, "flat": 0.64}}}
+    tod = {"phases": [{"phase": "lunch", "from": "12:00", "to": "14:00", "probabilities": {"up": 0.22, "down": 0.14, "flat": 0.64}, "n": 215}],
+           "days": []}
+    got = _run(js, {"h": h, "tod": tod, "at": "2026-09-29T13:01:00-04:00", "now": "2026-09-29T13:04:00-04:00"}, LA)
+    assert got == [["div", "tile", "JEV · 78% sureDown 85%"], ["button", "tile", "Last 19 daysFlat 64%"],
+                   ["div", "how-note", "The call above is half of each. Last 19 days looks only at this time of day (09:00 to 11:00)."]]
+    bare = _run(js, {"h": h, "tod": None, "at": "2026-09-29T13:01:00-04:00", "now": "2026-09-29T13:04:00-04:00"}, LA)
+    assert [k[0] for k in bare] == ["div", "div", "div"]
+    assert "hc.appendChild(howChart(a, bl, c.row_ts, a !== h ? c.time_of_day : null));" in _fn("sumCard")
 
 
 def test_the_reason_a_sum_stands_alone_gives_its_times_in_the_viewers_zone():
     """clock.py says why the time-of-day odds were left out in market words ("a 13:00 half day"); the phone redraws
     the time in the viewer's zone like every other."""
-    js = (_var("ODDS_ORDER") + _fn("oddsKeys") + _fn("top1") + _fn("oneAnswer") + _fn("phaseSpan") + _fn("howChart") +
-          "console.log(JSON.stringify(howChart(D.h, {used: false, why: D.why}, D.at).kids.slice(-1)[0].textContent));")
+    js = (_how() + "console.log(JSON.stringify(howChart(D.h, {used: false, why: D.why}, D.at).kids.slice(-1)[0].textContent));")
     got = _run(js, {"h": {"probabilities": {"up": 0.2, "down": 0.3, "flat": 0.5}}, "at": "2026-11-27T10:02:00-05:00",
                     "now": "2026-11-27T10:05:00-05:00", "why": "a 13:00 half day; the time-of-day odds are counted on full sessions"}, LA)
     assert got == "JEV\u2019s sum alone: a 10:00 half day; the time-of-day odds are counted on full sessions"
@@ -786,22 +835,127 @@ def test_the_folded_30_minute_line_counts_down_only_a_call_that_was_made():
         ["30-min read 06:31", "No 30-minute call on this read, next read 07:02"], 0]
 
 
+# the time-of-day sheet over 09-29's real counts (clock._blocks on the 20 sessions before it): five parts, 09-01 left out
+TOD_0929 = {
+    "phases": [{"phase": "opening", "from": "2026-09-29T09:30:00-04:00", "to": "2026-09-29T10:00:00-04:00", "probabilities": {"up": 0.2857, "down": 0.4155, "flat": 0.2987}, "n": 58},
+               {"phase": "morning", "from": "2026-09-29T10:00:00-04:00", "to": "2026-09-29T11:00:00-04:00", "probabilities": {"up": 0.3068, "down": 0.3627, "flat": 0.3304}, "n": 112},
+               {"phase": "late_morning", "from": "2026-09-29T11:00:00-04:00", "to": "2026-09-29T12:00:00-04:00", "probabilities": {"up": 0.3203, "down": 0.1855, "flat": 0.4943}, "n": 110},
+               {"phase": "lunch", "from": "2026-09-29T12:00:00-04:00", "to": "2026-09-29T14:00:00-04:00", "probabilities": {"up": 0.2152, "down": 0.1434, "flat": 0.6414}, "n": 215},
+               {"phase": "afternoon", "from": "2026-09-29T14:00:00-04:00", "to": "2026-09-29T16:00:00-04:00", "probabilities": {"up": 0.1739, "down": 0.1932, "flat": 0.6329}, "n": 188}],
+    "days": [{"day": "2026-09-28", "counted": True, "counts": {"opening": {"up": 1, "down": 3, "flat": 0}, "morning": {"up": 1, "down": 3, "flat": 1},
+                                                              "late_morning": {"up": 3, "down": 1, "flat": 2}, "lunch": {"up": 5, "down": 2, "flat": 5},
+                                                              "afternoon": {"up": 0, "down": 5, "flat": 5}}},
+             {"day": "2026-09-15", "counted": True, "counts": {"opening": {"up": 0, "down": 3, "flat": 0}, "morning": {"up": 1, "down": 4, "flat": 1},
+                                                              "late_morning": {"up": 2, "down": 0, "flat": 3}, "lunch": {"up": 1, "down": 0, "flat": 2},
+                                                              "afternoon": {"up": 1, "down": 4, "flat": 5}}},
+             {"day": "2026-09-01", "counted": False, "counts": {"opening": {"up": 0, "down": 0, "flat": 0}, "morning": {"up": 1, "down": 3, "flat": 0},
+                                                               "late_morning": {"up": 1, "down": 0, "flat": 1}, "lunch": {"up": 0, "down": 0, "flat": 1},
+                                                               "afternoon": {"up": 3, "down": 5, "flat": 1}}}]}
+
+
+def _tod_sheet(tz=LA, pick=None):
+    js = ("var IDS = {csTitle: el('div'), csBody: el('div')}; function $(id){ return IDS[id]; } var opened = 0, MiraiSheet = {open: function(){ opened++; }};"
+          "Node.prototype.addEventListener = function(k, f){ this.on = f; };"
+          + _var("ODDS_ORDER") + _fn("oddsKeys") + _fn("top1") + _fn("oneAnswer") + _fn("howBar") + _fn("tag") + _var("MONTHS") + _fn("dayWords")
+          + _fn("partSpan") + _fn("readings") + _fn("openTod")
+          + "openTod(D.tod, {sessions: 19, phase: 'lunch'}, D.at, el('button'));"
+          "var rows = IDS.csBody.kids[1].kids; if(D.pick != null) rows[D.pick].on();"
+          "console.log(JSON.stringify({title: IDS.csTitle.textContent, opened: opened,"
+          " rows: IDS.csBody.kids[1].kids.map(function(r){ return [r.attrs['class'], r.kids.map(function(k){ return k.textContent; })]; }),"
+          " list: IDS.csBody.kids[2].kids.map(function(r){ return [r.attrs['class'], r.textContent, r.kids[1] && r.kids[1].style.width]; })}));")
+    return _run(js, {"tod": TOD_0929, "at": "2026-09-29T13:01:00-04:00", "now": "2026-09-29T13:04:00-04:00", "pick": pick}, tz)
+
+
+def test_the_time_of_day_sheet_opens_on_the_reads_own_part_in_the_viewers_hours():
+    """The sheet Will sketched on 09-29: each part of the day's odds over the counted sessions, its hours in the
+    viewer's zone, the read's own part chosen and said to be used in this call, then that part day by day, newest first,
+    a thin day said so and a day with too few graded reads left out."""
+    got = _tod_sheet()
+    assert got["title"] == "Time of day · last 19 days" and got["opened"] == 1
+    assert got["rows"] == [
+        ["tb", ["06:30–07:00", "", "Down 42%", "58 readings"]],
+        ["tb", ["07:00–08:00", "", "Down 36%", "112 readings"]],
+        ["tb", ["08:00–09:00", "", "Flat 49%", "110 readings"]],
+        ["tb on", ["09:00–11:00", "", "Flat 64%", "215 readings · now, used in this call"]],
+        ["tb", ["11:00–13:00", "", "Flat 63%", "188 readings"]]]
+    assert got["list"][0] == ["td-h", "09:00–11:00, day by day", None]
+    assert got["list"][1:4] == [["td", "Sep 2812 of 12", "100%"], ["td thin", "Sep 153 of 12 · thin", "25%"], ["td out", "Sep 1left out", None]]
+    assert got["list"][-1][1].startswith("Each part leans a little toward the whole day’s odds")
+    # in Tokyo the same parts read in Tokyo's hours
+    assert [r[1][0] for r in _tod_sheet(TOKYO)["rows"]] == ["22:30–23:00", "23:00–00:00", "00:00–01:00", "01:00–03:00", "03:00–05:00"]
+
+
+def test_a_tap_on_another_part_lists_that_part_day_by_day():
+    got = _tod_sheet(pick=0)
+    assert [r[0] for r in got["rows"]] == ["tb on", "tb", "tb", "tb", "tb"]
+    assert got["rows"][3][1][3] == "215 readings · now, used in this call"      # the read's own part is still named
+    assert got["list"][0][1] == "06:30–07:00, day by day"
+    # the opening's most is Sep 28's 4: Sep 15's 3 is not thin; Sep 1 is left out of every part, its own count unsaid
+    assert got["list"][1:4] == [["td", "Sep 284 of 4", "100%"], ["td", "Sep 153 of 4", "75%"], ["td out", "Sep 1left out", None]]
+
+
+def _price_strip(data, tz=LA):
+    js = ("var IDS = {}; ['px', 'pxLive', 'pxK', 'pxV', 'pxC', 'pxS'].forEach(function(k){ IDS[k] = el('div'); IDS[k].hidden = true; });"
+          "function $(id){ return IDS[id]; } var last = D.last, spot = D.spot && {price: D.spot, at: Date.parse(D.at), fresh: D.fresh};"
+          + _var("SPOT_URL") + _var("SPOT_LIVE_MS") + _fn("within") + _fn("money") + _fn("todaysCard") + _fn("paintPx")
+          + "paintPx(); console.log(JSON.stringify({shown: !IDS.px.hidden, live: !IDS.pxLive.hidden, k: IDS.pxK.textContent,"
+          " v: IDS.pxV.textContent, c: IDS.pxC.textContent, cls: IDS.pxC.className, s: IDS.pxS.textContent}));")
+    return _run(js, data, tz)
+
+
+def test_the_live_price_says_its_change_since_the_last_close_only_on_todays_card():
+    """Will's layout of 09-29: the SPX print on top, from the station's quote (/api/spot), its change measured from the
+    card's prior_close (service.prior_close_of: the last minute bar of the session before). Live only in the session on a
+    day the card is today's; a quote that failed keeps its price as of when it came; before the open the card is the day
+    before's, so no change is said."""
+    last = {"row_ts": "2026-09-29T13:01:56-04:00", "prior_close": {"day": "2026-09-28", "at": "2026-09-28T15:59:00-04:00", "price": 7684.5}}
+    live = _price_strip({"now": "2026-09-29T13:04:00-04:00", "at": "2026-09-29T13:04:00-04:00", "spot": 7656.39, "fresh": True, "last": last})
+    assert live == {"shown": True, "live": True, "k": "SPX live", "v": "7,656.39", "c": "−28.11 (−0.37%)", "cls": "px-c dn",
+                    "s": "since the last close"}
+    held = _price_strip({"now": "2026-09-29T13:04:30-04:00", "at": "2026-09-29T13:04:00-04:00", "spot": 7656.39, "fresh": False, "last": last})
+    assert held["live"] is False and held["k"] == "SPX · 10:04" and held["c"] == "−28.11 (−0.37%)"
+    # a quote that stopped coming (a phone woken after half an hour) is never drawn live, however it last came
+    old = _price_strip({"now": "2026-09-29T13:34:00-04:00", "at": "2026-09-29T13:04:00-04:00", "spot": 7656.39, "fresh": True, "last": last})
+    assert old["live"] is False and old["k"] == "SPX · 10:04"
+    # after the close the print is the close, said so, with the day's change
+    shut = _price_strip({"now": "2026-09-29T16:20:00-04:00", "at": "2026-09-29T16:20:00-04:00", "spot": 7660.0, "fresh": True, "last": last})
+    assert shut["live"] is False and shut["k"] == "SPX · last close" and shut["c"] == "−24.50 (−0.32%)"
+    up = _price_strip({"now": "2026-09-29T13:04:00-04:00", "at": "2026-09-29T13:04:00-04:00", "spot": 7700, "fresh": True, "last": last})
+    assert up["c"] == "+15.50 (+0.20%)" and up["cls"] == "px-c up"
+    before = _price_strip({"now": "2026-09-30T08:10:00-04:00", "at": "2026-09-30T08:10:00-04:00", "spot": 7690.1, "fresh": True, "last": last})
+    assert before["live"] is False and before["c"] == "" and before["s"] == "" and before["v"] == "7,690.10" and before["k"] == "SPX · last close"
+    assert _price_strip({"now": "2026-09-29T13:04:00-04:00", "at": "2026-09-29T13:04:00-04:00", "spot": None, "fresh": False, "last": last})["shown"] is False
+    assert '<div class="px" id="px" hidden>' in SPX and ".px[hidden]{display:none}" in SPX
+    assert _fn("draw").rstrip().endswith("paintPx(); }")          # a card that lands after the quote draws the strip again
+
+
+def test_the_mode_and_answered_chips_live_inside_the_leading_card():
+    """The mode chip heads the leading card and the answered chip closes it, each in its own box; the top keeps only
+    trouble (a failed fetch, an unsent read, a stale row's note)."""
+    assert "hc.appendChild(el('div', 'mode', 'normal \\u00B7 a call every 30 min'));" in _fn("sumCard")
+    assert "box.appendChild(el('div', 'mode', 'opening \\u00B7 a call every 5 min'));" in _fn("laneCard")
+    assert "'mode'" not in _fn("laneOnly") and "main.appendChild(el('div', 'mode'" not in _fn("paint")
+    assert "if(count) hc.appendChild(count);" in _fn("sumCard") and "if(count) he.appendChild(count);" in _fn("sumCard")
+    assert ".card>.mode{width:fit-content;margin-bottom:12px}" in SPX and ".card>.answered{display:table;margin-top:12px}" in SPX
+
+
 def test_a_learned_mix_on_the_phone_is_named_as_such_with_the_half_and_half_kept_beneath():
     """A loop's shown swaps the learned mix into the odds it shows, keeps the exact blend beside it and marks
     shown_source; the chart must name which one is shown and still draw the other."""
-    js = (_var("ODDS_ORDER") + _fn("oddsKeys") + _fn("top1") + _fn("oneAnswer") + _fn("phaseSpan") + _fn("howChart") +
-          "var g = howChart(D.h, {used: true, sessions: 19, phase_words: 'lunch, 12:00 to 14:00'}, D.at);"
-          "console.log(JSON.stringify(g.kids.filter(function(k){ return /how-k|how-v|how-note/.test(k.attrs['class'] || ''); })"
-          ".map(function(k){ return k.textContent; })));")
+    js = (_how() + "var g = howChart(D.h, {used: true, sessions: 19, phase_words: 'lunch, 12:00 to 14:00'}, D.at);"
+          "console.log(JSON.stringify(g.kids.map(function(k){ return k.textContent; })));")
     odds = {"up": 0.2, "down": 0.3, "flat": 0.5}
     half = {"up": 0.3, "down": 0.1, "flat": 0.4, "unsure": 0.2}
     h = {"probabilities": odds, "jev": {"probabilities": odds}, "clock": {"probabilities": odds}, "blend50_exact": half,
          "shown_source": "pool_v1"}
     got = _run(js, {"h": h, "at": "2026-09-28T12:31:00-04:00", "now": "2026-09-28T12:35:00-04:00"}, LA)
-    assert got[:8] == ["JEV", "Flat 50%", "Time of day", "Flat 50%", "Half & half", "Flat 40%", "Learned mix", "Flat 50%"]
-    assert got[8].startswith("Shown is the learned mix. It took over from half JEV, half time of day")
+    assert got[:2] == ["JEVFlat 50%", "Last 19 daysFlat 50%"]
+    assert got[2] == ("The call above is the learned mix. It took over from half of each once it did better over at least 20 trading days,"
+                      " and it hands back if it starts doing worse; half of each reads Flat 40%. Last 19 days looks only at this time of day"
+                      " (09:00 to 11:00).")
     blend = _run(js, {"h": {**h, "shown_source": "blend50_exact"}, "at": "2026-09-28T12:31:00-04:00", "now": "2026-09-28T12:35:00-04:00"}, LA)
-    assert blend[::2][:3] == ["JEV", "Time of day", "Shown"] and len(blend) == 7 and blend[6].startswith("Shown is half JEV")
+    assert blend == ["JEVFlat 50%", "Last 19 daysFlat 50%",
+                     "The call above is half of each. Last 19 days looks only at this time of day (09:00 to 11:00)."]
 
 
 def test_the_calls_chart_names_the_average_price_loops_learned_mix_and_never_the_end_price_loops(monkeypatch):
@@ -820,13 +974,13 @@ def test_the_calls_chart_names_the_average_price_loops_learned_mix_and_never_the
            "clock": {"probabilities": END_30["probabilities"]}}
     c = {"row_ts": "2026-09-28T12:32:10-04:00", "marks": {"next_30": "2026-09-28T13:02:00-04:00"}, "calls": [],
          "hour": {**end, "shown_source": SHOWN_BLEND, "average": pooled}}
-    how = next(v for k, v in _sum_card(c) if k == "how")
-    assert "Half & halfUp 45%Learned mixUp 52%" in how and "Shown is the learned mix" in how
-    # the end-price loop promoted, the call still on its blend: the chart says the call's half-and-half is shown
+    how = next(v for k, v in _sum_card(c) if k == "tod")
+    assert "The call above is the learned mix" in how and "half of each reads Up 45%" in how
+    # the end-price loop promoted, the call still on its blend: the tiles say the call is half of each
     c["hour"] = {**end, "shown_source": SHOWN_POOL, "blend50_exact": half,
                  "average": {**pooled, "probabilities": half, "pick": "up", "shown_source": SHOWN_BLEND}}
-    how = next(v for k, v in _sum_card(c) if k == "how")
-    assert "Learned mix" not in how and "ShownUp 45%" in how and "Shown is half JEV" in how
+    how = next(v for k, v in _sum_card(c) if k == "tod")
+    assert "learned mix" not in how and "The call above is half of each." in how
 
 
 # ---- before the open: the pre-market card (skills/spx-jev, spx_jev.premarket)
@@ -1343,7 +1497,7 @@ def _parts(node):
 
 
 def _sum_card(c, tz=LA):
-    js = (CARD_STUBS + _odds() + "".join(_fn(f) for f in ("top1", "oneAnswer", "phaseSpan", "howChart", "tag", "skipLine", "plusIso",
+    js = (CARD_STUBS + _odds() + "".join(_fn(f) for f in ("top1", "oneAnswer", "phaseSpan", "howBar", "tile", "howChart", "tag", "skipLine", "plusIso",
                                                             "averageWords", "endPriceRow", "sumCard"))
           + "var main = el('main'); sumCard(D.c, main); console.log(JSON.stringify(dump(main.kids[0])));")
     return _parts(_run(js, {"c": c, "now": "2026-09-28T11:10:00-04:00"}, tz))
@@ -1359,7 +1513,8 @@ def test_the_30_minute_card_leads_with_the_average_price_call_and_keeps_the_end_
     c = {"row_ts": "2026-09-28T11:02:10-04:00", "hour": hour, "marks": {"next_30": "2026-09-28T11:32:00-04:00", "next_60": "2026-09-28T12:02:00-04:00"},
          "calls": [call("11:02", "11:32", "up", 0.55)]}
     parts = _sum_card(c)
-    assert parts[1] == ["big", "Up 55%"]
+    assert parts[0] == ["mode", "normal · a call every 30 min"]   # the mode chip heads the card
+    assert parts[2] == ["big", "Up 55%"]
     said = dict((k, v) for k, v in parts if k in ("tag", "row60") and v.startswith(("On the", "End-price")))
     assert said == {"tag": "On the average price over the next 30 minutes, flat within \u00B13.11 points", "row60": "End-price questionFlat 80%"}
     how = next(v for k, v in parts if k == "how")
@@ -1367,7 +1522,7 @@ def test_the_30_minute_card_leads_with_the_average_price_call_and_keeps_the_end_
     assert any(k == "row60" and v.startswith("Next 60 min, end priceUp 50%") for k, v in parts)   # an end-price sum, said so
     # a card from before the average-price sum leads with the end-price sum and has no end-price line beside it
     old = _sum_card({**c, "hour": {k: v for k, v in hour.items() if k != "average"}})
-    assert old[1] == ["big", "Flat 80%"] and not any(v.startswith(("End-price", "On the")) for _, v in old)
+    assert old[2] == ["big", "Flat 80%"] and not any(v.startswith(("End-price", "On the")) for _, v in old)
 
 
 def test_the_last_reads_clock_looks_as_far_ahead_as_its_average_runs():
@@ -1375,7 +1530,7 @@ def test_the_last_reads_clock_looks_as_far_ahead_as_its_average_runs():
     28 minutes": the clock takes the call's own minutes (hour.average.minutes); a card with no average-price call keeps
     its calls' horizon."""
     js = (CARD_STUBS + "function clockBlock(read, minutes, mark){ return el('div', 'clock', 'Looks ' + minutes + ' min ahead, graded ' + mark); }"
-          + _odds() + "".join(_fn(f) for f in ("top1", "oneAnswer", "phaseSpan", "howChart", "tag", "skipLine", "plusIso", "averageWords",
+          + _odds() + "".join(_fn(f) for f in ("top1", "oneAnswer", "phaseSpan", "howBar", "tile", "howChart", "tag", "skipLine", "plusIso", "averageWords",
                                                 "endPriceRow", "sumCard"))
           + "console.log(JSON.stringify(D.c.map(function(c){ var main = el('main'); sumCard(c, main); return dump(main.kids[0]); })));")
     hour = {**END_30, "used": 12, "by": {"next_30": END_30}, "average": {**AVG, "minutes": 28}}
@@ -1383,9 +1538,9 @@ def test_the_last_reads_clock_looks_as_far_ahead_as_its_average_runs():
          "calls": [call("15:32", "16:00", "up", 0.55) | {"minutes": 30}]}
     old = {**c, "hour": {k: v for k, v in hour.items() if k != "average"}}
     now, before = [_parts(d) for d in _run(js, {"c": [c, old], "now": "2026-09-28T15:40:00-04:00"})]
-    assert now[0] == ["clock", "Looks 28 min ahead, graded 2026-09-28T16:00:00-04:00"]
+    assert now[1] == ["clock", "Looks 28 min ahead, graded 2026-09-28T16:00:00-04:00"]
     assert ["tag", "On the average price over the next 28 minutes, flat within \u00B13.11 points"] in now
-    assert before[0] == ["clock", "Looks 30 min ahead, graded 2026-09-28T16:00:00-04:00"]
+    assert before[1] == ["clock", "Looks 30 min ahead, graded 2026-09-28T16:00:00-04:00"]
 
 
 def test_the_opening_card_leads_with_the_average_call_and_keeps_the_end_prices_size_as_its_second_line():
@@ -1397,7 +1552,8 @@ def test_the_opening_card_leads_with_the_average_call_and_keeps_the_end_prices_s
     js = (CARD_STUBS + "Object.defineProperty(Node.prototype, 'childNodes', {get: function(){ return this.kids; }});" + _odds() + _var("RULER_HELD_UNTIL") + "".join(_fn(f) for f in ("top1", "tag", "skipLine", "averageWords", "endPriceRow", "laneCard"))
           + "console.log(JSON.stringify(dump(laneCard(D.t, true))));")
     parts = _parts(_run(js, {"t": t, "now": "2026-09-28T10:42:00-04:00"}))
-    assert parts[1] == ["big", "Up 55%"] and ["row60", "End-price questionUp small 40%"] in parts
+    assert parts[0] == ["mode", "opening · a call every 5 min"]   # the mode chip heads the lane card
+    assert parts[2] == ["big", "Up 55%"] and ["row60", "End-price questionUp small 40%"] in parts
     assert ["tag", "On the average price over the next 10 minutes, flat within \u00B11.66 points"] in parts
     assert ["odds", "End-price question: a big move 15%"] in parts   # the size, from the end-price sum and said so; its direction is the call's
 
@@ -1470,7 +1626,7 @@ def test_a_read_whose_average_question_went_unanswered_says_so_and_stands_on_its
     c = {"row_ts": "2026-09-28T11:02:10-04:00", "hour": hour, "marks": {"next_30": "2026-09-28T11:32:00-04:00"}, "calls": []}
     parts = _sum_card(c)
     fallback = "No average-price answer (HTTP 529), so the call is the end-price question\u2019s"
-    assert parts[1] == ["big", "Flat 80%"] and ["skip", fallback] in parts
+    assert parts[2] == ["big", "Flat 80%"] and ["skip", fallback] in parts
     assert not any(v.startswith("End-price question") for _, v in parts)
     fell = {**call("11:02", "11:32", "flat", 0.8), "sum": "next_30", "average_missing": "HTTP 529", "odds": END_30["probabilities"],
             "end_price": {"outcome": "flat", "hit": True, "pick": "flat", "p": 0.8}, "end_price_only": True}
@@ -1597,7 +1753,13 @@ def _whole(cards, now, tz=LA):
 def test_mondays_real_cards_draw_whole_in_every_zone(now, leads, tz):
     got = _whole({k: MONDAY[k] for k in ("live", "tape", "premarket")}, now, tz)
     assert not got["err"], got["sub"]
-    assert got["main"][0] == ["mode", leads]
+    if leads == "before the open":
+        assert got["main"][0] == ["mode", leads]
+        return
+    # in the session the mode chip heads the leading card, and the header line says nothing of a fresh card
+    card = next(d for k, d in zip(got["main"], got["dom"]) if k[0] == "card dashed")
+    assert [card["kids"][0]["attrs"]["class"], _flat_text(card["kids"][0])] == ["mode", leads]
+    assert got["sub"] == "" and not any(k[0] == "mode" for k in got["main"])
 
 
 @pytest.mark.parametrize("tz", [LA, TOKYO, KOLKATA])
@@ -1673,10 +1835,13 @@ def test_a_live_card_with_no_sum_says_so_when_the_30_minute_call_leads(tz, next_
     tape = {**MONDAY["tape"], "row_ts": "2026-09-28T09:55:00-04:00", "calls": calls, "closed_out_at": None}
     got = _whole({"live": live, "tape": tape}, "2026-09-28T10:10:00-04:00", tz)
     assert not got["err"], got["sub"]
-    assert got["main"][0] == ["mode", "normal · a call every 30 min"]
     card = next(d for c, d in zip(got["main"], got["dom"]) if c[0] == "card dashed")
-    assert _flat_text(card["kids"][1]) == f"No 30-minute call on this read, next read {next_read}"
-    assert [k["attrs"].get("class") for k in card["kids"]] == ["lab", "skip"]
+    assert _flat_text(card["kids"][0]) == "normal · a call every 30 min"
+    assert _flat_text(card["kids"][2]) == f"No 30-minute call on this read, next read {next_read}"
+    assert [k["attrs"].get("class") for k in card["kids"]] == ["mode", "lab", "skip", "tag", "state answered"]
+    read = {LA: "06:31", TOKYO: "22:31", KOLKATA: "19:01"}[tz]
+    assert _flat_text(card["kids"][3]) == f"The {read} read"      # the header no longer names the row, so the card does
+    assert got["sub"].startswith("row ") and ", stale" in got["sub"]     # the 09:31 card is 39 minutes old: said at the top
 
 
 # Chrome with the shipped face: the result words beside a bar as drawn, "Was <outcome> · " at 10.5px and the verdict

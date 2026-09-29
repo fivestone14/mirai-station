@@ -328,7 +328,26 @@ def integral_odds(state_dir: Path, out_dir: Path, prior_bars: dict[str, list[dic
     c = _phase_odds([cache[d]["counts"] for d in counted], ph)
     if c is None:
         return {"left_out": "no prior session produced a read graded on the average price"}
-    return {"phase": ph, "phase_words": phase_words(ph), "sessions": len(counted), "by": {lane.average: c}}
+    return {"phase": ph, "phase_words": phase_words(ph), "sessions": len(counted), "by": {lane.average: c},
+            "blocks": _blocks(days, counted, cache, now)}
+
+
+def _blocks(days: list[str], counted: list[str], cache: dict, now: datetime) -> dict:
+    """What the phone's time-of-day sheet draws: each phase's odds as the blend would take them at that time of day
+    (``_phase_odds``, shrunk alike), with its span as full stamps on the read's day (the phone draws every time in the
+    viewer's zone), and every prior session's counts per phase, newest first, a session with too few graded reads
+    marked as left out of the odds (``counted`` false)."""
+    kept = [cache[d]["counts"] for d in counted]
+    stamp = lambda m: now.replace(hour=m // 60, minute=m % 60, second=0, microsecond=0).isoformat()
+    phases = []
+    for name, lo, hi, _ in PHASES:
+        o = _phase_odds(kept, name)
+        if o is not None:
+            phases.append({"phase": name, "from": stamp(lo), "to": stamp(hi), **o})
+    return {"phases": phases,
+            "days": [{"day": d, "counted": d in counted,
+                      "counts": {p[0]: {o: cache[d]["counts"].get(p[0], {}).get(o, 0) for o in OUTCOMES} for p in PHASES}}
+                     for d in days]}
 
 
 def premarket_odds(state_dir: Path, prior_bars: dict[str, list[dict]], now: datetime) -> dict:

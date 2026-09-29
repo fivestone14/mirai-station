@@ -111,6 +111,38 @@ def test_a_live_read_calls_the_average_and_its_grade_grades_that_pick_with_its_s
     assert read["schema_version"] == archive.SCHEMA_VERSION == 5
 
 
+def test_the_card_alone_carries_the_time_of_day_sheet_and_the_last_close(fixture_run):
+    """Will's layout of 09-29: the phone's time-of-day sheet draws every part of the day over the counted sessions, and
+    its live price measures its change from the last close. Both ride the card alone (service.run_once): the day's
+    records, the sums the grader reads and the archive stay as they were."""
+    live, _, _ = fixture_run
+    card = json.loads((live / "latest.json").read_text())
+    tod = card["time_of_day"]
+    assert [p["phase"] for p in tod["phases"]] == ["opening", "morning", "late_morning", "lunch", "afternoon"]
+    assert len(tod["days"]) == 10 and all(d["counted"] for d in tod["days"])
+    lunch = next(p for p in tod["phases"] if p["phase"] == card["hour"]["average"]["blend"]["phase"])
+    assert lunch["probabilities"] == card["hour"]["average"]["clock"]["probabilities"]
+    prior = max(tod["days"], key=lambda d: d["day"])["day"]
+    assert card["prior_close"]["day"] == prior and card["prior_close"]["at"] == f"{prior}T16:00:00-04:00"
+    for path in (live / f"{DAY}.jsonl", live / "hour" / f"{DAY}.jsonl", live / "archive" / f"{DAY}.jsonl"):
+        text = path.read_text()
+        assert '"time_of_day":' not in text and '"blocks":' not in text and '"prior_close":' not in text, path
+
+
+def test_the_last_close_is_the_trading_day_befores_a_half_day_included():
+    """The live price's change is measured from the close of the trading day before (the scene's prior_day), as the
+    pre-market lane takes it: after the 13:00 half day of 11-27 it is that day's 13:00 close, never the last full
+    session's, and a day with no closing bar or no saved bars gives no close rather than a mid-afternoon price."""
+    from types import SimpleNamespace
+    from spx_jev.service import prior_close_of
+    half = [{"ts": "2026-11-27T12:58:00-05:00", "close": 6001.0}, {"ts": "2026-11-27T12:59:00-05:00", "close": 6002.25}]
+    assert prior_close_of(SimpleNamespace(prior_day=("2026-11-27", half))) == {
+        "prior_close": {"day": "2026-11-27", "at": "2026-11-27T13:00:00-05:00", "price": 6002.25}}
+    short = [{"ts": "2026-09-28T14:10:00-04:00", "close": 7690.0}]
+    assert prior_close_of(SimpleNamespace(prior_day=("2026-09-28", short))) == {}
+    assert prior_close_of(SimpleNamespace(prior_day=None)) == {}
+
+
 def test_weights_json_keeps_each_lanes_call_on_record_from_its_average_price_grades(fixture_run):
     """The call on the phone has a lasting record beside the end-price sums': the live call's one read, flat called
     and the average up, is a miss scored at its 1.26 Brier with JEV's own and the clock's beside it; each other lane's

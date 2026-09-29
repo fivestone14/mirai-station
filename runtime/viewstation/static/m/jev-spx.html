@@ -9,8 +9,10 @@
   The SPX JEV decision card, beta: the SNDK JEV page (jev.html) laid out the
   same, over the SPX service's cards. Reads state/spx_jev/latest.json and the
   tape and pre-market lanes' latest.json through the viewstation's existing
-  read-only raw-file route, so nothing in server.py changes for it. All three
-  are written by skills/spx-jev (its own launchd jobs), never by the scan.
+  read-only raw-file route, and the live SPX print through its existing
+  /api/spot route (one cached Schwab quote), so nothing in server.py changes
+  for it. All three cards are written by skills/spx-jev (its own launchd
+  jobs), never by the scan.
 
   Two modes in the session, switched by the clock and the cards alone, as on
   the SNDK page, and the pre-market card before them.
@@ -36,8 +38,9 @@
 
   Same paper as the glance: its tokens, its card, its label row, its tab bar.
   No dark mode, because the glance has none. House rules kept: text goes in
-  with textContent only, no emoji, no arrows, the row's time and age always
-  shown, a failed fetch keeps the last card on screen and says so. Every answer
+  with textContent only, no emoji, no arrows, each card's read time shown on
+  it and a stale row said at the top, a failed fetch keeps the last card on
+  screen and says so. Every answer
   is a probability per option; the calls and the end-price sums are forecasts
   graded later, the shadow questions forecasts asked and logged and never graded,
   all drawn dashed with that said in words. Nothing here reads a
@@ -127,6 +130,22 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 /* which call leads the page: the opening's 5-minute calls, or the 30-minute call */
 .mode{align-self:flex-start;padding:5px 9px;border-radius:8px;border:1px solid var(--rule-soft);background:var(--s);
       font:700 11px/1.2 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--i)}
+/* inside the leading card: the mode chip heads it, the answered chip closes it, each still its own box */
+.card>.mode{width:fit-content;margin-bottom:12px}
+.answered{align-self:flex-start}
+.card>.answered{display:table;margin-top:12px}
+/* the live price: the SPX print on the station's quote, its change since the last close */
+.px{display:flex;align-items:flex-end;gap:10px;padding:10px 14px;border-radius:14px;background:var(--s);box-shadow:var(--sh1)}
+.px[hidden]{display:none}
+.px-k{font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint)}
+.px-k i{display:inline-block;width:7px;height:7px;margin-right:6px;border-radius:50%;background:var(--o-up);vertical-align:1px}
+.px-k i[hidden]{display:none}
+.px-v{margin-top:3px;font:700 24px/1.1 var(--sans);color:var(--i);letter-spacing:-.01em}
+.px-r{margin-left:auto;text-align:right}
+.px-c{font:700 13px/1.3 var(--sans);color:var(--i-body);white-space:nowrap}
+.px-c.dn{color:var(--o-dn)}
+.px-c.up{color:var(--o-up)}
+.px-s{font:400 11.5px/1.3 var(--sans);color:var(--i-mute)}
 /* today's 0DTE: when it settles, in the viewer's zone, the time left, and a tag on a monthly or quarter-end day */
 .exp{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:0 4px;font:400 12.5px/1.35 var(--sans);color:var(--i-mute)}
 .exp b{font-weight:700;color:var(--i)}
@@ -150,13 +169,43 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 .o-up_small{background:var(--o-up-soft)}
 .o-up_big,.o-up{background:var(--o-up)}
 .o-unsure{background:var(--o-un)}
-/* how the 30-minute call was made: JEV's own call, the time of day's, and the half-and-half shown */
+/* JEV's own call on its own line, when the call stands on it alone (no time-of-day blend) */
 .how{display:grid;grid-template-columns:88px minmax(0,1fr) 74px;gap:8px 10px;align-items:center;margin-top:14px}
 .how-k{font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
 .how-k.jev,.how-v.jev{color:var(--i)}
 .how-bar{display:flex;gap:1px;height:7px}
 .how-v{font:600 12.5px/1.2 var(--sans);color:var(--i-body);white-space:nowrap;text-align:right}
 .how-note{grid-column:1 / -1;font:400 12px/1.4 var(--sans);color:var(--i-mute)}
+/* the blended call's two parts as tiles: JEV's own answer, and the last sessions at this time of day, which opens
+   the time-of-day sheet */
+.tod{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin-top:14px}
+.tile{display:block;min-width:0;padding:9px 10px;border-radius:12px;border:1px solid var(--s2);background:var(--s);text-align:left;
+      font:inherit;color:inherit;-webkit-tap-highlight-color:transparent}
+button.tile{cursor:pointer;border-color:var(--rule-soft);touch-action:manipulation}
+button.tile:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
+.tile-k{display:flex;gap:6px;font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint);white-space:nowrap}
+.tile-k span{overflow:hidden;text-overflow:ellipsis}
+button.tile .tile-k::after{content:"";flex:none;margin-left:auto;width:6px;height:6px;border-right:1.5px solid var(--i-mute);
+                           border-top:1.5px solid var(--i-mute);transform:rotate(45deg);align-self:center}
+.tile-v{margin:4px 0 7px;font:700 15px/1.2 var(--sans);color:var(--i)}
+.tod .how-note{grid-column:1 / -1}
+/* the time-of-day sheet: one row per part of the day, then the chosen part session by session */
+.tb{display:grid;grid-template-columns:96px minmax(0,1fr) 74px;gap:4px 10px;align-items:center;width:100%;margin-top:4px;padding:8px;
+    border:1px solid transparent;border-radius:10px;background:none;text-align:left;font:inherit;color:inherit;cursor:pointer;
+    touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.tb.on{border-color:var(--rule-soft);background:var(--g)}
+.tb:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
+.tb-k{font:600 12.5px/1.2 var(--sans);color:var(--i-body);white-space:nowrap}
+.tb.on .tb-k{font-weight:700;color:var(--i)}
+.tb-v{font:700 12.5px/1.2 var(--sans);color:var(--i);white-space:nowrap;text-align:right}
+.tb-n{grid-column:2 / -1;font:400 11.5px/1.3 var(--sans);color:var(--i-mute)}
+.td-h{margin:16px 0 6px;font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint)}
+.td{display:grid;grid-template-columns:52px minmax(0,1fr) 92px;gap:8px;align-items:center;padding:3px 0;font:400 12.5px/1.3 var(--sans);color:var(--i-body)}
+.td .how-bar{height:6px}
+.td-c{text-align:right;color:var(--i-mute);white-space:nowrap}
+.td.thin .td-c{color:var(--o-dn)}
+.td.out,.td.out .td-c{color:var(--rule-soft)}
+.td.out .how-bar{height:6px;border:1px dashed var(--rule-soft);border-radius:3px}
 /* the 60-minute end-price sum from the same read, one line at the foot of the 30-minute card, as the end-price sum beside the call is */
 .row60{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-top:12px;padding-top:11px;border-top:1px solid var(--s2)}
 .row60 .k{font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
@@ -323,6 +372,10 @@ details .q{margin-top:8px}
   </div>
 </header>
 <div class="load" id="load"><i></i>Reading the card</div>
+<div class="px" id="px" hidden>
+  <div><div class="px-k"><i id="pxLive" hidden></i><span id="pxK">SPX</span></div><div class="px-v" id="pxV"></div></div>
+  <div class="px-r"><div class="px-c" id="pxC"></div><div class="px-s" id="pxS"></div></div>
+</div>
 <div id="state"></div>
 <main id="main" style="display:flex;flex-direction:column;gap:12px"></main>
 <p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are shadow questions, asked and logged, never graded and never weighted. A call is a forecast, not a trade signal, graded on the average price over its window: where each minute closed against the price at the read, averaged, in index points, and set against a flat band (the &plusmn; figure) narrower than an end price would get, because an average swings less than any one price. Its direction decides right or wrong; its size at the end price, where price stood highest and lowest (&ldquo;min 3&rdquo; is the window&rsquo;s third minute) and any sharp move are said beside it, and an unsure call is passed, never counted as a miss. For now each call also shows the old grade, on the end price alone, and a call the average could not grade stands on that, said so. The call is JEV&rsquo;s answer to that question itself: where the average will sit, up, flat or down within the &plusmn; figure, with no unsure; the old question on the end price is still asked and graded beside it, and shown muted as &ldquo;End-price question&rdquo;. When a sum says blended, it is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent SPX sessions. Through the first hour the opening lane reads every 5 minutes and its call, on the average price over the next 10 minutes, leads the page until its last call closes; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock. Before the open, the pre-market lane reads S&amp;P futures, 10-year bond futures, bitcoin futures and the morning&rsquo;s reports through the night and makes one call about the first half hour: the average price over the 30 minutes after the first settled price, four minutes after the open. It is a forecast too, graded by the bars. Every time here is in this phone's own time zone.</p>
@@ -448,6 +501,16 @@ details .q{margin-top:8px}
     var stale = m != null && m > STALE_MIN;
     return 'row ' + at + ', ' + ageWord(m) + (stale ? ', stale' : ', ' + n) + hint;
   }
+  // The header line is kept for trouble alone: a card gone stale mid-session says so there in subLine's words, and so
+  // does a card of another day (the service wrote nothing today); a fresh card and today's last one after the close
+  // say nothing, the live price and the card's own clock say it.
+  function staleLine(c, m){
+    var s = c.session || {}, lr = Date.parse(s.last_read), closed = Date.now() >= Date.parse(s.close);
+    var after = m != null && (m > GONE_MIN || closed) && Date.parse(c.row_ts) >= lr - ROW_LEAD_MIN * 60000;
+    if(after) return String(c.row_ts || '').slice(0, 10) === marketDay() ? '' : subLine(c, m);
+    return m != null && m > STALE_MIN ? subLine(c, m) : '';
+  }
+  function setSub(text){ var s = $('sub'); s.textContent = text; s.hidden = !text; }
   // The service reads at :02 and :32 market time. The next mark is the earliest one still ahead of the
   // market clock, never past the day's last read, found on the market clock and handed back as an instant,
   // so the reader knows in their own zone when the card will change without asking.
@@ -571,36 +634,89 @@ details .q{margin-top:8px}
   // the phase's hours in the viewer's zone, without its New York name: "lunch, 12:00 to 14:00" reads "09:00 to 11:00"
   // in Los Angeles, never "lunch, 09:00 to 11:00"
   function phaseSpan(words, at){ return marketWords(String(words).replace(/^[^,]*,\s*/, ''), at); }
-  // how the 30-minute call was made, drawn: JEV's own answer, the time of day's odds, and what is shown: the
-  // half-and-half, or the average-price loop's learned mix once it is promoted (the call's own shown_source,
-  // integral_loop.shown), the half-and-half then kept beneath it. The end-price loop's promotion reaches only the
-  // end-price sums beside the call, never this chart
-  function howChart(h, bl, at){
-    var g = el('div', 'how');
-    function row(key, cls, p){
-      if(!p) return;
-      g.appendChild(el('span', 'how-k' + cls, key));
-      var b = el('div', 'how-bar');
-      oddsKeys(p).forEach(function(k){ var i = el('i', 'o-' + k); i.style.flex = Math.max(0, p[k] || 0) + ' 1 0'; b.appendChild(i); });
-      g.appendChild(b);
-      g.appendChild(el('span', 'how-v' + cls, oneAnswer(p)));
+  // The blend's two parts are drawn as two tiles, the call above them being what is shown: JEV's own answer, and how
+  // the last sessions went at this time of day, which opens the time-of-day sheet when the card carries its counts
+  // (the card's time_of_day, clock._blocks). The learned mix, once promoted, is the call above; the half-and-half it
+  // replaced is said under the tiles. The note reads the call's own shown_source (integral_loop.shown): the end-price
+  // loop's promotion reaches only the end-price sums beside the call, never these tiles.
+  function howBar(p){
+    var b = el('div', 'how-bar');
+    oddsKeys(p).forEach(function(k){ var i = el('i', 'o-' + k); i.style.flex = Math.max(0, p[k] || 0) + ' 1 0'; b.appendChild(i); });
+    return b;
+  }
+  function tile(key, p, open){
+    var t = el(open ? 'button' : 'div', 'tile'), k = el('div', 'tile-k');
+    k.appendChild(el('span', null, key)); t.appendChild(k);
+    t.appendChild(el('div', 'tile-v', oneAnswer(p))); t.appendChild(howBar(p));
+    if(open){
+      t.type = 'button'; t.setAttribute('aria-controls', 'jevSheet');
+      t.setAttribute('aria-label', key + ': ' + oneAnswer(p) + '. Open each part of the day');
+      t.addEventListener('click', function(){ open(t); });
     }
+    return t;
+  }
+  function howChart(h, bl, at, tod){
     var j = h.jev, c = h.clock, pooled = /^pool/.test(h.shown_source || '');
     if(bl && bl.used && j && c){
-      row('JEV', ' jev', j.probabilities);
-      row('Time of day', '', c.probabilities);
-      if(pooled) row('Half & half', '', h.blend50_exact);
-      row(pooled ? 'Learned mix' : 'Shown', '', h.probabilities);
-      g.appendChild(el('div', 'how-note', (j.confidence != null ? 'JEV was ' + pct(j.confidence) + ' sure. ' : '') +
-                                        (pooled ? 'Shown is the learned mix. It took over from half JEV, half time of day once it did better over' +
-                                                  ' at least 20 trading days, and it hands back if it starts doing worse.'
-                                                : 'Shown is half JEV, half how this time of day' + (bl.phase_words ? ' (' + phaseSpan(bl.phase_words, at) + ')' : '') + ' went' +
-                                                  ' over the last ' + bl.sessions + ' sessions.')));
-    } else {
-      row('JEV', ' jev', h.probabilities);
-      if(bl && bl.why) g.appendChild(el('div', 'how-note', sentence('JEV\u2019s sum alone: ' + marketWords(bl.why, at))));
+      var g = el('div', 'tod'), days = 'Last ' + bl.sessions + ' days', span = bl.phase_words ? phaseSpan(bl.phase_words, at) : '';
+      g.appendChild(tile('JEV' + (j.confidence != null ? ' \u00B7 ' + pct(j.confidence) + ' sure' : ''), j.probabilities));
+      g.appendChild(tile(days, c.probabilities, tod && tod.phases && tod.phases.length ? function(from){ openTod(tod, bl, at, from); } : null));
+      var only = ' ' + days + ' looks only at this time of day' + (span ? ' (' + span + ').' : '.');
+      g.appendChild(el('div', 'how-note', pooled
+        ? 'The call above is the learned mix. It took over from half of each once it did better over at least 20 trading days, and it hands' +
+          ' back if it starts doing worse' + (h.blend50_exact ? '; half of each reads ' + oneAnswer(h.blend50_exact) : '') + '.' + only
+        : 'The call above is half of each.' + only));
+      return g;
     }
-    return g;
+    var w = el('div', 'how');
+    w.appendChild(el('span', 'how-k jev', 'JEV')); w.appendChild(howBar(h.probabilities)); w.appendChild(el('span', 'how-v jev', oneAnswer(h.probabilities)));
+    if(bl && bl.why) w.appendChild(el('div', 'how-note', sentence('JEV\u2019s sum alone: ' + marketWords(bl.why, at))));
+    return w;
+  }
+  // The time-of-day sheet: each part of the day's odds over the counted sessions, its hours in the viewer's zone, the
+  // read's own part marked and chosen first; a tap on a part lists it session by session, newest first. A session's
+  // bar is as long as its readings against the most any counted session had in that part (the read grid gives each
+  // part a fixed number); under half of that it is thin, and a session with too few graded reads over the whole day is
+  // left out of every part's odds.
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function dayWords(d){ var m = /^\d{4}-(\d\d)-(\d\d)$/.exec(d || ''); return m ? MONTHS[+m[1] - 1] + ' ' + (+m[2]) : String(d); }
+  function partSpan(p){ return viewerTime(p.from) + '\u2013' + viewerTime(p.to); }
+  function readings(n){ return n + (n === 1 ? ' reading' : ' readings'); }
+  function openTod(tod, bl, at, from){
+    var parts = tod.phases, kept = (tod.days || []).filter(function(d){ return d.counted; });
+    var chosen = Math.max(0, parts.map(function(p){ return p.phase; }).indexOf(bl.phase));
+    $('csTitle').textContent = 'Time of day \u00B7 last ' + bl.sessions + ' days';
+    var body = $('csBody'); body.textContent = '';
+    body.appendChild(tag('what the average price did in the 30 minutes after each part of the day. Tap a part to see each day.'));
+    var rows = el('div'), list = el('div');
+    body.appendChild(rows); body.appendChild(list);
+    function draw(){
+      rows.textContent = ''; list.textContent = '';
+      parts.forEach(function(p, i){
+        var b = el('button', 'tb' + (i === chosen ? ' on' : '')); b.type = 'button';
+        b.setAttribute('aria-pressed', i === chosen ? 'true' : 'false');
+        b.appendChild(el('span', 'tb-k', partSpan(p))); b.appendChild(howBar(p.probabilities)); b.appendChild(el('span', 'tb-v', oneAnswer(p.probabilities)));
+        b.appendChild(el('span', 'tb-n', readings(p.n) + (p.phase === bl.phase ? ' \u00B7 now, used in this call' : '')));
+        b.addEventListener('click', function(){
+          chosen = i; draw();
+          var again = rows.childNodes && rows.childNodes[i]; if(again && again.focus) again.focus();   // a rebuilt row keeps the focus
+        });
+        rows.appendChild(b);
+      });
+      var p = parts[chosen], most = kept.reduce(function(m, d){ var c = d.counts[p.phase] || {}; return Math.max(m, (c.up || 0) + (c.down || 0) + (c.flat || 0)); }, 0);
+      list.appendChild(el('div', 'td-h', partSpan(p) + ', day by day'));
+      tod.days.forEach(function(d){
+        var c = d.counts[p.phase] || {}, n = (c.up || 0) + (c.down || 0) + (c.flat || 0), thin = d.counted && n < most / 2;
+        var r = el('div', 'td' + (d.counted ? thin ? ' thin' : '' : ' out')), b = d.counted && n ? howBar(c) : el('div', 'how-bar');
+        if(d.counted && n) b.style.width = Math.round(n / most * 100) + '%';
+        r.appendChild(el('span', null, dayWords(d.day))); r.appendChild(b);
+        r.appendChild(el('span', 'td-c', !d.counted ? 'left out' : most ? n + ' of ' + most + (thin ? ' \u00B7 thin' : '') : 'none'));
+        list.appendChild(r);
+      });
+      list.appendChild(tag('each part leans a little toward the whole day\u2019s odds, so a part with few readings cannot swing far. A day left out had too few graded reads.'));
+    }
+    draw();
+    MiraiSheet.open(from);
   }
   function labRow(text, age, old){
     var l = el('div', 'lab'); l.appendChild(el('span', null, text));
@@ -615,12 +731,13 @@ details .q{margin-top:8px}
     document.getElementById('h1').textContent = (c.symbol || 'SPX') + ' \u00B7 JEV';
     var m = mins(c.row_ts);
     var old = m != null && m > STALE_MIN;
-    var sub = document.getElementById('sub'); sub.textContent = subLine(c, m); sub.classList.remove('err');
+    $('sub').classList.remove('err'); setSub(staleLine(c, m));
     var st = document.getElementById('state'); st.textContent = '';
-    var answered = c.questions.filter(function(q){ return q.answer; }).length;
+    // trouble stays at the top; the answered count closes the leading card, in its own box
+    var answered = c.questions.filter(function(q){ return q.answer; }).length, count = null;
     if(!ok) st.appendChild(el('span', 'state', 'fetch failed, showing the last card'));
     else if(!c.sent) st.appendChild(el('span', 'state', 'not sent: no key on the station'));
-    else st.appendChild(el('span', 'state', answered + ' of ' + c.questions.length + ' answered' + (cardCount(c, 'held') ? ', ' + cardCount(c, 'fresh') + ' fresh on the ' + viewerTime(c.row_ts) + ' row' : '')));
+    else count = el('div', 'state answered', answered + ' of ' + c.questions.length + ' answered' + (cardCount(c, 'held') ? ', ' + cardCount(c, 'fresh') + ' fresh on the ' + viewerTime(c.row_ts) + ' row' : ''));
     // the service says in its own words when it built on a row nothing newer had replaced
     if(c.freshness && c.freshness.stale && c.freshness.note) st.appendChild(el('span', 'state', c.freshness.note));
     var main = document.getElementById('main'); main.textContent = '';
@@ -630,13 +747,13 @@ details .q{margin-top:8px}
     // the opening's 5-minute call leads while today's newest one is still open; otherwise the 30-minute call does
     tickers = [];
     shownLeads = laneLeads(tape, Date.now(), marketDay());
-    main.appendChild(el('div', 'mode', shownLeads ? 'opening \u00B7 a call every 5 min' : 'normal \u00B7 a call every 30 min'));
     var ex = expiryLine(c); if(ex) main.appendChild(ex);
     if(shownLeads){
       main.appendChild(laneCard(tape, tapeOk));
       main.appendChild(foldLive(c));
+      if(count) main.appendChild(count);           // the count is the 30-minute card's, so it stays with its fold
     } else {
-      sumCard(c, main);
+      sumCard(c, main, count);
       if(c.tally && c.tally.calls) main.appendChild(dayScore(c));
       if(tape && tape.lane === 'tape' && String(tape.row_ts || '').slice(0, 10) === marketDay() && tape.tally && tape.tally.calls) main.appendChild(openingDone(tape));
     }
@@ -681,9 +798,9 @@ details .q{margin-top:8px}
   }
 
   // A page that fails must say so in words where the header sits, never stay on "loading".
-  function say(msg){ var s = document.getElementById('sub'); s.textContent = msg; s.classList.add('err'); clearLoading(); }
+  function say(msg){ var s = document.getElementById('sub'); s.textContent = msg; s.hidden = false; s.classList.add('err'); clearLoading(); }
   window.onerror = function(msg){ say('the card could not be drawn: ' + msg); };
-  function draw(c, ok){ lastOk = ok; try { paint(c, ok); clearLoading(); } catch(e){ say('the card could not be drawn: ' + (e && e.message ? e.message : e)); } }
+  function draw(c, ok){ lastOk = ok; try { paint(c, ok); clearLoading(); } catch(e){ say('the card could not be drawn: ' + (e && e.message ? e.message : e)); } paintPx(); }
   // Between cards the minutes still move: every tick updates each clock and each calls-in-play drawing,
   // and when the leading call changes (the opening's last call closes) the page is drawn again.
   function tick(){
@@ -705,7 +822,7 @@ details .q{margin-top:8px}
   function ages(c){
     if(shownPre) return;                          // the pre-market card leads and keeps its own ages
     var m = mins(c.row_ts), old = m != null && m > STALE_MIN;
-    var sub = $('sub'); if(sub && !sub.classList.contains('err')) sub.textContent = subLine(c, m);
+    var sub = $('sub'); if(sub && !sub.classList.contains('err')) setSub(staleLine(c, m));
     var ageText = m == null ? '' : (m < 1 ? 'JUST NOW' : ageWord(m).toUpperCase());
     Array.prototype.forEach.call(document.querySelectorAll('#main .lab .r'), function(r){ r.textContent = ageText; r.classList.toggle('old', old); });
   }
@@ -1022,19 +1139,20 @@ details .q{margin-top:8px}
   // the 30-minute call when it leads, laid out as the 5-minute one is: the clock, JEV's call as a bar, what it is
   // measured on, how it was made, the calls in play, then the end-price sum beside it and the 60-minute one from the
   // same read, each on one line
-  function sumCard(c, main){
+  function sumCard(c, main, count){
     var h = c.hour, marks = c.marks || {}, a = callSum(h);
     if(a && a.probabilities){
       // the call's own window: the 15:32 read's average runs 28 minutes, to the close
       var bl = a.blend || null, minutes = (a !== h && a.minutes) || (c.calls && c.calls[0] && c.calls[0].minutes) || 30;
       var hc = el('div', 'card dashed');
+      hc.appendChild(el('div', 'mode', 'normal \u00B7 a call every 30 min'));
       hc.appendChild(clockBlock(c.row_ts, minutes, marks.next_30 !== undefined ? marks.next_30 : plusIso(c.row_ts, minutes)));
       var hp = a.probabilities, top = a.pick || top1(hp);
       hc.appendChild(el('div', 'big', cap(top) + ' ' + pct(hp[top])));
       hc.appendChild(oddsBar(hp, top));
       if(a !== h) hc.appendChild(tag(averageWords(a, 'the next ' + a.minutes + ' minutes')));
       var fb = fallbackLine(h, c.row_ts); if(fb) hc.appendChild(fb);
-      hc.appendChild(howChart(a, bl, c.row_ts));
+      hc.appendChild(howChart(a, bl, c.row_ts, a !== h ? c.time_of_day : null));
       // a scheduled event within the hour (the service's calendar): said once, in words; the read is
       // still graded, and one due inside 30 minutes is kept out of the question weights
       if(c.event && c.event.sentence) hc.appendChild(tag(sentence(marketWords(c.event.sentence, c.row_ts)) +
@@ -1052,12 +1170,16 @@ details .q{margin-top:8px}
       }
       hc.appendChild(tag('from ' + h.used + ' answers' + (h.left_out ? ', ' + h.left_out + ' left out' : '') + (h.missing ? ', ' + h.missing + ' missing a label' : '') +
                          ' \u00B7 a forecast, graded by the bars, not a trade signal'));
+      if(count) hc.appendChild(count);
       main.appendChild(hc);
     } else {
       // a read with no sum says why: JEV's error when a sent read made none, otherwise that it made no call
-      var he = el('div', 'card dashed'); he.appendChild(labRow('next 30 minutes, the sum of the answers'));
+      var he = el('div', 'card dashed'); he.appendChild(el('div', 'mode', 'normal \u00B7 a call every 30 min'));
+      he.appendChild(labRow('next 30 minutes, the sum of the answers'));
       he.appendChild(skipLine(h && h.error ? 'no sum on the ' + viewerTime(c.row_ts) + ' read: ' + h.error : noCallWords(c)));
+      if(!(h && h.error)) he.appendChild(tag('the ' + viewerTime(c.row_ts) + ' read'));   // the header no longer names the row
       if(c.calls && c.calls.length) he.appendChild(inPlay(c.calls));
+      if(count) he.appendChild(count);
       main.appendChild(he);
     }
   }
@@ -1198,6 +1320,7 @@ details .q{margin-top:8px}
   function within(span, t){ t = t || marketClock(); if(!t) return false; var s = hhmm(t); return s >= span[0] && s < span[1]; }
   function laneCard(t, ok){
     var box = el('div', 'card dashed'), newest = t.calls[0], h = t.hour, a = callSum(h), p = a && a.probabilities;
+    box.appendChild(el('div', 'mode', 'opening \u00B7 a call every 5 min'));
     box.appendChild(clockBlock(newest.read, newest.minutes, newest.mark));
     if(p && t.row_ts === newest.read){
       var top = a.pick || top1(p);
@@ -1285,7 +1408,6 @@ details .q{margin-top:8px}
     if(last || !laneLeads(tape, Date.now(), marketDay())) return false;
     var main = $('main'); main.textContent = '';
     tickers = []; shownLeads = true;
-    main.appendChild(el('div', 'mode', 'opening \u00B7 a call every 5 min'));
     main.appendChild(laneCard(tape, tapeOk));
     var f = el('div', 'card fold'); f.appendChild(el('span', 'k', '30-min card')); f.appendChild(el('span', 'l', 'not read yet'));
     main.appendChild(f);
@@ -1577,7 +1699,7 @@ details .q{margin-top:8px}
     tickers = []; shownPre = true; shownLeads = false;
     $('h1').textContent = (p.symbol || 'SPX') + ' \u00B7 JEV';
     var sub = $('sub'), st = $('state'), main = $('main');
-    sub.classList.remove('err'); main.textContent = '';
+    sub.classList.remove('err'); sub.hidden = false; main.textContent = '';
     main.appendChild(el('div', 'mode', 'before the open'));
     var ex = expiryLine(p); if(ex) main.appendChild(ex);
     var card = el('div', 'card dashed pre'), age = el('span', 'r'), lab = el('div', 'lab');
@@ -1644,6 +1766,43 @@ details .q{margin-top:8px}
       .finally(function(){ preInflight = false; });
   }
 
+  // ---- the live price: the station's SPX print (/api/spot, one Schwab quote cached a couple of seconds for every
+  // viewer), asked every SPOT_MS while the session is open on a day the 30-minute card is today's (so never on a
+  // weekend or a holiday), and once on load and on waking outside it, when it is the last close. Live only in that
+  // session and while the quote is younger than SPOT_LIVE_MS; its change is measured from the card's prior_close, the last
+  // minute bar of the session before, and said only on today's card. A failed or empty quote keeps the last price,
+  // said to be as of when it came, never dressed up as live; with no price yet the strip stays hidden. A card that
+  // lands after the quote draws the strip again (draw), so its change never waits for the next quote.
+  var SPOT_URL = '/api/spot?ticker=SPX', SPOT_MS = 5000, SESSION_HOURS = ['09:30', '16:00'];
+  var SPOT_LIVE_MS = 15000;                     // a quote older than this is never drawn live
+  var spot = null, spotInflight = 0;
+  function money(x){ return (+x).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+  function todaysCard(){ return !!(last && String(last.row_ts || '').slice(0, 10) === marketDay()); }
+  function paintPx(){
+    var box = $('px'); if(!box || !spot) return;
+    var open = todaysCard() && within(SESSION_HOURS), live = open && spot.fresh && Date.now() - spot.at < SPOT_LIVE_MS;
+    box.hidden = false; $('pxLive').hidden = !live;
+    $('pxK').textContent = live ? 'SPX live' : open ? 'SPX \u00B7 ' + viewerTime(spot.at) : 'SPX \u00B7 last close';
+    $('pxV').textContent = money(spot.price);
+    var pc = last && last.prior_close, cEl = $('pxC'), sEl = $('pxS');
+    if(pc && pc.price > 0 && todaysCard() && pc.day < marketDay()){
+      var d = spot.price - pc.price, r = d / pc.price * 100;
+      cEl.textContent = (d < 0 ? '\u2212' : '+') + money(Math.abs(d)) + ' (' + (r < 0 ? '\u2212' : '+') + Math.abs(r).toFixed(2) + '%)';
+      cEl.className = 'px-c' + (d < 0 ? ' dn' : d > 0 ? ' up' : '');
+      sEl.textContent = 'since the last close';
+    } else { cEl.textContent = ''; sEl.textContent = ''; }
+  }
+  function pollSpot(){
+    if(spotInflight && Date.now() - spotInflight < SPOT_LIVE_MS) return;   // one at a time, a hung one given up on
+    spotInflight = Date.now();
+    fetch(SPOT_URL, {cache:'no-store'}).then(function(r){ return r.ok ? r.json() : null; }).then(function(j){
+      if(j && typeof j.spot === 'number' && j.spot > 0) spot = {price: j.spot, at: Date.now(), fresh: true};
+      else if(spot) spot.fresh = false;
+      paintPx();
+    }).catch(function(){ if(spot) spot.fresh = false; paintPx(); }).finally(function(){ spotInflight = 0; });
+  }
+  setInterval(function(){ if(!document.hidden && todaysCard() && within(SESSION_HOURS)) pollSpot(); }, SPOT_MS);
+
   // Refresh on its own: every POLL_MS while the page is in view, again the moment the page comes
   // back (tab switch, screen unlock, back-forward cache, network back), and a few seconds after each
   // :02 and :32 read mark so a new card shows within seconds of being written, never a minute later.
@@ -1660,8 +1819,8 @@ details .q{margin-top:8px}
     var ms = msToNextMark(); if(ms == null) return;
     markTimer = setTimeout(function(){ if(!document.hidden) poll(); armMark(); }, Math.max(1000, ms));
   }
-  function wake(){ if(!document.hidden){ poll(); pollTape(); armMark(); armTapeMark(); tick(); } }
-  poll(); pollTape(); armMark(); armTapeMark();
+  function wake(){ if(!document.hidden){ poll(); pollTape(); pollSpot(); armMark(); armTapeMark(); tick(); } }
+  poll(); pollTape(); pollSpot(); armMark(); armTapeMark();
   setInterval(function(){ if(!document.hidden){ poll(); pollTape(); tick(); } }, POLL_MS);
   document.addEventListener('visibilitychange', wake);
   window.addEventListener('pageshow', wake);

@@ -721,6 +721,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
     else:
         cad = {}
     last, held = {}, {}
+    tod = None      # the time-of-day odds per phase and per prior session, for the phone's sheet (clock._blocks)
     # a question whose label is missing only while what it describes is under way holds no earlier answer
     no_hold = unheld(doc, labels.no_hold)
     if do_send:
@@ -792,7 +793,10 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
             # the phone's call is blended the same way, with how often the average over the same window ended each way
             # at this time of day, counted on the average price alone (clock.integral_odds)
             try:
-                hour = {**hour, "average": clock_blend(hour["average"], clock_integral_odds(state_dir, out_dir, scene.prior_bars, now, lane))}
+                odds_avg = clock_integral_odds(state_dir, out_dir, scene.prior_bars, now, lane)
+                blocks = odds_avg.pop("blocks", None)
+                hour = {**hour, "average": clock_blend(hour["average"], odds_avg)}
+                tod = blocks
             except Exception as e:  # the clock must never cost the read its call
                 log(f"the clock on the average price was left out this run: {type(e).__name__}: {e}")
                 why = f"the time-of-day odds on the average price failed this run: {type(e).__name__}"
@@ -853,8 +857,24 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
             log(f"grading skipped this run: {type(e).__name__}: {e}\n{traceback.format_exc()}")
     c = card(scene, state, omitted, doc, requests, skipped, answers, do_send, send_seconds, hour, held, cad, unsent_reason, event, lane, unit, band,
              day_calls(out_dir, day_name, lane, scene), figures, replay=day is not None)
+    # the phone's alone, never in the day's records: the time-of-day sheet's counts, and the last close the live price
+    # is measured against
+    c = {**c, **({"time_of_day": tod} if tod else {}), **prior_close_of(scene)}
     write_card(out_dir, c)
     return c
+
+
+def prior_close_of(scene) -> dict:
+    """``{"prior_close": {"day", "at", "price"}}``: SPX's close on the trading day before (the scene's prior_day, a half
+    day included), the one the phone's live price measures its change from, as the pre-market lane takes it
+    (premarket.prior_close_at: the bar that finished at that day's close, stamped with the close); nothing when that
+    day has no saved bars or no closing bar."""
+    from .premarket import NoPreOpenRead, prior_close_at   # premarket imports this module
+    try:
+        price, close = prior_close_at(getattr(scene, "prior_day", None))
+    except NoPreOpenRead:
+        return {}
+    return {"prior_close": {"day": scene.prior_day[0], "at": close.isoformat(), "price": round(price, 2)}}
 
 
 def wait_for_bar(state_dir: Path, fire: datetime, timeout_s: float = BAR_WAIT_S, sleep=_clock.sleep) -> bool:

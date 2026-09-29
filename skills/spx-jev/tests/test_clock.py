@@ -180,6 +180,36 @@ def test_the_average_price_odds_are_counted_on_the_average_price_alone(tmp_path,
     assert clock.integral_odds(tmp_path, out, prior, NOW) == avg and not (out / clock.CACHE_NAME).exists()
 
 
+def test_the_average_price_odds_carry_every_part_of_the_day_for_the_phones_sheet(tmp_path):
+    """The phone's time-of-day sheet (Will's layout of 09-29) draws each part of the day's odds and every prior session's
+    counts: integral_odds hands them over as ``blocks``, each part shrunk as the blend's own part is, so the read's part
+    reads the same odds the call was blended with. The blend itself never carries them: they ride the card alone, never
+    a day's records."""
+    avg = clock.integral_odds(tmp_path, tmp_path / "spx_jev", _spiking(tmp_path, 10), NOW)
+    b = avg["blocks"]
+    # every span a full stamp on the read's day, as every time on the card is (the phone draws it in the viewer's zone)
+    assert [(p["phase"], p["from"], p["to"]) for p in b["phases"]] == [
+        ("opening", at(9, 30, day="2026-09-18").isoformat(), at(10, 0, day="2026-09-18").isoformat()), ("morning", at(10, 0, day="2026-09-18").isoformat(), at(11, 0, day="2026-09-18").isoformat()),
+        ("late_morning", at(11, 0, day="2026-09-18").isoformat(), at(12, 0, day="2026-09-18").isoformat()), ("lunch", at(12, 0, day="2026-09-18").isoformat(), at(14, 0, day="2026-09-18").isoformat()),
+        ("afternoon", at(14, 0, day="2026-09-18").isoformat(), at(16, 0, day="2026-09-18").isoformat())]
+    lunch = next(p for p in b["phases"] if p["phase"] == avg["phase"])
+    assert {k: lunch[k] for k in ("probabilities", "n")} == avg["by"]["average_30"]
+    assert [d["day"] for d in b["days"]] == [f"2026-09-{d:02d}" for d in range(10, 0, -1)] and all(d["counted"] for d in b["days"])
+    assert all(set(d["counts"]) == {p[0] for p in clock.PHASES} for d in b["days"])
+    blended = blend({"primary": "average_30", "by": {"average_30": {"pick": "up", "probabilities": {"up": 0.5, "down": 0.2, "flat": 0.3}}}}, avg)
+    assert blended["blend"]["used"] is True and "blocks" not in blended["blend"] and "blocks" not in json.dumps(blended)
+
+
+def test_a_session_short_of_graded_reads_is_listed_as_left_out_of_every_part():
+    full = {p[0]: {"up": 1, "down": 1, "flat": 2} for p in clock.PHASES}
+    thin = {p[0]: {"up": 0, "down": 0, "flat": 1 if p[0] == "lunch" else 0} for p in clock.PHASES}
+    cache = {"2026-09-02": {"counts": full}, "2026-09-01": {"counts": thin}}
+    b = clock._blocks(["2026-09-02", "2026-09-01"], ["2026-09-02"], cache, NOW)
+    assert [(d["day"], d["counted"]) for d in b["days"]] == [("2026-09-02", True), ("2026-09-01", False)]
+    assert b["days"][1]["counts"]["lunch"] == {"up": 0, "down": 0, "flat": 1}
+    assert all(p["n"] == 4 for p in b["phases"])          # the left-out session counts in no part's odds
+
+
 def test_the_average_price_odds_need_ten_sessions_and_a_full_day(tmp_path):
     out = tmp_path / "spx_jev"
     few = clock.integral_odds(tmp_path, out, _spiking(tmp_path, 9), NOW)
