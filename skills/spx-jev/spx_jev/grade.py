@@ -4,6 +4,8 @@
     python3 -m spx_jev.grade --day 2026-09-29
     python3 -m spx_jev.grade --lane tape    # the opening lane, under state/spx_jev/lanes/tape/
     python3 -m spx_jev.grade --lane premarket   # the reads before the open, under state/spx_jev/lanes/premarket/
+    python3 -m spx_jev.grade --integral-backfill [--day D]   # the shadow integral grade of past graded horizons, from their bars
+    python3 -m spx_jev.grade --integral-report  # per box, the flat share on the average price against the end price
 
 Two horizons are graded from the same record, each against its own band (lane.LIVE.horizons, from cuts.py):
     next_30   30 minutes, flat within NEXT_30_FLAT_BAND_SIGMA   (the primary: the phone's sum)
@@ -62,6 +64,15 @@ while the settled open or a mark has no bar, and a finished day without them clo
 every other lane a record stamped before its session's open is never graded from its spot: it is
 written as not graded.
 
+The shadow integral grade
+    After every run, each horizon graded above is graded once more on the average price over its window
+    (integral.py), from the same spot or settled open to the same mark, against the same flat band narrowed
+    by integral.factor. It is written to its own file and nothing that grades or learns reads it:
+    grades.jsonl, the weights and the loop's state are exactly what they were without it. A window with
+    bars missing waits today and is written as not graded on a finished day; ``--integral-backfill`` fills
+    the file for past days from their saved bars without grading anything else, and ``--integral-report``
+    prints the flat share on both grades over the same windows, which is how the factor is judged.
+
 Outputs, all under the lane's folder (state/spx_jev/ for the live lane)
     grades.jsonl       one line per graded horizon of a record (append only, keyed by row_ts and
                        the ``horizons`` the line carries; the primary's line has its fields flat on top)
@@ -73,6 +84,9 @@ Outputs, all under the lane's folder (state/spx_jev/ for the live lane)
                         "new_this_run", "new_by_horizon", "closed_out"}
     weights_log.jsonl  one line per grading run that graded something: the tally and every weight that moved
     and every new line, once more, in the raw archive (archive.GradeRecord, keyed to its read)
+    integral_grades.jsonl  one line per graded horizon, the shadow integral grade (append only, keyed by row_ts,
+                       ``horizon`` and ``rule_version``): integral.grade_window's fields, the end-price label
+                       (``end_label``) and, on a RECORD horizon, the five-band size line (``size``)
 """
 from __future__ import annotations
 
@@ -85,7 +99,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import archive, events
+from . import archive, events, integral
 from .ask import load_questions
 from .hour import FIVE
 from .labels.measures import SETTLED_OPEN_BAR, close_at, settled_open
@@ -93,7 +107,8 @@ from .labels.rulers import SigmaRuler, morning_ruler, vix_at_settled_open
 from .lane import LANES, LIVE, RECORD, Lane
 from .pool import PoolWeights
 from .sessions import session_close, session_open
-from .state_builder import DEFAULT_STATE_DIR, MarketContext, load_bars, load_jsonl, load_market_context, load_rows, parse_ts
+from .state_builder import (DEFAULT_STATE_DIR, MarketContext, load_bars, load_jsonl, load_market_context, load_rows, parse_ts,
+                            prior_bar_days)
 from .weights import WEIGHTS_NAME, QuestionWeights
 
 ET = ZoneInfo("America/New_York")
@@ -102,6 +117,7 @@ CLOSE_GRACE_MIN = 2                 # a horizon ending this far past the close i
 BANDS = ("up", "flat", "down")      # "unsure" is a pick, never an outcome: its probability counts against the Brier
 SIZES = ("big", "small")
 WEIGHTS_LOG = "weights_log.jsonl"
+INTEGRAL_NAME = "integral_grades.jsonl"
 
 
 def _bar_before(bars: list[dict], t: datetime) -> dict:
@@ -493,7 +509,90 @@ def run(state_dir: Path, out_dir: Path, allowed: dict[str, set[str]], day: str |
     tmp = weights_path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(weights, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, weights_path)                    # step 3 never sees a half file
+    integral_run(state_dir, out_dir, lane, day)      # the shadow grade reads what was written above and writes only its own file
     return weights
+
+
+def _size_line(old: dict) -> dict:
+    """A RECORD horizon's size, as the end price graded it in five bands, beside the size the call named (none for flat or unsure)."""
+    pick = old.get("pick")
+    call = pick.split("_")[1] if isinstance(pick, str) and pick.endswith(SIZES) else None
+    return {"band": old["band"], "size": old["size"], "call": call, "right": call == old["size"] if call else None}
+
+
+def integral_line(line: dict, qid: str, rec: dict | None, bars: list[dict], prior: dict[str, list[dict]], lane: Lane = LIVE) -> dict:
+    """The shadow integral grade of horizon ``qid`` of a grades.jsonl ``line``, over the window the line was graded on
+    (horizon_start to mark_at) and against its flat band: the line's anchor times the horizon's sigma band, or the
+    record's ``band.flat_points``. Measured from the read's spot, or the settled open the line was measured from."""
+    head = {"row_ts": line["row_ts"], "horizon": qid, "rule_version": integral.RULE_VERSION}
+    if rec is None:
+        return {**head, "graded": False, "reason": "not graded: the read's sum record is not on file"}
+    minutes, flat = lane.horizons[qid]
+    t0, t1 = horizon_start(line["row_ts"], lane), mark_at(line["row_ts"], minutes, lane)
+    spot = float(line["from"]["settled_open"]) if lane.graded_from_settled_open else float(rec["spot"])
+    # a line graded before the morning anchor was measured in the record's sigma
+    ruler = (line.get("anchor") or {}).get("points") or rec.get("sigma")
+    points = float(rec["band"]["flat_points"]) if flat == RECORD else flat * float(ruler)
+    old = line[qid]
+    probs = ((rec.get("by") or {}).get(qid) or {}).get("probabilities") or {}
+    out = {**head, **integral.grade_window(bars, prior, t0, int((t1 - t0).total_seconds() // 60), spot, points, old.get("pick"), probs)}
+    if out["graded"]:
+        out["end_label"] = old["direction"] if flat == RECORD else old["band"]
+        if flat == RECORD:
+            out["size"] = _size_line(old)
+    return out
+
+
+def integral_run(state_dir: Path, out_dir: Path, lane: Lane = LIVE, day: str | None = None) -> list[dict]:
+    """Append the shadow integral grade of every horizon grades.jsonl has graded and integral_grades.jsonl does not
+    hold under this rule_version, from the day's bars; nothing else is written. A window with bars missing waits
+    today, when they can still come, and is written as not graded on a finished day, so none is retried for ever
+    and none is written twice. Returns the new lines."""
+    path = out_dir / INTEGRAL_NAME
+    have = {(g.get("row_ts"), g.get("horizon"), g.get("rule_version")) for g in load_jsonl(path)}
+    todo: dict[str, list[tuple[dict, str]]] = defaultdict(list)
+    for g in load_jsonl(out_dir / "grades.jsonl"):
+        for qid in g.get("horizons") or []:
+            if (g["row_ts"], qid, integral.RULE_VERSION) not in have and (day is None or g["row_ts"][:10] == day):
+                todo[g["row_ts"][:10]].append((g, qid))
+    today = datetime.now(ET).date().isoformat()
+    new = []
+    for d, items in sorted(todo.items()):
+        recs: dict[str, dict] = {}
+        for r in load_jsonl(out_dir / "hour" / f"{d}.jsonl"):
+            if isinstance(r.get("by"), dict):
+                recs.setdefault(r.get("row_ts"), r)   # the first of a row written twice is the one graded
+        bars, prior = load_bars(state_dir, d), prior_bar_days(state_dir, d)
+        for g, qid in items:
+            key = (g["row_ts"], qid, integral.RULE_VERSION)
+            if key in have:
+                continue
+            line = integral_line(g, qid, recs.get(g["row_ts"]), bars, prior, lane)
+            if line.get("reason") == integral.NOT_GRADED and d >= today:
+                continue                              # a hole today can still be filled: a later run grades it
+            new.append(line)
+            have.add(key)
+    if new:
+        with open(path, "a", encoding="utf-8") as f:
+            for line in new:
+                f.write(json.dumps(line, ensure_ascii=False) + "\n")
+    return new
+
+
+def integral_report(out_dir: Path, lane: Lane = LIVE) -> dict[str, dict]:
+    """Per horizon of the lane, over integral_grades.jsonl under this rule_version: the windows graded, the flat share
+    on the average price and on the end price over those same windows, the stale reads among them, and the
+    windows not graded."""
+    lines = [g for g in load_jsonl(out_dir / INTEGRAL_NAME) if g.get("rule_version") == integral.RULE_VERSION]
+    out = {}
+    for qid in lane.horizons:
+        mine = [g for g in lines if g.get("horizon") == qid]
+        graded = [g for g in mine if g.get("graded")]
+        n = len(graded)
+        out[qid] = {"n": n, "flat_integral": round(sum(1 for g in graded if g["label"] == "flat") / n, 3) if n else None,
+                    "flat_end": round(sum(1 for g in graded if g["end_label"] == "flat") / n, 3) if n else None,
+                    "stale": sum(1 for g in graded if g.get("stale_read")), "not_graded": len(mine) - n}
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -502,10 +601,25 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out-dir", default=None, help="default the lane's folder under <state-dir>")
     ap.add_argument("--day", help="grade only this day's records")
     ap.add_argument("--lane", choices=sorted(LANES), default="live", help="which lane's records to grade")
+    ap.add_argument("--integral-backfill", action="store_true", help="only fill the shadow integral grade of graded horizons from their bars")
+    ap.add_argument("--integral-report", action="store_true", help="only print each box's flat share on the average and on the end price")
     args = ap.parse_args(argv)
     lane = LANES[args.lane]
     state_dir = Path(args.state_dir)
     out_dir = lane.folder(state_dir, args.out_dir)
+    if args.integral_report:
+        # every lane's boxes from their own folders, or the one lane pointed at another folder
+        for each, folder in ([(lane, out_dir)] if args.out_dir else [(x, x.folder(state_dir)) for x in LANES.values()]):
+            for qid, r in integral_report(folder, each).items():
+                print(f"{each.name} {qid}: " + (f"{r['n']} windows graded; flat {r['flat_integral']:.1%} on the average price against "
+                                                f"{r['flat_end']:.1%} on the end price; {r['stale']} stale reads, {r['not_graded']} not graded"
+                                                if r["n"] else f"no window graded on the average price yet; {r['not_graded']} not graded"))
+        return 0
+    if args.integral_backfill:
+        new = integral_run(state_dir, out_dir, lane, args.day)
+        print(f"integral grade: {sum(1 for g in new if g.get('graded'))} new windows graded, "
+              f"{sum(1 for g in new if not g.get('graded'))} not graded, into {out_dir / INTEGRAL_NAME}", file=sys.stderr)
+        return 0
     w = run(state_dir, out_dir, live_options(load_questions(lane.questions, lane.key)), args.day, lane)
     for qid, s in w["sums"].items():
         print(f"{qid}: graded {s['n']}; hit rate {s['hit_rate']} vs always-flat {s['always_flat_hit_rate']}; mean Brier {s['mean_brier']}; bands {s['bands']}",

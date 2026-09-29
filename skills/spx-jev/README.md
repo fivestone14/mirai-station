@@ -102,6 +102,8 @@ returns a probability for each answer option. JEV makes no trading call.
     python3 -m spx_jev.premarket --day 2026-09-25 --at 10:06 --out-dir /tmp/trial   # grade that replay
     python3 -m spx_jev.build --day 2026-09-25 --at 09:28 --lane premarket
     python3 -m spx_jev.grade --lane premarket                 # grade the reads before the open
+    python3 -m spx_jev.grade --integral-backfill              # the shadow integral grade of past graded calls, from their bars
+    python3 -m spx_jev.grade --integral-report                # per box, the flat share on the average price against the end price
     python3 spec/replay_premarket.py --out /tmp/replay --workers 8   # the premarket questions over the saved nights, read only
 
 A replay (`--day`) never writes into the station's records unless `--out-dir`
@@ -192,6 +194,10 @@ archive there too, under `archive/`.
    and a Brier score for the blend, JEV's own sum and the clock's odds on the
    same outcome. The grades go to the question weights' `learn`: on the live
    lane the learning loop (`pool.py`) applies every newly sealed session.
+   Beside it, in shadow (`integral.py`), each graded call is graded again on
+   the average price over its window against the flat band narrowed to fit
+   an average, its direction deciding and an unsure call passed; nothing
+   learns from it yet.
 
 ## The files it writes, all under `state/spx_jev/`
 
@@ -201,6 +207,9 @@ archive there too, under `archive/`.
 - `last_asked.json`, `cadence.json`, `clock_days.json`: the cadence and the
   clock's stored counts. `grades.jsonl`, `weights.json` (the sums' tallies,
   `method` and the per-question weights), `weights_log.jsonl`.
+  `integral_grades.jsonl`, the shadow integral grade, one line per graded
+  horizon (append only, keyed by the read, the horizon and `rule_version`),
+  in every lane's folder.
 - `pool_30.json`, `pool_60.json`, `pool_log.jsonl`: the learning loop's state
   per horizon and one log line per horizon per session applied or refused.
 - `archive/{day}.jsonl`: the raw archive for later machine learning, one line
