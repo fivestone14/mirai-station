@@ -247,6 +247,21 @@ def test_the_market_context_joins_snapshots_and_backfilled_bars_by_when_each_was
     assert load_market_context(tmp_path, "2026-09-17") is None
 
 
+def test_a_derived_vold_never_stands_in_for_the_vold_schwab_served_for_that_minute(tmp_path):
+    """Live, Schwab served no $VOLD for 10:00 and the snapshot derived one; the after-close save got Schwab's own."""
+    derived = {"ts": at(10, 0).isoformat(), "open": -16000.0, "close": -16000.0, "volume": 0.0,
+               "derived": "($UVOL - $DVOL) * 1000"}
+    live = [{**context_line(at(10, 1, ss=20)), "bars": {"$VOLD": derived}},
+            {**context_line(at(10, 2, ss=20)), "bars": {"$VOLD": {**derived, "ts": at(10, 1).isoformat(), "close": 9000.0}}}]
+    write_state(tmp_path, DAY, [make_row(at(10, 2), 7700.0)], flat_bars(32), context=live)
+    (tmp_path / "spx_jev" / "context" / "bars").mkdir()
+    (tmp_path / "spx_jev" / "context" / "bars" / f"{DAY}.jsonl").write_text(
+        json.dumps({"ts": at(9, 31).isoformat(), "bars": {"$VOLD": {"ts": at(10, 0).isoformat(), "close": -15869.0}}}) + "\n")
+    mk = load_market_context(tmp_path, DAY)
+    assert mk.last("$VOLD", at(10, 1)) == -15869.0                   # Schwab's own, not the snapshot's derived value
+    assert mk.last("$VOLD", at(10, 2)) == 9000.0                     # a minute Schwab never served keeps the derived one
+
+
 
 def test_the_options_tape_reads_only_the_collectors_signed_lines(tmp_path):
     agg = tmp_path / "lob_flow" / "agg"
