@@ -121,6 +121,7 @@ def test_a_refused_fire_says_why():
     assert due(at(9, 28, day="2026-09-19"))[1] == "2026-09-19 is not a market day"
 
 
+
 # ---- the scene -----------------------------------------------------------------------------------
 
 def test_the_scene_prices_spx_off_the_futures_and_stamps_the_pre_open_ruler(tmp_path):
@@ -243,6 +244,17 @@ def test_a_group_that_got_no_answer_is_asked_once_more_before_the_open(tmp_path,
     calls.clear()
     late = run_checkpoint(state, tmp_path / "late", DOC, True, at(9, 29, ss=40), "09:28", save=False)
     assert calls == [["pm"]] and next(q for q in late["questions"] if q["id"] == "pm_q")["answer"] is None
+
+
+def test_the_card_marks_each_sum_where_its_lane_grades_it():
+    """The shared card worked out its marks without the lane, so a pre-market read's were its own minute plus the
+    horizon, not the settled open plus it, where the grader measures (grade.mark_at)."""
+    from spx_jev.state_builder import Scene
+    read = at(9, 28)
+    basis = Scene(row={"ts": read.isoformat()}, rows_today=[], bars=[], prior_bars={}, now=read, sigma=0.0, premarket=True)
+    c = service.card(basis, {}, {}, DOC, [], {}, None, False, None, lane=PREMARKET)
+    assert c["marks"] == {h: grade.mark_at(read.isoformat(), m, PREMARKET).isoformat() for h, (m, _) in PREMARKET.horizons.items()}
+    assert c["marks"]["open_30"] == at(10, 5).isoformat()
 
 
 def test_a_read_without_a_ruler_writes_why_builds_nothing_and_asks_nothing(tmp_path, jev):

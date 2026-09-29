@@ -617,7 +617,7 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
         **({"stretch": state.get("tape") or {}} if lane.bar_clock else {}),
         **calls_block(calls or []),
         # where each of this read's sums is measured (grade.mark_at), None for one that ends past the close
-        "marks": {qid: (m.isoformat() if (m := mark_at(scene.row["ts"], h)) else None) for qid, (h, _) in lane.horizons.items()},
+        "marks": {qid: (m.isoformat() if (m := mark_at(scene.row["ts"], h, lane)) else None) for qid, (h, _) in lane.horizons.items()},
         **({"schedule": {"reads": [market_time(row_ts, t) for t in lane.schedule], "looks_ahead_min": lane.horizons[lane.primary][0],
                          "close_out": market_time(row_ts, lane.close_out)}} if lane.schedule else {}),
         # the phone's clock words ("after the close", "next read") follow the day's real close, 13:00 on a half day
