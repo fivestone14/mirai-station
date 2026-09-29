@@ -121,6 +121,7 @@ def _state(tmp_path, archive: list | None = None, extra_lines: list[str] = ()) -
               "contract_from": "roll_table", "bar_minutes": 1, "open": 6600.0, "high": 6601.0, "low": 6599.0, "close": 6600.5,
               "volume": 100.0, "session": "premarket", "source": "schwab_price_history", "saved_at": "2026-09-18T09:26:10-04:00",
               "flags": []}]
+    night.insert(0, {**night[0], "ts": "2026-09-17T15:55:00-04:00", "session": "regular"})     # Thursday's last minutes
     (folder / "overnight" / f"{DAY}.jsonl").write_text("".join(json.dumps(b) + "\n" for b in night))
     (folder / "overnight" / "rolls.json").write_text(json.dumps({"schema_version": 1, "current": {"/ES": "/ESZ26"}, "rolls": [
         {"symbol": "/ES", "day": DAY, "at": "2026-09-17T18:00:00-04:00", "from": "/ESU26", "to": "/ESZ26", "basis_step": 0.7,
@@ -250,7 +251,9 @@ def test_the_bars_keep_one_row_a_minute_the_better_source_winning_and_every_copy
     assert ctx[("$TNX", "saved_day")]["close"] == 0.15                         # the yield in percent, as the labels read it
     assert (log["context_bars"]["duplicates"], log["context_bars"]["superseded"]) == (1, 1)
     assert _table(root, "context_quotes")[0]["prior_close"] == 15.9
-    assert _table(root, "overnight_bars")[0]["contract"] == "/ESZ26"
+    night = _table(root, "overnight_bars")
+    assert [(b["ts"], b["prior_session"]) for b in night] == [(at(15, 55, day="2026-09-17"), True), (at(8, 0), False)]
+    assert night[1]["contract"] == "/ESZ26"
     assert [r["to_contract"] for r in _table(root, "rolls")] == ["/ESZ26"]
     assert [(e["kind"], e["ends_at"]) for e in _table(root, "events")] == [("FED_SPEAKER", at(10, 30))]
 

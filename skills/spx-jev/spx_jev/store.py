@@ -27,7 +27,8 @@ The tables, each defined in TABLES with its columns, its key and its checks:
     spx_bars        SPX's minute bars (the saved session file, else the bars feed's)
     context_bars    the market feed's minute bars, a derived $VOLD marked, a saved day's bar kept over a live one
     context_quotes  the market feed's quotes, each as of its snapshot
-    overnight_bars  the overnight futures store's bars with their contract
+    overnight_bars  the overnight futures store's bars with their contract; a night starts in the prior session's
+                    last minutes, which that session's own night also holds, so those are marked ``prior_session``
     rolls           the futures rolls found in the roll table, by the day they took effect
     events          the calendar's scheduled events on the day
     quarantine      every row a check refused, with the check's reason and the raw row
@@ -376,7 +377,7 @@ CONTEXT_QUOTES = Table("context_quotes", (("day", DAY, True), ("symbol", STR, Tr
                                lambda r: "a quote of zero is an empty shell, not a price" if r["last"] == 0 else None))
 
 OVERNIGHT_BARS = Table("overnight_bars", (("day", DAY, True), ("ts", TS, True), ("symbol", STR, True), ("contract", STR, False),
-                                          ("contract_from", STR, False), ("bar_minutes", INT, True)) + _BAR
+                                          ("contract_from", STR, False), ("bar_minutes", INT, True), ("prior_session", BOOL, True)) + _BAR
                        + (("session", STR, False), ("source", STR, False), ("saved_at", TS, True), ("flags", WORDS, False),
                           ("store_schema", INT, False)),
                        key=("symbol", "bar_minutes", "ts"),
@@ -756,10 +757,12 @@ def read_raw(state_dir: Path, day: date) -> Raw:
                                                "prior_close": _label_unit(symbol, q.get("close")), "volume": q.get("volume"),
                                                "quote_time": q.get("quote_time"), "_source": w})
 
+    prior_close = session_close(datetime.combine(previous_trading_day(day), datetime.min.time(), tzinfo=ET))
     for w, bar in lines(state_dir / OVERNIGHT_SUBDIR / f"{iso}.jsonl", "overnight_bars"):
-        rows["overnight_bars"].append({**_bar_row(day, bar), **{k: bar.get(k) for k in ("symbol", "contract", "contract_from",
-                                                                                         "bar_minutes", "session", "source",
-                                                                                         "saved_at", "flags")},
+        ts = _parse(bar.get("ts"))
+        rows["overnight_bars"].append({**_bar_row(day, bar), "prior_session": ts < prior_close if ts else None,
+                                       **{k: bar.get(k) for k in ("symbol", "contract", "contract_from", "bar_minutes",
+                                                                  "session", "source", "saved_at", "flags")},
                                        "store_schema": bar.get("schema_version"), "_source": w})
 
     table = rolls_path(state_dir / OVERNIGHT_SUBDIR)
