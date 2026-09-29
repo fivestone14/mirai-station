@@ -150,3 +150,9 @@ def test_shadow_means_asked_and_logged_never_graded_and_never_weighted():
     assert "shadow = asked and logged, never graded and never weighted" in d["conventions"]["status"]
     doc = json.loads((QUESTION_SET.parent.parent / "questions" / "spx_questions.json").read_text(encoding="utf-8"))
     assert "shadow ones are asked and logged but never graded or weighted" in doc["how_to_use"]
+
+
+def test_the_set_describes_the_pre_market_call_the_pre_market_sums_doc_makes():
+    d = json.loads(QUESTION_SET.read_text(encoding="utf-8"))
+    sums = json.loads((QUESTION_SET.parent.parent / "questions" / "spx_premarket_hour.json").read_text(encoding="utf-8"))
+    assert f"its call is the average price over the 30 minutes after the settled open ({sums['average']}" in d["conventions"]["cadence"]
