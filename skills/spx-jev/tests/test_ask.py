@@ -111,6 +111,22 @@ def test_a_gated_question_is_asked_only_when_its_gate_says_awake():
     assert skipped["a"] == {"asleep": "asleep: no shock in the last hour", "undecided": "asleep: no label family decides its gate"}
 
 
+def test_a_question_whose_label_says_nothing_happened_is_asleep_on_that_reason_not_missing():
+    """No shock in the last hour is the shock question's quiet state, not a gap in the data: asleep, with the label's
+    own reason, whatever else it misses. A label left out for want of data stays missing."""
+    noul = {"type": "noul", "criteria": {"true": "t", "false": "f"}}
+    doc = {"groups": [{"id": "a", "reads": ["context", "shock", "vol", "breadth"], "questions": {
+        "shock_only": {**noul, "instructions": "Read `shock.burst`."},
+        "shock_and_gap": {**noul, "instructions": "Read `breadth.at_extremes` and `shock.burst`."},
+        "gap_only": {**noul, "instructions": "Read `breadth.at_extremes`."}}}]}
+    ended = {"shock.burst": "no five-minute move in the last 60 minutes passed the shock rule"}
+    reqs, skipped = build_requests({"context": {"symbol": "SPX"}}, doc, ended=ended)
+    assert reqs == [] and skipped["a"] == {
+        "shock_only": "asleep: no five-minute move in the last 60 minutes passed the shock rule",
+        "shock_and_gap": "asleep: no five-minute move in the last 60 minutes passed the shock rule",
+        "gap_only": "missing breadth.at_extremes", "*": "nothing to ask in this group this read"}
+
+
 def test_a_dark_question_is_never_asked():
     doc = {"groups": [{"id": "a", "reads": ["context"], "questions": {
         "q": {"status": "dark", "type": "noul", "instructions": "Read `context.symbol`.", "criteria": {"true": "t", "false": "f"}}}}]}
@@ -369,6 +385,23 @@ def test_send_all_sends_every_request_together_and_keeps_errors():
     assert out["ok"]["answers"]["q"]["noul"] == 0.9
     assert out["slow"] == {"error": "TimeoutError: handshake operation timed out"}
     assert send_all([], sender=fake) == {}
+
+
+def test_send_all_starts_every_request_at_once_however_many_a_read_sends():
+    """A live read sends up to 16 group requests. Each is held until all have started: a pool smaller than
+    the read would leave the late groups to start only once a stalled JEV let an early one go, after the
+    groups' deadline, with no time left for their retries."""
+    import threading
+
+    from spx_jev.ask import send_all
+    n = 16
+    together = threading.Barrier(n, timeout=5)
+
+    def fake(req, api_key=None, timeout=10.0, deadline=None):
+        together.wait()
+        return {"answers": {}}
+    out = send_all([{"id": f"g{i}", "questions": {}} for i in range(n)], sender=fake)
+    assert out == {f"g{i}": {"answers": {}} for i in range(n)}
 
 
 def test_the_answer_readers_and_the_summary():

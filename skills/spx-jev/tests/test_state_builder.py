@@ -88,7 +88,8 @@ def test_breadth_reads_the_market_context_point_in_time(full_scene, scene_factor
     # the same context read 15 minutes earlier: the newest $ADD value is not known yet, and only 15 ticks are
     earlier = scene_factory(full_scene.now - timedelta(minutes=15), flat_bars(165), market=full_scene.market)
     state, omitted = _labels(earlier)
-    assert "advance_decline" not in state.get("breadth", {}) and omitted["breadth.advance_decline"].startswith("no NYSE advance-decline value")
+    assert "advance_decline" not in state.get("breadth", {}) and omitted["breadth.advance_decline"] == (
+        "the market-context job has saved no NYSE advancers minus decliners ($ADD) today")
     assert omitted["breadth.tick_lean"].startswith("needs 20 NYSE tick readings")
 
 
@@ -104,7 +105,7 @@ def test_a_missing_sector_or_symbol_omits_only_its_label(full_scene, scene_facto
     state, omitted = _labels(scene_factory(full_scene.now, flat_bars(180), market=MarketContext(known)))
     assert "tick_lean" in state["breadth"]
     assert omitted["breadth.sectors_up"] == "needs 8 of the 11 sector funds with a value today, have 7"
-    assert omitted["breadth.advance_decline"] == "no NYSE advance-decline value at or before now"
+    assert omitted["breadth.advance_decline"] == "the market-context job has saved no NYSE advancers minus decliners ($ADD) today"
 
 
 # ---- the tape lane
@@ -244,6 +245,21 @@ def test_the_market_context_joins_snapshots_and_backfilled_bars_by_when_each_was
     assert mk.last("$TICK", at(10, 0, ss=30)) == 350.0               # the 09:59 bar finished at 10:00; a zero quote is a shell
     assert mk.between("$TICK", at(9, 0), at(10, 2)) == [350.0, -40.0]
     assert load_market_context(tmp_path, "2026-09-17") is None
+
+
+def test_a_derived_vold_never_stands_in_for_the_vold_schwab_served_for_that_minute(tmp_path):
+    """Live, Schwab served no $VOLD for 10:00 and the snapshot derived one; the after-close save got Schwab's own."""
+    derived = {"ts": at(10, 0).isoformat(), "open": -16000.0, "close": -16000.0, "volume": 0.0,
+               "derived": "($UVOL - $DVOL) * 1000"}
+    live = [{**context_line(at(10, 1, ss=20)), "bars": {"$VOLD": derived}},
+            {**context_line(at(10, 2, ss=20)), "bars": {"$VOLD": {**derived, "ts": at(10, 1).isoformat(), "close": 9000.0}}}]
+    write_state(tmp_path, DAY, [make_row(at(10, 2), 7700.0)], flat_bars(32), context=live)
+    (tmp_path / "spx_jev" / "context" / "bars").mkdir()
+    (tmp_path / "spx_jev" / "context" / "bars" / f"{DAY}.jsonl").write_text(
+        json.dumps({"ts": at(9, 31).isoformat(), "bars": {"$VOLD": {"ts": at(10, 0).isoformat(), "close": -15869.0}}}) + "\n")
+    mk = load_market_context(tmp_path, DAY)
+    assert mk.last("$VOLD", at(10, 1)) == -15869.0                   # Schwab's own, not the snapshot's derived value
+    assert mk.last("$VOLD", at(10, 2)) == 9000.0                     # a minute Schwab never served keeps the derived one
 
 
 

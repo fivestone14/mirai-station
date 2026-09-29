@@ -363,3 +363,17 @@ def test_a_bar_that_finishes_after_the_row_never_counts(tmp_path):
     seen, clean = labels_on(tmp_path / "all", bars + later), labels_on(tmp_path / "clean", bars)
     assert all(p in clean for p in SET_LABELS)
     assert {p: seen[p] for p in SET_LABELS} == {p: clean[p] for p in SET_LABELS}
+
+
+def test_the_range_since_the_last_read_ranks_each_session_in_its_own_ruler(lane_scene):
+    """Prior sessions' rulers ran from 48 to 143 points: a range in points ranks a wide-ruler day above a quiet one for
+    its size alone. Here every prior session's stretch is the same in points; the seven whose ruler was four times
+    today's rank below today's, and a session whose ruler was estimated sits out."""
+    days = list(lane_scene.prior_bars)
+    rulers = {d: SigmaRuler(300.0 if k < 7 else 75.0, "anchor") for k, d in enumerate(days)}
+    ls = build_range_size_labels(replace(lane_scene, prior_rulers=rulers))
+    assert ls.state["tape"]["range_since_read"].endswith(
+        "in the top third for this minute, higher than 7 of 10 prior sessions, each in its own morning ruler (ruler estimated)")
+    rulers[days[-1]] = SigmaRuler(75.0, "estimated")
+    ls = build_range_size_labels(replace(lane_scene, prior_rulers=rulers))
+    assert ls.omitted["tape.range_since_read"] == "needs 10 prior sessions of bars and a trusted morning ruler at these minutes, have 9"

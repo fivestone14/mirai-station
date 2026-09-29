@@ -51,7 +51,7 @@ def _run(js, data=None, tz=LA):
               + "".join(_fn(f) for f in ("viewerTime", "marketAt", "marketWords", "cap", "pct", "words", "startOf", "endOf",
                                           "leftWords", "verdict", "endPrice", "gradeOf", "callWords", "laneLeads", "svgEl", "lastLaneRead", "hhmm", "marketClock",
                                           "marketDay", "sentence", "callSum", "endVerdict", "fallbackLine"))
-              + _var("VIEWER_FMT") + _var("FALLBACK_WORDS") + _var("NS") + _var("ROW_H") + js)
+              + _var("VIEWER_FMT") + _var("WEEKDAYS") + _var("MARKET_TIME") + _var("FALLBACK_WORDS") + _var("NS") + _var("ROW_H") + js)
     out = subprocess.run([_NODE, "-e", script], input=json.dumps(data), capture_output=True, text=True, timeout=20,
                          env={**os.environ, "TZ": tz})
     assert out.returncode == 0, out.stderr
@@ -152,7 +152,7 @@ def test_market_clock_words_the_service_wrote_are_redrawn_in_the_viewers_zone():
 
 
 def test_the_calls_in_play_axis_and_tap_targets_read_in_the_viewers_zone():
-    js = _fn("fitting") + _fn("fits") + _fn("callsSvg") + "console.log(JSON.stringify(dump(callsSvg(D.calls, Date.parse(D.at)))));"
+    js = _side() + _fn("fitting") + _fn("fits") + _fn("callsSvg") + "console.log(JSON.stringify(dump(callsSvg(D.calls, Date.parse(D.at)))));"
     svg = _run(js, {"calls": MORNING, "at": "2026-09-28T09:51:00-04:00"}, TOKYO)
     texts = [k for k in svg["kids"] if k["tag"] == "text"]
     assert [t["text"] for t in texts if t["attrs"].get("class") == "t-axis"][:3] == ["22:35", "22:45", "22:55"]
@@ -315,6 +315,36 @@ def test_the_page_words_the_tally_as_the_close_out_log_does(monkeypatch):
     assert _opening(tallies) == [tally_words(t) for t in tallies]
 
 
+
+def test_a_call_closed_for_good_is_never_graded_on_the_page_not_still_to_grade():
+    """A lane call whose window was halted is closed for good (tally.closed): the morning's line counts it apart, in
+    the service's words (service.tally_words), never as a call still to grade. A card from before the average-price
+    grade counted its passes as unsure."""
+    sched = {"reads": ["2026-09-29T09:35:00-04:00", "2026-09-29T10:30:00-04:00"], "looks_ahead_min": 10}
+    lines = _run(_fn("openingDone") + "console.log(JSON.stringify(D.t.map(function(t){ return dump(openingDone(t)); })));", {"t": [
+        {"row_ts": "2026-09-29T10:30:00-04:00", "schedule": sched, "tally": {"calls": 12, "graded": 11, "right": 3, "closed": 1}},
+        {"row_ts": "2026-09-29T10:30:00-04:00", "schedule": sched, "tally": {"calls": 12, "graded": 9, "right": 3, "closed": 1}},
+        {"row_ts": "2026-09-29T10:30:00-04:00", "schedule": sched, "tally": {"calls": 12, "graded": 11, "right": 3, "unsure": 2, "closed": 1}},
+        {"row_ts": "2026-09-29T10:30:00-04:00", "schedule": sched,
+         "tally": {"calls": 12, "graded": 11, "right": 3, "passed": 2, "end_price_only": 1, "closed": 1}},
+        {"row_ts": "2026-09-29T10:30:00-04:00", "schedule": sched, "tally": {"calls": 1, "graded": 0, "right": 0, "passed": 0, "closed": 1}}]})
+    assert [_flat_text(l) for l in lines] == ["opening done3 of 11 calls right \u00B7 1 never graded",
+                                              "opening done3 of 9 calls right \u00B7 2 still to grade \u00B7 1 never graded",
+                                              "opening done3 of 9 calls right \u00B7 2 passed \u00B7 1 never graded",
+                                              "opening done3 of 9 calls right \u00B7 2 passed \u00B7 1 on the end price only \u00B7 1 never graded",
+                                              "opening done1 never graded"]
+
+
+def test_a_close_out_that_leaves_a_call_to_grade_still_redraws_the_page():
+    """09-28: the close-out graded the pre-market open_10 check but not open_30, whose bar had not come, so the card kept
+    its read's generated_at and no closed_out_at, and an open page kept the ungraded card until a later run graded
+    both. Every close-out run stamps graded_at, and the page's test for a new card reads it."""
+    read = {"generated_at": "2026-09-28T13:50:05+00:00", "row_ts": "2026-09-28T09:34:00-04:00"}
+    partial = {**read, "graded_at": "2026-09-28T14:06:07+00:00"}
+    done = {**partial, "graded_at": "2026-09-28T15:02:40+00:00", "closed_out_at": "2026-09-28T15:02:40+00:00"}
+    sigs = _run(_fn("sig") + "console.log(JSON.stringify(D.c.map(sig)));", {"c": [read, partial, done, None]})
+    assert len(set(sigs)) == 4 and sigs[3] == ""
+
 # ---- the schedule stays on the market clock
 
 
@@ -349,6 +379,27 @@ def test_the_header_line_names_the_row_in_the_viewers_time_and_knows_the_close()
     last = {**c, "row_ts": "2026-09-28T15:31:56-04:00"}
     assert _run(js, {"now": "2026-09-28T16:10:00-04:00", "c": last, "m": 38}, LA) == "after the close, last row 12:31, 43 labels"
     assert _run(js, {"now": "2026-09-28T15:50:00-04:00", "c": last, "m": 18}, TOKYO).startswith("row 04:31, 18 min ago")
+
+
+# Widths measured in Chrome with the shipped face at the header line's 13px: the stale line with its label count ran
+# past the 328px column on the owner's 360px phone and was cut before its next read ("next read 07:…")
+_SUB_W = {"row 06:31, 39 min ago, stale, 125 labels, next read 07:32": 333.80, "row 06:31, 39 min ago, stale, next read 07:32": 268.56,
+          "row 12:31, 20 hr 29 min ago, stale, next read 07:32": 297.38, "row 08:01, 12 min ago, 125 labels, next read 08:32": 298.19}
+
+
+def test_a_stale_header_line_keeps_its_next_read_on_the_owners_360px_phone():
+    """Monday 10:10 ET: the 09:31 card was 39 minutes old, and its line was cut at "next read 07:…". A stale line
+    drops the label count, which says least about an old card, so the next read fits."""
+    js = ("var READ_MINUTES = [2, 32], GONE_MIN = 60, STALE_MIN = 35, ROW_LEAD_MIN = 4, LAST_READ_DEFAULT = '15:32';"
+          + _fn("nextRead") + _fn("ageWord") + _fn("subLine") + "console.log(JSON.stringify(subLine(D.c, D.m)));")
+    c = {"row_ts": "2026-09-28T09:31:20-04:00", "labels": 125,
+         "session": {"close": "2026-09-28T16:00:00-04:00", "last_read": "2026-09-28T15:32:00-04:00"}}
+    stale = _run(js, {"now": "2026-09-28T10:10:00-04:00", "c": c, "m": 39}, LA)
+    assert stale == "row 06:31, 39 min ago, stale, next read 07:32"
+    column = 360 - 2 * 16
+    assert _SUB_W[stale] <= column < _SUB_W["row 06:31, 39 min ago, stale, 125 labels, next read 07:32"]
+    assert _SUB_W["row 12:31, 20 hr 29 min ago, stale, next read 07:32"] <= column
+    assert _SUB_W["row 08:01, 12 min ago, 125 labels, next read 08:32"] <= column
 
 
 def test_the_last_lane_read_is_known_from_the_schedules_stamps():
@@ -471,7 +522,7 @@ def test_the_newest_calls_verdict_fits_after_its_bar_on_the_owners_phone():
              call("10:25", "10:35", "down", 0.5, integral=graded("down", "right")),
              call("10:20", "10:30", "up", 0.5, integral=graded("down", "wrong")),
              call("10:15", "10:25", "flat", 0.5, integral=graded("flat", "right"))]
-    js = _fn("fitting") + _fn("fits") + _fn("callsSvg") + "console.log(JSON.stringify(dump(callsSvg(D.calls, Date.parse(D.at)))));"
+    js = _side() + _fn("fitting") + _fn("fits") + _fn("callsSvg") + "console.log(JSON.stringify(dump(callsSvg(D.calls, Date.parse(D.at)))));"
     svg = _run(js, {"calls": calls, "at": "2026-09-28T10:43:00-04:00"}, LA)
     side = [t for t in svg["kids"] if t["tag"] == "text" and t["attrs"].get("class") == "t-side"]
     assert [t["text"] + "".join(k["text"] for k in t["kids"]) for t in side] == [
@@ -653,7 +704,7 @@ def test_every_question_group_has_a_heading_in_words():
 def test_the_folded_30_minute_line_counts_down_only_a_call_that_was_made():
     """The 09:32 read asks nothing, so from 09:35 to 10:02 the opening view has no 30-minute call to time."""
     js = ("var tickers = [], READ_MINUTES = [2, 32], LAST_READ_DEFAULT = '15:32';" + _fn("top1") + _fn("plusIso") + _fn("nextRead")
-          + _fn("foldLive") + "var f = foldLive(D.c); console.log(JSON.stringify([f.kids.map(function(k){ return k.textContent; }), tickers.length]));")
+          + _fn("noCallWords") + _fn("foldLive") + "var f = foldLive(D.c); console.log(JSON.stringify([f.kids.map(function(k){ return k.textContent; }), tickers.length]));")
     c = {"row_ts": "2026-09-28T09:31:20-04:00", "hour": None, "marks": {"next_30": "2026-09-28T10:00:00-04:00"},
          "session": {"close": "2026-09-28T16:00:00-04:00", "last_read": "2026-09-28T15:32:00-04:00"}}
     assert _run(js, {"now": "2026-09-28T09:52:00-04:00", "c": c}, LA) == [
@@ -898,6 +949,17 @@ def test_the_checks_drawing_names_both_sums_from_the_settled_open_in_the_viewers
     # hours before the open the dashed now line is off the drawing, and a card with no call names no bar
     early = _pre(js, {"card": pre_card("02:35"), "now": et("02:36")}, LA)
     assert _texts(early, "t-now-l") == [] and _texts(early, "t-now") == [] and _texts(early, "t-side") == ["10 min on", "30 min on"]
+
+
+def test_the_now_word_stays_whole_where_the_now_line_meets_an_edge_of_the_drawing():
+    """From 09:20 the checks drawing starts ten minutes before the open, so for its first minutes the dashed now line
+    runs along the left edge, and its word, centred on it, was cut in half ("ow"). The line keeps its place; the word
+    is kept inside the drawing."""
+    js = "console.log(JSON.stringify(dump(checksSvg(D.card, Date.parse(D.now)))));"
+    svg = _pre(js, {"card": pre_card("09:28"), "now": et("09:20", s="10")}, LA)
+    line = [k for k in svg["kids"] if k["tag"] == "line" and k["attrs"].get("class") == "now"][0]
+    word = [k for k in svg["kids"] if k["tag"] == "text" and k["attrs"].get("class") == "t-now-l"][0]
+    assert float(line["attrs"]["x1"]) < 1 and float(word["attrs"]["x"]) == 12.0
 
 
 def test_snapshot_reads_before_the_first_call_say_when_it_comes():
@@ -1271,3 +1333,189 @@ def test_the_story_calls_end_inside_the_drawing_on_the_owners_phone():
         (last,) = [k for k in svg["kids"] if k["tag"] == "text" and k["attrs"].get("class") == "t-p last"]
         half = len(last["text"]) * 6.7 / 2
         assert last["text"] == "Down 45%" and half <= float(last["attrs"]["x"]) <= 300 - half
+
+
+# ---- Monday's real cards, through the whole page
+
+# The three cards the station held after Monday 2026-09-28's close (spx_jev/latest.json and the tape and
+# pre-market lanes' latest.json), and the situation rebuilt read-only from the 2026-09-25 11:33 diary row,
+# which named no wall (spx_jev.service.situation_rows over the row's labels and figures).
+MONDAY = json.loads((Path(__file__).parent / "spx_cards_2026-09-28.json").read_text())
+MAIN_JS = re.search(r"(?s)<script>\n(\(function\(\)\{\n  'use strict';.*?)</script>", SPX).group(1)
+KOLKATA = "Asia/Kolkata"
+# the page's whole script run as the phone runs it: every card the station serves answered from D, no timers
+WHOLE_DOM = """
+function Node(tag){ this.tag = tag; this.attrs = {}; this.kids = []; this._t = ''; this.style = {}; this.dataset = {}; this.hidden = false; }
+Node.prototype.insertBefore = function(n, ref){ var i = this.kids.indexOf(ref); this.kids.splice(i < 0 ? 0 : i, 0, n); return n; };
+Node.prototype.setAttribute = function(k, v){ this.attrs[k] = String(v); };
+Node.prototype.appendChild = function(n){ this.kids.push(n); return n; };
+Node.prototype.addEventListener = function(){};
+Object.defineProperty(Node.prototype, 'firstChild', {get: function(){ return this.kids[0] || null; }});
+Object.defineProperty(Node.prototype, 'childNodes', {get: function(){ return this.kids; }});
+Object.defineProperty(Node.prototype, 'textContent', {get: function(){ return this._t + this.kids.map(function(k){ return k.textContent; }).join(''); },
+                                                      set: function(v){ this._t = String(v); this.kids = []; }});
+Object.defineProperty(Node.prototype, 'className', {get: function(){ return this.attrs['class'] || ''; }, set: function(v){ this.attrs['class'] = String(v); }});
+Object.defineProperty(Node.prototype, 'classList', {get: function(){ var n = this; function has(){ return n.className.split(' ').filter(Boolean); }
+  function put(h){ n.className = h.join(' '); }
+  return {contains: function(k){ return has().indexOf(k) >= 0; }, add: function(k){ put(has().filter(function(x){ return x !== k; }).concat([k])); },
+          remove: function(k){ put(has().filter(function(x){ return x !== k; })); },
+          toggle: function(k, on){ put(has().filter(function(x){ return x !== k; }).concat(on ? [k] : [])); }}; }});
+var ids = {};
+['h1', 'sub', 'state', 'main', 'load', 'poll', 'csTitle', 'csBody'].forEach(function(id){ ids[id] = new Node('div'); });
+var document = {hidden: false, getElementById: function(id){ return ids[id] || null; }, createElement: function(t){ return new Node(t); },
+                createElementNS: function(ns, t){ return new Node(t); }, querySelectorAll: function(){ return []; }, addEventListener: function(){}};
+var window = {addEventListener: function(){}}, localStorage = {getItem: function(){ return null; }, setItem: function(){}}, MiraiSheet = {open: function(){}};
+var CARDS = {'spx_jev/latest.json': D.live, 'spx_jev/lanes/tape/latest.json': D.tape, 'spx_jev/lanes/premarket/latest.json': D.premarket};
+function fetch(url){
+  var c = CARDS[decodeURIComponent(url.split('path=')[1])];
+  return Promise.resolve({ok: true, json: function(){ return Promise.resolve(c ? {kind: 'json', data: c} : {error: 'no such file'}); }});
+}
+var setTimeout = function(){ return 0; }, clearTimeout = function(){}, setInterval = function(){ return 0; };
+function dump(n){ return {tag: n.tag, attrs: n.attrs, text: n._t, kids: n.kids.map(dump)}; }
+function flat(n){ return n._t + n.kids.map(flat).join(''); }
+"""
+
+
+def _whole(cards, now, tz=LA):
+    """The page drawn at ``now`` in ``tz`` from ``cards`` (live, tape, premarket; a missing one is not on file):
+    the header line and whether it is an error, the state chips, and each of main's parts as [class, flat text]."""
+    if not _NODE:
+        pytest.skip("node is not installed")
+    script = ("const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + FIXED_NOW + WHOLE_DOM + MAIN_JS +
+              "setImmediate(function(){ console.log(JSON.stringify({sub: ids.sub.textContent, err: ids.sub.classList.contains('err'),"
+              " state: ids.state.kids.map(flat), main: ids.main.kids.map(function(k){ return [k.className || k.tag, flat(k)]; }),"
+              " dom: ids.main.kids.map(dump)})); });")
+    out = subprocess.run([_NODE, "-e", script], input=json.dumps({**cards, "now": now}), capture_output=True, text=True, timeout=20,
+                         env={**os.environ, "TZ": tz})
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
+
+
+@pytest.mark.parametrize("tz", [LA, TOKYO, NY, KOLKATA])
+@pytest.mark.parametrize("now, leads", [
+    ("2026-09-28T09:30:00-04:00", "before the open"),                 # the 09:28 pre-market card leads
+    ("2026-09-28T10:35:00-04:00", "opening · a call every 5 min"),    # the 10:30 lane call is open
+    ("2026-09-28T15:40:00-04:00", "normal · a call every 30 min"),    # the 15:32 read's call is open
+    ("2026-09-28T16:10:00-04:00", "normal · a call every 30 min"),
+])
+def test_mondays_real_cards_draw_whole_in_every_zone(now, leads, tz):
+    got = _whole({k: MONDAY[k] for k in ("live", "tape", "premarket")}, now, tz)
+    assert not got["err"], got["sub"]
+    assert got["main"][0] == ["mode", leads]
+
+
+@pytest.mark.parametrize("tz", [LA, TOKYO, KOLKATA])
+def test_a_diary_row_with_no_wall_draws_its_fact_in_words(tz):
+    """About one diary row in ten names no wall (09-15, 09-21, 09-23, 09-25 in market hours): its nearest-strike fact
+    carries a figure with no distance, and the page broke on it ("the card could not be drawn") and lost the situation
+    and every question. A fact whose figure has no number is drawn without a gauge, in the builder's sentence."""
+    live = {**MONDAY["live"], "situation": MONDAY["no_wall"]["situation"]}
+    got = _whole({"live": live, "tape": MONDAY["tape"], "premarket": MONDAY["premarket"]}, "2026-09-28T15:40:00-04:00", tz)
+    assert not got["err"], got["sub"]
+    situation = [d for c, d in zip(got["main"], got["dom"]) if c[0] == "card" and c[1].startswith("situation")][0]
+    rows = {r["kids"][0]["kids"][0]["text"]: r for r in situation["kids"] if r["attrs"].get("class") == "sit-row"}
+    wall = rows["Nearest heavy strike"]
+    assert [k["attrs"].get("class") for k in wall["kids"]] == ["sit-top", "sit-c"]      # no gauge
+    assert wall["kids"][1]["text"] == "No heavy strike sits within reach on either side of price"
+    assert _flat_text(wall["kids"][0]) == "Nearest heavy strikeNone in reach"
+    assert [k["attrs"].get("class") for k in rows["Price, last 30 min"]["kids"]] == ["sit-top", "sit-g", "sit-c"]
+    assert any(c[0] == "vp" for c in got["main"]), "the questions are drawn below it"
+
+
+def test_a_signed_fact_that_rounds_to_nothing_says_no_change():
+    """The 09-25 11:33 row's implied volatility moved +0.03 vol points, Flat, and the page wrote "Up 0.0 vol points"
+    beside the verdict. A change that rounds to nothing at the figure's precision says No change."""
+    facts = [{"kind": "signed", "value": 0.03, "unit": "vol points"}, {"kind": "signed", "value": -0.12, "unit": "vol points"},
+             {"kind": "signed", "value": 0.004, "unit": "sigma"}, {"kind": "signed", "value": 0.31, "unit": "sigma"},
+             {"kind": "signed", "value": -0.004, "unit": "sigma"}]
+    got = _run(_fn("signedWords") + "console.log(JSON.stringify(D.f.map(function(f){ return signedWords(f, 'vol.iv_30m'); })));",
+               {"f": facts})
+    assert got == ["No change", "Down 0.1 vol points", "No change", "Up 0.31 of a normal day\u2019s move", "No change"]
+
+
+@pytest.mark.parametrize("tz, next_read", [(LA, "07:32"), (TOKYO, "23:32"), (KOLKATA, "20:02")])
+def test_a_live_card_with_no_sum_says_so_when_the_30_minute_call_leads(tz, next_read):
+    """Monday from 10:05 to about 10:17 the live 10:02 read and the lane's 10:00 to 10:10 reads were skipped: the page
+    held the 09:32 card, which asks nothing, and said "normal · a call every 30 min" over no call and no reason. It
+    says there is no call on this read and when the next read is, as the folded line does while the opening leads."""
+    live = {**MONDAY["live"], "row_ts": "2026-09-28T09:31:20-04:00", "generated_at": "2026-09-28T13:32:40+00:00", "hour": None,
+            "calls": [], "tally": None, "closed_out_at": None,
+            "marks": {"next_30": "2026-09-28T10:00:00-04:00", "next_60": "2026-09-28T10:30:00-04:00"}}
+    calls = [c for c in MONDAY["tape"]["calls"] if c["read"] <= "2026-09-28T09:55"]
+    tape = {**MONDAY["tape"], "row_ts": "2026-09-28T09:55:00-04:00", "calls": calls, "closed_out_at": None}
+    got = _whole({"live": live, "tape": tape}, "2026-09-28T10:10:00-04:00", tz)
+    assert not got["err"], got["sub"]
+    assert got["main"][0] == ["mode", "normal · a call every 30 min"]
+    card = next(d for c, d in zip(got["main"], got["dom"]) if c[0] == "card dashed")
+    assert _flat_text(card["kids"][1]) == f"No 30-minute call on this read, next read {next_read}"
+    assert [k["attrs"].get("class") for k in card["kids"]] == ["lab", "skip"]
+
+
+# Chrome with the shipped face: the result words beside a bar as drawn, "Was <outcome> · " at 10.5px and the verdict
+# in bold. The newest bar ends at 211 of the drawing's 300, so 84 units are left after its 5-unit gap
+_SIDE_W = {("Was Down · ", "Wrong"): 92.703125, ("Was Down · ", "Right"): 85.5625, ("Was Flat · ", "Wrong"): 82.234375,
+           ("Was Flat · ", "Right"): 75.09375, ("Was Up · ", "Wrong"): 78.109375, ("Was Down small · ", "Wrong"): 120.1875,
+           ("Was Up big · ", "Unsure"): 97.859375, ("Was Down big · ", "Right"): 103.703125, ("", "Wrong"): 34.125, ("", "Right"): 26.984375,
+           ("", "Unsure"): 35.734375, ("Down · ", "Wrong"): 69.65, ("Down · ", "Passed"): 72.33, ("Was Down · ", "Passed"): 95.38,
+           ("Ended Down small · ", "Passed"): 134.50}
+# the same face shaped by HarfBuzz (hb-shape at wght 400 and 700), for side words no Chrome run measured
+_SIDE_W.update({("Down · ", "Right"): 62.52, ("Ended Flat · ", "Right"): 86.74})
+
+
+def _side():
+    return _var("ODDS_LETTERS") + _var("ODDS_EM") + _var("SIDE_FONT_PX") + _var("SIDE_EM") + _fn("sideWidth")
+
+
+def test_a_result_words_width_is_the_shipped_faces_to_a_64th_of_a_pixel():
+    assert "font-size:10.5px" in _rule(".inplay .t-side") and "var SIDE_FONT_PX = 10.5," in _var("SIDE_FONT_PX")
+    got = _run(_side() + "console.log(JSON.stringify(D.w.map(function(w){ return sideWidth(w[0], false) + sideWidth(w[1], true); })));",
+               {"w": [list(k) for k in _SIDE_W]})
+    for words, est in zip(_SIDE_W, got):
+        assert _SIDE_W[words] - 1 / 64 <= est <= _SIDE_W[words] + 1.2, f"{words}: {est:.2f}, Chrome {_SIDE_W[words]}"
+
+
+@pytest.mark.parametrize("tz", [LA, TOKYO, KOLKATA])
+@pytest.mark.parametrize("outcome, hit, newest", [("down", False, "Down · Wrong"), ("down", True, "Down · Right"), ("flat", True, "Was Flat · Right")])
+def test_the_newest_calls_result_is_never_cut_at_the_drawings_edge(outcome, hit, newest, tz):
+    """After Monday's close-out every call in play is graded, the newest bar ending at 211 of 300. "Was Down · Wrong"
+    ran to 308.7 and "Was Down · Right" to 301.6, so the verdict was cut on every phone; the side alone now stands with
+    the verdict when the whole does not fit (the sheet still says what it ended), and "Was Flat · Right" fits whole.
+    Monday's calls are graded here on the average price as a card now carries them, each on the side its end price
+    ended on."""
+    def on_average(c, outcome, hit):
+        rest = {k: v for k, v in c.items() if k not in ("outcome", "hit", "moved")}
+        return {**rest, "integral": graded(outcome, "right" if hit else "wrong"), "end_price": {"outcome": outcome, "hit": hit}}
+    calls = [on_average(MONDAY["live"]["calls"][0], outcome, hit)] + [on_average(c, c["outcome"], c["hit"]) for c in MONDAY["live"]["calls"][1:]]
+    js = (_side() + _fn("fitting") + _fn("fits") + _fn("callsSvg") +
+          "console.log(JSON.stringify(dump(callsSvg(D.calls, Date.parse(D.now)))));")
+    svg = _run(js, {"calls": calls, "now": "2026-09-28T16:10:00-04:00"}, tz)
+    sides = [(float(t["attrs"]["x"]), t["text"], "".join(k["text"] for k in t["kids"])) for t in svg["kids"]
+             if t["tag"] == "text" and t["attrs"].get("class") == "t-side"]
+    assert sides[0][1] + sides[0][2] == newest
+    assert [s[1] + s[2] for s in sides[1:]] == ["Was Down · Right", "Was Flat · Right"]
+    for x, text, strong in sides:
+        assert x + _SIDE_W[text, strong] <= 300, f"{text}{strong} ends at {x + _SIDE_W[text, strong]:.1f}"
+
+
+@pytest.mark.parametrize("tz, reopen, close", [(LA, "Sun 15:00", "Fri 13:00"), (TOKYO, "Mon 07:00", "Sat 05:00"),
+                                               (NY, "Sun 18:00", "Fri 16:00"), (KOLKATA, "Mon 03:30", "Sat 01:30")])
+def test_a_market_time_with_its_weekday_is_drawn_on_the_viewers_day(tz, reopen, close):
+    """The builder names a weekend's times with New York's weekday ("reopened at 18:00 Sunday"). The page redrew the
+    time on the stamp's own day and left the weekday as written, so in Tokyo Monday's card said "07:00 Sunday" for what
+    was Monday 07:00 there. The time is found on its named weekday, the one on or before the stamp's, and both are
+    drawn in the viewer's zone."""
+    got = _run("console.log(JSON.stringify([marketWords(D.a, D.at), marketWords(D.b, D.at), marketWords('at 14:00 ET', D.at)]));",
+               {"at": "2026-09-28T09:28:05-04:00", "a": "since the S&P futures reopened at 18:00 Sunday bitcoin fell",
+                "b": "from the Friday 16:00 close to the S&P futures' reopen at 18:00 Sunday"}, tz)
+    assert got == [f"since the S&P futures reopened at {reopen} bitcoin fell",
+                   f"from the {close} close to the S&P futures' reopen at {reopen}", "at " + _run(
+                       "console.log(JSON.stringify(viewerTime('2026-09-28T14:00:00-04:00')));", {}, tz)]
+
+
+@pytest.mark.parametrize("tz, reopen", [(TOKYO, "Mon 07:00"), (KOLKATA, "Mon 03:30"), (LA, "Sun 15:00")])
+def test_mondays_premarket_bitcoin_fact_names_the_viewers_day(tz, reopen):
+    got = _whole({k: MONDAY[k] for k in ("live", "tape", "premarket")}, "2026-09-28T09:30:00-04:00", tz)
+    card = next(d for c, d in zip(got["main"], got["dom"]) if "pre" in c[0].split())
+    facts = _flat_text(next(k for k in card["kids"] if k["attrs"].get("class") == "facts"))
+    assert f"since the S&P futures reopened at {reopen} bitcoin futures (/MBT) fell" in facts
+    assert "Sunday" not in facts

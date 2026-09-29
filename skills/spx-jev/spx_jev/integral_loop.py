@@ -290,8 +290,8 @@ def dry_run(out_dir: Path, lane: Lane = LIVE, today: str | None = None) -> dict:
 def describe(run: dict, lane: Lane = LIVE) -> list[str]:
     """dry_run's result in plain lines: the sessions and reads it learned from, the sessions passed over (before the
     question, or no reads) apart from those every read of which was left out, what it left out and why, the pool's
-    weights, its evidence against the blend with every promotion step pool.apply_session logged (a gate pool.py holds
-    promotion behind says so there), and each question's standing against "no change"."""
+    weights, its evidence against the blend with every promotion step pool.apply_session logged (held on the blend while
+    pool.SIM_GATES_PASSED is off, and said so there), and each question's standing against "no change"."""
     state, log = run["state"], run["log"]
     applied = [x for x in log if x.get("applied")]
     left_out = Counter(why for x in log for why in (x.get("manifest") or {}).get("excluded", {}).values())
@@ -309,7 +309,7 @@ def describe(run: dict, lane: Lane = LIVE) -> list[str]:
     out.append("the pool's weights, move / direction: " + ", ".join(f"{n} {top['M'][n]:.3f} / {top['D'][n]:.3f}" for n in sorted(pool.W0)))
     phone = state["phone"]["promote"]
     out.append(f"the pool against the blend: e {phone['e']:.2f} over {phone['n']} days (promotion needs {pool.PROMOTE_E:g} after "
-               f"{pool.MIN_DAYS} days, and any gate pool.py holds it behind); shows {state['phone']['shows']}; "
+               f"{pool.MIN_DAYS} days, and the simulation gates, pool.SIM_GATES_PASSED {'on' if pool.SIM_GATES_PASSED else 'off'}); shows {state['phone']['shows']}; "
                f"frozen: {state['frozen'] or 'no'}")
     out += [f"  {x['session']}: {x['phone']}" for x in applied if x.get("phone")]
     block = {side: pool._prob(state["block"][side]) for side in pool.SIDES}

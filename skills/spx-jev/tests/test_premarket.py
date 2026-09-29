@@ -171,7 +171,7 @@ def test_a_snapshot_read_writes_its_record_archive_and_card_and_asks_nothing(tmp
     assert rec["read_id"] == f"premarket:{at(2, 35).isoformat()}" and rec["lane"] == "premarket" and rec["checkpoint"] == "02:35"
     assert rec["schema_version"] == archive.SCHEMA_VERSION == 5 and rec["night"] == read["night"]
     assert rec["market_context"]["/ES"] == {"value": 7781.0, "known_at": at(2, 35).isoformat()}
-    assert rec["cadence"] == {"from": None, "held": {}, "not_due": {"pm_q": "not on its schedule at the 02:35 ET read"}, "asked": []}
+    assert rec["cadence"] == {"from": None, "held": {}, "not_due": {"pm_q": "not on its schedule at the 02:35 ET read"}, "asked": [], "reasked": {}}
     assert json.loads((out / "latest.json").read_text()) == c
     assert c["sent"] is False and c["unsent_reason"] == "nothing to ask at the 02:35 ET read" and c["hour"] is None
     assert c["schedule"]["jev_reads"] == [at(8, 48).isoformat(), at(9, 28).isoformat()]
@@ -306,8 +306,8 @@ def command(monkeypatch, jev, tmp_path_factory):
     questions.write_text(json.dumps(as_filed))
     monkeypatch.setattr(service, "load_env_file", lambda *a, **k: [])
     monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
-    monkeypatch.setattr(overnight, "save_nights", lambda state_dir, days, now: saves.append((days, now)) or [
-        {"added": 3, "failed": ["/BTC 1-min: RuntimeError: refused"]}])
+    monkeypatch.setattr(overnight, "save_nights", lambda state_dir, days, now: saves.append((days, now)) or (
+        [{"added": 3, "failed": ["/BTC 1-min: RuntimeError: refused"]}], ["/BTC 1-min: RuntimeError: refused"]))
     waited = []
     # the bar the close-out waits for, and how many grading runs came before the wait
     monkeypatch.setattr(service, "wait_for_bar", lambda state_dir, fire: waited.append((fire, len(jev["graded"]))) or True)
@@ -342,7 +342,8 @@ def test_a_fire_saves_the_night_reads_once_and_the_close_out_grades(tmp_path, co
     assert len(_lines(out / f"{DAY}.jsonl")) == 1 and len(jev["requests"]) == 1
     assert command(at(10, 6, ss=20), "--state-dir", str(state), "--send") == 0
     c = json.loads((out / "latest.json").read_text())
-    assert c["closed_out_at"] and c["tally"]["calls"] == 1 and jev["graded"] == [PREMARKET, PREMARKET]
+    # the fake grader grades nothing, so the call is still to grade and the card stays open for a later run
+    assert "closed_out_at" not in c and c["tally"]["calls"] == 1 and jev["graded"] == [PREMARKET, PREMARKET]
     lines = _lines(state / "spx_jev" / "archive" / f"{DAY}.jsonl")
     assert [l["kind"] for l in lines] == ["read", "close_out"] and lines[1]["lane"] == "premarket"
 

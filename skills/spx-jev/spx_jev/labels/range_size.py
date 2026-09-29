@@ -20,7 +20,7 @@ from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import (ET, HOUR_MIN_BARS, ONE_MINUTE, bar_time, bars_between, bars_finished_between, close_at, day_high_low, high_low_close,
                        is_num, minute_of_day, move_bar, stretch, stretch_range, walls, yesterdays_bars)
-from .ranks import FIFTH_WORDS, SameClockRank, fifth_side, rank_at_slot, rank_sessions, same_clock_values
+from .ranks import FIFTH_WORDS, SameClockRank, fifth_side, rank_at_slot, rank_days, rank_sessions, same_clock_values
 from .rulers import NO_ANCHOR, RULER_HOLD_UNTIL, SigmaRuler, ruled, ruler, sigma_anchor, typical_move, unit_rank, unit_sigma
 from .vol_sources import point_at, prior_diary
 from .words import minutes_ago, plural, sig, units_of
@@ -209,7 +209,9 @@ def _since_last_read(scene: Scene, ls: LabelSet) -> None:
     """Written only on the bar clock (the tape lane); the live lane writes nothing and omits nothing.
     The stretch runs from the lane's last read today, or from the open on the day's first read, to
     this read. The move keeps the sum's bands in tape units; the range is placed against the same
-    minutes on the prior sessions, in thirds, with the count in the sentence."""
+    minutes on the prior sessions, in thirds, with the count in the sentence, each session's range in its own
+    morning ruler (today's the morning anchor), so a day of wide rulers does not outrank a quiet one on points
+    alone; a session whose ruler was estimated or is not on file sits out."""
     if not scene.bar_clock:
         return
     since = scene.last_read if scene.last_read is not None else scene.session_open
@@ -248,14 +250,21 @@ def _since_last_read(scene: Scene, ls: LabelSet) -> None:
     if len(win) < minutes:
         ls.omit("tape.range_since_read", f"bars missing {lead}: {len(win)} of {minutes} minutes")
         return
-    value = stretch_range(win)
-    base = [stretch_range(pwin) for pbars in scene.prior_bars.values() if len(pwin := stretch(pbars, start_min, end_min)[1]) >= minutes]
-    rank = rank_at_slot(value, base)
-    if rank is None:
-        ls.omit("tape.range_since_read", f"needs {SAME_CLOCK_MIN_SESSIONS} prior sessions of bars at these minutes, have {len(base)}")
+    anchor_ruler = sigma_anchor(scene)
+    if anchor_ruler is None:
+        ls.omit("tape.range_since_read", NO_ANCHOR)
         return
-    ls.put("tape.range_since_read", f"the range {lead}, is {value:.1f} points, {units_of(value / u, u)}, "
-                                    f"in the {rank['band']} for this minute, higher than {rank['higher_than']} of {rank['of']} prior sessions")
+    value = stretch_range(win)
+    base = [stretch_range(pwin) / r.points for d in rank_days(scene)
+            if (r := scene.prior_rulers.get(d)) is not None and len(pwin := stretch(scene.prior_bars[d], start_min, end_min)[1]) >= minutes]
+    rank = rank_at_slot(value / anchor_ruler.points, base)
+    if rank is None:
+        ls.omit("tape.range_since_read", f"needs {SAME_CLOCK_MIN_SESSIONS} prior sessions of bars and a trusted morning ruler at these "
+                                         f"minutes, have {len(base)}")
+        return
+    ls.put("tape.range_since_read", ruled(anchor_ruler, f"the range {lead}, is {value:.1f} points, {units_of(value / u, u)}, in the "
+                                                       f"{rank['band']} for this minute, higher than {rank['higher_than']} of {rank['of']} "
+                                                       f"prior sessions, each in its own morning ruler"))
 
 
 @dataclass(frozen=True)

@@ -74,8 +74,9 @@ def night(day: date, es_pct: float, btc_pct: float, until: time = READ) -> list[
 def prior_nights(root: Path, day: str = DAY, multiple: float = 2.0) -> None:
     """The 20 nights before ``day``: /ES up or down 0.1% (+, -, -, + in turn, so its moves are unrelated to the night's
     order), bitcoin ``multiple`` times that and a part of its own from -0.95% to +0.95% (night k's is (k - 9.5) / 10), so
-    bitcoin's gap ranks in night order. Bitcoin's weekend nights count as short against its weeknights (it trades
-    through the weekend), so the rank has 16: Labor Day's night and the three Mondays sit out."""
+    bitcoin's gap ranks in night order. A Monday's night is measured from Sunday evening (bitcoin.night_start), and
+    its coverage is counted over that stretch, not the thin weekend before it, so the rank has 19: only Labor Day's
+    night sits out."""
     for k, d in enumerate(trading_days_before(day, 20)):
         es = 0.1 * (1, -1, -1, 1)[k % 4]
         write_night(root, d.isoformat(), night(d, es, multiple * es + (k - 9.5) / 10))
@@ -97,7 +98,7 @@ def test_bitcoin_beyond_the_futures_night_ranks_in_fifths_of_the_last_nights(tmp
     ls = build_bitcoin_labels(premarket_read(premarket_scene_factory, tmp_path, 0.3, btc_pct))
     s = written(ls)["overnight.btc_vs_futures"]
     assert s.startswith("S&P futures stand 0.31 sigma above their 16:00 price; since then bitcoin futures (/MBT) ")
-    assert "over those nights bitcoin up has gone with stocks up" in s
+    assert "over those nights bitcoin up has gone with stocks up" in s and "of the last 19 nights" in s
     fig = ls.figures["overnight.btc_vs_futures"]
     assert fig["kind"] == "rank" and fig["cut"] == cut and fig["verdict"] == verdict
     assert (ls.gates["btc_overnight_vs_futures"] is None) == awake
@@ -162,7 +163,7 @@ def test_the_night_is_refused_across_a_roll_and_a_prior_roll_night_sits_out(tmp_
     # the same roll a night earlier leaves tonight measured, against one night fewer
     write_table(tmp_path, [mbt_roll(datetime(2026, 9, 16, 17, 10, tzinfo=ET))])
     ls = build_bitcoin_labels(premarket_read(premarket_scene_factory, tmp_path, 0.3, 2.6))
-    assert "of the last 15 nights" in written(ls)["overnight.btc_vs_futures"]
+    assert "of the last 18 nights" in written(ls)["overnight.btc_vs_futures"]
 
 
 def test_a_roll_the_quote_shows_before_the_table_does_refuses_the_night(tmp_path, premarket_scene_factory):

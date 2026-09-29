@@ -9,10 +9,10 @@ Three record kinds, each a dataclass below, each line carrying ``schema_version`
     read       every run of every lane (sent or not): the complete labels and the omitted ones with
                their reasons, the exact requests sent to JEV and its exact replies, the sums request and
                reply, the sum as shown (with the blend), from version 5 the average-price sum's request and
-               reply (``average_request``, ``average_response``), the cadence state (held, not due, asked), the
-               market-context values the read could see, the tier-1 event tag, the learning loop's
-               forecasts, on the tape lane the unit and the bands, and on the premarket lane its
-               checkpoint, its pre-open ruler and the overnight bars it saw
+               reply (``average_request``, ``average_response``), the cadence state (held, not due, asked, and
+               asked again because an earlier ask got no answer), the market-context values the read could see,
+               the tier-1 event tag, the learning loop's forecasts, on the tape lane the unit and the bands, and
+               on the premarket lane its checkpoint, its pre-open ruler and the overnight bars it saw
     grade      one per graded horizon line the grader writes, keyed to its read by ``read_id``
     close_out  a scheduled lane's grade-only run after its last read: the day's calls and tally. From version 4
                each call is graded on the average price over its window (``integral``), its end-price grade kept
@@ -39,7 +39,9 @@ from typing import Any
 
 SCHEMA_VERSION = 5          # 2: a read carries the learning loop's forecasts (pool); 3: a premarket read carries its checkpoint and the night it saw;
                             # 4: a close_out's calls and tally are graded on the average price (see close_out above);
-                            # 5: a read carries the average-price sum's request and reply, and a close_out's calls are its calls (see close_out)
+                            # 5: a read carries the average-price sum's request and reply, and a close_out's calls are its calls (see close_out);
+                            #    every version 5 read's cadence carries ``reasked`` and every close_out's tally ``closed`` (calls closed for good),
+                            #    which late version 3 lines may carry too, added without a bump
 ARCHIVE_SUBDIR = Path("spx_jev") / "archive"
 
 
@@ -67,7 +69,8 @@ class ReadRecord:
     hour_request: dict | None                    # the sums request, None when nothing was summed
     hour_response: dict | None                   # JEV's reply to it, untouched
     hour: dict | None                            # the sum as the card shows it (blended on the live lane)
-    cadence: dict[str, Any]                      # {"from", "held": {qid: iso}, "not_due": {qid: reason}, "asked": [qid]}
+    cadence: dict[str, Any]                      # {"from", "held": {qid: iso}, "not_due": {qid: reason}, "asked": [qid],
+                                                 #  "reasked": {qid: {"row_ts", "why"}}: asked again, the earlier ask today got no answer}
     market_context: dict[str, dict] | None       # {symbol: {"value", "known_at"}} the read could see
     event: dict | None                           # the tier-1 event tag (events.py), never sent to JEV
     ruler: dict | None = None                    # the tape lane's unit; the premarket lane's pre-open ruler, or why it has none

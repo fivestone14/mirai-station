@@ -562,6 +562,7 @@ def test_a_new_session_high_or_low_in_the_last_15_minutes(scene_factory):
 def test_an_extreme_older_than_the_window_is_not_news(scene_factory):
     _, omitted, _ = _labels(_extreme_scene(scene_factory, {50: 7710.0, 74: 7713.75}, now=at(11, 0)))
     assert omitted["price.session_extreme_recent"] == "no new session high or low in the last 15 minutes"
+    assert "price.session_extreme_recent" in build_price_labels(_extreme_scene(scene_factory, {50: 7710.0, 74: 7713.75}, now=at(11, 0))).ended
     state, _, _ = _labels(_extreme_scene(scene_factory, {50: 7710.0, 75: 7713.75}, now=at(11, 0)))
     assert state["price.session_extreme_recent"].startswith("SPX set a new session high 14 minutes ago")
     state, _, _ = _labels(_extreme_scene(scene_factory, {50: 7710.0, 89: 7713.75}))

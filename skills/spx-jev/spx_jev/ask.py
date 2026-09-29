@@ -137,7 +137,8 @@ NO_GATE = "no label family decides its gate"
 
 
 def build_requests(state: dict, doc: dict, skip: dict[str, str] | None = None,
-                   gates: dict[str, str | None] | None = None) -> tuple[list[dict], dict[str, dict[str, str]]]:
+                   gates: dict[str, str | None] | None = None,
+                   ended: dict[str, str] | None = None) -> tuple[list[dict], dict[str, dict[str, str]]]:
     """Return ``(requests, skipped)``.
 
     ``requests`` is a list of ``{"id", "state", "questions"}`` ready for JEV.
@@ -145,12 +146,15 @@ def build_requests(state: dict, doc: dict, skip: dict[str, str] | None = None,
     including whole groups under the key ``"*"``. ``skip`` names questions to leave
     out with a reason of the caller's own (the schedule and the cadence). ``gates`` is
     the labels' sleep gates (LabelSet.gates): a question with ``sleep_when`` is asked
-    only when its gate says it is awake.
+    only when its gate says it is awake. ``ended`` is the labels left out because what
+    they describe is not there (LabelSet.ended_reasons): a question missing one of them
+    is asleep on its reason, since nothing happened, rather than missing a label.
     """
     requests: list[dict] = []
     skipped: dict[str, dict[str, str]] = {}
     skip = skip or {}
     gates = gates or {}
+    ended = ended or {}
     for group in doc["groups"]:
         gid = group["id"]
         slice_: dict = {}
@@ -176,7 +180,10 @@ def build_requests(state: dict, doc: dict, skip: dict[str, str] | None = None,
             missing = [p for p in paths_in(q) if get_path(state, p) is None]
             # a label the state has but this group does not read would leave JEV blind to it
             unread = [p for p in paths_in(q) if p not in missing and get_path(slice_, p) is None]
-            if missing:
+            over = next((ended[p] for p in missing if p in ended), None)
+            if over is not None:
+                skipped.setdefault(gid, {})[qid] = f"asleep: {over}"
+            elif missing:
                 skipped.setdefault(gid, {})[qid] = "missing " + ", ".join(missing)
             elif unread:
                 skipped.setdefault(gid, {})[qid] = "the group does not read " + ", ".join(unread)
@@ -276,14 +283,16 @@ def _tries(n: int) -> str:
     return f" after {n} tries" if n > 1 else ""
 
 
-def send_all(requests: list[dict], api_key: str | None = None, timeout: float = 10.0, workers: int = 12,
+def send_all(requests: list[dict], api_key: str | None = None, timeout: float = 10.0,
              sender=None, deadline: float | None = None) -> dict[str, dict]:
     """POST every request at the same time and return ``{request id: answer or {"error": ...}}``.
 
     JEV scores each question independently and the requests share nothing, so the
     round trips of a read collapse into one wait. A failed request records its
     error and never blocks the others, whatever the failure was. ``deadline`` is
-    send's, for every request.
+    send's, for every request. Each request has a worker of its own: a worker keeps
+    one request through all its retries, so a request queued behind a stalled one
+    would start near the deadline with no time left to retry.
     """
     from concurrent.futures import ThreadPoolExecutor
     sender = sender or send
@@ -299,7 +308,7 @@ def send_all(requests: list[dict], api_key: str | None = None, timeout: float = 
             return req["id"], {"error": _scrub(msg, key)}
 
     out: dict[str, dict] = {}
-    with ThreadPoolExecutor(max_workers=max(1, min(workers, len(requests)))) as ex:
+    with ThreadPoolExecutor(max_workers=len(requests)) as ex:
         for rid, ans in ex.map(one, requests):
             out[rid] = ans
     return out

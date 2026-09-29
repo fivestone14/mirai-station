@@ -9,8 +9,9 @@ class LabelSet:
     """Labels by path (``"price.recent_move"``), kept as the state JEV reads: ``{group: {key: sentence}}``.
 
     ``omitted`` maps a path to the reason it could not be written. ``ended`` holds the omitted paths whose
-    condition is over (no shock in the lookback, no new extreme, the last hour) rather than unmeasured: a
-    question on one of them is not held from its last answer (cadence.fill_missing). ``figures`` maps a path to the figure
+    condition is not there (no shock in the lookback, no new extreme, not a stress day, the last hour) rather
+    than unmeasured: a question reading one is asleep on that reason, not missing a label, and holds no earlier
+    answer (ask.build_requests, ``ended_reasons``). ``figures`` maps a path to the figure
     behind its sentence (its kind, its number, its cut and the verdict it landed on) so the phone can draw
     the fact rather than print it; JEV never sees a figure. ``gates`` maps a gated question's id (one whose
     ``sleep_when`` a family judges) to None when it is awake this read, or to why it sleeps.
@@ -39,6 +40,10 @@ class LabelSet:
 
     def sleep(self, question_id: str, reason: str) -> None:
         self.gates[question_id] = reason
+
+    def ended_reasons(self) -> dict[str, str]:
+        """Each ended path with why it was left out: the reason a question reading it sleeps on."""
+        return {p: self.omitted[p] for p in self.ended}
 
     def paths(self) -> set[str]:
         """Every label path this set wrote or omitted."""

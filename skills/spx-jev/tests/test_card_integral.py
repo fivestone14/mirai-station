@@ -71,7 +71,7 @@ def test_a_call_carries_its_average_price_grade_and_its_end_price_beside_it(tmp_
     assert "outcome" not in call and "hit" not in call                # one grade decides; the end price is only kept
     # the grader's working stays in its file
     assert not {"f", "factor", "from", "filled", "bad_ticks", "pick", "direction", "row_ts", "rule_version"} & set(g)
-    assert service.calls_block([call])["tally"] == {"calls": 1, "graded": 1, "right": 1, "passed": 0, "end_price_only": 0}
+    assert service.calls_block([call])["tally"] == {"calls": 1, "graded": 1, "right": 1, "passed": 0, "end_price_only": 0, "closed": 0}
     assert "end_price_only" not in call and call["integral"]["stale_read"] is False
 
 
@@ -82,7 +82,7 @@ def test_an_unsure_call_is_passed_with_its_lean_and_a_window_still_open_carries_
     first, second = service.day_calls(tmp_path, DAY, TAPE)
     assert first["integral"]["verdict"] == "passed" and first["integral"]["lean"] == {"direction": "flat", "p": 0.45}
     assert "integral" not in second and "end_price" not in second     # open: nothing graded yet
-    assert service.calls_block([first, second])["tally"] == {"calls": 2, "graded": 1, "right": 0, "passed": 1, "end_price_only": 0}
+    assert service.calls_block([first, second])["tally"] == {"calls": 2, "graded": 1, "right": 0, "passed": 1, "end_price_only": 0, "closed": 0}
 
 
 def test_a_call_with_no_average_price_grade_stands_on_its_end_price_until_a_later_card_finds_one(tmp_path):
@@ -97,12 +97,12 @@ def test_a_call_with_no_average_price_grade_stands_on_its_end_price_until_a_late
     assert [c.get("end_price_only") for c in calls] == [True, True, True]
     assert [service.call_verdict(c) for c in calls] == ["right", "passed", "right"]
     tally = service.calls_block(calls)["tally"]
-    assert tally == {"calls": 3, "graded": 3, "right": 2, "passed": 1, "end_price_only": 3}
+    assert tally == {"calls": 3, "graded": 3, "right": 2, "passed": 1, "end_price_only": 3, "closed": 0}
     assert service.tally_words(tally) == "2 of 2 calls right · 1 passed · 3 on the end price only"
     _write(tmp_path, DAY, {}, [_line(first, "up", -4.0)])                    # the late line: down on the average
     again = service.day_calls(tmp_path, DAY, LIVE)
     assert "end_price_only" not in again[0] and service.call_verdict(again[0]) == "wrong"
-    assert service.calls_block(again)["tally"] == {"calls": 3, "graded": 3, "right": 1, "passed": 1, "end_price_only": 2}
+    assert service.calls_block(again)["tally"] == {"calls": 3, "graded": 3, "right": 1, "passed": 1, "end_price_only": 2, "closed": 0}
 
 
 def test_an_open_call_carries_its_average_so_far_against_its_whole_windows_edge(tmp_path):

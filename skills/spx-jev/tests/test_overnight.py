@@ -84,7 +84,7 @@ def test_trading_hours_follow_globex_and_bitcoin_round_the_clock():
 def test_a_save_keeps_only_the_nights_finished_bars_and_asks_for_extended_hours(tmp_path, served):
     served[("/ES", 1)] = _bars(t("2026-09-21", 15, 50), 1100)                           # 15:50 Monday to 10:09 Tuesday
     now = t("2026-09-22", 9, 26) + timedelta(seconds=30)
-    lines = overnight.save_nights(tmp_path, [TUESDAY], now)
+    lines, _ = overnight.save_nights(tmp_path, [TUESDAY], now)
     es = [r for r in _rows(tmp_path, "2026-09-22") if r["symbol"] == "/ES"]
     assert es[0]["ts"] == t("2026-09-21", 15, 55).isoformat() and es[-1]["ts"] == t("2026-09-22", 9, 25).isoformat()
     assert all(extended for _, _, extended in served["calls"])
@@ -113,9 +113,9 @@ def test_a_rerun_adds_nothing_and_a_later_read_adds_only_the_new_bars(tmp_path, 
     early = t("2026-09-22", 9, 26)
     overnight.save_nights(tmp_path, [TUESDAY], early)
     before = overnight.night_path(tmp_path, "2026-09-22").read_text()
-    assert overnight.save_nights(tmp_path, [TUESDAY], early) == []                       # nothing new: file and manifest untouched
+    assert overnight.save_nights(tmp_path, [TUESDAY], early) == ([], [])                 # nothing new: file and manifest untouched
     assert overnight.night_path(tmp_path, "2026-09-22").read_text() == before and len(_manifest(tmp_path)) == 1
-    late = overnight.save_nights(tmp_path, [TUESDAY], t("2026-09-22", 16, 20))
+    late, _ = overnight.save_nights(tmp_path, [TUESDAY], t("2026-09-22", 16, 20))
     rows = _rows(tmp_path, "2026-09-22")
     keys = [(r["symbol"], r["bar_minutes"], r["ts"]) for r in rows]
     assert len(keys) == len(set(keys)) and keys == sorted(keys, key=lambda k: (SYMBOLS.index(k[0]), k[1], datetime.fromisoformat(k[2])))
@@ -129,7 +129,7 @@ def test_duplicates_and_disagreeing_refetches_are_counted_and_the_first_save_kep
     served[("/ES", 1)] = bars + [dict(bars[3])]                                         # Schwab answers one minute twice
     overnight.save_nights(tmp_path, [TUESDAY], t("2026-09-21", 16, 10))
     served[("/ES", 1)] = [dict(bars[0], close=1.0, low=0.5)] + bars[1:] + _bars(t("2026-09-21", 16, 5), 1)
-    line = overnight.save_nights(tmp_path, [TUESDAY], t("2026-09-21", 16, 10))[0]
+    (line,), _ = overnight.save_nights(tmp_path, [TUESDAY], t("2026-09-21", 16, 10))
     es1 = line["symbols"]["/ES"]["bars"]["1"]
     assert (es1["disagreed"], es1["already_saved"], es1["added"]) == (1, 10, 1)
     assert _manifest(tmp_path)[0]["symbols"]["/ES"]["bars"]["1"]["duplicates"] == 1
@@ -139,7 +139,7 @@ def test_duplicates_and_disagreeing_refetches_are_counted_and_the_first_save_kep
 def test_a_bad_bar_is_kept_with_its_flags(tmp_path, served):
     bad = {"ts": t("2026-09-21", 16, 0).isoformat(), "open": 6700.0, "high": 6699.0, "low": 6698.0, "close": 0.0, "volume": -1.0}
     served[("/ES", 1)] = [bad]
-    line = overnight.save_nights(tmp_path, [TUESDAY], t("2026-09-21", 16, 5))[0]
+    (line,), _ = overnight.save_nights(tmp_path, [TUESDAY], t("2026-09-21", 16, 5))
     (row,) = _rows(tmp_path, "2026-09-22")
     assert row["flags"] == ["ohlc_inconsistent", "nonpositive_price", "negative_volume"] and row["close"] == 0.0
     assert line["symbols"]["/ES"]["bars"]["1"]["flagged"] == {"ohlc_inconsistent": 1, "nonpositive_price": 1, "negative_volume": 1}
@@ -150,7 +150,7 @@ def test_the_manifest_counts_expected_bars_and_lists_the_gaps(tmp_path, served):
     missing = {t("2026-09-21", 20, 0), t("2026-09-21", 20, 1), t("2026-09-21", 20, 2), t("2026-09-22", 1, 0)}
     served[("/ES", 1)] = _bars(start, 1500, skip=missing)
     served[("/MBT", 1)] = _bars(start, 60, price=84000.0)
-    line = overnight.save_nights(tmp_path, [TUESDAY], t("2026-09-22", 9, 26))[0]
+    (line,), _ = overnight.save_nights(tmp_path, [TUESDAY], t("2026-09-22", 9, 26))
     es1 = line["symbols"]["/ES"]["bars"]["1"]
     # 15:55 to 09:26 is 1051 minutes, less the 60-minute halt at 17:00
     assert es1["expected"] == 991 and es1["bars"] == 1047 and es1["missing_minutes"] == 4
@@ -170,7 +170,7 @@ def test_contracts_come_from_the_roll_table_and_a_new_quote_is_a_pending_roll(tm
     rolls.save(tmp_path / "spx_jev" / "overnight", table)
     served[("/ES", 1)] = _bars(t("2026-09-11", 15, 55), 4000)
     monday = date(2026, 9, 14)
-    line = overnight.save_nights(tmp_path, [monday], t("2026-09-14", 9, 26))[0]
+    (line,), _ = overnight.save_nights(tmp_path, [monday], t("2026-09-14", 9, 26))
     rows = _rows(tmp_path, "2026-09-14")
     assert {r["contract"] for r in rows if r["ts"] < "2026-09-13T18"} == {"/ESU26"}
     assert {r["contract"] for r in rows if r["ts"] >= "2026-09-13T18"} == {"/ESZ26"}
@@ -257,6 +257,35 @@ def test_the_command_does_nothing_on_a_day_the_market_is_shut(tmp_path, served, 
     monkeypatch.setattr(overnight, "datetime", Sunday)
     assert overnight.main(["--state-dir", str(tmp_path)]) == 0
     assert served["calls"] == [] and "not a market day" in capsys.readouterr().out
+
+
+def test_a_save_whose_every_call_is_refused_says_so_though_no_night_changed(tmp_path, served, monkeypatch, capsys):
+    """With every Schwab call refused nothing is added, so no night changes and no manifest line carries the
+    failures: the save hands them back on their own, the pre-market read's card can say the save failed, and the
+    command fails naming them on an empty store as on one with nights to re-scan for rolls."""
+    from spx_jev import premarket
+
+    def refused(*a, **kw):
+        raise RuntimeError("401 Unauthorized")
+    for name in ("minute_bars", "five_minute_bars", "front_contracts"):
+        monkeypatch.setattr(schwab, name, refused)
+    now = t("2026-09-22", 9, 26)
+    lines, failed = overnight.save_nights(tmp_path, [TUESDAY], now)
+    assert lines == [] and len(failed) == 1 + 2 * len(SYMBOLS) and failed[0] == "quotes: RuntimeError: 401 Unauthorized"
+    assert premarket.save_the_night(tmp_path, now) == {"added": 0, "failed": sorted(failed)}
+
+    class Tuesday(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now
+    monkeypatch.setattr(overnight, "datetime", Tuesday)
+    assert overnight.main(["--state-dir", str(tmp_path)]) == 1
+    out = capsys.readouterr().out
+    assert "nights changed" in out and "; failed /BTC 1-min: RuntimeError: 401 Unauthorized" in out and "quotes: RuntimeError" in out
+    overnight.write_night(tmp_path, "2026-09-21", [])                                   # a night to re-scan: roll detection fails too
+    assert overnight.main(["--state-dir", str(tmp_path)]) == 1
+    captured = capsys.readouterr()
+    assert "roll detection failed" in captured.err and "; failed /BTC 1-min: RuntimeError: 401 Unauthorized" in captured.out
 
 
 def test_the_backfill_saves_every_night_served_then_the_roll_table(tmp_path, served, monkeypatch):

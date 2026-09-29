@@ -35,8 +35,9 @@ PLISTS=(
   "com.mirai-station.sndk-jev-tape.plist"
   # The SPX JEV decision service: the same shape beside the left-eye scanner, writing
   # only state/spx_jev/. The live read at :02 and :32, the opening lane, the premarket lane's
-  # checkpoints before the open, and the four feeds it reads (SPX minute bars, the market around
-  # SPX, the day's full bars saved after the close, and the overnight futures saved at 09:26 and 16:20).
+  # checkpoints before the open, the four feeds it reads (SPX minute bars, the market around
+  # SPX, the day's full bars saved after the close, and the overnight futures saved at 09:26 and 16:20),
+  # and the learning store rebuilt from all of them at 16:40.
   "com.mirai-station.spx-jev.plist"
   "com.mirai-station.spx-jev-tape.plist"
   "com.mirai-station.spx-jev-premarket.plist"
@@ -47,6 +48,7 @@ PLISTS=(
   "com.mirai-station.spx-jev-context.plist"
   "com.mirai-station.spx-jev-save-day.plist"
   "com.mirai-station.spx-jev-overnight.plist"
+  "com.mirai-station.spx-jev-store.plist"
   "com.mirai-station.voice.plist"
 )
 

@@ -418,4 +418,4 @@ def test_the_dry_run_says_when_the_gate_is_met_and_keeps_passed_over_sessions_ap
     _edit(mixed / "hour" / "2026-09-17.jsonl", lambda r: {**r, "event": {"within_30": True}})
     said = integral_loop.describe(integral_loop.dry_run(mixed, LIVE, "2026-09-18"))
     assert said[1].startswith("sessions learned from: 3, the gate is 10 (7 to go); passed over: 1; every read left out: 1")
-    assert "promotion needs 20 after 20 days, and any gate pool.py holds it behind" in said[-2]
+    assert "promotion needs 20 after 20 days, and the simulation gates, pool.SIM_GATES_PASSED off)" in said[-2]

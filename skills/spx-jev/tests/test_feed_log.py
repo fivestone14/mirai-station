@@ -118,5 +118,6 @@ def test_every_context_line_is_dated_and_each_failure_names_its_reply(tmp_path, 
     assert market_context.main(["--state-dir", str(tmp_path)]) == 1
     out, err = capsys.readouterr()
     assert _stamped(out.strip()) == "spx-jev-context" and "failed quotes: _HTTPStatusError" in out
-    assert [_stamped(l) for l in err.splitlines()] == ["spx-jev-context"]
-    assert err.strip().endswith("quotes failed: _HTTPStatusError: Client error '401'; Schwab HTTP 401: expired")
+    # after 09:31 ET each breadth symbol's empty answer adds a line of its own (test_market_context)
+    assert {_stamped(l) for l in err.splitlines()} == {"spx-jev-context"}
+    assert err.splitlines()[0].endswith("quotes failed: _HTTPStatusError: Client error '401'; Schwab HTTP 401: expired")

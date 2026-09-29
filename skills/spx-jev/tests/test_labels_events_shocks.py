@@ -21,6 +21,7 @@ from datetime import date, datetime, timedelta
 from conftest import at, bars_from_closes, make_row, prior_sessions
 from spx_jev.labels.events_shocks import DARK, LABELS, build_events_shocks_labels
 from spx_jev.labels.rulers import SigmaRuler
+from spx_jev.labels.usual_link import SPX
 from spx_jev.state_builder import MarketContext
 
 NORMAL = {f"2026-09-{d:02d}": SigmaRuler(100.0, "anchor") for d in range(21, 26)}
@@ -463,6 +464,9 @@ def test_the_shock_rule_and_fresh_window_at_their_boundaries(scene_factory):
         "to that minute, or from the settled open when that is shorter, on every one of up to the last 20 sessions); the largest "
         "was 0.04 sigma, larger than the biggest five-minute move of the hour to that minute on 8 of the last 10 sessions")
     assert omitted["shock.vs_day_range"] == omitted["shock.cross_asset"] == omitted["shock.burst"]
+    # no shock is the shock questions' quiet state, not a gap: they sleep on this reason (ask.build_requests)
+    quiet = build_events_shocks_labels(burst_scene(scene_factory, at(12, 2, BURST_DAY), size=5.0, after=5.0))
+    assert {"shock.burst", "shock.vs_day_range", "shock.cross_asset"} <= quiet.ended
 
 
 def test_the_shock_rule_beats_every_session_with_twenty_on_file(scene_factory):
@@ -614,11 +618,57 @@ def test_what_moved_with_the_shock(scene_factory):
         "during the shock the ten-year yield rose 4.1 basis points beyond its usual link to the index, more than on 10 of the last "
         "10 sessions over the same five minutes, in the top fifth; semiconductors rose 0.15 sigma beyond theirs, their move the "
         "shock's way more than on 10 of the last 10 sessions over the same five minutes, in the top fifth, the shock's way; no "
-        "megacap's share of it is measured, since their index weights are not on file; 10 of 11 sector funds rose with it, more "
+        "megacap's share of it is measured (no state folder to read the index weights from); 10 of 11 sector funds rose with it, more "
         "than on 10 of the last 10 sessions over the same five minutes, in the top fifth, and NYSE TICK reached 1240, at or past "
         "its top 5% band for those minutes, the shock's way; the defensive funds (staples, utilities, health care) fell 0.11 sigma "
         "beyond their usual link, against the shock, their move against the index more than on 10 of the last 10 sessions over "
         "the same five minutes, in the top fifth, not a defensive bid, which needs them rising against a falling index")
+
+
+MEGACAPS = {"NVDA": 0.08, "MSFT": 0.07, "AAPL": 0.065, "AMZN": 0.04, "META": 0.03, "AVGO": 0.025, "GOOGL": 0.02, "GOOG": 0.018,
+            "TSLA": 0.02}
+
+
+def with_megacaps(s, root, lead: float):
+    """``s`` with the index weights on file and the largest names priced: NVDA moving ``lead`` times the index's
+    return, the rest flat."""
+    (root / "spx_leaders").mkdir(parents=True, exist_ok=True)
+    (root / "spx_leaders" / "weights.json").write_text(json.dumps({"as_of": "2026-10-01", "weights": MEGACAPS}))
+    mk, open_spx = burst_market(s.bars), float(s.bars[0]["close"])
+    known = dict(mk.known)
+    for name in ("NVDA", "MSFT", "AAPL", "AMZN", "META", "AVGO", "GOOGL", "TSLA"):
+        known[name] = [(datetime.fromisoformat(b["ts"]) + timedelta(minutes=1),
+                        100.0 * (1 + lead * (float(b["close"]) / open_spx - 1)) if name == "NVDA" else 100.0) for b in s.bars]
+    return replace(s, market=MarketContext(known, mk.bars), prior_markets=PRIOR_MARKETS, state_dir=root)
+
+
+def test_the_largest_megacap_share_of_the_shock_is_measured_from_the_index_weights(scene_factory, tmp_path):
+    """The shock_fingerprint question offers one_name: a megacap supplying the one-name share of the burst."""
+    s = burst_scene(scene_factory, at(12, 2, BURST_DAY), after=6.0)
+    one = labels(with_megacaps(s, tmp_path, 5.0))[0]["shock.cross_asset"]
+    assert ("against the shock; of the 8 largest names NVDA supplied the most of it, 40% of the index's move, past the one-name share "
+            "of 35%: one name; 10 of 11 sector funds") in one
+    spread = labels(with_megacaps(s, tmp_path, 2.0))[0]["shock.cross_asset"]
+    assert "of the 8 largest names NVDA supplied the most of it, 16% of the index's move, under the one-name share of 35%; 10 of 11" in spread
+    (tmp_path / "spx_leaders" / "weights.json").unlink()
+    gone = labels(replace(s, market=burst_market(s.bars), prior_markets=PRIOR_MARKETS, state_dir=tmp_path))[0]["shock.cross_asset"]
+    assert "no megacap's share of it is measured (no index weights: spx_leaders/weights.json is not written yet); 10 of 11" in gone
+
+
+def test_the_shocks_markets_and_the_index_are_priced_at_one_instant_on_a_live_day(scene_factory, tmp_path):
+    """Live, each snapshot is taken ten seconds after a minute closes and quotes the index with the rest. SMH, the
+    sector funds and NVDA keep to the index at every instant, so none of them moved beyond its link and NVDA supplied its
+    weight times its multiple of the move; a quote read against the index's bar close a minute newer made SMH fall
+    beyond its link and NVDA's share of the burst come out wrong."""
+    s = burst_scene(scene_factory, at(12, 2, BURST_DAY), after=6.0)
+    fitted = with_megacaps(s, tmp_path, 5.0)
+    snapped = {k: [(t + timedelta(seconds=10), v) for t, v in pts] for k, pts in fitted.market.known.items() if k != "$TICK"}
+    snapped[SPX] = [(datetime.fromisoformat(b["ts"]) + timedelta(minutes=1, seconds=10), float(b["close"])) for b in s.bars]
+    live = replace(fitted, market=MarketContext({**snapped, "$TICK": fitted.market.known["$TICK"]}, fitted.market.bars))
+    text = labels(live)[0]["shock.cross_asset"]
+    assert "semiconductors moved with their usual link, " in text
+    assert "NVDA supplied the most of it, 40% of the index's move, past the one-name share of 35%: one name" in text
+    assert "the defensive funds (staples, utilities, health care) moved with their usual link to the index" in text
 
 
 def test_defensives_rising_against_a_falling_index_are_the_defensive_bid(scene_factory):

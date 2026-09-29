@@ -84,7 +84,8 @@ def test_the_premarket_job_fires_at_every_checkpoint_of_the_year_and_its_close_o
                                                 ("com.mirai-station.spx-jev-bars", "run-spx-jev-bars.sh", None),
                                                 ("com.mirai-station.spx-jev-context", "run-spx-jev-context.sh", None),
                                                 ("com.mirai-station.spx-jev-save-day", "run-spx-jev-save-day.sh", None),
-                                                ("com.mirai-station.spx-jev-overnight", "run-spx-jev-overnight.sh", None)])
+                                                ("com.mirai-station.spx-jev-overnight", "run-spx-jev-overnight.sh", None),
+                                                ("com.mirai-station.spx-jev-store", "run-spx-jev-store.sh", None)])
 def test_each_job_runs_its_repo_script_and_logs_to_its_own_files(name, script, lane):
     job = _job(name)
     command = job["ProgramArguments"][2]
@@ -107,12 +108,19 @@ def test_the_overnight_futures_are_saved_before_the_open_and_after_the_close():
     assert fires == [_pacific(t) for t in SAVE_TIMES] and SAVE_TIMES[0] < "09:28" < "16:00" < SAVE_TIMES[1]
 
 
+def test_the_learning_store_is_built_after_the_days_saves():
+    store = _job("com.mirai-station.spx-jev-store")["StartCalendarInterval"]
+    save = _job("com.mirai-station.spx-jev-save-day")["StartCalendarInterval"]
+    assert (store["Hour"], store["Minute"]) == _pacific("16:40")
+    assert (save["Hour"], save["Minute"]) < (store["Hour"], store["Minute"]) and _pacific(max(SAVE_TIMES)) < _pacific("16:40")
+
+
 def test_the_installed_plists_match_their_templates():
     """runtime/launchd holds what install-launchd.sh loads; each SPX job there is its template byte for
     byte, so the schedules the tests above hold are the ones launchd runs, and no SPX plist is loaded
     that has no template."""
     templates = {p.name.removesuffix(".template") for p in LAUNCHD.glob("*.plist.template")}
     installed = {p.name for p in (REPO / "runtime" / "launchd").glob("com.mirai-station.spx-jev*.plist")}
-    assert len(templates) == 7 and installed == templates
+    assert len(templates) == 8 and installed == templates
     for name in sorted(templates):
         assert (REPO / "runtime" / "launchd" / name).read_bytes() == (LAUNCHD / f"{name}.template").read_bytes(), name

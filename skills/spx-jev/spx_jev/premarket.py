@@ -49,7 +49,6 @@ from pathlib import Path
 
 from . import archive, clock, events, grade, overnight, pool, rolls, service, story
 from .ask import build_requests, get_path, load_questions, send, send_all
-from .cadence import missing_paths
 from .cuts import MIN_RANK_SESSIONS
 from .expiry import calendar_of
 from .hour import answer_sentences, average_request, average_window, hour_request, hour_summary, load_hour_doc, named_levels
@@ -237,10 +236,10 @@ def save_the_night(state_dir: Path, now: datetime) -> dict:
     """The night in progress saved into the overnight store up to ``now`` (overnight.save_nights): the bars it
     added and the calls that failed. The read goes on with what is on disk whatever the save did."""
     try:
-        lines = overnight.save_nights(state_dir, [overnight.night_for(now)], now)
+        lines, failed = overnight.save_nights(state_dir, [overnight.night_for(now)], now)
     except Exception as e:  # a failed save must never cost the read
         return {"added": 0, "failed": [f"{type(e).__name__}: {e}"]}
-    return {"added": sum(line["added"] for line in lines), "failed": sorted({f for line in lines for f in line["failed"]})}
+    return {"added": sum(line["added"] for line in lines), "failed": sorted(set(failed))}
 
 
 # ---- the read ------------------------------------------------------------------------------------
@@ -299,7 +298,7 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
         scene, ruler = None, {"omitted": str(e)}
         skip = {qid: f"no read before the open: {e}" for g in doc["groups"] for qid in g["questions"]}
     labels = build_labels(scene) if scene else LabelSet()
-    requests, skipped = build_requests(labels.state, doc, skip=skip, gates=labels.gates)
+    requests, skipped = build_requests(labels.state, doc, skip=skip, gates=labels.gates, ended=labels.ended_reasons())
     by_id = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
     answers = send_seconds = hour = hour_rec = hour_reply = average_reply = None
     if do_send and requests:
@@ -310,10 +309,9 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
                 service.log(f"group {r['id']} got no answer: {err}")
         fresh = {qid: service.answer_entry(named_levels(by_id.get(qid, {}), ans))
                  for a in answers.values() for qid, ans in (a.get("answers") or {}).items()}
-        # live questions due now whose label the builder could not measure; one whose label ended is asleep, not missing
+        # live questions due now whose label the builder could not measure
         missing = [qid for g in skipped.values() for qid, why in g.items()
-                   if by_id.get(qid, {}).get("status") == "live" and str(why).startswith("missing")
-                   and not labels.ended.intersection(missing_paths(str(why)))]
+                   if by_id.get(qid, {}).get("status") == "live" and str(why).startswith("missing")]
         hour_rec, hour, hour_reply, average_reply = sum_the_read(doc, fresh, missing, out_dir, t0 + service.SEND_READ_S, average_window_of(ruler, scene.spot if scene else None))
         send_seconds = round(_clock.monotonic() - t0, 3)
         if hour is not None and PREMARKET.clock_blend:
@@ -360,7 +358,8 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
         sigma=record["sigma"], labels=labels.state, omitted=labels.omitted, requests=requests, skipped=skipped, responses=answers,
         hour_request=(hour_rec or {}).get("request"), hour_response=hour_reply, hour=hour, pool=(hour_rec or {}).get("pool"),
         average_request=(hour_rec or {}).get("average_request"), average_response=average_reply,
-        cadence={"from": None, "held": {}, "not_due": skip, "asked": [qid for r in requests for qid in r["questions"]]},
+        cadence={"from": None, "held": {}, "not_due": skip, "asked": [qid for r in requests for qid in r["questions"]],
+                 "reasked": {}},
         market_context=futures_prices(rows, now), event=event, ruler=ruler, checkpoint=checkpoint, night=night))
     if sent:
         try:

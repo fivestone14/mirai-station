@@ -121,7 +121,7 @@ def test_the_close_out_grades_the_last_calls_and_asks_jev_nothing(tmp_path, monk
     _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 82)
     assert service.main(["--state-dir", str(state), "--lane", "tape"]) == 0
     c = json.loads((out / "latest.json").read_text())
-    assert c["closed_out_at"] and c["tally"] == {"calls": 1, "graded": 1, "right": 1, "passed": 0, "end_price_only": 0}
+    assert c["closed_out_at"] and c["tally"] == {"calls": 1, "graded": 1, "right": 1, "passed": 0, "end_price_only": 0, "closed": 0}
     assert (out / f"{DAY}.jsonl").read_text() == reads_before
     kinds = [json.loads(l)["kind"] for l in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
     assert kinds == ["read", "grade", "close_out"]                          # the read, its grade at the close-out, the close-out
@@ -145,7 +145,7 @@ def test_the_tally_counts_the_average_price_grade_its_direction_deciding_and_pas
              {"pick": "flat", "end_price": {"outcome": "flat", "hit": True}},            # the average waits on a bar
              {"pick": "up", "integral": {"graded": False, "reason": "not graded: bars missing"}}]
     tally = service.calls_block(calls)["tally"]
-    assert tally == {"calls": 6, "graded": 4, "right": 2, "passed": 1, "end_price_only": 0}
+    assert tally == {"calls": 6, "graded": 4, "right": 2, "passed": 1, "end_price_only": 0, "closed": 0}
     assert service.tally_words(tally) == "2 of 3 calls right · 1 passed · 2 still to grade"
     assert service.tally_words({**tally, "calls": 4}) == "2 of 3 calls right · 1 passed"
     assert service.tally_words({"calls": 3, "graded": 3, "right": 2, "passed": 0}) == "2 of 3 calls right"
@@ -153,7 +153,59 @@ def test_the_tally_counts_the_average_price_grade_its_direction_deciding_and_pas
     assert service.tally_words({"calls": 2, "graded": 0, "right": 0, "passed": 0}) == "no calls graded yet"
     # the end price never moves the tally of a call graded on the average: right at its mark and wrong on the average is wrong
     wrong = [_graded("up", "down", end={"outcome": "up", "hit": True})] * 3
-    assert service.calls_block(wrong)["tally"] == {"calls": 3, "graded": 3, "right": 0, "passed": 0, "end_price_only": 0}
+    assert service.calls_block(wrong)["tally"] == {"calls": 3, "graded": 3, "right": 0, "passed": 0, "end_price_only": 0, "closed": 0}
+
+
+def test_a_close_out_whose_bar_has_not_come_leaves_the_call_open_and_a_later_live_run_grades_it(tmp_path, monkeypatch):
+    """09-28: the bars stopped from 09:56 to 10:11, the close-outs got one try, and the morning's last calls stayed
+    ungraded on the card and in the archive all day. The close-out waits for the bar its lane's last call is graded
+    on; when it still has not come, the card is not closed out, and each live run after the lane's close-out grades
+    the lane again and refreshes its card until nothing is left to grade."""
+    state = _state(tmp_path, [make_row(at(10, 25, ss=10), 7700.0)], 60)     # bars 09:30 .. 10:29: the 10:30 read, marked at 10:40
+    _today(monkeypatch)
+    monkeypatch.setattr(service, "send_all", _answers)
+    monkeypatch.setattr(service, "send", _sums([]))
+    out = state / "spx_jev" / "lanes" / "tape"
+    run_once(state, out, DOC, True, DAY, lane=TAPE)
+    waited = []
+    monkeypatch.setattr(service, "wait_for_bar", lambda state_dir, fire: waited.append(fire) or False)
+    monkeypatch.setattr(service, "load_env_file", lambda *a, **k: [])
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.setattr(service, "now_et", lambda: at(10, 42))
+    assert service.main(["--state-dir", str(state), "--lane", "tape"]) == 0
+    c = json.loads((out / "latest.json").read_text())
+    assert waited == [at(10, 40)] and "closed_out_at" not in c and c["tally"]["graded"] == 0
+    assert c["graded_at"]                                                         # the phone redraws on it all the same
+    archive = state / "spx_jev" / "archive" / f"{DAY}.jsonl"
+
+    def tape_kinds():
+        return [r["kind"] for r in map(json.loads, archive.read_text().splitlines()) if r["lane"] == "tape"]
+    assert tape_kinds() == ["read", "close_out"]
+
+    _state(tmp_path, [make_row(at(10, 25, ss=10), 7700.0), make_row(at(11, 1, ss=5), 7700.0)], 91)
+    monkeypatch.setattr(service, "now_et", lambda: at(11, 2))
+    assert service.main(["--state-dir", str(state)]) == 0                         # the live lane's 11:02 run
+    c = json.loads((out / "latest.json").read_text())
+    assert c["closed_out_at"] == c["graded_at"] and c["tally"] == {"calls": 1, "graded": 1, "right": 1, "passed": 0, "end_price_only": 0,
+                                                                      "closed": 0}
+    assert tape_kinds() == ["read", "close_out", "grade", "close_out"]
+    assert service.main(["--state-dir", str(state)]) == 0                         # closed out: a later live run leaves it be
+    assert json.loads((out / "latest.json").read_text()) == c
+
+
+def test_a_call_that_can_never_be_graded_is_counted_apart_never_as_still_to_grade():
+    """A call closed for good (a halted window, no band on record) will never get a grade: counting it as still
+    to grade would promise one, beside its own row saying it was not graded."""
+    calls = [_graded("up", "up"), {"pick": "down", "closed": "halted window: no bar at the mark on a finished day"}]
+    tally = service.calls_block(calls)["tally"]
+    assert tally == {"calls": 2, "graded": 1, "right": 1, "passed": 0, "end_price_only": 0, "closed": 1}
+    assert service.still_to_grade(tally) == 0
+    assert service.tally_words(tally) == "1 of 1 calls right · 1 never graded"
+    assert service.tally_words({**tally, "calls": 3}) == "1 of 1 calls right · 1 still to grade · 1 never graded"
+    unsure = service.calls_block([_graded("unsure", "flat"), *calls])["tally"]
+    assert service.tally_words(unsure) == "1 of 1 calls right · 1 passed · 1 never graded"
+    # a morning whose only call was closed for good has nothing left to grade, and says so rather than "no calls graded yet"
+    assert service.tally_words(service.calls_block(calls[1:])["tally"]) == "1 never graded"
 
 
 SCHEDULED = {"groups": [{"id": "g1", "reads": ["context"], "questions": {
@@ -200,6 +252,42 @@ def test_a_day_constant_is_asked_at_0935_held_on_the_lane_and_borrowed_by_the_li
     assert "held_from" in live_read(11, 32)["q_const"]
     at_1202 = live_read(12, 2)
     assert at_1202["q_const"]["answer"] is None and at_1202["q_const"]["skipped"] == "held from its other lane only until 11:32 ET"
+
+
+def test_a_day_constant_whose_0935_ask_got_no_answer_is_asked_at_0940_once_and_the_archive_says_why(tmp_path, monkeypatch):
+    from spx_jev.ask import load_questions
+    doc_path = tmp_path / "doc.json"
+    doc_path.write_text(json.dumps(SCHEDULED))
+    doc = load_questions(doc_path, TAPE.key)
+    root = tmp_path / "state"
+    tape_out = root / "spx_jev" / "lanes" / "tape"
+    monkeypatch.setattr(service, "send", _sums([]))
+    no_answer = "JEV returned HTTP 503 for group g1: upstream connect error"
+    sent = []
+
+    def jev(fail):
+        def send_all(requests, **kw):
+            sent.append(sorted(q for r in requests for q in r["questions"]))
+            return {r["id"]: {"error": no_answer} for r in requests} if fail else _answers(requests)
+        return send_all
+
+    def tape_read(n_bars, fail=False):
+        monkeypatch.setattr(service, "send_all", jev(fail))
+        _state(root, [make_row(at(9, 31), 7700.0)], n_bars)
+        return {q["id"]: q for q in run_once(root, tape_out, doc, True, DAY, lane=TAPE)["questions"]}
+
+    first = tape_read(5, fail=True)                                        # the 09:35 read: JEV answers nothing
+    assert sent == [["q_const"]] and first["q_const"]["answer"] is None
+    lost = json.loads((tape_out / "last_asked.json").read_text())["q_const"]
+    assert lost == {"lost": {"row_ts": at(9, 35).isoformat(), "why": no_answer}}
+    second = tape_read(10)                                                 # 09:40: asked again, beside the question due now
+    assert sent[1] == ["q_const", "q_every"] and second["q_const"]["answer"]["pick"] == "a"
+    assert "lost" not in json.loads((tape_out / "last_asked.json").read_text())["q_const"]
+    third = tape_read(15)                                                  # 09:45: answered at 09:40, so held, never asked again
+    assert sent[2] == ["q_every"] and third["q_const"]["held_from"] == at(9, 40).isoformat()
+    reads = [json.loads(l) for l in (root / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
+    assert [r["cadence"]["reasked"] for r in reads if r["kind"] == "read"] == [
+        {}, {"q_const": {"row_ts": at(9, 35).isoformat(), "why": no_answer}}, {}]
 
 
 def test_a_live_tape_send_stands_for_the_read_its_job_fired_at_and_a_replay_for_its_bar(tmp_path, monkeypatch):
@@ -278,8 +366,10 @@ def test_a_failing_shadow_grade_costs_neither_the_read_nor_the_close_out(tmp_pat
     assert service.main(["--state-dir", str(state), "--lane", "tape"]) == 0
     card = json.loads((out / "latest.json").read_text())
     # the end price graded the first call; with the average price not written, it stands on its end price, so marked,
-    # in the card's tally and in the archived close-out's
-    assert card["closed_out_at"] and card["tally"] == {"calls": 2, "graded": 1, "right": 1, "passed": 0, "end_price_only": 1}
+    # in the card's tally and in the archived close-out's. The 10:50 call's bar has not come, so the card is graded but
+    # not closed out
+    assert card["graded_at"] and "closed_out_at" not in card
+    assert card["tally"] == {"calls": 2, "graded": 1, "right": 1, "passed": 0, "end_price_only": 1, "closed": 0}
     assert card["calls"][1]["end_price"]["outcome"] == "flat" and card["calls"][1]["end_price_only"] and "integral" not in card["calls"][1]
     archived = [json.loads(l) for l in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
     assert archived[-1]["kind"] == "close_out" and archived[-1]["tally"]["end_price_only"] == 1
@@ -288,7 +378,7 @@ def test_a_failing_shadow_grade_costs_neither_the_read_nor_the_close_out(tmp_pat
     monkeypatch.setattr(grade, "integral_run", working)
     again = service.close_out(state, out, DOC, TAPE)
     assert again["calls"][1]["integral"]["verdict"] == "right" and "end_price_only" not in again["calls"][1]
-    assert again["tally"] == {"calls": 2, "graded": 1, "right": 1, "passed": 0, "end_price_only": 0}
+    assert again["tally"] == {"calls": 2, "graded": 1, "right": 1, "passed": 0, "end_price_only": 0, "closed": 0}
 
 
 def test_a_tape_read_mid_window_gives_the_open_call_its_average_so_far(tmp_path, monkeypatch):

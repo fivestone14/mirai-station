@@ -7,7 +7,7 @@ sums with the time-of-day odds (clock.py), grades them, and writes only under ``
     state/spx_jev/{day}.jsonl        every run, appended: the state, the requests, the answers
     state/spx_jev/hour/{day}.jsonl   the sums, one record per run: what step 6 grades
     state/spx_jev/latest.json        the phone's file: the newest run, small, self-describing
-    state/spx_jev/last_asked.json    the last fresh answer per question, for the cadence
+    state/spx_jev/last_asked.json    the last fresh answer per question, for the cadence, and a later ask that got no answer
     state/spx_jev/cadence.json       how often each question is asked, recounted daily
     state/spx_jev/clock_days.json    the time-of-day counts per past session (see clock.py)
     state/spx_jev/clock_integral_days.json   the same on the average price, for the phone's call (clock.integral_odds)
@@ -64,7 +64,7 @@ from zoneinfo import ZoneInfo
 from . import archive, ask, integral, pool
 from .ask import build_requests, confidence, load_questions, pick, send, send_all
 from .baseline import Baseline
-from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, missing_paths, plan,
+from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, lost_today, plan,
                       save_last)
 from .clock import blend as clock_blend, integral_odds as clock_integral_odds, odds as clock_odds
 from .events import learn_exclude, tag as event_tag
@@ -486,25 +486,33 @@ def calls_block(calls: list[dict]) -> dict:
     average price over each window (call_verdict). Its direction decides a call right or wrong; an unsure one is
     passed, counted under ``passed`` and never among the calls right or wrong. A call with no average-price grade
     counts on its end price alone, and ``end_price_only`` says how many did; the grades and their Brier scores
-    still count every call as the grader does."""
+    still count every call as the grader does. A call closed for good (day_calls' ``closed``) is counted under
+    ``closed``: it will never be graded, so it is not still to grade."""
     verdicts = [v for c in calls if (v := call_verdict(c))]
     return {"calls": calls[-CALLS_SHOWN:][::-1],
             "tally": {"calls": len(calls), "graded": len(verdicts), "right": verdicts.count("right"), "passed": verdicts.count("passed"),
-                      "end_price_only": sum(1 for c in calls if c.get("end_price_only"))}}
+                      "end_price_only": sum(1 for c in calls if c.get("end_price_only")),
+                      "closed": sum(1 for c in calls if "closed" in c)}}
+
+
+def still_to_grade(tally: dict) -> int:
+    """The tally's calls neither graded nor closed for good: what a later grading run can still grade."""
+    return tally["calls"] - tally["graded"] - tally.get("closed", 0)
 
 
 def tally_words(tally: dict) -> str:
     """A close-out's tally in the phone's words (jev-spx.html openingDone): '2 of 3 calls right · 1 passed', the
-    passes apart, then how many stood on the end price alone and what is still to grade; a morning of passes only
-    is '3 passed', one with nothing graded 'no calls graded yet'."""
-    if not tally["graded"]:
+    passes apart, then how many stood on the end price alone, what is still to grade and what never will be; a
+    morning of passes only is '3 passed', one with nothing graded and nothing closed 'no calls graded yet'."""
+    passed, alone, closed = tally.get("passed", 0), tally.get("end_price_only", 0), tally.get("closed", 0)
+    if not tally["graded"] and not closed:
         return "no calls graded yet"
-    passed, alone = tally.get("passed", 0), tally.get("end_price_only", 0)
-    called = tally["graded"] - passed
+    called, pending = tally["graded"] - passed, still_to_grade(tally)
     parts = [f"{tally['right']} of {called} calls right"] if called else []
     parts += [f"{passed} passed"] if passed else []
     parts += [f"{alone} on the end price only"] if alone else []
-    parts += [f"{tally['calls'] - tally['graded']} still to grade"] if tally["calls"] > tally["graded"] else []
+    parts += [f"{pending} still to grade"] if pending > 0 else []
+    parts += [f"{closed} never graded"] if closed else []
     return " · ".join(parts)
 
 
@@ -676,9 +684,13 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         last = load_last(out_dir)
         skip, held = plan(doc, last, cad, now, skip, borrowed_answers(state_dir, doc, lane), read_slot(lane, now, fired),
                           learned=lane.cadence)
-    requests, skipped = build_requests(state, doc, skip=skip, gates=labels.gates)
+    requests, skipped = build_requests(state, doc, skip=skip, gates=labels.gates, ended=labels.ended_reasons())
     if do_send and lane.cadence:
-        held = fill_missing(doc, skipped, last, cad, now, held, labels.ended)
+        held = fill_missing(doc, skipped, last, cad, now, held)
+    # the questions asked again because their last ask today got no answer, with that ask's read and why
+    reasked = {qid: lost for r in requests for qid in r["questions"] if (lost := lost_today(last.get(qid), now))}
+    if reasked:
+        log(f"asked again, their last ask got no answer: {', '.join(sorted(reasked))}")
     answers, send_seconds, hour, hour_rec, hour_reply, average_reply = None, None, None, None, None, None
     if do_send:
         t0 = _clock.monotonic()
@@ -687,10 +699,14 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
             err = (answers.get(r["id"]) or {}).get("error")
             if not err:
                 continue
-            # one group failed: its live questions keep their last fresh answer, if young enough
+            # one group failed: its live questions keep their last fresh answer, if young enough, and are
+            # asked again at the lane's next read (cadence.lost_today)
             log(f"group {r['id']} got no answer: {err}")
             for qid in r["questions"]:
-                if qid in live_ids and qid not in held:
+                if qid not in live_ids:
+                    continue
+                last[qid] = {**last.get(qid, {}), "lost": {"row_ts": scene.row["ts"], "why": err}}
+                if qid not in held:
                     h = held_answer(last.get(qid), now, cadence_of(cad, by_id[qid], qid))
                     if h:
                         held[qid] = h
@@ -699,11 +715,9 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         fresh = {qid: answer_entry(named_levels(by_id.get(qid, {}), ans))
                  for a in answers.values() for qid, ans in (a.get("answers") or {}).items()}
         answered = {**held, **fresh}
-        # live questions skipped for a label the builder could not measure, and not covered by a held answer;
-        # one whose label was left out because its condition is over is asleep, not missing
+        # live questions skipped for a label the builder could not measure, and not covered by a held answer
         missing = [qid for g in skipped.values() for qid, why in g.items()
-                   if qid in live_ids and str(why).startswith("missing") and qid not in held
-                   and not labels.ended.intersection(missing_paths(str(why)))]
+                   if qid in live_ids and str(why).startswith("missing") and qid not in held]
         hour_doc = load_hour_doc(lane=lane)
         window = box_window(scene.row["ts"], band, scene, lane) if lane.average else None
         hour_rec, hour, hour_reply, average_reply = sum_the_hour(doc, hour_doc, answered, QuestionWeights.load(out_dir), fresh, missing, lane,
@@ -769,7 +783,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         responses=answers, hour_request=(hour_rec or {}).get("request"), hour_response=hour_reply, hour=hour,
         pool=(hour_rec or {}).get("pool"), average_request=(hour_rec or {}).get("average_request"), average_response=average_reply,
         cadence={"from": cad.get("recounted_from"), "held": {qid: h["held_from"] for qid, h in held.items()}, "not_due": skip,
-                 "asked": [qid for r in requests for qid in r["questions"]]},
+                 "asked": [qid for r in requests for qid in r["questions"]], "reasked": reasked},
         market_context=scene.market.at(now) if scene.market else None, event=event, ruler=unit, band=band))
     if do_send:
         # step 6, every run: grade every mark that has passed and refresh the weights step 3 reads
@@ -827,11 +841,15 @@ def write_card(out_dir: Path, c: dict) -> None:
     os.replace(tmp, out_dir / "latest.json")
 
 
-def close_out(state_dir: Path, out_dir: Path, doc: dict, lane: Lane, day: str | None = None) -> dict | None:
+def close_out(state_dir: Path, out_dir: Path, doc: dict, lane: Lane, day: str | None = None, retry: bool = False) -> dict | None:
     """A lane's run after its last read (lane.close_out): grade every mark that has passed and refresh
     the calls and the day's tally on the card the last read wrote. JEV is asked nothing and no read is
     recorded (the archive gets a close-out record), so the morning's last calls are graded the same
-    day. None when the lane did not read on ``day``, today unless a replay names one."""
+    day. Every run stamps the card ``graded_at``, so the phone redraws a close-out that graded some calls and
+    not others. The card is stamped ``closed_out_at`` only once no call is left to grade: a mark whose bar has
+    not come keeps it open, the phone keeps asking for it, and each live run tries again (retry_close_outs).
+    A ``retry`` archives a close-out record only when its tally moved. None when the lane did not read
+    on ``day``, today unless a replay names one."""
     grade_run(state_dir, out_dir, live_options(doc), lane=lane)
     try:
         c = json.loads((out_dir / "latest.json").read_text(encoding="utf-8"))
@@ -841,11 +859,50 @@ def close_out(state_dir: Path, out_dir: Path, doc: dict, lane: Lane, day: str | 
         return None
     day = c["row_ts"][:10]
     calls = day_calls(out_dir, day, lane)
+    before = c.get("tally")
     c.update(calls_block(calls))
-    c["closed_out_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    c["graded_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    if still_to_grade(c["tally"]):
+        c.pop("closed_out_at", None)
+    else:
+        c["closed_out_at"] = c["graded_at"]
     write_card(out_dir, c)
-    archive.append(lane.archive_folder(state_dir, out_dir), day, archive.CloseOutRecord(lane=lane.name, day=day, calls=calls, tally=c["tally"]))
+    if not retry or c["tally"] != before:
+        archive.append(lane.archive_folder(state_dir, out_dir), day, archive.CloseOutRecord(lane=lane.name, day=day, calls=calls, tally=c["tally"]))
     return c
+
+
+def last_mark(lane: Lane, now: datetime) -> datetime:
+    """The finish of the bar the lane's last call of the day is graded on, which its close-out waits for: the
+    closing bar on a lane closed out after the close, else its last read's longest horizon (grade.mark_at)."""
+    if lane.close_out_after_close:
+        return session_close(now)
+    last = market_time(now, lane.read_times()[-1])
+    return max(m for minutes, _ in lane.horizons.values() if (m := mark_at(last, minutes, lane)) is not None)
+
+
+def retry_close_outs(state_dir: Path, now: datetime) -> None:
+    """Every scheduled lane whose close-out time has passed and whose card today still has a call to grade (the
+    close-out ran before its bar came, or never ran) is closed out again: grades what has come since and
+    refreshes the card. The live job runs this after each of its runs, so the morning's last calls are graded
+    the same day however long the bars were down. A failure is logged and never costs the live run."""
+    for lane in LANES.values():
+        if not lane.close_out or now.strftime("%H:%M") < lane.close_out:
+            continue
+        out_dir = lane.folder(state_dir)
+        try:
+            card = json.loads((out_dir / "latest.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if str(card.get("row_ts", ""))[:10] != now.date().isoformat() or card.get("closed_out_at"):
+            continue
+        try:
+            c = close_out(state_dir, out_dir, load_questions(lane.questions, lane.key), lane, now.date().isoformat(), retry=True)
+        except Exception as e:  # the live run's card is already written; the next run tries again
+            log(f"{lane.name} lane's close-out retry failed: {type(e).__name__}: {e}\n{traceback.format_exc()}")
+            continue
+        if c:
+            log(f"{lane.name} lane closed out again: {tally_words(c['tally'])}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -879,15 +936,19 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = lane.folder(state_dir, args.out_dir)
     doc = load_questions(args.questions or lane.questions, lane.key)
     now = now_et()
+    # the station's own live job gives every other lane's close-out another try after each of its runs
+    retries = lane is LIVE and not args.day and not args.out_dir and not args.loop
     after_close = lane.close_out_after_close and now >= session_close(now)
     if (after_close or (lane.close_out and now.strftime("%H:%M") >= lane.close_out)) and not args.day and not args.loop:
         # the lane's reads are done for the day: the job's last fire only grades and refreshes the card
-        if after_close and not wait_for_bar(state_dir, session_close(now)):
-            log(f"the closing bar is not on file after {BAR_WAIT_S} s: grading what is")
+        if not wait_for_bar(state_dir, mark := last_mark(lane, now)):
+            log(f"the bar finishing at {mark:%H:%M} is not on file after {BAR_WAIT_S} s: grading what is")
         c = close_out(state_dir, out_dir, doc, lane)
         log(f"{lane.name} lane closed out: {tally_words(c['tally'])}" if c else f"{lane.name} lane: nothing to close out today")
+        if retries:
+            retry_close_outs(state_dir, now_et())
         return 0
-    last_row = None
+    last_row, code = None, 0
     while True:
         if lane.bar_clock and do_send and not args.day:
             fire = now_et().replace(second=0, microsecond=0)
@@ -906,15 +967,15 @@ def main(argv: list[str] | None = None) -> int:
                 last_row = c["row_ts"]
         except NoRowYet as e:   # a quiet skip, not a failure: the next tick will find the row
             log(f"skipping this tick: {e}")
-            if not args.loop:
-                return 0
         except Exception as e:  # the service must never die on one bad row
             log(f"run failed: {type(e).__name__}: {e}" + ("" if isinstance(e, RuntimeError) else "\n" + traceback.format_exc()))
-            if not args.loop:
-                return 1
+            code = 1
         if not args.loop:
-            return 0
+            break
         _clock.sleep(args.loop)
+    if retries:
+        retry_close_outs(state_dir, now_et())
+    return code
 
 
 if __name__ == "__main__":

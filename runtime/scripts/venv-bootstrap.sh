@@ -31,7 +31,9 @@ pip install --upgrade \
   'pytz>=2024.1' \
   'authlib>=1.3' \
   'httpx>=0.27' \
-  'pyyaml>=6'
+  'pyyaml>=6' \
+  'duckdb>=1.5,<2' \
+  'pyarrow>=24,<25'
 
 # Layer-2 LOB (FLOW) sensor box — editable install of the local package
 pip install -e "${MIRAI_STATION_ROOT}/skills/lob-flow"

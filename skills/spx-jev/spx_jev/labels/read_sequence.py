@@ -23,6 +23,7 @@ from ..state_builder import MarketContext, Scene
 from .breadth import FRESH_MIN
 from .label_set import LabelSet
 from .measures import ET, SETTLED_OPEN_BAR, close_at, settled_open
+from .plausible import left_out
 from .price import _minutes_since_bar
 from .ranks import SameClockRank, move_rank, rank_sessions, same_clock_values
 from .rulers import NO_ANCHOR, SigmaRuler, ruled, sigma_anchor
@@ -200,7 +201,8 @@ def _breadth_by_read(scene: Scene, reads: Reads, ls: LabelSet) -> None:
     reads = reads.last(BREADTH_READS)
     shares = _shares(scene.market, reads.day, reads.earlier, scene.now) if scene.market else None
     if shares is None:
-        why = "no NYSE up and down volume at every listed read: the market-context job stopped or has not saved it"
+        why = (left_out(scene.market, "$UVOL") or left_out(scene.market, "$DVOL") or
+               "no NYSE up and down volume at every listed read: the market-context job stopped or has not saved it")
         ls.omit("seq.breadth_by_read", why)
         ls.sleep("seq_breadth_drift", why)
         return

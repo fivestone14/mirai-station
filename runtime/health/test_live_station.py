@@ -3,7 +3,7 @@
 Every check below holds the station to a limit its own code states (the dead-man's
 silence ceiling, first-row deadline and reader ceiling, the reader's stale-book and
 minute-log limits, each job's plist schedule, the SPX pre-market lane's checkpoints and
-late line, and "the dashboard serves the code on disk").
+late line, the SPX learning store's nightly build, and "the dashboard serves the code on disk").
 The check functions and their unit tests always run. The live tests only read the
 real station (launchd, its state/ directory, GET on 127.0.0.1:8787) and skip unless
 MIRAI_LIVE=1:
@@ -46,6 +46,12 @@ SPX_PREMARKET_DEADMAN = "com.mirai-station.spx-premarket-deadman"
 # worst run is the night's save, eight Schwab calls each given up after 30 seconds, then JEV's calls
 # with a retry each
 PREMARKET_RUN_MIN = 10
+# the SPX learning store's nightly job (skills/spx-jev/spx_jev/store.py): its fire in market time, which
+# its plist sets on the box's Pacific clock, and how long its run is given: a rebuild of the week reads
+# files on disk only and takes seconds
+SPX_STORE_JOB = "com.mirai-station.spx-jev-store"
+STORE_FIRES_ET = "16:40"
+STORE_RUN_MIN = 10
 DASHBOARD_URL = "http://127.0.0.1:8787/api/health"
 
 
@@ -314,10 +320,22 @@ def deadman_quiet(state_path: Path, today: str) -> tuple[bool | None, str]:
     return True, "the dead-man's switch holds no open outage today"
 
 
+def _premarket_still_to_grade(card: dict) -> int:
+    """The card's calls neither graded nor closed for good; 0 when it carries no tally."""
+    t = card.get("tally")
+    if not isinstance(t, dict):
+        return 0
+    try:
+        return max(0, int(t.get("calls") or 0) - int(t.get("graded") or 0) - int(t.get("closed") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def premarket_fired(lane_dir: Path, now: datetime, first: str, close_out: str,
                     late_min: float) -> tuple[bool | None, str]:
     """On a market day the SPX pre-market job read at every checkpoint today's card names once it is
-    past the lane's late line and a read's run, and past the same after the close-out, that landed too."""
+    past the lane's late line and a read's run, and past the same after the close-out, that landed too and
+    left no call still to grade (the dead-man's rule: the tally's calls less those graded and closed for good)."""
     now = now.astimezone(ET)
     day = now.date()
     if now.weekday() >= 5 or day in market_status._market_holidays(day.year):
@@ -340,12 +358,38 @@ def premarket_fired(lane_dir: Path, now: datetime, first: str, close_out: str,
             if t is not None and t + owed_after <= now]
     problems = [f"no read at the {t:%H:%M} ET checkpoint" for t in owed if f"{t:%H:%M}" not in read]
     closing = now >= at(close_out) + owed_after
-    if closing and not card.get("closed_out_at"):
+    left = _premarket_still_to_grade(card)
+    if closing and left:
+        problems.append(f"{left} pre-market call{'s' if left > 1 else ''} still ungraded after the {close_out} ET close-out")
+    elif closing and not card.get("closed_out_at"):
         problems.append(f"the {close_out} ET close-out has not landed on today's card")
     if problems:
         return False, "; ".join(problems) + f" (a read is owed {late_min:g} + {PREMARKET_RUN_MIN} min after its checkpoint)"
     return True, (f"the pre-market job read at all {len(owed)} checkpoints due by {now:%H:%M} ET"
                   + (" and closed out" if closing else ""))
+
+
+def _market_day(d) -> bool:
+    return d.weekday() < 5 and d not in market_status._market_holidays(d.year)
+
+
+def store_built(store_dir: Path, now: datetime, fires: str, run_min: float) -> tuple[bool, str]:
+    """The SPX learning store holds the last market day its nightly job has had time to build: today once
+    ``run_min`` minutes past the job's ``fires`` time on a market day, else the market day before today. A
+    day is built when its validation log is on disk (state/spx_jev/store/validation/day=YYYY-MM-DD/)."""
+    now = now.astimezone(ET)
+    day = now.date()
+    due = datetime.combine(day, time.fromisoformat(fires), tzinfo=ET) + timedelta(minutes=run_min)
+    if not (_market_day(day) and now >= due):
+        day -= timedelta(days=1)
+        while not _market_day(day):
+            day -= timedelta(days=1)
+    logs = Path(store_dir) / "validation"
+    if (logs / f"day={day.isoformat()}" / "part-0.parquet").is_file():
+        return True, f"the SPX learning store holds {day}, the last market day its nightly job has built"
+    built = sorted(p.name.removeprefix("day=") for p in logs.glob("day=*"))
+    return False, (f"the SPX learning store has not built {day}: its newest day is "
+                   f"{built[-1] if built else 'none, it has never been built'}")
 
 
 def jobs_loaded(launchctl_list_text: str, required_labels, what: str = "SNDK Pro") -> tuple[bool, str]:
@@ -806,11 +850,12 @@ PRE_DAY = "2026-09-28"                                   # a Monday
 PRE_READS = ("02:35", "03:35", "08:05", "08:48", "09:05", "09:28")
 
 
-def _premarket(tmp_path: Path, read=PRE_READS, reads=PRE_READS, closed=True, day=PRE_DAY) -> Path:
+def _premarket(tmp_path: Path, read=PRE_READS, reads=PRE_READS, closed=True, day=PRE_DAY, tally=None) -> Path:
     """A pre-market lane folder: today's card naming the day's checkpoints, and a read on file at each of ``read``."""
     lane = tmp_path / "premarket"
     _write(lane / "latest.json", {"day": day, "lane": "premarket", "closed_out_at": "2026-09-28T14:06:04+00:00" if closed else None,
-                                  "schedule": {"reads": [f"{day}T{c}:00-04:00" for c in reads], "close_out": f"{day}T10:06:00-04:00"}})
+                                  "schedule": {"reads": [f"{day}T{c}:00-04:00" for c in reads], "close_out": f"{day}T10:06:00-04:00"},
+                                  **({"tally": tally} if tally else {})})
     _write(lane / f"{day}.jsonl", *[{"row_ts": f"{day}T{c}:04-04:00", "checkpoint": c} for c in read])
     return lane
 
@@ -834,6 +879,16 @@ def test_premarket_fired_fails_a_missed_checkpoint_once_its_read_is_owed(tmp_pat
 def test_premarket_fired_fails_a_close_out_that_never_landed(tmp_path):
     ok, why = premarket_fired(_premarket(tmp_path, closed=False), _pre_at("10:21"), "02:35", "10:06", 5)
     assert ok is False and why.startswith("the 10:06 ET close-out has not landed on today's card")
+
+
+def test_premarket_fired_names_a_close_out_that_ran_and_left_a_call_to_grade(tmp_path):
+    """09-28: the close-out ran at 10:06 but the bar for the 30-minute call had not come, so it left the card open. The
+    review says a call is still ungraded, not that the close-out never landed; a call closed for good is not owed."""
+    pending = _premarket(tmp_path, closed=False, tally={"calls": 1, "graded": 0, "right": 0, "unsure": 0, "closed": 0})
+    ok, why = premarket_fired(pending, _pre_at("10:21"), "02:35", "10:06", 5)
+    assert ok is False and why.startswith("1 pre-market call still ungraded after the 10:06 ET close-out")
+    done = _premarket(tmp_path, tally={"calls": 2, "graded": 1, "right": 1, "unsure": 0, "closed": 1})
+    assert premarket_fired(done, _pre_at("10:21"), "02:35", "10:06", 5)[0] is True
 
 
 def test_premarket_fired_reads_europes_checkpoint_from_the_card(tmp_path):
@@ -871,6 +926,37 @@ def test_the_premarket_pager_holds_the_lane_to_the_limits_this_review_does(monke
     from watch.intraday import spx_premarket_deadman as pager
     assert (pager.FIRST_CHECKPOINT, pager.CLOSE_OUT, pager.LATE_FIRE_MIN, pager.RUN_MIN) == \
         (PREMARKET.schedule[0], PREMARKET.close_out, premarket.LATE_FIRE_MIN, PREMARKET_RUN_MIN)
+
+
+def _store(tmp_path: Path, *days: str) -> Path:
+    for d in days:
+        (tmp_path / "validation" / f"day={d}").mkdir(parents=True)
+        (tmp_path / "validation" / f"day={d}" / "part-0.parquet").write_bytes(b"PAR1")
+    return tmp_path
+
+
+def test_store_built_wants_today_only_once_the_nightly_job_has_run(tmp_path):
+    store = _store(tmp_path, "2026-09-25")                                               # Friday
+    assert store_built(store, _pre_at("16:49", "2026-09-28"), "16:40", 10)[0] is True   # Monday's run not owed yet
+    ok, why = store_built(store, _pre_at("16:50", "2026-09-28"), "16:40", 10)
+    assert ok is False and why == "the SPX learning store has not built 2026-09-28: its newest day is 2026-09-25"
+    _store(tmp_path, "2026-09-28")
+    assert store_built(store, _pre_at("16:50", "2026-09-28"), "16:40", 10)[0] is True
+
+
+@pytest.mark.parametrize("when", ["2026-09-26", "2026-11-27"])                          # a Saturday; the day after Thanksgiving, 08:00
+def test_store_built_wants_the_market_day_before_on_a_weekend_or_before_the_fire(tmp_path, when):
+    assert store_built(_store(tmp_path, "2026-09-25", "2026-11-25"), _pre_at("08:00", when), "16:40", 10)[0] is True
+
+
+def test_store_built_fails_a_store_that_was_never_built(tmp_path):
+    ok, why = store_built(tmp_path, _pre_at("12:00", "2026-09-29"), "16:40", 10)
+    assert ok is False and why.endswith("its newest day is none, it has never been built")
+
+
+def test_the_store_check_fires_when_the_job_does():
+    job = _plistlib_plist(_RUNTIME / "launchd" / f"{SPX_STORE_JOB}.plist")["StartCalendarInterval"]
+    assert f"{job['Hour'] + 3:02d}:{job['Minute']:02d}" == STORE_FIRES_ET                  # the box keeps Pacific time
 
 
 # --- live tests against the running station (read-only) ---------------------------
@@ -937,6 +1023,18 @@ def test_live_sndk_jobs_are_loaded(station):
 def test_live_spx_premarket_job_is_loaded(station):
     _hold(jobs_loaded(station.listing, (SPX_PREMARKET_JOB, SPX_PREMARKET_DEADMAN), "SPX pre-market"),
           "launchctl list | grep -E 'spx-jev-premarket|spx-premarket-deadman'")
+
+
+@live
+def test_live_spx_store_job_is_loaded(station):
+    _hold(jobs_loaded(station.listing, (SPX_STORE_JOB,), "SPX learning store"), "launchctl list | grep spx-jev-store")
+
+
+@live
+def test_live_spx_store_holds_the_last_market_day(station):
+    store = station.state / "spx_jev" / "store"
+    _hold(store_built(store, station.now, STORE_FIRES_ET, STORE_RUN_MIN),
+          f"ls {store}/validation | tail -n 3; tail -n 5 /tmp/mirai-station.spx-jev-store.err")
 
 
 @live

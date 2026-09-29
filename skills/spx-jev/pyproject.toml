@@ -7,7 +7,9 @@ name = "spx-jev"
 version = "0.1.0"
 description = "The JEV decision service beside the SPX diary: labels, requests, the sums, grading, the phone's card. Read-only sidecar."
 requires-python = ">=3.11"
-dependencies = []
+# The learning store (spx_jev/store.py) alone: every other module runs on the standard library and the
+# station's shared Schwab client.
+dependencies = ["duckdb>=1.5,<2", "pyarrow>=24,<25"]
 
 [tool.setuptools.packages.find]
 include = ["spx_jev*"]

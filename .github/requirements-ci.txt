@@ -12,6 +12,11 @@
 rapidfuzz                                    # the intent matcher, imported at module level
 websockets                                   # voice_server's transport
 
+# The spx-jev learning store (skills/spx-jev/spx_jev/store.py), pinned in that box's pyproject.toml too. Its
+# tests skip where these are missing, so CI installs them to run the tests rather than skip them.
+duckdb>=1.5,<2                               # the views over the store
+pyarrow>=24,<25                              # the Parquet files
+
 # Deliberately absent: torch, sounddevice and the agent SDK. Each is imported
 # lazily inside a function, so nothing needs them to collect or run a test — and
 # a CPU torch wheel would cost more install time than the whole suite takes.
