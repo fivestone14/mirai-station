@@ -2545,7 +2545,7 @@
      },
      "horizon": "60min",
      "cadence": "every 30-minute read from 11:32 (asleep before the late-morning gate)",
-     "sleep_when": "before 11:30 (session_progress gate)",
+     "sleep_when": "before 11:30 ET (the gamma family's clock gate, gamma.BOOK_VS_PACE_FROM)",
      "code_answer": true,
      "ask": "How does the options book's balance pair with the pace?",
      "instructions": "Read `gex.book_balance` and `vol.realized_vs_clock_rank`. The label's third decides the pace: top third is fast. Which pairing is it?",

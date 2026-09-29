@@ -156,3 +156,18 @@ def test_the_set_describes_the_pre_market_call_the_pre_market_sums_doc_makes():
     d = json.loads(QUESTION_SET.read_text(encoding="utf-8"))
     sums = json.loads((QUESTION_SET.parent.parent / "questions" / "spx_premarket_hour.json").read_text(encoding="utf-8"))
     assert f"its call is the average price over the 30 minutes after the settled open ({sums['average']}" in d["conventions"]["cadence"]
+
+
+def test_the_sets_own_warnings_and_notes_name_only_what_exists():
+    """The warnings are what the set holds today, and no note names a gate or a parser the code does not have."""
+    d = json.loads(QUESTION_SET.read_text(encoding="utf-8"))
+    questions = [q for g in d["groups"] for q in g["questions"]]
+    texts = json.dumps([{k: q.get(k) for k in ("ask", "instructions", "options", "criteria", "sleep_when")} for q in questions])
+    needed = {lab["name"] for q in questions for lab in q["labels_needed"]}
+    unused_constants = [c for c in d["constants"] if "{" + c + "}" not in texts]
+    unused_labels = [lab["name"] for lab in d["labels"] if lab["name"] not in needed]
+    expected = [f"constants defined but unused in question text: {', '.join(unused_constants)}"] if unused_constants else []
+    expected += [f"labels defined but unused: {', '.join(unused_labels)}"] if unused_labels else []
+    assert d["validation"]["warnings"] == expected
+    notes = json.dumps([d["conventions"], [q.get("sleep_when") for q in questions]])
+    assert not [name for name in ("session_progress", "DOC_TEXT", "parse_cadence") if name in notes]

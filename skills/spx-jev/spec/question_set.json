@@ -133,7 +133,7 @@
   "reading_checks": "code_answer=true means the builder can compute the correct option from the same numbers the labeller used; it is stored beside every request (not sent) and JEV's pick is scored against it each read at no extra call (extends SNDK ab_test.py to multi-label questions). Offline nightly probes on archived scenes: mirror (swap direction words; code-answer questions must flip exactly), blind (drop the key label), mismatch (figure vs verdict words), decoy (irrelevant label), option-order reversal, and a gamma-word flip on the sum. Probes never feed the weights; a failing question gets reworded, not shadowed.",
   "location_first": "Labels and options state where price is now before any history (the SNDK back-inside fix, 3/12 -> 40/40).",
   "thirty_minute_start": "The 30-minute lane's first read (clock.FIRST_READ 09:32) comes before the 09:34 settled open; every 30-minute-lane question starts at 10:02 unless its schedule says later, and the 09:32 read is skipped.",
-  "schedule": "Every question carries a machine schedule {lane: {every_min, from, to} or {at: [...]}} beside the free-text cadence (cadence.DOC_TEXT phrases like 'every other 30-minute read (hourly)' are not parsed by parse_cadence); code reads the schedule, never the text.",
+  "schedule": "Every question carries a machine schedule {lane: {every_min, from, to} or {at: [...]}} beside the free-text cadence, which is for people; code reads the schedule (spx_jev/schedule.py), never the text.",
   "sleep_when": "A gated question carries sleep_when: the code rule under which it is not asked (its default 'nothing happened' state), so that default never enters the weights.",
   "horizon": "horizon is a {lane: horizon} map on every multi-lane question; single-lane questions keep a plain string.",
   "needs_engine_edit": "needs_engine_edit marks engine labels (spec/labels.json) this set rewords. availability says whether the data is on the row; whether a label is built is the code's to say: a label no family writes is omitted as not built (labels/registry.py), and a question reading it is skipped as missing it.",
@@ -4220,7 +4220,7 @@
      "evidence": "Median next-60 range, call-heavy vs put-heavy: 10:00-11:30 0.285 vs 0.282; 11:30-13:30 0.176 vs 0.196; 13:30-15:00 0.143 vs 0.179. Day-long rv_pace predicts next-30 size at only 0.063 vs 0.281 for the last 30 minutes' range. One reviewer found the old form fully determined by the books (NMI 1.00): see unresolved.",
      "origin": "round1:damping_vs_pace (renamed; clock gate; pace input swapped; merges gamma_calm_by_clock)",
      "code_answer": true,
-     "sleep_when": "before 11:30 (session_progress gate)",
+     "sleep_when": "before 11:30 ET (the gamma family's clock gate, gamma.BOOK_VS_PACE_FROM)",
      "schedule": {
       "thirty_minute": {
        "every_min": 30,
@@ -12322,8 +12322,7 @@
  "validation": {
   "errors": [],
   "warnings": [
-   "constants defined but unused in question text: sector_count, vwap_touch_sigma",
-   "labels defined but unused: context.session_progress, context.time_since_last_move, overnight.now_location"
+   "constants defined but unused in question text: min_rank_sessions, sector_count, vwap_touch_sigma"
   ]
  }
 }
