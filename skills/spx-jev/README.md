@@ -104,6 +104,7 @@ returns a probability for each answer option. JEV makes no trading call.
     python3 -m spx_jev.grade --lane premarket                 # grade the reads before the open
     python3 -m spx_jev.grade --integral-backfill              # the shadow integral grade of past graded calls, from their bars
     python3 -m spx_jev.grade --integral-report                # per box, the flat share on the average price against the end price
+    python3 -m spx_jev.grade --integral-loop-dry-run          # what the loop would learn from the average-price grade; writes nothing live
     python3 spec/replay_premarket.py --out /tmp/replay --workers 8   # the premarket questions over the saved nights, read only
 
 A replay (`--day`) never writes into the station's records unless `--out-dir`
@@ -216,7 +217,11 @@ archive there too, under `archive/`.
    the average price as its reference, its own state and log, stale and event
    reads left out, and constants of its own, so neither loop can ever load the
    other's state; the end-price loop's files are then left as they are. The
-   gate is 10 SPX sessions of average-price grades.
+   gate is 10 SPX sessions of average-price grades; before switching, run
+   `python3 -m spx_jev.grade --integral-loop-dry-run`, which builds the loop
+   from nothing on the graded history in a scratch folder and prints what it
+   learned (sessions and reads, what it left out and why, the weights, each
+   question's standing) without writing anything live.
 
 ## The files it writes, all under `state/spx_jev/`
 
@@ -235,7 +240,7 @@ archive there too, under `archive/`.
 - `pool_30.json`, `pool_60.json`, `pool_log.jsonl`: the learning loop's state
   per horizon and one log line per horizon per session applied or refused.
 - `pool_30_integral.json`, `pool_integral_log.jsonl`: the same loop learnt
-  from the average-price grade, written only while its switch is on (the pipeline, 6b).
+  from the average-price grade, written only while its switch is on (6b).
 - `archive/{day}.jsonl`: the raw archive for later machine learning, one line
   per record, append only, `schema_version` 5. A `read` record holds the read
   id (lane and row timestamp), the labels and the omitted ones with reasons,

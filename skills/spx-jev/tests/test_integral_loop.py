@@ -1,6 +1,7 @@
 """The learning loop's switch to the average-price grade: off, the grader and the loop are exactly what they were and no
 file of the switched loop is made or read; on, the loop learns from the average-price label alone, into files of its
-own, the end-price loop's left as they were, and no flip of the switch ever mixes the two histories."""
+own, the end-price loop's left as they were, and no flip of the switch ever mixes the two histories. The dry run
+builds it from the graded history without writing anything live."""
 from __future__ import annotations
 
 import json
@@ -139,7 +140,7 @@ def test_with_the_switch_off_no_file_of_the_switched_loop_is_made_or_read(tmp_pa
     lying beside them or not, and nothing of the switched loop is called."""
     plain, beside = _write(tmp_path / "plain"), _write(tmp_path / "beside")
     (beside / "pool_30_integral.json").write_text("{not a state")
-    for name in ("update", "load_state"):
+    for name in ("update", "load_state", "dry_run"):
         monkeypatch.setattr(integral_loop, name, lambda *a, **k: pytest.fail("the switched loop was called with the switch off"))
     w_plain, w_beside = _learn(plain), _learn(beside)
     assert w_plain == w_beside and w_plain["method"] == "pool_v1" and w_plain["pool"]["last_session_applied"] == DAYS[-1]
@@ -257,3 +258,26 @@ def test_flipping_the_switch_on_off_and_on_again_never_mixes_the_histories(tmp_p
         assert (flipped / name).read_bytes() == (stopped_at / name).read_bytes()
     assert json.loads((always_off / "pool_30.json").read_text())["last_session_applied"] == DAYS[2]
 
+
+# ---- the dry run
+
+def test_the_dry_run_writes_nothing_live_and_learns_what_switching_on_would(tmp_path, clock, capsys):
+    out = _write(tmp_path / "out", stale_at=(DAYS[0], 1))
+    before = _tree(out)
+    run = integral_loop.dry_run(out, LIVE, TODAY)
+    assert _tree(out) == before
+    on = _write(tmp_path / "on", stale_at=(DAYS[0], 1))
+    integral_loop.update(on, TODAY)
+    assert pool._canonical(run["state"]) == (on / "pool_30_integral.json").read_text()
+    assert grade.main(["--state-dir", str(tmp_path), "--out-dir", str(out), "--integral-loop-dry-run"]) == 0
+    printed = capsys.readouterr().out.splitlines()
+    assert _tree(out) == before
+    assert printed[0].endswith(f"{DAYS[-1]}: applied, 3 reads")
+    assert printed[1].startswith(f"sessions learned from: 3, the gate is {integral_loop.GATE_SESSIONS} (7 to go)")
+    assert printed[2] == "reads learned from: 8; left out: 1" and printed[3] == "  1 a stale read: no bar traded its spot in the minutes up to it"
+    assert any(line.startswith("  q_a: ") and "over 3 days" in line for line in printed)
+
+
+def test_the_dry_run_refuses_a_lane_with_no_loop(tmp_path, capsys):
+    assert grade.main(["--lane", "tape", "--state-dir", str(tmp_path), "--integral-loop-dry-run"]) == 1
+    assert "keeps no learning loop" in capsys.readouterr().err

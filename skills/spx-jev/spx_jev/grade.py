@@ -6,6 +6,7 @@
     python3 -m spx_jev.grade --lane premarket   # the reads before the open, under state/spx_jev/lanes/premarket/
     python3 -m spx_jev.grade --integral-backfill [--day D]   # the shadow integral grade of past graded horizons, from their bars
     python3 -m spx_jev.grade --integral-report  # per box, the flat share on the average price against the end price
+    python3 -m spx_jev.grade --integral-loop-dry-run   # what the loop would learn from the average-price grade, built in a scratch folder
 
 Two horizons are graded from the same record, each against its own band (lane.LIVE.horizons, from cuts.py):
     next_30   30 minutes, flat within NEXT_30_FLAT_BAND_SIGMA   (the primary: the phone's sum)
@@ -689,6 +690,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--lane", choices=sorted(LANES), default="live", help="which lane's records to grade")
     ap.add_argument("--integral-backfill", action="store_true", help="only fill the shadow integral grade of graded horizons from their bars")
     ap.add_argument("--integral-report", action="store_true", help="only print each box's flat share on the average and on the end price")
+    ap.add_argument("--integral-loop-dry-run", action="store_true",
+                    help="only print what the learning loop would learn from the average-price grade, built in a scratch folder")
     args = ap.parse_args(argv)
     lane = LANES[args.lane]
     state_dir = Path(args.state_dir)
@@ -700,6 +703,13 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"{each.name} {qid}: " + (f"{r['n']} windows graded; flat {r['flat_integral']:.1%} on the average price against "
                                                 f"{r['flat_end']:.1%} on the end price; {r['stale']} stale reads, {r['not_graded']} not graded"
                                                 if r["n"] else f"no window graded on the average price yet; {r['not_graded']} not graded"))
+        return 0
+    if args.integral_loop_dry_run:
+        if not lane.pool:
+            print(f"the {lane.name} lane keeps no learning loop", file=sys.stderr)
+            return 1
+        from .integral_loop import describe, dry_run
+        print("\n".join(describe(dry_run(out_dir, lane), lane)))
         return 0
     if args.integral_backfill:
         new = integral_run(state_dir, out_dir, lane, args.day)

@@ -4,7 +4,10 @@ Switched on, the grader hands the question weights this loop instead of pool.Poo
 update, e-processes, statuses and promotion (pool.py, read as a library, never changed here), learned on the lane's
 primary box from the average-price sum's graded reads alone, each read's outcome the label integral_grades.jsonl gave
 it under this integral.RULE_VERSION, never the end price's band. Switched off, nothing here is imported, read or
-written. The gate for turning it on is GATE_SESSIONS SPX sessions of average-price grades.
+written. The gate for turning it on is GATE_SESSIONS SPX sessions of average-price grades; the dry run shows what the
+loop would learn before then:
+
+    python3 -m spx_jev.grade --integral-loop-dry-run    # built from nothing in a scratch folder; no live file is written
 
 The reference R is the time-of-day odds counted on the average price (clock.integral_odds), as a read on the session
 could know them: the counts the clock stored in clock_integral_days.json for the counted sessions before it, read and
@@ -35,6 +38,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
+import tempfile
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -155,7 +160,7 @@ def _session_reads(recs: list[dict], lines: dict[str, dict], state: dict, ref: R
 
 def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Path | None = None) -> dict[str, str]:
     """Apply every sealed session after the watermark, oldest first, to the primary box, reading the lane's records in
-    ``out_dir`` and keeping the state and the log in ``into`` (``out_dir`` itself unless another is named). A
+    ``out_dir`` and keeping the state and the log in ``into`` (``out_dir`` itself unless the dry run names another). A
     session already applied is never applied again, and a state made under other constants stops the run before
     anything is applied. Returns ``{h: what happened}``, as pool.update does."""
     out_dir = Path(out_dir)
@@ -252,3 +257,42 @@ class IntegralPoolWeights(pool.PoolWeights):
                                          "promote_e": state["phone"]["promote"]["e"], "days": state["phone"]["promote"]["n"]},
                                "top": top, "frozen": state["frozen"], "outcome": "average price"})
 
+
+def dry_run(out_dir: Path, lane: Lane = LIVE, today: str | None = None) -> dict:
+    """The loop rebuilt from nothing on the lane's graded history in ``out_dir``, its state and log kept in a scratch
+    folder that is removed after, whatever the switch says: nothing under ``out_dir`` is written. Returns what update
+    said, the state it reached and its log lines."""
+    work = Path(tempfile.mkdtemp(prefix="integral_loop."))
+    try:
+        said = update(out_dir, today, lane, into=work)
+        return {"said": said, "state": load_state(work, lane), "log": load_jsonl(work / LOG_NAME)}
+    finally:
+        shutil.rmtree(work)
+
+
+def describe(run: dict, lane: Lane = LIVE) -> list[str]:
+    """dry_run's result in plain lines: the sessions and reads it learned from, what it left out and why, the pool's
+    weights, the phone's evidence against the blend and each question's standing against "no change"."""
+    state, log = run["state"], run["log"]
+    applied = [x for x in log if x.get("applied")]
+    left_out = Counter(why for x in log for why in (x.get("manifest") or {}).get("excluded", {}).values())
+    passed = sum(1 for x in log if x.get("applied") is False and x.get("session") and not x.get("why", "").startswith("unsealed"))
+    gate = "met" if len(applied) >= GATE_SESSIONS else f"{GATE_SESSIONS - len(applied)} to go"
+    out = [f"the {lane.name} lane's loop on the average-price grade, rebuilt in a scratch folder (nothing live was written): "
+           f"{run['said'][lane.primary]}",
+           f"sessions learned from: {len(applied)}, the gate is {GATE_SESSIONS} ({gate}); passed over: {passed}; "
+           f"last applied {state['last_session_applied'] or 'none'}",
+           f"reads learned from: {sum(len(x['manifest']['included']) for x in applied)}; left out: {sum(left_out.values())}"]
+    out += [f"  {n} {why}" for why, n in left_out.most_common()]
+    top = {side: pool._prob(state["top"][side]) for side in pool.SIDES}
+    out.append("the pool's weights, move / direction: " + ", ".join(f"{n} {top['M'][n]:.3f} / {top['D'][n]:.3f}" for n in sorted(pool.W0)))
+    phone = state["phone"]["promote"]
+    out.append(f"the pool against the blend: e {phone['e']:.2f} over {phone['n']} days (it would need {pool.PROMOTE_E:g} after "
+               f"{pool.MIN_DAYS} days); frozen: {state['frozen'] or 'no'}")
+    block = {side: pool._prob(state["block"][side]) for side in pool.SIDES}
+    for q, ev in sorted(state["evidence"].items()):
+        vs = {side: block[side].get(q, 0.0) / block[side][pool.NO_CHANGE] for side in pool.SIDES}
+        status = ", ".join(f"{part} {ev['status'][part]}" for part in ("move", "direction") if ev["status"][part]) or "not earning"
+        out.append(f"  {q}: {vs['M']:.2f} / {vs['D']:.2f} of \"no change\" over {ev['days']} days; e better {ev['move']['better']['e']:.2f} / "
+                   f"{ev['direction']['better']['e']:.2f}; {status}{'; suppressed' if ev['status']['suppressed'] else ''}")
+    return out
