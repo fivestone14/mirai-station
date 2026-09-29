@@ -110,7 +110,7 @@
   },
   "labels": 136,
   "labels_built": 3,
-  "constants": 69,
+  "constants": 67,
   "label_availability": {
    "live": 71,
    "cheap_add": 55,
@@ -9346,7 +9346,8 @@
    "brief_vs_tape",
    "opening_premium_burst",
    "tick_extreme_follow",
-   "opening_chop"
+   "opening_chop",
+   "btc_five_day_lead"
   ]
  },
  "labels": [

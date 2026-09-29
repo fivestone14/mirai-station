@@ -81,6 +81,18 @@ def test_the_question_sets_tags_follow_its_convention():
     assert tagged and all(q["tags"] and set(q["tags"]) <= known for q in tagged), [q["id"] for q in tagged]
 
 
+def test_the_question_sets_counts_its_opening_lane_list_and_the_readme_match_its_contents():
+    d = json.loads(QUESTION_SET.read_text(encoding="utf-8"))
+    questions = [q for g in d["groups"] for q in g["questions"]]
+    opening = {q["id"] for q in questions if q["status"] == "live" and "opening_five_minute" in q.get("lanes", [])}
+    n, labels, constants = len(questions), len(d["labels"]), len(d["constants"])
+    assert (d["counts"]["questions"], d["counts"]["labels"], d["counts"]["constants"]) == (n, labels, constants)
+    assert set(d["opening_lane"]["questions"]) == opening and d["counts"]["opening_lane_questions"] == len(opening)
+    readme = (QUESTION_SET.parent.parent / "README.md").read_text(encoding="utf-8")
+    assert f"`spec/question_set.json`, {n} questions)" in readme
+    assert f"({n} questions, {labels} labels, {constants} constants," in readme
+
+
 def test_every_cut_the_spec_names_is_a_constant():
     import importlib
     import pkgutil
