@@ -14,6 +14,7 @@ from spx_jev import archive, grade, service
 from spx_jev.ask import jev_only
 from spx_jev.cuts import NEXT_30_FLAT_BAND_SIGMA
 from spx_jev.hour import average_request, average_summary, average_window, hour_request, load_hour_doc
+from spx_jev.integral import factor as integral_factor
 from spx_jev.lane import LANES, LIVE, PREMARKET, TAPE
 from test_integral import SCENARIO_DAY, SCENARIOS, _bars
 from test_old_sums_unchanged import AVERAGE, run_fixture
@@ -30,7 +31,7 @@ def test_every_lane_asks_the_average_with_three_options_and_no_unsure_and_keeps_
     assert list(q["criteria"]) == ["up", "down", "flat"] and q["instructions"].endswith("Answer up, down or flat.")
     assert "unsure" not in json.dumps(jev_only(q)) and "average price" in q["ask"] and "`context.average`" in q["instructions"]
     assert all("unsure" in doc["questions"][h]["criteria"] for h in lane.horizons)      # the old sums are asked as they were
-    assert lane.horizons[lane.primary][0] == int(q["ask"].split(" minutes")[0].split()[-1])   # it forecasts the primary's window
+    assert "{window_minutes} minutes" in q["ask"]                   # its window's length, filled at each read
 
 
 def test_the_end_price_request_leaves_the_average_out_and_the_average_request_gives_the_edge_in_points():
@@ -204,3 +205,40 @@ def test_the_phones_call_is_blended_with_the_average_price_clock_and_never_the_e
     assert a["clock"]["probabilities"] == avg_odds["by"]["average_30"]["probabilities"] and a["blend"]["sessions"] == 11
     assert a["jev"]["probabilities"] == AVERAGE["probabilities"]
     assert a["probabilities"] == {"up": 0.125, "down": 0.325, "flat": 0.55} and a["pick"] == "flat"
+
+
+# ---- the question as it is sent
+
+def test_the_last_reads_shorter_window_is_the_one_its_question_names():
+    """The 15:32 read's window ends on the closing bar: 28 minutes. Its question, criteria and context all say 28, and
+    the edge is narrowed for 28, as the grade narrows it."""
+    window = average_window(28, 5.39, 7712.345)
+    req = average_request(SENTENCES, window, lane=LIVE)
+    q = req["questions"]["average_30"]
+    assert "over the next 28 minutes" in q["instructions"] and all("over the next 28 minutes" in c for c in q["criteria"].values())
+    assert "30 minutes" not in json.dumps(q) and "{window_minutes}" not in json.dumps(req)
+    assert window["edge_points"] == round(integral_factor(28) * 5.39, 2) and "over the next 28 minutes" in req["state"]["context"]["average"]
+
+
+def test_the_question_gives_the_read_price_it_is_measured_from():
+    words = average_request(SENTENCES, average_window(30, 5.39, 7712.345), lane=LIVE)["state"]["context"]["average"]
+    assert words.startswith("the price now is 7712.35; ") and "points of the price now either way" in words
+    assert "the price now is" not in average_request(SENTENCES, average_window(30, 5.39), lane=LIVE)["state"]["context"]["average"]
+
+
+def test_the_grade_sets_the_average_against_the_edge_the_question_gave():
+    """A flat band whose narrowed edge is 3.1935 points is told as 3.19; an average 3.192 points up is up against the
+    edge JEV was told, as the grade has it, though it would sit inside the unrounded one."""
+    hhmm, spot, f, pick, closes = SCENARIOS["S1"]
+    t0 = at(13, 1, day=SCENARIO_DAY)
+    flat = 3.1935 / integral_factor(30)
+    window = average_window(30, flat)
+    assert window["edge_points"] == 3.19
+    closes = [spot + 3.192] * 30
+    line = {"row_ts": t0.isoformat(), "horizons": ["next_30"], "anchor": {"points": flat / NEXT_30_FLAT_BAND_SIGMA}, "next_30": {"pick": "flat", "band": "flat"}}
+    rec = {"row_ts": t0.isoformat(), "spot": spot, "by": {"next_30": {"pick": "flat", "probabilities": {"flat": 1.0}}},
+           "average": {"pick": "up", "probabilities": {"up": 0.6, "flat": 0.3, "down": 0.1}, **window}}
+    g = grade.integral_line(line, "next_30", rec, _bars(t0, spot, closes), {}, LIVE)
+    assert (g["edge"], g["edge_told"], g["label"], g["verdict"]) == (3.19, 3.19, "up", "right")
+    old = grade.integral_line(line, "next_30", {k: v for k, v in rec.items() if k != "average"}, _bars(t0, spot, closes), {}, LIVE)
+    assert old["label"] == "flat"                                   # the end-price sum's call, against the edge worked out unrounded

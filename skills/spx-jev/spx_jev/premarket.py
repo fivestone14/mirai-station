@@ -245,15 +245,15 @@ def save_the_night(state_dir: Path, now: datetime) -> dict:
 
 # ---- the read ------------------------------------------------------------------------------------
 
-def average_window_of(ruler: dict) -> dict | str:
+def average_window_of(ruler: dict, spot: float | None = None) -> dict | str:
     """The window the average-price sum forecasts, the primary's from the settled open (hour.average_window), its flat
-    band in the pre-open ruler stamped on the record as the grader reads it (grade.stamped_ruler); why there is none
-    when the read has no ruler."""
+    band in the pre-open ruler stamped on the record as the grader reads it (grade.stamped_ruler), with the read's
+    spot on S&P futures; why there is none when the read has no ruler."""
     minutes, flat = PREMARKET.horizons[PREMARKET.primary]
     points = ruler.get("points")
     if not isinstance(points, (int, float)) or points <= 0:
         return "no pre-open ruler to price its edge in points this read"
-    return average_window(minutes, flat * float(points))
+    return average_window(minutes, flat * float(points), spot)
 
 
 def sum_the_read(doc: dict, fresh: dict[str, dict], missing: list[str], out_dir: Path,
@@ -314,7 +314,7 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
         missing = [qid for g in skipped.values() for qid, why in g.items()
                    if by_id.get(qid, {}).get("status") == "live" and str(why).startswith("missing")
                    and not labels.ended.intersection(missing_paths(str(why)))]
-        hour_rec, hour, hour_reply, average_reply = sum_the_read(doc, fresh, missing, out_dir, t0 + service.SEND_READ_S, average_window_of(ruler))
+        hour_rec, hour, hour_reply, average_reply = sum_the_read(doc, fresh, missing, out_dir, t0 + service.SEND_READ_S, average_window_of(ruler, scene.spot if scene else None))
         send_seconds = round(_clock.monotonic() - t0, 3)
         if hour is not None and PREMARKET.clock_blend:
             # each sum blended half and half with how the same window after the settled open ended on prior sessions

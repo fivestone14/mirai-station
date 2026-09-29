@@ -28,13 +28,13 @@
   },
   "average_10": {
    "type": "choice",
-   "ask": "Where does the average price over the next 10 minutes sit against the price now?",
+   "ask": "Where does the average price over the next {window_minutes} minutes sit against the price now?",
    "why": "The opening call as it is graded: the average price over the ten minutes, its direction deciding. The five-way end-price sum beside it keeps the size, as a second line.",
-   "instructions": "Read `context.average` for what the average over the window is and how many index points either way count as flat for this read, then `answers`, one sentence per question JEV has already answered about this moment, each ending with how sure it was. Taken together, where will the average price over the next 10 minutes sit against the price now? Answer up, down or flat.",
+   "instructions": "Read `context.average` for the price at this read, what the average over the window is and how many index points either way count as flat for this read, then `answers`, one sentence per question JEV has already answered about this moment, each ending with how sure it was. Taken together, where will the average price over the next {window_minutes} minutes sit against the price now? Answer up, down or flat.",
    "criteria": {
-    "up": "the average price over the next 10 minutes sits above the price now by more than the flat edge the context gives in points",
-    "down": "the average price over the next 10 minutes sits below the price now by more than the flat edge the context gives in points",
-    "flat": "the average price over the next 10 minutes sits no further from the price now than the flat edge the context gives in points, either way"
+    "up": "the average price over the next {window_minutes} minutes sits above the price now by more than the flat edge the context gives in points",
+    "down": "the average price over the next {window_minutes} minutes sits below the price now by more than the flat edge the context gives in points",
+    "flat": "the average price over the next {window_minutes} minutes sits no further from the price now than the flat edge the context gives in points, either way"
    }
   }
  }

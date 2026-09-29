@@ -10,7 +10,7 @@ import pytest
 from spx_jev.ask import (GROUP_CAP, build_requests, confidence, constants_named, get_path, load_questions, paths_in, pick,
                          summarize)
 from spx_jev.cuts import QUESTION_CONSTANTS
-from spx_jev.hour import load_hour_doc
+from spx_jev.hour import PER_READ, average_request, average_window, load_hour_doc
 from spx_jev.labels.registry import build_labels
 from spx_jev.lane import LANES
 from spx_jev.schedule import not_due
@@ -123,7 +123,10 @@ def test_a_dark_question_is_never_asked():
 def test_every_shipped_doc_loads_with_its_constants_filled():
     for lane in LANES.values():
         questions = [q for g in load_questions(lane.questions, lane.key)["groups"] for q in g["questions"].values()]
-        questions += list(load_hour_doc(lane=lane)["questions"].values())
+        hour = load_hour_doc(lane=lane)
+        questions += [q for qid, q in hour["questions"].items() if qid != lane.average]
+        # the average-price sum's window is filled at each read: it is checked as it is sent, a 28-minute window here
+        questions += list(average_request({}, average_window(28, 5.0), hour, lane=lane)["questions"].values())
         left = [t for q in questions for t in _texts(q) if NAMED.search(t)]
         assert not left, f"lane {lane.name} kept an unfilled name: {left[:2]}"
     assert {p.name for p in SHIPPED} == {lane.questions.name for lane in LANES.values()} | {lane.hour_doc.name for lane in LANES.values()}
@@ -142,7 +145,9 @@ def test_every_name_a_doc_asks_for_is_a_constant_the_code_defines():
         for key in ("ask", "instructions", "criteria"):
             for text in _texts(q.get(key)):
                 for name in constants_named(text):
-                    assert name in QUESTION_CONSTANTS, f"{path.name} {qid} names {name}, which cuts.py does not define"
+                    # the average-price sum's window length is the one name filled at each read, from its window
+                    ok = name in QUESTION_CONSTANTS or (name in PER_READ and qid in {lane.average for lane in LANES.values()})
+                    assert ok, f"{path.name} {qid} names {name}, which cuts.py does not define"
 
 
 def test_an_unknown_constant_stops_the_load(tmp_path):

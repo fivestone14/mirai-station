@@ -45,23 +45,24 @@ def constants_named(text: str) -> list[str]:
     return [name for _, name, _, _ in Formatter().parse(text) if name is not None]
 
 
-def fill(value: Any, where: str) -> Any:
+def fill(value: Any, where: str, keep: tuple[str, ...] = ()) -> Any:
     """``value`` with every ``{name}`` replaced by the constant of that name. A name the code does not
-    define is an error naming the question, so a doc can never go out with a hole or a guess in it."""
+    define is an error naming the question, so a doc can never go out with a hole or a guess in it; the
+    names in ``keep`` are left in braces, for the code to fill at each read."""
     if isinstance(value, str):
-        unknown = [n for n in constants_named(value) if n not in QUESTION_CONSTANTS]
+        unknown = [n for n in constants_named(value) if n not in QUESTION_CONSTANTS and n not in keep]
         if unknown:
             raise ValueError(f"{where} names {', '.join(unknown)}, which cuts.QUESTION_CONSTANTS does not define")
-        return value.format_map(QUESTION_CONSTANTS)
+        return value.format_map({**QUESTION_CONSTANTS, **{k: "{" + k + "}" for k in keep}})
     if isinstance(value, dict):
-        return {k: fill(v, where) for k, v in value.items()}
+        return {k: fill(v, where, keep) for k, v in value.items()}
     if isinstance(value, list):
-        return [fill(v, where) for v in value]
+        return [fill(v, where, keep) for v in value]
     return value
 
 
-def fill_question(question: dict, where: str) -> dict:
-    return {k: fill(v, where) if k in TEMPLATED_KEYS else v for k, v in question.items()}
+def fill_question(question: dict, where: str, keep: tuple[str, ...] = ()) -> dict:
+    return {k: fill(v, where, keep) if k in TEMPLATED_KEYS else v for k, v in question.items()}
 
 
 def for_lane(question: dict, lane_key: str) -> dict:

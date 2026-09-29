@@ -109,10 +109,10 @@ def strength(line: dict, base: list[list[float]]) -> str | None:
     return TIERS[third(sum(1 for h in pool if h < headroom(line)) / len(pool))]
 
 
-def so_far(bars: list[dict], t0: datetime, minutes: int, spot: float, flat: float) -> dict | None:
+def so_far(bars: list[dict], t0: datetime, minutes: int, spot: float, flat: float, edge: float | None = None) -> dict | None:
     """An open window's average so far: its finished minutes from ``t0`` up to the first one not on file, against
-    the whole window's edge, as the running labels are, and the minute it stands at (``as_of``, the last one's end).
-    None before its first minute has finished."""
+    the whole window's edge (``edge`` when the call was told one, else ``flat`` narrowed by factor), as the running
+    labels are, and the minute it stands at (``as_of``, the last one's end). None before its first minute has finished."""
     closes = []
     for bar in window(bars, t0, minutes):
         if bar is None:
@@ -120,7 +120,7 @@ def so_far(bars: list[dict], t0: datetime, minutes: int, spot: float, flat: floa
         closes.append(float(bar["close"]))
     if not closes:
         return None
-    edge, g = factor(minutes) * flat, sum(c - spot for c in closes) / len(closes)
+    edge, g = edge or factor(minutes) * flat, sum(c - spot for c in closes) / len(closes)
     return {"g": round(g, 2), "edge": round(edge, 2), "label": label(g, edge), "minutes": len(closes), "of": minutes,
             "as_of": (t0 + len(closes) * ONE_MINUTE).isoformat()}
 
@@ -209,10 +209,11 @@ def sharp_move(closes: list[float], first_from: float, base: list[list[float]]) 
 
 
 def grade_window(bars: list[dict], prior: dict[str, list[dict]], t0: datetime, minutes: int, spot: float, flat: float,
-                 pick, probs: dict | None = None) -> dict:
+                 pick, probs: dict | None = None, edge: float | None = None) -> dict:
     """The integral grade of a call at ``spot`` over the ``minutes`` bars from ``t0``, against the flat band ``flat``
-    in points, with ``prior`` the recent sessions' bars (newest first) the ranks read. A ``graded: False`` result
-    names the minutes missing; its guard fields are filled all the same."""
+    in points narrowed by factor, or against ``edge`` itself when the call was told one (the edge in its question,
+    rounded as it was told), with ``prior`` the recent sessions' bars (newest first) the ranks read. A ``graded:
+    False`` result names the minutes missing; its guard fields are filled all the same."""
     slots, before = window(bars, t0, minutes), window(bars, t0 - ONE_MINUTE, 1)[0]
     base = same_window_moves(prior, t0, minutes)
     closes, ticks = fix_bad_ticks(slots, before, bad_tick_cut(base))
@@ -224,7 +225,7 @@ def grade_window(bars: list[dict], prior: dict[str, list[dict]], t0: datetime, m
         closes[k - 1] = ((closes[k - 2] if k > 1 else spot) + closes[k]) / 2
     x = [c - spot for c in closes]
     share = factor(minutes)
-    edge, g = share * flat, sum(x) / minutes
+    edge, g = edge or share * flat, sum(x) / minutes
     lab = label(g, edge)
     running, total = [], 0.0
     for k, v in enumerate(x, start=1):

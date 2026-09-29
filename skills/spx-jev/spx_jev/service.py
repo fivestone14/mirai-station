@@ -69,7 +69,7 @@ from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_a
 from .clock import blend as clock_blend, integral_odds as clock_integral_odds, odds as clock_odds
 from .events import learn_exclude, tag as event_tag
 from .expiry import calendar_of
-from .grade import INTEGRAL_NAME, average_call, horizon_start, live_options, mark_at, read_anchor, run as grade_run
+from .grade import INTEGRAL_NAME, average_call, horizon_start, live_options, mark_at, read_anchor, run as grade_run, told_edge
 from .hour import (answer_sentences, average_request, average_summary, average_window, band_of, hour_request, hour_summary, load_hour_doc,
                    named_levels)
 from .labels.registry import build_labels
@@ -350,26 +350,29 @@ def box_flat_points(row_ts: str, band: dict | None, scene: Scene, lane: Lane = L
 def box_window(row_ts: str, band: dict | None, scene: Scene, lane: Lane = LIVE) -> dict | str:
     """The window the average-price sum of the read at ``row_ts`` forecasts (hour.average_window): the primary's, from
     the read's minute to its mark (grade.mark_at, the closing bar for a read that ends just past the close), against
-    the flat band the grader will use (box_flat_points). Why there is none when it cannot be graded or priced."""
+    the flat band the grader will use (box_flat_points), with the read's price. Why there is none when it cannot be
+    graded or priced."""
     t0, t1 = horizon_start(row_ts, lane), mark_at(row_ts, lane.horizons[lane.primary][0], lane)
     if t1 is None:
         return "its window ends past the close, so it can never be graded"
     points = box_flat_points(row_ts, band, scene, lane)
     if not points:
         return "no flat band to price its edge in points this read"
-    return average_window(int((t1 - t0).total_seconds() // 60), float(points))
+    return average_window(int((t1 - t0).total_seconds() // 60), float(points), scene.row.get("spot"))
 
 
 def open_grade(rec: dict, scene: Scene, lane: Lane = LIVE) -> dict | None:
     """The average so far (integral.so_far) of an open call of the lane's primary sum, from the bars the card is
-    built on, against the flat band the grader will use (box_flat_points). None before its first minute has finished,
+    built on, against the flat band the grader will use (box_flat_points), or the edge its average-price call was told
+    (grade.told_edge), as its grade will be. None before its first minute has finished,
     and on a lane graded from the settled open, whose window the card's bars never reach."""
     if lane.graded_from_settled_open:
         return None
     points = box_flat_points(rec["row_ts"], rec.get("band"), scene, lane)
     if not points or not isinstance(rec.get("spot"), (int, float)):
         return None
-    return integral.so_far(scene.bars, horizon_start(rec["row_ts"], lane), lane.horizons[lane.primary][0], float(rec["spot"]), float(points))
+    return integral.so_far(scene.bars, horizon_start(rec["row_ts"], lane), lane.horizons[lane.primary][0], float(rec["spot"]), float(points),
+                           told_edge(average_call(rec, lane.primary, lane)))
 
 
 def end_price_verdict(end_price: dict, pick=None) -> str:

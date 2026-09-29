@@ -558,12 +558,20 @@ def integral_scores(avg: dict, label: str) -> dict:
     return out
 
 
+def told_edge(avg: dict | None) -> float | None:
+    """The flat edge in points the average-price sum was told (hour.average_window), which its grade is set against, so
+    the two can never part at the edge; None without one."""
+    e = (avg or {}).get("edge_points")
+    return float(e) if isinstance(e, (int, float)) and not isinstance(e, bool) and e > 0 else None
+
+
 def integral_line(line: dict, qid: str, rec: dict | None, bars: list[dict], prior: dict[str, list[dict]], lane: Lane = LIVE) -> dict:
     """The shadow integral grade of horizon ``qid`` of a grades.jsonl ``line``, over the window the line was graded on
     (horizon_start to mark_at) and against its flat band: the line's anchor times the horizon's sigma band, or the
     record's ``band.flat_points``. Measured from the read's spot, or the settled open the line was measured from. The
-    call graded is the average-price sum's where it answered (average_call), with its scores (integral_scores) and the
-    edge JEV was told (``edge_told``), else the end-price sum's own; ``sum`` names the one graded."""
+    call graded is the average-price sum's where it answered (average_call), against the edge JEV was told (told_edge,
+    kept as ``edge_told``) and with its scores (integral_scores), else the end-price sum's own; ``sum`` names the one
+    graded."""
     head = {"row_ts": line["row_ts"], "horizon": qid, "rule_version": integral.RULE_VERSION}
     if rec is None:
         return {**head, "graded": False, "reason": "not graded: the read's sum record is not on file"}
@@ -580,7 +588,7 @@ def integral_line(line: dict, qid: str, rec: dict | None, bars: list[dict], prio
     else:
         pick, probs = old.get("pick"), ((rec.get("by") or {}).get(qid) or {}).get("probabilities") or {}
     out = {**head, "sum": lane.average if avg else qid,
-           **integral.grade_window(bars, prior, t0, int((t1 - t0).total_seconds() // 60), spot, points, pick, probs)}
+           **integral.grade_window(bars, prior, t0, int((t1 - t0).total_seconds() // 60), spot, points, pick, probs, told_edge(avg))}
     if out["graded"]:
         out["end_label"] = old["direction"] if flat == RECORD else old["band"]
         if flat == RECORD:

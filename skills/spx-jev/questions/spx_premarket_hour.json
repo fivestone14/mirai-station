@@ -32,13 +32,13 @@
   },
   "open_average_30": {
    "type": "choice",
-   "ask": "Where does the average price over the 30 minutes after the settled open sit against the settled open?",
+   "ask": "Where does the average price over the {window_minutes} minutes after the settled open sit against the settled open?",
    "why": "The lane's call as it is graded: the average price over the first half hour from the settled open, its direction deciding. Three options, no unsure.",
-   "instructions": "Read `context.average` for what the average over the window is and how many index points either way count as flat for this read, then `answers`, one sentence per question JEV has already answered about the night before the open, each ending with how sure it was. Taken together, where will the average price over the 30 minutes after the settled open (the close of the 09:34 bar) sit against the settled open itself? Answer up, down or flat.",
+   "instructions": "Read `context.average` for the price at this read, what the average over the window is and how many index points either way count as flat for this read, then `answers`, one sentence per question JEV has already answered about the night before the open, each ending with how sure it was. Taken together, where will the average price over the {window_minutes} minutes after the settled open (the close of the 09:34 bar) sit against the settled open itself? Answer up, down or flat.",
    "criteria": {
-    "up": "the average price over the 30 minutes after the settled open sits above the settled open by more than the flat edge the context gives in points",
-    "down": "the average price over the 30 minutes after the settled open sits below the settled open by more than the flat edge the context gives in points",
-    "flat": "the average price over the 30 minutes after the settled open sits no further from the settled open than the flat edge the context gives in points, either way"
+    "up": "the average price over the {window_minutes} minutes after the settled open sits above the settled open by more than the flat edge the context gives in points",
+    "down": "the average price over the {window_minutes} minutes after the settled open sits below the settled open by more than the flat edge the context gives in points",
+    "flat": "the average price over the {window_minutes} minutes after the settled open sits no further from the settled open than the flat edge the context gives in points, either way"
    }
   }
  }

@@ -35,6 +35,7 @@ from .lane import LIVE, RECORD, Lane
 from .weights import MIN_WEIGHT, QuestionWeights
 
 FIVE = ("down_big", "down_small", "flat", "up_small", "up_big")   # a RECORD horizon's outcomes, in order
+PER_READ = ("window_minutes",)     # the names in the average-price sum's text the code fills at each read, from its window
 UNITS = ("sigma is today's expected move for the S&P 500 index. Each answer below was given by JEV about this moment, "
          "except those marked held, which were given at the time shown and carried forward unchanged")
 
@@ -52,7 +53,7 @@ def load_hour_doc(path: Path | str | None = None, lane: Lane = LIVE) -> dict:
         raise ValueError(f"{path}: primary is {d.get('primary')!r} but the code sums for {lane.primary!r}")
     if d.get("average", lane.average) != lane.average:
         raise ValueError(f"{path}: average is {d.get('average')!r} but the code asks {lane.average!r}")
-    d["questions"] = {qid: fill_question(q, f"{Path(path).name} {qid}") for qid, q in qs.items()}
+    d["questions"] = {qid: fill_question(q, f"{Path(path).name} {qid}", PER_READ if qid == lane.average else ()) for qid, q in qs.items()}
     return d
 
 
@@ -163,35 +164,53 @@ def hour_request(sentences: dict[str, str], hour_doc: dict | None = None, contex
             "questions": {qid: jev_only(q) for qid, q in hour_doc["questions"].items() if qid in lane.horizons}}
 
 
-def average_window(minutes: int, flat_points: float) -> dict:
-    """The window the average-price sum forecasts: its minutes, the end price's flat band for it in points, and the
-    edge the average is set against, that band narrowed by integral.factor, as the average-price grade narrows it."""
-    return {"minutes": minutes, "flat_points": round(flat_points, 2), "edge_points": round(integral.factor(minutes) * flat_points, 2)}
+def average_window(minutes: int, flat_points: float, price: float | None = None) -> dict:
+    """The window the average-price sum forecasts: its minutes, the end price's flat band for it in points, the edge
+    the average is set against, that band narrowed by integral.factor and rounded to the cent JEV is told (the grade
+    sets the average against this same edge, grade.integral_line), and the read's price when there is one."""
+    out = {"minutes": minutes, "flat_points": round(flat_points, 2), "edge_points": round(integral.factor(minutes) * flat_points, 2)}
+    return {**out, "price": round(float(price), 2)} if isinstance(price, (int, float)) else out
+
+
+def per_read(value, window: dict):
+    """The average-price sum's text with its per-read names (PER_READ) filled from ``window``."""
+    if isinstance(value, str):
+        return value.replace("{window_minutes}", str(window["minutes"]))
+    if isinstance(value, dict):
+        return {k: per_read(v, window) for k, v in value.items()}
+    if isinstance(value, list):
+        return [per_read(v, window) for v in value]
+    return value
 
 
 def average_line(window: dict, lane: Lane = LIVE) -> str:
     """The context line of the average-price request: what the average over the window is, in one plain sentence,
-    and the flat edge in points for this read, measured from the read's price or, on a lane graded from it, the
-    settled open."""
-    span, ref = ((f"the {window['minutes']} minutes after the settled open", "the settled open") if lane.graded_from_settled_open
-                 else (f"the next {window['minutes']} minutes", "the price now"))
-    edge = f"{float(window['edge_points']):.2f}"
-    return (f"the average price over {span} counts every minute's closing price equally, so an early move counts for longer than a late "
-            f"one; the average is flat when it sits within {edge} points of {ref} either way, up when it sits more than {edge} points "
-            f"above it, down when it sits more than {edge} points below it")
+    the read's price and the flat edge in points for this read, measured from the read's price or, on a lane graded
+    from it, the settled open (not yet known at a read before the open, whose price is the futures' guide to it)."""
+    edge, price = f"{float(window['edge_points']):.2f}", window.get("price")
+    if lane.graded_from_settled_open:
+        span, ref = f"the {window['minutes']} minutes after the settled open", "the settled open"
+        where = (f"before the open the index stands near {price:.2f} on S&P futures; the settled open it is measured from is the close "
+                 f"of the 09:34 bar, not known until then; " if price is not None else "")
+    else:
+        span, ref = f"the next {window['minutes']} minutes", "the price now"
+        where = f"the price now is {price:.2f}; " if price is not None else ""
+    return (f"{where}the average price over {span} counts every minute's closing price equally, so an early move counts for longer "
+            f"than a late one; the average is flat when it sits within {edge} points of {ref} either way, up when it sits more than "
+            f"{edge} points above it, down when it sits more than {edge} points below it")
 
 
 def average_request(sentences: dict[str, str], window: dict, hour_doc: dict | None = None, context: dict | None = None,
                     lane: Lane = LIVE) -> dict:
-    """The average-price sum's request: the same sentences as the end-price sums', its one question, and a context
-    that names its window and prices its flat edge (average_line). It carries no tape unit line, whose flat band is
-    the end price's."""
+    """The average-price sum's request: the same sentences as the end-price sums', its one question with the window's
+    minutes filled in (per_read), and a context that names its window and gives the read's price and the flat edge
+    (average_line). It carries no tape unit line, whose flat band is the end price's."""
     hour_doc = hour_doc or load_hour_doc(lane=lane)
     ctx = {"symbol": "SPX", "horizon": f"the next {window['minutes']} minutes", "units": UNITS}
     ctx.update(context or {})
     ctx["average"] = average_line(window, lane)
     return {"id": "average", "state": {"context": ctx, "answers": sentences},
-            "questions": {lane.average: jev_only(hour_doc["questions"][lane.average])}}
+            "questions": {lane.average: per_read(jev_only(hour_doc["questions"][lane.average]), window)}}
 
 
 def views_of(probs: dict) -> dict:
