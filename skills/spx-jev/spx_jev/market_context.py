@@ -35,7 +35,7 @@ from zoneinfo import ZoneInfo
 from . import schwab
 from .feed_log import failure, log
 from .labels.measures import is_num
-from .sessions import SESSION_CLOSE, SESSION_OPEN
+from .sessions import SESSION_CLOSE, SESSION_OPEN, is_trading_day
 from .state_builder import CONTEXT_SUBDIR, DEFAULT_STATE_DIR, INDEX_QUOTE, load_jsonl
 
 ET = ZoneInfo("America/New_York")
@@ -166,7 +166,7 @@ def append_snapshot(state_dir: Path, line: dict) -> Path:
 
 def backfill_day(state_dir: Path, day: date) -> Path | None:
     """Every history symbol's minute bars for one past session, one line per minute. A day already on
-    disk is left alone, and a day with no bars at all (a holiday, a weekend) writes nothing; on any other
+    disk is left alone, and a day with no bars at all writes nothing (backfill asks trading days only); on any other
     day each symbol Schwab served no bars for is logged as an error. A minute with no $VOLD takes it from
     $UVOL and $DVOL (derived_vold)."""
     path = Path(state_dir) / CONTEXT_SUBDIR / "bars" / f"{day.isoformat()}.jsonl"
@@ -208,10 +208,11 @@ def backfill_day(state_dir: Path, day: date) -> Path | None:
 
 
 def backfill(state_dir: Path, first: date, last: date) -> list[Path]:
-    """backfill_day for every weekday from ``first`` to ``last``; returns the files written."""
+    """backfill_day for every trading day from ``first`` to ``last``; returns the files written. A market holiday is
+    never asked: Schwab serves futures on some (Labor Day's /ES), which would write a session that never was."""
     written, d = [], first
     while d <= last:
-        if d.weekday() < 5:
+        if is_trading_day(d):
             p = backfill_day(state_dir, d)
             if p:
                 written.append(p)

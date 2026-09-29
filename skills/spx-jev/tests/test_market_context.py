@@ -156,6 +156,20 @@ def test_schwab_s_own_vold_is_never_replaced_and_out_of_thousands_volume_is_logg
         "$VOLD not derived at 10:01 ET: $UVOL and $DVOL are not one minute's bars in thousands of shares")
 
 
+def test_the_backfill_never_asks_a_market_holiday(tmp_path, monkeypatch):
+    """Labor Day 2026-09-07: Schwab served /ES minute bars, so the backfill wrote a session file for a day the market
+    was shut. It asks only trading days."""
+    _no_sleep(monkeypatch)
+    calls = []
+
+    def minute_bars(symbol, start, end):
+        calls.append(start.date())
+        return [_bar(start, 10.0)]
+    monkeypatch.setattr(schwab, "minute_bars", minute_bars)
+    written = backfill(tmp_path, date(2026, 9, 4), date(2026, 9, 8))                # Friday to the Tuesday after Labor Day
+    assert [p.stem for p in written] == ["2026-09-04", "2026-09-08"] and date(2026, 9, 7) not in calls
+
+
 def test_the_backfill_derives_each_minute_s_net_volume_when_schwab_served_none(tmp_path, monkeypatch):
     _no_sleep(monkeypatch)
     served = {"$UVOL": (30000.0, 31000.0), "$DVOL": (20000.0, 20500.0)}
