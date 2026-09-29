@@ -351,12 +351,15 @@ def _balance_vs_yesterday(scene: Scene, gv: dict, ls: LabelSet) -> None:
         ls.omit("gex.balance_vs_yesterday", f"no diary row within {ROW_SLACK_MIN} minutes of yesterday's close carries the book's balance")
         return
     then = "was too close to call" if yesterday == "uncertain" else f"leaned to {LEANS_TO[yesterday]}"
+    # said against yesterday's close, never "overnight": the book can change sides during the session as price crosses the flip
     if today == yesterday:
-        verdict = "so it is still too close to call" if today == "uncertain" else "so it has not tipped overnight"
+        verdict = "so it is still too close to call" if today == "uncertain" else "so it leans the same way as at yesterday's close"
         ls.put("gex.balance_vs_yesterday", f"by open interest the same-day book {then} at yesterday's close too, {DEALERS}, {verdict}")
         return
     now = "is too close to call now" if today == "uncertain" else f"leans to {LEANS_TO[today]} now"
-    verdict = "so its lean has faded overnight" if today == "uncertain" else "so it has tipped overnight"
+    verdict = ("so its lean from yesterday's close has faded" if today == "uncertain" else
+               "so it has taken a side since yesterday's close" if yesterday == "uncertain" else
+               "so it leans the other way from yesterday's close")
     ls.put("gex.balance_vs_yesterday", f"by open interest the same-day book {then} at yesterday's close and {now}, {DEALERS}, {verdict}")
 
 

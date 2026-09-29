@@ -3963,7 +3963,7 @@
      "status": "live",
      "cadence": "every 30-minute read",
      "ask": "Which way do today's same-day options books lean at the current price?",
-     "instructions": "Read `gex.book_balance` and `gex.balance_vs_yesterday`. Which describes today's same-day options book at the current price? Check in order: balanced, the two split options, tipped_overnight, then the agreed options.",
+     "instructions": "Read `gex.book_balance` and `gex.balance_vs_yesterday`. Which describes today's same-day options book at the current price? Check in order: balanced, the two split options, other_side_from_yesterday, then the agreed options.",
      "options": [
       {
        "name": "balanced",
@@ -3978,7 +3978,7 @@
        "description": "the open-interest book leans to calls while today's volume book leans to puts"
       },
       {
-       "name": "tipped_overnight",
+       "name": "other_side_from_yesterday",
        "description": "both books agree, but on the other side from yesterday's close"
       },
       {
@@ -3994,7 +3994,7 @@
       "balanced": "either regime uncertain",
       "split_oi_puts_vol_calls": "regime short, volume book long",
       "split_oi_calls_vol_puts": "regime long, volume book short",
-      "tipped_overnight": "agree and differ from the prior day's last RTH regime",
+      "other_side_from_yesterday": "agree and differ from the prior day's last RTH regime",
       "calls_heavier_both": "both long, same as yesterday",
       "puts_heavier_both": "both short, same as yesterday"
      },
@@ -4009,7 +4009,7 @@
       },
       {
        "name": "gex.balance_vs_yesterday",
-       "example": "the same book leaned to calls at yesterday's close too, under the usual assumption that dealers hold the calls and are short the puts, so it has not tipped overnight",
+       "example": "by open interest the same-day book leaned to calls at yesterday's close too, under the usual assumption that dealers hold the calls and are short the puts, so it leans the same way as at yesterday's close",
        "computed_how": "last RTH gex_views.regime of the prior diary day vs now; never net_exposure (disagrees with gex_views on 15% of rows)",
        "source": "state/reversion/{day}.jsonl",
        "availability": "live",
@@ -9410,7 +9410,7 @@
   },
   {
    "name": "gex.balance_vs_yesterday",
-   "example": "the same book leaned to calls at yesterday's close too, under the usual assumption that dealers hold the calls and are short the puts, so it has not tipped overnight",
+   "example": "by open interest the same-day book leaned to calls at yesterday's close too, under the usual assumption that dealers hold the calls and are short the puts, so it leans the same way as at yesterday's close",
    "computed_how": "last RTH gex_views.regime of the prior diary day vs now; never net_exposure (disagrees with gex_views on 15% of rows)",
    "source": "state/reversion/{day}.jsonl",
    "availability": "live",

@@ -123,23 +123,23 @@ def test_balance_vs_yesterday_reads_the_previous_sessions_last_row_by_its_close(
     scene = replace(gamma_scene(scene_factory), state_dir=tmp_path)
     state, _, _ = labels(scene)
     assert state["balance_vs_yesterday"] == (f"by open interest the same-day book leaned to puts at yesterday's close and leans to calls now, "
-                                             f"{DEALERS}, so it has tipped overnight")
+                                             f"{DEALERS}, so it leans the other way from yesterday's close")
     write_diary(tmp_path, "2026-09-17", [diary_row(at(15, 58, "2026-09-17"))])
     state, _, _ = labels(scene)
-    assert state["balance_vs_yesterday"] == f"by open interest the same-day book leaned to calls at yesterday's close too, {DEALERS}, so it has not tipped overnight"
+    assert state["balance_vs_yesterday"] == f"by open interest the same-day book leaned to calls at yesterday's close too, {DEALERS}, so it leans the same way as at yesterday's close"
 
 
 def test_balance_vs_yesterday_when_either_close_is_too_close_to_call(scene_factory, tmp_path):
     scene = replace(gamma_scene(scene_factory), state_dir=tmp_path)
     write_diary(tmp_path, "2026-09-17", [diary_row(at(15, 58, "2026-09-17"), regime="uncertain")])
     assert labels(scene)[0]["balance_vs_yesterday"] == (f"by open interest the same-day book was too close to call at yesterday's close and "
-                                                        f"leans to calls now, {DEALERS}, so it has tipped overnight")
+                                                        f"leans to calls now, {DEALERS}, so it has taken a side since yesterday's close")
     scene = replace(gamma_scene(scene_factory, regime="uncertain"), state_dir=tmp_path)
     assert labels(scene)[0]["balance_vs_yesterday"] == (f"by open interest the same-day book was too close to call at yesterday's close too, "
                                                         f"{DEALERS}, so it is still too close to call")
     write_diary(tmp_path, "2026-09-17", [diary_row(at(15, 58, "2026-09-17"), regime="short_gamma")])
     assert labels(scene)[0]["balance_vs_yesterday"] == (f"by open interest the same-day book leaned to puts at yesterday's close and is too "
-                                                        f"close to call now, {DEALERS}, so its lean has faded overnight")
+                                                        f"close to call now, {DEALERS}, so its lean from yesterday's close has faded")
 
 
 def test_balance_vs_yesterday_is_omitted_without_the_previous_sessions_close(scene_factory, tmp_path):

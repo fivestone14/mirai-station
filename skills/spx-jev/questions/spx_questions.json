@@ -2411,12 +2411,12 @@
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ask": "Which way do today's same-day options books lean at the current price?",
-     "instructions": "Read `gex.book_balance` and `gex.balance_vs_yesterday`. Which describes today's same-day options book at the current price? Check in order: balanced, the two split options, tipped_overnight, then the agreed options.",
+     "instructions": "Read `gex.book_balance` and `gex.balance_vs_yesterday`. Which describes today's same-day options book at the current price? Check in order: balanced, the two split options, other_side_from_yesterday, then the agreed options.",
      "options": [
       "balanced",
       "split_oi_puts_vol_calls",
       "split_oi_calls_vol_puts",
-      "tipped_overnight",
+      "other_side_from_yesterday",
       "calls_heavier_both",
       "puts_heavier_both"
      ],
@@ -2424,7 +2424,7 @@
       "balanced": "at least one book is too close to call",
       "split_oi_puts_vol_calls": "the open-interest book leans to puts while today's volume book leans to calls",
       "split_oi_calls_vol_puts": "the open-interest book leans to calls while today's volume book leans to puts",
-      "tipped_overnight": "both books agree, but on the other side from yesterday's close",
+      "other_side_from_yesterday": "both books agree, but on the other side from yesterday's close",
       "calls_heavier_both": "call gamma outweighs put gamma at price in both books, same side as yesterday's close",
       "puts_heavier_both": "put gamma outweighs call gamma at price in both books, same side as yesterday's close"
      },
@@ -2432,7 +2432,7 @@
       "balanced": "either regime uncertain",
       "split_oi_puts_vol_calls": "regime short, volume book long",
       "split_oi_calls_vol_puts": "regime long, volume book short",
-      "tipped_overnight": "agree and differ from the prior day's last RTH regime",
+      "other_side_from_yesterday": "agree and differ from the prior day's last RTH regime",
       "calls_heavier_both": "both long, same as yesterday",
       "puts_heavier_both": "both short, same as yesterday"
      },
