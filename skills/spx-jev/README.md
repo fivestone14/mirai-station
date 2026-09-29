@@ -446,17 +446,19 @@ and the card says "not sent: no key on this machine".
 
 ## Going live
 
-At the mini, in order:
+SPX JEV has been live on the mini since 2026-09-28: the code is on `main`, the
+key is in place, the market feed's past sessions are backfilled from
+2026-08-11, and the nine jobs are loaded. To set it up on another machine, at
+that machine, in order:
 
-1. Merge: `git -C ~/.claude/plugins/mirai-station merge --ff-only spx-jev`.
-2. The key: in `~/.claude/plugins/mirai-station/skills/spx-jev`, run
+1. The key: in `~/.claude/plugins/mirai-station/skills/spx-jev`, run
    `cp .env.example .env && chmod 600 .env` and fill in `TYPESAFE_API_KEY`
    (the key in `skills/sndk-jev/.env`).
-3. The past sessions' market bars, from the same folder:
+2. The past sessions' market bars, from the same folder:
    `~/.local/share/mirai-station/venv/bin/python -m spx_jev.market_context --backfill 2026-08-10`.
-4. Hire the jobs: `~/.claude/plugins/mirai-station/runtime/scripts/install-launchd.sh`
+3. Hire the jobs: `~/.claude/plugins/mirai-station/runtime/scripts/install-launchd.sh`
    (it reloads every station job, the nine here among them).
-5. Check: `launchctl list | grep -E 'spx-jev|spx-premarket'` shows nine, and after the first fire
+4. Check: `launchctl list | grep -E 'spx-jev|spx-premarket'` shows nine, and after the first fire
    `grep -E 'FAILED|Traceback' /tmp/mirai-station.spx-jev*.err /tmp/mirai-station.spx-premarket-deadman.err`
    finds nothing. The `.err` files are never empty: the service writes its
    normal progress lines to stderr, so a failure is found by its words.
@@ -510,6 +512,3 @@ running.
   that needs it says why (`labels/plausible.py`); a day that fails sits out of
   the later days' ranks. If Schwab keeps serving the changed series, those
   labels stay omitted until it makes up most of the last sessions on file.
-- No market context is on disk yet: the breadth labels are omitted on every
-  replay until the feed has run, and the backfill has not been run against the
-  station.
