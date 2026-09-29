@@ -241,6 +241,22 @@ def test_a_roll_refresh_waits_for_a_save_already_writing_the_store(tmp_path, ser
     assert done.is_set() and {r["contract"] for r in _rows(tmp_path, "2026-09-11")} == {"/ESU26"}
 
 
+def test_a_backfill_waits_for_a_save_already_writing_the_store(tmp_path, served, monkeypatch):
+    """The backfill wrote its nights without the save lock, so a read's save by hand at the same time could write
+    the same night file through the same temporary file. It waits for the lock, and its roll refresh after it."""
+    served[("/ES", 5)] = _bars(t("2026-09-16", 9, 30), 12 * 24 * 5, minutes=5)
+    served[("$SPX", 5)] = []
+    monkeypatch.setattr(schwab, "five_minute_bars", lambda symbol, start, end, extended_hours=False:
+                        [b for b in served.get((symbol, 5), []) if datetime.fromisoformat(b["ts"]) >= start])
+    done = threading.Event()
+    with overnight.saving(tmp_path):
+        worker = threading.Thread(target=lambda: overnight.backfill(tmp_path, t("2026-09-21", 9, 0)) and done.set())
+        worker.start()
+        assert not done.wait(0.3) and not overnight.night_path(tmp_path, "2026-09-16").exists()
+    worker.join(5)
+    assert done.is_set() and _rows(tmp_path, "2026-09-16")
+
+
 def test_the_daily_run_saves_the_night_in_progress_and_the_last_week():
     morning = overnight.days_to_save(t("2026-09-22", 9, 26))
     evening = overnight.days_to_save(t("2026-09-22", 16, 20))

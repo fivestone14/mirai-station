@@ -461,8 +461,11 @@ def backfill(state_dir: Path, now: datetime, since: date = BACKFILL_FROM) -> tup
         failed.append(f"quotes: {type(e).__name__}: {e}")
     got, refused = fetch(SYMBOLS, start, now)
     failed += refused
-    table = rolls.load(Path(state_dir) / OVERNIGHT_SUBDIR)
-    lines = [line for day in backfill_days(got, now) if (line := save_night(state_dir, day, got, quoted, table, now, failed))]
+    # under the save lock, as save_nights: a read's save could otherwise merge into the same night file at once.
+    # refresh_rolls takes the lock itself, so it runs after it is let go
+    with saving(state_dir):
+        table = rolls.load(Path(state_dir) / OVERNIGHT_SUBDIR)
+        lines = [line for day in backfill_days(got, now) if (line := save_night(state_dir, day, got, quoted, table, now, failed))]
     table = refresh_rolls(state_dir, now)
     return lines, table
 
