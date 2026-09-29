@@ -88,7 +88,7 @@ def sentence(ls, path: str) -> str:
     return ls.state[group][key]
 
 
-# ---- breadth.upvol_share_30m
+# ---- breadth.net_volume_change_30m
 
 NOW = at(12, 32, ss=10)
 MINUTES_TO_NOW = 182          # bars finished by 12:32:10
@@ -110,36 +110,36 @@ def upvol_read(scene_factory, share: float, prior=USUAL_SHARES):
 
 
 def test_the_30_minute_up_volume_share_ranked_at_this_minute(scene_factory):
-    assert sentence(upvol_read(scene_factory, 0.61), "breadth.upvol_share_30m") == (
+    assert sentence(upvol_read(scene_factory, 0.61), "breadth.net_volume_change_30m") == (
         "over the last 30 minutes NYSE net volume changed by +66M, higher than 20 of the last 20 sessions at this minute, "
         "top third: leaning to buying")
-    assert sentence(upvol_read(scene_factory, 0.38), "breadth.upvol_share_30m") == (
+    assert sentence(upvol_read(scene_factory, 0.38), "breadth.net_volume_change_30m") == (
         "over the last 30 minutes NYSE net volume changed by -72M, higher than 0 of the last 20 sessions at this minute, "
         "bottom third: leaning to selling")
-    assert sentence(upvol_read(scene_factory, 0.52), "breadth.upvol_share_30m") == (
+    assert sentence(upvol_read(scene_factory, 0.52), "breadth.net_volume_change_30m") == (
         "over the last 30 minutes NYSE net volume changed by +12M, higher than 12 of the last 20 sessions at this minute, "
         "middle third: no lean")
 
 
 def test_the_up_volume_share_turns_third_at_the_rank_edges(scene_factory):
-    assert sentence(upvol_read(scene_factory, 0.47), "breadth.upvol_share_30m").endswith("higher than 7 of the last 20 sessions at this "
+    assert sentence(upvol_read(scene_factory, 0.47), "breadth.net_volume_change_30m").endswith("higher than 7 of the last 20 sessions at this "
                                                                                         "minute, middle third: no lean")
-    assert sentence(upvol_read(scene_factory, 0.46), "breadth.upvol_share_30m").endswith("higher than 6 of the last 20 sessions at this "
+    assert sentence(upvol_read(scene_factory, 0.46), "breadth.net_volume_change_30m").endswith("higher than 6 of the last 20 sessions at this "
                                                                                         "minute, bottom third: leaning to selling")
-    assert sentence(upvol_read(scene_factory, 0.54), "breadth.upvol_share_30m").endswith("higher than 14 of the last 20 sessions at this "
+    assert sentence(upvol_read(scene_factory, 0.54), "breadth.net_volume_change_30m").endswith("higher than 14 of the last 20 sessions at this "
                                                                                         "minute, top third: leaning to buying")
-    assert sentence(upvol_read(scene_factory, 0.53), "breadth.upvol_share_30m").endswith("higher than 13 of the last 20 sessions at this "
+    assert sentence(upvol_read(scene_factory, 0.53), "breadth.net_volume_change_30m").endswith("higher than 13 of the last 20 sessions at this "
                                                                                         "minute, middle third: no lean")
 
 
 def test_the_30_minute_share_is_omitted_when_the_feed_stopped_or_under_ten_prior_sessions(scene_factory):
     stopped = {s: [(t, v) for t, v in pts if t <= NOW - timedelta(minutes=10)] for s, pts in upvol_last_30(0.61).items()}
     ls = read(scene_factory, NOW, stopped, even_prior_upvol(USUAL_SHARES))
-    assert ls.omitted["breadth.upvol_share_30m"] == ("no NYSE net volume ($VOLD) known both 30 minutes ago and now, within 5 minutes "
+    assert ls.omitted["breadth.net_volume_change_30m"] == ("no NYSE net volume ($VOLD) known both 30 minutes ago and now, within 5 minutes "
                                                      "of each: the market-context job stopped or has not saved it")
-    assert upvol_read(scene_factory, 0.61, prior=USUAL_SHARES[:9]).omitted["breadth.upvol_share_30m"] == (
+    assert upvol_read(scene_factory, 0.61, prior=USUAL_SHARES[:9]).omitted["breadth.net_volume_change_30m"] == (
         "its rank needs 10 prior sessions with NYSE net volume ($VOLD) over the 30 minutes to this minute, have 9")
-    assert "higher than 10 of the last 10 sessions" in sentence(upvol_read(scene_factory, 0.61, prior=USUAL_SHARES[:10]), "breadth.upvol_share_30m")
+    assert "higher than 10 of the last 10 sessions" in sentence(upvol_read(scene_factory, 0.61, prior=USUAL_SHARES[:10]), "breadth.net_volume_change_30m")
 
 
 def test_a_series_schwab_served_empty_all_day_is_named_in_every_label_it_omits(scene_factory):
@@ -150,21 +150,21 @@ def test_a_series_schwab_served_empty_all_day_is_named_in_every_label_it_omits(s
     none_saved = "the market-context job has saved no {} today"
     assert ls.omitted["breadth.advance_decline"] == none_saved.format("NYSE advancers minus decliners ($ADD)")
     assert ls.omitted["breadth.members_net_day"] == none_saved.format("S&P 500 members' net volume ($VOLSPD)")
-    for path in ("breadth.upvol_share_30m", "breadth.day_upvol_share", "breadth.open_net_volume"):
+    for path in ("breadth.net_volume_change_30m", "breadth.day_upvol_share", "breadth.open_net_volume"):
         assert ls.omitted[path] == none_saved.format("NYSE net volume ($VOLD)"), path
 
 
 def test_a_minute_that_finishes_after_the_read_does_not_count_toward_the_share(scene_factory):
     selling_after = upvol_last_30(0.61, extra=(0.0, 900000.0))           # its bar finishes at 12:33
     assert sentence(read(scene_factory, NOW, selling_after, even_prior_upvol(USUAL_SHARES)),
-                    "breadth.upvol_share_30m").startswith("over the last 30 minutes NYSE net volume changed by +66M")
+                    "breadth.net_volume_change_30m").startswith("over the last 30 minutes NYSE net volume changed by +66M")
 
 
 def test_a_stock_that_turns_down_moves_its_day_from_up_to_down_volume_and_the_window_reads_net_volume(scene_factory):
     up = [5000.0] * (MINUTES_TO_NOW - 30) + [2000.0] * 30
     down = [5000.0] * (MINUTES_TO_NOW - 30) + [8000.0] * 30
     up[-20], down[-20] = up[-20] - 300000.0, down[-20] + 300000.0      # its whole day so far leaves $UVOL for $DVOL
-    text = sentence(read(scene_factory, NOW, upvol(up, down), even_prior_upvol(USUAL_SHARES)), "breadth.upvol_share_30m")
+    text = sentence(read(scene_factory, NOW, upvol(up, down), even_prior_upvol(USUAL_SHARES)), "breadth.net_volume_change_30m")
     assert text == ("over the last 30 minutes NYSE net volume changed by -780M, higher than 0 of the last 20 sessions at this minute, "
                     "bottom third: leaning to selling")
 
@@ -273,7 +273,7 @@ def test_a_tick_reading_after_the_read_does_not_count(scene_factory):
 def test_no_market_context_omits_every_breadth_label_but_the_dark_one(scene_factory):
     ls = build_breadth_labels(scene_factory(NOW, flat_bars(MINUTES_TO_NOW)))
     assert set(ls.omitted.values()) == {"no market-context snapshot today"}
-    assert "breadth.nasdaq_net_volume" not in ls.omitted and "breadth.upvol_share_30m" in ls.omitted
+    assert "breadth.nasdaq_net_volume" not in ls.omitted and "breadth.net_volume_change_30m" in ls.omitted
 
 
 # ---- breadth.day_upvol_share

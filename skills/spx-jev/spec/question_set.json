@@ -2743,7 +2743,7 @@
     "context",
     "vol.realized_vs_clock",
     "vol.straddle_vs_clock",
-    "vol.vix_change_30",
+    "vol.vix_change",
     "ruler.flat_band_reach",
     "range.pace_vs_priced",
     "liquidity.spy_quote",
@@ -2888,7 +2888,7 @@
      "status": "live",
      "cadence": "every 5 min 09:40-10:30 with a 10-minute window; every 30-minute read from 10:02 with a 30-minute window (the 10:02 read measures VIX since the open)",
      "ask": "How much has VIX moved as a share of its level?",
-     "instructions": "Read `vol.vix_change_30`. Over the window the label names, how much has VIX moved, in either direction, as a share of its level, against the same window at this minute on the recent sessions? The label's band words decide.",
+     "instructions": "Read `vol.vix_change`. Over the window the label names, how much has VIX moved, in either direction, as a share of its level, against the same window at this minute on the recent sessions? The label's band words decide.",
      "options": [
       {
        "name": "still",
@@ -2915,7 +2915,7 @@
      ],
      "labels_needed": [
       {
-       "name": "vol.vix_change_30",
+       "name": "vol.vix_change",
        "example": "over the last 30 minutes VIX fell 0.13 points, 0.87% of its 14.9 level, higher than 16 of the last 18 sessions at this minute, top fifth",
        "computed_how": "|VIX change| over the window (30 minutes on 30-minute reads; 10 minutes in the opening lane, from the open's first print at 09:40) as a share of the level, ranked against the same measure at the same clock minute on up to the last {night_rank_count} prior sessions (ranks.rank_sessions; each session's diary as its read at that minute had it, 'ruler estimated' sessions left out), at least {same_clock_min_sessions} of them, else omitted with the reason; said as its third, the top fifth apart",
        "source": "state/reversion/{day}.jsonl range_ruler.vol_carry.vix (a live 1-2 minute series; changed 230 times in 266 rows on 09-25)",
@@ -3343,7 +3343,7 @@
       {
        "name": "vol.vvix_vs_vix",
        "example": "over the last 30 minutes VVIX fell 0.81 points; VIX's and SPX's moves explain a fall of about 0.46; the 0.35 left over is bigger than on 12 of the last 19 sessions at this minute, at or above the median, short of the top fifth, while SPX or VIX also moved (one or both 30-minute moves above the bottom third of the last sessions' at this minute)",
-       "computed_how": "residual = dVVIX30 - (a + b*SPX30 + c*dVIX30), fit on the prior sessions' half hours from 10:30 to 15:30 (a link fit, at least {min_rank_sessions} sessions); |residual| ranked against the fit's |residual| over the same half hour to this minute on up to the last {night_rank_count} sessions, at least {same_clock_min_sessions}, else omitted; the barely-moved clause: SPX's 30-minute move (ranks.move_rank) and VIX's (vol.vix_change_30's rank of the diary VIX) each in the bottom third of the same half hour on up to the last {night_rank_count} sessions, at least {same_clock_min_sessions}, else omitted",
+       "computed_how": "residual = dVVIX30 - (a + b*SPX30 + c*dVIX30), fit on the prior sessions' half hours from 10:30 to 15:30 (a link fit, at least {min_rank_sessions} sessions); |residual| ranked against the fit's |residual| over the same half hour to this minute on up to the last {night_rank_count} sessions, at least {same_clock_min_sessions}, else omitted; the barely-moved clause: SPX's 30-minute move (ranks.move_rank) and VIX's (vol.vix_change's rank of the diary VIX) each in the bottom third of the same half hour on up to the last {night_rank_count} sessions, at least {same_clock_min_sessions}, else omitted",
        "source": "Schwab $VVIX, $VIX, $SPX 1-min",
        "availability": "cheap_add",
        "label_built": false,
@@ -5328,7 +5328,7 @@
    "reads": [
     "context",
     "price.recent_move",
-    "breadth.upvol_share_30m",
+    "breadth.net_volume_change_30m",
     "breadth.day_upvol_share",
     "breadth.tick_side_vs_usual",
     "price.session_extreme_recent",
@@ -5351,7 +5351,7 @@
      "status": "live",
      "cadence": "every 30-minute read",
      "ask": "Does breadth side with the last half hour's move?",
-     "instructions": "Read `price.recent_move` and `breadth.upvol_share_30m`. Do not say which way price went; say only whether breadth sides with the move. A real move is one outside the bottom third of the same half hour on recent sessions; NYSE net volume's change over the half hour leans by its third against the same half hour on recent sessions (top third to buying, bottom third to selling). Which describes it?",
+     "instructions": "Read `price.recent_move` and `breadth.net_volume_change_30m`. Do not say which way price went; say only whether breadth sides with the move. A real move is one outside the bottom third of the same half hour on recent sessions; NYSE net volume's change over the half hour leans by its third against the same half hour on recent sessions (top third to buying, bottom third to selling). Which describes it?",
      "options": [
       {
        "name": "agrees_with_move",
@@ -5392,7 +5392,7 @@
        "needs_engine_edit": false
       },
       {
-       "name": "breadth.upvol_share_30m",
+       "name": "breadth.net_volume_change_30m",
        "example": "over the last 30 minutes NYSE net volume changed by +35M, higher than 16 of the last 20 sessions at this minute, top third: leaning to buying",
        "computed_how": "$VOLD (NYSE up volume minus down volume, in shares) now less $VOLD 30 minutes ago, ranked signed against the same change at this minute on up to the last night_rank_count sessions (at least same_clock_min_sessions, else omitted): top third leaning to buying, bottom third leaning to selling, middle third no lean; not $UVOL/$DVOL over the window: those hold each stock's whole day's volume on the side it stands at that minute, so a stock that turns moves its day from one to the other and their change over a window is not the window's volume (it gave shares below 0% and above 100%)",
        "source": "Schwab 1-min bars via market_context.py, saved by the context job to state/spx_jev/context/{day}.jsonl (live) and state/spx_jev/context/bars/{day}.jsonl (backfill: python -m spx_jev.market_context --backfill 2026-08-10); the symbol must be in market_context.SYMBOLS ($VOLD)",
@@ -9433,7 +9433,7 @@
    "needs_engine_edit": false
   },
   {
-   "name": "breadth.upvol_share_30m",
+   "name": "breadth.net_volume_change_30m",
    "example": "over the last 30 minutes NYSE net volume changed by +35M, higher than 16 of the last 20 sessions at this minute, top third: leaning to buying",
    "computed_how": "$VOLD (NYSE up volume minus down volume, in shares) now less $VOLD 30 minutes ago, ranked signed against the same change at this minute on up to the last night_rank_count sessions (at least same_clock_min_sessions, else omitted): top third leaning to buying, bottom third leaning to selling, middle third no lean; not $UVOL/$DVOL over the window: those hold each stock's whole day's volume on the side it stands at that minute, so a stock that turns moves its day from one to the other and their change over a window is not the window's volume (it gave shares below 0% and above 100%)",
    "source": "Schwab 1-min bars via market_context.py, saved by the context job to state/spx_jev/context/{day}.jsonl (live) and state/spx_jev/context/bars/{day}.jsonl (backfill: python -m spx_jev.market_context --backfill 2026-08-10); the symbol must be in market_context.SYMBOLS ($VOLD)",
@@ -10333,7 +10333,7 @@
    "needs_engine_edit": false
   },
   {
-   "name": "vol.vix_change_30",
+   "name": "vol.vix_change",
    "example": "over the last 30 minutes VIX fell 0.13 points, 0.87% of its 14.9 level, higher than 16 of the last 18 sessions at this minute, top fifth",
    "computed_how": "|VIX change| over the window (30 minutes on 30-minute reads; 10 minutes in the opening lane, from the open's first print at 09:40) as a share of the level, ranked against the same measure at the same clock minute on up to the last {night_rank_count} prior sessions (ranks.rank_sessions; each session's diary as its read at that minute had it, 'ruler estimated' sessions left out), at least {same_clock_min_sessions} of them, else omitted with the reason; said as its third, the top fifth apart",
    "source": "state/reversion/{day}.jsonl range_ruler.vol_carry.vix (a live 1-2 minute series; changed 230 times in 266 rows on 09-25)",
@@ -10380,7 +10380,7 @@
   {
    "name": "vol.vvix_vs_vix",
    "example": "over the last 30 minutes VVIX fell 0.81 points; VIX's and SPX's moves explain a fall of about 0.46; the 0.35 left over is bigger than on 12 of the last 19 sessions at this minute, at or above the median, short of the top fifth, while SPX or VIX also moved (one or both 30-minute moves above the bottom third of the last sessions' at this minute)",
-   "computed_how": "residual = dVVIX30 - (a + b*SPX30 + c*dVIX30), fit on the prior sessions' half hours from 10:30 to 15:30 (a link fit, at least {min_rank_sessions} sessions); |residual| ranked against the fit's |residual| over the same half hour to this minute on up to the last {night_rank_count} sessions, at least {same_clock_min_sessions}, else omitted; the barely-moved clause: SPX's 30-minute move (ranks.move_rank) and VIX's (vol.vix_change_30's rank of the diary VIX) each in the bottom third of the same half hour on up to the last {night_rank_count} sessions, at least {same_clock_min_sessions}, else omitted",
+   "computed_how": "residual = dVVIX30 - (a + b*SPX30 + c*dVIX30), fit on the prior sessions' half hours from 10:30 to 15:30 (a link fit, at least {min_rank_sessions} sessions); |residual| ranked against the fit's |residual| over the same half hour to this minute on up to the last {night_rank_count} sessions, at least {same_clock_min_sessions}, else omitted; the barely-moved clause: SPX's 30-minute move (ranks.move_rank) and VIX's (vol.vix_change's rank of the diary VIX) each in the bottom third of the same half hour on up to the last {night_rank_count} sessions, at least {same_clock_min_sessions}, else omitted",
    "source": "Schwab $VVIX, $VIX, $SPX 1-min",
    "availability": "cheap_add",
    "label_built": false,

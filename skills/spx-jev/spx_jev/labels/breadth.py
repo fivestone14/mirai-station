@@ -34,7 +34,7 @@ from .rulers import NO_ANCHOR, sigma_anchor
 from .words import pct, plural, sig, signed
 
 LABELS = ("breadth.advance_decline", "breadth.tick_lean", "breadth.sectors_up",
-          "breadth.tick_side_vs_usual", "breadth.upvol_share_30m", "breadth.volume_vs_count_30m",
+          "breadth.tick_side_vs_usual", "breadth.net_volume_change_30m", "breadth.volume_vs_count_30m",
           "breadth.at_extremes", "breadth.day_upvol_share", "breadth.flip_after_release", "breadth.members_net_day",
           "breadth.open_net_volume", "breadth.opening_tick", "breadth.tick_extreme_5m", "breadth.nasdaq_net_volume")
 GATES = ("tick_extreme_follow", "breadth_flip_after_release")
@@ -77,7 +77,7 @@ def build_breadth_labels(scene: Scene) -> LabelSet:
     _tick_lean(scene, ls)
     _sectors_up(scene, ls)
     _tick_side_vs_usual(scene, ls)
-    _upvol_share_30m(scene, ls)
+    _net_volume_change_30m(scene, ls)
     _volume_vs_count_30m(scene, ls)
     _day_upvol_share(scene, ls)
     _members_net_day(scene, ls)
@@ -242,20 +242,20 @@ def _tick_side_vs_usual(scene: Scene, ls: LabelSet) -> None:
            f"hour; {rank.words()}, {_five_levels(rank)}")
 
 
-def _upvol_share_30m(scene: Scene, ls: LabelSet) -> None:
+def _net_volume_change_30m(scene: Scene, ls: LabelSet) -> None:
     """NYSE net volume's change over the last 30 minutes, ranked against the same change at this minute."""
     change = _net_volume_change(scene.market, scene.now - timedelta(minutes=WINDOW_30_MIN), scene.now)
     if change is None:
-        ls.omit("breadth.upvol_share_30m", _unsaved(scene.market, "$VOLD", scene.now) or
+        ls.omit("breadth.net_volume_change_30m", _unsaved(scene.market, "$VOLD", scene.now) or
                 f"no NYSE net volume ($VOLD) known both {WINDOW_30_MIN} minutes ago and now, within {FRESH_MIN} minutes of each: "
                 f"the market-context job stopped or has not saved it")
         return
     rank, why = rank_sessions(change, same_clock_market(scene, lambda mk, then: _net_volume_change(mk, then - timedelta(minutes=WINDOW_30_MIN), then)),
                               f"NYSE net volume ($VOLD) over the {WINDOW_30_MIN} minutes to this minute")
     if rank is None:
-        ls.omit("breadth.upvol_share_30m", why)
+        ls.omit("breadth.net_volume_change_30m", why)
         return
-    ls.put("breadth.upvol_share_30m",
+    ls.put("breadth.net_volume_change_30m",
            f"over the last {WINDOW_30_MIN} minutes NYSE net volume changed by {_millions(change)}, {_lean(rank)}")
 
 

@@ -41,7 +41,7 @@ from .words import pct, plural, sig, signed
 
 LABELS = ("iv.trend_30min", "iv.vs_realized_30", "iv.expected_move_used", "iv.move_sides", "iv.term_structure",
           "vol.atm_iv_residual", "vol.front_fear_shift", "vol.realized_vs_clock", "vol.realized_vs_clock_rank", "vol.ruler_event_load",
-          "vol.straddle_reprice_30", "vol.straddle_vs_clock", "vol.stress_path", "vol.term_structure", "vol.vix_change_30",
+          "vol.straddle_reprice_30", "vol.straddle_vs_clock", "vol.stress_path", "vol.term_structure", "vol.vix_change",
           "vol.vix_on_shock", "vol.vix_overnight_surprise", "vol.vix_since_1400", "vol.vix_vs_price", "vol.vvix_vs_vix",
           "vol.vvix_with_move", "skew.put_tilt_vs_usual", "skew.shift_vs_price")
 GATES = ("put_tilt_vs_clock",)
@@ -330,17 +330,17 @@ def _vix_change(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
     window = WINDOW_10_MIN if scene.bar_clock else WINDOW_30_MIN
     got = _change(today, scene.now, window, lambda p: p.vix)
     if got is None:
-        ls.omit("vol.vix_change_30", _no_window(today, scene.now, window,
+        ls.omit("vol.vix_change", _no_window(today, scene.now, window,
                                                  f"no diary VIX now and about {window} minutes ago (range_ruler.vol_carry.vix)"))
         return
     then, now = got
     d = now - then
     rank, why = _vix_share_rank(scene, abs(d) / now, window)
     if rank is None:
-        ls.omit("vol.vix_change_30", why)
+        ls.omit("vol.vix_change", why)
         return
     how = "was unchanged" if d == 0 else f"{'rose' if d > 0 else 'fell'} {abs(d):.2f} points"
-    ls.put("vol.vix_change_30", f"over the last {window} minutes VIX {how}, {_share(abs(d) / now)} of its {now:.1f} level, "
+    ls.put("vol.vix_change", f"over the last {window} minutes VIX {how}, {_share(abs(d) / now)} of its {now:.1f} level, "
                                 f"{rank.words()}, {_stir(rank)}")
 
 

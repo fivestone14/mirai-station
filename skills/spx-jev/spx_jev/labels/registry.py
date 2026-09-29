@@ -49,6 +49,10 @@ FAMILIES = (
     Family("read_sequence", read_sequence.build_read_sequence_labels, read_sequence.LABELS, read_sequence.GATES, read_sequence.DARK),
 )
 
+# Labels renamed once reads were archived under the old path, old path to new: the fact measured is the same, so
+# a reader of the archive (the learning store) files both paths under the new one.
+RENAMED = {"breadth.upvol_share_30m": "breadth.net_volume_change_30m", "vol.vix_change_30": "vol.vix_change"}
+
 
 def build_labels(scene: Scene) -> LabelSet:
     """Every family's labels and sleep gates for one moment.

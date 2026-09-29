@@ -62,7 +62,7 @@ def spread(lo: float, step: float, n: int = 10) -> list[float]:
     return [lo + step * k for k in range(n)]
 
 
-# ---- vol.vix_change_30: VIX's move as a share of its level, ranked against the same window at this minute
+# ---- vol.vix_change: VIX's move as a share of its level, ranked against the same window at this minute
 
 def vix_moves(clock: tuple[int, int], window: int, shares: list[float], first=None) -> dict[str, list[dict]]:
     """Prior diaries whose VIX rose each of ``shares`` of its 20.0 level over the ``window`` minutes to ``clock``,
@@ -92,7 +92,7 @@ def test_the_vix_change_is_a_share_of_its_level_ranked_against_the_same_half_hou
     scene = scene_factory(now, flat_bars(180), row_over={"range_ruler": ruler_block(20.0)},
                           rows_before=[morning(), diary_row(now - timedelta(minutes=31), then)])
     scene = history(scene, tmp_path, vix_moves((12, 30), 30, TENTHS))
-    assert labels(scene)[0]["vol.vix_change_30"] == f"over the last 30 minutes {words}"
+    assert labels(scene)[0]["vol.vix_change"] == f"over the last 30 minutes {words}"
 
 
 def test_the_opening_lane_ranks_ten_minutes_against_the_same_ten_minutes(scene_factory, tmp_path):
@@ -100,7 +100,7 @@ def test_the_opening_lane_ranks_ten_minutes_against_the_same_ten_minutes(scene_f
     scene = scene_factory(now, flat_bars(20), row_over={"range_ruler": ruler_block(20.0)}, bar_clock=True,
                           rows_before=[morning(), diary_row(at(9, 40), 19.90)])
     scene = history(scene, tmp_path, vix_moves((9, 50), 10, TENTHS))
-    assert labels(scene)[0]["vol.vix_change_30"] == ("over the last 10 minutes VIX rose 0.10 points, 0.50% of its 20.0 level, "
+    assert labels(scene)[0]["vol.vix_change"] == ("over the last 10 minutes VIX rose 0.10 points, 0.50% of its 20.0 level, "
                                                      "higher than 4 of the last 10 sessions at this minute, middle third")
 
 
@@ -109,7 +109,7 @@ def test_the_first_opening_read_measures_from_the_opens_first_print_today_and_be
     scene = scene_factory(now, flat_bars(10), row_over={"range_ruler": ruler_block(20.0)}, bar_clock=True,
                           rows_before=[diary_row(at(9, 30, ss=28), 19.90)])
     scene = history(scene, tmp_path, vix_moves((9, 40), 10, TENTHS, first=(9, 30)))
-    assert labels(scene)[0]["vol.vix_change_30"] == ("over the last 10 minutes VIX rose 0.10 points, 0.50% of its 20.0 level, "
+    assert labels(scene)[0]["vol.vix_change"] == ("over the last 10 minutes VIX rose 0.10 points, 0.50% of its 20.0 level, "
                                                      "higher than 4 of the last 10 sessions at this minute, middle third")
 
 
@@ -121,30 +121,30 @@ def test_a_tape_read_on_the_diarys_only_row_measures_no_vix_change_rather_than_c
     row = bar_clock_row([first], bars)
     scene = replace(scene_factory(at(9, 35), bars), row=row, rows_today=[first, row], bar_clock=True)
     scene = history(scene, tmp_path, vix_moves((9, 35), 10, TENTHS, first=(9, 30)))
-    assert labels(scene)[1]["vol.vix_change_30"] == ("the diary's newest row, 09:30, is also its row 10 minutes ago: no second "
+    assert labels(scene)[1]["vol.vix_change"] == ("the diary's newest row, 09:30, is also its row 10 minutes ago: no second "
                                                      "reading to measure a change across")
     later = labeller_row(diary_row(at(9, 34, ss=28), 20.1))
     row = bar_clock_row([first, later], bars)
     scene = replace(scene, row=row, rows_today=[first, later, row])
-    assert labels(scene)[0]["vol.vix_change_30"].startswith("over the last 10 minutes VIX rose 0.10 points, ")
+    assert labels(scene)[0]["vol.vix_change"].startswith("over the last 10 minutes VIX rose 0.10 points, ")
 
 
 def test_the_vix_change_is_omitted_without_a_row_near_the_window_start(scene_factory):
     now = at(12, 30, ss=10)
     stale = scene_factory(now, flat_bars(180), rows_before=[morning(), diary_row(now - timedelta(minutes=45), 14.0)])
-    assert labels(stale)[1]["vol.vix_change_30"] == "no diary VIX now and about 30 minutes ago (range_ruler.vol_carry.vix)"
+    assert labels(stale)[1]["vol.vix_change"] == "no diary VIX now and about 30 minutes ago (range_ruler.vol_carry.vix)"
     no_vix = scene_factory(now, flat_bars(180), row_over={"range_ruler": {"em_points": 18.45}},
                            rows_before=[morning(), diary_row(now - timedelta(minutes=30), 14.0)])
-    assert "vol.vix_change_30" in labels(no_vix)[1]
+    assert "vol.vix_change" in labels(no_vix)[1]
 
 
 def test_the_vix_change_is_omitted_under_ten_sessions_and_without_the_diaries(scene_factory, tmp_path):
     now = at(12, 30, ss=10)
     scene = scene_factory(now, flat_bars(180), row_over={"range_ruler": ruler_block(20.0)},
                           rows_before=[morning(), diary_row(now - timedelta(minutes=31), 19.9)])
-    assert labels(scene)[1]["vol.vix_change_30"] == "no state folder to read the prior sessions' diaries from"
+    assert labels(scene)[1]["vol.vix_change"] == "no state folder to read the prior sessions' diaries from"
     thin = history(scene, tmp_path, vix_moves((12, 30), 30, TENTHS[:9]))
-    assert labels(thin)[1]["vol.vix_change_30"] == (
+    assert labels(thin)[1]["vol.vix_change"] == (
         "its rank needs 10 prior sessions with a diary VIX at this minute and 30 minutes before, have 9")
 
 
@@ -154,7 +154,7 @@ def test_a_session_whose_ruler_was_estimated_sits_out_of_the_rank(scene_factory,
                           rows_before=[morning(), diary_row(now - timedelta(minutes=31), 19.9)])
     scene = history(scene, tmp_path, vix_moves((12, 30), 30, TENTHS))
     estimated = replace(scene, prior_rulers={**scene.prior_rulers, PRIOR_DAYS[0]: SigmaRuler(SIGMA, "vix")})
-    assert labels(estimated)[1]["vol.vix_change_30"].endswith("have 9")
+    assert labels(estimated)[1]["vol.vix_change"].endswith("have 9")
 
 
 # ---- vol.vix_since_1400: VIX since 14:00, signed, ranked against the same change to this minute

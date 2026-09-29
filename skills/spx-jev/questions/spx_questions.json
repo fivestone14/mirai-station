@@ -1490,7 +1490,7 @@
     "context",
     "vol.realized_vs_clock",
     "vol.straddle_vs_clock",
-    "vol.vix_change_30",
+    "vol.vix_change",
     "ruler.flat_band_reach",
     "range.pace_vs_priced",
     "liquidity.spy_quote",
@@ -1610,7 +1610,7 @@
      "cadence": "every 5 min 09:40-10:30 with a 10-minute window; every 30-minute read from 10:02 with a 30-minute window (the 10:02 read measures VIX since the open)",
      "code_answer": true,
      "ask": "How much has VIX moved as a share of its level?",
-     "instructions": "Read `vol.vix_change_30`. Over the window the label names, how much has VIX moved, in either direction, as a share of its level, against the same window at this minute on the recent sessions? The label's band words decide.",
+     "instructions": "Read `vol.vix_change`. Over the window the label names, how much has VIX moved, in either direction, as a share of its level, against the same window at this minute on the recent sessions? The label's band words decide.",
      "options": [
       "still",
       "stirring",
@@ -1630,7 +1630,7 @@
       "share >= {top_fifth} (top fifth)"
      ],
      "labels": [
-      "vol.vix_change_30"
+      "vol.vix_change"
      ],
      "why": "A VIX move adds to next-move size beyond the SPX move; fixed points break as VIX rises, so the move is a share of the level, and a share's size swings with the clock, so it is ranked against the same window at the same minute on the recent sessions (the owner's rule). vix_open_path folds in: its four-way split added nothing at 10 minutes."
     },
@@ -3263,7 +3263,7 @@
    "reads": [
     "context",
     "price.recent_move",
-    "breadth.upvol_share_30m",
+    "breadth.net_volume_change_30m",
     "breadth.day_upvol_share",
     "breadth.tick_side_vs_usual",
     "price.session_extreme_recent",
@@ -3293,7 +3293,7 @@
      "code_answer": true,
      "ref_side": "last-30 move side",
      "ask": "Does breadth side with the last half hour's move?",
-     "instructions": "Read `price.recent_move` and `breadth.upvol_share_30m`. Do not say which way price went; say only whether breadth sides with the move. A real move is one outside the bottom third of the same half hour on recent sessions; NYSE net volume's change over the half hour leans by its third against the same half hour on recent sessions (top third to buying, bottom third to selling). Which describes it?",
+     "instructions": "Read `price.recent_move` and `breadth.net_volume_change_30m`. Do not say which way price went; say only whether breadth sides with the move. A real move is one outside the bottom third of the same half hour on recent sessions; NYSE net volume's change over the half hour leans by its third against the same half hour on recent sessions (top third to buying, bottom third to selling). Which describes it?",
      "options": [
       "agrees_with_move",
       "against_move",
@@ -3317,7 +3317,7 @@
      },
      "labels": [
       "price.recent_move",
-      "breadth.upvol_share_30m"
+      "breadth.net_volume_change_30m"
      ],
      "why": "Template for every 'X vs the move' cross: sign-free options leave direction to price_move_5way alone, so the combiner does not count the move again inside each cross (SNDK closes_agree was retired for exactly this). Code multiplies agree/against by the move's sign."
     },
