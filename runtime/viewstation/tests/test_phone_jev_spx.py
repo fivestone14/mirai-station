@@ -136,7 +136,7 @@ def test_market_clock_words_the_service_wrote_are_redrawn_in_the_viewers_zone():
 
 
 def test_the_calls_in_play_axis_and_tap_targets_read_in_the_viewers_zone():
-    js = _fn("fitting") + _fn("fits") + _fn("callsSvg") + "console.log(JSON.stringify(dump(callsSvg(D.calls, Date.parse(D.at)))));"
+    js = _side() + _fn("fitting") + _fn("fits") + _fn("callsSvg") + "console.log(JSON.stringify(dump(callsSvg(D.calls, Date.parse(D.at)))));"
     svg = _run(js, {"calls": MORNING, "at": "2026-09-28T09:51:00-04:00"}, TOKYO)
     texts = [k for k in svg["kids"] if k["tag"] == "text"]
     assert [t["text"] for t in texts if t["attrs"].get("class") == "t-axis"][:3] == ["22:35", "22:45", "22:55"]
@@ -1068,3 +1068,41 @@ def test_a_live_card_with_no_sum_says_so_when_the_30_minute_call_leads(tz, next_
     card = next(d for c, d in zip(got["main"], got["dom"]) if c[0] == "card dashed")
     assert _flat_text(card["kids"][1]) == f"No 30-minute call on this read, next read {next_read}"
     assert [k["attrs"].get("class") for k in card["kids"]] == ["lab", "skip"]
+
+
+# Chrome with the shipped face: the result words beside a bar as drawn, "Was <outcome> · " at 10.5px and the verdict
+# in bold. The newest bar ends at 211 of the drawing's 300, so 84 units are left after its 5-unit gap
+_SIDE_W = {("Was Down · ", "Wrong"): 92.703125, ("Was Down · ", "Right"): 85.5625, ("Was Flat · ", "Wrong"): 82.234375,
+           ("Was Flat · ", "Right"): 75.09375, ("Was Up · ", "Wrong"): 78.109375, ("Was Down small · ", "Wrong"): 120.1875,
+           ("Was Up big · ", "Unsure"): 97.859375, ("Was Down big · ", "Right"): 103.703125, ("", "Wrong"): 34.125, ("", "Right"): 26.984375,
+           ("", "Unsure"): 35.734375}
+
+
+def _side():
+    return _var("ODDS_LETTERS") + _var("ODDS_EM") + _var("SIDE_FONT_PX") + _var("SIDE_EM") + _fn("sideWidth")
+
+
+def test_a_result_words_width_is_the_shipped_faces_to_a_64th_of_a_pixel():
+    assert "font-size:10.5px" in _rule(".inplay .t-side") and "var SIDE_FONT_PX = 10.5," in _var("SIDE_FONT_PX")
+    got = _run(_side() + "console.log(JSON.stringify(D.w.map(function(w){ return sideWidth(w[0], false) + sideWidth(w[1], true); })));",
+               {"w": [list(k) for k in _SIDE_W]})
+    for words, est in zip(_SIDE_W, got):
+        assert _SIDE_W[words] - 1 / 64 <= est <= _SIDE_W[words] + 1.2, f"{words}: {est:.2f}, Chrome {_SIDE_W[words]}"
+
+
+@pytest.mark.parametrize("tz", [LA, TOKYO, KOLKATA])
+@pytest.mark.parametrize("outcome, hit, newest", [("down", False, "Wrong"), ("down", True, "Right"), ("flat", True, "Was Flat · Right")])
+def test_the_newest_calls_result_is_never_cut_at_the_drawings_edge(outcome, hit, newest, tz):
+    """After Monday's close-out every call in play is graded, the newest bar ending at 211 of 300. "Was Down · Wrong"
+    ran to 308.7 and "Was Down · Right" to 301.6, so the verdict was cut on every phone; the verdict now stands alone
+    when the whole does not fit (the sheet still says what it ended), and "Was Flat · Right" fits whole."""
+    calls = [{**MONDAY["live"]["calls"][0], "outcome": outcome, "hit": hit}] + MONDAY["live"]["calls"][1:]
+    js = (_side() + _fn("fitting") + _fn("fits") + _fn("callsSvg") +
+          "console.log(JSON.stringify(dump(callsSvg(D.calls, Date.parse(D.now)))));")
+    svg = _run(js, {"calls": calls, "now": "2026-09-28T16:10:00-04:00"}, tz)
+    sides = [(float(t["attrs"]["x"]), t["text"], "".join(k["text"] for k in t["kids"])) for t in svg["kids"]
+             if t["tag"] == "text" and t["attrs"].get("class") == "t-side"]
+    assert sides[0][1] + sides[0][2] == newest
+    assert [s[1] + s[2] for s in sides[1:]] == ["Was Down · Right", "Was Flat · Right"]
+    for x, text, strong in sides:
+        assert x + _SIDE_W[text, strong] <= 300, f"{text}{strong} ends at {x + _SIDE_W[text, strong]:.1f}"

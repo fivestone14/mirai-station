@@ -751,6 +751,15 @@ details .q{margin-top:8px}
   // the newest bar ends at NEWEST_END so its words fit after it; a bar is never narrower than MIN_BAR, so a
   // long horizon shows fewer calls (four 10-minute calls in the morning, three 30-minute calls later)
   var ROW_H = 30, TRACK_W = 296, NEWEST_END = 211, MIN_BAR = 70;
+  // the result words beside a bar ("Was Down \u00B7 Wrong") at .t-side's size, measured as the odds words are: the odds
+  // table and the advances of the letters it lacks, in the same face and weights
+  var SIDE_FONT_PX = 10.5, SIDE_LETTERS = ODDS_LETTERS + 'RWh\u00B7';
+  var SIDE_EM = {400: ODDS_EM[400].concat([641, 984, 573, 286]), 700: ODDS_EM[700].concat([661, 1020, 593, 378])};
+  function sideWidth(text, bold){
+    var em = SIDE_EM[bold ? 700 : 400], w = 0;
+    for(var i = 0; i < text.length; i++){ var j = SIDE_LETTERS.indexOf(text.charAt(i)); w += j < 0 ? 1000 : em[j]; }
+    return w * SIDE_FONT_PX / 1000;
+  }
   function fitting(calls){
     var t1 = endOf(calls[0]), out = [calls[0]];
     for(var i = 1; i < calls.length; i++){
@@ -785,7 +794,10 @@ details .q{margin-top:8px}
       var name = cap(c.pick) + ' ' + pct(c.p);
       if(!fits(name, b - a)) name = cap(c.pick);
       if(fits(name, b - a)) svg.appendChild(svgEl('text', {x: (a + 5).toFixed(1), y: y + 14.5, 'class': 't-' + kind}, name));
-      var w = callWords(c, now), side = svgEl('text', {x: (b + 5).toFixed(1), y: y + 14.5, 'class': 't-side'}, w.text);
+      var w = callWords(c, now);
+      // the words end inside the drawing: when "Was <outcome> \u00B7 " would push the verdict past it, the verdict stands alone
+      if(w.strong && b + 5 + sideWidth(w.text, false) + sideWidth(w.strong, true) > 300) w = {text: '', strong: w.strong};
+      var side = svgEl('text', {x: (b + 5).toFixed(1), y: y + 14.5, 'class': 't-side'}, w.text);
       if(w.strong) side.appendChild(svgEl('tspan', {'font-weight': '700'}, w.strong));
       svg.appendChild(side);
     });
