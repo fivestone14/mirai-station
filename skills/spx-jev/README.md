@@ -43,7 +43,7 @@ returns a probability for each answer option. JEV makes no trading call.
 | `spx_jev/ask.py` | The Packer | Loads a lane's share of the question doc with its constants filled and its schedules checked (a group over 8 questions stops the load), cuts the state into one slice per question group, and keeps only the questions asked this read: live and shadow (dark never), due on their schedule, awake (a question with `sleep_when` only when its label family says so) and with every label present. It can POST a request to JEV. |
 | `spx_jev/build.py` | The Command | `python -m spx_jev.build` for one moment, a replay of a day, or a live send. |
 | `spx_jev/schedule.py` | The Schedule | Which read a moment stands for, and which questions a lane asks at it, from each question's machine schedule (every N minutes in a window, at named reads, a day constant asked once and held, held from the other lane until an hour, FOMC days from the press conference). The free-text cadence is never parsed. |
-| `spx_jev/cadence.py` | The Cadence | What a question the schedule does not ask holds (a day constant all day, a borrowed answer until its hour, an hourly one while young), what the live lane's learned cadence thins out on top, and the daily recount. |
+| `spx_jev/cadence.py` | The Cadence | What a question the schedule does not ask holds (a day constant all day, a borrowed answer until its hour, an hourly one while young), what the live lane's learned cadence thins out on top, the ask that got no answer asked again at the next read, and the daily recount. |
 | `spx_jev/hour.py` | The Sums | Rewrites the live answers as sentences and asks the sum questions over them in one request. |
 | `spx_jev/clock.py` | The Clock | How often price ended up, down or flat at this time of day over the last 20 SPX sessions, scored the way the grader scores a sum, and the half-and-half blend of JEV's sum with those odds. |
 | `spx_jev/scores.py` | The Scores | One way to score a three-way forecast: floored at 2% a side, and its log loss split exactly into a move part (did it move?) and a direction part (which way, given a move). |
@@ -176,7 +176,9 @@ archive there too, under `archive/`.
    whose "nothing happened" default must never reach the weights.
 2. The questions, JEV, in parallel: a probability per option. A question its
    schedule does not ask this read keeps its held answer where it has one; one
-   whose label is missing, or that is asleep, is skipped.
+   whose label is missing, or that is asleep, is skipped. A live question whose
+   ask got no answer (JEV failed after its retries) is asked again at the lane's
+   next read that can ask it, a day constant or a held one included.
 3. Answers as sentences, code (`hour.py`): "Over the last 30 minutes, did price
    rise, fall, or go nowhere? rising, JEV was 98% sure", with "held since 11:02
    ET" on a held one. Shadow answers never go in; a question under the weight
@@ -207,9 +209,9 @@ archive there too, under `archive/`.
   per record, append only, `schema_version` 3. A `read` record holds the read
   id (lane and row timestamp), the labels and the omitted ones with reasons,
   the exact requests and JEV's exact replies, the sums request and reply, the
-  sum as shown, the cadence state (held, not due, asked), the market-context
-  values the read could see with when each was known, the event tag, on the
-  live lane the learning loop's forecasts, and on the opening lane the unit
+  sum as shown, the cadence state (held, not due, asked, and asked again after
+  an ask that got no answer), the market-context values the read could see
+  with when each was known, the event tag, on the live lane the learning loop's forecasts, and on the opening lane the unit
   and bands, and on the premarket lane the checkpoint and the night it saw. A `grade` record is each graded horizon
   keyed to its read's id; a `close_out` record is the opening lane's calls and
   tally at 10:42. No secret is ever written.
@@ -311,6 +313,9 @@ running.
 - The premarket lane keeps no learning loop and its weights are neutral: the
   settled-open odds forecast its window worse than even thirds, so its sums
   stand unblended. `night_ranks.es_move` is read by nothing but its tests.
+- The premarket lane asks nothing again after an ask that got no answer: it
+  keeps no last-asked answers, and all but two of its questions are due only
+  at 09:28, its last checkpoint.
 - Nothing works out the set's `code_answer`s yet, so re-asking a question when
   the code's answer changes (a schedule's `then`) is built only on the cadence
   side: such a question is held.

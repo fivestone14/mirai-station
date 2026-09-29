@@ -175,6 +175,42 @@ def test_a_day_constant_is_asked_at_0935_held_on_the_lane_and_borrowed_by_the_li
     assert at_1202["q_const"]["answer"] is None and at_1202["q_const"]["skipped"] == "held from its other lane only until 11:32 ET"
 
 
+def test_a_day_constant_whose_0935_ask_got_no_answer_is_asked_at_0940_once_and_the_archive_says_why(tmp_path, monkeypatch):
+    from spx_jev.ask import load_questions
+    doc_path = tmp_path / "doc.json"
+    doc_path.write_text(json.dumps(SCHEDULED))
+    doc = load_questions(doc_path, TAPE.key)
+    root = tmp_path / "state"
+    tape_out = root / "spx_jev" / "lanes" / "tape"
+    monkeypatch.setattr(service, "send", _sums([]))
+    no_answer = "JEV returned HTTP 503 for group g1: upstream connect error"
+    sent = []
+
+    def jev(fail):
+        def send_all(requests, **kw):
+            sent.append(sorted(q for r in requests for q in r["questions"]))
+            return {r["id"]: {"error": no_answer} for r in requests} if fail else _answers(requests)
+        return send_all
+
+    def tape_read(n_bars, fail=False):
+        monkeypatch.setattr(service, "send_all", jev(fail))
+        _state(root, [make_row(at(9, 31), 7700.0)], n_bars)
+        return {q["id"]: q for q in run_once(root, tape_out, doc, True, DAY, lane=TAPE)["questions"]}
+
+    first = tape_read(5, fail=True)                                        # the 09:35 read: JEV answers nothing
+    assert sent == [["q_const"]] and first["q_const"]["answer"] is None
+    lost = json.loads((tape_out / "last_asked.json").read_text())["q_const"]
+    assert lost == {"lost": {"row_ts": at(9, 35).isoformat(), "why": no_answer}}
+    second = tape_read(10)                                                 # 09:40: asked again, beside the question due now
+    assert sent[1] == ["q_const", "q_every"] and second["q_const"]["answer"]["pick"] == "a"
+    assert "lost" not in json.loads((tape_out / "last_asked.json").read_text())["q_const"]
+    third = tape_read(15)                                                  # 09:45: answered at 09:40, so held, never asked again
+    assert sent[2] == ["q_every"] and third["q_const"]["held_from"] == at(9, 40).isoformat()
+    reads = [json.loads(l) for l in (root / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
+    assert [r["cadence"]["reasked"] for r in reads if r["kind"] == "read"] == [
+        {}, {"q_const": {"row_ts": at(9, 35).isoformat(), "why": no_answer}}, {}]
+
+
 def test_a_live_tape_send_stands_for_the_read_its_job_fired_at_and_a_replay_for_its_bar(tmp_path, monkeypatch):
     """The 09:35 job reading at 09:38 (a bar that came late) is the 09:35 read, so its day constant is asked rather
     than held from a 09:40 read that has not happened; a replay of that bar has only the bar's clock."""

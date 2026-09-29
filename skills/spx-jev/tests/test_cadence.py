@@ -10,6 +10,7 @@ from spx_jev.cadence import (CHANGE_CUT, cadence_of, distance, ensure_cadence, f
                              snap, vector)
 from spx_jev.hour import one_sentence
 from spx_jev.lane import LANES
+from spx_jev.schedule import not_due, read_slot
 
 DOC = load_questions(LANES["live"].questions, LANES["live"].key)
 BY_ID = {qid: q for g in DOC["groups"] for qid, q in g["questions"].items()}
@@ -112,6 +113,62 @@ def test_a_question_held_until_its_code_answer_changes_is_asked_again_when_it_do
     one_way = "one_way_hour"                                            # asked on its schedule, never on a code change
     assert one_way in plan(DOC, {one_way: {**last[q], "code_answer": "x"}}, {}, now, {one_way: "not on its schedule"}, {}, "11:32",
                            code_answers={one_way: "y"})[0]
+
+
+TAPE, LIVE_LANE = LANES["tape"], LANES["live"]
+TAPE_DOC = load_questions(TAPE.questions, TAPE.key)
+ANSWER = {"pick": "x", "probabilities": {"x": 1.0}}
+NO_ANSWER_503 = "JEV returned HTTP 503 for group opening_context: upstream connect error or disconnect/reset before headers"
+
+
+def test_a_once_only_question_whose_ask_got_no_answer_at_0935_is_asked_at_0940():
+    """A failed ask is not an ask: the day constant is asked again at the next read, then held like any other.
+    A lost ask from another day, or a moment that is no read of the lane, asks nothing."""
+    q = "open_vs_prior_range"
+    lost = {q: {"lost": {"row_ts": at(9, 35).isoformat(), "why": NO_ANSWER_503}}}
+    due = not_due(TAPE_DOC, TAPE, at(9, 40))
+    assert due[q] == "a day constant: asked at 09:35 ET and held"
+    skip, held = plan(TAPE_DOC, lost, {}, at(9, 40), due, {}, "09:40", learned=False)
+    assert q not in skip and q not in held
+    answered = {q: {"row_ts": at(9, 40).isoformat(), "answer": ANSWER}}          # the re-ask was answered: never asked again
+    skip, held = plan(TAPE_DOC, answered, {}, at(9, 45), not_due(TAPE_DOC, TAPE, at(9, 45)), {}, "09:45", learned=False)
+    assert q in skip and held[q]["held_from"] == at(9, 40).isoformat()
+    yesterday = {q: {"lost": {"row_ts": at(9, 35, day=DAY_BEFORE).isoformat(), "why": NO_ANSWER_503}}}
+    assert q in plan(TAPE_DOC, yesterday, {}, at(9, 40), due, {}, "09:40", learned=False)[0]
+    assert q in plan(TAPE_DOC, lost, {}, at(12, 0), {q: "no tape lane read at 12:00 ET"}, {}, None, learned=False)[0]
+
+
+def test_a_held_question_whose_ask_got_no_answer_is_asked_at_the_next_read_not_held():
+    """ruler_loaded is asked every hour; its 11:02 ask timed out, so at 11:32 it is asked rather than holding 10:02's
+    answer, whether the schedule or the cadence would have held it."""
+    q = "ruler_loaded"
+    assert BY_ID[q]["schedule"]["every_min"] == 60
+    last = {q: {"row_ts": at(10, 2).isoformat(), "answer": ANSWER,
+                "lost": {"row_ts": at(11, 2).isoformat(), "why": "JEV unreachable for group size: TimeoutError: The read operation timed out"}}}
+    off_schedule = {q: "not on its schedule at the 11:32 ET read"}
+    skip, held = plan(DOC, last, {}, at(11, 32), off_schedule, {}, "11:32")
+    assert q not in skip and q not in held
+    assert q not in plan(DOC, last, {"questions": {q: {"minutes": 120}}}, at(11, 32), {}, {}, "11:32")[0]
+    answered = {q: {k: v for k, v in last[q].items() if k != "lost"}}
+    skip, held = plan(DOC, answered, {}, at(11, 32), off_schedule, {}, "11:32")
+    assert q in skip and held[q]["held_from"] == at(10, 2).isoformat()
+
+
+def test_mondays_lost_opening_answers_are_asked_again_at_0940_and_held_by_the_live_lane():
+    """2026-09-28: JEV answered the tape lane's 09:35 opening_context and events_regime requests with HTTP 503. Their
+    four questions are asked only at 09:35, so the day lost them, and the live lane, which holds the three
+    opening_context answers from the tape lane until 11:32, had nothing to hold. Replayed through plan: the four are
+    asked at 09:40, and the live lane's 10:30 read holds the three from 09:40: seven answers back."""
+    monday = "2026-09-28"
+    lost_ids = ("open_vs_prior_range", "vix_overnight_surprise", "brief_vs_tape", "event_clock")
+    last = {q: {"lost": {"row_ts": at(9, 35, day=monday).isoformat(), "why": NO_ANSWER_503}} for q in lost_ids}
+    now = at(9, 40, day=monday)
+    skip, _ = plan(TAPE_DOC, last, {}, now, not_due(TAPE_DOC, TAPE, now), {}, read_slot(TAPE, now), learned=False)
+    assert not set(lost_ids) & set(skip)
+    answered = {q: {"row_ts": now.isoformat(), "answer": ANSWER} for q in lost_ids}
+    live_doc, later = load_questions(LIVE_LANE.questions, LIVE_LANE.key), at(10, 30, day=monday, ss=46)
+    skip, held = plan(live_doc, {}, {}, later, not_due(live_doc, LIVE_LANE, later), answered, read_slot(LIVE_LANE, later))
+    assert {q: held[q]["held_from"] for q in lost_ids[:3]} == dict.fromkeys(lost_ids[:3], now.isoformat())
 
 
 def test_recount_sets_every_read_for_a_flipper_and_slower_for_a_holder():

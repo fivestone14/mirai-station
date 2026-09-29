@@ -53,7 +53,7 @@ def test_a_read_and_its_later_grade_land_in_the_archive_under_one_read_id(tmp_pa
     assert read["requests"][0]["questions"]["q_dir"]["criteria"]["rising"] == "r"
     assert read["responses"]["g1"]["answers"]["q_dir"]["choice"] == "rising"                      # JEV's reply, untouched
     assert read["hour_request"]["id"] == "hour" and read["hour_response"]["answers"]["next_30"]["choice"] == "flat"
-    assert read["cadence"] == {"from": None, "held": {}, "not_due": {}, "asked": ["q_dir"]} and read["market_context"] is None
+    assert read["cadence"] == {"from": None, "held": {}, "not_due": {}, "asked": ["q_dir"], "reasked": {}} and read["market_context"] is None
 
     write_state(tmp_path, DAY, [make_row(at(10, 35, ss=10), 7700.0), make_row(at(11, 5, ss=20), 7701.0)], flat_bars(101))
     service.run_once(state, state / "spx_jev", DOC, True, DAY)

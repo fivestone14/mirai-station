@@ -7,7 +7,7 @@ sums with the time-of-day odds (clock.py), grades them, and writes only under ``
     state/spx_jev/{day}.jsonl        every run, appended: the state, the requests, the answers
     state/spx_jev/hour/{day}.jsonl   the sums, one record per run: what step 6 grades
     state/spx_jev/latest.json        the phone's file: the newest run, small, self-describing
-    state/spx_jev/last_asked.json    the last fresh answer per question, for the cadence
+    state/spx_jev/last_asked.json    the last fresh answer per question, for the cadence, and a later ask that got no answer
     state/spx_jev/cadence.json       how often each question is asked, recounted daily
     state/spx_jev/clock_days.json    the time-of-day counts per past session (see clock.py)
     state/spx_jev/grades.jsonl, weights.json, weights_log.jsonl   step 6 (see grade.py, weights.py)
@@ -59,8 +59,8 @@ from zoneinfo import ZoneInfo
 from . import archive, pool
 from .ask import build_requests, confidence, load_questions, pick, send, send_all
 from .baseline import Baseline
-from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, missing_paths, plan,
-                      save_last)
+from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, lost_today, missing_paths,
+                      plan, save_last)
 from .clock import blend as clock_blend, odds as clock_odds
 from .events import learn_exclude, tag as event_tag
 from .expiry import calendar_of
@@ -513,6 +513,10 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
     requests, skipped = build_requests(state, doc, skip=skip, gates=labels.gates)
     if do_send and lane.cadence:
         held = fill_missing(doc, skipped, last, cad, now, held, labels.ended)
+    # the questions asked again because their last ask today got no answer, with that ask's read and why
+    reasked = {qid: lost for r in requests for qid in r["questions"] if (lost := lost_today(last.get(qid), now))}
+    if reasked:
+        log(f"asked again, their last ask got no answer: {', '.join(sorted(reasked))}")
     answers, send_seconds, hour, hour_rec, hour_reply = None, None, None, None, None
     if do_send:
         t0 = _clock.monotonic()
@@ -521,10 +525,14 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
             err = (answers.get(r["id"]) or {}).get("error")
             if not err:
                 continue
-            # one group failed: its live questions keep their last fresh answer, if young enough
+            # one group failed: its live questions keep their last fresh answer, if young enough, and are
+            # asked again at the lane's next read (cadence.lost_today)
             log(f"group {r['id']} got no answer: {err}")
             for qid in r["questions"]:
-                if qid in live_ids and qid not in held:
+                if qid not in live_ids:
+                    continue
+                last[qid] = {**last.get(qid, {}), "lost": {"row_ts": scene.row["ts"], "why": err}}
+                if qid not in held:
                     h = held_answer(last.get(qid), now, cadence_of(cad, by_id[qid], qid))
                     if h:
                         held[qid] = h
@@ -591,7 +599,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         responses=answers, hour_request=(hour_rec or {}).get("request"), hour_response=hour_reply, hour=hour,
         pool=(hour_rec or {}).get("pool"),
         cadence={"from": cad.get("recounted_from"), "held": {qid: h["held_from"] for qid, h in held.items()}, "not_due": skip,
-                 "asked": [qid for r in requests for qid in r["questions"]]},
+                 "asked": [qid for r in requests for qid in r["questions"]], "reasked": reasked},
         market_context=scene.market.at(now) if scene.market else None, event=event, ruler=unit, band=band))
     if do_send:
         # step 6, every run: grade every mark that has passed and refresh the weights step 3 reads

@@ -8,10 +8,10 @@ Three record kinds, each a dataclass below, each line carrying ``schema_version`
 
     read       every run of every lane (sent or not): the complete labels and the omitted ones with
                their reasons, the exact requests sent to JEV and its exact replies, the sums request and
-               reply, the sum as shown (with the blend), the cadence state (held, not due, asked), the
-               market-context values the read could see, the tier-1 event tag, the learning loop's
-               forecasts, on the tape lane the unit and the bands, and on the premarket lane its
-               checkpoint, its pre-open ruler and the overnight bars it saw
+               reply, the sum as shown (with the blend), the cadence state (held, not due, asked, and asked
+               again because an earlier ask got no answer), the market-context values the read could see,
+               the tier-1 event tag, the learning loop's forecasts, on the tape lane the unit and the bands,
+               and on the premarket lane its checkpoint, its pre-open ruler and the overnight bars it saw
     grade      one per graded horizon line the grader writes, keyed to its read by ``read_id``
     close_out  a scheduled lane's grade-only run after its last read: the day's calls and tally
 
@@ -56,7 +56,8 @@ class ReadRecord:
     hour_request: dict | None                    # the sums request, None when nothing was summed
     hour_response: dict | None                   # JEV's reply to it, untouched
     hour: dict | None                            # the sum as the card shows it (blended on the live lane)
-    cadence: dict[str, Any]                      # {"from", "held": {qid: iso}, "not_due": {qid: reason}, "asked": [qid]}
+    cadence: dict[str, Any]                      # {"from", "held": {qid: iso}, "not_due": {qid: reason}, "asked": [qid],
+                                                 #  "reasked": {qid: {"row_ts", "why"}}: asked again, the earlier ask today got no answer}
     market_context: dict[str, dict] | None       # {symbol: {"value", "known_at"}} the read could see
     event: dict | None                           # the tier-1 event tag (events.py), never sent to JEV
     ruler: dict | None = None                    # the tape lane's unit; the premarket lane's pre-open ruler, or why it has none

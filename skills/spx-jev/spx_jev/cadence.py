@@ -9,6 +9,12 @@ on the first read whose code answer differs from the one the code had when its h
 Only this side is built: nothing works out a code answer yet, so the service passes plan() none and
 stores none in last_asked.json, and such a question is held all day.
 
+An ask that got no answer (JEV timed out or refused the request, after its retries) is not an ask: the
+service writes it into the question's last-asked entry as ``lost``, and the lane's next read asks the
+live question again whatever its schedule or cadence says (a day constant, one off its schedule, one
+held), and every read after that until a fresh answer replaces the entry or the day ends. A read whose
+labels cannot ask it leaves it for the next.
+
     python3 -m spx_jev.cadence                     # the table for the newest day with records
     python3 -m spx_jev.cadence --day 2026-09-29 --write    # recount that day and write cadence.json
 
@@ -39,9 +45,10 @@ The schedule's ``every_min`` is the starting value until a recount exists; the d
 
 Files, under state/spx_jev/:
     cadence.json      {"recounted_from": day, "questions": {qid: {"minutes", "p25_hold_min", "changes", "reads", "why"}}}
-    last_asked.json   {qid: {"row_ts", "answer", "moved", "code_answer"}}   the newest fresh answer per question, how far it
-                      moved from the one before, and the code's answer at that read for a question that has one
-                      (not written yet: see the note on ``then`` above)
+    last_asked.json   {qid: {"row_ts", "answer", "moved", "code_answer", "lost"}}   the newest fresh answer per question, how
+                      far it moved from the one before, the code's answer at that read for a question that has one
+                      (not written yet: see the note on ``then`` above), and, until a fresh answer replaces the
+                      entry, the ask since then that got no answer: {"row_ts", "why"}
 """
 from __future__ import annotations
 
@@ -165,6 +172,18 @@ def held_today(entry: dict | None, now: datetime) -> dict | None:
     return {**entry["answer"], "held_from": entry["row_ts"]}
 
 
+def lost_today(entry: dict | None, now: datetime) -> dict | None:
+    """The ask that got no answer (``lost``: its read and why) when it was made earlier the same day and no fresh
+    answer has come since: the question is due again."""
+    lost = (entry or {}).get("lost")
+    if not isinstance(lost, dict) or not isinstance(lost.get("row_ts"), str) or lost["row_ts"][:10] != now.isoformat()[:10]:
+        return None
+    try:
+        return lost if parse_ts(lost["row_ts"]) < now else None
+    except ValueError:
+        return None
+
+
 def code_answer_moved(q: dict, entry: dict | None, code_answer: str | None, now: datetime) -> bool:
     """Whether a question held until the code's answer changes (its schedule's ``then``) is due again: its
     held answer was given earlier today, beside a code answer that is not this read's ``code_answer``."""
@@ -193,7 +212,8 @@ def plan(doc: dict, last: dict, cad: dict, now: datetime, not_due: dict[str, str
     is what the schedule leaves out at the read ``slot`` (schedule.not_due, schedule.read_slot), each
     holding by scheduled_hold, unless the code's answer this read (``code_answers``) moved it
     (code_answer_moved); ``borrowed`` is the other lane's last-asked answers. With ``learned`` a live
-    question that is due is also left out while its cadence has not elapsed. Shadow questions are
+    question that is due is also left out while its cadence has not elapsed. A live question whose last
+    ask today got no answer (lost_today) is asked at any read of the lane. Shadow questions are
     forecasts: never held, asked when due."""
     skip: dict[str, str] = dict(not_due or {})
     held: dict[str, dict] = {}
@@ -202,6 +222,9 @@ def plan(doc: dict, last: dict, cad: dict, now: datetime, not_due: dict[str, str
             if q.get("status") != "live":
                 continue
             minutes = cadence_of(cad, q, qid)
+            if slot is not None and lost_today(last.get(qid), now):
+                skip.pop(qid, None)            # its last ask got no answer: a failed ask is not an ask, so ask it again now
+                continue
             if qid in skip and slot is not None and code_answer_moved(q, last.get(qid), (code_answers or {}).get(qid), now):
                 del skip[qid]                  # the code's answer changed since the held one was given: ask it again now
                 continue
