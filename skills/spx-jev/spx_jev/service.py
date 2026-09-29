@@ -76,7 +76,7 @@ from .labels.registry import build_labels
 from .lane import LANES, LANES_BY_KEY, LIVE, RECORD, Lane
 from .schedule import not_due, read_slot
 from .sessions import session_close, session_open
-from .state_builder import DEFAULT_STATE_DIR, Scene, load_bars, load_jsonl, load_rows, make_scene, parse_ts
+from .state_builder import DEFAULT_STATE_DIR, NoBarYet, Scene, load_bars, load_jsonl, load_rows, make_scene, parse_ts
 from .weights import QuestionWeights
 
 # the situation the phone draws: four facts, each with a short title, the builder's verdict in a word, its
@@ -633,7 +633,12 @@ def market_time(day_of: datetime, hhmm: str) -> str:
 def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, day: str | None = None,
              unsent_reason: str = UNSENT_DEFAULT, lane: Lane = LIVE) -> dict:
     out_dir = lane.folder(state_dir, out_dir)     # a tagged lane without a folder of its own refuses here
-    scene = make_scene(state_dir, day, bar_clock=lane.bar_clock, horizon=f"the next {lane.horizons[lane.primary][0]} minutes")
+    try:
+        scene = make_scene(state_dir, day, bar_clock=lane.bar_clock, horizon=f"the next {lane.horizons[lane.primary][0]} minutes")
+    except NoBarYet as e:
+        # a lane on the bar clock with no bar today has nothing to stand on: the minute-bars job (spx-jev-bars) has
+        # written none, as from the open on a day Schwab fails. A quiet skip; the next fire looks again
+        raise NoRowYet(f"{e}: the bars feed has stopped; nothing sent, card unchanged") from None
     if lane.bar_clock:
         # the stretch labels measure from the lane's previous read today, stamped on its own records
         scene.last_read = last_read_of(out_dir, scene.row["ts"][:10], scene.now)

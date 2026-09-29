@@ -359,11 +359,15 @@ def prior_sessions(state_dir: Path, day: str) -> dict[str, Any]:
 BAR_CLOCK_OWN_KEYS = ("ts", "spot", "sigma")
 
 
+class NoBarYet(ValueError):
+    """A read on the bar clock has no finished bar of the day to stamp itself on: the bars feed has not written one."""
+
+
 def newest_bar(bars: list[dict], cutoff: datetime | None = None) -> dict:
-    """The newest bar finished by ``cutoff``, else the newest on file."""
+    """The newest bar finished by ``cutoff``, else the newest on file; NoBarYet when there is none."""
     done = [b for b in bars if cutoff is None or parse_ts(b["ts"]) + timedelta(minutes=1) <= cutoff]
     if not done:
-        raise ValueError("no finished bar to stamp the read on")
+        raise NoBarYet("no finished SPX minute bar of the day to stamp the read on")
     return done[-1]
 
 

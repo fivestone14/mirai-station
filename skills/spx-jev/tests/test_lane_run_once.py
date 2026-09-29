@@ -429,3 +429,19 @@ def test_a_tape_read_mid_window_gives_the_open_call_its_average_so_far(tmp_path,
     newest, open_one = c["calls"]
     assert c["row_ts"] == at(10, 45).isoformat() and "so_far" not in newest
     assert open_one["so_far"] == {"g": 0.0, "edge": 1.56, "label": "flat", "minutes": 5, "of": 10, "as_of": at(10, 45).isoformat()}
+
+
+def test_a_tape_read_with_no_bars_today_is_a_quiet_skip_naming_the_stopped_feed(tmp_path, monkeypatch, capsys):
+    """With the bars feed down from the open the tape lane once died on a ValueError traceback, exit 1, at every fire:
+    it skips quietly, says the bars feed has stopped, and leaves the card as it was."""
+    state = _state(tmp_path, [make_row(at(9, 31), 7700.0)], 1)
+    (state / "spx_jev" / "bars" / f"{DAY}.jsonl").write_text("")
+    with pytest.raises(service.NoRowYet, match="the bars feed has stopped"):
+        run_once(state, tmp_path / "tape", DOC, True, DAY, lane=TAPE)
+    monkeypatch.setattr(service, "load_env_file", lambda *a, **k: [])
+    monkeypatch.setattr(service, "now_et", lambda: at(9, 40).astimezone(ET))
+    monkeypatch.setattr(service, "wait_for_bar", lambda *a, **k: False)
+    assert service.main(["--state-dir", str(state), "--lane", "tape", "--day", DAY, "--out-dir", str(tmp_path / "tape")]) == 0
+    said = capsys.readouterr().err
+    assert "skipping this tick: no finished SPX minute bar of the day to stamp the read on: the bars feed has stopped" in said
+    assert "Traceback" not in said and not (tmp_path / "tape" / "latest.json").exists()
