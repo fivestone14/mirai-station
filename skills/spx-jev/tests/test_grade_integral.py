@@ -155,6 +155,21 @@ def test_a_record_horizon_carries_the_five_band_size_beside_the_direction():
     assert line["end_label"] == "down" and line["size"] == {"band": "down_big", "size": "big", "call": "small", "right": False}
 
 
+def test_the_verdict_is_the_averages_never_the_end_prices():
+    """The owner's S1 on the 30-minute box: a flat call, the end price back to flat (+3.18 against a 5.39 band), the
+    average up (+4.45 against 3.19) after the run to +19. The line keeps the end price's flat beside it, and the call is
+    wrong on the average."""
+    from test_integral import SCENARIOS
+    _, spot, f, pick, closes = SCENARIOS["S1"]
+    bars = bars_from_closes([spot] * 211 + closes + [closes[-1]] * (390 - 211 - len(closes)))     # 13:01 is 211 minutes on
+    rec = _rec(13, 1, pick30=pick, spot=spot)
+    g = grade_one(rec, bars, anchor=SigmaRuler(f / 0.07, "anchor"))
+    assert g["next_30"]["band"] == "flat" and g["next_30"]["hit"] is True
+    line = integral_line(g, "next_30", rec, bars, {})
+    assert (line["g"], line["edge"], line["label"]) == (4.45, 3.19, "up")
+    assert line["end_label"] == "flat" and line["verdict"] == "wrong"
+
+
 def test_a_premarket_horizon_runs_from_the_settled_open_in_the_stamped_ruler():
     bars = bars_from_closes([7700.0] * 5 + [7700.0 + k for k in range(1, 386)])
     by = {"open_10": {"pick": "up", "probabilities": {"up": 0.6, "flat": 0.3, "down": 0.1}},

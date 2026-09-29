@@ -114,7 +114,7 @@ def test_the_close_out_grades_the_last_calls_and_asks_jev_nothing(tmp_path, monk
     _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 82)
     assert service.main(["--state-dir", str(state), "--lane", "tape"]) == 0
     c = json.loads((out / "latest.json").read_text())
-    assert c["closed_out_at"] and c["tally"] == {"calls": 1, "graded": 1, "right": 1, "passed": 0}
+    assert c["closed_out_at"] and c["tally"] == {"calls": 1, "graded": 1, "right": 1, "passed": 0, "end_price_only": 0}
     assert (out / f"{DAY}.jsonl").read_text() == reads_before
     kinds = [json.loads(l)["kind"] for l in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
     assert kinds == ["read", "grade", "close_out"]                          # the read, its grade at the close-out, the close-out
@@ -138,15 +138,15 @@ def test_the_tally_counts_the_average_price_grade_its_direction_deciding_and_pas
              {"pick": "flat", "end_price": {"outcome": "flat", "hit": True}},            # the average waits on a bar
              {"pick": "up", "integral": {"graded": False, "reason": "not graded: bars missing"}}]
     tally = service.calls_block(calls)["tally"]
-    assert tally == {"calls": 6, "graded": 4, "right": 2, "passed": 1}
+    assert tally == {"calls": 6, "graded": 4, "right": 2, "passed": 1, "end_price_only": 0}
     assert service.tally_words(tally) == "2 of 3 calls right · 1 passed · 2 still to grade"
     assert service.tally_words({**tally, "calls": 4}) == "2 of 3 calls right · 1 passed"
     assert service.tally_words({"calls": 3, "graded": 3, "right": 2, "passed": 0}) == "2 of 3 calls right"
     assert service.tally_words({"calls": 8, "graded": 7, "right": 0, "passed": 7}) == "7 passed · 1 still to grade"
-    assert service.tally_words({"calls": 2, "graded": 0, "right": 0, "passed": 0}) == "0 of 0 calls right · 2 still to grade"
-    # the end price never moves the tally: every call right at its mark and wrong on the average is wrong
+    assert service.tally_words({"calls": 2, "graded": 0, "right": 0, "passed": 0}) == "no calls graded yet"
+    # the end price never moves the tally of a call graded on the average: right at its mark and wrong on the average is wrong
     wrong = [_graded("up", "down", end={"outcome": "up", "hit": True})] * 3
-    assert service.calls_block(wrong)["tally"] == {"calls": 3, "graded": 3, "right": 0, "passed": 0}
+    assert service.calls_block(wrong)["tally"] == {"calls": 3, "graded": 3, "right": 0, "passed": 0, "end_price_only": 0}
 
 
 SCHEDULED = {"groups": [{"id": "g1", "reads": ["context"], "questions": {
@@ -251,6 +251,7 @@ def test_a_failing_shadow_grade_costs_neither_the_read_nor_the_close_out(tmp_pat
     still grades, refreshes the card and archives its record, the job exiting cleanly."""
     def broken(*a, **k):
         raise RuntimeError("no bars")
+    working = grade.integral_run
     monkeypatch.setattr(grade, "integral_run", broken)
     state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
     _today(monkeypatch)
@@ -269,9 +270,31 @@ def test_a_failing_shadow_grade_costs_neither_the_read_nor_the_close_out(tmp_pat
     _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0), make_row(at(10, 45, ss=20), 7701.0)], 82)
     assert service.main(["--state-dir", str(state), "--lane", "tape"]) == 0
     card = json.loads((out / "latest.json").read_text())
-    # the end price graded the first call; with the average price not written, the tally has nothing graded yet
-    assert card["closed_out_at"] and card["tally"]["calls"] == 2 and card["tally"]["graded"] == 0
-    assert card["calls"][1]["end_price"]["outcome"] == "flat" and "integral" not in card["calls"][1]
-    kinds = [json.loads(l)["kind"] for l in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
-    assert kinds[-1] == "close_out" and not (out / "integral_grades.jsonl").exists()
-    assert "integral shadow grade failed" in capsys.readouterr().err
+    # the end price graded the first call; with the average price not written, it stands on its end price, so marked,
+    # in the card's tally and in the archived close-out's
+    assert card["closed_out_at"] and card["tally"] == {"calls": 2, "graded": 1, "right": 1, "passed": 0, "end_price_only": 1}
+    assert card["calls"][1]["end_price"]["outcome"] == "flat" and card["calls"][1]["end_price_only"] and "integral" not in card["calls"][1]
+    archived = [json.loads(l) for l in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
+    assert archived[-1]["kind"] == "close_out" and archived[-1]["tally"]["end_price_only"] == 1
+    assert not (out / "integral_grades.jsonl").exists() and "integral shadow grade failed" in capsys.readouterr().err
+    # the shadow grade back: the next card write finds the line, and the fallback goes
+    monkeypatch.setattr(grade, "integral_run", working)
+    again = service.close_out(state, out, DOC, TAPE)
+    assert again["calls"][1]["integral"]["verdict"] == "right" and "end_price_only" not in again["calls"][1]
+    assert again["tally"] == {"calls": 2, "graded": 1, "right": 1, "passed": 0, "end_price_only": 0}
+
+
+def test_a_tape_read_mid_window_gives_the_open_call_its_average_so_far(tmp_path, monkeypatch):
+    """The 10:45 read lands five minutes into the 10:40 call's ten: the card gives that call its average over the
+    five minutes finished, on the flat bars flat, as of 10:45; the call just made has none yet."""
+    state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
+    _today(monkeypatch)
+    monkeypatch.setattr(service, "send_all", _answers)
+    monkeypatch.setattr(service, "send", _sums([]))
+    out = state / "spx_jev" / "lanes" / "tape"
+    run_once(state, out, DOC, True, DAY, lane=TAPE)                          # the 10:40 read
+    _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0), make_row(at(10, 44, ss=20), 7700.0)], 75)
+    c = run_once(state, out, DOC, True, DAY, lane=TAPE)                      # the 10:45 read
+    newest, open_one = c["calls"]
+    assert c["row_ts"] == at(10, 45).isoformat() and "so_far" not in newest
+    assert open_one["so_far"] == {"g": 0.0, "edge": 1.56, "label": "flat", "minutes": 5, "of": 10, "as_of": at(10, 45).isoformat()}

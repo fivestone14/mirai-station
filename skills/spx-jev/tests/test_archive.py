@@ -75,7 +75,7 @@ def test_a_read_of_a_lane_without_a_checkpoint_writes_the_premarket_fields_as_nu
     rec = ReadRecord(read_id="live:t", lane="live", row_ts="t", sent=False, spot=7700.0, sigma=75.0, labels={}, omitted={}, requests=[],
                      skipped={}, responses=None, hour_request=None, hour_response=None, hour=None, cadence={}, market_context=None, event=None)
     line = json.loads(archive.append(tmp_path, DAY, rec).read_text())
-    assert _typed(line, ReadRecord) and line["checkpoint"] is None and line["night"] is None and line["schema_version"] == 3
+    assert _typed(line, ReadRecord) and line["checkpoint"] is None and line["night"] is None and line["schema_version"] == 4
 
 
 def test_a_close_out_record_is_typed(tmp_path):
@@ -83,6 +83,23 @@ def test_a_close_out_record_is_typed(tmp_path):
     path = archive.append(tmp_path, DAY, rec)
     line = json.loads(path.read_text())
     assert _typed(line, CloseOutRecord) and line["kind"] == "close_out" and line["tally"]["calls"] == 1
+    assert archive.read_close_out(line) == line                              # a version 4 line reads as written
+
+
+def test_a_version_3_close_out_reads_as_calls_that_stood_on_their_end_price():
+    """Up to version 3 a close-out's calls carried only their end-price grade and its tally counted unsure picks
+    under ``unsure``: read now, each graded call stands on its end price, so marked, and the unsure picks are passes."""
+    v3 = {"lane": "tape", "day": DAY, "schema_version": 3, "kind": "close_out", "archived_at": "t",
+          "calls": [{"read": "a", "pick": "up", "outcome": "up_big", "hit": False, "moved": {"realized_points": 9.0}},
+                    {"read": "b", "pick": "unsure", "outcome": "flat", "hit": False, "moved": {}}, {"read": "c", "pick": "flat"}],
+          "tally": {"calls": 3, "graded": 2, "right": 0, "unsure": 1}}
+    got = archive.read_close_out(v3)
+    assert [c.get("end_price") for c in got["calls"]] == [{"outcome": "up_big", "hit": False, "moved": {"realized_points": 9.0}},
+                                                          {"outcome": "flat", "hit": False, "moved": {}}, None]
+    assert [c.get("end_price_only") for c in got["calls"]] == [True, True, None] and not any("outcome" in c for c in got["calls"])
+    assert got["tally"] == {"calls": 3, "graded": 2, "right": 0, "passed": 1, "end_price_only": 2}
+    assert service.tally_words(got["tally"]) == "0 of 1 calls right · 1 passed · 2 on the end price only · 1 still to grade"
+    assert v3["calls"][0]["outcome"] == "up_big" and "passed" not in v3["tally"]    # the line read is left as it was
 
 
 def _written(root):

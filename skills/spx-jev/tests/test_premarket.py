@@ -167,7 +167,7 @@ def test_a_snapshot_read_writes_its_record_archive_and_card_and_asks_nothing(tmp
     assert not (out / "hour").exists()
     (rec,) = _lines(state / "spx_jev" / "archive" / f"{DAY}.jsonl")
     assert rec["read_id"] == f"premarket:{at(2, 35).isoformat()}" and rec["lane"] == "premarket" and rec["checkpoint"] == "02:35"
-    assert rec["schema_version"] == archive.SCHEMA_VERSION == 3 and rec["night"] == read["night"]
+    assert rec["schema_version"] == archive.SCHEMA_VERSION == 4 and rec["night"] == read["night"]
     assert rec["market_context"]["/ES"] == {"value": 7781.0, "known_at": at(2, 35).isoformat()}
     assert rec["cadence"] == {"from": None, "held": {}, "not_due": {"pm_q": "not on its schedule at the 02:35 ET read"}, "asked": []}
     assert json.loads((out / "latest.json").read_text()) == c

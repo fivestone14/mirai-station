@@ -18,7 +18,8 @@ nothing boosts a sharp move; the biggest minute is a note, ranked against the sa
 sessions ("top 2 of 21" is sharp), each minute's move taken close to close as the sessions' are (the
 first from the bar before the window, when it is on file, since a read can land mid-minute). The running labels are the average so far against the same edge, one per
 minute, the last one being the label. The strength (the phone's tier) ranks a right call's margin, as headroom past the
-line that made it right, against the right calls on the box's recent sessions: Strong right, Right or Weak by third.
+line that made it right, against the right calls on the box's recent sessions: Strong right, Right or Weak right by
+third. While a window is open, so_far is its average over the minutes finished, against the same edge.
 
 The guards
     missing bars   up to INTEGRAL_MISSING_BARS_MAX of the window's bars may be missing, never the mark bar, and a
@@ -41,14 +42,14 @@ from collections import Counter
 from datetime import date, datetime
 
 from .cuts import (BAD_TICK_PCT, INTEGRAL_MISSING_BARS_MAX, NIGHT_RANK_COUNT, SAME_CLOCK_MIN_SESSIONS, SHARP_MOVE_TOP,
-                   STALE_READ_MIN)
+                   STALE_READ_MIN, TIER_MIN_RIGHT_CALLS)
 from .labels.measures import ET, ONE_MINUTE, bar_time
 from .labels.ranks import percentile, rank_sessions
 from .labels.words import third
 
 RULE_VERSION = 1        # bump when the grade's rule changes: a line is keyed by its read, its horizon and this
 NOT_GRADED = "not graded: bars missing"
-TIERS = {"top": "Strong right", "middle": "Right", "bottom": "Weak"}   # a right call's headroom by its third
+TIERS = {"top": "Strong right", "middle": "Right", "bottom": "Weak right"}   # a right call's headroom by its third
 
 
 def factor(minutes: int) -> float:
@@ -94,17 +95,31 @@ def headroom(line: dict) -> float | None:
 def strength(line: dict, base: list[list[float]]) -> str | None:
     """The tier of a graded call: Wrong when it was wrong, else where its headroom ranks among the right calls' on
     the box's recent sessions (``base``, each session's right calls' headrooms, newest first), by third: Strong
-    right, Right or Weak. None for a passed call, and for every call while fewer than SAME_CLOCK_MIN_SESSIONS of
-    the last NIGHT_RANK_COUNT sessions are on file or they hold no right call."""
+    right, Right or Weak right. None for a passed call, and for every call while fewer than SAME_CLOCK_MIN_SESSIONS
+    of the last NIGHT_RANK_COUNT sessions are on file or they hold fewer than TIER_MIN_RIGHT_CALLS right calls."""
     recent = base[:NIGHT_RANK_COUNT]
-    if len(recent) < SAME_CLOCK_MIN_SESSIONS or line.get("verdict") == "passed":
+    pool = [h for session in recent for h in session]
+    if len(recent) < SAME_CLOCK_MIN_SESSIONS or len(pool) < TIER_MIN_RIGHT_CALLS or line.get("verdict") == "passed":
         return None
     if line.get("verdict") == "wrong":
         return "Wrong"
-    pool = [h for session in recent for h in session]
-    if not pool:
-        return None
     return TIERS[third(sum(1 for h in pool if h < headroom(line)) / len(pool))]
+
+
+def so_far(bars: list[dict], t0: datetime, minutes: int, spot: float, flat: float) -> dict | None:
+    """An open window's average so far: its finished minutes from ``t0`` up to the first one not on file, against
+    the whole window's edge, as the running labels are, and the minute it stands at (``as_of``, the last one's end).
+    None before its first minute has finished."""
+    closes = []
+    for bar in window(bars, t0, minutes):
+        if bar is None:
+            break
+        closes.append(float(bar["close"]))
+    if not closes:
+        return None
+    edge, g = factor(minutes) * flat, sum(c - spot for c in closes) / len(closes)
+    return {"g": round(g, 2), "edge": round(edge, 2), "label": label(g, edge), "minutes": len(closes), "of": minutes,
+            "as_of": (t0 + len(closes) * ONE_MINUTE).isoformat()}
 
 
 def lean(probs: dict) -> dict | None:

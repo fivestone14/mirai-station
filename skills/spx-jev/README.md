@@ -213,15 +213,18 @@ archive there too, under `archive/`.
 - `pool_30.json`, `pool_60.json`, `pool_log.jsonl`: the learning loop's state
   per horizon and one log line per horizon per session applied or refused.
 - `archive/{day}.jsonl`: the raw archive for later machine learning, one line
-  per record, append only, `schema_version` 3. A `read` record holds the read
+  per record, append only, `schema_version` 4. A `read` record holds the read
   id (lane and row timestamp), the labels and the omitted ones with reasons,
   the exact requests and JEV's exact replies, the sums request and reply, the
   sum as shown, the cadence state (held, not due, asked), the market-context
   values the read could see with when each was known, the event tag, on the
   live lane the learning loop's forecasts, and on the opening lane the unit
   and bands, and on the premarket lane the checkpoint and the night it saw. A `grade` record is each graded horizon
-  keyed to its read's id; a `close_out` record is the opening lane's calls and
-  tally at 10:42. No secret is ever written.
+  keyed to its read's id; a `close_out` record is a lane's calls and tally at
+  its close-out, graded on the average price from version 4 (`right` is right
+  on the average, `passed` was `unsure`, `end_price_only` counts the calls that
+  stood on the end price alone); `archive.read_close_out` gives a version 3
+  line in that shape. No secret is ever written.
 - `bars/{day}.jsonl` (the bars feed) and `context/{day}.jsonl`,
   `context/bars/{day}.jsonl` (the market feed, and its full days from the
   backfill and the day saver).
@@ -244,9 +247,12 @@ The card carries: `symbol`, `generated_at`, `row_ts`, `freshness`, `sigma`,
 average price over the window from `integral_grades.jsonl`, with its label,
 points against the edge, verdict, size, path and, once the box has ten sessions
 to rank it against, its strength `tier`; and `end_price`, the grade at the mark,
-kept beside it for the side-by-side weeks. The tally counts the average-price
-grade: a call's direction decides it, and an unsure call is `passed`, never
-among the calls right or wrong), `marks`, `session` (`close` and `last_read`), `expiries` (today's
+kept beside it for the side-by-side weeks; a call with no average-price grade
+is marked `end_price_only` and stands on its end price until a later card finds
+the line, and an open call carries its average so far, `so_far`. The tally
+counts the average-price grade: a call's direction decides it, an unsure call is
+`passed`, never among the calls right or wrong, and `end_price_only` says how
+many stood on the end price), `marks`, `session` (`close` and `last_read`), `expiries` (today's
 settle, the next expiry's, the next monthly's, and what expires today), and on
 the opening lane `lane`, `ruler`, `band`, `stretch`, `schedule` and, after the
 close-out, `closed_out_at`.

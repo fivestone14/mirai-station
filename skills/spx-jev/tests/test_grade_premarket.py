@@ -150,9 +150,13 @@ def test_the_days_calls_are_marked_from_the_settled_open(tmp_path):
     calls = service.day_calls(out, DAY, PREMARKET)
     assert [c["mark"] for c in calls] == [f"{DAY}T10:05:00-04:00"] * 2
     assert [(c["pick"], c["end_price"]["outcome"], c["end_price"]["hit"]) for c in calls] == [("flat", "up", False)] * 2
-    # both checks of every call, so the phone can give the 09:44 result beside the 10:04 one
-    assert [c["checks"] for c in calls] == [{"open_10": {"outcome": "up", "hit": True, "pick": "up"},
-                                              "open_30": {"outcome": "up", "hit": False, "pick": "flat"}}] * 2
+    # both checks of every call, so the phone can give the 09:44 result beside the 10:04 one, each on the average price
+    # over its own window from the settled open, its end price kept beside it
+    assert [{h: {k: v for k, v in r.items() if k != "integral"} for h, r in c["checks"].items()} for c in calls] == [
+        {"open_10": {"outcome": "up", "hit": True, "pick": "up"}, "open_30": {"outcome": "up", "hit": False, "pick": "flat"}}] * 2
+    assert [(c["checks"]["open_10"]["integral"]["verdict"], c["checks"]["open_30"]["integral"]["verdict"]) for c in calls] == [
+        ("right", "wrong")] * 2                                              # up called and up on the average; flat called, up
+    assert all(c["integral"] is not c["checks"]["open_30"]["integral"] and c["integral"] == c["checks"]["open_30"]["integral"] for c in calls)
 
 
 def test_the_service_refuses_the_premarket_lane_with_a_pointer():

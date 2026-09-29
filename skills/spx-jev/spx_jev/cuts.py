@@ -94,6 +94,7 @@ INTEGRAL_MISSING_BARS_MAX = 1   # bars a window may miss and still be graded on 
 BAD_TICK_PCT = 0.999            # share of the same window's 1-minute moves a bad tick's jump, and its jump back, are at or above
 STALE_READ_MIN = 2              # a read whose spot no bar traded in this many minutes up to its row minute is stale
 SHARP_MOVE_TOP = 2              # a window's biggest minute is sharp in the top 2 of it and the last 20 sessions' (top 2 of 21)
+TIER_MIN_RIGHT_CALLS = 10       # fewest right calls on the box's recent sessions a right call's strength tier is ranked among
 
 # ---- the question set's constants (spec/question_set.json "constants"), in the set's order, each with its
 # note from there. By the owner's rule (2026-09-27) none sizes or judges a market measure: each is a window, a

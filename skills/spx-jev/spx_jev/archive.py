@@ -13,7 +13,13 @@ Three record kinds, each a dataclass below, each line carrying ``schema_version`
                forecasts, on the tape lane the unit and the bands, and on the premarket lane its
                checkpoint, its pre-open ruler and the overnight bars it saw
     grade      one per graded horizon line the grader writes, keyed to its read by ``read_id``
-    close_out  a scheduled lane's grade-only run after its last read: the day's calls and tally
+    close_out  a scheduled lane's grade-only run after its last read: the day's calls and tally. From version 4
+               each call is graded on the average price over its window (``integral``), its end-price grade kept
+               beside it under ``end_price`` (``end_price_only`` when it stands on that alone), and the tally counts
+               the average price: ``right`` is right on the average, ``passed`` the unsure picks (``unsure`` up to
+               version 3), ``end_price_only`` the calls counted on the end price. Up to version 3 a call carried its
+               end-price outcome, hit and move on itself and the tally counted those; read_close_out gives an older
+               line in the version 4 shape
 
 A read's ``read_id`` is its lane and its row's timestamp, the same key the grader and the card use,
 so a grade finds its read without a lookup table. Nothing secret is written: the key never reaches a
@@ -28,7 +34,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 3          # 2: a read carries the learning loop's forecasts (pool); 3: a premarket read carries its checkpoint and the night it saw
+SCHEMA_VERSION = 4          # 2: a read carries the learning loop's forecasts (pool); 3: a premarket read carries its checkpoint and the night it saw;
+                            # 4: a close_out's calls and tally are graded on the average price (see close_out above)
 ARCHIVE_SUBDIR = Path("spx_jev") / "archive"
 
 
@@ -89,6 +96,24 @@ class CloseOutRecord:
     schema_version: int = SCHEMA_VERSION
     kind: str = "close_out"
     archived_at: str = field(default_factory=_now)
+
+
+def read_close_out(line: dict) -> dict:
+    """A close_out line in the version 4 shape, whatever version wrote it. A call from version 3 or before had only its
+    end-price grade: it comes back with that under ``end_price`` and marked ``end_price_only``, and its tally's
+    ``unsure`` as ``passed``, every call it graded counted under ``end_price_only``."""
+    if line.get("schema_version", 0) >= 4:
+        return line
+    calls = []
+    for c in line.get("calls") or []:
+        c = dict(c)
+        if "outcome" in c:
+            c["end_price"] = {k: c.pop(k) for k in ("outcome", "hit", "moved") if k in c}
+            c["end_price_only"] = True
+        calls.append(c)
+    tally = dict(line.get("tally") or {})
+    tally["passed"], tally["end_price_only"] = tally.pop("unsure", 0), tally.get("graded", 0)
+    return {**line, "calls": calls, "tally": tally}
 
 
 def append(folder: Path | str, day: str, record: ReadRecord | GradeRecord | CloseOutRecord) -> Path:

@@ -108,6 +108,8 @@ NOT_MEASURED = {
                     "moves on the recent sessions, so the cut sits at their 99.9th percentile by definition",
     "stale_read_min": "a clock fact: how long before its row minute a read's spot may have last traded before the read is stale, "
                       "not a split of any measurement",
+    "tier_min_right_calls": "a minimum count: how many right calls the box's last 20 sessions must hold before a right call's "
+                            "strength is ranked among them, a lookback's floor, not a split of any measurement",
     "sharp_move_top": "a rank by construction: a window's biggest minute is sharp when it is in the top 2 of itself and the same "
                       "window's biggest minute on the last 20 sessions",
 }

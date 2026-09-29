@@ -7,12 +7,13 @@ from __future__ import annotations
 import json
 from datetime import date, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 from conftest import DAY, at
 from spx_jev import integral, service
 from spx_jev.grade import INTEGRAL_NAME
 from spx_jev.lane import LIVE, TAPE
-from test_integral import _scenario
+from test_integral import SCENARIOS, _bars, _scenario
 
 EDGE = 3.19                                                         # the 30-minute box's edge on the owner's scenarios
 
@@ -40,15 +41,15 @@ def _write(out: Path, day: str, picks: dict[str, str], lines: list[dict], lane=L
             f.write(json.dumps(line) + "\n")
 
 
-def _sessions(n: int, before: str = DAY, headrooms=(0.1, 0.2, 0.5, 1.5), **over) -> list[dict]:
+def _sessions(n: int, before: str = DAY, headrooms=(0.1, 0.2, 0.5, 1.5), wrong: int = 1, **over) -> list[dict]:
     """``n`` prior weekdays, newest first, each with a right up call clearing the edge by each of ``headrooms`` edges
-    and a wrong one, at 11:02."""
+    and ``wrong`` wrong ones, at 11:02."""
     d, out = date.fromisoformat(before), []
-    while len(out) < (len(headrooms) + 1) * n:
+    while len(out) < (len(headrooms) + wrong) * n:
         d -= timedelta(days=1)
         if d.weekday() < 5:
             ts = at(11, 2, day=d.isoformat()).isoformat()
-            out += [_line(ts, "up", round((1 + h) * EDGE, 4), **over) for h in headrooms] + [_line(ts, "down", 5.0, **over)]
+            out += [_line(ts, "up", round((1 + h) * EDGE, 4), **over) for h in headrooms] + [_line(ts, "down", 5.0, **over)] * wrong
     return out
 
 
@@ -70,7 +71,8 @@ def test_a_call_carries_its_average_price_grade_and_its_end_price_beside_it(tmp_
     assert "outcome" not in call and "hit" not in call                # one grade decides; the end price is only kept
     # the grader's working stays in its file
     assert not {"f", "factor", "from", "filled", "bad_ticks", "pick", "direction", "row_ts", "rule_version"} & set(g)
-    assert service.calls_block([call])["tally"] == {"calls": 1, "graded": 1, "right": 1, "passed": 0}
+    assert service.calls_block([call])["tally"] == {"calls": 1, "graded": 1, "right": 1, "passed": 0, "end_price_only": 0}
+    assert "end_price_only" not in call and call["integral"]["stale_read"] is False
 
 
 def test_an_unsure_call_is_passed_with_its_lean_and_a_window_still_open_carries_no_grade(tmp_path):
@@ -80,7 +82,46 @@ def test_an_unsure_call_is_passed_with_its_lean_and_a_window_still_open_carries_
     first, second = service.day_calls(tmp_path, DAY, TAPE)
     assert first["integral"]["verdict"] == "passed" and first["integral"]["lean"] == {"direction": "flat", "p": 0.45}
     assert "integral" not in second and "end_price" not in second     # open: nothing graded yet
-    assert service.calls_block([first, second])["tally"] == {"calls": 2, "graded": 1, "right": 0, "passed": 1}
+    assert service.calls_block([first, second])["tally"] == {"calls": 2, "graded": 1, "right": 0, "passed": 1, "end_price_only": 0}
+
+
+def test_a_call_with_no_average_price_grade_stands_on_its_end_price_until_a_later_card_finds_one(tmp_path):
+    """The shadow grade failed, or the window missed bars: the call is not left waiting for ever. It is marked
+    end price only and counted on its end price, an unsure one passed; the next card to read the file, once the
+    line is written, carries the average-price grade instead."""
+    first, second, third = at(10, 2).isoformat(), at(10, 32).isoformat(), at(11, 2).isoformat()
+    _write(tmp_path, DAY, {first: "up", second: "unsure", third: "down"},
+           [_line(third, "down", 4.0, graded=False, reason="not graded: bars missing")],
+           graded={first: {"band": "up", "hit": True}, second: {"band": "down", "hit": False}, third: {"band": "down", "hit": True}})
+    calls = service.day_calls(tmp_path, DAY, LIVE)
+    assert [c.get("end_price_only") for c in calls] == [True, True, True]
+    assert [service.call_verdict(c) for c in calls] == ["right", "passed", "right"]
+    tally = service.calls_block(calls)["tally"]
+    assert tally == {"calls": 3, "graded": 3, "right": 2, "passed": 1, "end_price_only": 3}
+    assert service.tally_words(tally) == "2 of 2 calls right · 1 passed · 3 on the end price only"
+    _write(tmp_path, DAY, {}, [_line(first, "up", -4.0)])                    # the late line: down on the average
+    again = service.day_calls(tmp_path, DAY, LIVE)
+    assert "end_price_only" not in again[0] and service.call_verdict(again[0]) == "wrong"
+    assert service.calls_block(again)["tally"] == {"calls": 3, "graded": 3, "right": 1, "passed": 1, "end_price_only": 2}
+
+
+def test_an_open_call_carries_its_average_so_far_against_its_whole_windows_edge(tmp_path):
+    """Five minutes into S9's ten: the average of the five closes so far against the read, set against the edge
+    the whole window is graded on, and the minute it stands at. Before a minute has finished there is none, and a
+    graded call carries its grade, never a partial one."""
+    hhmm, spot, f, pick, closes = SCENARIOS["S9"]
+    t0 = at(10, 30)
+    ts, later = t0.isoformat(), at(10, 35).isoformat()
+    (tmp_path / "hour").mkdir()
+    (tmp_path / "hour" / f"{DAY}.jsonl").write_text("".join(json.dumps(
+        {"row_ts": r, "spot": spot, "band": {"flat_points": f}, "pick": pick, "probabilities": {pick: 0.5}}) + "\n" for r in (ts, later)))
+    scene = SimpleNamespace(bars=_bars(t0, spot, closes[:5]), rows_today=[], market=None)
+    first, second = service.day_calls(tmp_path, DAY, TAPE, scene)
+    x = [c - spot for c in closes[:5]]
+    assert first["so_far"] == {"g": round(sum(x) / 5, 2), "edge": 1.59, "label": "down", "minutes": 5, "of": 10,
+                               "as_of": at(10, 35).isoformat()}
+    assert "so_far" not in second                                            # its first minute has not finished
+    assert "so_far" not in service.day_calls(tmp_path, DAY, TAPE)[0]         # a card built without bars says nothing so far
 
 
 def test_only_this_box_and_this_rule_version_reach_the_card(tmp_path):
@@ -91,7 +132,7 @@ def test_only_this_box_and_this_rule_version_reach_the_card(tmp_path):
     assert (call["integral"]["g"], call["integral"]["verdict"]) == (4.0, "right")      # the first line of the read is the one
 
 
-def test_no_tier_until_the_box_has_ten_sessions(tmp_path):
+def test_no_tier_until_the_box_has_ten_sessions_and_ten_right_calls(tmp_path):
     ts = at(11, 2).isoformat()
     _write(tmp_path, DAY, {ts: "down"}, _sessions(9) + [_line(ts, "down", -20.0)])
     assert service.day_calls(tmp_path, DAY, LIVE)[0]["integral"]["verdict"] == "right"
@@ -102,18 +143,31 @@ def test_no_tier_until_the_box_has_ten_sessions(tmp_path):
     assert "tier" not in service.day_calls(tmp_path, DAY, LIVE)[0]["integral"]
 
 
+def test_ten_sessions_holding_fewer_than_ten_right_calls_rank_nothing(tmp_path):
+    ts = at(11, 2).isoformat()
+    # twelve sessions: nine with a right call, the three before them only wrong ones
+    thin = _sessions(9, headrooms=(0.5,)) + _sessions(3, before="2026-09-07", headrooms=())
+    _write(tmp_path, DAY, {ts: "down"}, thin + [_line(ts, "down", -20.0)])
+    assert "tier" not in service.day_calls(tmp_path, DAY, LIVE)[0]["integral"]
+    _write(tmp_path, DAY, {}, [_line(at(11, 32, day="2026-09-17").isoformat(), "up", 1.5 * EDGE)])     # a tenth right call
+    assert service.day_calls(tmp_path, DAY, LIVE)[0]["integral"]["tier"] == "Strong right"
+
+
 def test_with_ten_sessions_a_right_call_is_ranked_among_the_boxs_right_calls_and_a_wrong_one_is_wrong(tmp_path):
-    """Twenty prior sessions of right calls clearing the edge by 0.1, 0.2, 0.5 and 1.5 edges. S9's call, 1.84 edges
-    past its edge, beats them all: Strong right. A flat call a tenth of an edge inside beats none: Weak. An up call
-    0.3 past beats half: Right. Wrong stays Wrong; a pass has no tier. The five older sessions, their calls far past
-    the edge, are past the last 20 and never read."""
+    """Twenty prior sessions of right calls clearing the edge by 0.1, 0.2, 0.5 and 1.5 edges, and ten wrong ones each,
+    which are never ranked against. S9's call, 1.84 edges past its edge, beats them all: Strong right. A flat call a
+    tenth of an edge inside beats none: Weak right. An up call 0.3 past beats half: Right. Wrong stays Wrong; a pass
+    has no tier. Nothing else moves them: a 21st session back, the 60-minute box's lines and lines under an older
+    rule, each full of calls far past the edge that would put S9 in the middle were they read."""
     reads = {at(10, 2).isoformat(): ("down_small", -4.52 / 1.59 * EDGE), at(10, 32).isoformat(): ("flat", 0.9 * EDGE),
              at(11, 2).isoformat(): ("up", 1.3 * EDGE), at(11, 32).isoformat(): ("up", -5.0), at(12, 2).isoformat(): ("unsure", 5.0)}
-    history = _sessions(20) + _sessions(5, before="2026-08-21", headrooms=(40.0,) * 10)   # read, these would put S9 in the middle
+    far = (40.0,) * 60
+    history = (_sessions(20, wrong=10) + _sessions(1, before="2026-08-21", headrooms=far) + _sessions(20, headrooms=far, horizon="next_60")
+               + _sessions(20, headrooms=far, rule_version=0))
     _write(tmp_path, DAY, {ts: p for ts, (p, _) in reads.items()}, history + [_line(ts, p, round(g, 4)) for ts, (p, g) in reads.items()])
     calls = service.day_calls(tmp_path, DAY, LIVE)
     assert [c["integral"]["verdict"] for c in calls] == ["right", "right", "right", "wrong", "passed"]
-    assert [c["integral"].get("tier") for c in calls] == ["Strong right", "Weak", "Right", "Wrong", None]
+    assert [c["integral"].get("tier") for c in calls] == ["Strong right", "Weak right", "Right", "Wrong", None]
     assert service.tally_words(service.calls_block(calls)["tally"]) == "3 of 4 calls right · 1 passed"
 
 
@@ -128,3 +182,5 @@ def test_a_right_calls_headroom_puts_a_flat_call_and_a_sided_one_on_one_scale():
     assert integral.strength(_line("t", "up", 9.0), base[:9]) is None           # nine sessions: label only
     assert integral.strength(_line("t", "up", -9.0), base) == "Wrong" and integral.strength(_line("t", "unsure", 9.0), base) is None
     assert integral.strength(_line("t", "up", 1.05 * EDGE), [[]] * 10) is None   # ten sessions with no right call: nothing to rank on
+    assert integral.strength(_line("t", "up", 9.0), [[0.5]] * 9 + [[]] * 3) is None    # twelve sessions, nine right calls
+    assert integral.strength(_line("t", "up", 9.0), [[0.5]] * 10) == "Strong right"
