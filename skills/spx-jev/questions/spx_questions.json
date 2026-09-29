@@ -2121,7 +2121,8 @@
       },
       "opening_five_minute": {
        "at": [
-        "09:35"
+        "09:35",
+        "10:05"
        ],
        "hold": true
       }
@@ -2130,7 +2131,7 @@
       "thirty_minute": "all",
       "opening_five_minute": "10min_opening"
      },
-     "cadence": "every 30-minute read from 10:02; in the opening lane once at 09:35 and held (release_in_lane carries the 10-minute clock)",
+     "cadence": "every 30-minute read from 10:02; in the opening lane at 09:35 and again at 10:05, after the 10:00 releases, each answer held to the next (release_in_lane carries the 10-minute clock)",
      "sleep_when": "no scheduled event today, or every event came out beyond the digest window",
      "code_answer": true,
      "ask": "Where does this moment sit against today's scheduled events?",

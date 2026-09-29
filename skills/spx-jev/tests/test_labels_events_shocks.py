@@ -733,3 +733,16 @@ def test_without_the_ten_year_yield_the_rest_of_the_shock_is_still_read(scene_fa
     assert text.startswith("during the shock the ten-year yield is not measured ($TNX has no value within 2 minutes of the burst's "
                            "start and end); semiconductors ")
     assert "NYSE TICK reached 1240, at or past its top 5% band for those minutes, the shock's way" in text
+
+
+def test_the_opening_lane_asks_the_event_clock_again_after_the_ten_oclock_releases():
+    """A 09:35 answer that a 10:00 release is due must not be held once the release is out: the lane asks again at its
+    first read after 10:00, and holds each answer only to the next."""
+    from spx_jev.ask import load_questions
+    from spx_jev.lane import TAPE
+    from spx_jev.schedule import not_due
+    doc = load_questions(TAPE.questions, TAPE.key)
+    first_after = next(t for t in TAPE.read_times() if t > "10:00")
+    asked = [t for t in TAPE.read_times()
+             if "event_clock" not in not_due(doc, TAPE, at(int(t[:2]), int(t[3:]), "2026-09-29", ss=5))]
+    assert asked == ["09:35", first_after]

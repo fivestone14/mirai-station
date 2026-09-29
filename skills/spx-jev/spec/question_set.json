@@ -3560,7 +3560,7 @@
       "opening_five_minute"
      ],
      "status": "live",
-     "cadence": "every 30-minute read from 10:02; in the opening lane once at 09:35 and held (release_in_lane carries the 10-minute clock)",
+     "cadence": "every 30-minute read from 10:02; in the opening lane at 09:35 and again at 10:05, after the 10:00 releases, each answer held to the next (release_in_lane carries the 10-minute clock)",
      "ask": "Where does this moment sit against today's scheduled events?",
      "instructions": "Read `context.event_clock`. Where does this moment sit against today's scheduled events? The first match in this order wins: due_or_under_way, released_recently, fed_speaker_window, event_later_today, released_before_open.",
      "options": [
@@ -3615,7 +3615,8 @@
       },
       "opening_five_minute": {
        "at": [
-        "09:35"
+        "09:35",
+        "10:05"
        ],
        "hold": true
       }
