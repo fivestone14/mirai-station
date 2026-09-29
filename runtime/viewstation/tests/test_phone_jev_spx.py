@@ -277,7 +277,7 @@ def test_the_sheet_gives_the_reason_a_call_was_not_graded_in_the_viewers_zone():
 
 def _opening(tallies):
     sched = {"reads": ["2026-09-28T09:35:00-04:00", "2026-09-28T10:30:00-04:00"], "looks_ahead_min": 10}
-    return _run(_fn("openingDone") + "console.log(JSON.stringify(D.t.map(function(t){ return openingDone(t).kids[1].textContent; })));",
+    return _run(_fn("tallyWords") + _fn("openingDone") + "console.log(JSON.stringify(D.t.map(function(t){ return openingDone(t).kids[1].textContent; })));",
                 {"t": [{"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": t} for t in tallies]})
 
 
@@ -321,7 +321,7 @@ def test_a_call_closed_for_good_is_never_graded_on_the_page_not_still_to_grade()
     the service's words (service.tally_words), never as a call still to grade. A card from before the average-price
     grade counted its passes as unsure."""
     sched = {"reads": ["2026-09-29T09:35:00-04:00", "2026-09-29T10:30:00-04:00"], "looks_ahead_min": 10}
-    lines = _run(_fn("openingDone") + "console.log(JSON.stringify(D.t.map(function(t){ return dump(openingDone(t)); })));", {"t": [
+    lines = _run(_fn("tallyWords") + _fn("openingDone") + "console.log(JSON.stringify(D.t.map(function(t){ return dump(openingDone(t)); })));", {"t": [
         {"row_ts": "2026-09-29T10:30:00-04:00", "schedule": sched, "tally": {"calls": 12, "graded": 11, "right": 3, "closed": 1}},
         {"row_ts": "2026-09-29T10:30:00-04:00", "schedule": sched, "tally": {"calls": 12, "graded": 9, "right": 3, "closed": 1}},
         {"row_ts": "2026-09-29T10:30:00-04:00", "schedule": sched, "tally": {"calls": 12, "graded": 11, "right": 3, "unsure": 2, "closed": 1}},
@@ -335,6 +335,22 @@ def test_a_call_closed_for_good_is_never_graded_on_the_page_not_still_to_grade()
                                               "opening done1 never graded"]
 
 
+def test_the_30_minute_calls_day_score_is_shown_under_the_call_as_the_openings_is():
+    """Monday's card and close-out log said 6 of 11 right, while the page drew at most four calls and never the score.
+    Under the 30-minute call a line gives the day's score in the service's words, the opening's beside it."""
+    got = _whole({k: MONDAY[k] for k in ("live", "tape", "premarket")}, "2026-09-28T16:04:00-04:00")
+    assert ["card fold", "30-min calls, day done6 of 11 calls right"] in got["main"]
+    assert ["card fold", "opening done0 of 8 calls right"] in got["main"]
+    kinds = [c for c, _ in got["main"]]
+    assert kinds.index("card dashed") + 1 == got["main"].index(["card fold", "30-min calls, day done6 of 11 calls right"])
+    live = {**MONDAY["live"], "closed_out_at": None, "tally": {"calls": 5, "graded": 3, "right": 1, "passed": 1, "end_price_only": 0, "closed": 0}}
+    got = _whole({"live": live, "tape": MONDAY["tape"], "premarket": MONDAY["premarket"]}, "2026-09-28T15:40:00-04:00")
+    assert ["card fold", "30-min calls so far1 of 2 calls right \u00B7 1 passed \u00B7 2 still to grade"] in got["main"]
+    none = {**live, "tally": {"calls": 0, "graded": 0, "right": 0}}
+    got = _whole({"live": none, "tape": MONDAY["tape"], "premarket": MONDAY["premarket"]}, "2026-09-28T15:40:00-04:00")
+    assert not any(t.startswith("30-min calls") for _, t in got["main"])
+
+
 def test_a_call_closed_at_its_end_price_but_graded_on_the_average_reads_graded_on_the_page():
     """The opening lane's end price can close a call its average still grades (service.calls_block counts it graded, never
     closed): its row and its sheet give the average's verdict, not "Not graded", and the morning's line counts it once."""
@@ -344,7 +360,7 @@ def test_a_call_closed_at_its_end_price_but_graded_on_the_average_reads_graded_o
     assert _result(both, "2026-09-28T10:45:00-04:00")[0] == "RightResult"
     sched = {"reads": ["2026-09-29T09:35:00-04:00", "2026-09-29T10:30:00-04:00"], "looks_ahead_min": 10}
     tally = {"calls": 2, "graded": 1, "right": 1, "passed": 0, "end_price_only": 0, "closed": 0}
-    line = _run(_fn("openingDone") + "console.log(JSON.stringify(dump(openingDone(D.t))));",
+    line = _run(_fn("tallyWords") + _fn("openingDone") + "console.log(JSON.stringify(dump(openingDone(D.t))));",
                 {"t": {"row_ts": "2026-09-29T10:30:00-04:00", "schedule": sched, "tally": tally}})
     assert _flat_text(line) == "opening done1 of 1 calls right \u00B7 1 still to grade"
 
