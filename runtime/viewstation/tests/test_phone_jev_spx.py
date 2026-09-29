@@ -754,6 +754,17 @@ def test_the_checks_drawing_names_both_sums_from_the_settled_open_in_the_viewers
     assert _texts(early, "t-now-l") == [] and _texts(early, "t-now") == [] and _texts(early, "t-side") == ["10 min on", "30 min on"]
 
 
+def test_the_now_word_stays_whole_where_the_now_line_meets_an_edge_of_the_drawing():
+    """From 09:20 the checks drawing starts ten minutes before the open, so for its first minutes the dashed now line
+    runs along the left edge, and its word, centred on it, was cut in half ("ow"). The line keeps its place; the word
+    is kept inside the drawing."""
+    js = "console.log(JSON.stringify(dump(checksSvg(D.card, Date.parse(D.now)))));"
+    svg = _pre(js, {"card": pre_card("09:28"), "now": et("09:20", s="10")}, LA)
+    line = [k for k in svg["kids"] if k["tag"] == "line" and k["attrs"].get("class") == "now"][0]
+    word = [k for k in svg["kids"] if k["tag"] == "text" and k["attrs"].get("class") == "t-now-l"][0]
+    assert float(line["attrs"]["x1"]) < 1 and float(word["attrs"]["x"]) == 12.0
+
+
 def test_snapshot_reads_before_the_first_call_say_when_it_comes():
     got = _page(pre_card("03:35"), et("03:40"))
     assert got["state"] == ["snapshot, JEV at 05:48 and 06:28"]

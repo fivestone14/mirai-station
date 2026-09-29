@@ -790,9 +790,10 @@ details .q{margin-top:8px}
                             'aria-label': calls.length + (calls.length === 1 ? ' call' : ' calls') + ' on one clock, ' + open + ' still open'});
     if(now >= t0 && now <= end){
       // drawn first, so the bars and their words sit on top of it
+      // its word, about 21 units wide, is kept whole on the drawing when the line runs near an edge
       var nx = x(now).toFixed(1);
       svg.appendChild(svgEl('line', {x1: nx, y1: 0, x2: nx, y2: ay, 'class': 'now'}));
-      svg.appendChild(svgEl('text', {x: nx, y: ay + 27, 'text-anchor': 'middle', 'class': 't-now-l'}, 'now'));
+      svg.appendChild(svgEl('text', {x: Math.min(288, Math.max(12, nx)).toFixed(1), y: ay + 27, 'text-anchor': 'middle', 'class': 't-now-l'}, 'now'));
     }
     var newestOpen = true;
     calls.forEach(function(c, i){
@@ -1319,7 +1320,7 @@ details .q{margin-top:8px}
     if(now >= t0 && now <= end){
       var nx = x(now).toFixed(1);
       svg.appendChild(svgEl('line', {x1: nx, y1: CHECKS_TOP - 2, x2: nx, y2: ay, 'class': 'now'}));
-      svg.appendChild(svgEl('text', {x: nx, y: ay + 27, 'text-anchor': 'middle', 'class': 't-now-l'}, 'now'));
+      svg.appendChild(svgEl('text', {x: Math.min(288, Math.max(12, nx)).toFixed(1), y: ay + 27, 'text-anchor': 'middle', 'class': 't-now-l'}, 'now'));
     }
     var ox = x(open);
     svg.appendChild(svgEl('line', {x1: ox.toFixed(1), y1: CHECKS_TOP - 2, x2: ox.toFixed(1), y2: ay, 'class': 'axis'}));
