@@ -85,7 +85,9 @@ def test_a_close_out_that_never_landed_is_paged(lane):
     lane.read(*READS)
     assert lane.run(_at("10:20"))["missed"] == []
     out = lane.run(_at("10:21"))
-    assert out["missed"] == ["10:06"] and "the 10:06 ET close-out has not landed" in lane.sent[0]
+    assert out["missed"] == ["10:06"] and lane.sent[0].startswith(
+        "🔴 SPX pre-market: the 10:06 ET close-out has not landed; a later live read tries again (10:21 ET).")
+    assert "never read later" not in lane.sent[0]
 
 
 def test_a_close_out_that_left_the_call_ungraded_is_paged_once(lane):
@@ -97,7 +99,8 @@ def test_a_close_out_that_left_the_call_ungraded_is_paged_once(lane):
     lane.card(closed=True, tally={"calls": 1, "graded": 0, "right": 0})
     assert lane.run(_at("10:20"))["missed"] == []
     out = lane.run(_at("10:21"))
-    assert out["missed"] == ["10:06"] and "1 pre-market call still ungraded after the 10:06 ET close-out" in lane.sent[0]
+    assert out["missed"] == ["10:06"] and lane.sent[0] == \
+        "🔴 SPX pre-market: 1 pre-market call still ungraded after the 10:06 ET close-out; a later live read tries again (10:21 ET)."
     lane.card(tally={"calls": 1, "graded": 0, "right": 0, "unsure": 0, "closed": 0})
     assert lane.run(_at("10:26"))["missed"] == ["10:06"] and len(lane.sent) == 1
     lane.card(closed=True, tally={"calls": 2, "graded": 1, "right": 1, "unsure": 0, "closed": 1})

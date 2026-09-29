@@ -320,10 +320,22 @@ def deadman_quiet(state_path: Path, today: str) -> tuple[bool | None, str]:
     return True, "the dead-man's switch holds no open outage today"
 
 
+def _premarket_still_to_grade(card: dict) -> int:
+    """The card's calls neither graded nor closed for good; 0 when it carries no tally."""
+    t = card.get("tally")
+    if not isinstance(t, dict):
+        return 0
+    try:
+        return max(0, int(t.get("calls") or 0) - int(t.get("graded") or 0) - int(t.get("closed") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def premarket_fired(lane_dir: Path, now: datetime, first: str, close_out: str,
                     late_min: float) -> tuple[bool | None, str]:
     """On a market day the SPX pre-market job read at every checkpoint today's card names once it is
-    past the lane's late line and a read's run, and past the same after the close-out, that landed too."""
+    past the lane's late line and a read's run, and past the same after the close-out, that landed too and
+    left no call still to grade (the dead-man's rule: the tally's calls less those graded and closed for good)."""
     now = now.astimezone(ET)
     day = now.date()
     if now.weekday() >= 5 or day in market_status._market_holidays(day.year):
@@ -346,7 +358,10 @@ def premarket_fired(lane_dir: Path, now: datetime, first: str, close_out: str,
             if t is not None and t + owed_after <= now]
     problems = [f"no read at the {t:%H:%M} ET checkpoint" for t in owed if f"{t:%H:%M}" not in read]
     closing = now >= at(close_out) + owed_after
-    if closing and not card.get("closed_out_at"):
+    left = _premarket_still_to_grade(card)
+    if closing and left:
+        problems.append(f"{left} pre-market call{'s' if left > 1 else ''} still ungraded after the {close_out} ET close-out")
+    elif closing and not card.get("closed_out_at"):
         problems.append(f"the {close_out} ET close-out has not landed on today's card")
     if problems:
         return False, "; ".join(problems) + f" (a read is owed {late_min:g} + {PREMARKET_RUN_MIN} min after its checkpoint)"
@@ -835,11 +850,12 @@ PRE_DAY = "2026-09-28"                                   # a Monday
 PRE_READS = ("02:35", "03:35", "08:05", "08:48", "09:05", "09:28")
 
 
-def _premarket(tmp_path: Path, read=PRE_READS, reads=PRE_READS, closed=True, day=PRE_DAY) -> Path:
+def _premarket(tmp_path: Path, read=PRE_READS, reads=PRE_READS, closed=True, day=PRE_DAY, tally=None) -> Path:
     """A pre-market lane folder: today's card naming the day's checkpoints, and a read on file at each of ``read``."""
     lane = tmp_path / "premarket"
     _write(lane / "latest.json", {"day": day, "lane": "premarket", "closed_out_at": "2026-09-28T14:06:04+00:00" if closed else None,
-                                  "schedule": {"reads": [f"{day}T{c}:00-04:00" for c in reads], "close_out": f"{day}T10:06:00-04:00"}})
+                                  "schedule": {"reads": [f"{day}T{c}:00-04:00" for c in reads], "close_out": f"{day}T10:06:00-04:00"},
+                                  **({"tally": tally} if tally else {})})
     _write(lane / f"{day}.jsonl", *[{"row_ts": f"{day}T{c}:04-04:00", "checkpoint": c} for c in read])
     return lane
 
@@ -863,6 +879,16 @@ def test_premarket_fired_fails_a_missed_checkpoint_once_its_read_is_owed(tmp_pat
 def test_premarket_fired_fails_a_close_out_that_never_landed(tmp_path):
     ok, why = premarket_fired(_premarket(tmp_path, closed=False), _pre_at("10:21"), "02:35", "10:06", 5)
     assert ok is False and why.startswith("the 10:06 ET close-out has not landed on today's card")
+
+
+def test_premarket_fired_names_a_close_out_that_ran_and_left_a_call_to_grade(tmp_path):
+    """09-28: the close-out ran at 10:06 but the bar for the 30-minute call had not come, so it left the card open. The
+    review says a call is still ungraded, not that the close-out never landed; a call closed for good is not owed."""
+    pending = _premarket(tmp_path, closed=False, tally={"calls": 1, "graded": 0, "right": 0, "unsure": 0, "closed": 0})
+    ok, why = premarket_fired(pending, _pre_at("10:21"), "02:35", "10:06", 5)
+    assert ok is False and why.startswith("1 pre-market call still ungraded after the 10:06 ET close-out")
+    done = _premarket(tmp_path, tally={"calls": 2, "graded": 1, "right": 1, "unsure": 0, "closed": 1})
+    assert premarket_fired(done, _pre_at("10:21"), "02:35", "10:06", 5)[0] is True
 
 
 def test_premarket_fired_reads_europes_checkpoint_from_the_card(tmp_path):

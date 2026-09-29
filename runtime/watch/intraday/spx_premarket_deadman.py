@@ -26,7 +26,8 @@ WHAT IT ASSERTS:
 
 A missed read cannot come back, so there is no recovery page: one page per
 missed checkpoint and one for the close-out, each remembered only once it is
-delivered.
+delivered. Only a checkpoint's page says it is never read later; the live job's
+reads try a close-out again.
 """
 from __future__ import annotations
 
@@ -55,6 +56,9 @@ LATE_FIRE_MIN = 5
 # PREMARKET_RUN_MIN). A read is owed this long after its checkpoint.
 RUN_MIN = 10
 OWED_AFTER_MIN = LATE_FIRE_MIN + RUN_MIN
+# Said only of a missed checkpoint: a close-out's miss is tried again by the live
+# job's reads (service.retry_close_outs).
+NEVER_READ_LATER = " The job fires on its own calendar times; a checkpoint missed is never read later."
 
 _LANE_SUBDIR = Path("spx_jev") / "lanes" / "premarket"
 
@@ -174,14 +178,14 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
                 misses.append((CLOSE_OUT, f"{left} pre-market call{'s' if left > 1 else ''} still ungraded after the "
                                           f"{CLOSE_OUT} ET close-out; a later live read tries again"))
             elif not card.get("closed_out_at"):
-                misses.append((CLOSE_OUT, f"the {CLOSE_OUT} ET close-out has not landed"))
+                misses.append((CLOSE_OUT, f"the {CLOSE_OUT} ET close-out has not landed; a later live read tries again"))
     out["missed"] = [m for m, _ in misses]
 
     for key, what in misses:
         if key in paged:
             continue
-        rec = push.send(f"🔴 SPX pre-market: {what} ({now_et:%H:%M} ET). The job fires on its own "
-                        f"calendar times; a checkpoint missed is never read later.", tag="spx-premarket-deadman")
+        rec = push.send(f"🔴 SPX pre-market: {what} ({now_et:%H:%M} ET)."
+                        f"{'' if key == CLOSE_OUT else NEVER_READ_LATER}", tag="spx-premarket-deadman")
         if not rec.get("dispatched"):
             # the ledger records delivery, not intent: an undelivered page is tried again next tick
             out.setdefault("undelivered", []).append(
