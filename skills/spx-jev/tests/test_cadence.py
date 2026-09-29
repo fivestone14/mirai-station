@@ -111,8 +111,8 @@ def test_a_question_held_until_its_code_answer_changes_is_asked_again_when_it_do
     for same in ({q: "usual"}, {}, None):
         skip, held = plan(DOC, last, {}, now, not_due, {}, "11:32", code_answers=same)
         assert q in skip and held[q]["held_from"] == at(10, 2).isoformat()
-    yesterday = {q: {**last[q], "row_ts": at(10, 2, day=DAY_BEFORE).isoformat()}}
-    assert q in plan(DOC, yesterday, {}, now, not_due, {}, "11:32", code_answers={q: "flatter_than_usual"})[0]
+    no_code = {q: {k: v for k, v in last[q].items() if k != "code_answer"}}   # an answer given beside no code answer holds
+    assert q in plan(DOC, no_code, {}, now, not_due, {}, "11:32", code_answers={q: "flatter_than_usual"})[0]
     one_way = "one_way_hour"                                            # asked on its schedule, never on a code change
     assert one_way in plan(DOC, {one_way: {**last[q], "code_answer": "x"}}, {}, now, {one_way: "not on its schedule"}, {}, "11:32",
                            code_answers={one_way: "y"})[0]
@@ -136,7 +136,7 @@ def test_a_once_only_question_whose_ask_got_no_answer_at_0935_is_asked_at_0940()
     answered = {q: {"row_ts": at(9, 40).isoformat(), "answer": ANSWER}}          # the re-ask was answered: never asked again
     skip, held = plan(TAPE_DOC, answered, {}, at(9, 45), not_due(TAPE_DOC, TAPE, at(9, 45)), {}, "09:45", learned=False)
     assert q in skip and held[q]["held_from"] == at(9, 40).isoformat()
-    yesterday = {q: {"lost": {"row_ts": at(9, 35, day=DAY_BEFORE).isoformat(), "why": NO_ANSWER_503}}}
+    yesterday = {q: {"row_ts": at(9, 35).isoformat(), "answer": ANSWER, "lost": {"row_ts": at(9, 35, day=DAY_BEFORE).isoformat(), "why": NO_ANSWER_503}}}
     assert q in plan(TAPE_DOC, yesterday, {}, at(9, 40), due, {}, "09:40", learned=False)[0]
     assert q in plan(TAPE_DOC, lost, {}, at(12, 0), {q: "no tape lane read at 12:00 ET"}, {}, None, learned=False)[0]
 
@@ -174,6 +174,37 @@ def test_mondays_lost_opening_answers_are_asked_again_at_0940_and_held_by_the_li
     live_doc, later = load_questions(LIVE_LANE.questions, LIVE_LANE.key), at(10, 30, day=monday, ss=46)
     skip, held = plan(live_doc, {}, {}, later, not_due(live_doc, LIVE_LANE, later), answered, read_slot(LIVE_LANE, later))
     assert {q: held[q]["held_from"] for q in lost_ids[:3]} == dict.fromkeys(lost_ids[:3], now.isoformat())
+
+
+def test_a_day_constant_whose_one_read_held_nothing_is_asked_at_the_next_read_then_held():
+    """2026-09-28: btc_five_day_lead slept at the tape lane's 09:35 read and was never asked, yet every later read
+    said "asked at 09:35 ET and held" with nothing held. A day constant with no answer from today is asked at the
+    next read, and a held one's reason names the read its answer came from."""
+    q = "btc_five_day_lead"
+    assert TAPE_DOC and any(q in g["questions"] for g in TAPE_DOC["groups"])
+    due = not_due(TAPE_DOC, TAPE, at(9, 40))
+    assert due[q] == "a day constant: asked at 09:35 ET and held"
+    for nothing_today in ({}, {q: {"row_ts": at(9, 35, day=DAY_BEFORE).isoformat(), "answer": ANSWER}}):
+        skip, held = plan(TAPE_DOC, nothing_today, {}, at(9, 40), due, {}, "09:40", learned=False)
+        assert q not in skip and q not in held
+    answered = {q: {"row_ts": at(9, 40).isoformat(), "answer": ANSWER}}
+    skip, held = plan(TAPE_DOC, answered, {}, at(9, 45), not_due(TAPE_DOC, TAPE, at(9, 45)), {}, "09:45", learned=False)
+    assert skip[q] == "a day constant: asked at 09:40 ET and held" and held[q]["held_from"] == at(9, 40).isoformat()
+    assert q in plan(TAPE_DOC, {}, {}, at(12, 0), {q: "no tape lane read at 12:00 ET"}, {}, None, learned=False)[0]
+
+
+def test_a_question_held_from_its_other_lane_says_whether_that_lane_had_an_answer():
+    """The live lane holds open_vs_prior_range from the tape lane until 11:32: its reason names the tape lane's read,
+    or says there was nothing to hold, rather than claiming a held answer the read does not have."""
+    q = "open_vs_prior_range"
+    now = at(10, 32)
+    due = {q: "asked on its other lane and held here until 11:32 ET"}
+    skip, held = plan(DOC, {}, {}, now, due, {q: {"row_ts": at(9, 40).isoformat(), "answer": ANSWER}}, "10:32")
+    assert skip[q] == "asked on its other lane at 09:40 ET and held here until 11:32 ET" and q in held
+    skip, held = plan(DOC, {}, {}, now, due, {}, "10:32")
+    assert skip[q] == "asked on its other lane only, which has no answer from today to hold here" and q not in held
+    late = {q: "held from its other lane only until 11:32 ET"}
+    assert plan(DOC, {}, {}, at(12, 2), late, {}, "12:02")[0][q] == late[q]
 
 
 def test_recount_sets_every_read_for_a_flipper_and_slower_for_a_holder():

@@ -4,6 +4,8 @@ The question's schedule (schedule.py) says when it may be asked at all; the cade
 that out on the live lane. Between fresh answers the last answer is held, and a question its schedule
 does not ask at a read holds too: a day constant (asked at 09:35, or at 10:02, and held) all day, a
 question held from its other lane until the hour its schedule names, and an hourly one while young.
+A day constant with no answer from today to hold (its one read was skipped, it slept there or its label
+was missing) is asked at the lane's next read instead, and held from that answer on.
 A day constant whose schedule says ``then`` (re-asked when the code's answer changes) is asked again
 on the first read whose code answer differs from the one the code had when its held answer was given.
 Only this side is built: nothing works out a code answer yet, so the service passes plan() none and
@@ -205,16 +207,37 @@ def scheduled_hold(q: dict, entry: dict | None, borrowed: dict | None, now: date
     return held_answer(entry, now, minutes)
 
 
+def past_its_reads(q: dict, slot: str | None) -> bool:
+    """Whether the read ``slot`` comes after the last read a day constant is asked at."""
+    sched = q.get("schedule") or {}
+    return slot is not None and holds_for_the_day(sched) and slot > sched["at"][-1]
+
+
+def hold_reason(q: dict, h: dict | None, slot: str) -> str | None:
+    """The skip reason of a question its schedule leaves out at the read ``slot``, worded from what scheduled_hold
+    found (``h``); None where the schedule's own reason stands (schedule.not_due)."""
+    sched = q.get("schedule") or {}
+    since = f"{parse_ts(h['held_from']):%H:%M} ET" if h else None
+    if holds_for_the_day(sched) and h:
+        return f"a day constant: asked at {since} and held"
+    if "hold_until" in sched and slot <= sched["hold_until"]:
+        return (f"asked on its other lane at {since} and held here until {sched['hold_until']} ET" if h
+                else "asked on its other lane only, which has no answer from today to hold here")
+    return None
+
+
 def plan(doc: dict, last: dict, cad: dict, now: datetime, not_due: dict[str, str] | None = None, borrowed: dict | None = None,
          slot: str | None = None, learned: bool = True,
          code_answers: dict[str, str] | None = None) -> tuple[dict[str, str], dict[str, dict]]:
     """Which questions to leave out of this read, with the answer to hold for each live one. ``not_due``
     is what the schedule leaves out at the read ``slot`` (schedule.not_due, schedule.read_slot), each
     holding by scheduled_hold, unless the code's answer this read (``code_answers``) moved it
-    (code_answer_moved); ``borrowed`` is the other lane's last-asked answers. With ``learned`` a live
-    question that is due is also left out while its cadence has not elapsed. A live question whose last
-    ask today got no answer (lost_today) is asked at any read of the lane. Shadow questions are
-    forecasts: never held, asked when due."""
+    (code_answer_moved); ``borrowed`` is the other lane's last-asked answers. A day constant past its
+    reads with no answer from today to hold (its read was skipped, it slept or its label was missing) is
+    asked at this read. A question held by its schedule says what it holds and since when (hold_reason).
+    With ``learned`` a live question that is due is also left out while its cadence has not elapsed. A
+    live question whose last ask today got no answer (lost_today) is asked at any read of the lane.
+    Shadow questions are forecasts: never held, asked when due."""
     skip: dict[str, str] = dict(not_due or {})
     held: dict[str, dict] = {}
     for g in doc["groups"]:
@@ -230,8 +253,13 @@ def plan(doc: dict, last: dict, cad: dict, now: datetime, not_due: dict[str, str
                 continue
             if qid in skip:
                 h = scheduled_hold(q, last.get(qid), (borrowed or {}).get(qid), now, slot, minutes)
+                if h is None and past_its_reads(q, slot):
+                    del skip[qid]                  # nothing from today to hold: its ask never happened, so ask it now
+                    continue
                 if h is not None:
                     held[qid] = h
+                if slot is not None and (why := hold_reason(q, h, slot)):
+                    skip[qid] = why
                 continue
             if not learned:
                 continue

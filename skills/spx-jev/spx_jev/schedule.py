@@ -6,7 +6,8 @@ lane's). An entry is one of:
     {"every_min": 30, "from": "10:02", "to": "15:32"}     asked on the lane's reads in the window, every
                                                         every_min minutes counted from the window's first read
     {"at": ["09:35"], "hold": true}                     asked at those reads only; after the last, its answer
-                                                        is held for the rest of the day (a day constant)
+                                                        is held for the rest of the day (a day constant), or,
+                                                        with none from today, asked at the next read (cadence.plan)
     {"at": ["10:02"], "then": "..."}                    the same: asked, then held (re-asking when the code's
                                                         answer changes is not built)
     {"at": ["15:02", "15:32"]}                          asked at those reads only

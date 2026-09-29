@@ -319,8 +319,13 @@ def test_a_live_tape_send_stands_for_the_read_its_job_fired_at_and_a_replay_for_
     monkeypatch.setattr(service, "now_et", lambda: at(9, 38, ss=5))
     sent = {q["id"]: q for q in run_once(root, tmp_path / "sent", doc, True, None, lane=TAPE)["questions"]}
     assert sent["q_const"]["answer"]["pick"] == "a" and sent["q_every"]["skipped"] == "not on its schedule at the 09:35 ET read"
+    (tmp_path / "replay").mkdir()                                          # the replay's 09:35 answer, for its 09:37 bar to hold
+    (tmp_path / "replay" / "last_asked.json").write_text(json.dumps(
+        {"q_const": {"row_ts": at(9, 35).isoformat(), "answer": {"pick": "a", "probabilities": {"a": 1.0}}}}))
     replay = {q["id"]: q for q in run_once(root, tmp_path / "replay", doc, True, DAY, lane=TAPE)["questions"]}
-    assert replay["q_const"]["skipped"] == "a day constant: asked at 09:35 ET and held" and replay["q_every"]["answer"]["pick"] == "a"
+    assert replay["q_const"]["held_from"] == at(9, 35).isoformat() and replay["q_every"]["answer"]["pick"] == "a"
+    record = json.loads((tmp_path / "replay" / f"{DAY}.jsonl").read_text().splitlines()[-1])
+    assert {why for g in record["skipped"].values() for q, why in g.items() if q == "q_const"} == {"a day constant: asked at 09:35 ET and held"}
 
 
 def test_a_grading_error_in_the_close_out_is_logged_and_the_card_and_record_are_still_written(tmp_path, monkeypatch, capsys):
