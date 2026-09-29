@@ -5,7 +5,7 @@
   "tier 1: the Fed's rate decisions and press conferences, the Fed chair's testimony and keynotes, index rebalance, quarterly-expiry and quarter-end closes, half-day closes. The service tags a read with every tier-1 event due in the next 60 minutes (spx_jev/events.py); a read with one due in the next 30 minutes is graded but kept out of what the question weights learn from. Nothing is suppressed and JEV never sees the tag. Copied on 2026-09-26 from skills/sndk-jev/calendar/events.json, less SanDisk's own events.",
   "The other tiers feed only the event labels (spx_jev/labels/events_shocks.py) and, for pre_open, the premarket lane's report window (spx_jev/story.py): pre_open (the releases before the open, from 2026-08-01: at 08:30 jobs, consumer, producer and import prices, PCE, GDP, retail sales, durable goods, the trade balance, housing starts, productivity, the employment cost index, the New York and Philadelphia Fed manufacturing surveys and weekly jobless claims; at 08:15 ADP's private payrolls; the session's event labels leave out the minor ones, ADP, durable goods, the trade balance, housing starts, import prices, productivity, the employment cost index and the two Fed surveys, events.MINOR_PRE_OPEN), data_10am (ISM, job openings, consumer confidence and sentiment), data_2pm (the Fed's minutes) and fed_speaker (the Board's own scheduled remarks from federalreserve.gov, hand-kept a week or two ahead; the regional presidents are not listed). A speaker row with q_and_a true takes audience or moderator questions.",
   "A row with verified false follows a rule, not a published date, and the labels word it as expected.",
-  "A row with end_et is under way from time_et until end_et: the service tags it and the labels read it as under way, not released. The Fed publishes no end time, so end_et is the usual length: the press conference an hour, the chair's testimony two and a half hours, the Jackson Hole speech half an hour. A speaker row without one is taken to run an hour."
+  "A row with end_et is under way from time_et until end_et: the service tags it and the labels read it as under way, not released. The Fed publishes no end time, so end_et is the usual length: the press conference an hour, the chair's testimony two and a half hours, the Jackson Hole speech half an hour, a Fed speaker's remarks and questions an hour. A speaker row without one is taken to run an hour (events.SPEAKER_MIN)."
  ],
  "built": "2026-09-27",
  "covers_from": "2026-09-01",
@@ -464,6 +464,7 @@
   {
    "date": "2026-09-22",
    "time_et": "09:30",
+   "end_et": "10:30",
    "kind": "FED_VICE_CHAIR_SUPERVISION_SPEECH",
    "scope": "market",
    "tier": "fed_speaker",
@@ -476,6 +477,7 @@
   {
    "date": "2026-09-23",
    "time_et": "10:20",
+   "end_et": "11:20",
    "kind": "FED_VICE_CHAIR_SPEECH",
    "scope": "market",
    "tier": "fed_speaker",
@@ -519,6 +521,7 @@
   {
    "date": "2026-09-28",
    "time_et": "10:05",
+   "end_et": "11:05",
    "kind": "FED_GOVERNOR_SPEECH",
    "scope": "market",
    "tier": "fed_speaker",
@@ -551,6 +554,7 @@
   {
    "date": "2026-09-29",
    "time_et": "12:40",
+   "end_et": "13:40",
    "kind": "FED_GOVERNOR_SPEECH",
    "scope": "market",
    "tier": "fed_speaker",
@@ -563,6 +567,7 @@
   {
    "date": "2026-09-29",
    "time_et": "13:25",
+   "end_et": "14:25",
    "kind": "FED_GOVERNOR_SPEECH",
    "scope": "market",
    "tier": "fed_speaker",
@@ -605,6 +610,7 @@
   {
    "date": "2026-09-30",
    "time_et": "15:00",
+   "end_et": "16:00",
    "kind": "FED_GOVERNOR_SPEECH",
    "scope": "market",
    "tier": "fed_speaker",
@@ -647,6 +653,7 @@
   {
    "date": "2026-10-01",
    "time_et": "10:00",
+   "end_et": "11:00",
    "kind": "FED_GOVERNOR_SPEECH",
    "scope": "market",
    "tier": "fed_speaker",
@@ -659,6 +666,7 @@
   {
    "date": "2026-10-01",
    "time_et": "13:30",
+   "end_et": "14:30",
    "kind": "FED_VICE_CHAIR_SPEECH",
    "scope": "market",
    "tier": "fed_speaker",
@@ -671,6 +679,7 @@
   {
    "date": "2026-10-01",
    "time_et": "15:00",
+   "end_et": "16:00",
    "kind": "FED_VICE_CHAIR_SUPERVISION_SPEECH",
    "scope": "market",
    "tier": "fed_speaker",
@@ -683,6 +692,7 @@
   {
    "date": "2026-10-01",
    "time_et": "15:30",
+   "end_et": "16:30",
    "kind": "FED_GOVERNOR_SPEECH",
    "scope": "market",
    "tier": "fed_speaker",

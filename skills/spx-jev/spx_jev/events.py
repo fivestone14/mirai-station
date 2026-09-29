@@ -32,6 +32,7 @@ TIER = "1"
 PRE_OPEN, DATA_10AM, DATA_2PM, FED_SPEAKER = "pre_open", "data_10am", "data_2pm", "fed_speaker"
 LEARN_TIERS = frozenset({TIER, DATA_10AM, DATA_2PM, FED_SPEAKER})   # kept out of the learning loop (learn_exclude)
 WINDOW_MIN = 60          # tagged when due within the longer graded horizon
+SPEAKER_MIN = 60         # a Fed speaker row with no end_et runs this long, remarks and questions (the calendar's own note)
 HOLD_OUT_MIN = 30        # kept out of the weights when due within the primary one
 
 WORDS = {
@@ -112,7 +113,8 @@ class Calendar:
 @lru_cache(maxsize=4)
 def _load(path: str) -> Calendar:
     """Every readable row, by start. A row that is not a dict or has no readable date and time is left
-    out; a broken file gives an empty calendar that covers nothing, never an error."""
+    out; a broken file gives an empty calendar that covers nothing, never an error. A Fed speaker row with no
+    end_et ends SPEAKER_MIN after it starts, so a read taken while one speaks is under way, not after it."""
     try:
         doc = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -129,6 +131,8 @@ def _load(path: str) -> Calendar:
             end = datetime.fromisoformat(f"{e['date']}T{e['end_et']}").replace(tzinfo=ET) if e.get("end_et") else None
         except (KeyError, TypeError, ValueError):
             continue
+        if end is None and e.get("tier") == FED_SPEAKER:
+            end = start + timedelta(minutes=SPEAKER_MIN)
         out.append(Event(start, end if end and end > start else None, str(e.get("kind", "event")), str(e.get("tier")),
                          e.get("verified") is not False, e.get("q_and_a") is True))
     through, since, pre_open_since = (_day(doc.get(k)) for k in ("covers_through", "covers_from", "pre_open_covers_from"))

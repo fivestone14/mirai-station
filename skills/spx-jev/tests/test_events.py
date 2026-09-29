@@ -102,6 +102,20 @@ def test_the_shipped_calendars_press_conferences_testimony_and_jackson_hole_have
     assert events.tag(t("2026-10-28T15:30")) is None
 
 
+def test_a_read_taken_while_a_fed_speaker_speaks_is_kept_out_of_what_the_loop_learns(tmp_path):
+    """Tuesday 09-29: Governor Barr from 12:40, questions included. The speaker rows carried no end, so the 13:02 read,
+    twenty minutes into the conversation, was learned from as an ordinary half hour. Every shipped speaker row now has
+    an end, and a row without one runs SPEAKER_MIN."""
+    events._load.cache_clear()
+    shipped = [e for e in events._load(str(events.CALENDAR)).events if e.tier == events.FED_SPEAKER]
+    assert shipped and all(e.end is not None for e in shipped)
+    assert events.learn_exclude(t("2026-09-29T13:02"), (30, 60)) == {"30": True, "60": True}
+    p = _cal(tmp_path, [{"date": "2026-10-01", "time_et": "10:00", "kind": "FED_GOVERNOR_SPEECH", "tier": "fed_speaker"}], "2026-10-31")
+    assert events.on_day(date(2026, 10, 1), p)[0].end == t("2026-10-01T11:00")
+    assert events.learn_exclude(t("2026-10-01T10:32"), (30,), p) == {"30": True}
+    assert events.learn_exclude(t("2026-10-01T11:02"), (30,), p) == {"30": False}
+
+
 def test_other_tiers_are_read_by_the_labels_with_their_flags_and_never_tagged(tmp_path):
     p = _cal(tmp_path, [{"date": "2026-10-01", "time_et": "10:00", "kind": "ISM_MANUFACTURING", "tier": "data_10am", "verified": False},
                         {"date": "2026-10-01", "time_et": "10:00", "kind": "FED_GOVERNOR_SPEECH", "tier": "fed_speaker", "q_and_a": True},
