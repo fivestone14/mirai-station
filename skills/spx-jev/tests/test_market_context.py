@@ -41,6 +41,28 @@ def test_a_snapshot_quotes_what_schwab_quotes_and_takes_a_finished_bar_for_bread
     assert mk.last("XLK", at(10, 3)) == 100.0 and mk.last("$TICK", at(10, 3)) == 310.0
 
 
+def test_each_run_saves_every_finished_breadth_minute_not_yet_on_file(tmp_path, monkeypatch):
+    """09-28: runs land about 70 s apart and one kept only its newest bar, so one breadth minute in six was never
+    saved, nor any minute of a run that failed; the next run fetches them all and now keeps them."""
+    _no_sleep(monkeypatch)
+    monkeypatch.setattr(schwab, "quotes", lambda symbols: {})
+    served = [_bar(at(9, 57), 1.0), _bar(at(9, 58), 2.0), _bar(at(9, 59), 3.0), _bar(at(10, 0), 4.0), _bar(at(10, 1), 5.0)]
+    monkeypatch.setattr(schwab, "minute_bars", lambda symbol, start, end: served)
+    append_snapshot(tmp_path, snapshot(at(9, 58, ss=10)))
+    line = snapshot(at(10, 2, ss=5), market_context.saved_bars(tmp_path, date.fromisoformat(DAY)))
+    assert line["bars"]["$TICK"]["close"] == 5.0
+    assert [minute["$TICK"]["close"] for minute in line["earlier"]] == [2.0, 3.0, 4.0]      # 09:57 was on file
+    append_snapshot(tmp_path, line)
+    lines = [json.loads(l) for l in (tmp_path / "spx_jev" / "context" / f"{DAY}.jsonl").read_text().splitlines()]
+    assert [set(l) for l in lines[1:]] == [{"ts", "bars"}] * 3 + [{"ts", "quotes", "bars", "failed"}]
+    assert all(l["ts"] == line["ts"] for l in lines[1:])
+    mk = load_market_context(tmp_path, DAY)
+    assert mk.between("$TICK", at(9, 57), at(10, 2)) == [1.0, 2.0, 3.0, 4.0, 5.0] == mk.between("$TRIN", at(9, 57), at(10, 2))
+    append_snapshot(tmp_path, snapshot(at(10, 2, ss=50), market_context.saved_bars(tmp_path, date.fromisoformat(DAY))))
+    assert "earlier" not in json.loads((tmp_path / "spx_jev" / "context" / f"{DAY}.jsonl").read_text().splitlines()[-1])
+    assert len((tmp_path / "spx_jev" / "context" / f"{DAY}.jsonl").read_text().splitlines()) == 6
+
+
 def test_a_failed_call_costs_only_what_it_would_have_fetched(monkeypatch):
     _no_sleep(monkeypatch)
 
