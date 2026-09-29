@@ -137,6 +137,7 @@ def test_a_close_out_whose_bar_has_not_come_leaves_the_call_open_and_a_later_liv
     assert service.main(["--state-dir", str(state), "--lane", "tape"]) == 0
     c = json.loads((out / "latest.json").read_text())
     assert waited == [at(10, 40)] and "closed_out_at" not in c and c["tally"]["graded"] == 0
+    assert c["graded_at"]                                                         # the phone redraws on it all the same
     archive = state / "spx_jev" / "archive" / f"{DAY}.jsonl"
 
     def tape_kinds():
@@ -147,7 +148,7 @@ def test_a_close_out_whose_bar_has_not_come_leaves_the_call_open_and_a_later_liv
     monkeypatch.setattr(service, "now_et", lambda: at(11, 2))
     assert service.main(["--state-dir", str(state)]) == 0                         # the live lane's 11:02 run
     c = json.loads((out / "latest.json").read_text())
-    assert c["closed_out_at"] and c["tally"] == {"calls": 1, "graded": 1, "right": 1, "unsure": 0, "closed": 0}
+    assert c["closed_out_at"] == c["graded_at"] and c["tally"] == {"calls": 1, "graded": 1, "right": 1, "unsure": 0, "closed": 0}
     assert tape_kinds() == ["read", "close_out", "grade", "close_out"]
     assert service.main(["--state-dir", str(state)]) == 0                         # closed out: a later live run leaves it be
     assert json.loads((out / "latest.json").read_text()) == c

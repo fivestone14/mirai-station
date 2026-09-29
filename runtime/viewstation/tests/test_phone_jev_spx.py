@@ -219,6 +219,17 @@ def test_a_call_closed_for_good_is_never_graded_on_the_page_not_still_to_grade()
                                               "opening done3 of 9 graded calls right, 2 still to grade, 1 never graded",
                                               "opening done3 of 9 committed calls right, 2 unsure, 1 never graded"]
 
+
+def test_a_close_out_that_leaves_a_call_to_grade_still_redraws_the_page():
+    """09-28: the close-out graded the pre-market open_10 check but not open_30, whose bar had not come, so the card kept
+    its read's generated_at and no closed_out_at, and an open page kept the ungraded card until a later run graded
+    both. Every close-out run stamps graded_at, and the page's test for a new card reads it."""
+    read = {"generated_at": "2026-09-28T13:50:05+00:00", "row_ts": "2026-09-28T09:34:00-04:00"}
+    partial = {**read, "graded_at": "2026-09-28T14:06:07+00:00"}
+    done = {**partial, "graded_at": "2026-09-28T15:02:40+00:00", "closed_out_at": "2026-09-28T15:02:40+00:00"}
+    sigs = _run(_fn("sig") + "console.log(JSON.stringify(D.c.map(sig)));", {"c": [read, partial, done, None]})
+    assert len(set(sigs)) == 4 and sigs[3] == ""
+
 # ---- the schedule stays on the market clock
 
 

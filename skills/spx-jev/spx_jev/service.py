@@ -668,7 +668,8 @@ def close_out(state_dir: Path, out_dir: Path, doc: dict, lane: Lane, day: str | 
     """A lane's run after its last read (lane.close_out): grade every mark that has passed and refresh
     the calls and the day's tally on the card the last read wrote. JEV is asked nothing and no read is
     recorded (the archive gets a close-out record), so the morning's last calls are graded the same
-    day. The card is stamped ``closed_out_at`` only once no call is left to grade: a mark whose bar has
+    day. Every run stamps the card ``graded_at``, so the phone redraws a close-out that graded some calls and
+    not others. The card is stamped ``closed_out_at`` only once no call is left to grade: a mark whose bar has
     not come keeps it open, the phone keeps asking for it, and each live run tries again (retry_close_outs).
     A ``retry`` archives a close-out record only when its tally moved. None when the lane did not read
     on ``day``, today unless a replay names one."""
@@ -683,10 +684,11 @@ def close_out(state_dir: Path, out_dir: Path, doc: dict, lane: Lane, day: str | 
     calls = day_calls(out_dir, day, lane)
     before = c.get("tally")
     c.update(calls_block(calls))
+    c["graded_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     if still_to_grade(c["tally"]):
         c.pop("closed_out_at", None)
     else:
-        c["closed_out_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        c["closed_out_at"] = c["graded_at"]
     write_card(out_dir, c)
     if not retry or c["tally"] != before:
         archive.append(lane.archive_folder(state_dir, out_dir), day, archive.CloseOutRecord(lane=lane.name, day=day, calls=calls, tally=c["tally"]))

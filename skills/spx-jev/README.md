@@ -247,8 +247,9 @@ The card carries: `symbol`, `generated_at`, `row_ts`, `freshness`, `sigma`,
 unsure is counted under `unsure`, an abstention, never among the calls right
 or wrong), `marks`, `session` (`close` and `last_read`), `expiries` (today's
 settle, the next expiry's, the next monthly's, and what expires today), and on
-the opening lane `lane`, `ruler`, `band`, `stretch`, `schedule` and, after the
-close-out, `closed_out_at`.
+the opening lane `lane`, `ruler`, `band`, `stretch`, `schedule`, `graded_at`
+(each close-out run's, which the phone redraws on) and, once every call is
+graded or closed for good, `closed_out_at`.
 
 The before-the-open card (`lanes/premarket/latest.json`) carries the day, the
 read's checkpoint, `freshness` (how old /ES was at the read and what the spot

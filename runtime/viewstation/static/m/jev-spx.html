@@ -1133,7 +1133,9 @@ details .q{margin-top:8px}
     return true;
   }
   var tapeInflight = false, tapeTimer = null;
-  function sig(x){ return x ? [x.generated_at, x.row_ts, x.closed_out_at || ''].join('|') : ''; }
+  // what makes a lane card new: a read, or a close-out's grading (graded_at, on every close-out run, even one that
+  // leaves a call to grade)
+  function sig(x){ return x ? [x.generated_at, x.row_ts, x.graded_at || '', x.closed_out_at || ''].join('|') : ''; }
   function pollTape(){
     if(!within(LANE_HOURS)){ if(tape){ tape = null; if(last) draw(last, lastOk); } return; }
     if(!tapeTimer) armTapeMark();
