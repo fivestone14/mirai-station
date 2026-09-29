@@ -13,8 +13,8 @@ The experts, per horizon:
     jev_share_S   S * J + (1 - S) * R for S in JEV_SHARES, J being JEV's sum with its unsure mass spread
                   by R: the fixed JEV-trust mixes; jev_share_0.0 is R itself
     blend50       today's half-and-half blend with the live clock, JEV's unsure mass spread by the clock
-    clock         the frozen time-of-day odds, uncalibrated
-    clock_cal     the same, calibrated (the same forecast as R)
+    baseline      the frozen time-of-day odds, uncalibrated
+    baseline_cal  the same, calibrated (the same forecast as R)
     questions     the question block: "no change" (R) against one expert per live question, each R tilted
                   by how often that question's answers came before each outcome, mixed by their own weights
 
@@ -33,6 +33,13 @@ the awake members' mix, as sleeping experts do). A question is labelled earning 
 over every question version ever tested; the pool becomes eligible for the phone only once its
 e-process against the exact blend reaches PROMOTE_E after MIN_DAYS days, and steps back on the same
 kind of test. It runs at the first grading run after a session ends (PoolWeights.learn).
+
+The reference's two experts and its raw odds on a snapshot (``raw_baseline``) are named by the
+reference's source (w0): ``baseline`` here, ``clock`` in the average-price loop (integral_loop.py),
+whose reference is the live time-of-day odds. The state and every snapshot keep the reference's
+version as ``reference_version``. A state or a snapshot written before these names (``clock``,
+``clock_cal``, ``raw_clock`` and ``baseline`` for the frozen odds and their version, until
+2026-09-29) is read under them (renamed, legacy_snapshot).
 
 Nothing here changes JEV's prompt: every live question keeps its sentence and weighs 1.0 in step 3.
 The phone keeps today's exact 50/50 blend until the pool is promoted (at least MIN_DAYS days, its
@@ -79,7 +86,15 @@ SIM_GATES_PASSED = False
 
 JEV_SHARES = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
 REFERENCE = "jev_share_0.0"
-W0 = {**{f"jev_share_{s:.1f}": 0.05 for s in JEV_SHARES}, "blend50": 0.30, "clock": 0.05, "clock_cal": 0.05, "questions": 0.30}
+SOURCE = "baseline"             # this loop's reference: the frozen time-of-day odds (baseline.py)
+
+
+def w0(source: str) -> dict[str, float]:
+    """The experts' prior weights, the reference's two named by its ``source`` (``baseline`` or ``clock``)."""
+    return {**{f"jev_share_{s:.1f}": 0.05 for s in JEV_SHARES}, "blend50": 0.30, source: 0.05, f"{source}_cal": 0.05, "questions": 0.30}
+
+
+W0 = w0(SOURCE)
 NO_CHANGE = "no_change"         # the block's reference member: R, untilted
 NO_CHANGE_PRIOR = 0.20          # its share of the block's prior; the questions share the rest
 ETA = 1.0                       # one day is one observation, and log loss is 1-exp-concave
@@ -110,6 +125,9 @@ CONSTANTS = {"eps": EPS, "eta": ETA, "alpha": ALPHA, "day_step_cap": DAY_STEP_CA
              "cap_bind_window": CAP_BIND_WINDOW, "cap_bind_limit": CAP_BIND_LIMIT}
 CONSTANTS_HASH = hashlib.sha256(json.dumps(CONSTANTS, sort_keys=True).encode()).hexdigest()[:16]
 CODE_HASH = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:16]
+# the same constants under the names this loop's experts had before they were named by their source
+LEGACY_NAMES = {"clock": "baseline", "clock_cal": "baseline_cal", "raw_clock": "raw_baseline"}
+LEGACY_CONSTANTS_HASH = hashlib.sha256(json.dumps({**CONSTANTS, "w0": w0("clock")}, sort_keys=True).encode()).hexdigest()[:16]
 
 
 def question_version(q: dict) -> str:
@@ -161,10 +179,10 @@ def _new_evidence() -> dict:
             "status": {"move": None, "direction": None, "suppressed": False}}
 
 
-def cold_state() -> dict:
+def cold_state(source: str = SOURCE) -> dict:
     """Monday's state: every weight at its prior, empty tables, every e-value 1, the phone on the blend."""
-    return {"constants_hash": CONSTANTS_HASH, "baseline": None,
-            "top": {side: _logs(W0) for side in SIDES}, "block": {side: {NO_CHANGE: 0.0} for side in SIDES},
+    return {"constants_hash": CONSTANTS_HASH, "reference_version": None,
+            "top": {side: _logs(w0(source)) for side in SIDES}, "block": {side: {NO_CHANGE: 0.0} for side in SIDES},
             "members": {}, "tables": {}, "cal": {"O": {k: 0.0 for k in OUTCOMES}, "E": {k: 0.0 for k in OUTCOMES}},
             "evidence": {}, "family": [], "archived": {},
             "phone": {"shows": "blend", "since": None, "promote": new_eprocess(), "demote": new_eprocess(), "harm_60": new_eprocess()},
@@ -177,9 +195,33 @@ def state_path(out_dir: Path, minutes: int) -> Path:
 
 def load_state(out_dir: Path, minutes: int) -> dict:
     try:
-        return json.loads(state_path(out_dir, minutes).read_text(encoding="utf-8"))
+        state = json.loads(state_path(out_dir, minutes).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return cold_state()
+    return renamed(state, LEGACY_NAMES, (LEGACY_CONSTANTS_HASH, CONSTANTS_HASH))
+
+
+def renamed(state: dict, experts: dict[str, str] | None = None, hashes: tuple[str, str] | None = None) -> dict:
+    """A saved state under the names it is read by now: its reference's version as ``reference_version`` (``baseline``
+    before), and, learned under ``hashes[0]``, the same constants under the old names, its experts renamed by
+    ``experts`` and its constants_hash ``hashes[1]``, so the loop carries on where it stood."""
+    if "baseline" in state and "reference_version" not in state:
+        state["reference_version"] = state.pop("baseline")
+    if hashes and state.get("constants_hash") == hashes[0]:
+        for side in SIDES:
+            state["top"][side] = {(experts or {}).get(n, n): v for n, v in state["top"][side].items()}
+        state["constants_hash"] = hashes[1]
+    return state
+
+
+def legacy_snapshot(snap: dict) -> dict:
+    """A snapshot this loop wrote on a read before its experts were named by their source, under today's names."""
+    if "raw_clock" not in snap:
+        return snap
+    out = {LEGACY_NAMES.get(k, k): v for k, v in snap.items() if k != "baseline"}
+    out["experts"] = {LEGACY_NAMES.get(n, n): f for n, f in snap["experts"].items()}
+    out["reference_version"] = snap.get("baseline")
+    return out
 
 
 def _rounded(x):
@@ -267,8 +309,8 @@ def _r4(p: dict[str, float]) -> dict[str, float]:
     return {k: round(v, 4) for k, v in p.items()}
 
 
-def snapshot(state: dict, baseline: "Baseline", h: str, now: datetime, jev: dict, live_clock: dict | None, shown: dict,
-             answers: dict[str, dict[str, float]], members: dict[str, str], fresh: set[str]) -> dict:
+def snapshot(state: dict, reference: "Baseline", h: str, now: datetime, jev: dict, live_clock: dict | None, shown: dict,
+             answers: dict[str, dict[str, float]], members: dict[str, str], fresh: set[str], source: str = SOURCE) -> dict:
     """Every forecast of one horizon at one read, as the update will score it: the experts, the block's
     members and mixture, the pool with its P(move) and P(up | move), the exact blend as the phone showed
     it, the raw clock the calibration learns from, the questions' soft answers and which were awake
@@ -279,14 +321,14 @@ def snapshot(state: dict, baseline: "Baseline", h: str, now: datetime, jev: dict
     expert cannot be formed."""
     if not live_clock:
         return {"left_out": "no time-of-day odds this read, so today's blend is JEV alone and blend50 cannot be formed"}
-    raw_clock, long_run = baseline.clock(h, now), baseline.whole_day(h)
-    cal = state["cal"] if state["baseline"] in (None, baseline.version) else cold_state()["cal"]
-    r = calibrated(raw_clock, cal, long_run)
+    raw, long_run = reference.clock(h, now), reference.whole_day(h)
+    cal = state["cal"] if state["reference_version"] in (None, reference.version) else cold_state()["cal"]
+    r = calibrated(raw, cal, long_run)
     j = spread_unsure(jev, r)
     experts = {f"jev_share_{s:.1f}": {k: s * j[k] + (1 - s) * r[k] for k in OUTCOMES} for s in JEV_SHARES}
     c = {k: float(live_clock.get(k, 0.0)) for k in OUTCOMES}
     jc = spread_unsure(jev, c)
-    experts.update({"blend50": {k: 0.5 * jc[k] + 0.5 * c[k] for k in OUTCOMES}, "clock": raw_clock, "clock_cal": r})
+    experts.update({"blend50": {k: 0.5 * jc[k] + 0.5 * c[k] for k in OUTCOMES}, source: raw, f"{source}_cal": r})
     awake = sorted(q for q in answers if q in members)
     member_f = {NO_CHANGE: floored(r), **{q: floored(tilted(r, answers[q], state["tables"].get(q), long_run)) for q in awake}}
     # a question that is not yet a member (it joins at the next update) is written down but not mixed
@@ -296,9 +338,9 @@ def snapshot(state: dict, baseline: "Baseline", h: str, now: datetime, jev: dict
     return {"experts": {n: _r4(f) for n, f in experts.items()}, "block_members": {n: _r4(f) for n, f in member_f.items()},
             "pool": _r4(floored(pool)), "p_move": round(move_of(pool), 4), "p_up_given_move": round(direction_of(pool), 4),
             "blend50_exact": {k: round(float(v), 4) for k, v in shown.items() if isinstance(v, (int, float))},
-            "raw_clock": _r4(raw_clock), "q_probs": {q: _r4(answers[q]) for q in awake}, "awake": awake,
+            f"raw_{source}": _r4(raw), "q_probs": {q: _r4(answers[q]) for q in awake}, "awake": awake,
             "fresh": sorted(q for q in fresh if q in awake), "members": dict(sorted(members.items())),
-            "state_hash": state_hash(state), "baseline": baseline.version, "last_session_applied": state["last_session_applied"]}
+            "state_hash": state_hash(state), "reference_version": reference.version, "last_session_applied": state["last_session_applied"]}
 
 
 def shown(hour: dict, snaps: dict[str, dict], state_primary: dict) -> dict:
@@ -463,12 +505,12 @@ def statuses(state: dict) -> list[dict]:
 
 
 def apply_session(state: dict, day: str, reads: list[dict], minutes: int, primary: bool, harm_60: dict | None,
-                  same_window: bool = False) -> dict:
+                  same_window: bool = False, source: str = SOURCE) -> dict:
     """One sealed session for one horizon, ``reads`` being its included ``{"row_ts", "snapshot",
     "outcome"}``: the day-mean losses, the weights steps, the tables, the e-processes, and on the
     primary horizon the statuses and the phone's promotion (vetoed while ``harm_60`` is at VETO_E).
     ``same_window``: every read forecasts one window (a lane graded from the settled open), so each
-    counts the same in the day. Returns what the log keeps."""
+    counts the same in the day. ``source`` names the reference's experts (w0). Returns what the log keeps."""
     reads = sorted(reads, key=lambda r: r["row_ts"])
     c = [1.0] * len(reads) if same_window else coverage([parse_ts(r["row_ts"]) for r in reads], minutes)
     s_day = math.fsum(c)
@@ -483,9 +525,10 @@ def apply_session(state: dict, day: str, reads: list[dict], minutes: int, primar
         return floored(s["block_members"][q]) if q in s["block_members"] else f["questions"]
 
     names = [NO_CHANGE] + sorted(state["members"])
+    prior = w0(source)
     top_loss, block_loss = {}, {}
     for i, side in enumerate(SIDES):
-        top_loss[side] = {n: day_mean(losses(f[n], y)[i] for f, y in zip(experts, ys)) for n in W0}
+        top_loss[side] = {n: day_mean(losses(f[n], y)[i] for f, y in zip(experts, ys)) for n in prior}
         block_loss[side] = {q: day_mean(losses(member(s, f, q), y)[i] for s, f, y in zip(snaps, experts, ys)) for q in names}
     log: dict = {"reads": len(reads), "coverage": c, "top": {}, "block": {}, "block_cap_bound": {}}
     total = bound = 0
@@ -496,7 +539,7 @@ def apply_session(state: dict, day: str, reads: list[dict], minutes: int, primar
             v, log["block"][side] = weights_step({q: state["block"][side][q] for q in names}, block_loss[side], NO_CHANGE, v0)
             v, log["block_cap_bound"][side] = capped_block(v, suppressed, v0)
             state["block"][side] = _logs(v)
-            w, log["top"][side] = weights_step(state["top"][side], top_loss[side], REFERENCE, W0)
+            w, log["top"][side] = weights_step(state["top"][side], top_loss[side], REFERENCE, prior)
             state["top"][side] = _logs(w)
             for rec in (log["block"][side], log["top"][side]):
                 total += len(rec)
@@ -522,7 +565,7 @@ def apply_session(state: dict, day: str, reads: list[dict], minutes: int, primar
                     xrow[k] += ci * a * ref[k] / s_q
     for k in OUTCOMES:
         state["cal"]["O"][k] = CAL_DECAY * state["cal"]["O"][k] + day_mean(1.0 if y == k else 0.0 for y in ys)
-        state["cal"]["E"][k] = CAL_DECAY * state["cal"]["E"][k] + day_mean(floored(s["raw_clock"])[k] for s in snaps)
+        state["cal"]["E"][k] = CAL_DECAY * state["cal"]["E"][k] + day_mean(floored(s[f"raw_{source}"])[k] for s in snaps)
     log["evidence"] = {}
     for q, ev in sorted(state["evidence"].items()):
         # scored only over the reads it was awake on, against "no change" on those same reads: an asleep
@@ -575,7 +618,7 @@ def _session_reads(recs: list[dict], outcomes: dict[str, dict], h: str, minutes:
     half_day = session_close(parse_ts(recs[0]["row_ts"])).time() != SESSION_CLOSE
     reads, excluded = [], {}
     for r in recs:
-        snap = (r["pool"] if isinstance(r["pool"], dict) else {}).get(h) or {"left_out": "no snapshot for this horizon"}
+        snap = legacy_snapshot((r["pool"] if isinstance(r["pool"], dict) else {}).get(h) or {"left_out": "no snapshot for this horizon"})
         band = outcomes.get(r["row_ts"], {}).get("bands", {}).get(h)
         if half_day:
             excluded[r["row_ts"]] = "a half day"
@@ -644,12 +687,12 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE) -> dict[s
             reads, excluded = _session_reads(recs, outcomes, h, minutes)
             body: dict = {"manifest": {"included": [r["row_ts"] for r in reads], "excluded": excluded}}
             if reads:
-                version = reads[-1]["snapshot"]["baseline"]
-                if state["baseline"] not in (None, version):
+                version = reads[-1]["snapshot"]["reference_version"]
+                if state["reference_version"] not in (None, version):
                     # a refitted baseline is a new reference: its calibration starts again
                     state["cal"] = cold_state()["cal"]
-                    body["baseline_changed"] = {"from": state["baseline"], "to": version}
-                state["baseline"] = version
+                    body["reference_changed"] = {"from": state["reference_version"], "to": version}
+                state["reference_version"] = version
                 body["membership"] = membership(state, reads[-1]["snapshot"]["members"], day)
                 primary = h == lane.primary
                 body.update(apply_session(state, day, reads, minutes, primary,

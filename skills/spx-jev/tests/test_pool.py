@@ -46,7 +46,7 @@ def test_overlapping_windows_are_counted_once():
 def test_at_a_read_the_mixes_run_from_the_reference_to_jev_and_an_untaught_question_is_the_reference():
     s = _snap()
     r = s["experts"][REFERENCE]
-    assert r == s["experts"]["clock_cal"] == s["experts"]["clock"] == floored(CLOCK) == pytest.approx(s["block_members"][NO_CHANGE], abs=1e-4)
+    assert r == s["experts"]["baseline_cal"] == s["experts"]["baseline"] == floored(CLOCK) == pytest.approx(s["block_members"][NO_CHANGE], abs=1e-4)
     j = {k: JEV[k] / 1.0 + 0.1 * CLOCK[k] for k in CLOCK}                     # JEV's unsure spread by the reference
     assert s["experts"]["jev_share_1.0"] == pytest.approx(floored(j), abs=1e-4)
     assert s["experts"]["blend50"] == pytest.approx(floored({k: 0.5 * (JEV[k] + 0.1 * LIVE_CLOCK[k]) + 0.5 * LIVE_CLOCK[k] for k in CLOCK}), abs=1e-4)
@@ -61,12 +61,12 @@ def test_a_read_under_a_refitted_baseline_is_calibrated_from_nothing_not_by_the_
     read before then is calibrated as that session will be learned: from nothing."""
     state = cold_state()
     state["cal"] = {"O": {"up": 3.0, "flat": 0.5, "down": 0.5}, "E": {"up": 0.8, "flat": 2.4, "down": 0.8}}
-    state["baseline"] = FakeBaseline.version
-    tilted_cal = _snap(state)["experts"]["clock_cal"]
+    state["reference_version"] = FakeBaseline.version
+    tilted_cal = _snap(state)["experts"]["baseline_cal"]
     assert tilted_cal["up"] > floored(CLOCK)["up"] + 0.05                   # the same baseline: its table still applies
-    state["baseline"] = "v1:before-the-refit"
+    state["reference_version"] = "v1:before-the-refit"
     s = _snap(state)
-    assert s["experts"]["clock_cal"] == s["experts"][REFERENCE] == floored(CLOCK)
+    assert s["experts"]["baseline_cal"] == s["experts"][REFERENCE] == floored(CLOCK)
     assert state["cal"]["O"]["up"] == 3.0                                  # the snapshot never writes the state
 
 
@@ -133,7 +133,7 @@ def test_a_questions_evidence_counts_only_the_reads_it_was_awake_on():
             experts["questions"] = floored(pool.mixed(members, state["block"]))
             reads.append({"row_ts": (at(10, 2, day=day) + timedelta(minutes=30 * i)).isoformat(), "outcome": y,
                           "snapshot": {"experts": experts, "block_members": members, "q_probs": {q: {"a": 1.0} for q in members if q != NO_CHANGE},
-                                       "pool": r, "blend50_exact": CLOCK, "raw_clock": CLOCK}})
+                                       "pool": r, "blend50_exact": CLOCK, "raw_baseline": CLOCK}})
         apply_session(state, day, reads, 30, True, None)
     ev = state["evidence"]
     for q in ("q_all_day", "q_late"):
@@ -314,6 +314,42 @@ def test_the_update_applies_sealed_sessions_once_and_a_rebuild_from_the_records_
         assert (tmp_path / "a" / name).read_bytes() == (tmp_path / "b" / name).read_bytes()
     state = json.loads(first)
     assert state["last_session_applied"] == "2026-09-16" and state["evidence"]["q_a"]["days"] == 3
+
+
+def test_a_state_and_snapshots_saved_before_the_experts_were_named_by_source_carry_on_as_if_saved_after(tmp_path):
+    """The live files of 2026-09-29: a state saved with the frozen experts named clock and clock_cal, its reference's
+    version under ``baseline`` and the constants hashed under those names, and reads whose snapshots say raw_clock. The
+    loop reads them under today's names and lands on the same bytes as one that never had the old names."""
+    back = {new: old for old, new in pool.LEGACY_NAMES.items()}
+    days = ["2026-09-14", "2026-09-15", "2026-09-16"]
+    for d, outs in zip(days, ([("up", "up")] * 3, [("flat", "flat")] * 3, [("down", "flat"), ("flat", "down"), ("up", "up")])):
+        for side in ("now", "before"):
+            _write_session(tmp_path / side, d, outs)
+    for side in ("now", "before"):
+        update(tmp_path / side, today=days[1])
+    old = tmp_path / "before"
+    for name in ("pool_30.json", "pool_60.json"):
+        s = json.loads((old / name).read_text())
+        s["top"] = {k: {back.get(n, n): w for n, w in top.items()} for k, top in s["top"].items()}
+        s["baseline"], s["constants_hash"] = s.pop("reference_version"), pool.LEGACY_CONSTANTS_HASH
+        (old / name).write_text(json.dumps(s))
+    for d in days[1:]:
+        recs = [json.loads(l) for l in (old / "hour" / f"{d}.jsonl").read_text().splitlines()]
+        for r in recs:
+            for h, s in r["pool"].items():
+                s = {back.get(k, k): v for k, v in s.items()}
+                s["experts"] = {back.get(n, n): f for n, f in s["experts"].items()}
+                s["baseline"] = s.pop("reference_version")
+                r["pool"][h] = s
+        (old / "hour" / f"{d}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in recs))
+    assert "raw_clock" in (old / "hour" / f"{days[2]}.jsonl").read_text() and "clock_cal" in (old / "pool_30.json").read_text()
+    assert pool.load_state(old, 30)["constants_hash"] == pool.CONSTANTS_HASH and "baseline_cal" in pool.load_state(old, 30)["top"]["M"]
+    for side in ("now", "before"):
+        assert update(tmp_path / side, today="2026-09-17")["next_30"] == "2026-09-16: applied, 3 reads"
+    for name in ("pool_30.json", "pool_60.json"):
+        assert (old / name).read_bytes() == (tmp_path / "now" / name).read_bytes()
+    state = json.loads((old / "pool_30.json").read_text())
+    assert state["reference_version"] == FakeBaseline.version and "baseline" not in state and set(state["top"]["M"]) == set(W0)
 
 
 def test_an_unsealed_session_stops_the_update_and_one_before_the_loop_is_passed_over(tmp_path):

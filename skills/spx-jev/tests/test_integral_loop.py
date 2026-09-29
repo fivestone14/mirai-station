@@ -199,7 +199,7 @@ def test_on_the_loop_learns_from_the_average_price_label_beside_the_end_price_lo
     assert w["questions"]["q_a"]["days"] == 3 and w["questions"]["q_a"]["weight"] == 1.0
     state = json.loads((out / "pool_30_integral.json").read_text())
     assert state["constants_hash"] == integral_loop.CONSTANTS_HASH != pool.CONSTANTS_HASH
-    assert state["baseline"].startswith("integral_clock:")
+    assert state["reference_version"].startswith("integral_clock:")
     applied = [x for x in _log(out) if x["applied"]]
     assert [x["session"] for x in applied] == list(DAYS) and all(len(x["manifest"]["included"]) == 3 for x in applied)
 
@@ -316,7 +316,7 @@ def test_on_a_change_to_the_reference_odds_constants_starts_the_calibration_agai
     monkeypatch.setattr("spx_jev.clock.SHRINK", 5.0)
     integral_loop.update(out, TODAY)
     last = _log(out)[-1]
-    assert last["session"] == DAYS[2] and last["baseline_changed"]["from"] != last["baseline_changed"]["to"]
+    assert last["session"] == DAYS[2] and last["reference_changed"]["from"] != last["reference_changed"]["to"]
     alone = _write(tmp_path / "alone", {DAYS[2]: SESSIONS[DAYS[2]]})
     integral_loop.update(alone, TODAY)
     assert json.loads((out / "pool_30_integral.json").read_text())["cal"] == json.loads((alone / "pool_30_integral.json").read_text())["cal"]
@@ -356,6 +356,9 @@ def test_on_a_read_is_forecast_on_jevs_own_average_odds_the_shown_blend_and_its_
     assert snap["experts"]["jev_share_1.0"] != pytest.approx(floored(SHOWN_AVG), abs=1e-3)
     assert snap["blend50_exact"] == pytest.approx(SHOWN_AVG) and snap["raw_clock"] == pytest.approx({"up": 0.25, "flat": 0.5, "down": 0.25})
     assert snap["fresh"] == snap["awake"] == ["q_a"] and snap["q_probs"] == {"q_a": {"yes": 0.9, "no": 0.1}}
+    # its reference is the live time-of-day odds, and its experts and its state say so by name
+    assert {"clock", "clock_cal"} <= set(snap["experts"]) and "baseline" not in snap["experts"] and snap["reference_version"] == "v"
+    assert set(integral_loop.cold_state()["top"]["M"]) == set(snap["experts"])
 
 
 def test_on_the_calibration_counts_what_happened_and_forgets_it_by_the_decay(tmp_path, clock):

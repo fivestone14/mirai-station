@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from conftest import DAY, PRIOR_DAYS, at, bars_from_closes, flat_bars, make_row, write_prior_rows, write_state
-from spx_jev import grade, premarket, service, story
+from spx_jev import grade, pool, premarket, service, story
 from spx_jev.ask import send_all as real_send_all
 from spx_jev.lane import LIVE, PREMARKET, TAPE
 from spx_jev.service import run_once
@@ -133,13 +133,29 @@ def run_fixture(tmp_path, monkeypatch, average_reply=None) -> dict[str, dict[str
 
 def _old_path(weights: str, lane: str) -> str:
     """weights.json less what has been added beside the old path since, written as the grader writes it: the live
-    lane's average-price loop report, and each sum's hit rate on its committed calls."""
+    lane's average-price loop report, and each sum's hit rate on its committed calls; the loop's experts under the names
+    they had before they were named by their source."""
     w = json.loads(weights)
     if lane == "live" and LIVE.integral_loop:
         assert w.pop("pool_integral")["method"] == "pool_v1_integral"
+    if "pool" in w:
+        back = {new: old for old, new in pool.LEGACY_NAMES.items()}
+        w["pool"]["top"] = {side: dict(sorted((back.get(n, n), x) for n, x in top.items())) for side, top in w["pool"]["top"].items()}
     for s in w["sums"].values():
         del s["committed_calls"], s["committed_hit_rate"]
     return json.dumps(w, ensure_ascii=False, indent=1)
+
+
+def _old_names(state: str) -> str:
+    """A learning-loop state under the names it was saved by before its experts were named by their source, written as
+    the loop writes it: the same numbers, so the bytes match the golden file's."""
+    s = json.loads(state)
+    back = {new: old for old, new in pool.LEGACY_NAMES.items()}
+    s["top"] = {side: {back.get(n, n): w for n, w in top.items()} for side, top in s["top"].items()}
+    s["baseline"] = s.pop("reference_version")
+    assert s["constants_hash"] == pool.CONSTANTS_HASH
+    s["constants_hash"] = pool.LEGACY_CONSTANTS_HASH
+    return pool._canonical(s)
 
 
 def _same_as_before(got: dict) -> None:
@@ -149,6 +165,9 @@ def _same_as_before(got: dict) -> None:
         for name, text in want[lane].items():
             if name == "weights.json":
                 assert _old_path(got[lane][name], lane) == text, f"{lane} {name} moved"
+                continue
+            if name.startswith("pool_"):
+                assert _old_names(got[lane][name]) == text, f"{lane} {name} moved"
                 continue
             assert got[lane][name] == text, f"{lane} {name} moved"
 

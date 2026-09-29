@@ -13,9 +13,11 @@ the dry run shows what the loop has learnt from the graded history, and how far 
 
 The reference R is the time-of-day odds counted on the average price (clock.integral_odds), as a read on the session
 could know them: the counts the clock stored in clock_integral_days.json for the counted sessions before it, read and
-never counted here, so no end-price count can reach it. Its version moves only with the counting rule and the odds'
-own constants (REFERENCE_CONSTANTS), so the calibration carries from one session to the next as the counted sessions
-roll and starts again when either changes. A session whose blended reads have no reference on file (the counts were
+never counted here, so no end-price count can reach it. Its two experts are named by that source, clock and
+clock_cal, with the read's raw odds as raw_clock (pool.w0), where the end-price loop's frozen reference names them
+baseline and baseline_cal; the state keeps its version as ``reference_version``. Its version moves only with the
+counting rule and the odds' own constants (REFERENCE_CONSTANTS), so the calibration carries from one session to the
+next as the counted sessions roll and starts again when either changes. A session whose blended reads have no reference on file (the counts were
 recounted under a new rule and no read has counted the days before it yet) stops the update, as an unsealed one does,
 rather than be passed over for good. JEV's sum is the average-price sum's own
 odds, blend50 its blend with those odds as the phone showed it, and the question block's answers are the ones the
@@ -58,7 +60,8 @@ from .state_builder import ET, load_jsonl, parse_ts
 LOOP_VERSION = 1                # bump when this loop's learning changes: a state from before stops the update
 GATE_SESSIONS = 10              # SPX sessions of average-price grades before Will decides whether to trust what it learns
 LOG_NAME = "pool_integral_log.jsonl"
-CONSTANTS = {**pool.CONSTANTS, "outcome": "integral.label", "integral_rule": integral.RULE_VERSION,
+SOURCE = "clock"                # this loop's reference is the live time-of-day odds, so its experts are clock and clock_cal
+CONSTANTS = {**pool.CONSTANTS, "w0": pool.w0(SOURCE), "outcome": "integral.label", "integral_rule": integral.RULE_VERSION,
              "reference_rule": clock.INTEGRAL_RULE_VERSION, "loop_version": LOOP_VERSION}
 CONSTANTS_HASH = hashlib.sha256(json.dumps(CONSTANTS, sort_keys=True).encode()).hexdigest()[:16]
 CODE_HASH = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:16]
@@ -71,8 +74,8 @@ def reference_constants() -> dict:
 
 
 def cold_state() -> dict:
-    """pool.cold_state under this loop's constants."""
-    return {**pool.cold_state(), "constants_hash": CONSTANTS_HASH}
+    """pool.cold_state under this loop's constants and its reference's names."""
+    return {**pool.cold_state(SOURCE), "constants_hash": CONSTANTS_HASH}
 
 
 def state_path(out_dir: Path, lane: Lane = LIVE) -> Path:
@@ -81,7 +84,7 @@ def state_path(out_dir: Path, lane: Lane = LIVE) -> Path:
 
 def load_state(out_dir: Path, lane: Lane = LIVE) -> dict:
     try:
-        return json.loads(state_path(out_dir, lane).read_text(encoding="utf-8"))
+        return pool.renamed(json.loads(state_path(out_dir, lane).read_text(encoding="utf-8")))
     except (OSError, ValueError):
         return cold_state()
 
@@ -162,7 +165,7 @@ def _session_reads(recs: list[dict], lines: dict[str, dict], state: dict, ref: R
             blended = (avg.get("blend") or {}).get("used")
             snap = pool.snapshot(state, ref, h, parse_ts(r["row_ts"]), avg["jev"]["probabilities"] if blended else avg["probabilities"],
                                  avg["clock"]["probabilities"] if blended else None, avg["probabilities"],
-                                 own["q_probs"], own["members"], set(own["fresh"]))
+                                 own["q_probs"], own["members"], set(own["fresh"]), SOURCE)
             if "left_out" in snap:
                 excluded[r["row_ts"]] = f"no snapshot: {snap['left_out']}"
             else:
@@ -226,13 +229,13 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Pat
         state["last_session_applied"] = day
         body: dict = {"manifest": {"included": [r["row_ts"] for r in reads], "excluded": excluded}}
         if reads:
-            ref_version = reads[-1]["snapshot"]["baseline"]
-            if state["baseline"] not in (None, ref_version):
+            ref_version = reads[-1]["snapshot"]["reference_version"]
+            if state["reference_version"] not in (None, ref_version):
                 state["cal"] = cold_state()["cal"]     # a new counting rule is a new reference: its calibration starts again
-                body["baseline_changed"] = {"from": state["baseline"], "to": ref_version}
-            state["baseline"] = ref_version
+                body["reference_changed"] = {"from": state["reference_version"], "to": ref_version}
+            state["reference_version"] = ref_version
             body["membership"] = pool.membership(state, reads[-1]["snapshot"]["members"], day)
-            body.update(pool.apply_session(state, day, reads, lane.horizons[h][0], True, None, lane.graded_from_settled_open))
+            body.update(pool.apply_session(state, day, reads, lane.horizons[h][0], True, None, lane.graded_from_settled_open, SOURCE))
         state = json.loads(pool._canonical(state))      # rounded after every session, as pool.update does
         _log(into, {**head, "applied": bool(reads), **pool._rounded(body)})
         said[h] = f"{day}: applied, {len(reads)} reads"
@@ -307,7 +310,7 @@ def describe(run: dict, lane: Lane = LIVE) -> list[str]:
            f"reads learned from: {sum(len(x['manifest']['included']) for x in applied)}; left out: {sum(left_out.values())}"]
     out += [f"  {n} {why}" for why, n in left_out.most_common()]
     top = {side: pool._prob(state["top"][side]) for side in pool.SIDES}
-    out.append("the pool's weights, move / direction: " + ", ".join(f"{n} {top['M'][n]:.3f} / {top['D'][n]:.3f}" for n in sorted(pool.W0)))
+    out.append("the pool's weights, move / direction: " + ", ".join(f"{n} {top['M'][n]:.3f} / {top['D'][n]:.3f}" for n in sorted(top["M"])))
     phone = state["phone"]["promote"]
     out.append(f"the pool against the blend: e {phone['e']:.2f} over {phone['n']} days (promotion needs {pool.PROMOTE_E:g} after "
                f"{pool.MIN_DAYS} days, and the simulation gates, pool.SIM_GATES_PASSED {'on' if pool.SIM_GATES_PASSED else 'off'}); shows {state['phone']['shows']}; "
