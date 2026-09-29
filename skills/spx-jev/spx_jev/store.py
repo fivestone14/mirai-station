@@ -43,7 +43,8 @@ copy that agrees but for where it came from is counted as a duplicate; where a t
 day's bar over a live snapshot's, Schwab's own $VOLD over a derived one) the better one is kept and a copy from
 a worse source that disagrees is counted as superseded; any other disagreement, two equally good sources
 included, is quarantined. Nothing is dropped without a count in ``validation`` or a row in ``quarantine``. A line of a raw
-file that is not a JSON object is quarantined under the table_name ``raw_line``. The archive's ``close_out``
+file that is not a JSON object, or whose parts are not the shapes its writer writes, is quarantined under
+the table_name ``raw_line``, and the rest of the day is built. The archive's ``close_out``
 records restate the calls and grades already stored, so they are read past.
 
 Timestamps are stored as instants in New York time; the Treasury yields are in percent and a futures bar is
@@ -412,15 +413,15 @@ BY_NAME = {t.name: t for t in TABLES + (QUARANTINE, VALIDATION)}
 # ----------------------------------------------------------------------------- raw files
 
 def _lines(path: Path) -> Iterator[tuple[int, Any]]:
-    """Each non-blank line of a JSONL file with its number, parsed, or None for a line that is not JSON."""
+    """Each non-blank line of a JSONL file with its number, parsed, or None for a line that is not UTF-8 JSON."""
     if not path.exists():
         return
-    with open(path, encoding="utf-8") as f:
+    with open(path, "rb") as f:
         for n, line in enumerate(f, 1):
             if line.strip():
                 try:
-                    yield n, json.loads(line)
-                except json.JSONDecodeError:
+                    yield n, json.loads(line.decode("utf-8"))
+                except ValueError:                     # not JSON, or not UTF-8
                     yield n, None
 
 
@@ -680,6 +681,28 @@ def _bar_row(day: date, bar: dict, **more: Any) -> dict:
     return {"day": day, "ts": bar.get("ts"), **{k: bar.get(k) for k in ("open", "high", "low", "close", "volume")}, **more}
 
 
+def _context_rows(day: date, where: str, line: dict, source: str) -> dict[str, list[dict]]:
+    """One market-feed line as its context_bars and context_quotes rows."""
+    out: dict[str, list[dict]] = {"context_bars": [], "context_quotes": []}
+    for key, bar in (line.get("bars") or {}).items():
+        bar = bar if isinstance(bar, dict) else {}
+        symbol = context_symbol(key)
+        prices = {k: _label_unit(symbol, bar.get(k)) for k in ("open", "high", "low", "close")}
+        done = _parse(bar.get("ts"))
+        out["context_bars"].append({**_bar_row(day, {**bar, **prices}), "symbol": symbol, "served_as": key,
+                                    "derived": bool(bar.get("derived")), "derived_from": bar.get("derived") or None,
+                                    "source": source, "known_at": done + timedelta(minutes=1) if done else None,
+                                    "written_at": line.get("ts"), "_source": where})
+    for key, q in (line.get("quotes") or {}).items():
+        q = q if isinstance(q, dict) else {}
+        symbol = context_symbol(key)
+        out["context_quotes"].append({"day": day, "symbol": symbol, "served_as": key, "taken_at": line.get("ts"),
+                                      "last": _label_unit(symbol, q.get("last")),
+                                      "prior_close": _label_unit(symbol, q.get("close")), "volume": q.get("volume"),
+                                      "quote_time": q.get("quote_time"), "_source": where})
+    return out
+
+
 def read_raw(state_dir: Path, day: date) -> Raw:
     """Every row one day's raw files hold for each table, oldest source first within a table."""
     state_dir, iso = Path(state_dir), day.isoformat()
@@ -701,6 +724,17 @@ def read_raw(state_dir: Path, day: date) -> Raw:
             else:
                 unreadable.append(_unreadable(day, where, obj, "not a JSON object"))
 
+    def take(where: str, obj: dict, what: str, parse: Callable[[], dict[str, list[dict]]]) -> None:
+        """``parse``'s rows for their tables, or the whole line quarantined when its parts are not the shapes
+        its writer writes."""
+        try:
+            got = parse()
+        except (AttributeError, TypeError, ValueError) as e:
+            unreadable.append(_unreadable(day, where, obj, f"a malformed {what}: {type(e).__name__}: {e}"))
+            return
+        for table, more in got.items():
+            rows[table].extend(more)
+
     archive = list(lines(state_dir / ARCHIVE_SUBDIR / f"{iso}.jsonl", "reads", "facts", "answers", "calls", "grades"))
     reads = [(w, r) for w, r in archive if r.get("kind") == "read"]
     for w, r in archive:
@@ -708,18 +742,15 @@ def read_raw(state_dir: Path, day: date) -> Raw:
             unreadable.append(_unreadable(day, w, r, f"an archive record of unknown kind {r.get('kind')!r}"))
     hours = {}
     for name, lane in LANES.items():
-        for _, h in lines(lane.folder(state_dir) / "hour" / f"{iso}.jsonl", "calls"):
-            hours[(name, h.get("row_ts"))] = h
+        for w, h in lines(lane.folder(state_dir) / "hour" / f"{iso}.jsonl", "calls"):
+            if isinstance(h.get("row_ts"), str):
+                hours[(name, h["row_ts"])] = h
+            else:
+                unreadable.append(_unreadable(day, w, h, "an hour record whose row_ts is not text"))
     asked_by = _asked_index(reads)
     for w, r in archive:
-        try:
-            got = _read_rows(day, w, r, asked_by, hours) if r.get("kind") == "read" else \
-                {"grades": _grade_rows(day, w, r)} if r.get("kind") == "grade" else {}
-        except (AttributeError, TypeError, ValueError) as e:  # a record whose parts are not the shapes archive.py writes
-            unreadable.append(_unreadable(day, w, r, f"a malformed {r.get('kind')} record: {type(e).__name__}: {e}"))
-            continue
-        for table, more in got.items():
-            rows[table].extend(more)
+        take(w, r, f"{r.get('kind')} record", lambda: _read_rows(day, w, r, asked_by, hours) if r.get("kind") == "read" else
+             {"grades": _grade_rows(day, w, r)} if r.get("kind") == "grade" else {})
 
     session = state_dir / SESSION_BARS_SUBDIR / f"{iso}-{SYMBOL}.json"
     saved, readable = _json_file(session)
@@ -740,22 +771,7 @@ def read_raw(state_dir: Path, day: date) -> Raw:
     folder = state_dir / CONTEXT_SUBDIR
     for path, source in ((folder / "bars" / f"{iso}.jsonl", "saved_day"), (folder / f"{iso}.jsonl", "live")):
         for w, line in lines(path, "context_bars", *(("context_quotes",) if source == "live" else ())):
-            for key, bar in (line.get("bars") or {}).items():
-                bar = bar if isinstance(bar, dict) else {}
-                symbol = context_symbol(key)
-                prices = {k: _label_unit(symbol, bar.get(k)) for k in ("open", "high", "low", "close")}
-                done = _parse(bar.get("ts"))
-                rows["context_bars"].append({**_bar_row(day, {**bar, **prices}), "symbol": symbol, "served_as": key,
-                                             "derived": bool(bar.get("derived")), "derived_from": bar.get("derived") or None,
-                                             "source": source, "known_at": done + timedelta(minutes=1) if done else None,
-                                             "written_at": line.get("ts"), "_source": w})
-            for key, q in (line.get("quotes") or {}).items():
-                q = q if isinstance(q, dict) else {}
-                symbol = context_symbol(key)
-                rows["context_quotes"].append({"day": day, "symbol": symbol, "served_as": key, "taken_at": line.get("ts"),
-                                               "last": _label_unit(symbol, q.get("last")),
-                                               "prior_close": _label_unit(symbol, q.get("close")), "volume": q.get("volume"),
-                                               "quote_time": q.get("quote_time"), "_source": w})
+            take(w, line, "market-feed line", lambda: _context_rows(day, w, line, source))
 
     prior_close = session_close(datetime.combine(previous_trading_day(day), datetime.min.time(), tzinfo=ET))
     for w, bar in lines(state_dir / OVERNIGHT_SUBDIR / f"{iso}.jsonl", "overnight_bars"):

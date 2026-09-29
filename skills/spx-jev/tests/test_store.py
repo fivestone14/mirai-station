@@ -388,3 +388,17 @@ def test_a_record_whose_parts_are_malformed_is_quarantined_and_the_rest_of_the_d
     reasons = [q["reason"] for q in _table(tmp_path, "quarantine")]
     assert any(r.startswith("a malformed read record: AttributeError") for r in reasons), reasons
     assert log["grades"]["kept"] == 1                                    # the tape read's grade follows it out
+
+
+def test_a_raw_line_in_the_wrong_shape_or_not_utf8_is_quarantined_and_the_rest_of_the_day_is_built(tmp_path, monkeypatch):
+    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path))
+    folder = tmp_path / "spx_jev"
+    with open(folder / "context" / f"{DAY}.jsonl", "ab") as f:
+        f.write(json.dumps({"ts": "2026-09-18T10:02:30-04:00", "bars": ["x"]}).encode() + b"\n" + b'{"ts": "\xff"}\n')
+    with open(folder / "hour" / f"{DAY}.jsonl", "a") as f:
+        f.write(json.dumps({"row_ts": {"not": "text"}}) + "\n")
+    log = store.build_day(tmp_path, D, at(16, 45))
+    reasons = sorted(q["reason"] for q in _table(tmp_path, "quarantine"))
+    assert reasons[0].startswith("a malformed market-feed line: AttributeError") and reasons[1:] == [
+        "an hour record whose row_ts is not text", "not a JSON object"], reasons
+    assert log["raw_line"]["quarantined"] == 3 and log["context_bars"]["kept"] == 4 and log["calls"]["kept"] == 3

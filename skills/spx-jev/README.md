@@ -282,7 +282,7 @@ any day can be rebuilt from them whole.
 | `overnight_bars` | futures bar of the night leading into `day` | `symbol`, `contract`, `contract_from`, `bar_minutes`, the prices and volume, `session`, `saved_at`, `flags`, and `prior_session` for the prior session's last minutes a night starts with, which the prior day's night also holds: `WHERE NOT prior_session` gives each bar once |
 | `rolls` | roll, on the day it took effect | `symbol`, `from_contract`, `to_contract`, `rolled_at`, the basis step and its reference |
 | `events` | calendar row on the day | `starts_at`, `ends_at`, `kind`, `tier`, `in_session`, `verified`, `q_and_a`, `calendar_built` |
-| `quarantine` | refused row | `table_name` (`raw_line` for a line that is not a JSON object or an archive record in the wrong shape), `key`, `reason`, `source` (file and line), `row_json` |
+| `quarantine` | refused row | `table_name` (`raw_line` for a line that is not a JSON object, or a raw record in the wrong shape), `key`, `reason`, `source` (file and line), `row_json` |
 | `validation` | table per day | `table_name`, `rows_in`, `kept`, `duplicates`, `superseded`, `quarantined`, `reasons` (reason to count), `sources`, `store_schema`, `built_at` |
 
 Every table has `day`, from its folder. Times are instants shown in New York
