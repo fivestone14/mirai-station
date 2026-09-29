@@ -67,7 +67,7 @@ def test_a_call_carries_its_average_price_grade_and_its_end_price_beside_it(tmp_
     assert g["size"] == {"band": "down_big", "size": "big", "call": "small", "right": False}
     assert g["best"]["minute"] == 1 and g["worst"] == {"points": -10.15, "minute": 10} and len(g["running"]) == 10
     assert g["sharp_move"]["note"].startswith("too little history") and "tier" not in g
-    assert call["end_price"] == {"outcome": "down_big", "hit": False, "moved": {"realized_points": -10.15}}
+    assert call["end_price"] == {"outcome": "down_big", "hit": False, "moved": {"realized_points": -10.15}, "pick": "down_small", "p": 0.5}
     assert "outcome" not in call and "hit" not in call                # one grade decides; the end price is only kept
     # the grader's working stays in its file
     assert not {"f", "factor", "from", "filled", "bad_ticks", "pick", "direction", "row_ts", "rule_version"} & set(g)

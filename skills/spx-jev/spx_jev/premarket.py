@@ -91,7 +91,7 @@ VERDICT_WORDS = {"big_down": "Big fall", "down": "Down", "flat": "Quiet", "up": 
                  "overnight_ahead_up": "Leaning up", "overnight_ahead_down": "Leaning down", "in_line": "In line",
                  "btc_ahead_up": "Leaning up", "btc_ahead_down": "Leaning down",
                  "shrugged": "Shrugged", "extended": "Extended", "held": "Held", "faded": "Faded"}
-CALL_KEYS = ("pick", "probabilities", "confidence", "primary", "by", "model", "blend", "shown_source")
+CALL_KEYS = ("pick", "probabilities", "confidence", "primary", "by", "model", "blend", "shown_source", "average")
 # what the premarket card keeps of the live card's make-up (service.card): the questions and the labels' count
 LIVE_CARD_KEYS = ("version", "labels", "omitted", "questions", "fresh", "dark", "dark_note", "shadow_note")
 
@@ -386,8 +386,9 @@ def story_so_far(out_dir: Path, day: str) -> list[dict]:
     """One chip per checkpoint read today, oldest first (a checkpoint read twice shows its newest read): where
     futures stood against their 16:00 price (premarket.where_now's figure), whether the read is the first on
     file at or after the day's first report (a missed checkpoint passes the mark to the next read), and its
-    call when it made one. For the phone only: no label ever reads it."""
-    calls = {r["row_ts"]: {"pick": r["pick"], "probabilities": r.get("probabilities")}
+    call when it made one (service.call_of: the average-price sum's when JEV answered it). For the phone only: no
+    label ever reads it."""
+    calls = {r["row_ts"]: {k: v for k, v in service.call_of(r, PREMARKET).items() if k != "sum"}
              for r in load_jsonl(out_dir / "hour" / f"{day}.jsonl") if r.get("pick")}
     reads = sorted({rec.get("checkpoint"): rec for rec in load_jsonl(out_dir / f"{day}.jsonl")}.values(), key=lambda r: r["row_ts"])
     released = story.releases(date.fromisoformat(day))

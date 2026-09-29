@@ -14,6 +14,10 @@ sums with the time-of-day odds (clock.py), grades them, and writes only under ``
     state/spx_jev/archive/{day}.jsonl   the raw archive: every read, grade and close-out of both lanes (archive.py)
     state/spx_jev/pool_30.json, pool_60.json, pool_log.jsonl   the learning loop (pool.py)
 
+The phone's call is the average-price sum (hour.average_summary, under the sum's ``average``), asked
+in its own request beside the end-price sums; those are asked, blended, graded and learnt from as
+before, in shadow.
+
 Every time the card carries is a full timestamp with its offset, never a bare clock, so the phone
 can show it in the viewer's own zone; prose meant for a reader names the market clock and says ET.
 
@@ -64,7 +68,7 @@ from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_a
 from .clock import blend as clock_blend, odds as clock_odds
 from .events import learn_exclude, tag as event_tag
 from .expiry import calendar_of
-from .grade import INTEGRAL_NAME, horizon_start, live_options, mark_at, read_anchor, run as grade_run
+from .grade import INTEGRAL_NAME, average_call, horizon_start, live_options, mark_at, read_anchor, run as grade_run
 from .hour import (answer_sentences, average_request, average_summary, average_window, band_of, hour_request, hour_summary, load_hour_doc,
                    named_levels)
 from .labels.registry import build_labels
@@ -90,7 +94,7 @@ UNSENT_DEFAULT = "not sent: this run was not asked to send"
 CALLS_SHOWN = 4                # the phone draws the newest calls on one clock, so an overlap is visible
 UNSURE = "unsure"              # a sum's pick that makes no call: passed, never right or wrong
 # what the card carries of a call's average-price grade (integral.grade_window); the rest stays in its file
-INTEGRAL_ON_CARD = ("graded", "reason", "label", "g", "edge", "verdict", "margin", "lean", "size", "best", "worst", "sharp_move",
+INTEGRAL_ON_CARD = ("graded", "reason", "sum", "label", "g", "edge", "verdict", "margin", "lean", "size", "best", "worst", "sharp_move",
                     "running", "stale_read")
 # A read on the bar clock waits for the bar that finishes at its fire minute. The bars job runs once a
 # minute at no fixed second, so a wait under a minute spans one of its runs and the read stays in its minute.
@@ -303,10 +307,16 @@ def day_integral(out_dir: Path, day: str, lane: Lane = LIVE, horizon: str | None
     """The average-price grade (grade.integral_run) of each of the lane's calls on ``day`` in one box, the lane's
     primary unless ``horizon`` names another, by read, as the card carries it (INTEGRAL_ON_CARD), a graded one with
     its strength ``tier`` (integral.strength) once the box's sessions before ``day`` can rank it; a stale read is
-    ranked but never ranked against. A read with no line yet is left out: its window is open, or waits on a bar."""
+    ranked but never ranked against. Only lines under integral.READABLE_VERSIONS are read, and a read graded under more
+    than one stands on its newest (version 2 grades the average-price sum's call where there is one, ``sum`` naming the
+    one graded; version 1 always graded the end-price sum's). A read with no line yet is left out: its window is open,
+    or waits on a bar."""
     box = horizon or lane.primary
-    lines = [g for g in load_jsonl(out_dir / INTEGRAL_NAME)
-             if g.get("horizon") == box and g.get("rule_version") == integral.RULE_VERSION]
+    mine = [g for g in load_jsonl(out_dir / INTEGRAL_NAME) if g.get("horizon") == box and g.get("rule_version") in integral.READABLE_VERSIONS]
+    newest: dict[str, int] = {}
+    for g in mine:
+        newest[str(g.get("row_ts", ""))] = max(newest.get(str(g.get("row_ts", "")), 0), g["rule_version"])
+    lines = [g for g in mine if g["rule_version"] == newest[str(g.get("row_ts", ""))]]
     past: dict[str, list[float]] = {}
     for g in lines:
         d = str(g.get("row_ts", ""))[:10]
@@ -361,18 +371,30 @@ def open_grade(rec: dict, scene: Scene, lane: Lane = LIVE) -> dict | None:
     return integral.so_far(scene.bars, horizon_start(rec["row_ts"], lane), lane.horizons[lane.primary][0], float(rec["spot"]), float(points))
 
 
-def end_price_verdict(end_price: dict, pick) -> str:
-    """right, wrong or passed at the end price: an unsure pick is passed there too."""
-    return "passed" if pick == UNSURE else "right" if end_price.get("hit") else "wrong"
+def end_price_verdict(end_price: dict, pick=None) -> str:
+    """right, wrong or passed at the end price, for the end-price sum's own pick (``end_price.pick``, else ``pick``, the
+    call's on a card from before the average-price sum): an unsure pick is passed there too."""
+    return "passed" if end_price.get("pick", pick) == UNSURE else "right" if end_price.get("hit") else "wrong"
+
+
+def call_of(rec: dict, lane: Lane = LIVE) -> dict:
+    """What a sum record calls: the average-price sum's pick and odds when JEV answered it (grade.average_call, the
+    sum its average-price grade grades), else the end-price primary's; ``sum`` names the one."""
+    avg = average_call(rec, lane.primary, lane)
+    src, name = (avg, lane.average) if avg else (rec, lane.primary)
+    return {"pick": src.get("pick"), "probabilities": src.get("probabilities"), "sum": name}
 
 
 def day_calls(out_dir: Path, day: str, lane: Lane = LIVE, scene: Scene | None = None) -> list[dict]:
-    """Every call of the lane's primary sum on ``day``, oldest first, with its grades when it has them: the
+    """Every call of the lane's primary box on ``day``, oldest first, with its grades when it has them: the
     read's time, the mark it is graded at (the read's minute plus the horizon, as the grader counts it),
-    the pick and its probability, every option's probability as the phone showed them (``odds``), then
-    ``integral``, its grade on the average price over the window (day_integral), and ``end_price``, the
-    grade at the mark kept beside it for the side-by-side weeks (``outcome``, ``hit`` and the ``moved``
-    behind them), once graded, or ``closed`` with the reason when it can never be graded. A call graded at
+    the pick and its probability, every option's probability as the phone showed them (``odds``), all the
+    average-price sum's when JEV answered it and the end-price primary's when not (call_of, ``sum`` naming
+    it), then ``integral``, its grade on the average price over the window (day_integral), and ``end_price``,
+    the end-price sum's grade at the mark kept beside it for the side-by-side weeks (``outcome``, ``hit`` and
+    the ``moved`` behind them, with that sum's own ``pick`` and its probability ``p``), once graded, or
+    ``closed`` with the reason when it can never be graded. The end-price sum is the grader's, so a read is a
+    call only when it answered: a read whose average-price sum answered alone is never graded. A call graded at
     its end price with no graded line on the average price (the shadow grade failed, or its window missed bars)
     is marked ``end_price_only``: it stands on its end price until a later card finds the line. A call not yet
     graded carries its average so far (``so_far``, open_grade) when the card is built on a ``scene``. The mark is
@@ -411,9 +433,13 @@ def day_calls(out_dir: Path, day: str, lane: Lane = LIVE, scene: Scene | None = 
             continue
         seen.add(ts)                                   # a row written twice (a file from before the guard in run_once) is one call
         mark = mark_at(ts, minutes, lane)
-        odds = {k: round(float(v), 4) for k, v in p.items() if isinstance(v, (int, float))}
+        said = call_of(r, lane)
+        odds = {k: round(float(v), 4) for k, v in said["probabilities"].items() if isinstance(v, (int, float))}
+        graded = grades.get(ts, {})
+        if "end_price" in graded:
+            graded = {**graded, "end_price": {**graded["end_price"], "pick": r["pick"], "p": round(float(p.get(r["pick"], 0.0)), 4)}}
         call = {"read": ts, "mark": mark.isoformat() if mark else None, "minutes": minutes,
-                "pick": r["pick"], "p": odds.get(r["pick"], 0.0), "odds": odds, **grades.get(ts, {}),
+                "pick": said["pick"], "p": odds.get(said["pick"], 0.0), "odds": odds, "sum": said["sum"], **graded,
                 **({"integral": integral_by[ts]} if ts in integral_by else {}),
                 **({"checks": checks.get(ts, {})} if lane.graded_from_settled_open else {})}
         if "end_price" in call and not (call.get("integral") or {}).get("graded"):

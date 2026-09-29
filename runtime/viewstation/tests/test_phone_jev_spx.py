@@ -50,7 +50,7 @@ def _run(js, data=None, tz=LA):
     script = ("const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + FIXED_NOW + FAKE_DOM
               + "".join(_fn(f) for f in ("viewerTime", "marketAt", "marketWords", "cap", "pct", "words", "startOf", "endOf",
                                           "leftWords", "verdict", "endPrice", "gradeOf", "callWords", "laneLeads", "svgEl", "lastLaneRead", "hhmm", "marketClock",
-                                          "marketDay", "sentence"))
+                                          "marketDay", "sentence", "callSum"))
               + _var("VIEWER_FMT") + _var("NS") + _var("ROW_H") + js)
     out = subprocess.run([_NODE, "-e", script], input=json.dumps(data), capture_output=True, text=True, timeout=20,
                          env={**os.environ, "TZ": tz})
@@ -741,7 +741,7 @@ def pre_card(at="09:28", day=PRE_DAY, report=True, sent=None, checkpoints=CHECKP
     return {**card, **over}
 
 
-PRE_FNS = ("fits", "top1", "oddsKeys", "oddsWidth", "oddsBar", "tag", "skipLine", "ageWord", "mins", "untilWords", "expiryLine",
+PRE_FNS = ("fits", "top1", "oddsKeys", "oddsWidth", "oddsBar", "tag", "skipLine", "averageWords", "endPriceRow", "ageWord", "mins", "untilWords", "expiryLine",
            "preLeads", "preMissed", "preJevRead", "preJevDue", "preUnsent", "preState", "shapeWords", "sumPick", "sumSaid", "preClock",
            "preCall", "preRulerLine", "preStaleLine", "checksSvg", "chipFits", "storySide", "storyHead", "storySvg", "preFacts", "paintPre")
 PRE_VARS = ("ODDS_ORDER", "ODDS_TRACK_PX", "ODDS_LETTERS", "ODDS_EM", "EXPIRY_TAGS", "PRE_LATE_MIN", "OPENS", "THEN", "CHECKS_LEAD_MIN", "CHIP_W")
@@ -1133,3 +1133,86 @@ def test_the_folded_premarket_call_fits_the_owners_360px_phone():
     assert "flex-wrap:wrap" in _rule(".fold")
     assert _FOLD_W["PRE-MARKET CALL 09:28"] + 12 + _FOLD_W["Unsure 100%"] <= inner
     assert all(w <= inner for k, w in _FOLD_W.items() if " · " in k)
+
+
+# ---- the call on the average price (skills/spx-jev hour.average_summary): up, flat or down over the window, no unsure;
+# the end-price sum beside it, in shadow
+
+AVG = {"pick": "up", "probabilities": {"up": 0.55, "flat": 0.3, "down": 0.15}, "primary": "average_30", "box": "next_30",
+       "minutes": 30, "flat_points": 5.25, "edge_points": 3.11}
+END_30 = {"pick": "flat", "probabilities": {"up": 0.1, "flat": 0.8, "down": 0.05, "unsure": 0.05}}
+CARD_STUBS = "var tickers = []; function clockBlock(){ return el('div', 'clock'); } function inPlay(){ return el('div', 'inplay'); }"
+
+
+def _parts(node):
+    return [[k["attrs"].get("class", k["tag"]), _flat_text(k)] for k in node["kids"]]
+
+
+def _sum_card(c, tz=LA):
+    js = (CARD_STUBS + _odds() + "".join(_fn(f) for f in ("top1", "oneAnswer", "phaseSpan", "howChart", "tag", "skipLine", "plusIso",
+                                                            "averageWords", "endPriceRow", "sumCard"))
+          + "var main = el('main'); sumCard(D.c, main); console.log(JSON.stringify(dump(main.kids[0])));")
+    return _parts(_run(js, {"c": c, "now": "2026-09-28T11:10:00-04:00"}, tz))
+
+
+def test_the_30_minute_card_leads_with_the_average_price_call_and_keeps_the_end_price_beside_it():
+    """The big number, the odds and how the call was made are the average-price sum's, with what it is measured on and
+    its edge in points; the end-price sum rides beside it as one muted line, and the blend note is the average's own."""
+    why = "only 4 prior sessions with enough reads graded on the average price; its time-of-day odds need 10"
+    hour = {**END_30, "used": 12, "left_out": 0, "missing": 0, "blend": {"used": False, "why": "the end-price clock's reason"},
+            "by": {"next_30": END_30, "next_60": {"pick": "up", "probabilities": {"up": 0.5, "flat": 0.3, "down": 0.1, "unsure": 0.1}}},
+            "average": {**AVG, "blend": {"used": False, "why": why}}}
+    c = {"row_ts": "2026-09-28T11:02:10-04:00", "hour": hour, "marks": {"next_30": "2026-09-28T11:32:00-04:00", "next_60": "2026-09-28T12:02:00-04:00"},
+         "calls": [call("11:02", "11:32", "up", 0.55)]}
+    parts = _sum_card(c)
+    assert parts[1] == ["big", "Up 55%"]
+    said = dict((k, v) for k, v in parts if k in ("tag", "row60") and v.startswith(("On the", "End price")))
+    assert said == {"tag": "On the average price over the next 30 minutes, flat within \u00B13.11 points", "row60": "End price onlyFlat 80%"}
+    how = next(v for k, v in parts if k == "how")
+    assert how.startswith("JEVUp 55%") and how.endswith("JEV\u2019s sum alone: " + why) and "end-price clock" not in how
+    assert any(k == "row60" and v.startswith("Next 60 minUp 50%") for k, v in parts)
+    # a card from before the average-price sum leads with the end-price sum and has no shadow line
+    old = _sum_card({**c, "hour": {k: v for k, v in hour.items() if k != "average"}})
+    assert old[1] == ["big", "Flat 80%"] and not any(v.startswith(("End price", "On the")) for _, v in old)
+
+
+def test_the_opening_card_leads_with_the_average_call_and_keeps_the_end_prices_size_as_its_second_line():
+    five = {"down_big": 0.05, "down_small": 0.1, "flat": 0.3, "up_small": 0.4, "up_big": 0.1, "unsure": 0.05}
+    hour = {"pick": "up_small", "probabilities": five, "views": {"direction": {"probabilities": {"up": 0.5, "flat": 0.3, "down": 0.15}},
+                                                                 "size": {"probabilities": {"big": 0.15, "small": 0.8}}},
+            "average": {**AVG, "primary": "average_10", "box": "next_10", "minutes": 10, "edge_points": 1.66}}
+    t = {"lane": "tape", "row_ts": "2026-09-28T10:40:00-04:00", "hour": hour, "calls": [call("10:40", "10:50", "up", 0.55)], "stretch": {}}
+    js = (CARD_STUBS + "Object.defineProperty(Node.prototype, 'childNodes', {get: function(){ return this.kids; }});" + _odds() + _var("RULER_HELD_UNTIL") + "".join(_fn(f) for f in ("top1", "tag", "skipLine", "averageWords", "endPriceRow", "laneCard"))
+          + "console.log(JSON.stringify(dump(laneCard(D.t, true))));")
+    parts = _parts(_run(js, {"t": t, "now": "2026-09-28T10:42:00-04:00"}))
+    assert parts[1] == ["big", "Up 55%"] and ["row60", "End price onlyUp small 40%"] in parts
+    assert ["tag", "On the average price over the next 10 minutes, flat within \u00B11.66 points"] in parts
+    assert ["odds", "A big move 15%"] in parts                     # the size, from the end-price sum; its direction is the call's now
+
+
+def test_the_pre_market_call_and_its_fold_are_the_average_price_sums():
+    avg = {**AVG, "pick": "down", "probabilities": {"up": 0.25, "flat": 0.3, "down": 0.45}, "primary": "open_average_30", "box": "open_30",
+           "flat_points": 4.38, "edge_points": 2.59}
+    card = pre_card("09:28")
+    card = {**card, "hour": {**card["hour"], "average": avg}}
+    got = _fold(card, et("09:50"))
+    assert _flat_text(got["fold"]) == "pre-market call 06:28Down 45%Checked 06:44 and 07:04"
+    box = _parts(_pre("var box = el('div'); preCall(D.card, box); console.log(JSON.stringify(dump(box)));", {"card": card, "now": et("09:30")}))
+    assert box[0] == ["big", "Down 45%"] and ["row60", "End price onlyUp 41%"] in box
+    assert ["tag", "On the average price over the 30 minutes after the settled open, flat within \u00B12.59 points"] in box
+
+
+def test_the_sheet_gives_the_end_price_sums_own_pick_beside_an_average_price_call():
+    """The call is the average-price sum's; its end-price line is the end-price sum's own, judged on its own pick: an
+    unsure one there is passed, and a call standing on its end price alone says whose pick it stood on."""
+    c = {**S9, "pick": "down", "p": 0.6, "sum": "average_10", "odds": {"up": 0.15, "flat": 0.25, "down": 0.6},
+         "end_price": {**S9["end_price"], "pick": "unsure", "p": 0.4}}
+    got = _result(c, "2026-09-28T10:45:00-04:00")
+    assert got[1] == "The average price over the window was Down. The call said Down 60%."
+    assert got[-1].startswith("End price only: Passed, it ended Down big (its own question said Unsure 40%).")
+    alone = {**call("10:32", "11:02", "down", 0.6), "sum": "average_30", "odds": {"up": 0.1, "flat": 0.3, "down": 0.6}, "end_price_only": True,
+             "end_price": {"outcome": "up", "hit": True, "pick": "up", "p": 0.5, "moved": {"realized_sigma": 0.12}}}
+    got = _result(alone, "2026-09-28T11:04:00-04:00")
+    assert got[0] == "RightEnd price only" and got[1].endswith("It ended Up. Its end-price question said Up 50%.")
+    assert _run("console.log(JSON.stringify(callWords(D.c, Date.parse(D.now))));", {"c": alone, "now": "2026-09-28T11:04:00-04:00"})["strong"] == "Right"
+

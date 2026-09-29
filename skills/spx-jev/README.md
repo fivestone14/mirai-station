@@ -67,7 +67,7 @@ returns a probability for each answer option. JEV makes no trading call.
 | `spx_jev/night_ranks.py` | The Night Ranks | A night's measure against the same measure at the same minute on the last 20 nights, in thirds, leaving out roll, holiday and short nights; under 10 usable nights it is omitted with the reason. `night_move` and `ranked_move` measure and rank the move from the prior close on one contract; `window_move` and `window_range` with `prior_window_nights` and `prior_window_ranges` rank a stretch's move or high-low range against the same stretch on the last nights; `quoted_contract` reads the manifest for the roll guard. |
 | `spx_jev/schwab.py` | The Schwab Link | The feeds' calls through the station's shared client (REST only, never the lob-flow streamer), batched and spaced: 1- and 5-minute bars (regular hours unless a caller asks for extended hours), quotes, and the contract a futures root is quoted under. |
 | `spec/question_set.json`, `spec/write_question_docs.py`, `questions/spx_questions.json` | The Questions | The final question set (128 questions, 135 labels, 163 constants, with its conventions and the review behind each question) and the step-2 doc both lanes ask from, written from it by `python3 spec/write_question_docs.py` (never edited by hand; `--check` says whether it is current, and a test holds it). No number is typed into them: every threshold is a name in braces filled from `cuts.py`, which must hold the set's constants to the number before the writer writes. |
-| `questions/spx_hour.json`, `questions/spx_lane_hour.json`, `questions/spx_premarket_hour.json` | The Sums | The live lane's two sums, the opening lane's five-way 10-minute sum, and the premarket lane's two sums from the settled open. |
+| `questions/spx_hour.json`, `questions/spx_lane_hour.json`, `questions/spx_premarket_hour.json` | The Sums | Each lane's call, where the average price over its window sits (up, flat or down, no unsure), and beside it in shadow the end-price sums as before: the live lane's two, the opening lane's five-way 10-minute sum, and the premarket lane's two from the settled open. |
 | `calendar/events.json`, `spx_jev/events.py` | The Calendar | The scheduled events, kept by hand from `covers_from` through `covers_through`. Tier 1 (the Fed, rebalance closes, half days, copied from SNDK's calendar less SanDisk's own) tags the reads; the other tiers (the 08:30, 10:00 and 14:00 releases and the Fed's scheduled speakers) feed the event labels, and all but the 08:30 releases also keep reads out of the learning loop. The releases before the open (08:30, and ADP at 08:15) are listed from `pre_open_covers_from`, 2026-08-01, and set the premarket lane's report window; the minor ones (`events.MINOR_PRE_OPEN`) are left out of the session's event labels. |
 | `spec/labels.json` | The Label Spec | The 50 labels built before the final set, with source, logic, cut and a real sentence; a test pins it to the code. The set's own labels are specified in `spec/question_set.json`. |
 | `spec/cuts.json`, `spec/measure_cuts.py` | The Measurements | How each measured cut was found, with its percentile and sample size, and where each declared cut falls (the share of SPX and of SNDK observations under it). |
@@ -199,9 +199,11 @@ archive there too, under `archive/`.
    and a Brier score for the blend, JEV's own sum and the clock's odds on the
    same outcome. The grades go to the question weights' `learn`: on the live
    lane the learning loop (`pool.py`) applies every newly sealed session.
-   Beside it, in shadow (`integral.py`), each graded call is graded again on
-   the average price over its window against the flat band narrowed to fit
-   an average, its direction deciding and an unsure call passed; nothing
+   Beside it (`integral.py`), each graded window is graded again on the
+   average price over it against the flat band narrowed to fit an average,
+   its direction deciding: the call's pick where the average-price sum
+   answered, with the Brier and log loss of its odds, else the end-price
+   sum's, an unsure one passed. That grade is the phone's verdict; nothing
    learns from it yet.
 
 ## The files it writes, all under `state/spx_jev/`
@@ -212,9 +214,11 @@ archive there too, under `archive/`.
 - `last_asked.json`, `cadence.json`, `clock_days.json`: the cadence and the
   clock's stored counts. `grades.jsonl`, `weights.json` (the sums' tallies,
   `method` and the per-question weights), `weights_log.jsonl`.
-  `integral_grades.jsonl`, the shadow integral grade, one line per graded
-  horizon (append only, keyed by the read, the horizon and `rule_version`),
-  in every lane's folder.
+  `integral_grades.jsonl`, the integral grade, one line per graded horizon
+  (append only, keyed by the read, the horizon and `rule_version`), in every
+  lane's folder: from `rule_version` 2 each line names the sum it graded
+  (`sum`) and, for the call, carries its `scores` and the edge JEV was told
+  (`edge_told`); version 1 lines still read.
 - `pool_30.json`, `pool_60.json`, `pool_log.jsonl`: the learning loop's state
   per horizon and one log line per horizon per session applied or refused.
 - `archive/{day}.jsonl`: the raw archive for later machine learning, one line
@@ -248,12 +252,14 @@ The card carries: `symbol`, `generated_at`, `row_ts`, `freshness`, `sigma`,
 `situation` (four facts with a verdict word and the figure to draw), `labels`,
 `omitted`, `sent`, `asked` (the questions the read put to JEV), `model`,
 `questions` (each with `answer` or `skipped`, and `held_from` when held),
-`hour` (the blended sum with `jev`, `clock` and `blend`), `event`, `calls` and
-`tally` (the day's newest calls and their grades: `integral`, the grade on the
+`hour` (the blended end-price sum with `jev`, `clock` and `blend`, and the
+call under `average`: its pick, odds, window and edge in points), `event`,
+`calls` and
+`tally` (the day's newest calls, each the average-price sum's pick and odds
 average price over the window from `integral_grades.jsonl`, with its label,
 points against the edge, verdict, size, path and, once the box has ten sessions
 to rank it against, its strength `tier`; and `end_price`, the grade at the mark,
-kept beside it for the side-by-side weeks; a call with no average-price grade
+with the end-price sum's own `pick` and `p`, kept beside it for the side-by-side weeks; a call with no average-price grade
 is marked `end_price_only` and stands on its end price until a later card finds
 the line, and an open call carries its average so far, `so_far`. The tally
 counts the average-price grade: a call's direction decides it, an unsure call is

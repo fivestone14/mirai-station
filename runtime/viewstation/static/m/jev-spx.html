@@ -323,7 +323,7 @@ details .q{margin-top:8px}
 <div class="load" id="load"><i></i>Reading the card</div>
 <div id="state"></div>
 <main id="main" style="display:flex;flex-direction:column;gap:12px"></main>
-<p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are forecasts too, logged and never graded. Neither is a call. A call is graded on the average price over its window: where each minute closed against the price at the read, averaged, in index points, and set against a flat band (the &plusmn; figure) narrower than an end price would get, because an average swings less than any one price. Its direction decides right or wrong; its size at the end price, where price stood highest and lowest (&ldquo;min 3&rdquo; is the window&rsquo;s third minute) and any sharp move are said beside it, and an unsure call is passed, never counted as a miss. For now each call also shows the old grade, on the end price alone, and a call the average could not grade stands on that, said so. When a sum says blended, it is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent SPX sessions. Through the first hour the opening lane reads every 5 minutes and its 10-minute call, sized in tape units of index points, leads the page until its last call closes; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock. Before the open, the pre-market lane reads S&amp;P futures, 10-year bond futures, bitcoin futures and the morning&rsquo;s reports through the night and makes one call about the first half hour: where price stands 10 and 30 minutes after the first settled price, four minutes after the open. It is a forecast too, graded by the bars. Every time here is in this phone's own time zone.</p>
+<p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are forecasts too, logged and never graded. Neither is a call. A call is graded on the average price over its window: where each minute closed against the price at the read, averaged, in index points, and set against a flat band (the &plusmn; figure) narrower than an end price would get, because an average swings less than any one price. Its direction decides right or wrong; its size at the end price, where price stood highest and lowest (&ldquo;min 3&rdquo; is the window&rsquo;s third minute) and any sharp move are said beside it, and an unsure call is passed, never counted as a miss. For now each call also shows the old grade, on the end price alone, and a call the average could not grade stands on that, said so. The call is JEV&rsquo;s answer to that question itself: where the average will sit, up, flat or down within the &plusmn; figure, with no unsure; the old question on the end price is still asked beside it, in shadow, and shown muted as &ldquo;end price only&rdquo;. When a sum says blended, it is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent SPX sessions. Through the first hour the opening lane reads every 5 minutes and its 10-minute call, sized in tape units of index points, leads the page until its last call closes; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock. Before the open, the pre-market lane reads S&amp;P futures, 10-year bond futures, bitcoin futures and the morning&rsquo;s reports through the night and makes one call about the first half hour: where price stands 10 and 30 minutes after the first settled price, four minutes after the open. It is a forecast too, graded by the bars. Every time here is in this phone's own time zone.</p>
 
 <div class="scrim" data-sheet-close></div>
 <div class="sheet" id="jevSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="csTitle">
@@ -495,6 +495,17 @@ details .q{margin-top:8px}
   // what the blend is made of, and each part's own leading answer, in the page's own option words.
   function top1(p){ return p ? Object.keys(p).sort(function(x, y){ return p[y] - p[x]; })[0] : null; }
   function oneAnswer(p){ var k = top1(p); return k ? cap(k) + ' ' + Math.round((p[k] || 0) * 100) + '%' : 'none'; }
+  // the sum a card's call is: the average-price one (the service's hour.average: up, flat or down over the window, no
+  // unsure) once JEV answered it, else the end-price sum, as on a card from before it
+  function callSum(h){ return h && h.average && h.average.probabilities ? h.average : h; }
+  // what the average-price call is measured on, and its flat edge in index points, for the line under its odds
+  function averageWords(a, span){ return 'on the average price over ' + span + ', flat within \u00B1' + (+a.edge_points).toFixed(2) + ' points'; }
+  // the end-price sum beside the call, in shadow: asked and graded as before, never the call
+  function endPriceRow(h){
+    var p = h.probabilities, t = h.pick || top1(p), r = el('div', 'row60');
+    r.appendChild(el('span', 'k', 'End price only')); r.appendChild(el('b', null, cap(t) + ' ' + pct(p[t])));
+    return r;
+  }
   // the order a call's options are drawn and listed in, left to right: from the biggest fall to the
   // biggest rise, unsure last, so the bar reads like the price axis
   var ODDS_ORDER = {five: ['down_big', 'down_small', 'flat', 'up_small', 'up_big', 'unsure'], three: ['down', 'flat', 'up', 'unsure']};
@@ -708,8 +719,8 @@ details .q{margin-top:8px}
   // a call's verdict at its end price: an unsure pick made no call, so it is passed there too
   function verdict(hit, pick){ return pick === 'unsure' ? 'Passed' : hit ? 'Right' : 'Wrong'; }
   // the call's grade at its end price (``end_price``), kept beside the average-price grade (``integral``) for the
-  // side-by-side weeks; a card written before the average-price grade carries it on the call itself, and a pre-market
-  // check carries it so too
+  // side-by-side weeks, with the end-price sum's own pick (``pick``, ``p``) once the call is the average-price sum's;
+  // a card written before the average-price grade carries it on the call itself, and a pre-market check carries it so too
   function endPrice(c){ return c.end_price || (c.outcome ? c : null); }
   // the verdict a call or a pre-market check stands on, as the service's tally counts it (service.call_verdict): its
   // average price's once graded, else its end price's alone (``endOnly``: the average could not grade it, or the card
@@ -717,7 +728,7 @@ details .q{margin-top:8px}
   function gradeOf(c){
     var g = c.integral, ep = endPrice(c);
     if(g && g.graded) return {label: g.label, verdict: cap(g.verdict)};
-    return ep ? {label: ep.outcome, verdict: verdict(ep.hit, c.pick), endOnly: true} : null;
+    return ep ? {label: ep.outcome, verdict: verdict(ep.hit, ep.pick != null ? ep.pick : c.pick), endOnly: true} : null;
   }
   // what a call's row says beside its bar: time left while open, then what the average price over the window did
   // ("Was") or, standing on its end price alone, where it ended ("Ended"), and the verdict; ``short`` is the same
@@ -880,6 +891,8 @@ details .q{margin-top:8px}
   // its odds
   function openCall(c, from){
     var now = Date.now(), body = $('csBody'), g = c.integral, ep = endPrice(c), alone = gradeOf(c);
+    // the end-price sum's own pick, when the card names it beside an average-price call
+    var own = ep && ep !== c && ep.pick != null ? ep : null;
     $('csTitle').textContent = 'The ' + viewerTime(c.read) + ' call \u00B7 looks ' + c.minutes + ' min ahead';
     body.textContent = '';
     var res = el('div', 'sh-caveat cs-result'), v = el('div', 'cs-verdict');
@@ -897,14 +910,16 @@ details .q{margin-top:8px}
       if(g.stale_read) res.appendChild(el('p', null, 'The read\u2019s price was stale, so this call is kept out of learning.'));
       if(ep){
         var em = movedWords(ep.moved, c.mark);
-        res.appendChild(el('p', 'cs-end', 'End price only: ' + verdict(ep.hit, c.pick) + ', it ended ' + cap(ep.outcome) + '.' + (em ? ' ' + em : '')));
+        res.appendChild(el('p', 'cs-end', 'End price only: ' + verdict(ep.hit, own ? own.pick : c.pick) + ', it ended ' + cap(ep.outcome) +
+                                          (own ? ' (its own question said ' + cap(own.pick) + ' ' + pct(own.p) + ')' : '') + '.' + (em ? ' ' + em : '')));
       }
     } else if(alone){
       v.appendChild(el('b', null, alone.verdict)); v.appendChild(el('span', null, 'End price only'));
       res.appendChild(v);
+      var said = own ? {pick: own.pick, p: own.p, who: 'Its end-price question said '} : {pick: c.pick, p: c.p, who: 'The call said '};
       res.appendChild(el('p', null, 'No average-price grade for this call' + (g && g.reason ? ' (' + String(g.reason).replace(/^not graded: /, '') + ')' : '') +
-                                    ', so it stands on its end price alone. It ended ' + cap(ep.outcome) + '. The call said ' + cap(c.pick) + ' ' + pct(c.p) + '.'
-                                    + (c.pick === 'unsure' ? ' Unsure makes no call, so it is passed: counted apart from the calls right and wrong.' : '')));
+                                    ', so it stands on its end price alone. It ended ' + cap(ep.outcome) + '. ' + said.who + cap(said.pick) + ' ' + pct(said.p) + '.'
+                                    + (said.pick === 'unsure' ? ' Unsure makes no call, so it is passed: counted apart from the calls right and wrong.' : '')));
       var mv = movedWords(ep.moved, c.mark); if(mv) res.appendChild(el('p', null, mv));
     } else if(!c.mark){
       v.appendChild(el('b', null, 'Never graded')); res.appendChild(v);
@@ -941,23 +956,26 @@ details .q{margin-top:8px}
     return box;
   }
 
-  // the 30-minute call when it leads, laid out as the 5-minute one is: the clock, JEV's call as a bar, how
-  // it was made, the calls in play, then the 60-minute call from the same read on one line
+  // the 30-minute call when it leads, laid out as the 5-minute one is: the clock, JEV's call as a bar, what it is
+  // measured on, how it was made, the calls in play, then the end-price sum beside it and the 60-minute one from the
+  // same read, each on one line
   function sumCard(c, main){
-    var h = c.hour, marks = c.marks || {};
-    if(h && h.probabilities){
-      var bl = h.blend || null, minutes = (c.calls && c.calls[0] && c.calls[0].minutes) || 30;
+    var h = c.hour, marks = c.marks || {}, a = callSum(h);
+    if(a && a.probabilities){
+      var bl = a.blend || null, minutes = (c.calls && c.calls[0] && c.calls[0].minutes) || 30;
       var hc = el('div', 'card dashed');
       hc.appendChild(clockBlock(c.row_ts, minutes, marks.next_30 !== undefined ? marks.next_30 : plusIso(c.row_ts, minutes)));
-      var hp = h.probabilities, top = h.pick || top1(hp);
+      var hp = a.probabilities, top = a.pick || top1(hp);
       hc.appendChild(el('div', 'big', cap(top) + ' ' + pct(hp[top])));
       hc.appendChild(oddsBar(hp, top));
-      hc.appendChild(howChart(h, bl, c.row_ts));
+      if(a !== h) hc.appendChild(tag(averageWords(a, 'the next ' + a.minutes + ' minutes')));
+      hc.appendChild(howChart(a, bl, c.row_ts));
       // a scheduled event within the hour (the service's calendar): said once, in words; the read is
       // still graded, and one due inside 30 minutes is kept out of the question weights
       if(c.event && c.event.sentence) hc.appendChild(tag(sentence(marketWords(c.event.sentence, c.row_ts)) +
         (c.event.within_30 ? '; this read is graded but kept out of the question weights' : '')));
       if(c.calls && c.calls.length) hc.appendChild(inPlay(c.calls));
+      if(a !== h && h.probabilities) hc.appendChild(endPriceRow(h));
       var h60 = h.by && h.by.next_60;
       if(h60 && h60.probabilities){
         var p60 = h60.probabilities, t60 = h60.pick || top1(p60);
@@ -1078,7 +1096,7 @@ details .q{margin-top:8px}
   }
   // the 30-minute call while the opening leads: one line, with its own minutes left
   function foldLive(c){
-    var f = el('div', 'card fold'), h = c.hour, p = h && h.probabilities;
+    var f = el('div', 'card fold'), h = callSum(c.hour), p = h && h.probabilities;
     f.appendChild(el('span', 'k', '30-min read ' + viewerTime(c.row_ts)));
     var left = el('span', 'l');
     if(!p){
@@ -1109,14 +1127,17 @@ details .q{margin-top:8px}
   }
   function within(span, t){ t = t || marketClock(); if(!t) return false; var s = hhmm(t); return s >= span[0] && s < span[1]; }
   function laneCard(t, ok){
-    var box = el('div', 'card dashed'), newest = t.calls[0], h = t.hour, p = h && h.probabilities;
+    var box = el('div', 'card dashed'), newest = t.calls[0], h = t.hour, a = callSum(h), p = a && a.probabilities;
     box.appendChild(clockBlock(newest.read, newest.minutes, newest.mark));
     if(p && t.row_ts === newest.read){
-      var top = h.pick || top1(p);
+      var top = a.pick || top1(p);
       box.appendChild(el('div', 'big', cap(top) + ' ' + pct(p[top])));
       box.appendChild(oddsBar(p, top));
-      // the same odds read as a direction and as a size (the service's views), on one line
-      var v = h.views || {}, d = v.direction && v.direction.probabilities, sz = v.size && v.size.probabilities, row = el('div', 'odds');
+      if(a !== h) box.appendChild(tag(averageWords(a, 'the next ' + a.minutes + ' minutes')));
+      if(a !== h && h.probabilities) box.appendChild(endPriceRow(h));
+      // the end-price sum's odds read as a direction and as a size (the service's views), on one line; beside an
+      // average-price call only the size, its second line
+      var v = h.views || {}, d = a === h && v.direction && v.direction.probabilities, sz = v.size && v.size.probabilities, row = el('div', 'odds');
       if(d){ ['up', 'flat', 'down'].forEach(function(k){ if(k in d) row.appendChild(el('span', null, cap(k) + ' ' + pct(d[k]))); }); }
       if(sz && 'big' in sz) row.appendChild(el('span', null, 'A big move ' + pct(sz.big)));
       if(row.childNodes.length) box.appendChild(row);
@@ -1236,10 +1257,10 @@ details .q{margin-top:8px}
   // close-out graded it on the call's own record, one it has not graded yet said so; before the close-out, when
   var PRE_CHECKS = ['open_10', 'open_30'];
   function preFold(p){
-    var h = p.hour, top = h.pick || top1(h.probabilities), f = el('div', 'card fold');
+    var h = p.hour, a = callSum(h), top = a.pick || top1(a.probabilities), f = el('div', 'card fold');
     var call = (p.calls || []).filter(function(c){ return c.read === h.read_at; })[0], checks = (call && call.checks) || {};
     f.appendChild(el('span', 'k', 'pre-market call ' + viewerTime(h.read_at || p.row_ts)));
-    f.appendChild(el('b', null, cap(top) + ' ' + pct(h.probabilities[top])));
+    f.appendChild(el('b', null, cap(top) + ' ' + pct(a.probabilities[top])));
     // each check on the average price over its own window from the settled open, or on its end price alone, said so
     var said = PRE_CHECKS.map(function(k, i){
       var v = checks[k] && gradeOf(checks[k]), at = viewerTime(p.marks[i]);
@@ -1325,13 +1346,16 @@ details .q{margin-top:8px}
   // or a JEV read unsent or whose sum failed, the card's hour_error) carries the newest call and says whose it is and
   // why; before the first call, when it comes
   function preCall(p, box){
-    var h = p.hour, pr = h && h.probabilities;
+    var h = p.hour, a = callSum(h), pr = a && a.probabilities;
     var failed = p.hour_error && p.hour_error.read_at === p.row_ts ? 'made no sum: ' + p.hour_error.error : null;
     if(pr){
-      var top = h.pick || top1(pr), by = h.by || {}, s = shapeWords(sumPick(by.open_10), sumPick(by.open_30));
+      // the shape is the end-price sums' two checks, drawn under the call as they are asked
+      var top = a.pick || top1(pr), by = h.by || {}, s = shapeWords(sumPick(by.open_10), sumPick(by.open_30));
       box.appendChild(el('div', 'big', cap(top) + ' ' + pct(pr[top])));
       if(s){ var sh = el('div', 'shape', s.title); sh.appendChild(el('span', null, ': ' + s.words)); box.appendChild(sh); }
       box.appendChild(oddsBar(pr, top));
+      if(a !== h) box.appendChild(tag(averageWords(a, 'the ' + a.minutes + ' minutes after the settled open')));
+      if(a !== h && h.probabilities) box.appendChild(endPriceRow(h));
       if(h.read_at && h.read_at !== p.row_ts)
         box.appendChild(tag('the call from the ' + viewerTime(h.read_at) + ' read; the ' + viewerTime(p.row_ts) + ' read ' +
                             (!preJevRead(p) ? 'is a snapshot and asks nothing.' : p.sent ? failed || 'made none.' : 'was not sent.')));

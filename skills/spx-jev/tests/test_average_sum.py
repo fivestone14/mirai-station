@@ -5,14 +5,17 @@ counted on the average price alone, and a record, a line or a card from before i
 from __future__ import annotations
 
 import json
+import math
+
 import pytest
 
-from conftest import DAY
-from spx_jev import archive, service
+from conftest import DAY, at
+from spx_jev import archive, grade, service
 from spx_jev.ask import jev_only
+from spx_jev.cuts import NEXT_30_FLAT_BAND_SIGMA
 from spx_jev.hour import average_request, average_summary, average_window, hour_request, load_hour_doc
 from spx_jev.lane import LANES, LIVE, PREMARKET, TAPE
-from test_integral import SCENARIOS
+from test_integral import SCENARIO_DAY, SCENARIOS, _bars
 from test_old_sums_unchanged import AVERAGE, run_fixture
 
 SENTENCES = {"q_dir": "Did price rise, fall, or go nowhere? rising, JEV was 85% sure"}
@@ -74,16 +77,109 @@ def _lines(path):
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
-def test_a_live_read_asks_both_requests_on_the_same_sentences_and_archives_the_average(fixture_run):
-    """The 10:02 read of a day that climbs: the end-price sums in one request as before, the average-price sum in its
-    own on the same sentences, its window priced at 3.11 points (0.07 of the 75-point anchor, narrowed by 0.5918)."""
-    live, tape = fixture_run
+def test_a_live_read_calls_the_average_and_its_grade_grades_that_pick_with_its_scores(fixture_run):
+    """The 10:02 read of a day that climbs: JEV's end-price sum said up at 50%, its average-price sum down at 60%. The
+    phone's call is the average's; the average over the window sat up, 6.68 against the 3.11-point edge JEV was told
+    (0.07 of the 75-point anchor, narrowed by 0.5918), so the call is wrong, and its odds score a Brier of 1.04 and a
+    log loss of ln 5. The end-price sum's own pick and its grade ride beside it."""
+    live, _ = fixture_run
     rec = _lines(live / "hour" / f"{DAY}.jsonl")[0]
-    assert rec["average_request"]["state"]["answers"] == rec["request"]["state"]["answers"]
-    assert rec["average"]["edge_points"] == 3.11 and rec["average"]["pick"] == "down" and rec["pick"] == "up"
-    assert "3.11 points" in rec["average_request"]["state"]["context"]["average"]
+    assert rec["average_request"]["state"]["answers"] == rec["request"]["state"]["answers"]    # the same sentences, two requests
+    assert rec["average"]["edge_points"] == 3.11 and rec["average"]["pick"] == "down"
+    assert rec["pick"] == "up" and rec["primary"] == "next_30"                             # the end-price sum, flat on top as before
+    (line,) = [g for g in _lines(live / grade.INTEGRAL_NAME) if g["horizon"] == "next_30"]
+    assert (line["rule_version"], line["sum"], line["pick"], line["label"], line["g"], line["edge"], line["verdict"]) == \
+        (2, "average_30", "down", "up", 6.68, 3.11, "wrong")
+    assert line["edge_told"] == line["edge"]
+    assert line["scores"] == {"brier": 1.04, "log_loss": round(math.log(5), 4)}
+    (sixty,) = [g for g in _lines(live / grade.INTEGRAL_NAME) if g["horizon"] == "next_60"]
+    assert sixty["sum"] == "next_60" and sixty["pick"] == "flat" and "scores" not in sixty    # no average-price sum for this box
+    [call] = service.day_calls(live, DAY, LIVE)
+    assert (call["pick"], call["p"], call["odds"], call["sum"]) == ("down", 0.6, AVERAGE["probabilities"], "average_30")
+    assert call["end_price"]["pick"] == "up" and call["end_price"]["p"] == 0.5 and call["end_price"]["hit"] is True
+    assert service.call_verdict(call) == "wrong" and call["integral"]["sum"] == "average_30"
+    card = json.loads((live / "latest.json").read_text())
+    assert card["hour"]["average"]["pick"] == "down" and card["hour"]["pick"] == "up"
     (read,) = [r for r in _lines(live / "archive" / f"{DAY}.jsonl") if r["kind"] == "read" and r["lane"] == "live"]
     assert read["average_request"]["id"] == "average" and read["average_response"]["answers"]["average_30"] == AVERAGE
     assert read["schema_version"] == archive.SCHEMA_VERSION == 5
-    t = _lines(tape / "hour" / f"{DAY}.jsonl")[0]
-    assert "unit" in t["request"]["state"]["context"] and "unit" not in t["average_request"]["state"]["context"]
+
+
+def test_the_opening_call_is_the_average_and_its_size_stays_the_end_prices_second_line(fixture_run):
+    _, tape = fixture_run
+    (line,) = _lines(tape / grade.INTEGRAL_NAME)
+    assert (line["sum"], line["pick"], line["label"], line["verdict"]) == ("average_10", "down", "flat", "wrong")
+    assert line["size"]["call"] == "small"                          # named by the five-way end-price sum, up_small, never asked again
+    assert line["edge_told"] == line["edge"] == 1.66 and "brier" in line["scores"]
+    rec = _lines(tape / "hour" / f"{DAY}.jsonl")[0]
+    assert "unit" in rec["request"]["state"]["context"] and "unit" not in rec["average_request"]["state"]["context"]
+
+
+# ---- the grade, line by line
+
+def _s1(average=None):
+    """S1 on the live box: a 13:01 read at 7698.56 that spiked up and ended flat, 5.39 points of flat band (the anchor
+    that gives it), the end-price sum having called flat."""
+    hhmm, spot, f, pick, closes = SCENARIOS["S1"]
+    t0 = at(13, 1, day=SCENARIO_DAY)
+    ts = t0.isoformat()
+    line = {"row_ts": ts, "horizons": ["next_30"], "anchor": {"points": f / NEXT_30_FLAT_BAND_SIGMA}, "next_30": {"pick": "flat", "band": "flat"}}
+    rec = {"row_ts": ts, "spot": spot, "by": {"next_30": {"pick": "flat", "probabilities": {"flat": 0.6, "up": 0.2, "down": 0.1, "unsure": 0.1}}},
+           **({"average": average} if average else {})}
+    return grade.integral_line(line, "next_30", rec, _bars(t0, spot, closes), {}, LIVE)
+
+
+def test_the_average_price_grade_grades_the_average_sums_pick_and_says_so():
+    up = {"pick": "up", "probabilities": {"up": 0.5, "flat": 0.3, "down": 0.2}, "edge_points": 3.19}
+    g = _s1(up)
+    assert (g["sum"], g["pick"], g["label"], g["g"], g["edge"], g["verdict"]) == ("average_30", "up", "up", 4.45, 3.19, "right")
+    assert g["scores"] == {"brier": 0.38, "log_loss": 0.6931} and g["edge_told"] == 3.19
+    # a record from before the question, or a read whose average-price sum got no answer: the end-price sum's own call, unscored
+    for old in (_s1(), _s1({"error": "HTTP 529", "primary": "average_30"})):
+        assert (old["sum"], old["pick"], old["verdict"]) == ("next_30", "flat", "wrong") and "scores" not in old and "edge_told" not in old
+
+
+def test_a_blended_average_is_scored_with_jevs_own_odds_and_the_clocks_beside_it():
+    blended = {"pick": "flat", "probabilities": {"up": 0.35, "flat": 0.45, "down": 0.2}, "blend": {"used": True},
+               "jev": {"probabilities": {"up": 0.6, "flat": 0.3, "down": 0.1}}, "clock": {"probabilities": {"up": 0.1, "flat": 0.6, "down": 0.3}}}
+    s = _s1(blended)["scores"]
+    assert s == {"brier": 0.665, "log_loss": 1.0498, "jev_brier": 0.26, "jev_log_loss": 0.5108, "clock_brier": 1.26, "clock_log_loss": 2.3026}
+    assert "jev_brier" not in _s1({**blended, "blend": {"used": False, "why": "too few sessions"}})["scores"]
+
+
+def test_a_zero_on_the_label_costs_what_the_learning_loop_charges_it():
+    """The log loss floors each outcome as scores.py does for the loop, so a zero on the label costs ln(1 / EPS)-ish,
+    never an infinity."""
+    s = _s1({"pick": "flat", "probabilities": {"up": 0.0, "flat": 1.0, "down": 0.0}})["scores"]
+    assert s["brier"] == 2.0 and s["log_loss"] == pytest.approx(math.log(1.04 / 0.02), abs=1e-4)
+
+
+# ---- what still reads
+
+def test_a_read_graded_under_both_rules_stands_on_the_newest_and_a_first_rule_line_alone_still_reads(tmp_path):
+    ts, older = at(11, 2).isoformat(), at(10, 32).isoformat()
+    (tmp_path / "hour").mkdir()
+    (tmp_path / "hour" / f"{DAY}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in (
+        {"row_ts": older, "pick": "up", "probabilities": {"up": 0.5, "flat": 0.3, "unsure": 0.2}},
+        {"row_ts": ts, "pick": "up", "probabilities": {"up": 0.5, "flat": 0.3, "unsure": 0.2},
+         "average": {"pick": "down", "probabilities": {"up": 0.1, "flat": 0.3, "down": 0.6}}})))
+    first = {"horizon": "next_30", "graded": True, "label": "up", "g": 4.0, "edge": 3.19, "running": ["up"]}
+    (tmp_path / grade.INTEGRAL_NAME).write_text("".join(json.dumps(line) + "\n" for line in (
+        {**first, "row_ts": older, "rule_version": 1, "pick": "up", "verdict": "right"},
+        {**first, "row_ts": ts, "rule_version": 1, "pick": "up", "verdict": "right"},
+        {**first, "row_ts": ts, "rule_version": 2, "sum": "average_30", "pick": "down", "verdict": "wrong"})))
+    old_call, new_call = service.day_calls(tmp_path, DAY, LIVE)
+    assert (old_call["pick"], old_call["sum"], old_call["integral"]["verdict"]) == ("up", "next_30", "right")
+    assert (new_call["pick"], new_call["sum"], new_call["integral"]["verdict"], new_call["integral"]["sum"]) == ("down", "average_30", "wrong", "average_30")
+
+
+def test_the_end_price_verdict_is_the_end_price_sums_own_and_an_old_card_falls_back_on_the_call():
+    assert service.end_price_verdict({"hit": False, "pick": "unsure"}, "up") == "passed"
+    assert service.end_price_verdict({"hit": True, "pick": "up"}, "down") == "right"
+    assert service.end_price_verdict({"hit": False}, "unsure") == "passed"        # a card from before names no pick on it
+    call = {"pick": "down", "end_price": {"outcome": "flat", "hit": False, "pick": "unsure"}, "end_price_only": True}
+    assert service.call_verdict(call) == "passed"
+    tally = service.calls_block([call])["tally"]
+    assert tally["passed"] == 1 and tally["right"] == 0
+    v4 = {"schema_version": 4, "kind": "close_out", "calls": [{"pick": "unsure", "end_price": {"outcome": "up", "hit": False}}], "tally": {}}
+    assert archive.read_close_out(v4) == v4                          # a version 4 close-out reads as it was written

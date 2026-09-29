@@ -83,7 +83,8 @@ def test_a_tape_read_writes_its_own_folder_and_is_graded_on_the_exact_bar_ten_mi
     assert c2["row_ts"] == at(10, 50).isoformat() and "move_since_read" in c2["stretch"]
     grades = [json.loads(l) for l in (out / "grades.jsonl").read_text().splitlines() if l.strip()]
     assert len(grades) == 1 and grades[0]["band"] == "flat" and grades[0]["realized_points"] == 0.0
-    assert c2["calls"][1]["end_price"] == {"outcome": "flat", "hit": True, "moved": {"realized_points": 0.0, "realized_units": 0.0}}
+    assert c2["calls"][1]["end_price"] == {"outcome": "flat", "hit": True, "moved": {"realized_points": 0.0, "realized_units": 0.0},
+                                           "pick": "flat", "p": 0.6}
     graded = c2["calls"][1]["integral"]                                     # and on the average price over the same ten bars
     assert (graded["label"], graded["g"], graded["edge"], graded["verdict"]) == ("flat", 0.0, 1.56, "right")
     assert not any("checks" in x for x in c2["calls"])                    # each call has its own mark: no shared checks

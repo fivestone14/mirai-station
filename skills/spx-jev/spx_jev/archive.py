@@ -20,7 +20,9 @@ Three record kinds, each a dataclass below, each line carrying ``schema_version`
                the average price: ``right`` is right on the average, ``passed`` the unsure picks (``unsure`` up to
                version 3), ``end_price_only`` the calls counted on the end price. Up to version 3 a call carried its
                end-price outcome, hit and move on itself and the tally counted those; read_close_out gives an older
-               line in the version 4 shape
+               line in the version 4 shape. From version 5 a call's pick and odds are the average-price sum's when
+               it answered (``sum`` names the sum), and ``end_price`` carries the end-price sum's own pick and its
+               probability; a version 4 call's pick is the end-price sum's
 
 A read's ``read_id`` is its lane and its row's timestamp, the same key the grader and the card use,
 so a grade finds its read without a lookup table. Nothing secret is written: the key never reaches a
@@ -37,7 +39,7 @@ from typing import Any
 
 SCHEMA_VERSION = 5          # 2: a read carries the learning loop's forecasts (pool); 3: a premarket read carries its checkpoint and the night it saw;
                             # 4: a close_out's calls and tally are graded on the average price (see close_out above);
-                            # 5: a read carries the average-price sum's request and reply
+                            # 5: a read carries the average-price sum's request and reply, and a close_out's calls are its calls (see close_out)
 ARCHIVE_SUBDIR = Path("spx_jev") / "archive"
 
 

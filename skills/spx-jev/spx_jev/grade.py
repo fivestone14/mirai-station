@@ -67,8 +67,12 @@ written as not graded.
 The shadow integral grade
     After every run, each horizon graded above is graded once more on the average price over its window
     (integral.py), from the same spot or settled open to the same mark, against the same flat band narrowed
-    by integral.factor. It is written to its own file and nothing that grades or learns reads it:
-    grades.jsonl, the weights and the loop's state are exactly what they were without it. A window with
+    by integral.factor. On the box a lane's average-price sum forecasts (lane.average, the primary's) it
+    grades that sum's call where JEV answered it, and scores its odds against the average-price label
+    (integral_scores); elsewhere, and on a read from before the sum, it grades the end-price sum's own
+    call. Each line names the sum it graded (``sum``). It is written to its own file and nothing that
+    grades or learns reads it: grades.jsonl, the weights and the loop's state are exactly what they were
+    without it. A window with
     bars missing waits today and is written as not graded on a finished day; ``--integral-backfill`` fills
     the file for past days from their saved bars without grading anything else, and ``--integral-report``
     prints the flat share on both grades over the same windows, which is how the factor is judged.
@@ -85,9 +89,10 @@ Outputs, all under the lane's folder (state/spx_jev/ for the live lane)
     weights_log.jsonl  one line per grading run that graded something: the tally and every weight that moved
     and every new line, once more, in the raw archive (archive.GradeRecord, keyed to its read)
     integral_grades.jsonl  one line per graded horizon, the shadow integral grade (append only, keyed by row_ts,
-                       ``horizon`` and ``rule_version``): integral.grade_window's fields, the end-price label
-                       (``end_label``) and, on a RECORD horizon, the five-band size line (``size``); beside it
-                       integral_grades.jsonl.lock, held while it is read and appended
+                       ``horizon`` and ``rule_version``): the sum graded (``sum``), integral.grade_window's fields,
+                       the end-price label (``end_label``), on a RECORD horizon the five-band size line (``size``),
+                       and for the average-price sum's call its ``scores`` and the edge JEV was told
+                       (``edge_told``); beside it integral_grades.jsonl.lock, held while it is read and appended
 """
 from __future__ import annotations
 
@@ -101,7 +106,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import archive, events, integral
+from . import archive, events, integral, scores
 from .ask import load_questions
 from .hour import FIVE
 from .labels.measures import SETTLED_OPEN_BAR, close_at, settled_open
@@ -526,10 +531,39 @@ def _size_line(old: dict) -> dict:
     return {"band": old["band"], "size": old["size"], "call": call, "right": call == old["size"] if call else None}
 
 
+def average_call(rec: dict | None, qid: str, lane: Lane = LIVE) -> dict | None:
+    """The average-price sum's answer on a sum record, when horizon ``qid`` is the box it forecasts (the lane's primary)
+    and JEV answered it with a pick and probabilities; None for any other box, a record from before the sum, or a read
+    it got no answer on. What the average-price grade grades, and what the phone calls."""
+    if not lane.average or qid != lane.primary or not isinstance(rec, dict):
+        return None
+    avg = rec.get("average")
+    return avg if isinstance(avg, dict) and avg.get("pick") and isinstance(avg.get("probabilities"), dict) else None
+
+
+def _log_loss(p: dict, band: str) -> float:
+    return round(scores.log_loss(scores.floored(p), band), 4)
+
+
+def integral_scores(avg: dict, label: str) -> dict:
+    """The average-price sum's probabilities scored against the average-price label: the Brier over up, flat and down
+    and the log loss as the learning loop scores a forecast (scores.log_loss of scores.floored, each outcome at least
+    scores.EPS), for the shown sum and, when it was blended, for JEV's own and the clock's beside it, as grade_one
+    scores the end-price parts."""
+    out = {"brier": _brier(avg["probabilities"], label), "log_loss": _log_loss(avg["probabilities"], label)}
+    if (avg.get("blend") or {}).get("used"):
+        for part in ("jev", "clock"):
+            if isinstance(p := (avg.get(part) or {}).get("probabilities"), dict):
+                out.update({f"{part}_brier": _brier(p, label), f"{part}_log_loss": _log_loss(p, label)})
+    return out
+
+
 def integral_line(line: dict, qid: str, rec: dict | None, bars: list[dict], prior: dict[str, list[dict]], lane: Lane = LIVE) -> dict:
     """The shadow integral grade of horizon ``qid`` of a grades.jsonl ``line``, over the window the line was graded on
     (horizon_start to mark_at) and against its flat band: the line's anchor times the horizon's sigma band, or the
-    record's ``band.flat_points``. Measured from the read's spot, or the settled open the line was measured from."""
+    record's ``band.flat_points``. Measured from the read's spot, or the settled open the line was measured from. The
+    call graded is the average-price sum's where it answered (average_call), with its scores (integral_scores) and the
+    edge JEV was told (``edge_told``), else the end-price sum's own; ``sum`` names the one graded."""
     head = {"row_ts": line["row_ts"], "horizon": qid, "rule_version": integral.RULE_VERSION}
     if rec is None:
         return {**head, "graded": False, "reason": "not graded: the read's sum record is not on file"}
@@ -540,12 +574,19 @@ def integral_line(line: dict, qid: str, rec: dict | None, bars: list[dict], prio
     ruler = (line.get("anchor") or {}).get("points") or rec.get("sigma")
     points = float(rec["band"]["flat_points"]) if flat == RECORD else flat * float(ruler)
     old = line[qid]
-    probs = ((rec.get("by") or {}).get(qid) or {}).get("probabilities") or {}
-    out = {**head, **integral.grade_window(bars, prior, t0, int((t1 - t0).total_seconds() // 60), spot, points, old.get("pick"), probs)}
+    avg = average_call(rec, qid, lane)
+    if avg:
+        pick, probs = avg["pick"], avg["probabilities"]
+    else:
+        pick, probs = old.get("pick"), ((rec.get("by") or {}).get(qid) or {}).get("probabilities") or {}
+    out = {**head, "sum": lane.average if avg else qid,
+           **integral.grade_window(bars, prior, t0, int((t1 - t0).total_seconds() // 60), spot, points, pick, probs)}
     if out["graded"]:
         out["end_label"] = old["direction"] if flat == RECORD else old["band"]
         if flat == RECORD:
             out["size"] = _size_line(old)
+        if avg:
+            out.update({"scores": integral_scores(avg, out["label"]), "edge_told": avg.get("edge_points")})
     return out
 
 
