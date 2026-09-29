@@ -31,7 +31,7 @@ from ..market_context import BAR_SYMBOLS
 from ..sessions import session_open
 from .measures import ET, ONE_MINUTE, bar_time
 from .ranks import SameClockRank, rank_sessions, same_clock_market, same_clock_values
-from .rulers import SigmaRuler
+from .rulers import SigmaRuler, estimated_note
 
 if TYPE_CHECKING:
     from ..state_builder import MarketContext, Scene
@@ -160,7 +160,7 @@ class AgainstIndex:
     @property
     def ruler_note(self) -> str:
         """What a sentence adds when today's sigma is a stand-in for the morning anchor."""
-        return "; ruler estimated" if self.ruler.estimated else ""
+        return estimated_note(self.ruler)
 
     def link(self, symbol: str, index: str = SPX) -> UsualLink | None:
         if (symbol, index) not in self._links:

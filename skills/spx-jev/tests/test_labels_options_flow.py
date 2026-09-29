@@ -470,7 +470,7 @@ def test_strike_defense_is_omitted_out_of_reach_without_a_contested_strike_a_run
     ls, _ = read(record_scene(scene_factory, tmp_path / "nine", readings(NOW, strikes=[(7709.0, 14, 2)]), PRIOR_DAYS[:9]))
     assert ls.omitted["options.strike_defense"] == "its rank needs 10 prior sessions with a contested strike at this minute, have 9"
     ls, labels = read(record_scene(scene_factory, tmp_path / "late", readings(NOW, strikes=[(7709.0, 14, 2)]), morning=False))
-    assert labels["options.strike_defense"].endswith("at or above the middle: defended; ruler estimated")
+    assert labels["options.strike_defense"].endswith("at or above the middle: defended (ruler estimated)")
 
 
 def test_strike_defense_sleeps_with_no_contested_strike_in_reach_but_not_on_a_data_gap(scene_factory, tmp_path):

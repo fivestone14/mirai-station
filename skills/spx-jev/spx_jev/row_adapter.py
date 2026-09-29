@@ -25,6 +25,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .labels.measures import is_num
+
 SYMBOL = "SPX"
 # top-level fields the labeller reads, as they are on the row
 LABELLER_FIELDS = ("ts", "spot", "sigma", "sigma_anchor", "sigma_live", "vwap", "prior_close", "atm_iv", "vix_ts", "range_ruler", "adaptive_em",
@@ -67,17 +69,13 @@ SIEGE_FIELDS = ("health", "baseline", "saturated")
 SIEGE_TOWER_FIELDS = ("kind", "level", "status", "effort_pct", "verdict", "outcome")
 
 
-def _is_num(v: Any) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
-
-
 def labeller_row(raw: Any) -> dict | None:
     """One diary row as the labeller reads it, or None when it is not a usable SPX row (another
     ticker, no timestamp, no numeric spot). A field the row lacks is simply absent, never None, so
     the labeller omits the label that needs it and says why."""
     if not isinstance(raw, dict) or raw.get("ticker", SYMBOL) != SYMBOL:
         return None
-    if not isinstance(raw.get("ts"), str) or not _is_num(raw.get("spot")):
+    if not isinstance(raw.get("ts"), str) or not is_num(raw.get("spot")):
         return None
     family = [f for fields in FAMILY_FIELDS.values() for f in fields]
     row = {k: raw[k] for k in (*LABELLER_FIELDS, *(f for f in family if "." not in f)) if raw.get(k) is not None}

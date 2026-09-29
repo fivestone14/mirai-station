@@ -34,10 +34,10 @@ from .measures import (ET, ONE_MINUTE, bar_time, bars_finished_between, close_at
 from .plausible import left_out
 from .ranks import (SameClockRank, fifth, fifth_side, move_rank, rank_days, rank_sessions, same_clock_market, same_clock_values,
                     tick_bands_by_minute, tick_bursts)
-from .rulers import SigmaRuler, sigma_anchor
+from .rulers import SigmaRuler, estimated_note, sigma_anchor
 from .vol_sources import (ROW_MAX_GAP, DiaryPoint, Skew, diary_point, minute_floor, point_at, prior_diary, prior_diary_by,
                           skew_at)
-from .words import pct, plural, sig, signed
+from .words import hm, pct, plural, sig, signed
 
 LABELS = ("iv.trend_30min", "iv.vs_realized_30", "iv.expected_move_used", "iv.move_sides", "iv.term_structure",
           "vol.atm_iv_residual", "vol.front_fear_shift", "vol.realized_vs_clock", "vol.realized_vs_clock_rank", "vol.ruler_event_load",
@@ -226,10 +226,6 @@ def _in_band(x: float, lo: float, hi: float, step: float) -> float:
     return min(max(x, lo), hi - step)
 
 
-def _ruled(ruler: SigmaRuler) -> str:
-    return "; ruler estimated" if ruler.estimated else ""
-
-
 def _spx_move(scene: Scene, window: int, ruler: SigmaRuler) -> float | None:
     """Price's move over the last ``window`` minutes in the morning anchor: spot against the close of the last
     bar finished ``window`` minutes ago."""
@@ -408,7 +404,7 @@ def _vix_vs_price(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
            f"over the last 30 minutes VIX ended {abs(resid):.2f} points ({_share(abs(resid) / now)} of VIX) {'above' if resid >= 0 else 'below'} "
            f"what price explains: it {'rose' if d >= 0 else 'fell'} {abs(d):.2f} points, and the {abs(move):.2f} sigma SPX "
            f"{'drop' if move < 0 else 'rise'} alone would {'lift' if explained >= 0 else 'lower'} it about {abs(explained):.2f}; "
-           f"{_signed_standing(rank, 'VIX furthest above what price explains')}{_ruled(ruler)}")
+           f"{_signed_standing(rank, 'VIX furthest above what price explains')}{estimated_note(ruler)}")
 
 
 def _iv_left(points: Sequence[DiaryPoint], bars: list[dict], then: datetime, sigma: float | None) -> float | None:
@@ -445,7 +441,7 @@ def _atm_iv_residual(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> Non
            f"{'fell' if move < 0 else 'rose'} {sig(abs(move))}; the {'fall' if move < 0 else 'rise'} alone explains a "
            f"{'rise' if explained >= 0 else 'fall'} of {abs(explained):.2f}, so vol ended {abs(resid):.2f} points "
            f"{'above' if resid >= 0 else 'below'} what price explains; {_signed_standing(rank, 'vol furthest above what price explains')}"
-           f"{_ruled(ruler)}")
+           f"{estimated_note(ruler)}")
 
 
 def _opening_surprise(first: float, last: float, opened: float, close: float, points: float) -> tuple[float, float, float]:
@@ -504,7 +500,7 @@ def _vix_overnight_surprise(scene: Scene, today: list[DiaryPoint], ls: LabelSet)
            f"VIX's first print today was {first:.2f}, {abs(first - last):.2f} {'above' if first >= last else 'below'} yesterday's last "
            f"{last:.2f}; after this morning's {sig(abs(gap))} gap {'up' if gap >= 0 else 'down'} it would normally sit near {implied:.2f}, "
            f"so it is {abs(resid):.2f} points {'richer' if resid >= 0 else 'cheaper'} than the gap implies; ranked with richer highest, "
-           f"higher than {rank.higher_than} of the last {rank.of} sessions' openings, {rank.band}{_ruled(ruler)}")
+           f"higher than {rank.higher_than} of the last {rank.of} sessions' openings, {rank.band}{estimated_note(ruler)}")
 
 
 def _vix_left_since(points: Sequence[DiaryPoint], bars: list[dict], then: datetime, sigma: float | None, start: time) -> float | None:
@@ -543,22 +539,18 @@ def _vix_on_shock(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
     resid = d - explained
     start = lead.astimezone(ET).time()
     rank, why = _diary_rank(scene, resid, lambda points, bars, then, sigma: _vix_left_since(points, bars, then, sigma, start),
-                            f"a diary VIX, a ruler and bars at {_clock(lead)} and at this minute")
+                            f"a diary VIX, a ruler and bars at {hm(lead)} and at this minute")
     if rank is None:
         ls.omit(path, why)
         return
     ls.put(path,
-           f"since just before the shock, at {_clock(lead)}, VIX ended {abs(resid):.2f} points {'above' if resid >= 0 else 'below'} what "
+           f"since just before the shock, at {hm(lead)}, VIX ended {abs(resid):.2f} points {'above' if resid >= 0 else 'below'} what "
            f"price explains: it {'rose' if d >= 0 else 'fell'} {abs(d):.2f} points, and the {sig(abs(move))} "
            f"{'drop' if move < 0 else 'rise'} alone would {'lift' if explained >= 0 else 'lower'} it {abs(explained):.2f}; "
-           f"{_signed_standing(rank, 'VIX furthest above what price explains', f'from {_clock(lead)} to this minute')}{_ruled(ruler)}")
+           f"{_signed_standing(rank, 'VIX furthest above what price explains', f'from {hm(lead)} to this minute')}{estimated_note(ruler)}")
 
 
 # ----------------------------------------------------------------------------- the straddle and the ruler
-
-def _clock(t: datetime) -> str:
-    return f"{t.astimezone(ET):%H:%M}"
-
 
 def _same_clock(t: datetime, day: str) -> datetime:
     """``t``'s clock minute on a prior session, market time."""
@@ -620,7 +612,7 @@ def _straddle_vs_clock(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> N
         return
     ls.put("vol.straddle_vs_clock",
            f"the same-day straddle for the rest of today is {share / statistics.median(base[:rank.of]):.2f} times its usual share of the "
-           f"opening straddle at {_clock(scene.now)} (its median on the last {rank.of} sessions), {rank.words()}, {rank.band}")
+           f"opening straddle at {hm(scene.now)} (its median on the last {rank.of} sessions), {rank.words()}, {rank.band}")
 
 
 def _straddle_30(point: DiaryPoint | None) -> float | None:
@@ -650,11 +642,11 @@ def _release_pace(scene: Scene, today: list[DiaryPoint], start: datetime, delive
     ranges run about twice a straddle's expected move, so only the prior sessions say what a usual tape is."""
     before = _straddle_30(point_at(today, start))
     if before is None:
-        return f"no straddle on the rows just before {_clock(start)} to judge the tape against"
+        return f"no straddle on the rows just before {hm(start)} to judge the tape against"
     usual = [t / p for d in rank_days(scene)
              if (p := _straddle_30(point_at(prior_diary(scene.state_dir, d), _same_clock(start, d))))
              and (t := _tape_30(scene.prior_bars[d], _same_clock(scene.now, d)))]
-    rank, why = rank_sessions(delivered / before, usual, f"a straddle at {_clock(start)} and a tape at this minute")
+    rank, why = rank_sessions(delivered / before, usual, f"a straddle at {hm(start)} and a tape at this minute")
     if rank is None:
         return f"to judge the tape against, {why}"
     return delivered / before / statistics.median(usual[:rank.of]), rank
@@ -702,7 +694,7 @@ def _ruler_event_load(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> No
     if not day_events:
         event_words = "nothing is on the event calendar today"
     else:
-        event_words = "on the event calendar today: " + ", ".join(f"{e.words} at {_clock(e.start)}" for e in day_events)
+        event_words = "on the event calendar today: " + ", ".join(f"{e.words} at {hm(e.start)}" for e in day_events)
         if event is None:
             event_words += f"; none of them is {LOADING_WORDS}"
     if event is not None:
@@ -735,9 +727,9 @@ def _ruler_event_load(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> No
         verdict = "normal"
     ls.put(path,
            f"{verdict}: the same-day straddle prices a 30-minute move {load:.2f} times what the tape's recent 5-minute ranges scale to, "
-           f"higher than {rank.higher_than} of the last {rank.of} sessions at {_clock(scene.now)} ({fifth(rank)}); {event_words}; "
+           f"higher than {rank.higher_than} of the last {rank.of} sessions at {hm(scene.now)} ({fifth(rank)}); {event_words}; "
            f"this morning's sigma ruler is {swell:.2f} times its {swell_rank.of}-session median, larger than {swell_rank.higher_than} "
-           f"of the last {swell_rank.of} sessions' morning rulers, {swell_rank.band}{_ruled(anchor)}")
+           f"of the last {swell_rank.of} sessions' morning rulers, {swell_rank.band}{estimated_note(anchor)}")
 
 
 # ----------------------------------------------------------------------------- realized movement against the clock
@@ -776,7 +768,7 @@ def _bottom_fifth_swing(scene: Scene, ruler: SigmaRuler, standing: str, ls: Labe
     ls.put("vol.realized_vs_clock",
            f"{standing}; its largest {REAL_MOVE_MIN}-minute move inside them was {sig(largest)}, larger than {move.higher_than} of the "
            f"last {move.of} sessions' largest in the same half hour, {move.band}: "
-           f"{'no real move' if move.band == 'bottom third' else 'a real move'}{_ruled(ruler)}")
+           f"{'no real move' if move.band == 'bottom third' else 'a real move'}{estimated_note(ruler)}")
 
 
 def _realized_vs_clock(scene: Scene, ls: LabelSet) -> None:
@@ -799,18 +791,18 @@ def _realized_vs_clock(scene: Scene, ls: LabelSet) -> None:
     standing = f"{swing}, more than {rank.higher_than} of the last {rank.of} sessions at this time of day, {fifth(rank)}"
     if rank.higher_than == rank.of:
         ls.put("vol.realized_vs_clock", f"{swing}, more than every one of the last {rank.of} sessions at this time of day: very busy "
-                                        f"for this half hour{_ruled(ruler)}")
+                                        f"for this half hour{estimated_note(ruler)}")
     elif fifth_side(rank) < 0:
         _bottom_fifth_swing(scene, ruler, standing, ls)
     else:
-        ls.put("vol.realized_vs_clock", f"{standing}: {'busy' if fifth_side(rank) else 'ordinary'} for this half hour{_ruled(ruler)}")
+        ls.put("vol.realized_vs_clock", f"{standing}: {'busy' if fifth_side(rank) else 'ordinary'} for this half hour{estimated_note(ruler)}")
     usual = statistics.median(base[:rank.of])
     if usual <= 0:
         ls.omit("vol.realized_vs_clock_rank", "the prior sessions' usual swing at this minute is zero")
         return
     ls.put("vol.realized_vs_clock_rank",
            f"the last {REALIZED_WINDOW_MIN} minutes moved {value / usual:.2f} times the usual pace for this half hour (its median on the "
-           f"last {rank.of} sessions at this time of day), {rank.words()}, {rank.band}{_ruled(ruler)}")
+           f"last {rank.of} sessions at this time of day), {rank.words()}, {rank.band}{estimated_note(ruler)}")
 
 
 # ----------------------------------------------------------------------------- the VIX family around SPX (the context job)
@@ -873,7 +865,7 @@ def _vvix_with_move(scene: Scene, ls: LabelSet) -> None:
         return
     vvix = f"held at {b:.2f}" if b == a else f"{'rose' if b > a else 'fell'} {abs(b - a):.2f} points, from {a:.2f} to {b:.2f}"
     ls.put("vol.vvix_with_move", f"over the last 30 minutes SPX {'fell' if move < 0 else 'rose'} {sig(abs(move))}, "
-                                 f"{_move_standing(rank, WINDOW_30_MIN)}, and VVIX {vvix}{_ruled(ruler)}")
+                                 f"{_move_standing(rank, WINDOW_30_MIN)}, and VVIX {vvix}{estimated_note(ruler)}")
 
 
 def _half_hour(market: MarketContext | None, bars: list[dict], t: datetime, points: float) -> tuple[float, float, float, float] | None:
@@ -958,7 +950,7 @@ def _vvix_vs_vix(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
     ls.put(path,
            f"over the last 30 minutes VVIX {'rose' if dvvix >= 0 else 'fell'} {abs(dvvix):.2f} points; VIX's and SPX's moves explain "
            f"a {'rise' if explained >= 0 else 'fall'} of about {abs(explained):.2f}; the {abs(left):.2f} left over is bigger than "
-           f"on {rank.higher_than} of the last {rank.of} sessions at this minute, {band}, {others}{_ruled(ruler)}")
+           f"on {rank.higher_than} of the last {rank.of} sessions at this minute, {band}, {others}{estimated_note(ruler)}")
 
 
 def _vix_curve(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
@@ -1080,14 +1072,14 @@ def _stress_path(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
         else:
             back_words = f"{pct(min(back, STRESS_HOLD_SHARE - 0.01))} of its rise from there, short of the {pct(STRESS_HOLD_SHARE)} hold share"
         at_high = ", and is at its session high now" if back <= 0 else ""
-        vix_words = f"session high {peak.vix:.1f} at {_clock(peak.ts)}, it has given back {back_words}{at_high}"
-    where = "at its session low now" if off_low == 0 else f"{sig(off_low)} above its session low from {_clock(lows.low_at)}"
+        vix_words = f"session high {peak.vix:.1f} at {hm(peak.ts)}, it has given back {back_words}{at_high}"
+    where = "at its session low now" if off_low == 0 else f"{sig(off_low)} above its session low from {hm(lows.low_at)}"
     hits = bursts[1]
     cluster = f"at least the {TICK_CLUSTER}-reading cluster" if hits >= TICK_CLUSTER else f"short of the {TICK_CLUSTER}-reading cluster"
     ls.put(path, f"VIX {now:.1f}, {'up' if rise >= 0 else 'down'} {abs(rise):.1f} points since the open; {vix_words}; SPX sits {where}, "
                  f"further off its low than {low_rank.higher_than} of the last {low_rank.of} sessions at this minute, {low_rank.band}; "
                  f"NYSE TICK's 1-minute lows reached the bottom {pct(1 - TICK_BURST_PCT)} band for their minute {plural(hits, 'time')} "
-                 f"in 30 minutes, {cluster}{_ruled(ruler)}")
+                 f"in 30 minutes, {cluster}{estimated_note(ruler)}")
 
 
 # ----------------------------------------------------------------------------- the same-day skew (the lob-flow tape)
@@ -1142,7 +1134,7 @@ def _tilt_verdict(rank: SameClockRank) -> str:
 def _put_tilt(scene: Scene, smile: Skew | None, at_min: datetime, prior: dict[str, tuple[Skew | None, Skew | None]],
               ls: LabelSet) -> None:
     """The 25-delta put-call tilt ranked against the prior sessions' at the same minute, with the far-put wing."""
-    path, clock = "skew.put_tilt_vs_usual", _clock(at_min)
+    path, clock = "skew.put_tilt_vs_usual", hm(at_min)
     tilt = _tilt(smile)
     if tilt is None:
         why = f"no fresh 25-delta put and call quotes on the lob-flow tape in the minute to {clock}"
@@ -1198,8 +1190,8 @@ def _skew_shift(scene: Scene, before: Skew | None, now: Skew | None, then: datet
     ruler = sigma_anchor(scene)
     p0, p1 = close_at(scene.bars, then), close_at(scene.bars, at_min)
     if None in tilts or ruler is None or p0 is None or p1 is None:
-        ls.omit(path, f"needs quotes one remaining standard deviation either side on the lob-flow tape at {_clock(then)} and "
-                      f"{_clock(at_min)}, the bars then and the morning sigma ruler")
+        ls.omit(path, f"needs quotes one remaining standard deviation either side on the lob-flow tape at {hm(then)} and "
+                      f"{hm(at_min)}, the bars then and the morning sigma ruler")
         return
     move = (p1 - p0) / ruler.points
     d = tilts[1] - tilts[0]
@@ -1212,8 +1204,8 @@ def _skew_shift(scene: Scene, before: Skew | None, now: Skew | None, then: datet
         left = _tilt_left(a, b, _price_move(scene.prior_bars[day], t, WINDOW_30_MIN, ruler_d.points if ruler_d else None))
         if left is not None:
             base.append(left)
-    rank, why = rank_sessions(resid, base, f"quotes one remaining standard deviation either side on the tape at {_clock(then)} "
-                                           f"and {_clock(at_min)}")
+    rank, why = rank_sessions(resid, base, f"quotes one remaining standard deviation either side on the tape at {hm(then)} "
+                                           f"and {hm(at_min)}")
     if rank is None:
         ls.omit(path, why)
         return
@@ -1221,4 +1213,4 @@ def _skew_shift(scene: Scene, before: Skew | None, now: Skew | None, then: datet
            f"over the last 30 minutes the gap between same-day put and call prices {'widened' if d >= 0 else 'narrowed'} {abs(d):.3f} of "
            f"at-the-money vol while price {'fell' if move < 0 else 'rose'} {sig(abs(move))}; price explains a "
            f"{'widening' if explained >= 0 else 'narrowing'} of {abs(explained):.3f}, so puts got {'dearer' if resid >= 0 else 'cheaper'} "
-           f"by {abs(resid):.3f} beyond the move; {_signed_standing(rank, 'puts getting dearest')}{_ruled(ruler)}")
+           f"by {abs(resid):.3f} beyond the move; {_signed_standing(rank, 'puts getting dearest')}{estimated_note(ruler)}")

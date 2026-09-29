@@ -45,9 +45,9 @@ from .measures import (ET, ONE_MINUTE, bar_time, bars_finished_between, close_at
                        settled_open)
 from .plausible import left_out
 from .ranks import SameClockRank, fifth_side, rank_days, rank_sessions, same_clock_values, tick_bands_by_minute, tick_bursts
-from .rulers import NO_ANCHOR, SigmaRuler, normal_day_sigma, ruled, sigma_anchor
+from .rulers import NO_ANCHOR, SigmaRuler, estimated_note, normal_day_sigma, ruled, sigma_anchor
 from .usual_link import SPX, Session
-from .words import pct, plural, sig
+from .words import hm, pct, plural, sig
 
 LABELS = ("context.event_clock", "event.reaction", "event.release_clock_10m", "event.statement_and_presser",
           "news.morning_brief", "news.intraday_headline", "shock.burst", "shock.cross_asset", "shock.vs_day_range")
@@ -99,10 +99,6 @@ def build_events_shocks_labels(scene: Scene) -> LabelSet:
 
 # ----------------------------------------------------------------------------- the calendar
 
-def _hm(t: datetime) -> str:
-    return t.astimezone(ET).strftime("%H:%M")
-
-
 def _minutes_between(a: datetime, b: datetime) -> int:
     """Whole minutes from ``a`` to ``b``, rounded up, so a shown 60 is never past a 60-minute window."""
     return math.ceil((b - a).total_seconds() / 60.0)
@@ -132,18 +128,18 @@ def _is_release(e: Event) -> bool:
 def _ahead(e: Event) -> str:
     """How the row reads while it is still to come: '... comes out at 10:00', '... is expected at 10:00'."""
     if not e.verified:
-        return f"{e.words} is expected at {_hm(e.start)}"
+        return f"{e.words} is expected at {hm(e.start)}"
     if e.tier == events.FED_SPEAKER:
-        return f"{e.words} speaks at {_hm(e.start)}{_questions(e)}"
-    return f"{e.words} {'comes out' if _is_release(e) else 'is due'} at {_hm(e.start)}"
+        return f"{e.words} speaks at {hm(e.start)}{_questions(e)}"
+    return f"{e.words} {'comes out' if _is_release(e) else 'is due'} at {hm(e.start)}"
 
 
 def _past(e: Event) -> str:
     if not e.verified:
-        return f"{e.words} was expected at {_hm(e.start)}"
+        return f"{e.words} was expected at {hm(e.start)}"
     if e.tier == events.FED_SPEAKER:
-        return f"{e.words} spoke at {_hm(e.start)}"
-    return f"{e.words} {'came out' if _is_release(e) else 'began'} at {_hm(e.start)}"
+        return f"{e.words} spoke at {hm(e.start)}"
+    return f"{e.words} {'came out' if _is_release(e) else 'began'} at {hm(e.start)}"
 
 
 def _event_clock(scene: Scene, day_events: list[Event], ls: LabelSet) -> None:
@@ -157,11 +153,11 @@ def _event_clock(scene: Scene, day_events: list[Event], ls: LabelSet) -> None:
             clauses.append(f"{_past(e)}, before the open")
             live = live or _minutes_between(e.start, now) <= EVENT_DIGEST_MIN
         elif end is not None and e.start <= now < end and e.tier == events.FED_SPEAKER:
-            clauses.append(f"{e.words} has been speaking since {_hm(e.start)}{_questions(e)}, inside the {SPEAKER_WINDOW_MIN}-minute "
+            clauses.append(f"{e.words} has been speaking since {hm(e.start)}{_questions(e)}, inside the {SPEAKER_WINDOW_MIN}-minute "
                            f"speaker window")
             live = True
         elif end is not None and e.start <= now < end:
-            clauses.append(f"{e.words} is under way until {_hm(end)}, inside the {EVENT_DUE_MIN}-minute due window")
+            clauses.append(f"{e.words} is under way until {hm(end)}, inside the {EVENT_DUE_MIN}-minute due window")
             live = True
         elif e.start > now:
             n = _minutes_between(now, e.start)
@@ -209,7 +205,7 @@ def _release_clock_10m(scene: Scene, day_events: list[Event], ls: LabelSet) -> N
     morning = now.astimezone(ET).hour < NOON
     speakers = [e for e in moments if e.tier == events.FED_SPEAKER and now < _end(e)
                 and (e.start.astimezone(ET).hour < NOON or not morning)]
-    clauses += [f"{e.words} has been speaking since {_hm(e.start)}{_questions(e)}" for e in speakers
+    clauses += [f"{e.words} has been speaking since {hm(e.start)}{_questions(e)}" for e in speakers
                 if e.start < now - timedelta(minutes=w)]
     if not speakers:
         clauses.append("no Fed speaker is scheduled this morning" if morning else "no more Fed speakers are scheduled today")
@@ -231,7 +227,7 @@ def _window_rank(scene: Scene, size: float, start: datetime, end: datetime) -> t
     in its own ruler (ranks.rank_sessions): how the reactions and the press conference are judged."""
     minutes = (end - start).total_seconds() / 60.0
     base = same_clock_values(replace(scene, now=end), lambda bars, then, sigma: move_size(bars, then, sigma, minutes))
-    return rank_sessions(abs(size), base, f"a move from {_hm(start)} to {_hm(end)}")
+    return rank_sessions(abs(size), base, f"a move from {hm(start)} to {hm(end)}")
 
 
 def _larger(rank: SameClockRank, minutes: str = "the same minutes") -> str:
@@ -276,7 +272,7 @@ def _reaction(scene: Scene, day_events: list[Event], bursts: list[Burst], ls: La
     due = [x for x in scheduled if x.start == start] if e is not None else []
     p0, p1 = close_at(scene.bars, start), close_at(scene.bars, start + first_min)
     if p0 is None or p1 is None:
-        why = f"no finished bars around the reaction's start at {_hm(start)}"
+        why = f"no finished bars around the reaction's start at {hm(start)}"
         ls.omit(path, why)
         ls.sleep(gate, why)
         return
@@ -287,13 +283,13 @@ def _reaction(scene: Scene, day_events: list[Event], bursts: list[Burst], ls: La
         ls.sleep(gate, no_rank)
         return
     named = " and ".join(_what(x) + ("" if x.verified else " (expected at that time)") for x in due)
-    head = f"the reaction starts at {_hm(start)} with {named or 'a sudden burst'}"
+    head = f"the reaction starts at {hm(start)} with {named or 'a sudden burst'}"
     lead = next((r for r in scheduled if r.kind == FOLLOW_ON.get(e.kind)
                  and timedelta(0) < e.start - r.start <= timedelta(minutes=FOLLOW_ON_MIN)), None) if e else None
     if lead is not None:
         r0, r1 = close_at(scene.bars, lead.start), close_at(scene.bars, lead.start + first_min)
         if r0 is not None and r1 is not None:
-            head += f" ({lead.words} at {_hm(lead.start)} moved price {_nds_words((r1 - r0) / nds)} in its first {REACTION_MIN} minutes)"
+            head += f" ({lead.words} at {hm(lead.start)} moved price {_nds_words((r1 - r0) / nds)} in its first {REACTION_MIN} minutes)"
     size = _larger(rank, f"the same {REACTION_MIN} minutes")
     if first == 0:
         text = f"{head}; in its first {REACTION_MIN} minutes price did not move, {size}"
@@ -348,7 +344,7 @@ def _statement_and_presser(scene: Scene, day_events: list[Event], ls: LabelSet) 
         ls.omit(path, "no press conference follows today's Fed decision")
         return
     if now <= presser.start:
-        ls.omit(path, f"the Fed chair's press conference starts at {_hm(presser.start)}, after this read")
+        ls.omit(path, f"the Fed chair's press conference starts at {hm(presser.start)}, after this read")
         return
     nds = normal_day_sigma(scene)
     if nds is None:
@@ -368,8 +364,8 @@ def _statement_and_presser(scene: Scene, day_events: list[Event], ls: LabelSet) 
     quiet = said_rank.band == "bottom third"
     way = "" if quiet or since == 0 else ", the same way" if (since > 0) == (moved > 0) else ", the other way"
     went = "has not moved" if since == 0 else f"has {'risen' if since > 0 else 'fallen'} {_nds_words(since)}{way}"
-    ls.put(path, f"in the {REACTION_MIN} minutes after the Fed's {_hm(statement.start)} statement price {said}, {_larger(said_rank)}; "
-                 f"since the chair's press conference began at {_hm(presser.start)} price {went}, {_larger(went_rank)}")
+    ls.put(path, f"in the {REACTION_MIN} minutes after the Fed's {hm(statement.start)} statement price {said}, {_larger(said_rank)}; "
+                 f"since the chair's press conference began at {hm(presser.start)} price {went}, {_larger(went_rank)}")
 
 
 # ----------------------------------------------------------------------------- the morning brief
@@ -390,7 +386,7 @@ def _morning_brief(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> Non
         return
     brief, written = briefs[0], datetime.fromisoformat(briefs[0]["ts"])
     if written > scene.now:
-        ls.omit(path, f"the morning brief was written at {_hm(written)}, after this read")
+        ls.omit(path, f"the morning brief was written at {hm(written)}, after this read")
         return
     overall = brief.get("overall") if isinstance(brief.get("overall"), dict) else {}
     lean, confidence = overall.get("direction"), overall.get("confidence")
@@ -423,10 +419,10 @@ def _morning_brief(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> Non
         verdict = "so the brief leans the way the gap went"
     else:
         verdict = "so the brief leans against the way the gap went"
-    ls.put(path, f"the {_hm(written)} morning brief {leans} on a -1 to +1 scale, "
+    ls.put(path, f"the {hm(written)} morning brief {leans} on a -1 to +1 scale, "
                  f"{'under' if abs(lean) < BRIEF_DIR_MIN else 'past'} the {BRIEF_DIR_MIN:g} direction floor, with confidence "
                  f"{confidence:g}, {'under' if confidence < BRIEF_CONF_MIN else 'past'} the {BRIEF_CONF_MIN:g} confidence floor; "
-                 f"this morning's gap was {sig(abs(gap))} {'up' if gap >= 0 else 'down'}{' (ruler estimated)' if anchor.estimated else ''}, "
+                 f"this morning's gap was {sig(abs(gap))} {'up' if gap >= 0 else 'down'}{estimated_note(anchor)}, "
                  f"larger than {rank.higher_than} of the last {rank.of} days' gaps, {rank.band}, "
                  f"{'a real gap' if gap_past else 'no real gap'}, {verdict}")
 
@@ -573,7 +569,7 @@ def _shocks(scene: Scene, anchor: SigmaRuler | None, windows: list[Burst], burst
     shocks = [b for b in bursts if b.end > since]
     first_end = scene.session_open + timedelta(minutes=2 * BURST_MIN)
     if not recent and scene.now < first_end:
-        why = f"the first five minutes after the settled open end at {_hm(first_end)}"
+        why = f"the first five minutes after the settled open end at {hm(first_end)}"
     elif not recent:
         why = (f"no five-minute window in the last {SHOCK_LOOKBACK_MIN} minutes could be judged: each is ranked against the biggest "
                f"five-minute move of the hour to its minute (from the settled open when that is shorter) on up to the last "
@@ -599,14 +595,14 @@ def _shocks(scene: Scene, anchor: SigmaRuler | None, windows: list[Burst], burst
 
 def _burst_label(scene: Scene, anchor: SigmaRuler, burst: Burst, day_events: list[Event] | None, ls: LabelSet) -> None:
     now = scene.now
-    est = " (ruler estimated)" if anchor.estimated else ""
+    est = estimated_note(anchor)
     head = (f"{plural(_minutes_between(burst.start, now), 'minute')} ago price {'rose' if burst.side > 0 else 'fell'} "
             f"{sig(abs(burst.move))}{est} in {BURST_MIN} minutes, {_hour_words(scene, burst)}, past the shock rule")
     if day_events is None:
         when = "whether it came at a scheduled time is unknown: the event calendar has run out"
     else:
         at = next((e for e in day_events if _at_a_moment(e) and _during_first_reaction(burst, e)), None)
-        when = (f"inside the first {REACTION_MIN} minutes after {_what(at)} at {_hm(at.start)}" if at
+        when = (f"inside the first {REACTION_MIN} minutes after {_what(at)} at {hm(at.start)}" if at
                 else "not at a scheduled release time")
     ended = _minutes_between(burst.end, now)
     fresh = (f"inside the {SHOCK_FRESH_MIN}-minute fresh window" if ended <= SHOCK_FRESH_MIN

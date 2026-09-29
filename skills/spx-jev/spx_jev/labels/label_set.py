@@ -46,6 +46,13 @@ class LabelSet:
     def sleep(self, question_id: str, reason: str) -> None:
         self.gates[question_id] = reason
 
+    def decide(self, question_id: str, verdict: str | None, why: str | None) -> None:
+        """Wake the question when its label reached a verdict, else sleep it on ``why``."""
+        if verdict is None:
+            self.sleep(question_id, why)
+        else:
+            self.wake(question_id)
+
     def ended_reasons(self) -> dict[str, str]:
         """Each ended path with why it was left out: the reason a question reading it sleeps on."""
         return {p: self.omitted[p] for p in self.ended}

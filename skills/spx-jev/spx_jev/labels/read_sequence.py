@@ -131,13 +131,6 @@ def _sleep_why(reads: Reads, rank: SameClockRank | None, why: str | None) -> str
     return why if rank is None else None
 
 
-def _decide(ls: LabelSet, qid: str, verdict: str | None, why: str | None) -> None:
-    if verdict is None:
-        ls.sleep(qid, why)
-    else:
-        ls.wake(qid)
-
-
 def _giveback(moves: list[float]) -> float | None:
     """The share of the furthest point from the open among ``moves``, on whichever side it came, that the last
     has given back (past 100% once the last has crossed the open); 0 when the last is the furthest, None when
@@ -177,7 +170,7 @@ def _day_move_by_read(scene: Scene, reads: Reads, ls: LabelSet) -> None:
             text += f", {rank.band} of the last {rank.of} sessions for these reads"
     verdict = None if why else "extending" if share == 0 else "unwinding" if rank.band == "top third" else "stalled"
     ls.put("seq.day_move_by_read", ruled(reads.anchor, f"{text}: {verdict}" if verdict else text))
-    _decide(ls, "seq_day_move_stage", verdict, why)
+    ls.decide("seq_day_move_stage", verdict, why)
 
 
 def _day_upvol_share(mk: MarketContext, t: datetime) -> float | None:
@@ -232,4 +225,4 @@ def _breadth_by_read(scene: Scene, reads: Reads, ls: LabelSet) -> None:
         text += f", {rank.band} for these reads"
     ends = {"fading_under_move": "fading under the move", "building_behind_move": "building behind the move", "tracking": "tracking the move"}
     ls.put("seq.breadth_by_read", ruled(reads.anchor, f"{text}: {ends[verdict]}" if verdict else text))
-    _decide(ls, "seq_breadth_drift", verdict, why)
+    ls.decide("seq_breadth_drift", verdict, why)

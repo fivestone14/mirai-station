@@ -10,7 +10,7 @@ from datetime import date, timedelta
 from ..cuts import AFTER_OPEX_DAYS, MONTH_TURN_DAYS, ONE_DAY, OPEX_WEEK_DAYS, REBAL_WINDOW_DAYS, ZERO_DTE_LAST_HOUR_MIN
 from ..events import on_day, uncovered
 from ..expiry import QUARTER_MONTHS, expiry_kinds, monthly_expiry, next_monthly, settle_at, todays_settle, trading_days_between
-from ..sessions import SESSION_OPEN, is_trading_day, next_trading_day
+from ..sessions import SESSION_OPEN, is_trading_day, next_trading_day, previous_trading_day
 from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import ET, is_num
@@ -115,17 +115,10 @@ def _day_words(d: date) -> str:
     return f"{d:%A} {d.day} {d:%B}"
 
 
-def _previous_trading_day(d: date) -> date:
-    d -= timedelta(days=1)
-    while not is_trading_day(d):
-        d -= timedelta(days=1)
-    return d
-
-
 def _event_cycle(today: date, ls: LabelSet) -> None:
     """Where today sits in the cycle of major releases (the calendar's rows of any tier): the eve of the Fed's
     decision, the eve of a jobs or consumer price report out before the next open, or the day after one of them."""
-    prev, nxt = _previous_trading_day(today), next_trading_day(today)
+    prev, nxt = previous_trading_day(today), next_trading_day(today)
     why = uncovered(prev) or uncovered(nxt)
     if why:
         ls.omit("calendar.event_cycle", f"{why}, so the releases either side of today are unknown")

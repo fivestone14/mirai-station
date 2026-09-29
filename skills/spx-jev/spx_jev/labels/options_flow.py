@@ -43,7 +43,7 @@ from ..state_builder import (ET, OPTIONS_TAPE_MAX_AGE_MIN, OPTIONS_TAPE_SUBDIR, 
 from .label_set import LabelSet
 from .measures import close_at, is_num, minute_of_day
 from .ranks import fifth, rank_sessions, same_clock_values
-from .rulers import sigma_anchor
+from .rulers import estimated_note, sigma_anchor
 from .vol_sources import TAPE_LINE_START, TAPE_RAW_SUBDIR, tape_path
 from .words import pct, plural, sig, signed
 
@@ -701,7 +701,7 @@ def _strike_defense(scene: Scene, ls: LabelSet) -> None:
            f"it was hit {hit} times in the last {OPTIONS_TAPE_WINDOW_MIN} minutes, at least the {DEFENSE_MIN_EVENTS}-hit minimum; "
            f"market makers refilled its quotes at price at some point in those {OPTIONS_TAPE_WINDOW_MIN} minutes on {refilled} of them ({pct(refilled / hit)}), "
            f"{held.words()}, {DEFENSE_WORDS[held.share >= HALF_RANK]}"
-           f"{'; ruler estimated' if ruler.estimated else ''}")
+           f"{estimated_note(ruler)}")
 
 
 def _spy_quote(scene: Scene, ls: LabelSet) -> None:

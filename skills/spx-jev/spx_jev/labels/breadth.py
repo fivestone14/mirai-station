@@ -31,7 +31,7 @@ from .plausible import left_out
 from .price import NEW_EXTREME_RECENT_MIN, _minutes_since_bar
 from .ranks import (SameClockRank, fifth_side, move_rank, rank_sessions, same_clock_market, same_clock_values, tick_bands_by_minute,
                     tick_bursts)
-from .rulers import NO_ANCHOR, sigma_anchor
+from .rulers import NO_ANCHOR, estimated_note, sigma_anchor
 from .words import pct, plural, sig, signed
 
 LABELS = ("breadth.advance_decline", "breadth.tick_lean", "breadth.sectors_up",
@@ -374,7 +374,7 @@ def _spx_from_settled_open(scene: Scene) -> str:
     if opened is None or ruler is None:
         return ""
     move = (scene.spot - opened) / ruler.points
-    estimated = " (ruler estimated)" if ruler.estimated else ""
+    estimated = estimated_note(ruler)
     where = f"{sig(abs(move))} {'above' if move > 0 else 'below'} its settled open" if round(move, 2) else "at its settled open"
     rank, _ = move_rank(scene, move, _minutes_since_bar(scene, SETTLED_OPEN_BAR))
     if rank is None:
@@ -465,7 +465,7 @@ def _at_extremes(scene: Scene, ls: LabelSet) -> None:
            f"when SPX made its new session {word} at {at_clock}, NYSE net volume was {_millions(net_now)}, {level} the "
            f"{_millions(net_before)} where it stood at the previous {word} at {before_clock}, {'reaching' if reached else 'short of'} "
            f"that level, and small caps (IWM) were {iwm}, further from it than {rank.higher_than} of the last {rank.of} sessions at "
-           f"{at_clock}, {rank.band}: {confirm}{'; ruler estimated' if ruler.estimated else ''}")
+           f"{at_clock}, {rank.band}: {confirm}{estimated_note(ruler)}")
 
 
 # ----------------------------------------------------------------------------- around a release
@@ -642,4 +642,4 @@ def _tick_extreme_5m(scene: Scene, bands: dict[time, tuple[float, float]], ls: L
     burst_side = 0 if buying == selling else 1 if buying else -1
     against = ", against the burst" if burst_side and move * burst_side < 0 else ""
     ls.put("breadth.tick_extreme_5m", f"in the last {TICK_BURST_WINDOW_MIN} minutes NYSE TICK's 1-minute {burst}; {spx}, {size}{against}"
-                                      f"{'; ruler estimated' if ruler.estimated else ''}")
+                                      f"{estimated_note(ruler)}")

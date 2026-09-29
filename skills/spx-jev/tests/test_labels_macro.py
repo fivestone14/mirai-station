@@ -213,7 +213,7 @@ def test_an_estimated_ruler_says_so():
     scene = read(jumps={"TLT": {JUMP: 0.002}, "USO": {JUMP: 0.002}})
     got, _ = labels(replace(scene, rows_today=scene.rows_today[1:]))    # no row by 09:40: the earliest live sigma stands in
     assert set(got) == {"xasset.bond_gap_30min", "xasset.oil_gap_30min", "xasset.macro_gap_30min"}
-    assert all(s.endswith("; ruler estimated") for s in got.values())
+    assert all(s.endswith(" (ruler estimated)") for s in got.values())
     assert not any("ruler estimated" in s for s in labels(scene)[0].values())
 
 

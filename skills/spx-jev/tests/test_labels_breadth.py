@@ -539,7 +539,7 @@ def test_the_prior_sessions_are_measured_at_the_extremes_minute_not_the_reads(sc
 
 def test_the_extremes_are_measured_on_an_estimated_ruler_and_say_so(scene_factory):
     assert sentence(extremes_read(scene_factory, fading_net, lagging_small_caps, anchored=False), "breadth.at_extremes").endswith(
-        "top third: not confirming; ruler estimated")
+        "top third: not confirming (ruler estimated)")
 
 
 def test_the_small_caps_rank_needs_ten_prior_sessions(scene_factory):
@@ -868,7 +868,7 @@ def test_the_burst_label_omitted_and_its_gate_asleep_without_what_it_needs(scene
     assert few_moves.gates["tick_extreme_follow"] is None
     assert few_moves.omitted["breadth.tick_extreme_5m"] == "its rank needs 10 prior sessions with a 5-minute move at this minute, have 9"
     estimated = opening_tick_read(scene_factory, [BUY_BURST] * 15, closes=SPX_UP_3, anchored=False)
-    assert sentence(estimated, "breadth.tick_extreme_5m").endswith(": a real move; ruler estimated")
+    assert sentence(estimated, "breadth.tick_extreme_5m").endswith(": a real move (ruler estimated)")
     no_context = build_breadth_labels(scene_factory(OPENING, flat_bars(15)))
     assert no_context.gates["tick_extreme_follow"] == "no market-context snapshot today"
 

@@ -36,7 +36,7 @@ from ..sessions import previous_trading_day
 from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import ET, is_num
-from .words import above_or_below, pct, sig, third
+from .words import above_or_below, hm, pct, sig, third
 
 LABELS = ("overnight.bond_gap", "overnight.es_move", "overnight.gap_origin", "overnight.range_vs_normal", "overnight.release_reaction")
 GATES = ("gap_origin", "overnight_bonds_vs_gap", "release_reaction_path")
@@ -120,11 +120,7 @@ def _tonight(scene: Scene) -> tuple[Tonight | None, str]:
 def _where(tonight: Tonight, es: Move) -> str:
     """Where S&P futures stand against their prior close: the clause every sentence opens with."""
     s = tonight.sigma(es.pct)
-    return f"at {tonight.clock:%H:%M} S&P futures stand {sig(abs(s))} {above_or_below(s)} their {_hm(es.start_at)} price"
-
-
-def _hm(t: datetime) -> str:
-    return f"{t.astimezone(ET):%H:%M}"
+    return f"at {tonight.clock:%H:%M} S&P futures stand {sig(abs(s))} {above_or_below(s)} their {hm(es.start_at)} price"
 
 
 def _joined(*clauses: str) -> str:
@@ -181,8 +177,8 @@ def _range_vs_normal(scene: Scene, tonight: Tonight, pending: str, where: str, l
 
 def _stretch_words(s: story.Stretch, report: bool) -> str:
     if s.name == "report_window" and not report:
-        return f"{_hm(s.start)} to {_hm(s.end)} (no report today)"
-    return f"{STRETCH_WORDS[s.name]} ({_hm(s.start)} to {_hm(s.end)})"
+        return f"{hm(s.start)} to {hm(s.end)} (no report today)"
+    return f"{STRETCH_WORDS[s.name]} ({hm(s.start)} to {hm(s.end)})"
 
 
 def _gap_origin(scene: Scene, tonight: Tonight, net: RankedMove | None, why: str, ls: LabelSet) -> None:
@@ -196,7 +192,7 @@ def _gap_origin(scene: Scene, tonight: Tonight, net: RankedMove | None, why: str
         ls.sleep(gate, f"no overnight move to place: {why}")
         return
     if net.rank.share <= THIRD_LO:
-        quiet = (f"the move since futures' {_hm(net.move.start_at)} price is {net.rank.words('moves to this time')}: "
+        quiet = (f"the move since futures' {hm(net.move.start_at)} price is {net.rank.words('moves to this time')}: "
                  "too small a gap to place")
         ls.omit(label, quiet)
         ls.sleep(gate, quiet)
@@ -357,7 +353,7 @@ def _bond_gap(scene: Scene, tonight: Tonight, es: Move | None, es_why: str, ls: 
     s = tonight.sigma(ahead)
     ls.put(label,
            f"at {tonight.clock:%H:%M} ten-year Treasury futures stand {abs(zn.pct):.2f}% {above_or_below(zn.pct)} their "
-           f"{_hm(zn.start_at)} price; over the last {len(pairs)} nights they moved {abs(beta):.2f}% per 1% in S&P futures, "
+           f"{hm(zn.start_at)} price; over the last {len(pairs)} nights they moved {abs(beta):.2f}% per 1% in S&P futures, "
            f"{'the same way' if beta > 0 else 'the other way'}, so they point S&P futures {sig(abs(s))} {above_or_below(s)} "
            f"where they stand, higher than {rank.larger_than} of the last {rank.of} nights' readings, {rank.band}",
            figure={"kind": "rank", "value": round(s, 3), "cut": rank.band, "verdict": verdict})

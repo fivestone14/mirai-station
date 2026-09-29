@@ -272,7 +272,7 @@ def test_an_estimated_ruler_says_so(scene_factory, tmp_path):
     scene = scene_factory(now, fall_then_now(now, 0.12), row_over={"range_ruler": ruler_block(15.35)},
                           rows_before=[late_first, diary_row(now - timedelta(minutes=30), 15.2)])
     scene = history(scene, tmp_path, half_hour_rows((12, 30), spread(-0.02, 0.004)))
-    assert labels(scene)[0]["vol.vix_vs_price"].endswith("middle third; ruler estimated")
+    assert labels(scene)[0]["vol.vix_vs_price"].endswith("middle third (ruler estimated)")
 
 
 @pytest.mark.parametrize("iv_then, words", [

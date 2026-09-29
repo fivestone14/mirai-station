@@ -200,7 +200,7 @@ def test_the_ranks_need_ten_trusted_prior_sessions_and_a_state_folder(scene_fact
 def test_a_ruler_that_is_not_the_morning_anchor_is_flagged_and_no_ruler_omits(scene_factory, history):
     scene = gamma_scene(scene_factory)
     late = replace(scene, rows_today=scene.rows_today[1:])      # first row after 09:40: the earliest live sigma stands in
-    assert labels(late, history)[0]["flip_distance"].endswith("in the last 30 minutes; ruler estimated")
+    assert labels(late, history)[0]["flip_distance"].endswith("in the last 30 minutes (ruler estimated)")
     no_ruler = [labeller_row(make_row(NOW - timedelta(minutes=30, seconds=40), 7700.0, sigma_live=None, gex_views=book())),
                 labeller_row(make_row(NOW, 7700.0, sigma_live=None, gex_views=book()))]
     _, omitted, _ = labels(replace(scene, rows_today=no_ruler, row=no_ruler[-1]), history)

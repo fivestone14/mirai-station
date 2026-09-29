@@ -18,7 +18,7 @@
 * The typical move (typical_move): how far SPX usually moves over the next 30 or 60 minutes now, the tape
   unit and the straddle left combined.
 
-A sentence measured on an estimated morning ruler ends "(ruler estimated)" (ruled).
+A sentence measured on an estimated morning ruler ends "(ruler estimated)" (ruled, estimated_note).
 """
 from __future__ import annotations
 
@@ -173,9 +173,14 @@ def normal_day_sigma(scene: Scene) -> float | None:
     return statistics.median(anchors) if len(anchors) >= MIN_RANK_SESSIONS else None
 
 
+def estimated_note(ruler: SigmaRuler) -> str:
+    """What a sentence measured on an estimated morning ruler ends with, the same words in every family."""
+    return " (ruler estimated)" if ruler.estimated else ""
+
+
 def ruled(anchor: SigmaRuler, sentence: str) -> str:
     """A sentence measured on an estimated morning ruler says so."""
-    return f"{sentence} (ruler estimated)" if anchor.estimated else sentence
+    return sentence + estimated_note(anchor)
 
 
 def typical_move(scene: Scene, anchor: SigmaRuler, minutes: int) -> tuple[float | None, str]:

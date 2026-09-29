@@ -466,7 +466,7 @@ def test_an_estimated_ruler_says_so(tmp_path):
     scene = gapped(tmp_path, "NVDA", 0.059)
     got, _, _ = labels(replace(scene, rows_today=scene.rows_today[1:]))    # no row by 09:40: the earliest live sigma stands in
     assert set(got) == set(LABELS)
-    assert all(s.endswith("; ruler estimated") for s in got.values())
+    assert all(s.endswith(" (ruler estimated)") for s in got.values())
     assert not any("ruler estimated" in s for s in labels(scene)[0].values())
 
 

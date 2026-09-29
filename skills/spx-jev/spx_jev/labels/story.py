@@ -230,13 +230,6 @@ def _figure(value: float, rank: NightRank | SameClockRank, verdict: str | None) 
     return {"kind": "rank", "value": round(value, 3), "cut": _band(rank), "verdict": verdict}
 
 
-def _decide(ls: LabelSet, qid: str, verdict: str | None, why: str | None) -> None:
-    if verdict is None:
-        ls.sleep(qid, why)
-    else:
-        ls.wake(qid)
-
-
 def _omit(ls: LabelSet, qid: str, why: str) -> None:
     """The gated question's label left out and the question asleep, for one reason."""
     ls.omit(GATE_LABELS[qid], why)
@@ -302,7 +295,7 @@ def _legs(night: NightSoFar, legs: list[Leg], ls: LabelSet) -> None:
     tail = f"{len(moved)} moved{ends[verdict]}" if verdict else why
     ls.put("premarket.legs", f"oldest first: {'; '.join(parts)}. {tail[0].upper()}{tail[1:]}",
            figure=_figure(night.sigma(night.net.pct), night.net_rank, verdict))
-    _decide(ls, "night_legs_agree", verdict, why)
+    ls.decide("night_legs_agree", verdict, why)
 
 
 def _arc(night: NightSoFar, legs: list[Leg], ls: LabelSet) -> None:
@@ -376,7 +369,7 @@ def _since_checkpoint(night: NightSoFar, ls: LabelSet) -> None:
             f"{_band(rank)} for {prev:%H:%M}-{night.now:%H:%M} over the last {rank.of} nights, "
             f"{'with' if _side(s) == _side(b) else 'against'} the night's {'rise' if b >= 0 else 'fall'} before it")
     ls.put("premarket.since_checkpoint", _ended(verdict, text, ends), figure=_figure(s, rank, verdict))
-    _decide(ls, "latest_leg_vs_night", verdict, why)
+    ls.decide("latest_leg_vs_night", verdict, why)
 
 
 def _release_vs_night(night: NightSoFar, ls: LabelSet) -> None:
@@ -423,7 +416,7 @@ def _release_vs_night(night: NightSoFar, ls: LabelSet) -> None:
             f"{_sized(b)}, {_band(before_rank)}; by {end:%H:%M} they {_risen(r)} {sig(abs(r))}, "
             f"{_band(rank)} for that window")
     ls.put("premarket.release_vs_night", _ended(verdict, text, ends), figure=_figure(r, rank, verdict))
-    _decide(ls, "release_vs_night", verdict, why)
+    ls.decide("release_vs_night", verdict, why)
 
 
 def _last_hour_pct(bars: list[dict], day: str) -> float | None:
@@ -460,4 +453,4 @@ def _vs_last_hour(night: NightSoFar, ls: LabelSet) -> None:
     text = (f"futures are {night.where(night.net)}, {_band(night.net_rank)}; yesterday SPX {_risen(s)} {sig(abs(s))} in its "
             f"last hour, {_band(rank)} of the last {rank.of} sessions' last hours")
     ls.put("premarket.vs_last_hour", _ended(verdict, text, ends), figure=_figure(s, rank, verdict))
-    _decide(ls, "night_vs_last_hour", verdict, why)
+    ls.decide("night_vs_last_hour", verdict, why)

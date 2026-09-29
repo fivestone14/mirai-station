@@ -32,7 +32,7 @@ from ..state_builder import ROWS_SUBDIR, Scene, row_days
 from .label_set import LabelSet
 from .measures import ET, bars_finished_between, is_num, walls
 from .ranks import SameClockRank, rank_sessions
-from .rulers import NO_ANCHOR, SigmaRuler, remaining_straddles, sigma_anchor
+from .rulers import NO_ANCHOR, SigmaRuler, estimated_note, remaining_straddles, sigma_anchor
 from .words import above_or_below, ordinal, pct, plural, sig
 
 LABELS = ("gex.weight_side", "gex.air_to_wall", "gex.wall_thickness", "gex.heaviest_strike_grip", "gex.delta_weight_side",
@@ -206,10 +206,6 @@ def _wall_touch_volume(scene: Scene, ls: LabelSet) -> None:
            f"SPY volume during it was in the {ordinal(round(effort))} percentile of normal for that time of day, {band}{after}")
 
 
-def _estimated(ruler: SigmaRuler) -> str:
-    return "; ruler estimated" if ruler.estimated else ""
-
-
 def _row_minutes_ago(scene: Scene, minutes: int) -> dict | None:
     """Today's newest diary row written by ``minutes`` before now, and not more than ROW_SLACK_MIN before that."""
     then = scene.now - timedelta(minutes=minutes)
@@ -323,7 +319,7 @@ def _book_balance(scene: Scene, gv: dict, ruler: SigmaRuler | None, ls: LabelSet
             text += f"; the open-interest balance would tip to calls {sig(d)} higher"
         else:
             text += f"; the gamma flip sits {sig(abs(d))} {above_or_below(d)} price"
-        text += _estimated(ruler)
+        text += estimated_note(ruler)
     ls.put("gex.book_balance", text)
 
 
@@ -394,7 +390,7 @@ def _flip_distance(scene: Scene, gv: dict, ruler: SigmaRuler | None, earlier: di
     cross = (f"it has crossed the flip in the last {WINDOW_30_MIN} minutes" if crossed else
              f"it has not crossed the flip in the last {WINDOW_30_MIN} minutes")
     ls.put("gex.flip_distance", f"price is {sig(abs(d))} {above_or_below(d)} the gamma flip, the level where today's same-day book switches between "
-                                f"call-heavy and put-heavy gamma {DEALERS}; {reach}; {cross}{_estimated(ruler)}")
+                                f"call-heavy and put-heavy gamma {DEALERS}; {reach}; {cross}{estimated_note(ruler)}")
 
 
 def _today_share(gv: dict) -> float | None:
@@ -521,7 +517,7 @@ def _magnet_distance(scene: Scene, gv: dict, ruler: SigmaRuler | None, earlier: 
            f"{SEATS[seat.band]}; its grip (top-strike share) is stronger than on {grip_rank.higher_than} of the last {grip_rank.of} "
            f"sessions at {scene.now.astimezone(ET):%H:%M} ET, {median}; it is {same} {WINDOW_30_MIN} minutes ago; over the last "
            f"{plural(len(window), 'minute')} price sat {sig(hug)} from it on average, farther than on {hug_rank.higher_than} of the last "
-           f"{hug_rank.of} sessions at this minute, {hug_rank.band}: {held}{_estimated(ruler)}")
+           f"{hug_rank.of} sessions at this minute, {hug_rank.band}: {held}{estimated_note(ruler)}")
 
 
 def _straddles_to_magnet(book: PriorBook) -> float | None:
@@ -570,7 +566,7 @@ def _settle_pull(scene: Scene, gv: dict, ruler: SigmaRuler | None, prior: list[P
     ls.put("gex.settle_pull",
            f"today's heaviest same-day strike sits {sig(abs(d))} {above_or_below(d)} price, {seat}; that is {straddles:.1f} remaining straddles "
            f"(what today's options still price before the {settle.astimezone(ET):%H:%M} settle), {reach}; {centre_words}; "
-           f"the options settle in {plural(left, 'minute')}{_estimated(ruler)}")
+           f"the options settle in {plural(left, 'minute')}{estimated_note(ruler)}")
 
 
 # The charm wall's distance by its third, as afternoon_charm_wall's options name it.
@@ -596,7 +592,7 @@ def _charm_wall_distance(scene: Scene, gv: dict, ruler: SigmaRuler | None, prior
     straddles = remaining_straddles(scene, float(wall) - scene.spot)
     away = f", {straddles:.1f} remaining straddles away" if straddles is not None else ""
     ls.put("gex.charm_wall_distance", f"the charm wall of today's same-day book (the strike where its delta decay piles up) sits "
-                                      f"{sig(abs(d))} {above_or_below(d)} price, {band}{away}{_estimated(ruler)}")
+                                      f"{sig(abs(d))} {above_or_below(d)} price, {band}{away}{estimated_note(ruler)}")
 
 
 def _gamma_walls(row: dict | None) -> tuple[float, float] | None:
@@ -639,7 +635,7 @@ def _wall_box(scene: Scene, ruler: SigmaRuler | None, earlier: dict | None, prio
     change = (f"a heavy strike has changed in the last {WINDOW_30_MIN} minutes" if now != then else
               f"both have stood at the same strikes for the last {WINDOW_30_MIN} minutes" if between == {now} else
               f"a heavy strike changed within the last {WINDOW_30_MIN} minutes and is back where it was")
-    ls.put("gex.wall_box", f"the heaviest call-side and put-side strikes of today's same-day book are {sig(width)} apart, {band}; {change}{_estimated(ruler)}")
+    ls.put("gex.wall_box", f"the heaviest call-side and put-side strikes of today's same-day book are {sig(width)} apart, {band}; {change}{estimated_note(ruler)}")
 
 
 def _walls_since_30min(scene: Scene, ruler: SigmaRuler | None, earlier: dict | None, ls: LabelSet) -> None:
@@ -655,7 +651,7 @@ def _walls_since_30min(scene: Scene, ruler: SigmaRuler | None, earlier: dict | N
         return
     if now == then:
         ls.put("gex.walls_since_30min", f"over the last {WINDOW_30_MIN} minutes neither heavy strike of today's same-day book has moved: "
-                                        f"the call-side and the put-side strikes both stayed put{_estimated(ruler)}")
+                                        f"the call-side and the put-side strikes both stayed put{estimated_note(ruler)}")
         return
 
     def moved(new: float, old: float) -> str:
@@ -667,7 +663,7 @@ def _walls_since_30min(scene: Scene, ruler: SigmaRuler | None, earlier: dict | N
     relation = ("so the two are closer together" if width < then_width else "so the two are further apart" if width > then_width else
                 f"so the pair moved {'up' if shift > 0 else 'down'} together, as far apart as before")
     ls.put("gex.walls_since_30min", f"over the last {WINDOW_30_MIN} minutes the call-side heavy strike of today's same-day book {moved(now[0], then[0])} "
-                                    f"and the put-side strike {moved(now[1], then[1])}, {relation}{_estimated(ruler)}")
+                                    f"and the put-side strike {moved(now[1], then[1])}, {relation}{estimated_note(ruler)}")
 
 
 def _book_vs_pace_gate(scene: Scene, ls: LabelSet) -> None:
