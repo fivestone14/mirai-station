@@ -1632,10 +1632,13 @@ def test_a_signed_fact_that_rounds_to_nothing_says_no_change():
 def test_a_dark_question_names_its_own_reason_not_a_news_source_for_every_one():
     """Every dark question sat under "dark, waiting for a news source", overnight_range_position and gamma_cushion among
     them though neither waits for news. The heading says each waits for its own source, and each gives its reason when
-    the card carries one."""
+    the card carries one, as the questions doc words it (dark_reason)."""
+    doc = json.loads((Path(__file__).resolve().parents[3] / "skills" / "spx-jev" / "questions" / "spx_questions.json").read_text())
+    dark = [q for g in doc["groups"] for q in g["questions"].values() if q.get("status") == "dark"]
+    assert dark and all(q.get("dark_reason") for q in dark), "every dark question in the doc names what it waits for"
     live = {**MONDAY["live"], "dark": [
         {"id": "overnight_range_position", "viewpoint": "levels_and_tape", "ask": "Where is price against the overnight futures range?",
-         "reason": "dark: the overnight store (saved at 09:26 ET) holds /ES's bars, but no session read measures the night's range yet"},
+         "dark_reason": "the overnight store (saved at 09:26 ET) holds /ES's bars, but no session read measures the night's range yet"},
         {"id": "news_headline", "viewpoint": "dark", "ask": "What kind of market news just came out?"}]}
     got = _whole({"live": live, "tape": MONDAY["tape"], "premarket": MONDAY["premarket"]}, "2026-09-28T15:40:00-04:00")
     (dark,) = [t for c, t in got["main"] if c == "details" and t.startswith("dark")]
