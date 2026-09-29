@@ -304,8 +304,8 @@ def command(monkeypatch, jev, tmp_path_factory):
     questions.write_text(json.dumps(as_filed))
     monkeypatch.setattr(service, "load_env_file", lambda *a, **k: [])
     monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
-    monkeypatch.setattr(overnight, "save_nights", lambda state_dir, days, now: saves.append((days, now)) or [
-        {"added": 3, "failed": ["/BTC 1-min: RuntimeError: refused"]}])
+    monkeypatch.setattr(overnight, "save_nights", lambda state_dir, days, now: saves.append((days, now)) or (
+        [{"added": 3, "failed": ["/BTC 1-min: RuntimeError: refused"]}], ["/BTC 1-min: RuntimeError: refused"]))
     waited = []
     # the bar the close-out waits for, and how many grading runs came before the wait
     monkeypatch.setattr(service, "wait_for_bar", lambda state_dir, fire: waited.append((fire, len(jev["graded"]))) or True)

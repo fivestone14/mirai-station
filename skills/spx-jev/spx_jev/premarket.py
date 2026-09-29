@@ -230,10 +230,10 @@ def save_the_night(state_dir: Path, now: datetime) -> dict:
     """The night in progress saved into the overnight store up to ``now`` (overnight.save_nights): the bars it
     added and the calls that failed. The read goes on with what is on disk whatever the save did."""
     try:
-        lines = overnight.save_nights(state_dir, [overnight.night_for(now)], now)
+        lines, failed = overnight.save_nights(state_dir, [overnight.night_for(now)], now)
     except Exception as e:  # a failed save must never cost the read
         return {"added": 0, "failed": [f"{type(e).__name__}: {e}"]}
-    return {"added": sum(line["added"] for line in lines), "failed": sorted({f for line in lines for f in line["failed"]})}
+    return {"added": sum(line["added"] for line in lines), "failed": sorted(set(failed))}
 
 
 # ---- the read ------------------------------------------------------------------------------------

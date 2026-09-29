@@ -322,11 +322,12 @@ def save_night(state_dir: Path, day: date, got: dict, quoted: dict[str, str], ta
     return line
 
 
-def save_nights(state_dir: Path, days: list[date], now: datetime, fetch_from: datetime | None = None) -> list[dict]:
+def save_nights(state_dir: Path, days: list[date], now: datetime, fetch_from: datetime | None = None) -> tuple[list[dict], list[str]]:
     """One fetch per symbol and resolution covering every night in ``days``, then each night merged and
-    checked; the manifest lines of the nights that changed."""
+    checked; the manifest lines of the nights that changed, and the calls that failed. The failures come
+    back on their own: a save whose every call was refused adds nothing, so no night changes to carry them."""
     if not days:
-        return []
+        return [], []
     failed = []
     try:
         quoted = schwab.front_contracts(list(SYMBOLS))
@@ -342,7 +343,7 @@ def save_nights(state_dir: Path, days: list[date], now: datetime, fetch_from: da
             line = save_night(state_dir, day, got, quoted, table, now, failed)
             if line:
                 lines.append(line)
-    return lines
+    return lines, failed
 
 
 @contextmanager
@@ -495,20 +496,21 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     else:
         days = days_to_save(now)
-    lines = save_nights(state_dir, days, now)
+    lines, failed = save_nights(state_dir, days, now)
+    rolled = True
     try:
         refresh_rolls(state_dir, now, since=(now.date() - timedelta(days=ROLL_LOOKBACK_DAYS)).isoformat())
     except Exception as e:  # the bars are saved; the table waits for the next run
         print(f"spx-jev-overnight :: roll detection failed: {type(e).__name__}: {e}", file=sys.stderr)
-        return 1
-    failed = sorted({f for line in lines for f in line["failed"]})
+        rolled = False
+    failed = sorted(set(failed))
     for line in lines:
         es = line["symbols"]["/ES"]["bars"]["1"]
         print(f"spx-jev-overnight :: {line['day']} +{line['added']} bars, {line['rows']} on file; /ES 1-min "
               f"{es['bars']}/{es['expected']} expected, {len(es['gaps'])} gaps")
     print(f"spx-jev-overnight :: {len(lines)} of {len(days)} nights changed under {state_dir / OVERNIGHT_SUBDIR}"
           f"{'; failed ' + '; '.join(failed) if failed else ''}")
-    return 1 if failed else 0
+    return 1 if failed or not rolled else 0
 
 
 if __name__ == "__main__":
