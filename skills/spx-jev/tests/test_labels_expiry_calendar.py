@@ -13,9 +13,13 @@ UNCOVERED = events.uncovered
 
 
 def calendar_labels(scene_factory, day: str, hh: int = 12, mm: int = 32):
-    now = at(hh, mm, day, ss=10)
-    ls = build_expiry_calendar_labels(scene_factory(now, flat_bars(int((now - at(9, 30, day)).total_seconds() // 60), day=day)))
+    ls = calendar_set(scene_factory, day, hh, mm)
     return ls.state.get("calendar", {}), ls.omitted
+
+
+def calendar_set(scene_factory, day: str, hh: int = 12, mm: int = 32):
+    now = at(hh, mm, day, ss=10)
+    return build_expiry_calendar_labels(scene_factory(now, flat_bars(int((now - at(9, 30, day)).total_seconds() // 60), day=day)))
 
 
 # ---- calendar.expiry_phase (2026: the 18 September quarterly, the 30 September quarter end, the 16 October monthly)
@@ -128,6 +132,30 @@ def test_event_cycle_is_omitted_past_the_calendars_last_kept_day_and_before_its_
                                                "so the releases either side of today are unknown")
     assert calendar_labels(scene_factory, "2026-09-01")[1]["calendar.event_cycle"] == \
         "the event calendar (calendar/events.json) is kept only from 2026-09-01, so the releases either side of today are unknown"
+
+
+# ---- the calendar questions' gates: "nothing on the calendar" sleeps; a calendar that cannot be read is missing
+
+def test_each_calendar_question_sleeps_on_an_ordinary_day_and_wakes_when_its_cycle_is_near(scene_factory):
+    gates = calendar_set(scene_factory, "2026-10-07").gates
+    assert gates["event_cycle_day"].startswith("an ordinary day: no jobs report, consumer price report or Fed decision")
+    assert gates["month_turn_flow"] == "not a month-turn day: outside the month's first 3 and last 2 trading days"
+    assert calendar_set(scene_factory, "2026-10-26").gates["expiry_calendar"].startswith("an ordinary day in the expiry cycle")
+    for day, qid in (("2026-10-01", "event_cycle_day"), ("2026-10-05", "event_cycle_day"), ("2026-10-12", "expiry_calendar"),
+                     ("2026-10-16", "expiry_calendar"), ("2026-10-23", "expiry_calendar"), ("2026-09-30", "month_turn_flow"),
+                     ("2026-10-01", "month_turn_flow")):
+        assert calendar_set(scene_factory, day).gates[qid] is None, (day, qid)
+
+
+def test_a_calendar_that_cannot_be_read_leaves_its_question_awake_and_missing_its_label(scene_factory, monkeypatch, tmp_path):
+    path = tmp_path / "events.json"
+    path.write_text(json.dumps({"covers_from": "2026-09-01", "covers_through": "2026-10-01", "events": []}))
+    events._load.cache_clear()
+    monkeypatch.setattr(expiry_calendar, "uncovered", lambda d: UNCOVERED(d, path))
+    ls = calendar_set(scene_factory, "2026-10-01")
+    assert "calendar.event_cycle" in ls.omitted and ls.gates["event_cycle_day"] is None
+    ls = calendar_set(scene_factory, "2026-09-07")
+    assert all(ls.gates[qid] is None for qid in expiry_calendar.GATES)
 
 
 # ---- no session

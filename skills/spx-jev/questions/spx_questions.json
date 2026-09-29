@@ -2176,27 +2176,25 @@
       }
      },
      "horizon": "60min",
-     "cadence": "every 30-minute read",
+     "cadence": "every 30-minute read, awake only on the eve of the Fed or of a report before the open, or the day after a major release",
+     "sleep_when": "no jobs report, consumer price report or Fed decision on the previous session, before the next open or at the next session (an ordinary day)",
      "code_answer": true,
      "ask": "Where does today sit in the cycle of major scheduled releases?",
      "instructions": "Read `calendar.event_cycle`. Where does today sit in the cycle of major scheduled releases (jobs, consumer prices, the Fed decision)? The first match in the order listed wins.",
      "options": [
       "eve_of_fed",
       "eve_of_jobs_or_cpi",
-      "day_after_event",
-      "ordinary"
+      "day_after_event"
      ],
      "criteria": {
       "eve_of_fed": "the Fed's rate decision is tomorrow",
       "eve_of_jobs_or_cpi": "the jobs report or the consumer price report comes out before tomorrow's open",
-      "day_after_event": "yesterday was a major release day",
-      "ordinary": "none of these"
+      "day_after_event": "yesterday was a major release day"
      },
      "code_criteria": {
       "eve_of_fed": "next session has FOMC",
       "eve_of_jobs_or_cpi": "next session has JOBS or CPI pre-open",
-      "day_after_event": "previous session had JOBS, CPI or FOMC",
-      "ordinary": "otherwise"
+      "day_after_event": "previous session had JOBS, CPI or FOMC"
      },
      "labels": [
       "calendar.event_cycle"
@@ -4104,30 +4102,28 @@
       }
      },
      "horizon": "all",
-     "cadence": "the 10:02 read and the 14:02 read",
+     "cadence": "the 10:02 read and the 14:02 read, awake only on an expiry day or inside the opex-week or after-opex window",
+     "sleep_when": "no quarter-end or monthly expiry today, and outside the opex-week window ({one_day} to {opex_week_days} trading days before the monthly) and the after-opex window ({one_day} to {after_opex_days} trading days after it)",
      "code_answer": true,
      "ask": "Which part of the expiry cycle is today?",
-     "instructions": "Read `calendar.expiry_phase`. Check in order: quarter_end, monthly_or_quarterly, opex_week, week_after_opex, ordinary. Which part of the expiry cycle is today?",
+     "instructions": "Read `calendar.expiry_phase`. Check in order: quarter_end, monthly_or_quarterly, opex_week, week_after_opex. Which part of the expiry cycle is today?",
      "options": [
       "quarter_end",
       "monthly_or_quarterly",
       "opex_week",
-      "week_after_opex",
-      "ordinary"
+      "week_after_opex"
      ],
      "criteria": {
       "quarter_end": "the quarter's last trading day: the quarter-end SPXW book settles at today's close",
       "monthly_or_quarterly": "monthly or quarterly expiry: the morning-settled monthly book settled on the opening prints and daily SPXW settle at the close",
       "opex_week": "inside the opex-week window before this month's monthly expiry",
-      "week_after_opex": "one of the trading days after a monthly expiry",
-      "ordinary": "an ordinary daily expiry"
+      "week_after_opex": "one of the trading days after a monthly expiry"
      },
      "code_criteria": {
       "quarter_end": "quarter_end in expiry_kinds",
       "monthly_or_quarterly": "monthly or quarterly in expiry_kinds",
       "opex_week": "{one_day} to {opex_week_days} trading days before",
-      "week_after_opex": "{one_day} to {after_opex_days} trading days after",
-      "ordinary": "otherwise"
+      "week_after_opex": "{one_day} to {after_opex_days} trading days after"
      },
      "labels": [
       "calendar.expiry_phase"
@@ -4152,7 +4148,8 @@
       }
      },
      "horizon": "30min",
-     "cadence": "the 10:02, 12:02, 14:32 and 15:32 reads",
+     "cadence": "the 10:02, 12:02, 14:32 and 15:32 reads, awake only in the month's first or last days",
+     "sleep_when": "outside the month's first {month_turn_days} and last {rebal_window_days} trading days",
      "code_answer": true,
      "ask": "Which month-turn flow is in play for the rest of today?",
      "instructions": "Read `calendar.month_turn` and `flows.rebalance_side`. Which month-turn flow is in play for the rest of today?",
@@ -4161,22 +4158,19 @@
       "last_days_stocks_overweight",
       "last_days_stocks_underweight",
       "last_days_small_gap",
-      "first_days_of_month",
-      "ordinary"
+      "first_days_of_month"
      ],
      "criteria": {
       "last_days_stocks_overweight": "one of the month's last sessions after stocks beat bonds by a top-fifth margin: funds expected to sell stocks, mostly into the close",
       "last_days_stocks_underweight": "one of the last sessions after stocks lagged bonds by a bottom-fifth margin: funds expected to buy stocks into the close",
       "last_days_small_gap": "one of the last sessions with an ordinary stock-bond gap",
-      "first_days_of_month": "one of the first sessions of a new month, when new money is typically invested",
-      "ordinary": "not in a month-turn window"
+      "first_days_of_month": "one of the first sessions of a new month, when new money is typically invested"
      },
      "code_criteria": {
       "last_days_stocks_overweight": "trading days to month-end < {rebal_window_days} and the governing gap (named in the label) rank >= {top_fifth}",
       "last_days_stocks_underweight": "same, rank <= {bottom_fifth}",
       "last_days_small_gap": "same, middle",
-      "first_days_of_month": "trading day <= {month_turn_days}",
-      "ordinary": "otherwise"
+      "first_days_of_month": "trading day <= {month_turn_days}"
      },
      "labels": [
       "calendar.month_turn",

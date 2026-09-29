@@ -18,7 +18,11 @@ from .words import ordinal, pct, plural
 
 LABELS = ("expiry.settle_clock", "expiry.opex_today", "expiry.dated_weight", "expiry.today_vs_week",
           "calendar.event_cycle", "calendar.expiry_phase", "calendar.month_turn", "expiry.next_book_magnet", "expiry.quarter_end_strikes")
-GATES: tuple[str, ...] = ()
+# Each calendar question sleeps on an ordinary day, when nothing in its cycle is near: "nothing on the calendar"
+# is the nothing-happened default, never an answer. A label that cannot be read leaves its question awake and
+# missing it, not asleep.
+GATES = ("event_cycle_day", "expiry_calendar", "month_turn_flow")
+GATE_OF = {"calendar.event_cycle": "event_cycle_day", "calendar.expiry_phase": "expiry_calendar", "calendar.month_turn": "month_turn_flow"}
 # The major releases, as the calendar names them: a day is the eve of the Fed or of a report out before the next
 # open, or the day after any of them.
 PRE_OPEN_RELEASES = ("JOBS", "CPI")
@@ -35,8 +39,9 @@ def build_expiry_calendar_labels(scene: Scene) -> LabelSet:
     _today_vs_week(scene, ls)
     today = scene.now.astimezone(ET).date()
     if not is_trading_day(today):
-        for path in ("calendar.event_cycle", "calendar.expiry_phase", "calendar.month_turn"):
+        for path, qid in GATE_OF.items():
             ls.omit(path, f"{today} is not a trading day")
+            ls.wake(qid)
         return ls
     _event_cycle(today, ls)
     _expiry_phase(scene, today, ls)
@@ -124,6 +129,7 @@ def _event_cycle(today: date, ls: LabelSet) -> None:
     why = uncovered(prev) or uncovered(nxt)
     if why:
         ls.omit("calendar.event_cycle", f"{why}, so the releases either side of today are unknown")
+        ls.wake("event_cycle_day")
         return
     fed_next = any(e.kind == "FOMC" for e in on_day(nxt))
     before_open = [e for e in on_day(nxt) if e.kind in PRE_OPEN_RELEASES and e.start.time() < SESSION_OPEN]
@@ -139,6 +145,10 @@ def _event_cycle(today: date, ls: LabelSet) -> None:
     else:
         ls.put("calendar.event_cycle", f"no jobs report, consumer price report or Fed decision fell on the previous session, {_day_words(prev)}, "
                                        f"or comes before or during the next, {_day_words(nxt)}: an ordinary day")
+        ls.sleep("event_cycle_day", "an ordinary day: no jobs report, consumer price report or Fed decision on the previous session, "
+                                    "before the next open or at the next session")
+        return
+    ls.wake("event_cycle_day")
 
 
 def _previous_monthly(today: date) -> date:
@@ -178,7 +188,12 @@ def _expiry_phase(scene: Scene, today: date, ls: LabelSet) -> None:
                      f"{'inside' if after_opex else 'outside'} the {AFTER_OPEX_DAYS}-day after-opex window")
         if not (quarter_end or opex_week or after_opex):
             parts.append("an ordinary day in the expiry cycle")
+            ls.put("calendar.expiry_phase", "; ".join(parts))
+            ls.sleep("expiry_calendar", f"an ordinary day in the expiry cycle: no expiry of note today, outside the {OPEX_WEEK_DAYS}-day "
+                                        f"opex-week and the {AFTER_OPEX_DAYS}-day after-opex windows")
+            return
     ls.put("calendar.expiry_phase", "; ".join(parts))
+    ls.wake("expiry_calendar")
 
 
 def _month_turn(today: date, ls: LabelSet) -> None:
@@ -198,4 +213,8 @@ def _month_turn(today: date, ls: LabelSet) -> None:
     else:
         text = (f"today, {_day_words(today)}, is the {ordinal(nth)} trading day of {today:%B} with {plural(left, 'trading day')} left after it, "
                 f"outside the month's first {MONTH_TURN_DAYS} and last {REBAL_WINDOW_DAYS} trading days")
+        ls.put("calendar.month_turn", text)
+        ls.sleep("month_turn_flow", f"not a month-turn day: outside the month's first {MONTH_TURN_DAYS} and last {REBAL_WINDOW_DAYS} trading days")
+        return
     ls.put("calendar.month_turn", text)
+    ls.wake("month_turn_flow")

@@ -3631,7 +3631,7 @@
       "thirty_minute"
      ],
      "status": "live",
-     "cadence": "every 30-minute read",
+     "cadence": "every 30-minute read, awake only on the eve of the Fed or of a report before the open, or the day after a major release",
      "ask": "Where does today sit in the cycle of major scheduled releases?",
      "instructions": "Read `calendar.event_cycle`. Where does today sit in the cycle of major scheduled releases (jobs, consumer prices, the Fed decision)? The first match in the order listed wins.",
      "options": [
@@ -3646,17 +3646,12 @@
       {
        "name": "day_after_event",
        "description": "yesterday was a major release day"
-      },
-      {
-       "name": "ordinary",
-       "description": "none of these"
       }
      ],
      "criteria": {
       "eve_of_fed": "next session has FOMC",
       "eve_of_jobs_or_cpi": "next session has JOBS or CPI pre-open",
-      "day_after_event": "previous session had JOBS, CPI or FOMC",
-      "ordinary": "otherwise"
+      "day_after_event": "previous session had JOBS, CPI or FOMC"
      },
      "labels_needed": [
       {
@@ -3672,6 +3667,7 @@
      "evidence": "Eve 14:00-16:00 median 0.033 vs 0.128 normal-day ranges (n=7 vs 40); all 5 early-release days had a 10:30-16:00 range at the 0-11th percentile of 44 no-event days; event days open-to-close -0.45, day after +0.17 (n=7). Test-window eves 10-01, 10-13.",
      "origin": "new (reviews: events); merges post_release_calm",
      "code_answer": true,
+     "sleep_when": "no jobs report, consumer price report or Fed decision on the previous session, before the next open or at the next session (an ordinary day)",
      "schedule": {
       "thirty_minute": {
        "every_min": 30,
@@ -6440,9 +6436,9 @@
       "thirty_minute"
      ],
      "status": "live",
-     "cadence": "the 10:02 read and the 14:02 read",
+     "cadence": "the 10:02 read and the 14:02 read, awake only on an expiry day or inside the opex-week or after-opex window",
      "ask": "Which part of the expiry cycle is today?",
-     "instructions": "Read `calendar.expiry_phase`. Check in order: quarter_end, monthly_or_quarterly, opex_week, week_after_opex, ordinary. Which part of the expiry cycle is today?",
+     "instructions": "Read `calendar.expiry_phase`. Check in order: quarter_end, monthly_or_quarterly, opex_week, week_after_opex. Which part of the expiry cycle is today?",
      "options": [
       {
        "name": "quarter_end",
@@ -6459,18 +6455,13 @@
       {
        "name": "week_after_opex",
        "description": "one of the trading days after a monthly expiry"
-      },
-      {
-       "name": "ordinary",
-       "description": "an ordinary daily expiry"
       }
      ],
      "criteria": {
       "quarter_end": "quarter_end in expiry_kinds",
       "monthly_or_quarterly": "monthly or quarterly in expiry_kinds",
       "opex_week": "{one_day} to {opex_week_days} trading days before",
-      "week_after_opex": "{one_day} to {after_opex_days} trading days after",
-      "ordinary": "otherwise"
+      "week_after_opex": "{one_day} to {after_opex_days} trading days after"
      },
      "labels_needed": [
       {
@@ -6486,6 +6477,7 @@
      "evidence": "Monthly days on file: range 0.45/0.50/0.55 sigma vs 0.60 median (3/3 below); day after 0.79/0.58/1.53. AM settlement does not distort the lane (09:35-09:39 range 3rd-17th percentile on opex days). Test window: 09-30 quarter-end, 10-12..10-16 opex week, 10-19..10-23 after.",
      "origin": "new (reviews: expiry); merges opex_cycle_phase, expiry_calendar, close_event_today; split from round1:calendar_flow_day",
      "code_answer": true,
+     "sleep_when": "no quarter-end or monthly expiry today, and outside the opex-week window ({one_day} to {opex_week_days} trading days before the monthly) and the after-opex window ({one_day} to {after_opex_days} trading days after it)",
      "schedule": {
       "thirty_minute": {
        "at": [
@@ -6506,7 +6498,7 @@
      ],
      "status": "dark",
      "dark_reason": "the index's daily closes, which nothing saves, so the month-turn rebalance side (flows.rebalance_side) is never measured",
-     "cadence": "the 10:02, 12:02, 14:32 and 15:32 reads",
+     "cadence": "the 10:02, 12:02, 14:32 and 15:32 reads, awake only in the month's first or last days",
      "ask": "Which month-turn flow is in play for the rest of today?",
      "instructions": "Read `calendar.month_turn` and `flows.rebalance_side`. Which month-turn flow is in play for the rest of today?",
      "options": [
@@ -6525,18 +6517,13 @@
       {
        "name": "first_days_of_month",
        "description": "one of the first sessions of a new month, when new money is typically invested"
-      },
-      {
-       "name": "ordinary",
-       "description": "not in a month-turn window"
       }
      ],
      "criteria": {
       "last_days_stocks_overweight": "trading days to month-end < {rebal_window_days} and the governing gap (named in the label) rank >= {top_fifth}",
       "last_days_stocks_underweight": "same, rank <= {bottom_fifth}",
       "last_days_small_gap": "same, middle",
-      "first_days_of_month": "trading day <= {month_turn_days}",
-      "ordinary": "otherwise"
+      "first_days_of_month": "trading day <= {month_turn_days}"
      },
      "labels_needed": [
       {
@@ -6560,6 +6547,7 @@
      "evidence": "First 3 sessions of Aug and Sep: settled open to close +0.42 vs -0.04 sigma (shuffle p=0.007, only 2 month-turns); 30-minute up-past-rule 25% vs 15%. Rebalance: Harvey, Mazzoleni & Melone -17 bp next day; local 08-31 (after +2.6%) rose, against the naive sign. 5 non-ordinary days in the window.",
      "origin": "merge: round1:calendar_flow_day + month_turn_flow + month_end_close_flow + month_turn_open",
      "code_answer": true,
+     "sleep_when": "outside the month's first {month_turn_days} and last {rebal_window_days} trading days",
      "sources": [
       "https://www.nber.org/papers/w33554",
       "https://academic.oup.com/rfs/article/33/1/75/5494694"
