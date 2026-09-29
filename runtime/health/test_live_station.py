@@ -884,10 +884,10 @@ def test_premarket_fired_fails_a_close_out_that_never_landed(tmp_path):
 def test_premarket_fired_names_a_close_out_that_ran_and_left_a_call_to_grade(tmp_path):
     """09-28: the close-out ran at 10:06 but the bar for the 30-minute call had not come, so it left the card open. The
     review says a call is still ungraded, not that the close-out never landed; a call closed for good is not owed."""
-    pending = _premarket(tmp_path, closed=False, tally={"calls": 1, "graded": 0, "right": 0, "unsure": 0, "closed": 0})
+    pending = _premarket(tmp_path, closed=False, tally={"calls": 1, "graded": 0, "right": 0, "passed": 0, "end_price_only": 0, "closed": 0})
     ok, why = premarket_fired(pending, _pre_at("10:21"), "02:35", "10:06", 5)
     assert ok is False and why.startswith("1 pre-market call still ungraded after the 10:06 ET close-out")
-    done = _premarket(tmp_path, tally={"calls": 2, "graded": 1, "right": 1, "unsure": 0, "closed": 1})
+    done = _premarket(tmp_path, tally={"calls": 2, "graded": 1, "right": 1, "passed": 0, "end_price_only": 0, "closed": 1})
     assert premarket_fired(done, _pre_at("10:21"), "02:35", "10:06", 5)[0] is True
 
 
