@@ -963,3 +963,90 @@ def test_the_folded_premarket_call_fits_the_owners_360px_phone():
     assert "flex-wrap:wrap" in _rule(".fold")
     assert _FOLD_W["PRE-MARKET CALL 09:28"] + 12 + _FOLD_W["Unsure 100%"] <= inner
     assert all(w <= inner for k, w in _FOLD_W.items() if " · " in k)
+
+
+# ---- Monday's real cards, through the whole page
+
+# The three cards the station held after Monday 2026-09-28's close (spx_jev/latest.json and the tape and
+# pre-market lanes' latest.json), and the situation rebuilt read-only from the 2026-09-25 11:33 diary row,
+# which named no wall (spx_jev.service.situation_rows over the row's labels and figures).
+MONDAY = json.loads((Path(__file__).parent / "spx_cards_2026-09-28.json").read_text())
+MAIN_JS = re.search(r"(?s)<script>\n(\(function\(\)\{\n  'use strict';.*?)</script>", SPX).group(1)
+KOLKATA = "Asia/Kolkata"
+# the page's whole script run as the phone runs it: every card the station serves answered from D, no timers
+WHOLE_DOM = """
+function Node(tag){ this.tag = tag; this.attrs = {}; this.kids = []; this._t = ''; this.style = {}; this.dataset = {}; this.hidden = false; }
+Node.prototype.insertBefore = function(n, ref){ var i = this.kids.indexOf(ref); this.kids.splice(i < 0 ? 0 : i, 0, n); return n; };
+Node.prototype.setAttribute = function(k, v){ this.attrs[k] = String(v); };
+Node.prototype.appendChild = function(n){ this.kids.push(n); return n; };
+Node.prototype.addEventListener = function(){};
+Object.defineProperty(Node.prototype, 'firstChild', {get: function(){ return this.kids[0] || null; }});
+Object.defineProperty(Node.prototype, 'childNodes', {get: function(){ return this.kids; }});
+Object.defineProperty(Node.prototype, 'textContent', {get: function(){ return this._t + this.kids.map(function(k){ return k.textContent; }).join(''); },
+                                                      set: function(v){ this._t = String(v); this.kids = []; }});
+Object.defineProperty(Node.prototype, 'className', {get: function(){ return this.attrs['class'] || ''; }, set: function(v){ this.attrs['class'] = String(v); }});
+Object.defineProperty(Node.prototype, 'classList', {get: function(){ var n = this; function has(){ return n.className.split(' ').filter(Boolean); }
+  function put(h){ n.className = h.join(' '); }
+  return {contains: function(k){ return has().indexOf(k) >= 0; }, add: function(k){ put(has().filter(function(x){ return x !== k; }).concat([k])); },
+          remove: function(k){ put(has().filter(function(x){ return x !== k; })); },
+          toggle: function(k, on){ put(has().filter(function(x){ return x !== k; }).concat(on ? [k] : [])); }}; }});
+var ids = {};
+['h1', 'sub', 'state', 'main', 'load', 'poll', 'csTitle', 'csBody'].forEach(function(id){ ids[id] = new Node('div'); });
+var document = {hidden: false, getElementById: function(id){ return ids[id] || null; }, createElement: function(t){ return new Node(t); },
+                createElementNS: function(ns, t){ return new Node(t); }, querySelectorAll: function(){ return []; }, addEventListener: function(){}};
+var window = {addEventListener: function(){}}, localStorage = {getItem: function(){ return null; }, setItem: function(){}}, MiraiSheet = {open: function(){}};
+var CARDS = {'spx_jev/latest.json': D.live, 'spx_jev/lanes/tape/latest.json': D.tape, 'spx_jev/lanes/premarket/latest.json': D.premarket};
+function fetch(url){
+  var c = CARDS[decodeURIComponent(url.split('path=')[1])];
+  return Promise.resolve({ok: true, json: function(){ return Promise.resolve(c ? {kind: 'json', data: c} : {error: 'no such file'}); }});
+}
+var setTimeout = function(){ return 0; }, clearTimeout = function(){}, setInterval = function(){ return 0; };
+function dump(n){ return {tag: n.tag, attrs: n.attrs, text: n._t, kids: n.kids.map(dump)}; }
+function flat(n){ return n._t + n.kids.map(flat).join(''); }
+"""
+
+
+def _whole(cards, now, tz=LA):
+    """The page drawn at ``now`` in ``tz`` from ``cards`` (live, tape, premarket; a missing one is not on file):
+    the header line and whether it is an error, the state chips, and each of main's parts as [class, flat text]."""
+    if not _NODE:
+        pytest.skip("node is not installed")
+    script = ("const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + FIXED_NOW + WHOLE_DOM + MAIN_JS +
+              "setImmediate(function(){ console.log(JSON.stringify({sub: ids.sub.textContent, err: ids.sub.classList.contains('err'),"
+              " state: ids.state.kids.map(flat), main: ids.main.kids.map(function(k){ return [k.className || k.tag, flat(k)]; }),"
+              " dom: ids.main.kids.map(dump)})); });")
+    out = subprocess.run([_NODE, "-e", script], input=json.dumps({**cards, "now": now}), capture_output=True, text=True, timeout=20,
+                         env={**os.environ, "TZ": tz})
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
+
+
+@pytest.mark.parametrize("tz", [LA, TOKYO, NY, KOLKATA])
+@pytest.mark.parametrize("now, leads", [
+    ("2026-09-28T09:30:00-04:00", "before the open"),                 # the 09:28 pre-market card leads
+    ("2026-09-28T10:35:00-04:00", "opening · a call every 5 min"),    # the 10:30 lane call is open
+    ("2026-09-28T15:40:00-04:00", "normal · a call every 30 min"),    # the 15:32 read's call is open
+    ("2026-09-28T16:10:00-04:00", "normal · a call every 30 min"),
+])
+def test_mondays_real_cards_draw_whole_in_every_zone(now, leads, tz):
+    got = _whole({k: MONDAY[k] for k in ("live", "tape", "premarket")}, now, tz)
+    assert not got["err"], got["sub"]
+    assert got["main"][0] == ["mode", leads]
+
+
+@pytest.mark.parametrize("tz", [LA, TOKYO, KOLKATA])
+def test_a_diary_row_with_no_wall_draws_its_fact_in_words(tz):
+    """About one diary row in ten names no wall (09-15, 09-21, 09-23, 09-25 in market hours): its nearest-strike fact
+    carries a figure with no distance, and the page broke on it ("the card could not be drawn") and lost the situation
+    and every question. A fact whose figure has no number is drawn without a gauge, in the builder's sentence."""
+    live = {**MONDAY["live"], "situation": MONDAY["no_wall"]["situation"]}
+    got = _whole({"live": live, "tape": MONDAY["tape"], "premarket": MONDAY["premarket"]}, "2026-09-28T15:40:00-04:00", tz)
+    assert not got["err"], got["sub"]
+    situation = [d for c, d in zip(got["main"], got["dom"]) if c[0] == "card" and c[1].startswith("situation")][0]
+    rows = {r["kids"][0]["kids"][0]["text"]: r for r in situation["kids"] if r["attrs"].get("class") == "sit-row"}
+    wall = rows["Nearest heavy strike"]
+    assert [k["attrs"].get("class") for k in wall["kids"]] == ["sit-top", "sit-c"]      # no gauge
+    assert wall["kids"][1]["text"] == "No heavy strike sits within reach on either side of price"
+    assert _flat_text(wall["kids"][0]) == "Nearest heavy strikeNone in reach"
+    assert [k["attrs"].get("class") for k in rows["Price, last 30 min"]["kids"]] == ["sit-top", "sit-g", "sit-c"]
+    assert any(c[0] == "vp" for c in got["main"]), "the questions are drawn below it"

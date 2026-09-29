@@ -971,6 +971,8 @@ details .q{margin-top:8px}
     svg.appendChild(svgEl('circle', {cx: Math.max(GAUGE_L, Math.min(GAUGE_R, at)).toFixed(1), cy: mid, r: 5.5, 'class': 'dot'}));
     return svg;
   }
+  // a figure carries its number, or it is not drawn: a diary row with no wall hands over a distance with none
+  function measured(f){ return !!f && (f.kind === 'rank' ? f.under != null && f.of != null : f.value != null); }
   function factCaption(f, path){
     if(f.kind === 'signed') return signedWords(f, path);
     if(f.kind === 'rank') return 'Busier than ' + f.under + ' of ' + f.of + ' past sessions at this time';
@@ -993,8 +995,8 @@ details .q{margin-top:8px}
       var row = el('div', 'sit-row');
       if(typeof r === 'string'){ row.appendChild(el('div', 'sit-c', sentence(r))); card.appendChild(row); return; }   // a card written before 2026-09-26
       var top = el('div', 'sit-top'); top.appendChild(el('span', 'sit-t', r.title)); top.appendChild(el('b', 'sit-v', r.verdict || '')); row.appendChild(top);
-      var g = r.figure && gauge(r.figure); if(g) row.appendChild(g);
-      row.appendChild(el('div', 'sit-c', r.figure ? factCaption(r.figure, r.path) : sentence(marketWords(r.sentence, c.row_ts))));
+      var fig = measured(r.figure) ? r.figure : null, g = fig && gauge(fig); if(g) row.appendChild(g);
+      row.appendChild(el('div', 'sit-c', fig ? factCaption(fig, r.path) : sentence(marketWords(r.sentence, c.row_ts))));
       row.setAttribute('role', 'button'); row.setAttribute('tabindex', '0'); row.setAttribute('aria-controls', 'jevSheet');
       row.setAttribute('aria-label', r.title + ': ' + (r.verdict || '') + '. Open the full sentence');
       row.addEventListener('click', function(){ openFact(r, row); });
