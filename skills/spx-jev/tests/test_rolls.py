@@ -56,6 +56,30 @@ def test_a_basis_step_in_the_roll_window_is_a_roll_at_its_switch_bar():
     assert all(r["reason"] == "outside the product's roll window" for r in found["rejected"])
 
 
+def _five(rows):
+    return [{"ts": f"2026-07-30T{hm}:00-04:00", "open": o, "close": c} for hm, o, c in rows]
+
+
+def test_a_bitcoin_switch_the_largest_jump_put_a_bar_late_moves_to_the_first_bar_at_its_siblings_new_level():
+    """/MBT 07-31, five-minute bars only: its largest jump is 17:15 (+215), but /BTC was on the new contract from 17:05
+    and /MBT's 17:10 bar already closed at /BTC's new level, 15 points from it; its 17:05 bar, one contract at 64865,
+    was still at the old. The sibling that switched first keeps its switch."""
+    mbt = _five([("16:55", 64785, 64765), ("17:05", 64865, 64865), ("17:10", 65055, 65025), ("17:15", 65240, 65250),
+                 ("17:20", 65160, 64995)])
+    btc = _five([("16:55", 64790, 64755), ("17:00", 64750, 64760), ("17:05", 65080, 65080), ("17:10", 65040, 65040),
+                 ("17:25", 65040, 65040)])
+    day = "2026-07-31"
+    found = {"/MBT": {"rolls": [{"symbol": "/MBT", "day": day, "at": "2026-07-30T17:15:00-04:00", "jump": 215.0}]},
+             "/BTC": {"rolls": [{"symbol": "/BTC", "day": day, "at": "2026-07-30T17:05:00-04:00", "jump": 320.0}]},
+             "/ES": {"rolls": []}}
+    out = rolls.align_siblings(found, {"/MBT": {day: mbt}, "/BTC": {day: btc}})
+    assert (out["/MBT"]["rolls"][0]["at"], out["/MBT"]["rolls"][0]["jump"]) == ("2026-07-30T17:10:00-04:00", 190.0)
+    assert out["/BTC"]["rolls"] == found["/BTC"]["rolls"] and out["/ES"] == found["/ES"]
+    assert found["/MBT"]["rolls"][0]["at"] == "2026-07-30T17:15:00-04:00"                # detect's own answer is left as it was
+    late = {**found, "/BTC": {"rolls": [{**found["/BTC"]["rolls"][0], "at": "2026-07-30T17:25:00-04:00"}]}}
+    assert rolls.align_siblings(late, {"/MBT": {day: mbt}, "/BTC": {day: btc}})["/MBT"]["rolls"][0]["at"] == "2026-07-30T17:15:00-04:00"
+
+
 def test_a_window_the_data_covers_without_a_step_is_listed():
     fut, ref = _es_history(date(2026, 12, 1))            # no step inside September's window
     found = rolls.detect("/ES", fut, ref, {})

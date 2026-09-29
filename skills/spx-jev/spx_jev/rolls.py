@@ -16,7 +16,8 @@ inside the product's roll window (the exchange's calendar, ROLL_WINDOWS). A larg
 window (a Fed day moving the bond's convexity, say) is kept under ``rejected`` with its reason, and a
 window the data covers without a step is listed under ``windows_without_roll``, so a missed roll is
 visible. Within the night before the step, the switch is the bar-to-bar jump furthest in the step's
-direction: that bar is the roll's ``at``, the first bar on the new contract.
+direction: that bar is the roll's ``at``, the first bar on the new contract. Bitcoin's two series are checked
+against each other (align_siblings), since on a night of 5-minute bars the largest jump can land a bar late.
 
 A roll once found is kept for good: the daily job re-detects only its last weeks, whose first day has no
 day before it to step from, so a roll that has left the span, or whose step has fallen under the line,
@@ -46,6 +47,8 @@ STEP_VS_TYPICAL = 5.0                 # a roll's basis step against the median d
 MONTH_CODES = "FGHJKMNQUVXZ"
 QUARTERLY = "HMUZ"
 CYCLES = {"/ES": QUARTERLY, "/ZN": QUARTERLY, "/BTC": MONTH_CODES, "/MBT": MONTH_CODES}
+# one market in two contract sizes, a median 0 bp apart: they roll the same evening (align_siblings)
+SIBLINGS = {"/BTC": "/MBT", "/MBT": "/BTC"}
 
 
 def _third_friday(year: int, month: int) -> date:
@@ -162,6 +165,40 @@ def detect(symbol: str, futures_5min: list[dict], reference: list[dict], nights:
         if w and first < w[0] and w[1] <= last and f"{y:04d}-{m:02d}" not in seen:
             out["windows_without_roll"].append([w[0].isoformat(), w[1].isoformat()])
         y, m = y + m // 12, m % 12 + 1
+    return out
+
+
+def _close_by(bars: list[dict], ts: datetime) -> float | None:
+    """The close of the newest bar starting at or before ``ts``."""
+    before = [b for b in bars if datetime.fromisoformat(b["ts"]) <= ts]
+    return before[-1]["close"] if before else None
+
+
+def align_siblings(found: dict[str, dict], nights: dict[str, dict[str, list[dict]]]) -> dict[str, dict]:
+    """detect's answers per symbol with each sibling's switch checked against the other's. On a night with only
+    5-minute bars the largest jump can land a bar late: /MBT 07-31 switched at 17:15 by its jump, where /BTC was on the
+    new contract from 17:05 and /MBT's own 17:10 bar already traded at /BTC's new level. When a sibling switched earlier
+    on the same roll day, the switch is the first of this series' bars from the sibling's on whose close is nearer the
+    sibling's price than that price less the sibling's jump: the first bar at the new contract's level. Each is checked
+    against the sibling's switch as detect found it, so the order the two are read in never matters."""
+    out = {symbol: {**f, "rolls": [dict(r) for r in f["rolls"]]} for symbol, f in found.items()}
+    for symbol, sibling in SIBLINGS.items():
+        if symbol not in found or sibling not in found:
+            continue
+        theirs = {r["day"]: r for r in found[sibling]["rolls"] if r.get("at") and r.get("jump") is not None}
+        for r in out[symbol]["rolls"]:
+            other = theirs.get(r["day"])
+            if not r.get("at") or other is None or datetime.fromisoformat(other["at"]) >= datetime.fromisoformat(r["at"]):
+                continue
+            mine, sib = nights.get(symbol, {}).get(r["day"], []), nights.get(sibling, {}).get(r["day"], [])
+            start, own = datetime.fromisoformat(other["at"]), datetime.fromisoformat(r["at"])
+            for prev, bar in zip(mine, mine[1:]):
+                t = datetime.fromisoformat(bar["ts"])
+                if not start <= t < own or (level := _close_by(sib, t)) is None:
+                    continue
+                if abs(bar["close"] - level) < abs(bar["close"] - (level - other["jump"])):
+                    r["at"], r["jump"] = bar["ts"], round(bar["open"] - prev["close"], 4)
+                    break
     return out
 
 

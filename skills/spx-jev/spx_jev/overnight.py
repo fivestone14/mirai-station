@@ -397,9 +397,10 @@ def refresh_rolls(state_dir: Path, now: datetime, since: str | None = None) -> d
     # through the same temporary file: the table and the restamps are one step under it
     with saving(state_dir):
         table = before = rolls.load(folder)
+        found = rolls.align_siblings({symbol: rolls.detect(symbol, list(five[symbol].values()), references[rolls.REFERENCES[symbol]],
+                                                           nights[symbol]) for symbol in SYMBOLS}, nights)
         for symbol in SYMBOLS:
-            found = rolls.detect(symbol, list(five[symbol].values()), references[rolls.REFERENCES[symbol]], nights[symbol])
-            table = rolls.merge(table, symbol, found, days[0], quoted.get(symbol))
+            table = rolls.merge(table, symbol, found[symbol], days[0], quoted.get(symbol))
         changed = (table["current"], table["rolls"]) != (before["current"], before["rolls"])
         table["detected_at"] = now.isoformat(timespec="seconds")
         rolls.save(folder, table)
