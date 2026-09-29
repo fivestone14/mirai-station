@@ -423,7 +423,7 @@ both. The dead-man is the station's own code and has no template.
 |---|---|---|
 | `com.mirai-station.spx-jev` | 06:32 to 13:02, at :02 and :32; the fire after the close only grades | `run-spx-jev.sh` |
 | `com.mirai-station.spx-jev-tape` | 06:35 to 07:30 every 5 minutes, and 07:42 | `run-spx-jev.sh --lane tape` |
-| `com.mirai-station.spx-jev-bars` | every 60 s, gated to market hours plus 12 minutes after the close | `run-spx-jev-bars.sh` |
+| `com.mirai-station.spx-jev-bars` | every 60 s, gated to market hours plus 13 minutes after the close | `run-spx-jev-bars.sh` |
 | `com.mirai-station.spx-jev-context` | every 60 s, gated to market hours | `run-spx-jev-context.sh` |
 | `com.mirai-station.spx-jev-save-day` | 13:20, once a day after the close | `run-spx-jev-save-day.sh` |
 | `com.mirai-station.spx-jev-overnight` | 06:26 and 13:20: before the open, and after the close | `run-spx-jev-overnight.sh` |
@@ -457,7 +457,9 @@ At the mini, in order:
 4. Hire the jobs: `~/.claude/plugins/mirai-station/runtime/scripts/install-launchd.sh`
    (it reloads every station job, the nine here among them).
 5. Check: `launchctl list | grep -E 'spx-jev|spx-premarket'` shows nine, and after the first fire
-   `/tmp/mirai-station.spx-jev*.err` is empty.
+   `grep -E 'FAILED|Traceback' /tmp/mirai-station.spx-jev*.err /tmp/mirai-station.spx-premarket-deadman.err`
+   finds nothing. The `.err` files are never empty: the service writes its
+   normal progress lines to stderr, so a failure is found by its words.
 
 To pause all nine, `launchctl bootout gui/$UID/<label>` for each label above; `launchctl bootstrap gui/$UID ~/Library/LaunchAgents/<label>.plist`
 brings one back (docs/OPERATIONS.md, "Disabling temporarily", has the loop).
