@@ -306,6 +306,32 @@ def test_a_live_read_writes_the_loops_forecasts_keeps_the_blend_on_the_phone_and
     assert [(x["session"], x["applied"], x["why"]) for x in said] == [(DAY, False, "no read carries an average-price call: before the question")]
 
 
+def test_a_failing_average_price_loop_costs_neither_the_read_nor_the_close_out(tmp_path, monkeypatch, capsys):
+    """The average-price loop's state unreadable as a state (a list): the read still grades and writes its card, the
+    shadow grade still appends, the weights come from the end-price loop, and the close-out still refreshes the card."""
+    from spx_jev.clock import MIN_SESSIONS
+    prior = {f"2026-09-{d:02d}": flat_bars(390, day=f"2026-09-{d:02d}") for d in range(1, MIN_SESSIONS + 1)}
+    state = write_state(tmp_path, DAY, [make_row(at(12, 2, ss=10), 7700.0)], flat_bars(390), prior)
+    for d in prior:
+        (state / "reversion" / f"{d}.jsonl").write_text("".join(json.dumps(make_row(at(9 + (30 + m) // 60, (30 + m) % 60, day=d), 7700.0)) + "\n"
+                                                                for m in range(0, 390, 5)))
+    out = state / "spx_jev"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "pool_30_integral.json").write_text("[]")
+    monkeypatch.setattr(service, "send_all", _answers())
+    monkeypatch.setattr(service, "send", _sums)
+    c = run_once(state, out, DOC, True, DAY)
+    assert c["row_ts"] == at(12, 2, ss=10).isoformat() and (out / "latest.json").exists()
+    assert "average-price loop failed: AttributeError" in capsys.readouterr().err
+    weights = json.loads((out / "weights.json").read_text())
+    assert weights["method"] == "pool_v1" and weights["pool"]["last_session_applied"] == DAY and weights["graded_runs"] == 1
+    lines = (out / "integral_grades.jsonl").read_text().splitlines()
+    assert {json.loads(line)["horizon"] for line in lines} == {"next_30", "next_60"}
+    card = service.close_out(state, out, DOC, service.LIVE, DAY)
+    assert card and card["graded_at"] and card["tally"]["graded"] == 1 and "average-price loop failed" in capsys.readouterr().err
+    assert (out / "pool_30_integral.json").read_text() == "[]"
+
+
 def test_the_live_lanes_fire_after_the_close_grades_the_last_calls_and_asks_jev_nothing(tmp_path, monkeypatch):
     """The 15:32 read's 30-minute mark is the closing bar: the 16:02 fire, past the close, grades it that evening."""
     from zoneinfo import ZoneInfo

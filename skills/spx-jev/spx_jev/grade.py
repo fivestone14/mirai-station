@@ -437,8 +437,9 @@ def weights_from(grades: list[dict], allowed: dict[str, set[str]], lane: Lane = 
     """Each sum's tally from every grade line, and the question weights from the lines whose primary sum
     was graded, less those a scheduled event sat inside: the learning loop's (pool.PoolWeights, which
     reads the lane's records in ``out_dir``; with the lane's integral_loop switch on it still learns, and
-    integral_loop.IntegralPoolWeights beside it gives the weights) on a lane that learns it, else neutral. ``allowed`` is live_options(): only live questions
-    are weighed, and only picks from their current options count."""
+    integral_loop.IntegralPoolWeights beside it gives the weights, the end-price loop's standing when it fails) on a lane
+    that learns it, else neutral. ``allowed`` is live_options(): only live questions are weighed, and only picks from their
+    current options count."""
     primary = [g for g in grades if g.get("band")]
     sums = {qid: {**_tally([g[qid] for g in grades if isinstance(g.get(qid), dict)]), "event_reads": _events(grades, qid)}
             for qid in lane.horizons}
@@ -446,8 +447,11 @@ def weights_from(grades: list[dict], allowed: dict[str, set[str]], lane: Lane = 
     weights = PoolWeights.learn(graded, allowed, out_dir, lane) if lane.pool else QuestionWeights.learn(graded, allowed, out_dir)
     if lane.pool and lane.integral_loop:
         # the end-price loop above keeps learning: the phone's pool, its promotion and its demotion read it
-        from .integral_loop import IntegralPoolWeights   # only when switched on: it reads this module, through clock too
-        weights = IntegralPoolWeights.learn(graded, allowed, out_dir, lane)
+        try:
+            from .integral_loop import IntegralPoolWeights   # only when switched on: it reads this module, through clock too
+            weights = IntegralPoolWeights.learn(graded, allowed, out_dir, lane)
+        except Exception as e:  # the average-price loop must never cost a run its weights, the shadow grade or the card
+            print(f"average-price loop failed: {type(e).__name__}: {e}", file=sys.stderr)
     out = {"graded_runs": len(primary), "primary": lane.primary, "sums": sums, **weights.as_json()}
     if lane.tag:
         out["lane"] = lane.tag
