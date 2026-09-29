@@ -121,6 +121,14 @@ def test_a_refused_fire_says_why():
     assert due(at(9, 28, day="2026-09-19"))[1] == "2026-09-19 is not a market day"
 
 
+def test_the_europe_fire_that_is_not_todays_checkpoint_says_so_rather_than_passing_for_a_late_fire():
+    """The job fires at 03:35 and at 04:35 for Frankfurt's two clocks; on 09-28 the 04:35 fire logged a late fire,
+    which hides a real one (a Mac that slept)."""
+    assert due(at(4, 35))[1] == "04:35 ET is the 04:35 ET fire, not a checkpoint today: Europe's checkpoint is 03:35 ET"
+    assert due(at(3, 35, day="2026-10-27"))[1] == "03:35 ET is the 03:35 ET fire, not a checkpoint today: Europe's checkpoint is 04:35 ET"
+    assert due(at(4, 34, ss=55))[0] is None and due(at(3, 35))[0] == "03:35"
+    assert "late fire" in due(at(4, 41))[1]
+
 
 # ---- the scene -----------------------------------------------------------------------------------
 

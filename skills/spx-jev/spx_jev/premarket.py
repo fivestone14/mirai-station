@@ -66,6 +66,9 @@ from .weights import QuestionWeights
 ET = overnight.ET
 LATE_FIRE_MIN = 5                          # a fire this many minutes or more after its checkpoint reads nothing
 EUROPE_CHECKPOINT = "03:35"                 # named in the lane's schedule at Frankfurt's usual six hours ahead (checkpoints)
+# the job fires at both of the Europe checkpoint's market times, 03:35 and 04:35 (five hours ahead in the weeks one
+# city keeps summer time and the other does not); the one that is not the day's checkpoint reads nothing
+EUROPE_FIRES = ("03:35", "04:35")
 CHECKPOINT_LAG = timedelta(minutes=5)       # a checkpoint follows the stretch it closes by five minutes, for its last bar to arrive
 FUTURES = "/ES"
 # A group that got no answer is asked once more when the read has time for it before the open: the round's own span
@@ -122,7 +125,8 @@ def due(now: datetime) -> tuple[str | None, str]:
     grade-only run, or ``(None, why)`` when it runs nothing. A checkpoint is read within LATE_FIRE_MIN
     minutes after it and never from the open on; the close-out within as long after it. A fire up to
     EARLY_FIRE before either is that run, so launchd firing a few seconds early never reads the 09:28
-    checkpoint as a late 09:05 one."""
+    checkpoint as a late 09:05 one. The job's fire at the Europe time that is not today's checkpoint
+    (EUROPE_FIRES) says so, rather than passing for a late fire."""
     local = now.astimezone(ET)
     day = local.date()
     if not is_trading_day(day):
@@ -135,6 +139,11 @@ def due(now: datetime) -> tuple[str | None, str]:
     if kind == "checkpoint" and local >= session_open(local):
         return None, f"{local:%H:%M} ET is after the {session_open(local):%H:%M} open: a premarket read comes before it"
     late = int((local - market_at(day, last)).total_seconds() // 60)
+    europe = checkpoints(day)[PREMARKET.schedule.index(EUROPE_CHECKPOINT)]
+    other = next((f for f in EUROPE_FIRES if f != europe and market_at(day, f) <= local + EARLY_FIRE
+                  and local < market_at(day, f) + timedelta(minutes=LATE_FIRE_MIN)), None)
+    if other is not None:
+        return None, f"{local:%H:%M} ET is the {other} ET fire, not a checkpoint today: Europe's checkpoint is {europe} ET"
     if late >= LATE_FIRE_MIN:
         return None, f"{local:%H:%M} ET is {late} minutes after the {last} ET {kind}, past the {LATE_FIRE_MIN}-minute line: a late fire reads nothing"
     return last, f"the {last} ET {kind}"
