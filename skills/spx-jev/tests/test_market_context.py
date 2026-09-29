@@ -32,13 +32,13 @@ def test_a_snapshot_quotes_what_schwab_quotes_and_takes_a_finished_bar_for_bread
     monkeypatch.setattr(schwab, "quotes", quotes)
     monkeypatch.setattr(schwab, "minute_bars", minute_bars)
     line = snapshot(at(10, 2, ss=40))
-    assert asked == [[s for s in ALL_SYMBOLS if s not in BAR_SYMBOLS]]
+    assert asked == [["$SPX", *(s for s in ALL_SYMBOLS if s not in BAR_SYMBOLS)]]          # the index, to price the rest against
     assert set(line["bars"]) == set(BAR_SYMBOLS) and line["bars"]["$TICK"]["close"] == 310.0
     assert line["quotes"]["XLK"] == {"last": 100.0, "close": 99.0, "volume": 5, "quote_time": 1} and "/ES" not in line["quotes"]
     path = append_snapshot(tmp_path, line)
     assert path.name == f"{DAY}.jsonl"
     mk = load_market_context(tmp_path, DAY)
-    assert mk.last("XLK", at(10, 3)) == 100.0 and mk.last("$TICK", at(10, 3)) == 310.0
+    assert mk.last("XLK", at(10, 3)) == 100.0 and mk.last("$TICK", at(10, 3)) == 310.0 and mk.last("$SPX", at(10, 3)) == 100.0
 
 
 def test_each_run_saves_every_finished_breadth_minute_not_yet_on_file(tmp_path, monkeypatch):

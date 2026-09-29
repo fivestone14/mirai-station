@@ -13,8 +13,10 @@ Every size is ranked against the same measure at this minute on up to the last 2
 leaves out a session whose morning ruler was estimated or is not on file (AgainstIndex.same_clock); one in
 no ruler, a return, a count or a link, keeps every session (same_clock_sessions).
 
-Point in time: SPX comes from the bars that finished by the moment, every other symbol from the market
-context as it was known then; a value older than VALUE_MAX_AGE_MIN is a stopped feed and counts as none.
+Point in time, and both legs of a move at one instant (Session): a saved session reads SPX and every other symbol
+at the close of the same minute bar; today's live context, which holds quotes, reads them all from the newest
+snapshot that quoted the index ($SPX) with them. A value older than VALUE_MAX_AGE_MIN is a stopped feed and counts
+as none.
 """
 from __future__ import annotations
 
@@ -25,6 +27,7 @@ from datetime import date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Callable
 
 from ..cuts import MIN_RANK_SESSIONS, WINDOW_30_MIN
+from ..market_context import BAR_SYMBOLS
 from ..sessions import session_open
 from .measures import ET, ONE_MINUTE, bar_time
 from .ranks import SameClockRank, rank_sessions, same_clock_market, same_clock_values
@@ -39,16 +42,43 @@ LINK_FIRST_END = time(10, 30)   # the first half hour the usual multiple is meas
 LINK_LAST_END = time(16, 0)
 
 
+def _bar_close(bars: list[tuple[datetime, dict]], t: datetime) -> float | None:
+    """The close of the newest of ``bars`` (by when each finished, oldest first) finished by ``t``, within
+    VALUE_MAX_AGE_MIN of it."""
+    k = bisect.bisect_right([done for done, _ in bars], t)
+    return float(bars[k - 1][1]["close"]) if k and t - bars[k - 1][0] <= timedelta(minutes=VALUE_MAX_AGE_MIN) else None
+
+
 class Session:
-    """One session's prices as they were known: SPX from its minute bars, the rest from its market context."""
+    """One session's prices as they were known, each move's two legs at one instant. A market context with minute
+    bars beyond breadth's (a saved day) gives every symbol its bar closes, and SPX its own minute bars. One with
+    none but the snapshots' quotes of the index ($SPX), today's live context, gives every symbol, SPX too, as the
+    newest snapshot that quoted the index had it. A quote set against an SPX bar close up to 70 s newer measures the
+    two over different stretches: at 09:40 on 2026-09-28 SMH's 09:30:05 quote against SPX's 09:31 close made its
+    0.17 sigma move beyond its link read 0.34. A context with neither, or a symbol with no bars, reads as it was
+    known (MarketContext.last)."""
 
     def __init__(self, bars: list[dict], market: MarketContext | None):
         self.bars, self.market = bars, market
         self._finished = [bar_time(b) + ONE_MINUTE for b in bars]
+        saved = market is not None and any(s not in BAR_SYMBOLS for s in market.bars)
+        self._quoted = [t for t, _ in market.known.get(SPX) or []] if market is not None and not saved else []
+        self._at: dict[str, dict[datetime, float]] = {}
 
     def price(self, symbol: str, t: datetime) -> float | None:
+        if self._quoted:
+            k = bisect.bisect_right(self._quoted, t)
+            if not k or t - self._quoted[k - 1] > timedelta(minutes=VALUE_MAX_AGE_MIN):
+                return None
+            if symbol not in self._at:
+                self._at[symbol] = dict(self.market.known.get(symbol) or [])
+            return self._at[symbol].get(self._quoted[k - 1])
         if symbol != SPX:
-            return self.market.last(symbol, t, max_age_min=VALUE_MAX_AGE_MIN) if self.market else None
+            if self.market is None:
+                return None
+            if symbol in self.market.bars:
+                return _bar_close(self.market.bars[symbol], t)
+            return self.market.last(symbol, t, max_age_min=VALUE_MAX_AGE_MIN)
         k = bisect.bisect_right(self._finished, t)
         if not k or t - self._finished[k - 1] > timedelta(minutes=VALUE_MAX_AGE_MIN):
             return None

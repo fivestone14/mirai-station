@@ -10,9 +10,9 @@ it happens. Two files per day under ``state/spx_jev/context/``:
     {day}.jsonl        one line per live snapshot, written by the job each minute in market hours:
                        {"ts": when it was taken, "quotes": {symbol: {"last", "close", "volume", "quote_time"}},
                         "bars": {symbol: the newest finished 1-minute bar}}
-                       Quotes for every symbol Schwab quotes (batched, QUOTE_BATCH a call); the finished bars
-                       of the breadth symbols, whose quotes are empty shells, and for $VIX1D nothing but
-                       its quote, since it has no history. Runs land about 70 s apart and a failed run
+                       Quotes for every symbol Schwab quotes, and the index's own (QUOTE_ONLY), batched
+                       QUOTE_BATCH a call; the finished bars of the breadth symbols, whose quotes are
+                       empty shells, and for $VIX1D nothing but its quote, since it has no history. Runs land about 70 s apart and a failed run
                        saves no bars, so each run also saves every earlier finished breadth bar of the day
                        not yet on file, one line per minute before its snapshot: {"ts", "bars"}.
     bars/{day}.jsonl   one line per minute of a past session, written by --backfill:
@@ -51,6 +51,9 @@ SYMBOLS = {
     "megacaps": ("NVDA", "MSFT", "AAPL", "AMZN", "GOOGL", "META", "AVGO"),
 }
 ALL_SYMBOLS = tuple(s for group in SYMBOLS.values() for s in group)
+# The index itself, quoted in every snapshot beside the rest and never backfilled (its bars are the SPX bar files):
+# today's moves of the other symbols are measured against it at the same instant (labels/usual_link.Session).
+QUOTE_ONLY = ("$SPX",)
 BAR_SYMBOLS = SYMBOLS["breadth"]          # quotes come back as empty shells: read the newest finished bar instead
 NO_HISTORY = ("$VIX1D",)                  # quoted, never kept by Schwab's history: only a live snapshot saves it
 FIRST_BACKFILL_DAY = "2026-08-10"         # the oldest minute Schwab still served on 2026-09-26
@@ -112,7 +115,7 @@ def snapshot(now: datetime, saved: set[tuple[str, str]] = frozenset()) -> dict:
     finished, as ``"<symbol>: empty"``."""
     line: dict = {"ts": now.isoformat(timespec="seconds"), "quotes": {}, "bars": {}, "failed": []}
     earlier: dict[str, dict] = {}
-    quoted = [s for s in ALL_SYMBOLS if s not in BAR_SYMBOLS]
+    quoted = [*QUOTE_ONLY, *(s for s in ALL_SYMBOLS if s not in BAR_SYMBOLS)]
     try:
         line["quotes"] = {s: _quote_entry(q) for s, q in schwab.quotes(quoted).items()}
     except Exception as e:  # one failed call costs this minute's quotes, never the bars below

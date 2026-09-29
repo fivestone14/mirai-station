@@ -75,3 +75,26 @@ def test_a_measure_in_no_ruler_keeps_the_sessions_a_sigma_measure_leaves_out():
     assert len(in_sigma) == len(days) - 2 and len(returns) == len(days)
     assert same_clock_sessions(scene, lambda s, then: s.price(SPX, then)) == [
         Session(scene.prior_bars[d], None).price(SPX, at(NOW.hour, NOW.minute, d)) for d in days]
+
+
+def _bar(start, close):
+    return {"ts": start.isoformat(), "open": close, "high": close, "low": close, "close": close, "volume": 0.0}
+
+
+def test_both_legs_of_a_move_are_priced_at_one_instant():
+    """09-28 09:40: SMH's 09:30:05 quote was set against SPX's 09:31 bar close, so the window's start read the two at
+    different moments and SMH's move beyond its link doubled. Live, every symbol and the index come from the newest
+    snapshot that quoted the index; a saved day reads every symbol at its bar close, as SPX's."""
+    spx_bars = [_bar(at(9, 30), 7710.0), _bar(at(9, 31), 7715.0), _bar(at(9, 32), 7720.0)]
+    first, second = at(9, 30, ss=5), at(9, 31, ss=16)
+    live = MarketContext({SPX: [(first, 7700.0), (second, 7707.7)], "SMH": [(first, 605.83), (second, 605.83 * 1.001)],
+                          "$TICK": [(at(9, 31), 13.0)]}, {"$TICK": [(at(9, 31), _bar(at(9, 30), 13.0))]})
+    s = Session(spx_bars, live)
+    assert s.price(SPX, at(9, 31)) == 7700.0 and s.price("SMH", at(9, 31)) == 605.83
+    assert s.move(SPX, at(9, 31), at(9, 32)) == pytest.approx(0.001) and s.move("SMH", at(9, 31), at(9, 32)) == pytest.approx(0.001)
+    assert s.price("XLK", at(9, 32)) is None and s.price(SPX, at(9, 37)) is None          # not quoted then; a stopped feed
+    saved = MarketContext({"SMH": [(first, 605.83), (at(9, 31), 604.705), (second, 606.435), (at(9, 32), 605.3)]},
+                          {"SMH": [(at(9, 31), _bar(at(9, 30), 604.705)), (at(9, 32), _bar(at(9, 31), 605.3))]})
+    s = Session(spx_bars, saved)
+    assert s.price("SMH", at(9, 31, ss=30)) == 604.705 and s.price(SPX, at(9, 31, ss=30)) == 7710.0
+    assert s.move("SMH", at(9, 31), at(9, 32)) == pytest.approx(605.3 / 604.705 - 1)
