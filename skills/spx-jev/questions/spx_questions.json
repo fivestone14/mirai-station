@@ -3181,7 +3181,7 @@
      "code_answer": true,
      "ask": "Where is price against the overnight futures range?",
      "instructions": "Read `overnight.range` and `overnight.price_vs_range`. Where price is now decides first. Check in order: above, below, the two back-inside options, near an edge, middle.",
-     "dark_reason": "the overnight store (state/spx_jev/overnight/, saved at 09:26 ET) holds /ES's bars, but no session read measures the night's range from them yet",
+     "dark_reason": "not built: the overnight store (state/spx_jev/overnight/) holds /ES's bars, but no session read measures the night's range from them yet",
      "options": [
       "above_overnight_high",
       "below_overnight_low",

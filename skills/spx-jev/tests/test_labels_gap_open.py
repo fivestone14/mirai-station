@@ -558,3 +558,13 @@ def test_the_opens_path_is_judged_from_0945_on_ten_sessions_that_moved(scene_fac
     assert got["open.chop"].endswith("more one-way than 6 of the last 20 sessions at this minute, bottom third: choppy")
     _, omitted, _ = labels(scene(scene_factory, at(10, 15), [7700.0] * 60, prior_bars=PATHS, bar_clock=True))
     assert omitted["open.chop"] == "price has not moved from the settled open, so there is no path to judge"
+
+
+def test_the_nights_range_labels_are_not_built_rather_than_dark_since_their_bars_are_on_disk(full_scene):
+    """Dark is for data no feed carries; the overnight store holds /ES's bars and only the reading code is missing."""
+    from spx_jev.labels import gap_open
+    from spx_jev.labels.registry import build_labels
+    omitted = build_labels(full_scene).omitted
+    for path in ("overnight.range", "overnight.price_vs_range"):
+        assert path not in gap_open.DARK
+        assert omitted[path].startswith("not built yet: the overnight store")

@@ -116,8 +116,8 @@
   "constants": 67,
   "label_availability": {
    "live": 71,
-   "cheap_add": 55,
-   "dark": 10
+   "cheap_add": 57,
+   "dark": 8
   }
  },
  "conventions": {
@@ -5077,7 +5077,7 @@
       "opening_five_minute"
      ],
      "status": "dark",
-     "dark_reason": "the overnight store (state/spx_jev/overnight/, saved at 09:26 ET) holds /ES's bars, but no session read measures the night's range from them yet",
+     "dark_reason": "not built: the overnight store (state/spx_jev/overnight/) holds /ES's bars, but no session read measures the night's range from them yet",
      "cadence": "every 5 min 09:35-10:30, then every 30-minute read",
      "ask": "Where is price against the overnight futures range?",
      "instructions": "Read `overnight.range` and `overnight.price_vs_range`. Where price is now decides first. Check in order: above, below, the two back-inside options, near an edge, middle.",
@@ -5121,7 +5121,7 @@
        "example": "last night's futures range spanned 0.48 sigma, from 0.21 sigma below yesterday's close to 0.27 above",
        "computed_how": "/ES bars from futures' 16:00 price to 09:25, measured vs ES's own 16:00 price so the basis cancels; DARK: the overnight store (state/spx_jev/overnight/, saved at 09:26 and 16:20 ET) holds /ES's bars, but no session read measures the night's range from them yet (labels/gap_open.py)",
        "source": "the overnight store (state/spx_jev/overnight/{day}.jsonl): Schwab /ES extended-hours 1- and 5-minute bars, contract stamped",
-       "availability": "dark",
+       "availability": "cheap_add",
        "needs_engine_edit": false
       },
       {
@@ -5129,7 +5129,7 @@
        "example": "price is inside the overnight range now, 0.08 sigma below its high, within the 0.15 sigma near distance, after breaking above it at the open; it has not broken the low",
        "computed_how": "spot (basis-adjusted) vs overnight high/low; earlier breaks today including the open; DARK: the overnight store (state/spx_jev/overnight/, saved at 09:26 and 16:20 ET) holds /ES's bars, but no session read measures the night's range from them yet (labels/gap_open.py)",
        "source": "same",
-       "availability": "dark",
+       "availability": "cheap_add",
        "needs_engine_edit": false
       }
      ],
@@ -9757,7 +9757,7 @@
    "example": "price is inside the overnight range now, 0.08 sigma below its high, within the 0.15 sigma near distance, after breaking above it at the open; it has not broken the low",
    "computed_how": "spot (basis-adjusted) vs overnight high/low; earlier breaks today including the open; DARK: the overnight store (state/spx_jev/overnight/, saved at 09:26 and 16:20 ET) holds /ES's bars, but no session read measures the night's range from them yet (labels/gap_open.py)",
    "source": "same",
-   "availability": "dark",
+   "availability": "cheap_add",
    "needs_engine_edit": false
   },
   {
@@ -9765,7 +9765,7 @@
    "example": "last night's futures range spanned 0.48 sigma, from 0.21 sigma below yesterday's close to 0.27 above",
    "computed_how": "/ES bars from futures' 16:00 price to 09:25, measured vs ES's own 16:00 price so the basis cancels; DARK: the overnight store (state/spx_jev/overnight/, saved at 09:26 and 16:20 ET) holds /ES's bars, but no session read measures the night's range from them yet (labels/gap_open.py)",
    "source": "the overnight store (state/spx_jev/overnight/{day}.jsonl): Schwab /ES extended-hours 1- and 5-minute bars, contract stamped",
-   "availability": "dark",
+   "availability": "cheap_add",
    "needs_engine_edit": false
   },
   {

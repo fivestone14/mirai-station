@@ -30,12 +30,11 @@ LABELS = ("gap.size", "gap.fill_progress", "gap.morning_vs_gap", "gap.reach_dist
           "open.chop", "open.fresh_extreme", "open.noise_band", "open.path", "open.settled_open_crosses",
           "overnight.price_vs_range", "overnight.range")
 GATES = ("gap_fill_next_hour",)
-NO_OVERNIGHT = ("the overnight store (state/spx_jev/overnight/, saved at 09:26 ET) holds /ES's bars, "
-                "but no session read measures the night's range from them yet")
-DARK = {
-    "overnight.price_vs_range": NO_OVERNIGHT,
-    "overnight.range": NO_OVERNIGHT,
-}
+# Not dark, which is for data no feed carries: the night's /ES bars are on disk, and only the code that reads them is missing.
+NO_OVERNIGHT = ("not built yet: the overnight store (state/spx_jev/overnight/, saved at 09:26 ET) holds /ES's bars, "
+                "but no session read measures the night's range from them")
+OVERNIGHT_LABELS = ("overnight.price_vs_range", "overnight.range")
+DARK: dict[str, str] = {}
 
 # The morning a gap is judged over (gap.morning_vs_gap) ends here.
 LATE_MORNING = time(11, 30)
@@ -65,6 +64,8 @@ def build_gap_open_labels(scene: Scene) -> LabelSet:
     prior_opens = _prior_opens(scene)
     _settled_open_crosses(scene, anchor, prior_opens, ls)
     _chop(scene, anchor, prior_opens, ls)
+    for path in OVERNIGHT_LABELS:
+        ls.omit(path, NO_OVERNIGHT)
     return ls
 
 
