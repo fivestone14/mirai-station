@@ -85,7 +85,7 @@ DB_NAME = "spx_jev.duckdb"
 PART = "part-0.parquet"
 SCHEMA_VERSION = 2
 CATCH_UP_DAYS = 7              # a run rebuilds every market day this many calendar days back, so a late save is picked up
-BUILD_AFTER_CLOSE_MIN = 30     # today counts once the 16:20 saves (save_day, overnight) have had ten minutes
+BUILD_AFTER_CLOSE_MIN = 30     # today counts from its close plus this (16:30, 13:30 on a half day); the 16:40 job runs after the 16:20 saves either way
 PROB_SUM_TOLERANCE = 0.05      # JEV rounds each option to two places, so six options can sum to 0.97
 TIME_TOLERANCE = timedelta(seconds=1)   # the archive stamps whole seconds, a read its microseconds
 
