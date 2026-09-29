@@ -382,6 +382,23 @@ def test_send_all_sends_every_request_together_and_keeps_errors():
     assert send_all([], sender=fake) == {}
 
 
+def test_send_all_starts_every_request_at_once_however_many_a_read_sends():
+    """A live read sends up to 16 group requests. Each is held until all have started: a pool smaller than
+    the read would leave the late groups to start only once a stalled JEV let an early one go, after the
+    groups' deadline, with no time left for their retries."""
+    import threading
+
+    from spx_jev.ask import send_all
+    n = 16
+    together = threading.Barrier(n, timeout=5)
+
+    def fake(req, api_key=None, timeout=10.0, deadline=None):
+        together.wait()
+        return {"answers": {}}
+    out = send_all([{"id": f"g{i}", "questions": {}} for i in range(n)], sender=fake)
+    assert out == {f"g{i}": {"answers": {}} for i in range(n)}
+
+
 def test_the_answer_readers_and_the_summary():
     ans = {"answers": {
         "a": {"type": "noul", "noul": 0.81},

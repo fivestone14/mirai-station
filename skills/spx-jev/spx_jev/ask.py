@@ -282,14 +282,16 @@ def _tries(n: int) -> str:
     return f" after {n} tries" if n > 1 else ""
 
 
-def send_all(requests: list[dict], api_key: str | None = None, timeout: float = 10.0, workers: int = 12,
+def send_all(requests: list[dict], api_key: str | None = None, timeout: float = 10.0,
              sender=None, deadline: float | None = None) -> dict[str, dict]:
     """POST every request at the same time and return ``{request id: answer or {"error": ...}}``.
 
     JEV scores each question independently and the requests share nothing, so the
     round trips of a read collapse into one wait. A failed request records its
     error and never blocks the others, whatever the failure was. ``deadline`` is
-    send's, for every request.
+    send's, for every request. Each request has a worker of its own: a worker keeps
+    one request through all its retries, so a request queued behind a stalled one
+    would start near the deadline with no time left to retry.
     """
     from concurrent.futures import ThreadPoolExecutor
     sender = sender or send
@@ -305,7 +307,7 @@ def send_all(requests: list[dict], api_key: str | None = None, timeout: float = 
             return req["id"], {"error": _scrub(msg, key)}
 
     out: dict[str, dict] = {}
-    with ThreadPoolExecutor(max_workers=max(1, min(workers, len(requests)))) as ex:
+    with ThreadPoolExecutor(max_workers=len(requests)) as ex:
         for rid, ans in ex.map(one, requests):
             out[rid] = ans
     return out
