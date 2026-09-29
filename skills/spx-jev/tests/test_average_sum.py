@@ -100,6 +100,8 @@ def test_a_live_read_calls_the_average_and_its_grade_grades_that_pick_with_its_s
     assert service.call_verdict(call) == "wrong" and call["integral"]["sum"] == "average_30"
     card = json.loads((live / "latest.json").read_text())
     assert card["hour"]["average"]["pick"] == "down" and card["hour"]["pick"] == "up"
+    assert card["hour"]["average"]["blend"] == {"used": False, "why": "only 0 prior sessions with enough reads graded on the average price; "
+                                                                     "its time-of-day odds need 10"}
     (read,) = [r for r in _lines(live / "archive" / f"{DAY}.jsonl") if r["kind"] == "read" and r["lane"] == "live"]
     assert read["average_request"]["id"] == "average" and read["average_response"]["answers"]["average_30"] == AVERAGE
     assert read["schema_version"] == archive.SCHEMA_VERSION == 5
@@ -183,3 +185,22 @@ def test_the_end_price_verdict_is_the_end_price_sums_own_and_an_old_card_falls_b
     assert tally["passed"] == 1 and tally["right"] == 0
     v4 = {"schema_version": 4, "kind": "close_out", "calls": [{"pick": "unsure", "end_price": {"outcome": "up", "hit": False}}], "tally": {}}
     assert archive.read_close_out(v4) == v4                          # a version 4 close-out reads as it was written
+
+
+def test_the_phones_call_is_blended_with_the_average_price_clock_and_never_the_end_price_one(tmp_path, monkeypatch):
+    """The end-price sum is blended with the end-price clock and the average-price sum with the average-price clock:
+    each takes its own odds, and neither's reaches the other."""
+    end_odds = {"phase": "morning", "phase_words": "the morning, 10:00 to 11:00", "sessions": 12,
+                "by": {"next_30": {"probabilities": {"up": 0.9, "flat": 0.05, "down": 0.05}, "n": 40},
+                       "next_60": {"probabilities": {"up": 0.9, "flat": 0.05, "down": 0.05}, "n": 40}}}
+    avg_odds = {"phase": "morning", "phase_words": "the morning, 10:00 to 11:00", "sessions": 11,
+                "by": {"average_30": {"probabilities": {"up": 0.05, "flat": 0.9, "down": 0.05}, "n": 38}}}
+    monkeypatch.setattr(service, "clock_odds", lambda *a, **k: end_odds)
+    monkeypatch.setattr(service, "clock_integral_odds", lambda *a, **k: avg_odds)
+    run_fixture(tmp_path, monkeypatch)
+    h = json.loads((tmp_path / "spx_jev" / "latest.json").read_text())["hour"]
+    assert h["clock"]["probabilities"] == end_odds["by"]["next_30"]["probabilities"]
+    a = h["average"]
+    assert a["clock"]["probabilities"] == avg_odds["by"]["average_30"]["probabilities"] and a["blend"]["sessions"] == 11
+    assert a["jev"]["probabilities"] == AVERAGE["probabilities"]
+    assert a["probabilities"] == {"up": 0.125, "down": 0.325, "flat": 0.55} and a["pick"] == "flat"

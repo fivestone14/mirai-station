@@ -37,6 +37,18 @@ The settled-open odds (the premarket lane)
     in the pre-open ruler their read stamped (grade.stamped_ruler); before the odds are ever blended,
     band each session in the pre-open ruler its read would have stamped and measure them again.
 
+The average-price odds (the live lane's call)
+    The average-price sum (lane.LIVE.average) forecasts the 30-minute box on the average price over its
+    window, so its odds are counted on that label alone, never on the end price's: the same prior
+    sessions, the same replayed reads (the grid above) and the same anchor, each read graded by the
+    grader's own grade_one and then integral_line, the average-price grade's own path, bad-tick guard
+    included. A read the average cannot grade (bars missing) and a stale read are not counted. The
+    counts are shrunk per phase as the end-price ones are, need the same MIN_SCORED_READS per session
+    and MIN_SESSIONS sessions, and are kept apart in ``clock_integral_days.json`` under a rule of their
+    own (INTEGRAL_RULE_VERSION, and the grade's integral.RULE_VERSION), with each day's bars, diary and
+    context files and the names of the sessions before it whose bars rank its ticks; nothing from
+    ``clock_days.json`` is read or written by it.
+
 The blend
     p = JEV_SHARE * JEV's probability + (1 - JEV_SHARE) * the clock's, per outcome; JEV's
     "unsure" keeps its JEV_SHARE and the clock gives it nothing. JEV_SHARE is 0.5, declared, not
@@ -51,10 +63,13 @@ import tempfile
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
-from .grade import grade_one, mark_at, read_anchor, settled_open_at
-from .lane import LIVE, PREMARKET
+from . import integral
+from .cuts import BAD_TICK_PCT, INTEGRAL_MISSING_BARS_MAX, NIGHT_RANK_COUNT, SAME_CLOCK_MIN_SESSIONS, STALE_READ_MIN
+from .grade import grade_one, integral_line, mark_at, read_anchor, settled_open_at
+from .lane import LIVE, PREMARKET, Lane
 from .sessions import SESSION_CLOSE, session_close
-from .state_builder import CONTEXT_SUBDIR, ROWS_SUBDIR, MarketContext, load_market_context, load_rows, parse_ts
+from .state_builder import (CONTEXT_SUBDIR, MAX_BASELINE_SESSIONS, ROWS_SUBDIR, MarketContext, bar_days, load_market_context, load_rows,
+                            parse_ts, prior_bar_days)
 
 JEV_SHARE = 0.5          # declared, not fitted
 MIN_SESSIONS = 10        # fewer counted prior sessions than this and the odds are too thin to blend
@@ -68,6 +83,8 @@ ROW_MAX_AGE_MIN = 10     # a replayed read needs a diary row this fresh, as a li
 OUTCOMES = ("up", "down", "flat")
 CACHE_NAME = "clock_days.json"
 RULE_VERSION = 2         # bump when the counting changes, so every stored day is counted again
+INTEGRAL_CACHE_NAME = "clock_integral_days.json"
+INTEGRAL_RULE_VERSION = 1   # the average-price counts' own: bump when they change; the end-price counts never move with it
 PRIOR_SESSIONS = 1.0     # the settled-open odds' pull toward even thirds, in sessions
 
 # Phases of the day, by the read's clock (minute of day, from and before).
@@ -99,34 +116,65 @@ def _rule_key(hz: dict[str, tuple[int, float]]) -> str:
                        "step": STEP_MIN, "first": FIRST_READ.isoformat(), "row_age": ROW_MAX_AGE_MIN}, sort_keys=True)
 
 
+def _grid(bars: list[dict], rows: list[dict]):
+    """The replayed reads of one finished session, oldest first, as ``(row, its stamp)``: every STEP_MIN minutes from
+    FIRST_READ, the newest of ``rows`` (each with a spot, _spot_rows) at that minute when it is ROW_MAX_AGE_MIN fresh,
+    each row once."""
+    if not bars or not rows:
+        return
+    stamps = [parse_ts(r["ts"]) for r in rows]
+    t = parse_ts(bars[0]["ts"]).replace(hour=FIRST_READ.hour, minute=FIRST_READ.minute, second=0, microsecond=0)
+    close = session_close(t)
+    k, seen = -1, set()
+    while t < close:
+        while k + 1 < len(stamps) and stamps[k + 1] <= t:
+            k += 1
+        if k >= 0 and t - stamps[k] <= timedelta(minutes=ROW_MAX_AGE_MIN) and rows[k]["ts"] not in seen:
+            seen.add(rows[k]["ts"])                       # one row read twice is one read, as the grader has it
+            yield rows[k], stamps[k]
+        t += timedelta(minutes=STEP_MIN)
+
+
+def _spot_rows(rows: list[dict]) -> list[dict]:
+    return [r for r in rows if isinstance(r.get("spot"), (int, float))]
+
+
 def replayed_reads(bars: list[dict], rows: list[dict], hz: dict[str, tuple[int, float]],
                    market: MarketContext | None = None) -> list[dict]:
     """Every replayed read of one finished session, oldest first: ``{"row_ts", "phase", "spot", "sigma",
     "bands": {qid: outcome}}``, each graded by the grader's own ``grade_one`` on the newest diary row
     at that minute, in the morning anchor that read could know (``sigma``); a horizon the grader could
     not grade has no band, and a read with no anchor is no read."""
-    if not bars or not rows:
-        return []
-    rows = [r for r in rows if isinstance(r.get("spot"), (int, float))]
-    if not rows:
-        return []
-    stamps = [parse_ts(r["ts"]) for r in rows]
-    t = parse_ts(bars[0]["ts"]).replace(hour=FIRST_READ.hour, minute=FIRST_READ.minute, second=0, microsecond=0)
-    close = session_close(t)
-    k, seen, out = -1, set(), []
-    while t < close:
-        while k + 1 < len(stamps) and stamps[k + 1] <= t:
-            k += 1
-        if k >= 0 and t - stamps[k] <= timedelta(minutes=ROW_MAX_AGE_MIN) and rows[k]["ts"] not in seen:
-            seen.add(rows[k]["ts"])                       # one row read twice is one read, as the grader has it
-            anchor = read_anchor(rows, bars, market, rows[k]["ts"])
-            if anchor is not None:
-                rec = {"row_ts": rows[k]["ts"], "spot": rows[k]["spot"], "by": {q: {"pick": "flat", "probabilities": {}} for q in hz}}
-                g = grade_one(rec, bars, anchor=anchor) or {}
-                bands = {q: (g.get(q) or {}).get("band") for q in hz}
-                out.append({"row_ts": rows[k]["ts"], "phase": phase_of(stamps[k]), "spot": float(rows[k]["spot"]),
-                            "sigma": anchor.points, "bands": {q: b for q, b in bands.items() if b in OUTCOMES}})
-        t += timedelta(minutes=STEP_MIN)
+    rows, out = _spot_rows(rows), []
+    for row, stamp in _grid(bars, rows):
+        anchor = read_anchor(rows, bars, market, row["ts"])
+        if anchor is not None:
+            rec = {"row_ts": row["ts"], "spot": row["spot"], "by": {q: {"pick": "flat", "probabilities": {}} for q in hz}}
+            g = grade_one(rec, bars, anchor=anchor) or {}
+            bands = {q: (g.get(q) or {}).get("band") for q in hz}
+            out.append({"row_ts": row["ts"], "phase": phase_of(stamp), "spot": float(row["spot"]),
+                        "sigma": anchor.points, "bands": {q: b for q, b in bands.items() if b in OUTCOMES}})
+    return out
+
+
+def integral_reads(bars: list[dict], rows: list[dict], prior: dict[str, list[dict]], market: MarketContext | None = None,
+                   lane: Lane = LIVE) -> list[dict]:
+    """Every replayed read of one finished session graded on the average price over the lane's primary box, oldest
+    first: ``{"row_ts", "phase", "label"}``, each read handed to grade_one and then to integral_line, as the grader
+    grades a call, with ``prior`` the sessions before it (newest first) that rank its ticks. A read the average could
+    not grade, or whose spot is stale, is no read."""
+    box, rows, out = lane.primary, _spot_rows(rows), []
+    for row, stamp in _grid(bars, rows):
+        anchor = read_anchor(rows, bars, market, row["ts"])
+        if anchor is None:
+            continue
+        rec = {"row_ts": row["ts"], "spot": row["spot"], "by": {box: {"pick": "flat", "probabilities": {}}}}
+        g = grade_one(rec, bars, anchor=anchor, lane=lane) or {}
+        if box not in (g.get("horizons") or []):
+            continue
+        line = integral_line(g, box, rec, bars, prior, lane)
+        if line.get("graded") and not line.get("stale_read"):
+            out.append({"row_ts": row["ts"], "phase": phase_of(stamp), "label": line["label"]})
     return out
 
 
@@ -141,6 +189,24 @@ def day_counts(bars: list[dict], rows: list[dict], hz: dict[str, tuple[int, floa
 
 def _scored(counts: dict, qid: str = PRIMARY) -> int:
     return sum(sum(c.values()) for c in counts.get(qid, {}).values())
+
+
+def _phase_odds(days: list[dict], ph: str) -> dict | None:
+    """``{"probabilities", "n"}`` for phase ``ph`` from each counted day's ``{phase: {outcome: n}}``: the phase's shares
+    shrunk toward the whole day's by SHRINK; None when no day scored a read."""
+    whole = {o: 0 for o in OUTCOMES}
+    here = {o: 0 for o in OUTCOMES}
+    for counts in days:
+        for p, c in counts.items():
+            for o in OUTCOMES:
+                whole[o] += c.get(o, 0)
+                if p == ph:
+                    here[o] += c.get(o, 0)
+    n_whole, n_here = sum(whole.values()), sum(here.values())
+    if n_whole == 0:
+        return None
+    base = {o: whole[o] / n_whole for o in OUTCOMES}
+    return {"probabilities": {o: round((here[o] + SHRINK * base[o]) / (n_here + SHRINK), 4) for o in OUTCOMES}, "n": n_here}
 
 
 def _file_print(path: Path) -> list[int] | None:
@@ -208,23 +274,60 @@ def odds(state_dir: Path, out_dir: Path, prior_bars: dict[str, list[dict]], now:
     ph = phase_of(now)
     by = {}
     for qid in hz:
-        whole = {o: 0 for o in OUTCOMES}
-        here = {o: 0 for o in OUTCOMES}
-        for d in counted:
-            for p, c in cache[d]["counts"].get(qid, {}).items():
-                for o in OUTCOMES:
-                    whole[o] += c.get(o, 0)
-                    if p == ph:
-                        here[o] += c.get(o, 0)
-        n_whole, n_here = sum(whole.values()), sum(here.values())
-        if n_whole == 0:
-            continue
-        base = {o: whole[o] / n_whole for o in OUTCOMES}
-        probs = {o: round((here[o] + SHRINK * base[o]) / (n_here + SHRINK), 4) for o in OUTCOMES}
-        by[qid] = {"probabilities": probs, "n": n_here}
+        if (c := _phase_odds([cache[d]["counts"].get(qid, {}) for d in counted], ph)) is not None:
+            by[qid] = c
     if not by:
         return {"left_out": "no prior session produced a scored read"}
     return {"phase": ph, "phase_words": phase_words(ph), "sessions": len(counted), "by": by}
+
+
+def _integral_rule_key(lane: Lane) -> str:
+    """The average-price counts depend on their own counting, the grade's rule and guards, the box's band, the phases
+    and the read grid: a change to any of them counts every stored day again."""
+    return json.dumps({"v": INTEGRAL_RULE_VERSION, "grade": integral.RULE_VERSION, "box": [lane.primary, *lane.horizons[lane.primary]],
+                       "guards": [INTEGRAL_MISSING_BARS_MAX, BAD_TICK_PCT, STALE_READ_MIN, NIGHT_RANK_COUNT, SAME_CLOCK_MIN_SESSIONS],
+                       "p": [p[:3] for p in PHASES], "step": STEP_MIN, "first": FIRST_READ.isoformat(), "row_age": ROW_MAX_AGE_MIN},
+                      sort_keys=True)
+
+
+def integral_odds(state_dir: Path, out_dir: Path, prior_bars: dict[str, list[dict]], now: datetime, lane: Lane = LIVE) -> dict:
+    """The clock's odds on the average price for a read at ``now``, for the lane's average-price sum: ``{"phase",
+    "phase_words", "sessions", "by": {lane.average: {"probabilities", "n"}}}`` in the shape odds() returns, so blend()
+    takes it, or ``{"left_out": reason}``. Counted from integral_reads on each of up to MAX_SESSIONS prior sessions
+    (``prior_bars``, the scene's), stored in INTEGRAL_CACHE_NAME and counted again only when a day's bars, diary or
+    context files, the sessions before it or the rule change."""
+    if session_close(now).time() != SESSION_CLOSE:
+        return {"left_out": "a 13:00 half day; the time-of-day odds are counted on full sessions"}
+    days = sorted((d for d in prior_bars if d < now.date().isoformat()), reverse=True)[:MAX_SESSIONS]
+    key = _integral_rule_key(lane)
+    cache_path = out_dir / INTEGRAL_CACHE_NAME
+    cache = _load_cache(cache_path, key)
+    context = Path(state_dir) / CONTEXT_SUBDIR
+    on_file = bar_days(state_dir)
+    changed = False
+    for d in days:
+        seen = {"n_bars": len(prior_bars[d]), "rows_file": _file_print(Path(state_dir) / ROWS_SUBDIR / f"{d}.jsonl"),
+                "context_files": [_file_print(context / f"{d}.jsonl"), _file_print(context / "bars" / f"{d}.jsonl")],
+                "before": [x for x in on_file if x < d][-MAX_BASELINE_SESSIONS:]}
+        entry = cache.get(d)
+        if entry is not None and all(entry.get(k) == v for k, v in seen.items()) and "counts" in entry:
+            continue
+        counts = {p[0]: {o: 0 for o in OUTCOMES} for p in PHASES}
+        for r in integral_reads(prior_bars[d], load_rows(state_dir, d), prior_bar_days(state_dir, d), load_market_context(state_dir, d), lane):
+            counts[r["phase"]][r["label"]] += 1
+        cache[d] = {**seen, "counts": counts}
+        changed = True
+    if changed:
+        _save_cache(cache_path, key, cache)
+    counted = [d for d in days if sum(sum(c.values()) for c in cache[d]["counts"].values()) >= MIN_SCORED_READS]
+    if len(counted) < MIN_SESSIONS:
+        return {"left_out": f"only {len(counted)} prior sessions with enough reads graded on the average price; its time-of-day odds need "
+                            f"{MIN_SESSIONS}"}
+    ph = phase_of(now)
+    c = _phase_odds([cache[d]["counts"] for d in counted], ph)
+    if c is None:
+        return {"left_out": "no prior session produced a read graded on the average price"}
+    return {"phase": ph, "phase_words": phase_words(ph), "sessions": len(counted), "by": {lane.average: c}}
 
 
 def premarket_odds(state_dir: Path, prior_bars: dict[str, list[dict]], now: datetime) -> dict:

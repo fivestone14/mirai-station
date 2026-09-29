@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from conftest import at, bars_from_closes, flat_bars, make_row
 from spx_jev import clock
 from spx_jev.clock import blend, day_counts, odds, phase_of, premarket_odds
@@ -138,3 +140,49 @@ def test_the_blend_lifts_the_primary_the_summary_names(tmp_path):
     assert b["blend"]["used"] is True and b["blend"]["phase"] == "settled_open"
     assert b["probabilities"] == b["by"]["open_30"]["probabilities"] and b["jev"]["probabilities"] == jev
     assert blend({**hour, "by": {"open_10": hour["by"]["open_10"]}}, c)["blend"]["why"] == "JEV gave no probabilities for open_30, so its sum stands alone"
+
+
+def _spiking(tmp_path, n: int, jump: float = 10.0) -> dict:
+    """``n`` sessions at 7700 but for the bar before every tenth minute (09:31, 09:41, ...), which closes ``jump`` points
+    up and hands its close to the next bar's open, so it is a real move, not a bad tick. Every read (09:32, 09:42, ...)
+    ends its 30-minute window on one: up at the end price, 10 points against a flat band of 5.25 (0.07 of the 75-point
+    anchor), but flat on the average, three such minutes in thirty sitting 1 point up against an edge of 3.11."""
+    (tmp_path / "reversion").mkdir(exist_ok=True)
+    days = {}
+    for d in range(1, n + 1):
+        day = f"2026-09-{d:02d}"
+        days[day] = bars_from_closes([7700.0 + (jump if i % 10 == 1 else 0.0) for i in range(390)], day=day)
+        (tmp_path / "reversion" / f"{day}.jsonl").write_text("".join(json.dumps(make_row(at(9 + (32 + m) // 60, (32 + m) % 60, day=day), 7700.0)) + "\n"
+                                                                     for m in range(0, 380, 10)))
+    return days
+
+
+def test_the_average_price_odds_are_counted_on_the_average_price_alone(tmp_path, monkeypatch):
+    """The same reads on the same sessions: every one up at the end price and flat on the average. The end-price odds
+    say up and the average-price odds flat, each from its own file, and counting the one never reads, writes or moves
+    the other."""
+    out, prior = tmp_path / "spx_jev", _spiking(tmp_path, 10)
+    end = odds(tmp_path, out, prior, NOW)
+    kept = (out / clock.CACHE_NAME).read_bytes()
+    avg = clock.integral_odds(tmp_path, out, prior, NOW)
+    assert end["by"]["next_30"]["probabilities"]["up"] > 0.99     # all but the 15:32 read, whose window ends on the closing bar
+    assert avg["phase"] == "lunch" and avg["sessions"] == 10 and set(avg["by"]) == {"average_30"}
+    assert avg["by"]["average_30"]["probabilities"] == {"up": 0.0, "down": 0.0, "flat": 1.0}
+    assert (out / clock.CACHE_NAME).read_bytes() == kept
+    stored = json.loads((out / clock.INTEGRAL_CACHE_NAME).read_text())
+    rule = json.loads(stored["rule"])
+    assert rule["v"] == clock.INTEGRAL_RULE_VERSION and rule["box"][0] == "next_30" and len(stored["days"]) == 10
+    assert all(sum(c["flat"] for c in d["counts"].values()) == sum(sum(c.values()) for c in d["counts"].values()) > 0
+               for d in stored["days"].values())
+    # a stored day is not counted again, and a missing end-price file changes nothing on the average price
+    (out / clock.CACHE_NAME).unlink()
+    monkeypatch.setattr(clock, "integral_reads", lambda *a, **k: pytest.fail("a stored day was counted again"))
+    assert clock.integral_odds(tmp_path, out, prior, NOW) == avg and not (out / clock.CACHE_NAME).exists()
+
+
+def test_the_average_price_odds_need_ten_sessions_and_a_full_day(tmp_path):
+    out = tmp_path / "spx_jev"
+    few = clock.integral_odds(tmp_path, out, _spiking(tmp_path, 9), NOW)
+    assert few == {"left_out": "only 9 prior sessions with enough reads graded on the average price; its time-of-day odds need 10"}
+    half = clock.integral_odds(tmp_path, out, _spiking(tmp_path, 10), at(12, 2, day="2026-11-27"))
+    assert half["left_out"].startswith("a 13:00 half day")

@@ -191,9 +191,11 @@ archive there too, under `archive/`.
    as before: where price is in 30 minutes (flat within 0.07 sigma, 55% of
    reads on SPX) and in 60 (flat within 0.11 sigma, 59%), up, down, flat or
    unsure.
-4b. The blend, code (`clock.py`): each sum mixed half and half with how often
-   the same horizon ended up, down or flat at this time of day over the last
-   20 SPX sessions, once 10 are on disk; never on a half day.
+4b. The blend, code (`clock.py`): each end-price sum mixed half and half with
+   how often the same horizon ended up, down or flat at this time of day over
+   the last 20 SPX sessions, and the call with how often the average over its
+   window did, counted on the average price alone (`clock_integral_days.json`),
+   each once 10 sessions are on disk; never on a half day.
 5. The card: `state/spx_jev/latest.json`.
 6. Grading, code (`grade.py`), every sent run: each sum at its own mark, a hit
    and a Brier score for the blend, JEV's own sum and the clock's odds on the
@@ -211,14 +213,15 @@ archive there too, under `archive/`.
 - `{day}.jsonl`, one record per run: the state, the requests, the answers, the
   sum. `hour/{day}.jsonl`, one sum record per run with a request: what step 6
   grades. `latest.json`, the phone's card (below).
-- `last_asked.json`, `cadence.json`, `clock_days.json`: the cadence and the
-  clock's stored counts. `grades.jsonl`, `weights.json` (the sums' tallies,
-  `method` and the per-question weights), `weights_log.jsonl`.
-  `integral_grades.jsonl`, the integral grade, one line per graded horizon
-  (append only, keyed by the read, the horizon and `rule_version`), in every
-  lane's folder: from `rule_version` 2 each line names the sum it graded
-  (`sum`) and, for the call, carries its `scores` and the edge JEV was told
-  (`edge_told`); version 1 lines still read.
+- `last_asked.json`, `cadence.json`, `clock_days.json`,
+  `clock_integral_days.json`: the cadence and the clock's stored counts, on
+  the end price and on the average price, never mixed. `grades.jsonl`,
+  `weights.json` (the sums' tallies, `method` and the per-question weights),
+  `weights_log.jsonl`. `integral_grades.jsonl`, the integral grade, one line
+  per graded horizon (append only, keyed by the read, the horizon and
+  `rule_version`), in every lane's folder: from `rule_version` 2 each line
+  names the sum it graded (`sum`) and, for the call, carries its `scores`
+  and the edge JEV was told (`edge_told`); version 1 lines still read.
 - `pool_30.json`, `pool_60.json`, `pool_log.jsonl`: the learning loop's state
   per horizon and one log line per horizon per session applied or refused.
 - `archive/{day}.jsonl`: the raw archive for later machine learning, one line
@@ -253,15 +256,17 @@ The card carries: `symbol`, `generated_at`, `row_ts`, `freshness`, `sigma`,
 `omitted`, `sent`, `asked` (the questions the read put to JEV), `model`,
 `questions` (each with `answer` or `skipped`, and `held_from` when held),
 `hour` (the blended end-price sum with `jev`, `clock` and `blend`, and the
-call under `average`: its pick, odds, window and edge in points), `event`,
-`calls` and
-`tally` (the day's newest calls, each the average-price sum's pick and odds
-average price over the window from `integral_grades.jsonl`, with its label,
-points against the edge, verdict, size, path and, once the box has ten sessions
-to rank it against, its strength `tier`; and `end_price`, the grade at the mark,
-with the end-price sum's own `pick` and `p`, kept beside it for the side-by-side weeks; a call with no average-price grade
-is marked `end_price_only` and stands on its end price until a later card finds
-the line, and an open call carries its average so far, `so_far`. The tally
+call under `average`: its pick, odds, window and edge in points, blended the
+same way on the average price), `event`, `calls` and `tally` (the day's newest
+calls, each the average-price sum's pick and odds where it answered, `sum`
+naming the one, and their grades: `integral`, the grade on the average price
+over the window from `integral_grades.jsonl`, with its label, points against
+the edge, verdict, size, path and, once the box has ten sessions to rank it
+against, its strength `tier`; and `end_price`, the grade at the mark, with the
+end-price sum's own `pick` and `p`, kept beside it for the side-by-side weeks;
+a call with no average-price grade is marked `end_price_only` and stands on
+its end price until a later card finds the line, and an open call carries its
+average so far, `so_far`. The tally
 counts the average-price grade: a call's direction decides it, an unsure call is
 `passed`, never among the calls right or wrong, and `end_price_only` says how
 many stood on the end price), `marks`, `session` (`close` and `last_read`), `expiries` (today's

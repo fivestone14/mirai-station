@@ -10,6 +10,7 @@ sums with the time-of-day odds (clock.py), grades them, and writes only under ``
     state/spx_jev/last_asked.json    the last fresh answer per question, for the cadence
     state/spx_jev/cadence.json       how often each question is asked, recounted daily
     state/spx_jev/clock_days.json    the time-of-day counts per past session (see clock.py)
+    state/spx_jev/clock_integral_days.json   the same on the average price, for the phone's call (clock.integral_odds)
     state/spx_jev/grades.jsonl, weights.json, weights_log.jsonl   step 6 (see grade.py, weights.py)
     state/spx_jev/archive/{day}.jsonl   the raw archive: every read, grade and close-out of both lanes (archive.py)
     state/spx_jev/pool_30.json, pool_60.json, pool_log.jsonl   the learning loop (pool.py)
@@ -65,7 +66,7 @@ from .ask import build_requests, confidence, load_questions, pick, send, send_al
 from .baseline import Baseline
 from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, missing_paths, plan,
                       save_last)
-from .clock import blend as clock_blend, odds as clock_odds
+from .clock import blend as clock_blend, integral_odds as clock_integral_odds, odds as clock_odds
 from .events import learn_exclude, tag as event_tag
 from .expiry import calendar_of
 from .grade import INTEGRAL_NAME, average_call, horizon_start, live_options, mark_at, read_anchor, run as grade_run
@@ -706,6 +707,15 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
                 log(f"the learning loop's snapshot was left out this run: {type(e).__name__}: {e}")
                 hour_rec["pool"] = {h: {"left_out": f"the snapshot failed this run: {type(e).__name__}"} for h in lane.horizons}
             hour = pool.shown(hour, hour_rec["pool"], pool.load_state(out_dir, lane.horizons[lane.primary][0]))
+        if hour is not None and lane.clock_blend and "probabilities" in (hour.get("average") or {}):
+            # the phone's call is blended the same way, with how often the average over the same window ended each way
+            # at this time of day, counted on the average price alone (clock.integral_odds)
+            try:
+                hour = {**hour, "average": clock_blend(hour["average"], clock_integral_odds(state_dir, out_dir, scene.prior_bars, now, lane))}
+            except Exception as e:  # the clock must never cost the read its call
+                log(f"the clock on the average price was left out this run: {type(e).__name__}: {e}")
+                why = f"the time-of-day odds on the average price failed this run: {type(e).__name__}"
+                hour = {**hour, "average": {**hour["average"], "blend": {"used": False, "why": why}}}
         if hour is not None:
             hour = {**hour, "used": len(hour_rec["used"]), "left_out": len(hour_rec["left_out"]), "missing": len(missing)}
             if hour.get("error"):
