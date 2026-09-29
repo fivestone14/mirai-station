@@ -60,3 +60,14 @@ def test_the_frozen_file_is_whole_and_names_its_reference():
     p = b.clock("next_30", at(12, 2))
     assert math.isclose(sum(p.values()), 1.0) and b.version.endswith(doc["rule_hash"])
     assert math.isclose(sum(b.whole_day("next_60").values()), 1.0)
+
+
+def test_the_frozen_file_was_counted_the_way_the_clock_and_the_grader_count_today():
+    """The loop's reference and its clock experts must forecast the outcome the sums are graded on. The file was once
+    left counted in each row's sigma after the grader moved to the morning anchor, calling flat too often: whenever
+    the clock's counting rule moves on (clock.RULE_VERSION, the bands, the phases, the read grid), this fails until
+    the file is refitted (spec/fit_baseline.py) on the sessions before the trial."""
+    from spx_jev.clock import _rule_key
+    doc = json.loads(BASELINE_FILE.read_text(encoding="utf-8"))
+    assert doc["clock_rule"] == json.loads(_rule_key(LIVE.horizons))
+    assert doc["sessions"] and max(doc["sessions"]) <= doc["through"] < "2026-09-28"     # the trial's first session is never in it

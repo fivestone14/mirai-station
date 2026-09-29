@@ -1,15 +1,20 @@
 """Fit and validate the price-only baseline (spx_jev/baseline.py), and freeze it in spec/baseline.json.
 
-    python3 spec/fit_baseline.py                          # the station's state, read only
-    python3 spec/fit_baseline.py --state-dir DIR --out spec/baseline.json
+    python3 spec/fit_baseline.py --through 2026-09-25     # the station's state, read only
+    python3 spec/fit_baseline.py --state-dir DIR --through 2026-09-25 --out spec/baseline.json
 
-Every SPX session with a saved day of bars is replayed as the clock replays it and graded by the live
-grader. The qualifying sessions (baseline.py) are the ones fitted and validated: each is scored by
-tables fitted on all the others (leave one day out), and the day-mean gain of E_state over E_clock
-decides the reference per horizon (E_state when the mean gain is above zero, else E_clock). The same
-validation on every session, qualifying or not, and the flat share under the diary's anchor sigma are
-recorded beside it as checks. The frozen tables are fitted on all qualifying sessions.
-Read only: nothing under the state directory is written. The output is the only file touched.
+Every SPX session with a saved day of bars, through the last one before the trial (``--through``: the
+loop scores every later session against the file, so none of them may be in it), is replayed as the
+clock replays it and graded by the live grader, in the morning anchor each read could know with the
+day's market context (clock.replayed_reads, grade.read_anchor). The qualifying sessions (baseline.py)
+are the ones fitted and validated: each is scored by tables fitted on all the others (leave one day
+out), and the day-mean gain of E_state over E_clock decides the reference per horizon (E_state when
+the mean gain is above zero, else E_clock). The same validation on every session, qualifying or not,
+and the flat share are recorded beside it. The file names the clock's counting rule it was counted
+under (``clock_rule``): a test holds it to the clock's, so a change to how the clock or the grader
+counts an outcome cannot leave the loop's reference counted the old way. The frozen tables are fitted
+on all qualifying sessions. Read only: nothing under the state directory is written. The output is
+the only file touched.
 """
 from __future__ import annotations
 
@@ -23,11 +28,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from spx_jev.baseline import BASELINE_FILE, MIN_ROWS, fit, leave_one_day_out, rule_hash, with_move  # noqa: E402
-from spx_jev.clock import replayed_reads  # noqa: E402
+from spx_jev.clock import _rule_key, replayed_reads  # noqa: E402
 from spx_jev.lane import LIVE  # noqa: E402
 from spx_jev.row_adapter import labeller_row  # noqa: E402
 from spx_jev.state_builder import (DEFAULT_STATE_DIR, MIN_BARS_FOR_A_SESSION, ROWS_SUBDIR, bar_days, load_bars,  # noqa: E402
-                                   load_jsonl)
+                                   load_jsonl, load_market_context)
 
 VERSION = 1
 FLIPS = 10_000
@@ -75,19 +80,18 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Fit, validate and freeze the price-only baseline (read only).")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
     ap.add_argument("--out", default=str(BASELINE_FILE))
+    ap.add_argument("--through", required=True, help="YYYY-MM-DD, the last session fitted: the trial scores every later one")
     args = ap.parse_args(argv)
     state_dir, horizons = Path(args.state_dir), list(LIVE.horizons)
-    every, qualifying, anchored = {}, {}, {}
+    every, qualifying = {}, {}
     for day in bar_days(state_dir):
-        s = session(state_dir, day)
+        s = session(state_dir, day) if day <= args.through else None
         if s is None or not s[1]:
             continue
         bars, rows, raw = s
-        every[day] = with_move(replayed_reads(bars, rows, LIVE.horizons), float(bars[0]["open"]))
+        every[day] = with_move(replayed_reads(bars, rows, LIVE.horizons, load_market_context(state_dir, day)), float(bars[0]["open"]))
         if qualifies(rows, raw):
             qualifying[day] = every[day]
-            anchor = {r["ts"]: r["sigma_anchor"] for r in raw if isinstance(r.get("sigma_anchor"), (int, float)) and r["sigma_anchor"] > 0}
-            anchored[day] = replayed_reads(bars, [{**r, "sigma": anchor[r["ts"]]} for r in rows if r["ts"] in anchor], LIVE.horizons)
     lodo = leave_one_day_out(qualifying, horizons)
     lodo_every = leave_one_day_out(every, horizons)
     validation = {h: {"qualifying": {"mean_day_loss": means(lodo[h]), "state_over_clock": gain_summary(lodo[h], "state", "clock"),
@@ -95,14 +99,15 @@ def main(argv: list[str] | None = None) -> int:
                                      "reads": sum(d["reads"] for d in lodo[h].values())},
                       "every_session": {"mean_day_loss": means(lodo_every[h]), "state_over_clock": gain_summary(lodo_every[h], "state", "clock"),
                                         "reads": sum(d["reads"] for d in lodo_every[h].values())},
-                      "flat_share": {"row_sigma": flat_share(qualifying, h), "sigma_anchor": flat_share(anchored, h)},
+                      "flat_share": flat_share(qualifying, h),
                       "per_day": {d: {f: round(v[f]["log_loss"], 5) for f in ("whole_day", "clock", "state")} for d, v in lodo[h].items()}}
                   for h in horizons}
     reference = {h: "state" if validation[h]["qualifying"]["state_over_clock"].get("mean_gain_nats", 0) > 0 else "clock" for h in horizons}
     doc = {"name": "spx-jev price-only baseline, frozen", "version": VERSION, "fitted_on": datetime.now().astimezone().date().isoformat(),
-           "rule": "E_clock and E_state counted on the qualifying sessions' replayed reads, graded by the live grader on each row's sigma; "
-                   "the reference per horizon is E_state when its leave-one-day-out day-mean gain over E_clock is above zero, else E_clock",
-           "sessions": sorted(qualifying), "sessions_on_disk": sorted(every), **fit(qualifying, horizons),
+           "rule": "E_clock and E_state counted on the qualifying sessions' replayed reads, graded by the live grader in the morning "
+                   "anchor each read could know; the reference per horizon is E_state when its leave-one-day-out day-mean gain over "
+                   "E_clock is above zero, else E_clock",
+           "clock_rule": json.loads(_rule_key(LIVE.horizons)), "through": args.through, "sessions": sorted(qualifying), "sessions_on_disk": sorted(every), **fit(qualifying, horizons),
            "reference": reference, "validation": validation}
     doc["rule_hash"] = rule_hash(doc)
     Path(args.out).write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
