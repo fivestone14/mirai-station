@@ -7,11 +7,11 @@ is never read later — the lane refuses a fire 5 minutes or more late — so a 
 asleep at 02:35, or a run that crashed, leaves a hole nobody sees until the
 health review is run by hand. This job asks one question every five minutes on
 a market day: has every checkpoint that is owed by now got its read, and has the
-close-out landed? It pages the phone once per miss.
+close-out landed with every call graded? It pages the phone once per miss.
 
 It reads only the lane's own two files, the same ones the health review's
 premarket_fired check reads under the same limits: today's card (latest.json:
-its day, the checkpoints it names, closed_out_at) and today's read file (one
+its day, the checkpoints it names, closed_out_at, tally) and today's read file (one
 line per checkpoint read). It imports nothing from spx_jev, reads no feed and
 calls no model, so it cannot fail for the reason the lane failed.
 
@@ -19,7 +19,10 @@ WHAT IT ASSERTS:
   1. A READ AT EVERY CHECKPOINT once OWED_AFTER_MIN has passed it. Before
      today's first read the card is the last market day's, so the first
      checkpoint is judged by the card's day alone.
-  2. THE CLOSE-OUT LANDED on today's card by OWED_AFTER_MIN after 10:06.
+  2. THE CLOSE-OUT LANDED on today's card by OWED_AFTER_MIN after 10:06, and
+     left no call still to grade (the tally's calls less those graded and those
+     closed for good). A close-out whose bars had not come leaves the call
+     pending, and a later live read grades it again.
 
 A missed read cannot come back, so there is no recovery page: one page per
 missed checkpoint and one for the close-out, each remembered only once it is
@@ -102,6 +105,17 @@ def _read_checkpoints(path: Path) -> set:
     return out
 
 
+def _still_to_grade(card: Dict[str, Any]) -> int:
+    """The card's calls neither graded nor closed for good; 0 when it carries no tally."""
+    t = card.get("tally")
+    if not isinstance(t, dict):
+        return 0
+    try:
+        return max(0, int(t.get("calls") or 0) - int(t.get("graded") or 0) - int(t.get("closed") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _is_market_day(now_et: datetime) -> bool:
     day = now_et.date()
     return now_et.weekday() < 5 and day not in market_status._market_holidays(day.year)
@@ -154,8 +168,13 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
                 continue
             if t + owed_after <= now_et and f"{t:%H:%M}" not in read:
                 misses.append((f"{t:%H:%M}", f"no read at the {t:%H:%M} ET checkpoint"))
-        if now_et >= at(CLOSE_OUT) + owed_after and not card.get("closed_out_at"):
-            misses.append((CLOSE_OUT, f"the {CLOSE_OUT} ET close-out has not landed"))
+        if now_et >= at(CLOSE_OUT) + owed_after:
+            left = _still_to_grade(card)
+            if left:
+                misses.append((CLOSE_OUT, f"{left} pre-market call{'s' if left > 1 else ''} still ungraded after the "
+                                          f"{CLOSE_OUT} ET close-out; a later live read tries again"))
+            elif not card.get("closed_out_at"):
+                misses.append((CLOSE_OUT, f"the {CLOSE_OUT} ET close-out has not landed"))
     out["missed"] = [m for m, _ in misses]
 
     for key, what in misses:

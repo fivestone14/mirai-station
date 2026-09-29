@@ -27,10 +27,11 @@ def lane(tmp_path):
     folder.mkdir(parents=True)
     sent: list = []
 
-    def card(day=DAY, reads=READS, closed=False):
+    def card(day=DAY, reads=READS, closed=False, tally=None):
         (folder / "latest.json").write_text(json.dumps(
             {"day": day, "lane": "premarket", "closed_out_at": f"{day}T14:06:04+00:00" if closed else None,
-             "schedule": {"reads": [f"{day}T{c}:00-04:00" for c in reads], "close_out": f"{day}T10:06:00-04:00"}}))
+             "schedule": {"reads": [f"{day}T{c}:00-04:00" for c in reads], "close_out": f"{day}T10:06:00-04:00"},
+             **({"tally": tally} if tally else {})}))
 
     def read(*checkpoints, day=DAY):
         (folder / f"{day}.jsonl").write_text("".join(
@@ -85,6 +86,22 @@ def test_a_close_out_that_never_landed_is_paged(lane):
     assert lane.run(_at("10:20"))["missed"] == []
     out = lane.run(_at("10:21"))
     assert out["missed"] == ["10:06"] and "the 10:06 ET close-out has not landed" in lane.sent[0]
+
+
+def test_a_close_out_that_left_the_call_ungraded_is_paged_once(lane):
+    """09-28: the bars stopped from 09:56 to 10:11, so the 10:06 close-out graded the 10-minute check and left the
+    30-minute one, the lane's main call, pending, and the switch said every read owed was on file. A card that still
+    has a call to grade after the close-out is a miss, whether or not it says it closed out (a card from before the
+    close-out waited for its grades said so anyway); a call closed for good is not one still to grade."""
+    lane.read(*READS)
+    lane.card(closed=True, tally={"calls": 1, "graded": 0, "right": 0})
+    assert lane.run(_at("10:20"))["missed"] == []
+    out = lane.run(_at("10:21"))
+    assert out["missed"] == ["10:06"] and "1 pre-market call still ungraded after the 10:06 ET close-out" in lane.sent[0]
+    lane.card(tally={"calls": 1, "graded": 0, "right": 0, "unsure": 0, "closed": 0})
+    assert lane.run(_at("10:26"))["missed"] == ["10:06"] and len(lane.sent) == 1
+    lane.card(closed=True, tally={"calls": 2, "graded": 1, "right": 1, "unsure": 0, "closed": 1})
+    assert lane.run(_at("10:31"))["missed"] == [] and len(lane.sent) == 1
 
 
 def test_europes_checkpoint_is_the_one_the_card_names(lane):

@@ -340,7 +340,8 @@ def test_a_fire_saves_the_night_reads_once_and_the_close_out_grades(tmp_path, co
     assert len(_lines(out / f"{DAY}.jsonl")) == 1 and len(jev["requests"]) == 1
     assert command(at(10, 6, ss=20), "--state-dir", str(state), "--send") == 0
     c = json.loads((out / "latest.json").read_text())
-    assert c["closed_out_at"] and c["tally"]["calls"] == 1 and jev["graded"] == [PREMARKET, PREMARKET]
+    # the fake grader grades nothing, so the call is still to grade and the card stays open for a later run
+    assert "closed_out_at" not in c and c["tally"]["calls"] == 1 and jev["graded"] == [PREMARKET, PREMARKET]
     lines = _lines(state / "spx_jev" / "archive" / f"{DAY}.jsonl")
     assert [l["kind"] for l in lines] == ["read", "close_out"] and lines[1]["lane"] == "premarket"
 

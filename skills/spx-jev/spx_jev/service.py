@@ -332,12 +332,17 @@ def calls_block(calls: list[dict]) -> dict:
                       "closed": sum(1 for c in calls if "closed" in c)}}
 
 
+def still_to_grade(tally: dict) -> int:
+    """The tally's calls neither graded nor closed for good: what a later grading run can still grade."""
+    return tally["calls"] - tally["graded"] - tally.get("closed", 0)
+
+
 def tally_words(tally: dict) -> str:
     """A close-out's tally in the phone's words (jev-spx.html openingDone): '0 of 1 committed calls right,
     7 unsure' when a pick was unsure, else '2 of 3 calls right', then what is still to grade and what never
     will be."""
     unsure, closed = tally.get("unsure", 0), tally.get("closed", 0)
-    pending = tally["calls"] - tally["graded"] - closed
+    pending = still_to_grade(tally)
     rest = (f", {pending} still to grade" if pending > 0 else "") + (f", {closed} never graded" if closed else "")
     if unsure:
         return f"{tally['right']} of {tally['graded'] - unsure} committed calls right, {unsure} unsure{rest}"
@@ -659,11 +664,14 @@ def write_card(out_dir: Path, c: dict) -> None:
     os.replace(tmp, out_dir / "latest.json")
 
 
-def close_out(state_dir: Path, out_dir: Path, doc: dict, lane: Lane, day: str | None = None) -> dict | None:
+def close_out(state_dir: Path, out_dir: Path, doc: dict, lane: Lane, day: str | None = None, retry: bool = False) -> dict | None:
     """A lane's run after its last read (lane.close_out): grade every mark that has passed and refresh
     the calls and the day's tally on the card the last read wrote. JEV is asked nothing and no read is
     recorded (the archive gets a close-out record), so the morning's last calls are graded the same
-    day. None when the lane did not read on ``day``, today unless a replay names one."""
+    day. The card is stamped ``closed_out_at`` only once no call is left to grade: a mark whose bar has
+    not come keeps it open, the phone keeps asking for it, and each live run tries again (retry_close_outs).
+    A ``retry`` archives a close-out record only when its tally moved. None when the lane did not read
+    on ``day``, today unless a replay names one."""
     grade_run(state_dir, out_dir, live_options(doc), lane=lane)
     try:
         c = json.loads((out_dir / "latest.json").read_text(encoding="utf-8"))
@@ -673,11 +681,49 @@ def close_out(state_dir: Path, out_dir: Path, doc: dict, lane: Lane, day: str | 
         return None
     day = c["row_ts"][:10]
     calls = day_calls(out_dir, day, lane)
+    before = c.get("tally")
     c.update(calls_block(calls))
-    c["closed_out_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    if still_to_grade(c["tally"]):
+        c.pop("closed_out_at", None)
+    else:
+        c["closed_out_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     write_card(out_dir, c)
-    archive.append(lane.archive_folder(state_dir, out_dir), day, archive.CloseOutRecord(lane=lane.name, day=day, calls=calls, tally=c["tally"]))
+    if not retry or c["tally"] != before:
+        archive.append(lane.archive_folder(state_dir, out_dir), day, archive.CloseOutRecord(lane=lane.name, day=day, calls=calls, tally=c["tally"]))
     return c
+
+
+def last_mark(lane: Lane, now: datetime) -> datetime:
+    """The finish of the bar the lane's last call of the day is graded on, which its close-out waits for: the
+    closing bar on a lane closed out after the close, else its last read's longest horizon (grade.mark_at)."""
+    if lane.close_out_after_close:
+        return session_close(now)
+    last = market_time(now, lane.read_times()[-1])
+    return max(m for minutes, _ in lane.horizons.values() if (m := mark_at(last, minutes, lane)) is not None)
+
+
+def retry_close_outs(state_dir: Path, now: datetime) -> None:
+    """Every scheduled lane whose close-out time has passed and whose card today still has a call to grade (the
+    close-out ran before its bar came, or never ran) is closed out again: grades what has come since and
+    refreshes the card. The live job runs this after each of its runs, so the morning's last calls are graded
+    the same day however long the bars were down. A failure is logged and never costs the live run."""
+    for lane in LANES.values():
+        if not lane.close_out or now.strftime("%H:%M") < lane.close_out:
+            continue
+        out_dir = lane.folder(state_dir)
+        try:
+            card = json.loads((out_dir / "latest.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if str(card.get("row_ts", ""))[:10] != now.date().isoformat() or card.get("closed_out_at"):
+            continue
+        try:
+            c = close_out(state_dir, out_dir, load_questions(lane.questions, lane.key), lane, now.date().isoformat(), retry=True)
+        except Exception as e:  # the live run's card is already written; the next run tries again
+            log(f"{lane.name} lane's close-out retry failed: {type(e).__name__}: {e}\n{traceback.format_exc()}")
+            continue
+        if c:
+            log(f"{lane.name} lane closed out again: {tally_words(c['tally'])}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -711,15 +757,19 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = lane.folder(state_dir, args.out_dir)
     doc = load_questions(args.questions or lane.questions, lane.key)
     now = now_et()
+    # the station's own live job gives every other lane's close-out another try after each of its runs
+    retries = lane is LIVE and not args.day and not args.out_dir and not args.loop
     after_close = lane.close_out_after_close and now >= session_close(now)
     if (after_close or (lane.close_out and now.strftime("%H:%M") >= lane.close_out)) and not args.day and not args.loop:
         # the lane's reads are done for the day: the job's last fire only grades and refreshes the card
-        if after_close and not wait_for_bar(state_dir, session_close(now)):
-            log(f"the closing bar is not on file after {BAR_WAIT_S} s: grading what is")
+        if not wait_for_bar(state_dir, mark := last_mark(lane, now)):
+            log(f"the bar finishing at {mark:%H:%M} is not on file after {BAR_WAIT_S} s: grading what is")
         c = close_out(state_dir, out_dir, doc, lane)
         log(f"{lane.name} lane closed out: {tally_words(c['tally'])}" if c else f"{lane.name} lane: nothing to close out today")
+        if retries:
+            retry_close_outs(state_dir, now_et())
         return 0
-    last_row = None
+    last_row, code = None, 0
     while True:
         if lane.bar_clock and do_send and not args.day:
             fire = now_et().replace(second=0, microsecond=0)
@@ -738,15 +788,15 @@ def main(argv: list[str] | None = None) -> int:
                 last_row = c["row_ts"]
         except NoRowYet as e:   # a quiet skip, not a failure: the next tick will find the row
             log(f"skipping this tick: {e}")
-            if not args.loop:
-                return 0
         except Exception as e:  # the service must never die on one bad row
             log(f"run failed: {type(e).__name__}: {e}" + ("" if isinstance(e, RuntimeError) else "\n" + traceback.format_exc()))
-            if not args.loop:
-                return 1
+            code = 1
         if not args.loop:
-            return 0
+            break
         _clock.sleep(args.loop)
+    if retries:
+        retry_close_outs(state_dir, now_et())
+    return code
 
 
 if __name__ == "__main__":

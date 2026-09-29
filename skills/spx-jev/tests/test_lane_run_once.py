@@ -118,6 +118,41 @@ def test_the_close_out_grades_the_last_calls_and_asks_jev_nothing(tmp_path, monk
     assert kinds == ["read", "grade", "close_out"]                          # the read, its grade at the close-out, the close-out
 
 
+def test_a_close_out_whose_bar_has_not_come_leaves_the_call_open_and_a_later_live_run_grades_it(tmp_path, monkeypatch):
+    """09-28: the bars stopped from 09:56 to 10:11, the close-outs got one try, and the morning's last calls stayed
+    ungraded on the card and in the archive all day. The close-out waits for the bar its lane's last call is graded
+    on; when it still has not come, the card is not closed out, and each live run after the lane's close-out grades
+    the lane again and refreshes its card until nothing is left to grade."""
+    state = _state(tmp_path, [make_row(at(10, 25, ss=10), 7700.0)], 60)     # bars 09:30 .. 10:29: the 10:30 read, marked at 10:40
+    _today(monkeypatch)
+    monkeypatch.setattr(service, "send_all", _answers)
+    monkeypatch.setattr(service, "send", _sums([]))
+    out = state / "spx_jev" / "lanes" / "tape"
+    run_once(state, out, DOC, True, DAY, lane=TAPE)
+    waited = []
+    monkeypatch.setattr(service, "wait_for_bar", lambda state_dir, fire: waited.append(fire) or False)
+    monkeypatch.setattr(service, "load_env_file", lambda *a, **k: [])
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.setattr(service, "now_et", lambda: at(10, 42))
+    assert service.main(["--state-dir", str(state), "--lane", "tape"]) == 0
+    c = json.loads((out / "latest.json").read_text())
+    assert waited == [at(10, 40)] and "closed_out_at" not in c and c["tally"]["graded"] == 0
+    archive = state / "spx_jev" / "archive" / f"{DAY}.jsonl"
+
+    def tape_kinds():
+        return [r["kind"] for r in map(json.loads, archive.read_text().splitlines()) if r["lane"] == "tape"]
+    assert tape_kinds() == ["read", "close_out"]
+
+    _state(tmp_path, [make_row(at(10, 25, ss=10), 7700.0), make_row(at(11, 1, ss=5), 7700.0)], 91)
+    monkeypatch.setattr(service, "now_et", lambda: at(11, 2))
+    assert service.main(["--state-dir", str(state)]) == 0                         # the live lane's 11:02 run
+    c = json.loads((out / "latest.json").read_text())
+    assert c["closed_out_at"] and c["tally"] == {"calls": 1, "graded": 1, "right": 1, "unsure": 0, "closed": 0}
+    assert tape_kinds() == ["read", "close_out", "grade", "close_out"]
+    assert service.main(["--state-dir", str(state)]) == 0                         # closed out: a later live run leaves it be
+    assert json.loads((out / "latest.json").read_text()) == c
+
+
 def test_an_unsure_pick_is_an_abstention_in_the_tally_and_its_words_never_a_wrong_call():
     calls = ([{"pick": "unsure", "outcome": "down_big", "hit": False}] * 7 + [{"pick": "down_small", "outcome": "down_big", "hit": False}]
              + [{"pick": "unsure"}, {"pick": "flat"}])                     # the last two not graded yet
