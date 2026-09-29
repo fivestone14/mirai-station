@@ -51,7 +51,7 @@ class Lane:
     questions: Path                                  # the step-2 question doc it asks from
     hour_doc: Path                                   # the sums it asks over the answers
     horizons: dict[str, tuple[int, float | str]]     # {qid: (minutes, flat band in sigma, or RECORD)}
-    primary: str                                     # the sum on the card, and the one the question weights learn from
+    primary: str                                     # the end-price box the weights and pools learn from; the card's call is ``average``
     cadence: bool                                    # thin its schedule by the learned cadence and hold in between, or ask what is due afresh
     tag: str | None                                  # written on the records, hour records and card; None for the live lane
     bar_clock: bool = False                          # stamp each read at the newest finished bar and carry the tape unit;

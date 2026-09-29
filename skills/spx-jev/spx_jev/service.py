@@ -750,7 +750,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
                                                                  unit, t0 + SEND_READ_S, window)
         send_seconds = round(_clock.monotonic() - t0, 3)      # JEV's round trips only; the blend below is code
         if hour is not None and lane.clock_blend:
-            # the sum the phone shows and the grader scores is JEV's sum blended half and half with
+            # the end-price sums the grader scores are JEV's sum blended half and half with
             # how often this time of day ended each way on prior sessions; JEV's own sum rides beside it
             try:
                 hour = clock_blend(hour, clock_odds(state_dir, out_dir, scene.prior_bars, now))

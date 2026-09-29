@@ -68,7 +68,7 @@ class ReadRecord:
     responses: dict[str, dict] | None            # JEV's replies by group, untouched; None when not sent
     hour_request: dict | None                    # the sums request, None when nothing was summed
     hour_response: dict | None                   # JEV's reply to it, untouched
-    hour: dict | None                            # the sum as the card shows it (blended on the live lane)
+    hour: dict | None                            # the sums as the card carries them (blended on the live lane), the call under ``average``
     cadence: dict[str, Any]                      # {"from", "held": {qid: iso}, "not_due": {qid: reason}, "asked": [qid],
                                                  #  "reasked": {qid: {"row_ts", "why"}}: asked again, the earlier ask today got no answer}
     market_context: dict[str, dict] | None       # {symbol: {"value", "known_at"}} the read could see
