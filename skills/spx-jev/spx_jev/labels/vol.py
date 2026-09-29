@@ -32,7 +32,7 @@ from .label_set import LabelSet
 from .measures import (ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, day_high_low, is_num, move_size,
                        session_extremes, settled_open)
 from .plausible import left_out
-from .ranks import (SameClockRank, fifth, move_rank, rank_days, rank_sessions, same_clock_market, same_clock_values,
+from .ranks import (SameClockRank, fifth, fifth_side, move_rank, rank_days, rank_sessions, same_clock_market, same_clock_values,
                     tick_bands_by_minute, tick_bursts)
 from .rulers import SigmaRuler, sigma_anchor
 from .vol_sources import (ROW_MAX_GAP, DiaryPoint, Skew, diary_point, minute_floor, point_at, prior_diary, prior_diary_by,
@@ -760,10 +760,26 @@ def _largest_move_30(bars: list[dict], then: datetime, points: float | None) -> 
     return max(moves) if moves else None
 
 
+def _bottom_fifth_swing(scene: Scene, ruler: SigmaRuler, standing: str, ls: LabelSet) -> None:
+    """A bottom-fifth swing with whether a real move came inside it, which decides coiled against quiet: the half
+    hour's largest REAL_MOVE_MIN-minute move ranked against the same half hour's largest on the prior sessions, the
+    bottom third no real move. A swing above the bottom fifth never says it."""
+    largest = _largest_move_30(scene.bars, scene.now, ruler.points)
+    move, why = (rank_sessions(largest, same_clock_values(scene, _largest_move_30), "bars at this minute") if largest is not None
+                 else (None, f"needs a finished bar {REAL_MOVE_MIN} minutes before one in the last {REALIZED_WINDOW_MIN} minutes"))
+    if move is None:
+        ls.omit("vol.realized_vs_clock", why)
+        return
+    ls.put("vol.realized_vs_clock",
+           f"{standing}; its largest {REAL_MOVE_MIN}-minute move inside them was {sig(largest)}, larger than {move.higher_than} of the "
+           f"last {move.of} sessions' largest in the same half hour, {move.band}: "
+           f"{'no real move' if move.band == 'bottom third' else 'a real move'}{_ruled(ruler)}")
+
+
 def _realized_vs_clock(scene: Scene, ls: LabelSet) -> None:
     """The last 30 minutes' realized swing in the morning anchor, ranked against the same half hour on the
-    prior sessions, with whether a real move came inside it (vol.realized_vs_clock), and the swing as a multiple
-    of their median (vol.realized_vs_clock_rank)."""
+    prior sessions and named by the realized_vs_clock answer its fifth gives, with whether a real move came inside
+    it in the bottom fifth (vol.realized_vs_clock), and the swing as a multiple of their median (vol.realized_vs_clock_rank)."""
     ruler = sigma_anchor(scene)
     value = _realized_30(scene.bars, scene.now, ruler.points if ruler else None)
     if value is None:
@@ -776,21 +792,15 @@ def _realized_vs_clock(scene: Scene, ls: LabelSet) -> None:
         for path in ("vol.realized_vs_clock", "vol.realized_vs_clock_rank"):
             ls.omit(path, why)
         return
+    swing = f"over the last {REALIZED_WINDOW_MIN} minutes SPX's realized swing was {sig(value)}"
+    standing = f"{swing}, more than {rank.higher_than} of the last {rank.of} sessions at this time of day, {fifth(rank)}"
     if rank.higher_than == rank.of:
-        standing = f"more than every one of the last {rank.of} sessions at this time of day"
+        ls.put("vol.realized_vs_clock", f"{swing}, more than every one of the last {rank.of} sessions at this time of day: very busy "
+                                        f"for this half hour{_ruled(ruler)}")
+    elif fifth_side(rank) < 0:
+        _bottom_fifth_swing(scene, ruler, standing, ls)
     else:
-        standing = f"more than {rank.higher_than} of the last {rank.of} sessions at this time of day, {fifth(rank)}"
-    largest = _largest_move_30(scene.bars, scene.now, ruler.points)
-    move, why = (rank_sessions(largest, same_clock_values(scene, _largest_move_30), "bars at this minute") if largest is not None
-                 else (None, f"needs a finished bar {REAL_MOVE_MIN} minutes before one in the last {REALIZED_WINDOW_MIN} minutes"))
-    if move is None:
-        ls.omit("vol.realized_vs_clock", why)
-    else:
-        ls.put("vol.realized_vs_clock",
-               f"over the last {REALIZED_WINDOW_MIN} minutes SPX's realized swing was {sig(value)}, {standing}; its largest "
-               f"{REAL_MOVE_MIN}-minute move inside them was {sig(largest)}, larger than {move.higher_than} of the last {move.of} "
-               f"sessions' largest in the same half hour, {move.band}: {'no real move' if move.band == 'bottom third' else 'a real move'}"
-               f"{_ruled(ruler)}")
+        ls.put("vol.realized_vs_clock", f"{standing}: {'busy' if fifth_side(rank) else 'ordinary'} for this half hour{_ruled(ruler)}")
     usual = statistics.median(base[:rank.of])
     if usual <= 0:
         ls.omit("vol.realized_vs_clock_rank", "the prior sessions' usual swing at this minute is zero")

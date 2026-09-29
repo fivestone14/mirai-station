@@ -2776,15 +2776,15 @@
       },
       {
        "name": "ordinary",
-       "description": "between the bottom and top fifth"
+       "description": "between the top and bottom fifths: ordinary for this half hour"
       },
       {
        "name": "busy",
-       "description": "top fifth, not wider than every recent session"
+       "description": "in the top fifth, not more than every recent session: busy for this half hour"
       },
       {
        "name": "very_busy",
-       "description": "wider than every recent session at this time of day"
+       "description": "more than every one of the recent sessions at this time of day: very busy for this half hour"
       }
      ],
      "criteria": {
@@ -2798,7 +2798,7 @@
       {
        "name": "vol.realized_vs_clock",
        "example": "over the last 30 minutes SPX's realized swing was 0.05 sigma, more than 1 of the last 19 sessions at this time of day, in the bottom fifth; its largest 10-minute move inside them was 0.03 sigma, larger than 4 of the last 19 sessions' largest in the same half hour, bottom third: no real move",
-       "computed_how": "sqrt(sum of squared 1-min close changes, >=25 bars)/sigma_anchor ranked against the same half hour on up to the last {night_rank_count} prior sessions, each in its own anchor ('ruler estimated' sessions left out), at least {same_clock_min_sessions} of them, in fifths with the more-than-all flag; real-move clause: the half hour's largest {window_10_min}-minute move (measures.move_size, both ends inside it) ranked the same way against the same half hour's largest on those sessions, bottom third = no real move",
+       "computed_how": "sqrt(sum of squared 1-min close changes, >=25 bars)/sigma_anchor ranked against the same half hour on up to the last {night_rank_count} prior sessions, each in its own anchor ('ruler estimated' sessions left out), at least {same_clock_min_sessions} of them, in fifths with the more-than-all flag, each named by its answer ('ordinary / busy / very busy for this half hour'); real-move clause, in the bottom fifth only: the half hour's largest {window_10_min}-minute move (measures.move_size, both ends inside it) ranked the same way against the same half hour's largest on those sessions, bottom third = no real move",
        "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json)",
        "availability": "live",
        "label_built": false,
@@ -10272,7 +10272,7 @@
   {
    "name": "vol.realized_vs_clock",
    "example": "over the last 30 minutes SPX's realized swing was 0.05 sigma, more than 1 of the last 19 sessions at this time of day, in the bottom fifth; its largest 10-minute move inside them was 0.03 sigma, larger than 4 of the last 19 sessions' largest in the same half hour, bottom third: no real move",
-   "computed_how": "sqrt(sum of squared 1-min close changes, >=25 bars)/sigma_anchor ranked against the same half hour on up to the last {night_rank_count} prior sessions, each in its own anchor ('ruler estimated' sessions left out), at least {same_clock_min_sessions} of them, in fifths with the more-than-all flag; real-move clause: the half hour's largest {window_10_min}-minute move (measures.move_size, both ends inside it) ranked the same way against the same half hour's largest on those sessions, bottom third = no real move",
+   "computed_how": "sqrt(sum of squared 1-min close changes, >=25 bars)/sigma_anchor ranked against the same half hour on up to the last {night_rank_count} prior sessions, each in its own anchor ('ruler estimated' sessions left out), at least {same_clock_min_sessions} of them, in fifths with the more-than-all flag, each named by its answer ('ordinary / busy / very busy for this half hour'); real-move clause, in the bottom fifth only: the half hour's largest {window_10_min}-minute move (measures.move_size, both ends inside it) ranked the same way against the same half hour's largest on those sessions, bottom third = no real move",
    "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json)",
    "availability": "live",
    "label_built": false,

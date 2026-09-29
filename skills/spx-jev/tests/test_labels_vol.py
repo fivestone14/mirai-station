@@ -670,14 +670,22 @@ STILL = "its largest 10-minute move inside them was 0.00 sigma, larger than 0 of
 
 
 @pytest.mark.parametrize("step, standing", [
-    (5.5, "more than 5 of the last 10 sessions at this time of day, between the top and bottom fifths"),
-    (9.5, "more than 9 of the last 10 sessions at this time of day, in the top fifth"),
-    (12.0, "more than every one of the last 10 sessions at this time of day"),
+    (0.5, f"more than 0 of the last 10 sessions at this time of day, in the bottom fifth; {STILL}bottom third: no real move"),
+    (5.5, "more than 5 of the last 10 sessions at this time of day, between the top and bottom fifths: ordinary for this half hour"),
+    (9.5, "more than 9 of the last 10 sessions at this time of day, in the top fifth: busy for this half hour"),
+    (12.0, "more than every one of the last 10 sessions at this time of day: very busy for this half hour"),
 ])
 def test_the_realized_swing_is_ranked_against_the_same_half_hour(scene_factory, step, standing):
     swing = step * math.sqrt(30) / SIGMA
     assert labels(realized_scene(scene_factory, swinging(step)))[0]["vol.realized_vs_clock"] == (
-        f"over the last 30 minutes SPX's realized swing was {swing:.2f} sigma, {standing}; {STILL}bottom third: no real move")
+        f"over the last 30 minutes SPX's realized swing was {swing:.2f} sigma, {standing}")
+
+
+@pytest.mark.parametrize("step", [5.5, 9.5, 12.0])
+def test_a_swing_above_the_bottom_fifth_never_says_no_real_move(scene_factory, step):
+    """The real-move clause decides only coiled against quiet, so an ordinary or busier half hour never carries the
+    coiled option's words."""
+    assert "real move" not in labels(realized_scene(scene_factory, swinging(step)))[0]["vol.realized_vs_clock"]
 
 
 def climbing() -> dict[str, list[dict]]:

@@ -1528,9 +1528,9 @@
      "criteria": {
       "coiled": "bottom fifth for this half hour and no real move inside it: its largest {window_10_min}-minute move is in the bottom third of the same half hour's largest on recent sessions",
       "quiet": "bottom fifth for this half hour, with a real move inside it: its largest {window_10_min}-minute move above the bottom third of the same half hour's largest on recent sessions",
-      "ordinary": "between the bottom and top fifth",
-      "busy": "top fifth, not wider than every recent session",
-      "very_busy": "wider than every recent session at this time of day"
+      "ordinary": "between the top and bottom fifths: ordinary for this half hour",
+      "busy": "in the top fifth, not more than every recent session: busy for this half hour",
+      "very_busy": "more than every one of the recent sessions at this time of day: very busy for this half hour"
      },
      "code_criteria": {
       "coiled": "rank <= {bottom_fifth} and the half hour's largest {window_10_min}-minute move beats under {third_lo} of the prior sessions' largest in the same half hour (bottom third)",
