@@ -12,7 +12,7 @@ sums with the time-of-day odds (clock.py), grades them, and writes only under ``
     state/spx_jev/clock_days.json    the time-of-day counts per past session (see clock.py)
     state/spx_jev/clock_integral_days.json   the same on the average price, for the phone's call (clock.integral_odds)
     state/spx_jev/grades.jsonl, weights.json, weights_log.jsonl   step 6 (see grade.py, weights.py)
-    state/spx_jev/archive/{day}.jsonl   the raw archive: every read, grade and close-out of both lanes (archive.py)
+    state/spx_jev/archive/{day}.jsonl   the raw archive: every read, grade and close-out of every lane (archive.py)
     state/spx_jev/pool_30.json, pool_60.json, pool_log.jsonl   the learning loop (pool.py)
 
 The phone's call is the average-price sum (hour.average_summary, under the sum's ``average``), asked

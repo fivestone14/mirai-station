@@ -39,7 +39,7 @@ from .cuts import NEXT_30_FLAT_BAND_SIGMA, NEXT_60_FLAT_BAND_SIGMA, OPEN_10_FLAT
 QUESTIONS_DIR = Path(__file__).resolve().parent.parent / "questions"
 LIVE_DIR = "spx_jev"        # the live lane's folder under the state dir; no other lane writes its records there, only the shared archive/
 RECORD = "record"           # a horizon whose band is the one stored on each record, in points from the tape unit
-QUESTIONS = QUESTIONS_DIR / "spx_questions.json"   # every question of both lanes, generated from spec/question_set.json
+QUESTIONS = QUESTIONS_DIR / "spx_questions.json"   # every question of every lane, generated from spec/question_set.json
 # The live job fires at :02 and :32 from 09:32 to 16:02 (launchd/com.mirai-station.spx-jev.plist.template).
 LIVE_READS = tuple(f"{(572 + 30 * k) // 60:02d}:{(572 + 30 * k) % 60:02d}" for k in range(14))
 
@@ -84,7 +84,7 @@ class Lane:
         return out if out is not None else live
 
     def archive_folder(self, state_dir: Path | str, out_dir: Path | str | None = None) -> Path:
-        """Where the lane's raw archive goes: the station's one archive, shared by both lanes, while the
+        """Where the lane's raw archive goes: the station's one archive, shared by every lane, while the
         lane writes into its own folder under the state dir; ``<out_dir>/archive`` when it was pointed
         anywhere else, so a run into a scratch folder keeps every record it makes there."""
         out = self.folder(state_dir, out_dir)
