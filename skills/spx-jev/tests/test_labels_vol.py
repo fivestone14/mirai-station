@@ -16,8 +16,9 @@ from spx_jev import events
 from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.labels.vol import build_vol_labels
 from spx_jev.labels.vol_sources import black_price
+from spx_jev.row_adapter import labeller_row
 from spx_jev.sessions import previous_trading_day
-from spx_jev.state_builder import MarketContext
+from spx_jev.state_builder import MarketContext, bar_clock_row
 
 SIGMA = 75.0          # the morning anchor every fixture row carries
 PRIOR_DAYS = [f"2026-09-{d:02d}" for d in range(17, 7, -1)]
@@ -110,6 +111,22 @@ def test_the_first_opening_read_measures_from_the_opens_first_print_today_and_be
     scene = history(scene, tmp_path, vix_moves((9, 40), 10, TENTHS, first=(9, 30)))
     assert labels(scene)[0]["vol.vix_change_30"] == ("over the last 10 minutes VIX rose 0.10 points, 0.50% of its 20.0 level, "
                                                      "higher than 4 of the last 10 sessions at this minute, middle third")
+
+
+def test_a_tape_read_on_the_diarys_only_row_measures_no_vix_change_rather_than_calling_it_unchanged(scene_factory, tmp_path):
+    """09-28 09:35: the tape read restamps the newest diary row at the bar's close, and that was the open's 09:30 row, so
+    its ten minutes compared the row with its own copy and said "VIX was unchanged, 0.00%"."""
+    first = labeller_row(diary_row(at(9, 30, ss=28), 20.0))
+    bars = flat_bars(5)
+    row = bar_clock_row([first], bars)
+    scene = replace(scene_factory(at(9, 35), bars), row=row, rows_today=[first, row], bar_clock=True)
+    scene = history(scene, tmp_path, vix_moves((9, 35), 10, TENTHS, first=(9, 30)))
+    assert labels(scene)[1]["vol.vix_change_30"] == ("the diary's newest row, 09:30, is also its row 10 minutes ago: no second "
+                                                     "reading to measure a change across")
+    later = labeller_row(diary_row(at(9, 34, ss=28), 20.1))
+    row = bar_clock_row([first, later], bars)
+    scene = replace(scene, row=row, rows_today=[first, later, row])
+    assert labels(scene)[0]["vol.vix_change_30"].startswith("over the last 10 minutes VIX rose 0.10 points, ")
 
 
 def test_the_vix_change_is_omitted_without_a_row_near_the_window_start(scene_factory):

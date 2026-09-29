@@ -26,7 +26,7 @@ from ..cuts import (EVENT_DIGEST_MIN, EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, HALF_RANK
                     SKEW_FLAT_RANK, SKEW_STEEP_RANK, STRESS_HOLD_SHARE, STRESS_RETREAT_SHARE, TICK_BURST_PCT, TICK_CLUSTER,
                     TOP_FIFTH, VIX_CURVE_FLAT, WINDOW_10_MIN, WINDOW_30_MIN, ZERO_DTE_LAST_HOUR_MIN)
 from ..sessions import next_trading_day, session_close, session_minutes
-from ..state_builder import MarketContext, Scene, first_row, row_days
+from ..state_builder import BAR_CLOCK_OWN_KEYS, MarketContext, Scene, first_row, row_days
 from .events_shocks import judged_windows, shock_bursts
 from .label_set import LabelSet
 from .measures import (ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, day_high_low, is_num, move_size,
@@ -88,6 +88,8 @@ def build_vol_labels(scene: Scene) -> LabelSet:
     _move_sides(scene, ls)
     _term_structure(scene, ls)
     today = [diary_point(r) for r in scene.rows_today]
+    if _restamped(scene):
+        today[-1] = today[-2]
     _vix_change(scene, today, ls)
     _vix_since_1400(scene, today, ls)
     _vix_vs_price(scene, today, ls)
@@ -241,15 +243,38 @@ def _price_move(bars: list[dict], then: datetime, window: int, points: float | N
     return (last - ref) / points if points and ref is not None and last is not None else None
 
 
+def _restamped(scene: Scene) -> bool:
+    """Whether the read's row is the newest diary row restamped at a bar's close (state_builder.bar_clock_row): its
+    diary values are that row's, read when that row was written, not at the bar."""
+    rows = scene.rows_today
+    return scene.bar_clock and len(rows) > 1 and all(rows[-1].get(k) == rows[-2].get(k) for k in {*rows[-1], *rows[-2]}
+                                                      if k not in BAR_CLOCK_OWN_KEYS)
+
+
+def _window_start(points: Sequence[DiaryPoint], now: datetime, window: int) -> DiaryPoint | None:
+    """The point a diary window of ``window`` minutes to ``now`` starts at, or None. A window that starts before the
+    day's first row, by no more than a row's gap, starts at it: the 09:40 read's ten minutes run from the open's first
+    print."""
+    start = now - timedelta(minutes=window)
+    return point_at(points, start) or (points[0] if start < points[0].ts <= start + ROW_MAX_GAP else None)
+
+
 def _change(points: Sequence[DiaryPoint], now: datetime, window: int,
             read: Callable[[DiaryPoint], float | None]) -> tuple[float, float] | None:
     """``(then, now)`` of a diary value across the last ``window`` minutes, from the day's points up to ``now``;
-    None when either end is missing. A window that starts before the day's first row, by no more than a row's
-    gap, starts at it: the 09:40 read's ten minutes run from the open's first print."""
-    start = now - timedelta(minutes=window)
-    then = point_at(points, start) or (points[0] if start < points[0].ts <= start + ROW_MAX_GAP else None)
-    a, b = (read(then) if then else None), read(points[-1])
+    None when either end is missing, or when the window starts at the newest point, which would read one row twice
+    and call it unchanged. On a restamped read (_restamped) the newest point is its diary row's own."""
+    then = _window_start(points, now, window)
+    a, b = (read(then) if then and then is not points[-1] else None), read(points[-1])
     return None if a is None or b is None else (a, b)
+
+
+def _no_window(points: Sequence[DiaryPoint], now: datetime, window: int, what: str) -> str:
+    """Why a diary window has no change: its start is the newest row itself, or ``what``."""
+    if _window_start(points, now, window) is points[-1]:
+        return (f"the diary's newest row, {points[-1].ts.astimezone(ET):%H:%M}, is also its row {window} minutes ago: "
+                f"no second reading to measure a change across")
+    return what
 
 
 def _diary_base(scene: Scene, measure: Callable[[Sequence[DiaryPoint], list[dict], datetime, float | None], float | None]) -> list[float]:
@@ -304,7 +329,8 @@ def _vix_change(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
     window = WINDOW_10_MIN if scene.bar_clock else WINDOW_30_MIN
     got = _change(today, scene.now, window, lambda p: p.vix)
     if got is None:
-        ls.omit("vol.vix_change_30", f"no diary VIX now and about {window} minutes ago (range_ruler.vol_carry.vix)")
+        ls.omit("vol.vix_change_30", _no_window(today, scene.now, window,
+                                                 f"no diary VIX now and about {window} minutes ago (range_ruler.vol_carry.vix)"))
         return
     then, now = got
     d = now - then
@@ -366,7 +392,8 @@ def _vix_vs_price(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> None:
     got = _change(today, scene.now, WINDOW_30_MIN, lambda p: p.vix)
     move = _spx_move(scene, WINDOW_30_MIN, ruler) if ruler else None
     if ruler is None or got is None or move is None:
-        ls.omit("vol.vix_vs_price", "needs the morning sigma ruler, a finished bar 30 minutes ago and the diary VIX now and then")
+        ls.omit("vol.vix_vs_price", _no_window(today, scene.now, WINDOW_30_MIN, "needs the morning sigma ruler, a finished bar 30 minutes "
+                                                                                 "ago and the diary VIX now and then"))
         return
     then, now = got
     d = now - then
@@ -401,7 +428,8 @@ def _atm_iv_residual(scene: Scene, today: list[DiaryPoint], ls: LabelSet) -> Non
     got = _change(today, scene.now, WINDOW_30_MIN, lambda p: p.atm_iv)
     move = _spx_move(scene, WINDOW_30_MIN, ruler) if ruler else None
     if ruler is None or got is None or move is None:
-        ls.omit("vol.atm_iv_residual", "needs the morning sigma ruler, a finished bar 30 minutes ago and at-the-money vol on the rows now and then")
+        ls.omit("vol.atm_iv_residual", _no_window(today, scene.now, WINDOW_30_MIN, "needs the morning sigma ruler, a finished bar 30 "
+                                                                                    "minutes ago and at-the-money vol on the rows now and then"))
         return
     then, now = got
     d = (now - then) * 100.0
