@@ -15,7 +15,9 @@ event.*), the morning brief and headlines (news.*), and unscheduled bursts seen 
   median morning anchor of the prior sessions, because an event swells today's own anchor; its size is
   ranked against the same minutes on the prior sessions, event or not, each in its own ruler.
 * What moved with a burst (shock.cross_asset) is ranked against the same five minutes on the prior
-  sessions, each group's link to the index fitted over the hour before on each day as it is today.
+  sessions, each group's link to the index fitted over the hour before on each day as it is today. Each
+  market and the index are priced at one instant (usual_link.Session): a saved day at the same bar close,
+  today from the snapshot that quoted them both.
 
 Each label's sentence, how it is computed and its source are in spec/question_set.json ``labels``; the
 headline feed is DARK.
@@ -35,7 +37,7 @@ from ..cuts import (BRIEF_CONF_MIN, BRIEF_DIR_MIN, EVENT_DIGEST_MIN, EVENT_DUE_M
                     SHOCK_LOOKBACK_MIN, SPEAKER_WINDOW_MIN, TICK_BURST_PCT, WINDOW_10_MIN)
 from ..events import Event
 from ..market_context import SYMBOLS
-from ..state_builder import MarketContext, Scene, load_jsonl
+from ..state_builder import Scene, load_jsonl
 from .gap_open import gap_rank
 from .label_set import LabelSet
 from .leadership import _largest_names
@@ -44,6 +46,7 @@ from .measures import (ET, ONE_MINUTE, bar_time, bars_finished_between, close_at
 from .plausible import left_out
 from .ranks import SameClockRank, fifth_side, rank_days, rank_sessions, same_clock_values, tick_bands_by_minute, tick_bursts
 from .rulers import NO_ANCHOR, SigmaRuler, normal_day_sigma, ruled, sigma_anchor
+from .usual_link import SPX, Session
 from .words import pct, plural, sig
 
 LABELS = ("context.event_clock", "event.reaction", "event.release_clock_10m", "event.statement_and_presser",
@@ -669,14 +672,14 @@ def _change(symbol: str, a: float, b: float, spot: float, anchor: float) -> floa
     return (b - a) * 100.0 if symbol == "$TNX" else (b / a - 1.0) * spot / anchor
 
 
-def _link(index: _Closes, mk: MarketContext, symbol: str, before: datetime, spot: float, anchor: float) -> tuple[float | None, int]:
-    """How far ``symbol`` moved per sigma of the index, minute by minute over the hour before ``before``
-    (the slope through zero), and how many minutes it rests on; None under LINK_MIN_MINUTES of them."""
+def _link(index: _Closes, prices: Session, symbol: str, before: datetime, spot: float, anchor: float) -> tuple[float | None, int]:
+    """How far ``symbol`` moved per sigma of the index, minute by minute (each of the index's bars) over the hour
+    before ``before`` (the slope through zero), and how many minutes it rests on; None under LINK_MIN_MINUTES of them."""
     pairs = []
-    for t, i1 in index.between(before - timedelta(minutes=BASELINE_MIN), before):
-        i0 = index.at(t - ONE_MINUTE)
-        s0, s1 = mk.last(symbol, t - ONE_MINUTE, FEED_MAX_AGE_MIN), mk.last(symbol, t, FEED_MAX_AGE_MIN)
-        if i0 is not None and s0 and s1 is not None:
+    for t, _ in index.between(before - timedelta(minutes=BASELINE_MIN), before):
+        i0, i1 = prices.price(SPX, t - ONE_MINUTE), prices.price(SPX, t)
+        s0, s1 = prices.price(symbol, t - ONE_MINUTE), prices.price(symbol, t)
+        if i0 is not None and i1 is not None and s0 and s1 is not None:
             pairs.append(((i1 - i0) / anchor, _change(symbol, s0, s1, spot, anchor)))
     across = sum(x * x for x, _ in pairs)
     if len(pairs) < LINK_MIN_MINUTES or across == 0:
@@ -697,20 +700,21 @@ class _GroupMoves:
     gaps: dict[str, str]
 
 
-def _group_moves(index: _Closes, mk: MarketContext, start: datetime, end: datetime, anchor: float) -> _GroupMoves | None:
-    """What moved with the index from ``start`` to ``end``; None without the index's closes at both."""
-    i0, i1 = index.at(start), index.at(end)
+def _group_moves(index: _Closes, prices: Session, start: datetime, end: datetime, anchor: float) -> _GroupMoves | None:
+    """What moved with the index from ``start`` to ``end``, every price read at one instant with the index's
+    (``prices``); None without the index's price at both."""
+    i0, i1 = prices.price(SPX, start), prices.price(SPX, end)
     if i0 is None or i1 is None:
         return None
     move = (i1 - i0) / anchor
     gaps: dict[str, str] = {}
 
     def beyond(symbol: str) -> float | None:
-        a, b = mk.last(symbol, start, FEED_MAX_AGE_MIN), mk.last(symbol, end, FEED_MAX_AGE_MIN)
+        a, b = prices.price(symbol, start), prices.price(symbol, end)
         if not a or b is None:
             gaps[symbol] = f"{symbol} has no value within {FEED_MAX_AGE_MIN} minutes of the burst's start and end"
             return None
-        beta, n = _link(index, mk, symbol, start, i0, anchor)
+        beta, n = _link(index, prices, symbol, start, i0, anchor)
         if beta is None:
             gaps[symbol] = f"needs {LINK_MIN_MINUTES} minutes of {symbol} in the hour before the burst to fit its link to the index, has {n}"
             return None
@@ -718,7 +722,7 @@ def _group_moves(index: _Closes, mk: MarketContext, start: datetime, end: dateti
 
     side = 1 if move > 0 else -1
     rates, semis, defensive = beyond("$TNX"), beyond("SMH"), [beyond(x) for x in DEFENSIVES]
-    sectors = [(a, b) for x in SYMBOLS["sectors"] if (a := mk.last(x, start, FEED_MAX_AGE_MIN)) and (b := mk.last(x, end, FEED_MAX_AGE_MIN)) is not None]
+    sectors = [(a, b) for x in SYMBOLS["sectors"] if (a := prices.price(x, start)) and (b := prices.price(x, end)) is not None]
     if len(sectors) < len(SYMBOLS["sectors"]):
         gaps["sectors"] = (f"needs all {len(SYMBOLS['sectors'])} sector funds with a value at the burst's start and end, "
                            f"have {len(sectors)}")
@@ -731,7 +735,8 @@ def _prior_group_moves(scene: Scene, burst: Burst) -> list[_GroupMoves]:
     out = []
     for p in _prior_sessions(scene):
         mk = scene.prior_markets.get(p.day)
-        if mk is not None and (m := _group_moves(p.closes, mk, p.at(burst.start), p.at(burst.end), p.sigma)) is not None:
+        prices = Session(scene.prior_bars[p.day], mk, FEED_MAX_AGE_MIN)
+        if mk is not None and (m := _group_moves(p.closes, prices, p.at(burst.start), p.at(burst.end), p.sigma)) is not None:
             out.append(m)
     return out
 
@@ -744,17 +749,20 @@ def _top_fifth(rank: SameClockRank) -> str:
     return f"{'in' if fifth_side(rank) > 0 else 'short of'} the top fifth"
 
 
-def _megacap_share(scene: Scene, mk: MarketContext, index: _Closes, burst: Burst) -> str:
+def _megacap_share(scene: Scene, prices: Session, burst: Burst) -> str:
     """The largest megacap share of the burst in words: each of the largest names' index weight times its return over
-    the burst, as a share of the index's return, the largest judged against ONE_NAME_SHARE; or why no share is
-    measured (the weights not on file, a name without a price at the burst's edges)."""
+    the burst, as a share of the index's return over the same instants (``prices``), the largest judged against
+    ONE_NAME_SHARE; or why no share is measured (the weights not on file, a name without a price at the burst's
+    edges, an index that did not move between them)."""
     names = _largest_names(scene)
     if isinstance(names, str):
         return f"no megacap's share of it is measured ({names})"
-    i0, i1 = index.at(burst.start), index.at(burst.end)
+    i0, i1 = prices.price(SPX, burst.start), prices.price(SPX, burst.end)
+    if not i0 or i1 is None or i1 == i0:
+        return f"no megacap's share of it is measured ({SPX} has no move within {FEED_MAX_AGE_MIN} minutes of the burst's start and end)"
     shares = {}
     for name, weight in names:
-        a, b = mk.last(name, burst.start, FEED_MAX_AGE_MIN), mk.last(name, burst.end, FEED_MAX_AGE_MIN)
+        a, b = prices.price(name, burst.start), prices.price(name, burst.end)
         if not a or b is None:
             return f"no megacap's share of it is measured ({name} has no value within {FEED_MAX_AGE_MIN} minutes of the burst's start and end)"
         shares[name] = weight * (b / a - 1.0) / (i1 / i0 - 1.0)
@@ -774,8 +782,11 @@ def _cross_asset(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) -
     if mk is None:
         ls.omit(path, "no market-context snapshot today")
         return
-    index = _Closes.of(scene.bars)
-    now = _group_moves(index, mk, burst.start, burst.end, anchor.points)
+    index, prices = _Closes.of(scene.bars), Session(scene.bars, mk, FEED_MAX_AGE_MIN)
+    now = _group_moves(index, prices, burst.start, burst.end, anchor.points)
+    if now is None:
+        ls.omit(path, f"{SPX} has no value within {FEED_MAX_AGE_MIN} minutes of the burst's start and end")
+        return
     gaps = {k: v for k, v in now.gaps.items() if k != "$TNX"}
     if gaps:
         ls.omit(path, next(iter(gaps.values())))
@@ -829,7 +840,7 @@ def _cross_asset(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) -
     moved = "rose" if side > 0 else "fell"
     ls.put(path, ruled(anchor, f"during the shock {rates_words}; "
                  f"semiconductors {semis_moved}, their move the shock's way {_more_than(semis)}, {semis_verdict}; "
-                 f"{_megacap_share(scene, mk, index, burst)}; "
+                 f"{_megacap_share(scene, prices, burst)}; "
                  f"{now.with_it} of {len(SYMBOLS['sectors'])} sector funds {moved} with it, {_more_than(sectors)}, {_top_fifth(sectors)}, "
                  f"and NYSE TICK reached {round(tick)}, {tick_verdict}; "
                  f"the defensive funds (staples, utilities, health care) {shelter_moved}, their move against the index "

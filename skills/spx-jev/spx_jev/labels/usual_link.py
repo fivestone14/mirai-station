@@ -42,11 +42,11 @@ LINK_FIRST_END = time(10, 30)   # the first half hour the usual multiple is meas
 LINK_LAST_END = time(16, 0)
 
 
-def _bar_close(bars: list[tuple[datetime, dict]], t: datetime) -> float | None:
+def _bar_close(bars: list[tuple[datetime, dict]], t: datetime, max_age: timedelta) -> float | None:
     """The close of the newest of ``bars`` (by when each finished, oldest first) finished by ``t``, within
-    VALUE_MAX_AGE_MIN of it."""
+    ``max_age`` of it."""
     k = bisect.bisect_right([done for done, _ in bars], t)
-    return float(bars[k - 1][1]["close"]) if k and t - bars[k - 1][0] <= timedelta(minutes=VALUE_MAX_AGE_MIN) else None
+    return float(bars[k - 1][1]["close"]) if k and t - bars[k - 1][0] <= max_age else None
 
 
 class Session:
@@ -58,10 +58,12 @@ class Session:
     0.17 sigma move beyond its link read 0.34. A snapshot taken before the session's first finished minute (09:31)
     prices nothing: the prior sessions start at that minute's close, and the index quotes of 2026-09-28's 09:30:05
     snapshot still stood at the prior close ($VIX9D) while the funds traded. A context with neither, or a symbol
-    with no bars, reads as it was known (MarketContext.last)."""
+    with no bars, reads as it was known (MarketContext.last). A value older than ``max_age_min`` at the moment asked
+    is a stopped feed and counts as none."""
 
-    def __init__(self, bars: list[dict], market: MarketContext | None):
+    def __init__(self, bars: list[dict], market: MarketContext | None, max_age_min: float = VALUE_MAX_AGE_MIN):
         self.bars, self.market = bars, market
+        self.max_age = timedelta(minutes=max_age_min)
         self._finished = [bar_time(b) + ONE_MINUTE for b in bars]
         saved = market is not None and any(s not in BAR_SYMBOLS for s in market.bars)
         live = market is not None and not saved and SPX in market.known
@@ -71,7 +73,7 @@ class Session:
     def price(self, symbol: str, t: datetime) -> float | None:
         if self._quoted is not None:
             k = bisect.bisect_right(self._quoted, t)
-            if not k or t - self._quoted[k - 1] > timedelta(minutes=VALUE_MAX_AGE_MIN):
+            if not k or t - self._quoted[k - 1] > self.max_age:
                 return None
             if symbol not in self._at:
                 self._at[symbol] = dict(self.market.known.get(symbol) or [])
@@ -80,10 +82,10 @@ class Session:
             if self.market is None:
                 return None
             if symbol in self.market.bars:
-                return _bar_close(self.market.bars[symbol], t)
-            return self.market.last(symbol, t, max_age_min=VALUE_MAX_AGE_MIN)
+                return _bar_close(self.market.bars[symbol], t, self.max_age)
+            return self.market.last(symbol, t, max_age_min=self.max_age / ONE_MINUTE)
         k = bisect.bisect_right(self._finished, t)
-        if not k or t - self._finished[k - 1] > timedelta(minutes=VALUE_MAX_AGE_MIN):
+        if not k or t - self._finished[k - 1] > self.max_age:
             return None
         return float(self.bars[k - 1]["close"])
 

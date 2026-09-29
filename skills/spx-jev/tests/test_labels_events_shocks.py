@@ -21,6 +21,7 @@ from datetime import date, datetime, timedelta
 from conftest import at, bars_from_closes, make_row, prior_sessions
 from spx_jev.labels.events_shocks import DARK, LABELS, build_events_shocks_labels
 from spx_jev.labels.rulers import SigmaRuler
+from spx_jev.labels.usual_link import SPX
 from spx_jev.state_builder import MarketContext
 
 NORMAL = {f"2026-09-{d:02d}": SigmaRuler(100.0, "anchor") for d in range(21, 26)}
@@ -652,6 +653,22 @@ def test_the_largest_megacap_share_of_the_shock_is_measured_from_the_index_weigh
     (tmp_path / "spx_leaders" / "weights.json").unlink()
     gone = labels(replace(s, market=burst_market(s.bars), prior_markets=PRIOR_MARKETS, state_dir=tmp_path))[0]["shock.cross_asset"]
     assert "no megacap's share of it is measured (no index weights: spx_leaders/weights.json is not written yet); 10 of 11" in gone
+
+
+def test_the_shocks_markets_and_the_index_are_priced_at_one_instant_on_a_live_day(scene_factory, tmp_path):
+    """Live, each snapshot is taken ten seconds after a minute closes and quotes the index with the rest. SMH, the
+    sector funds and NVDA keep to the index at every instant, so none of them moved beyond its link and NVDA supplied its
+    weight times its multiple of the move; a quote read against the index's bar close a minute newer made SMH fall
+    beyond its link and NVDA's share of the burst come out wrong."""
+    s = burst_scene(scene_factory, at(12, 2, BURST_DAY), after=6.0)
+    fitted = with_megacaps(s, tmp_path, 5.0)
+    snapped = {k: [(t + timedelta(seconds=10), v) for t, v in pts] for k, pts in fitted.market.known.items() if k != "$TICK"}
+    snapped[SPX] = [(datetime.fromisoformat(b["ts"]) + timedelta(minutes=1, seconds=10), float(b["close"])) for b in s.bars]
+    live = replace(fitted, market=MarketContext({**snapped, "$TICK": fitted.market.known["$TICK"]}, fitted.market.bars))
+    text = labels(live)[0]["shock.cross_asset"]
+    assert "semiconductors moved with their usual link, " in text
+    assert "NVDA supplied the most of it, 40% of the index's move, past the one-name share of 35%: one name" in text
+    assert "the defensive funds (staples, utilities, health care) moved with their usual link to the index" in text
 
 
 def test_defensives_rising_against_a_falling_index_are_the_defensive_bid(scene_factory):
