@@ -218,7 +218,7 @@ def _morning_vs_gap(scene: Scene, gap: Gap | None, why: str, ls: LabelSet) -> No
         ls.omit("gap.morning_vs_gap", why)
         return
     if not gap.real:
-        ls.omit("gap.morning_vs_gap", f"no real gap this morning: the settled open's gap was {gap.ranked()}")
+        ls.omit("gap.morning_vs_gap", f"no real gap this morning: the settled open's gap was {gap.ranked()}", ended=True)
         return
     late = scene.session_open.replace(hour=LATE_MORNING.hour, minute=LATE_MORNING.minute)
     late_close = next((float(b["close"]) for b in scene.bars if bar_time(b) == late - ONE_MINUTE), None)

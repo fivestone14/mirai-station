@@ -204,6 +204,13 @@ def test_a_real_gap_is_one_above_the_bottom_third_of_the_prior_sessions_gaps(sce
     assert ("gap.morning_vs_gap" in got) is real and ("gap.morning_vs_gap" in omitted) is not real
 
 
+def test_no_real_gap_ends_the_morning_label_so_gap_reasserts_sleeps_but_an_unranked_gap_does_not(scene_factory, tmp_path):
+    small = build_gap_open_labels(gapped(scene_factory, tmp_path / "small", at(12, 0), opening(7710.4, [7710.4] * 150)))
+    unranked = build_gap_open_labels(gapped(scene_factory, tmp_path / "unranked", at(12, 0), opening(7732.0, [7736.0] * 160),
+                                            gaps=TWENTY[:9]))
+    assert "gap.morning_vs_gap" in small.ended and "gap.morning_vs_gap" not in unranked.ended
+
+
 def test_whether_the_gap_is_real_waits_for_its_rank(scene_factory, tmp_path):
     need = "its rank needs 10 prior sessions with a trusted morning ruler, a settled open and yesterday's close, have 9"
     _, omitted, gates = labels(gapped(scene_factory, tmp_path, at(12, 0), opening(7732.0, [7736.0] * 160), gaps=TWENTY[:9]))
