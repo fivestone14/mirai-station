@@ -63,6 +63,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from .ask import paths_in
 from .lane import LIVE
 from .schedule import every_min, holds_for_the_day
 from .state_builder import DEFAULT_STATE_DIR, load_jsonl, parse_ts
@@ -248,9 +249,15 @@ def hold_reason(q: dict, h: dict | None, slot: str) -> str | None:
     return None
 
 
+def unheld(doc: dict, no_hold: set[str]) -> set[str]:
+    """The questions reading a label the builder marked this read as one no earlier answer may stand in for
+    (LabelSet.no_hold: a wall touch the siege box has not judged yet): they hold nothing at this read."""
+    return {qid for g in doc["groups"] for qid, q in g["questions"].items() if no_hold & set(paths_in(q))}
+
+
 def plan(doc: dict, last: dict, cad: dict, now: datetime, not_due: dict[str, str] | None = None, borrowed: dict | None = None,
          slot: str | None = None, learned: bool = True,
-         code_answers: dict[str, str] | None = None) -> tuple[dict[str, str], dict[str, dict]]:
+         code_answers: dict[str, str] | None = None, no_hold: set[str] | None = None) -> tuple[dict[str, str], dict[str, dict]]:
     """Which questions to leave out of this read, with the answer to hold for each live one. ``not_due``
     is what the schedule leaves out at the read ``slot`` (schedule.not_due, schedule.read_slot), each
     holding by scheduled_hold, unless the code's answer this read (``code_answers``) moved it
@@ -258,8 +265,9 @@ def plan(doc: dict, last: dict, cad: dict, now: datetime, not_due: dict[str, str
     reads with no answer from today to hold (its read was skipped, it slept or its label was missing) is
     asked at this read. A question held by its schedule says what it holds and since when (hold_reason).
     With ``learned`` a live question that is due is also left out while its cadence has not elapsed. A
-    live question whose last ask today got no answer (lost_today) is asked at any read of the lane.
-    Shadow questions are forecasts: never held, asked when due."""
+    live question whose last ask today got no answer (lost_today) is asked at any read of the lane. A
+    question in ``no_hold`` (unheld) holds nothing and is left to this read's labels, which say why it is
+    not asked. Shadow questions are forecasts: never held, asked when due."""
     skip: dict[str, str] = dict(not_due or {})
     held: dict[str, dict] = {}
     for g in doc["groups"]:
@@ -267,6 +275,9 @@ def plan(doc: dict, last: dict, cad: dict, now: datetime, not_due: dict[str, str
             if q.get("status") != "live":
                 continue
             minutes = cadence_of(cad, q, qid)
+            if qid in (no_hold or ()):
+                skip.pop(qid, None)            # its label says an earlier answer was about another moment: hold none
+                continue
             if slot is not None and lost_today(last.get(qid), now):
                 skip.pop(qid, None)            # its last ask got no answer: a failed ask is not an ask, so ask it again now
                 continue
@@ -298,14 +309,16 @@ def plan(doc: dict, last: dict, cad: dict, now: datetime, not_due: dict[str, str
     return skip, held
 
 
-def fill_missing(doc: dict, skipped: dict, last: dict, cad: dict, now: datetime, held: dict) -> dict[str, dict]:
+def fill_missing(doc: dict, skipped: dict, last: dict, cad: dict, now: datetime, held: dict,
+                 no_hold: set[str] | None = None) -> dict[str, dict]:
     """A live question skipped for a missing label keeps its held answer, if one is young enough. One asleep
     because its label's condition is over (ask.build_requests, LabelSet.ended) holds nothing: the shock has
-    passed, and an answer about it would outlive it."""
+    passed, and an answer about it would outlive it. Nor does one in ``no_hold`` (unheld), whose label is
+    missing only while what it describes is still under way."""
     by_id = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
     for gid, qs in skipped.items():
         for qid, why in qs.items():
-            if qid == "*" or qid in held or not str(why).startswith("missing"):
+            if qid == "*" or qid in held or qid in (no_hold or ()) or not str(why).startswith("missing"):
                 continue
             q = by_id.get(qid)
             if not q or q.get("status") != "live":

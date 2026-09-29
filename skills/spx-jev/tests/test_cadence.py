@@ -7,7 +7,7 @@ from datetime import timedelta
 from conftest import at
 from spx_jev.ask import build_requests, load_questions
 from spx_jev.cadence import (CHANGE_CUT, cadence_of, distance, ensure_cadence, fill_missing, held_answer, is_due, mark_asleep, plan,
-                             recount, snap, vector)
+                             recount, snap, unheld, vector)
 from spx_jev.hour import one_sentence
 from spx_jev.lane import LANES
 from spx_jev.schedule import not_due, read_slot
@@ -97,6 +97,23 @@ def test_an_answer_from_before_the_question_slept_never_comes_back_on_a_later_re
     assert held_answer(last[q], at(14, 30), 120) is None
     fresh = {q: {"row_ts": at(14, 30).isoformat(), "answer": last[q]["answer"]}}          # a fresh answer replaces the entry
     assert fill_missing(DOC, missing, fresh, {"questions": {}}, at(15, 0), {})[q]["held_from"] == at(14, 30).isoformat()
+
+
+def test_a_wall_touch_the_siege_box_has_not_judged_holds_no_earlier_answer():
+    """2026-09-28 11:31: price was still touching a strike the siege box had not judged, so the wall-touch label was
+    missing and the sums held the 11:01 answer, about another strike. A label marked no-hold (LabelSet.no_hold) holds
+    no earlier answer, whether the cadence or the missing label would have held it."""
+    q = "wall_touch_effort"
+    no_hold = unheld(DOC, {"levels.wall_touch_effort"})
+    assert no_hold == {q}
+    last = {q: {"row_ts": at(11, 1).isoformat(), "answer": {"pick": "held", "probabilities": {"held": 0.8}}}}
+    cad = {"questions": {q: {"minutes": 60}}}
+    assert plan(DOC, last, cad, at(11, 31))[1][q]["held_from"] == at(11, 1).isoformat()          # without the mark: held
+    skip, held = plan(DOC, last, cad, at(11, 31), {q: "not on its schedule at the 11:32 ET read"}, {}, "11:32", no_hold=no_hold)
+    assert q not in skip and q not in held
+    missing = {"levels": {q: "missing levels.wall_touch_effort"}}
+    assert fill_missing(DOC, missing, last, cad, at(11, 31), {}, no_hold) == {}
+    assert q in fill_missing(DOC, missing, last, cad, at(11, 31), {})
 
 
 def test_what_the_schedule_does_not_ask_holds_by_its_kind():
