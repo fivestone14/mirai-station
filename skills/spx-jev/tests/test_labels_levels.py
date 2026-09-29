@@ -215,6 +215,10 @@ def test_an_armed_break_names_its_way_its_level_and_its_clock(scene_factory):
     got, _, _ = labels(scene(scene_factory, now, [7752.0] * 90, row_over=down))
     assert got["levels.break_armed"].startswith("a break downward is armed: 44 minutes ago price was turned back at a round 50-point level")
     assert got["levels.break_armed"].endswith("it expires in 1 minute if price does not close through that level")
+    # price already past the level the break is armed toward: the setup has not fired, so it cannot say "if price does not"
+    got, _, _ = labels(scene(scene_factory, now, [7745.0] * 90, row_over=down))
+    assert got["levels.break_armed"].endswith("sits 0.06 sigma below that level; price is already through that level, but the setup "
+                                              "has not fired; it expires in 1 minute")
 
 
 def test_a_break_that_ended_in_the_last_30_minutes_keeps_the_question_awake(scene_factory):

@@ -88,11 +88,14 @@ def _break_armed(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None:
         armed = datetime.fromisoformat(lr["cocked_at"])
         left = max(round(BREAK_EXPIRE_MIN - (scene.now - armed).total_seconds() / 60.0), 0)
         d = (scene.spot - float(lr["cock_level"])) / anchor.points
+        through = d > 0 if lr["cock_direction"] == "call" else d < 0
+        clock = (f"price is already through that level, but the setup has not fired; it expires in {plural(left, 'minute')}" if through
+                 else f"it expires in {plural(left, 'minute')} if price does not close through that level")
         ls.put("levels.break_armed", ruled(
                anchor,
                f"a break {BREAK_WAYS[lr['cock_direction']]} is armed: {minutes_ago(scene.now, armed)} price was turned "
                f"back at {_level_name(lr)} while the book leaned to puts, and it now sits {sig(abs(d))} {above_or_below(d)} that level; "
-               f"it expires in {plural(left, 'minute')} if price does not close through that level"))
+               f"{clock}"))
         return
     since = scene.now - timedelta(minutes=WINDOW_30_MIN)
     ended = next(((datetime.fromisoformat(r["ts"]), r["level_reclaim"]) for r in reversed(scene.rows_today)

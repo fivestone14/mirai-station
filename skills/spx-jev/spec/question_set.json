@@ -5036,8 +5036,8 @@
      "labels_needed": [
       {
        "name": "levels.break_armed",
-       "example": "a break upward is armed: 14 minutes ago price was turned back 0.12 sigma below yesterday's close while the book leaned to puts; it expires in 31 minutes if price does not close through that level",
-       "computed_how": "level_reclaim.break_state, cock_direction, cock_level_kind (named), distance in sigma, cock_age_min vs 45",
+       "example": "a break upward is armed: 14 minutes ago price was turned back at yesterday's close while the book leaned to puts, and it now sits 0.12 sigma below that level; it expires in 31 minutes if price does not close through that level",
+       "computed_how": "level_reclaim.break_state, cock_direction, cock_level_kind (named), distance in sigma, cock_age_min vs 45; when price already sits past the level the break is armed toward, it says so and that the setup has not fired",
        "source": "state/reversion/{day}.jsonl level_reclaim",
        "availability": "live",
        "needs_engine_edit": false
@@ -9561,8 +9561,8 @@
   },
   {
    "name": "levels.break_armed",
-   "example": "a break upward is armed: 14 minutes ago price was turned back 0.12 sigma below yesterday's close while the book leaned to puts; it expires in 31 minutes if price does not close through that level",
-   "computed_how": "level_reclaim.break_state, cock_direction, cock_level_kind (named), distance in sigma, cock_age_min vs 45",
+   "example": "a break upward is armed: 14 minutes ago price was turned back at yesterday's close while the book leaned to puts, and it now sits 0.12 sigma below that level; it expires in 31 minutes if price does not close through that level",
+   "computed_how": "level_reclaim.break_state, cock_direction, cock_level_kind (named), distance in sigma, cock_age_min vs 45; when price already sits past the level the break is armed toward, it says so and that the setup has not fired",
    "source": "state/reversion/{day}.jsonl level_reclaim",
    "availability": "live",
    "needs_engine_edit": false
