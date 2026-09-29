@@ -959,9 +959,11 @@ details .q{margin-top:8px}
   var GAUGE_W = 300, GAUGE_H = 22, GAUGE_L = 6, GAUGE_R = 294;
   // which way a signed fact moved, in the words its row uses: against the day's average it is above or below,
   // everything else went up or down
+  // a change that rounds to nothing at the figure's precision is no change, never "Up 0.0" beside a Flat verdict
   function signedWords(f, path){
-    var v = f.value, mag = f.unit === 'vol points' ? Math.abs(v).toFixed(1) + ' vol points' : Math.abs(v).toFixed(2) + ' of a normal day\u2019s move';
-    if(v === 0) return 'No change';
+    var v = f.value, shown = Math.abs(v).toFixed(f.unit === 'vol points' ? 1 : 2);
+    var mag = shown + (f.unit === 'vol points' ? ' vol points' : ' of a normal day\u2019s move');
+    if(Number(shown) === 0) return 'No change';
     if(path === 'price.vs_vwap') return sentence(mag + (v > 0 ? ' above' : ' below'));
     return (v > 0 ? 'Up ' : 'Down ') + mag;
   }

@@ -1087,6 +1087,17 @@ def test_a_diary_row_with_no_wall_draws_its_fact_in_words(tz):
     assert any(c[0] == "vp" for c in got["main"]), "the questions are drawn below it"
 
 
+def test_a_signed_fact_that_rounds_to_nothing_says_no_change():
+    """The 09-25 11:33 row's implied volatility moved +0.03 vol points, Flat, and the page wrote "Up 0.0 vol points"
+    beside the verdict. A change that rounds to nothing at the figure's precision says No change."""
+    facts = [{"kind": "signed", "value": 0.03, "unit": "vol points"}, {"kind": "signed", "value": -0.12, "unit": "vol points"},
+             {"kind": "signed", "value": 0.004, "unit": "sigma"}, {"kind": "signed", "value": 0.31, "unit": "sigma"},
+             {"kind": "signed", "value": -0.004, "unit": "sigma"}]
+    got = _run(_fn("signedWords") + "console.log(JSON.stringify(D.f.map(function(f){ return signedWords(f, 'vol.iv_30m'); })));",
+               {"f": facts})
+    assert got == ["No change", "Down 0.1 vol points", "No change", "Up 0.31 of a normal day\u2019s move", "No change"]
+
+
 @pytest.mark.parametrize("tz, next_read", [(LA, "07:32"), (TOKYO, "23:32"), (KOLKATA, "20:02")])
 def test_a_live_card_with_no_sum_says_so_when_the_30_minute_call_leads(tz, next_read):
     """Monday from 10:05 to about 10:17 the live 10:02 read and the lane's 10:00 to 10:10 reads were skipped: the page
