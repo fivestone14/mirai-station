@@ -49,7 +49,7 @@ def _run(js, data=None, tz=LA):
         pytest.skip("node is not installed")
     script = ("const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + FIXED_NOW + FAKE_DOM
               + "".join(_fn(f) for f in ("viewerTime", "marketAt", "marketWords", "cap", "pct", "words", "startOf", "endOf",
-                                          "leftWords", "verdict", "endPrice", "callWords", "laneLeads", "svgEl", "lastLaneRead", "hhmm", "marketClock",
+                                          "leftWords", "verdict", "endPrice", "gradeOf", "callWords", "laneLeads", "svgEl", "lastLaneRead", "hhmm", "marketClock",
                                           "marketDay", "sentence"))
               + _var("VIEWER_FMT") + _var("NS") + _var("ROW_H") + js)
     out = subprocess.run([_NODE, "-e", script], input=json.dumps(data), capture_output=True, text=True, timeout=20,
@@ -171,7 +171,7 @@ def _sheet(c, now, tz=LA):
       function tag(t){ return el('div', 'tag', sentence(t)); }
       function bar(name, p, pick){ var b = el('div', 'bar' + (pick ? ' pick' : '')); b.textContent = name.replace(/_/g, ' ') + ' ' + Math.round(p * 100) + '%'; return b; }
     """
-    js = (stubs + _odds() + _var("MIN_WORD") + "".join(_fn(f) for f in ("unitsWords", "movedWords", "signed", "sizeWords", "pathWords", "sharpWords", "runningWords")) +
+    js = (stubs + _odds() + _var("MIN_WORD") + "".join(_fn(f) for f in ("unitsWords", "movedWords", "signed", "sizeWords", "pathWords", "soFarWords", "sharpWords", "runningWords")) +
           _fn("openCall") + "openCall(D.c, {}); console.log(JSON.stringify({title: nodes.csTitle.textContent, body: dump(nodes.csBody)}));")
     return _run(js, {"c": c, "now": now}, tz)
 
@@ -182,59 +182,80 @@ def _result(c, now, tz=LA):
 
 def test_the_sheet_gives_the_average_price_verdict_the_size_and_the_path_with_the_end_price_muted_under_them():
     """S9: right on the average price, its direction deciding, though the end price, down big against a small call,
-    is wrong; the size is a line of its own and the end price's verdict a muted one at the foot."""
+    is wrong; the size, measured at the end price, is a line of its own, the path names where price stood highest and
+    lowest whatever the call, and the end price's verdict is a muted line at the foot."""
     got = _sheet(S9, "2026-09-28T10:45:00-04:00")
     assert got["title"] == "The 07:30 call · looks 10 min ahead"
     assert [_flat_text(k) for k in got["body"]["kids"][0]["kids"]] == [
         "RightResult", "The average price over the window was Down. The call said Down small 38%.",
-        "Called small down, fell big.",
-        "Average \u22124.52 vs \u00B11.59 · best \u22120.93 at min\u00a01 · worst \u221210.15 at min\u00a010",
-        "The average so far: flat min\u00a01 · down min\u00a02\u201310.",
+        "Size at the end price: called Down small, ended Down big.",
+        "Average \u22124.52 vs \u00B11.59 · high \u22120.93 at min\u00a01 · low \u221210.15 at min\u00a010",
+        "Minute by minute, the average stood flat min\u00a01 · down min\u00a02\u2013\u206010.",
         "End price only: Wrong, it ended Down big. Price ended 10.15 points lower at 07:40 than at the read, 2.42 tape units."]
     assert got["body"]["kids"][0]["kids"][-1]["attrs"]["class"] == "cs-end"
-    # on the 30-minute box a call names no size: no size line
-    live = {**S9, "pick": "down", "integral": {**S9["integral"], "size": None}}
-    assert not any(t.startswith("Called") for t in _result(live, "2026-09-28T10:45:00-04:00"))
+    # on the 30-minute box a call names no size: no size line; a finished window's runs are never "so far"
+    live = _result({**S9, "pick": "down", "integral": {**S9["integral"], "size": None}}, "2026-09-28T10:45:00-04:00")
+    assert not any(t.startswith("Size") for t in live) and not any("so far" in t for t in live)
 
 
-def test_the_sheet_names_the_tier_and_a_sharp_move_once_the_service_has_them():
-    """The tier (service.day_integral, from the box's last 20 sessions) replaces the bare verdict; a sharp move is a note."""
+def test_the_sheet_names_the_tier_in_words_that_say_right_and_a_sharp_move_once_the_service_has_them():
+    """The tier (service.day_integral, from the box's last 20 sessions) replaces the bare verdict, the lowest of a
+    right call's three reading Weak right, never a bare Weak; a sharp move is a note."""
     sharp = {**S9, "integral": {**S9["integral"], "tier": "Strong right",
                                 "sharp_move": {"points": -3.44, "minute": 9, "higher_than": 20, "of": 20, "sharp": True}}}
     got = _result(sharp, "2026-09-28T10:45:00-04:00")
     assert got[0] == "Strong rightResult" and got[4] == (
         "A sharp move: the biggest minute, \u22123.44 at min\u00a09, was bigger than the biggest in this window on 20 of the last 20 sessions.")
-    weak = _result({**S9, "integral": {**S9["integral"], "tier": "Weak"}}, "2026-09-28T10:45:00-04:00")
-    assert weak[0] == "WeakResult" and not any(t.startswith("A sharp move") for t in weak)
+    weak = _result({**S9, "integral": {**S9["integral"], "tier": "Weak right"}}, "2026-09-28T10:45:00-04:00")
+    assert weak[0] == "Weak rightResult" and not any(t.startswith("A sharp move") for t in weak)
+    stale = _result({**S9, "integral": {**S9["integral"], "stale_read": True}}, "2026-09-28T10:45:00-04:00")
+    assert "The read\u2019s price was stale, so this call is kept out of learning." in stale
+    assert not any("stale" in t for t in _result(S9, "2026-09-28T10:45:00-04:00"))
 
 
-def test_while_the_window_runs_the_sheet_says_the_grade_builds_and_the_end_price_waits():
-    live = {**call("10:32", "11:02", "flat", 0.7), "odds": {"up": 0.2, "down": 0.1, "flat": 0.7}}
-    assert _result(live, "2026-09-28T10:40:00-04:00", TOKYO) == \
-        ["Open22 min left", "It is graded at 00:02, on the average price over its window. The grade builds as the window runs."]
-    # the end price graded, the average still waiting on a bar: pending, the end price muted under it
-    waiting = {**live, "end_price": {"outcome": "flat", "hit": True, "moved": {"realized_sigma": 0.02}}}
-    assert _result(waiting, "2026-09-28T11:04:00-04:00", TOKYO) == [
-        "Grade pending", "The window closed at 00:02. The grade comes with the next run.",
-        "End price only: Right, it ended Flat. Price ended 0.02 of a normal day\u2019s move higher at 00:02 than at the read."]
-    assert _run("console.log(JSON.stringify(callWords(D.c, Date.parse(D.now))));", {"c": waiting, "now": "2026-09-28T11:04:00-04:00"}) == \
-        {"text": "Grade pending"}
-    holed = {**waiting, "integral": {"graded": False, "reason": "not graded: bars missing"}}
-    assert _result(holed, "2026-09-28T16:30:00-04:00")[:2] == ["Not graded", "The average price could not grade it: bars missing."]
-    assert _run("console.log(JSON.stringify(callWords(D.c, Date.parse(D.now))));", {"c": holed, "now": "2026-09-28T16:30:00-04:00"}) == \
-        {"text": "Not graded"}
+def test_an_open_call_shows_its_average_so_far():
+    """While a call's window runs, the sheet gives the partial grade the card carries (service.open_grade): the
+    average over the minutes finished against the whole window's edge, its side, and the minute it stands at in the
+    viewer's zone. Without one it says when one comes, and never a verdict."""
+    open_call = {**call("10:30", "10:40", "down_small", 0.38), "odds": S9["odds"],
+                 "so_far": {"g": -2.31, "edge": 1.59, "label": "down", "minutes": 5, "of": 10, "as_of": "2026-09-28T10:35:00-04:00"}}
+    got = _result(open_call, "2026-09-28T10:36:00-04:00", TOKYO)
+    assert got[0] == "Open4 min left" and got[2] == "Average so far \u22122.31 vs \u00B11.59: down, as of 23:35."
+    bare = _result({k: v for k, v in open_call.items() if k != "so_far"}, "2026-09-28T10:36:00-04:00")
+    assert len(bare) == 3 and "so far" in bare[2] and not any(w in "".join(bare) for w in ("Right", "Wrong", "Passed"))
+
+
+def test_a_call_with_no_average_price_grade_stands_on_its_end_price_said_so():
+    """The average could not grade it (the shadow grade failed, or its window missed bars): the row and the sheet
+    give the end price's verdict, marked as the end price's alone ("Ended", "End price only"), as the tally counts it
+    (service.call_verdict), never "Grade pending" for ever."""
+    live = {**call("10:32", "11:02", "flat", 0.7), "odds": {"up": 0.2, "down": 0.1, "flat": 0.7},
+            "end_price": {"outcome": "flat", "hit": True, "moved": {"realized_sigma": 0.02}}, "end_price_only": True}
+    assert _result(live, "2026-09-28T11:04:00-04:00", TOKYO) == [
+        "RightEnd price only", "No average-price grade for this call, so it stands on its end price alone. It ended Flat. The call said Flat 70%.",
+        "Price ended 0.02 of a normal day\u2019s move higher at 00:02 than at the read."]
+    words = "console.log(JSON.stringify(callWords(D.c, Date.parse(D.now))));"
+    assert _run(words, {"c": live, "now": "2026-09-28T11:04:00-04:00"}) == {"text": "Ended Flat · ", "strong": "Right", "short": "Flat · "}
+    holed = {**live, "pick": "unsure", "integral": {"graded": False, "reason": "not graded: bars missing"}}
+    got = _result(holed, "2026-09-28T16:30:00-04:00")
+    assert got[0] == "PassedEnd price only" and got[1].startswith("No average-price grade for this call (bars missing), so it stands")
+    assert _run(words, {"c": holed, "now": "2026-09-28T16:30:00-04:00"}) == {"text": "Ended Flat · ", "strong": "Passed", "short": "Flat · "}
+    # the window closed and nothing graded yet at all: pending, until the next run
+    pending = {k: v for k, v in live.items() if k not in ("end_price", "end_price_only")}
+    assert _result(pending, "2026-09-28T11:04:00-04:00", TOKYO)[0] == "Grade pending"
+    assert _run(words, {"c": pending, "now": "2026-09-28T11:04:00-04:00"}) == {"text": "Grade pending"}
 
 
 def test_a_card_from_before_the_average_price_grade_still_gives_its_end_price():
     c = {**call("09:45", "09:55", "up_small", 0.38, outcome="up_big", hit=False, moved={"realized_points": 8.22, "realized_units": 1.962}),
          "odds": {"down_big": 0.05, "down_small": 0.12, "flat": 0.3, "up_small": 0.38, "up_big": 0.1, "unsure": 0.05}}
-    assert _result(c, "2026-09-28T10:02:00-04:00") == [
-        "WrongResult", "It ended Up big. The call said Up small 38%.",
-        "Price ended 8.22 points higher at 06:55 than at the read, 1.96 tape units."]
+    got = _result(c, "2026-09-28T10:02:00-04:00")
+    assert got[0] == "WrongEnd price only" and "It ended Up big. The call said Up small 38%." in got[1]
+    assert got[2] == "Price ended 8.22 points higher at 06:55 than at the read, 1.96 tape units."
     small = {**c, "moved": {"realized_points": -1.5, "realized_units": 0.358}}
     assert _result(small, "2026-09-28T10:02:00-04:00")[2] == "Price ended 1.50 points lower at 06:55 than at the read, 0.36 of a tape unit."
     assert _run("console.log(JSON.stringify(callWords(D.c, Date.parse(D.now))));", {"c": c, "now": "2026-09-28T10:02:00-04:00"}) == \
-        {"text": "Was Up big · ", "strong": "Wrong"}
+        {"text": "Ended Up big · ", "strong": "Wrong", "short": "Up · "}
 
 
 def test_the_calls_row_gives_the_average_prices_verdict_its_direction_deciding():
@@ -242,7 +263,7 @@ def test_the_calls_row_gives_the_average_prices_verdict_its_direction_deciding()
     s1 = call("13:01", "13:31", "flat", 0.5, integral=graded("up", "wrong", 4.45, 3.19), end_price={"outcome": "flat", "hit": True})
     got = _run("console.log(JSON.stringify(D.c.map(function(c){ return callWords(c, Date.parse(D.now)); })));",
                {"c": [S9, s1], "now": "2026-09-28T14:00:00-04:00"})
-    assert got == [{"text": "Was Down · ", "strong": "Right"}, {"text": "Was Up · ", "strong": "Wrong"}]
+    assert got == [{"text": "Was Down · ", "strong": "Right", "short": "Down · "}, {"text": "Was Up · ", "strong": "Wrong", "short": "Up · "}]
 
 
 def test_the_sheet_gives_the_reason_a_call_was_not_graded_in_the_viewers_zone():
@@ -254,39 +275,44 @@ def test_the_sheet_gives_the_reason_a_call_was_not_graded_in_the_viewers_zone():
         ["Not graded", "Halted window: no settled open (the 06:34 bar) on a finished day."]
 
 
+def _opening(tallies):
+    sched = {"reads": ["2026-09-28T09:35:00-04:00", "2026-09-28T10:30:00-04:00"], "looks_ahead_min": 10}
+    return _run(_fn("openingDone") + "console.log(JSON.stringify(D.t.map(function(t){ return openingDone(t).kids[1].textContent; })));",
+                {"t": [{"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": t} for t in tallies]})
+
+
 def test_an_unsure_call_is_passed_on_the_page_with_its_lean_never_a_wrong_one():
     """The service counts a call whose pick was unsure as passed (service.calls_block): the morning's line says how
-    many of the calls graded right or wrong were right, and the passes apart, as the close-out log does
-    (service.tally_words); the call itself says Passed and where it leaned, never Wrong. S8: the average sat down."""
+    many of the calls graded right or wrong were right, and the passes apart; the call itself says Passed and where
+    it leaned, never Wrong, its end price's line too. S8: the average sat down."""
     now = "2026-09-28T10:45:00-04:00"
     unsure = call("09:35", "09:45", "unsure", 0.4, integral=graded("down", "passed", -4.03, 2.41, lean={"direction": "flat", "p": 0.45}),
                   end_price={"outcome": "down_small", "hit": False})
     assert _run("console.log(JSON.stringify(callWords(D.c, Date.parse(D.now))));", {"c": unsure, "now": now}) == \
-        {"text": "Was Down · ", "strong": "Passed"}
-    sched = {"reads": ["2026-09-28T09:35:00-04:00", "2026-09-28T10:30:00-04:00"], "looks_ahead_min": 10}
-    lines = _run(_fn("openingDone") + "console.log(JSON.stringify(D.t.map(function(t){ return dump(openingDone(t)); })));", {"t": [
-        {"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": {"calls": 4, "graded": 4, "right": 2, "passed": 1}},
-        {"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": {"calls": 6, "graded": 4, "right": 2, "passed": 1}},
-        {"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": {"calls": 8, "graded": 8, "right": 5, "passed": 0}},
-        {"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": {"calls": 8, "graded": 7, "right": 0, "passed": 7}}]})
-    assert [_flat_text(l) for l in lines] == ["opening done2 of 3 calls right · 1 passed",
-                                              "opening done2 of 3 calls right · 1 passed · 2 still to grade",
-                                              "opening done5 of 8 calls right", "opening done7 passed · 1 still to grade"]
+        {"text": "Was Down · ", "strong": "Passed", "short": "Down · "}
+    assert _opening([{"calls": 4, "graded": 4, "right": 2, "passed": 1}, {"calls": 6, "graded": 4, "right": 2, "passed": 1},
+                     {"calls": 8, "graded": 8, "right": 5, "passed": 0}, {"calls": 8, "graded": 7, "right": 0, "passed": 7}]) == [
+        "2 of 3 calls right · 1 passed", "2 of 3 calls right · 1 passed · 2 still to grade", "5 of 8 calls right", "7 passed · 1 still to grade"]
     sheet = _result({**unsure, "odds": {"down_big": 0.1, "down_small": 0.2, "flat": 0.2, "up_small": 0.05, "up_big": 0.05, "unsure": 0.4}}, now)
     assert sheet[:2] == ["PassedLeaned flat 45%", "The average price over the window was Down. The call said Unsure 40%. Unsure makes no call, "
                                                   "so it is passed: counted apart from the calls right and wrong, never as a miss."]
-    assert sheet[-1] == "End price only: Unsure, it ended Down small." and not any("Wrong" in t for t in sheet)
+    assert sheet[-1] == "End price only: Passed, it ended Down small." and not any("Wrong" in t or "Unsure," in t for t in sheet)
+
+
+def test_a_morning_with_nothing_graded_says_so_and_an_old_cards_unsure_reads_as_passed():
+    """A tally with nothing graded reads "no calls graded yet", never "0 of 0"; a card written before the average-price
+    grade counted its passes as unsure, and they read as passes, never "0 of 7"."""
+    assert _opening([{"calls": 3, "graded": 0, "right": 0, "passed": 0},
+                     {"calls": 8, "graded": 8, "right": 0, "unsure": 7}, {"calls": 3, "graded": 3, "right": 1}]) == [
+        "no calls graded yet", "0 of 1 calls right · 7 passed", "1 of 3 calls right"]
 
 
 def test_the_page_words_the_tally_as_the_close_out_log_does(monkeypatch):
     monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[3] / "skills" / "spx-jev"))
     from spx_jev.service import tally_words
-    tallies = [{"calls": c, "graded": g, "right": r, "passed": p} for c, g, r, p in
-               ((4, 4, 2, 1), (6, 4, 2, 1), (8, 8, 5, 0), (8, 7, 0, 7), (3, 0, 0, 0), (2, 2, 0, 2))]
-    sched = {"reads": ["2026-09-28T09:35:00-04:00", "2026-09-28T10:30:00-04:00"], "looks_ahead_min": 10}
-    lines = _run(_fn("openingDone") + "console.log(JSON.stringify(D.t.map(function(t){ return openingDone(t).kids[1].textContent; })));",
-                 {"t": [{"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": t} for t in tallies]})
-    assert lines == [tally_words(t) for t in tallies]
+    tallies = [{"calls": c, "graded": g, "right": r, "passed": p, "end_price_only": e} for c, g, r, p, e in
+               ((4, 4, 2, 1, 0), (6, 4, 2, 1, 0), (8, 8, 5, 0, 0), (8, 7, 0, 7, 0), (3, 0, 0, 0, 0), (2, 2, 0, 2, 0), (5, 4, 2, 1, 2))]
+    assert _opening(tallies) == [tally_words(t) for t in tallies]
 
 
 # ---- the schedule stays on the market clock
@@ -431,14 +457,16 @@ def test_the_page_fits_the_owners_360px_phone():
 # Chrome at 360 with the shipped face: a calls row's words after its bar (10.5px, the verdict bold), and the sheet's
 # verdict row (22px bold beside 11px capitals spaced .1em)
 _ROW_W = {"Down · Wrong": 69.65, "Down · Passed": 72.33, "Flat · Passed": 61.86, "Grade pending": 75.27, "Never graded": 68.17,
-          "Was Down · Passed": 95.38, "Was Down · Wrong": 92.69}
-_VERDICT_W = {"Strong right": 127.39, "Result": 46.70, "Passed": 77.14, "Leaned down 100%": 133.14}
+          "Was Down · Passed": 95.38, "Was Down · Wrong": 92.69, "Down small · Passed": 99.81, "Ended Down small · Passed": 134.50}
+_VERDICT_W = {"Strong right": 127.39, "Weak right": 114.72, "Result": 46.70, "Passed": 77.14, "Leaned down 100%": 133.14,
+              "End price only": 104.70}
 
 
 def test_the_newest_calls_verdict_fits_after_its_bar_on_the_owners_phone():
     """Once the newest call is graded (the close-out), its words have 84 of the drawing's 300 after its bar, and
-    "Was Down · Passed" (95px in Chrome) would be cut at the card's edge: the newest row drops "Was", the rows
-    with room keep it. Checked in Chrome at 360x800 on the live card's close-out with no text past the drawing."""
+    "Was Down · Passed" (95px in Chrome), or "Ended Down small · Passed" on the end price alone, would be cut at the
+    card's edge: the newest row gives the side alone, the rows with room keep the whole. Checked in Chrome at 360x800
+    on the live card's close-out with no text past the drawing."""
     calls = [call("10:30", "10:40", "unsure", 0.4, integral=graded("down", "passed")),
              call("10:25", "10:35", "down", 0.5, integral=graded("down", "right")),
              call("10:20", "10:30", "up", 0.5, integral=graded("down", "wrong")),
@@ -453,6 +481,11 @@ def test_the_newest_calls_verdict_fits_after_its_bar_on_the_owners_phone():
     for words in ("Down · Wrong", "Down · Passed", "Flat · Passed", "Grade pending", "Never graded"):
         assert _ROW_W[words] <= room, f"{words!r} is cut after the newest bar at 360"
     assert _ROW_W["Was Down · Wrong"] <= 300 - float(side[1]["attrs"]["x"])
+    assert _ROW_W["Down small · Passed"] > room                              # a five-band end price needs its side alone
+    alone = [{**calls[0], "integral": None, "end_price": {"outcome": "down_small", "hit": False}, "end_price_only": True}] + calls[1:]
+    svg = _run(js, {"calls": alone, "at": "2026-09-28T10:43:00-04:00"}, LA)
+    first = next(t for t in svg["kids"] if t["tag"] == "text" and t["attrs"].get("class") == "t-side")
+    assert first["text"] + "".join(k["text"] for k in first["kids"]) == "Down · Passed"
 
 
 def test_the_sheets_new_lines_fit_or_wrap_on_the_owners_phone():
@@ -461,7 +494,7 @@ def test_the_sheets_new_lines_fit_or_wrap_on_the_owners_phone():
     assert "padding:10px20px" in _rule(".sheet") and "padding:13px14px" in _rule(".sh-caveat")
     inside = 360 - 2 * 20 - 2 * 14
     gap = _px(".cs-verdict", "gap")
-    for word, label in (("Strong right", "Result"), ("Passed", "Leaned down 100%")):
+    for word, label in (("Strong right", "Result"), ("Weak right", "End price only"), ("Passed", "Leaned down 100%"), ("Passed", "End price only")):
         assert _VERDICT_W[word] + gap + _VERDICT_W[label] <= inside, f"{word} {label} runs past the sheet at 360"
     for sel in (".cs-result p", ".cs-result p.cs-end", ".sh-caveat"):
         assert "nowrap" not in _rule(sel) and "overflow" not in _rule(sel), sel
@@ -816,11 +849,18 @@ def _closed(**checks):
 
 @pytest.mark.parametrize("card, now, tz, want", [
     (pre_card("09:28"), et("09:50"), LA, "pre-market call 06:28Up 41%Checked 06:44 and 07:04"),
-    (_closed(open_10={"outcome": "flat", "hit": False}), et("10:30"), LA, "pre-market call 06:28Up 41%06:44 was Flat, wrong · 07:04 not graded yet"),
-    (_closed(open_10={"outcome": "flat", "hit": False, "pick": "unsure"}, open_30={"outcome": "up", "hit": False, "pick": "down"}), et("10:30"), LA,
-     "pre-market call 06:28Up 41%06:44 was Flat, unsure · 07:04 was Up, wrong"),
-    (_closed(open_10={"outcome": "up", "hit": True}, open_30={"outcome": "up", "hit": True}), et("10:30"), TOKYO,
+    # each check on the average price over its window, as the close-out log counts it, its end price only kept
+    (_closed(open_10={"outcome": "flat", "hit": True, "pick": "flat", "integral": graded("up", "wrong")}), et("10:30"), LA,
+     "pre-market call 06:28Up 41%06:44 was Up, wrong · 07:04 not graded yet"),
+    (_closed(open_10={"outcome": "flat", "hit": False, "pick": "unsure", "integral": graded("down", "passed")},
+             open_30={"outcome": "up", "hit": False, "pick": "down", "integral": graded("up", "wrong")}), et("10:30"), LA,
+     "pre-market call 06:28Up 41%06:44 was Down, passed · 07:04 was Up, wrong"),
+    (_closed(open_10={"outcome": "up", "hit": False, "pick": "up_small", "integral": graded("up", "right")},
+             open_30={"outcome": "up", "hit": True, "pick": "up", "integral": graded("up", "right")}), et("10:30"), TOKYO,
      "pre-market call 22:28Up 41%22:44 was Up, right · 23:04 was Up, right"),
+    # no average-price grade: the end price alone, said so, an unsure pick passed there too
+    (_closed(open_10={"outcome": "flat", "hit": False}, open_30={"outcome": "flat", "hit": False, "pick": "unsure"}), et("10:30"), LA,
+     "pre-market call 06:28Up 41%06:44 ended Flat, wrong · 07:04 ended Flat, passed"),
     (_closed(), et("12:00"), NY, "pre-market call 09:28Up 41%09:44 not graded yet · 10:04 not graded yet"),
 ])
 def test_after_the_hand_over_the_call_folds_to_one_line_with_each_checks_result(card, now, tz, want):
