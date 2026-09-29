@@ -108,7 +108,7 @@ from zoneinfo import ZoneInfo
 
 from . import archive, events, integral, scores
 from .ask import load_questions
-from .hour import FIVE
+from .hour import FIVE, average_probabilities
 from .labels.measures import SETTLED_OPEN_BAR, close_at, settled_open
 from .labels.rulers import SigmaRuler, morning_ruler, vix_at_settled_open
 from .lane import LANES, LIVE, RECORD, Lane
@@ -126,6 +126,7 @@ SIZES = ("big", "small")
 WEIGHTS_LOG = "weights_log.jsonl"
 INTEGRAL_NAME = "integral_grades.jsonl"
 INTEGRAL_LOCK = f"{INTEGRAL_NAME}.lock"     # held while a run or a backfill reads, dedupes and appends the side file
+BAD_PROBABILITIES = "not graded: bad probabilities"
 
 
 def _bar_before(bars: list[dict], t: datetime) -> dict:
@@ -534,11 +535,28 @@ def _size_line(old: dict) -> dict:
 def average_call(rec: dict | None, qid: str, lane: Lane = LIVE) -> dict | None:
     """The average-price sum's answer on a sum record, when horizon ``qid`` is the box it forecasts (the lane's primary)
     and JEV answered it with a pick and probabilities; None for any other box, a record from before the sum, or a read
-    it got no answer on. What the average-price grade grades, and what the phone calls."""
+    it got no answer on, or one whose odds are not odds over up, flat and down (hour.average_probabilities). What the
+    average-price grade grades, and what the phone calls."""
     if not lane.average or qid != lane.primary or not isinstance(rec, dict):
         return None
     avg = rec.get("average")
-    return avg if isinstance(avg, dict) and avg.get("pick") and isinstance(avg.get("probabilities"), dict) else None
+    if not isinstance(avg, dict) or (probs := average_probabilities(avg.get("probabilities"))) is None or avg.get("pick") not in probs:
+        return None
+    return avg
+
+
+def told_edge(avg: dict | None) -> float | None:
+    """The flat edge in points the average-price sum was told (hour.average_window), which its grade is set against, so
+    the two can never part at the edge; None without one."""
+    e = (avg or {}).get("edge_points")
+    return float(e) if isinstance(e, (int, float)) and not isinstance(e, bool) and e > 0 else None
+
+
+def bad_average(rec: dict | None, qid: str, lane: Lane = LIVE) -> bool:
+    """Whether the record holds an answer to the average-price sum for box ``qid`` (no ``error`` on it) that cannot be
+    graded: its odds or its pick are not the sum's (average_call). Such a read is written as not graded."""
+    avg = rec.get("average") if lane.average and qid == lane.primary and isinstance(rec, dict) else None
+    return isinstance(avg, dict) and not avg.get("error") and average_call(rec, qid, lane) is None
 
 
 def _log_loss(p: dict, band: str) -> float:
@@ -558,23 +576,18 @@ def integral_scores(avg: dict, label: str) -> dict:
     return out
 
 
-def told_edge(avg: dict | None) -> float | None:
-    """The flat edge in points the average-price sum was told (hour.average_window), which its grade is set against, so
-    the two can never part at the edge; None without one."""
-    e = (avg or {}).get("edge_points")
-    return float(e) if isinstance(e, (int, float)) and not isinstance(e, bool) and e > 0 else None
-
-
 def integral_line(line: dict, qid: str, rec: dict | None, bars: list[dict], prior: dict[str, list[dict]], lane: Lane = LIVE) -> dict:
     """The shadow integral grade of horizon ``qid`` of a grades.jsonl ``line``, over the window the line was graded on
     (horizon_start to mark_at) and against its flat band: the line's anchor times the horizon's sigma band, or the
     record's ``band.flat_points``. Measured from the read's spot, or the settled open the line was measured from. The
     call graded is the average-price sum's where it answered (average_call), against the edge JEV was told (told_edge,
     kept as ``edge_told``) and with its scores (integral_scores), else the end-price sum's own; ``sum`` names the one
-    graded."""
+    graded. A record whose average-price answer cannot be graded (bad_average) is written as not graded."""
     head = {"row_ts": line["row_ts"], "horizon": qid, "rule_version": integral.RULE_VERSION}
     if rec is None:
         return {**head, "graded": False, "reason": "not graded: the read's sum record is not on file"}
+    if bad_average(rec, qid, lane):
+        return {**head, "sum": lane.average, "graded": False, "reason": BAD_PROBABILITIES}
     minutes, flat = lane.horizons[qid]
     t0, t1 = horizon_start(line["row_ts"], lane), mark_at(line["row_ts"], minutes, lane)
     spot = float(line["from"]["settled_open"]) if lane.graded_from_settled_open else float(rec["spot"])
@@ -602,7 +615,9 @@ def integral_run(state_dir: Path, out_dir: Path, lane: Lane = LIVE, day: str | N
     """Append the shadow integral grade of every horizon grades.jsonl has graded and integral_grades.jsonl does not
     hold under this rule_version, from the day's bars; nothing else is written. A window with bars missing waits
     today, when they can still come, and is written as not graded on a finished day, so none is retried for ever
-    and none is written twice. Returns the new lines."""
+    and none is written twice; a read whose average-price odds are not odds is written as not graded
+    (BAD_PROBABILITIES), and one whose grading fails is logged and left for the next run, never holding back the
+    others. Returns the new lines."""
     if not (out_dir / "grades.jsonl").exists():
         return []
     # a backfill by hand and a job's run can overlap: each reads what the other appended before it adds its own
@@ -627,7 +642,11 @@ def integral_run(state_dir: Path, out_dir: Path, lane: Lane = LIVE, day: str | N
                 key = (g["row_ts"], qid, integral.RULE_VERSION)
                 if key in have:
                     continue
-                line = integral_line(g, qid, recs.get(g["row_ts"]), bars, prior, lane)
+                try:
+                    line = integral_line(g, qid, recs.get(g["row_ts"]), bars, prior, lane)
+                except Exception as e:  # one read that cannot be graded must never hold back the rest of the batch
+                    print(f"integral grade of {g['row_ts']} {qid} failed: {type(e).__name__}: {e}", file=sys.stderr)
+                    continue                              # nothing written: a later run tries it again
                 if line.get("reason") == integral.NOT_GRADED and d >= today:
                     continue                              # a hole today can still be filled: a later run grades it
                 new.append(line)

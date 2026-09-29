@@ -71,7 +71,7 @@ def test_the_average_summary_is_the_call_and_a_missing_or_unasked_one_says_why()
 @pytest.fixture
 def fixture_run(tmp_path, monkeypatch):
     run_fixture(tmp_path, monkeypatch)
-    return tmp_path / "spx_jev", tmp_path / "spx_jev" / "lanes" / "tape"
+    return tmp_path / "spx_jev", tmp_path / "spx_jev" / "lanes" / "tape", PREMARKET.folder(tmp_path / "premarket")
 
 
 def _lines(path):
@@ -79,43 +79,59 @@ def _lines(path):
 
 
 def test_a_live_read_calls_the_average_and_its_grade_grades_that_pick_with_its_scores(fixture_run):
-    """The 10:02 read of a day that climbs: JEV's end-price sum said up at 50%, its average-price sum down at 60%. The
-    phone's call is the average's; the average over the window sat up, 6.68 against the 3.11-point edge JEV was told
-    (0.07 of the 75-point anchor, narrowed by 0.5918), so the call is wrong, and its odds score a Brier of 1.04 and a
-    log loss of ln 5. The end-price sum's own pick and its grade ride beside it."""
-    live, _ = fixture_run
+    """The 10:02 read of a day that climbs: JEV's end-price sum said up at 50%, its average-price sum down at 60%, and
+    the ten flat prior sessions' average over the same window was flat every time, so half and half the call is flat
+    at 60%. The phone's call is that; the average over the window sat up, 6.68 against the 3.11-point edge JEV was
+    told (0.07 of the 75-point anchor, narrowed by 0.5918), so it is wrong, its odds scored against up beside JEV's
+    own and the clock's. The end-price sum's own pick and its grade ride beside it."""
+    live, _, _ = fixture_run
     rec = _lines(live / "hour" / f"{DAY}.jsonl")[0]
     assert rec["average_request"]["state"]["answers"] == rec["request"]["state"]["answers"]    # the same sentences, two requests
-    assert rec["average"]["edge_points"] == 3.11 and rec["average"]["pick"] == "down"
-    assert rec["pick"] == "up" and rec["primary"] == "next_30"                             # the end-price sum, flat on top as before
+    assert rec["average"]["edge_points"] == 3.11 and rec["average"]["jev"]["pick"] == "down" and rec["average"]["pick"] == "flat"
+    assert rec["average"]["blend"]["used"] is True and rec["average"]["clock"]["probabilities"]["flat"] == 1.0
+    assert rec["primary"] == "next_30" and rec["by"]["next_30"]["jev"]["pick"] == "up"   # the end-price sum, flat on top as before
     (line,) = [g for g in _lines(live / grade.INTEGRAL_NAME) if g["horizon"] == "next_30"]
     assert (line["rule_version"], line["sum"], line["pick"], line["label"], line["g"], line["edge"], line["verdict"]) == \
-        (2, "average_30", "down", "up", 6.68, 3.11, "wrong")
+        (2, "average_30", "flat", "up", 6.68, 3.11, "wrong")
     assert line["edge_told"] == line["edge"]
-    assert line["scores"] == {"brier": 1.04, "log_loss": round(math.log(5), 4)}
+    assert line["scores"] == {"brier": 1.26, "log_loss": round(math.log(10), 4), "jev_brier": 1.04, "jev_log_loss": round(math.log(5), 4),
+                              "clock_brier": 2.0, "clock_log_loss": round(math.log(1.04 / 0.02), 4)}
     (sixty,) = [g for g in _lines(live / grade.INTEGRAL_NAME) if g["horizon"] == "next_60"]
-    assert sixty["sum"] == "next_60" and sixty["pick"] == "flat" and "scores" not in sixty    # no average-price sum for this box
+    assert sixty["sum"] == "next_60" and sixty["pick"] == rec["by"]["next_60"]["pick"] and "scores" not in sixty   # no average sum here
     [call] = service.day_calls(live, DAY, LIVE)
-    assert (call["pick"], call["p"], call["odds"], call["sum"]) == ("down", 0.6, AVERAGE["probabilities"], "average_30")
-    assert call["end_price"]["pick"] == "up" and call["end_price"]["p"] == 0.5 and call["end_price"]["hit"] is True
+    assert (call["pick"], call["p"], call["sum"]) == ("flat", 0.6, "average_30") and call["odds"] == rec["average"]["probabilities"]
+    assert call["end_price"]["pick"] == rec["pick"] and call["end_price"]["hit"] is (rec["pick"] == "up")
     assert service.call_verdict(call) == "wrong" and call["integral"]["sum"] == "average_30"
     card = json.loads((live / "latest.json").read_text())
-    assert card["hour"]["average"]["pick"] == "down" and card["hour"]["pick"] == "up"
-    assert card["hour"]["average"]["blend"] == {"used": False, "why": "only 0 prior sessions with enough reads graded on the average price; "
-                                                                     "its time-of-day odds need 10"}
+    assert card["hour"]["average"]["pick"] == "flat" and card["hour"]["average"]["blend"]["sessions"] == 10
     (read,) = [r for r in _lines(live / "archive" / f"{DAY}.jsonl") if r["kind"] == "read" and r["lane"] == "live"]
     assert read["average_request"]["id"] == "average" and read["average_response"]["answers"]["average_30"] == AVERAGE
     assert read["schema_version"] == archive.SCHEMA_VERSION == 5
 
 
 def test_the_opening_call_is_the_average_and_its_size_stays_the_end_prices_second_line(fixture_run):
-    _, tape = fixture_run
+    _, tape, _ = fixture_run
     (line,) = _lines(tape / grade.INTEGRAL_NAME)
     assert (line["sum"], line["pick"], line["label"], line["verdict"]) == ("average_10", "down", "flat", "wrong")
     assert line["size"]["call"] == "small"                          # named by the five-way end-price sum, up_small, never asked again
     assert line["edge_told"] == line["edge"] == 1.66 and "brier" in line["scores"]
     rec = _lines(tape / "hour" / f"{DAY}.jsonl")[0]
     assert "unit" in rec["request"]["state"]["context"] and "unit" not in rec["average_request"]["state"]["context"]
+
+
+def test_the_pre_market_call_is_graded_against_the_edge_its_question_gave(fixture_run):
+    """The 09:28 read before the open: the pre-open ruler's 30-minute flat band narrowed to the edge JEV is told in its
+    context, from the settled open; the grade sets the average from the settled open against that same edge."""
+    _, _, pre = fixture_run
+    rec = _lines(pre / "hour" / f"{DAY}.jsonl")[0]
+    edge = rec["average"]["edge_points"]
+    words = rec["average_request"]["state"]["context"]["average"]
+    assert f"within {edge:.2f} points of the settled open" in words and "S&P futures" in words
+    assert "the 30 minutes after the settled open" in rec["average_request"]["questions"]["open_average_30"]["instructions"]
+    (line,) = [g for g in _lines(pre / grade.INTEGRAL_NAME) if g["horizon"] == "open_30"]
+    assert (line["sum"], line["pick"], line["edge_told"], line["edge"]) == ("open_average_30", "down", edge, edge)
+    [call] = service.day_calls(pre, DAY, PREMARKET)
+    assert call["sum"] == "open_average_30" and call["pick"] == "down"
 
 
 # ---- the grade, line by line
@@ -188,26 +204,7 @@ def test_the_end_price_verdict_is_the_end_price_sums_own_and_an_old_card_falls_b
     assert archive.read_close_out(v4) == v4                          # a version 4 close-out reads as it was written
 
 
-def test_the_phones_call_is_blended_with_the_average_price_clock_and_never_the_end_price_one(tmp_path, monkeypatch):
-    """The end-price sum is blended with the end-price clock and the average-price sum with the average-price clock:
-    each takes its own odds, and neither's reaches the other."""
-    end_odds = {"phase": "morning", "phase_words": "the morning, 10:00 to 11:00", "sessions": 12,
-                "by": {"next_30": {"probabilities": {"up": 0.9, "flat": 0.05, "down": 0.05}, "n": 40},
-                       "next_60": {"probabilities": {"up": 0.9, "flat": 0.05, "down": 0.05}, "n": 40}}}
-    avg_odds = {"phase": "morning", "phase_words": "the morning, 10:00 to 11:00", "sessions": 11,
-                "by": {"average_30": {"probabilities": {"up": 0.05, "flat": 0.9, "down": 0.05}, "n": 38}}}
-    monkeypatch.setattr(service, "clock_odds", lambda *a, **k: end_odds)
-    monkeypatch.setattr(service, "clock_integral_odds", lambda *a, **k: avg_odds)
-    run_fixture(tmp_path, monkeypatch)
-    h = json.loads((tmp_path / "spx_jev" / "latest.json").read_text())["hour"]
-    assert h["clock"]["probabilities"] == end_odds["by"]["next_30"]["probabilities"]
-    a = h["average"]
-    assert a["clock"]["probabilities"] == avg_odds["by"]["average_30"]["probabilities"] and a["blend"]["sessions"] == 11
-    assert a["jev"]["probabilities"] == AVERAGE["probabilities"]
-    assert a["probabilities"] == {"up": 0.125, "down": 0.325, "flat": 0.55} and a["pick"] == "flat"
-
-
-# ---- the question as it is sent
+# ---- the question as it is sent, and a reply that cannot be read
 
 def test_the_last_reads_shorter_window_is_the_one_its_question_names():
     """The 15:32 read's window ends on the closing bar: 28 minutes. Its question, criteria and context all say 28, and
@@ -242,3 +239,63 @@ def test_the_grade_sets_the_average_against_the_edge_the_question_gave():
     assert (g["edge"], g["edge_told"], g["label"], g["verdict"]) == (3.19, 3.19, "up", "right")
     old = grade.integral_line(line, "next_30", {k: v for k, v in rec.items() if k != "average"}, _bars(t0, spot, closes), {}, LIVE)
     assert old["label"] == "flat"                                   # the end-price sum's call, against the edge worked out unrounded
+
+
+@pytest.mark.parametrize("reply, why", [
+    ({"model": "m", "answers": "garbled"}, "no average_30 answer"),
+    ({"model": "m", "answers": {"average_30": {"choice": None, "probabilities": {"up": None, "flat": "0.5"}}}}, "could not be read"),
+    ({"model": "m", "answers": {"average_30": {"choice": "up", "probabilities": {"up": 0.5, "unsure": 0.5}}}}, "could not be read"),
+    ({"model": "m", "answers": {"average_30": {"choice": "up", "probabilities": {"up": True, "flat": 0.0, "down": 0.0}}}}, "could not be read"),
+    ("not even an object", "not an object"),
+])
+def test_a_reply_that_is_not_an_answer_is_the_average_sums_error_and_never_its_call(reply, why):
+    s = service.with_average({"pick": "up", "by": {"next_30": {"pick": "up"}}}, LIVE, average_window(30, 5.39), reply)
+    assert s["pick"] == "up" and s["by"] == {"next_30": {"pick": "up"}} and why in s["average"]["error"] and "pick" not in s["average"]
+
+
+def test_a_stored_average_whose_odds_are_not_odds_is_not_graded_and_never_stops_the_batch(tmp_path, monkeypatch):
+    """One read's average-price sum was stored with text for odds: it is written as not graded, bad probabilities,
+    once; the next read is graded all the same, and a read whose grading fails outright is logged and left for the next
+    run while the rest are written."""
+    hhmm, spot, f, pick, closes = SCENARIOS["S1"]
+    t0 = at(13, 1, day=SCENARIO_DAY)
+    reads = [t0.isoformat(), at(13, 2, day=SCENARIO_DAY).isoformat()]
+    (tmp_path / "hour").mkdir()
+    base = {"spot": spot, "by": {"next_30": {"pick": "flat", "probabilities": {"flat": 1.0}}}}
+    (tmp_path / "hour" / f"{SCENARIO_DAY}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in (
+        {**base, "row_ts": reads[0], "average": {"pick": "up", "probabilities": {"up": "0.6", "flat": None, "down": 0.1}}},
+        {**base, "row_ts": reads[1], "average": {"pick": "up", "probabilities": {"up": 0.6, "flat": 0.3, "down": 0.1}, "edge_points": 3.19}})))
+    (tmp_path / "grades.jsonl").write_text("".join(json.dumps({"row_ts": ts, "horizons": ["next_30"], "anchor": {"points": f / NEXT_30_FLAT_BAND_SIGMA},
+                                                               "next_30": {"pick": "flat", "band": "flat"}}) + "\n" for ts in reads))
+    bars = _bars(at(13, 0, day=SCENARIO_DAY), spot, [spot] + closes + [closes[-1]])
+    monkeypatch.setattr(grade, "load_bars", lambda state_dir, d: bars)
+    monkeypatch.setattr(grade, "prior_bar_days", lambda state_dir, d: {})
+    new = grade.integral_run(tmp_path, tmp_path, LIVE)
+    assert [(g["row_ts"], g["graded"], g.get("reason")) for g in new] == [(reads[0], False, grade.BAD_PROBABILITIES), (reads[1], True, None)]
+    assert grade.integral_run(tmp_path, tmp_path, LIVE) == []           # written once, never retried
+    # a read whose grading fails outright holds back no other: it is logged and tried again on the next run
+    (tmp_path / grade.INTEGRAL_NAME).unlink()
+    real = grade.integral_line
+    monkeypatch.setattr(grade, "integral_line", lambda g, *a, **k: 1 / 0 if g["row_ts"] == reads[0] else real(g, *a, **k))
+    assert [g["row_ts"] for g in grade.integral_run(tmp_path, tmp_path, LIVE)] == [reads[1]]
+    monkeypatch.setattr(grade, "integral_line", real)
+    assert [g["row_ts"] for g in grade.integral_run(tmp_path, tmp_path, LIVE)] == [reads[0]]
+
+
+def test_the_phones_call_is_blended_with_the_average_price_clock_and_never_the_end_price_one(tmp_path, monkeypatch):
+    """The end-price sum is blended with the end-price clock and the average-price sum with the average-price clock:
+    each takes its own odds, and neither's reaches the other."""
+    end_odds = {"phase": "morning", "phase_words": "the morning, 10:00 to 11:00", "sessions": 12,
+                "by": {"next_30": {"probabilities": {"up": 0.9, "flat": 0.05, "down": 0.05}, "n": 40},
+                       "next_60": {"probabilities": {"up": 0.9, "flat": 0.05, "down": 0.05}, "n": 40}}}
+    avg_odds = {"phase": "morning", "phase_words": "the morning, 10:00 to 11:00", "sessions": 11,
+                "by": {"average_30": {"probabilities": {"up": 0.05, "flat": 0.9, "down": 0.05}, "n": 38}}}
+    monkeypatch.setattr(service, "clock_odds", lambda *a, **k: end_odds)
+    monkeypatch.setattr(service, "clock_integral_odds", lambda *a, **k: avg_odds)
+    run_fixture(tmp_path, monkeypatch)
+    h = json.loads((tmp_path / "spx_jev" / "latest.json").read_text())["hour"]
+    assert h["clock"]["probabilities"] == end_odds["by"]["next_30"]["probabilities"]
+    a = h["average"]
+    assert a["clock"]["probabilities"] == avg_odds["by"]["average_30"]["probabilities"] and a["blend"]["sessions"] == 11
+    assert a["jev"]["probabilities"] == AVERAGE["probabilities"]
+    assert a["probabilities"] == {"up": 0.125, "down": 0.325, "flat": 0.55} and a["pick"] == "flat"

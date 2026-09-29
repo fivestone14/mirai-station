@@ -25,6 +25,7 @@ summary (average_summary) rides on the hour summary under ``average``: the phone
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime
 from pathlib import Path
 
@@ -36,6 +37,7 @@ from .weights import MIN_WEIGHT, QuestionWeights
 
 FIVE = ("down_big", "down_small", "flat", "up_small", "up_big")   # a RECORD horizon's outcomes, in order
 PER_READ = ("window_minutes",)     # the names in the average-price sum's text the code fills at each read, from its window
+AVERAGE_OUTCOMES = ("up", "flat", "down")
 UNITS = ("sigma is today's expected move for the S&P 500 index. Each answer below was given by JEV about this moment, "
          "except those marked held, which were given at the time shown and carried forward unchanged")
 
@@ -257,15 +259,41 @@ def hour_summary(answer: dict | None, lane: Lane = LIVE) -> dict | None:
     return {**prim, "primary": lane.primary, "by": by, "model": answer.get("model")}
 
 
+def average_probabilities(p) -> dict[str, float] | None:
+    """The average-price sum's odds as floats when they are odds at all: a dict over up, flat and down alone, each a
+    finite number from 0 to 1, not all zero; None for anything else (text, a null, an option it does not have)."""
+    if not isinstance(p, dict) or not p or not set(p) <= set(AVERAGE_OUTCOMES):
+        return None
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and 0.0 <= v <= 1.0 for v in p.values()):
+        return None
+    return {k: float(v) for k, v in p.items()} if any(p.values()) else None
+
+
+def _average_one(a) -> dict | None:
+    """One JEV answer to the average-price sum, checked: its pick (JEV's choice when it is one of the odds' options,
+    else the likeliest), its odds (average_probabilities) and its confidence; None when it is not a readable answer."""
+    probs = average_probabilities(a.get("probabilities")) if isinstance(a, dict) else None
+    if probs is None:
+        return None
+    choice = a.get("choice")
+    conf = a.get("confidence")
+    return {"pick": choice if choice in probs else max(probs, key=probs.get), "probabilities": probs,
+            "confidence": float(conf) if isinstance(conf, (int, float)) and not isinstance(conf, bool) else None}
+
+
 def average_summary(answer: dict | None, window: dict, lane: Lane = LIVE) -> dict | None:
     """What the card and the hour record keep of JEV's reply to the average-price request, under ``average``: the
     sum's pick, probabilities and confidence flat on top and under ``by``, with ``primary`` naming it (so clock.blend
     takes it as it takes the hour summary), the box it forecasts (``box``), its window and the model; an ``error``
-    in their place when it got no answer."""
-    if not isinstance(answer, dict):
-        return None
-    one = _one((answer.get("answers") or {}).get(lane.average))
+    in their place when it got no answer or one that cannot be read (_average_one)."""
     head = {"primary": lane.average, "box": lane.primary, **window}
+    if not isinstance(answer, dict):
+        return {"error": "the average-price reply could not be read: it is not an object", **head}
+    answers = answer.get("answers")
+    if not isinstance(answers, dict) or answers.get(lane.average) is None:
+        return {"error": str(answer.get("error") or f"no {lane.average} answer"), **head}
+    one = _average_one(answers[lane.average])
     if one is None:
-        return {"error": answer.get("error", f"no {lane.average} answer"), **head}
-    return {**one, **head, "by": {lane.average: one}, "model": answer.get("model")}
+        return {"error": f"the {lane.average} answer could not be read: it has no odds over up, flat and down", **head}
+    model = answer.get("model")
+    return {**one, **head, "by": {lane.average: one}, "model": model if isinstance(model, str) else None}

@@ -197,14 +197,20 @@ def send_sums(requests: list[dict | None], sender, deadline: float | None = None
     return ask.send_all([r for r in requests if r], sender=sender, deadline=deadline)
 
 
-def with_average(summary: dict | None, lane: Lane, window: dict | str | None, reply: dict | None) -> dict | None:
+def with_average(summary: dict | None, lane: Lane, window: dict | str | None, reply) -> dict | None:
     """The hour summary with the average-price sum's under ``average`` (hour.average_summary), or its reason when it was
-    not asked (``window`` then says why); a lane without an average-price sum, or a read with no summary, as it came."""
+    not asked (``window`` then says why) or its reply could not be read; a lane without an average-price sum, or a read
+    with no summary, as it came. Whatever the reply holds, the end-price sums' summary comes back whole."""
     if summary is None or not lane.average:
         return summary
+    head = {"primary": lane.average, "box": lane.primary}
     if not isinstance(window, dict):
-        return {**summary, "average": {"error": f"not asked: {window}", "primary": lane.average, "box": lane.primary}}
-    return {**summary, "average": average_summary(reply, window, lane)}
+        return {**summary, "average": {"error": f"not asked: {window}", **head}}
+    try:
+        avg = average_summary(reply, window, lane)
+    except Exception as e:  # a garbled average-price reply must never cost the end-price sums their read
+        avg = {"error": f"the average-price reply could not be read: {type(e).__name__}", **head, **window}
+    return {**summary, "average": avg}
 
 
 def sum_the_hour(doc: dict, hour_doc: dict, answered: dict[str, dict], weights: QuestionWeights,
