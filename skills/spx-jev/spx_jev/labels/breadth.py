@@ -24,6 +24,7 @@ from .. import events
 from ..cuts import EVENT_DIGEST_MIN, OPEN_CLUSTER_MIN, SAME_CLOCK_MIN_SESSIONS, TICK_BURST_PCT, WINDOW_10_MIN, WINDOW_30_MIN, WINDOW_60_MIN
 from ..sessions import session_open
 from ..state_builder import MarketContext, Scene
+from .events_shocks import REACTION_MIN
 from .label_set import LabelSet
 from .measures import ET, ONE_MINUTE, SETTLED_OPEN_BAR, bar_time, close_at, session_extremes, settled_open
 from .plausible import left_out
@@ -65,6 +66,11 @@ def build_breadth_labels(scene: Scene) -> LabelSet:
     release = _latest_release(scene)
     if release is None:
         ls.sleep("breadth_flip_after_release", f"no in-session release in the last {EVENT_DIGEST_MIN} minutes")
+    elif scene.now - release.start < timedelta(minutes=REACTION_MIN):
+        # a minute or two of net volume since the release is noise, not a side: wait out its first reaction, as
+        # move_reaction_path does
+        ls.sleep("breadth_flip_after_release", f"{release.words} came out at {release.start.astimezone(ET):%H:%M}: its first "
+                                               f"{REACTION_MIN} minutes are not over")
     else:
         ls.wake("breadth_flip_after_release")
     if scene.market is None:
@@ -502,10 +508,13 @@ def _flip_after_release(scene: Scene, release: events.Event | None, ls: LabelSet
     ago = round((scene.now - release.start).total_seconds() / 60)
     lead = round((release.start - before_from).total_seconds() / 60)
     before_words = "in the hour before it" if lead == WINDOW_60_MIN else f"in the {plural(lead, 'minute')} before it, from the open,"
+
+    def side(change: float, rank: SameClockRank) -> str:
+        # no change beats no prior session and leans nowhere: it is the middle, whatever share of them it is under
+        return "unchanged, taken as the middle third: no lean" if change == 0 else _lean(rank, "over the same minutes")
     ls.put("breadth.flip_after_release",
            f"since {release.words} at {released}, {plural(ago, 'minute')} ago, NYSE net volume changed by {_millions(since)}, "
-           f"{_lean(since_rank, 'over the same minutes')}; {before_words} net volume changed by {_millions(before)}, "
-           f"{_lean(before_rank, 'over the same minutes')}")
+           f"{side(since, since_rank)}; {before_words} net volume changed by {_millions(before)}, {side(before, before_rank)}")
 
 
 # ----------------------------------------------------------------------------- the opening lane

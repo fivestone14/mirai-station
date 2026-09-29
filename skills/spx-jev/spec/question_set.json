@@ -5646,7 +5646,7 @@
       "thirty_minute"
      ],
      "status": "live",
-     "cadence": "every 30-minute read, awake only within the digest window after an in-session release",
+     "cadence": "every 30-minute read, awake only within the digest window after an in-session release, once its first reaction is over",
      "ask": "Since the release, has NYSE volume switched sides?",
      "instructions": "Read `breadth.flip_after_release`. Since this session's release, has NYSE net volume switched sides against the hour before it? Each window's change in NYSE net volume leans by its third against the same minutes on recent sessions, release or not.",
      "options": [
@@ -5677,7 +5677,7 @@
       {
        "name": "breadth.flip_after_release",
        "example": "since the Fed's rate decision at 14:00, 40 minutes ago, NYSE net volume changed by -96M, higher than 2 of the last 20 sessions over the same minutes, bottom third: leaning to selling; in the hour before it net volume changed by +156M, higher than 18 of the last 20 sessions over the same minutes, top third: leaning to buying",
-       "computed_how": "$VOLD's change since the release and over the hour before it (from 09:30 when the release came in the first hour), each ranked signed against the same window, same clock and length, on up to the last night_rank_count sessions, release or not (at least same_clock_min_sessions, else omitted): top third leaning to buying, bottom third to selling; release time from context.event_clock; not $UVOL/$DVOL over the window: those hold each stock's whole day's volume on the side it stands at that minute, so a stock that turns moves its day from one to the other and their change over a window is not the window's volume (it gave shares below 0% and above 100%)",
+       "computed_how": "$VOLD's change since the release and over the hour before it (from 09:30 when the release came in the first hour), each ranked signed against the same window, same clock and length, on up to the last night_rank_count sessions, release or not (at least same_clock_min_sessions, else omitted): top third leaning to buying, bottom third to selling, a window with no change at all the middle (no lean); release time from context.event_clock; not $UVOL/$DVOL over the window: those hold each stock's whole day's volume on the side it stands at that minute, so a stock that turns moves its day from one to the other and their change over a window is not the window's volume (it gave shares below 0% and above 100%)",
        "source": "Schwab 1-min bars via market_context.py, saved by the context job to state/spx_jev/context/{day}.jsonl (live) and state/spx_jev/context/bars/{day}.jsonl (backfill: python -m spx_jev.market_context --backfill 2026-08-10); the symbol must be in market_context.SYMBOLS ($VOLD) + calendar/events.json",
        "availability": "cheap_add",
        "needs_engine_edit": false
@@ -5687,7 +5687,7 @@
      "evidence": "Round 1: fires on a few event afternoons, slow to grade (a firing-rate worry, not a null). Unproven, so live; about six in-session releases in the test window.",
      "origin": "round1 deferred:breadth_flip_after_release (restored live; gated)",
      "code_answer": true,
-     "sleep_when": "no in-session release within {event_digest_min} minutes",
+     "sleep_when": "no in-session release within {event_digest_min} minutes, or the newest one's first reaction is not over (the same wait as move_reaction_path)",
      "schedule": {
       "thirty_minute": {
        "every_min": 30,
@@ -9211,7 +9211,7 @@
   {
    "name": "breadth.flip_after_release",
    "example": "since the Fed's rate decision at 14:00, 40 minutes ago, NYSE net volume changed by -96M, higher than 2 of the last 20 sessions over the same minutes, bottom third: leaning to selling; in the hour before it net volume changed by +156M, higher than 18 of the last 20 sessions over the same minutes, top third: leaning to buying",
-   "computed_how": "$VOLD's change since the release and over the hour before it (from 09:30 when the release came in the first hour), each ranked signed against the same window, same clock and length, on up to the last night_rank_count sessions, release or not (at least same_clock_min_sessions, else omitted): top third leaning to buying, bottom third to selling; release time from context.event_clock; not $UVOL/$DVOL over the window: those hold each stock's whole day's volume on the side it stands at that minute, so a stock that turns moves its day from one to the other and their change over a window is not the window's volume (it gave shares below 0% and above 100%)",
+   "computed_how": "$VOLD's change since the release and over the hour before it (from 09:30 when the release came in the first hour), each ranked signed against the same window, same clock and length, on up to the last night_rank_count sessions, release or not (at least same_clock_min_sessions, else omitted): top third leaning to buying, bottom third to selling, a window with no change at all the middle (no lean); release time from context.event_clock; not $UVOL/$DVOL over the window: those hold each stock's whole day's volume on the side it stands at that minute, so a stock that turns moves its day from one to the other and their change over a window is not the window's volume (it gave shares below 0% and above 100%)",
    "source": "Schwab 1-min bars via market_context.py, saved by the context job to state/spx_jev/context/{day}.jsonl (live) and state/spx_jev/context/bars/{day}.jsonl (backfill: python -m spx_jev.market_context --backfill 2026-08-10); the symbol must be in market_context.SYMBOLS ($VOLD) + calendar/events.json",
    "availability": "cheap_add",
    "needs_engine_edit": false

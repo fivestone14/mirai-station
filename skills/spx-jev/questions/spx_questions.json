@@ -3551,8 +3551,8 @@
       }
      },
      "horizon": "60min",
-     "cadence": "every 30-minute read, awake only within the digest window after an in-session release",
-     "sleep_when": "no in-session release within {event_digest_min} minutes",
+     "cadence": "every 30-minute read, awake only within the digest window after an in-session release, once its first reaction is over",
+     "sleep_when": "no in-session release within {event_digest_min} minutes, or the newest one's first reaction is not over (the same wait as move_reaction_path)",
      "code_answer": true,
      "ask": "Since the release, has NYSE volume switched sides?",
      "instructions": "Read `breadth.flip_after_release`. Since this session's release, has NYSE net volume switched sides against the hour before it? Each window's change in NYSE net volume leans by its third against the same minutes on recent sessions, release or not.",

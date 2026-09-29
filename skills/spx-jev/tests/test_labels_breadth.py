@@ -643,10 +643,10 @@ def test_each_side_of_the_release_is_ranked_against_the_same_minutes_on_the_prio
     for k, d in enumerate(PRIOR_DAYS):
         prior[d] = block_upvol([(270, 10000.0, USUAL_SHARES[k]), (120, 10000.0, afternoon[k])], day=d)
     scene = scene_factory(at(14, 40, ss=10), flat_bars(310), market=MarketContext(block_upvol([(210, 10000.0, 0.5), (60, 10000.0, 0.63),
-                                                                                              (40, 10000.0, 0.5)])))
+                                                                                              (40, 10000.0, 0.51)])))
     ls = build_breadth_labels(with_prior(scene, prior))
     assert sentence(ls, "breadth.flip_after_release").startswith(
-        "since the Fed's rate decision at 14:00, 40 minutes ago, NYSE net volume changed by +0M, higher than 10 of the last 20 sessions "
+        "since the Fed's rate decision at 14:00, 40 minutes ago, NYSE net volume changed by +8M, higher than 10 of the last 20 sessions "
         "over the same minutes, middle third: no lean;")
     thin = around_release(scene_factory, at(14, 40, ss=10), [(210, 0.5), (60, 0.63), (40, 0.38)], prior=USUAL_SHARES[:9])
     assert thin.omitted["breadth.flip_after_release"] == ("its rank needs 10 prior sessions with NYSE net volume ($VOLD) from 14:00 to "
@@ -670,6 +670,22 @@ def test_the_fed_chairs_jackson_hole_speech_is_a_release_and_other_fed_remarks_a
     calendar(tmp_path, monkeypatch, [("10:00", "FED_CHAIR_SPEECH", "fed_speaker")])
     assert around_release(scene_factory, at(10, 32, ss=10), [(62, 0.5)]).gates["breadth_flip_after_release"] == (
         "no in-session release in the last 120 minutes")
+
+
+def test_the_gate_sleeps_until_the_releases_first_reaction_is_over(scene_factory, tmp_path, monkeypatch):
+    """At 10:02 two minutes of net volume since a 10:00 release are noise, not a side."""
+    calendar(tmp_path, monkeypatch, [("10:00", "ISM_MANUFACTURING", "data_10am")])
+    assert around_release(scene_factory, at(10, 2, ss=10), [(30, 0.55), (2, 0.6)]).gates["breadth_flip_after_release"] == (
+        "the ISM manufacturing report came out at 10:00: its first 15 minutes are not over")
+    assert around_release(scene_factory, at(10, 15, ss=10), [(30, 0.55), (15, 0.6)]).gates["breadth_flip_after_release"] is None
+
+
+def test_no_change_since_the_release_leans_neither_way(scene_factory, tmp_path, monkeypatch):
+    """Every prior session's net volume rose over the same minutes, so a strict rank puts no change in the bottom third,
+    as selling; no change is no lean."""
+    calendar(tmp_path, monkeypatch, [("10:00", "ISM_MANUFACTURING", "data_10am")])
+    ls = around_release(scene_factory, at(10, 32, ss=10), [(30, 0.55), (32, 0.5)], prior=USUAL_SHARES[10:] * 2)
+    assert "NYSE net volume changed by +0M, unchanged, taken as the middle third: no lean;" in sentence(ls, "breadth.flip_after_release")
 
 
 def test_the_gate_sleeps_without_a_release_in_the_digest_window(scene_factory, tmp_path, monkeypatch):
