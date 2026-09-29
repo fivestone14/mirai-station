@@ -5,19 +5,19 @@ overnight.price_vs_range); the premarket lane's overnight labels are labels/prem
 Every distance is in the morning anchor (rulers.sigma_anchor), and a sentence measured on an estimated
 anchor says so. The gap is the settled open (the 09:34 close) against the row's ``prior_close``, and its
 size is ranked in thirds against the same gap on the prior sessions, never against a fixed cut: a real gap
-is one above the bottom third. The open's crossings and how one-way its path has been are ranked in thirds
-against the same to this minute on the prior sessions, and whether price has moved away from the settled
-open is judged in today's tape unit (rulers.ruler), not a fixed cut either. Each label's sentence, how it is
-computed and its source are in spec/question_set.json ``labels``; the overnight range labels wait for a
-session read of the overnight store (DARK).
+is one above the bottom third. The open's crossings, how one-way its path has been and how far price has
+stretched past the open and yesterday's close (the noise band) are ranked in thirds against the same to this
+minute on the prior sessions, and whether price has moved away from the settled open is judged in today's
+tape unit (rulers.ruler), not a fixed cut either. Each label's sentence, how it is computed and its source
+are in spec/question_set.json ``labels``; the overnight range labels wait for a session read of the
+overnight store (DARK).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
-from ..cuts import (GAP_HALF_SHARE, GAP_TOUCH_SIGMA, GIVEBACK_THIRD, NOISE_EDGE_SIGMA, NOISE_LOOKBACK, RANGE_BOTTOM_SHARE,
-                    RANGE_TOP_SHARE, WINDOW_30_MIN, WINDOW_60_MIN)
+from ..cuts import GAP_HALF_SHARE, GAP_TOUCH_SIGMA, GIVEBACK_THIRD, RANGE_BOTTOM_SHARE, RANGE_TOP_SHARE, WINDOW_30_MIN, WINDOW_60_MIN
 from ..state_builder import Scene, first_row
 from .label_set import LabelSet
 from .measures import (ET, ONE_MINUTE, SETTLED_OPEN_BAR, bar_time, bars_between, bars_finished_between, close_at, day_high_low,
@@ -46,6 +46,9 @@ OPENING_RANGE_MIN = 15
 # The open's crossings and its path in the words of their thirds, as the questions name them.
 CROSS_WORDS = {"bottom": "one-sided", "middle": "some crossing", "top": "contested"}
 CHOP_WORDS = {"bottom": "choppy", "middle": "mixed", "top": "one-way"}
+# How far price has stretched past the open and yesterday's close, in the words of its third; the top third names
+# its side instead: above or below the band.
+NOISE_WORDS = {"bottom": "inside", "middle": "at the edge of"}
 
 
 def build_gap_open_labels(scene: Scene) -> LabelSet:
@@ -324,9 +327,11 @@ def _move_from_open(bars: list[dict], then: datetime, _sigma: float | None) -> f
 
 
 def _noise_band(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None:
-    """The usual move-from-the-open band for this minute (Zarattini, Aziz and Barbon): the average move
-    from the settled open at this minute over the last NOISE_LOOKBACK sessions, laid above the higher
-    and below the lower of today's settled open and yesterday's close."""
+    """Where price sits against the usual move-from-the-open band for this minute (Zarattini, Aziz and Barbon),
+    laid above the higher and below the lower of today's settled open and yesterday's close: how far price has
+    stretched past the nearer of the two, as a share of it, ranked against how far each prior session had moved
+    from its settled open by this minute (rank_sessions; a session whose ruler was estimated sits out). The
+    bottom third, or no stretch at all, is inside the band, the middle third at its edge, the top third beyond it."""
     so, pc = settled_open(scene.bars), scene.row.get("prior_close")
     if so is None or not _since_settled(scene):
         ls.omit("open.noise_band", "no finished bar after the settled open yet")
@@ -337,27 +342,26 @@ def _noise_band(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None:
     if anchor is None:
         ls.omit("open.noise_band", NO_ANCHOR)
         return
-    moves = same_clock_values(scene, _move_from_open)[:NOISE_LOOKBACK]
-    if len(moves) < NOISE_LOOKBACK:
-        ls.omit("open.noise_band", f"needs {NOISE_LOOKBACK} prior sessions with bars at this minute, have {len(moves)}")
+    higher, lower = max(so, float(pc)), min(so, float(pc))
+    stretch = scene.spot / higher - 1.0 if scene.spot > higher else 1.0 - scene.spot / lower if scene.spot < lower else 0.0
+    rank, no_rank = rank_sessions(stretch, same_clock_values(scene, _move_from_open), "a move from their settled open at this minute")
+    if rank is None:
+        ls.omit("open.noise_band", no_rank)
         return
-    usual = sum(moves) / len(moves)
-    upper, lower = max(so, float(pc)) * (1 + usual), min(so, float(pc)) * (1 - usual)
-    up, down = (scene.spot - upper) / anchor.points, (scene.spot - lower) / anchor.points
     band = f"the usual move-from-the-open band for {scene.now.astimezone(ET):%H:%M}"
-    how = f"(edges anchored at the higher and lower of the open and yesterday's close, {NOISE_LOOKBACK}-session average move)"
-    edge = NOISE_EDGE_SIGMA
-    if abs(up) <= edge or abs(down) <= edge:
-        d, name = (up, "upper") if abs(up) <= abs(down) else (down, "lower")
-        text = f"price is at the {name} edge of {band}, {sig(abs(d))} {above_or_below(d)} it, within the {sig(edge)} edge distance {how}"
-    elif up > edge:
-        text = f"price is {sig(up)} above the upper edge of {band}, beyond the {sig(edge)} edge distance {how}"
-    elif down < -edge:
-        text = f"price is {sig(-down)} below the lower edge of {band}, beyond the {sig(edge)} edge distance {how}"
-    else:
-        text = (f"price is inside {band}, {sig(-up)} below its upper edge and {sig(down)} above its lower edge, "
-                f"more than the {sig(edge)} edge distance from both {how}")
-    ls.put("open.noise_band", ruled(anchor, text))
+    if stretch <= 0:
+        ls.put("open.noise_band", ruled(anchor, f"price sits between the settled open and yesterday's close, "
+                                                f"{sig((higher - scene.spot) / anchor.points)} below the higher and "
+                                                f"{sig((scene.spot - lower) / anchor.points)} above the lower, stretched past neither: inside {band}"))
+        return
+    up = scene.spot > higher
+    past = (scene.spot - higher) if up else (lower - scene.spot)
+    verdict = third(rank.share)
+    words = ("above" if up else "below") if verdict == "top" else NOISE_WORDS[verdict]
+    ls.put("open.noise_band", ruled(
+           anchor,
+           f"price is {sig(past / anchor.points)} {'above the higher' if up else 'below the lower'} of the settled open and yesterday's close, "
+           f"a stretch {_beats(rank, 'bigger')} had moved from their settled open by this minute, {rank.band}: {words} {band}"))
 
 
 def _crosses(bars: list[dict], level: float) -> int:

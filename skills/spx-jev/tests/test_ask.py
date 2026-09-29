@@ -37,7 +37,7 @@ DEFINITIONS = {
     "shares that define a word": {"gap_half_share", "giveback_third", "range_top_share", "range_bottom_share", "move_burst_share",
                                   "mega_one_name_share", "one_name_share", "stress_retreat_share", "stress_hold_share",
                                   "one_ratio"},
-    "touch tolerances": {"gap_touch_sigma", "ib_break_sigma", "noise_edge_sigma", "value_edge_sigma", "level_reach_sigma",
+    "touch tolerances": {"gap_touch_sigma", "ib_break_sigma", "value_edge_sigma", "level_reach_sigma",
                          "reaction_extend_sigma", "settle_seat_sigma", "outside_buffer_sigma", "vwap_touch_sigma",
                          "round_near_sigma"},
     # an inverted curve, SPY's one-cent tick, and the morning brief's own scale are not sizes of a market move

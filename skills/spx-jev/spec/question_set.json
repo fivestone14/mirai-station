@@ -317,18 +317,6 @@
    "cuts_json_name": null,
    "in_cuts_py": false
   },
-  "noise_edge_sigma": {
-   "value": 0.05,
-   "note": "noise-band edge buffer",
-   "cuts_json_name": null,
-   "in_cuts_py": false
-  },
-  "noise_lookback": {
-   "value": 14,
-   "note": "sessions in the noise band average",
-   "cuts_json_name": null,
-   "in_cuts_py": false
-  },
   "one_ratio": {
    "value": 1.0,
    "note": "one-to-one line",
@@ -2636,44 +2624,44 @@
      "status": "live",
      "cadence": "every 30-minute read from 10:02",
      "ask": "Where is price against the usual move-from-the-open band for this minute?",
-     "instructions": "Read `open.noise_band`. Where is price against the usual move-from-the-open band for this minute? Check at_an_edge before above or below.",
+     "instructions": "Read `open.noise_band`. Where is price against the usual move-from-the-open band for this minute, against the same minute on the recent sessions?",
      "options": [
       {
        "name": "at_an_edge",
-       "description": "price is within {noise_edge_sigma} sigma of either edge"
+       "description": "price has stretched past the higher or lower of the settled open and yesterday's close by a move in the middle third of the recent sessions' moves from their settled open to this minute: at the band's edge"
       },
       {
        "name": "above_band",
-       "description": "more than {noise_edge_sigma} sigma above the upper edge"
+       "description": "price is above the higher of the settled open and yesterday's close by a move in the top third of the recent sessions' moves from their settled open to this minute"
       },
       {
        "name": "below_band",
-       "description": "more than {noise_edge_sigma} sigma below the lower edge"
+       "description": "price is below the lower of the settled open and yesterday's close by a move in the top third of the recent sessions' moves from their settled open to this minute"
       },
       {
        "name": "inside_band",
-       "description": "well inside the usual band for this time of day"
+       "description": "price sits between the settled open and yesterday's close, or past one of them by a move in the bottom third of the recent sessions' moves to this minute"
       }
      ],
      "criteria": {
-      "at_an_edge": "|price - edge| <= {noise_edge_sigma}",
-      "above_band": "above upper edge by > {noise_edge_sigma}",
+      "at_an_edge": "the stretch past the nearer of the open and yesterday's close beats {third_lo} to {third_hi} of the last {night_rank_count} sessions' moves from their settled open at this minute (middle third; a tie is not beaten)",
+      "above_band": "above the higher of the two, the stretch beats over {third_hi} of them (top third)",
       "below_band": "mirror",
-      "inside_band": "otherwise"
+      "inside_band": "otherwise: between the two, or a stretch beating under {third_lo} of them (bottom third)"
      },
      "labels_needed": [
       {
        "name": "open.noise_band",
-       "example": "price is 0.07 sigma above the upper edge of the usual move-from-the-open band for 11:30, beyond the 0.05 sigma edge distance (edges anchored at the higher and lower of the open and yesterday's close, 14-session average move)",
-       "computed_how": "Zarattini-Aziz-Barbon band: mean |move from open| at the same minute over the prior 14 sessions",
+       "example": "price is 0.07 sigma above the higher of the settled open and yesterday's close, a stretch bigger than 15 of the last 20 sessions had moved from their settled open by this minute, top third: above the usual move-from-the-open band for 11:30",
+       "computed_how": "Zarattini-Aziz-Barbon band, ranked: the band is laid above the higher and below the lower of the settled open (09:34 close) and yesterday's close; how far price has stretched past the nearer of the two, as a share of it (0 between them), ranked against how far each prior session had moved from its own settled open by this clock minute, |close / settled open - 1|, on up to the last {night_rank_count} sessions (a session whose morning ruler was estimated sits out; a tie is not beaten), said as 'bigger than N of the last M sessions had moved' and its third, bottom inside / middle at the edge of / top above or below the band; between the two, 'stretched past neither: inside' with the distance to each in sigma; omitted under {same_clock_min_sessions} sessions with the rank's reason",
        "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json)",
        "availability": "live",
        "label_built": false,
        "needs_engine_edit": false
       }
      ],
-     "why": "A trend-versus-noise read anchored at the higher and lower of the open and yesterday's close, averaged over the prior 14 sessions; kept as a regime read, not as the source strategy's Sharpe.",
-     "evidence": "Station replay at half-hour marks: above the band next 30 min up 53/83 (64%), below it down 28/59 (47%); another replay 51-53% beyond vs 43-45% inside, no edge after 13:00. The Zarattini Sharpe comes from stops and sizing, not a hit rate.",
+     "why": "A trend-versus-noise read anchored at the higher and lower of the open and yesterday's close; kept as a regime read, not as the source strategy's Sharpe. The move from the open grows with the minutes since it, so how far price has stretched past the band's anchors is judged against the same minute on the recent sessions, not against their average move and a fixed edge distance.",
+     "evidence": "Measured on the earlier band (the 14-session average move, a 0.05 sigma edge), not yet on the ranked one: station replay at half-hour marks: above the band next 30 min up 53/83 (64%), below it down 28/59 (47%); another replay 51-53% beyond vs 43-45% inside, no edge after 13:00. The Zarattini Sharpe comes from stops and sizing, not a hit rate.",
      "origin": "round1:open_noise_band (shadow -> live; evidence corrected)",
      "code_answer": true,
      "schedule": {
@@ -9877,8 +9865,8 @@
   },
   {
    "name": "open.noise_band",
-   "example": "price is 0.07 sigma above the upper edge of the usual move-from-the-open band for 11:30, beyond the 0.05 sigma edge distance (edges anchored at the higher and lower of the open and yesterday's close, 14-session average move)",
-   "computed_how": "Zarattini-Aziz-Barbon band: mean |move from open| at the same minute over the prior 14 sessions",
+   "example": "price is 0.07 sigma above the higher of the settled open and yesterday's close, a stretch bigger than 15 of the last 20 sessions had moved from their settled open by this minute, top third: above the usual move-from-the-open band for 11:30",
+   "computed_how": "Zarattini-Aziz-Barbon band, ranked: the band is laid above the higher and below the lower of the settled open (09:34 close) and yesterday's close; how far price has stretched past the nearer of the two, as a share of it (0 between them), ranked against how far each prior session had moved from its own settled open by this clock minute, |close / settled open - 1|, on up to the last {night_rank_count} sessions (a session whose morning ruler was estimated sits out; a tie is not beaten), said as 'bigger than N of the last M sessions had moved' and its third, bottom inside / middle at the edge of / top above or below the band; between the two, 'stretched past neither: inside' with the distance to each in sigma; omitted under {same_clock_min_sessions} sessions with the rank's reason",
    "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json)",
    "availability": "live",
    "label_built": false,
@@ -12596,6 +12584,13 @@
    "decision": "accepted",
    "reason": "owner decision 2026-09-27: fixed cut-offs replaced by ranks. Every threshold that sized or judged a market measure in a question JEV is asked is now the measure's rank against the same clock on up to the last 20 sessions (or nights), needing 10 usable, said by its third in plain words; the label is omitted with the reason under 10. Kept only definitions (windows, clocks, lookbacks, minimum counts, rank band edges, giveback shares, touch tolerances, units, freshness). New: opening_chop (#10); open_net_volume_lean ranks $VOLD and $VOLSPD (#11).",
    "source": "owner rule 2026-09-27"
+  },
+  {
+   "subject": "open_noise_band (open.noise_band)",
+   "action": "rank",
+   "decision": "accepted",
+   "reason": "the band's width was the 14-session average move from the open with a 0.05 sigma edge distance; now how far price has stretched past the higher or lower of the settled open and yesterday's close is ranked against how far each of the last 20 sessions had moved from its settled open at this minute, needing 10, estimated-ruler days left out, and worded by its third: bottom inside, middle at the edge, top above or below. noise_edge_sigma and noise_lookback leave the set and cuts.py",
+   "source": "owner rule 2026-09-27; Will 2026-09-28"
   }
  ],
  "unresolved": [
@@ -12622,7 +12617,7 @@
  "validation": {
   "errors": [],
   "warnings": [
-   "constants defined but unused in question text: noise_lookback, sector_count",
+   "constants defined but unused in question text: sector_count",
    "labels defined but unused: context.session_progress, context.time_since_last_move, overnight.now_location"
   ]
  }

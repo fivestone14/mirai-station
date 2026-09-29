@@ -1414,7 +1414,7 @@
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ask": "Where is price against the usual move-from-the-open band for this minute?",
-     "instructions": "Read `open.noise_band`. Where is price against the usual move-from-the-open band for this minute? Check at_an_edge before above or below.",
+     "instructions": "Read `open.noise_band`. Where is price against the usual move-from-the-open band for this minute, against the same minute on the recent sessions?",
      "options": [
       "at_an_edge",
       "above_band",
@@ -1422,21 +1422,21 @@
       "inside_band"
      ],
      "criteria": {
-      "at_an_edge": "price is within {noise_edge_sigma} sigma of either edge",
-      "above_band": "more than {noise_edge_sigma} sigma above the upper edge",
-      "below_band": "more than {noise_edge_sigma} sigma below the lower edge",
-      "inside_band": "well inside the usual band for this time of day"
+      "at_an_edge": "price has stretched past the higher or lower of the settled open and yesterday's close by a move in the middle third of the recent sessions' moves from their settled open to this minute: at the band's edge",
+      "above_band": "price is above the higher of the settled open and yesterday's close by a move in the top third of the recent sessions' moves from their settled open to this minute",
+      "below_band": "price is below the lower of the settled open and yesterday's close by a move in the top third of the recent sessions' moves from their settled open to this minute",
+      "inside_band": "price sits between the settled open and yesterday's close, or past one of them by a move in the bottom third of the recent sessions' moves to this minute"
      },
      "code_criteria": {
-      "at_an_edge": "|price - edge| <= {noise_edge_sigma}",
-      "above_band": "above upper edge by > {noise_edge_sigma}",
+      "at_an_edge": "the stretch past the nearer of the open and yesterday's close beats {third_lo} to {third_hi} of the last {night_rank_count} sessions' moves from their settled open at this minute (middle third; a tie is not beaten)",
+      "above_band": "above the higher of the two, the stretch beats over {third_hi} of them (top third)",
       "below_band": "mirror",
-      "inside_band": "otherwise"
+      "inside_band": "otherwise: between the two, or a stretch beating under {third_lo} of them (bottom third)"
      },
      "labels": [
       "open.noise_band"
      ],
-     "why": "A trend-versus-noise read anchored at the higher and lower of the open and yesterday's close, averaged over the prior 14 sessions; kept as a regime read, not as the source strategy's Sharpe."
+     "why": "A trend-versus-noise read anchored at the higher and lower of the open and yesterday's close; kept as a regime read, not as the source strategy's Sharpe. The move from the open grows with the minutes since it, so how far price has stretched past the band's anchors is judged against the same minute on the recent sessions, not against their average move and a fixed edge distance."
     },
     "prior_close_push_fade": {
      "status": "live",

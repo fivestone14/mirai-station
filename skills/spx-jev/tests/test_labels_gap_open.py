@@ -15,7 +15,7 @@ from datetime import date, time, timedelta
 import pytest
 
 from conftest import DAY, at, bars_from_closes, flat_bars, make_row, prior_sessions, write_state
-from spx_jev.cuts import GIVEBACK_THIRD, NOISE_EDGE_SIGMA, NOISE_LOOKBACK, RANGE_TOP_SHARE, RULER_FLOOR_SIGMA, SAME_CLOCK_MIN_SESSIONS
+from spx_jev.cuts import GIVEBACK_THIRD, RANGE_TOP_SHARE, RULER_FLOOR_SIGMA, SAME_CLOCK_MIN_SESSIONS
 from spx_jev.labels.gap_open import build_gap_open_labels
 from spx_jev.labels.measures import bar_time
 from spx_jev.labels.rulers import SigmaRuler
@@ -323,43 +323,61 @@ def test_the_opening_lane_looks_back_5_minutes_and_an_unfinished_bar_never_count
 
 # ---- open.noise_band
 
-def noise_scene(scene_factory, spot_sigma_from_upper: float, sessions: int = NOISE_LOOKBACK, rulers=None):
-    """Today opened at 7700 over a 7690 close; the prior sessions all moved the same share from their settled open by 11:00."""
-    prior = prior_sessions(sessions)
-    first = next(iter(prior.values()))
-    usual = abs(first[89]["close"] / first[4]["close"] - 1.0)
-    upper = 7700.0 * (1 + usual)
-    spot = upper + spot_sigma_from_upper * SIGMA
-    sc = scene(scene_factory, at(11, 0), [7700.0] * 90, spot=spot, row_over={"prior_close": 7690.0}, prior_bars=prior)
-    return replace(sc, prior_rulers=rulers or {}), upper, 7690.0 * (1 - usual)
+# Twenty prior sessions whose price stood 0.05% to 1.00% from their settled open of 7700 from 09:35 on, newest the
+# smallest: a stretch of 0.71% beats 14 of them (top third), 0.36% beats 7 (middle), 0.16% beats 3 (bottom).
+MOVES = [0.0005 * k for k in range(1, 21)]
 
 
-def test_the_noise_band_edges_and_price_against_them(scene_factory):
-    how = f"(edges anchored at the higher and lower of the open and yesterday's close, {NOISE_LOOKBACK}-session average move)"
-    sc, _, _ = noise_scene(scene_factory, 0.07)
-    got, _, _ = labels(sc)
-    assert got["open.noise_band"] == f"price is 0.07 sigma above the upper edge of the usual move-from-the-open band for 11:00, beyond the 0.05 sigma edge distance {how}"
-    sc, _, _ = noise_scene(scene_factory, NOISE_EDGE_SIGMA - 0.001)
-    got, _, _ = labels(sc)
-    assert got["open.noise_band"] == f"price is at the upper edge of the usual move-from-the-open band for 11:00, 0.05 sigma above it, within the 0.05 sigma edge distance {how}"
-    sc, upper, lower = noise_scene(scene_factory, -0.1)
-    got, _, _ = labels(sc)
-    assert got["open.noise_band"] == (f"price is inside the usual move-from-the-open band for 11:00, 0.10 sigma below its upper edge and "
-                                      f"{(sc.spot - lower) / SIGMA:.2f} sigma above its lower edge, more than the 0.05 sigma edge distance from both {how}")
-    sc, upper, lower = noise_scene(scene_factory, 0.0)
-    below = replace(sc, row={**sc.row, "spot": lower - 0.2 * SIGMA})
-    got, _, _ = labels(below)
-    assert got["open.noise_band"].startswith("price is 0.20 sigma below the lower edge of the usual move-from-the-open band for 11:00, beyond")
+def moved_sessions(moves: list[float]) -> dict[str, list[dict]]:
+    out = {}
+    for k, m in enumerate(moves):
+        day = (date(2026, 9, 17) - timedelta(days=k)).isoformat()
+        out[day] = bars_from_closes([7700.0] * 5 + [7700.0 * (1 + m)] * 385, day=day)
+    return out
 
 
-def test_the_noise_band_needs_14_sessions_with_a_trusted_ruler(scene_factory):
-    sc, _, _ = noise_scene(scene_factory, 0.0, sessions=NOISE_LOOKBACK - 1)
-    _, omitted, _ = labels(sc)
-    assert omitted["open.noise_band"] == "needs 14 prior sessions with bars at this minute, have 13"
+def noise_scene(scene_factory, stretch: float, moves: list[float] = MOVES, rulers=None):
+    """Today opened at 7700 over a 7690 close; at 11:00 price is ``stretch`` (a share) above 7700, or below 7690
+    when negative."""
+    spot = 7700.0 * (1 + stretch) if stretch >= 0 else 7690.0 * (1 + stretch)
+    sc = scene(scene_factory, at(11, 0), [7700.0] * 90, spot=spot, row_over={"prior_close": 7690.0}, prior_bars=moved_sessions(moves))
+    return replace(sc, prior_rulers=rulers or {})
+
+
+def test_the_noise_band_ranks_the_stretch_past_the_open_and_yesterdays_close_against_the_same_minute(scene_factory):
+    band = "the usual move-from-the-open band for 11:00"
+    got, _, _ = labels(noise_scene(scene_factory, 0.0071))
+    assert got["open.noise_band"] == ("price is 0.68 sigma above the higher of the settled open and yesterday's close, a stretch bigger "
+                                      f"than 14 of the last 20 sessions had moved from their settled open by this minute, top third: above {band}")
+    got, _, _ = labels(noise_scene(scene_factory, -0.0071))
+    assert got["open.noise_band"] == ("price is 0.68 sigma below the lower of the settled open and yesterday's close, a stretch bigger "
+                                      f"than 14 of the last 20 sessions had moved from their settled open by this minute, top third: below {band}")
+    got, _, _ = labels(noise_scene(scene_factory, 0.0036))
+    assert got["open.noise_band"].endswith(f"bigger than 7 of the last 20 sessions had moved from their settled open by this minute, middle third: at the edge of {band}")
+    got, _, _ = labels(noise_scene(scene_factory, 0.0016))
+    assert got["open.noise_band"].endswith(f"bigger than 3 of the last 20 sessions had moved from their settled open by this minute, bottom third: inside {band}")
+    # a stretch equal to a session's move does not beat it
+    got, _, _ = labels(noise_scene(scene_factory, 0.0005))
+    assert "no bigger than any of the last 20 sessions" in got["open.noise_band"]
+
+
+def test_between_the_open_and_yesterdays_close_price_is_inside_the_noise_band(scene_factory):
+    sc = noise_scene(scene_factory, 0.0)
+    got, _, _ = labels(replace(sc, row={**sc.row, "spot": 7696.0}))
+    assert got["open.noise_band"] == ("price sits between the settled open and yesterday's close, 0.05 sigma below the higher and 0.07 sigma "
+                                      "above the lower, stretched past neither: inside the usual move-from-the-open band for 11:00")
+
+
+def test_the_noise_band_needs_ten_sessions_with_a_trusted_ruler(scene_factory):
+    assert SAME_CLOCK_MIN_SESSIONS == 10
+    _, omitted, _ = labels(noise_scene(scene_factory, 0.0071, moves=MOVES[:9]))
+    assert omitted["open.noise_band"] == "its rank needs 10 prior sessions with a move from their settled open at this minute, have 9"
+    # an estimated ruler leaves its session out: ten sessions, one estimated, are not enough
     estimated = {"2026-09-17": SigmaRuler(75.0, "live")}
-    sc, _, _ = noise_scene(scene_factory, 0.0, rulers=estimated)
-    _, omitted, _ = labels(sc)
-    assert omitted["open.noise_band"] == "needs 14 prior sessions with bars at this minute, have 13"
+    _, omitted, _ = labels(noise_scene(scene_factory, 0.0071, moves=MOVES[:10], rulers=estimated))
+    assert omitted["open.noise_band"] == "its rank needs 10 prior sessions with a move from their settled open at this minute, have 9"
+    got, _, _ = labels(noise_scene(scene_factory, 0.0071, moves=MOVES[:11], rulers=estimated))
+    assert "bigger than 10 of the last 10 sessions" in got["open.noise_band"]
     _, omitted, _ = labels(scene(scene_factory, at(9, 35), [7700.0] * 10))
     assert omitted["open.noise_band"] == "no finished bar after the settled open yet"
 
