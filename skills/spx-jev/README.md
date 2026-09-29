@@ -463,8 +463,12 @@ that machine, in order:
    finds nothing. The `.err` files are never empty: the service writes its
    normal progress lines to stderr, so a failure is found by its words.
 
-To pause all nine, `launchctl bootout gui/$UID/<label>` for each label above; `launchctl bootstrap gui/$UID ~/Library/LaunchAgents/<label>.plist`
-brings one back (docs/OPERATIONS.md, "Disabling temporarily", has the loop).
+To pause all nine, `launchctl disable gui/$UID/<label>` and then `launchctl bootout gui/$UID/<label>`
+for each label above: bootout alone stops a job only until the next login,
+since the plists stay in `~/Library/LaunchAgents/` and the mini logs in by
+itself after a restart. `launchctl enable gui/$UID/<label>` and then
+`launchctl bootstrap gui/$UID ~/Library/LaunchAgents/<label>.plist` bring one
+back (docs/OPERATIONS.md, "Disabling temporarily", has both loops).
 `SPX_JEV_DISABLE=1` in the jobs' environment makes every runner exit 0 without
 running.
 

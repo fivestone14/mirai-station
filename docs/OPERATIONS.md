@@ -175,8 +175,11 @@ The launchd jobs pick up script changes on next fire (no restart needed). plist 
 launchctl disable gui/$UID/com.mirai-station.left-eye
 launchctl disable gui/$UID/com.mirai-station.auth-watch
 launchctl disable gui/$UID/com.mirai-station.sndk-jev      # or SNDK_JEV_DISABLE=1 in the job's environment
+# SPX JEV's nine jobs: disable keeps them off past a reboot or a login, bootout stops them now.
+# Or SPX_JEV_DISABLE=1 in the jobs' environment, which leaves them loaded and exiting 0.
 for j in spx-jev spx-jev-tape spx-jev-bars spx-jev-context spx-jev-save-day spx-jev-overnight spx-jev-store spx-jev-premarket spx-premarket-deadman; do
-  launchctl bootout gui/$UID/com.mirai-station.$j           # SPX JEV and its feeds; or SPX_JEV_DISABLE=1
+  launchctl disable gui/$UID/com.mirai-station.$j
+  launchctl bootout gui/$UID/com.mirai-station.$j
 done
 # caffeinate left running so the mini is still reachable
 ```
@@ -187,6 +190,7 @@ launchctl enable gui/$UID/com.mirai-station.left-eye
 launchctl enable gui/$UID/com.mirai-station.auth-watch
 launchctl enable gui/$UID/com.mirai-station.sndk-jev
 for j in spx-jev spx-jev-tape spx-jev-bars spx-jev-context spx-jev-save-day spx-jev-overnight spx-jev-store spx-jev-premarket spx-premarket-deadman; do
+  launchctl enable gui/$UID/com.mirai-station.$j
   launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.mirai-station.$j.plist
 done
 ```
