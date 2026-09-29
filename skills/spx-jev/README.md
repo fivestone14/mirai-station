@@ -432,7 +432,12 @@ running.
   recent session and set it beside a saved one (`state/spx_jev/context/bars/`)
   before changing anything. Until then the labels that need `$ADD` or
   `$VOLSPD` are omitted with the series named, and `$VOLD` is derived only on a
-  day `$UVOL` and `$DVOL` are in thousands of shares.
+  day `$UVOL` and `$DVOL` are in thousands of shares. A series that does not
+  read like its own history at the read's minute (far off its usual size, or
+  stuck on one reading) is taken out before any label reads it, and every label
+  that needs it says why (`labels/plausible.py`); a day that fails sits out of
+  the later days' ranks. If Schwab keeps serving the changed series, those
+  labels stay omitted until it makes up most of the last sessions on file.
 - No market context is on disk yet: the breadth labels are omitted on every
   replay until the feed has run, and the backfill has not been run against the
   station.
