@@ -5,9 +5,9 @@
  "how_to_use": [
   "Step 4 of the opening lane. The state is the lane's live answers from step 2, each rewritten by code as one sentence with how sure JEV was, plus a context line: the end-price request's states the tape unit in index points for this read (the middle of the last three 5-minute slice ranges, held at a fixed share of the day's expected move until 09:45, floored after; spx_jev/cuts.py), the average-price request's the flat edge in index points.",
   "Two questions ride on the sentences, in two requests sent at the same time. average_10 is the lane's call: where the average price over the next 10 minutes sits against the price now, every minute counting equally, up, flat or down, graded on that average (spx_jev/integral.py) against the flat band narrowed by integral.factor; its direction decides.",
-  "next_10, the end-price sum, is asked exactly as before and stays in shadow: where price is 10 minutes on, in five steps, graded from the summed odds of the up and down steps and the big steps against the bar 10 minutes after the read. The size it names is the call's second line, measured at the end price; it never decides.",
+  "next_10, the end-price sum, is asked exactly as before and is kept beside the call: where price is 10 minutes on, in five steps, graded from the summed odds of the up and down steps and the big steps against the bar 10 minutes after the read. The size it names is the call's second line, measured at the end price; it never decides.",
   "The end-price bands are in tape units, filled from spx_jev/cuts.py, and their base rates are counted on SPX's opening reads with those bands (spec/cuts.json). Each context line names its bands in points for the read, because JEV cannot turn a unit and a fraction into a price.",
-  "These are forecasts, graded by the bars, never a call. Their grades and tally live under state/spx_jev/lanes/tape/ and never touch the live lane."
+  "Each is a forecast, graded by the bars, not a trade signal. Their grades and tally live under state/spx_jev/lanes/tape/ and never touch the live lane."
  ],
  "primary": "next_10",
  "average": "average_10",

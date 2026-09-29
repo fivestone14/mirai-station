@@ -1,5 +1,5 @@
-"""The shadow integral grade beside the end-price grade: every graded horizon of every lane gets one line in its own
-file, once, filled for past days by the backfill, while grades.jsonl, the weights and the loop's state stay exactly
+"""The average-price grade beside the end-price grade: every graded horizon of every lane gets one line in its own
+file, once, filled for past days by the backfill, while grades.jsonl, the weights and the end-price loop's state stay exactly
 what the grader wrote without it."""
 from __future__ import annotations
 

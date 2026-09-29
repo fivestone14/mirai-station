@@ -1,4 +1,4 @@
-"""The end-price sums stay in shadow exactly as they were: asking JEV the average-price question beside them must not
+"""The end-price sums, kept beside the call, stay exactly as they were: asking JEV the average-price question beside them must not
 move a byte of what the old sums send, grade or teach, whatever the new question's reply holds. One fixed read on each
 lane, run end to end with a fake JEV, against the files the code wrote for the same fixture before the average-price
 question existed (golden/old_sums.json): the sums request, grades.jsonl, weights.json, the learning loop's pool state

@@ -4,7 +4,7 @@
     python3 -m spx_jev.grade --day 2026-09-29
     python3 -m spx_jev.grade --lane tape    # the opening lane, under state/spx_jev/lanes/tape/
     python3 -m spx_jev.grade --lane premarket   # the reads before the open, under state/spx_jev/lanes/premarket/
-    python3 -m spx_jev.grade --integral-backfill [--day D]   # the shadow integral grade of past graded horizons, from their bars
+    python3 -m spx_jev.grade --integral-backfill [--day D]   # the average-price grade of past graded horizons, from their bars
     python3 -m spx_jev.grade --integral-report  # per box, the flat share on the average price against the end price
     python3 -m spx_jev.grade --integral-loop-dry-run   # what the loop would learn from the average-price grade, built in a scratch folder
 
@@ -69,15 +69,15 @@ while the settled open or a mark has no bar, and a finished day without them clo
 every other lane a record stamped before its session's open is never graded from its spot: it is
 written as not graded.
 
-The shadow integral grade
+The average-price grade
     After every run, each horizon graded above is graded once more on the average price over its window
     (integral.py), from the same spot or settled open to the same mark, against the same flat band narrowed
     by integral.factor. On the box a lane's average-price sum forecasts (lane.average, the primary's) it
     grades that sum's call where JEV answered it, and scores its odds against the average-price label
     (integral_scores); elsewhere, and on a read from before the sum, it grades the end-price sum's own
-    call. Each line names the sum it graded (``sum``). It is written to its own file and nothing that
-    grades or learns reads it: grades.jsonl, the weights and the loop's state are exactly what they were
-    without it. A window with
+    call. Each line names the sum it graded (``sum``). It is written to its own file: grades.jsonl, the
+    question weights and the end-price loop's state are exactly what they were without it, while the card
+    grades the phone's call on it and the average-price loop (integral_loop.py) learns from it. A window with
     bars missing waits today and is written as not graded on a finished day; ``--integral-backfill`` fills
     the file for past days from their saved bars without grading anything else, and ``--integral-report``
     prints the flat share on both grades over the same windows, which is how the factor is judged.
@@ -95,7 +95,7 @@ Outputs, all under the lane's folder (state/spx_jev/ for the live lane)
                         "new_this_run", "new_by_horizon", "closed_out"}
     weights_log.jsonl  one line per grading run that graded something: the tally and every weight that moved
     and every new line, once more, in the raw archive (archive.GradeRecord, keyed to its read)
-    integral_grades.jsonl  one line per graded horizon, the shadow integral grade (append only, keyed by row_ts,
+    integral_grades.jsonl  one line per graded horizon, the average-price grade (append only, keyed by row_ts,
                        ``horizon`` and ``rule_version``): the sum graded (``sum``), integral.grade_window's fields,
                        the end-price label (``end_label``), on a RECORD horizon the five-band size line (``size``),
                        and for the average-price sum's call its ``scores`` and the edge JEV was told
@@ -458,7 +458,7 @@ def weights_from(grades: list[dict], allowed: dict[str, set[str]], lane: Lane = 
         try:
             from .integral_loop import IntegralPoolWeights   # only when switched on: it reads this module, through clock too
             out["pool_integral"] = IntegralPoolWeights.learn(graded, allowed, out_dir, lane).as_json()
-        except Exception as e:  # the average-price loop must never cost a run its weights, the shadow grade or the card
+        except Exception as e:  # the average-price loop must never cost a run its weights, the average-price grade or the card
             print(f"average-price loop failed: {type(e).__name__}: {e}", file=sys.stderr)
             out["pool_integral"] = {"failed": f"{type(e).__name__}: {e}"}
     if lane.tag:
@@ -540,8 +540,8 @@ def run(state_dir: Path, out_dir: Path, allowed: dict[str, set[str]], day: str |
     tmp.write_text(json.dumps(weights, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, weights_path)                    # step 3 never sees a half file
     try:
-        integral_run(state_dir, out_dir, lane, day)  # the shadow grade reads what was written above and writes only its own file
-    except Exception as e:  # the shadow grade must never cost a run its grades, the card or the close-out
+        integral_run(state_dir, out_dir, lane, day)  # the average-price grade reads what was written above and writes only its own file
+    except Exception as e:  # the average-price grade must never cost a run its grades, the card or the close-out
         print(f"integral shadow grade failed: {type(e).__name__}: {e}", file=sys.stderr)
     return weights
 
@@ -598,7 +598,7 @@ def integral_scores(avg: dict, label: str) -> dict:
 
 
 def integral_line(line: dict, qid: str, rec: dict | None, bars: list[dict], prior: dict[str, list[dict]], lane: Lane = LIVE) -> dict:
-    """The shadow integral grade of horizon ``qid`` of a grades.jsonl ``line``, over the window the line was graded on
+    """The average-price grade of horizon ``qid`` of a grades.jsonl ``line``, over the window the line was graded on
     (horizon_start to mark_at) and against its flat band: the line's anchor times the horizon's sigma band, or the
     record's ``band.flat_points``. Measured from the read's spot, or the settled open the line was measured from. The
     call graded is the average-price sum's where it answered (average_call), against the edge JEV was told (told_edge,
@@ -633,7 +633,7 @@ def integral_line(line: dict, qid: str, rec: dict | None, bars: list[dict], prio
 
 
 def integral_run(state_dir: Path, out_dir: Path, lane: Lane = LIVE, day: str | None = None) -> list[dict]:
-    """Append the shadow integral grade of every horizon grades.jsonl has graded and integral_grades.jsonl does not
+    """Append the average-price grade of every horizon grades.jsonl has graded and integral_grades.jsonl does not
     hold under this rule_version, from the day's bars; nothing else is written. A window with bars missing waits
     today, when they can still come, and is written as not graded on a finished day, so none is retried for ever
     and none is written twice; a read whose average-price odds are not odds is written as not graded
@@ -666,7 +666,7 @@ def integral_run(state_dir: Path, out_dir: Path, lane: Lane = LIVE, day: str | N
                 try:
                     line = integral_line(g, qid, recs.get(g["row_ts"]), bars, prior, lane)
                 except Exception as e:  # one read that cannot be graded must never hold back the rest of the batch
-                    print(f"integral grade of {g['row_ts']} {qid} failed: {type(e).__name__}: {e}", file=sys.stderr)
+                    print(f"average-price grade of {g['row_ts']} {qid} failed: {type(e).__name__}: {e}", file=sys.stderr)
                     continue                              # nothing written: a later run tries it again
                 if line.get("reason") == integral.NOT_GRADED and d >= today:
                     continue                              # a hole today can still be filled: a later run grades it
@@ -701,7 +701,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out-dir", default=None, help="default the lane's folder under <state-dir>")
     ap.add_argument("--day", help="grade only this day's records")
     ap.add_argument("--lane", choices=sorted(LANES), default="live", help="which lane's records to grade")
-    ap.add_argument("--integral-backfill", action="store_true", help="only fill the shadow integral grade of graded horizons from their bars")
+    ap.add_argument("--integral-backfill", action="store_true", help="only fill the average-price grade of graded horizons from their bars")
     ap.add_argument("--integral-report", action="store_true", help="only print each box's flat share on the average and on the end price")
     ap.add_argument("--integral-loop-dry-run", action="store_true",
                     help="only print what the learning loop would learn from the average-price grade, built in a scratch folder")
@@ -726,7 +726,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.integral_backfill:
         new = integral_run(state_dir, out_dir, lane, args.day)
-        print(f"integral grade: {sum(1 for g in new if g.get('graded'))} new windows graded, "
+        print(f"average-price grade: {sum(1 for g in new if g.get('graded'))} new windows graded, "
               f"{sum(1 for g in new if not g.get('graded'))} not graded, into {out_dir / INTEGRAL_NAME}", file=sys.stderr)
         return 0
     w = run(state_dir, out_dir, live_options(load_questions(lane.questions, lane.key)), args.day, lane)

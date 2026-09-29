@@ -1,4 +1,5 @@
-"""The integral grade: a call graded on where price sat over its whole window, not on the one minute at its end.
+"""The average-price grade: a call graded on where price sat over its whole window, not on the one minute at its end.
+(Its files and fields keep the name integral: integral_grades.jsonl, RULE_VERSION, the loop in integral_loop.py.)
 
 For a read at spot P0 and a window of T one-minute bars (the bars grade.py reads for the horizon, from its
 start to its mark, the last one being the mark bar):
@@ -212,7 +213,7 @@ def sharp_move(closes: list[float], first_from: float, base: list[list[float]]) 
 
 def grade_window(bars: list[dict], prior: dict[str, list[dict]], t0: datetime, minutes: int, spot: float, flat: float,
                  pick, probs: dict | None = None, edge: float | None = None) -> dict:
-    """The integral grade of a call at ``spot`` over the ``minutes`` bars from ``t0``, against the flat band ``flat``
+    """The average-price grade of a call at ``spot`` over the ``minutes`` bars from ``t0``, against the flat band ``flat``
     in points narrowed by factor, or against ``edge`` itself when the call was told one (the edge in its question,
     rounded as it was told), with ``prior`` the recent sessions' bars (newest first) the ranks read. A ``graded:
     False`` result names the minutes missing; its guard fields are filled all the same."""
