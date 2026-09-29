@@ -14,7 +14,8 @@
 
   <!-- Every 5 minutes. A pre-market read is owed 15 minutes after its checkpoint (the lane's
        5-minute late line plus a read's worst run), so a miss is paged within 20 minutes of the
-       checkpoint, while the next checkpoint is still ahead.
+       checkpoint: before the next checkpoint for most, after the 09:05 read for 08:48. A close-out
+       that did not land by 10:21, or left a call ungraded, is paged the same way.
 
        SEPARATE FROM THE LANE ON PURPOSE. The pre-market job fires on calendar times and a
        checkpoint it misses is never read later; a check inside that job dies with it. This

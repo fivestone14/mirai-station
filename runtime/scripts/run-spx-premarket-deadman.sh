@@ -2,8 +2,8 @@
 # launchd-fired wrapper: the dead-man's switch for the SPX JEV pre-market lane.
 #
 # Every 5 minutes it checks that each of the lane's checkpoints owed by now has its read on file and
-# that the 10:06 ET close-out landed, and pages the phone once per miss (watch/intraday/
-# spx_premarket_deadman.py). The market-day and time-of-day gates live inside run(), so the check
+# that the 10:06 ET close-out landed with no call left ungraded, and pages the phone once per miss
+# (watch/intraday/spx_premarket_deadman.py). The market-day and time-of-day gates live inside run(), so the check
 # always runs; the shell skips only the New York weekend, as the lane's own run script does, and the
 # lane's kill switch, under which the lane reads nothing on purpose.
 #

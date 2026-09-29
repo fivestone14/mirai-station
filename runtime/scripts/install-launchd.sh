@@ -42,7 +42,7 @@ PLISTS=(
   "com.mirai-station.spx-jev-tape.plist"
   "com.mirai-station.spx-jev-premarket.plist"
   # The pre-market lane's dead-man's switch: pages a checkpoint with no read, or a close-out
-  # that never landed. Its own job, so the lane dying cannot silence it.
+  # that never landed or left a call ungraded. Its own job, so the lane dying cannot silence it.
   "com.mirai-station.spx-premarket-deadman.plist"
   "com.mirai-station.spx-jev-bars.plist"
   "com.mirai-station.spx-jev-context.plist"
