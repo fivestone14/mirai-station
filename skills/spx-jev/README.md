@@ -504,12 +504,16 @@ running.
   e-processes for JEV against the reference and the pool against the exact
   blend), or the per-forecast losses, Brier and edge score 06 adds to
   `grades.jsonl`: whether JEV helps call SPX's direction has no test yet.
-- **Follow-up: the Schwab breadth check, once Will has logged in again.** On
-  2026-09-28 Schwab served no minute bars for `$ADD`, `$VOLD` or `$VOLSPD` all
-  day, live and in the after-close save, and the NYSE series it did serve came
-  back changed: `$UVOL` and `$DVOL` at thousands of times any saved session's
-  size, `$TICK` at zero most minutes and never below it, `$TRIN` far under its
-  usual range. Ask Schwab's history for each of the seven breadth symbols over a
+- **Follow-up: the Schwab breadth check.** On 2026-09-28 Schwab served no
+  minute bars for `$ADD`, `$VOLD` or `$VOLSPD` all day, live and in the
+  after-close save, and the NYSE series it did serve came back changed:
+  `$UVOL` and `$DVOL` at thousands of times any saved session's size, `$TICK`
+  at zero most minutes and never below it, `$TRIN` far under its usual range.
+  It persisted on a second day, 2026-09-29, with the Schwab login healthy: the
+  market feed logged no minute bars for `$ADD`, `$VOLD` and `$VOLSPD` at every
+  one of its 333 minute runs and in the after-close save, and `$UVOL` and
+  `$DVOL` failed the thousands-of-shares check at every minute, so `$VOLD` was
+  never derived. Ask Schwab's history for each of the seven breadth symbols over a
   recent session and set it beside a saved one (`state/spx_jev/context/bars/`)
   before changing anything. Until then the labels that need `$ADD` or
   `$VOLSPD` are omitted with the series named, and `$VOLD` is derived only on a
