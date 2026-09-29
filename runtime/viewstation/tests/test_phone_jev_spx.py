@@ -209,7 +209,7 @@ def test_the_sheet_names_the_tier_in_words_that_say_right_and_a_sharp_move_once_
     weak = _result({**S9, "integral": {**S9["integral"], "tier": "Weak right"}}, "2026-09-28T10:45:00-04:00")
     assert weak[0] == "Weak rightResult" and not any(t.startswith("A sharp move") for t in weak)
     stale = _result({**S9, "integral": {**S9["integral"], "stale_read": True}}, "2026-09-28T10:45:00-04:00")
-    assert "The read\u2019s price was stale, so this call is kept out of learning." in stale
+    assert "The read\u2019s price was stale, so this call is kept out of the average-price loop." in stale
     assert not any("stale" in t for t in _result(S9, "2026-09-28T10:45:00-04:00"))
 
 

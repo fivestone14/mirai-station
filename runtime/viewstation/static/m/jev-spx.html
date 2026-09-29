@@ -950,7 +950,7 @@ details .q{margin-top:8px}
       res.appendChild(el('p', null, pathWords(g)));
       if(g.sharp_move && g.sharp_move.sharp) res.appendChild(el('p', null, sharpWords(g.sharp_move)));
       if(g.running && g.running.length) res.appendChild(el('p', null, runningWords(g.running)));
-      if(g.stale_read) res.appendChild(el('p', null, 'The read\u2019s price was stale, so this call is kept out of learning.'));
+      if(g.stale_read) res.appendChild(el('p', null, 'The read\u2019s price was stale, so this call is kept out of the average-price loop.'));
       if(ep){
         var em = movedWords(ep.moved, c.mark);
         res.appendChild(el('p', 'cs-end', 'At the end price: ' + endVerdict(c, ep) + ', it ended ' + cap(ep.outcome) +
