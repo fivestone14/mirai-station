@@ -34,6 +34,7 @@ from datetime import date, datetime, time, timedelta
 from typing import TYPE_CHECKING
 
 from .events import ET, starts_on
+from .sessions import session_close
 
 if TYPE_CHECKING:
     from .lane import Lane
@@ -121,12 +122,19 @@ def asks_at(entry: dict, slot: str, day: date, reads: tuple[str, ...]) -> bool:
     return slot in window and (_minutes(slot) - _minutes(window[0])) % entry["every_min"] == 0
 
 
+def first_read(entry: dict, day: date, reads: tuple[str, ...]) -> str | None:
+    """The first of ``reads`` the entry asks at on ``day``; None when it asks at none."""
+    return next((r for r in reads if asks_at(entry, r, day, reads)), None)
+
+
 def not_due(doc: dict, lane: Lane, now: datetime, fired: datetime | None = None) -> dict[str, str]:
     """``{question id: why}`` for every live and shadow question of the lane's doc that its schedule does not
     ask at this read (``fired`` as read_slot's). A question with no schedule is asked on every read; dark
-    questions are the packer's."""
+    questions are the packer's. One whose reads all come after the day's close (the closing-window questions
+    on a half day, which closes at 13:00) sleeps, naming the close."""
     slot = read_slot(lane, now, fired)
     day = now.astimezone(ET).date()
+    close = session_close(now.astimezone(ET)).strftime("%H:%M")
     out = {}
     for g in doc["groups"]:
         for qid, q in g["questions"].items():
@@ -137,6 +145,8 @@ def not_due(doc: dict, lane: Lane, now: datetime, fired: datetime | None = None)
                 out[qid] = f"no {lane.name} lane read at {now.astimezone(ET):%H:%M} ET"
             elif asks_at(entry, slot, day, lane.read_times()):
                 continue
+            elif (first := first_read(entry, day, lane.read_times())) is not None and first > close:
+                out[qid] = f"asleep: the market closes at {close} ET today, before its first read at {first} ET"
             elif holds_for_the_day(entry) and slot > entry["at"][-1]:
                 out[qid] = f"a day constant: asked at {entry['at'][-1]} ET and held"
             elif "hold_until" in entry:

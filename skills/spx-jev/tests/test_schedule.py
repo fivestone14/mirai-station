@@ -1,12 +1,13 @@
 """The machine schedule: which read a moment stands for, and which questions each read asks."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
 from conftest import at
 from spx_jev.ask import load_questions
+from spx_jev.events import ET
 from spx_jev.lane import LIVE, TAPE
 from spx_jev.schedule import asks_at, check, not_due, read_slot
 
@@ -71,6 +72,18 @@ def test_what_a_read_leaves_out_and_why():
     assert not_due(TAPE_DOC, TAPE, at(9, 40))["gap_size"] == "a day constant: asked at 09:35 ET and held"
     assert not_due(TAPE_DOC, TAPE, at(9, 20))["gap_size"] == "no tape lane read at 09:20 ET"
     assert not_due(TAPE_DOC, TAPE, at(12, 30))["gap_size"] == "no tape lane read at 12:30 ET"
+
+
+def test_on_a_half_day_the_closing_window_questions_sleep_naming_the_close():
+    """The day after Thanksgiving closes at 13:00, before the six closing-window questions' first reads from 14:02: they
+    once got a generic "not on its schedule"; they sleep, naming the close. A normal day's reasons are unchanged."""
+    half = not_due(LIVE_DOC, LIVE, datetime(2026, 11, 27, 11, 32, tzinfo=ET))
+    closing = ("afternoon_leg_into_close", "settle_pull_side", "late_volume_pace", "closing_window_vix", "afternoon_charm_wall",
+               "prior_close_push_fade")
+    live = [q for q in closing if any(q in g["questions"] for g in LIVE_DOC["groups"])]
+    assert live and all(half[q].startswith("asleep: the market closes at 13:00 ET today, before its first read at ") for q in live)
+    assert half["flow_vs_price"] == "not on its schedule at the 11:32 ET read"                    # hourly, asked again at 12:02
+    assert not any(why.startswith("asleep") for why in not_due(LIVE_DOC, LIVE, at(11, 32)).values())
 
 
 @pytest.mark.parametrize("entry", [{"every_min": 30, "from": "10:02"}, {"every_min": 30, "from": "whenever", "to": "15:32"},
