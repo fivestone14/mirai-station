@@ -127,7 +127,8 @@ def test_the_lane_run_grades_into_its_own_folder_and_archive_with_neutral_weight
     lines = [json.loads(l) for l in (out / "grades.jsonl").read_text().splitlines()]
     assert len(lines) == 1 and lines[0]["from"]["settled_open"] == 7700.0 and lines[0]["open_30"]["realized_sigma"] == 0.3
     assert w["lane"] == "premarket" and w["primary"] == "open_30" and w["graded_runs"] == 1 and w["method"] == "neutral"
-    assert set(w["sums"]) == {"open_10", "open_30"} and w["sums"]["open_10"]["n"] == 1
+    assert set(w["sums"]) == {"open_10", "open_30", "open_average_30"} and w["sums"]["open_10"]["n"] == 1
+    assert w["sums"]["open_average_30"]["n"] == 0                       # a read from before the average-price call: no call on record
     archived = [json.loads(l) for l in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
     assert [(a["read_id"], a["lane"]) for a in archived] == [(f"premarket:{rec['row_ts']}", "premarket")]
     assert not list(out.glob("pool_*")) and not list((state / "spx_jev").glob("pool_*"))              # no loop runs on the lane
