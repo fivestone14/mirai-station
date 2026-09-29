@@ -187,6 +187,12 @@ def test_no_round_level_in_play_and_an_unfinished_crossing(scene_factory):
     assert omitted["levels.round_number"].startswith("no round level in play")
 
 
+def test_a_round_level_out_of_play_ends_the_label_so_its_question_sleeps_and_holds_nothing(scene_factory):
+    far = build_levels_labels(scene(scene_factory, at(11, 0), [7692.0] * 90))
+    fell_back = build_levels_labels(scene(scene_factory, at(11, 0), [7490.0] * 80 + [7502.0, 7503.0, 7501.0] + [7498.0] * 7))
+    assert "levels.round_number" in far.ended and "levels.round_number" in fell_back.ended
+
+
 # ---- levels.break_armed and its gate
 
 def reclaim(state: str, **over) -> dict:

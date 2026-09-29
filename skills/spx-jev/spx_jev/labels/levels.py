@@ -182,7 +182,7 @@ def _effort_words(tower: dict | None) -> str:
 def _round_number(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None:
     """A round level price pushed through in the last CROSS_LOOKBACK_MIN minutes from at least the near
     distance away and is still through, else one it is pressing within the near distance. A push through
-    that price has fallen back from is neither, so the label is omitted."""
+    that price has fallen back from is neither, so the label is omitted as ended, as it is with no level in play."""
     if not scene.bars:
         ls.omit("levels.round_number", "no finished bars yet")
         return
@@ -214,14 +214,14 @@ def _round_number(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None
             d = (spot - level) / points
             ls.omit("levels.round_number", f"{minutes_ago(scene.now, bar_time(crossed) + ONE_MINUTE)} price {'rose' if up else 'fell'} "
                                            f"through a round {_round_kind(level)}-point level and is back {above_or_below(d)} it by {sig(abs(d))}: "
-                                           f"neither a push through that held nor a level pressed without one")
+                                           f"neither a push through that held nor a level pressed without one", ended=True)
             return
     level = min((below_spot, above_spot, below_spot + step), key=lambda lv: abs(spot - lv))
     d = (spot - level) / points
     if abs(d) > ROUND_NEAR_SIGMA:
         ls.omit("levels.round_number", f"no round level in play: the nearest is {sig(abs(d))} {'below' if d >= 0 else 'above'} price, "
                                        f"beyond the {sig(ROUND_NEAR_SIGMA)} near distance, and none was pushed through in the last "
-                                       f"{CROSS_LOOKBACK_MIN} minutes")
+                                       f"{CROSS_LOOKBACK_MIN} minutes", ended=True)
         return
     r = (ref - level) / points
     side = above_or_below(d)
