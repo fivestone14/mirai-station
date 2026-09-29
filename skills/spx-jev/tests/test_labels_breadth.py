@@ -142,6 +142,18 @@ def test_the_30_minute_share_is_omitted_when_the_feed_stopped_or_under_ten_prior
     assert "higher than 10 of the last 10 sessions" in sentence(upvol_read(scene_factory, 0.61, prior=USUAL_SHARES[:10]), "breadth.upvol_share_30m")
 
 
+def test_a_series_schwab_served_empty_all_day_is_named_in_every_label_it_omits(scene_factory):
+    """09-28: $UVOL and $DVOL arrived all day, $ADD, $VOLD and $VOLSPD never did. The omission names the missing series
+    and does not say the job stopped, which it had not."""
+    served = {s: v for s, v in upvol_last_30(0.61).items() if s != "$VOLD"}
+    ls = read(scene_factory, NOW, served, even_prior_upvol(USUAL_SHARES))
+    none_saved = "the market-context job has saved no {} today"
+    assert ls.omitted["breadth.advance_decline"] == none_saved.format("NYSE advancers minus decliners ($ADD)")
+    assert ls.omitted["breadth.members_net_day"] == none_saved.format("S&P 500 members' net volume ($VOLSPD)")
+    for path in ("breadth.upvol_share_30m", "breadth.day_upvol_share", "breadth.open_net_volume"):
+        assert ls.omitted[path] == none_saved.format("NYSE net volume ($VOLD)"), path
+
+
 def test_a_minute_that_finishes_after_the_read_does_not_count_toward_the_share(scene_factory):
     selling_after = upvol_last_30(0.61, extra=(0.0, 900000.0))           # its bar finishes at 12:33
     assert sentence(read(scene_factory, NOW, selling_after, even_prior_upvol(USUAL_SHARES)),
@@ -909,7 +921,6 @@ def test_net_volume_since_the_open_omitted_without_its_series_ten_prior_sessions
     ls = open_volume_read(scene_factory, 48, 21, extra={"$VOLD": [(at(9, 46), 900e6)]})
     assert "NYSE net volume is +48M" in sentence(ls, "breadth.open_net_volume")
     scene = scene_factory(OPENING, flat_bars(15), market=MarketContext({"$VOLSPD": [(at(9, 44), 21e6)]}))
-    assert build_breadth_labels(scene).omitted["breadth.open_net_volume"] == (
-        "no NYSE net volume ($VOLD) known within 5 minutes of now: the market-context job stopped or has not saved it")
+    assert build_breadth_labels(scene).omitted["breadth.open_net_volume"] == "the market-context job has saved no NYSE net volume ($VOLD) today"
     thin = open_volume_read(scene_factory, 48, 21, prior_nyse=USUAL_OPEN_NYSE[:9])
     assert thin.omitted["breadth.open_net_volume"] == "its rank needs 10 prior sessions with NYSE net volume ($VOLD) at this minute, have 9"

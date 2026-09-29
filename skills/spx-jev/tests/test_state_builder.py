@@ -88,7 +88,8 @@ def test_breadth_reads_the_market_context_point_in_time(full_scene, scene_factor
     # the same context read 15 minutes earlier: the newest $ADD value is not known yet, and only 15 ticks are
     earlier = scene_factory(full_scene.now - timedelta(minutes=15), flat_bars(165), market=full_scene.market)
     state, omitted = _labels(earlier)
-    assert "advance_decline" not in state.get("breadth", {}) and omitted["breadth.advance_decline"].startswith("no NYSE advance-decline value")
+    assert "advance_decline" not in state.get("breadth", {}) and omitted["breadth.advance_decline"] == (
+        "the market-context job has saved no NYSE advancers minus decliners ($ADD) today")
     assert omitted["breadth.tick_lean"].startswith("needs 20 NYSE tick readings")
 
 
@@ -104,7 +105,7 @@ def test_a_missing_sector_or_symbol_omits_only_its_label(full_scene, scene_facto
     state, omitted = _labels(scene_factory(full_scene.now, flat_bars(180), market=MarketContext(known)))
     assert "tick_lean" in state["breadth"]
     assert omitted["breadth.sectors_up"] == "needs 8 of the 11 sector funds with a value today, have 7"
-    assert omitted["breadth.advance_decline"] == "no NYSE advance-decline value at or before now"
+    assert omitted["breadth.advance_decline"] == "the market-context job has saved no NYSE advancers minus decliners ($ADD) today"
 
 
 # ---- the tape lane

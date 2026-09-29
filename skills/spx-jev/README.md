@@ -327,6 +327,16 @@ running.
   e-processes for JEV against the reference and the pool against the exact
   blend), or the per-forecast losses, Brier and edge score 06 adds to
   `grades.jsonl`: whether JEV helps call SPX's direction has no test yet.
+- **Follow-up: the Schwab breadth check, once Will has logged in again.** On
+  2026-09-28 Schwab served no minute bars for `$ADD`, `$VOLD` or `$VOLSPD` all
+  day, live and in the after-close save, and the NYSE series it did serve came
+  back changed: `$UVOL` and `$DVOL` at thousands of times any saved session's
+  size, `$TICK` at zero most minutes and never below it, `$TRIN` far under its
+  usual range. Ask Schwab's history for each of the seven breadth symbols over a
+  recent session and set it beside a saved one (`state/spx_jev/context/bars/`)
+  before changing anything. Until then the labels that need `$ADD` or
+  `$VOLSPD` are omitted with the series named, and `$VOLD` is derived only on a
+  day `$UVOL` and `$DVOL` are in thousands of shares.
 - No market context is on disk yet: the breadth labels are omitted on every
   replay until the feed has run, and the backfill has not been run against the
   station.

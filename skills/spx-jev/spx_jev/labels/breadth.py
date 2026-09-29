@@ -55,6 +55,7 @@ TICK_BURST_WINDOW_MIN = 5
 RELEASE_TIERS = (events.TIER, events.DATA_10AM, events.DATA_2PM)
 NOT_RELEASES = events.AT_THE_CLOSE | {"FOMC_PRESSER"}
 NET_VOLUME = {"$VOLD": "NYSE net volume", "$VOLSPD": "S&P 500 members' net volume"}
+SERIES = {**NET_VOLUME, "$ADD": "NYSE advancers minus decliners"}
 THIRDS = ("bottom third", "middle third", "top third")
 
 
@@ -91,7 +92,7 @@ def build_breadth_labels(scene: Scene) -> LabelSet:
 def _advance_decline(scene: Scene, ls: LabelSet) -> None:
     add = scene.market.last("$ADD", scene.now)
     if add is None:
-        ls.omit("breadth.advance_decline", "no NYSE advance-decline value at or before now")
+        ls.omit("breadth.advance_decline", _unsaved(scene.market, "$ADD", scene.now))
     elif add == 0:
         ls.put("breadth.advance_decline", "as many NYSE stocks are advancing as declining today")
     else:
@@ -121,6 +122,12 @@ def _sectors_up(scene: Scene, ls: LabelSet) -> None:
 
 
 # ----------------------------------------------------------------------------- shared reads
+
+def _unsaved(mk: MarketContext, symbol: str, t: datetime) -> str | None:
+    """The reason when ``symbol`` has no value at all today by ``t``, naming it: a series Schwab served empty
+    (on 2026-09-28 $ADD, $VOLD and $VOLSPD all day) is not one that stopped. None when it has a value."""
+    return None if mk.last(symbol, t) is not None else f"the market-context job has saved no {SERIES[symbol]} ({symbol}) today"
+
 
 def _running_total(mk: MarketContext, symbol: str, t: datetime) -> float | None:
     """A running-total series ($UVOL, $DVOL, $VOLD, $VOLSPD) as it stood at ``t``: nothing yet at the open."""
@@ -162,8 +169,8 @@ def _net_volume_rank(scene: Scene, symbol: str, ls: LabelSet, path: str) -> tupl
     ``path`` with the reason and returns None when either is missing."""
     value = _running_total(scene.market, symbol, scene.now)
     if value is None:
-        ls.omit(path, f"no {NET_VOLUME[symbol]} ({symbol}) known within {FRESH_MIN} minutes of now: the market-context job "
-                      f"stopped or has not saved it")
+        ls.omit(path, _unsaved(scene.market, symbol, scene.now) or f"no {NET_VOLUME[symbol]} ({symbol}) known within {FRESH_MIN} "
+                                                                   f"minutes of now: the market-context job stopped or has not saved it")
         return None
     rank, why = rank_sessions(value, same_clock_market(scene, lambda mk, then: _running_total(mk, symbol, then)),
                               f"{NET_VOLUME[symbol]} ({symbol}) at this minute")
@@ -233,8 +240,9 @@ def _upvol_share_30m(scene: Scene, ls: LabelSet) -> None:
     """NYSE net volume's change over the last 30 minutes, ranked against the same change at this minute."""
     change = _net_volume_change(scene.market, scene.now - timedelta(minutes=WINDOW_30_MIN), scene.now)
     if change is None:
-        ls.omit("breadth.upvol_share_30m", f"no NYSE net volume ($VOLD) known both {WINDOW_30_MIN} minutes ago and now, within "
-                                           f"{FRESH_MIN} minutes of each: the market-context job stopped or has not saved it")
+        ls.omit("breadth.upvol_share_30m", _unsaved(scene.market, "$VOLD", scene.now) or
+                f"no NYSE net volume ($VOLD) known both {WINDOW_30_MIN} minutes ago and now, within {FRESH_MIN} minutes of each: "
+                f"the market-context job stopped or has not saved it")
         return
     rank, why = rank_sessions(change, same_clock_market(scene, lambda mk, then: _net_volume_change(mk, then - timedelta(minutes=WINDOW_30_MIN), then)),
                               f"NYSE net volume ($VOLD) over the {WINDOW_30_MIN} minutes to this minute")
@@ -321,8 +329,8 @@ def _day_upvol_share(scene: Scene, ls: LabelSet) -> None:
         return
     crossed = _crossings(scene.market, now)
     if crossed is None:
-        ls.omit("breadth.day_upvol_share", f"no NYSE net volume ($VOLD) known at both ends of a whole half hour since the open, "
-                                           f"within {FRESH_MIN} minutes of each")
+        ls.omit("breadth.day_upvol_share", _unsaved(scene.market, "$VOLD", now) or
+                f"no NYSE net volume ($VOLD) known at both ends of a whole half hour since the open, within {FRESH_MIN} minutes of each")
         return
     crossed_rank, no_crossed_rank = rank_sessions(crossed, same_clock_market(scene, _crossings), "NYSE net volume ($VOLD) since the open")
     if rank is None or crossed_rank is None:
@@ -421,8 +429,8 @@ def _at_extremes(scene: Scene, ls: LabelSet) -> None:
     apart = _small_caps_apart(mk, scene.bars, made_at, ruler.points, is_high)
     at_clock, before_clock = (f"{(t - ONE_MINUTE).astimezone(ET):%H:%M}" for t in (made_at, before_at))
     if net_now is None or net_before is None:
-        ls.omit("breadth.at_extremes", f"no NYSE net volume ($VOLD) known within {FRESH_MIN} minutes of both SPX {word}s, "
-                                       f"{before_clock} and {at_clock}")
+        ls.omit("breadth.at_extremes", _unsaved(mk, "$VOLD", scene.now) or
+                f"no NYSE net volume ($VOLD) known within {FRESH_MIN} minutes of both SPX {word}s, {before_clock} and {at_clock}")
         return
     if apart is None:
         ls.omit("breadth.at_extremes", f"no small-cap (IWM) price known within {FRESH_MIN} minutes of the SPX {word} at {at_clock}")
@@ -477,8 +485,9 @@ def _flip_after_release(scene: Scene, release: events.Event | None, ls: LabelSet
     before, before_rank, no_before = _window_change_rank(scene, before_from, release.start)
     released = f"{release.start.astimezone(ET):%H:%M}"
     if since is None or before is None:
-        ls.omit("breadth.flip_after_release", f"no NYSE net volume ($VOLD) known within {FRESH_MIN} minutes of {released} and of now: "
-                                              f"the market-context job stopped or has not saved it")
+        ls.omit("breadth.flip_after_release", _unsaved(scene.market, "$VOLD", scene.now) or
+                f"no NYSE net volume ($VOLD) known within {FRESH_MIN} minutes of {released} and of now: the market-context job "
+                f"stopped or has not saved it")
         return
     if since_rank is None or before_rank is None:
         ls.omit("breadth.flip_after_release", no_since or no_before)
