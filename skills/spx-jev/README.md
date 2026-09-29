@@ -237,7 +237,9 @@ archive there too, under `archive/`.
   per graded horizon (append only, keyed by the read, the horizon and
   `rule_version`), in every lane's folder: from `rule_version` 2 each line
   names the sum it graded (`sum`) and, for the call, carries its `scores`
-  and the edge JEV was told (`edge_told`); version 1 lines still read.
+  and the edge JEV was told (`edge_told`), from 3 the call is set against
+  that edge; older lines still read, and a read graded under more than one
+  version stands on its newest.
 - `pool_30.json`, `pool_60.json`, `pool_log.jsonl`: the learning loop's state
   per horizon and one log line per horizon per session applied or refused.
 - `pool_30_integral.json`, `pool_integral_log.jsonl`: the same loop learnt

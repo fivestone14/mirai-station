@@ -47,10 +47,12 @@ from .labels.measures import ET, ONE_MINUTE, bar_time
 from .labels.ranks import percentile, rank_sessions
 from .labels.words import third
 
-# bump when the grade's rule changes: a line is keyed by its read, its horizon and this. 2: the box a lane's average-price
-# sum forecasts is graded on that sum's call when it answered, with its scores (grade.integral_line); 1 graded the end-price sum's
-RULE_VERSION = 2
-READABLE_VERSIONS = (1, 2)   # the rules whose lines still read: 1's grade the end-price sum's call, as 2's do where there is no other
+# bump when the grade's rule changes: a line is keyed by its read, its horizon and this. 3: the average-price sum's call is set
+# against the edge JEV was told (grade.told_edge); 2: the box a lane's average-price sum forecasts is graded on that sum's call
+# when it answered, with its scores (grade.integral_line); 1 graded the end-price sum's
+RULE_VERSION = 3
+READABLE_VERSIONS = (1, 2, 3)   # the rules whose lines still read, a read's newest standing: 1's grade the end-price sum's call,
+                                # as 2's and 3's do where there is no other
 NOT_GRADED = "not graded: bars missing"
 TIERS = {"top": "Strong right", "middle": "Right", "bottom": "Weak right"}   # a right call's headroom by its third
 

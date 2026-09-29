@@ -92,7 +92,7 @@ def test_a_live_read_calls_the_average_and_its_grade_grades_that_pick_with_its_s
     assert rec["primary"] == "next_30" and rec["by"]["next_30"]["jev"]["pick"] == "up"   # the end-price sum, flat on top as before
     (line,) = [g for g in _lines(live / grade.INTEGRAL_NAME) if g["horizon"] == "next_30"]
     assert (line["rule_version"], line["sum"], line["pick"], line["label"], line["g"], line["edge"], line["verdict"]) == \
-        (2, "average_30", "flat", "up", 6.68, 3.11, "wrong")
+        (3, "average_30", "flat", "up", 6.68, 3.11, "wrong")
     assert line["edge_told"] == line["edge"]
     assert line["scores"] == {"brier": 1.26, "log_loss": round(math.log(10), 4), "jev_brier": 1.04, "jev_log_loss": round(math.log(5), 4),
                               "clock_brier": 2.0, "clock_log_loss": round(math.log(1.04 / 0.02), 4)}

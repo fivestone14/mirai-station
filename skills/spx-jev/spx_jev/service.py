@@ -315,9 +315,9 @@ def day_integral(out_dir: Path, day: str, lane: Lane = LIVE, horizon: str | None
     primary unless ``horizon`` names another, by read, as the card carries it (INTEGRAL_ON_CARD), a graded one with
     its strength ``tier`` (integral.strength) once the box's sessions before ``day`` can rank it; a stale read is
     ranked but never ranked against. Only lines under integral.READABLE_VERSIONS are read, and a read graded under more
-    than one stands on its newest (version 2 grades the average-price sum's call where there is one, ``sum`` naming the
-    one graded; version 1 always graded the end-price sum's). A read with no line yet is left out: its window is open,
-    or waits on a bar."""
+    than one stands on its newest (version 3 sets the average-price sum's call against the edge it was told; version 2
+    grades that call where there is one, ``sum`` naming the one graded; version 1 always graded the end-price sum's).
+    A read with no line yet is left out: its window is open, or waits on a bar."""
     box = horizon or lane.primary
     mine = [g for g in load_jsonl(out_dir / INTEGRAL_NAME) if g.get("horizon") == box and g.get("rule_version") in integral.READABLE_VERSIONS]
     newest: dict[str, int] = {}
