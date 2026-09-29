@@ -14,7 +14,7 @@
 
   <!-- The overnight futures store: /ES, /ZN, /BTC and /MBT 1- and 5-minute bars from the prior close
        to the read, one file per night under state/spx_jev/overnight/{date}.jsonl with a manifest line
-       per save, and the roll table beside them (spx_jev/overnight.py, rolls.py). Fires at 09:26 ET,
+       for each save that changed a night, and the roll table beside them (spx_jev/overnight.py, rolls.py). Fires at 09:26 ET,
        before the open, so the night is on disk for a 09:28 read, and again at 16:20 ET to finish the
        day's session and re-detect the rolls (spx_jev/overnight.py SAVE_TIMES; a test holds these
        entries to them). Market days only; a rerun adds only what is not on disk, and each run
