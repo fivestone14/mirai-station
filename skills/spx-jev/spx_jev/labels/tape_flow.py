@@ -671,7 +671,7 @@ def _strike_defense(scene: Scene, ls: LabelSet) -> None:
     got = _contested(record, scene.now, scene.spot)
     if got is None:
         ls.omit("options.strike_defense", f"none of the book's magnet and walls, the strikes the collector tests, "
-                                          f"was hit {DEFENSE_MIN_EVENTS} times or more in its last {OPTIONS_TAPE_WINDOW_MIN} minutes")
+                                          f"was hit {DEFENSE_MIN_EVENTS} times or more in its last {OPTIONS_TAPE_WINDOW_MIN} minutes", ended=True)
         return
     strike, hit, refilled = got
     d = (strike - scene.spot) / ruler.points
@@ -694,7 +694,7 @@ def _strike_defense(scene: Scene, ls: LabelSet) -> None:
     where = (f"{sig(abs(d))} {'above' if d >= 0 else 'below'} price, farther than the nearest one on {far.higher_than} "
              f"of the last {far.of} sessions at this minute, {far.band}")
     if far.band == "top third":
-        ls.omit("options.strike_defense", f"the nearest of the book's magnet and walls hit {DEFENSE_MIN_EVENTS} times or more is {where}: out of reach")
+        ls.omit("options.strike_defense", f"the nearest of the book's magnet and walls hit {DEFENSE_MIN_EVENTS} times or more is {where}: out of reach", ended=True)
         return
     ls.put("options.strike_defense",
            f"of the book's magnet and walls, the strikes the collector tests, the nearest where same-day quotes keep getting hit is {where}: within reach; "

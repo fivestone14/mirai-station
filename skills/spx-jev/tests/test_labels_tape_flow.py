@@ -473,6 +473,14 @@ def test_strike_defense_is_omitted_out_of_reach_without_a_contested_strike_a_run
     assert labels["options.strike_defense"].endswith("at or above the middle: defended; ruler estimated")
 
 
+def test_strike_defense_sleeps_with_no_contested_strike_in_reach_but_not_on_a_data_gap(scene_factory, tmp_path):
+    far, _ = read(record_scene(scene_factory, tmp_path / "far", readings(NOW, strikes=[(7730.0, 30, 0), (7702.0, 5, 4)])))
+    quiet, _ = read(record_scene(scene_factory, tmp_path / "quiet", readings(NOW, strikes=[(7702.0, 5, 4)])))
+    stopped, _ = read(record_scene(scene_factory, tmp_path / "stopped", readings(at(9, 56), strikes=[(7709.0, 14, 2)])))
+    assert "options.strike_defense" in far.ended and "options.strike_defense" in quiet.ended
+    assert "options.strike_defense" not in stopped.ended
+
+
 @pytest.mark.parametrize("spread, size, prior_days, sentence", [
     (0.03, 300.0, PRIOR_DAYS, "3 cents, wider than on 12 of the last 12 sessions at this minute, top third: wide for this time; the size "
                               "showing at SPY's best bid and offer combined is in the bottom fifth for 10:00, higher than 0 of the last 12 sessions at this minute"),
