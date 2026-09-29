@@ -44,7 +44,7 @@ Follow `docs/INSTALL.md` from §4 onward. The short version:
 ```bash
 cd ~/.claude/plugins/mirai-station
 ./runtime/scripts/venv-bootstrap.sh      # builds ~/.local/share/mirai-station/venv (schwab-py, scipy, …)
-./runtime/scripts/install-launchd.sh     # symlink + bootstrap the 11-agent fleet
+./runtime/scripts/install-launchd.sh     # symlink + bootstrap the 24-agent fleet
 ```
 
 ### 3. Populate Keychain secrets
@@ -94,7 +94,7 @@ so the morning macro brief can reach the Cassandra's Edge MCP servers.
 ./runtime/scripts/run-watch-left-eye.sh
 
 # Confirm the fleet is loaded:
-launchctl list | grep mirai-station      # all eleven agents
+launchctl list | grep mirai-station      # all 24 agents
 
 # Tail today's diary:
 tail -f state/reversion/$(date +%Y-%m-%d).jsonl
@@ -120,7 +120,7 @@ mirai-station/
 │   ├── iv-viability/                    ← per-contract IV gate + the Schwab/Cassandra vault
 │   └── mirai-right-eye/                 ← embedder only (RAG retired) → feeds macro-mood
 ├── runtime/
-│   ├── launchd/                         ← 11 LaunchAgent plists (the fleet)
+│   ├── launchd/                         ← 24 LaunchAgent plists (the fleet)
 │   ├── scripts/                         ← env.sh · venv-bootstrap · install-launchd · run-*.sh
 │   ├── viewstation/                     ← the Nightglass tablet (read-only HTTP :8787)
 │   └── watch/                           ← the tick chassis: cli · intraday/ (market_status,

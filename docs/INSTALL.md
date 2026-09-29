@@ -163,7 +163,7 @@ sends and publish fakes into it. Treat it like a password.
 
 `runtime/scripts/env.sh` exports it as `MIRAI_NTFY_TOPIC`, which
 `settings.ntfy_topic()` reads ahead of the config file. Every run wrapper sources
-`env.sh`, so all eleven agents pick it up.
+`env.sh`, so every agent picks it up.
 
 > **Never put the topic in `runtime/watch/config/limits-and-cooldowns.json`.**
 > That file is tracked by git — a topic written there is a secret published to the
@@ -182,7 +182,7 @@ through it; every push intent is also logged to
 ~/.claude/plugins/mirai-station/runtime/scripts/install-launchd.sh
 ```
 
-This symlinks the plists into `~/Library/LaunchAgents/` and bootstraps them via `launchctl`. Seven agents:
+This symlinks the plists into `~/Library/LaunchAgents/` and bootstraps them via `launchctl`: 24 agents, every one named in the installer's `PLISTS` list. The station `README.md`'s fleet table describes them, SPX JEV's nine jobs among them, and its kill-switch table gives `SPX_JEV_DISABLE=1` for those nine. The core seven:
 
 | Label | Cadence | What |
 |---|---|---|
@@ -222,7 +222,7 @@ sudo shutdown -r now
 
 Log back in, then:
 ```bash
-launchctl list | grep mirai-station   # all seven should be listed
+launchctl list | grep mirai-station   # all 24 should be listed
 ps -ef | grep caffeinate              # caffeinate should be running
 ```
 

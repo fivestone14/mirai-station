@@ -338,7 +338,7 @@ mirai-station/
 │   ├── watch/                  the tick chassis: cli · hunter wrapper ·
 │   │   └── intraday/           market_status · gex_alerts · push_ntfy · macro_mood · auth
 │   ├── viewstation/            "Nightglass" — read-only HTTP on :8787
-│   ├── launchd/                14 LaunchAgent plists (the fleet, below)
+│   ├── launchd/                24 LaunchAgent plists (the fleet, below)
 │   └── scripts/                install/venv/run wrappers + env.sh (Keychain reader)
 ├── state/                      runtime-mutable — never copied between machines
 │   ├── reversion/              the SPX diary + nightly grades
@@ -352,7 +352,10 @@ mirai-station/
                                 sndk-payload-inventory · salvage-notes
 ```
 
-### The launchd fleet (14 agents)
+### The launchd fleet (24 agents)
+
+`runtime/scripts/install-launchd.sh` names every agent it loads (`PLISTS`); that list is
+the fleet.
 
 | Label | Cadence | Job |
 |---|---|---|
@@ -368,6 +371,15 @@ mirai-station/
 | `dated-book` | 08:17 ET daily, + Fri 17:10 ET | the far-dated structural-wall sidecar |
 | `macro-brief` | 09:00 ET | morning Macro-Mood brief |
 | `gex-polarity` | 16:15 ET | after-close A/B grader + LOB nightly fold |
+| `spx-jev` | :02 and :32 ET, 09:32 to 16:02 (gated to RTH; the 16:02 fire only grades) | the SPX JEV decision service beside the SPX diary: labels, asks JEV, sums and grades, writes `state/spx_jev/` — its own job, never on the scan path (`skills/spx-jev/README.md`) |
+| `spx-jev-tape` | every 5 min 09:35 to 10:30 ET, and 10:42 (gated to RTH) | SPX JEV's opening lane |
+| `spx-jev-premarket` | 02:35, 03:35 (04:35 in Frankfurt's winter-time week), 08:05, 08:48, 09:05, 09:28 ET, and 10:06 | SPX JEV's lane before the open, from the night's futures; 10:06 is its close-out |
+| `spx-premarket-deadman` | every 5 min | pages a pre-market checkpoint with no read, or a close-out not landed or leaving a call ungraded |
+| `spx-jev-bars` | every 60 s (gated to RTH, plus 13 min after the close) | SPX's finished minute bars for SPX JEV |
+| `spx-jev-context` | every 60 s (gated to RTH) | the market around SPX (breadth, VIX family, futures, rates, sectors, megacaps) for SPX JEV |
+| `spx-jev-save-day` | 16:20 ET | the day's full minute bars of every market-feed symbol |
+| `spx-jev-overnight` | 09:26 and 16:20 ET | the overnight futures (/ES, /ZN, /BTC, /MBT) and the roll table |
+| `spx-jev-store` | 16:40 ET | SPX JEV's learning store, rebuilt from its raw files into checked Parquet with DuckDB views |
 
 ### Kill switches
 
@@ -381,6 +393,7 @@ can be missed.
 | `SNDK_PRO_DISABLE=1` | the SNDK scanner (**and**, implicitly, its reading — with no fresh rows, reading on would only re-narrate a frozen book) |
 | `SNDK_READ_DISABLE=1` | the SNDK reading only |
 | `SNDK_JEV_DISABLE=1` | the JEV decision service (checked in its runner, `run-sndk-jev.sh`, which exits 0) |
+| `SPX_JEV_DISABLE=1` | SPX JEV and all nine of its jobs (checked in each `run-spx-*.sh` runner only, which exits 0) |
 | `MIRAI_VOICE_DISABLE=1` | the voice sidecar |
 | `DATED_BOOK_DISABLE=1` | the far-dated sidecar |
 | `SIEGE_DISABLE=1` | the effort-at-the-wall sensor |
@@ -395,7 +408,7 @@ The SNDK reasoning **pause** is deliberately *not* a kill switch — see §2.
 ```bash
 cd ~/.claude/plugins/mirai-station
 ./runtime/scripts/venv-bootstrap.sh      # provision ~/.local/share/mirai-station/venv
-./runtime/scripts/install-launchd.sh     # symlink + bootstrap the 20 agents
+./runtime/scripts/install-launchd.sh     # symlink + bootstrap the 24 agents
 ```
 
 Then:
