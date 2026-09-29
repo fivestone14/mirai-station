@@ -93,6 +93,20 @@ def test_the_question_sets_counts_its_opening_lane_list_and_the_readme_match_its
     assert f"({n} questions, {labels} labels, {constants} constants," in readme
 
 
+def test_the_question_sets_counts_are_what_the_writer_works_out_from_it():
+    """The counts block is the writer's tally of the set (write_question_docs.set_counts), and it claims nothing
+    about which labels are built: that is the code's to say, one read at a time."""
+    import importlib.util
+    spec_ = importlib.util.spec_from_file_location("write_question_docs", QUESTION_SET.parent / "write_question_docs.py")
+    writer = importlib.util.module_from_spec(spec_)
+    spec_.loader.exec_module(writer)
+    d = json.loads(QUESTION_SET.read_text(encoding="utf-8"))
+    assert d["counts"] == writer.set_counts(d)
+    assert not {"labels_built", "answerable_now", "answerable_now_ids"} & set(d["counts"])
+    labels = d["labels"] + [lab for g in d["groups"] for q in g["questions"] for lab in q["labels_needed"]]
+    assert not [lab["name"] for lab in labels if "label_built" in lab]
+
+
 def test_every_cut_the_spec_names_is_a_constant():
     import importlib
     import pkgutil

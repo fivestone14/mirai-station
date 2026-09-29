@@ -2,7 +2,7 @@
 
     python3 spec/write_question_docs.py                          # from spec/question_set.json
     python3 spec/write_question_docs.py --set ~/edited-set.json  # an edited set (copy it over spec/question_set.json to keep it)
-    python3 spec/write_question_docs.py --check                  # say whether the doc on disk is what the set makes
+    python3 spec/write_question_docs.py --check                  # say whether the doc on disk and the set's counts are what the set makes
 
 The set is the one source of the questions: an edit is made there and the doc regenerated, never edited by
 hand. On the way each question is keyed by its id inside its group, and:
@@ -17,6 +17,9 @@ hand. On the way each question is keyed by its id inside its group, and:
   The review record (evidence, origin, sources, labels_needed) stays in the set; ``labels`` names what
   the question reads.
 
+The set's own ``counts`` block is worked out from what the set holds (set_counts) and written back into the set
+with the doc, so a tally can never lag the questions, labels and constants it counts.
+
 The doc is written only when the set's constants are cuts.py's to the number and the result loads for every
 lane (every brace names a constant, every schedule reads, no group over the cap); otherwise nothing is
 written and the reason is printed.
@@ -27,6 +30,7 @@ import argparse
 import json
 import sys
 import tempfile
+from collections import Counter
 from pathlib import Path
 
 SKILL = Path(__file__).resolve().parent.parent
@@ -74,6 +78,40 @@ def question_doc(qset: dict, source: str) -> dict:
     }
 
 
+def set_counts(qset: dict) -> dict:
+    """The set's tallies of its questions (by status, lane, group and what they serve), labels and constants. A
+    lane's question and group counts are its live ones; the market questions are every live one."""
+    questions = [q for g in qset["groups"] for q in g["questions"]]
+    live = [q for q in questions if q["status"] == "live"]
+
+    def on(lane: str) -> list[dict]:
+        return [q for q in live if lane in q.get("lanes", [])]
+
+    def live_groups(lane: str) -> int:
+        return sum(1 for g in qset["groups"] if g["lane"] == lane and any(q["status"] == "live" for q in g["questions"]))
+
+    def tally(items) -> dict:
+        return dict(Counter(items).most_common())
+
+    return {
+        "questions": len(questions),
+        "by_status": tally(q["status"] for q in questions),
+        "live_market_questions": len(live),
+        "premarket_questions": len([q for q in questions if "premarket" in q.get("lanes", [])]),
+        "opening_lane_questions": len(on("opening_five_minute")),
+        "thirty_minute_lane_questions": len(on("thirty_minute")),
+        "groups_thirty_minute": live_groups("thirty_minute"),
+        "groups_opening": live_groups("opening_five_minute"),
+        "groups_premarket": live_groups("premarket"),
+        "by_serves": tally(q["serves"] for q in questions),
+        "by_serves_live": tally(q["serves"] for q in live),
+        "by_group": {g["id"]: tally(q["status"] for q in g["questions"]) for g in qset["groups"]},
+        "labels": len(qset["labels"]),
+        "constants": len(qset["constants"]),
+        "label_availability": tally(lab["availability"] for lab in qset["labels"]),
+    }
+
+
 def constant_differences(qset: dict) -> list[str]:
     """Every set constant cuts.py lacks or holds at another number."""
     out = []
@@ -118,10 +156,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"the doc would not load, nothing written: {e}", file=sys.stderr)
         return 1
     out = Path(args.out)
+    counts = set_counts(qset)
     if args.check:
         same = out.is_file() and out.read_text(encoding="utf-8") == text
         print(f"{out} {'matches' if same else 'differs from'} {args.set}")
-        return 0 if same else 1
+        if qset["counts"] != counts:
+            print(f"{args.set}'s counts are not what it holds; run without --check to rewrite them")
+        return 0 if same and qset["counts"] == counts else 1
+    if qset["counts"] != counts:
+        qset["counts"] = counts
+        Path(args.set).write_text(json.dumps(qset, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        print(f"rewrote {args.set}'s counts")
     out.write_text(text, encoding="utf-8")
     n = sum(len(g["questions"]) for g in qset["groups"])
     print(f"wrote {out}: {n} questions in {len(qset['groups'])} groups from {args.set}")
