@@ -364,6 +364,7 @@ def test_today_is_built_once_its_saves_have_run_and_only_market_days(tmp_path):
     (tmp_path / "reversion" / "bars" / "2026-09-16-SPX.json").write_text("[]")
     (tmp_path / "reversion" / "bars" / "2026-09-15-SNDK.json").write_text("[]")
     assert store.days_on_disk(tmp_path, D) == [date(2026, 9, 16), date(2026, 9, 17)]
+    assert store.off_days_on_disk(tmp_path, D + timedelta(days=1)) == [date(2026, 9, 19)]
 
 
 def test_the_nightly_job_fires_once_the_command_counts_today_as_finished():
@@ -379,6 +380,14 @@ def test_the_command_builds_the_day_names_its_counts_and_writes_the_views(tmp_pa
     out = capsys.readouterr().out
     assert f"{DAY} reads 3, facts " in out and "grades 2 rows (0 quarantined)" in out and "views written" in out
     assert (store.store_dir(tmp_path) / store.DB_NAME).exists()
+
+
+def test_a_backfill_names_the_raw_files_it_leaves_out_for_not_being_market_days(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path))
+    (tmp_path / "spx_jev" / "overnight" / "2026-09-07.jsonl").write_text("")                    # Labor Day's futures
+    assert store.main(["--state-dir", str(tmp_path), "--backfill"]) == 0
+    out = capsys.readouterr().out
+    assert "not market days, so not stored: the raw files of 2026-09-07" in out and f"{DAY} reads 3" in out
 
 
 def test_a_relative_state_dir_still_gives_views_that_read_from_anywhere(tmp_path, monkeypatch):

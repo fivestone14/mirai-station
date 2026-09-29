@@ -304,6 +304,9 @@ week's market days. It writes the DuckDB file only when its views are missing
 or out of date, so a notebook holding it open read only never stops a run; one
 holding it open for writing leaves the views to the next run, with a line in
 the job's log, while the day's Parquet is still built.
+`python3 -m spx_jev.store --backfill` builds every market day with a raw file on
+disk, and names the days it leaves out for not being market days (Labor Day's
+futures, say).
 
 From Python, in the station's venv:
 

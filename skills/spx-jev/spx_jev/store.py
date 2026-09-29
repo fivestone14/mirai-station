@@ -2,7 +2,7 @@
 
     python3 -m spx_jev.store                        # the launchd job's run (16:40 ET): the last week's market days
     python3 -m spx_jev.store --day 2026-09-28       # rebuild one day
-    python3 -m spx_jev.store --backfill             # every market day with a raw file on disk
+    python3 -m spx_jev.store --backfill             # every market day with a raw file on disk, naming other days left out
 
 The raw files stay the record (the archive's own note: a cleaner store is a later transform of them). This job
 only reads them, and writes only under ``state/spx_jev/store/``:
@@ -984,8 +984,8 @@ def days_to_build(now: datetime, catch_up: int = CATCH_UP_DAYS) -> list[date]:
     return [d for k in range((last - first).days + 1) if is_trading_day(d := first + timedelta(days=k))]
 
 
-def days_on_disk(state_dir: Path | str, until: date) -> list[date]:
-    """Every market day up to ``until`` that any raw file the store reads is named for."""
+def _days_named(state_dir: Path | str, until: date) -> set[date]:
+    """Every day up to ``until`` that any raw file the store reads is named for."""
     state_dir = Path(state_dir)
     names = [p.stem for folder in (ARCHIVE_SUBDIR, LIVE_BARS_SUBDIR, CONTEXT_SUBDIR, CONTEXT_SUBDIR / "bars", OVERNIGHT_SUBDIR)
              for p in (state_dir / folder).glob("????-??-??.jsonl")]
@@ -996,9 +996,20 @@ def days_on_disk(state_dir: Path | str, until: date) -> list[date]:
             d = date.fromisoformat(n)
         except ValueError:
             continue
-        if d <= until and is_trading_day(d):
+        if d <= until:
             out.add(d)
-    return sorted(out)
+    return out
+
+
+def days_on_disk(state_dir: Path | str, until: date) -> list[date]:
+    """Every market day up to ``until`` that any raw file the store reads is named for."""
+    return sorted(d for d in _days_named(state_dir, until) if is_trading_day(d))
+
+
+def off_days_on_disk(state_dir: Path | str, until: date) -> list[date]:
+    """The days up to ``until`` a raw file is named for that are not market days (a holiday's futures, say),
+    which the store, a table of market days, leaves out."""
+    return sorted(d for d in _days_named(state_dir, until) if not is_trading_day(d))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1014,6 +1025,8 @@ def main(argv: list[str] | None = None) -> int:
         days = [date.fromisoformat(args.day)]
     elif args.backfill:
         days = days_on_disk(state_dir, last_finished(now))
+        if off := off_days_on_disk(state_dir, last_finished(now)):
+            print(f"spx-jev-store :: not market days, so not stored: the raw files of {', '.join(map(str, off))}")
     else:
         days = days_to_build(now)
     if not days:
