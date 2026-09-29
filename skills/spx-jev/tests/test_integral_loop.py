@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
+import sys
 from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -14,6 +16,7 @@ import pytest
 
 from conftest import at
 from spx_jev import grade, integral, integral_loop, lane, pool
+from spx_jev.scores import floored
 from spx_jev.clock import INTEGRAL_CACHE_NAME, MIN_SESSIONS, PHASES, _integral_rule_key
 from spx_jev.grade import INTEGRAL_NAME, weights_from
 from spx_jev.lane import LANES, LIVE
@@ -160,6 +163,14 @@ def test_with_the_switch_off_no_file_of_the_switched_loop_is_made_or_read(tmp_pa
     assert after_plain == after_beside
 
 
+def test_with_the_switch_off_the_grader_never_imports_the_switched_loop(tmp_path):
+    """In a fresh interpreter, the service, the clock and a grading run's learning leave the module unloaded."""
+    code = ("import sys; from pathlib import Path; from spx_jev import clock, grade, service; from spx_jev.lane import LIVE; "
+            f"grade.weights_from([], {{}}, LIVE, Path({str(tmp_path)!r})); print('spx_jev.integral_loop' in sys.modules)")
+    done = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parent.parent, capture_output=True, text=True, check=True)
+    assert done.stdout.strip() == "False" and (tmp_path / "pool_30.json").exists()
+
+
 # ---- on
 
 def test_on_the_loop_learns_from_the_average_price_label_beside_the_end_price_loop_learning_as_it_does_off(tmp_path, clock):
@@ -298,6 +309,78 @@ def test_on_a_change_to_the_reference_odds_constants_starts_the_calibration_agai
     alone = _write(tmp_path / "alone", {DAYS[2]: SESSIONS[DAYS[2]]})
     integral_loop.update(alone, TODAY)
     assert json.loads((out / "pool_30_integral.json").read_text())["cal"] == json.loads((alone / "pool_30_integral.json").read_text())["cal"]
+
+
+def test_on_a_half_day_teaches_it_nothing(tmp_path, clock):
+    out = _write(tmp_path, {"2026-11-27": SESSIONS[DAYS[0]]})
+    integral_loop.update(out, "2026-11-30")
+    (line,) = _log(out)
+    assert line["manifest"]["included"] == [] and set(line["manifest"]["excluded"].values()) == {"a half day"}
+
+
+def test_on_only_the_current_rule_versions_label_of_the_box_is_learned(tmp_path, clock):
+    """An older rule's line, or the 60-minute box's, filed first for the same read teaches nothing: the state is the
+    same to the byte as with neither."""
+    turn = {"up": "down", "down": "up", "flat": "up"}
+    base, noisy = _write(tmp_path / "base"), _write(tmp_path / "noisy")
+    lines = [json.loads(line) for line in (noisy / INTEGRAL_NAME).read_text().splitlines()]
+    older = [{**g, "rule_version": integral.RULE_VERSION - 1, "label": turn[g["label"]]} for g in lines if g["horizon"] == "next_30"]
+    other_box = [{**g, "label": "up" if g["label"] == "down" else "down"} for g in lines if g["horizon"] == "next_60"]
+    (noisy / INTEGRAL_NAME).write_text("".join(json.dumps(g) + "\n" for g in older + other_box + lines))
+    for out in (base, noisy):
+        integral_loop.update(out, TODAY)
+    assert (noisy / "pool_30_integral.json").read_bytes() == (base / "pool_30_integral.json").read_bytes()
+
+
+def test_on_a_read_is_forecast_on_jevs_own_average_odds_the_shown_blend_and_its_fresh_answers(tmp_path):
+    """JEV's own odds, not the blend the phone showed, are the JEV side of the mixes; the blend is blend50 as shown;
+    the questions' answers and which were fresh are the read's own."""
+    out = _write(tmp_path)
+    recs = grade.load_jsonl(out / "hour" / f"{DAYS[0]}.jsonl")
+    ref = integral_loop.reference(json.loads((out / INTEGRAL_CACHE_NAME).read_text())["days"], DAYS[0], "v")
+    reads, excluded = integral_loop._session_reads(recs, integral_loop.average_lines(out), integral_loop.cold_state(), ref, LIVE)
+    snap = reads[0]["snapshot"]
+    assert excluded == {} and [r["outcome"] for r in reads] == [lab for lab, _, _ in SESSIONS[DAYS[0]]]
+    assert snap["experts"]["jev_share_1.0"] == pytest.approx(floored(JEV_AVG), abs=1e-4)
+    assert snap["experts"]["jev_share_1.0"] != pytest.approx(floored(SHOWN_AVG), abs=1e-3)
+    assert snap["blend50_exact"] == pytest.approx(SHOWN_AVG) and snap["raw_clock"] == pytest.approx({"up": 0.25, "flat": 0.5, "down": 0.25})
+    assert snap["fresh"] == snap["awake"] == ["q_a"] and snap["q_probs"] == {"q_a": {"yes": 0.9, "no": 0.1}}
+
+
+def test_on_the_calibration_counts_what_happened_and_forgets_it_by_the_decay(tmp_path, clock):
+    """Worked by hand: three reads a session on windows that never overlap, each counting a third of its day; the
+    reference expected up a quarter of the time; each session's count is kept at 0.95 of itself the next."""
+    out = _write(tmp_path)
+    integral_loop.update(out, DAYS[1])
+    cal = json.loads((out / "pool_30_integral.json").read_text())["cal"]
+    assert cal["O"] == pytest.approx({"up": 2 / 3, "flat": 1 / 3, "down": 0.0}) and cal["E"]["up"] == pytest.approx(0.25)
+    integral_loop.update(out, TODAY)
+    cal = json.loads((out / "pool_30_integral.json").read_text())["cal"]
+    up = (0.95 * 2 / 3 + 1 / 3) * 0.95 + 1 / 3           # 14th: up, up, flat; 15th: down, flat, up; 16th: up, down, flat
+    assert cal["O"]["up"] == pytest.approx(up, abs=1e-9) and cal["E"]["up"] == pytest.approx((0.95 * 0.25 + 0.25) * 0.95 + 0.25, abs=1e-9)
+
+
+def test_on_the_reference_takes_the_newest_twenty_sessions_and_counts_none_that_is_thin():
+    """As clock.integral_odds counts them: the newest twenty sessions before the day, a thin one (under
+    MIN_SCORED_READS reads) holding its place without being counted, and none older reached for in its stead."""
+    even, skewed, thin = _counts(1, 2, 1), _counts(9, 0, 0), _counts(3, 0, 0)          # 20, 45 and 15 reads a session
+
+    def ref(days):
+        return integral_loop.reference({d: {"counts": c} for d, c in days.items()}, "2026-09-14", "v")
+    older, newest = {f"2026-07-{k:02d}": skewed for k in range(1, 6)}, {f"2026-08-{k:02d}": even for k in range(1, 21)}
+    for days, n in (({**older, **newest}, 20), ({**older, **newest, "2026-08-31": thin}, 19)):
+        assert len(ref(days).days) == n and ref(days).whole_day("next_30") == pytest.approx({"up": 0.25, "flat": 0.5, "down": 0.25})
+    nine = {f"2026-08-{k:02d}": even for k in range(1, 10)}
+    assert ref({**nine, **{f"2026-08-{k:02d}": thin for k in range(10, 14)}}) is None
+    assert ref({**nine, "2026-08-10": _counts(1, 1, 2)}) is not None                    # 20 reads: counted
+
+
+def test_on_a_session_with_one_read_before_the_question_is_learned_from_its_other_reads(tmp_path, clock):
+    out = _write(tmp_path)
+    _edit(out / "hour" / f"{DAYS[0]}.jsonl", lambda r: {k: v for k, v in r.items() if k != "average" or r["row_ts"] != at(10, 2, day=DAYS[0]).isoformat()})
+    integral_loop.update(out, DAYS[1])
+    (line,) = _log(out)
+    assert line["applied"] and line["manifest"]["excluded"] == {at(10, 2, day=DAYS[0]).isoformat(): "no average-price call on this read"}
 
 
 # ---- the dry run
