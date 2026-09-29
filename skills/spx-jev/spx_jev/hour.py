@@ -260,7 +260,7 @@ def hour_summary(answer: dict | None, lane: Lane = LIVE) -> dict | None:
         return {"error": answer.get("error", "no answer")}
     prim = by.get(lane.primary)
     if prim is None:
-        # the sum on the phone is missing: say so rather than lift the other sum into its place
+        # the primary end-price sum is missing: say so rather than lift the other sum into its place
         return {"error": f"no {lane.primary} answer", "primary": lane.primary, "by": by, "model": answer.get("model")}
     return {**prim, "primary": lane.primary, "by": by, "model": answer.get("model")}
 

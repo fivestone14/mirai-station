@@ -324,13 +324,12 @@ def answered(answers: dict[str, dict[str, float]], members: dict[str, str], fres
 def snapshot(state: dict, reference: "Baseline", h: str, now: datetime, jev: dict, live_clock: dict | None, shown: dict,
              answers: dict[str, dict[str, float]], members: dict[str, str], fresh: set[str], source: str = SOURCE) -> dict:
     """Every forecast of one horizon at one read, as the update will score it: the experts, the block's
-    members and mixture, the pool with its P(move) and P(up | move), the exact blend as the phone showed
-    it, the raw clock the calibration learns from, the questions' soft answers and which were awake
-    (answered, fresh or held) and fresh, and each live question's version. Weights and tables are the
-    state's as of the last session applied; the calibration is too, unless it was learned against another
-    baseline version, which the update resets at the next session applied: a read under a refitted
-    baseline is calibrated from nothing, as that update will learn it. ``{"left_out": why}`` when an
-    expert cannot be formed."""
+    members and mixture, the pool with its P(move) and P(up | move), the exact blend as the card kept
+    it, the reference's raw odds the calibration learns from (``raw_<source>``), and the questions'
+    part (answered). Weights and tables are the state's as of the last session applied; the
+    calibration is too, unless it was learned against another reference version, which the update
+    resets at the next session applied: a read under a refitted baseline is calibrated from nothing,
+    as that update will learn it. ``{"left_out": why}`` when an expert cannot be formed."""
     if not live_clock:
         return {"left_out": "no time-of-day odds this read, so today's blend is JEV alone and blend50 cannot be formed"}
     raw, long_run = reference.clock(h, now), reference.whole_day(h)

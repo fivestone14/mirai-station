@@ -368,7 +368,7 @@ def _pick(p: dict) -> str | None:
 def blend(hour: dict | None, clock: dict) -> dict | None:
     """The hour summary with every sum blended with the clock's odds for its horizon. JEV's own
     answer is kept under ``jev`` and the clock's under ``clock``, and each sum says whether it was
-    blended; the top of the summary is the primary sum, as the phone and the grader read it.
+    blended; the top of the summary is the sum it names as primary, as the card and the grader read it.
     ``blend.used`` is true only when the primary sum was blended. Without odds, JEV's sums stand
     alone and ``blend`` says why. The primary is the one the summary names, the live lane's without one."""
     if not isinstance(hour, dict) or not isinstance(hour.get("by"), dict):

@@ -226,7 +226,7 @@ def test_the_end_price_verdict_is_about_the_call_the_owner_sees():
 
 def test_a_read_whose_average_question_went_unanswered_is_the_end_price_call_graded_on_its_end_price(tmp_path):
     """The average-price sum was asked and got no answer: the call is the end-price sum's, said so, and it stands on
-    its end price even though the shadow grade graded that pick on the average price."""
+    its end price even though the average-price grade graded that pick on the average price."""
     ts = at(11, 2).isoformat()
     (tmp_path / "hour").mkdir()
     (tmp_path / "hour" / f"{DAY}.jsonl").write_text(json.dumps(
