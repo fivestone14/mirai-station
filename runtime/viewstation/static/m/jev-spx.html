@@ -709,6 +709,9 @@ details .q{margin-top:8px}
     var sub = $('sub'); if(sub && sub.dataset.seen){ sub.classList.add('fresh'); setTimeout(function(){ sub.classList.remove('fresh'); }, 2500); }
     if(sub) sub.dataset.seen = '1';
   }
+  // A failed fetch draws the last card once, saying it failed; while fetches keep failing only the ages move, so a
+  // fold the reader opened is never snapped shut every POLL_MS through an outage.
+  function failedFetch(){ if(lastOk) draw(last, false); else ages(last); }
   var inflight = false;
   function poll(){
     pollPre();                                    // before the open, the pre-market card is fetched with it
@@ -720,9 +723,9 @@ details .q{margin-top:8px}
     }).then(function(j){
       if(j && j.kind === 'json' && j.data && j.data.questions){ arrived(j.data); }
       else if(j && j.error){ say('the station said: ' + j.error); preOnly() || laneOnly(); }
-      else if(last){ draw(last, false); }
+      else if(last){ failedFetch(); }
       else { say('no card yet: the JEV service has not written one'); preOnly() || laneOnly(); }
-    }).catch(function(e){ if(last) draw(last, false); else { say('could not read the card: ' + (e && e.message ? e.message : 'no reply')); preOnly() || laneOnly(); } })
+    }).catch(function(e){ if(last) failedFetch(); else { say('could not read the card: ' + (e && e.message ? e.message : 'no reply')); preOnly() || laneOnly(); } })
       .finally(function(){ inflight = false; polling(false); });
   }
   // ---- the calls: every sum is a call that looks some minutes ahead, graded at its mark (the read's

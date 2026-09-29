@@ -693,6 +693,22 @@ def test_a_good_fetch_after_a_failed_one_clears_the_failure_though_the_card_is_t
     assert _run(js, {}) == [True, "ages", False, True, "ages", True]
 
 
+def test_a_fetch_that_keeps_failing_draws_the_last_card_once_and_then_only_moves_its_ages():
+    """Through an outage every 20-second poll redrew the whole page from the last card, and any fold a reader had
+    opened snapped shut. The first failure draws the card once with the failure said; the next ones only move the
+    ages, as the lane and pre-market polls already do; a good fetch draws it again (arrived)."""
+    js = ("var last = {row_ts: 'r'}, lastOk = true, inflight = false, drawn = [], URL_ = 'u', reply = null;"
+          "function pollPre(){} function polling(){} function say(){ drawn.push('say'); } function preOnly(){ return false; }"
+          "function laneOnly(){ return false; } function arrived(){ drawn.push('arrived'); lastOk = true; }"
+          "function draw(c, ok){ lastOk = ok; drawn.push('draw ' + ok); } function ages(){ drawn.push('ages'); }"
+          "function fetch(){ return reply ? Promise.resolve({ok: true, json: function(){ return Promise.resolve(reply); }}) : Promise.reject(new Error('offline')); }"
+          + _fn("failedFetch") + _fn("poll") +
+          "var steps = [null, null, null, {kind: 'json', data: {questions: []}}, null, {kind: 'json'}];"
+          "(function next(i){ if(i === steps.length){ console.log(JSON.stringify(drawn)); return; }"
+          " reply = steps[i]; poll(); setTimeout(function(){ next(i + 1); }, 5); })(0);")
+    assert _run(js, {}) == ["draw false", "ages", "ages", "arrived", "draw false", "ages"]
+
+
 def test_the_opening_lane_is_drawn_while_the_30_minute_card_cannot_be_read():
     """Monday's first morning with no 30-minute card on file: the open 5-minute call still leads, drawn alone;
     once a 30-minute card has been read, paint draws both and this draws nothing."""
