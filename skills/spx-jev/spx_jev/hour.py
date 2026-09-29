@@ -189,7 +189,9 @@ def per_read(value, window: dict):
 def average_line(window: dict, lane: Lane = LIVE) -> str:
     """The context line of the average-price request: what the average over the window is, in one plain sentence,
     the read's price and the flat edge in points for this read, measured from the read's price or, on a lane graded
-    from it, the settled open (not yet known at a read before the open, whose price is the futures' guide to it)."""
+    from it, the settled open (not yet known at a read before the open, whose price is the futures' guide to it).
+    The same request's answers can speak of the day's volume-weighted average, so the line says this average is the
+    window's minute closes and not that one."""
     edge, price = f"{float(window['edge_points']):.2f}", window.get("price")
     if lane.graded_from_settled_open:
         span, ref = f"the {window['minutes']} minutes after the settled open", "the settled open"
@@ -198,7 +200,8 @@ def average_line(window: dict, lane: Lane = LIVE) -> str:
     else:
         span, ref = f"the next {window['minutes']} minutes", "the price now"
         where = f"the price now is {price:.2f}; " if price is not None else ""
-    return (f"{where}the average price over {span} counts every minute's closing price equally, so an early move counts for longer "
+    return (f"{where}the average price over {span} is the average of those minutes' closing prices, not the day's volume-weighted "
+            f"average price (VWAP); it counts every minute's closing price equally, so an early move counts for longer "
             f"than a late one; the average is flat when it sits within {edge} points of {ref} either way, up when it sits more than "
             f"{edge} points above it, down when it sits more than {edge} points below it")
 

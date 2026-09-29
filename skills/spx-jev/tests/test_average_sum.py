@@ -45,6 +45,8 @@ def test_the_end_price_request_leaves_the_average_out_and_the_average_request_gi
     assert req["id"] == "average" and list(req["questions"]) == ["average_30"] and req["state"]["answers"] == SENTENCES
     words = req["state"]["context"]["average"]
     assert "counts every minute's closing price equally, so an early move counts for longer than a late one" in words
+    # the same request's answers can name the day's volume-weighted average: this one is the window's minute closes
+    assert "is the average of those minutes' closing prices, not the day's volume-weighted average price (VWAP)" in words
     assert "flat when it sits within 3.19 points of the price now either way" in words and "more than 3.19 points below it" in words
     assert set(req["questions"]["average_30"]) == {"type", "instructions", "criteria"}          # what JEV is sent, nothing more
     tape = average_request(SENTENCES, average_window(10, SCENARIOS["S9"][2]), lane=TAPE)
