@@ -24,6 +24,7 @@ DOC = {"version": "test", "groups": [
                                "instructions": "Read `context.units`.", "criteria": {"yes": "y", "no": "n"}}}}]}
 SUMS = {"open_10": {"type": "choice", "choice": "flat", "confidence": 0.6, "probabilities": {"up": 0.2, "flat": 0.6, "down": 0.15, "unsure": 0.05}},
         "open_30": {"type": "choice", "choice": "up", "confidence": 0.5, "probabilities": {"up": 0.5, "flat": 0.3, "down": 0.15, "unsure": 0.05}}}
+AVERAGE = {"open_average_30": {"type": "choice", "choice": "down", "confidence": 0.6, "probabilities": {"up": 0.25, "flat": 0.3, "down": 0.45}}}
 
 
 def _night(now: datetime) -> list[dict]:
@@ -61,19 +62,20 @@ def _answers(seen):
     return send_all
 
 
-def _sums(seen):
+def _sums(sums, averages):
+    """The end-price sums' request is kept under ``sums``, the average-price sum's under ``averages``, each answered."""
     def send(req, **kw):
-        seen.append(req)
-        return {"model": "fake-1", "answers": SUMS}
+        (sums if req["id"] == "hour" else averages).append(req)
+        return {"model": "fake-1", "answers": SUMS if req["id"] == "hour" else AVERAGE}
     return send
 
 
 @pytest.fixture
 def jev(monkeypatch):
     """A fake JEV and grader, and a day with no report: what the lane sent and whom it graded."""
-    seen = {"requests": [], "sums": [], "graded": []}
+    seen = {"requests": [], "sums": [], "averages": [], "graded": []}
     monkeypatch.setattr(premarket, "send_all", _answers(seen["requests"]))
-    monkeypatch.setattr(premarket, "send", _sums(seen["sums"]))
+    monkeypatch.setattr(premarket, "send", _sums(seen["sums"], seen["averages"]))
 
     def graded(state_dir, out_dir, allowed, day=None, lane=None):
         seen["graded"].append(lane)
@@ -167,7 +169,7 @@ def test_a_snapshot_read_writes_its_record_archive_and_card_and_asks_nothing(tmp
     assert not (out / "hour").exists()
     (rec,) = _lines(state / "spx_jev" / "archive" / f"{DAY}.jsonl")
     assert rec["read_id"] == f"premarket:{at(2, 35).isoformat()}" and rec["lane"] == "premarket" and rec["checkpoint"] == "02:35"
-    assert rec["schema_version"] == archive.SCHEMA_VERSION == 4 and rec["night"] == read["night"]
+    assert rec["schema_version"] == archive.SCHEMA_VERSION == 5 and rec["night"] == read["night"]
     assert rec["market_context"]["/ES"] == {"value": 7781.0, "known_at": at(2, 35).isoformat()}
     assert rec["cadence"] == {"from": None, "held": {}, "not_due": {"pm_q": "not on its schedule at the 02:35 ET read"}, "asked": []}
     assert json.loads((out / "latest.json").read_text()) == c

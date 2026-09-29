@@ -52,7 +52,7 @@ from .ask import build_requests, get_path, load_questions, send, send_all
 from .cadence import missing_paths
 from .cuts import MIN_RANK_SESSIONS
 from .expiry import calendar_of
-from .hour import answer_sentences, hour_request, hour_summary, load_hour_doc, named_levels
+from .hour import answer_sentences, average_request, average_window, hour_request, hour_summary, load_hour_doc, named_levels
 from .labels.label_set import LabelSet
 from .labels.measures import SETTLED_OPEN_BAR
 from .labels.registry import build_labels
@@ -75,6 +75,12 @@ SUM_CONTEXT = {
                 "both are measured from that price, never from yesterday's close"),
     "units": ("sigma is the pre-open ruler: the median of the last sessions' morning expected move for the S&P 500 index. "
               "Each answer below was given by JEV about the night before the open, at this read"),
+}
+# the average-price request's own: one window, the primary's, from the settled open
+AVERAGE_CONTEXT = {
+    "horizon": (f"the {PREMARKET.horizons[PREMARKET.primary][0]} minutes after the settled open, the index's price at the close of its 09:34 bar; "
+                "measured from that price, never from yesterday's close"),
+    "units": SUM_CONTEXT["units"],
 }
 WHERE_NOW = "premarket.where_now"          # its figure's verdict is the story chip's lean
 REPORT = "overnight.release_reaction"
@@ -239,24 +245,37 @@ def save_the_night(state_dir: Path, now: datetime) -> dict:
 
 # ---- the read ------------------------------------------------------------------------------------
 
+def average_window_of(ruler: dict) -> dict | str:
+    """The window the average-price sum forecasts, the primary's from the settled open (hour.average_window), its flat
+    band in the pre-open ruler stamped on the record as the grader reads it (grade.stamped_ruler); why there is none
+    when the read has no ruler."""
+    minutes, flat = PREMARKET.horizons[PREMARKET.primary]
+    points = ruler.get("points")
+    if not isinstance(points, (int, float)) or points <= 0:
+        return "no pre-open ruler to price its edge in points this read"
+    return average_window(minutes, flat * float(points))
+
+
 def sum_the_read(doc: dict, fresh: dict[str, dict], missing: list[str], out_dir: Path,
-                 deadline: float | None = None) -> tuple[dict, dict | None, dict | None]:
-    """Steps 3 and 4 before the open: the read's answers as sentences, and the two sums over them from the
-    settled open (SUM_CONTEXT says so in the request), retried until ``deadline`` (ask.send). Returns what
-    service.sum_the_hour returns: the hour record, JEV's summary, and its reply untouched."""
+                 deadline: float | None = None, window: dict | str | None = None) -> tuple[dict, dict | None, dict | None, dict | None]:
+    """Steps 3 and 4 before the open: the read's answers as sentences, the two end-price sums over them from the
+    settled open (SUM_CONTEXT says so in the request) and the average-price sum over ``window`` in its own
+    (AVERAGE_CONTEXT), both sent at once and retried until ``deadline`` (ask.send). Returns what
+    service.sum_the_hour returns: the hour record, JEV's summary, and its two replies untouched."""
     sentences, left_out = answer_sentences(doc, fresh, QuestionWeights.load(out_dir))
     by_id = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
     base = {"used": {qid: fresh[qid]["pick"] for qid in sentences},
             "fresh": {qid: a["pick"] for qid, a in fresh.items() if by_id.get(qid, {}).get("status") == "live" and a.get("pick") is not None},
             "left_out": left_out, "missing": sorted(missing), "sentences": sentences}
     if not sentences:
-        return {**base, "request": None}, None, None
-    req = hour_request(sentences, load_hour_doc(lane=PREMARKET), context=SUM_CONTEXT, lane=PREMARKET)
-    try:
-        reply = send(req, deadline=deadline)
-    except Exception as e:  # send() scrubs the key and turns the network into RuntimeError; be safe anyway
-        reply = {"error": str(e) if isinstance(e, RuntimeError) else f"{type(e).__name__}: {e}"}
-    return {**base, "request": req}, hour_summary(reply, PREMARKET), reply
+        return {**base, "request": None}, None, None, None
+    hour_doc = load_hour_doc(lane=PREMARKET)
+    req = hour_request(sentences, hour_doc, context=SUM_CONTEXT, lane=PREMARKET)
+    avg_req = average_request(sentences, window, hour_doc, context=AVERAGE_CONTEXT, lane=PREMARKET) if isinstance(window, dict) else None
+    replies = service.send_sums([req, avg_req], send, deadline)
+    reply, avg_reply = replies[req["id"]], replies.get("average")
+    return ({**base, "request": req, "average_request": avg_req},
+            service.with_average(hour_summary(reply, PREMARKET), PREMARKET, window, avg_reply), reply, avg_reply)
 
 
 def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now: datetime, checkpoint: str,
@@ -282,7 +301,7 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
     labels = build_labels(scene) if scene else LabelSet()
     requests, skipped = build_requests(labels.state, doc, skip=skip, gates=labels.gates)
     by_id = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
-    answers = send_seconds = hour = hour_rec = hour_reply = None
+    answers = send_seconds = hour = hour_rec = hour_reply = average_reply = None
     if do_send and requests:
         t0 = _clock.monotonic()
         answers = send_all(requests, deadline=t0 + service.SEND_GROUPS_S)
@@ -295,7 +314,7 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
         missing = [qid for g in skipped.values() for qid, why in g.items()
                    if by_id.get(qid, {}).get("status") == "live" and str(why).startswith("missing")
                    and not labels.ended.intersection(missing_paths(str(why)))]
-        hour_rec, hour, hour_reply = sum_the_read(doc, fresh, missing, out_dir, t0 + service.SEND_READ_S)
+        hour_rec, hour, hour_reply, average_reply = sum_the_read(doc, fresh, missing, out_dir, t0 + service.SEND_READ_S, average_window_of(ruler))
         send_seconds = round(_clock.monotonic() - t0, 3)
         if hour is not None and PREMARKET.clock_blend:
             # each sum blended half and half with how the same window after the settled open ended on prior sessions
@@ -315,6 +334,8 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
             hour = {**hour, "used": len(hour_rec["used"]), "left_out": len(hour_rec["left_out"]), "missing": len(missing)}
             if hour.get("error"):
                 service.log(f"the sums got no answer: {hour['error']}")
+            if (hour.get("average") or {}).get("error"):
+                service.log(f"the average-price sum got no answer: {hour['average']['error']}")
     sent = answers is not None
     if not sent and do_send:
         unsent_reason = f"nothing to ask at the {checkpoint} ET read" + ("" if scene else f": {ruler['omitted']}")
@@ -338,6 +359,7 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
         read_id=archive.read_id(PREMARKET.name, row_ts), lane=PREMARKET.name, row_ts=row_ts, sent=sent, spot=record["spot"],
         sigma=record["sigma"], labels=labels.state, omitted=labels.omitted, requests=requests, skipped=skipped, responses=answers,
         hour_request=(hour_rec or {}).get("request"), hour_response=hour_reply, hour=hour, pool=(hour_rec or {}).get("pool"),
+        average_request=(hour_rec or {}).get("average_request"), average_response=average_reply,
         cadence={"from": None, "held": {}, "not_due": skip, "asked": [qid for r in requests for qid in r["questions"]]},
         market_context=futures_prices(rows, now), event=event, ruler=ruler, checkpoint=checkpoint, night=night))
     if sent:

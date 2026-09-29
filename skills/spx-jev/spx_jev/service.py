@@ -56,7 +56,7 @@ from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import archive, integral, pool
+from . import archive, ask, integral, pool
 from .ask import build_requests, confidence, load_questions, pick, send, send_all
 from .baseline import Baseline
 from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, missing_paths, plan,
@@ -65,7 +65,8 @@ from .clock import blend as clock_blend, odds as clock_odds
 from .events import learn_exclude, tag as event_tag
 from .expiry import calendar_of
 from .grade import INTEGRAL_NAME, horizon_start, live_options, mark_at, read_anchor, run as grade_run
-from .hour import answer_sentences, band_of, hour_request, hour_summary, load_hour_doc, named_levels
+from .hour import (answer_sentences, average_request, average_summary, average_window, band_of, hour_request, hour_summary, load_hour_doc,
+                   named_levels)
 from .labels.registry import build_labels
 from .lane import LANES, LANES_BY_KEY, LIVE, RECORD, Lane
 from .schedule import not_due, read_slot
@@ -185,13 +186,32 @@ def answer_entry(a: dict) -> dict:
             "noul": a.get("noul"), "score": a.get("score")}
 
 
+def send_sums(requests: list[dict | None], sender, deadline: float | None = None) -> dict[str, dict]:
+    """A read's sums requests, the end-price sums' and the average-price sum's, sent at the same time over ``sender``
+    (ask.send_all, each retried until ``deadline``): each reply by request id, a failed one as its error."""
+    return ask.send_all([r for r in requests if r], sender=sender, deadline=deadline)
+
+
+def with_average(summary: dict | None, lane: Lane, window: dict | str | None, reply: dict | None) -> dict | None:
+    """The hour summary with the average-price sum's under ``average`` (hour.average_summary), or its reason when it was
+    not asked (``window`` then says why); a lane without an average-price sum, or a read with no summary, as it came."""
+    if summary is None or not lane.average:
+        return summary
+    if not isinstance(window, dict):
+        return {**summary, "average": {"error": f"not asked: {window}", "primary": lane.average, "box": lane.primary}}
+    return {**summary, "average": average_summary(reply, window, lane)}
+
+
 def sum_the_hour(doc: dict, hour_doc: dict, answered: dict[str, dict], weights: QuestionWeights,
                  fresh: dict[str, dict] | None = None, missing: list[str] | None = None,
-                 lane: Lane = LIVE, unit: dict | None = None, deadline: float | None = None) -> tuple[dict, dict | None, dict | None]:
-    """Steps 3 and 4: sentences from the answers, the lane's sum questions over them, one reply from
-    JEV, retried until ``deadline`` (ask.send). Returns the hour record (what was used, what was fresh,
-    what was left out or missing, the request), JEV's summary and its reply untouched, for the archive.
-    A lane on the tape needs its ``unit`` to price the bands: without one there is no sum to ask."""
+                 lane: Lane = LIVE, unit: dict | None = None, deadline: float | None = None,
+                 window: dict | str | None = None) -> tuple[dict, dict | None, dict | None, dict | None]:
+    """Steps 3 and 4: sentences from the answers, the lane's end-price sums over them in one request and its
+    average-price sum in another over ``window`` (box_window; a reason instead, and it is not asked), both sent at
+    once and retried until ``deadline`` (ask.send). Returns the hour record (what was used, what was fresh, what
+    was left out or missing, both requests), JEV's summary with the average-price sum's under ``average``, and its
+    two replies untouched, for the archive. A lane on the tape needs its ``unit`` to price the bands: without one
+    there is no sum to ask."""
     sentences, left_out = answer_sentences(doc, answered, weights)
     fresh = fresh if fresh is not None else answered
     by_id = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
@@ -200,15 +220,15 @@ def sum_the_hour(doc: dict, hour_doc: dict, answered: dict[str, dict], weights: 
     base = {"used": {qid: answered[qid]["pick"] for qid in sentences}, "fresh": fresh_picks,
             "left_out": left_out, "missing": sorted(missing or []), "sentences": sentences}
     if not sentences:
-        return {**base, "request": None}, None, None
+        return {**base, "request": None}, None, None, None
     if lane.bar_clock and not unit:
-        return {**base, "request": None, "no_sum": "no tape unit this read: the bars have stopped, so the bands cannot be priced"}, None, None
+        return {**base, "request": None, "no_sum": "no tape unit this read: the bars have stopped, so the bands cannot be priced"}, None, None, None
     req = hour_request(sentences, hour_doc, lane=lane, ruler=unit)
-    try:
-        reply = send(req, deadline=deadline)
-    except Exception as e:  # send() scrubs the key and turns the network into RuntimeError; be safe anyway
-        reply = {"error": str(e) if isinstance(e, RuntimeError) else f"{type(e).__name__}: {e}"}
-    return {**base, "request": req}, hour_summary(reply, lane), reply
+    avg_req = average_request(sentences, window, hour_doc, lane=lane) if lane.average and isinstance(window, dict) else None
+    replies = send_sums([req, avg_req], send, deadline)
+    reply, avg_reply = replies[req["id"]], replies.get("average")
+    return ({**base, "request": req, "average_request": avg_req}, with_average(hour_summary(reply, lane), lane, window, avg_reply),
+            reply, avg_reply)
 
 
 def pool_snapshots(out_dir: Path, hour: dict, doc: dict, answered: dict[str, dict], fresh: set[str], now: datetime,
@@ -305,22 +325,40 @@ def day_integral(out_dir: Path, day: str, lane: Lane = LIVE, horizon: str | None
     return out
 
 
+def box_flat_points(row_ts: str, band: dict | None, scene: Scene, lane: Lane = LIVE) -> float | None:
+    """The flat band in points the grader sets the lane's primary box against for the read at ``row_ts``: the read's own
+    ``band`` on a RECORD box, else the morning anchor the read could know (grade.read_anchor) times the box's band; None
+    without one."""
+    flat = lane.horizons[lane.primary][1]
+    if flat == RECORD:
+        return (band or {}).get("flat_points")
+    anchor = read_anchor(scene.rows_today, scene.bars, scene.market, row_ts)
+    return flat * anchor.points if anchor else None
+
+
+def box_window(row_ts: str, band: dict | None, scene: Scene, lane: Lane = LIVE) -> dict | str:
+    """The window the average-price sum of the read at ``row_ts`` forecasts (hour.average_window): the primary's, from
+    the read's minute to its mark (grade.mark_at, the closing bar for a read that ends just past the close), against
+    the flat band the grader will use (box_flat_points). Why there is none when it cannot be graded or priced."""
+    t0, t1 = horizon_start(row_ts, lane), mark_at(row_ts, lane.horizons[lane.primary][0], lane)
+    if t1 is None:
+        return "its window ends past the close, so it can never be graded"
+    points = box_flat_points(row_ts, band, scene, lane)
+    if not points:
+        return "no flat band to price its edge in points this read"
+    return average_window(int((t1 - t0).total_seconds() // 60), float(points))
+
+
 def open_grade(rec: dict, scene: Scene, lane: Lane = LIVE) -> dict | None:
     """The average so far (integral.so_far) of an open call of the lane's primary sum, from the bars the card is
-    built on, against the flat band the grader will use: the record's own points on a RECORD box, else the morning
-    anchor the read could know (grade.read_anchor) times the box's band. None before its first minute has finished,
+    built on, against the flat band the grader will use (box_flat_points). None before its first minute has finished,
     and on a lane graded from the settled open, whose window the card's bars never reach."""
     if lane.graded_from_settled_open:
         return None
-    minutes, flat = lane.horizons[lane.primary]
-    if flat == RECORD:
-        points = (rec.get("band") or {}).get("flat_points")
-    else:
-        anchor = read_anchor(scene.rows_today, scene.bars, scene.market, rec["row_ts"])
-        points = flat * anchor.points if anchor else None
+    points = box_flat_points(rec["row_ts"], rec.get("band"), scene, lane)
     if not points or not isinstance(rec.get("spot"), (int, float)):
         return None
-    return integral.so_far(scene.bars, horizon_start(rec["row_ts"], lane), minutes, float(rec["spot"]), float(points))
+    return integral.so_far(scene.bars, horizon_start(rec["row_ts"], lane), lane.horizons[lane.primary][0], float(rec["spot"]), float(points))
 
 
 def end_price_verdict(end_price: dict, pick) -> str:
@@ -595,7 +633,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
     requests, skipped = build_requests(state, doc, skip=skip, gates=labels.gates)
     if do_send and lane.cadence:
         held = fill_missing(doc, skipped, last, cad, now, held, labels.ended)
-    answers, send_seconds, hour, hour_rec, hour_reply = None, None, None, None, None
+    answers, send_seconds, hour, hour_rec, hour_reply, average_reply = None, None, None, None, None, None
     if do_send:
         t0 = _clock.monotonic()
         answers = send_all(requests, deadline=t0 + SEND_GROUPS_S)
@@ -621,8 +659,9 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
                    if qid in live_ids and str(why).startswith("missing") and qid not in held
                    and not labels.ended.intersection(missing_paths(str(why)))]
         hour_doc = load_hour_doc(lane=lane)
-        hour_rec, hour, hour_reply = sum_the_hour(doc, hour_doc, answered, QuestionWeights.load(out_dir), fresh, missing, lane, unit,
-                                                  t0 + SEND_READ_S)
+        window = box_window(scene.row["ts"], band, scene, lane) if lane.average else None
+        hour_rec, hour, hour_reply, average_reply = sum_the_hour(doc, hour_doc, answered, QuestionWeights.load(out_dir), fresh, missing, lane,
+                                                                 unit, t0 + SEND_READ_S, window)
         send_seconds = round(_clock.monotonic() - t0, 3)      # JEV's round trips only; the blend below is code
         if hour is not None and lane.clock_blend:
             # the sum the phone shows and the grader scores is JEV's sum blended half and half with
@@ -645,6 +684,8 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
             hour = {**hour, "used": len(hour_rec["used"]), "left_out": len(hour_rec["left_out"]), "missing": len(missing)}
             if hour.get("error"):
                 log(f"the sums got no answer: {hour['error']}")
+            if (hour.get("average") or {}).get("error"):
+                log(f"the average-price sum got no answer: {hour['average']['error']}")
         for qid, ans in fresh.items():
             # how far this answer moved from the last fresh one on the same day: past CHANGE_CUT the
             # question is in motion. Yesterday's closing answer is not a move, it is a new day.
@@ -671,7 +712,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         read_id=archive.read_id(lane.name, scene.row["ts"]), lane=lane.name, row_ts=scene.row["ts"], sent=do_send,
         spot=float(scene.row["spot"]), sigma=scene.sigma, labels=state, omitted=omitted, requests=requests, skipped=skipped,
         responses=answers, hour_request=(hour_rec or {}).get("request"), hour_response=hour_reply, hour=hour,
-        pool=(hour_rec or {}).get("pool"),
+        pool=(hour_rec or {}).get("pool"), average_request=(hour_rec or {}).get("average_request"), average_response=average_reply,
         cadence={"from": cad.get("recounted_from"), "held": {qid: h["held_from"] for qid, h in held.items()}, "not_due": skip,
                  "asked": [qid for r in requests for qid in r["questions"]]},
         market_context=scene.market.at(now) if scene.market else None, event=event, ruler=unit, band=band))

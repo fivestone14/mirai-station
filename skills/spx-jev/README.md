@@ -183,9 +183,14 @@ archive there too, under `archive/`.
    rise, fall, or go nowhere? rising, JEV was 98% sure", with "held since 11:02
    ET" on a held one. Shadow answers never go in; a question under the weight
    cut would be left out, and with neutral weights none is.
-4. The sums, JEV (`questions/spx_hour.json`): where price is in 30 minutes
-   (flat within 0.07 sigma, 55% of reads on SPX) and in 60 (flat within 0.11
-   sigma, 59%). Up, down, flat or unsure.
+4. The sums, JEV (`questions/spx_hour.json`), two requests sent at once on
+   the same sentences. The call: where the average price over the next 30
+   minutes sits against the price now, every minute counting equally, up,
+   down or flat within an edge JEV is given in points (the 30-minute flat
+   band narrowed by `integral.factor`); no unsure. In shadow, asked exactly
+   as before: where price is in 30 minutes (flat within 0.07 sigma, 55% of
+   reads on SPX) and in 60 (flat within 0.11 sigma, 59%), up, down, flat or
+   unsure.
 4b. The blend, code (`clock.py`): each sum mixed half and half with how often
    the same horizon ended up, down or flat at this time of day over the last
    20 SPX sessions, once 10 are on disk; never on a half day.
@@ -213,10 +218,11 @@ archive there too, under `archive/`.
 - `pool_30.json`, `pool_60.json`, `pool_log.jsonl`: the learning loop's state
   per horizon and one log line per horizon per session applied or refused.
 - `archive/{day}.jsonl`: the raw archive for later machine learning, one line
-  per record, append only, `schema_version` 4. A `read` record holds the read
+  per record, append only, `schema_version` 5. A `read` record holds the read
   id (lane and row timestamp), the labels and the omitted ones with reasons,
   the exact requests and JEV's exact replies, the sums request and reply, the
-  sum as shown, the cadence state (held, not due, asked), the market-context
+  average-price sum's (`average_request`, `average_response`, from version 5),
+  the sum as shown, the cadence state (held, not due, asked), the market-context
   values the read could see with when each was known, the event tag, on the
   live lane the learning loop's forecasts, and on the opening lane the unit
   and bands, and on the premarket lane the checkpoint and the night it saw. A `grade` record is each graded horizon

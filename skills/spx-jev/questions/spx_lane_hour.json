@@ -1,14 +1,16 @@
 {
- "name": "SPX, the opening lane's call: 10 minutes ahead, measured in tape units",
- "version": "0.1.0",
- "date": "2026-09-26",
+ "name": "SPX, the opening lane's call: the average price over the next 10 minutes, and the end price in tape units beside it",
+ "version": "0.2.0",
+ "date": "2026-09-28",
  "how_to_use": [
-  "Step 4 of the opening lane. The state is the lane's live answers from step 2, each rewritten by code as one sentence with how sure JEV was, plus a context line that states the tape unit in index points for this read (the middle of the last three 5-minute slice ranges, held at a fixed share of the day's expected move until 09:45, floored after; spx_jev/cuts.py).",
-  "One question rides on the sentences: where price is 10 minutes on, in five steps, so direction and size come from one answer. Code grades direction from the summed odds of the up and down steps and size from the summed odds of the big steps, against the bar 10 minutes after the read.",
-  "The bands are in tape units, filled from spx_jev/cuts.py, and the base rates are counted on SPX's opening reads with those bands (spec/cuts.json). The context line names the bands in points for the read, because JEV cannot turn a unit and a fraction into a price.",
-  "This is a forecast, graded by the bars, never a call. Its grades and tally live under state/spx_jev/lanes/tape/ and never touch the live lane."
+  "Step 4 of the opening lane. The state is the lane's live answers from step 2, each rewritten by code as one sentence with how sure JEV was, plus a context line: the end-price request's states the tape unit in index points for this read (the middle of the last three 5-minute slice ranges, held at a fixed share of the day's expected move until 09:45, floored after; spx_jev/cuts.py), the average-price request's the flat edge in index points.",
+  "Two questions ride on the sentences, in two requests sent at the same time. average_10 is the lane's call: where the average price over the next 10 minutes sits against the price now, every minute counting equally, up, flat or down, graded on that average (spx_jev/integral.py) against the flat band narrowed by integral.factor; its direction decides.",
+  "next_10, the end-price sum, is asked exactly as before and stays in shadow: where price is 10 minutes on, in five steps, graded from the summed odds of the up and down steps and the big steps against the bar 10 minutes after the read. The size it names is the call's second line, measured at the end price; it never decides.",
+  "The end-price bands are in tape units, filled from spx_jev/cuts.py, and their base rates are counted on SPX's opening reads with those bands (spec/cuts.json). Each context line names its bands in points for the read, because JEV cannot turn a unit and a fraction into a price.",
+  "These are forecasts, graded by the bars, never a call. Their grades and tally live under state/spx_jev/lanes/tape/ and never touch the live lane."
  ],
  "primary": "next_10",
+ "average": "average_10",
  "questions": {
   "next_10": {
    "type": "choice",
@@ -22,6 +24,17 @@
     "up_small": "price ends above where it is now by more than {tape_flat_units} of a tape unit and no more than {tape_big_units} of a unit, the small band up; about {tape_up_small_pct}% of the time",
     "up_big": "price ends more than {tape_big_units} of a tape unit above where it is now, the big band up; about {tape_up_big_pct}% of the time",
     "unsure": "the answers pull hard both ways, so neither the common case nor any one step can be backed"
+   }
+  },
+  "average_10": {
+   "type": "choice",
+   "ask": "Where does the average price over the next 10 minutes sit against the price now?",
+   "why": "The opening call as it is graded: the average price over the ten minutes, its direction deciding. The five-way end-price sum beside it keeps the size, as a second line.",
+   "instructions": "Read `context.average` for what the average over the window is and how many index points either way count as flat for this read, then `answers`, one sentence per question JEV has already answered about this moment, each ending with how sure it was. Taken together, where will the average price over the next 10 minutes sit against the price now? Answer up, down or flat.",
+   "criteria": {
+    "up": "the average price over the next 10 minutes sits above the price now by more than the flat edge the context gives in points",
+    "down": "the average price over the next 10 minutes sits below the price now by more than the flat edge the context gives in points",
+    "flat": "the average price over the next 10 minutes sits no further from the price now than the flat edge the context gives in points, either way"
    }
   }
  }

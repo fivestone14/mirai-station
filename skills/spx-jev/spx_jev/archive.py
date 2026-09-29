@@ -8,7 +8,8 @@ Three record kinds, each a dataclass below, each line carrying ``schema_version`
 
     read       every run of every lane (sent or not): the complete labels and the omitted ones with
                their reasons, the exact requests sent to JEV and its exact replies, the sums request and
-               reply, the sum as shown (with the blend), the cadence state (held, not due, asked), the
+               reply, the sum as shown (with the blend), from version 5 the average-price sum's request and
+               reply (``average_request``, ``average_response``), the cadence state (held, not due, asked), the
                market-context values the read could see, the tier-1 event tag, the learning loop's
                forecasts, on the tape lane the unit and the bands, and on the premarket lane its
                checkpoint, its pre-open ruler and the overnight bars it saw
@@ -34,8 +35,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 4          # 2: a read carries the learning loop's forecasts (pool); 3: a premarket read carries its checkpoint and the night it saw;
-                            # 4: a close_out's calls and tally are graded on the average price (see close_out above)
+SCHEMA_VERSION = 5          # 2: a read carries the learning loop's forecasts (pool); 3: a premarket read carries its checkpoint and the night it saw;
+                            # 4: a close_out's calls and tally are graded on the average price (see close_out above);
+                            # 5: a read carries the average-price sum's request and reply
 ARCHIVE_SUBDIR = Path("spx_jev") / "archive"
 
 
@@ -71,6 +73,8 @@ class ReadRecord:
     pool: dict | None = None                     # the learning loop's forecasts per horizon (pool.snapshot)
     checkpoint: str | None = None                # the premarket lane's checkpoint, "HH:MM" market time
     night: dict | None = None                    # the premarket lane's overnight store as the read saw it (premarket.night_seen)
+    average_request: dict | None = None          # the average-price sum's request, None when it was not asked
+    average_response: dict | None = None         # JEV's reply to it, untouched
     schema_version: int = SCHEMA_VERSION
     kind: str = "read"
     archived_at: str = field(default_factory=_now)

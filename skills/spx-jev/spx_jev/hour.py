@@ -14,6 +14,13 @@ A lane (lane.py) brings its own sums doc and horizons; the tape lane's one sum i
 (down_big, down_small, flat, up_small, up_big, unsure) in tape units, so its request carries a
 context line that prices the unit and the bands for the read, and its summary is read three ways
 for grading: raw, direction and size. Everything defaults to LIVE.
+
+The average-price sum (the lane's ``average``) rides on the same sentences in a request of its own,
+so the end-price sums' request is exactly what it was: where the average price over the primary's
+window sits against the read, up, flat or down, with no unsure. Its context line says what the
+average is and gives the flat edge in index points for the read (average_window: the end price's
+flat band narrowed by integral.factor, the edge the average-price grade sets it against). Its
+summary (average_summary) rides on the hour summary under ``average``: the phone's call.
 """
 from __future__ import annotations
 
@@ -21,18 +28,21 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from . import integral
 from .ask import fill_question, jev_only
 from .cuts import TAPE_BIG_UNITS, TAPE_FLAT_UNITS
 from .lane import LIVE, RECORD, Lane
 from .weights import MIN_WEIGHT, QuestionWeights
 
 FIVE = ("down_big", "down_small", "flat", "up_small", "up_big")   # a RECORD horizon's outcomes, in order
+UNITS = ("sigma is today's expected move for the S&P 500 index. Each answer below was given by JEV about this moment, "
+         "except those marked held, which were given at the time shown and carried forward unchanged")
 
 
 def load_hour_doc(path: Path | str | None = None, lane: Lane = LIVE) -> dict:
     """The sums' doc for step 4, its constants filled. Flat: ``{"primary", "questions": {qid: {...}}}``, no groups."""
     path = path or lane.hour_doc
-    qids = tuple(lane.horizons)
+    qids = tuple(lane.horizons) + ((lane.average,) if lane.average else ())
     with open(path, encoding="utf-8") as f:
         d = json.load(f)
     qs = d.get("questions")
@@ -40,6 +50,8 @@ def load_hour_doc(path: Path | str | None = None, lane: Lane = LIVE) -> dict:
         raise ValueError(f"{path}: needs questions {qids}")
     if d.get("primary", lane.primary) != lane.primary:
         raise ValueError(f"{path}: primary is {d.get('primary')!r} but the code sums for {lane.primary!r}")
+    if d.get("average", lane.average) != lane.average:
+        raise ValueError(f"{path}: average is {d.get('average')!r} but the code asks {lane.average!r}")
     d["questions"] = {qid: fill_question(q, f"{Path(path).name} {qid}") for qid, q in qs.items()}
     return d
 
@@ -139,17 +151,47 @@ def unit_line(ruler: dict, band: dict) -> str:
 
 def hour_request(sentences: dict[str, str], hour_doc: dict | None = None, context: dict | None = None,
                  lane: Lane = LIVE, ruler: dict | None = None) -> dict:
-    """Step 4's request: the sentences are the state, the lane's sums ride on top in one call. With a
-    ``ruler`` (a lane on the tape) the context also prices the unit and the bands for this read."""
+    """Step 4's request: the sentences are the state, the lane's end-price sums ride on top in one call (the
+    average-price sum goes in its own, average_request). With a ``ruler`` (a lane on the tape) the context
+    also prices the unit and the bands for this read."""
     hour_doc = hour_doc or load_hour_doc(lane=lane)
-    ctx = {"symbol": "SPX", "horizon": ", and ".join(f"the next {m} minutes" for m, _ in lane.horizons.values()),
-           "units": ("sigma is today's expected move for the S&P 500 index. Each answer below was given by JEV about this moment, "
-                     "except those marked held, which were given at the time shown and carried forward unchanged")}
+    ctx = {"symbol": "SPX", "horizon": ", and ".join(f"the next {m} minutes" for m, _ in lane.horizons.values()), "units": UNITS}
     if ruler:
         ctx["unit"] = unit_line(ruler, band_of(ruler))
     ctx.update(context or {})
     return {"id": "hour", "state": {"context": ctx, "answers": sentences},
-            "questions": {qid: jev_only(q) for qid, q in hour_doc["questions"].items()}}
+            "questions": {qid: jev_only(q) for qid, q in hour_doc["questions"].items() if qid in lane.horizons}}
+
+
+def average_window(minutes: int, flat_points: float) -> dict:
+    """The window the average-price sum forecasts: its minutes, the end price's flat band for it in points, and the
+    edge the average is set against, that band narrowed by integral.factor, as the average-price grade narrows it."""
+    return {"minutes": minutes, "flat_points": round(flat_points, 2), "edge_points": round(integral.factor(minutes) * flat_points, 2)}
+
+
+def average_line(window: dict, lane: Lane = LIVE) -> str:
+    """The context line of the average-price request: what the average over the window is, in one plain sentence,
+    and the flat edge in points for this read, measured from the read's price or, on a lane graded from it, the
+    settled open."""
+    span, ref = ((f"the {window['minutes']} minutes after the settled open", "the settled open") if lane.graded_from_settled_open
+                 else (f"the next {window['minutes']} minutes", "the price now"))
+    edge = f"{float(window['edge_points']):.2f}"
+    return (f"the average price over {span} counts every minute's closing price equally, so an early move counts for longer than a late "
+            f"one; the average is flat when it sits within {edge} points of {ref} either way, up when it sits more than {edge} points "
+            f"above it, down when it sits more than {edge} points below it")
+
+
+def average_request(sentences: dict[str, str], window: dict, hour_doc: dict | None = None, context: dict | None = None,
+                    lane: Lane = LIVE) -> dict:
+    """The average-price sum's request: the same sentences as the end-price sums', its one question, and a context
+    that names its window and prices its flat edge (average_line). It carries no tape unit line, whose flat band is
+    the end price's."""
+    hour_doc = hour_doc or load_hour_doc(lane=lane)
+    ctx = {"symbol": "SPX", "horizon": f"the next {window['minutes']} minutes", "units": UNITS}
+    ctx.update(context or {})
+    ctx["average"] = average_line(window, lane)
+    return {"id": "average", "state": {"context": ctx, "answers": sentences},
+            "questions": {lane.average: jev_only(hour_doc["questions"][lane.average])}}
 
 
 def views_of(probs: dict) -> dict:
@@ -194,3 +236,17 @@ def hour_summary(answer: dict | None, lane: Lane = LIVE) -> dict | None:
         # the sum on the phone is missing: say so rather than lift the other sum into its place
         return {"error": f"no {lane.primary} answer", "primary": lane.primary, "by": by, "model": answer.get("model")}
     return {**prim, "primary": lane.primary, "by": by, "model": answer.get("model")}
+
+
+def average_summary(answer: dict | None, window: dict, lane: Lane = LIVE) -> dict | None:
+    """What the card and the hour record keep of JEV's reply to the average-price request, under ``average``: the
+    sum's pick, probabilities and confidence flat on top and under ``by``, with ``primary`` naming it (so clock.blend
+    takes it as it takes the hour summary), the box it forecasts (``box``), its window and the model; an ``error``
+    in their place when it got no answer."""
+    if not isinstance(answer, dict):
+        return None
+    one = _one((answer.get("answers") or {}).get(lane.average))
+    head = {"primary": lane.average, "box": lane.primary, **window}
+    if one is None:
+        return {"error": answer.get("error", f"no {lane.average} answer"), **head}
+    return {**one, **head, "by": {lane.average: one}, "model": answer.get("model")}
