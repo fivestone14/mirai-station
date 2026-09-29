@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from conftest import DAY, at
 from spx_jev import market_context, schwab
@@ -55,6 +55,39 @@ def test_a_failed_call_costs_only_what_it_would_have_fetched(monkeypatch):
     line = snapshot(at(10, 1, ss=5))
     assert line["quotes"] == {} and "$ADD" not in line["bars"] and "$TICK" in line["bars"]
     assert line["failed"] == ["quotes: TimeoutError", "$ADD: ConnectionError"]
+
+
+def test_a_breadth_symbol_served_no_bars_is_counted_failed_and_logged_on_its_own_dated_line(monkeypatch, capsys):
+    """09-28: Schwab answered $ADD, $VOLD and $VOLSPD with no bars all day and the job said nothing."""
+    _no_sleep(monkeypatch)
+    monkeypatch.setattr(schwab, "quotes", lambda symbols: {})
+    monkeypatch.setattr(schwab, "minute_bars", lambda symbol, start, end: [] if symbol in ("$ADD", "$VOLD") else [_bar(at(10, 0), 1.0)])
+    line = snapshot(at(10, 1, ss=5))
+    assert line["failed"] == ["$ADD: empty", "$VOLD: empty"] and "$TICK" in line["bars"]
+    err = capsys.readouterr().err.splitlines()
+    assert [l.split(" ", 1)[1] for l in err] == ["spx-jev-context :: $ADD returned no minute bars since 09:30 ET",
+                                                "spx-jev-context :: $VOLD returned no minute bars since 09:30 ET"]
+    assert all(datetime.fromisoformat(l.split(" ", 1)[0]).utcoffset() is not None for l in err)
+
+
+def test_no_bars_before_the_first_minute_has_finished_is_not_a_failure(monkeypatch, capsys):
+    _no_sleep(monkeypatch)
+    monkeypatch.setattr(schwab, "quotes", lambda symbols: {})
+    monkeypatch.setattr(schwab, "minute_bars", lambda symbol, start, end: [])
+    assert snapshot(at(9, 30, ss=5))["failed"] == [] and capsys.readouterr().err == ""
+
+
+def test_the_backfill_logs_each_symbol_served_no_bars_but_not_a_day_served_none(tmp_path, monkeypatch, capsys):
+    _no_sleep(monkeypatch)
+
+    def minute_bars(symbol, start, end):
+        if start.date() == date(2026, 9, 17) or symbol == "$VOLSPD":
+            return []
+        return [_bar(start, 10.0)]
+    monkeypatch.setattr(schwab, "minute_bars", minute_bars)
+    assert [p.stem for p in backfill(tmp_path, date(2026, 9, 17), date(2026, 9, 18))] == ["2026-09-18"]
+    err = capsys.readouterr().err.splitlines()
+    assert [l.split(" ", 1)[1] for l in err] == ["spx-jev-context :: $VOLSPD returned no minute bars for the 2026-09-18 session"]
 
 
 def test_the_backfill_writes_each_past_session_whole_skips_what_is_on_disk_and_quiet_days(tmp_path, monkeypatch):

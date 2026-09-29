@@ -61,10 +61,17 @@ def _quote_entry(q: dict) -> dict:
             "quote_time": q.get("quoteTime")}
 
 
+def _no_bars(symbol: str, when: str) -> None:
+    """Schwab answered a symbol's history without an error and with no bars: said on a line of its own, since
+    nothing else would show it (on 2026-09-28 $ADD, $VOLD and $VOLSPD came back empty all day, unremarked)."""
+    log(JOB, f"{symbol} returned no minute bars {when}", err=True)
+
+
 def snapshot(now: datetime) -> dict:
     """One minute's line: batched quotes for every quoted symbol and the newest finished bar for each
     breadth symbol. A call that fails is named under ``failed`` and costs only what it would have
-    fetched."""
+    fetched; so is a breadth symbol Schwab answers with no bars once a minute of the session has
+    finished, as ``"<symbol>: empty"``."""
     line: dict = {"ts": now.isoformat(timespec="seconds"), "quotes": {}, "bars": {}, "failed": []}
     quoted = [s for s in ALL_SYMBOLS if s not in BAR_SYMBOLS]
     try:
@@ -76,11 +83,15 @@ def snapshot(now: datetime) -> dict:
     for symbol in BAR_SYMBOLS:
         time.sleep(schwab.CALL_SPACING_S)
         try:
-            done = [b for b in schwab.minute_bars(symbol, start, now) if datetime.fromisoformat(b["ts"]) + timedelta(minutes=1) <= now]
+            got = schwab.minute_bars(symbol, start, now)
         except Exception as e:
             line["failed"].append(f"{symbol}: {type(e).__name__}")
             log(JOB, f"{symbol} bars failed: {failure(e)}", err=True)
             continue
+        if not got and now >= start + timedelta(minutes=1):
+            line["failed"].append(f"{symbol}: empty")
+            _no_bars(symbol, f"since {start:%H:%M} ET")
+        done = [b for b in got if datetime.fromisoformat(b["ts"]) + timedelta(minutes=1) <= now]
         if done:
             line["bars"][symbol] = done[-1]
     return line
@@ -96,22 +107,30 @@ def append_snapshot(state_dir: Path, line: dict) -> Path:
 
 def backfill_day(state_dir: Path, day: date) -> Path | None:
     """Every history symbol's minute bars for one past session, one line per minute. A day already on
-    disk is left alone, and a day with no bars at all (a holiday, a weekend) writes nothing."""
+    disk is left alone, and a day with no bars at all (a holiday, a weekend) writes nothing; on any other
+    day each symbol Schwab served no bars for is logged as an error."""
     path = Path(state_dir) / CONTEXT_SUBDIR / "bars" / f"{day.isoformat()}.jsonl"
     if path.exists():
         return None
     start, end = _session(day)
     by_minute: dict[str, dict] = {}
+    empty = []
     for symbol in ALL_SYMBOLS:
         if symbol in NO_HISTORY:
             continue
         time.sleep(schwab.CALL_SPACING_S)
+        n = 0
         for b in schwab.minute_bars(symbol, start, end + timedelta(minutes=1)):
             t = datetime.fromisoformat(b["ts"])
             if start <= t < end:
                 by_minute.setdefault((t + timedelta(minutes=1)).isoformat(), {})[symbol] = b
+                n += 1
+        if not n:
+            empty.append(symbol)
     if not by_minute:
         return None
+    for symbol in empty:
+        _no_bars(symbol, f"for the {day.isoformat()} session")
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".jsonl.tmp")
     tmp.write_text("".join(json.dumps({"ts": ts, "bars": by_minute[ts]}) + "\n" for ts in sorted(by_minute)), encoding="utf-8")
