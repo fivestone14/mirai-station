@@ -218,7 +218,8 @@ def average_request(sentences: dict[str, str], window: dict, hour_doc: dict | No
 def views_of(probs: dict) -> dict:
     """The five-way odds read two more ways for grading: direction (up is up_small + up_big, down the
     same, flat) and size (big is up_big + down_big, small the rest). ``unsure`` keeps its own mass in
-    both views, never spread over the others, so a view is never surer than JEV was."""
+    both views, never spread over the others, so a view is never surer than JEV was, and a view whose
+    likeliest mass ties with unsure picks unsure: a tie is not a committed call."""
     p = {k: float(v) for k, v in probs.items() if isinstance(v, (int, float))}
     direction = {"up": p.get("up_small", 0.0) + p.get("up_big", 0.0), "flat": p.get("flat", 0.0),
                  "down": p.get("down_small", 0.0) + p.get("down_big", 0.0)}
@@ -226,8 +227,12 @@ def views_of(probs: dict) -> dict:
             "small": p.get("up_small", 0.0) + p.get("down_small", 0.0) + p.get("flat", 0.0)}
     if "unsure" in p:
         direction["unsure"] = size["unsure"] = p["unsure"]
-    return {name: {"pick": max(v, key=v.get), "probabilities": {k: round(x, 4) for k, x in v.items()}}
-            for name, v in (("direction", direction), ("size", size))}
+    out = {}
+    for name, v in (("direction", direction), ("size", size)):
+        odds = {k: round(x, 4) for k, x in v.items()}
+        top = max(odds.values())
+        out[name] = {"pick": "unsure" if odds.get("unsure") == top else max(odds, key=odds.get), "probabilities": odds}
+    return out
 
 
 def _one(a: dict | None, five_way: bool = False) -> dict | None:

@@ -101,3 +101,13 @@ def test_the_summary_keeps_the_primary_on_top_and_reads_a_five_way_sum_three_way
     v = views_of(p)
     assert v["direction"] == {"pick": "up", "probabilities": {"up": 0.35, "flat": 0.3, "down": 0.15, "unsure": 0.2}}
     assert v["size"] == {"pick": "small", "probabilities": {"big": 0.2, "small": 0.6, "unsure": 0.2}}
+
+
+def test_a_view_whose_likeliest_mass_ties_with_unsure_picks_unsure():
+    """The 09:35 tape read of 2026-09-28: flat 0.45 and unsure 0.45. JEV picked unsure, so the direction view is no
+    committed flat call and can never count as a hit."""
+    v = views_of({"down_big": 0.0, "down_small": 0.05, "flat": 0.45, "up_small": 0.05, "up_big": 0.0, "unsure": 0.45})
+    assert v["direction"]["pick"] == "unsure"
+    assert v["size"]["pick"] == "small"                             # 0.55 against 0.45: no tie, a committed size
+    tied = views_of({"down_big": 0.1, "down_small": 0.2, "flat": 0.1, "up_small": 0.2, "up_big": 0.1, "unsure": 0.3})
+    assert tied["direction"]["pick"] == "unsure"                    # up 0.3, down 0.3 and unsure 0.3, summed in floats
