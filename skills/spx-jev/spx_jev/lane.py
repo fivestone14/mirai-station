@@ -23,7 +23,7 @@ The sums' horizons and bands live here, from cuts.py, so the grader, the clock, 
 question text all read one number. Beside its end-price sums every lane asks one more, ``average``: where
 the average price over its primary's window sits against the read (the settled open on the premarket
 lane), up, flat or down, with no unsure. It is the phone's call and what the average-price grade grades
-(grade.integral_line); the end-price sums are asked, graded and learnt from as before, in shadow. A lane's
+(grade.integral_line); the end-price sums are kept beside it, asked, graded and learnt from as before. A lane's
 ``integral_loop`` switch, on for the live lane alone, has a second learning loop learn from the average-price grade
 beside the end price's (integral_loop.py).
 """

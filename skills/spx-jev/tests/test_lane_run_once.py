@@ -387,8 +387,8 @@ def test_the_1032_read_waits_for_a_row_that_holds_the_whole_first_hour():
     assert service.first_window_row(at(10, 2, ss=3)) == at(10, 1)
 
 
-def test_a_failing_shadow_grade_costs_neither_the_read_nor_the_close_out(tmp_path, monkeypatch, capsys):
-    """The integral grade raising inside the grader: the read still grades and writes its card, and the close-out
+def test_a_failing_average_price_grade_costs_neither_the_read_nor_the_close_out(tmp_path, monkeypatch, capsys):
+    """The average-price grade raising inside the grader: the read still grades and writes its card, and the close-out
     still grades, refreshes the card and archives its record, the job exiting cleanly."""
     def broken(*a, **k):
         raise RuntimeError("no bars")
@@ -404,7 +404,7 @@ def test_a_failing_shadow_grade_costs_neither_the_read_nor_the_close_out(tmp_pat
     c = run_once(state, out, DOC, True, DAY, lane=TAPE)                      # the 10:50 read grades the 10:40 one
     assert c["row_ts"] == at(10, 50).isoformat() and len((out / "grades.jsonl").read_text().splitlines()) == 1
     said = capsys.readouterr().err
-    assert "integral shadow grade failed: RuntimeError: no bars" in said and "grading skipped" not in said
+    assert "grade failed: RuntimeError: no bars" in said and "grading skipped" not in said
 
     monkeypatch.setattr(service, "load_env_file", lambda *a, **k: [])
     monkeypatch.setattr(service, "now_et", lambda: datetime.fromisoformat(f"{DAY}T10:52:00").replace(tzinfo=ET))
@@ -419,8 +419,8 @@ def test_a_failing_shadow_grade_costs_neither_the_read_nor_the_close_out(tmp_pat
     assert card["calls"][1]["end_price"]["outcome"] == "flat" and card["calls"][1]["end_price_only"] and "integral" not in card["calls"][1]
     archived = [json.loads(l) for l in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
     assert archived[-1]["kind"] == "close_out" and archived[-1]["tally"]["end_price_only"] == 1
-    assert not (out / "integral_grades.jsonl").exists() and "integral shadow grade failed" in capsys.readouterr().err
-    # the shadow grade back: the next card write finds the line, and the fallback goes
+    assert not (out / "integral_grades.jsonl").exists() and "grade failed: RuntimeError" in capsys.readouterr().err
+    # the average-price grade back: the next card write finds the line, and the fallback goes
     monkeypatch.setattr(grade, "integral_run", working)
     again = service.close_out(state, out, DOC, TAPE)
     assert again["calls"][1]["integral"]["verdict"] == "right" and "end_price_only" not in again["calls"][1]

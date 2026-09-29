@@ -86,7 +86,7 @@ def test_an_unsure_call_is_passed_with_its_lean_and_a_window_still_open_carries_
 
 
 def test_a_call_with_no_average_price_grade_stands_on_its_end_price_until_a_later_card_finds_one(tmp_path):
-    """The shadow grade failed, or the window missed bars: the call is not left waiting for ever. It is marked
+    """The average-price grade failed, or the window missed bars: the call is not left waiting for ever. It is marked
     end price only and counted on its end price, an unsure one passed; the next card to read the file, once the
     line is written, carries the average-price grade instead."""
     first, second, third = at(10, 2).isoformat(), at(10, 32).isoformat(), at(11, 2).isoformat()

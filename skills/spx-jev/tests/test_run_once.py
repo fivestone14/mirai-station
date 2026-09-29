@@ -239,6 +239,15 @@ def test_an_unsent_run_says_why_and_holds_nothing(tmp_path):
     assert not (state / "spx_jev" / "last_asked.json").exists()
 
 
+def test_the_card_calls_the_call_a_forecast_not_a_trade_signal_and_keeps_shadow_for_shadow_questions(tmp_path):
+    """The card's note said the sums were "never a call" beside the call it carries: the call and the end-price
+    questions are graded forecasts, never trade signals, and shadow questions are asked and logged, never graded."""
+    state = _state(tmp_path, [make_row(at(11, 32), 7700.0)], 120)
+    note = run_once(state, tmp_path / "out", DOC, False, DAY)["shadow_note"]
+    assert note.endswith("each is a forecast, not a trade signal") and "never a call" not in note
+    assert "shadow questions are asked and logged, never graded and never weighted" in note
+
+
 def test_the_sum_is_blended_with_the_time_of_day_once_there_are_enough_sessions(tmp_path, monkeypatch):
     from spx_jev.clock import JEV_SHARE, MIN_SESSIONS
     prior = {f"2026-09-{d:02d}": flat_bars(390, day=f"2026-09-{d:02d}") for d in range(1, MIN_SESSIONS + 1)}
@@ -362,7 +371,7 @@ def test_the_call_shows_what_the_average_price_loop_chooses_and_its_exact_blend_
 
 def test_a_failing_average_price_loop_costs_neither_the_read_nor_the_close_out(tmp_path, monkeypatch, capsys):
     """The average-price loop's state unreadable as a state (a list): the read still grades and writes its card, the
-    shadow grade still appends, the weights come from the end-price loop, and the close-out still refreshes the card."""
+    average-price grade still appends, the weights come from the end-price loop, and the close-out still refreshes the card."""
     from spx_jev.clock import MIN_SESSIONS
     prior = {f"2026-09-{d:02d}": flat_bars(390, day=f"2026-09-{d:02d}") for d in range(1, MIN_SESSIONS + 1)}
     state = write_state(tmp_path, DAY, [make_row(at(12, 2, ss=10), 7700.0)], flat_bars(390), prior)

@@ -16,8 +16,8 @@ sums with the time-of-day odds (clock.py), grades them, and writes only under ``
     state/spx_jev/pool_30.json, pool_60.json, pool_log.jsonl   the learning loop (pool.py)
 
 The phone's call is the average-price sum (hour.average_summary, under the sum's ``average``), asked
-in its own request beside the end-price sums; those are asked, blended, graded and learnt from as
-before, in shadow.
+in its own request beside the end-price sums; those are kept beside the call, asked, blended, graded
+and learnt from as before: the question weights and the end-price loop learn from them.
 
 Every time the card carries is a full timestamp with its offset, never a bare clock, so the phone
 can show it in the viewer's own zone; prose meant for a reader names the market clock and says ET.
@@ -420,7 +420,7 @@ def day_calls(out_dir: Path, day: str, lane: Lane = LIVE, scene: Scene | None = 
     over its own window, marked ``end_price_missing`` with why, and closed when that grade says it never will be. A
     read that asked the average-price sum and got no answer it could grade is the end-price sum's call, marked
     ``average_missing`` with why, and graded on its end price alone. A call graded at
-    its end price with no graded line on the average price (the shadow grade failed, or its window missed bars)
+    its end price with no graded line on the average price (the average-price grade failed, or its window missed bars)
     is marked ``end_price_only``: it stands on its end price until a later card finds the line. A call not yet
     graded carries its average so far (``so_far``, open_grade) when the card is built on a ``scene``. The mark is
     grade.mark_at's: the closing bar for a read that ends just past the close, None for one that ends later
@@ -634,7 +634,8 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
         "session": {"close": close.isoformat(), "last_read": (close - timedelta(minutes=LAST_READ_BEFORE_CLOSE_MIN)).isoformat()},
         # today's 0DTE settle, the next expiry's and the next monthly's, and what expires today (expiry.py)
         "expiries": calendar_of(row_ts),
-        "shadow_note": "the sums are forecasts graded by the bars at their marks; shadow questions are forecasts logged and never graded; neither is ever a call",
+        "shadow_note": ("the call and the end-price questions beside it are graded by the bars over their windows; shadow questions are asked "
+                        "and logged, never graded and never weighted; each is a forecast, not a trade signal"),
     }
 
 
