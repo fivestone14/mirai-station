@@ -14,7 +14,7 @@ import pytest
 from conftest import DAY, ET, at, bars_from_closes, night_row
 from spx_jev.cuts import OVERNIGHT_RANK_MIN_NIGHTS, SAME_CLOCK_MIN_SESSIONS, WINDOW_10_MIN
 from spx_jev.labels import bitcoin
-from spx_jev.labels.bitcoin import GATE_OF, PREMARKET, NightStore, build_bitcoin_labels, prior_close
+from spx_jev.labels.bitcoin import GATE_OF, PREMARKET, NightStore, build_bitcoin_labels, futures_close_at
 from spx_jev.labels.registry import build_labels
 from spx_jev.sessions import previous_trading_day
 from spx_jev.state_builder import MarketContext
@@ -66,7 +66,7 @@ ES, MBT = 7700.0, 85000.0
 
 def night(day: date, es_pct: float, btc_pct: float, until: time = READ) -> list[dict]:
     """A night into ``day``: /ES and /MBT at the prior close, and moved by the given percents at ``until``."""
-    close, read = prior_close(day), datetime.combine(day, until, tzinfo=ET)
+    close, read = futures_close_at(day), datetime.combine(day, until, tzinfo=ET)
     return [one_bar("/ES", close, ES, day), one_bar("/MBT", close, MBT, day),
             one_bar("/ES", read, ES * (1 + es_pct / 100), day), one_bar("/MBT", read, MBT * (1 + btc_pct / 100), day)]
 
@@ -74,7 +74,7 @@ def night(day: date, es_pct: float, btc_pct: float, until: time = READ) -> list[
 def prior_nights(root: Path, day: str = DAY, multiple: float = 2.0) -> None:
     """The 20 nights before ``day``: /ES up or down 0.1% (+, -, -, + in turn, so its moves are unrelated to the night's
     order), bitcoin ``multiple`` times that and a part of its own from -0.95% to +0.95% (night k's is (k - 9.5) / 10), so
-    bitcoin's gap ranks in night order. A Monday's night is measured from Sunday evening (bitcoin.night_start), and
+    bitcoin's gap ranks in night order. A Monday's night is measured from Sunday evening (bitcoin.btc_night_start), and
     its coverage is counted over that stretch, not the thin weekend before it, so the rank has 19: only Labor Day's
     night sits out."""
     for k, d in enumerate(trading_days_before(day, 20)):
@@ -244,7 +244,7 @@ def test_a_premarket_read_writes_only_the_premarket_labels_and_decides_only_thei
 def weekend(day: date, weekend_pct: float, reopen_pct: float, until: time = READ, reopen: datetime | None = None) -> list[dict]:
     """/MBT at the last cash close, at the S&P futures' reopen (by default the evening before ``day``) and at ``until``,
     and /ES unchanged since the close."""
-    close, reopen = bitcoin.prior_close(day), reopen or bitcoin.evening_reopen(day)
+    close, reopen = bitcoin.futures_close_at(day), reopen or bitcoin.evening_reopen(day)
     at_reopen = MBT * (1 + weekend_pct / 100)
     read = datetime.combine(day, until, tzinfo=ET)
     return [one_bar("/MBT", close, MBT, day), one_bar("/MBT", reopen, at_reopen, day),
