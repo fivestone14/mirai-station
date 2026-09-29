@@ -1344,7 +1344,9 @@ details .q{margin-top:8px}
   // the folded call: its pick, then each check (the card's marks, 10 and 30 minutes after the settled open) as the
   // close-out graded it on the call's own record, one it has not graded yet said so; before the close-out, when the
   // call is checked. The card is stamped closed_out_at only once nothing is left to grade, so a check still ungraded
-  // then never will be: it says so, with the grader's reason when the call carries one (``closed``)
+  // then never will be: it says so, with the grader's reason when the call carries one (``closed``). Every check of
+  // an average-price call grades the call's own pick (grade.checked_call), so a check standing on its end price alone
+  // is judged on that pick too; a read whose average-price sum got no answer checks each box on its own pick
   var PRE_CHECKS = ['open_10', 'open_30'];
   function preFold(p){
     var h = p.hour, a = callSum(h), top = a.pick || top1(a.probabilities), f = el('div', 'card fold');
@@ -1353,7 +1355,8 @@ details .q{margin-top:8px}
     f.appendChild(el('b', null, cap(top) + ' ' + pct(a.probabilities[top])));
     // each check on the average price over its own window from the settled open, or on its end price alone, said so
     var never = false, said = PRE_CHECKS.map(function(k, i){
-      var v = checks[k] && gradeOf(checks[k]), at = viewerTime(p.marks[i]);
+      var ck = checks[k] && a !== h ? {pick: top, integral: checks[k].integral, end_price: checks[k]} : checks[k];
+      var v = ck && gradeOf(ck), at = viewerTime(p.marks[i]);
       if(v) return at + (v.endOnly ? ' ended ' : ' was ') + cap(v.label) + ', ' + v.verdict.toLowerCase();
       never = never || !!p.closed_out_at;
       return at + (p.closed_out_at ? ' not graded at the close-out' : ' not graded yet');
@@ -1474,11 +1477,12 @@ details .q{margin-top:8px}
     var f = p.freshness;
     return f && f.stale && f.note ? skipLine('futures stale at the ' + viewerTime(p.row_ts) + ' read: ' + marketWords(f.note, p.row_ts)) : null;
   }
-  // when it is checked: both sums from the settled open (the card's start), each to its mark, on one clock from
-  // ten minutes before the open; the solid line is the open, the dashed one now
+  // when it is checked: the call from the settled open (the card's start) to each mark, on one clock from ten
+  // minutes before the open; an average-price call is checked at both on its own pick, a card without one on each
+  // end-price sum's. The solid line is the open, the dashed one now
   var CHECKS_LEAD_MIN = 10, CHECKS_TOP = 20;
   function checksSvg(p, now){
-    var open = Date.parse(p.open), start = Date.parse(p.start), by = (p.hour && p.hour.by) || {};
+    var open = Date.parse(p.open), start = Date.parse(p.start), a = callSum(p.hour), by = (p.hour && p.hour.by) || {};
     var t0 = open - CHECKS_LEAD_MIN * 60000, t1 = Date.parse(p.marks[1]), end = t0 + (t1 - t0) * TRACK_W / NEWEST_END;
     function x(t){ return (t - t0) / (end - t0) * TRACK_W; }
     var rows = [['open_10', p.marks[0], 'b-now', 't-now'], ['open_30', p.marks[1], 'b-open', 't-open']];
@@ -1494,11 +1498,12 @@ details .q{margin-top:8px}
     svg.appendChild(svgEl('line', {x1: ox.toFixed(1), y1: CHECKS_TOP - 2, x2: ox.toFixed(1), y2: ay, 'class': 'axis'}));
     svg.appendChild(svgEl('text', {x: (ox + 4).toFixed(1), y: 11, 'class': 't-axis'}, 'open ' + viewerTime(open)));
     rows.forEach(function(r, i){
-      var y = CHECKS_TOP + i * ROW_H, a = x(start), mark = Date.parse(r[1]), b = x(mark), name = sumSaid(by[r[0]]);
-      svg.appendChild(svgEl('rect', {x: a.toFixed(1), y: y, width: (b - a).toFixed(1), height: 21, rx: 5, 'class': r[2]}));
+      var sum = a && a !== p.hour ? a : by[r[0]];
+      var y = CHECKS_TOP + i * ROW_H, x0 = x(start), mark = Date.parse(r[1]), b = x(mark), name = sumSaid(sum);
+      svg.appendChild(svgEl('rect', {x: x0.toFixed(1), y: y, width: (b - x0).toFixed(1), height: 21, rx: 5, 'class': r[2]}));
       if(name){
-        if(!fits(name, b - a)) name = cap(sumPick(by[r[0]]));
-        if(fits(name, b - a)) svg.appendChild(svgEl('text', {x: (a + 5).toFixed(1), y: y + 14.5, 'class': r[3]}, name));
+        if(!fits(name, b - x0)) name = cap(sumPick(sum));
+        if(fits(name, b - x0)) svg.appendChild(svgEl('text', {x: (x0 + 5).toFixed(1), y: y + 14.5, 'class': r[3]}, name));
       }
       svg.appendChild(svgEl('text', {x: (b + 5).toFixed(1), y: y + 14.5, 'class': 't-side'}, Math.round((mark - start) / 60000) + ' min on'));
     });
@@ -1578,7 +1583,7 @@ details .q{margin-top:8px}
     preCall(p, card);
     var unruled = preRulerLine(p); if(unruled) card.appendChild(unruled);
     var stale = preStaleLine(p); if(stale) card.appendChild(stale);
-    card.appendChild(el('div', 'inplay-h', callSum(p.hour) !== p.hour ? 'When the end-price question is checked' : 'When it is checked'));
+    card.appendChild(el('div', 'inplay-h', 'When it is checked'));
     var checks = el('div'); card.appendChild(checks);
     card.appendChild(tag('both checks start from the price at ' + viewerTime(p.start) + ', ' +
                          Math.round((Date.parse(p.start) - Date.parse(p.open)) / 60000) + ' minutes after the open.'));

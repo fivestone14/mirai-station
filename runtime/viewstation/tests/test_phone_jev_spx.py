@@ -966,13 +966,25 @@ def _fold(card, now, tz=LA):
     return _run(PRE_DOM + "".join(_fn(f) for f in PRE_FNS) + "".join(_var(v) for v in PRE_VARS) + js, {"card": card, "now": now}, tz)
 
 
-def _closed(closed=None, **checks):
+# the pre-market call, on the average price over the 30 minutes after the settled open (hour.average_summary)
+PRE_AVG = {"pick": "down", "probabilities": {"up": 0.25, "flat": 0.3, "down": 0.45}, "primary": "open_average_30", "box": "open_30",
+           "minutes": 30, "flat_points": 4.38, "edge_points": 2.59}
+
+
+def on_call(label, verdict):
+    """A check's average-price grade as the grader writes it for an average-price call: every check grades the call's
+    own pick (grade.checked_call), so its sum is the call's."""
+    return {**graded(label, verdict), "sum": "open_average_30"}
+
+
+def _closed(closed=None, average=PRE_AVG, **checks):
     """The card after the close-out that left nothing to grade: the newest call carries each check graded (service.day_calls),
-    and ``closed``, the grader's reason, when it can never be graded."""
+    and ``closed``, the grader's reason, when it can never be graded; the call is ``average``'s when it answered."""
     read = et("09:28", s="04")
-    return pre_card("09:28", closed_out_at="2026-09-28T14:06:04+00:00", graded_at="2026-09-28T14:06:04+00:00",
-                    calls=[{"read": read, "mark": et("10:05"), "minutes": 30, "pick": "up", "p": 0.41, "checks": checks,
+    card = pre_card("09:28", closed_out_at="2026-09-28T14:06:04+00:00", graded_at="2026-09-28T14:06:04+00:00",
+                    calls=[{"read": read, "mark": et("10:05"), "minutes": 30, "pick": "down", "p": 0.45, "checks": checks,
                             **({"closed": closed} if closed else {})}])
+    return {**card, "hour": {**card["hour"], "average": average}} if average else card
 
 
 def _partial(**checks):
@@ -983,25 +995,31 @@ def _partial(**checks):
 
 @pytest.mark.parametrize("card, now, tz, want", [
     (pre_card("09:28"), et("09:50"), LA, "pre-market call 06:28Up 41%Checked 06:44 and 07:04"),
-    # each check on the average price over its window, as the close-out log counts it, its end price only kept
-    (_partial(open_10={"outcome": "flat", "hit": True, "pick": "flat", "integral": graded("up", "wrong")}), et("10:30"), LA,
-     "pre-market call 06:28Up 41%06:44 was Up, wrong · 07:04 not graded yet"),
-    (_closed(open_10={"outcome": "flat", "hit": False, "pick": "unsure", "integral": graded("down", "passed")},
-             open_30={"outcome": "up", "hit": False, "pick": "down", "integral": graded("up", "wrong")}), et("10:30"), LA,
-     "pre-market call 06:28Up 41%06:44 was Down, passed · 07:04 was Up, wrong"),
-    (_closed(open_10={"outcome": "up", "hit": False, "pick": "up_small", "integral": graded("up", "right")},
-             open_30={"outcome": "up", "hit": True, "pick": "up", "integral": graded("up", "right")}), et("10:30"), TOKYO,
-     "pre-market call 22:28Up 41%22:44 was Up, right · 23:04 was Up, right"),
-    # no average-price grade: the end price alone, said so, an unsure pick passed there too
-    (_closed(open_10={"outcome": "flat", "hit": False}, open_30={"outcome": "flat", "hit": False, "pick": "unsure"}), et("10:30"), LA,
-     "pre-market call 06:28Up 41%06:44 ended Flat, wrong · 07:04 ended Flat, passed"),
+    # each check on the average price over its window, of the call's own pick, as the close-out log counts it
+    (_partial(open_10={"outcome": "up", "hit": True, "pick": "up", "integral": on_call("down", "right")}), et("10:30"), LA,
+     "pre-market call 06:28Down 45%06:44 was Down, right · 07:04 not graded yet"),
+    # the 09:45 check is the call's, whatever the ten-minute end-price question said (unsure here)
+    (_closed(open_10={"outcome": "flat", "hit": False, "pick": "unsure", "integral": on_call("up", "wrong")},
+             open_30={"outcome": "down", "hit": True, "pick": "down", "integral": on_call("down", "right")}), et("10:30"), LA,
+     "pre-market call 06:28Down 45%06:44 was Up, wrong · 07:04 was Down, right"),
+    (_closed(open_10={"outcome": "down", "hit": True, "pick": "down", "integral": on_call("down", "right")},
+             open_30={"outcome": "down_small", "hit": False, "pick": "flat", "integral": on_call("down", "right")}), et("10:30"), TOKYO,
+     "pre-market call 22:28Down 45%22:44 was Down, right · 23:04 was Down, right"),
+    # no average-price grade: the end price alone, said so, judged on the call's pick, not the end-price question's
+    (_closed(open_10={"outcome": "down", "hit": False, "pick": "up"}, open_30={"outcome": "flat", "hit": False, "pick": "unsure"}), et("10:30"), LA,
+     "pre-market call 06:28Down 45%06:44 ended Down, right · 07:04 ended Flat, wrong"),
+    # a read whose average-price sum got no answer calls the end-price question's pick, and each box is checked on its own
+    (_closed(average={"error": "HTTP 529", "primary": "open_average_30", "box": "open_30"},
+             open_10={"outcome": "flat", "hit": False, "pick": "unsure", "integral": graded("down", "passed")},
+             open_30={"outcome": "flat", "hit": False, "pick": "unsure"}), et("10:30"), LA,
+     "pre-market call 06:28Up 41%06:44 was Down, passed · 07:04 ended Flat, passed"),
     # closed out with a check ungraded: it never will be, said so, with the grader's reason in the viewer's zone
-    (_closed(), et("12:00"), NY, "pre-market call 09:28Up 41%09:44 not graded at the close-out · 10:04 not graded at the close-out"),
+    (_closed(), et("12:00"), NY, "pre-market call 09:28Down 45%09:44 not graded at the close-out · 10:04 not graded at the close-out"),
     (_closed("halted window: no settled open (the 09:34 bar) on a finished day"), et("12:00"), LA,
-     "pre-market call 06:28Up 41%06:44 not graded at the close-out · 07:04 not graded at the close-out "
+     "pre-market call 06:28Down 45%06:44 not graded at the close-out · 07:04 not graded at the close-out "
      "(halted window: no settled open (the 06:34 bar) on a finished day)"),
-    (_closed("halted window: no bar at the mark", open_10={"outcome": "flat", "hit": True, "pick": "flat", "integral": graded("up", "wrong")}),
-     et("12:00"), LA, "pre-market call 06:28Up 41%06:44 was Up, wrong · 07:04 not graded at the close-out (halted window: no bar at the mark)"),
+    (_closed("halted window: no bar at the mark", open_10={"outcome": "flat", "hit": True, "pick": "flat", "integral": on_call("up", "wrong")}),
+     et("12:00"), LA, "pre-market call 06:28Down 45%06:44 was Up, wrong · 07:04 not graded at the close-out (halted window: no bar at the mark)"),
 ])
 def test_after_the_hand_over_the_call_folds_to_one_line_with_each_checks_result(card, now, tz, want):
     """The call is checked at 09:44 and 10:04 and the close-out grades both at 10:06: once the opening lane takes
@@ -1460,9 +1478,18 @@ def test_the_pre_market_card_says_the_shape_and_its_checks_are_the_end_price_que
     parts = _card_parts(_page(card, et("09:30")))
     assert not any(k == "shape" for k, _ in parts)
     assert ["tag", "End-price question: opens firm, holds: up at the first check, still up at the second"] in parts
-    assert ["inplay-h", "When the end-price question is checked"] in parts
     old = _card_parts(_page(pre_card("09:28"), et("09:30")))
     assert any(k == "shape" for k, _ in old) and ["inplay-h", "When it is checked"] in old
+
+
+def test_the_pre_market_checks_drawing_shows_the_call_it_grades_at_both_marks():
+    """Both checks grade the average-price call's own pick (grade.checked_call), so the card heads them as its own, not
+    the end-price question's, and draws that call on both bars; a card without one draws each end-price sum's."""
+    card = pre_card("09:28")
+    card = {**card, "hour": {**card["hour"], "average": PRE_AVG}}
+    assert ["inplay-h", "When it is checked"] in _card_parts(_page(card, et("09:30")))
+    svg = _pre("console.log(JSON.stringify(dump(checksSvg(D.card, Date.parse(D.now)))));", {"card": card, "now": et("09:28", s="40")})
+    assert _texts(svg, "t-now") == ["Down"] and _texts(svg, "t-open") == ["Down 45%"]   # the ten-minute bar has room for the pick alone
 
 
 def test_the_story_calls_end_inside_the_drawing_on_the_owners_phone():
