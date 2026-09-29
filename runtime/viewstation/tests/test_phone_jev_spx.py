@@ -50,8 +50,8 @@ def _run(js, data=None, tz=LA):
     script = ("const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + FIXED_NOW + FAKE_DOM
               + "".join(_fn(f) for f in ("viewerTime", "marketAt", "marketWords", "cap", "pct", "words", "startOf", "endOf",
                                           "leftWords", "verdict", "endPrice", "gradeOf", "callWords", "laneLeads", "svgEl", "lastLaneRead", "hhmm", "marketClock",
-                                          "marketDay", "sentence", "callSum", "endVerdict", "fallbackLine"))
-              + _var("VIEWER_FMT") + _var("WEEKDAYS") + _var("MARKET_TIME") + _var("FALLBACK_WORDS") + _var("NS") + _var("ROW_H") + js)
+                                          "marketDay", "sentence", "callSum", "endVerdict", "fallbackWords", "fallbackLine"))
+              + _var("VIEWER_FMT") + _var("WEEKDAYS") + _var("MARKET_TIME") + _var("NS") + _var("ROW_H") + js)
     out = subprocess.run([_NODE, "-e", script], input=json.dumps(data), capture_output=True, text=True, timeout=20,
                          env={**os.environ, "TZ": tz})
     assert out.returncode == 0, out.stderr
@@ -191,7 +191,7 @@ def test_the_sheet_gives_the_average_price_verdict_the_size_and_the_path_with_th
         "Size at the end price: called Down small, ended Down big.",
         "Average \u22124.52 vs \u00B11.59 · high \u22120.93 at min\u00a01 · low \u221210.15 at min\u00a010",
         "Minute by minute, the average stood flat min\u00a01 · down min\u00a02\u2013\u206010.",
-        "End price only: Wrong, it ended Down big. Price ended 10.15 points lower at 07:40 than at the read, 2.42 tape units."]
+        "At the end price: Wrong, it ended Down big. Price ended 10.15 points lower at 07:40 than at the read, 2.42 tape units."]
     assert got["body"]["kids"][0]["kids"][-1]["attrs"]["class"] == "cs-end"
     # on the 30-minute box a call names no size: no size line; a finished window's runs are never "so far"
     live = _result({**S9, "pick": "down", "integral": {**S9["integral"], "size": None}}, "2026-09-28T10:45:00-04:00")
@@ -296,7 +296,7 @@ def test_an_unsure_call_is_passed_on_the_page_with_its_lean_never_a_wrong_one():
     sheet = _result({**unsure, "odds": {"down_big": 0.1, "down_small": 0.2, "flat": 0.2, "up_small": 0.05, "up_big": 0.05, "unsure": 0.4}}, now)
     assert sheet[:2] == ["PassedLeaned flat 45%", "The average price over the window was Down. The call said Unsure 40%. Unsure makes no call, "
                                                   "so it is passed: counted apart from the calls right and wrong, never as a miss."]
-    assert sheet[-1] == "End price only: Passed, it ended Down small." and not any("Wrong" in t or "Unsure," in t for t in sheet)
+    assert sheet[-1] == "At the end price: Passed, it ended Down small." and not any("Wrong" in t or "Unsure," in t for t in sheet)
 
 
 def test_a_morning_with_nothing_graded_says_so_and_an_old_cards_unsure_reads_as_passed():
@@ -1258,14 +1258,14 @@ def test_the_30_minute_card_leads_with_the_average_price_call_and_keeps_the_end_
          "calls": [call("11:02", "11:32", "up", 0.55)]}
     parts = _sum_card(c)
     assert parts[1] == ["big", "Up 55%"]
-    said = dict((k, v) for k, v in parts if k in ("tag", "row60") and v.startswith(("On the", "End price")))
-    assert said == {"tag": "On the average price over the next 30 minutes, flat within \u00B13.11 points", "row60": "End price onlyFlat 80%"}
+    said = dict((k, v) for k, v in parts if k in ("tag", "row60") and v.startswith(("On the", "End-price")))
+    assert said == {"tag": "On the average price over the next 30 minutes, flat within \u00B13.11 points", "row60": "End-price questionFlat 80%"}
     how = next(v for k, v in parts if k == "how")
     assert how.startswith("JEVUp 55%") and how.endswith("JEV\u2019s sum alone: " + why) and "end-price clock" not in how
     assert any(k == "row60" and v.startswith("Next 60 minUp 50%") for k, v in parts)
     # a card from before the average-price sum leads with the end-price sum and has no shadow line
     old = _sum_card({**c, "hour": {k: v for k, v in hour.items() if k != "average"}})
-    assert old[1] == ["big", "Flat 80%"] and not any(v.startswith(("End price", "On the")) for _, v in old)
+    assert old[1] == ["big", "Flat 80%"] and not any(v.startswith(("End-price", "On the")) for _, v in old)
 
 
 def test_the_opening_card_leads_with_the_average_call_and_keeps_the_end_prices_size_as_its_second_line():
@@ -1277,7 +1277,7 @@ def test_the_opening_card_leads_with_the_average_call_and_keeps_the_end_prices_s
     js = (CARD_STUBS + "Object.defineProperty(Node.prototype, 'childNodes', {get: function(){ return this.kids; }});" + _odds() + _var("RULER_HELD_UNTIL") + "".join(_fn(f) for f in ("top1", "tag", "skipLine", "averageWords", "endPriceRow", "laneCard"))
           + "console.log(JSON.stringify(dump(laneCard(D.t, true))));")
     parts = _parts(_run(js, {"t": t, "now": "2026-09-28T10:42:00-04:00"}))
-    assert parts[1] == ["big", "Up 55%"] and ["row60", "End price onlyUp small 40%"] in parts
+    assert parts[1] == ["big", "Up 55%"] and ["row60", "End-price questionUp small 40%"] in parts
     assert ["tag", "On the average price over the next 10 minutes, flat within \u00B11.66 points"] in parts
     assert ["odds", "End-price question: a big move 15%"] in parts   # the size, from the end-price sum and said so; its direction is the call's
 
@@ -1290,7 +1290,7 @@ def test_the_pre_market_call_and_its_fold_are_the_average_price_sums():
     got = _fold(card, et("09:50"))
     assert _flat_text(got["fold"]) == "pre-market call 06:28Down 45%Checked 06:44 and 07:04"
     box = _parts(_pre("var box = el('div'); preCall(D.card, box); console.log(JSON.stringify(dump(box)));", {"card": card, "now": et("09:30")}))
-    assert box[0] == ["big", "Down 45%"] and ["row60", "End price onlyUp 41%"] in box
+    assert box[0] == ["big", "Down 45%"] and ["row60", "End-price questionUp 41%"] in box
     assert ["tag", "On the average price over the 30 minutes after the settled open, flat within \u00B12.59 points"] in box
 
 
@@ -1302,7 +1302,7 @@ def test_the_sheets_end_price_line_judges_the_call_the_owner_sees():
          "end_price": {**S9["end_price"], "pick": "unsure", "p": 0.4}}
     got = _result(c, "2026-09-28T10:45:00-04:00")
     assert got[1] == "The average price over the window was Down. The call said Down 60%."
-    assert got[-1].startswith("End price only: Right, it ended Down big (its own question said Unsure 40%).")
+    assert got[-1].startswith("At the end price: Right, it ended Down big (the end-price question said Unsure 40%).")
     alone = {**call("10:32", "11:02", "down", 0.6), "sum": "average_30", "odds": {"up": 0.1, "flat": 0.3, "down": 0.6}, "end_price_only": True,
              "end_price": {"outcome": "up", "hit": True, "pick": "up", "p": 0.5, "moved": {"realized_sigma": 0.12}}}
     got = _result(alone, "2026-09-28T11:04:00-04:00")
@@ -1322,20 +1322,35 @@ def test_the_size_line_names_the_size_the_end_price_question_called():
 
 def test_a_read_whose_average_question_went_unanswered_says_so_and_stands_on_its_end_price():
     """The service falls back on the end-price question's call (service.day_calls ``average_missing``): the card says
-    so under the big number, and the sheet calls it the end-price call, graded on its end price, open or closed."""
+    so under the big number and the sheet says the same, in one sentence with the service's reason, graded on its end
+    price, open or closed; the verdict's tag is the fallback grade's, "End price only"."""
     hour = {**END_30, "used": 12, "by": {"next_30": END_30}, "average": {"error": "HTTP 529", "primary": "average_30", "box": "next_30"}}
     c = {"row_ts": "2026-09-28T11:02:10-04:00", "hour": hour, "marks": {"next_30": "2026-09-28T11:32:00-04:00"}, "calls": []}
     parts = _sum_card(c)
-    assert parts[1] == ["big", "Flat 80%"] and ["skip", "Average question unanswered: showing the end-price call"] in parts
-    assert not any(v.startswith("End price only") for _, v in parts)
+    fallback = "No average-price answer (HTTP 529), so the call is the end-price question\u2019s"
+    assert parts[1] == ["big", "Flat 80%"] and ["skip", fallback] in parts
+    assert not any(v.startswith("End-price question") for _, v in parts)
     fell = {**call("11:02", "11:32", "flat", 0.8), "sum": "next_30", "average_missing": "HTTP 529", "odds": END_30["probabilities"],
             "end_price": {"outcome": "flat", "hit": True, "pick": "flat", "p": 0.8}, "end_price_only": True}
     got = _result(fell, "2026-09-28T11:34:00-04:00")
-    assert got[0] == "RightEnd-price call" and got[1] == ("Average question unanswered: this is the end-price question\u2019s call, graded on its end "
-                                                          "price. It ended Flat. The call said Flat 80%.")
+    assert got[0] == "RightEnd price only" and got[1] == fallback + ", graded on its end price. It ended Flat. The call said Flat 80%."
     opened = {k: v for k, v in fell.items() if k not in ("end_price", "end_price_only")}
     got = _result(opened, "2026-09-28T11:10:00-04:00")
-    assert got[1] == "Average question unanswered: this is the end-price question\u2019s call, graded at 08:32 on its end price." and len(got) == 2
+    assert got[1] == fallback + ", graded at 08:32 on its end price." and len(got) == 2
+
+
+def test_an_average_question_that_was_not_asked_is_never_said_to_be_unanswered():
+    """The service's reason is shown as it wrote it (service.with_average): a read whose average-price question was not
+    asked says so, its market clock in the viewer's zone, where the page used to say "unanswered" whatever happened."""
+    why = "not asked: the window runs past the 16:00 close"
+    hour = {**END_30, "used": 12, "by": {"next_30": END_30}, "average": {"error": why, "primary": "average_30", "box": "next_30"}}
+    parts = _sum_card({"row_ts": "2026-09-28T15:32:10-04:00", "hour": hour, "marks": {"next_30": None}, "calls": []})
+    assert ["skip", "No average-price answer (not asked: the window runs past the 13:00 close), so the call is the end-price "
+                    "question\u2019s"] in parts
+    assert not any("unanswered" in v for _, v in parts)
+    fell = {**call("15:32", "16:00", "flat", 0.8), "sum": "next_30", "average_missing": why, "odds": END_30["probabilities"],
+            "end_price": {"outcome": "flat", "hit": True, "pick": "flat", "p": 0.8}, "end_price_only": True}
+    assert _result(fell, "2026-09-28T16:05:00-04:00", TOKYO)[1].startswith("No average-price answer (not asked: the window runs past the 05:00 close)")
 
 
 def test_the_pre_market_card_says_the_shape_and_its_checks_are_the_end_price_questions():
