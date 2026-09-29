@@ -1500,6 +1500,20 @@ def test_a_signed_fact_that_rounds_to_nothing_says_no_change():
     assert got == ["No change", "Down 0.1 vol points", "No change", "Up 0.31 of a normal day\u2019s move", "No change"]
 
 
+def test_questions_asked_and_lost_are_folded_apart_from_those_not_asked():
+    """On 09-28 several reads lost a group to a 503 or a timeout, and its questions sat under "not asked this run" though
+    they were asked: the service marks them "asked, no answer received" (service.card), and they fold on their own."""
+    live = json.loads(json.dumps(MONDAY["live"]))
+    answered = [q for q in live["questions"] if q.get("answer")]
+    for q in answered[:3]:
+        q.update(answer=None, skipped="asked, no answer received: HTTP 503")
+    not_asked = sum(1 for q in live["questions"] if not q.get("answer")) - 3
+    got = _whole({"live": live, "tape": MONDAY["tape"], "premarket": MONDAY["premarket"]}, "2026-09-28T15:40:00-04:00")
+    folds = [t for c, t in got["main"] if c == "details"]
+    assert folds[0].startswith("asked, no answer: 3") and folds[0].count("Asked, no answer received: HTTP 503") == 3
+    assert folds[1].startswith(f"not asked this run: {not_asked}") and "no answer received" not in folds[1]
+
+
 @pytest.mark.parametrize("tz, next_read", [(LA, "07:32"), (TOKYO, "23:32"), (KOLKATA, "20:02")])
 def test_a_live_card_with_no_sum_says_so_when_the_30_minute_call_leads(tz, next_read):
     """Monday from 10:05 to about 10:17 the live 10:02 read and the lane's 10:00 to 10:10 reads were skipped: the page

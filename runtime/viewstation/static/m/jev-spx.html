@@ -652,10 +652,14 @@ details .q{margin-top:8px}
       fold.addEventListener('toggle', function(){ folded[vp] = !fold.open; remember(); });
       main.appendChild(fold);
     });
-    if(skipped.length){
-      var d = el('details'); d.appendChild(el('summary', null, 'not asked this run: ' + skipped.length));
-      skipped.forEach(function(q){ d.appendChild(question(q, omitted, c.row_ts)); }); main.appendChild(d);
-    }
+    // a question asked and lost (its request failed: the service's "asked, no answer received") is folded apart from
+    // one not asked this run
+    var lost = skipped.filter(function(q){ return /^asked, no answer/.test(q.skipped || ''); });
+    [['asked, no answer: ', lost], ['not asked this run: ', skipped.filter(function(q){ return lost.indexOf(q) < 0; })]].forEach(function(f){
+      if(!f[1].length) return;
+      var d = el('details'); d.appendChild(el('summary', null, f[0] + f[1].length));
+      f[1].forEach(function(q){ d.appendChild(question(q, omitted, c.row_ts)); }); main.appendChild(d);
+    });
     if(c.dark && c.dark.length){
       // dark: never asked, never counted; said once so nobody wonders where the news questions went
       var dk = el('details'); dk.appendChild(el('summary', null, 'dark, waiting for a news source: ' + c.dark.length));
