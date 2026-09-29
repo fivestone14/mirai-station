@@ -3,7 +3,9 @@ files untouched, a rebuild the same, and DuckDB views over it all. Offline; skip
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+import plistlib
+from datetime import date, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -16,6 +18,7 @@ import pyarrow.parquet as pq  # noqa: E402
 from conftest import DAY, at, flat_bars  # noqa: E402
 from spx_jev import store  # noqa: E402
 
+SKILL = Path(__file__).resolve().parents[1]
 D = date.fromisoformat(DAY)                                   # Friday 2026-09-18
 EARLY, READ = "2026-09-18T10:02:04.1-04:00", "2026-09-18T10:32:05.5-04:00"
 TAPE_READ = "2026-09-18T09:40:00-04:00"
@@ -317,6 +320,13 @@ def test_today_is_built_once_its_saves_have_run_and_only_market_days(tmp_path):
     (tmp_path / "reversion" / "bars" / "2026-09-16-SPX.json").write_text("[]")
     (tmp_path / "reversion" / "bars" / "2026-09-15-SNDK.json").write_text("[]")
     assert store.days_on_disk(tmp_path, D) == [date(2026, 9, 16), date(2026, 9, 17)]
+
+
+def test_the_nightly_job_fires_once_the_command_counts_today_as_finished():
+    job = plistlib.loads((SKILL / "launchd" / "com.mirai-station.spx-jev-store.plist.template").read_bytes())
+    fire = job["StartCalendarInterval"]
+    ny = at(fire["Hour"] + 3, fire["Minute"])                                  # the box's Pacific clock, three hours behind
+    assert store.last_finished(ny) == D and store.last_finished(ny - timedelta(minutes=15)) < D
 
 
 def test_the_command_builds_the_day_names_its_counts_and_writes_the_views(tmp_path, monkeypatch, capsys):

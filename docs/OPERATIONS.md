@@ -30,6 +30,7 @@ launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.mirai-station.left-eye.p
 | SPX JEV decision service (`spx-jev`: the same beside the SPX diary at :02 and :32; `spx-jev-tape`, the opening lane; its feeds `spx-jev-bars`, `spx-jev-context`, `spx-jev-save-day` and `spx-jev-overnight`; `spx-jev-premarket`, the lane before the open) | `/tmp/mirai-station.spx-jev*.{out,err}`; its records under `~/.claude/plugins/mirai-station/state/spx_jev/` |
 | SPX JEV overnight futures (`spx-jev-overnight`: /ES, /ZN, /BTC and /MBT bars from the prior close, saved at 09:26 and 16:20 ET on market days, with a checks line per save and the roll table) | `/tmp/mirai-station.spx-jev-overnight.{out,err}`; `state/spx_jev/overnight/{date}.jsonl`, `manifest.jsonl`, `rolls.json` |
 | SPX JEV premarket lane (`spx-jev-premarket`: the night's labels at 02:35, 03:35 (04:35 in Frankfurt's winter-time week), 08:05, 08:48, 09:05 and 09:28 ET, JEV asked at 08:48 and 09:28, the close-out at 10:06 grading from the settled open) | `/tmp/mirai-station.spx-jev-premarket.{out,err}`; `state/spx_jev/lanes/premarket/` |
+| SPX JEV learning store (`spx-jev-store`: the last week's market days rebuilt from the raw files at 16:40 ET into checked Parquet with DuckDB views, one line per day with its row counts and anything quarantined) | `/tmp/mirai-station.spx-jev-store.{out,err}`; `state/spx_jev/store/` |
 | SPX JEV premarket dead-man (`spx-premarket-deadman`: every 5 minutes on a market day, pages the phone once for a checkpoint with no read 15 minutes after it, or a 10:06 close-out that has not landed by 10:21 ET) | `/tmp/mirai-station.spx-premarket-deadman.{out,err}`; `state/spx_jev/lanes/premarket/deadman_state.json` |
 
 Quick health check:
@@ -174,7 +175,7 @@ The launchd jobs pick up script changes on next fire (no restart needed). plist 
 launchctl disable gui/$UID/com.mirai-station.left-eye
 launchctl disable gui/$UID/com.mirai-station.auth-watch
 launchctl disable gui/$UID/com.mirai-station.sndk-jev      # or SNDK_JEV_DISABLE=1 in the job's environment
-for j in spx-jev spx-jev-tape spx-jev-bars spx-jev-context spx-jev-save-day spx-jev-overnight spx-jev-premarket spx-premarket-deadman; do
+for j in spx-jev spx-jev-tape spx-jev-bars spx-jev-context spx-jev-save-day spx-jev-overnight spx-jev-store spx-jev-premarket spx-premarket-deadman; do
   launchctl bootout gui/$UID/com.mirai-station.$j           # SPX JEV and its feeds; or SPX_JEV_DISABLE=1
 done
 # caffeinate left running so the mini is still reachable
@@ -185,7 +186,7 @@ Re-enable:
 launchctl enable gui/$UID/com.mirai-station.left-eye
 launchctl enable gui/$UID/com.mirai-station.auth-watch
 launchctl enable gui/$UID/com.mirai-station.sndk-jev
-for j in spx-jev spx-jev-tape spx-jev-bars spx-jev-context spx-jev-save-day spx-jev-overnight spx-jev-premarket spx-premarket-deadman; do
+for j in spx-jev spx-jev-tape spx-jev-bars spx-jev-context spx-jev-save-day spx-jev-overnight spx-jev-store spx-jev-premarket spx-premarket-deadman; do
   launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.mirai-station.$j.plist
 done
 ```

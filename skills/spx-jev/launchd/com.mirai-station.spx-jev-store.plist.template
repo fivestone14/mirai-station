@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mirai-station.spx-jev-store</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-spx-jev-store.sh</string>
+  </array>
+
+  <!-- After the close, once a day: the learning store (spx_jev/store.py) rebuilds the last week's
+       market days from the raw files, today included, into checked Parquet under
+       state/spx_jev/store/ with DuckDB views over it. Market days only. Fires at 16:40 ET, after
+       the day saver's and the overnight store's 16:20 saves; a day either had not finished saving
+       is rebuilt by the next night's run.
+       NOTE: launchd's StartCalendarInterval uses SYSTEM-LOCAL time and ignores the
+       TZ env var below. This box runs on Pacific, so Hour=13 Minute=40 == 13:40 PT == 16:40 ET
+       year-round (PT is ET minus 3h through DST). -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>13</integer>
+    <key>Minute</key>
+    <integer>40</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/mirai-station.spx-jev-store.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/mirai-station.spx-jev-store.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key>
+    <string>America/New_York</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>
