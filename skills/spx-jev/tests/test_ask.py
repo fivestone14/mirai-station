@@ -111,6 +111,19 @@ def test_a_gated_question_is_asked_only_when_its_gate_says_awake():
     assert skipped["a"] == {"asleep": "asleep: no shock in the last hour", "undecided": "asleep: no label family decides its gate"}
 
 
+def test_a_gate_that_could_not_measure_leaves_its_question_missing_data_not_asleep():
+    """A gate whose data is not on file once slept its question as if nothing had happened, so the gap never showed as
+    missing: a gate reason starting UNMEASURED is missing data, counted and held as a missing label is."""
+    from spx_jev.ask import UNMEASURED
+    doc = {"groups": [{"id": "a", "reads": ["context"], "questions": {
+        q: {"type": "noul", "sleep_when": "nothing happened", "instructions": "Read `context.symbol`.", "criteria": {"true": "t", "false": "f"}}
+        for q in ("unmeasured", "asleep")}}]}
+    why = f"{UNMEASURED} the index weights: spx_leaders/weights.json is not written yet"
+    reqs, skipped = build_requests({"context": {"symbol": "SPX"}}, doc, gates={"unmeasured": why, "asleep": "no shock in the last hour"})
+    assert reqs == [] and skipped["a"]["unmeasured"] == f"missing data: {why}" and skipped["a"]["asleep"].startswith("asleep: ")
+    assert skipped["a"]["unmeasured"].startswith("missing ")
+
+
 def test_a_question_whose_label_says_nothing_happened_is_asleep_on_that_reason_not_missing():
     """No shock in the last hour is the shock question's quiet state, not a gap in the data: asleep, with the label's
     own reason, whatever else it misses. A label left out for want of data stays missing."""

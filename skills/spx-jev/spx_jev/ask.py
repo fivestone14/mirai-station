@@ -134,6 +134,10 @@ def paths_in(question: dict) -> list[str]:
 
 
 NO_GATE = "no label family decides its gate"
+# A gate that could not measure what decides it (its data is not on file, or too few sessions to rank against) says so
+# by starting its reason with this: the question is missing data, never asleep, since a gap must not pass for
+# "nothing happened". Its reason starts "missing ", as a missing label's does, so it is counted and held the same way.
+UNMEASURED = "could not measure"
 
 
 def build_requests(state: dict, doc: dict, skip: dict[str, str] | None = None,
@@ -146,7 +150,8 @@ def build_requests(state: dict, doc: dict, skip: dict[str, str] | None = None,
     including whole groups under the key ``"*"``. ``skip`` names questions to leave
     out with a reason of the caller's own (the schedule and the cadence). ``gates`` is
     the labels' sleep gates (LabelSet.gates): a question with ``sleep_when`` is asked
-    only when its gate says it is awake. ``ended`` is the labels left out because what
+    only when its gate says it is awake, and is missing data rather than asleep when
+    its gate could not measure (UNMEASURED). ``ended`` is the labels left out because what
     they describe is not there (LabelSet.ended_reasons): a question missing one of them
     is asleep on its reason, since nothing happened, rather than missing a label.
     """
@@ -173,9 +178,10 @@ def build_requests(state: dict, doc: dict, skip: dict[str, str] | None = None,
             if qid in skip:
                 skipped.setdefault(gid, {})[qid] = skip[qid]
                 continue
-            if q.get("sleep_when") and gates.get(qid, NO_GATE) is not None:
-                # asleep: its default "nothing happened" state holds, and a default must never reach the weights
-                skipped.setdefault(gid, {})[qid] = f"asleep: {gates.get(qid, NO_GATE)}"
+            if q.get("sleep_when") and (gate := gates.get(qid, NO_GATE)) is not None:
+                # asleep: its default "nothing happened" state holds, and a default must never reach the weights; a gate
+                # that could not measure is missing data instead
+                skipped.setdefault(gid, {})[qid] = f"missing data: {gate}" if str(gate).startswith(UNMEASURED) else f"asleep: {gate}"
                 continue
             missing = [p for p in paths_in(q) if get_path(state, p) is None]
             # a label the state has but this group does not read would leave JEV blind to it
