@@ -142,3 +142,11 @@ def test_the_question_doc_names_every_lane_that_asks_from_it():
     doc = json.loads((QUESTION_SET.parent.parent / "questions" / "spx_questions.json").read_text(encoding="utf-8"))
     assert doc["name"] == "SPX JEV questions, every lane"
     assert all(lane.key in doc["how_to_use"] for lane in LANES.values())
+
+
+def test_shadow_means_asked_and_logged_never_graded_and_never_weighted():
+    """What the grader does: it never grades a shadow question, and the weights never see one."""
+    d = json.loads(QUESTION_SET.read_text(encoding="utf-8"))
+    assert "shadow = asked and logged, never graded and never weighted" in d["conventions"]["status"]
+    doc = json.loads((QUESTION_SET.parent.parent / "questions" / "spx_questions.json").read_text(encoding="utf-8"))
+    assert "shadow ones are asked and logged but never graded or weighted" in doc["how_to_use"]

@@ -70,7 +70,7 @@ def question_doc(qset: dict, source: str) -> dict:
         "owner_rule": qset["owner_rule"],
         "how_to_use": ("Step 2 of the pipeline. Each lane asks the questions whose lanes name it (the live lane "
                        "thirty_minute, the opening lane opening_five_minute, the pre-market lane premarket), at the reads its schedule names: live ones "
-                       "count in the sums, shadow ones are asked and logged but never summed, dark ones are never asked. "
+                       "count in the sums, shadow ones are asked and logged but never graded or weighted, dark ones are never asked. "
                        "A question with sleep_when is asked only when its label family says it is awake. Every threshold "
                        "is a name in braces filled from spx_jev/cuts.py."),
         "groups": [{"id": g["id"], "lane": g["lane"], "purpose": g["purpose"], "reads": g["reads"],
