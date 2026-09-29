@@ -239,6 +239,24 @@ def test_an_unsent_run_says_why_and_holds_nothing(tmp_path):
     assert not (state / "spx_jev" / "last_asked.json").exists()
 
 
+def test_a_failed_request_is_a_plain_reason_on_the_card_and_jevs_own_text_stays_in_the_archive(tmp_path, monkeypatch):
+    """The phone once showed "JEV unreachable for group hour: TimeoutError: The read operation timed out" and an Envoy
+    503 page: the card says what happened in plain words, the question and the sums alike, and the archive keeps the
+    network's text."""
+    state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
+
+    def sums_time_out(req, **kw):
+        raise TimeoutError("The read operation timed out")
+    monkeypatch.setattr(service, "send_all", _answers(failing=("g2",)))
+    monkeypatch.setattr(service, "send", sums_time_out)
+    c = run_once(state, state / "spx_jev", DOC, True, DAY)
+    assert next(q for q in c["questions"] if q["id"] == "q_two")["skipped"] == "asked, no answer received: JEV did not answer in time"
+    assert c["hour"]["error"] == c["hour"]["average"]["error"] == "JEV did not answer in time"
+    read = json.loads((state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()[0])
+    assert read["responses"]["g2"]["error"].startswith("TimeoutError: handshake timed out")
+    assert read["hour_response"]["error"] == "TimeoutError: The read operation timed out"
+
+
 def test_the_card_calls_the_call_a_forecast_not_a_trade_signal_and_keeps_shadow_for_shadow_questions(tmp_path):
     """The card's note said the sums were "never a call" beside the call it carries: the call and the end-price
     questions are graded forecasts, never trade signals, and shadow questions are asked and logged, never graded."""

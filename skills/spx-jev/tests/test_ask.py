@@ -374,6 +374,24 @@ def test_a_read_whose_every_request_times_out_still_ends_inside_a_minute(monkeyp
     assert tries["next_10"] == [34.0, 44.0] and clock.t < 60.0
 
 
+def test_a_failure_names_the_sums_by_what_they_are_and_reads_plainly_on_the_card(monkeypatch):
+    """The sums request's failure said "group hour"; it names the end-price sums, and plain_error turns what the network
+    said into words a reader follows, leaving the service's own reasons as they are."""
+    from spx_jev import ask
+
+    def urlopen_timeout(req, timeout=0):
+        raise TimeoutError("The read operation timed out")
+    monkeypatch.setattr(ask.urllib.request, "urlopen", urlopen_timeout)
+    monkeypatch.setattr(ask.time, "sleep", lambda s: None)
+    with pytest.raises(RuntimeError) as e:
+        ask.send({"id": "hour", "state": {}, "questions": {}}, api_key="k")
+    assert str(e.value).startswith("JEV unreachable for the end-price sums after 3 tries: TimeoutError")
+    assert ask.plain_error(str(e.value)) == "JEV did not answer in time, after 3 tries"
+    assert ask.plain_error("JEV returned HTTP 503 for group opening_context: upstream connect error or disconnect/reset") == "JEV was unavailable"
+    assert ask.plain_error("JEV returned HTTP 529 for the average-price sum after 3 tries: overloaded") == "JEV was too busy to answer, after 3 tries"
+    assert ask.plain_error("not asked: its window ends past the close") == "not asked: its window ends past the close"
+
+
 def test_send_all_sends_every_request_together_and_keeps_errors():
     from spx_jev.ask import send_all
 
@@ -480,6 +498,29 @@ def test_no_question_jev_is_asked_cuts_a_market_measure_on_a_fixed_line():
                      for n in constants_named(t)}
             fixed = {n for n in named - allowed if not re.fullmatch(r"window_\d+_min", n)}
             assert not fixed, f"{qid} cuts on {sorted(fixed)}"
+
+
+def test_the_opening_pace_options_jev_reads_name_the_thirds_its_two_labels_say():
+    """JEV never sees the code's rules, so each option has to speak the labels' own band words, not a mapping of them."""
+    raw = json.loads((QUESTIONS / "spx_questions.json").read_text())
+    q = next(g["questions"]["opening_pace"] for g in raw["groups"] if "opening_pace" in g["questions"])
+    bands = re.compile(r"\b(bottom|middle|top)\b")
+    for option, words, rule in zip(q["options"], q["criteria"], q["code_criteria"], strict=True):
+        assert not re.search(r"\b(narrow|ordinary|wide)\b", words), f"{option}: {words}"
+        assert set(bands.findall(words)) == set(bands.findall(rule)), f"{option}: {words} against the rule {rule}"
+    assert "wider than all" in q["criteria"][q["options"].index("very_busy")]
+
+
+def test_the_ruler_loaded_options_name_the_events_that_load_the_straddle_and_the_ratio_it_ranks():
+    """The label loads or releases only on the Fed's decision and the chair's set pieces, so the words JEV reads name them
+    (a data release or a Fed speaker is no such event), and the straddle is only ever ranked against the tape, never "far more"."""
+    raw = json.loads((QUESTIONS / "spx_questions.json").read_text())
+    q = next(g["questions"]["ruler_loaded"] for g in raw["groups"] if "ruler_loaded" in g["questions"])
+    words = q["criteria"]
+    assert not any("major event" in w or "far more" in w for w in words.values()), words
+    fed = "the Fed's rate decision, the Fed chair's testimony or the Fed chair's Jackson Hole speech"
+    assert fed in words["loaded_before_event"] and fed in words["released_after_event"]
+    assert "nothing at all is on the event calendar today" in words["swollen_no_event"]
 
 
 def test_the_opening_pace_options_jev_reads_name_the_thirds_its_two_labels_say():

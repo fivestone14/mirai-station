@@ -269,18 +269,50 @@ def send(request: dict, api_key: str | None = None, timeout: float = 10.0, url: 
             detail = _scrub(e.read().decode("utf-8", errors="replace"), key)[:400]
             if e.code in RETRY_HTTP and another_try(attempt, e.headers or {}):
                 continue
-            raise RuntimeError(f"JEV returned HTTP {e.code} for group {request['id']}{_tries(attempt)}: {detail}") from None
+            raise RuntimeError(f"JEV returned HTTP {e.code} for {_what(request)}{_tries(attempt)}: {detail}") from None
         except (OSError, http.client.HTTPException) as e:
             # a timeout, a refused or dropped connection, a failed handshake (URLError is an OSError)
             if another_try(attempt, None):
                 continue
-            raise RuntimeError(f"JEV unreachable for group {request['id']}{_tries(attempt)}: {type(e).__name__}: {_scrub(str(e), key)[:200]}") from None
+            raise RuntimeError(f"JEV unreachable for {_what(request)}{_tries(attempt)}: {type(e).__name__}: {_scrub(str(e), key)[:200]}") from None
         except ValueError as e:
-            raise RuntimeError(f"JEV answered group {request['id']} with something that is not JSON: {_scrub(str(e), key)[:200]}") from None
+            raise RuntimeError(f"JEV answered {_what(request)} with something that is not JSON: {_scrub(str(e), key)[:200]}") from None
 
 
 def _tries(n: int) -> str:
     return f" after {n} tries" if n > 1 else ""
+
+
+# the sums' requests by id (hour.hour_request, hour.average_request); any other request is a question group
+SUMS_REQUESTS = {"hour": "the end-price sums", "average": "the average-price sum"}
+
+
+def _what(request: dict) -> str:
+    """A request as its errors name it: the sums by what they are, a question group by its id."""
+    return SUMS_REQUESTS.get(request["id"], f"group {request['id']}")
+
+
+_TRIES = re.compile(r" after (\d+) tries")
+
+
+def plain_error(error: str) -> str:
+    """What the card says of a request JEV gave no answer to, in words a reader follows; the network's own text (a
+    timeout's, a proxy's 503 page) stays in the read's archived replies. A reason that is none of the failures send
+    names (the service's own words, "no next_30 answer", "not asked: ...") comes back as it is."""
+    e = str(error)
+    tries = f", after {m.group(1)} tries" if (m := _TRIES.search(e)) else ""
+    if "timed out" in e or "TimeoutError" in e:
+        return f"JEV did not answer in time{tries}"
+    if m := re.search(r"HTTP (\d{3})", e):
+        code = int(m.group(1))
+        why = ("was too busy to answer" if code in (429, 529) else "was unavailable" if code == 503 else "failed on its side" if code >= 500
+               else f"refused the request (HTTP {code})")
+        return f"JEV {why}{tries}"
+    if "not JSON" in e:
+        return "JEV's reply could not be read"
+    if "unreachable" in e or re.search(r"(Connection|URL|SSL|Socket)\w*Error", e):
+        return f"JEV could not be reached{tries}"
+    return e
 
 
 def send_all(requests: list[dict], api_key: str | None = None, timeout: float = 10.0,

@@ -229,7 +229,9 @@ def test_a_failed_sum_after_a_call_is_on_the_card_beside_the_earlier_call(tmp_pa
     monkeypatch.setattr(premarket, "send", timed_out)
     c = run_checkpoint(state, out, DOC, True, at(9, 28), "09:28", save=False)
     assert c["sent"] is True and c["hour"]["read_at"] == at(8, 48).isoformat()
-    assert c["hour_error"] == {"read_at": at(9, 28).isoformat(), "error": "JEV timed out"}
+    assert c["hour_error"] == {"read_at": at(9, 28).isoformat(), "error": "JEV did not answer in time"}
+    read = _lines(state / "spx_jev" / "archive" / f"{DAY}.jsonl")[-1]                  # the plain reason on the card, JEV's own text kept
+    assert read["hour_response"] == {"error": "JEV timed out"} and read["hour"]["error"] == "JEV did not answer in time"
 
 def test_a_group_that_got_no_answer_is_asked_once_more_before_the_open(tmp_path, jev, monkeypatch):
     """2026-09-28: JEV timed out on the 09:28 read's premarket_overnight group, and no later checkpoint asks its
@@ -283,7 +285,7 @@ def test_a_read_whose_end_price_sums_got_no_answer_still_makes_the_call_the_card
     assert c["hour"]["read_at"] == at(9, 28).isoformat() and c["hour"]["average"]["pick"] == "down"
     assert c["story"][-1]["call"]["pick"] == "down"
     assert [call["read"] for call in c["calls"]] == [at(9, 28).isoformat(), at(8, 48).isoformat()]
-    assert c["calls"][0]["end_price_missing"].startswith("JEV unreachable for group hour")
+    assert c["calls"][0]["end_price_missing"] == "JEV did not answer in time"
 
 
 def test_a_read_without_a_ruler_writes_why_builds_nothing_and_asks_nothing(tmp_path, jev):

@@ -366,9 +366,10 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
         if hour is not None:
             hour = {**hour, "used": len(hour_rec["used"]), "left_out": len(hour_rec["left_out"]), "missing": len(missing)}
             if hour.get("error"):
-                service.log(f"the sums got no answer: {hour['error']}")
+                service.log(f"the end-price sums got no answer: {hour['error']}")
             if (hour.get("average") or {}).get("error"):
                 service.log(f"the average-price sum got no answer: {hour['average']['error']}")
+            hour = service.plain_errors(hour)
     sent = answers is not None
     if not sent and do_send:
         unsent_reason = f"nothing to ask at the {checkpoint} ET read" + ("" if scene else f": {ruler['omitted']}")

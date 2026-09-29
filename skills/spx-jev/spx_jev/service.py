@@ -64,7 +64,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from . import archive, ask, integral, pool
-from .ask import build_requests, confidence, load_questions, pick, send, send_all
+from .ask import build_requests, confidence, load_questions, pick, plain_error, send, send_all
 from .baseline import Baseline
 from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, lost_today, mark_asleep,
                       plan, save_last, unheld)
@@ -217,6 +217,16 @@ def with_average(summary: dict | None, lane: Lane, window: dict | str | None, re
     except Exception as e:  # a garbled average-price reply must never cost the end-price sums their read
         avg = {"error": f"the average-price reply could not be read: {type(e).__name__}", **head, **window}
     return {**summary, "average": avg}
+
+
+def plain_errors(hour: dict) -> dict:
+    """The sums as the card, the sum record and the grader keep them, a failed request's error in plain words
+    (ask.plain_error), the end-price sums' and the average-price sum's; the network's own text stays in the archived
+    replies (hour_response, average_response)."""
+    out = {**hour, **({"error": plain_error(hour["error"])} if hour.get("error") else {})}
+    if isinstance(hour.get("average"), dict) and hour["average"].get("error"):
+        out["average"] = {**hour["average"], "error": plain_error(hour["average"]["error"])}
+    return out
 
 
 def sum_the_hour(doc: dict, hour_doc: dict, answered: dict[str, dict], weights: QuestionWeights,
@@ -591,7 +601,7 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
                 entry["skipped"] = next((v for g in skipped.values() for k, v in g.items() if k == qid), "not asked")
             else:
                 entry["answer"] = None
-                entry["skipped"] = (f"asked, no answer received: {errors[asked_in]}" if asked_in in errors
+                entry["skipped"] = (f"asked, no answer received: {plain_error(errors[asked_in])}" if asked_in in errors
                                     else "asked, no answer received") if sent else unsent_reason
             qs.append(entry)
     row_age_s = round((now - row_ts.astimezone(timezone.utc)).total_seconds())
@@ -791,9 +801,10 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         if hour is not None:
             hour = {**hour, "used": len(hour_rec["used"]), "left_out": len(hour_rec["left_out"]), "missing": len(missing)}
             if hour.get("error"):
-                log(f"the sums got no answer: {hour['error']}")
+                log(f"the end-price sums got no answer: {hour['error']}")
             if (hour.get("average") or {}).get("error"):
                 log(f"the average-price sum got no answer: {hour['average']['error']}")
+            hour = plain_errors(hour)
         for qid, ans in fresh.items():
             # how far this answer moved from the last fresh one on the same day: past CHANGE_CUT the
             # question is in motion. Yesterday's closing answer is not a move, it is a new day.
