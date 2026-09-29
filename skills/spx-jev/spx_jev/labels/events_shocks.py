@@ -31,13 +31,14 @@ from pathlib import Path
 
 from .. import events
 from ..cuts import (BRIEF_CONF_MIN, BRIEF_DIR_MIN, EVENT_DIGEST_MIN, EVENT_DUE_MIN, FOLLOW_ON_MIN, GAP_HALF_SHARE, MIN_RANK_SESSIONS,
-                    NIGHT_RANK_COUNT, REACTION_EXTEND_SIGMA, SAME_CLOCK_MIN_SESSIONS, SHOCK_FRESH_MIN,
+                    NIGHT_RANK_COUNT, ONE_NAME_SHARE, REACTION_EXTEND_SIGMA, SAME_CLOCK_MIN_SESSIONS, SHOCK_FRESH_MIN,
                     SHOCK_LOOKBACK_MIN, SPEAKER_WINDOW_MIN, TICK_BURST_PCT, WINDOW_10_MIN)
 from ..events import Event
 from ..market_context import SYMBOLS
 from ..state_builder import MarketContext, Scene, load_jsonl
 from .gap_open import gap_rank
 from .label_set import LabelSet
+from .leadership import _largest_names
 from .measures import (ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, is_num, minute_of_day, move_size, session_extremes,
                        settled_open)
 from .plausible import left_out
@@ -743,17 +744,38 @@ def _top_fifth(rank: SameClockRank) -> str:
     return f"{'in' if fifth_side(rank) > 0 else 'short of'} the top fifth"
 
 
+def _megacap_share(scene: Scene, mk: MarketContext, index: _Closes, burst: Burst) -> str:
+    """The largest megacap share of the burst in words: each of the largest names' index weight times its return over
+    the burst, as a share of the index's return, the largest judged against ONE_NAME_SHARE; or why no share is
+    measured (the weights not on file, a name without a price at the burst's edges)."""
+    names = _largest_names(scene)
+    if isinstance(names, str):
+        return f"no megacap's share of it is measured ({names})"
+    i0, i1 = index.at(burst.start), index.at(burst.end)
+    shares = {}
+    for name, weight in names:
+        a, b = mk.last(name, burst.start, FEED_MAX_AGE_MIN), mk.last(name, burst.end, FEED_MAX_AGE_MIN)
+        if not a or b is None:
+            return f"no megacap's share of it is measured ({name} has no value within {FEED_MAX_AGE_MIN} minutes of the burst's start and end)"
+        shares[name] = weight * (b / a - 1.0) / (i1 / i0 - 1.0)
+    top = max(shares, key=shares.get)
+    verdict = "past" if shares[top] >= ONE_NAME_SHARE else "under"
+    return (f"of the {len(names)} largest names {top} supplied the most of it, {pct(shares[top])} of the index's move, {verdict} the "
+            f"one-name share of {pct(ONE_NAME_SHARE)}{': one name' if verdict == 'past' else ''}")
+
+
 def _cross_asset(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) -> None:
     """Each group's move during the burst beyond its usual link to the index, ranked against the same five minutes on
-    the prior sessions, event or not: the ten-year yield, semiconductors, the sector funds with the NYSE TICK against
-    its burst bands for those minutes, the defensive funds. A group passes its rank in the top fifth. The megacaps'
-    share needs their index weights, which no file carries yet. The yield's bars stop at 15:00, so without it the
-    label says so and still reads the index-side groups."""
+    the prior sessions, event or not: the ten-year yield, semiconductors, the largest megacap's share of the burst
+    (_megacap_share), the sector funds with the NYSE TICK against its burst bands for those minutes, the defensive
+    funds. A group passes its rank in the top fifth, the megacap at the one-name share. The yield's bars stop at
+    15:00, so without it the label says so and still reads the index-side groups."""
     path, mk = "shock.cross_asset", scene.market
     if mk is None:
         ls.omit(path, "no market-context snapshot today")
         return
-    now = _group_moves(_Closes.of(scene.bars), mk, burst.start, burst.end, anchor.points)
+    index = _Closes.of(scene.bars)
+    now = _group_moves(index, mk, burst.start, burst.end, anchor.points)
     gaps = {k: v for k, v in now.gaps.items() if k != "$TNX"}
     if gaps:
         ls.omit(path, next(iter(gaps.values())))
@@ -807,7 +829,7 @@ def _cross_asset(scene: Scene, anchor: SigmaRuler, burst: Burst, ls: LabelSet) -
     moved = "rose" if side > 0 else "fell"
     ls.put(path, ruled(anchor, f"during the shock {rates_words}; "
                  f"semiconductors {semis_moved}, their move the shock's way {_more_than(semis)}, {semis_verdict}; "
-                 f"no megacap's share of it is measured, since their index weights are not on file; "
+                 f"{_megacap_share(scene, mk, index, burst)}; "
                  f"{now.with_it} of {len(SYMBOLS['sectors'])} sector funds {moved} with it, {_more_than(sectors)}, {_top_fifth(sectors)}, "
                  f"and NYSE TICK reached {round(tick)}, {tick_verdict}; "
                  f"the defensive funds (staples, utilities, health care) {shelter_moved}, their move against the index "

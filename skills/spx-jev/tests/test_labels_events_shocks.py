@@ -617,11 +617,41 @@ def test_what_moved_with_the_shock(scene_factory):
         "during the shock the ten-year yield rose 4.1 basis points beyond its usual link to the index, more than on 10 of the last "
         "10 sessions over the same five minutes, in the top fifth; semiconductors rose 0.15 sigma beyond theirs, their move the "
         "shock's way more than on 10 of the last 10 sessions over the same five minutes, in the top fifth, the shock's way; no "
-        "megacap's share of it is measured, since their index weights are not on file; 10 of 11 sector funds rose with it, more "
+        "megacap's share of it is measured (no state folder to read the index weights from); 10 of 11 sector funds rose with it, more "
         "than on 10 of the last 10 sessions over the same five minutes, in the top fifth, and NYSE TICK reached 1240, at or past "
         "its top 5% band for those minutes, the shock's way; the defensive funds (staples, utilities, health care) fell 0.11 sigma "
         "beyond their usual link, against the shock, their move against the index more than on 10 of the last 10 sessions over "
         "the same five minutes, in the top fifth, not a defensive bid, which needs them rising against a falling index")
+
+
+MEGACAPS = {"NVDA": 0.08, "MSFT": 0.07, "AAPL": 0.065, "AMZN": 0.04, "META": 0.03, "AVGO": 0.025, "GOOGL": 0.02, "GOOG": 0.018,
+            "TSLA": 0.02}
+
+
+def with_megacaps(s, root, lead: float):
+    """``s`` with the index weights on file and the largest names priced: NVDA moving ``lead`` times the index's
+    return, the rest flat."""
+    (root / "spx_leaders").mkdir(parents=True, exist_ok=True)
+    (root / "spx_leaders" / "weights.json").write_text(json.dumps({"as_of": "2026-10-01", "weights": MEGACAPS}))
+    mk, open_spx = burst_market(s.bars), float(s.bars[0]["close"])
+    known = dict(mk.known)
+    for name in ("NVDA", "MSFT", "AAPL", "AMZN", "META", "AVGO", "GOOGL", "TSLA"):
+        known[name] = [(datetime.fromisoformat(b["ts"]) + timedelta(minutes=1),
+                        100.0 * (1 + lead * (float(b["close"]) / open_spx - 1)) if name == "NVDA" else 100.0) for b in s.bars]
+    return replace(s, market=MarketContext(known, mk.bars), prior_markets=PRIOR_MARKETS, state_dir=root)
+
+
+def test_the_largest_megacap_share_of_the_shock_is_measured_from_the_index_weights(scene_factory, tmp_path):
+    """The shock_fingerprint question offers one_name: a megacap supplying the one-name share of the burst."""
+    s = burst_scene(scene_factory, at(12, 2, BURST_DAY), after=6.0)
+    one = labels(with_megacaps(s, tmp_path, 5.0))[0]["shock.cross_asset"]
+    assert ("against the shock; of the 8 largest names NVDA supplied the most of it, 40% of the index's move, past the one-name share "
+            "of 35%: one name; 10 of 11 sector funds") in one
+    spread = labels(with_megacaps(s, tmp_path, 2.0))[0]["shock.cross_asset"]
+    assert "of the 8 largest names NVDA supplied the most of it, 16% of the index's move, under the one-name share of 35%; 10 of 11" in spread
+    (tmp_path / "spx_leaders" / "weights.json").unlink()
+    gone = labels(replace(s, market=burst_market(s.bars), prior_markets=PRIOR_MARKETS, state_dir=tmp_path))[0]["shock.cross_asset"]
+    assert "no megacap's share of it is measured (no index weights: spx_leaders/weights.json is not written yet); 10 of 11" in gone
 
 
 def test_defensives_rising_against_a_falling_index_are_the_defensive_bid(scene_factory):
