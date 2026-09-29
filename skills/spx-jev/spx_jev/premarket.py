@@ -408,9 +408,10 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
 # ---- the card ------------------------------------------------------------------------------------
 
 def newest_call(out_dir: Path, day: str) -> dict | None:
-    """The day's newest sum that made a call, as the card shows it, with ``read_at`` the read it came from."""
+    """The day's newest sum that made a call, as the card shows it, with ``read_at`` the read it came from: one whose
+    end-price sums answered, or whose average-price sum answered alone (grade.average_alone)."""
     for rec in reversed(load_jsonl(out_dir / "hour" / f"{day}.jsonl")):
-        if rec.get("pick") and isinstance(rec.get("by"), dict):
+        if (rec.get("pick") and isinstance(rec.get("by"), dict)) or grade.average_alone(rec, PREMARKET):
             return {**{k: rec[k] for k in CALL_KEYS if k in rec}, "read_at": rec["row_ts"]}
     return None
 
@@ -422,7 +423,7 @@ def story_so_far(out_dir: Path, day: str) -> list[dict]:
     call when it made one (service.call_of: the average-price sum's when JEV answered it). For the phone only: no
     label ever reads it."""
     calls = {r["row_ts"]: {k: v for k, v in service.call_of(r, PREMARKET).items() if k != "sum"}
-             for r in load_jsonl(out_dir / "hour" / f"{day}.jsonl") if r.get("pick")}
+             for r in load_jsonl(out_dir / "hour" / f"{day}.jsonl") if r.get("pick") or grade.average_alone(r, PREMARKET)}
     reads = sorted({rec.get("checkpoint"): rec for rec in load_jsonl(out_dir / f"{day}.jsonl")}.values(), key=lambda r: r["row_ts"])
     released = story.releases(date.fromisoformat(day))
     first_after = next((rec["row_ts"] for rec in reads if released and parse_ts(rec["row_ts"]) >= released[0].start), None)

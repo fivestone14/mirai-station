@@ -69,7 +69,8 @@ from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_a
 from .clock import blend as clock_blend, integral_odds as clock_integral_odds, odds as clock_odds
 from .events import learn_exclude, tag as event_tag
 from .expiry import calendar_of
-from .grade import INTEGRAL_NAME, average_call, horizon_start, live_options, mark_at, read_anchor, run as grade_run, told_edge
+from .grade import (INTEGRAL_NAME, average_alone, average_call, horizon_start, live_options, mark_at, read_anchor, run as grade_run,
+                    told_edge)
 from .hour import (answer_sentences, average_request, average_summary, average_window, band_of, hour_request, hour_summary, load_hour_doc,
                    named_levels)
 from .labels.registry import build_labels
@@ -249,7 +250,8 @@ def pool_snapshots(out_dir: Path, hour: dict, doc: dict, answered: dict[str, dic
                    lane: Lane = LIVE) -> dict[str, dict]:
     """The learning loop's forecasts at this read, one per horizon (pool.snapshot), from JEV's own sum,
     the live clock's odds and the shown blend on the hour summary, and every live question's answer,
-    fresh or held. A horizon JEV gave no probabilities for is left out, with the reason."""
+    fresh or held. A horizon JEV gave no probabilities for is left out, with the reason and the questions'
+    part (pool.answered), from which the average-price loop still learns a call standing on its average alone."""
     live = {qid: q for g in doc["groups"] for qid, q in g["questions"].items() if q.get("status") == "live"}
     members = {qid: pool.question_version(q) for qid, q in live.items()}
     answers = {qid: a for qid, e in answered.items() if qid in members and (a := pool.soft_answer(e))}
@@ -258,7 +260,7 @@ def pool_snapshots(out_dir: Path, hour: dict, doc: dict, answered: dict[str, dic
     for h, (minutes, _) in lane.horizons.items():
         b = (hour.get("by") or {}).get(h)
         if not isinstance(b, dict) or not isinstance(b.get("probabilities"), dict):
-            out[h] = {"left_out": f"JEV gave no probabilities for {h}"}
+            out[h] = {"left_out": f"JEV gave no probabilities for {h}", **pool.answered(answers, members, fresh)}
             continue
         jev = b["jev"]["probabilities"] if b.get("blended") else b["probabilities"]
         live_clock = b["clock"]["probabilities"] if b.get("blended") else None
@@ -411,10 +413,11 @@ def day_calls(out_dir: Path, day: str, lane: Lane = LIVE, scene: Scene | None = 
     it), then ``integral``, its grade on the average price over the window (day_integral), and ``end_price``,
     the end-price sum's grade at the mark kept beside it for the side-by-side weeks (``outcome``, ``hit`` and
     the ``moved`` behind them, with that sum's own ``pick`` and its probability ``p``), once graded, or
-    ``closed`` with the reason when it can never be graded. The end-price sum is the grader's, so a read is a
-    call only when it answered: a read whose average-price sum answered alone is never graded. A read that asked
-    the average-price sum and got no answer it could grade is the end-price sum's call, marked ``average_missing``
-    with why, and graded on its end price alone. A call graded at
+    ``closed`` with the reason when it can never be graded. A read whose average-price sum answered alone, its
+    end-price sums getting no answer (grade.average_alone), is a call in its own right: graded on the average price
+    over its own window, marked ``end_price_missing`` with why, and closed when that grade says it never will be. A
+    read that asked the average-price sum and got no answer it could grade is the end-price sum's call, marked
+    ``average_missing`` with why, and graded on its end price alone. A call graded at
     its end price with no graded line on the average price (the shadow grade failed, or its window missed bars)
     is marked ``end_price_only``: it stands on its end price until a later card finds the line. A call not yet
     graded carries its average so far (``so_far``, open_grade) when the card is built on a ``scene``. The mark is
@@ -449,7 +452,8 @@ def day_calls(out_dir: Path, day: str, lane: Lane = LIVE, scene: Scene | None = 
     calls, seen = [], set()
     for r in load_jsonl(out_dir / "hour" / f"{day}.jsonl"):
         ts, p = r.get("row_ts"), r.get("probabilities")
-        if not ts or ts in seen or not r.get("pick") or not isinstance(p, dict):
+        alone = average_alone(r, lane)
+        if not ts or ts in seen or not (alone or (r.get("pick") and isinstance(p, dict))):
             continue
         seen.add(ts)                                   # a row written twice (a file from before the guard in run_once) is one call
         mark = mark_at(ts, minutes, lane)
@@ -465,6 +469,10 @@ def day_calls(out_dir: Path, day: str, lane: Lane = LIVE, scene: Scene | None = 
                 **({"average_missing": str(r["average"].get("error") or "its answer could not be read")} if missing else {}),
                 **({"integral": integral_by[ts]} if ts in integral_by and not missing else {}),
                 **({"checks": checks.get(ts, {})} if lane.graded_from_settled_open else {})}
+        if alone:
+            call["end_price_missing"] = str(r.get("error") or "the end-price sums got no answer")
+            if "integral" in call and not call["integral"].get("graded"):
+                call["closed"] = str(call["integral"].get("reason") or "not graded")
         if "end_price" in call and not (call.get("integral") or {}).get("graded"):
             call["end_price_only"] = True
         elif scene is not None and not missing and "end_price" not in call and "closed" not in call and "integral" not in call:
@@ -746,15 +754,17 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
             except Exception as e:  # the clock must never cost the read its sum
                 log(f"the clock was left out this run: {type(e).__name__}: {e}")
                 hour = {**hour, "blend": {"used": False, "why": f"the time-of-day odds failed this run: {type(e).__name__}"}}
-        if hour is not None and lane.pool and isinstance(hour.get("by"), dict):
+        if hour is not None and lane.pool and (isinstance(hour.get("by"), dict) or average_alone(hour, lane)):
             # every forecast the learning loop will score, written down now; the phone keeps the exact
-            # blend unless the loop's promotion and POOL_ON_PHONE both say otherwise
+            # blend unless the loop's promotion and POOL_ON_PHONE both say otherwise. A call on its average alone
+            # keeps the questions' answers, for the average-price loop to learn from
             try:
                 hour_rec["pool"] = pool_snapshots(out_dir, hour, doc, answered, set(fresh), now, lane)
             except Exception as e:  # the loop must never cost the read its sum
                 log(f"the learning loop's snapshot was left out this run: {type(e).__name__}: {e}")
                 hour_rec["pool"] = {h: {"left_out": f"the snapshot failed this run: {type(e).__name__}"} for h in lane.horizons}
-            hour = pool.shown(hour, hour_rec["pool"], pool.load_state(out_dir, lane.horizons[lane.primary][0]))
+            if isinstance(hour.get("by"), dict):
+                hour = pool.shown(hour, hour_rec["pool"], pool.load_state(out_dir, lane.horizons[lane.primary][0]))
         if hour is not None and lane.clock_blend and "probabilities" in (hour.get("average") or {}):
             # the phone's call is blended the same way, with how often the average over the same window ended each way
             # at this time of day, counted on the average price alone (clock.integral_odds)

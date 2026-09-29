@@ -310,6 +310,26 @@ def test_a_live_read_writes_the_loops_forecasts_keeps_the_blend_on_the_phone_and
     assert [(x["session"], x["applied"], x["why"]) for x in said] == [(DAY, False, "no read carries an average-price call: before the question")]
 
 
+def test_a_read_whose_end_price_sums_got_no_answer_keeps_the_answers_the_average_price_loop_learns_from(tmp_path, monkeypatch):
+    """Only the end-price request failed: the read writes no end-price snapshot, but keeps the questions' answers
+    beside the reason (pool.answered), so the average-price loop can learn the call standing on its average alone."""
+    state = _state(tmp_path, [make_row(at(12, 2, ss=10), 7700.0)], 150)
+
+    def sums(req, **kw):
+        if req["id"] == "hour":
+            raise RuntimeError("JEV unreachable for group hour: TimeoutError: The read operation timed out")
+        return {"model": "fake-1", "answers": {"average_30": {"type": "choice", "choice": "up", "confidence": 0.6,
+                                                             "probabilities": {"up": 0.6, "flat": 0.3, "down": 0.1}}}}
+    monkeypatch.setattr(service, "send_all", _answers())
+    monkeypatch.setattr(service, "send", sums)
+    c = run_once(state, state / "spx_jev", DOC, True, DAY)
+    rec = json.loads((state / "spx_jev" / "hour" / f"{DAY}.jsonl").read_text().splitlines()[0])
+    snap = rec["pool"]["next_30"]
+    assert snap["left_out"] == "JEV gave no probabilities for next_30" and set(snap["members"]) == {"q_dir", "q_two"}
+    assert snap["awake"] == ["q_dir", "q_two"] and "shown_source" not in rec
+    assert c["hour"]["average"]["pick"] == "up" and [call["sum"] for call in c["calls"]] == ["average_30"]
+
+
 def test_a_failing_average_price_loop_costs_neither_the_read_nor_the_close_out(tmp_path, monkeypatch, capsys):
     """The average-price loop's state unreadable as a state (a list): the read still grades and writes its card, the
     shadow grade still appends, the weights come from the end-price loop, and the close-out still refreshes the card."""

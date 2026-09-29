@@ -105,6 +105,30 @@ def test_a_call_with_no_average_price_grade_stands_on_its_end_price_until_a_late
     assert service.calls_block(again)["tally"] == {"calls": 3, "graded": 3, "right": 1, "passed": 1, "end_price_only": 2, "closed": 0}
 
 
+def test_a_call_whose_end_price_sums_got_no_answer_is_listed_graded_and_tallied_on_its_average(tmp_path):
+    """On 09-28 JEV timed out on single requests: when only the end-price one fails, the phone shows the average-price
+    call. It is a call in its own right, listed, graded on the average price over its window and counted, saying why
+    it has no end price; one whose window can never be graded is closed for good, not still to grade."""
+    graded_ts, closed_ts, open_ts = at(10, 2).isoformat(), at(15, 32).isoformat(), at(11, 2).isoformat()
+    (tmp_path / "hour").mkdir()
+    error = "JEV unreachable for group hour after 3 tries: TimeoutError: The read operation timed out"
+    with open(tmp_path / "hour" / f"{DAY}.jsonl", "w", encoding="utf-8") as f:
+        for ts in (graded_ts, open_ts, closed_ts):
+            f.write(json.dumps({"row_ts": ts, "error": error, "average": {
+                "pick": "up", "probabilities": {"up": 0.6, "flat": 0.3, "down": 0.1}, "primary": "average_30", "box": "next_30"}}) + "\n")
+    _write(tmp_path, DAY, {}, [_line(graded_ts, "up", 4.0, end_price="no end-price answer"),
+                               {"row_ts": closed_ts, "horizon": "next_30", "rule_version": integral.RULE_VERSION, "graded": False,
+                                "reason": "not graded: ends past the close"}])
+    first, second, third = service.day_calls(tmp_path, DAY, LIVE)
+    assert (first["pick"], first["sum"], first["p"], service.call_verdict(first)) == ("up", "average_30", 0.6, "right")
+    assert first["end_price_missing"] == error and "end_price" not in first and "end_price_only" not in first
+    assert "integral" not in second and "closed" not in second                        # its window is open
+    assert third["closed"] == "not graded: ends past the close" and service.call_verdict(third) is None
+    tally = service.calls_block([first, second, third])["tally"]
+    assert tally == {"calls": 3, "graded": 1, "right": 1, "passed": 0, "end_price_only": 0, "closed": 1}
+    assert service.still_to_grade(tally) == 1
+
+
 def test_an_open_call_carries_its_average_so_far_against_its_whole_windows_edge(tmp_path):
     """Five minutes into S9's ten: the average of the five closes so far against the read, set against the edge
     the whole window is graded on, and the minute it stands at. Before a minute has finished there is none, and a

@@ -265,6 +265,26 @@ def test_the_card_marks_each_sum_where_its_lane_grades_it():
     assert c["marks"]["open_30"] == at(10, 5).isoformat()
 
 
+def test_a_read_whose_end_price_sums_got_no_answer_still_makes_the_call_the_card_shows(tmp_path, jev, monkeypatch):
+    """Only the end-price request failed: the average-price sum answered, so the read's call is on the card, in the
+    story and among the day's calls, rather than an earlier read's."""
+    state = _station(tmp_path)
+    out = PREMARKET.folder(state)
+    run_checkpoint(state, out, DOC, True, at(8, 48), "08:48", save=False)
+    answered = _sums(jev["sums"], jev["averages"])
+
+    def end_price_fails(req, **kw):
+        if req["id"] == "hour":
+            raise RuntimeError("JEV unreachable for group hour: TimeoutError: The read operation timed out")
+        return answered(req, **kw)
+    monkeypatch.setattr(premarket, "send", end_price_fails)
+    c = run_checkpoint(state, out, DOC, True, at(9, 28), "09:28", save=False)
+    assert c["hour"]["read_at"] == at(9, 28).isoformat() and c["hour"]["average"]["pick"] == "down"
+    assert c["story"][-1]["call"]["pick"] == "down"
+    assert [call["read"] for call in c["calls"]] == [at(9, 28).isoformat(), at(8, 48).isoformat()]
+    assert c["calls"][0]["end_price_missing"].startswith("JEV unreachable for group hour")
+
+
 def test_a_read_without_a_ruler_writes_why_builds_nothing_and_asks_nothing(tmp_path, jev):
     state = _station(tmp_path, anchors=4)
     out = PREMARKET.folder(state)
