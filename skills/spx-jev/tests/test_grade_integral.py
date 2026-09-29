@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from conftest import DAY, at, bars_from_closes, make_row, write_state
-from spx_jev import archive, grade, integral, pool
+from spx_jev import archive, grade, integral, integral_loop, pool
 from spx_jev.grade import INTEGRAL_LOCK, INTEGRAL_NAME, grade_one, integral_line, integral_report, integral_run, main, run
 from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.lane import PREMARKET, TAPE
@@ -36,7 +36,7 @@ def _frozen(day: str, hh: int = 12):
 def clock(monkeypatch):
     """Stop every clock the grader, the loop and the archive stamp with; call it again to move to another day."""
     def set_day(day: str = "2026-09-21"):
-        for module in (grade, pool, archive):
+        for module in (grade, pool, integral_loop, archive):
             monkeypatch.setattr(module, "datetime", _frozen(day))
     set_day()
     return set_day
