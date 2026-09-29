@@ -162,4 +162,4 @@ def test_a_failed_or_garbled_average_reply_leaves_the_old_sums_and_the_read_whol
         card = json.loads((folder / "latest.json").read_text())
         assert card["hour"]["average"]["error"] == rec["average"]["error"], lane.name
         [call] = service.day_calls(folder, DAY, lane)
-        assert call["sum"] == lane.primary and call["pick"] == rec["pick"], lane.name
+        assert call["sum"] == lane.primary and call["pick"] == rec["pick"] and call["average_missing"], lane.name

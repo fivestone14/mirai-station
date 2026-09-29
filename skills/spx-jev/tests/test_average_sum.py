@@ -101,7 +101,7 @@ def test_a_live_read_calls_the_average_and_its_grade_grades_that_pick_with_its_s
     [call] = service.day_calls(live, DAY, LIVE)
     assert (call["pick"], call["p"], call["sum"]) == ("flat", 0.6, "average_30") and call["odds"] == rec["average"]["probabilities"]
     assert call["end_price"]["pick"] == rec["pick"] and call["end_price"]["hit"] is (rec["pick"] == "up")
-    assert service.call_verdict(call) == "wrong" and call["integral"]["sum"] == "average_30"
+    assert service.call_verdict(call) == "wrong" and call["integral"]["sum"] == "average_30" and "average_missing" not in call
     card = json.loads((live / "latest.json").read_text())
     assert card["hour"]["average"]["pick"] == "flat" and card["hour"]["average"]["blend"]["sessions"] == 10
     (read,) = [r for r in _lines(live / "archive" / f"{DAY}.jsonl") if r["kind"] == "read" and r["lane"] == "live"]
@@ -192,16 +192,38 @@ def test_a_read_graded_under_both_rules_stands_on_the_newest_and_a_first_rule_li
     assert (new_call["pick"], new_call["sum"], new_call["integral"]["verdict"], new_call["integral"]["sum"]) == ("down", "average_30", "wrong", "average_30")
 
 
-def test_the_end_price_verdict_is_the_end_price_sums_own_and_an_old_card_falls_back_on_the_call():
-    assert service.end_price_verdict({"hit": False, "pick": "unsure"}, "up") == "passed"
-    assert service.end_price_verdict({"hit": True, "pick": "up"}, "down") == "right"
-    assert service.end_price_verdict({"hit": False}, "unsure") == "passed"        # a card from before names no pick on it
-    call = {"pick": "down", "end_price": {"outcome": "flat", "hit": False, "pick": "unsure"}, "end_price_only": True}
-    assert service.call_verdict(call) == "passed"
+def test_the_end_price_verdict_is_about_the_call_the_owner_sees():
+    """A call standing on its end price is judged on the pick the card shows: an average-price call by its side against
+    the side the end price ended on, whatever the end-price question itself said; the end-price question's own call,
+    or a card from before, on the grader's hit; an unsure pick passed."""
+    assert service.end_price_verdict({"outcome": "up", "hit": False, "pick": "unsure"}, "up") == "right"
+    assert service.end_price_verdict({"outcome": "flat", "hit": True, "pick": "flat"}, "down") == "wrong"
+    assert service.end_price_verdict({"outcome": "down_big", "hit": False, "pick": "down_small"}, "down") == "right"
+    assert service.end_price_verdict({"outcome": "up_big", "hit": False, "pick": "up_small"}, "up_small") == "wrong"
+    assert service.end_price_verdict({"outcome": "flat", "hit": False}, "unsure") == "passed"       # a card from before names no pick on it
+    assert service.end_price_verdict({"outcome": "up", "hit": True}, "up") == "right"
+    call = {"pick": "up", "end_price": {"outcome": "up", "hit": False, "pick": "unsure"}, "end_price_only": True}
+    assert service.call_verdict(call) == "right"
     tally = service.calls_block([call])["tally"]
-    assert tally["passed"] == 1 and tally["right"] == 0
+    assert tally["right"] == 1 and tally["passed"] == 0
     v4 = {"schema_version": 4, "kind": "close_out", "calls": [{"pick": "unsure", "end_price": {"outcome": "up", "hit": False}}], "tally": {}}
     assert archive.read_close_out(v4) == v4                          # a version 4 close-out reads as it was written
+
+
+def test_a_read_whose_average_question_went_unanswered_is_the_end_price_call_graded_on_its_end_price(tmp_path):
+    """The average-price sum was asked and got no answer: the call is the end-price sum's, said so, and it stands on
+    its end price even though the shadow grade graded that pick on the average price."""
+    ts = at(11, 2).isoformat()
+    (tmp_path / "hour").mkdir()
+    (tmp_path / "hour" / f"{DAY}.jsonl").write_text(json.dumps(
+        {"row_ts": ts, "pick": "up", "probabilities": {"up": 0.5, "flat": 0.3, "unsure": 0.2},
+         "average": {"error": "HTTP 529", "primary": "average_30", "box": "next_30"}}) + "\n")
+    (tmp_path / "grades.jsonl").write_text(json.dumps({"row_ts": ts, "horizons": ["next_30"], "next_30": {"band": "up", "hit": True, "pick": "up"}}) + "\n")
+    (tmp_path / grade.INTEGRAL_NAME).write_text(json.dumps({"row_ts": ts, "horizon": "next_30", "rule_version": 2, "sum": "next_30", "graded": True,
+                                                            "label": "down", "verdict": "wrong", "pick": "up"}) + "\n")
+    [call] = service.day_calls(tmp_path, DAY, LIVE)
+    assert (call["pick"], call["sum"], call["average_missing"]) == ("up", "next_30", "HTTP 529") and "integral" not in call
+    assert call["end_price_only"] is True and service.call_verdict(call) == "right"
 
 
 # ---- the question as it is sent, and a reply that cannot be read

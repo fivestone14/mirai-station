@@ -500,6 +500,9 @@ details .q{margin-top:8px}
   function callSum(h){ return h && h.average && h.average.probabilities ? h.average : h; }
   // what the average-price call is measured on, and its flat edge in index points, for the line under its odds
   function averageWords(a, span){ return 'on the average price over ' + span + ', flat within \u00B1' + (+a.edge_points).toFixed(2) + ' points'; }
+  // a read whose average-price question got no answer calls the end-price question's pick, and says so
+  var FALLBACK_WORDS = 'Average question unanswered: this is the end-price question\u2019s call';
+  function fallbackLine(h){ return h && h.average && !h.average.probabilities ? skipLine('average question unanswered: showing the end-price call') : null; }
   // the end-price sum beside the call, in shadow: asked and graded as before, never the call
   function endPriceRow(h){
     var p = h.probabilities, t = h.pick || top1(p), r = el('div', 'row60');
@@ -728,7 +731,13 @@ details .q{margin-top:8px}
   function gradeOf(c){
     var g = c.integral, ep = endPrice(c);
     if(g && g.graded) return {label: g.label, verdict: cap(g.verdict)};
-    return ep ? {label: ep.outcome, verdict: verdict(ep.hit, ep.pick != null ? ep.pick : c.pick), endOnly: true} : null;
+    return ep ? {label: ep.outcome, verdict: endVerdict(c, ep), endOnly: true} : null;
+  }
+  // the end price's verdict on the call the card shows (service.end_price_verdict): the end-price sum's own pick by its
+  // hit, an average-price call by its side against the side the end price ended on, an unsure pick passed
+  function endVerdict(c, ep){
+    if((ep !== c && ep.pick != null ? ep.pick : c.pick) === c.pick) return verdict(ep.hit, c.pick);
+    return c.pick === 'unsure' ? 'Passed' : String(c.pick).split('_')[0] === String(ep.outcome).split('_')[0] ? 'Right' : 'Wrong';
   }
   // what a call's row says beside its bar: time left while open, then what the average price over the window did
   // ("Was") or, standing on its end price alone, where it ended ("Ended"), and the verdict; ``short`` is the same
@@ -857,7 +866,9 @@ details .q{margin-top:8px}
   function signed(x){ return (x < 0 ? '\u2212' : '+') + Math.abs(x).toFixed(2); }
   // the size the call named beside the band the end price ended in, the opening lane's five, in the odds' own words;
   // measured at the end price, it never decides
-  function sizeWords(pick, s){ return 'Size at the end price: called ' + cap(pick) + ', ended ' + cap(s.band) + '.'; }
+  function sizeWords(pick, s){
+    return 'Size at the end price: called ' + (/_(small|big)$/.test(pick) ? cap(pick) : cap(s.call)) + ', ended ' + cap(s.band) + '.';
+  }
   // the path: the average against the flat band, then where price stood highest and lowest against the read, each at
   // its minute of the window; "min 9" never parts at the end of a line (MIN_WORD ends in a no-break space)
   var MIN_WORD = 'min\u00A0';
@@ -903,23 +914,25 @@ details .q{margin-top:8px}
       res.appendChild(v);
       res.appendChild(el('p', null, 'The average price over the window was ' + cap(g.label) + '. The call said ' + cap(c.pick) + ' ' + pct(c.p) + '.'
                                     + (passed ? ' Unsure makes no call, so it is passed: counted apart from the calls right and wrong, never as a miss.' : '')));
-      if(g.size && g.size.call) res.appendChild(el('p', null, sizeWords(c.pick, g.size)));
+      if(g.size && g.size.call) res.appendChild(el('p', null, sizeWords(own ? own.pick : c.pick, g.size)));
       res.appendChild(el('p', null, pathWords(g)));
       if(g.sharp_move && g.sharp_move.sharp) res.appendChild(el('p', null, sharpWords(g.sharp_move)));
       if(g.running && g.running.length) res.appendChild(el('p', null, runningWords(g.running)));
       if(g.stale_read) res.appendChild(el('p', null, 'The read\u2019s price was stale, so this call is kept out of learning.'));
       if(ep){
         var em = movedWords(ep.moved, c.mark);
-        res.appendChild(el('p', 'cs-end', 'End price only: ' + verdict(ep.hit, own ? own.pick : c.pick) + ', it ended ' + cap(ep.outcome) +
+        res.appendChild(el('p', 'cs-end', 'End price only: ' + endVerdict(c, ep) + ', it ended ' + cap(ep.outcome) +
                                           (own ? ' (its own question said ' + cap(own.pick) + ' ' + pct(own.p) + ')' : '') + '.' + (em ? ' ' + em : '')));
       }
     } else if(alone){
-      v.appendChild(el('b', null, alone.verdict)); v.appendChild(el('span', null, 'End price only'));
+      v.appendChild(el('b', null, alone.verdict)); v.appendChild(el('span', null, c.average_missing ? 'End-price call' : 'End price only'));
       res.appendChild(v);
-      var said = own ? {pick: own.pick, p: own.p, who: 'Its end-price question said '} : {pick: c.pick, p: c.p, who: 'The call said '};
-      res.appendChild(el('p', null, 'No average-price grade for this call' + (g && g.reason ? ' (' + String(g.reason).replace(/^not graded: /, '') + ')' : '') +
-                                    ', so it stands on its end price alone. It ended ' + cap(ep.outcome) + '. ' + said.who + cap(said.pick) + ' ' + pct(said.p) + '.'
-                                    + (said.pick === 'unsure' ? ' Unsure makes no call, so it is passed: counted apart from the calls right and wrong.' : '')));
+      res.appendChild(el('p', null, (c.average_missing ? FALLBACK_WORDS + ', graded on its end price.'
+                                     : 'No average-price grade for this call' + (g && g.reason ? ' (' + String(g.reason).replace(/^not graded: /, '') + ')' : '') +
+                                       ', so it stands on its end price alone.') +
+                                    ' It ended ' + cap(ep.outcome) + '. The call said ' + cap(c.pick) + ' ' + pct(c.p) + '.'
+                                    + (own && !c.average_missing ? ' Its end-price question said ' + cap(own.pick) + ' ' + pct(own.p) + '.' : '')
+                                    + (c.pick === 'unsure' ? ' Unsure makes no call, so it is passed: counted apart from the calls right and wrong.' : '')));
       var mv = movedWords(ep.moved, c.mark); if(mv) res.appendChild(el('p', null, mv));
     } else if(!c.mark){
       v.appendChild(el('b', null, 'Never graded')); res.appendChild(v);
@@ -929,8 +942,11 @@ details .q{margin-top:8px}
       res.appendChild(el('p', null, sentence(marketWords(c.closed, c.read)) + '.'));
     } else if(now < Date.parse(c.mark)){
       v.appendChild(el('b', null, 'Open')); v.appendChild(el('span', null, leftWords(Date.parse(c.mark), now))); res.appendChild(v);
-      res.appendChild(el('p', null, 'It is graded at ' + viewerTime(c.mark) + ', on the average price over its window.'));
-      res.appendChild(el('p', null, c.so_far ? soFarWords(c.so_far) : 'Its average so far comes with the next read.'));
+      if(c.average_missing) res.appendChild(el('p', null, FALLBACK_WORDS + ', graded at ' + viewerTime(c.mark) + ' on its end price.'));
+      else {
+        res.appendChild(el('p', null, 'It is graded at ' + viewerTime(c.mark) + ', on the average price over its window.'));
+        res.appendChild(el('p', null, c.so_far ? soFarWords(c.so_far) : 'Its average so far comes with the next read.'));
+      }
     } else {
       v.appendChild(el('b', null, 'Grade pending')); res.appendChild(v);
       res.appendChild(el('p', null, 'The window closed at ' + viewerTime(c.mark) + '. The grade comes with the next run.'));
@@ -969,6 +985,7 @@ details .q{margin-top:8px}
       hc.appendChild(el('div', 'big', cap(top) + ' ' + pct(hp[top])));
       hc.appendChild(oddsBar(hp, top));
       if(a !== h) hc.appendChild(tag(averageWords(a, 'the next ' + a.minutes + ' minutes')));
+      var fb = fallbackLine(h); if(fb) hc.appendChild(fb);
       hc.appendChild(howChart(a, bl, c.row_ts));
       // a scheduled event within the hour (the service's calendar): said once, in words; the read is
       // still graded, and one due inside 30 minutes is kept out of the question weights
@@ -1134,12 +1151,13 @@ details .q{margin-top:8px}
       box.appendChild(el('div', 'big', cap(top) + ' ' + pct(p[top])));
       box.appendChild(oddsBar(p, top));
       if(a !== h) box.appendChild(tag(averageWords(a, 'the next ' + a.minutes + ' minutes')));
+      var fb = fallbackLine(h); if(fb) box.appendChild(fb);
       if(a !== h && h.probabilities) box.appendChild(endPriceRow(h));
       // the end-price sum's odds read as a direction and as a size (the service's views), on one line; beside an
-      // average-price call only the size, its second line
+      // average-price call only the size, its second line, said to be the end-price question's
       var v = h.views || {}, d = a === h && v.direction && v.direction.probabilities, sz = v.size && v.size.probabilities, row = el('div', 'odds');
       if(d){ ['up', 'flat', 'down'].forEach(function(k){ if(k in d) row.appendChild(el('span', null, cap(k) + ' ' + pct(d[k]))); }); }
-      if(sz && 'big' in sz) row.appendChild(el('span', null, 'A big move ' + pct(sz.big)));
+      if(sz && 'big' in sz) row.appendChild(el('span', null, (a !== h ? 'End-price question: a big move ' : 'A big move ') + pct(sz.big)));
       if(row.childNodes.length) box.appendChild(row);
     } else {
       box.appendChild(el('div', 'big', cap(newest.pick) + ' ' + pct(newest.p)));
@@ -1349,13 +1367,15 @@ details .q{margin-top:8px}
     var h = p.hour, a = callSum(h), pr = a && a.probabilities;
     var failed = p.hour_error && p.hour_error.read_at === p.row_ts ? 'made no sum: ' + p.hour_error.error : null;
     if(pr){
-      // the shape is the end-price sums' two checks, drawn under the call as they are asked
+      // the shape is the end-price sums' two checks: under an average-price call it is said to be theirs, under their line
       var top = a.pick || top1(pr), by = h.by || {}, s = shapeWords(sumPick(by.open_10), sumPick(by.open_30));
       box.appendChild(el('div', 'big', cap(top) + ' ' + pct(pr[top])));
-      if(s){ var sh = el('div', 'shape', s.title); sh.appendChild(el('span', null, ': ' + s.words)); box.appendChild(sh); }
+      if(s && a === h){ var sh = el('div', 'shape', s.title); sh.appendChild(el('span', null, ': ' + s.words)); box.appendChild(sh); }
       box.appendChild(oddsBar(pr, top));
       if(a !== h) box.appendChild(tag(averageWords(a, 'the ' + a.minutes + ' minutes after the settled open')));
+      var fb = fallbackLine(h); if(fb) box.appendChild(fb);
       if(a !== h && h.probabilities) box.appendChild(endPriceRow(h));
+      if(s && a !== h) box.appendChild(tag('end-price question: ' + s.title.charAt(0).toLowerCase() + s.title.slice(1) + ': ' + s.words));
       if(h.read_at && h.read_at !== p.row_ts)
         box.appendChild(tag('the call from the ' + viewerTime(h.read_at) + ' read; the ' + viewerTime(p.row_ts) + ' read ' +
                             (!preJevRead(p) ? 'is a snapshot and asks nothing.' : p.sent ? failed || 'made none.' : 'was not sent.')));
@@ -1448,7 +1468,9 @@ details .q{margin-top:8px}
       var call = sumSaid(s.call);
       if(call){
         if(call.length * 5.6 + 4 > col) call = cap(sumPick(s.call));   // 10px, about 5.6px a letter
-        svg.appendChild(svgEl('text', {x: cx, y: low + 28, 'text-anchor': 'middle', 'class': 't-p' + (last ? ' last' : '')}, call));
+        // bold 10px runs up to 6.7px a letter in the shipped face: a call under the first or last chip is kept inside the 300
+        var half = call.length * 6.7 / 2, tx = Math.max(half, Math.min(cx, 300 - half));
+        svg.appendChild(svgEl('text', {x: tx.toFixed(1), y: low + 28, 'text-anchor': 'middle', 'class': 't-p' + (last ? ' last' : '')}, call));
       }
     });
     return svg;
@@ -1481,7 +1503,7 @@ details .q{margin-top:8px}
     preCall(p, card);
     var unruled = preRulerLine(p); if(unruled) card.appendChild(unruled);
     var stale = preStaleLine(p); if(stale) card.appendChild(stale);
-    card.appendChild(el('div', 'inplay-h', 'When it is checked'));
+    card.appendChild(el('div', 'inplay-h', callSum(p.hour) !== p.hour ? 'When the end-price question is checked' : 'When it is checked'));
     var checks = el('div'); card.appendChild(checks);
     card.appendChild(tag('both checks start from the price at ' + viewerTime(p.start) + ', ' +
                          Math.round((Date.parse(p.start) - Date.parse(p.open)) / 60000) + ' minutes after the open.'));

@@ -50,8 +50,8 @@ def _run(js, data=None, tz=LA):
     script = ("const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + FIXED_NOW + FAKE_DOM
               + "".join(_fn(f) for f in ("viewerTime", "marketAt", "marketWords", "cap", "pct", "words", "startOf", "endOf",
                                           "leftWords", "verdict", "endPrice", "gradeOf", "callWords", "laneLeads", "svgEl", "lastLaneRead", "hhmm", "marketClock",
-                                          "marketDay", "sentence", "callSum"))
-              + _var("VIEWER_FMT") + _var("NS") + _var("ROW_H") + js)
+                                          "marketDay", "sentence", "callSum", "endVerdict", "fallbackLine"))
+              + _var("VIEWER_FMT") + _var("FALLBACK_WORDS") + _var("NS") + _var("ROW_H") + js)
     out = subprocess.run([_NODE, "-e", script], input=json.dumps(data), capture_output=True, text=True, timeout=20,
                          env={**os.environ, "TZ": tz})
     assert out.returncode == 0, out.stderr
@@ -1187,7 +1187,7 @@ def test_the_opening_card_leads_with_the_average_call_and_keeps_the_end_prices_s
     parts = _parts(_run(js, {"t": t, "now": "2026-09-28T10:42:00-04:00"}))
     assert parts[1] == ["big", "Up 55%"] and ["row60", "End price onlyUp small 40%"] in parts
     assert ["tag", "On the average price over the next 10 minutes, flat within \u00B11.66 points"] in parts
-    assert ["odds", "A big move 15%"] in parts                     # the size, from the end-price sum; its direction is the call's now
+    assert ["odds", "End-price question: a big move 15%"] in parts   # the size, from the end-price sum and said so; its direction is the call's
 
 
 def test_the_pre_market_call_and_its_fold_are_the_average_price_sums():
@@ -1202,17 +1202,72 @@ def test_the_pre_market_call_and_its_fold_are_the_average_price_sums():
     assert ["tag", "On the average price over the 30 minutes after the settled open, flat within \u00B12.59 points"] in box
 
 
-def test_the_sheet_gives_the_end_price_sums_own_pick_beside_an_average_price_call():
-    """The call is the average-price sum's; its end-price line is the end-price sum's own, judged on its own pick: an
-    unsure one there is passed, and a call standing on its end price alone says whose pick it stood on."""
+def test_the_sheets_end_price_line_judges_the_call_the_owner_sees():
+    """The call is the average-price sum's, so the end price's verdict is about that call: down, and the end price ended
+    down big, is right however the end-price question itself (unsure) fared; its own pick is named beside it. A call
+    standing on its end price alone is judged the same way: down, where the end price ended up, is wrong."""
     c = {**S9, "pick": "down", "p": 0.6, "sum": "average_10", "odds": {"up": 0.15, "flat": 0.25, "down": 0.6},
          "end_price": {**S9["end_price"], "pick": "unsure", "p": 0.4}}
     got = _result(c, "2026-09-28T10:45:00-04:00")
     assert got[1] == "The average price over the window was Down. The call said Down 60%."
-    assert got[-1].startswith("End price only: Passed, it ended Down big (its own question said Unsure 40%).")
+    assert got[-1].startswith("End price only: Right, it ended Down big (its own question said Unsure 40%).")
     alone = {**call("10:32", "11:02", "down", 0.6), "sum": "average_30", "odds": {"up": 0.1, "flat": 0.3, "down": 0.6}, "end_price_only": True,
              "end_price": {"outcome": "up", "hit": True, "pick": "up", "p": 0.5, "moved": {"realized_sigma": 0.12}}}
     got = _result(alone, "2026-09-28T11:04:00-04:00")
-    assert got[0] == "RightEnd price only" and got[1].endswith("It ended Up. Its end-price question said Up 50%.")
-    assert _run("console.log(JSON.stringify(callWords(D.c, Date.parse(D.now))));", {"c": alone, "now": "2026-09-28T11:04:00-04:00"})["strong"] == "Right"
+    assert got[0] == "WrongEnd price only" and got[1].endswith("It ended Up. The call said Down 60%. Its end-price question said Up 50%.")
+    words = "console.log(JSON.stringify(callWords(D.c, Date.parse(D.now))));"
+    assert _run(words, {"c": alone, "now": "2026-09-28T11:04:00-04:00"}) == {"text": "Ended Up · ", "strong": "Wrong", "short": "Up · "}
 
+
+def test_the_size_line_names_the_size_the_end_price_question_called():
+    """The five-way end-price question named the size; an average-price call names none, so the line quotes the
+    end-price question's own pick, or the size alone when the card does not name it."""
+    c = {**S9, "pick": "down", "p": 0.6, "end_price": {**S9["end_price"], "pick": "down_small", "p": 0.38}}
+    assert "Size at the end price: called Down small, ended Down big." in _result(c, "2026-09-28T10:45:00-04:00")
+    bare = {**S9, "pick": "down", "p": 0.6, "end_price": {k: v for k, v in S9["end_price"].items() if k != "pick"}}
+    assert "Size at the end price: called Small, ended Down big." in _result(bare, "2026-09-28T10:45:00-04:00")
+
+
+def test_a_read_whose_average_question_went_unanswered_says_so_and_stands_on_its_end_price():
+    """The service falls back on the end-price question's call (service.day_calls ``average_missing``): the card says
+    so under the big number, and the sheet calls it the end-price call, graded on its end price, open or closed."""
+    hour = {**END_30, "used": 12, "by": {"next_30": END_30}, "average": {"error": "HTTP 529", "primary": "average_30", "box": "next_30"}}
+    c = {"row_ts": "2026-09-28T11:02:10-04:00", "hour": hour, "marks": {"next_30": "2026-09-28T11:32:00-04:00"}, "calls": []}
+    parts = _sum_card(c)
+    assert parts[1] == ["big", "Flat 80%"] and ["skip", "Average question unanswered: showing the end-price call"] in parts
+    assert not any(v.startswith("End price only") for _, v in parts)
+    fell = {**call("11:02", "11:32", "flat", 0.8), "sum": "next_30", "average_missing": "HTTP 529", "odds": END_30["probabilities"],
+            "end_price": {"outcome": "flat", "hit": True, "pick": "flat", "p": 0.8}, "end_price_only": True}
+    got = _result(fell, "2026-09-28T11:34:00-04:00")
+    assert got[0] == "RightEnd-price call" and got[1] == ("Average question unanswered: this is the end-price question\u2019s call, graded on its end "
+                                                          "price. It ended Flat. The call said Flat 80%.")
+    opened = {k: v for k, v in fell.items() if k not in ("end_price", "end_price_only")}
+    got = _result(opened, "2026-09-28T11:10:00-04:00")
+    assert got[1] == "Average question unanswered: this is the end-price question\u2019s call, graded at 08:32 on its end price." and len(got) == 2
+
+
+def test_the_pre_market_card_says_the_shape_and_its_checks_are_the_end_price_questions():
+    avg = {**AVG, "pick": "down", "probabilities": {"up": 0.25, "flat": 0.3, "down": 0.45}, "primary": "open_average_30", "box": "open_30",
+           "flat_points": 4.38, "edge_points": 2.59}
+    card = pre_card("09:28")
+    card = {**card, "hour": {**card["hour"], "average": avg}}
+    parts = _card_parts(_page(card, et("09:30")))
+    assert not any(k == "shape" for k, _ in parts)
+    assert ["tag", "End-price question: opens firm, holds: up at the first check, still up at the second"] in parts
+    assert ["inplay-h", "When the end-price question is checked"] in parts
+    old = _card_parts(_page(pre_card("09:28"), et("09:30")))
+    assert any(k == "shape" for k, _ in old) and ["inplay-h", "When it is checked"] in old
+
+
+def test_the_story_calls_end_inside_the_drawing_on_the_owners_phone():
+    """The newest chip's call sits under the drawing's right edge, and the night's first under its left; bold 10px runs
+    up to 6.7px a letter, so a call as wide as "Down 45%" is moved in until it sits between 0 and 300 (it ran 1.3px past
+    the right in Chrome at 360, and a night of one read put it past the left)."""
+    card = pre_card("09:28")
+    down = {"pick": "down", "probabilities": {"up": 0.25, "flat": 0.3, "down": 0.45}}
+    card["story"][-1]["call"] = down
+    js = "console.log(JSON.stringify([dump(storySvg(D.card.story, 6)), dump(storySvg(D.card.story.slice(-1), 6))]));"
+    for svg in _pre(js, {"card": card, "now": et("09:29")}, LA):
+        (last,) = [k for k in svg["kids"] if k["tag"] == "text" and k["attrs"].get("class") == "t-p last"]
+        half = len(last["text"]) * 6.7 / 2
+        assert last["text"] == "Down 45%" and half <= float(last["attrs"]["x"]) <= 300 - half

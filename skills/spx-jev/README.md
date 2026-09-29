@@ -187,7 +187,10 @@ archive there too, under `archive/`.
    the same sentences. The call: where the average price over the next 30
    minutes sits against the price now, every minute counting equally, up,
    down or flat within an edge JEV is given in points (the 30-minute flat
-   band narrowed by `integral.factor`); no unsure. In shadow, asked exactly
+   band narrowed by `integral.factor`, rounded as told, and graded against
+   that same edge), with the read's price and the window's real length (28
+   minutes on the 15:32 read); no unsure. A reply that cannot be read is the
+   new sum's error and never costs the read. In shadow, asked exactly
    as before: where price is in 30 minutes (flat within 0.07 sigma, 55% of
    reads on SPX) and in 60 (flat within 0.11 sigma, 59%), up, down, flat or
    unsure.
@@ -259,7 +262,9 @@ The card carries: `symbol`, `generated_at`, `row_ts`, `freshness`, `sigma`,
 call under `average`: its pick, odds, window and edge in points, blended the
 same way on the average price), `event`, `calls` and `tally` (the day's newest
 calls, each the average-price sum's pick and odds where it answered, `sum`
-naming the one, and their grades: `integral`, the grade on the average price
+naming the one, and where it was asked and got no readable answer the
+end-price sum's, marked `average_missing` and graded on its end price; and
+their grades: `integral`, the grade on the average price
 over the window from `integral_grades.jsonl`, with its label, points against
 the edge, verdict, size, path and, once the box has ten sessions to rank it
 against, its strength `tier`; and `end_price`, the grade at the mark, with the

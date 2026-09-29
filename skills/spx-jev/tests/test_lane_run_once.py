@@ -49,10 +49,16 @@ def _answers(requests, **kw):
         for qid, q in r["questions"].items()}} for r in requests}
 
 
+AVERAGE = {"type": "choice", "choice": "flat", "confidence": 0.6, "probabilities": {"up": 0.2, "flat": 0.6, "down": 0.2}}
+
+
 def _sums(seen):
+    """The end-price sum's request, kept in ``seen``, and the average-price sum's, each answered flat."""
     def send(req, **kw):
-        seen.append(req)
-        return {"model": "fake-1", "answers": {"next_10": {"type": "choice", "choice": "flat", "confidence": 0.6, "probabilities": FIVE}}}
+        if req["id"] == "hour":
+            seen.append(req)
+            return {"model": "fake-1", "answers": {"next_10": {"type": "choice", "choice": "flat", "confidence": 0.6, "probabilities": FIVE}}}
+        return {"model": "fake-1", "answers": {"average_10": AVERAGE}}
     return send
 
 

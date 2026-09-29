@@ -381,10 +381,15 @@ def open_grade(rec: dict, scene: Scene, lane: Lane = LIVE) -> dict | None:
                            told_edge(average_call(rec, lane.primary, lane)))
 
 
-def end_price_verdict(end_price: dict, pick=None) -> str:
-    """right, wrong or passed at the end price, for the end-price sum's own pick (``end_price.pick``, else ``pick``, the
-    call's on a card from before the average-price sum): an unsure pick is passed there too."""
-    return "passed" if end_price.get("pick", pick) == UNSURE else "right" if end_price.get("hit") else "wrong"
+def end_price_verdict(end_price: dict, pick) -> str:
+    """right, wrong or passed at the end price for ``pick``, the call the card shows: an unsure one is passed; the
+    end-price sum's own pick (``end_price.pick``, or the call's on a card from before the average-price sum) stands on
+    the grader's hit, and an average-price call on its side against the side the end price ended on."""
+    if pick == UNSURE:
+        return "passed"
+    if end_price.get("pick", pick) == pick:
+        return "right" if end_price.get("hit") else "wrong"
+    return "right" if integral.direction(pick) == integral.direction(end_price.get("outcome")) else "wrong"
 
 
 def call_of(rec: dict, lane: Lane = LIVE) -> dict:
@@ -404,7 +409,9 @@ def day_calls(out_dir: Path, day: str, lane: Lane = LIVE, scene: Scene | None = 
     the end-price sum's grade at the mark kept beside it for the side-by-side weeks (``outcome``, ``hit`` and
     the ``moved`` behind them, with that sum's own ``pick`` and its probability ``p``), once graded, or
     ``closed`` with the reason when it can never be graded. The end-price sum is the grader's, so a read is a
-    call only when it answered: a read whose average-price sum answered alone is never graded. A call graded at
+    call only when it answered: a read whose average-price sum answered alone is never graded. A read that asked
+    the average-price sum and got no answer it could grade is the end-price sum's call, marked ``average_missing``
+    with why, and graded on its end price alone. A call graded at
     its end price with no graded line on the average price (the shadow grade failed, or its window missed bars)
     is marked ``end_price_only``: it stands on its end price until a later card finds the line. A call not yet
     graded carries its average so far (``so_far``, open_grade) when the card is built on a ``scene``. The mark is
@@ -444,17 +451,20 @@ def day_calls(out_dir: Path, day: str, lane: Lane = LIVE, scene: Scene | None = 
         seen.add(ts)                                   # a row written twice (a file from before the guard in run_once) is one call
         mark = mark_at(ts, minutes, lane)
         said = call_of(r, lane)
+        # a read that asked the average-price sum and got no answer it could grade calls the end-price sum's pick, said so
+        missing = bool(lane.average) and isinstance(r.get("average"), dict) and said["sum"] != lane.average
         odds = {k: round(float(v), 4) for k, v in said["probabilities"].items() if isinstance(v, (int, float))}
         graded = grades.get(ts, {})
         if "end_price" in graded:
             graded = {**graded, "end_price": {**graded["end_price"], "pick": r["pick"], "p": round(float(p.get(r["pick"], 0.0)), 4)}}
         call = {"read": ts, "mark": mark.isoformat() if mark else None, "minutes": minutes,
                 "pick": said["pick"], "p": odds.get(said["pick"], 0.0), "odds": odds, "sum": said["sum"], **graded,
-                **({"integral": integral_by[ts]} if ts in integral_by else {}),
+                **({"average_missing": str(r["average"].get("error") or "its answer could not be read")} if missing else {}),
+                **({"integral": integral_by[ts]} if ts in integral_by and not missing else {}),
                 **({"checks": checks.get(ts, {})} if lane.graded_from_settled_open else {})}
         if "end_price" in call and not (call.get("integral") or {}).get("graded"):
             call["end_price_only"] = True
-        elif scene is not None and "end_price" not in call and "closed" not in call and "integral" not in call:
+        elif scene is not None and not missing and "end_price" not in call and "closed" not in call and "integral" not in call:
             if (partial := open_grade(r, scene, lane)) is not None:
                 call["so_far"] = partial
         calls.append(call)
@@ -463,7 +473,7 @@ def day_calls(out_dir: Path, day: str, lane: Lane = LIVE, scene: Scene | None = 
 
 def call_verdict(call: dict) -> str | None:
     """right, wrong or passed: on the average price over the window, or on the end price alone for a call marked
-    ``end_price_only``; None while it is still to grade."""
+    ``end_price_only``, judged on the pick the card shows (end_price_verdict); None while it is still to grade."""
     if (call.get("integral") or {}).get("graded"):
         return call["integral"]["verdict"]
     if call.get("end_price_only"):
