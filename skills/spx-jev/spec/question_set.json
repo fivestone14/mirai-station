@@ -1269,19 +1269,19 @@
      "status": "live",
      "cadence": "every 5 min 09:35-10:30, then every 30-minute read",
      "ask": "How steeply are same-day puts priced over calls against recent sessions at this minute?",
-     "instructions": "Read `skew.put_tilt_vs_usual`. Compared with the same minute on recent sessions, how steeply are same-day puts priced over same-day calls right now? Check call_tilt first; then the rank words decide.",
+     "instructions": "Read `skew.put_tilt_vs_usual`. Compared with the same minute on recent sessions, how steeply are same-day puts priced over same-day calls right now? Check call_tilt first; then the verdict after the rank decides.",
      "options": [
       {
        "name": "steep_put_tilt",
-       "description": "puts priced over calls more steeply than on most recent sessions at this minute, past the steep rank"
+       "description": "a steep put tilt for this minute: puts priced over calls more steeply than on most recent sessions at this minute"
       },
       {
        "name": "usual_tilt",
-       "description": "the tilt is within the usual range for this minute"
+       "description": "a usual tilt for this minute"
       },
       {
        "name": "flat_tilt",
-       "description": "puts priced over calls less steeply than usual, past the flat rank, but still above calls"
+       "description": "a flat tilt for this minute: puts priced over calls less steeply than on most recent sessions at this minute, but still at or above calls"
       },
       {
        "name": "call_tilt",
@@ -1297,8 +1297,8 @@
      "labels_needed": [
       {
        "name": "skew.put_tilt_vs_usual",
-       "example": "same-day 25-delta puts are priced 1.3 vol points above 25-delta calls, 0.09 of the at-the-money level; steeper than 1 of the last 16 sessions at 09:50, past the flat rank; far puts (10-delta) are at a flatter premium than usual to 25-delta puts, past the flat rank",
-       "computed_how": "(IV 25d put - IV 25d call)/ATM IV from the lob-flow tape's quotes in the minute to the read, ranked against the same tilt at the same minute on up to the last {night_rank_count} prior sessions' tapes (each read as it was on file at that minute; 'ruler estimated' sessions left out), at least {same_clock_min_sessions} of them; verdict 'past the steep rank / past the flat rank / within the usual range' by {skew_steep_rank} and {skew_flat_rank}; omitted (question asleep) under {same_clock_min_sessions} sessions or with a missing price; far-wing clause ranked the same way",
+       "example": "same-day 25-delta puts are priced 1.3 vol points above 25-delta calls, 0.09 of the at-the-money level; its tilt beats 1 of the last 16 sessions at 09:50: a flat tilt for this minute; the far-put wing (10-delta over 25-delta puts) is flatter than usual for this minute",
+       "computed_how": "(IV 25d put - IV 25d call)/ATM IV from the lob-flow tape's quotes in the minute to the read, ranked against the same tilt at the same minute on up to the last {night_rank_count} prior sessions' tapes (each read as it was on file at that minute; 'ruler estimated' sessions left out), at least {same_clock_min_sessions} of them; verdict 'a steep put tilt / a flat tilt / a usual tilt' by {skew_steep_rank} and {skew_flat_rank}, none under a call tilt; omitted (question asleep) under {same_clock_min_sessions} sessions or with a missing price; far-wing clause ranked the same way",
        "source": "lob_flow tape backfill 22 sessions; native chain going forward",
        "availability": "cheap_add",
        "label_built": false,
@@ -10217,8 +10217,8 @@
   },
   {
    "name": "skew.put_tilt_vs_usual",
-   "example": "same-day 25-delta puts are priced 1.3 vol points above 25-delta calls, 0.09 of the at-the-money level; steeper than 1 of the last 16 sessions at 09:50, past the flat rank; far puts (10-delta) are at a flatter premium than usual to 25-delta puts, past the flat rank",
-   "computed_how": "(IV 25d put - IV 25d call)/ATM IV from the lob-flow tape's quotes in the minute to the read, ranked against the same tilt at the same minute on up to the last {night_rank_count} prior sessions' tapes (each read as it was on file at that minute; 'ruler estimated' sessions left out), at least {same_clock_min_sessions} of them; verdict 'past the steep rank / past the flat rank / within the usual range' by {skew_steep_rank} and {skew_flat_rank}; omitted (question asleep) under {same_clock_min_sessions} sessions or with a missing price; far-wing clause ranked the same way",
+   "example": "same-day 25-delta puts are priced 1.3 vol points above 25-delta calls, 0.09 of the at-the-money level; its tilt beats 1 of the last 16 sessions at 09:50: a flat tilt for this minute; the far-put wing (10-delta over 25-delta puts) is flatter than usual for this minute",
+   "computed_how": "(IV 25d put - IV 25d call)/ATM IV from the lob-flow tape's quotes in the minute to the read, ranked against the same tilt at the same minute on up to the last {night_rank_count} prior sessions' tapes (each read as it was on file at that minute; 'ruler estimated' sessions left out), at least {same_clock_min_sessions} of them; verdict 'a steep put tilt / a flat tilt / a usual tilt' by {skew_steep_rank} and {skew_flat_rank}, none under a call tilt; omitted (question asleep) under {same_clock_min_sessions} sessions or with a missing price; far-wing clause ranked the same way",
    "source": "lob_flow tape backfill 22 sessions; native chain going forward",
    "availability": "cheap_add",
    "label_built": false,

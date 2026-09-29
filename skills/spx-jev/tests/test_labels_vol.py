@@ -1097,16 +1097,16 @@ def tilt_and_gate(scene):
 
 
 @pytest.mark.parametrize("slope, words", [
-    (5.0, "same-day 25-delta puts are priced 2.7 vol points above 25-delta calls, 0.18 of the at-the-money level; steeper than 8 of the "
-          "last 10 sessions at 09:50, past the steep rank; far puts (10-delta) are at a steeper premium than usual to 25-delta puts, "
-          "past the steep rank"),
-    (3.0, "same-day 25-delta puts are priced 1.6 vol points above 25-delta calls, 0.11 of the at-the-money level; steeper than 4 of the "
-          "last 10 sessions at 09:50, within the usual range; far puts (10-delta) are at a usual premium to 25-delta puts"),
-    (1.2, "same-day 25-delta puts are priced 0.6 vol points above 25-delta calls, 0.04 of the at-the-money level; steeper than 1 of the "
-          "last 10 sessions at 09:50, past the flat rank; far puts (10-delta) are at a flatter premium than usual to 25-delta puts, "
-          "past the flat rank"),
-    (-1.0, "same-day 25-delta calls are priced 0.5 vol points above 25-delta puts, a call tilt; steeper than 0 of the last 10 sessions "
-           "at 09:50, past the flat rank; far puts (10-delta) are at a flatter premium than usual to 25-delta puts, past the flat rank"),
+    (5.0, "same-day 25-delta puts are priced 2.7 vol points above 25-delta calls, 0.18 of the at-the-money level; its tilt beats 8 of the "
+          "last 10 sessions at 09:50: a steep put tilt for this minute; the far-put wing (10-delta over 25-delta puts) is steeper than "
+          "usual for this minute"),
+    (3.0, "same-day 25-delta puts are priced 1.6 vol points above 25-delta calls, 0.11 of the at-the-money level; its tilt beats 4 of the "
+          "last 10 sessions at 09:50: a usual tilt for this minute; the far-put wing (10-delta over 25-delta puts) is usual for this minute"),
+    (1.2, "same-day 25-delta puts are priced 0.6 vol points above 25-delta calls, 0.04 of the at-the-money level; its tilt beats 1 of the "
+          "last 10 sessions at 09:50: a flat tilt for this minute; the far-put wing (10-delta over 25-delta puts) is flatter than usual "
+          "for this minute"),
+    (-1.0, "same-day 25-delta calls are priced 0.5 vol points above 25-delta puts, a call tilt; its tilt beats 0 of the last 10 sessions "
+           "at 09:50; the far-put wing (10-delta over 25-delta puts) is flatter than usual for this minute"),
 ])
 def test_the_put_tilt_is_ranked_against_the_same_minute_and_wakes_its_question(scene_factory, tmp_path, slope, words):
     assert tilt_and_gate(skew_scene(scene_factory, tmp_path, slope)) == (words, None, None)
@@ -1116,14 +1116,22 @@ def test_the_put_tilt_ranks_against_up_to_the_last_20_sessions(scene_factory, tm
     """22 prior sessions steepening a quarter point each, newest the flattest: the rank reads the newest 20."""
     days = [(date(2026, 9, 17) - timedelta(days=k)).isoformat() for k in range(22)]
     many = skew_scene(scene_factory, tmp_path, 3.0, prior_slopes=tuple(0.25 * k for k in range(22)), days=days)
-    assert "steeper than 12 of the last 20 sessions at 09:50" in tilt_and_gate(many)[0]
+    assert "its tilt beats 12 of the last 20 sessions at 09:50" in tilt_and_gate(many)[0]
+
+
+def test_the_put_tilt_names_only_the_option_its_rank_decides_and_never_the_word_steeper(scene_factory, tmp_path):
+    """The verdict is the option's own words, so a flat tilt never reads as steeper than anything."""
+    words = {slope: tilt_and_gate(skew_scene(scene_factory, tmp_path / str(slope), slope))[0] for slope in (5.0, 3.0, 1.2, -1.0)}
+    verdicts = {slope: [v for v in ("a steep put tilt", "a usual tilt", "a flat tilt") if v in w] for slope, w in words.items()}
+    assert verdicts == {5.0: ["a steep put tilt"], 3.0: ["a usual tilt"], 1.2: ["a flat tilt"], -1.0: []}
+    assert not any("steeper than" in w.split("; the far-put wing")[0] or "rank" in w for w in words.values())
 
 
 def test_far_puts_without_a_fresh_quote_are_said_to_have_none_to_compare(scene_factory, tmp_path):
     scene = skew_scene(scene_factory, tmp_path, 3.0)
     write_tape(tmp_path, DAY, [q for q in smile_quotes(at(9, 50), 3.0) if q["right"] == "call" or q["strike"] >= 7670])
-    assert tilt_and_gate(scene)[0].endswith("within the usual range; far puts (10-delta) have no fresh quote or no history at this "
-                                            "minute to compare")
+    assert tilt_and_gate(scene)[0].endswith("a usual tilt for this minute; far puts (10-delta) have no fresh quote or no history at "
+                                            "this minute to compare")
 
 
 def test_the_tilt_reads_the_newest_quote_in_the_minute_whatever_the_line_order(scene_factory, tmp_path):

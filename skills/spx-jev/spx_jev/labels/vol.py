@@ -1121,9 +1121,9 @@ def _wing(smile: Skew | None) -> float | None:
     return None if smile is None or smile.put_10 is None or smile.put_25 is None else (smile.put_10 - smile.put_25) / smile.atm
 
 
-def _steepness(rank: SameClockRank) -> str:
-    return ("past the steep rank" if rank.share >= SKEW_STEEP_RANK else "past the flat rank" if rank.share <= SKEW_FLAT_RANK
-            else "within the usual range")
+def _tilt_verdict(rank: SameClockRank) -> str:
+    """The put_tilt_vs_clock option the rank decides, in its own words."""
+    return "a steep put tilt" if rank.share >= SKEW_STEEP_RANK else "a flat tilt" if rank.share <= SKEW_FLAT_RANK else "a usual tilt"
 
 
 def _put_tilt(scene: Scene, smile: Skew | None, at_min: datetime, prior: dict[str, tuple[Skew | None, Skew | None]],
@@ -1153,12 +1153,14 @@ def _put_tilt(scene: Scene, smile: Skew | None, at_min: datetime, prior: dict[st
     if wing_rank is None:
         far = "far puts (10-delta) have no fresh quote or no history at this minute to compare"
     elif wing_rank.share >= SKEW_STEEP_RANK:
-        far = "far puts (10-delta) are at a steeper premium than usual to 25-delta puts, past the steep rank"
+        far = "the far-put wing (10-delta over 25-delta puts) is steeper than usual for this minute"
     elif wing_rank.share <= SKEW_FLAT_RANK:
-        far = "far puts (10-delta) are at a flatter premium than usual to 25-delta puts, past the flat rank"
+        far = "the far-put wing (10-delta over 25-delta puts) is flatter than usual for this minute"
     else:
-        far = "far puts (10-delta) are at a usual premium to 25-delta puts"
-    ls.put(path, f"{lead}; steeper than {rank.higher_than} of the last {rank.of} sessions at {clock}, {_steepness(rank)}; {far}")
+        far = "the far-put wing (10-delta over 25-delta puts) is usual for this minute"
+    # under a call tilt the lead already gives the answer, which a flat verdict would contradict
+    verdict = "" if gap < 0 else f": {_tilt_verdict(rank)} for this minute"
+    ls.put(path, f"{lead}; its tilt beats {rank.higher_than} of the last {rank.of} sessions at {clock}{verdict}; {far}")
     ls.wake("put_tilt_vs_clock")
 
 

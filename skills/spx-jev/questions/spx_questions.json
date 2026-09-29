@@ -507,7 +507,7 @@
      "sleep_when": "fewer than {same_clock_min_sessions} prior sessions with quotes at this minute, or a needed option price missing (label omitted)",
      "code_answer": true,
      "ask": "How steeply are same-day puts priced over calls against recent sessions at this minute?",
-     "instructions": "Read `skew.put_tilt_vs_usual`. Compared with the same minute on recent sessions, how steeply are same-day puts priced over same-day calls right now? Check call_tilt first; then the rank words decide.",
+     "instructions": "Read `skew.put_tilt_vs_usual`. Compared with the same minute on recent sessions, how steeply are same-day puts priced over same-day calls right now? Check call_tilt first; then the verdict after the rank decides.",
      "options": [
       "steep_put_tilt",
       "usual_tilt",
@@ -515,9 +515,9 @@
       "call_tilt"
      ],
      "criteria": {
-      "steep_put_tilt": "puts priced over calls more steeply than on most recent sessions at this minute, past the steep rank",
-      "usual_tilt": "the tilt is within the usual range for this minute",
-      "flat_tilt": "puts priced over calls less steeply than usual, past the flat rank, but still above calls",
+      "steep_put_tilt": "a steep put tilt for this minute: puts priced over calls more steeply than on most recent sessions at this minute",
+      "usual_tilt": "a usual tilt for this minute",
+      "flat_tilt": "a flat tilt for this minute: puts priced over calls less steeply than on most recent sessions at this minute, but still at or above calls",
       "call_tilt": "same-day calls are priced above same-day puts at equal distance"
      },
      "code_criteria": {
