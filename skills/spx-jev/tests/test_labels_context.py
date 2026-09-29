@@ -1,12 +1,15 @@
-"""The context family's last strong move: the newest minute today whose 10-minute move ranks in the top third of the
-same 10 minutes on the prior sessions (ranks.rank_sessions), each session in its own ruler and an estimated one left out."""
+"""The context family's units gloss, which every request carries, and its last strong move: the newest minute today
+whose 10-minute move ranks in the top third of the same 10 minutes on the prior sessions (ranks.rank_sessions), each
+session in its own ruler and an estimated one left out."""
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 
 from conftest import at, bars_from_closes, make_row
-from spx_jev.labels.context import build_context_labels
+from spx_jev.labels.context import UNITS, build_context_labels
 from spx_jev.labels.rulers import SigmaRuler
+from spx_jev.lane import QUESTIONS
 
 SIGMA = 75.0
 PRIOR_DAYS = [f"2026-09-{d:02d}" for d in range(17, 7, -1)]
@@ -35,6 +38,12 @@ def _stepped(points: float) -> list[float]:
     """Today flat at 7700 for the first hour, then ``points`` higher from the 10:30 bar on: the 10-minute moves to
     10:30 through 10:39 are each ``points``, every other one nothing."""
     return [7700.0] * 60 + [7700.0 + points] * 30
+
+
+def test_the_units_gloss_defines_no_rsi_lines_since_no_question_reads_a_momentum_label():
+    reads = {r for g in json.loads(QUESTIONS.read_text(encoding="utf-8"))["groups"] for r in g.get("reads", [])}
+    assert not any(r.startswith("momentum.") for r in reads)
+    assert "RSI" not in UNITS and "overbought" not in UNITS
 
 
 def test_the_last_strong_move_is_the_newest_minute_in_the_top_third_of_its_minute(scene_factory):

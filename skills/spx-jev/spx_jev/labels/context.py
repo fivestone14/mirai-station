@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, time
 
-from ..cuts import NIGHT_RANK_COUNT, RSI_OVERBOUGHT, RSI_OVERSOLD
+from ..cuts import NIGHT_RANK_COUNT
 from ..row_adapter import SYMBOL
 from ..sessions import session_minutes
 from ..state_builder import Scene
@@ -26,7 +26,6 @@ UNITS = ("all distances are in sigma, today's expected move for the S&P 500 inde
          "Options weight means the hedging exposure of dealers, the market makers on the other side of the options, at each strike; "
          "a wall is a strike where that weight piles up, the nearest one standing in today's 0DTE book, else in the 1-to-7-day book; "
          "0DTE means the options that expire today; the opening box is the first half hour's price range; "
-         f"RSI is a 0 to 100 gauge of overbought (above {RSI_OVERBOUGHT}) or oversold (below {RSI_OVERSOLD}); "
          "the NYSE tick is how many NYSE stocks last traded up minus how many last traded down")
 # A strong move is a 10-minute move in the top third of the same 10 minutes on the prior sessions.
 MOVE_WINDOW_MIN = 10
