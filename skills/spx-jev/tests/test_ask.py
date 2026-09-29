@@ -482,6 +482,17 @@ def test_no_question_jev_is_asked_cuts_a_market_measure_on_a_fixed_line():
             assert not fixed, f"{qid} cuts on {sorted(fixed)}"
 
 
+def test_the_opening_pace_options_jev_reads_name_the_thirds_its_two_labels_say():
+    """JEV never sees the code's rules, so each option has to speak the labels' own band words, not a mapping of them."""
+    raw = json.loads((QUESTIONS / "spx_questions.json").read_text())
+    q = next(g["questions"]["opening_pace"] for g in raw["groups"] if "opening_pace" in g["questions"])
+    bands = re.compile(r"\b(bottom|middle|top)\b")
+    for option, words, rule in zip(q["options"], q["criteria"], q["code_criteria"], strict=True):
+        assert not re.search(r"\b(narrow|ordinary|wide)\b", words), f"{option}: {words}"
+        assert set(bands.findall(words)) == set(bands.findall(rule)), f"{option}: {words} against the rule {rule}"
+    assert "wider than all" in q["criteria"][q["options"].index("very_busy")]
+
+
 def test_a_group_over_the_cap_stops_the_load(tmp_path):
     q = {"type": "noul", "instructions": "Read `context.symbol`.", "criteria": {"true": "t", "false": "f"}}
     p = tmp_path / "doc.json"

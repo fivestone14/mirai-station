@@ -234,10 +234,10 @@
       "very_busy"
      ],
      "criteria": [
-      "both narrow for this time of day, or one narrow and one ordinary",
-      "both ordinary for this time of day, or one wide and one narrow",
-      "one wide and the other ordinary",
-      "both wide, or the tape unit wider than any recent session"
+      "the tape unit and today's range both in the bottom third for this time of day, or one in the bottom third and the other in the middle third",
+      "both in the middle third for this time of day, or one in the top third and the other in the bottom third",
+      "one in the top third for this time of day and the other in the middle third",
+      "both in the top third for this time of day, or the tape unit wider than all of the recent sessions"
      ],
      "code_criteria": [
       "both bottom third, or one bottom one middle",
