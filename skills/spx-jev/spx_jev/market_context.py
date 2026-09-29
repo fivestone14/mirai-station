@@ -54,7 +54,8 @@ NO_HISTORY = ("$VIX1D",)                  # quoted, never kept by Schwab's histo
 FIRST_BACKFILL_DAY = "2026-08-10"         # the oldest minute Schwab still served on 2026-09-26
 # $VOLD is NYSE up less down volume in shares, $UVOL and $DVOL those volumes in thousands of shares: on every
 # saved session from 2026-08-10 to 2026-09-25 each minute's $VOLD was their difference times this, to within
-# half a percent. A minute Schwab serves no $VOLD for takes it from them, marked with DERIVED_VOLD.
+# a thousand shares (the rounding of $UVOL and $DVOL to whole thousands, so a $VOLD near zero can be several
+# percent off). A minute Schwab serves no $VOLD for takes it from them, marked with DERIVED_VOLD.
 VOLD_PER_THOUSAND = 1000.0
 DERIVED_VOLD = "($UVOL - $DVOL) * 1000"
 # Only while they are in thousands: no saved session came near this many (the most was about 614 thousand),
