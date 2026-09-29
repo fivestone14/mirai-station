@@ -11,7 +11,9 @@ class LabelSet:
     ``omitted`` maps a path to the reason it could not be written. ``ended`` holds the omitted paths whose
     condition is not there (no shock in the lookback, no new extreme, not a stress day, the last hour) rather
     than unmeasured: a question reading one is asleep on that reason, not missing a label, and holds no earlier
-    answer (ask.build_requests, ``ended_reasons``). ``figures`` maps a path to the figure
+    answer (ask.build_requests, ``ended_reasons``). ``no_hold`` holds the omitted paths that are missing
+    only for now, while what they describe is still under way (a touch the siege box has not judged yet): an
+    answer given before it was about another moment, so the question holds none. ``figures`` maps a path to the figure
     behind its sentence (its kind, its number, its cut and the verdict it landed on) so the phone can draw
     the fact rather than print it; JEV never sees a figure. ``gates`` maps a gated question's id (one whose
     ``sleep_when`` a family judges) to None when it is awake this read, or to why it sleeps.
@@ -21,6 +23,7 @@ class LabelSet:
         self.state: dict[str, dict[str, Any]] = {}
         self.omitted: dict[str, str] = {}
         self.ended: set[str] = set()
+        self.no_hold: set[str] = set()
         self.figures: dict[str, dict] = {}
         self.gates: dict[str, str | None] = {}
 
@@ -30,10 +33,12 @@ class LabelSet:
         if figure is not None:
             self.figures[path] = figure
 
-    def omit(self, path: str, reason: str, *, ended: bool = False) -> None:
+    def omit(self, path: str, reason: str, *, ended: bool = False, hold: bool = True) -> None:
         self.omitted[path] = reason
         if ended:
             self.ended.add(path)
+        if not hold:
+            self.no_hold.add(path)
 
     def wake(self, question_id: str) -> None:
         self.gates[question_id] = None
@@ -54,5 +59,6 @@ class LabelSet:
             self.state.setdefault(group, {}).update(labels)
         self.omitted.update(other.omitted)
         self.ended.update(other.ended)
+        self.no_hold.update(other.no_hold)
         self.figures.update(other.figures)
         self.gates.update(other.gates)

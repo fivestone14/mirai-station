@@ -114,7 +114,8 @@ def _wall_touch_effort(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) ->
     its tower was first seen engaged and lasts while the tower shows engaged; a tower shows resolved for
     hours after, so a touch seen only resolved ended when first seen so), where price sits against that
     strike now, and the SPY volume the box judged during the touch. A touch the box has not judged
-    describes no volume, and one still touching needs it."""
+    describes no volume, and one still touching needs it: until the box judges it the label is missing and
+    holds no earlier answer, which was about another strike, another side or another touch."""
     sg = scene.row.get("siege")
     if not sg:
         ls.omit("levels.wall_touch_effort", "row carries no siege read")
@@ -159,7 +160,8 @@ def _wall_touch_effort(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) ->
                 f"{touch_rule} touch rule, so the strike held")
     elif not effort:
         ls.omit("levels.wall_touch_effort", f"price is still touching the {side} heavy strike and the siege box has not judged the "
-                                            "touch's SPY volume: its window is still open, or the strike hugged price all along")
+                                            "touch's SPY volume: its window is still open, or the strike hugged price all along",
+                hold=False)
         return
     else:
         text = (f"price tested the {side} heavy strike {minutes_ago(scene.now, when)} and is now {sig(abs(past))} "
