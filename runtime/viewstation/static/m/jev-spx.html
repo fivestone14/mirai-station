@@ -1010,7 +1010,8 @@ details .q{margin-top:8px}
   function sumCard(c, main){
     var h = c.hour, marks = c.marks || {}, a = callSum(h);
     if(a && a.probabilities){
-      var bl = a.blend || null, minutes = (c.calls && c.calls[0] && c.calls[0].minutes) || 30;
+      // the call's own window: the 15:32 read's average runs 28 minutes, to the close
+      var bl = a.blend || null, minutes = (a !== h && a.minutes) || (c.calls && c.calls[0] && c.calls[0].minutes) || 30;
       var hc = el('div', 'card dashed');
       hc.appendChild(clockBlock(c.row_ts, minutes, marks.next_30 !== undefined ? marks.next_30 : plusIso(c.row_ts, minutes)));
       var hp = a.probabilities, top = a.pick || top1(hp);

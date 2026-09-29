@@ -1268,6 +1268,24 @@ def test_the_30_minute_card_leads_with_the_average_price_call_and_keeps_the_end_
     assert old[1] == ["big", "Flat 80%"] and not any(v.startswith(("End-price", "On the")) for _, v in old)
 
 
+def test_the_last_reads_clock_looks_as_far_ahead_as_its_average_runs():
+    """The 15:32 read's average runs 28 minutes, to the close, and the card said "Looks 30 min ahead" above "over the next
+    28 minutes": the clock takes the call's own minutes (hour.average.minutes); a card with no average-price call keeps
+    its calls' horizon."""
+    js = (CARD_STUBS + "function clockBlock(read, minutes, mark){ return el('div', 'clock', 'Looks ' + minutes + ' min ahead, graded ' + mark); }"
+          + _odds() + "".join(_fn(f) for f in ("top1", "oneAnswer", "phaseSpan", "howChart", "tag", "skipLine", "plusIso", "averageWords",
+                                                "endPriceRow", "sumCard"))
+          + "console.log(JSON.stringify(D.c.map(function(c){ var main = el('main'); sumCard(c, main); return dump(main.kids[0]); })));")
+    hour = {**END_30, "used": 12, "by": {"next_30": END_30}, "average": {**AVG, "minutes": 28}}
+    c = {"row_ts": "2026-09-28T15:32:10-04:00", "hour": hour, "marks": {"next_30": "2026-09-28T16:00:00-04:00"},
+         "calls": [call("15:32", "16:00", "up", 0.55) | {"minutes": 30}]}
+    old = {**c, "hour": {k: v for k, v in hour.items() if k != "average"}}
+    now, before = [_parts(d) for d in _run(js, {"c": [c, old], "now": "2026-09-28T15:40:00-04:00"})]
+    assert now[0] == ["clock", "Looks 28 min ahead, graded 2026-09-28T16:00:00-04:00"]
+    assert ["tag", "On the average price over the next 28 minutes, flat within \u00B13.11 points"] in now
+    assert before[0] == ["clock", "Looks 30 min ahead, graded 2026-09-28T16:00:00-04:00"]
+
+
 def test_the_opening_card_leads_with_the_average_call_and_keeps_the_end_prices_size_as_its_second_line():
     five = {"down_big": 0.05, "down_small": 0.1, "flat": 0.3, "up_small": 0.4, "up_big": 0.1, "unsure": 0.05}
     hour = {"pick": "up_small", "probabilities": five, "views": {"direction": {"probabilities": {"up": 0.5, "flat": 0.3, "down": 0.15}},
