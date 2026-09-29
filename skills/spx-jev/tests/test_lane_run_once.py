@@ -224,3 +224,32 @@ def test_the_first_read_after_1001_waits_for_a_row_its_30_minute_window_can_star
         write_state(tmp_path, DAY, [*rows, make_row(at(10, 2, ss=6), 7700.0)], bars_from_closes([7700.0] * 32))
     assert service.wait_for_row(state, first, sleep=scanner_writes) is True
     assert make_scene(state, DAY).now == at(10, 2, ss=6)
+
+
+def test_a_failing_shadow_grade_costs_neither_the_read_nor_the_close_out(tmp_path, monkeypatch, capsys):
+    """The integral grade raising inside the grader: the read still grades and writes its card, and the close-out
+    still grades, refreshes the card and archives its record, the job exiting cleanly."""
+    def broken(*a, **k):
+        raise RuntimeError("no bars")
+    monkeypatch.setattr(grade, "integral_run", broken)
+    state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
+    _today(monkeypatch)
+    monkeypatch.setattr(service, "send_all", _answers)
+    monkeypatch.setattr(service, "send", _sums([]))
+    out = state / "spx_jev" / "lanes" / "tape"
+    run_once(state, out, DOC, True, DAY, lane=TAPE)                          # the 10:40 read
+    _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0), make_row(at(10, 45, ss=20), 7701.0)], 80)
+    c = run_once(state, out, DOC, True, DAY, lane=TAPE)                      # the 10:50 read grades the 10:40 one
+    assert c["row_ts"] == at(10, 50).isoformat() and len((out / "grades.jsonl").read_text().splitlines()) == 1
+    said = capsys.readouterr().err
+    assert "integral shadow grade failed: RuntimeError: no bars" in said and "grading skipped" not in said
+
+    monkeypatch.setattr(service, "load_env_file", lambda *a, **k: [])
+    monkeypatch.setattr(service, "now_et", lambda: datetime.fromisoformat(f"{DAY}T10:52:00").replace(tzinfo=ET))
+    _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0), make_row(at(10, 45, ss=20), 7701.0)], 82)
+    assert service.main(["--state-dir", str(state), "--lane", "tape"]) == 0
+    card = json.loads((out / "latest.json").read_text())
+    assert card["closed_out_at"] and card["tally"]["calls"] == 2 and card["tally"]["graded"] == 1
+    kinds = [json.loads(l)["kind"] for l in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
+    assert kinds[-1] == "close_out" and not (out / "integral_grades.jsonl").exists()
+    assert "integral shadow grade failed" in capsys.readouterr().err

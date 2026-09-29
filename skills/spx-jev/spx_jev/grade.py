@@ -509,7 +509,10 @@ def run(state_dir: Path, out_dir: Path, allowed: dict[str, set[str]], day: str |
     tmp = weights_path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(weights, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, weights_path)                    # step 3 never sees a half file
-    integral_run(state_dir, out_dir, lane, day)      # the shadow grade reads what was written above and writes only its own file
+    try:
+        integral_run(state_dir, out_dir, lane, day)  # the shadow grade reads what was written above and writes only its own file
+    except Exception as e:  # the shadow grade must never cost a run its grades, the card or the close-out
+        print(f"integral shadow grade failed: {type(e).__name__}: {e}", file=sys.stderr)
     return weights
 
 
