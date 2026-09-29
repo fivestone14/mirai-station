@@ -102,6 +102,14 @@ NOT_MEASURED = {
                      "is still read with it, not a split of any measurement",
     "open_10_flat_band_sigma": "the premarket lane's 10-minute sum band from the settled open, the live sum's 30-minute band scaled "
                                "by the square root of 10 over 30 until the settled opens are measured",
+    "integral_missing_bars_max": "a count: how many of a window's bars the integral grade may be missing and still grade the window "
+                                 "on its average, never the mark bar; a guard, not a split of any measurement",
+    "bad_tick_pct": "a percentile by construction: a bad tick's jump and its jump back are ranked against the same window's 1-minute "
+                    "moves on the recent sessions, so the cut sits at their 99.9th percentile by definition",
+    "stale_read_min": "a clock fact: how long before its row minute a read's spot may have last traded before the read is stale, "
+                      "not a split of any measurement",
+    "sharp_move_top": "a rank by construction: a window's biggest minute is sharp when it is in the top 2 of itself and the same "
+                      "window's biggest minute on the last 20 sessions",
 }
 HOW_DECLARED = {
     "expected_move_down_share": "every row: the day's expected move's down share (adaptive_em.down_share), iv.move_sides",
