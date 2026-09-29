@@ -201,9 +201,9 @@ def _night_rows(state_dir: Path, day: date, symbol: str) -> tuple[dict, ...]:
 
 
 def _prior(state_dir: Path, day: date, symbol: str, table: dict, move_of: Callable[[list[dict], date], Move | Range | None],
-           until: Callable[[date], datetime], measure: Callable[[Move | Range], float]) -> list[Night]:
+           span: Callable[[date], tuple[datetime, datetime]], measure: Callable[[Move | Range], float]) -> list[Night]:
     """``measure`` of ``move_of`` on each of the NIGHT_RANK_COUNT trading days before ``day``, oldest first, each
-    skipped for a roll, a holiday, a short night (coverage up to ``until``) or a missing price."""
+    skipped for a roll, a holiday, a short night (coverage over the stretch ``span`` measures) or a missing price."""
     days, d = [], day
     while len(days) < NIGHT_RANK_COUNT:
         d = previous_trading_day(d)
@@ -212,7 +212,7 @@ def _prior(state_dir: Path, day: date, symbol: str, table: dict, move_of: Callab
     for d in reversed(days):
         mine = list(_night_rows(state_dir, d, symbol))
         move = move_of(mine, d) if mine else None
-        coverage = _coverage(mine, symbol, d, until(d)) if mine else None
+        coverage = _coverage(mine, symbol, *span(d)) if mine else None
         if overnight.holiday_night(d):
             out.append(Night(d.isoformat(), None, "holiday", coverage))
         elif move is None:
@@ -228,7 +228,7 @@ def prior_nights(state_dir: Path, day: date, symbol: str, read_clock: time, tabl
                  measure: Callable[[Move], float]) -> list[Night]:
     """``measure`` of the move from the prior close to ``read_clock`` on each of the last NIGHT_RANK_COUNT nights before ``day``."""
     return _prior(state_dir, day, symbol, table, lambda rows, d: overnight_move(rows, symbol, d, read_clock),
-                  lambda d: datetime.combine(d, read_clock, tzinfo=overnight.ET), measure)
+                  lambda d: (overnight.night_window(d)[0], datetime.combine(d, read_clock, tzinfo=overnight.ET)), measure)
 
 
 def prior_window_nights(state_dir: Path, day: date, symbol: str, window: Callable[[date], tuple[datetime, datetime]], table: dict,
@@ -238,7 +238,7 @@ def prior_window_nights(state_dir: Path, day: date, symbol: str, window: Callabl
     def move_of(rows: list[dict], d: date) -> Move | None:
         start, end = window(d)
         return window_move(rows, symbol, start, end)
-    return _prior(state_dir, day, symbol, table, move_of, lambda d: window(d)[1], measure)
+    return _prior(state_dir, day, symbol, table, move_of, window, measure)
 
 
 def prior_window_ranges(state_dir: Path, day: date, symbol: str, window: Callable[[date], tuple[datetime, datetime]],
@@ -248,12 +248,13 @@ def prior_window_ranges(state_dir: Path, day: date, symbol: str, window: Callabl
     def range_of(rows: list[dict], d: date) -> Range | None:
         start, end = window(d)
         return window_range(rows, symbol, start, end)
-    return _prior(state_dir, day, symbol, table, range_of, lambda d: window(d)[1], lambda r: r.pct)
+    return _prior(state_dir, day, symbol, table, range_of, window, lambda r: r.pct)
 
 
-def _coverage(rows: list[dict], symbol: str, day: date, until: datetime) -> float | None:
-    """The share of the night's expected bars on file up to ``until``, at the finest resolution saved."""
-    start = overnight.night_window(day)[0]
+def _coverage(rows: list[dict], symbol: str, start: datetime, until: datetime) -> float | None:
+    """The share of the expected bars on file from ``start`` to ``until``, at the finest resolution saved: a stretch
+    that starts after a weekend (bitcoin's night from Sunday evening) is not counted short for the thin weekend
+    before it."""
     for minutes in overnight.BAR_MINUTES:
         if any(r["bar_minutes"] == minutes for r in rows):
             return overnight.check(rows, symbol, minutes, start, until)["coverage"]
