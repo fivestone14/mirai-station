@@ -68,6 +68,10 @@ LATE_FIRE_MIN = 5                          # a fire this many minutes or more af
 EUROPE_CHECKPOINT = "03:35"                 # named in the lane's schedule at Frankfurt's usual six hours ahead (checkpoints)
 CHECKPOINT_LAG = timedelta(minutes=5)       # a checkpoint follows the stretch it closes by five minutes, for its last bar to arrive
 FUTURES = "/ES"
+# A group that got no answer is asked once more when the read has time for it before the open: the round's own span
+# (service.SEND_GROUPS_S), then the sums' (service.SEND_READ_S less that), must both end by the open. No later checkpoint
+# asks the 09:28 read's questions, so a group lost there went unanswered all day (09-28).
+ASK_AGAIN_MIN_S = 10.0                     # a second round shorter than one request's timeout (ask.send_all) is not tried
 HORIZON = "10 and 30 minutes after the settled open, the index's price at the close of its 09:34 bar"
 SUM_CONTEXT = {
     "horizon": ("10 minutes and 30 minutes after the settled open, the index's price at the close of its 09:34 bar; "
@@ -277,9 +281,27 @@ def sum_the_read(doc: dict, fresh: dict[str, dict], missing: list[str], out_dir:
             service.with_average(hour_summary(reply, PREMARKET), PREMARKET, window, avg_reply), reply, avg_reply)
 
 
+def ask_again(lost: list[dict], answers: dict[str, dict], sums_by: float, open_at: float) -> tuple[dict[str, dict], float]:
+    """The groups that got no answer (``lost``) asked once more, when a round of service.SEND_GROUPS_S and the sums'
+    time after it still end by ``open_at`` (a time.monotonic() reading, as the deadlines are). Returns the answers with
+    those the round got in place of their errors, and the sums' deadline: after this round, or ``sums_by`` as it was
+    when there was no time to ask again."""
+    sums_span = service.SEND_READ_S - service.SEND_GROUPS_S
+    start = _clock.monotonic()
+    until = min(start + service.SEND_GROUPS_S, open_at - sums_span)
+    if until - start < ASK_AGAIN_MIN_S:
+        return answers, sums_by
+    service.log(f"asked again before the open, their first ask got no answer: {', '.join(r['id'] for r in lost)}")
+    again = send_all(lost, deadline=until)
+    out = {**answers, **{rid: a for rid, a in again.items() if not (a or {}).get("error")}}
+    return out, max(sums_by, _clock.monotonic() + sums_span)
+
+
 def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now: datetime, checkpoint: str,
                    save: bool = True, unsent_reason: str = service.UNSENT_DEFAULT) -> dict:
-    """One read at ``checkpoint`` (see the module note), written to ``out_dir``; returns the card."""
+    """One read at ``checkpoint`` (see the module note), written to ``out_dir``; returns the card. A group that got no
+    answer is asked once more while the read has time before the open (ask_again)."""
+    started = _clock.monotonic()
     now = now.astimezone(ET).replace(microsecond=0)
     day, row_ts = now.date().isoformat(), now.isoformat(timespec="seconds")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -304,6 +326,9 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
     if do_send and requests:
         t0 = _clock.monotonic()
         answers = send_all(requests, deadline=t0 + service.SEND_GROUPS_S)
+        sums_by = t0 + service.SEND_READ_S
+        if lost := [r for r in requests if (answers.get(r["id"]) or {}).get("error")]:
+            answers, sums_by = ask_again(lost, answers, sums_by, started + (session_open(now) - now).total_seconds())
         for r in requests:
             if err := (answers.get(r["id"]) or {}).get("error"):
                 service.log(f"group {r['id']} got no answer: {err}")
@@ -312,7 +337,7 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
         # live questions due now whose label the builder could not measure
         missing = [qid for g in skipped.values() for qid, why in g.items()
                    if by_id.get(qid, {}).get("status") == "live" and str(why).startswith("missing")]
-        hour_rec, hour, hour_reply, average_reply = sum_the_read(doc, fresh, missing, out_dir, t0 + service.SEND_READ_S, average_window_of(ruler, scene.spot if scene else None))
+        hour_rec, hour, hour_reply, average_reply = sum_the_read(doc, fresh, missing, out_dir, sums_by, average_window_of(ruler, scene.spot if scene else None))
         send_seconds = round(_clock.monotonic() - t0, 3)
         if hour is not None and PREMARKET.clock_blend:
             # each sum blended half and half with how the same window after the settled open ended on prior sessions

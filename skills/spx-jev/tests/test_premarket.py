@@ -221,6 +221,30 @@ def test_a_failed_sum_after_a_call_is_on_the_card_beside_the_earlier_call(tmp_pa
     assert c["sent"] is True and c["hour"]["read_at"] == at(8, 48).isoformat()
     assert c["hour_error"] == {"read_at": at(9, 28).isoformat(), "error": "JEV timed out"}
 
+def test_a_group_that_got_no_answer_is_asked_once_more_before_the_open(tmp_path, jev, monkeypatch):
+    """2026-09-28: JEV timed out on the 09:28 read's premarket_overnight group, and no later checkpoint asks its
+    questions, so they went unanswered all day. The read asks a lost group once more when it has time before the open,
+    and its sums read the second answer; a read too near the open to fit a second round and its sums asks once."""
+    state = _station(tmp_path)
+    answered = _answers(jev["requests"])
+    calls = []
+
+    def first_times_out(requests, **kw):
+        calls.append([r["id"] for r in requests])
+        if len(calls) == 1:
+            return {r["id"]: {"error": "JEV unreachable for group pm: TimeoutError: The read operation timed out"} for r in requests}
+        return answered(requests, **kw)
+    monkeypatch.setattr(premarket, "send_all", first_times_out)
+    c = run_checkpoint(state, PREMARKET.folder(state), DOC, True, at(9, 28), "09:28", save=False)
+    assert calls == [["pm"], ["pm"]]
+    assert next(q for q in c["questions"] if q["id"] == "pm_q")["answer"]["pick"] == "near"
+    (s,) = _lines(PREMARKET.folder(state) / "hour" / f"{DAY}.jsonl")
+    assert s["fresh"] == {"pm_q": "near"}
+    calls.clear()
+    late = run_checkpoint(state, tmp_path / "late", DOC, True, at(9, 29, ss=40), "09:28", save=False)
+    assert calls == [["pm"]] and next(q for q in late["questions"] if q["id"] == "pm_q")["answer"] is None
+
+
 def test_a_read_without_a_ruler_writes_why_builds_nothing_and_asks_nothing(tmp_path, jev):
     state = _station(tmp_path, anchors=4)
     out = PREMARKET.folder(state)
