@@ -39,8 +39,9 @@ a bar whose high is under its low, and point in time: no fact known after its re
 its mark, no bar saved or served before it finished), then to its read when it has one (a fact, answer, call
 or grade whose read is not among the day's kept reads is quarantined). Rows sharing a key are one row: a
 copy that agrees but for where it came from is counted as a duplicate; where a table ranks its sources (a saved
-day's bar over a live snapshot's, Schwab's own $VOLD over a derived one) the better one is kept and a copy that
-disagrees is counted as superseded; any other disagreement is quarantined. Nothing is dropped without a count in ``validation`` or a row in ``quarantine``. A line of a raw
+day's bar over a live snapshot's, Schwab's own $VOLD over a derived one) the better one is kept and a copy from
+a worse source that disagrees is counted as superseded; any other disagreement, two equally good sources
+included, is quarantined. Nothing is dropped without a count in ``validation`` or a row in ``quarantine``. A line of a raw
 file that is not a JSON object is quarantined under the table name ``raw_line``. The archive's ``close_out``
 records restate the calls and grades already stored, so they are read past.
 
@@ -157,7 +158,7 @@ Check = Callable[[dict], "str | None"]
 class Table:
     """A stored table: its columns ``(name, type, required)``, the columns that make a row one row, the checks a
     typed row must pass (each returns why it fails, or None), how to choose among rows sharing a key (lowest
-    ``rank`` kept; with no rank a differing row is quarantined), the columns that say where a row came from
+    ``rank`` kept; a differing row of the same rank, or of a table with none, is quarantined), the columns that say where a row came from
     and so never make two rows differ, and whether each row belongs to a read of the day."""
     name: str
     columns: tuple[tuple[str, pa.DataType, bool], ...]
@@ -851,9 +852,10 @@ def validate(table: Table, rows: list[dict], reads: set[str] | None = None) -> t
             kept[key], first_seen[key] = row, raw.get("_source") or ""
             continue
         same = values(kept[key]) == values(row)
-        if same or table.rank is not None:
+        ranks = (table.rank(row), table.rank(kept[key])) if table.rank is not None else None
+        if same or (ranks and ranks[0] != ranks[1]):
             counts["duplicates" if same else "superseded"] += 1
-            if table.rank is not None and table.rank(row) < table.rank(kept[key]):
+            if ranks and ranks[0] < ranks[1]:
                 kept[key], first_seen[key] = row, raw.get("_source") or ""
         else:
             refuse(raw, f"differs from the row kept for the same {', '.join(table.key)} ({first_seen[key]})")

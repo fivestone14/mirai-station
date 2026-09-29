@@ -296,7 +296,8 @@ before it finished). A fact, answer, call or grade must belong to one of the
 day's kept reads. A refused row goes to `quarantine` with its reason, never
 dropped. Copies of a row that agree but for where they came from count as
 `duplicates`; where a table ranks its sources the better copy is kept and a
-disagreeing one counts as `superseded`; any other disagreement is quarantined.
+disagreeing one from a worse source counts as `superseded`; any other
+disagreement, between two equally good sources included, is quarantined.
 
 The nightly job (`com.mirai-station.spx-jev-store`, 16:40 ET) rebuilds the last
 week's market days. It writes the DuckDB file only when its views are missing

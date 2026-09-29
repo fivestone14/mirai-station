@@ -297,6 +297,17 @@ def test_a_second_grade_of_the_same_sum_that_disagrees_is_quarantined_not_kept_o
     assert _table(tmp_path, "quarantine")[0]["reason"].startswith("differs from the row kept for the same read_id, horizon")
 
 
+def test_two_equally_good_sources_that_disagree_are_quarantined_not_one_kept_by_order():
+    bar = {"day": D, "symbol": "XLK", "served_as": "XLK", "ts": "2026-09-18T10:00:00-04:00", "open": 1.0, "close": 1.5,
+           "derived": False, "source": "live", "known_at": "2026-09-18T10:01:00-04:00", "written_at": "2026-09-18T10:01:30-04:00"}
+    later = {**bar, "close": 1.9, "written_at": "2026-09-18T10:02:30-04:00", "_source": "context/2026-09-18.jsonl:2"}
+    kept, bad, counts = store.validate(store.CONTEXT_BARS, [bar, later])
+    assert [k["close"] for k in kept] == [1.5] and (counts["superseded"], len(bad)) == (0, 1)
+    assert bad[0]["reason"].startswith("differs from the row kept for the same symbol, ts")
+    kept, bad, counts = store.validate(store.CONTEXT_BARS, [later, {**bar, "source": "saved_day"}])
+    assert [k["close"] for k in kept] == [1.5] and (counts["superseded"], bad) == (1, [])     # the saved day wins
+
+
 def test_an_outcome_is_held_to_its_lanes_bands():
     row = {"lane": "live", "horizon": "next_30", "outcome": "down_small"}
     assert "is not one of up, flat, down" in store._outcome(row)
