@@ -156,9 +156,11 @@ def test_a_held_question_whose_ask_got_no_answer_is_asked_at_the_next_read_not_h
 
 def test_mondays_lost_opening_answers_are_asked_again_at_0940_and_held_by_the_live_lane():
     """2026-09-28: JEV answered the tape lane's 09:35 opening_context and events_regime requests with HTTP 503. Their
-    four questions are asked only at 09:35, so the day lost them, and the live lane, which holds the three
-    opening_context answers from the tape lane until 11:32, had nothing to hold. Replayed through plan: the four are
-    asked at 09:40, and the live lane's 10:30 read holds the three from 09:40: seven answers back."""
+    four questions are asked only at 09:35, and the live lane, which holds the three opening_context answers from
+    the tape lane until 11:32, had nothing to hold: those three went unanswered all day (event_clock was answered
+    by the live lane from 10:30). Replayed through plan: the four are asked at 09:40, and the live lane's 10:30 read
+    holds the three from 09:40. The day's other four unanswered questions were the premarket lane's, lost at its
+    last checkpoint, 09:28, which this rule does not reach."""
     monday = "2026-09-28"
     lost_ids = ("open_vs_prior_range", "vix_overnight_surprise", "brief_vs_tape", "event_clock")
     last = {q: {"lost": {"row_ts": at(9, 35, day=monday).isoformat(), "why": NO_ANSWER_503}} for q in lost_ids}
