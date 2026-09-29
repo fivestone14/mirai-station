@@ -28,8 +28,8 @@ where. Every read carries the tier-1 events due within the hour
 
 On the live lane every sum also carries the learning loop's forecasts (pool.snapshot): the fixed
 mixes of JEV's sum with the price-only reference, today's blend, the question block and the pool,
-scored once the session is sealed. The phone keeps the exact blend (``shown_source``) unless the
-loop was promoted and pool.POOL_ON_PHONE is set, which it is not.
+scored once the session is sealed. The phone keeps the exact blend (``shown_source``) until the
+loop is promoted, then shows the pool with the blend beside it, until it is demoted (pool.POOL_ON_PHONE).
 
 A lane (lane.py) is the same run with its own docs, folder, clock and grader. The tape lane
 (``--lane tape``) stamps each read at the newest finished bar (a sent run first waits, under a minute,

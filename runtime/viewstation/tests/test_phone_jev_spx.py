@@ -497,18 +497,22 @@ def test_the_folded_30_minute_line_counts_down_only_a_call_that_was_made():
         ["30-min read 06:31", "No 30-minute call on this read, next read 07:02"], 0]
 
 
-def test_a_pool_on_the_phone_is_named_as_the_pool_not_as_the_blend():
-    """pool.shown swaps the pool into the headline odds and marks it shown_source; the chart must say so."""
+def test_a_learned_mix_on_the_phone_is_named_as_such_with_the_half_and_half_kept_beneath():
+    """pool.shown swaps the learned mix into the headline odds, keeps the exact blend beside it and marks
+    shown_source; the chart must name which one is shown and still draw the other."""
     js = (_var("ODDS_ORDER") + _fn("oddsKeys") + _fn("top1") + _fn("oneAnswer") + _fn("phaseSpan") + _fn("howChart") +
           "var g = howChart(D.h, {used: true, sessions: 19, phase_words: 'lunch, 12:00 to 14:00'}, D.at);"
-          "console.log(JSON.stringify(g.kids.filter(function(k){ return /how-k|how-note/.test(k.attrs['class'] || ''); })"
+          "console.log(JSON.stringify(g.kids.filter(function(k){ return /how-k|how-v|how-note/.test(k.attrs['class'] || ''); })"
           ".map(function(k){ return k.textContent; })));")
     odds = {"up": 0.2, "down": 0.3, "flat": 0.5}
-    h = {"probabilities": odds, "jev": {"probabilities": odds}, "clock": {"probabilities": odds}, "shown_source": "pool_v1"}
+    half = {"up": 0.3, "down": 0.1, "flat": 0.4, "unsure": 0.2}
+    h = {"probabilities": odds, "jev": {"probabilities": odds}, "clock": {"probabilities": odds}, "blend50_exact": half,
+         "shown_source": "pool_v1"}
     got = _run(js, {"h": h, "at": "2026-09-28T12:31:00-04:00", "now": "2026-09-28T12:35:00-04:00"}, LA)
-    assert got[:3] == ["JEV", "Time of day", "Pool"] and got[3].startswith("Shown is the learning loop\u2019s pool")
+    assert got[:8] == ["JEV", "Flat 50%", "Time of day", "Flat 50%", "Half & half", "Flat 40%", "Learned mix", "Flat 50%"]
+    assert got[8].startswith("Shown is the learned mix. It took over from half JEV, half time of day")
     blend = _run(js, {"h": {**h, "shown_source": "blend50_exact"}, "at": "2026-09-28T12:31:00-04:00", "now": "2026-09-28T12:35:00-04:00"}, LA)
-    assert blend[2] == "Shown" and blend[3].startswith("Shown is half JEV")
+    assert blend[::2][:3] == ["JEV", "Time of day", "Shown"] and len(blend) == 7 and blend[6].startswith("Shown is half JEV")
 
 
 # ---- before the open: the pre-market card (skills/spx-jev, spx_jev.premarket)

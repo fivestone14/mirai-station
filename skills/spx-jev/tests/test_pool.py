@@ -193,21 +193,56 @@ def test_a_questions_version_changes_with_any_word_jev_is_sent_and_with_its_opti
     assert pool.question_version(dict(choice)) == pool.question_version(choice)
 
 
-def test_the_pool_is_promoted_after_twenty_winning_days_and_the_phone_switch_stays_off(monkeypatch):
+SURE_FLAT = {"up": 0.01, "flat": 0.98, "down": 0.01, "unsure": 0.0}
+PHONE_HOUR = {"pick": "flat", "probabilities": SHOWN, "by": {"next_30": {"pick": "flat", "probabilities": SHOWN}}}
+
+
+def _days(state, first, n, outcomes):
+    """n sessions from October ``first`` on, JEV sure of flat each read."""
+    for d in range(first, first + n):
+        day = f"2026-10-{d:02d}"
+        apply_session(state, day, _session(state, outcomes, jev=SURE_FLAT, day=day), 30, True, None)
+
+
+def test_on_day_one_the_phone_shows_the_blend_exactly_as_before():
+    """The switch is on, but a pool with no days behind it is not promoted, so the sum is untouched."""
+    state = cold_state()
+    assert pool.POOL_ON_PHONE is True and state["phone"]["shows"] == "blend"
+    assert shown(PHONE_HOUR, {"next_30": _snap(state)}, state) == {**PHONE_HOUR, "shown_source": "blend50_exact"}
+
+
+def test_nineteen_winning_days_leave_the_phone_on_the_blend():
     state = cold_state()
     membership(state, MEMBERS, "2026-09-01")
-    sure_flat = {"up": 0.01, "flat": 0.98, "down": 0.01, "unsure": 0.0}
-    for d in range(1, 26):
-        day = f"2026-10-{d:02d}"
-        apply_session(state, day, _session(state, ["flat", "flat"], jev=sure_flat, day=day), 30, True, None)
+    _days(state, 1, pool.MIN_DAYS - 1, ["flat", "flat"])
+    assert state["phone"]["promote"]["e"] >= pool.PROMOTE_E and state["phone"]["shows"] == "blend"
+    assert shown(PHONE_HOUR, {"next_30": _snap(state)}, state)["shown_source"] == "blend50_exact"
+
+
+def test_the_pool_is_promoted_after_twenty_winning_days_and_the_phone_shows_it_with_the_blend_beside_it(monkeypatch):
+    state = cold_state()
+    membership(state, MEMBERS, "2026-09-01")
+    _days(state, 1, 25, ["flat", "flat"])
     assert state["phone"]["shows"] == "pool" and state["phone"]["promote"]["n"] >= pool.MIN_DAYS
-    hour = {"pick": "flat", "probabilities": SHOWN, "by": {"next_30": {"pick": "flat", "probabilities": SHOWN}}}
     snaps = {"next_30": _snap(state)}
-    assert pool.POOL_ON_PHONE is False and shown(hour, snaps, state) == {**hour, "shown_source": "blend50_exact"}
-    monkeypatch.setattr(pool, "POOL_ON_PHONE", True)
-    on = shown(hour, snaps, state)
+    on = shown(PHONE_HOUR, snaps, state)
     assert on["shown_source"] == "pool_v1" and on["probabilities"] == snaps["next_30"]["pool"]
-    assert on["by"]["next_30"]["blend50_exact"] == snaps["next_30"]["blend50_exact"]
+    assert on["blend50_exact"] == on["by"]["next_30"]["blend50_exact"] == snaps["next_30"]["blend50_exact"] == SHOWN
+    monkeypatch.setattr(pool, "POOL_ON_PHONE", False)
+    assert shown(PHONE_HOUR, snaps, state) == {**PHONE_HOUR, "shown_source": "blend50_exact"}
+
+
+def test_a_promoted_pool_that_starts_losing_hands_the_phone_back_to_the_blend():
+    state = cold_state()
+    membership(state, MEMBERS, "2026-09-01")
+    _days(state, 1, 25, ["flat", "flat"])
+    since = state["phone"]["since"]
+    # losing days already behind it, one short of the demotion bar
+    state["phone"]["demote"] = {"e": pool.DEMOTE_E - 0.1, "n": 10, "sum": 10.0, "sum_sq": 10.0}
+    _days(state, 26, 1, ["up", "down"])
+    assert state["phone"]["shows"] == "blend" and state["phone"]["since"] == "2026-10-26" > since
+    assert state["phone"]["promote"] == new_eprocess()
+    assert shown(PHONE_HOUR, {"next_30": _snap(state)}, state)["shown_source"] == "blend50_exact"
 
 
 # ---- the update over the lane's files

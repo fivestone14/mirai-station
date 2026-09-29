@@ -536,7 +536,8 @@ details .q{margin-top:8px}
   // in Los Angeles, never "lunch, 09:00 to 11:00"
   function phaseSpan(words, at){ return marketWords(String(words).replace(/^[^,]*,\s*/, ''), at); }
   // how the 30-minute call was made, drawn: JEV's own sum, the time of day's odds, and what is shown: the
-  // half-and-half, or the learning loop's pool once it is promoted onto the phone (shown_source)
+  // half-and-half, or the learning loop's learned mix once it is promoted onto the phone (shown_source),
+  // the half-and-half then kept beneath it
   function howChart(h, bl, at){
     var g = el('div', 'how');
     function row(key, cls, p){
@@ -551,9 +552,11 @@ details .q{margin-top:8px}
     if(bl && bl.used && j && c){
       row('JEV', ' jev', j.probabilities);
       row('Time of day', '', c.probabilities);
-      row(pooled ? 'Pool' : 'Shown', '', h.probabilities);
+      if(pooled) row('Half & half', '', h.blend50_exact);
+      row(pooled ? 'Learned mix' : 'Shown', '', h.probabilities);
       g.appendChild(el('div', 'how-note', (j.confidence != null ? 'JEV was ' + pct(j.confidence) + ' sure. ' : '') +
-                                        (pooled ? 'Shown is the learning loop\u2019s pool, promoted onto the phone once it beat the half-and-half of JEV and the time of day.'
+                                        (pooled ? 'Shown is the learned mix. It took over from half JEV, half time of day once it did better over' +
+                                                  ' at least 20 trading days, and it hands back if it starts doing worse.'
                                                 : 'Shown is half JEV, half how this time of day' + (bl.phase_words ? ' (' + phaseSpan(bl.phase_words, at) + ')' : '') + ' went' +
                                                   ' over the last ' + bl.sessions + ' sessions.')));
     } else {

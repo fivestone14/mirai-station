@@ -35,8 +35,9 @@ e-process against the exact blend reaches PROMOTE_E after MIN_DAYS days, and ste
 kind of test. It runs at the first grading run after a session ends (PoolWeights.learn).
 
 Nothing here changes JEV's prompt: every live question keeps its sentence and weighs 1.0 in step 3.
-The phone keeps today's exact 50/50 blend unless POOL_ON_PHONE is set and the pool was promoted;
-POOL_ON_PHONE is off pending Will's decision.
+The phone keeps today's exact 50/50 blend until the pool is promoted (at least MIN_DAYS days and its
+e-process against the blend at PROMOTE_E); then it shows the pool, the blend kept beside it, and goes
+back to the blend by itself when the demotion e-process reaches DEMOTE_E. POOL_ON_PHONE turns that off.
 
 A lane graded from the settled open keeps its own loop state in its own folder, on its sums from the
 settled open. Every one of its reads forecasts the same window, the half hour after 09:34, so each
@@ -70,7 +71,7 @@ from .weights import QuestionWeights
 if TYPE_CHECKING:
     from .baseline import Baseline
 
-POOL_ON_PHONE = False           # show the promoted pool on the phone: Will's decision, off until he makes it
+POOL_ON_PHONE = True            # show the pool on the phone while it is promoted: Will's decision, 2026-09-28
 
 JEV_SHARES = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
 REFERENCE = "jev_share_0.0"
@@ -306,7 +307,7 @@ def shown(hour: dict, snaps: dict[str, dict], state_primary: dict) -> dict:
     out = {**hour, "by": by, "shown_source": SHOWN_POOL}
     prim = by.get(hour.get("primary") or LIVE.primary)
     if prim:
-        out.update({"pick": prim["pick"], "probabilities": prim["probabilities"]})
+        out.update({"pick": prim["pick"], "probabilities": prim["probabilities"], "blend50_exact": prim["blend50_exact"]})
     return out
 
 
