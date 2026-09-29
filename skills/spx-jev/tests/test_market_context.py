@@ -6,7 +6,8 @@ from datetime import date, datetime, timedelta
 
 from conftest import DAY, at
 from spx_jev import market_context, schwab
-from spx_jev.market_context import ALL_SYMBOLS, BAR_SYMBOLS, NO_HISTORY, append_snapshot, backfill, snapshot
+from spx_jev.market_context import (ALL_SYMBOLS, BAR_SYMBOLS, DERIVED_VOLD, NO_HISTORY, append_snapshot, backfill, derived_vold,
+                                    snapshot)
 from spx_jev.state_builder import load_market_context
 
 
@@ -88,6 +89,65 @@ def test_the_backfill_logs_each_symbol_served_no_bars_but_not_a_day_served_none(
     assert [p.stem for p in backfill(tmp_path, date(2026, 9, 17), date(2026, 9, 18))] == ["2026-09-18"]
     err = capsys.readouterr().err.splitlines()
     assert [l.split(" ", 1)[1] for l in err] == ["spx-jev-context :: $VOLSPD returned no minute bars for the 2026-09-18 session"]
+
+
+def _volume(t, open_, close):
+    return {"ts": t.isoformat(), "open": open_, "high": max(open_, close), "low": min(open_, close), "close": close, "volume": 0.0}
+
+
+def test_derived_net_volume_is_what_schwab_served_as_vold_on_a_saved_minute():
+    """2026-09-25 15:58: Schwab's $UVOL 286,648 and $DVOL 231,380 (thousands) beside its $VOLD 55,267,959 shares."""
+    got = derived_vold({"$UVOL": _volume(at(15, 58), 278942.0, 286648.0), "$DVOL": _volume(at(15, 58), 213628.0, 231380.0)})
+    assert got["derived"] == DERIVED_VOLD and got["ts"] == at(15, 58).isoformat()
+    assert got["close"] == 55268000.0 and abs(got["close"] / 55267959.0 - 1) < 1e-5 and got["open"] == 65314000.0
+    assert "high" not in got and "low" not in got          # a difference's extremes are not the extremes' difference
+
+
+def test_net_volume_is_not_derived_from_up_and_down_volume_out_of_thousands_or_from_two_minutes():
+    """2026-09-28 09:30: Schwab's $UVOL came back 1,671,133,184, thousands of times any saved session's."""
+    assert derived_vold({"$UVOL": _volume(at(9, 30), 1671133184.0, 1671133184.0), "$DVOL": _volume(at(9, 30), 405729728.0, 405729728.0)}) is None
+    assert derived_vold({"$UVOL": _volume(at(10, 0), 100.0, 110.0), "$DVOL": _volume(at(10, 1), 90.0, 95.0)}) is None
+    assert derived_vold({"$UVOL": _volume(at(10, 0), 100.0, 110.0)}) is None
+
+
+def test_a_snapshot_without_schwab_s_vold_saves_it_derived_and_the_labeller_reads_it(tmp_path, monkeypatch):
+    _no_sleep(monkeypatch)
+    monkeypatch.setattr(schwab, "quotes", lambda symbols: {})
+    served = {"$UVOL": 30000.0, "$DVOL": 20000.0}
+    monkeypatch.setattr(schwab, "minute_bars", lambda symbol, start, end: [] if symbol == "$VOLD" else [_bar(at(10, 0), served.get(symbol, 1.0))])
+    line = snapshot(at(10, 1, ss=5))
+    assert "$VOLD: empty" in line["failed"] and line["bars"]["$VOLD"]["derived"] == DERIVED_VOLD
+    append_snapshot(tmp_path, line)
+    assert load_market_context(tmp_path, DAY).last("$VOLD", at(10, 1)) == 10000000.0
+
+
+def test_schwab_s_own_vold_is_never_replaced_and_out_of_thousands_volume_is_logged_not_derived(monkeypatch, capsys):
+    _no_sleep(monkeypatch)
+    monkeypatch.setattr(schwab, "quotes", lambda symbols: {})
+    monkeypatch.setattr(schwab, "minute_bars", lambda symbol, start, end: [_bar(at(10, 0), 5.0 if symbol == "$VOLD" else 1.0)])
+    assert snapshot(at(10, 1, ss=5))["bars"]["$VOLD"] == _bar(at(10, 0), 5.0)
+    served = {"$UVOL": 4418356224.0, "$DVOL": 7794704896.0}
+    monkeypatch.setattr(schwab, "minute_bars", lambda symbol, start, end: [] if symbol == "$VOLD" else [_bar(at(10, 0), served.get(symbol, 1.0))])
+    capsys.readouterr()
+    assert "$VOLD" not in snapshot(at(10, 1, ss=5))["bars"]
+    assert capsys.readouterr().err.splitlines()[-1].endswith(
+        "$VOLD not derived at 10:01 ET: $UVOL and $DVOL are not one minute's bars in thousands of shares")
+
+
+def test_the_backfill_derives_each_minute_s_net_volume_when_schwab_served_none(tmp_path, monkeypatch):
+    _no_sleep(monkeypatch)
+    served = {"$UVOL": (30000.0, 31000.0), "$DVOL": (20000.0, 20500.0)}
+
+    def minute_bars(symbol, start, end):
+        if symbol == "$VOLD":
+            return []
+        return [_bar(start + timedelta(minutes=i), v) for i, v in enumerate(served.get(symbol, (1.0, 1.0)))]
+    monkeypatch.setattr(schwab, "minute_bars", minute_bars)
+    [path] = backfill(tmp_path, date(2026, 9, 18), date(2026, 9, 18))
+    lines = [json.loads(l) for l in path.read_text().splitlines()]
+    assert [l["bars"]["$VOLD"]["close"] for l in lines] == [10000000.0, 10500000.0]
+    assert all(l["bars"]["$VOLD"]["derived"] == DERIVED_VOLD for l in lines)
+    assert load_market_context(tmp_path, "2026-09-18").last("$VOLD", at(9, 32)) == 10500000.0
 
 
 def test_the_backfill_writes_each_past_session_whole_skips_what_is_on_disk_and_quiet_days(tmp_path, monkeypatch):

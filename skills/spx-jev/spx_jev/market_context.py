@@ -32,6 +32,7 @@ from zoneinfo import ZoneInfo
 
 from . import schwab
 from .feed_log import failure, log
+from .labels.measures import is_num
 from .sessions import SESSION_CLOSE, SESSION_OPEN
 from .state_builder import CONTEXT_SUBDIR, DEFAULT_STATE_DIR
 
@@ -51,6 +52,15 @@ ALL_SYMBOLS = tuple(s for group in SYMBOLS.values() for s in group)
 BAR_SYMBOLS = SYMBOLS["breadth"]          # quotes come back as empty shells: read the newest finished bar instead
 NO_HISTORY = ("$VIX1D",)                  # quoted, never kept by Schwab's history: only a live snapshot saves it
 FIRST_BACKFILL_DAY = "2026-08-10"         # the oldest minute Schwab still served on 2026-09-26
+# $VOLD is NYSE up less down volume in shares, $UVOL and $DVOL those volumes in thousands of shares: on every
+# saved session from 2026-08-10 to 2026-09-25 each minute's $VOLD was their difference times this, to within
+# half a percent. A minute Schwab serves no $VOLD for takes it from them, marked with DERIVED_VOLD.
+VOLD_PER_THOUSAND = 1000.0
+DERIVED_VOLD = "($UVOL - $DVOL) * 1000"
+# Only while they are in thousands: no saved session came near this many (the most was about 614 thousand),
+# and on 2026-09-28 Schwab served both at thousands of times their usual size (1.7 billion up in the first
+# minute), a difference no $VOLD on record can be ranked against.
+MAX_THOUSANDS = 1e7
 
 def _session(day: date) -> tuple[datetime, datetime]:
     return datetime.combine(day, SESSION_OPEN, tzinfo=ET), datetime.combine(day, SESSION_CLOSE, tzinfo=ET)
@@ -61,6 +71,23 @@ def _quote_entry(q: dict) -> dict:
             "quote_time": q.get("quoteTime")}
 
 
+def derived_vold(bars: dict[str, dict]) -> dict | None:
+    """One minute's $VOLD bar from the same minute's $UVOL and $DVOL bars: open and close only, since the high
+    and low of a difference are not the difference of the highs and lows. None when either is missing, they
+    are not the same minute, or either is not in thousands of shares (MAX_THOUSANDS)."""
+    up, down = bars.get("$UVOL"), bars.get("$DVOL")
+    if not up or not down or up.get("ts") != down.get("ts"):
+        return None
+    if not all(is_num(b.get(k)) and abs(b[k]) < MAX_THOUSANDS for b in (up, down) for k in ("open", "close")):
+        return None
+    return {"ts": up["ts"], **{k: (up[k] - down[k]) * VOLD_PER_THOUSAND for k in ("open", "close")}, "volume": 0.0,
+            "derived": DERIVED_VOLD}
+
+
+def _not_derived(when: str) -> None:
+    log(JOB, f"$VOLD not derived {when}: $UVOL and $DVOL are not one minute's bars in thousands of shares", err=True)
+
+
 def _no_bars(symbol: str, when: str) -> None:
     """Schwab answered a symbol's history without an error and with no bars: said on a line of its own, since
     nothing else would show it (on 2026-09-28 $ADD, $VOLD and $VOLSPD came back empty all day, unremarked)."""
@@ -69,9 +96,9 @@ def _no_bars(symbol: str, when: str) -> None:
 
 def snapshot(now: datetime) -> dict:
     """One minute's line: batched quotes for every quoted symbol and the newest finished bar for each
-    breadth symbol. A call that fails is named under ``failed`` and costs only what it would have
-    fetched; so is a breadth symbol Schwab answers with no bars once a minute of the session has
-    finished, as ``"<symbol>: empty"``."""
+    breadth symbol, with $VOLD derived from $UVOL and $DVOL when Schwab serves none (derived_vold). A call
+    that fails is named under ``failed`` and costs only what it would have fetched; so is a breadth symbol
+    Schwab answers with no bars once a minute of the session has finished, as ``"<symbol>: empty"``."""
     line: dict = {"ts": now.isoformat(timespec="seconds"), "quotes": {}, "bars": {}, "failed": []}
     quoted = [s for s in ALL_SYMBOLS if s not in BAR_SYMBOLS]
     try:
@@ -94,6 +121,11 @@ def snapshot(now: datetime) -> dict:
         done = [b for b in got if datetime.fromisoformat(b["ts"]) + timedelta(minutes=1) <= now]
         if done:
             line["bars"][symbol] = done[-1]
+    if "$VOLD" not in line["bars"] and "$UVOL" in line["bars"] and "$DVOL" in line["bars"]:
+        if vold := derived_vold(line["bars"]):
+            line["bars"]["$VOLD"] = vold
+        else:
+            _not_derived(f"at {now:%H:%M} ET")
     return line
 
 
@@ -108,7 +140,8 @@ def append_snapshot(state_dir: Path, line: dict) -> Path:
 def backfill_day(state_dir: Path, day: date) -> Path | None:
     """Every history symbol's minute bars for one past session, one line per minute. A day already on
     disk is left alone, and a day with no bars at all (a holiday, a weekend) writes nothing; on any other
-    day each symbol Schwab served no bars for is logged as an error."""
+    day each symbol Schwab served no bars for is logged as an error. A minute with no $VOLD takes it from
+    $UVOL and $DVOL (derived_vold)."""
     path = Path(state_dir) / CONTEXT_SUBDIR / "bars" / f"{day.isoformat()}.jsonl"
     if path.exists():
         return None
@@ -131,6 +164,15 @@ def backfill_day(state_dir: Path, day: date) -> Path | None:
         return None
     for symbol in empty:
         _no_bars(symbol, f"for the {day.isoformat()} session")
+    refused = 0
+    for minute in by_minute.values():
+        if "$VOLD" not in minute and "$UVOL" in minute and "$DVOL" in minute:
+            if vold := derived_vold(minute):
+                minute["$VOLD"] = vold
+            else:
+                refused += 1
+    if refused:
+        _not_derived(f"for {refused} minutes of the {day.isoformat()} session")
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".jsonl.tmp")
     tmp.write_text("".join(json.dumps({"ts": ts, "bars": by_minute[ts]}) + "\n" for ts in sorted(by_minute)), encoding="utf-8")

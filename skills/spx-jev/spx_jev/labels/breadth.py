@@ -6,7 +6,8 @@ $DVOL (thousands of shares) are the day's volume so far in the NYSE stocks up, a
 minute: a stock that turns takes its whole day's volume from one to the other, so neither only grows and their
 change over a window is not that window's volume; only from the open, where both start at nothing, do they give
 a share. $VOLD (their difference, in shares) and $VOLSPD (the same in S&P 500 members) are net volume, and a
-window's lean is the change in net volume from its start to its end. Every
+window's lean is the change in net volume from its start to its end; a minute Schwab served no $VOLD for carries
+it derived from $UVOL and $DVOL, marked so (market_context.derived_vold). Every
 measure is ranked against the same measure at the same minute on up to the last 20 prior sessions' market context
 (``scene.prior_markets``; ranks.rank_sessions, needing SAME_CLOCK_MIN_SESSIONS of them, else the label is omitted
 with the reason) and said by its third, never against a fixed line: a measure with a side leans to buying in its
