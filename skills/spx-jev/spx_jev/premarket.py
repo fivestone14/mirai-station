@@ -100,7 +100,7 @@ VERDICT_WORDS = {"big_down": "Big fall", "down": "Down", "flat": "Quiet", "up": 
                  "shrugged": "Shrugged", "extended": "Extended", "held": "Held", "faded": "Faded"}
 CALL_KEYS = ("pick", "probabilities", "confidence", "primary", "by", "model", "blend", "shown_source", "average")
 # what the premarket card keeps of the live card's make-up (service.card): the questions and the labels' count
-LIVE_CARD_KEYS = ("version", "labels", "omitted", "questions", "fresh", "dark", "dark_note", "shadow_note")
+LIVE_CARD_KEYS = ("version", "labels_count", "omitted", "questions", "fresh_count", "dark", "dark_note", "shadow_note")
 
 
 class NoPreOpenRead(ValueError):
@@ -588,7 +588,7 @@ def main(argv: list[str] | None = None) -> int:
         service.log(f"premarket run failed: {type(e).__name__}: {e}\n{traceback.format_exc()}")
         return 1
     answered = sum(1 for q in c["questions"] if q.get("answer"))
-    service.log(f"premarket {checkpoint}: labels {c['labels']} answered {answered}/{len(c['questions'])} "
+    service.log(f"premarket {checkpoint}: labels {c['labels_count']} answered {answered}/{len(c['questions'])} "
                 f"{'sent' if c['sent'] else 'not sent'} -> {out_dir / 'latest.json'}")
     return 0
 

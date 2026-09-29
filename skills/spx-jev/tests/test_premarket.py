@@ -204,6 +204,7 @@ def test_a_jev_read_asks_what_is_due_sums_from_the_settled_open_and_grades(tmp_p
     assert s["primary"] == "open_30" and set(s["by"]) == {"open_10", "open_30"} and s["fresh"] == {"pm_q": "near"}
     assert set(s["learn_exclude"]) == {"10", "30"}
     assert c["sent"] is True and "unsent_reason" not in c
+    assert c["fresh_count"] == 1 and c["labels_count"] > 0 and not {"labels", "fresh", "held"} & set(c)   # counts, named as counts
     assert c["hour"]["read_at"] == at(9, 28).isoformat() and c["hour"]["primary"] == "open_30"
     assert c["story"][-1]["call"]["pick"] == c["hour"]["average"]["pick"] == "down"      # the call is the average-price sum's
     q = next(q for q in c["questions"] if q["id"] == "pm_q")

@@ -74,7 +74,7 @@ def test_a_read_answers_holds_sums_and_grades(tmp_path, monkeypatch):
     monkeypatch.setattr(service, "send_all", _answers())
     monkeypatch.setattr(service, "send", _sums)
     c = run_once(state, out, DOC, True, DAY)
-    assert c["symbol"] == "SPX" and c["sent"] and c["fresh"] == 2 and c["held"] == 0 and "book_asof" not in c
+    assert c["symbol"] == "SPX" and c["sent"] and c["fresh_count"] == 2 and c["held_count"] == 0 and "book_asof" not in c
     q = {e["id"]: e for e in c["questions"]}
     assert q["q_dir"]["answer"]["pick"] == "rising" and q["q_two"]["answer"]["pick"] == "yes"
     assert c["hour"]["pick"] == "flat" and c["hour"]["used"] == 2 and c["hour"]["missing"] == 0
@@ -234,7 +234,7 @@ def test_a_question_whose_label_says_nothing_happened_sleeps_on_the_card_and_in_
 def test_an_unsent_run_says_why_and_holds_nothing(tmp_path):
     state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
     c = run_once(state, state / "spx_jev", DOC, False, DAY, unsent_reason="not sent: no key on this machine")
-    assert not c["sent"] and c["fresh"] == 0 and c["hour"] is None
+    assert not c["sent"] and c["fresh_count"] == 0 and c["hour"] is None
     assert all(e["skipped"] == "not sent: no key on this machine" for e in c["questions"])
     assert not (state / "spx_jev" / "last_asked.json").exists()
 
