@@ -209,6 +209,14 @@ def test_a_lost_ask_the_lane_held_its_last_answer_for_is_stored_as_held_with_tha
     assert (r["lost"], r["held"]) == (0, 2)
 
 
+def test_a_read_archived_before_the_lane_recorded_its_re_asks_stores_them_as_unknown_not_as_none(built):
+    root, _ = built
+    reads = {r["read_id"]: r for r in _table(root, "reads")}
+    assert (reads[f"live:{EARLY}"]["reasked"], reads[f"live:{READ}"]["reasked"]) == (None, 1)   # only READ's cadence has reasked
+    ans = {(a["read_id"], a["question_id"]): a["reasked"] for a in _table(root, "answers")}
+    assert (ans[(f"live:{EARLY}", "day_character")], ans[(f"live:{READ}", "shock_state")]) == (None, False)
+
+
 def test_a_call_keeps_jev_alone_the_clock_the_blend_the_learned_mix_and_what_was_shown(built):
     root, _ = built
     calls = {(c["read_id"], c["horizon"]): c for c in _table(root, "calls")}

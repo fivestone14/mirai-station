@@ -81,7 +81,7 @@ from .state_builder import (CONTEXT_SUBDIR, DEFAULT_STATE_DIR, LIVE_BARS_SUBDIR,
 STORE_SUBDIR = Path("spx_jev") / "store"
 DB_NAME = "spx_jev.duckdb"
 PART = "part-0.parquet"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 CATCH_UP_DAYS = 7              # a run rebuilds every market day this many calendar days back, so a late save is picked up
 BUILD_AFTER_CLOSE_MIN = 30     # today counts once the 16:20 saves (save_day, overnight) have had ten minutes
 PROB_SUM_TOLERANCE = 0.05      # JEV rounds each option to two places, so six options can sum to 0.97
@@ -294,7 +294,7 @@ READS = Table("reads", _read_cols(
     ("ruler_source", STR, False), ("ruler_points", NUM, False), ("ruler_unit_sigma", NUM, False), ("ruler_sessions", INT, False),
     ("ruler_omitted", STR, False), ("band_flat_points", NUM, False), ("band_big_points", NUM, False),
     ("event_kinds", WORDS, False), ("event_soonest_min", INT, False), ("event_within_30", BOOL, False),
-    ("questions", INT, True), *((s, INT, True) for s in ANSWER_STATUSES), ("reasked", INT, True),
+    ("questions", INT, True), *((s, INT, True) for s in ANSWER_STATUSES), ("reasked", INT, False),
     ("labels_written", INT, True), ("labels_omitted", INT, True), ("labels_asleep", INT, True), ("market_values", INT, True),
     ("sum_used", INT, False), ("sum_left_out", INT, False), ("sum_missing", INT, False), ("sum_error", STR, False),
     ("skip_reasons", TEXTS, False), ("ruler_json", STR, False), ("band_json", STR, False), ("event_json", STR, False),
@@ -315,7 +315,7 @@ ANSWERS = Table("answers", _read_cols(
     ("group_id", STR, False), ("question_id", STR, True), ("status", STR, True), ("reason", STR, False),
     ("type", STR, False), ("pick", STR, False), ("confidence", NUM, False), ("probabilities", PROBS, False),
     ("score", NUM, False), ("noul", NUM, False), ("model", STR, False), ("question_hash", STR, False),
-    ("pool_version", STR, False), ("held_from", TS, False), ("held_found", BOOL, False), ("reasked", BOOL, True),
+    ("pool_version", STR, False), ("held_from", TS, False), ("held_found", BOOL, False), ("reasked", BOOL, False),
     ("reasked_from", TS, False), ("reask_why", STR, False)),
     key=("read_id", "question_id"),
     checks=(_is("status", ANSWER_STATUSES), _probabilities("probabilities"), _answered, _within("confidence", 0.0, 1.0),
@@ -517,6 +517,8 @@ def _read_rows(day: date, src: str, rec: dict, asked_by: dict, hours: dict) -> d
     cadence = rec.get("cadence") if isinstance(rec.get("cadence"), dict) else {}
     held, not_due = cadence.get("held") or {}, cadence.get("not_due") or {}
     reasked = cadence.get("reasked") or {}
+    # an archive from before the lane recorded its re-asks (cadence.reasked) cannot say whether one was: None
+    reask_known = "reasked" in cadence
     responses = rec.get("responses") if isinstance(rec.get("responses"), dict) else None
     pool_snap = rec.get("pool") if isinstance(rec.get("pool"), dict) else {}
     versions = next((s.get("members") for s in pool_snap.values() if isinstance(s, dict) and s.get("members")), {}) or {}
@@ -540,7 +542,7 @@ def _read_rows(day: date, src: str, rec: dict, asked_by: dict, hours: dict) -> d
                             **_answer_fields(a if status == "answered" else None),
                             "model": (reply or {}).get("model") if status == "answered" else None,
                             "question_hash": question_hash(q), "pool_version": versions.get(qid),
-                            "held_from": None, "held_found": None, "reasked": again is not None,
+                            "held_from": None, "held_found": None, "reasked": (again is not None) if reask_known else None,
                             "reasked_from": (again or {}).get("row_ts"), "reask_why": (again or {}).get("why")}
     skip_reasons: dict[str, str] = {}
     for gid, qs in (rec.get("skipped") or {}).items():
@@ -550,14 +552,14 @@ def _read_rows(day: date, src: str, rec: dict, asked_by: dict, hours: dict) -> d
             skip_reasons[qid] = why
             answers[qid] = {**base, "group_id": gid, "question_id": qid, "status": _skip_status(qid, str(why), not_due),
                             "reason": why, **_answer_fields(None), "model": None, "question_hash": None,
-                            "pool_version": versions.get(qid), "held_from": None, "held_found": None, "reasked": False,
+                            "pool_version": versions.get(qid), "held_from": None, "held_found": None, "reasked": False if reask_known else None,
                             "reasked_from": None, "reask_why": None}
     for qid, since in held.items():
         if qid in answers and answers[qid]["status"] == "answered":
             continue
         source = asked_by.get((qid, since))
         row = answers.get(qid) or {**base, "group_id": None, "question_id": qid, "reason": None, "pool_version": versions.get(qid),
-                                   "reasked": False, "reasked_from": None, "reask_why": None}
+                                   "reasked": False if reask_known else None, "reasked_from": None, "reask_why": None}
         # a group that got no answer holds its questions' last answers, and the sum reads those (service.run_once)
         reason = f"lost, its last answer held: {row['reason']}" if row.get("status") == "lost" else row["reason"]
         answers[qid] = {**row, "status": "held", "reason": reason, **_answer_fields((source or {}).get("answer")),
@@ -597,7 +599,7 @@ def _read_rows(day: date, src: str, rec: dict, asked_by: dict, hours: dict) -> d
             "event_kinds": [e.get("kind") for e in event.get("events") or [] if isinstance(e, dict)] if event else None,
             "event_soonest_min": event.get("soonest_min"), "event_within_30": event.get("within_30"),
             "questions": len(answers), **{s: counts.get(s, 0) for s in ANSWER_STATUSES},
-            "reasked": sum(1 for a in answers.values() if a["reasked"]),
+            "reasked": sum(1 for a in answers.values() if a["reasked"]) if reask_known else None,
             "labels_written": sum(1 for f in facts if f["source"] == "label" and f["status"] == "written"),
             "labels_omitted": sum(1 for f in facts if f["source"] == "label" and f["status"] == "omitted"),
             "labels_asleep": sum(1 for f in facts if f["status"] == "asleep"),
