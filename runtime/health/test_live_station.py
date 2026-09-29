@@ -52,6 +52,16 @@ PREMARKET_RUN_MIN = 10
 SPX_STORE_JOB = "com.mirai-station.spx-jev-store"
 STORE_FIRES_ET = "16:40"
 STORE_RUN_MIN = 10
+# the rest of the SPX fleet: the live and opening lanes and the four feeds they read
+SPX_JOBS = ("com.mirai-station.spx-jev", "com.mirai-station.spx-jev-tape", "com.mirai-station.spx-jev-bars",
+            "com.mirai-station.spx-jev-context", "com.mirai-station.spx-jev-overnight", "com.mirai-station.spx-jev-save-day")
+# The live and opening lanes' reads in market time (skills/spx-jev/spx_jev/lane.py: LIVE_READS less its 16:02
+# close-out, and TAPE.schedule) and how many minutes before its read time a read may be stamped (each lane's
+# read_grace_min: the live lane's diary row, the opening lane's bar); a unit test holds these to the lane's code. A
+# read is owed LANE_READ_OWED_MIN after its time: the bar or row wait, JEV's sends with their retries and the grading.
+SPX_LANE_READS = {"live": (tuple(f"{(572 + 30 * k) // 60:02d}:{(572 + 30 * k) % 60:02d}" for k in range(13)), 6),
+                  "tape": (tuple(f"{(575 + 5 * k) // 60:02d}:{(575 + 5 * k) % 60:02d}" for k in range(12)), 2)}
+LANE_READ_OWED_MIN = 10
 DASHBOARD_URL = "http://127.0.0.1:8787/api/health"
 
 
@@ -371,6 +381,38 @@ def premarket_fired(lane_dir: Path, now: datetime, first: str, close_out: str,
 
 def _market_day(d) -> bool:
     return d.weekday() < 5 and d not in market_status._market_holidays(d.year)
+
+
+def lane_read(lane_dir: Path, now: datetime, reads: tuple[str, ...], grace_min: float, owed_min: float,
+              what: str) -> tuple[bool | None, str]:
+    """On a market day an SPX lane has a read on file for each of its ``reads`` owed by now (``owed_min`` past its
+    time, and before the day's close, 13:00 on a half day): a record in today's read file standing for it, the latest
+    read time at or before the record's stamp plus ``grace_min``, stamped no later than ``owed_min`` after it. A read the service skipped (a stale diary, a stopped bars feed) writes no
+    record, so it fails here: on 09-28 the 10:02 live read and the tape reads from 10:00 to 10:10 were lost that way,
+    and nothing said so."""
+    now = now.astimezone(ET)
+    day = now.date()
+    if not _market_day(day):
+        return None, f"skipped, {day} is not a market day"
+    close = datetime.combine(day, market_status._EARLY_CLOSE if day in market_status._half_days(day.year) else time(16, 0), tzinfo=ET)
+
+    def at(hhmm: str) -> datetime:
+        return datetime.combine(day, time.fromisoformat(hhmm), tzinfo=ET)
+    owed = [at(r) for r in reads if at(r) < close and at(r) + timedelta(minutes=owed_min) <= now]
+    if not owed:
+        return None, f"skipped, the {what} lane's first read is owed at {at(reads[0]) + timedelta(minutes=owed_min):%H:%M} ET"
+    # a record stands for the latest read time at or before its stamp plus the grace, as the service's read_slot has it
+    done = set()
+    for r in _rows(Path(lane_dir) / f"{day.isoformat()}.jsonl"):
+        if (t := _parse_ts(r.get("row_ts"))) is not None:
+            slot = max((at(x) for x in reads if at(x) <= t.astimezone(ET) + timedelta(minutes=grace_min)), default=None)
+            if slot is not None and t <= slot + timedelta(minutes=owed_min):
+                done.add(slot)
+    missed = [t for t in owed if t not in done]
+    if missed:
+        return False, (f"the {what} lane has no read for {', '.join(f'{t:%H:%M}' for t in missed)} ET "
+                       f"(a read is owed {owed_min:g} min after its time)")
+    return True, f"the {what} lane read at all {len(owed)} of its reads due by {now:%H:%M} ET"
 
 
 def store_built(store_dir: Path, now: datetime, fires: str, run_min: float) -> tuple[bool, str]:
@@ -928,6 +970,51 @@ def test_the_premarket_pager_holds_the_lane_to_the_limits_this_review_does(monke
         (PREMARKET.schedule[0], PREMARKET.close_out, premarket.LATE_FIRE_MIN, PREMARKET_RUN_MIN)
 
 
+def _lane(tmp_path: Path, *stamps: datetime, day: str = PRE_DAY) -> Path:
+    _write(tmp_path / f"{day}.jsonl", *({"row_ts": t.isoformat(), "sent": True} for t in stamps))
+    return tmp_path
+
+
+def test_lane_read_passes_a_read_for_every_read_time_owed(tmp_path):
+    reads, grace = SPX_LANE_READS["tape"]
+    lane = _lane(tmp_path, *(_pre_at(r) for r in reads[:3]))
+    assert lane_read(lane, _pre_at("09:55"), reads, grace, 10, "tape") == (True, "the tape lane read at all 3 of its reads due by 09:55 ET")
+    assert lane_read(lane, _pre_at("09:44"), reads, grace, 10, "tape")[0] is None                 # the 09:35 read is owed from 09:45
+
+
+def test_lane_read_fails_the_reads_a_stopped_feed_skipped(tmp_path):
+    """09-28: the bars feed stopped from 09:56 to 10:10, so the tape lane skipped its 10:00 to 10:10 reads, and the live
+    lane skipped 10:02 on a stale diary; nothing reviewed it."""
+    reads, grace = SPX_LANE_READS["tape"]
+    lane = _lane(tmp_path, *(_pre_at(r) for r in ("09:35", "09:40", "09:45", "09:50", "09:55", "10:15", "10:20")))
+    ok, why = lane_read(lane, _pre_at("10:30"), reads, grace, 10, "tape")
+    assert ok is False and why == "the tape lane has no read for 10:00, 10:05, 10:10 ET (a read is owed 10 min after its time)"
+    live, grace = SPX_LANE_READS["live"]
+    rows = _lane(tmp_path / "live", _pre_at("09:30") + timedelta(seconds=40), _pre_at("10:31") + timedelta(seconds=20))   # rows stand a little early
+    ok, why = lane_read(rows, _pre_at("10:45"), live, grace, 10, "live")
+    assert ok is False and why.startswith("the live lane has no read for 10:02 ET")
+
+
+def test_lane_read_owes_nothing_after_a_half_days_close_or_on_a_day_the_market_is_shut(tmp_path):
+    live, grace = SPX_LANE_READS["live"]
+    half = "2026-11-27"
+    lane = _lane(tmp_path, *(_pre_at(r, half) for r in live if r < "13:00"), day=half)
+    assert lane_read(lane, _pre_at("16:30", half), live, grace, 10, "live")[0] is True
+    assert lane_read(tmp_path, _pre_at("12:00", "2026-11-26"), live, grace, 10, "live")[0] is None
+
+
+def test_the_lane_reads_this_review_owes_are_the_lanes_own(monkeypatch):
+    monkeypatch.syspath_prepend(str(_RUNTIME.parent / "skills" / "spx-jev"))
+    from spx_jev.lane import LIVE, LIVE_READS, TAPE
+    assert SPX_LANE_READS["live"] == (LIVE_READS[:-1], LIVE.read_grace_min) and LIVE_READS[-1] == "16:02"
+    assert SPX_LANE_READS["tape"] == (TAPE.schedule, TAPE.read_grace_min)
+
+
+def test_the_spx_jobs_this_review_loads_are_the_installers():
+    installed = set(re.findall(r'"(com\.mirai-station\.spx-[\w-]+)\.plist"', (_RUNTIME / "scripts" / "install-launchd.sh").read_text()))
+    assert installed == set(SPX_JOBS) | {SPX_PREMARKET_JOB, SPX_PREMARKET_DEADMAN, SPX_STORE_JOB}
+
+
 def _store(tmp_path: Path, *days: str) -> Path:
     for d in days:
         (tmp_path / "validation" / f"day={d}").mkdir(parents=True)
@@ -1023,6 +1110,21 @@ def test_live_sndk_jobs_are_loaded(station):
 def test_live_spx_premarket_job_is_loaded(station):
     _hold(jobs_loaded(station.listing, (SPX_PREMARKET_JOB, SPX_PREMARKET_DEADMAN), "SPX pre-market"),
           "launchctl list | grep -E 'spx-jev-premarket|spx-premarket-deadman'")
+
+
+@live
+def test_live_spx_lane_and_feed_jobs_are_loaded(station):
+    _hold(jobs_loaded(station.listing, SPX_JOBS, "SPX lane and feed"), "launchctl list | grep spx-jev")
+
+
+@live
+@pytest.mark.parametrize("lane", sorted(SPX_LANE_READS))
+def test_live_spx_lane_read_at_every_read_owed(station, lane):
+    reads, grace = SPX_LANE_READS[lane]
+    folder = station.state / "spx_jev" / ("lanes/tape" if lane == "tape" else "")
+    job = "com.mirai-station.spx-jev" + ("-tape" if lane == "tape" else "")
+    _hold(lane_read(folder, station.now, reads, grace, LANE_READ_OWED_MIN, lane),
+          f"cut -c1-60 {folder}/{station.day}.jsonl; grep -E 'skipping|failed' /tmp/{job.removeprefix('com.')}.err | tail -n 5")
 
 
 @live
