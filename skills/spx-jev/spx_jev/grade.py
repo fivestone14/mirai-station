@@ -47,7 +47,9 @@ The question weights
     Every graded line of the primary horizon, with the picks each live question gave afresh on that
     read, goes to the question weights' learn, the one seam a learning method plugs into. The live
     lane learns the loop there (pool.PoolWeights: every newly sealed session applied, each question's
-    standing reported, every weight still 1.0); the tape and premarket lanes' weights are neutral.
+    standing reported, every weight still 1.0); the tape and premarket lanes' weights are neutral. With the lane's
+    integral_loop switch on (off on every lane) the loop learns from the average-price grade instead
+    (integral_loop.IntegralPoolWeights), in state of its own, and the end-price loop's files are left as they are.
 
 A lane (lane.py) grades by its own settings. The tape lane's one horizon is banded from the record
 itself: the tape unit measured at the read prices a flat and a big band in index points, and the
@@ -432,13 +434,18 @@ def live_options(doc: dict | Path | str) -> dict[str, set[str]]:
 def weights_from(grades: list[dict], allowed: dict[str, set[str]], lane: Lane = LIVE, out_dir: Path | None = None) -> dict:
     """Each sum's tally from every grade line, and the question weights from the lines whose primary sum
     was graded, less those a scheduled event sat inside: the learning loop's (pool.PoolWeights, which
-    reads the lane's records in ``out_dir``) on a lane that learns it, else neutral. ``allowed`` is
-    live_options(): only live questions are weighed, and only picks from their current options count."""
+    reads the lane's records in ``out_dir``; integral_loop.IntegralPoolWeights with the lane's integral_loop
+    switch on) on a lane that learns it, else neutral. ``allowed`` is live_options(): only live questions
+    are weighed, and only picks from their current options count."""
     primary = [g for g in grades if g.get("band")]
     sums = {qid: {**_tally([g[qid] for g in grades if isinstance(g.get(qid), dict)]), "event_reads": _events(grades, qid)}
             for qid in lane.horizons}
     graded = [g for g in primary if not g.get("event_within_30")]
-    weights = PoolWeights.learn(graded, allowed, out_dir, lane) if lane.pool else QuestionWeights.learn(graded, allowed, out_dir)
+    if lane.pool and lane.integral_loop:
+        from .integral_loop import IntegralPoolWeights   # only when switched on: it reads this module, through clock too
+        weights = IntegralPoolWeights.learn(graded, allowed, out_dir, lane)
+    else:
+        weights = PoolWeights.learn(graded, allowed, out_dir, lane) if lane.pool else QuestionWeights.learn(graded, allowed, out_dir)
     out = {"graded_runs": len(primary), "primary": lane.primary, "sums": sums, **weights.as_json()}
     if lane.tag:
         out["lane"] = lane.tag

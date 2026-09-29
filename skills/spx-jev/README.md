@@ -210,6 +210,13 @@ archive there too, under `archive/`.
    answered, with the Brier and log loss of its odds, else the end-price
    sum's, an unsure one passed. That grade is the phone's verdict; nothing
    learns from it yet.
+6b. The switch, off (`integral_loop=False` on `LIVE` in `lane.py`): set it to
+   `True` and the learning loop learns from the average-price grade instead of
+   the end price (`integral_loop.py`): the call's odds, the time-of-day odds on
+   the average price as its reference, its own state and log, stale and event
+   reads left out, and constants of its own, so neither loop can ever load the
+   other's state; the end-price loop's files are then left as they are. The
+   gate is 10 SPX sessions of average-price grades.
 
 ## The files it writes, all under `state/spx_jev/`
 
@@ -227,6 +234,8 @@ archive there too, under `archive/`.
   and the edge JEV was told (`edge_told`); version 1 lines still read.
 - `pool_30.json`, `pool_60.json`, `pool_log.jsonl`: the learning loop's state
   per horizon and one log line per horizon per session applied or refused.
+- `pool_30_integral.json`, `pool_integral_log.jsonl`: the same loop learnt
+  from the average-price grade, written only while its switch is on (the pipeline, 6b).
 - `archive/{day}.jsonl`: the raw archive for later machine learning, one line
   per record, append only, `schema_version` 5. A `read` record holds the read
   id (lane and row timestamp), the labels and the omitted ones with reasons,

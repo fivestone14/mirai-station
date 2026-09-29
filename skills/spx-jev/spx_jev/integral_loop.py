@@ -1,0 +1,254 @@
+"""The learning loop on the average-price grade: built, and off until Will turns it on (lane.Lane.integral_loop).
+
+Switched on, the grader hands the question weights this loop instead of pool.PoolWeights: the same experts, day-level
+update, e-processes, statuses and promotion (pool.py, read as a library, never changed here), learned on the lane's
+primary box from the average-price sum's graded reads alone, each read's outcome the label integral_grades.jsonl gave
+it under this integral.RULE_VERSION, never the end price's band. Switched off, nothing here is imported, read or
+written. The gate for turning it on is GATE_SESSIONS SPX sessions of average-price grades.
+
+The reference R is the time-of-day odds counted on the average price (clock.integral_odds), as a read on the session
+could know them: the counts the clock stored in clock_integral_days.json for the counted sessions before it, read and
+never counted here, so no end-price count can reach it. Its version moves only with the counting rule, so the
+calibration carries from one session to the next as the counted sessions roll. JEV's sum is the average-price sum's own
+odds, blend50 its blend with those odds as the phone showed it, and the question block's answers are the ones the
+read's end-price snapshot wrote down (pool.snapshot's ``q_probs``, ``members``, ``fresh``): the same answers, given
+before either outcome.
+
+The forecasts of a read are formed when its session is applied, from the state as of the last session applied, which
+is the state a read that day would have seen: nothing is written at the read. A session is sealed once every read's
+primary is terminal in grades.jsonl and each one graded there has its line in integral_grades.jsonl; an unsealed one
+stops the update (fail closed), and one none of whose reads carries an average-price call is from before the question
+and is passed over. Left out, as the end-price loop leaves them out: a half day, a scheduled event inside the window
+(pool.event_inside), a read with no outcome; and here also a stale read (integral.stale_read), a read with no
+average-price call, and one whose answers or reference are not on file, each with its reason.
+
+Its constants are pool's with this loop's outcome, the grade's rule, the reference's rule and LOOP_VERSION: a state
+learned under any others, an end-price state among them, stops the update before anything is applied, as pool.update
+does, so the two histories can never be mixed, whichever way the switch is flipped.
+
+Files, beside the lane's records, apart from the end-price loop's:
+    pool_30_integral.json        the state of the primary box (pool_{minutes}_integral.json)
+    pool_integral_log.jsonl      one line per session applied or refused, with its manifest
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from collections import Counter
+from datetime import datetime, timezone
+from pathlib import Path
+
+from . import clock, integral, pool
+from .grade import INTEGRAL_NAME, average_call
+from .lane import LIVE, Lane
+from .sessions import SESSION_CLOSE, session_close
+from .state_builder import ET, load_jsonl, parse_ts
+
+LOOP_VERSION = 1                # bump when this loop's learning changes: a state from before stops the update
+GATE_SESSIONS = 10              # SPX sessions of average-price grades before Will decides whether to switch it on
+LOG_NAME = "pool_integral_log.jsonl"
+CONSTANTS = {**pool.CONSTANTS, "outcome": "integral.label", "integral_rule": integral.RULE_VERSION,
+             "reference_rule": clock.INTEGRAL_RULE_VERSION, "loop_version": LOOP_VERSION}
+CONSTANTS_HASH = hashlib.sha256(json.dumps(CONSTANTS, sort_keys=True).encode()).hexdigest()[:16]
+CODE_HASH = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:16]
+
+
+def cold_state() -> dict:
+    """pool.cold_state under this loop's constants."""
+    return {**pool.cold_state(), "constants_hash": CONSTANTS_HASH}
+
+
+def state_path(out_dir: Path, lane: Lane = LIVE) -> Path:
+    return Path(out_dir) / f"pool_{lane.horizons[lane.primary][0]}_integral.json"
+
+
+def load_state(out_dir: Path, lane: Lane = LIVE) -> dict:
+    try:
+        return json.loads(state_path(out_dir, lane).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return cold_state()
+
+
+def save_state(out_dir: Path, lane: Lane, state: dict) -> None:
+    """As pool.save_state writes it: canonical, in one step."""
+    path = state_path(out_dir, lane)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(pool._canonical(state), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+class Reference:
+    """The average-price time-of-day odds over ``days`` (each counted session's ``{phase: {outcome: n}}``), in the shape
+    pool.snapshot reads a Baseline in: the phase's odds shrunk toward the whole day's (clock._phase_odds, as
+    clock.integral_odds gives them), the whole day's shares, and the counting rule's version."""
+
+    def __init__(self, days: list[dict], version: str) -> None:
+        self.days, self.version = days, version
+
+    def clock(self, h: str, now: datetime) -> dict[str, float]:
+        return clock._phase_odds(self.days, clock.phase_of(now))["probabilities"]
+
+    def whole_day(self, h: str) -> dict[str, float]:
+        whole = Counter()
+        for counts in self.days:
+            for c in counts.values():
+                whole.update(c)
+        n = sum(whole.values())
+        return {o: whole[o] / n for o in clock.OUTCOMES}
+
+
+def reference(cache: dict, day: str, version: str) -> Reference | None:
+    """The reference a read on ``day`` could know, from the clock's stored days (``cache``): the counted sessions among
+    the clock.MAX_SESSIONS before it with clock.MIN_SCORED_READS reads, as clock.integral_odds counts them; None with
+    fewer than clock.MIN_SESSIONS."""
+    days = sorted((d for d in cache if d < day), reverse=True)[:clock.MAX_SESSIONS]
+    counted = [cache[d]["counts"] for d in days if sum(sum(c.values()) for c in cache[d]["counts"].values()) >= clock.MIN_SCORED_READS]
+    return Reference(counted, version) if len(counted) >= clock.MIN_SESSIONS else None
+
+
+def average_lines(out_dir: Path, lane: Lane = LIVE) -> dict[str, dict]:
+    """``{row_ts: its line}`` of the primary box in integral_grades.jsonl under this rule_version, the first of each."""
+    out: dict[str, dict] = {}
+    for g in load_jsonl(Path(out_dir) / INTEGRAL_NAME):
+        if g.get("horizon") == lane.primary and g.get("rule_version") == integral.RULE_VERSION:
+            out.setdefault(g.get("row_ts"), g)
+    return out
+
+
+def _session_reads(recs: list[dict], lines: dict[str, dict], state: dict, ref: Reference | None,
+                   lane: Lane) -> tuple[list[dict], dict[str, str]]:
+    """The session's included reads, each with its snapshot formed from ``state`` and its average-price label, and every
+    excluded one with its reason."""
+    h, minutes = lane.primary, lane.horizons[lane.primary][0]
+    half_day = session_close(parse_ts(recs[0]["row_ts"])).time() != SESSION_CLOSE
+    reads, excluded = [], {}
+    for r in recs:
+        avg, line = average_call(r, h, lane), lines.get(r["row_ts"])
+        own = (r.get("pool") if isinstance(r.get("pool"), dict) else {}).get(h) or {}
+        if half_day:
+            excluded[r["row_ts"]] = "a half day"
+        elif pool.event_inside(r, minutes):
+            excluded[r["row_ts"]] = f"a scheduled event inside the {minutes}-minute window"
+        elif avg is None:
+            excluded[r["row_ts"]] = "no average-price call on this read"
+        elif line is None or not line.get("graded"):
+            excluded[r["row_ts"]] = "no outcome on the average price" + (f": {line.get('reason')}" if line else "")
+        elif line.get("stale_read"):
+            excluded[r["row_ts"]] = "a stale read: no bar traded its spot in the minutes up to it"
+        elif "members" not in own:
+            excluded[r["row_ts"]] = "no answers on file: the read's end-price snapshot was left out"
+        elif ref is None:
+            excluded[r["row_ts"]] = (f"no snapshot: fewer than {clock.MIN_SESSIONS} sessions of time-of-day odds on the average "
+                                     "price before this one")
+        else:
+            blended = (avg.get("blend") or {}).get("used")
+            snap = pool.snapshot(state, ref, h, parse_ts(r["row_ts"]), avg["jev"]["probabilities"] if blended else avg["probabilities"],
+                                 avg["clock"]["probabilities"] if blended else None, avg["probabilities"],
+                                 own["q_probs"], own["members"], set(own["fresh"]))
+            if "left_out" in snap:
+                excluded[r["row_ts"]] = f"no snapshot: {snap['left_out']}"
+            else:
+                reads.append({"row_ts": r["row_ts"], "snapshot": snap, "outcome": line["label"]})
+    return reads, excluded
+
+
+def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Path | None = None) -> dict[str, str]:
+    """Apply every sealed session after the watermark, oldest first, to the primary box, reading the lane's records in
+    ``out_dir`` and keeping the state and the log in ``into`` (``out_dir`` itself unless another is named). A
+    session already applied is never applied again, and a state made under other constants stops the run before
+    anything is applied. Returns ``{h: what happened}``, as pool.update does."""
+    out_dir = Path(out_dir)
+    into = Path(into) if into is not None else out_dir
+    today = today or datetime.now(ET).date().isoformat()
+    h = lane.primary
+    state = load_state(into, lane)
+    if state.get("constants_hash") != CONSTANTS_HASH:
+        # a state learned under other constants, the end price's among them, is never added to
+        _log(into, {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "code": CODE_HASH, "applied": False,
+                    "why": f"constants changed since {h} began on the average price: stopped, fail closed"})
+        return {h: "constants changed; stopped"}
+    said = {h: "nothing new to apply"}
+    outcomes = pool.graded_outcomes(load_jsonl(out_dir / "grades.jsonl"), lane.horizons)
+    lines = average_lines(out_dir, lane)
+    key = clock._integral_rule_key(lane)
+    cache = clock._load_cache(out_dir / clock.INTEGRAL_CACHE_NAME, key)
+    version = f"integral_clock:{hashlib.sha256(key.encode()).hexdigest()[:16]}"
+    hour_dir = out_dir / "hour"
+    for day in sorted(p.stem for p in hour_dir.glob("*.jsonl")) if hour_dir.exists() else []:
+        if day <= (state["last_session_applied"] or "") or day >= today:
+            continue
+        recs, seen = [], set()
+        for r in load_jsonl(hour_dir / f"{day}.jsonl"):
+            if isinstance(r.get("by"), dict) and r.get("row_ts") not in seen:
+                seen.add(r["row_ts"])
+                recs.append(r)
+        head = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "session": day, "code": CODE_HASH, "horizon": h}
+        # a read graded at the box in grades.jsonl waits for its average-price line; one closed out there needs none
+        unsealed = [r for r in recs if h not in outcomes.get(r["row_ts"], {}).get("done", set())
+                    or (h in outcomes[r["row_ts"]]["bands"] and r["row_ts"] not in lines)]
+        if recs and not any(average_call(r, h, lane) for r in recs):
+            why = "no read carries an average-price call: before the question"
+        elif unsealed:
+            _log(into, {**head, "applied": False, "why": "unsealed: a read still has its average-price grade to come"})
+            said = {h: f"{day}: unsealed; stopped"}
+            break
+        else:
+            why = None
+        if why or not recs:
+            state["last_session_applied"] = day
+            _log(into, {**head, "applied": False, "why": why or "no reads"})
+            continue
+        reads, excluded = _session_reads(recs, lines, state, reference(cache, day, version), lane)
+        state["last_session_applied"] = day
+        body: dict = {"manifest": {"included": [r["row_ts"] for r in reads], "excluded": excluded}}
+        if reads:
+            ref_version = reads[-1]["snapshot"]["baseline"]
+            if state["baseline"] not in (None, ref_version):
+                state["cal"] = cold_state()["cal"]     # a new counting rule is a new reference: its calibration starts again
+                body["baseline_changed"] = {"from": state["baseline"], "to": ref_version}
+            state["baseline"] = ref_version
+            body["membership"] = pool.membership(state, reads[-1]["snapshot"]["members"], day)
+            body.update(pool.apply_session(state, day, reads, lane.horizons[h][0], True, None, lane.graded_from_settled_open))
+        state = json.loads(pool._canonical(state))      # rounded after every session, as pool.update does
+        _log(into, {**head, "applied": bool(reads), **pool._rounded(body)})
+        said[h] = f"{day}: applied, {len(reads)} reads"
+    save_state(into, lane, state)
+    return said
+
+
+def _log(out_dir: Path, line: dict) -> None:
+    with open(Path(out_dir) / LOG_NAME, "a", encoding="utf-8") as f:
+        f.write(json.dumps(line, ensure_ascii=False, sort_keys=True) + "\n")
+
+
+class IntegralPoolWeights(pool.PoolWeights):
+    """pool.PoolWeights on the average-price grade: learn() applies every newly sealed session to this loop's state and
+    reports each live question's standing from it, every weight still 1.0. The phone never shows this pool: it reads the
+    end-price loop's promotion (pool.shown), so ``on_phone`` is always false."""
+
+    method = "pool_v1_integral"
+
+    @classmethod
+    def learn(cls, graded: list[dict], allowed: dict[str, set[str]], out_dir: Path | None = None,
+              lane: Lane = LIVE) -> "IntegralPoolWeights":
+        applied = update(out_dir, lane=lane) if out_dir is not None else {}
+        state = load_state(out_dir, lane) if out_dir is not None else cold_state()
+        n = Counter(qid for g in graded for qid, p in (g.get("fresh") or {}).items() if qid in allowed and str(p) in allowed[qid])
+        block = {side: pool._prob(state["block"][side]) for side in pool.SIDES}
+        questions = {}
+        for qid in sorted(allowed):
+            ev = state["evidence"].get(qid)
+            entry = {"weight": 1.0, "n": n[qid], "in_step_3": True,
+                     "why": "every live question keeps its sentence; the loop's standing on the average price is a label for a person"}
+            if ev is not None:
+                entry.update({"days": ev["days"], "status": ev["status"],
+                              "e": {part: {k: ev[part][k]["e"] for k in ("better", "worse")} for part in ("move", "direction")},
+                              "against_no_change": {side: block[side].get(qid, 0.0) / block[side][pool.NO_CHANGE] for side in pool.SIDES}})
+            questions[qid] = entry
+        top = {side: pool._prob(state["top"][side]) for side in pool.SIDES}
+        return cls(questions, {"applied": applied, "last_session_applied": state["last_session_applied"],
+                               "phone": {"shows": state["phone"]["shows"], "on_phone": False,
+                                         "promote_e": state["phone"]["promote"]["e"], "days": state["phone"]["promote"]["n"]},
+                               "top": top, "frozen": state["frozen"], "outcome": "average price"})
+
