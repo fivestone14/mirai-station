@@ -273,11 +273,15 @@ def snapshot(state: dict, baseline: "Baseline", h: str, now: datetime, jev: dict
     members and mixture, the pool with its P(move) and P(up | move), the exact blend as the phone showed
     it, the raw clock the calibration learns from, the questions' soft answers and which were awake
     (answered, fresh or held) and fresh, and each live question's version. Weights and tables are the
-    state's as of the last session applied. ``{"left_out": why}`` when an expert cannot be formed."""
+    state's as of the last session applied; the calibration is too, unless it was learned against another
+    baseline version, which the update resets at the next session applied: a read under a refitted
+    baseline is calibrated from nothing, as that update will learn it. ``{"left_out": why}`` when an
+    expert cannot be formed."""
     if not live_clock:
         return {"left_out": "no time-of-day odds this read, so today's blend is JEV alone and blend50 cannot be formed"}
     raw_clock, long_run = baseline.clock(h, now), baseline.whole_day(h)
-    r = calibrated(raw_clock, state["cal"], long_run)
+    cal = state["cal"] if state["baseline"] in (None, baseline.version) else cold_state()["cal"]
+    r = calibrated(raw_clock, cal, long_run)
     j = spread_unsure(jev, r)
     experts = {f"jev_share_{s:.1f}": {k: s * j[k] + (1 - s) * r[k] for k in OUTCOMES} for s in JEV_SHARES}
     c = {k: float(live_clock.get(k, 0.0)) for k in OUTCOMES}

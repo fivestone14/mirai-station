@@ -56,6 +56,20 @@ def test_at_a_read_the_mixes_run_from_the_reference_to_jev_and_an_untaught_quest
     assert snapshot(cold_state(), FakeBaseline(), "next_30", at(11, 2), JEV, None, SHOWN, {}, MEMBERS, set())["left_out"].startswith("no time-of-day odds")
 
 
+def test_a_read_under_a_refitted_baseline_is_calibrated_from_nothing_not_by_the_old_baselines_table():
+    """The table learned against the old baseline is reset when the next session is applied under the new one, so a
+    read before then is calibrated as that session will be learned: from nothing."""
+    state = cold_state()
+    state["cal"] = {"O": {"up": 3.0, "flat": 0.5, "down": 0.5}, "E": {"up": 0.8, "flat": 2.4, "down": 0.8}}
+    state["baseline"] = FakeBaseline.version
+    tilted_cal = _snap(state)["experts"]["clock_cal"]
+    assert tilted_cal["up"] > floored(CLOCK)["up"] + 0.05                   # the same baseline: its table still applies
+    state["baseline"] = "v1:before-the-refit"
+    s = _snap(state)
+    assert s["experts"]["clock_cal"] == s["experts"][REFERENCE] == floored(CLOCK)
+    assert state["cal"]["O"]["up"] == 3.0                                  # the snapshot never writes the state
+
+
 def _session(state, outcome_by_read, jev=JEV, answers=None, day="2026-09-18"):
     reads = []
     for k, y in enumerate(outcome_by_read):
