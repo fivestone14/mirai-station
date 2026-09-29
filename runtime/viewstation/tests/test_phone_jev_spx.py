@@ -266,6 +266,27 @@ def test_the_header_line_names_the_row_in_the_viewers_time_and_knows_the_close()
     assert _run(js, {"now": "2026-09-28T15:50:00-04:00", "c": last, "m": 18}, TOKYO).startswith("row 04:31, 18 min ago")
 
 
+# Widths measured in Chrome with the shipped face at the header line's 13px: the stale line with its label count ran
+# past the 328px column on the owner's 360px phone and was cut before its next read ("next read 07:…")
+_SUB_W = {"row 06:31, 39 min ago, stale, 125 labels, next read 07:32": 333.80, "row 06:31, 39 min ago, stale, next read 07:32": 268.56,
+          "row 12:31, 20 hr 29 min ago, stale, next read 07:32": 297.38, "row 08:01, 12 min ago, 125 labels, next read 08:32": 298.19}
+
+
+def test_a_stale_header_line_keeps_its_next_read_on_the_owners_360px_phone():
+    """Monday 10:10 ET: the 09:31 card was 39 minutes old, and its line was cut at "next read 07:…". A stale line
+    drops the label count, which says least about an old card, so the next read fits."""
+    js = ("var READ_MINUTES = [2, 32], GONE_MIN = 60, STALE_MIN = 35, ROW_LEAD_MIN = 4, LAST_READ_DEFAULT = '15:32';"
+          + _fn("nextRead") + _fn("ageWord") + _fn("subLine") + "console.log(JSON.stringify(subLine(D.c, D.m)));")
+    c = {"row_ts": "2026-09-28T09:31:20-04:00", "labels": 125,
+         "session": {"close": "2026-09-28T16:00:00-04:00", "last_read": "2026-09-28T15:32:00-04:00"}}
+    stale = _run(js, {"now": "2026-09-28T10:10:00-04:00", "c": c, "m": 39}, LA)
+    assert stale == "row 06:31, 39 min ago, stale, next read 07:32"
+    column = 360 - 2 * 16
+    assert _SUB_W[stale] <= column < _SUB_W["row 06:31, 39 min ago, stale, 125 labels, next read 07:32"]
+    assert _SUB_W["row 12:31, 20 hr 29 min ago, stale, next read 07:32"] <= column
+    assert _SUB_W["row 08:01, 12 min ago, 125 labels, next read 08:32"] <= column
+
+
 def test_the_last_lane_read_is_known_from_the_schedules_stamps():
     reads = [f"2026-09-28T{t}:00-04:00" for t in ("09:35", "09:40", "09:45", "09:50", "09:55", "10:00", "10:05", "10:10",
                                                     "10:15", "10:20", "10:25", "10:30")]

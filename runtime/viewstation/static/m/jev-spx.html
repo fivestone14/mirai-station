@@ -432,13 +432,15 @@ details .q{margin-top:8px}
     return m + ' min ago';
   }
   // an hour after a row past the day's last read (the card's session, instants both) there is nothing newer
-  // to wait for, and after the close neither; an hour after any earlier row the card is stale
+  // to wait for, and after the close neither; an hour after any earlier row the card is stale. A stale line drops
+  // the label count, so the next read still fits the one line on a 360px phone
   function subLine(c, m){
     var at = viewerTime(c.row_ts), n = c.labels + ' labels', s = c.session || {};
     var lr = Date.parse(s.last_read), closed = Date.now() >= Date.parse(s.close);
     if(m != null && (m > GONE_MIN || closed) && Date.parse(c.row_ts) >= lr - ROW_LEAD_MIN * 60000) return 'after the close, last row ' + at + ', ' + n;
     var next = nextRead(lr); var hint = next != null ? ', next read ' + viewerTime(next) : '';
-    return 'row ' + at + ', ' + ageWord(m) + (m != null && m > STALE_MIN ? ', stale' : '') + ', ' + n + hint;
+    var stale = m != null && m > STALE_MIN;
+    return 'row ' + at + ', ' + ageWord(m) + (stale ? ', stale' : ', ' + n) + hint;
   }
   // The service reads at :02 and :32 market time. The next mark is the earliest one still ahead of the
   // market clock, never past the day's last read, found on the market clock and handed back as an instant,
