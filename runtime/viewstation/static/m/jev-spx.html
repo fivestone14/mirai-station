@@ -1106,13 +1106,15 @@ details .q{margin-top:8px}
     return !!(t.closed_out_at || (r && r.length && Date.parse(t.row_ts) >= Date.parse(r[r.length - 1]) - 60000));
   }
   // after the opening: one line with the morning's score, counted by the service from the lane's grades; an unsure
-  // pick made no call, so it is counted apart and the score is of the calls committed to
+  // pick made no call, so it is counted apart and the score is of the calls committed to. A call closed for good (a
+  // halted window) is never graded, not still to grade: the same words as the service's (service.tally_words)
   function openingDone(t){
     var y = t.tally, f = el('div', 'card fold');
-    var over = lastLaneRead(t), unsure = y.unsure || 0, rest = y.graded === y.calls ? '' : ', ' + (y.calls - y.graded) + ' still to grade';
+    var over = lastLaneRead(t), unsure = y.unsure || 0, closed = y.closed || 0, pending = y.calls - y.graded - closed;
+    var rest = (pending > 0 ? ', ' + pending + ' still to grade' : '') + (closed ? ', ' + closed + ' never graded' : '');
     f.appendChild(el('span', 'k', over ? 'opening done' : 'opening lane, no call open'));
     f.appendChild(el('span', 'l', unsure ? y.right + ' of ' + (y.graded - unsure) + ' committed calls right, ' + unsure + ' unsure' + rest
-                                  : y.graded === y.calls ? y.right + ' of ' + y.calls + ' calls right'
+                                  : !rest ? y.right + ' of ' + y.calls + ' calls right'
                                   : y.right + ' of ' + y.graded + ' graded calls right' + rest));
     return f;
   }

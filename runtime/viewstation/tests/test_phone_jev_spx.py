@@ -206,6 +206,19 @@ def test_an_unsure_call_is_an_abstention_on_the_page_never_a_wrong_one():
         "UnsureResult", "It ended Down big. The call said Unsure 40%. Unsure makes no call, so it is counted apart from the calls right and wrong."]
 
 
+
+def test_a_call_closed_for_good_is_never_graded_on_the_page_not_still_to_grade():
+    """A lane call whose window was halted is closed for good (tally.closed): the morning's line counts it apart, in
+    the service's words (service.tally_words), never as a call still to grade."""
+    sched = {"reads": ["2026-09-29T09:35:00-04:00", "2026-09-29T10:30:00-04:00"], "looks_ahead_min": 10}
+    lines = _run(_fn("openingDone") + "console.log(JSON.stringify(D.t.map(function(t){ return dump(openingDone(t)); })));", {"t": [
+        {"row_ts": "2026-09-29T10:30:00-04:00", "schedule": sched, "tally": {"calls": 12, "graded": 11, "right": 3, "closed": 1}},
+        {"row_ts": "2026-09-29T10:30:00-04:00", "schedule": sched, "tally": {"calls": 12, "graded": 9, "right": 3, "closed": 1}},
+        {"row_ts": "2026-09-29T10:30:00-04:00", "schedule": sched, "tally": {"calls": 12, "graded": 11, "right": 3, "unsure": 2, "closed": 1}}]})
+    assert [_flat_text(l) for l in lines] == ["opening done3 of 11 graded calls right, 1 never graded",
+                                              "opening done3 of 9 graded calls right, 2 still to grade, 1 never graded",
+                                              "opening done3 of 9 committed calls right, 2 unsure, 1 never graded"]
+
 # ---- the schedule stays on the market clock
 
 
