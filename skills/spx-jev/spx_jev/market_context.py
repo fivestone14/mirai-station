@@ -41,7 +41,7 @@ from .state_builder import CONTEXT_SUBDIR, DEFAULT_STATE_DIR, INDEX_QUOTE, load_
 ET = ZoneInfo("America/New_York")
 JOB = "spx-jev-context"
 SYMBOLS = {
-    "breadth": ("$TICK", "$ADD", "$TRIN", "$VOLD", "$UVOL", "$DVOL", "$VOLSPD"),
+    "breadth": ("$TICK", "$ADD", "$TRIN", "$VOLD", "$UVOL", "$DVOL", "$VOLSPD", "$ADVN", "$DECN"),
     "volatility": ("$VIX", "$VIX9D", "$VVIX", "$VIX3M", "$VIX1D"),
     "futures": ("/ES", "/MBT"),                    # /MBT, micro bitcoin, for the session bitcoin labels (labels/bitcoin.py)
     "rates": ("$TNX", "$IRX"),
@@ -67,6 +67,10 @@ DERIVED_VOLD = "($UVOL - $DVOL) * 1000"
 # and on 2026-09-28 Schwab served both at thousands of times their usual size (1.7 billion up in the first
 # minute), a difference no $VOLD on record can be ranked against.
 MAX_THOUSANDS = 1e7
+# $ADD is NYSE advancing issues less declining ones. Schwab serves no $ADD during its session but does serve $ADVN
+# and $DECN, and on 2026-09-28 their difference matched the $ADD it served the next day (-1,264 against -1,272 at
+# the median): a minute with no $ADD takes it from them, marked with DERIVED_ADD.
+DERIVED_ADD = "$ADVN - $DECN"
 
 def _session(day: date) -> tuple[datetime, datetime]:
     return datetime.combine(day, SESSION_OPEN, tzinfo=ET), datetime.combine(day, SESSION_CLOSE, tzinfo=ET)
@@ -90,8 +94,36 @@ def derived_vold(bars: dict[str, dict]) -> dict | None:
             "derived": DERIVED_VOLD}
 
 
-def _not_derived(when: str) -> None:
-    log(JOB, f"$VOLD not derived {when}: $UVOL and $DVOL are not one minute's bars in thousands of shares", err=True)
+def derived_add(bars: dict[str, dict]) -> dict | None:
+    """One minute's $ADD bar from the same minute's $ADVN and $DECN bars, open and close only, as derived_vold.
+    None when either is missing or they are not the same minute."""
+    up, down = bars.get("$ADVN"), bars.get("$DECN")
+    if not up or not down or up.get("ts") != down.get("ts") or not all(is_num(b.get(k)) for b in (up, down) for k in ("open", "close")):
+        return None
+    return {"ts": up["ts"], **{k: up[k] - down[k] for k in ("open", "close")}, "volume": 0.0, "derived": DERIVED_ADD}
+
+
+# each symbol a minute can take from others when Schwab serves none: how, from which, and what a refusal means
+DERIVED = {"$VOLD": (derived_vold, ("$UVOL", "$DVOL"), "not one minute's bars in thousands of shares"),
+           "$ADD": (derived_add, ("$ADVN", "$DECN"), "not one minute's bars")}
+
+
+def fill_derived(minute: dict[str, dict]) -> list[str]:
+    """Each DERIVED symbol the minute lacks, taken from its sources when they are there; returns the symbols
+    whose sources were there but could not give it."""
+    refused = []
+    for symbol, (derive, sources, _) in DERIVED.items():
+        if symbol not in minute and all(s in minute for s in sources):
+            if bar := derive(minute):
+                minute[symbol] = bar
+            else:
+                refused.append(symbol)
+    return refused
+
+
+def _not_derived(symbol: str, when: str) -> None:
+    _, sources, refusal = DERIVED[symbol]
+    log(JOB, f"{symbol} not derived {when}: {' and '.join(sources)} are {refusal}", err=True)
 
 
 def _no_bars(symbol: str, when: str) -> None:
@@ -108,7 +140,7 @@ def saved_bars(state_dir: Path, day: date) -> set[tuple[str, str]]:
 
 def snapshot(now: datetime, saved: set[tuple[str, str]] = frozenset()) -> dict:
     """One minute's line: batched quotes for every quoted symbol and the newest finished bar for each
-    breadth symbol, with $VOLD derived from $UVOL and $DVOL when Schwab serves none (derived_vold). Every
+    breadth symbol, with $VOLD and $ADD derived when Schwab serves none (fill_derived). Every
     earlier finished breadth bar of the day not in ``saved`` goes under ``earlier``, by minute, for
     append_snapshot to write before the line. A call that fails is named under ``failed`` and costs only what
     it would have fetched; so is a breadth symbol Schwab answers with no bars once a minute of the session has
@@ -139,14 +171,10 @@ def snapshot(now: datetime, saved: set[tuple[str, str]] = frozenset()) -> dict:
         for b in done[:-1]:
             if (symbol, b["ts"]) not in saved:
                 earlier.setdefault(b["ts"], {})[symbol] = b
-    if "$VOLD" not in line["bars"] and "$UVOL" in line["bars"] and "$DVOL" in line["bars"]:
-        if vold := derived_vold(line["bars"]):
-            line["bars"]["$VOLD"] = vold
-        else:
-            _not_derived(f"at {now:%H:%M} ET")
+    for symbol in fill_derived(line["bars"]):
+        _not_derived(symbol, f"at {now:%H:%M} ET")
     for minute in earlier.values():
-        if "$VOLD" not in minute and "$UVOL" in minute and "$DVOL" in minute and (vold := derived_vold(minute)):
-            minute["$VOLD"] = vold
+        fill_derived(minute)
     if earlier:
         line["earlier"] = [earlier[ts] for ts in sorted(earlier)]
     return line
@@ -167,17 +195,59 @@ def append_snapshot(state_dir: Path, line: dict) -> Path:
 def backfill_day(state_dir: Path, day: date) -> Path | None:
     """Every history symbol's minute bars for one past session, one line per minute. A day already on
     disk is left alone, and a day with no bars at all writes nothing (backfill asks trading days only); on any other
-    day each symbol Schwab served no bars for is logged as an error. A minute with no $VOLD takes it from
-    $UVOL and $DVOL (derived_vold)."""
+    day each symbol Schwab served no bars for is logged as an error. A minute with no $VOLD or $ADD takes it
+    from the symbols it is made of (fill_derived)."""
     path = Path(state_dir) / CONTEXT_SUBDIR / "bars" / f"{day.isoformat()}.jsonl"
     if path.exists():
         return None
+    by_minute, empty = _session_bars(tuple(s for s in ALL_SYMBOLS if s not in NO_HISTORY), day)
+    if not by_minute:
+        return None
+    for symbol in empty:
+        _no_bars(symbol, f"for the {day.isoformat()} session")
+    _derive_all(by_minute, day)
+    _write_day(path, by_minute)
+    return path
+
+
+def refresh_breadth(state_dir: Path, day: date) -> Path | None:
+    """The saved day's breadth fetched again and put in its file, when the file was written on the session's own
+    day, before Schwab put its breadth right (labels/plausible.SAME_DAY_WRONG); the other symbols' bars are kept as
+    saved. A refetch that still reads wrong (breadth_wrong) leaves the file alone, so the next run asks again.
+    Returns the file when it was rewritten."""
+    path = Path(state_dir) / CONTEXT_SUBDIR / "bars" / f"{day.isoformat()}.jsonl"
+    if not path.exists() or datetime.fromtimestamp(path.stat().st_mtime, ET).date() > day:
+        return None
+    fresh, _ = _session_bars(SYMBOLS["breadth"], day)
+    if why := breadth_wrong(fresh):
+        log(JOB, f"{day.isoformat()} breadth not put right yet ({why}); asked again next run", err=True)
+        return None
+    by_minute = {line["ts"]: {s: b for s, b in line["bars"].items() if s not in SYMBOLS["breadth"]}
+                 for line in load_jsonl(path) if isinstance(line.get("ts"), str) and isinstance(line.get("bars"), dict)}
+    for ts, bars in fresh.items():
+        by_minute.setdefault(ts, {}).update(bars)
+    _derive_all(by_minute, day)
+    _write_day(path, by_minute)
+    return path
+
+
+def breadth_wrong(by_minute: dict[str, dict]) -> str | None:
+    """Why a session's breadth still reads as Schwab serves it during the session: a $TICK never below zero, or
+    $UVOL or $DVOL past MAX_THOUSANDS; None when it reads as put right."""
+    lows = [m["$TICK"]["low"] for m in by_minute.values() if is_num((m.get("$TICK") or {}).get("low"))]
+    if not lows or min(lows) >= 0:
+        return "$TICK never went below zero"
+    if any(is_num((m.get(s) or {}).get("close")) and abs(m[s]["close"]) >= MAX_THOUSANDS for m in by_minute.values() for s in ("$UVOL", "$DVOL")):
+        return "$UVOL or $DVOL is not in thousands of shares"
+    return None
+
+
+def _session_bars(symbols: tuple[str, ...], day: date) -> tuple[dict[str, dict], list[str]]:
+    """``({minute done: {symbol: bar}}, [symbols Schwab served no bars for])`` for one past session."""
     start, end = _session(day)
     by_minute: dict[str, dict] = {}
     empty = []
-    for symbol in ALL_SYMBOLS:
-        if symbol in NO_HISTORY:
-            continue
+    for symbol in symbols:
         time.sleep(schwab.CALL_SPACING_S)
         n = 0
         for b in schwab.minute_bars(symbol, start, end + timedelta(minutes=1)):
@@ -187,24 +257,23 @@ def backfill_day(state_dir: Path, day: date) -> Path | None:
                 n += 1
         if not n:
             empty.append(symbol)
-    if not by_minute:
-        return None
-    for symbol in empty:
-        _no_bars(symbol, f"for the {day.isoformat()} session")
-    refused = 0
+    return by_minute, empty
+
+
+def _derive_all(by_minute: dict[str, dict], day: date) -> None:
+    refused: dict[str, int] = {}
     for minute in by_minute.values():
-        if "$VOLD" not in minute and "$UVOL" in minute and "$DVOL" in minute:
-            if vold := derived_vold(minute):
-                minute["$VOLD"] = vold
-            else:
-                refused += 1
-    if refused:
-        _not_derived(f"for {refused} minutes of the {day.isoformat()} session")
+        for symbol in fill_derived(minute):
+            refused[symbol] = refused.get(symbol, 0) + 1
+    for symbol, n in refused.items():
+        _not_derived(symbol, f"for {n} minutes of the {day.isoformat()} session")
+
+
+def _write_day(path: Path, by_minute: dict[str, dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".jsonl.tmp")
     tmp.write_text("".join(json.dumps({"ts": ts, "bars": by_minute[ts]}) + "\n" for ts in sorted(by_minute)), encoding="utf-8")
     tmp.replace(path)                    # a day is on disk whole or not at all, so a rerun never skips half a day
-    return path
 
 
 def backfill(state_dir: Path, first: date, last: date) -> list[Path]:

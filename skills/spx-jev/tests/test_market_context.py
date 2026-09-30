@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import date, datetime, timedelta
 
 from conftest import DAY, at
 from spx_jev import market_context, schwab
-from spx_jev.market_context import (ALL_SYMBOLS, BAR_SYMBOLS, DERIVED_VOLD, NO_HISTORY, append_snapshot, backfill, derived_vold,
-                                    snapshot)
+from spx_jev.market_context import (ALL_SYMBOLS, BAR_SYMBOLS, DERIVED_ADD, DERIVED_VOLD, NO_HISTORY, append_snapshot, backfill,
+                                    backfill_day, derived_add, derived_vold, refresh_breadth, snapshot)
 from spx_jev.state_builder import load_market_context
 
 
@@ -76,7 +77,8 @@ def test_a_failed_call_costs_only_what_it_would_have_fetched(monkeypatch):
     monkeypatch.setattr(schwab, "quotes", quotes)
     monkeypatch.setattr(schwab, "minute_bars", minute_bars)
     line = snapshot(at(10, 1, ss=5))
-    assert line["quotes"] == {} and "$ADD" not in line["bars"] and "$TICK" in line["bars"]
+    assert line["quotes"] == {} and "$TICK" in line["bars"]
+    assert line["bars"]["$ADD"]["derived"] == DERIVED_ADD            # its own call failed: taken from $ADVN and $DECN
     assert line["failed"] == ["quotes: TimeoutError", "$ADD: ConnectionError"]
 
 
@@ -225,3 +227,70 @@ def test_bitcoin_futures_are_quoted_and_read_under_their_root(tmp_path, monkeypa
     assert "/MBT" in ALL_SYMBOLS and line["quotes"]["/MBTV26"]["last"] == 85000.0
     append_snapshot(tmp_path, line)
     assert load_market_context(tmp_path, DAY).last("/MBT", at(10, 3)) == 85000.0
+
+
+def test_a_minute_without_schwab_s_add_takes_it_from_advancing_less_declining_issues():
+    """Schwab serves no $ADD during its session, but serves $ADVN and $DECN; on 2026-09-28 their difference matched the
+    $ADD it served the next day. Schwab's own $ADD, when it serves one, is never replaced."""
+    got = derived_add({"$ADVN": _bar(at(10, 0), 1078.0), "$DECN": _bar(at(10, 0), 1306.0)})
+    assert got == {"ts": at(10, 0).isoformat(), "open": -228.0, "close": -228.0, "volume": 0.0, "derived": DERIVED_ADD}
+    assert derived_add({"$ADVN": _bar(at(10, 0), 1078.0), "$DECN": _bar(at(10, 1), 1306.0)}) is None   # not the same minute
+    assert derived_add({"$ADVN": _bar(at(10, 0), 1078.0)}) is None
+    minute = {"$ADD": _bar(at(10, 0), 5.0), "$ADVN": _bar(at(10, 0), 1078.0), "$DECN": _bar(at(10, 0), 1306.0)}
+    assert market_context.fill_derived(minute) == [] and minute["$ADD"] == _bar(at(10, 0), 5.0)
+
+
+def _session_of(serve):
+    """A stand-in for Schwab's history: each symbol's full session of one-minute bars, at ``serve(symbol)``, with a low
+    ``serve`` may set apart."""
+    def minute_bars(symbol, start, end):
+        value = serve(symbol)
+        if value is None:
+            return []
+        close, low = value if isinstance(value, tuple) else (value, value)
+        return [{**_bar(start + timedelta(minutes=i), close), "low": low} for i in range(390)]
+    return minute_bars
+
+
+def _saved_on(path, when):
+    os.utime(path, (when.timestamp(), when.timestamp()))
+
+
+def test_a_day_saved_on_its_own_evening_has_its_breadth_saved_again_once_schwab_puts_it_right(tmp_path, monkeypatch, capsys):
+    """Schwab serves a session's NYSE breadth wrong until after it: the day saved at 16:20 holds a $TICK floored at zero
+    and up volume in shares. A later run fetches the breadth again and keeps it only once it reads as put right (a
+    $TICK below zero, volume in thousands), leaving every other symbol's bars as saved; still wrong, the file is left
+    alone and the next run asks again. A file written after its day is never asked for again."""
+    _no_sleep(monkeypatch)
+    during = {"$TICK": (140.0, 0.0), "$UVOL": 1.5e9, "$DVOL": 4e8, "$ADD": None, "$VOLD": None, "$VOLSPD": None, "XLK": 7700.0}
+    monkeypatch.setattr(schwab, "minute_bars", _session_of(lambda s: during.get(s, 1.0)))
+    path = backfill_day(tmp_path, date.fromisoformat(DAY))
+    _saved_on(path, at(16, 20))
+    saved = path.read_text()
+    asked = []
+    monkeypatch.setattr(schwab, "minute_bars", lambda symbol, start, end: asked.append(symbol) or _session_of(lambda s: during.get(s, 1.0))(symbol, start, end))
+    assert refresh_breadth(tmp_path, date.fromisoformat(DAY)) is None and path.read_text() == saved
+    assert asked == list(market_context.SYMBOLS["breadth"])                                  # the breadth only
+    assert capsys.readouterr().err.splitlines()[-1].endswith(f"{DAY} breadth not put right yet ($TICK never went below zero); asked again next run")
+
+    after = {"$TICK": (-300.0, -812.0), "$UVOL": 80000.0, "$DVOL": 90000.0, "$ADD": -1272.0, "$VOLD": -1e7, "$VOLSPD": -2e6, "XLK": 1.0}
+    monkeypatch.setattr(schwab, "minute_bars", _session_of(lambda s: after.get(s, 1.0)))
+    assert refresh_breadth(tmp_path, date.fromisoformat(DAY)) == path
+    mk = load_market_context(tmp_path, DAY)
+    assert mk.last("$TICK", at(10, 0)) == -300.0 and mk.last("$UVOL", at(10, 0)) == 80000.0 and mk.last("$ADD", at(10, 0)) == -1272.0
+    assert mk.last("XLK", at(10, 0)) == 7700.0                                               # kept as saved
+    assert len(path.read_text().splitlines()) == 390
+    asked.clear()
+    monkeypatch.setattr(schwab, "minute_bars", lambda symbol, start, end: asked.append(symbol) or [])
+    assert refresh_breadth(tmp_path, date.fromisoformat(DAY)) is None and asked == []         # written after its day: put right
+
+
+def test_the_saved_day_wins_over_what_the_live_snapshot_kept_for_the_same_minute(tmp_path):
+    """The live file keeps what Schwab served during the session; the saved day, put right after it, is what a later
+    session reads for that minute."""
+    folder = tmp_path / "spx_jev" / "context"
+    (folder / "bars").mkdir(parents=True)
+    minute = at(10, 1).isoformat()
+    (folder / f"{DAY}.jsonl").write_text(json.dumps({"ts": minute, "bars": {"$TICK": {**_bar(at(10, 0), 0.0)}}}) + "\n")
+    (folder / "bars" / f"{DAY}.jsonl").write_text(json.dumps({"ts": minute, "bars": {"$TICK": {**_bar(at(10, 0), -300.0)}}}) + "\n")
+    assert load_market_context(tmp_path, DAY).last("$TICK", at(10, 1)) == -300.0

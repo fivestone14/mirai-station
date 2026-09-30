@@ -122,6 +122,15 @@ def market_at(now: datetime):
 
 
 @pytest.fixture
+def breadth_served_right(monkeypatch):
+    """Today's NYSE breadth read as a series Schwab served right. The live read never reads it (labels/plausible
+    SAME_DAY_WRONG); a test of a breadth label's own reading, or of the check against history, reads it as it would
+    once Schwab serves it right during the session."""
+    from spx_jev.labels import plausible
+    monkeypatch.setattr(plausible, "SAME_DAY_WRONG", ())
+
+
+@pytest.fixture
 def scene_factory():
     from spx_jev.row_adapter import labeller_row
     from spx_jev.state_builder import Scene

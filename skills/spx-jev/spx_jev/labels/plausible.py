@@ -23,6 +23,13 @@ part of what the next day is measured against; today is judged against the prior
 that fails today is taken out of the read's market context, and every label that reads it is omitted with
 ``left_out(market, symbol)``, the reason. Once Schwab has served a new series for most of the last sessions, it is
 the usual, and the old one is what fails.
+
+Today's own NYSE breadth (SAME_DAY_WRONG) is never read at all. Asked again on the night of 2026-09-29, Schwab
+served 2026-09-28 whole ($TICK from -1,142 to +953, $UVOL back in thousands, $ADD, $VOLD and $VOLSPD all there)
+while 2026-09-29 was still wrong: Schwab puts a session's breadth right only after it, and the checks above can
+only catch the damage once enough of the morning has gone (on 2026-09-29 the 10:02 and 10:30 reads still carried
+the floored $TICK). The session is saved again once it is right (market_context.refresh_breadth), and $ADD, whose
+same-day history comes back empty, is taken live from $ADVN and $DECN (market_context.derived_add).
 """
 from __future__ import annotations
 
@@ -40,6 +47,9 @@ NAMES = {"$TICK": "NYSE TICK", "$ADD": "NYSE advancers minus decliners", "$TRIN"
          "$UVOL": "NYSE up volume", "$DVOL": "NYSE down volume", "$VOLSPD": "S&P 500 members' net volume"}
 CHECKED = tuple(NAMES)
 DERIVED = {"$TRIN": ("$UVOL", "$DVOL")}
+# What Schwab serves of these during their own session: a $TICK floored at zero, $UVOL and $DVOL in shares where
+# their history is in thousands, a $TRIN built from those, and no $VOLD or $VOLSPD at all.
+SAME_DAY_WRONG = ("$TICK", "$TRIN", "$UVOL", "$DVOL", "$VOLD", "$VOLSPD")
 # The saved sessions from 2026-08-10 to 2026-09-25 each stay within 17 times the others' size at every minute
 # (net volume on 2026-09-18, a quarterly expiry); 2026-09-28's up and down volume were 25,000 times it and more.
 SIZE_OFF = 100.0
@@ -114,22 +124,28 @@ def _with_derived(why: dict[str, str]) -> dict[str, str]:
     return why
 
 
+def same_day_wrong(symbol: str) -> str:
+    return (f"{NAMES[symbol]} ({symbol}) is served wrong during its own session and put right only after it, "
+            f"so today's is never read")
+
+
 def checked(scene: Scene) -> Scene:
-    """``scene`` with each breadth series that fails the check taken out of today's market context and of each
-    prior session's it fails on; today's reasons ride on ``scene.market.implausible`` (left_out)."""
+    """``scene`` with today's SAME_DAY_WRONG series and each breadth series that fails the check taken out of
+    today's market context, and each prior session's taken out where it fails; today's reasons ride on
+    ``scene.market.implausible`` (left_out)."""
+    today_why = {symbol: same_day_wrong(symbol) for symbol in SAME_DAY_WRONG}
     if not scene.prior_markets:
-        return scene
+        return replace(scene, market=_drop(scene.market, today_why))
     clock = scene.now.astimezone(ET).time()
     thens = {day: datetime.combine(date.fromisoformat(day), clock, tzinfo=ET) for day in scene.prior_markets}
     prior_why: dict[str, dict[str, str]] = {day: {} for day in scene.prior_markets}
-    today_why: dict[str, str] = {}
     for symbol in CHECKED:
         got = {day: r for day, mk in scene.prior_markets.items() if (r := _readings(mk, symbol, thens[day])) is not None}
         for day, r in got.items():
             if why := _judge(symbol, r, [o for d, o in got.items() if d != day]):
                 prior_why[day][symbol] = why
         passed = [r for day, r in got.items() if symbol not in prior_why[day]]
-        if why := _judge(symbol, _readings(scene.market, symbol, scene.now), passed):
+        if symbol not in today_why and (why := _judge(symbol, _readings(scene.market, symbol, scene.now), passed)):
             today_why[symbol] = why
     return replace(scene, market=_drop(scene.market, _with_derived(today_why)),
                    prior_markets={day: _drop(mk, _with_derived(prior_why[day])) for day, mk in scene.prior_markets.items()})

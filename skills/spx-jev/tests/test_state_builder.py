@@ -80,7 +80,7 @@ def test_no_wall_on_the_row_is_a_fact_not_a_gap(scene_factory):
     assert omitted["gex.wall_thickness"] == "no nearest wall with a gamma share on the row"
 
 
-def test_breadth_reads_the_market_context_point_in_time(full_scene, scene_factory):
+def test_breadth_reads_the_market_context_point_in_time(full_scene, scene_factory, breadth_served_right):
     state, _ = _labels(full_scene)
     assert state["breadth"]["advance_decline"] == "on the NYSE 326 more stocks are advancing than declining today, more up than down"
     assert state["breadth"]["tick_lean"].endswith("above zero 21 times and below zero 9 times of 30, leaning to buying")
@@ -100,7 +100,7 @@ def test_no_market_context_omits_every_breadth_label(scene_factory):
         p: "no market-context snapshot today" for p in breadth.LABELS if p not in breadth.DARK}
 
 
-def test_a_missing_sector_or_symbol_omits_only_its_label(full_scene, scene_factory):
+def test_a_missing_sector_or_symbol_omits_only_its_label(full_scene, scene_factory, breadth_served_right):
     known = {k: v for k, v in full_scene.market.known.items() if k not in SECTORS[:4] and k != "$ADD"}
     state, omitted = _labels(scene_factory(full_scene.now, flat_bars(180), market=MarketContext(known)))
     assert "tick_lean" in state["breadth"]

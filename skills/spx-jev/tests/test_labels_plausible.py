@@ -8,7 +8,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 
 from conftest import at, flat_bars
-from spx_jev.labels.plausible import checked, left_out
+from spx_jev.labels.plausible import SAME_DAY_WRONG, checked, left_out
 from spx_jev.labels.registry import build_labels
 from spx_jev.state_builder import MarketContext
 
@@ -45,7 +45,7 @@ def scene_with(scene_factory, today: dict, priors: dict[str, dict]):
     return replace(scene, prior_markets={d: MarketContext(m) for d, m in priors.items()})
 
 
-def test_a_series_far_off_its_own_history_is_taken_out_and_each_label_needing_it_says_why(scene_factory):
+def test_a_series_far_off_its_own_history_is_taken_out_and_each_label_needing_it_says_why(scene_factory, breadth_served_right):
     scene = scene_with(scene_factory, served_2026_09_28("2026-09-18", MINUTES), {d: usual(d, k) for k, d in enumerate(PRIOR_DAYS)})
     ls = build_labels(scene)
     tick, up = ls.omitted["breadth.opening_tick"], ls.omitted["breadth.day_upvol_share"]
@@ -60,7 +60,7 @@ def test_a_series_far_off_its_own_history_is_taken_out_and_each_label_needing_it
     assert ls.gates["tick_extreme_follow"] is None
 
 
-def test_the_saved_sessions_pass_and_the_labels_read_them(scene_factory):
+def test_the_saved_sessions_pass_and_the_labels_read_them(scene_factory, breadth_served_right):
     scene = scene_with(scene_factory, usual("2026-09-18", 3, MINUTES), {d: usual(d, k) for k, d in enumerate(PRIOR_DAYS)})
     got = checked(scene)
     assert left_out(got.market, "$TICK") is None and got.market.known == scene.market.known
@@ -68,7 +68,7 @@ def test_the_saved_sessions_pass_and_the_labels_read_them(scene_factory):
     assert "tick_lean" in build_labels(scene).state["breadth"]
 
 
-def test_a_prior_session_that_fails_sits_out_so_the_next_day_is_still_judged_against_the_usual(scene_factory):
+def test_a_prior_session_that_fails_sits_out_so_the_next_day_is_still_judged_against_the_usual(scene_factory, breadth_served_right):
     priors = {d: usual(d, k) for k, d in enumerate(PRIOR_DAYS)}
     priors[PRIOR_DAYS[0]] = served_2026_09_28(PRIOR_DAYS[0], 390)
     got = checked(scene_with(scene_factory, served_2026_09_28("2026-09-18", MINUTES), priors))
@@ -78,7 +78,29 @@ def test_a_prior_session_that_fails_sits_out_so_the_next_day_is_still_judged_aga
     assert "$TICK" in got.prior_markets[PRIOR_DAYS[1]].known
 
 
-def test_too_few_prior_sessions_to_judge_leaves_the_series_in(scene_factory):
+def test_too_few_prior_sessions_to_judge_leaves_the_series_in(scene_factory, breadth_served_right):
     priors = {d: usual(d, k) for k, d in enumerate(PRIOR_DAYS[:9])}
     got = checked(scene_with(scene_factory, served_2026_09_28("2026-09-18", MINUTES), priors))
     assert left_out(got.market, "$UVOL") is None and "$UVOL" in got.market.known
+
+
+def test_todays_nyse_breadth_is_never_read_however_usual_it_looks(scene_factory):
+    """Schwab serves a session's NYSE breadth wrong until after it (2026-09-28 was put right by that night, 2026-09-29
+    was not), and the check above only catches it once enough of the morning has gone: today's is left out at every
+    read, with or without prior sessions, each label that reads it saying why. The prior sessions, saved again once
+    put right, are still read, and today's $ADD, taken from $ADVN and $DECN, is judged like any series."""
+    today = usual("2026-09-18", 3, MINUTES)
+    today["$ADD"] = [(t, 300.0) for t in minute_ends("2026-09-18", MINUTES)]
+    for priors in ({d: usual(d, k) for k, d in enumerate(PRIOR_DAYS)}, {}):
+        scene = scene_with(scene_factory, today, priors)
+        got = checked(scene)
+        assert set(SAME_DAY_WRONG) == {"$TICK", "$TRIN", "$UVOL", "$DVOL", "$VOLD", "$VOLSPD"}
+        assert all(s not in got.market.known for s in SAME_DAY_WRONG) and got.market.known["$ADD"] == today["$ADD"]
+        assert left_out(got.market, "$TICK") == ("NYSE TICK ($TICK) is served wrong during its own session and put right only "
+                                                 "after it, so today's is never read")
+        assert all(m.known == scene.prior_markets[d].known for d, m in got.prior_markets.items())
+        ls = build_labels(scene)
+        for path in ("breadth.tick_lean", "breadth.opening_tick", "breadth.tick_extreme_5m"):
+            assert ls.omitted[path] == left_out(got.market, "$TICK")
+        assert ls.omitted["breadth.volume_vs_count_30m"] == left_out(got.market, "$TRIN")
+        assert "tick_lean" not in ls.state.get("breadth", {})

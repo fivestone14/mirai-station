@@ -8,7 +8,9 @@ finished bar a minute for the breadth symbols and a quote for the rest; this job
 symbol's whole day, one line per minute, in ``state/spx_jev/context/bars/{day}.jsonl``: the file the
 backfill writes and the labeller reads (market_context.backfill_day). A day already on disk is never
 fetched again, so a rerun costs nothing, and a missed night is caught up by the next run that
-succeeds, up to CATCH_UP_DAYS back.
+succeeds, up to CATCH_UP_DAYS back. The one exception is the breadth: Schwab serves a session's NYSE
+breadth wrong until after it, so a day saved on its own evening has its breadth fetched again by a later
+run, once Schwab has put it right (market_context.refresh_breadth).
 
 SPX's own day. The gex-polarity job saves ``state/reversion/bars/{day}-SPX.json`` at 16:15 ET (every
 diary day from 2026-07-06 to 2026-09-25 has one), but only when that day's diary carries its engines'
@@ -56,12 +58,13 @@ class SaveFailed(RuntimeError):
 
 
 def save_day(state_dir: Path, day: date, now: datetime) -> dict:
-    """One session: SPX's minute bars, when its file is short, and the market feed's, unless on disk.
+    """One session: SPX's minute bars, when its file is short, and the market feed's, unless on disk; a
+    session before ``now``'s day also has its breadth fetched again when it was saved on its own day.
     Each save runs whatever the other did, so one market symbol Schwab refuses never costs SPX its day;
     a failure in either is raised (SaveFailed) once both have run.
-    ``{"day", "context": path or None, "spx_bars_added": n}``."""
+    ``{"day", "context": path or None, "breadth": path or None, "spx_bars_added": n}``."""
     failed = []
-    added, written = 0, None
+    added, written, breadth = 0, None, None
     try:
         if session_bars_short(state_dir, day):
             added = bars.append_day(state_dir, day.isoformat(), bars.fetch_session(day), now)
@@ -69,11 +72,14 @@ def save_day(state_dir: Path, day: date, now: datetime) -> dict:
         failed.append(f"SPX bars: {type(e).__name__}: {e}")
     try:
         written = market_context.backfill_day(state_dir, day)
+        if day < now.date():
+            breadth = market_context.refresh_breadth(state_dir, day)
     except Exception as e:
         failed.append(f"market bars: {type(e).__name__}: {e}")
     if failed:
         raise SaveFailed("; ".join(failed))
-    return {"day": day.isoformat(), "context": str(written) if written else None, "spx_bars_added": added}
+    return {"day": day.isoformat(), "context": str(written) if written else None, "breadth": str(breadth) if breadth else None,
+            "spx_bars_added": added}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -95,7 +101,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"spx-jev-save-day :: {d} failed: {type(e).__name__}: {e}", file=sys.stderr)
             continue
         context = f"market bars -> {r['context']}" if r["context"] else "market bars already on disk or none served"
-        print(f"spx-jev-save-day :: {d} {context}; SPX +{r['spx_bars_added']} bars")
+        breadth = "; breadth fetched again, put right" if r["breadth"] else ""
+        print(f"spx-jev-save-day :: {d} {context}{breadth}; SPX +{r['spx_bars_added']} bars")
     print(f"spx-jev-save-day :: {len(days) - failed} of {len(days)} days saved under {state_dir / CONTEXT_SUBDIR / 'bars'}")
     return 1 if failed else 0
 

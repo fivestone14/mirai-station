@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import date, timedelta
 
 from conftest import DAY, at, flat_bars
@@ -44,7 +45,7 @@ def test_a_day_saves_the_market_feed_whole_and_fills_a_short_spx_file_once(tmp_p
 
     calls.clear()
     again = save_day.save_day(tmp_path, date.fromisoformat(DAY), at(16, 30))
-    assert again == {"day": DAY, "context": None, "spx_bars_added": 0} and calls == []   # everything on disk: no call at all
+    assert again == {"day": DAY, "context": None, "breadth": None, "spx_bars_added": 0} and calls == []   # everything on disk: no call at all
 
 
 def test_a_failed_day_is_reported_and_costs_only_itself(tmp_path, monkeypatch, capsys):
@@ -93,3 +94,19 @@ def test_a_market_symbol_schwab_refuses_still_leaves_spx_its_day(tmp_path, monke
     assert save_day.main(["--state-dir", str(tmp_path)]) == 1
     assert "market bars: ConnectionError: 400 refused" in capsys.readouterr().err
     assert len(load_bars(tmp_path, DAY)) == 390
+
+
+def test_a_later_run_asks_again_for_the_breadth_of_a_day_saved_on_its_own_evening(tmp_path, monkeypatch):
+    """The day is saved at 16:30 with its breadth as Schwab serves it during the session; the next day's run asks for
+    the breadth again (only the breadth), and flat bars that never go below zero are not put right, so the file stays."""
+    calls = []
+    _schwab(monkeypatch, calls)
+    day = date.fromisoformat(DAY)
+    save_day.save_day(tmp_path, day, at(16, 30))
+    path = tmp_path / "spx_jev" / "context" / "bars" / f"{DAY}.jsonl"
+    os.utime(path, (at(16, 30).timestamp(), at(16, 30).timestamp()))
+    kept = path.read_text()
+    calls.clear()
+    r = save_day.save_day(tmp_path, day, at(16, 30) + timedelta(days=3))
+    from spx_jev.market_context import SYMBOLS
+    assert r["breadth"] is None and sorted(s for s, _ in calls) == sorted(SYMBOLS["breadth"]) and path.read_text() == kept

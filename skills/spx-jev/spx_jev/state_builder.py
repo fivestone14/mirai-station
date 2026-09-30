@@ -220,8 +220,10 @@ class MarketContext:
 def load_market_context(state_dir: Path, day: str) -> MarketContext | None:
     """The day's live snapshots and backfilled bars as one MarketContext, or None when neither exists.
     A quote of zero is an empty shell (the breadth symbols' quotes) and is not a value, nor is the index's at its
-    prior close (INDEX_QUOTE), and a derived bar (market_context.derived_vold) never stands in for a minute Schwab
-    served its own bar for."""
+    prior close (INDEX_QUOTE), and a derived bar (market_context.fill_derived) never stands in for a minute Schwab
+    served its own bar for. Where both files hold a minute's bar, the saved day's wins: it is Schwab's history,
+    put right after the session (market_context.refresh_breadth), where the live snapshot kept what it served
+    during it."""
     folder = Path(state_dir) / CONTEXT_SUBDIR
     snapshots, backfill = load_jsonl(folder / f"{day}.jsonl"), load_jsonl(folder / "bars" / f"{day}.jsonl")
     if not snapshots and not backfill:
@@ -229,7 +231,7 @@ def load_market_context(state_dir: Path, day: str) -> MarketContext | None:
     known: dict[str, dict[datetime, float]] = {}
     bars: dict[str, dict[datetime, dict]] = {}
     served: set[tuple[str, datetime]] = set()
-    for line in backfill + snapshots:
+    for line in snapshots + backfill:
         for key, bar in (line.get("bars") or {}).items():
             if isinstance(bar, dict) and isinstance(bar.get("ts"), str) and is_num(bar.get("close")):
                 symbol, done = context_symbol(key), parse_ts(bar["ts"]) + timedelta(minutes=1)

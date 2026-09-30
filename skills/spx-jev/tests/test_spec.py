@@ -55,14 +55,16 @@ def test_spec_is_well_formed():
         assert lab["reads_as"].strip(), lab["path"]
 
 
-def test_built_set_matches_the_code(full_scene):
+def test_built_set_matches_the_code(full_scene, breadth_served_right):
+    """Every built label comes out of a scene fed in full, today's NYSE breadth read as served right (the live read
+    leaves it out until Schwab serves it right during the session: labels/plausible.SAME_DAY_WRONG)."""
     built = {lab["path"] for lab in spec()["labels"] if lab["status"] == "built"}
     produced = _produced(full_scene)
     assert produced - built == set(), f"the code writes labels the spec does not call built: {sorted(produced - built)}"
     assert built - produced == set(), f"the spec calls labels built that the code does not write: {sorted(built - produced)}"
 
 
-def test_lane_set_matches_the_code(full_scene, lane_scene):
+def test_lane_set_matches_the_code(full_scene, lane_scene, breadth_served_right):
     """A label the spec calls ``lane`` is written on the tape lane and only there."""
     d = spec()
     built = {lab["path"] for lab in d["labels"] if lab["status"] == "built"}
