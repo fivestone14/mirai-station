@@ -11,6 +11,7 @@ Reuses iv-viability's authenticated Schwab client. Provides:
 from __future__ import annotations
 
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -90,6 +91,23 @@ def daily_bars(ticker: str, days: int = 10) -> list[dict[str, Any]]:
     return bars[-days:] if len(bars) > days else bars
 
 
+# The phone server polls live_spot every few seconds, so a lapsed login would
+# otherwise fill its stderr log with one identical line per poll.
+_SPOT_FAIL_LOG_EVERY_S = 300
+_spot_fail_logged_at: float | None = None
+
+
+def _log_spot_failure(ticker: str, why: str) -> None:
+    """Note a failed quote on stderr, at most once every five minutes."""
+    global _spot_fail_logged_at
+    now = time.monotonic()
+    if _spot_fail_logged_at is not None and now - _spot_fail_logged_at < _SPOT_FAIL_LOG_EVERY_S:
+        return
+    _spot_fail_logged_at = now
+    stamp = datetime.now(tz=ET).isoformat(timespec="seconds")
+    print(f"{stamp} live price for {ticker} failed: {why}", file=sys.stderr, flush=True)
+
+
 def live_spot(ticker: str) -> float | None:
     """Live last (mark/close fallback) for `ticker`, $-mapping index symbols.
 
@@ -99,11 +117,13 @@ def live_spot(ticker: str) -> float | None:
         sym = _schwab_symbol(ticker)
         r = _client().get_quote(sym)
         if r.status_code != 200:
+            _log_spot_failure(ticker, f"HTTP {r.status_code}")
             return None
         q = ((r.json() or {}).get(sym) or {}).get("quote") or {}
         px = q.get("lastPrice") or q.get("mark") or q.get("closePrice")
         return float(px) if px else None
-    except Exception:
+    except Exception as exc:
+        _log_spot_failure(ticker, f"{type(exc).__name__}: {exc}")
         return None
 
 
