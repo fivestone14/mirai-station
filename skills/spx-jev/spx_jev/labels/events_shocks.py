@@ -60,7 +60,6 @@ SHOCK_LABELS = ("shock.burst", "shock.vs_day_range", "shock.cross_asset")
 
 REACTION_MIN = 15           # a first reaction is the 15 minutes after its start (the statement's, the release's, the burst's)
 FOLLOW_ON = {"FOMC_PRESSER": "FOMC"}   # a follow-on and the release it follows, when due within FOLLOW_ON_MIN of it
-SPEECH_MIN = 60             # a speaker row with no end time is taken to run an hour, remarks and questions
 BURST_MIN = 5
 BASELINE_MIN = 60           # the hour before a burst, over which a market's link to the index is fitted
 FEED_MAX_AGE_MIN = 2        # a market value older than this at a burst's edge is a feed that had stopped
@@ -110,7 +109,8 @@ def _at_a_moment(e: Event) -> bool:
 
 
 def _end(e: Event) -> datetime | None:
-    return e.end or (e.start + timedelta(minutes=SPEECH_MIN) if e.tier == events.FED_SPEAKER else None)
+    # the calendar gives every speaker row an end (events.SPEAKER_MIN); a row built without one runs as long
+    return e.end or (e.start + timedelta(minutes=events.SPEAKER_MIN) if e.tier == events.FED_SPEAKER else None)
 
 
 def _what(e: Event) -> str:
