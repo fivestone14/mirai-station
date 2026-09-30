@@ -8,7 +8,7 @@ from functools import partial
 import pytest
 
 from conftest import DAY, at, bars_from_closes, flat_bars, write_state
-from spx_jev import events, service
+from spx_jev import events, grade, service
 from spx_jev.grade import grade_one, horizon_start, mark_at, run
 from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.lane import LIVE, PREMARKET, TAPE
@@ -158,6 +158,26 @@ def test_the_days_calls_are_marked_from_the_settled_open(tmp_path):
     assert [(c["checks"]["open_10"]["integral"]["verdict"], c["checks"]["open_30"]["integral"]["verdict"]) for c in calls] == [
         ("right", "wrong")] * 2                                              # up called and up on the average; flat called, up
     assert all(c["integral"] is not c["checks"]["open_30"]["integral"] and c["integral"] == c["checks"]["open_30"]["integral"] for c in calls)
+
+
+def test_a_call_whose_end_price_sums_got_no_answer_is_checked_at_both_marks_on_its_own_pick(tmp_path):
+    """Only the end-price request failed: the card shows the average-price call, so both its checks, the 09:45 one
+    and the 10:05 one, are graded on that call's pick from the settled open, as any call's are, and ride its checks."""
+    call = {"primary": "open_average_30", "pick": "down", "probabilities": {"up": 0.2, "flat": 0.2, "down": 0.6}, "edge_points": 3.55}
+    rec = {k: v for k, v in _rec().items() if k not in ("by", "pick", "probabilities", "primary")}
+    state, out = _premarket_state(tmp_path, [{**rec, "error": "JEV did not answer in time", "average": call}])
+    run(state, out, ALLOWED, lane=PREMARKET)
+    assert not (out / "grades.jsonl").exists() or not (out / "grades.jsonl").read_text().strip()
+    lines = {g["horizon"]: g for g in map(json.loads, (out / "integral_grades.jsonl").read_text().splitlines())}
+    assert set(lines) == {"open_10", "open_30"}
+    assert all((g["sum"], g["pick"], g["verdict"], g["end_price"]) == ("open_average_30", "down", "wrong", grade.ALONE) for g in lines.values())
+    assert "scores" not in lines["open_10"] and "scores" in lines["open_30"]
+    (c,) = service.day_calls(out, DAY, PREMARKET)
+    assert c["end_price_missing"] == "JEV did not answer in time" and set(c["checks"]) == {"open_10", "open_30"}
+    assert {h: r["integral"]["verdict"] for h, r in c["checks"].items()} == {"open_10": "wrong", "open_30": "wrong"}
+    before = (out / "integral_grades.jsonl").read_bytes()
+    run(state, out, ALLOWED, lane=PREMARKET)
+    assert (out / "integral_grades.jsonl").read_bytes() == before                     # each check graded once
 
 
 def test_the_service_refuses_the_premarket_lane_with_a_pointer():

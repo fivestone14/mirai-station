@@ -439,8 +439,8 @@ def day_calls(out_dir: Path, day: str, lane: Lane = LIVE, scene: Scene | None = 
     grade.mark_at's: the closing bar for a read that ends just past the close, None for one that ends later
     and is never graded, counted from the settled open on a lane graded from it. On that lane every call is
     checked at the same marks, so each carries ``checks``, ``{horizon: {"outcome", "hit", "pick"}}`` at the
-    end price for every horizon graded so far, with its ``integral`` there once graded on the average price. A
-    read whose sum got no answer is not a call."""
+    end price for every horizon graded so far, with its ``integral`` there once graded on the average price; a call
+    standing alone has only its ``integral`` there. A read whose sum got no answer is not a call."""
     minutes = lane.horizons[lane.primary][0]
     integral_by = day_integral(out_dir, day, lane)
     check_integral = {h: day_integral(out_dir, day, lane, h) for h in lane.horizons} if lane.graded_from_settled_open else {}
@@ -485,6 +485,8 @@ def day_calls(out_dir: Path, day: str, lane: Lane = LIVE, scene: Scene | None = 
                 **({"integral": integral_by[ts]} if ts in integral_by and not missing else {}),
                 **({"checks": checks.get(ts, {})} if lane.graded_from_settled_open else {})}
         if alone:
+            if lane.graded_from_settled_open:
+                call["checks"] = {h: {"integral": check_integral[h][ts]} for h in lane.horizons if ts in check_integral[h]}
             call["end_price_missing"] = str(r.get("error") or "the end-price sums got no answer")
             if "integral" in call and not call["integral"].get("graded"):
                 call["closed"] = str(call["integral"].get("reason") or "not graded")
