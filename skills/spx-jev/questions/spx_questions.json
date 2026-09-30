@@ -5584,7 +5584,7 @@
   {
    "id": "shadow_log",
    "lane": "thirty_minute",
-   "purpose": "Shadow only (proof they do not help): asked hourly, logged and graded, kept out of the weights.",
+   "purpose": "Shadow only (proof they do not help): asked hourly and logged, never graded and never weighted.",
    "reads": [
     "context",
     "price.recent_move",

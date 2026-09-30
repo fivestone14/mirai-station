@@ -150,6 +150,8 @@ def test_shadow_means_asked_and_logged_never_graded_and_never_weighted():
     assert "shadow = asked and logged, never graded and never weighted" in d["conventions"]["status"]
     doc = json.loads((QUESTION_SET.parent.parent / "questions" / "spx_questions.json").read_text(encoding="utf-8"))
     assert "shadow ones are asked and logged but never graded or weighted" in doc["how_to_use"]
+    shadow_groups = [g for g in d["groups"] if g["questions"] and all(q["status"] == "shadow" for q in g["questions"])]
+    assert shadow_groups and all("never graded and never weighted" in g["purpose"] for g in shadow_groups)
 
 
 def test_the_set_describes_the_pre_market_call_the_pre_market_sums_doc_makes():
