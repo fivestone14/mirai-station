@@ -3,10 +3,11 @@
 Every check below holds the station to a limit its own code states (the dead-man's
 silence ceiling, first-row deadline and reader ceiling, the reader's stale-book and
 minute-log limits, each job's plist schedule, the SPX pre-market lane's checkpoints and
-late line, the SPX learning store's nightly build, and "the dashboard serves the code on disk").
+late line, the SPX learning store's nightly build, "the dashboard serves the code on disk",
+and "the phone server gets a live SPX price and runs the latest login code").
 The check functions and their unit tests always run. The live tests only read the
-real station (launchd, its state/ directory, GET on 127.0.0.1:8787) and skip unless
-MIRAI_LIVE=1:
+real station (launchd, its state/ directory, its git log, GET on 127.0.0.1:8787) and
+skip unless MIRAI_LIVE=1:
 
     cd <repo>/runtime && MIRAI_LIVE=1 ~/.local/share/mirai-station/venv/bin/python -m pytest -q -rA health
 """
@@ -63,6 +64,9 @@ SPX_LANE_READS = {"live": (tuple(f"{(572 + 30 * k) // 60:02d}:{(572 + 30 * k) % 
                   "tape": (tuple(f"{(575 + 5 * k) // 60:02d}:{(575 + 5 * k) % 60:02d}" for k in range(12)), 2)}
 LANE_READ_OWED_MIN = 10
 DASHBOARD_URL = "http://127.0.0.1:8787/api/health"
+SPOT_URL = "http://127.0.0.1:8787/api/spot?ticker=SPX"
+# the code the phone server runs its Schwab login and live price through
+PHONE_SERVER_CODE = ("skills/iv-viability", "skills/mirai-left-eye", "runtime/viewstation")
 
 
 # --- limits, read from the station's own code ---------------------------------
@@ -541,6 +545,33 @@ def dashboard_answers(url: str) -> tuple[bool, str]:
     return True, f"{url} answered ok"
 
 
+def phone_server_priced(url: str, err_log: str) -> tuple[bool, str]:
+    """The phone server answers its live price endpoint with a positive SPX price."""
+    try:
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            body = json.loads(resp.read())
+    except (OSError, ValueError) as exc:
+        got = f"nothing answered ({exc})"
+    else:
+        spot = body.get("spot") if isinstance(body, dict) else None
+        if isinstance(spot, (int, float)) and not isinstance(spot, bool) and spot > 0:
+            return True, f"the phone server gets a live SPX price: {spot}"
+        got = f"it answered {json.dumps(body)[:200]}"
+    return False, (f"the phone server gets no live SPX price: check {err_log}, "
+                   f"or restart it ({got})")
+
+
+def phone_server_current(process_start: datetime, last_change: datetime) -> tuple[bool, str]:
+    """The phone server started after the last commit to its login or server code, so it runs that code."""
+    # ps and git both report to the whole second
+    if int(last_change.timestamp()) > int(process_start.timestamp()):
+        return False, (f"the phone server started before the latest login or server code change "
+                       f"(started {process_start:%b %d %H:%M:%S}, code changed {last_change:%b %d %H:%M:%S}): "
+                       f"restart it (launchctl kickstart -k gui/$UID/com.mirai-station.viewstation)")
+    return True, (f"the phone server started {process_start:%b %d %H:%M:%S}, after the latest "
+                  f"login or server code change {last_change:%b %d %H:%M:%S}")
+
+
 # --- unit tests on synthetic inputs -----------------------------------------------
 
 LIVE = datetime(2026, 8, 27, 11, 4, tzinfo=ET)          # a Thursday, mid-session
@@ -866,6 +897,37 @@ def test_dashboard_answers_fails_when_nothing_answers(tmp_path):
     assert ok is False and "nothing healthy answered" in why
 
 
+def test_phone_server_priced_passes_a_positive_price(tmp_path):
+    reply = _write(tmp_path / "s.json", {"ticker": "SPX", "spot": 6512.25}).as_uri()
+    ok, why = phone_server_priced(reply, "/tmp/v.err")
+    assert ok is True and "6512.25" in why
+
+
+@pytest.mark.parametrize("spot", [None, 0, -1.0, "6512.25", True])
+def test_phone_server_priced_fails_a_missing_or_unusable_price(tmp_path, spot):
+    reply = _write(tmp_path / "s.json", {"ticker": "SPX", "spot": spot}).as_uri()
+    ok, why = phone_server_priced(reply, "/tmp/v.err")
+    assert ok is False and why.startswith("the phone server gets no live SPX price: check /tmp/v.err, or restart it")
+
+
+def test_phone_server_priced_fails_when_nothing_answers(tmp_path):
+    ok, why = phone_server_priced((tmp_path / "nothing.json").as_uri(), "/tmp/v.err")
+    assert ok is False and "nothing answered" in why
+
+
+def test_phone_server_current_passes_a_server_started_after_the_last_code_change():
+    change = datetime(2026, 9, 30, 12, 40, 0).astimezone()
+    assert phone_server_current(change + timedelta(minutes=15), change)[0] is True
+    assert phone_server_current(change, change)[0] is True
+
+
+def test_phone_server_current_fails_a_server_started_before_the_last_code_change():
+    change = datetime(2026, 9, 30, 13, 10, 0).astimezone()
+    ok, why = phone_server_current(change - timedelta(minutes=15), change)
+    assert ok is False and why.startswith("the phone server started before the latest login or server code change")
+    assert "launchctl kickstart -k gui/$UID/com.mirai-station.viewstation" in why
+
+
 def test_code_limit_resolves_numbers_names_and_arithmetic(tmp_path):
     src = tmp_path / "m.py"
     src.write_text("import os\nSTALE = 6  # note\nMAX_AGE = float(STALE)\nBY = 9 * 60 + 35\n"
@@ -1050,6 +1112,7 @@ def test_the_store_check_fires_when_the_job_does():
 
 live = pytest.mark.skipif(os.environ.get("MIRAI_LIVE") != "1",
                           reason="live station check; set MIRAI_LIVE=1 to run it")
+macos = pytest.mark.skipif(sys.platform != "darwin", reason="reads launchd, which only macOS has")
 
 
 def _run(*cmd: str, check: bool = True) -> subprocess.CompletedProcess:
@@ -1159,23 +1222,51 @@ def test_live_dashboard_answers_health(station):
           f"curl -s {DASHBOARD_URL}; tail -n 20 {_log(station, 'com.mirai-station.viewstation', 'stderr')}")
 
 
-@live
-def test_live_dashboard_serves_the_code_on_disk(station):
+def _viewstation_pid(station) -> str:
     pid = next((parts[0] for parts in map(str.split, station.listing.splitlines())
                 if len(parts) >= 3 and parts[2] == "com.mirai-station.viewstation"), "-")
     if not pid.isdigit():
         pytest.fail("the dashboard job has no running process\n  confirm with: "
                     "launchctl list | grep com.mirai-station.viewstation", pytrace=False)
+    return pid
+
+
+def _started(pid: str) -> datetime:
+    lstart = _run("ps", "-o", "lstart=", "-p", pid).stdout.strip()
+    return datetime.strptime(lstart, "%a %b %d %H:%M:%S %Y").astimezone()
+
+
+@live
+def test_live_dashboard_serves_the_code_on_disk(station):
+    pid = _viewstation_pid(station)
     command = _run("ps", "-o", "command=", "-p", pid).stdout.split()
     server_py = next((Path(arg) for arg in command if arg.endswith("server.py")), None)
     if server_py is None:
         pytest.fail(f"process {pid} is not running a server.py: {' '.join(command)}\n"
                     f"  confirm with: ps -o command= -p {pid}", pytrace=False)
-    lstart = _run("ps", "-o", "lstart=", "-p", pid).stdout.strip()
-    started = datetime.strptime(lstart, "%a %b %d %H:%M:%S %Y").astimezone()
+    started = _started(pid)
     _hold(dashboard_code_current(started, dashboard_code_paths(server_py)),
           f"ps -o lstart= -p {pid}; ls -ltT {server_py.parent}/*.py "
           f"{station.root}/skills/sndk-pro/*.py | head")
+
+
+@live
+@macos
+def test_the_phone_server_gets_a_live_spx_price_in_market_hours(station):
+    _skip_when_closed(station.now)
+    _hold(phone_server_priced(SPOT_URL, _log(station, "com.mirai-station.viewstation", "stderr")),
+          f"curl -s '{SPOT_URL}'")
+
+
+@live
+@macos
+def test_the_phone_server_runs_the_current_schwab_login_code(station):
+    pid = _viewstation_pid(station)
+    committed = _run("git", "-C", str(station.root), "log", "-1", "--format=%ct", "--",
+                     *PHONE_SERVER_CODE).stdout.strip()
+    _hold(phone_server_current(_started(pid), datetime.fromtimestamp(int(committed)).astimezone()),
+          f"ps -o lstart= -p {pid}; git -C {station.root} log -1 --format='%ci %s' -- "
+          + " ".join(PHONE_SERVER_CODE))
 
 
 @live
