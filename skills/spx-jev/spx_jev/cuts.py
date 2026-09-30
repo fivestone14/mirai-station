@@ -160,7 +160,6 @@ BRIEF_CONF_MIN = 0.3  # brief confidence
 FLOW_LEAN_RANK = 0.8  # flow lean rank vs clock
 OFI_Z = 1.0  # order-flow imbalance z
 COLLAR_NEAR_SIGMA = 0.5  # near a quarter-end collar strike
-VWAP_TOUCH_SIGMA = 0.02  # touch tolerance for the day's volume-weighted average price
 
 # What a question doc may name in braces. The key is the constant's name in lower case.
 QUESTION_CONSTANTS = {name.lower(): value for name, value in dict(globals()).items()
