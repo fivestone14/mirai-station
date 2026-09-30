@@ -291,12 +291,23 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 .qs-track{display:flex;height:100%;padding:0 22px;transition:transform .28s cubic-bezier(.2,0,0,1)}
 .qs-card{flex:0 0 100%;min-width:0;height:100%;padding:0 4px 6px;transition:opacity .28s,transform .28s}
 .qs-card.side{opacity:.45;transform:scale(.96)}
-.qs-card>.q{height:100%;overflow-y:auto;overscroll-behavior:contain;background:#FFFFFF}
-.qs-card .bar{grid-template-columns:minmax(0,1fr) 40px;gap:4px 8px;margin-top:10px}
+/* the card fills the room it is given: the options share its height, each up to a cap, larger than on the page, the
+   confidence line sits at its foot and an unanswered question's reason in its middle; a card with more than fits scrolls */
+.qs-card>.q{display:flex;flex-direction:column;height:100%;overflow-y:auto;overscroll-behavior:contain;background:#FFFFFF;padding:18px 18px 16px}
+.qs-card .ask{font-size:19px;line-height:1.3;margin-bottom:6px}
+.qs-card>.q>.bar{flex:1 1 0;min-height:48px;max-height:110px;align-content:center;margin-top:0;
+                 grid-template-columns:minmax(0,1fr) 44px;gap:6px 8px;font-size:15px}
 .qs-card .bar .opt{grid-column:1;grid-row:1}
-.qs-card .bar b{grid-column:2;grid-row:1}
-.qs-card .bar .track,.qs-card .bar .fill{height:10px;border-radius:5px}
+.qs-card .bar b{grid-column:2;grid-row:1;font-size:15px}
+.qs-card .bar .track,.qs-card .bar .fill{height:14px;border-radius:7px}
 .qs-card .bar .track{grid-column:1 / -1;grid-row:2}
+.qs-card .bar.long .opt{grid-column:1 / -1;grid-row:1}
+.qs-card .bar.long .track{grid-column:1;grid-row:2}
+.qs-card .bar.long b{grid-column:2;grid-row:2}
+.qs-card>.q>.tag:last-child{margin-top:auto;padding-top:12px;font-size:13px}
+.qs-card>.q>.skip{margin:6px 0 4px;padding:10px 12px;border-radius:12px;background:var(--g);font-size:14px;line-height:1.45}
+.qs-card>.q>.skip:last-child{margin:auto 0;font-size:16px}
+.bar.none{opacity:.45}
 .qs-scrub{flex:none;padding:12px 20px 0}
 .qs-lab{display:flex;justify-content:space-between;margin-bottom:6px;font:700 11px/1.2 var(--sans);letter-spacing:.1em;
         text-transform:uppercase;color:var(--i-faint)}
@@ -595,6 +606,12 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       if(held) box.appendChild(tag(held));
     } else {
       box.appendChild(skipLine(skipWhy(q, omitted, at)));
+      // what it would have chosen between, drawn empty and faded, so an unanswered card can still be read and judged
+      (q.options || []).forEach(function(k){
+        var e = el('div', 'bar none'), t = el('div', 'track'), f = el('div', 'fill'); f.style.width = '0%'; t.appendChild(f);
+        e.appendChild(el('span', 'opt', k === 'true' ? 'Yes' : k === 'false' ? 'No' : cap(k))); e.appendChild(t); e.appendChild(el('b', null, '–'));
+        box.appendChild(e);
+      });
     }
     return box;
   }

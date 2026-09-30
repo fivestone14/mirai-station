@@ -1875,8 +1875,12 @@ def test_a_question_asked_and_lost_says_so_on_its_card_in_its_own_group():
     for q in lost:
         q.update(answer=None, skipped="asked, no answer received: HTTP 503")
     cards = [t for g in _deck(live) for t in g[2]]
-    assert sum(t.endswith("Asked, no answer received: HTTP 503") for t in cards) == 3
-    assert all(any(t == q["ask"] + "Asked, no answer received: HTTP 503" for t in cards) for q in lost)
+    assert sum("Asked, no answer received: HTTP 503" in t for t in cards) == 3
+    # the reason under the question, then what it would have chosen between, each option empty ("\u2013")
+    for q in lost:
+        empty = "".join(("Yes" if k == "true" else "No" if k == "false" else k[0].upper() + k[1:].replace("_", " ")) + "\u2013"
+                        for k in q["options"])
+        assert q["ask"] + "Asked, no answer received: HTTP 503" + empty in cards
 
 
 def _nav(deck, steps, g=0, i=0):
@@ -1924,6 +1928,10 @@ def test_the_questions_sheet_is_a_sheet_with_no_control_but_its_handle():
     assert 'class="qs-strip" id="qsStrip" role="slider" tabindex="0"' in sheet
     assert "height:calc(var(--app-h) * .92)" in SPX and "MiraiSheet.open(from);" in _fn("openQuestions")
     assert ".qs-track,.qs-card{transition:none}" in SPX          # reduced motion slides nothing
+    # the card fills its room: its options share the height, the confidence line at the foot, the reason of a card
+    # with nothing under it in the middle, and an unanswered question's options drawn empty and faded
+    assert ".qs-card>.q>.bar{flex:1 1 0;" in SPX and ".qs-card>.q>.tag:last-child{margin-top:auto;" in SPX
+    assert ".qs-card>.q>.skip:last-child{margin:auto 0;" in SPX and ".bar.none{opacity:.45}" in SPX
 
 
 @pytest.mark.parametrize("tz, next_read", [(LA, "07:32"), (TOKYO, "23:32"), (KOLKATA, "20:02")])
