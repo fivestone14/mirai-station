@@ -574,7 +574,7 @@ def run(state_dir: Path, out_dir: Path, allowed: dict[str, set[str]], day: str |
     try:
         integral_run(state_dir, out_dir, lane, day)  # the average-price grade reads what was written above and writes only its own file
     except Exception as e:  # the average-price grade must never cost a run its grades, the card or the close-out
-        print(f"integral shadow grade failed: {type(e).__name__}: {e}", file=sys.stderr)
+        print(f"average-price grade failed: {type(e).__name__}: {e}", file=sys.stderr)
     if lane.average:
         # the call's lasting record, from the average-price grades this run has just brought up to date
         try:
