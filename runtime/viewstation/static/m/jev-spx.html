@@ -227,6 +227,35 @@ button.tile .tile-k::after{content:"";flex:none;margin-left:auto;width:6px;heigh
 .inplay .axis{stroke:var(--rule-soft);stroke-width:1}
 .inplay .now{stroke:var(--i);stroke-width:1.4;stroke-dasharray:3 3}
 .say{margin-top:8px;font:400 13.5px/1.45 var(--sans);color:var(--i-body);padding-left:10px;border-left:2px solid var(--s2)}
+/* the opening call in prices: where the average sits for the call to come true, then what flat is */
+.range{margin-top:10px;font:400 15px/1.4 var(--sans);color:var(--i)}
+.range b{font-weight:700}
+.range-n{margin-top:3px;font:400 12px/1.35 var(--sans);color:var(--i-faint)}
+/* what counts as a move: the end-price bands to scale on one bar, each edge's figure under its edge */
+.mv-bar,.mv-spans{display:grid}
+.mv-bar{height:28px;margin-top:8px;border-radius:8px;overflow:hidden}
+.mv-bar span{display:flex;align-items:center;justify-content:center;font:700 12px/1 var(--sans)}
+.mv-bar span+span{border-left:1px solid var(--s)}
+/* size, never direction: a neutral ramp from light to dark, so a big fall is not painted in up's blue */
+.mv-bar .mv-flat{background:var(--s2);color:var(--i-body)}
+.mv-bar .mv-small{background:var(--o-fl);color:var(--i)}
+.mv-bar .mv-big{background:var(--fill);color:var(--on-body)}
+.mv-ticks{position:relative;height:14px;margin-top:5px;font:400 11px/14px var(--sans);color:var(--i-faint)}
+.mv-ticks span{position:absolute;top:0;white-space:nowrap;transform:translateX(-50%)}
+.mv-ticks .lo{left:0;transform:none}
+.mv-ticks .hi{right:0;transform:none}
+.mv-spans{margin-top:1px;font:400 11px/1.3 var(--sans);color:var(--i-faint)}
+.mv-spans span:nth-child(2){text-align:center}
+.mv-spans span:last-child{text-align:right}
+/* what a point is, as labelled rows */
+.pt{margin-top:12px;padding:8px 12px;border:1px solid var(--s2);border-radius:12px}
+.pt-h{font:700 13px/1.3 var(--sans);color:var(--px-ink)}
+.pt-r{display:grid;grid-template-columns:72px minmax(0,1fr);gap:10px;align-items:baseline;padding:6px 0;font:400 13px/1.35 var(--sans);color:var(--i-body)}
+.pt-r+.pt-r{border-top:1px solid var(--s2)}
+.pt-r .k{font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
+/* the stretch since the last read, in a few words */
+.st{margin-top:6px;font:400 13.5px/1.45 var(--sans);color:var(--i-body)}
+.st b{font-weight:700;color:var(--i)}
 /* before the open: the pre-market card's label row, its call in words, the story so far as chips in each
    read's lean, and its facts as the situation's rows with the builder's sentence under each */
 .pre>.lab{margin-bottom:12px}
@@ -1461,6 +1490,84 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     catch(e){ return null; }
   }
   function within(span, t){ t = t || marketClock(); if(!t) return false; var s = hhmm(t); return s >= span[0] && s < span[1]; }
+  // an index level as the owner reads it, with its thousands comma, to a whole point or the given decimals
+  function indexLevel(x, d){ return (+x).toLocaleString('en-US', {minimumFractionDigits: d || 0, maximumFractionDigits: d || 0}); }
+  // the opening call in prices: where the average sits for the call to come true until its mark, from the read's price
+  // and the flat edge (hour.average price and edge_points), to a tenth so the two lines agree, then what flat on average
+  // is; a read with no price says that alone
+  function flatRange(a, pick, at, mark){
+    var box = el('div'), e = +a.edge_points, p = a.price;
+    if(p != null){
+      var lo = indexLevel(p - e, 1), hi = indexLevel(p + e, 1), s = el('div', 'range');
+      s.appendChild(el('span', null, 'SPX should average '));
+      s.appendChild(el('b', null, pick === 'up' ? 'above ' + hi : pick === 'down' ? 'below ' + lo : 'between ' + lo + ' and ' + hi));
+      s.appendChild(el('span', null, ' until ' + viewerTime(mark) + '.'));
+      box.appendChild(s);
+    }
+    box.appendChild(el('div', 'range-n', 'Flat on average is within ' + e.toFixed(1) + ' points of ' +
+      (p != null ? indexLevel(p, 1) + ', the price at ' : 'the price at ') + viewerTime(at) + '.'));
+    return box;
+  }
+  // the end-price question's bands (the card's band) in points, as the move bar and the stretch's verdict both say them
+  function bandSpans(b){
+    var f = (+b.flat_points).toFixed(1), g = (+b.big_points).toFixed(1);
+    return {flat: 'under ' + f, small: f + ' to ' + g, big: 'over ' + g};
+  }
+  // what counts as a move at the call's mark: the end-price bands to scale on one bar, which runs a third past the big
+  // edge so big has room, each edge's figure under it, then what a point is on the read's price
+  var MOVE_SCALE_OVER = 4 / 3;
+  function moveScale(b, price, mark){
+    var box = el('div'), f = +b.flat_points, g = +b.big_points, end = Math.ceil(g * MOVE_SCALE_OVER), said = bandSpans(b);
+    var cols = [f, g - f, end - g].map(function(w){ return w.toFixed(2) + 'fr'; }).join(' ');
+    var bar = el('div', 'mv-bar'), ticks = el('div', 'mv-ticks'), spans = el('div', 'mv-spans');
+    bar.style.gridTemplateColumns = spans.style.gridTemplateColumns = cols;
+    ['flat', 'small', 'big'].forEach(function(k){ bar.appendChild(el('span', 'mv-' + k, cap(k))); spans.appendChild(el('span', null, said[k])); });
+    ticks.appendChild(el('span', 'lo', '0'));
+    [f, g].forEach(function(v){ var k = ticks.appendChild(el('span', null, v.toFixed(1))); k.style.left = (v / end * 100).toFixed(2) + '%'; });
+    ticks.appendChild(el('span', 'hi', end + '+ pts'));
+    box.appendChild(el('div', 'inplay-h', 'What counts as a move at ' + viewerTime(mark)));
+    box.appendChild(bar); box.appendChild(ticks); box.appendChild(spans);
+    var key = el('div', 'pt');
+    key.appendChild(el('div', 'pt-h', 'What’s a point?'));
+    key.appendChild(keyRow('Means', 'One step of the S&P 500 index'));
+    if(price != null) key.appendChild(keyRow('Example', indexLevel(price) + ' → ' + indexLevel(Math.round(price) + 1) + ' = 1 point'));
+    box.appendChild(key);
+    return box;
+  }
+  // one labelled row of the point key
+  function keyRow(k, v){ var r = el('div', 'pt-r'); r.appendChild(el('span', 'k', k)); r.appendChild(el('span', null, v)); return r; }
+  // the builder's sentences about the stretch since the last read (labels/range_size._since_last_read) in a few words:
+  // the move with its verdict in the end-price bands, the range and how busy that is against the prior sessions at this
+  // minute, then the tape unit as a typical 5-minute swing; a sentence in any other shape is said whole, as the builder
+  // wrote it. With no move, the builder's reason is said, but not on the day's first read, where there is nothing to miss
+  var STRETCH_LEAD = /since (the open|the last read), ([\d.]+) minutes ago/;
+  var STRETCH_MOVE = /price ended (?:level with it|([\d.]+) points (above|below) it), .*, so it (held|rose small|fell small|rose big|fell big)$/;
+  var STRETCH_RANGE = /is ([\d.]+) points, .* in the (bottom|middle|top) third for this minute, higher than (\d+) of (\d+) prior sessions/;
+  var STRETCH_SIZE = {'held': 'flat', 'rose small': 'small', 'fell small': 'small', 'rose big': 'big', 'fell big': 'big'};
+  var STRETCH_THIRD = {bottom: 'Quiet', middle: 'Normal', top: 'Busy'};
+  var FIRST_READ = /^the day's first read/;
+  function stretchWords(t){
+    var st = t.stretch || {}, r = t.ruler, box = el('div'), lead = STRETCH_LEAD.exec(st.range_since_read || st.move_since_read || '');
+    var why = (t.omitted || {})['tape.move_since_read'], said = t.band && bandSpans(t.band);
+    // a sentence that matched, as its bold and plain parts in turn; one that did not, whole
+    function plain(s, m, parts){
+      if(!m) return box.appendChild(el('div', 'say', sentence(marketWords(s, t.row_ts))));
+      var d = box.appendChild(el('div', 'st'));
+      parts(m).forEach(function(x, i){ d.appendChild(el(i % 2 ? 'span' : 'b', null, x)); });
+    }
+    if(lead) box.appendChild(el('div', 'inplay-h', lead[1] === 'the open' ? 'Since the open' : 'Last ' + lead[2] + ' minutes'));
+    if(st.move_since_read) plain(st.move_since_read, STRETCH_MOVE.exec(st.move_since_read), function(m){
+      var size = STRETCH_SIZE[m[3]];
+      return [m[1] ? (m[2] === 'above' ? 'Up ' : 'Down ') + m[1] + ' points' : 'No change',
+              ': ' + (size === 'flat' ? 'flat' : 'a ' + size + ' move') + (said ? ' (' + said[size] + ')' : '') + '.']; });
+    else if(why && !FIRST_READ.test(why)) box.appendChild(tag(marketWords(why, t.row_ts)));
+    if(st.range_since_read) plain(st.range_since_read, STRETCH_RANGE.exec(st.range_since_read), function(m){
+      return [m[1] + ' points', ' from high to low. ', STRETCH_THIRD[m[2]] + ' for this time of day',
+              ': busier than ' + m[3] + ' of the last ' + m[4] + ' days' + (/ruler estimated/.test(st.range_since_read) ? ' (estimated).' : '.')]; });
+    if(r) box.appendChild(tag('a typical 5-minute swing right now: about ' + (+r.unit_points).toFixed(1) + ' points' +
+      (r.source === 'held' ? ', an estimate until ' + viewerTime(marketAt(t.row_ts, RULER_HELD_UNTIL)) : '')));
+    return box.childNodes.length ? box : null;
+  }
   function laneCard(t, ok){
     var box = el('div', 'card dashed'), newest = t.calls[0], h = t.hour, a = callSum(h), p = a && a.probabilities;
     box.appendChild(el('div', 'mode', 'opening \u00B7 a call every 5 min'));
@@ -1469,7 +1576,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       var top = a.pick || top1(p);
       box.appendChild(el('div', 'big', cap(top) + ' ' + pct(p[top])));
       box.appendChild(oddsBar(p, top));
-      if(a !== h) box.appendChild(tag(averageWords(a, 'the next ' + a.minutes + ' minutes')));
+      if(a !== h) box.appendChild(flatRange(a, top, t.row_ts, newest.mark));
       var fb = fallbackLine(h, t.row_ts); if(fb) box.appendChild(fb);
       if(a !== h && h.probabilities) box.appendChild(endPriceRow(h));
       // the end-price sum's odds read as a direction and as a size (the service's views), on one line; beside an
@@ -1483,29 +1590,14 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       box.appendChild(skipLine('no sum on the ' + viewerTime(t.row_ts) + ' read' + (h && h.error ? ': ' + h.error : '') + '; this is the ' + viewerTime(newest.read) + ' call'));
     }
     box.appendChild(inPlay(t.calls));
-    // the tape unit and the bands the end-price question is sized in; beside an average-price call, whose own flat edge
-    // is said under its odds, the row is said to be the end-price question's
-    var r = t.ruler, b = t.band;
-    if(r && b){
-      var u = el('div', 'odds');
-      if(a !== h) u.appendChild(el('span', null, 'End-price question:'));
-      u.appendChild(el('span', null, 'One tape unit ' + (+r.unit_points).toFixed(1) + ' points' +
-        (r.source === 'held' ? ', held until ' + viewerTime(marketAt(t.row_ts, RULER_HELD_UNTIL)) : r.rank ? ', ' + r.rank.band + ' for this minute' : '')));
-      u.appendChild(el('span', null, 'Flat within ' + (+b.flat_points).toFixed(1) + ' points'));
-      u.appendChild(el('span', null, 'Big beyond ' + (+b.big_points).toFixed(1) + ' points'));
-      box.appendChild(u);
-    }
-    // the builder's own sentences about the stretch since the last read, or its reason for none
-    var st = t.stretch || {}, om = t.omitted || {};
-    var move = st.move_since_read || om['tape.move_since_read'];
-    if(move) box.appendChild(el('div', 'say', sentence(marketWords(move, t.row_ts))));
-    if(st.range_since_read) box.appendChild(el('div', 'say', sentence(marketWords(st.range_since_read, t.row_ts))));
-    var sch = t.schedule;
-    if(sch && sch.reads && sch.reads.length) box.appendChild(tag(lastLaneRead(t)
-      ? 'Hands back to the 30-minute reads at ' + viewerTime(newest.mark) + ', when this last call closes.'
-      : 'Hands back to the 30-minute reads when the last call closes, about ' + viewerTime(Date.parse(sch.reads[sch.reads.length - 1]) + sch.looks_ahead_min * 60000) + '.'));
+    if(t.band) box.appendChild(moveScale(t.band, a && a.price, newest.mark));
+    var sw = stretchWords(t); if(sw) box.appendChild(sw);
     if(!ok) box.appendChild(tag('fetch failed, showing the last read'));
-    box.appendChild(tag('the 5-minute reads’ call for the next ' + newest.minutes + ' minutes: a forecast, graded by the bars, not a trade signal'));
+    // when the 5-minute calls hand back to the 30-minute ones, and what a call is, on one closing line
+    var sch = t.schedule, until = !(sch && sch.reads && sch.reads.length) ? ''
+      : lastLaneRead(t) ? 'last 5-minute check; every 30 min again from ' + viewerTime(newest.mark) + '. '
+      : 'checks every 5 min until about ' + viewerTime(Date.parse(sch.reads[sch.reads.length - 1]) + sch.looks_ahead_min * 60000) + ', then every 30. ';
+    box.appendChild(tag(until + 'A forecast, not a trade signal.'));
     return box;
   }
   // the card's read is the lane's last of the day: it is stamped at a bar, which can be a minute behind the

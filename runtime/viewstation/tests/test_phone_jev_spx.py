@@ -482,8 +482,7 @@ def test_the_last_lane_read_is_known_from_the_schedules_stamps():
     # the hand-back and the held unit are instants from the card, drawn in the viewer's zone
     body = _fn("laneCard")
     assert "viewerTime(Date.parse(sch.reads[sch.reads.length - 1]) + sch.looks_ahead_min * 60000)" in body
-    assert "viewerTime(marketAt(t.row_ts, RULER_HELD_UNTIL))" in body and "RULER_HELD_UNTIL = '09:45'" in JS
-    assert "'One tape unit ' + (+r.unit_points).toFixed(1) + ' points'" in body
+    assert "viewerTime(marketAt(t.row_ts, RULER_HELD_UNTIL))" in _fn("stretchWords") and "RULER_HELD_UNTIL = '09:45'" in JS
 
 
 # ---- the expiry line
@@ -518,7 +517,7 @@ def test_after_the_settle_the_line_names_the_next_expiry_with_its_day():
 
 def test_every_line_the_page_writes_starts_with_a_capital():
     assert JS.count("el('div', 'tag', ") == 1 and JS.count("el('div', 'skip', ") == 1
-    for word in ("'Today\\u2019s 0DTE settles '", "'Next expiry settles '", "'Flat within '", "'Big beyond '",
+    for word in ("'Today\\u2019s 0DTE settles '", "'Next expiry settles '", "'Flat on average is within '", "'SPX should average '",
                  "'Price ended '", "'Read '", "'Graded '"):
         assert word in JS, word
 
@@ -1574,41 +1573,150 @@ def test_the_last_reads_clock_looks_as_far_ahead_as_its_average_runs():
     assert before[1] == ["clock", "Looks 30 min ahead, graded 2026-09-28T16:00:00-04:00"]
 
 
+# the opening card's own parts, lifted with it
+LANE_FNS = ("top1", "tag", "skipLine", "endPriceRow", "indexLevel", "flatRange", "bandSpans", "moveScale", "keyRow", "stretchWords", "laneCard")
+LANE_VARS = ("RULER_HELD_UNTIL", "MOVE_SCALE_OVER", "STRETCH_LEAD", "STRETCH_MOVE", "STRETCH_RANGE", "STRETCH_SIZE", "STRETCH_THIRD", "FIRST_READ")
+# the builder's own sentences (labels/range_size._since_last_read): the day's first read, from the owner's phone on
+# 09-29, and a later read's, from the same day's 10:30 card
+FIRST_RANGE = ("the range since the open, 5 minutes ago, is 18.1 points, 1.78 tape units (one is 10.2 points), in the middle third "
+               "for this minute, higher than 10 of 19 prior sessions, each in its own morning ruler")
+LATER = {"move_since_read": "since the last read, 5 minutes ago, price ended 1.8 points above it, 0.25 of a tape unit (7.2 points), "
+                            "within the 0.42 cut, so it held",
+         "range_since_read": "the range since the last read, 5 minutes ago, is 7.7 points, 1.08 tape units (one is 7.2 points), in the top "
+                             "third for this minute, higher than 14 of 19 prior sessions, each in its own morning ruler"}
+
+
+def _lane(ts, now="2026-09-28T10:42:00-04:00"):
+    js = (CARD_STUBS + "Object.defineProperty(Node.prototype, 'childNodes', {get: function(){ return this.kids; }});" + _odds()
+          + "".join(_var(v) for v in LANE_VARS) + "".join(_fn(f) for f in LANE_FNS)
+          + "console.log(JSON.stringify(D.t.map(function(t){ return dump(laneCard(t, true)); })));")
+    return _run(js, {"t": ts, "now": now})
+
+
+def _cls(node, cls):
+    """Every node under ``node`` with class ``cls``, in order."""
+    here = [node] if node["attrs"].get("class") == cls else []
+    return here + [n for k in node["kids"] for n in _cls(k, cls)]
+
+
+def _texts(node, cls):
+    return [_flat_text(n) for n in _cls(node, cls)]
+
+
 def test_the_opening_card_leads_with_the_average_call_and_keeps_the_end_prices_size_as_its_second_line():
     five = {"down_big": 0.05, "down_small": 0.1, "flat": 0.3, "up_small": 0.4, "up_big": 0.1, "unsure": 0.05}
     hour = {"pick": "up_small", "probabilities": five, "views": {"direction": {"probabilities": {"up": 0.5, "flat": 0.3, "down": 0.15}},
                                                                  "size": {"probabilities": {"big": 0.15, "small": 0.8}}},
-            "average": {**AVG, "primary": "average_10", "box": "next_10", "minutes": 10, "edge_points": 1.66}}
+            "average": {**AVG, "primary": "average_10", "box": "next_10", "minutes": 10, "edge_points": 1.66, "price": 6701.4}}
     t = {"lane": "tape", "row_ts": "2026-09-28T10:40:00-04:00", "hour": hour, "calls": [call("10:40", "10:50", "up", 0.55)], "stretch": {}}
-    js = (CARD_STUBS + "Object.defineProperty(Node.prototype, 'childNodes', {get: function(){ return this.kids; }});" + _odds() + _var("RULER_HELD_UNTIL") + "".join(_fn(f) for f in ("top1", "tag", "skipLine", "averageWords", "endPriceRow", "laneCard"))
-          + "console.log(JSON.stringify(dump(laneCard(D.t, true))));")
-    parts = _parts(_run(js, {"t": t, "now": "2026-09-28T10:42:00-04:00"}))
+    card = _lane([t])[0]
+    parts = _parts(card)
     assert parts[0] == ["mode", "opening · a call every 5 min"]   # the mode chip heads the lane card
     assert parts[2] == ["big", "Up 55%"] and ["row60", "End-price questionUp small 40%"] in parts
-    assert ["tag", "On the average price over the next 10 minutes, flat within \u00B11.66 points"] in parts
     assert ["odds", "End-price question: a big move 15%"] in parts   # the size, from the end-price sum and said so; its direction is the call's
+    # the call in prices, on the read's price and the average's edge, till its mark, in the viewer's zone, both lines to
+    # a tenth so they agree: 6,701.4 + 1.66 is 6,703.06
+    assert _texts(card, "range") == ["SPX should average above 6,703.1 until 07:50."]
+    assert _texts(card, "range-n") == ["Flat on average is within 1.7 points of 6,701.4, the price at 07:40."]
 
 
-def test_the_opening_card_says_its_ruler_row_is_the_end_price_questions_and_never_sizes_the_call():
-    """The opening call is the average over the next 10 minutes, flat within its own edge and with no size: the tape unit
-    row's second flat figure is the end-price question's and says so, and neither the card nor the footer says the call
-    is sized in tape units. The footer describes the pre-market call as the 30-minute average it is."""
+def test_the_opening_calls_range_follows_its_pick_and_says_what_flat_is_without_a_price():
+    """Flat averages between the edges, down below the lower one; a read with no price names no level at all."""
+    base = {"lane": "tape", "row_ts": "2026-09-28T10:40:00-04:00", "calls": [call("10:40", "10:50", "flat", 0.6)], "stretch": {}}
+    avg = {**AVG, "minutes": 10, "edge_points": 2.65, "price": 6700.0}
+    cards = [{**base, "hour": {**END_30, "average": {**avg, "pick": pick}}} for pick in ("flat", "down")]
+    cards.append({**base, "hour": {**END_30, "average": {k: v for k, v in avg.items() if k != "price"}}})
+    got = [(_texts(c, "range"), _texts(c, "range-n")) for c in _lane(cards)]
+    assert got[0][0] == ["SPX should average between 6,697.4 and 6,702.7 until 07:50."]
+    assert got[1][0] == ["SPX should average below 6,697.4 until 07:50."]
+    assert got[2] == ([], ["Flat on average is within 2.6 points of the price at 07:40."])
+
+
+def test_the_opening_card_draws_the_end_price_bands_to_scale_and_says_what_a_point_is():
+    """What counts as a move is the end-price question's bands (the card's band), never the call's own edge: flat, small
+    and big share one bar in proportion to their points, the bar running a third past big, each edge's figure sat on
+    its edge. What a point is reads off the read's price; a card with no average call has no price and no example.
+    Neither the card nor the footer says the call is sized in tape units, and the footer describes the pre-market call
+    as the 30-minute average it is."""
     hour = {"pick": "up_small", "probabilities": {"down_big": 0.05, "down_small": 0.1, "flat": 0.3, "up_small": 0.4, "up_big": 0.1, "unsure": 0.05},
-            "average": {**AVG, "primary": "average_10", "box": "next_10", "minutes": 10, "edge_points": 2.07}}
+            "average": {**AVG, "primary": "average_10", "box": "next_10", "minutes": 10, "edge_points": 2.07, "price": 7682.79}}
     t = {"lane": "tape", "row_ts": "2026-09-28T10:40:00-04:00", "hour": hour, "calls": [call("10:40", "10:50", "up", 0.55)], "stretch": {},
-         "ruler": {"unit_points": 4.4, "source": "live"}, "band": {"flat_points": 3.3, "big_points": 8.8}}
-    js = (CARD_STUBS + "Object.defineProperty(Node.prototype, 'childNodes', {get: function(){ return this.kids; }});" + _odds() + _var("RULER_HELD_UNTIL")
-          + "".join(_fn(f) for f in ("top1", "tag", "skipLine", "averageWords", "endPriceRow", "laneCard"))
-          + "console.log(JSON.stringify(D.t.map(function(t){ return dump(laneCard(t, true)); })));")
-    old = {**t, "hour": {k: v for k, v in hour.items() if k != "average"}}
-    now, before = [_parts(d) for d in _run(js, {"t": [t, old], "now": "2026-09-28T10:42:00-04:00"})]
-    assert ["tag", "On the average price over the next 10 minutes, flat within \u00B12.07 points"] in now
-    assert ["odds", "End-price question:One tape unit 4.4 pointsFlat within 3.3 pointsBig beyond 8.8 points"] in now
-    assert ["odds", "One tape unit 4.4 pointsFlat within 3.3 pointsBig beyond 8.8 points"] in before   # a card with no average call
-    assert now[-1] == ["tag", "The 5-minute reads\u2019 call for the next 10 minutes: a forecast, graded by the bars, not a trade signal"]
+         "band": {"flat_points": 3.0, "big_points": 6.36}}
+    now, before = _lane([t, {**t, "hour": {k: v for k, v in hour.items() if k != "average"}}])
+    bar, = _cls(now, "mv-bar")
+    assert bar["attrs"] == {"class": "mv-bar"} and [(k["attrs"]["class"], k["text"]) for k in bar["kids"]] == [
+        ("mv-flat", "Flat"), ("mv-small", "Small"), ("mv-big", "Big")]
+    ticks, = _cls(now, "mv-ticks")
+    assert [k["text"] for k in ticks["kids"]] == ["0", "3.0", "6.4", "9+ pts"]
+    assert _texts(now, "mv-spans") == ["under 3.0" + "3.0 to 6.4" + "over 6.4"]
+    assert _texts(now, "inplay-h")[-1] == "What counts as a move at 07:50"
+    assert _texts(now, "pt-r") == ["MeansOne step of the S&P 500 index", "Example7,683 → 7,684 = 1 point"]
+    assert _texts(before, "pt-r") == ["MeansOne step of the S&P 500 index"]
+    js = ("function el(tag, cls){ return {tag: tag, cls: cls, style: {}, kids: [], appendChild: function(n){ this.kids.push(n); return n; }}; }"
+          + "function keyRow(){ return el('div'); }" + _fn("viewerTime") + _fn("cap") + _fn("indexLevel") + _fn("bandSpans") + _var("MOVE_SCALE_OVER") + _fn("moveScale")
+          + "var b = moveScale({flat_points: 3.0, big_points: 6.36}, null, D.now); console.log(JSON.stringify([b.kids[1].style, b.kids[2].kids.map(function(k){ return k.style; }), b.kids[3].style]));")
+    bar_style, tick_styles, span_style = _run(js, {"now": "2026-09-28T10:50:00-04:00"})
+    assert bar_style == span_style == {"gridTemplateColumns": "3.00fr 3.36fr 2.64fr"}   # the bar and the figures under it share one grid
+    assert tick_styles == [{}, {"left": "33.33%"}, {"left": "70.67%"}, {}]              # each edge's figure at its edge's share of 9 points
     foot = re.search(r'(?s)<p class="foot">(.*?)</p>', SPX).group(1)
-    assert "sized in tape units" not in foot and "in tape units" not in _fn("laneCard")
+    assert "sized in tape units" not in foot and "tape unit" not in _fn("laneCard")
     assert "the average price over the 30 minutes after the first settled price" in foot and "where price stands 10 and 30" not in foot
+
+
+def test_the_stretch_since_the_last_read_is_said_in_a_few_plain_words():
+    """The builder's sentences come down to their figures and verdicts: the move in points with its verdict named in the
+    end-price bands the bar above draws, the range and its third against prior sessions at this minute, under a heading
+    naming the stretch. The day's first read has no move and says nothing of it; a move missing for any other reason says
+    the builder's reason; a sentence in a shape the page does not know is said whole."""
+    band = {"flat_points": 3.0, "big_points": 6.36}
+    base = {"lane": "tape", "row_ts": "2026-09-28T09:35:00-04:00", "hour": {}, "calls": [call("09:35", "09:45", "flat", 0.89)], "band": band}
+    first = {**base, "stretch": {"range_since_read": FIRST_RANGE}, "omitted": {"tape.move_since_read": "the day's first read: no earlier read today to measure from"},
+             "ruler": {"unit_points": 10.2, "source": "held"}}
+    later = {**base, "row_ts": "2026-09-28T10:30:00-04:00", "stretch": LATER, "ruler": {"unit_points": 7.15, "source": "tape"}}
+    odd = {**base, "stretch": {"range_since_read": "the range since the open is wide"}}
+    gap = {**base, "row_ts": "2026-09-28T10:30:00-04:00", "stretch": {}, "omitted": {"tape.move_since_read": "no finished bar at the last read"}}
+    a, b, c, d = _lane([first, later, odd, gap], "2026-09-28T09:40:00-04:00")
+    assert _texts(a, "inplay-h")[-1] == "Since the open"
+    assert _texts(a, "st") == ["18.1 points from high to low. Normal for this time of day: busier than 10 of the last 19 days."]
+    assert "A typical 5-minute swing right now: about 10.2 points, an estimate until 06:45" in _texts(a, "tag")
+    assert not _texts(a, "say") and "first read" not in json.dumps(a)
+    assert _texts(b, "inplay-h")[-1] == "Last 5 minutes"
+    assert _texts(b, "st") == ["Up 1.8 points: flat (under 3.0).",
+                               "7.7 points from high to low. Busy for this time of day: busier than 14 of the last 19 days."]
+    assert "A typical 5-minute swing right now: about 7.2 points" in _texts(b, "tag")
+    assert _texts(c, "say") == ["The range since the open is wide"] and not _texts(c, "st")
+    assert "No finished bar at the last read" in _texts(d, "tag")
+
+
+@pytest.mark.parametrize("move, said", [
+    ("price ended level with it, 0 of a tape unit (7.2 points), within the 0.42 cut, so it held", "No change: flat (under 3.0)."),
+    ("price ended 4.1 points below it, 0.57 of a tape unit (7.2 points), more than the 0.42 cut and no more than 0.89, so it fell small",
+     "Down 4.1 points: a small move (3.0 to 6.4)."),
+    ("price ended 9.9 points above it, 1.38 tape units (one is 7.2 points), more than the 0.89 cut, so it rose big", "Up 9.9 points: a big move (over 6.4)."),
+])
+def test_every_move_the_builder_can_write_comes_down_to_its_size(move, said):
+    t = {"lane": "tape", "row_ts": "2026-09-28T10:30:00-04:00", "hour": {}, "calls": [call("10:30", "10:40", "flat", 0.5)],
+         "band": {"flat_points": 3.0, "big_points": 6.36}, "stretch": {"move_since_read": "since the last read, 5 minutes ago, " + move}}
+    assert _texts(_lane([t])[0], "st") == [said]
+
+
+def test_a_quiet_range_on_an_estimated_ruler_says_so():
+    rng = ("the range since the last read, 5 minutes ago, is 2.1 points, 0.29 of a tape unit (7.2 points), in the bottom third for this "
+           "minute, higher than 0 of 19 prior sessions, each in its own morning ruler (ruler estimated)")
+    t = {"lane": "tape", "row_ts": "2026-09-28T10:30:00-04:00", "hour": {}, "calls": [call("10:30", "10:40", "flat", 0.5)], "stretch": {"range_since_read": rng}}
+    assert _texts(_lane([t])[0], "st") == ["2.1 points from high to low. Quiet for this time of day: busier than 0 of the last 19 days (estimated)."]
+
+
+def test_the_opening_cards_last_line_says_when_it_hands_back_and_what_a_call_is():
+    reads = [f"2026-09-28T{t}:00-04:00" for t in ("09:35", "09:40", "10:25", "10:30")]
+    base = {"lane": "tape", "hour": {}, "stretch": {}, "schedule": {"reads": reads, "looks_ahead_min": 10}}
+    mid = {**base, "row_ts": reads[1], "calls": [call("09:40", "09:50", "flat", 0.6)]}
+    last = {**base, "row_ts": reads[-1], "calls": [call("10:30", "10:40", "flat", 0.6)]}
+    bare = {**mid, "schedule": None}
+    assert [_parts(c)[-1] for c in _lane([mid, last, bare])] == [
+        ["tag", "Checks every 5 min until about 07:40, then every 30. A forecast, not a trade signal."],
+        ["tag", "Last 5-minute check; every 30 min again from 07:40. A forecast, not a trade signal."],
+        ["tag", "A forecast, not a trade signal."]]
 
 
 def test_the_pre_market_call_and_its_fold_are_the_average_price_sums():
