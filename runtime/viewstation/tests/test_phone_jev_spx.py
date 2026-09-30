@@ -1209,6 +1209,36 @@ def test_after_the_hand_over_the_call_folds_to_one_line_with_each_checks_result(
     assert got["fold"]["attrs"]["class"] == "card fold"
 
 
+def _alone(**checks):
+    """The card of a call whose end-price sums got no answer (grade.average_alone): its hour carries the average-price
+    call alone, no end-price odds, and its checks only their average-price grades (service.day_calls)."""
+    read = et("09:28", s="04")
+    card = pre_card("09:28", graded_at="2026-09-28T14:06:04+00:00",
+                    calls=[{"read": read, "mark": et("10:05"), "minutes": 30, "pick": "down", "p": 0.45, "sum": "open_average_30",
+                            "end_price_missing": "JEV did not answer in time", "checks": checks}])
+    return {**card, "hour": {"primary": "open_30", "average": PRE_AVG, "read_at": read}}
+
+
+@pytest.mark.parametrize("card, want", [
+    (_alone(open_10={"integral": on_call("down", "right")}), "pre-market call 06:28Down 45%06:44 was Down, right · 07:04 not graded yet"),
+    (_alone(open_10={"integral": on_call("down", "right")}, open_30={"integral": on_call("up", "wrong")}),
+     "pre-market call 06:28Down 45%06:44 was Down, right · 07:04 was Up, wrong"),
+    (_alone(open_10={"integral": {"graded": False, "reason": "not graded: a window with bars missing"}}),
+     "pre-market call 06:28Down 45%06:44 not graded yet · 07:04 not graded yet"),
+])
+def test_a_call_whose_end_price_sums_got_no_answer_still_folds_with_its_checks(card, want):
+    """Only the end-price request failed: the card's hour holds the average-price call and no end-price odds, and the
+    fold once needed those, so the call vanished at the hand-over. It folds on the call's own odds, each check on its
+    average-price grade alone."""
+    got = _fold(card, et("10:30"))
+    assert got["folds"] is True and _flat_text(got["fold"]) == want
+
+
+def test_a_call_whose_end_price_sums_got_no_answer_is_still_said_to_be_a_forecast():
+    parts = _card_parts(_page(_alone(), et("09:28", s="20")))
+    assert parts[-1] == ["tag", "Hands over to the 5-minute opening reads at 06:35. A forecast, graded by the bars, not a trade signal."]
+
+
 @pytest.mark.parametrize("card, now", [
     (pre_card("09:28"), et("09:34")),                                        # it still leads the page
     (pre_card("09:28", day="2026-09-25"), et("10:30")),                      # Friday's card on Monday

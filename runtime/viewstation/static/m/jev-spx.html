@@ -1462,16 +1462,19 @@ details .q{margin-top:8px}
   function preLeads(p, now, today){
     return !!(p && p.lane === 'premarket' && today && p.day === today && now < Date.parse(p.handover));
   }
-  // after the hand-over, today's call folds to one line; a day without a call has nothing to fold
+  // after the hand-over, today's call folds to one line; a day without a call has nothing to fold. The call is the
+  // average-price sum's, which stands alone when the end-price sums got no answer
   function preFolds(p, now, today){
-    return !!(p && p.lane === 'premarket' && today && p.day === today && now >= Date.parse(p.handover) && p.hour && p.hour.probabilities);
+    var a = p && p.hour && callSum(p.hour);
+    return !!(p && p.lane === 'premarket' && today && p.day === today && now >= Date.parse(p.handover) && a && a.probabilities);
   }
   // the folded call: its pick, then each check (the card's marks, 10 and 30 minutes after the settled open) as the
   // close-out graded it on the call's own record, one it has not graded yet said so; before the close-out, when the
   // call is checked. The card is stamped closed_out_at only once nothing is left to grade, so a check still ungraded
   // then never will be: it says so, with the grader's reason when the call carries one (``closed``). Every check of
   // an average-price call grades the call's own pick (grade.checked_call), so a check standing on its end price alone
-  // is judged on that pick too; a read whose average-price sum got no answer checks each box on its own pick
+  // is judged on that pick too; a call whose end-price sums got no answer has its average-price checks alone; a read
+  // whose average-price sum got no answer checks each box on its own pick
   var PRE_CHECKS = ['open_10', 'open_30'];
   function preFold(p){
     var h = p.hour, a = callSum(h), top = a.pick || top1(a.probabilities), f = el('div', 'card fold');
@@ -1480,7 +1483,7 @@ details .q{margin-top:8px}
     f.appendChild(el('b', null, cap(top) + ' ' + pct(a.probabilities[top])));
     // each check on the average price over its own window from the settled open, or on its end price alone, said so
     var never = false, said = PRE_CHECKS.map(function(k, i){
-      var ck = checks[k] && a !== h ? {pick: top, integral: checks[k].integral, end_price: checks[k]} : checks[k];
+      var ck = checks[k] && a !== h ? {pick: top, integral: checks[k].integral, end_price: checks[k].outcome ? checks[k] : null} : checks[k];
       var v = ck && gradeOf(ck), at = viewerTime(p.marks[i]);
       if(v) return at + (v.endOnly ? ' ended ' : ' was ') + cap(v.label) + ', ' + v.verdict.toLowerCase();
       never = never || !!p.closed_out_at;
@@ -1718,7 +1721,7 @@ details .q{margin-top:8px}
     }
     card.appendChild(preFacts(p));
     card.appendChild(tag('hands over to the 5-minute opening reads at ' + viewerTime(p.handover) + '.' +
-                         (p.hour && p.hour.probabilities ? ' A forecast, graded by the bars, not a trade signal.' : '')));
+                         (p.hour && callSum(p.hour).probabilities ? ' A forecast, graded by the bars, not a trade signal.' : '')));
     main.appendChild(card);
     var nf = el('div', 'card fold');
     nf.appendChild(el('span', 'k', 'Opening reads')); nf.appendChild(el('b', null, 'First ' + viewerTime(p.handover)));
