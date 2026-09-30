@@ -269,6 +269,42 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 .sh-close{display:block;width:100%;margin-top:18px;height:var(--tap-min);border:0;border-radius:14px;
           background:var(--fill);color:var(--on-body);font:700 14px/1 var(--sans)}
 .sh-close:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
+/* the questions: one plain control on the page, and a sheet of every question on the card, a group at a time with
+   one card in view. A swipe or a tap at either side moves along, the strip at its foot jumps between groups, and a
+   pull on its handle closes it; no other control in it */
+.vq{display:block;width:100%;height:var(--tap-min);border:1px solid var(--rule-soft);border-radius:14px;background:var(--s);
+    font:700 14px/1 var(--sans);color:var(--i);touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.vq:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
+.sheet.qs{max-height:none;height:calc(var(--app-h) * .92);display:flex;flex-direction:column;overflow:hidden;
+          padding:0 0 calc(env(safe-area-inset-bottom) + 14px)}
+.qs-grab{display:block;flex:none;width:100%;height:30px;border:0;background:none;touch-action:none;cursor:grab}
+.qs-grab i{display:block;width:38px;height:4px;border-radius:2px;background:var(--s2);margin:12px auto 0}
+.qs-grab:focus-visible{outline:2px solid var(--px-ink);outline-offset:-2px;border-radius:12px}
+.qs-hd{flex:none;padding:0 20px;touch-action:none}
+.qs-name{font:700 20px/1.2 var(--sans);color:var(--i);letter-spacing:-.01em}
+.qs-sub{margin-top:3px;font:400 12.5px/1.3 var(--sans);color:var(--i-mute)}
+.qs-segs{flex:none;display:flex;gap:3px;margin:12px 20px 0}
+.qs-segs i{flex:1;height:3px;border-radius:2px;background:var(--s2)}
+.qs-segs i.done{background:var(--rule-soft)}
+.qs-segs i.on{background:var(--i)}
+.qs-stage{flex:1;min-height:0;overflow:hidden;margin-top:12px;touch-action:pan-y}
+.qs-track{display:flex;height:100%;padding:0 22px;transition:transform .28s cubic-bezier(.2,0,0,1)}
+.qs-card{flex:0 0 100%;min-width:0;height:100%;padding:0 4px 6px;transition:opacity .28s,transform .28s}
+.qs-card.side{opacity:.45;transform:scale(.96)}
+.qs-card>.q{height:100%;overflow-y:auto;overscroll-behavior:contain;background:#FFFFFF}
+.qs-card .bar{grid-template-columns:minmax(0,1fr) 40px;gap:4px 8px;margin-top:10px}
+.qs-card .bar .opt{grid-column:1;grid-row:1}
+.qs-card .bar b{grid-column:2;grid-row:1}
+.qs-card .bar .track,.qs-card .bar .fill{height:10px;border-radius:5px}
+.qs-card .bar .track{grid-column:1 / -1;grid-row:2}
+.qs-scrub{flex:none;padding:12px 20px 0}
+.qs-lab{display:flex;justify-content:space-between;margin-bottom:6px;font:700 11px/1.2 var(--sans);letter-spacing:.1em;
+        text-transform:uppercase;color:var(--i-faint)}
+.qs-strip{display:flex;gap:2px;align-items:center;height:30px;touch-action:none;cursor:pointer}
+.qs-strip:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px;border-radius:6px}
+.qs-strip i{height:8px;border-radius:2px;background:var(--s2)}
+.qs-strip i.ans{background:var(--o-fl)}
+.qs-strip i.cur{height:18px;background:var(--i)}
 /* what the call sheet adds: the result first, then the odds */
 .cs-verdict{display:flex;align-items:baseline;gap:10px}
 .cs-verdict b{font:700 22px/1.1 var(--sans);color:var(--i)}
@@ -283,15 +319,6 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 .fold .k{font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
 .fold b{margin-left:auto;font:700 15px/1.2 var(--sans);color:var(--i)}
 .fold .l{font:400 12.5px/1.2 var(--sans);color:var(--i-mute)}
-/* one chevron on every fold, the viewpoints, the not-asked and the dark alike */
-details>summary{list-style:none;cursor:default;padding:6px 4px;display:flex;align-items:center;gap:8px}
-details>summary::-webkit-details-marker{display:none}
-details>summary::before{content:"";width:7px;height:7px;border-right:1.5px solid var(--i-mute);border-bottom:1.5px solid var(--i-mute);transform:rotate(45deg);margin:0 4px 3px 2px;flex:none}
-details:not([open])>summary::before{transform:rotate(-45deg);margin-bottom:0}
-details.vp{margin-top:6px}
-details.vp>summary{min-height:44px}
-details.vp>.q{margin-top:8px}
-.vp .lab small{font:500 11px/1 var(--sans);letter-spacing:0;text-transform:none;color:var(--i-faint)}
 .q{background:var(--s);border-radius:18px;padding:14px 16px;box-shadow:var(--sh1)}
 .q.shadow{border:1px dashed var(--rule-soft);box-shadow:none}
 .ask{font:700 15px/1.35 var(--sans);color:var(--i)}
@@ -310,9 +337,6 @@ details.vp>.q{margin-top:8px}
 .bar.long .track{grid-column:1}
 .bar.long b{grid-column:2}
 .skip{margin-top:6px;font:400 12.5px/1.4 var(--sans);color:var(--i-mute)}
-details{margin-top:4px}
-summary{font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint)}
-details .q{margin-top:8px}
 .foot{padding:4px 4px 0;font:400 12px/1.5 var(--sans);color:var(--i-mute)}
 
 /* the first-load cover, the glance's own: opaque from the first frame, held for a floor so a
@@ -330,6 +354,7 @@ details .q{margin-top:8px}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.load i,.poll{animation:pulse-dim 1.4s ease-in-out infinite}.load{transition:none}
   .sheet,.sheet[aria-hidden="false"]{transition:none}}
+@media (prefers-reduced-motion:reduce){.qs-track,.qs-card{transition:none}}
 @keyframes pulse-dim{0%,100%{opacity:.35}50%{opacity:1}}
 
 /* the tab bar, the glance's own, with this page lit */
@@ -387,6 +412,14 @@ details .q{margin-top:8px}
   <div id="csBody"></div>
   <button class="sh-close" type="button" data-sheet-close>Close</button>
 </div>
+<div class="sheet qs" id="qSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="qsName">
+  <button class="qs-grab" type="button" data-sheet-close aria-label="Close the questions"><i></i></button>
+  <div class="qs-hd" id="qsHd"><div class="qs-name" id="qsName">Questions</div><div class="qs-sub" id="qsSub"></div></div>
+  <div class="qs-segs" id="qsSegs" aria-hidden="true"></div>
+  <div class="qs-stage" id="qsStage" aria-roledescription="carousel" aria-live="polite"><div class="qs-track" id="qsTrack"></div></div>
+  <div class="qs-scrub"><div class="qs-lab"><span>All groups</span><span id="qsAt"></span></div>
+    <div class="qs-strip" id="qsStrip" role="slider" tabindex="0" aria-label="Question groups" aria-valuemin="1"></div></div>
+</div>
 
 <nav class="tabs">
   <a class="tab" href="/m/" aria-label="Now">
@@ -433,9 +466,6 @@ details .q{margin-top:8px}
                Math.max(0, LOAD_MIN_MS - (Date.now() - LOAD_T0)));
   }
   function polling(on){ const p = $('poll'); if(p) p.hidden = !on; }
-  var folded = {};                              // viewpoint -> true when collapsed; a per-phone convenience
-  try { folded = JSON.parse(localStorage.getItem('jev.spx.folded') || '{}') || {}; } catch(e){ folded = {}; }
-  function remember(){ try { localStorage.setItem('jev.spx.folded', JSON.stringify(folded)); } catch(e){} }
 
   // Up, Down, Flat, Unsure: a capital first letter on every option, spaces for underscores
   function cap(k){ k = String(k); return k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, ' '); }
@@ -761,41 +791,134 @@ details .q{margin-top:8px}
 
     main.appendChild(situationCard(c, ageText, old));
 
-    var by = {}; var skipped = [];
-    c.questions.forEach(function(q){ if(q.answer) (by[q.viewpoint || 'outcome'] = by[q.viewpoint || 'outcome'] || []).push(q); else skipped.push(q); });
-    if(!Object.keys(by).length){
-      // nothing answered yet: show every question so the page still says what it will judge
-      c.questions.forEach(function(q){ (by[q.viewpoint || 'outcome'] = by[q.viewpoint || 'outcome'] || []).push(q); }); skipped = [];
-    }
-    ORDER.concat(Object.keys(by).filter(function(k){ return ORDER.indexOf(k) < 0; })).forEach(function(vp){
-      if(!by[vp]) return;
-      // one fold per viewpoint: tap the heading to collapse or expand; remembered on this phone only
-      var fold = el('details', 'vp'); fold.open = folded[vp] !== true;
-      var sm = el('summary'); var l = el('div', 'lab'); l.appendChild(el('span', null, NAME[vp] || words(vp))); l.appendChild(el('small', null, by[vp].length + '')); sm.appendChild(l); fold.appendChild(sm);
-      by[vp].forEach(function(q){ fold.appendChild(question(q, omitted, c.row_ts)); });
-      fold.addEventListener('toggle', function(){ folded[vp] = !fold.open; remember(); });
-      main.appendChild(fold);
-    });
-    // a question asked and lost (its request failed: the service's "asked, no answer received") is folded apart from
-    // one not asked this run
-    var lost = skipped.filter(function(q){ return /^asked, no answer/.test(q.skipped || ''); });
-    [['asked, no answer: ', lost], ['not asked this run: ', skipped.filter(function(q){ return lost.indexOf(q) < 0; })]].forEach(function(f){
-      if(!f[1].length) return;
-      var d = el('details'); d.appendChild(el('summary', null, f[0] + f[1].length));
-      f[1].forEach(function(q){ d.appendChild(question(q, omitted, c.row_ts)); }); main.appendChild(d);
-    });
-    if(c.dark && c.dark.length){
-      // dark: never asked, never counted; said once so nobody wonders where those questions went. Each waits for its
-      // own source, a feed or the code to read one: its reason as the questions doc words it (``dark_reason``), its
-      // market clock in the viewer's zone, and on a card without one only that it waits
-      var dk = el('details'); dk.appendChild(el('summary', null, 'dark, each waiting for its source: ' + c.dark.length));
-      c.dark.forEach(function(q){
-        var b = el('div', 'q shadow'); b.appendChild(el('div', 'ask', q.ask));
-        b.appendChild(skipLine(q.dark_reason ? 'dark: ' + marketWords(q.dark_reason, c.row_ts) : 'dark until what it needs is on file')); dk.appendChild(b);
-      });
-      main.appendChild(dk);
-    }
+    // the questions live in their own sheet (qsDeck); the page keeps one plain control for them
+    var vq = el('button', 'vq', 'View questions'); vq.type = 'button'; vq.setAttribute('aria-controls', 'qSheet');
+    vq.addEventListener('click', function(){ openQuestions(vq); });
+    main.appendChild(vq);
+    if(qsOpen()){ qsLoad(c, true); qsDraw(true); }   // a new card while the sheet is open keeps the reader's place
   }
+
+  // ---- the questions sheet (Will's layout of 09-29): every question on the card, a group at a time, in the
+  // questions doc's group order and each group's own question order, answered or not: a question asked and lost, or
+  // not asked this run, sits in its group with its reason, as a shadow question sits in its with its dashes. The dark
+  // questions come last, as a group of their own, each with its own reason (``dark_reason``, as the questions doc
+  // words it, its market clock in the viewer's zone). One card is in view, its neighbours peeking at either side: a
+  // swipe or a tap at either side moves along, and past a group's last question into the next group; the strip at
+  // the foot is every group, each as wide as its questions, and a tap or a drag on it jumps; a pull on the handle,
+  // Back or Escape closes it (sheet.js). The arrow keys move along too.
+  var qs = {deck: [], g: 0, i: 0, at: null, omitted: {}};
+  function qsDeck(c){
+    var by = {};
+    (c.questions || []).forEach(function(q){ var vp = q.viewpoint || 'outcome'; (by[vp] = by[vp] || []).push(q); });
+    var deck = ORDER.concat(Object.keys(by).filter(function(k){ return ORDER.indexOf(k) < 0; })).filter(function(vp){ return by[vp]; })
+      .map(function(vp){ return {id: vp, name: NAME[vp] || words(vp), qs: by[vp], answered: by[vp].filter(function(q){ return q.answer; }).length}; });
+    if(c.dark && c.dark.length) deck.push({id: 'dark', name: 'dark, each waiting for its source', qs: c.dark, answered: 0, dark: true});
+    return deck;
+  }
+  function darkCard(q, at){
+    var b = el('div', 'q shadow'); b.appendChild(el('div', 'ask', q.ask));
+    b.appendChild(skipLine(q.dark_reason ? 'dark: ' + marketWords(q.dark_reason, at) : 'dark until what it needs is on file'));
+    return b;
+  }
+  function qsOpen(){ var s = $('qSheet'); return !!s && s.getAttribute('aria-hidden') === 'false'; }
+  // the card's deck; with ``keep``, the question in view stays in view on a new card, found by its id
+  function qsLoad(c, keep){
+    var was = keep && qs.deck[qs.g] && qs.deck[qs.g].qs[qs.i], id = was && was.id;
+    qs.deck = qsDeck(c); qs.at = c.row_ts; qs.omitted = c.omitted || {}; qs.g = 0; qs.i = 0;
+    if(id != null) qs.deck.forEach(function(grp, g){ grp.qs.forEach(function(q, i){ if(q.id === id){ qs.g = g; qs.i = i; } }); });
+  }
+  function qsDraw(full){
+    var grp = qs.deck[qs.g], track = $('qsTrack');
+    if(!grp || !track) return;
+    var n = grp.qs.length, total = qs.deck.length;
+    if(full){
+      track.textContent = '';
+      grp.qs.forEach(function(q){ var c = el('div', 'qs-card'); c.appendChild(grp.dark ? darkCard(q, qs.at) : question(q, qs.omitted, qs.at)); track.appendChild(c); });
+    }
+    Array.prototype.forEach.call(track.childNodes || [], function(c, k){ c.className = 'qs-card' + (k === qs.i ? '' : ' side'); c.setAttribute('aria-hidden', k === qs.i ? 'false' : 'true'); });
+    var w = (track.firstChild && track.firstChild.offsetWidth) || 0;
+    track.style.transform = 'translateX(' + (-qs.i * w) + 'px)';
+    $('qsName').textContent = sentence(grp.name);
+    $('qsSub').textContent = 'Question ' + (qs.i + 1) + ' of ' + n + ' \u00B7 ' + (grp.dark ? 'never asked' : grp.answered + ' of ' + n + ' answered');
+    var segs = $('qsSegs'); segs.textContent = '';
+    for(var k = 0; k < n; k++) segs.appendChild(el('i', k < qs.i ? 'done' : k === qs.i ? 'on' : null));
+    var strip = $('qsStrip'); strip.textContent = '';
+    qs.deck.forEach(function(d, g){ var s = el('i', g === qs.g ? 'cur' : d.answered ? 'ans' : null); s.style.flex = d.qs.length + ' 1 0'; strip.appendChild(s); });
+    strip.setAttribute('aria-valuemax', total); strip.setAttribute('aria-valuenow', qs.g + 1); strip.setAttribute('aria-valuetext', sentence(grp.name));
+    $('qsAt').textContent = 'Group ' + (qs.g + 1) + ' of ' + total;
+  }
+  // one question along, and past either end of a group into the next or the one before; nothing past the deck's ends
+  function qsGo(d){
+    var n = qs.deck[qs.g] ? qs.deck[qs.g].qs.length : 0;
+    if(qs.i + d >= 0 && qs.i + d < n){ qs.i += d; qsDraw(false); }
+    else if(d > 0 && qs.g < qs.deck.length - 1){ qs.g++; qs.i = 0; qsDraw(true); }
+    else if(d < 0 && qs.g > 0){ qs.g--; qs.i = qs.deck[qs.g].qs.length - 1; qsDraw(true); }
+  }
+  function qsJump(g){ if(g !== qs.g && qs.deck[g]){ qs.g = g; qs.i = 0; qsDraw(true); } }
+  // the group under a point on the strip, each group as wide as its questions
+  function qsGroupAt(frac){
+    var all = qs.deck.reduce(function(t, d){ return t + d.qs.length; }, 0), acc = 0;
+    for(var g = 0; g < qs.deck.length; g++){ acc += qs.deck[g].qs.length / all; if(frac <= acc) return g; }
+    return qs.deck.length - 1;
+  }
+  function openQuestions(from){
+    if(!last || MiraiSheet.isOpen()) return;
+    qsLoad(last, true);
+    MiraiSheet.open(from);
+    qsDraw(true);
+  }
+  (function(){
+    var stage = $('qsStage'), track = $('qsTrack'), strip = $('qsStrip'), sheet = $('qSheet');
+    if(!stage) return;
+    var sx = null, dx = 0;
+    stage.addEventListener('pointerdown', function(e){ sx = e.clientX; dx = 0; track.style.transition = 'none'; });
+    stage.addEventListener('pointermove', function(e){
+      if(sx == null) return;
+      dx = e.clientX - sx;
+      var w = (track.firstChild && track.firstChild.offsetWidth) || 0;
+      if(Math.abs(dx) > 6) track.style.transform = 'translateX(' + (dx - qs.i * w) + 'px)';
+    });
+    function lift(e, cancelled){
+      if(sx == null) return;
+      track.style.transition = ''; sx = null;
+      if(cancelled){ qsDraw(false); return; }
+      var r = stage.getBoundingClientRect(), x = e.clientX - r.left;
+      if(dx < -50) qsGo(1); else if(dx > 50) qsGo(-1);
+      else if(Math.abs(dx) <= 6 && x < r.width * 0.3) qsGo(-1);
+      else if(Math.abs(dx) <= 6 && x > r.width * 0.7) qsGo(1);
+      else qsDraw(false);
+    }
+    stage.addEventListener('pointerup', function(e){ lift(e, false); });
+    stage.addEventListener('pointercancel', function(e){ lift(e, true); });   // the page took it for a scroll of the card
+    var drag = false;
+    function pick(e){ var r = strip.getBoundingClientRect(); if(r.width) qsJump(qsGroupAt(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)))); }
+    strip.addEventListener('pointerdown', function(e){ drag = true; if(strip.setPointerCapture) strip.setPointerCapture(e.pointerId); pick(e); });
+    strip.addEventListener('pointermove', function(e){ if(drag) pick(e); });
+    strip.addEventListener('pointerup', function(){ drag = false; });
+    strip.addEventListener('pointercancel', function(){ drag = false; });
+    // a pull down on the handle or the heading closes it, through the handle, the sheet's own way out
+    var sy = null, dy = 0, grab = sheet.querySelector('.qs-grab');
+    [grab, $('qsHd')].forEach(function(h){
+      h.addEventListener('pointerdown', function(e){ sy = e.clientY; dy = 0; sheet.style.transition = 'none'; });
+    });
+    document.addEventListener('pointermove', function(e){
+      if(sy == null) return;
+      dy = Math.max(0, e.clientY - sy); sheet.style.transform = dy ? 'translateY(' + dy + 'px)' : '';
+    });
+    document.addEventListener('pointerup', function(){
+      if(sy == null) return;
+      sy = null; sheet.style.transition = ''; sheet.style.transform = '';
+      if(dy > 80) grab.click();
+    });
+    // a pull too short to close springs back: the click the handle gets at its end is not a tap
+    grab.addEventListener('click', function(e){ if(dy > 6 && dy <= 80) e.stopPropagation(); dy = 0; }, true);
+    document.addEventListener('keydown', function(e){
+      if(!qsOpen()) return;
+      if(e.key === 'ArrowRight'){ e.preventDefault(); qsGo(1); }
+      else if(e.key === 'ArrowLeft'){ e.preventDefault(); qsGo(-1); }
+    });
+    window.addEventListener('resize', function(){ if(qsOpen()) qsDraw(false); });
+  })();
 
   // A page that fails must say so in words where the header sits, never stay on "loading".
   function say(msg){ var s = document.getElementById('sub'); s.textContent = msg; s.hidden = false; s.classList.add('err'); clearLoading(); }

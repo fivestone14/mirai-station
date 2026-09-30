@@ -103,7 +103,8 @@ def test_the_page_reads_the_spx_cards_and_keeps_the_sndk_pages_modes():
     assert "setInterval(function(){ if(!document.hidden && todaysCard() && within(SESSION_HOURS)) pollSpot(); }, SPOT_MS);" in JS
     assert "pollSpot();" in _fn("wake") and "poll(); pollTape(); pollSpot(); armMark(); armTapeMark();" in JS
     assert "LANE_HOURS = ['09:33', '16:05']" in JS and "within(LANE_HOURS)" in _fn("pollTape")
-    assert "'jev.spx.folded'" in JS and "'jev.folded'" not in JS, "the SPX folds are kept apart from the SNDK ones"
+    # the questions left the page for their own sheet (09-29), so no fold is remembered on the phone any more
+    assert "jev.spx.folded" not in JS and "'jev.folded'" not in JS and "el('details'" not in JS
     assert "<title>SPX · JEV</title>" in SPX and '<span id="h1">SPX &middot; JEV</span>' in SPX
     assert "innerHTML" not in JS
     # the same call sheet as the SNDK page, opened by sheet.js loaded first
@@ -822,7 +823,7 @@ def test_every_question_group_has_a_heading_in_words():
     decl = "".join(re.search(r"\n  var %s = .*?;" % v, JS, re.S).group(0) for v in ("ORDER", "NAME"))
     names = _run(decl + "console.log(JSON.stringify([ORDER, NAME]));", {})
     assert names[0] == shown and set(names[1]) == set(shown) and "_" not in "".join(names[1].values())
-    assert "NAME[vp] || words(vp)" in _fn("paint")
+    assert "NAME[vp] || words(vp)" in _fn("qsDeck")
 
 
 def test_the_folded_30_minute_line_counts_down_only_a_call_that_was_made():
@@ -1807,7 +1808,7 @@ def test_a_diary_row_with_no_wall_draws_its_fact_in_words(tz):
     assert wall["kids"][1]["text"] == "No heavy strike sits within reach on either side of price"
     assert _flat_text(wall["kids"][0]) == "Nearest heavy strikeNone in reach"
     assert [k["attrs"].get("class") for k in rows["Price, last 30 min"]["kids"]] == ["sit-top", "sit-g", "sit-c"]
-    assert any(c[0] == "vp" for c in got["main"]), "the questions are drawn below it"
+    assert got["main"][[k for k, _ in got["main"]].index("card") + 1] == ["vq", "View questions"], "the questions' control is below it"
 
 
 def test_a_signed_fact_that_rounds_to_nothing_says_no_change():
@@ -1821,10 +1822,37 @@ def test_a_signed_fact_that_rounds_to_nothing_says_no_change():
     assert got == ["No change", "Down 0.1 vol points", "No change", "Up 0.31 of a normal day\u2019s move", "No change"]
 
 
+def _deck(live, tz=LA):
+    """The questions sheet's deck for a card (qsDeck), each group as [name, answered, [each card's text]], its cards drawn
+    as the sheet draws them (question, darkCard)."""
+    decl = "".join(re.search(r"\n  var %s = .*?;" % v, JS, re.S).group(0) for v in ("ORDER", "NAME"))
+    js = (decl + "function bar(n, p, pick){ return el('div', null, n + ' ' + Math.round(p * 100) + '%' + (pick ? ' picked' : '')); }"
+          + "".join(_fn(f) for f in ("tag", "skipLine", "skipWhy", "question", "darkCard", "qsDeck"))
+          + "console.log(JSON.stringify(qsDeck(D.c).map(function(g){ return [g.name, g.answered, g.qs.map(function(q){"
+            " return (g.dark ? darkCard(q, D.c.row_ts) : question(q, D.c.omitted || {}, D.c.row_ts)).textContent; })]; })));")
+    return _run(js, {"c": live}, tz)
+
+
+def test_the_questions_sheet_keeps_every_question_in_its_group_in_the_docs_order():
+    """Will's layout of 09-29: the page keeps one control, and the sheet deals every question on the card a group at a
+    time, in the questions doc's group order and each group's own order, answered or not, with the count answered."""
+    live = MONDAY["live"]
+    deck = _deck(live)
+    decl = "".join(re.search(r"\n  var %s = .*?;" % v, JS, re.S).group(0) for v in ("ORDER", "NAME"))
+    order, names = _run(decl + "console.log(JSON.stringify([ORDER, NAME]));", {})
+    ids = [vp for vp in order if any((q.get("viewpoint") or "outcome") == vp for q in live["questions"])]
+    assert [g[0] for g in deck[:len(ids)]] == [names[vp] for vp in ids]
+    assert sum(len(g[2]) for g in deck if not g[0].startswith("dark")) == len(live["questions"])
+    for g, vp in zip(deck, ids):
+        mine = [q for q in live["questions"] if (q.get("viewpoint") or "outcome") == vp]
+        assert g[1] == sum(1 for q in mine if q.get("answer")) and [t[:len(q["ask"])] for t, q in zip(g[2], mine)] == [q["ask"] for q in mine]
+    assert "el('details'" not in _fn("paint") and "openQuestions(vq)" in _fn("paint")
+
+
 def test_a_dark_question_names_its_own_reason_not_a_news_source_for_every_one():
     """Every dark question sat under "dark, waiting for a news source", overnight_range_position and gamma_cushion among
-    them though neither waits for news. The heading says each waits for its own source, and each gives its reason when
-    the card carries one, as the questions doc words it (dark_reason)."""
+    them though neither waits for news. The sheet's last group says each waits for its own source, and each card gives
+    its reason when the card carries one, as the questions doc words it (dark_reason)."""
     doc = json.loads((Path(__file__).resolve().parents[3] / "skills" / "spx-jev" / "questions" / "spx_questions.json").read_text())
     dark = [q for g in doc["groups"] for q in g["questions"].values() if q.get("status") == "dark"]
     assert dark and all(q.get("dark_reason") for q in dark), "every dark question in the doc names what it waits for"
@@ -1832,25 +1860,70 @@ def test_a_dark_question_names_its_own_reason_not_a_news_source_for_every_one():
         {"id": "overnight_range_position", "viewpoint": "levels_and_tape", "ask": "Where is price against the overnight futures range?",
          "dark_reason": "the overnight store (saved at 09:26 ET) holds /ES's bars, but no session read measures the night's range yet"},
         {"id": "news_headline", "viewpoint": "dark", "ask": "What kind of market news just came out?"}]}
-    got = _whole({"live": live, "tape": MONDAY["tape"], "premarket": MONDAY["premarket"]}, "2026-09-28T15:40:00-04:00")
-    (dark,) = [t for c, t in got["main"] if c == "details" and t.startswith("dark")]
-    assert dark.startswith("dark, each waiting for its source: 2") and "news source" not in dark
-    assert "Dark: the overnight store (saved at 06:26) holds /ES's bars, but no session read measures the night's range yet" in dark
-    assert dark.endswith("What kind of market news just came out?Dark until what it needs is on file")
+    name, answered, cards = _deck(live)[-1]
+    assert name == "dark, each waiting for its source" and answered == 0 and "news source" not in name
+    assert cards == ["Where is price against the overnight futures range?Dark: the overnight store (saved at 06:26) holds /ES's bars, but no "
+                     "session read measures the night's range yet", "What kind of market news just came out?Dark until what it needs is on file"]
 
 
-def test_questions_asked_and_lost_are_folded_apart_from_those_not_asked():
+def test_a_question_asked_and_lost_says_so_on_its_card_in_its_own_group():
     """On 09-28 several reads lost a group to a 503 or a timeout, and its questions sat under "not asked this run" though
-    they were asked: the service marks them "asked, no answer received" (service.card), and they fold on their own."""
+    they were asked: the service marks them "asked, no answer received" (service.card), and each card says so, in its
+    own group, apart from a question not asked this run, which gives its own reason."""
     live = json.loads(json.dumps(MONDAY["live"]))
-    answered = [q for q in live["questions"] if q.get("answer")]
-    for q in answered[:3]:
+    lost = [q for q in live["questions"] if q.get("answer")][:3]
+    for q in lost:
         q.update(answer=None, skipped="asked, no answer received: HTTP 503")
-    not_asked = sum(1 for q in live["questions"] if not q.get("answer")) - 3
-    got = _whole({"live": live, "tape": MONDAY["tape"], "premarket": MONDAY["premarket"]}, "2026-09-28T15:40:00-04:00")
-    folds = [t for c, t in got["main"] if c == "details"]
-    assert folds[0].startswith("asked, no answer: 3") and folds[0].count("Asked, no answer received: HTTP 503") == 3
-    assert folds[1].startswith(f"not asked this run: {not_asked}") and "no answer received" not in folds[1]
+    cards = [t for g in _deck(live) for t in g[2]]
+    assert sum(t.endswith("Asked, no answer received: HTTP 503") for t in cards) == 3
+    assert all(any(t == q["ask"] + "Asked, no answer received: HTTP 503" for t in cards) for q in lost)
+
+
+def _nav(deck, steps, g=0, i=0):
+    js = ("var qs = {deck: D.deck, g: D.g, i: D.i}, drawn = []; function qsDraw(full){ drawn.push(full); }"
+          + _fn("qsGo") + _fn("qsJump") + _fn("qsGroupAt")
+          + "var out = D.steps.map(function(s){ if(s[0] === 'go') qsGo(s[1]); else if(s[0] === 'at') qsJump(qsGroupAt(s[1]));"
+            " return [qs.g, qs.i, drawn[drawn.length - 1]]; }); console.log(JSON.stringify(out));")
+    return _run(js, {"deck": deck, "steps": steps, "g": g, "i": i})
+
+
+def test_a_swipe_moves_one_question_along_and_on_into_the_next_group():
+    """One question along either way; past a group's last question into the next group's first, and back past its first
+    into the last question of the one before; nothing past the deck's ends. A move inside a group only slides the
+    cards (qsDraw false); into another group deals that group's cards (true)."""
+    deck = [{"qs": [1, 2]}, {"qs": [3]}, {"qs": [4, 5, 6]}]
+    got = _nav(deck, [["go", -1], ["go", 1], ["go", 1], ["go", 1], ["go", -1], ["go", -1], ["go", 1], ["go", 1], ["go", 1], ["go", 1], ["go", 1]])
+    assert [s[:2] for s in got] == [[0, 0], [0, 1], [1, 0], [2, 0], [1, 0], [0, 1], [1, 0], [2, 0], [2, 1], [2, 2], [2, 2]]
+    assert got[1][2] is False and got[2][2] is True
+
+
+def test_the_strip_jumps_to_the_group_under_the_finger_each_as_wide_as_its_questions():
+    deck = [{"qs": [1]}, {"qs": [2, 3, 4]}, {"qs": [5, 6, 7, 8]}]          # 1 of 8, 3 of 8, 4 of 8 of the strip
+    got = _nav(deck, [["at", 0.05], ["at", 0.2], ["at", 0.49], ["at", 0.51], ["at", 1.0]], g=0, i=0)
+    assert [s[:2] for s in got] == [[0, 0], [1, 0], [1, 0], [2, 0], [2, 0]]
+
+
+def test_a_new_card_keeps_the_question_in_view():
+    """A card lands every 30 minutes while the reader is on a question: the sheet is dealt again and stays on that
+    question, found by its id, and opens where it was left."""
+    decl = "".join(re.search(r"\n  var %s = .*?;" % v, JS, re.S).group(0) for v in ("ORDER", "NAME"))
+    js = (decl + "var qs = {deck: [], g: 0, i: 0, at: null, omitted: {}};" + _fn("qsDeck") + _fn("qsLoad")
+          + "qsLoad(D.c); var first = [qs.g, qs.i]; qs.g = D.g; qs.i = D.i; var id = qs.deck[qs.g].qs[qs.i].id;"
+            "qsLoad(D.c, true); var kept = [qs.g, qs.i, qs.deck[qs.g].qs[qs.i].id === id]; qsLoad(D.c); console.log(JSON.stringify([first, kept, [qs.g, qs.i]]));")
+    assert _run(js, {"c": MONDAY["live"], "g": 3, "i": 2}) == [[0, 0], [3, 2, True], [0, 0]]
+    assert "qsLoad(last, true);" in _fn("openQuestions") and "if(qsOpen()){ qsLoad(c, true); qsDraw(true); }" in _fn("paint")
+
+
+def test_the_questions_sheet_is_a_sheet_with_no_control_but_its_handle():
+    """It opens and closes as every sheet on the page does (sheet.js: Back, Escape, and its data-sheet-close control),
+    and that control is its handle, which a pull closes too; moving along is a swipe, a tap at either side or the strip.
+    Its height is the page's measured one, never a viewport unit."""
+    sheet = re.search(r'(?s)<div class="sheet qs" id="qSheet".*?\n</div>', SPX).group(0)
+    assert 'role="dialog" aria-modal="true" aria-hidden="true"' in sheet
+    assert sheet.count("<button") == 1 and '<button class="qs-grab" type="button" data-sheet-close aria-label="Close the questions">' in sheet
+    assert 'class="qs-strip" id="qsStrip" role="slider" tabindex="0"' in sheet
+    assert "height:calc(var(--app-h) * .92)" in SPX and "MiraiSheet.open(from);" in _fn("openQuestions")
+    assert ".qs-track,.qs-card{transition:none}" in SPX          # reduced motion slides nothing
 
 
 @pytest.mark.parametrize("tz, next_read", [(LA, "07:32"), (TOKYO, "23:32"), (KOLKATA, "20:02")])
