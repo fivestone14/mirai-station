@@ -313,6 +313,8 @@ def test_the_situation_rows_carry_a_word_and_a_figure(full_scene):
     assert [r["path"] for r in rows] == [p for p, _ in SITUATION]
     by = {r["path"]: r for r in rows}
     assert by["price.recent_move"]["verdict"] == "Rising" and by["gex.air_to_wall"]["verdict"] == "Close"
+    # the day's volume-weighted average is VWAP, never "the day's average" beside a call graded on the average price
+    assert by["price.vs_vwap"]["title"] == "Price against VWAP"
     assert all("sigma" not in r["sentence"] and "verdict" not in r.get("figure", {}) for r in rows)
 
 

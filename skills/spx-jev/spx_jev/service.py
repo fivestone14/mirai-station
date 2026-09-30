@@ -86,7 +86,7 @@ from .weights import QuestionWeights
 
 # the situation the phone draws: four facts, each with a short title, the builder's verdict in a word, its
 # figure (number, cut, kind) to draw and its full sentence behind a tap
-SITUATION = (("price.recent_move", "Price, last 30 min"), ("price.vs_vwap", "Price against the day's average"),
+SITUATION = (("price.recent_move", "Price, last 30 min"), ("price.vs_vwap", "Price against VWAP"),
              ("gex.air_to_wall", "Nearest heavy strike"), ("iv.trend_30min", "Implied volatility, last 30 min"))
 VERDICT_WORDS = {"going_nowhere": "Flat", "rising": "Rising", "falling": "Falling", "flat": "Flat",
                  "at_it": "At it", "above": "Above", "below": "Below",
