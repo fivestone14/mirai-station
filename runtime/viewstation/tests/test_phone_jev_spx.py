@@ -1942,3 +1942,10 @@ def test_mondays_premarket_bitcoin_fact_names_the_viewers_day(tz, reopen):
     facts = _flat_text(next(k for k in card["kids"] if k["attrs"].get("class") == "facts"))
     assert f"since the S&P futures reopened at {reopen} bitcoin futures (/MBT) fell" in facts
     assert "Sunday" not in facts
+
+
+def test_every_colour_and_size_the_page_names_is_defined():
+    """The header line's "brightens for a moment" named --i-ink, which the page never defines, so it never brightened:
+    every var(--name) the page uses is one of its own custom properties."""
+    used = set(re.findall(r"var\(--([a-z0-9-]+)", SPX))
+    assert not used - set(re.findall(r"--([a-z0-9-]+)\s*:", SPX))
