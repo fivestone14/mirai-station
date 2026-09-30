@@ -484,7 +484,7 @@
   "wall_touch_quiet_percentile": "a percentile by construction, as wall_touch_siege_percentile: the 30th percentile of normal by definition",
   "follow_on_min": "a clock fact: how long after a release its follow-on (the Fed's press conference, 30 minutes after the statement) is still read with it, not a split of any measurement",
   "open_10_flat_band_sigma": "the premarket lane's 10-minute sum band from the settled open, the live sum's 30-minute band scaled by the square root of 10 over 30 until the settled opens are measured",
-  "integral_missing_bars_max": "a count: how many of a window's bars the integral grade may be missing and still grade the window on its average, never the mark bar; a guard, not a split of any measurement",
+  "integral_missing_bars_max": "a count: how many of a window's bars the average-price grade may be missing and still grade the window on its average, never the mark bar; a guard, not a split of any measurement",
   "bad_tick_pct": "a percentile by construction: a bad tick's jump and its jump back are ranked against the same window's 1-minute moves on the recent sessions, so the cut sits at their 99.9th percentile by definition",
   "stale_read_min": "a clock fact: how long before its row minute a read's spot may have last traded before the read is stale, not a split of any measurement",
   "tier_min_right_calls": "a minimum count: how many right calls the box's last 20 sessions must hold before a right call's strength is ranked among them, a lookback's floor, not a split of any measurement",

@@ -100,7 +100,7 @@ NOT_MEASURED = {
                      "is still read with it, not a split of any measurement",
     "open_10_flat_band_sigma": "the premarket lane's 10-minute sum band from the settled open, the live sum's 30-minute band scaled "
                                "by the square root of 10 over 30 until the settled opens are measured",
-    "integral_missing_bars_max": "a count: how many of a window's bars the integral grade may be missing and still grade the window "
+    "integral_missing_bars_max": "a count: how many of a window's bars the average-price grade may be missing and still grade the window "
                                  "on its average, never the mark bar; a guard, not a split of any measurement",
     "bad_tick_pct": "a percentile by construction: a bad tick's jump and its jump back are ranked against the same window's 1-minute "
                     "moves on the recent sessions, so the cut sits at their 99.9th percentile by definition",
