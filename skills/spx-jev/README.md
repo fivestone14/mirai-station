@@ -487,9 +487,13 @@ that machine, in order:
 3. Hire the jobs: `~/.claude/plugins/mirai-station/runtime/scripts/install-launchd.sh`
    (it reloads every station job, the nine here among them).
 4. Check: `launchctl list | grep -E 'spx-jev|spx-premarket'` shows nine, and after the first fire
-   `grep -E 'FAILED|Traceback' /tmp/mirai-station.spx-jev*.err /tmp/mirai-station.spx-premarket-deadman.err`
+   `grep -iE 'failed|traceback' /tmp/mirai-station.spx-jev*.err /tmp/mirai-station.spx-premarket-deadman.err`
    finds nothing. The `.err` files are never empty: the service writes its
-   normal progress lines to stderr, so a failure is found by its words.
+   normal progress lines to stderr, so a failure is found by its words, in
+   either case: the runners' gate says `FAILED`, the jobs' own lines say
+   `failed` (the average-price grade, a loop, a day's store build) and often
+   carry no traceback. A `spx-jev-bars :: fetch failed` line means the Schwab
+   bars request itself failed, and its error says why.
 
 To pause all nine, `launchctl disable gui/$UID/<label>` and then `launchctl bootout gui/$UID/<label>`
 for each label above: bootout alone stops a job only until the next login,
