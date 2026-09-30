@@ -314,7 +314,7 @@ The card carries: `symbol`, `generated_at`, `row_ts`, `freshness`, `sigma`,
 `labels_count`, `omitted`, `sent`, `asked` (the questions the read put to JEV),
 `model`, `questions` (each with `answer` or `skipped`, a plain reason whose
 raw text stays in the archive, and `held_from` when held), `fresh_count` and
-`held_count`, `dark` with `dark_note`, `shadow_note`,
+`held_count`, `dark` (each with its `dark_reason`) with `dark_note`, `shadow_note`,
 `hour` (the blended end-price sums with `jev`, `clock` and `blend`, kept
 beside the call, and the call under `average`: its pick, odds, window and edge
 in points, blended the same way on the average price, and `shown_source`, its

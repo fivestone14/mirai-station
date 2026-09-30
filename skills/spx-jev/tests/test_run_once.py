@@ -266,6 +266,20 @@ def test_the_card_calls_the_call_a_forecast_not_a_trade_signal_and_keeps_shadow_
     assert "shadow questions are asked and logged, never graded and never weighted" in note
 
 
+def test_a_dark_question_carries_its_own_reason_onto_the_card_and_into_its_skip_line(tmp_path):
+    """The phone names what each dark question waits for, but the card carried only its id, viewpoint and ask, and
+    every skip line said the same "not plugged in": both now carry the questions doc's own dark_reason."""
+    reason = "minute bars for euro futures (/6E), which the market-context job does not fetch"
+    doc = {"version": "test", "groups": [*DOC["groups"], {"id": "g3", "reads": ["context"], "questions": {
+        "q_dark": {"status": "dark", "viewpoint": "volume_price", "type": "choice", "ask": "Is the euro leading?",
+                   "instructions": "Read `context.symbol`.", "criteria": {"yes": "y", "no": "n"}, "dark_reason": reason}}}]}
+    state = _state(tmp_path, [make_row(at(11, 32), 7700.0)], 120)
+    c = run_once(state, tmp_path / "out", doc, False, DAY)
+    assert c["dark"] == [{"id": "q_dark", "viewpoint": "volume_price", "ask": "Is the euro leading?", "dark_reason": reason}]
+    read = json.loads((tmp_path / "out" / "archive" / f"{DAY}.jsonl").read_text().splitlines()[0])
+    assert read["skipped"]["g3"]["q_dark"] == f"dark: {reason}"
+
+
 def test_a_row_is_stale_past_the_skip_line_and_a_replay_is_never_called_stale(tmp_path):
     """The card's own 15-minute stale line could never fire on a sent read, which the 6-minute skip line stops first,
     and called every replay stale with "nothing newer has been scanned". An unsent run on the newest row is stale past

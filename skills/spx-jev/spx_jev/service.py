@@ -578,7 +578,8 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
         for qid, q in group["questions"].items():
             if q.get("status") == "dark":
                 # never asked, never counted; listed apart so the phone can say they exist
-                dark.append({"id": qid, "viewpoint": q.get("viewpoint", group["id"]), "ask": q.get("ask") or q["instructions"]})
+                dark.append({"id": qid, "viewpoint": q.get("viewpoint", group["id"]), "ask": q.get("ask") or q["instructions"],
+                             "dark_reason": q.get("dark_reason")})
                 continue
             crit = q.get("criteria")
             entry = {"id": qid, "viewpoint": q.get("viewpoint", group["id"]), "status": q.get("status", "live"),

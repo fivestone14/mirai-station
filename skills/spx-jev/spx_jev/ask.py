@@ -172,8 +172,8 @@ def build_requests(state: dict, doc: dict, skip: dict[str, str] | None = None,
         questions: dict = {}
         for qid, q in group.get("questions", {}).items():
             if q.get("status") == "dark":
-                # dark: its source is not plugged in, so it is neither asked nor counted, whatever the state holds
-                skipped.setdefault(gid, {})[qid] = "dark: the source it needs is not plugged in"
+                # dark: what it needs is not on file, so it is neither asked nor counted, whatever the state holds
+                skipped.setdefault(gid, {})[qid] = f"dark: {q.get('dark_reason') or 'the source it needs is not plugged in'}"
                 continue
             if qid in skip:
                 skipped.setdefault(gid, {})[qid] = skip[qid]
