@@ -17,7 +17,8 @@ class LabelSet:
     behind its sentence (its kind, its number, its cut and the verdict it landed on) so the phone can draw
     the fact rather than print it; JEV never sees a figure. ``gates`` maps a gated question's id (one whose
     ``sleep_when`` a family judges) to None when it is awake this read, or when its gate could not be measured
-    (``unmeasured``), or to why it sleeps.
+    (``unmeasured``), or to why it sleeps; a gate that could not be measured while its label is still on the row
+    says so instead, its reason starting ask.UNMEASURED, so the question is missing data all the same.
     """
 
     def __init__(self) -> None:

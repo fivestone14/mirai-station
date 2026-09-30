@@ -14,6 +14,7 @@ from datetime import timedelta
 import pytest
 
 from conftest import at, bars_from_closes, flat_bars, make_row
+from spx_jev.ask import UNMEASURED
 from spx_jev.cuts import SAME_CLOCK_MIN_SESSIONS, SETTLE_SEAT_SIGMA
 from spx_jev.labels.gamma import ROW_SLACK_MIN, build_gamma_labels
 from spx_jev.labels.rulers import NO_ANCHOR
@@ -439,5 +440,6 @@ def test_settle_pull_side_sleeps_while_price_is_seated_on_the_magnet(scene_facto
                                          "10 sessions at this minute, bottom third: seated on it")
     assert labels(gamma_scene(scene_factory, magnet=7700.0 - 0.21 * SIGMA), history)[2]["settle_pull_side"] is None
     assert labels(gamma_scene(scene_factory, magnet=None), history)[2]["settle_pull_side"] is None      # missing gex.settle_pull, not asleep
+    # a seat with no prior sessions to rank it against is not "seated": the question is missing data, never asleep
     assert labels(gamma_scene(scene_factory, magnet=7705.0))[2]["settle_pull_side"] == (
-        "whether price is seated on today's heaviest same-day strike is not known: no state folder to read the prior sessions' diaries from")
+        f"{UNMEASURED} whether price is seated on today's heaviest same-day strike: no state folder to read the prior sessions' diaries from")

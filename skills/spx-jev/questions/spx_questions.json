@@ -4555,7 +4555,7 @@
      },
      "horizon": "30min",
      "cadence": "the 14:02, 14:32, 15:02 and 15:32 reads (weights keyed per read slot: the pull shows only after 15:30)",
-     "sleep_when": "magnet_seat's code answer is held_on_magnet or seated_fresh (the magnet's distance in the bottom third), or its rank has fewer than {same_clock_min_sessions} sessions",
+     "sleep_when": "magnet_seat's code answer is held_on_magnet or seated_fresh (the magnet's distance in the bottom third)",
      "code_answer": true,
      "ask": "Where does today's heaviest strike sit against price before the settle?",
      "instructions": "Read `gex.settle_pull`. Check split first. Where does today's heaviest same-day strike sit against price, counted in what today's options still price before the settle?",

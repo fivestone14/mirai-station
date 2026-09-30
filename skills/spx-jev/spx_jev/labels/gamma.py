@@ -25,6 +25,7 @@ from typing import Callable
 from ..cuts import (EVEN_SPLIT_HIGH, EVEN_SPLIT_LOW, GRIP_CONCENTRATED_SHARE, GRIP_SPREAD_SHARE, HALF_RANK, SETTLE_SEAT_SIGMA,
                     WALL_NEAR_SIGMA, WALL_THICK_SHARE, WALL_THIN_SHARE, WALL_TOUCH_QUIET_PERCENTILE, WALL_TOUCH_SIEGE_PERCENTILE,
                     WINDOW_30_MIN)
+from ..ask import UNMEASURED
 from ..expiry import settle_at, todays_settle
 from ..row_adapter import labeller_row
 from ..sessions import next_trading_day
@@ -675,7 +676,9 @@ def _book_vs_pace_gate(scene: Scene, ls: LabelSet) -> None:
 
 def _settle_pull_gate(scene: Scene, gv: dict, ruler: SigmaRuler | None, prior: list[PriorBook] | None, ls: LabelSet) -> None:
     """settle_pull_side sleeps while magnet_seat's code answer is held_on_magnet or seated_fresh: the heaviest
-    strike's distance in the bottom third of the prior sessions' at this minute."""
+    strike's distance in the bottom third of the prior sessions' at this minute. A seat that cannot be ranked is not
+    "seated": its label may still be on the row, so the gate itself says it could not measure (ask.UNMEASURED) and
+    the question is missing data."""
     magnet = gv.get("magnet")
     if not is_num(magnet) or ruler is None:
         ls.unmeasured("settle_pull_side")       # gex.settle_pull is omitted for the same want
@@ -683,7 +686,7 @@ def _settle_pull_gate(scene: Scene, gv: dict, ruler: SigmaRuler | None, prior: l
     d = abs(float(magnet) - scene.spot) / ruler.points
     seat, no_seat = _book_rank(prior, d, _distance_to("magnet"), "a heaviest same-day strike")
     if seat is None:
-        ls.sleep("settle_pull_side", f"whether price is seated on today's heaviest same-day strike is not known: {no_seat}")
+        ls.sleep("settle_pull_side", f"{UNMEASURED} whether price is seated on today's heaviest same-day strike: {no_seat}")
     elif seat.band == "bottom third":
         ls.sleep("settle_pull_side", f"price sits {sig(d)} from today's heaviest same-day strike, {_farther(seat)}: {SEATS[seat.band]}")
     else:

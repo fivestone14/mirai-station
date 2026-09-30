@@ -7119,7 +7119,7 @@
      "evidence": "56 sessions, 15:25-15:33 row: distance vs 15:32->16:00 corr +0.41 (magnet), +0.33 (centroid); toward the magnet 20/30 when >0.08 away; same measure at 14:02 -0.23. Predicts the 15:50 bar (0.32) and last 10 (0.42), not 15:32-15:50 (0.05). Once per day weaker (17/25 at 15:15); a second reviewer found 31/53 from 15:32 and no pull from 15:00 (23/51). Partial after the afternoon leg 0.12: overlap-list.",
      "origin": "new (reviews: last hour, expiry); merges pin_reach_vs_priced_left and absorbs deferred expiry_strike_pull",
      "code_answer": true,
-     "sleep_when": "magnet_seat's code answer is held_on_magnet or seated_fresh (the magnet's distance in the bottom third), or its rank has fewer than {same_clock_min_sessions} sessions",
+     "sleep_when": "magnet_seat's code answer is held_on_magnet or seated_fresh (the magnet's distance in the bottom third)",
      "schedule": {
       "thirty_minute": {
        "at": [

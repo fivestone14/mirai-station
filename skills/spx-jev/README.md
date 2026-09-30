@@ -130,8 +130,9 @@ archive there too, under `archive/`.
   the record and the archive, and "missing" is kept for a real gap in the data.
   A gate that could not measure what decides it (no snapshot on file, too few
   sessions to rank against, a stopped feed, a roll) never sleeps its question:
-  the question is missing its label, so the gap shows on the card and in the
-  health reviews instead of passing for "nothing happened".
+  the question is missing its label (or, where its label is still on the row,
+  its gate's reason starts "could not measure"), so the gap shows on the card
+  and in the health reviews instead of passing for "nothing happened".
 - **Point in time.** `now` is the row's own timestamp. Only bars that finished
   before it count, prior sessions are only days before the day being built,
   and a market-context value counts only once it was known (a bar once its
