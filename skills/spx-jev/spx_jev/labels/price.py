@@ -71,7 +71,7 @@ def build_price_labels(scene: Scene) -> LabelSet:
         return ls
     rows = _same_clock_rows(scene)
     to_close = _level_distance(scene, anchor, rows, "prior_close", "yesterday's close")
-    to_average = _level_distance(scene, anchor, rows, "vwap", "the day's average price")
+    to_average = _level_distance(scene, anchor, rows, "vwap", "the day's VWAP")
     move30 = _recent_move(scene, anchor, ls)
     _vs_vwap(scene, anchor, to_average, ls)
     _vs_prior_close(scene, anchor, to_close, ls)
@@ -124,7 +124,7 @@ def _same_clock_unscaled(scene: Scene, measure: Callable[[list[dict], datetime],
 
 def _same_clock_rows(scene: Scene) -> list[tuple[dict, float]]:
     """Each prior session's diary row at this read's clock minute (gamma.prior_books, estimated rulers left out) with
-    its morning ruler in points, newest first: the rows the distances to yesterday's close and to the day's average
+    its morning ruler in points, newest first: the rows the distances to yesterday's close and to the day's VWAP
     are ranked on, each from the row's own spot. A session with no ruler on file, or no row near the minute, is out."""
     return [(b.row, b.ruler.points) for b in prior_books(scene) or () if b.ruler is not None and is_num(b.row.get("spot"))]
 
@@ -203,26 +203,26 @@ def _day_range_position(scene: Scene, ls: LabelSet) -> None:
 
 
 def _vs_vwap(scene: Scene, anchor: SigmaRuler, to_average: Ranked, ls: LabelSet) -> None:
-    """Price against the day's average, its distance sized against the same minute on the prior sessions: in the
-    bottom third it is at the average."""
+    """Price against the day's VWAP, its distance sized against the same minute on the prior sessions: in the
+    bottom third it is at VWAP."""
     d, rank = to_average.value, to_average.rank
     if rank is None:
         ls.omit("price.vs_vwap", to_average.why)
         return
     verdict = "at_it" if rank.band == "bottom third" else "above" if d > 0 else "below"
     fig = {"kind": "signed", "value": round(d, 3), "band": round(_band_edges(to_average.base)[0], 3), "unit": "sigma", "verdict": verdict}
-    text = (f"price is {sig(abs(d))} {'above' if d >= 0 else 'below'} the day's volume-weighted average price, "
-            f"{_against(rank, 'further from it')}: {'at the average' if verdict == 'at_it' else DISTANCE_WORDS[rank.band]}")
+    text = (f"price is {sig(abs(d))} {'above' if d >= 0 else 'below'} the day's volume-weighted average price (VWAP), "
+            f"{_against(rank, 'further from it')}: {'at VWAP' if verdict == 'at_it' else DISTANCE_WORDS[rank.band]}")
     touched = _last_at_average(scene)
     if touched is not None:
-        text += f"; it last traded at the average {minutes_ago(scene.now, touched)}"
+        text += f"; it last traded at VWAP {minutes_ago(scene.now, touched)}"
     else:
-        text += "; it has not traded at the average today"
+        text += "; it has not traded at VWAP today"
     ls.put("price.vs_vwap", ruled(anchor, text), figure=fig)
 
 
 def _last_at_average(scene: Scene) -> datetime | None:
-    """When the newest finished bar that spanned the day's average finished. The average drifts through the
+    """When the newest finished bar that spanned the day's VWAP finished. VWAP drifts through the
     day, so each bar is judged against the one the diary carried when it finished (the newest row stamped by
     then), never against this row's."""
     known = [(datetime.fromisoformat(r["ts"]), float(r["vwap"])) for r in scene.rows_today if is_num(r.get("vwap")) and r["vwap"] > 0]
@@ -678,7 +678,7 @@ def _session_extreme_recent(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> N
 
 
 def _vwap_reach(scene: Scene, anchor: SigmaRuler, to_average: Ranked, ls: LabelSet) -> None:
-    """How far the day's average is, in sigma and in typical 30-minute moves; average_reach_30 is awake only while
+    """How far the day's VWAP is, in sigma and in typical 30-minute moves; average_reach_30 is awake only while
     price is away from it: out of the bottom third of the same distance on the prior sessions."""
     if to_average.rank is None:
         ls.omit("price.vwap_reach", to_average.why)
@@ -686,7 +686,7 @@ def _vwap_reach(scene: Scene, anchor: SigmaRuler, to_average: Ranked, ls: LabelS
         return
     d, rank = -to_average.value, to_average.rank
     if rank.band == "bottom third":
-        ls.sleep("average_reach_30", "price is near the day's volume-weighted average price: in the bottom third of the same distance "
+        ls.sleep("average_reach_30", "price is near the day's volume-weighted average price (VWAP): in the bottom third of the same distance "
                                      "on the prior sessions at this minute")
     else:
         ls.wake("average_reach_30")
@@ -694,6 +694,6 @@ def _vwap_reach(scene: Scene, anchor: SigmaRuler, to_average: Ranked, ls: LabelS
     if reach is None:
         ls.omit("price.vwap_reach", how)
         return
-    ls.put("price.vwap_reach", ruled(anchor, f"the day's volume-weighted average price is {sig(abs(d))} {'above' if d >= 0 else 'below'} price, "
+    ls.put("price.vwap_reach", ruled(anchor, f"the day's volume-weighted average price (VWAP) is {sig(abs(d))} {'above' if d >= 0 else 'below'} price, "
                                              f"{_against(rank, 'further')}: {DISTANCE_WORDS[rank.band]}, {abs(d) * anchor.points / reach:.1f} "
                                              f"typical 30-minute moves away"))

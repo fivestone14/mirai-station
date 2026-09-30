@@ -171,7 +171,7 @@ def _nearest_level(scene: Scene, ls: LabelSet) -> None:
     levels: list[tuple[str, float]] = []
     vwap = scene.row.get("vwap")
     if is_num(vwap) and vwap > 0:
-        levels.append(("the day's average price", float(vwap)))
+        levels.append(("the day's VWAP", float(vwap)))
     # the day's high and low come from before the window, so a level is never the window's own extreme
     early = bars_finished_between(bars, scene.session_open, back30)
     if early:

@@ -1811,28 +1811,28 @@
       }
      },
      "horizon": "30min",
-     "cadence": "every 30-minute read from 10:32, awake only while price is away from the day's average price (out of the bottom third of the same distance for this time of day)",
+     "cadence": "every 30-minute read from 10:32, awake only while price is away from the day's VWAP (out of the bottom third of the same distance for this time of day)",
      "sleep_when": "|spot - vwap| further than under a third of the last {night_rank_count} sessions' at this minute (bottom third)",
      "code_answer": false,
      "ask": "Will price trade at the day's volume-weighted average within the next {window_30_min} minutes?",
-     "instructions": "Read `price.vs_vwap` and `price.vwap_reach`. Within the next {window_30_min} minutes, does price trade at the day's volume-weighted average price?",
+     "instructions": "Read `price.vs_vwap` and `price.vwap_reach`. Within the next {window_30_min} minutes, does price trade at the day's VWAP (volume-weighted average price)?",
      "options": [
       "true",
       "false"
      ],
      "criteria": {
-      "true": "price trades at the day's average within the window",
-      "false": "price does not reach the day's average within the window"
+      "true": "price trades at the day's VWAP within the window",
+      "false": "price does not reach the day's VWAP within the window"
      },
      "code_criteria": {
-      "true": "a 1-minute bar's range within the window spans the day's average price, an exact touch as price.vs_vwap counts one; no grader scores this outcome yet",
+      "true": "a 1-minute bar's range within the window spans the day's VWAP, an exact touch as price.vs_vwap counts one; no grader scores this outcome yet",
       "false": "otherwise"
      },
      "labels": [
       "price.vs_vwap",
       "price.vwap_reach"
      ],
-     "why": "A directly gradable reach forecast for the flat bucket: the day's average is the level most intraday flow trades back to."
+     "why": "A directly gradable reach forecast for the flat bucket: the day's VWAP is the level most intraday flow trades back to."
     }
    }
   },
@@ -2923,7 +2923,7 @@
      "horizon": "60min",
      "cadence": "every 30-minute read from 10:32",
      "code_answer": true,
-     "ask": "Which side of the day's average price is SPX, and do the books agree?",
+     "ask": "Which side of the day's VWAP (volume-weighted average price) is SPX, and do the books agree?",
      "instructions": "Read `price.vs_vwap` and `gex.book_balance`. The opening words of each label decide. Check near_average first. Which situation is it?",
      "options": [
       "near_average",
@@ -2933,11 +2933,11 @@
       "below_books_split"
      ],
      "criteria": {
-      "near_average": "price's distance from the day's average price is in the bottom third of the recent sessions' at this time of day (at the average)",
-      "above_books_agree": "price is above the day's average, price's distance from the day's average price is in the middle or top third of the recent sessions' at this time of day, and both books lean the same way",
-      "above_books_split": "above it, price's distance from the day's average price is in the middle or top third of the recent sessions' at this time of day, and the books disagree or one is balanced",
-      "below_books_agree": "below it, price's distance from the day's average price is in the middle or top third of the recent sessions' at this time of day, and both books lean the same way",
-      "below_books_split": "below it, price's distance from the day's average price is in the middle or top third of the recent sessions' at this time of day, and the books disagree or one is balanced"
+      "near_average": "price's distance from the day's VWAP is in the bottom third of the recent sessions' at this time of day (at VWAP)",
+      "above_books_agree": "price is above the day's VWAP, price's distance from the day's VWAP is in the middle or top third of the recent sessions' at this time of day, and both books lean the same way",
+      "above_books_split": "above it, price's distance from the day's VWAP is in the middle or top third of the recent sessions' at this time of day, and the books disagree or one is balanced",
+      "below_books_agree": "below it, price's distance from the day's VWAP is in the middle or top third of the recent sessions' at this time of day, and both books lean the same way",
+      "below_books_split": "below it, price's distance from the day's VWAP is in the middle or top third of the recent sessions' at this time of day, and the books disagree or one is balanced"
      },
      "code_criteria": {
       "near_average": "|spot - vwap| further than under a third of the last {night_rank_count} sessions' at this minute (bottom third)",
@@ -2950,7 +2950,7 @@
       "price.vs_vwap",
       "gex.book_balance"
      ],
-     "why": "Every option carries a side. Whether a departure from the average comes back depends on the books agreeing, not on the long/short word, which just repeats which side of the flip price is on. The stretch size and minutes since the last touch ride in the label."
+     "why": "Every option carries a side. Whether a departure from VWAP comes back depends on the books agreeing, not on the long/short word, which just repeats which side of the flip price is on. The stretch size and minutes since the last touch ride in the label."
     }
    }
   },

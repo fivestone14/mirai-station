@@ -174,14 +174,14 @@ def _vwap_scene(scene_factory, root, vwap):
 
 
 @pytest.mark.parametrize("vwap, sentence", [
-    (7700.0, "price is 0.20 sigma above the day's volume-weighted average price, further from it than 9 of the last 10 sessions at this "
-             "minute, top third: far from it; it last traded at the average 29 minutes ago"),
-    (7708.25, "price is 0.09 sigma above the day's volume-weighted average price, further from it than 4 of the last 10 sessions at this "
-              "minute, middle third: away from it; it last traded at the average 29 minutes ago"),
-    (7712.0, "price is 0.04 sigma above the day's volume-weighted average price, further from it than 1 of the last 10 sessions at this "
-             "minute, bottom third: at the average; it last traded at the average 29 minutes ago"),
-    (7730.0, "price is 0.20 sigma below the day's volume-weighted average price, further from it than 9 of the last 10 sessions at this "
-             "minute, top third: far from it; it has not traded at the average today"),
+    (7700.0, "price is 0.20 sigma above the day's volume-weighted average price (VWAP), further from it than 9 of the last 10 sessions at this "
+             "minute, top third: far from it; it last traded at VWAP 29 minutes ago"),
+    (7708.25, "price is 0.09 sigma above the day's volume-weighted average price (VWAP), further from it than 4 of the last 10 sessions at this "
+              "minute, middle third: away from it; it last traded at VWAP 29 minutes ago"),
+    (7712.0, "price is 0.04 sigma above the day's volume-weighted average price (VWAP), further from it than 1 of the last 10 sessions at this "
+             "minute, bottom third: at VWAP; it last traded at VWAP 29 minutes ago"),
+    (7730.0, "price is 0.20 sigma below the day's volume-weighted average price (VWAP), further from it than 9 of the last 10 sessions at this "
+             "minute, top third: far from it; it has not traded at VWAP today"),
 ])
 def test_price_against_the_days_average(scene_factory, tmp_path, vwap, sentence):
     state, _, _ = _labels(_vwap_scene(scene_factory, tmp_path, vwap))
@@ -200,8 +200,8 @@ def test_each_bar_is_judged_against_the_average_known_when_it_finished(scene_fac
     scene = scene_factory(at(11, 0, ss=5), bars_from_closes([7700.0] * 30 + [7720.0] * 30 + [7740.0] * 30), row_over={"vwap": 7720.0},
                           rows_before=rows)
     assert _labels(_with_diaries(_ranked(scene), tmp_path))[0]["price.vs_vwap"] == (
-        "price is 0.27 sigma above the day's volume-weighted average price, further from it than 10 of the last 10 sessions at this minute, "
-        "top third: far from it; it last traded at the average 59 minutes ago")
+        "price is 0.27 sigma above the day's volume-weighted average price (VWAP), further from it than 10 of the last 10 sessions at this minute, "
+        "top third: far from it; it last traded at VWAP 59 minutes ago")
 
 
 def test_no_vwap_on_the_row_omits_the_average_labels_and_leaves_the_reach_question_missing_them(scene_factory, tmp_path):
@@ -216,7 +216,7 @@ def test_the_distances_need_ten_prior_rows_at_this_minute(scene_factory, tmp_pat
     _, omitted, gates = _labels(_with_diaries(scene, tmp_path, days=PRIOR_DAYS[:9]))
     assert gates["prior_close_push_fade"] is None and omitted["price.vs_prior_close"] == (
         "its rank needs 10 prior sessions with yesterday's close on a diary row at this minute, have 9")
-    assert omitted["price.vs_vwap"] == "its rank needs 10 prior sessions with the day's average price on a diary row at this minute, have 9"
+    assert omitted["price.vs_vwap"] == "its rank needs 10 prior sessions with the day's VWAP on a diary row at this minute, have 9"
 
 
 def test_an_estimated_session_sits_out_of_the_distances(scene_factory, tmp_path):
@@ -224,7 +224,7 @@ def test_an_estimated_session_sits_out_of_the_distances(scene_factory, tmp_path)
     does of the move, though its diary row is on file."""
     _, omitted, _ = _labels(_with_diaries(_ranked(_move_scene(scene_factory, 15.0), estimated=PRIOR_DAYS[:1]), tmp_path))
     assert omitted["price.vs_prior_close"] == "its rank needs 10 prior sessions with yesterday's close on a diary row at this minute, have 9"
-    assert omitted["price.vs_vwap"] == "its rank needs 10 prior sessions with the day's average price on a diary row at this minute, have 9"
+    assert omitted["price.vs_vwap"] == "its rank needs 10 prior sessions with the day's VWAP on a diary row at this minute, have 9"
 
 
 # ---- price.vs_prior_close
@@ -598,13 +598,13 @@ def _reach_scene(scene_factory, root, vwap_below, **row):
 
 def test_the_reach_to_the_days_average_in_typical_half_hours(scene_factory, tmp_path):
     state, _, gates = _labels(_reach_scene(scene_factory, tmp_path, 13.5))
-    assert state["price.vwap_reach"] == ("the day's volume-weighted average price is 0.18 sigma below price, further than 8 of the last 10 "
+    assert state["price.vwap_reach"] == ("the day's volume-weighted average price (VWAP) is 0.18 sigma below price, further than 8 of the last 10 "
                                          "sessions at this minute, top third: far from it, 1.6 typical 30-minute moves away")
     assert gates["average_reach_30"] is None
     state, _, gates = _labels(_reach_scene(scene_factory, tmp_path, -3.0))
-    assert state["price.vwap_reach"] == ("the day's volume-weighted average price is 0.04 sigma above price, further than 1 of the last 10 "
+    assert state["price.vwap_reach"] == ("the day's volume-weighted average price (VWAP) is 0.04 sigma above price, further than 1 of the last 10 "
                                          "sessions at this minute, bottom third: near it, 0.4 typical 30-minute moves away")
-    assert gates["average_reach_30"] == ("price is near the day's volume-weighted average price: in the bottom third of the same distance "
+    assert gates["average_reach_30"] == ("price is near the day's volume-weighted average price (VWAP): in the bottom third of the same distance "
                                          "on the prior sessions at this minute")
 
 

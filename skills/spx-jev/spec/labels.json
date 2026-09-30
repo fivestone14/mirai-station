@@ -154,7 +154,7 @@
    "from": "spot, vwap, the morning anchor, today's bars",
    "logic": "(spot - vwap) / the morning anchor; the minutes since a finished bar's range last spanned vwap",
    "cut": "thirds of the same distance on the prior sessions' diary rows at this minute",
-   "reads_as": "price is 0.32 sigma above the day's volume-weighted average price, further from it than 17 of the last 18 sessions at this minute, top third: far from it; it last traded at the average 35 minutes ago",
+   "reads_as": "price is 0.32 sigma above the day's volume-weighted average price (VWAP), further from it than 17 of the last 18 sessions at this minute, top third: far from it; it last traded at VWAP 35 minutes ago",
    "real": {
     "at": "2026-09-25 12:32",
     "sentence": "price is 0.32 sigma above the day's volume-weighted average price, further from it than 17 of the last 18 sessions at this minute, top third: far from it; it last traded at the average 35 minutes ago"
@@ -292,7 +292,7 @@
    "status": "built",
    "type": "state",
    "from": "vwap, today's and yesterday's bars, the walls, sigma",
-   "logic": "the nearest of the day's average, the day's high and low before the window, yesterday's high, low and close and the walls, and what price did at it in the last 30 minutes",
+   "logic": "the nearest of the day's VWAP, the day's high and low before the window, yesterday's high, low and close and the walls, and what price did at it in the last 30 minutes",
    "cut": "MOVE_RULE_SIGMA reach, WALL_NEAR_SIGMA near",
    "reads_as": "the nearest level is the day's high, 0.09 sigma above price, within the 0.09 sigma reach, untouched in the last 30 minutes",
    "real": {

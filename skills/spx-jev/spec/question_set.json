@@ -3126,27 +3126,27 @@
       "thirty_minute"
      ],
      "status": "live",
-     "cadence": "every 30-minute read from 10:32, awake only while price is away from the day's average price (out of the bottom third of the same distance for this time of day)",
+     "cadence": "every 30-minute read from 10:32, awake only while price is away from the day's VWAP (out of the bottom third of the same distance for this time of day)",
      "ask": "Will price trade at the day's volume-weighted average within the next {window_30_min} minutes?",
-     "instructions": "Read `price.vs_vwap` and `price.vwap_reach`. Within the next {window_30_min} minutes, does price trade at the day's volume-weighted average price?",
+     "instructions": "Read `price.vs_vwap` and `price.vwap_reach`. Within the next {window_30_min} minutes, does price trade at the day's VWAP (volume-weighted average price)?",
      "options": [
       {
        "name": "true",
-       "description": "price trades at the day's average within the window"
+       "description": "price trades at the day's VWAP within the window"
       },
       {
        "name": "false",
-       "description": "price does not reach the day's average within the window"
+       "description": "price does not reach the day's VWAP within the window"
       }
      ],
      "criteria": {
-      "true": "a 1-minute bar's range within the window spans the day's average price, an exact touch as price.vs_vwap counts one; no grader scores this outcome yet",
+      "true": "a 1-minute bar's range within the window spans the day's VWAP, an exact touch as price.vs_vwap counts one; no grader scores this outcome yet",
       "false": "otherwise"
      },
      "labels_needed": [
       {
        "name": "price.vs_vwap",
-       "example": "price is 0.32 sigma above the day's volume-weighted average price, further from it than 17 of the last 18 sessions at this minute, top third: far from it; it last traded at the average 35 minutes ago",
+       "example": "price is 0.32 sigma above the day's volume-weighted average price (VWAP), further from it than 17 of the last 18 sessions at this minute, top third: far from it; it last traded at VWAP 35 minutes ago",
        "computed_how": "(spot - row vwap)/sigma_anchor; its size ranked against the same measure to this clock on up to the last night_rank_count prior sessions (ranks.rank_sessions), stated as 'further from it than N of the last M sessions at this minute' and its third (bottom/middle/top); ties are not beaten; omitted under same_clock_min_sessions usable sessions, with the reason; each prior session's diary row at this clock (its own spot against its own level, in its own morning ruler; sessions whose ruler was estimated left out; the rows are read once a read); bottom third = at the average, middle = away from it, top = far from it; then minutes since a 1-minute bar spanned the average known when it finished",
        "source": "state/reversion/{day}.jsonl vwap; bars",
        "availability": "live",
@@ -3154,14 +3154,14 @@
       },
       {
        "name": "price.vwap_reach",
-       "example": "the day's volume-weighted average price is 0.32 sigma below price, further than 17 of the last 18 sessions at this minute, top third: far from it, 1.6 typical 30-minute moves away",
+       "example": "the day's volume-weighted average price (VWAP) is 0.32 sigma below price, further than 17 of the last 18 sessions at this minute, top third: far from it, 1.6 typical 30-minute moves away",
        "computed_how": "|spot - vwap| with the price.vs_vwap rank and its third, and in 30-minute reach units (R_h from ruler.flat_band_reach)",
        "source": "state/reversion/{day}.jsonl vwap; bars",
        "availability": "live",
        "needs_engine_edit": false
       }
      ],
-     "why": "A directly gradable reach forecast for the flat bucket: the day's average is the level most intraday flow trades back to.",
+     "why": "A directly gradable reach forecast for the flat bucket: the day's VWAP is the level most intraday flow trades back to.",
      "evidence": "Review: reach is mostly fixed by distance; cut 'to keep groups at six', not disproven. Unproven, so live; overlap-list with vwap_side_vs_books.",
      "origin": "review:average_reach_30 (restored live)",
      "code_answer": false,
@@ -4705,28 +4705,28 @@
      ],
      "status": "live",
      "cadence": "every 30-minute read from 10:32",
-     "ask": "Which side of the day's average price is SPX, and do the books agree?",
+     "ask": "Which side of the day's VWAP (volume-weighted average price) is SPX, and do the books agree?",
      "instructions": "Read `price.vs_vwap` and `gex.book_balance`. The opening words of each label decide. Check near_average first. Which situation is it?",
      "options": [
       {
        "name": "near_average",
-       "description": "price's distance from the day's average price is in the bottom third of the recent sessions' at this time of day (at the average)"
+       "description": "price's distance from the day's VWAP is in the bottom third of the recent sessions' at this time of day (at VWAP)"
       },
       {
        "name": "above_books_agree",
-       "description": "price is above the day's average, price's distance from the day's average price is in the middle or top third of the recent sessions' at this time of day, and both books lean the same way"
+       "description": "price is above the day's VWAP, price's distance from the day's VWAP is in the middle or top third of the recent sessions' at this time of day, and both books lean the same way"
       },
       {
        "name": "above_books_split",
-       "description": "above it, price's distance from the day's average price is in the middle or top third of the recent sessions' at this time of day, and the books disagree or one is balanced"
+       "description": "above it, price's distance from the day's VWAP is in the middle or top third of the recent sessions' at this time of day, and the books disagree or one is balanced"
       },
       {
        "name": "below_books_agree",
-       "description": "below it, price's distance from the day's average price is in the middle or top third of the recent sessions' at this time of day, and both books lean the same way"
+       "description": "below it, price's distance from the day's VWAP is in the middle or top third of the recent sessions' at this time of day, and both books lean the same way"
       },
       {
        "name": "below_books_split",
-       "description": "below it, price's distance from the day's average price is in the middle or top third of the recent sessions' at this time of day, and the books disagree or one is balanced"
+       "description": "below it, price's distance from the day's VWAP is in the middle or top third of the recent sessions' at this time of day, and the books disagree or one is balanced"
       }
      ],
      "criteria": {
@@ -4739,7 +4739,7 @@
      "labels_needed": [
       {
        "name": "price.vs_vwap",
-       "example": "price is 0.32 sigma above the day's volume-weighted average price, further from it than 17 of the last 18 sessions at this minute, top third: far from it; it last traded at the average 35 minutes ago",
+       "example": "price is 0.32 sigma above the day's volume-weighted average price (VWAP), further from it than 17 of the last 18 sessions at this minute, top third: far from it; it last traded at VWAP 35 minutes ago",
        "computed_how": "(spot - row vwap)/sigma_anchor; its size ranked against the same measure to this clock on up to the last night_rank_count prior sessions (ranks.rank_sessions), stated as 'further from it than N of the last M sessions at this minute' and its third (bottom/middle/top); ties are not beaten; omitted under same_clock_min_sessions usable sessions, with the reason; each prior session's diary row at this clock (its own spot against its own level, in its own morning ruler; sessions whose ruler was estimated left out; the rows are read once a read); bottom third = at the average, middle = away from it, top = far from it; then minutes since a 1-minute bar spanned the average known when it finished",
        "source": "state/reversion/{day}.jsonl vwap; bars",
        "availability": "live",
@@ -4754,7 +4754,7 @@
        "needs_engine_edit": false
       }
      ],
-     "why": "Every option carries a side. Whether a departure from the average comes back depends on the books agreeing, not on the long/short word, which just repeats which side of the flip price is on. The stretch size and minutes since the last touch ride in the label.",
+     "why": "Every option carries a side. Whether a departure from VWAP comes back depends on the books agreeing, not on the long/short word, which just repeats which side of the flip price is on. The stretch size and minutes since the last touch ride in the label.",
      "evidence": "0.10+ sigma from VWAP: moved toward it over 60 min 72%/70% with split books (n=74/67, 12-16 days) vs 42%/44% agreeing; 54-session stand-in 63%/61% vs 37%/47%; split days netting toward VWAP 23/34. Old cells: stretched_above_short 0 reads, stretched_below_long 0-1. Round 1's '62% under short' did not replicate (44.6%).",
      "origin": "round1:vwap_stretch_vs_gamma (reworded) + engine price_vs_vwap; absorbs deferred vwap_side_pattern as a label clause",
      "code_answer": true,
@@ -9867,7 +9867,7 @@
   },
   {
    "name": "price.vs_vwap",
-   "example": "price is 0.32 sigma above the day's volume-weighted average price, further from it than 17 of the last 18 sessions at this minute, top third: far from it; it last traded at the average 35 minutes ago",
+   "example": "price is 0.32 sigma above the day's volume-weighted average price (VWAP), further from it than 17 of the last 18 sessions at this minute, top third: far from it; it last traded at VWAP 35 minutes ago",
    "computed_how": "(spot - row vwap)/sigma_anchor; its size ranked against the same measure to this clock on up to the last night_rank_count prior sessions (ranks.rank_sessions), stated as 'further from it than N of the last M sessions at this minute' and its third (bottom/middle/top); ties are not beaten; omitted under same_clock_min_sessions usable sessions, with the reason; each prior session's diary row at this clock (its own spot against its own level, in its own morning ruler; sessions whose ruler was estimated left out; the rows are read once a read); bottom third = at the average, middle = away from it, top = far from it; then minutes since a 1-minute bar spanned the average known when it finished",
    "source": "state/reversion/{day}.jsonl vwap; bars",
    "availability": "live",
@@ -9875,7 +9875,7 @@
   },
   {
    "name": "price.vwap_reach",
-   "example": "the day's volume-weighted average price is 0.32 sigma below price, further than 17 of the last 18 sessions at this minute, top third: far from it, 1.6 typical 30-minute moves away",
+   "example": "the day's volume-weighted average price (VWAP) is 0.32 sigma below price, further than 17 of the last 18 sessions at this minute, top third: far from it, 1.6 typical 30-minute moves away",
    "computed_how": "|spot - vwap| with the price.vs_vwap rank and its third, and in 30-minute reach units (R_h from ruler.flat_band_reach)",
    "source": "state/reversion/{day}.jsonl vwap; bars",
    "availability": "live",
