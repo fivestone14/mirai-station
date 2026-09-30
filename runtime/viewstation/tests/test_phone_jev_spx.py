@@ -1934,6 +1934,19 @@ def test_the_questions_sheet_is_a_sheet_with_no_control_but_its_handle():
     assert ".qs-card>.q>.skip:last-child{margin:auto 0;" in SPX and ".bar.none{opacity:.45}" in SPX
 
 
+def test_a_sideways_swipe_on_a_question_card_is_the_pages_never_the_phones():
+    """The stage hands sideways moves to the page (pan-y), but a touch-action reaches down only to the nearest scroller,
+    and a card that scrolls is one: left at auto, Chrome took every sideways swipe on a card for its own pan and sent the
+    page a pointercancel, so the card sprang back and nothing moved. Measured with real touches through Chrome at 360
+    (DevTools input, not synthetic events): before, four swipes of four cancelled; after, three sideways swipes each moved
+    a group and an upward drag still scrolled. Every scroller inside the stage says pan-y."""
+    assert _rule(".qs-stage").count("touch-action:pan-y") == 1
+    card = _rule(".qs-card>.q")
+    assert "overflow-y:auto" in card and "touch-action:pan-y" in card
+    inside = [sel for sel, body in re.findall(r"(?m)^(\.qs-(?:card|track)[^{]*)\{([^}]*)\}", SPX) if "overflow" in body and "auto" in body]
+    assert inside == [".qs-card>.q"], inside
+
+
 @pytest.mark.parametrize("tz, next_read", [(LA, "07:32"), (TOKYO, "23:32"), (KOLKATA, "20:02")])
 def test_a_live_card_with_no_sum_says_so_when_the_30_minute_call_leads(tz, next_read):
     """Monday from 10:05 to about 10:17 the live 10:02 read and the lane's 10:00 to 10:10 reads were skipped: the page

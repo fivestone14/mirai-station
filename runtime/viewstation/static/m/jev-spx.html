@@ -292,8 +292,11 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 .qs-card{flex:0 0 100%;min-width:0;height:100%;padding:0 4px 6px;transition:opacity .28s,transform .28s}
 .qs-card.side{opacity:.45;transform:scale(.96)}
 /* the card fills the room it is given: the options share its height, each up to a cap, larger than on the page, the
-   confidence line sits at its foot and an unanswered question's reason in its middle; a card with more than fits scrolls */
-.qs-card>.q{display:flex;flex-direction:column;height:100%;overflow-y:auto;overscroll-behavior:contain;background:#FFFFFF;padding:18px 18px 16px}
+   confidence line sits at its foot and an unanswered question's reason in its middle; a card with more than fits scrolls.
+   Scrolling makes the card a scroller, where the stage's pan-y no longer reaches: left at auto, the phone took every
+   sideways swipe on a card for its own pan and cancelled it, so the card only scrolls up and down and a swipe is the page's */
+.qs-card>.q{display:flex;flex-direction:column;height:100%;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;background:#FFFFFF;
+            padding:18px 18px 16px}
 .qs-card .ask{font-size:19px;line-height:1.3;margin-bottom:6px}
 .qs-card>.q>.bar{flex:1 1 0;min-height:48px;max-height:110px;align-content:center;margin-top:0;
                  grid-template-columns:minmax(0,1fr) 44px;gap:6px 8px;font-size:15px}
