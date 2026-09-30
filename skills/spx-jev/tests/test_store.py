@@ -343,6 +343,8 @@ def test_the_average_price_grade_is_stored_from_each_lanes_file_its_newest_rule_
     assert (early["graded"], early["sum_id"], early["minutes_missing"], early["verdict"]) == (False, "next_30", 2, None)
     tape = grades[f"tape:{TAPE_READ}"]
     assert (tape["verdict"], tape["abstained"], tape["correct"], tape["lean"], tape["size_outcome"]) == ("passed", True, None, "down", "small")
+    # the size the end-price five-way pick named is a pick, never "the call", which is the average-price sum's alone
+    assert tape["size_pick"] is None and "size_call" not in tape
     assert len(grades) == 3                                                        # the other day's line is that day's
 
 

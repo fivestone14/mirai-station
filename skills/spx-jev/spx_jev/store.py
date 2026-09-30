@@ -382,7 +382,7 @@ AVERAGE_GRADES = Table("average_grades", _read_cols(
     ("running", WORDS, False), ("best_points", NUM, False), ("best_minute", INT, False), ("worst_points", NUM, False),
     ("worst_minute", INT, False), ("sharp", BOOL, False), ("sharp_points", NUM, False), ("sharp_minute", INT, False),
     ("sharp_higher_than", INT, False), ("sharp_of", INT, False), ("minutes_filled", INT, False), ("minutes_missing", INT, False),
-    ("bad_ticks", INT, False), ("stale_read", BOOL, False), ("size_outcome", STR, False), ("size_call", STR, False),
+    ("bad_ticks", INT, False), ("stale_read", BOOL, False), ("size_outcome", STR, False), ("size_pick", STR, False),
     ("size_right", BOOL, False), ("brier", NUM, False), ("log_loss", NUM, False), ("jev_brier", NUM, False),
     ("jev_log_loss", NUM, False), ("clock_brier", NUM, False), ("clock_log_loss", NUM, False)),
     key=("read_id", "horizon"),
@@ -805,7 +805,7 @@ def _average_grade_row(day: date, src: str, lane_name: str, g: dict) -> dict:
             "sharp_of": part["sharp_move"].get("of"),
             **{k: len(g[f]) if isinstance(g.get(f), list) else None
                for k, f in (("minutes_filled", "filled"), ("minutes_missing", "missing"), ("bad_ticks", "bad_ticks"))},
-            "stale_read": g.get("stale_read"), "size_outcome": part["size"].get("size"), "size_call": part["size"].get("call"),
+            "stale_read": g.get("stale_read"), "size_outcome": part["size"].get("size"), "size_pick": part["size"].get("call"),
             "size_right": part["size"].get("right"),
             **{k: part["scores"].get(k) for k in ("brier", "log_loss", "jev_brier", "jev_log_loss", "clock_brier", "clock_log_loss")}}
 
