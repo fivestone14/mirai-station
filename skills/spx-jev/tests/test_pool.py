@@ -277,10 +277,11 @@ PHONE_HOUR = {"pick": "flat", "probabilities": SHOWN, "by": {"next_30": {"pick":
 
 
 def _days(state, first, n, outcomes, jev=SURE_FLAT):
-    """n sessions from October ``first`` on, JEV sure of flat (or ``jev``) each read."""
+    """n sessions from October ``first`` on, JEV sure of flat (or ``jev``) each read; the last one's log."""
     for d in range(first, first + n):
         day = f"2026-10-{d:02d}"
-        apply_session(state, day, _session(state, outcomes, jev=jev, day=day), 30, True, None)
+        log = apply_session(state, day, _session(state, outcomes, jev=jev, day=day), 30, True, None)
+    return log
 
 
 def test_the_phone_never_shows_the_pool_while_jev_leads_it():
@@ -294,11 +295,14 @@ def test_the_phone_never_shows_the_pool_while_jev_leads_it():
     assert pool.phone_report(state)["on_phone"] is False
 
 
-def test_nineteen_winning_days_leave_the_phone_on_the_blend():
+def test_nineteen_winning_days_leave_the_phone_on_the_blend(monkeypatch):
+    """Every promotion test past the bar, the simulation gates passed: one day short of MIN_DAYS keeps the blend."""
+    monkeypatch.setattr(pool, "SIM_GATES_PASSED", True)
     state = cold_state()
     membership(state, MEMBERS, "2026-09-01")
-    _days(state, 1, pool.MIN_DAYS - 1, ["flat", "flat"])
-    assert state["phone"]["promote"]["e"] >= pool.PROMOTE_E and state["phone"]["shows"] == "blend"
+    _days(state, 1, pool.MIN_DAYS - 1, ["up", "up"], jev=SURE_UP)
+    assert min(state["phone"][test]["e"] for test in pool.PROMOTION_TESTS) >= pool.PROMOTE_E
+    assert state["phone"]["shows"] == "blend"
     assert shown(PHONE_HOUR, {"next_30": _snap(state)}, state)["shown_source"] == "blend50_exact"
 
 
@@ -308,10 +312,8 @@ def test_without_the_simulation_gates_passed_no_amount_of_evidence_puts_the_pool
     assert pool.SIM_GATES_PASSED is False
     state = cold_state()
     membership(state, MEMBERS, "2026-09-01")
-    for d in range(1, 26):
-        day = f"2026-10-{d:02d}"
-        log = apply_session(state, day, _session(state, ["up", "up"], jev=SURE_UP, day=day), 30, True, None)
-    assert min(state["phone"]["promote"]["e"], state["phone"]["promote_spread"]["e"]) >= pool.PROMOTE_E
+    log = _days(state, 1, 25, ["up", "up"], jev=SURE_UP)
+    assert min(state["phone"][test]["e"] for test in pool.PROMOTION_TESTS) >= pool.PROMOTE_E
     assert state["phone"]["promote"]["n"] >= pool.MIN_DAYS
     assert state["phone"]["shows"] == "blend" and log["phone"].startswith("held on the blend")
     assert shown(PHONE_HOUR, {"next_30": _snap(state)}, state)["shown_source"] == "blend50_exact"
@@ -320,7 +322,7 @@ def test_without_the_simulation_gates_passed_no_amount_of_evidence_puts_the_pool
 def test_beating_the_blend_on_its_unsure_accounting_alone_never_earns_promotion(monkeypatch):
     """The exact blend is scored with its unsure mass counted against it, so a pool can beat it by thousands to one
     on that accounting alone (09-30 review). Promotion also needs the pool to beat the blend with that mass spread,
-    which here it barely does, so the evidence never clears both bars."""
+    which here it does not, so the evidence never clears both bars."""
     monkeypatch.setattr(pool, "SIM_GATES_PASSED", True)
     state = cold_state()
     membership(state, MEMBERS, "2026-09-01")
@@ -354,7 +356,7 @@ def test_a_promoted_pool_that_starts_losing_hands_the_phone_back_to_the_blend(mo
     state["phone"]["demote"] = {"e": pool.DEMOTE_E - 0.1, "n": 10, "sum": 10.0, "sum_sq": 10.0}
     _days(state, 26, 1, ["up", "down"])
     assert state["phone"]["shows"] == "blend" and state["phone"]["since"] == "2026-10-26" > since
-    assert state["phone"]["promote"] == state["phone"]["promote_spread"] == new_eprocess()
+    assert all(state["phone"][test] == new_eprocess() for test in pool.PROMOTION_TESTS)
     assert shown(PHONE_HOUR, {"next_30": _snap(state)}, state)["shown_source"] == "blend50_exact"
 
 

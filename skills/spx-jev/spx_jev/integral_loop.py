@@ -63,7 +63,7 @@ from .lane import LIVE, Lane
 from .sessions import SESSION_CLOSE, session_close
 from .state_builder import ET, load_jsonl, parse_ts
 
-LOOP_VERSION = 1                # bump when this loop's learning changes: a state from before stops the update
+LOOP_VERSION = 1                # bump when this loop's learning changes: a state from before is learned again (update)
 GATE_SESSIONS = 10              # SPX sessions of average-price grades before Will decides whether to trust what it learns
 LOG_NAME = "pool_integral_log.jsonl"
 SOURCE = "clock"                # this loop's reference is the live time-of-day odds, so its experts are clock and clock_cal
@@ -207,9 +207,11 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Pat
         path = state_path(into, lane)
         kept = str(pool.archive_state(path, state)) if path.exists() else None
         _log(into, {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "code": CODE_HASH, "applied": False,
-                    "rebuild": {"from": state.get("constants_hash"), "to": CONSTANTS_HASH, "kept": kept, "replay_until": replay_until or None},
+                    "rebuild": {"from": state.get("constants_hash"), "to": CONSTANTS_HASH, "kept": kept,
+                                "replay_until": replay_until or None},
                     "why": f"constants changed since {h} began on the average price: learned again from the records"})
-        state = {**cold_state(), "replay_until": replay_until or None}     # kept, so a rebuild stopped part way bets nothing on it
+        # the replay's last day is kept in the state, so a rebuild stopped part way still bets nothing on those days
+        state = {**cold_state(), "replay_until": replay_until or None}
     said = {h: "nothing new to apply"}
     outcomes = pool.graded_outcomes(load_jsonl(out_dir / "grades.jsonl"), lane.horizons)
     lines = average_lines(out_dir, lane)
@@ -248,19 +250,7 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Pat
             _log(into, {**head, "applied": False, "why": why or "no reads"})
             continue
         reads, excluded = _session_reads(recs, lines, state, ref, lane)
-        state["last_session_applied"] = day
-        body: dict = {"manifest": {"included": [r["row_ts"] for r in reads], "excluded": excluded}}
-        if reads:
-            ref_version = reads[-1]["snapshot"]["reference_version"]
-            if state["reference_version"] not in (None, ref_version):
-                # a new counting rule is a new reference: its calibration and the question tables start again
-                state["cal"] = cold_state()["cal"]
-                state["tables"] = {}
-                body["reference_changed"] = {"from": state["reference_version"], "to": ref_version}
-            state["reference_version"] = ref_version
-            body["membership"] = pool.membership(state, reads[-1]["snapshot"]["members"], day)
-            body.update(pool.apply_session(state, day, reads, lane.horizons[h][0], True, None, lane.graded_from_settled_open, SOURCE,
-                                           replay=day <= (state.get("replay_until") or "")))
+        body = pool.learn_session(state, day, reads, excluded, lane.horizons[h][0], True, None, lane.graded_from_settled_open, SOURCE)
         state = json.loads(pool._canonical(state))      # rounded after every session, as pool.update does
         _log(into, {**head, "applied": bool(reads), **pool._rounded(body)})
         said[h] = f"{day}: applied, {len(reads)} reads"
@@ -388,11 +378,11 @@ def describe(run: dict, lane: Lane = LIVE) -> list[str]:
     out += [f"  {n} {why}" for why, n in left_out.most_common()]
     top = {side: pool._prob(state["top"][side]) for side in pool.SIDES}
     out.append("the pool's weights, move / direction: " + ", ".join(f"{n} {top['M'][n]:.3f} / {top['D'][n]:.3f}" for n in sorted(top["M"])))
-    phone = state["phone"]["promote"]
-    others = "; ".join(f"{test} e {(state['phone'].get(test) or pool.new_eprocess())['e']:.2f}" for test in pool.PROMOTION_TESTS[1:])
-    out.append(f"the pool against the blend: e {phone['e']:.2f} over {phone['n']} days ({others}; promotion needs {pool.PROMOTE_E:g} on each after "
-               f"{pool.MIN_DAYS} days, and the simulation gates, pool.SIM_GATES_PASSED {'on' if pool.SIM_GATES_PASSED else 'off'}); shows {state['phone']['shows']}; "
-               f"frozen: {state['frozen'] or 'no'}")
+    phone = pool.phone_report(state)
+    others = "; ".join(f"{test} e {phone[f'{test}_e']:.2f}" for test in pool.PROMOTION_TESTS[1:])
+    out.append(f"the pool against the blend: e {phone['promote_e']:.2f} over {phone['days']} days ({others}; promotion needs "
+               f"{pool.PROMOTE_E:g} on each after {pool.MIN_DAYS} days, and the simulation gates, pool.SIM_GATES_PASSED "
+               f"{'on' if pool.SIM_GATES_PASSED else 'off'}); shows {phone['shows']}; frozen: {state['frozen'] or 'no'}")
     out += [f"  {x['session']}: {x['phone']}" for x in applied if x.get("phone")]
     block = {side: pool._prob(state["block"][side]) for side in pool.SIDES}
     for q, ev in sorted(state["evidence"].items()):

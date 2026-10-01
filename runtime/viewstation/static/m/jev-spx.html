@@ -668,7 +668,8 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     return 'no average-price answer (' + marketWords(reason || 'no reason given', at) + '), so the call is the end-price question\u2019s';
   }
   function fallbackLine(h, at){ return h && h.average && !h.average.probabilities ? skipLine(fallbackWords(h.average.error, at)) : null; }
-  // the end-price sum kept beside the call: asked and graded as before, never the call
+  // the end-price sum kept beside the call: asked and graded as before, never the call, and shown by JEV's own pick
+  // as the headline above it is
   function endPriceRow(h){
     var own = jevOwn(h), p = own.probabilities, t = own.pick || top1(p), r = el('div', 'row60');
     r.appendChild(el('span', 'k', 'End-price question')); r.appendChild(el('b', null, cap(t) + ' ' + pct(p[t])));
@@ -1326,7 +1327,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       var own = jevOwn(a), hp = own.probabilities, top = own.pick || top1(hp);
       hc.appendChild(el('div', 'big', cap(top) + ' ' + pct(hp[top])));
       hc.appendChild(oddsBar(hp, top));
-      if(own !== a) hc.appendChild(tag('JEV’s own call' + (own.confidence != null ? ', ' + pct(own.confidence) + ' sure' : '')));
+      if(own !== a) hc.appendChild(tag('JEV\u2019s own call' + (own.confidence != null ? ', ' + pct(own.confidence) + ' sure' : '')));
       if(a !== h) hc.appendChild(tag(averageWords(a, 'the next ' + a.minutes + ' minutes')));
       var fb = fallbackLine(h, c.row_ts); if(fb) hc.appendChild(fb);
       hc.appendChild(howChart(a, bl, c.row_ts, a !== h ? c.time_of_day : null));

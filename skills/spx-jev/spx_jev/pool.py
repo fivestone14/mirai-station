@@ -2,9 +2,9 @@
 
 The design is 06-learning-loop-design (revised 2026-09-26). At every live read a handful of forecasts
 ("experts") of where SPX ends each horizon are written down beside the sum (snapshot); once a session
-is sealed, each expert's loss over the day is one piece of evidence and the experts' weights move by
-it (update). The e-processes bet once a day, a day being one piece of evidence for a test; the weights and
-the tables learn from every read, since at 30 minutes the reads of a day are close to independent (09-30 review).
+is sealed, the experts' weights move by each one's loss over the day (update). The e-processes bet once a
+day, a day being one piece of evidence for a test; the weights and the tables learn from every read, since
+at 30 minutes the reads of a day are close to independent (09-30 review).
 
 The reference R is the frozen time-of-day odds (baseline.py; the movement-so-far split lost the
 validation and is dropped) calibrated by a three-number decaying table of what actually happened.
@@ -49,7 +49,7 @@ version as ``reference_version``. A state or a snapshot written before these nam
 
 Nothing here changes JEV's prompt: every live question keeps its sentence and weighs 1.0 in step 3.
 The end-price sums kept beside the call keep today's exact 50/50 blend until this loop's pool is
-promoted (at least MIN_DAYS days, its e-process against the blend at PROMOTE_E, and SIM_GATES_PASSED,
+promoted (at least MIN_DAYS days, its e-processes on PROMOTION_TESTS at PROMOTE_E, and SIM_GATES_PASSED,
 the simulation 06 requires first); then they show the pool, the blend kept beside it, and go back to
 the blend by itself when the demotion e-process reaches DEMOTE_E (shown). The call the phone shows,
 the average-price sum, follows the average-price loop's own promotion by the same rules on the
@@ -127,6 +127,8 @@ PROMOTE_E, DEMOTE_E, VETO_E = 20.0, 10.0, 10.0
 MIN_DAYS = 20
 EBH_LEVEL = 0.10
 SUPPRESS_E, LIFT_E = 20.0, 5.0
+# the freeze: the weights stop for review when GAP_CLIP binds on more than CAP_BIND_LIMIT of the pool's expert-days over
+# CAP_BIND_WINDOW sessions (named for the day-step cap the clip replaced: renaming them would change CONSTANTS and the state)
 CAP_BIND_WINDOW, CAP_BIND_LIMIT = 20, 0.05
 ROUND = 12
 LOG_NAME = "pool_log.jsonl"
@@ -380,12 +382,12 @@ def snapshot(state: dict, reference: "Baseline", h: str, now: datetime, jev: dic
 
 def _mixes(state: dict, tables: dict, experts: dict[str, dict], r: dict[str, float], answers: dict[str, dict],
            long_run: dict[str, float]) -> dict:
-    """The parts of a snapshot the state's weights and tables make: each awake question's tilt of ``r``, the block's
-    mixture of them (``questions``), the pool over every expert, and its P(move) and P(up | move)."""
+    """The parts of a snapshot the state's weights and tables make: each awake question's tilt of ``r``, the
+    block's mixture of them (``questions``), the pool over every expert, and its P(move) and P(up | move)."""
     member_f = {NO_CHANGE: floored(r), **{q: floored(tilted(r, a, tables.get(q), long_run)) for q, a in answers.items()}}
     # a question that is not yet a member (it joins at the next update) is written down but not mixed
-    experts = {**experts, "questions": floored(mixed({n: f for n, f in member_f.items() if n == NO_CHANGE or n in state["members"]},
-                                                     state["block"]))}
+    mixable = {n: f for n, f in member_f.items() if n == NO_CHANGE or n in state["members"]}
+    experts = {**experts, "questions": floored(mixed(mixable, state["block"]))}
     pool = mixed(experts, state["top"])
     return {"experts": {n: _r4(f) for n, f in experts.items()}, "block_members": {n: _r4(f) for n, f in member_f.items()},
             "pool": _r4(floored(pool)), "p_move": round(move_of(pool), 4), "p_up_given_move": round(direction_of(pool), 4)}
@@ -613,7 +615,8 @@ def apply_session(state: dict, day: str, reads: list[dict], minutes: int, primar
         suppressed = {q for q, ev in state["evidence"].items() if ev["status"]["suppressed"]}
         v0 = block_prior(sorted(state["members"]))
         for side in SIDES:
-            v, log["block"][side] = weights_step({q: state["block"][side][q] for q in names}, block_loss[side], NO_CHANGE, v0, s_day)
+            block = {q: state["block"][side][q] for q in names}
+            v, log["block"][side] = weights_step(block, block_loss[side], NO_CHANGE, v0, s_day)
             v, log["block_cap_bound"][side] = capped_block(v, suppressed, v0)
             state["block"][side] = _logs(v)
             w, log["top"][side] = weights_step(state["top"][side], top_loss[side], REFERENCE, prior, s_day)
@@ -652,8 +655,9 @@ def apply_session(state: dict, day: str, reads: list[dict], minutes: int, primar
     start = {side: _logs(w0(source)) for side in SIDES}
     start_loss = day_mean(log_loss(floored(mixed(f, start)), y) for f, y in zip(experts, ys))
     log["pool_vs_blend"] = {"pool": pool_loss, "blend50_exact": blend_loss, "blend50": spread_loss, "pool_at_start": start_loss}
+    # a replayed day still fills the freeze's window, but never trips it
+    state["cap_binds"] = (state["cap_binds"] + [[day, total, bound]])[-CAP_BIND_WINDOW:]
     if replay:
-        state["cap_binds"] = (state["cap_binds"] + [[day, total, bound]])[-CAP_BIND_WINDOW:]
         return log
     log["evidence"] = {}
     for q, ev in sorted(state["evidence"].items()):
@@ -693,11 +697,10 @@ def apply_session(state: dict, day: str, reads: list[dict], minutes: int, primar
                 log["phone"] = "demoted: back to the exact blend; the promotion evidence starts again"
     else:
         bet(phone["harm_60"], day_score(blend_loss, pool_loss))
-    state["cap_binds"] = (state["cap_binds"] + [[day, total, bound]])[-CAP_BIND_WINDOW:]
     seen, hit = sum(t for _, t, _ in state["cap_binds"]), sum(b for _, _, b in state["cap_binds"])
     if state["frozen"] is None and len(state["cap_binds"]) >= CAP_BIND_WINDOW and seen and hit / seen > CAP_BIND_LIMIT:
-        state["frozen"] = (f"the gap clip bound on more than {CAP_BIND_LIMIT:.0%} of the pool's expert-days over {CAP_BIND_WINDOW} "
-                           "sessions: the weights are frozen for review")
+        state["frozen"] = (f"the gap clip bound on more than {CAP_BIND_LIMIT:.0%} of the pool's expert-days over "
+                           f"{CAP_BIND_WINDOW} sessions: the weights are frozen for review")
         log["frozen"] = state["frozen"]
     return log
 
@@ -720,6 +723,29 @@ def _session_reads(recs: list[dict], outcomes: dict[str, dict], h: str, minutes:
         else:
             reads.append({"row_ts": r["row_ts"], "snapshot": snap, "outcome": band})
     return reads, excluded
+
+
+def learn_session(state: dict, day: str, reads: list[dict], excluded: dict[str, str], minutes: int, primary: bool,
+                  harm_60: dict | None, same_window: bool, source: str = SOURCE) -> dict:
+    """One sealed session's included ``reads`` learned into ``state``, as both loops' updates learn it: the watermark
+    moved to ``day``, the reads' reference taken up, the block brought to their live questions (membership), and
+    apply_session, a day up to the state's ``replay_until`` replayed without bets. Returns what the log keeps."""
+    state["last_session_applied"] = day
+    body: dict = {"manifest": {"included": [r["row_ts"] for r in reads], "excluded": excluded}}
+    if not reads:
+        return body
+    version = reads[-1]["snapshot"]["reference_version"]
+    if state["reference_version"] not in (None, version):
+        # a new reference (a refitted baseline, a new counting rule): its calibration and the question tables, which
+        # counted outcomes against the old one's expectations, start again
+        state["cal"] = cold_state()["cal"]
+        state["tables"] = {}
+        body["reference_changed"] = {"from": state["reference_version"], "to": version}
+    state["reference_version"] = version
+    body["membership"] = membership(state, reads[-1]["snapshot"]["members"], day)
+    body.update(apply_session(state, day, reads, minutes, primary, harm_60, same_window, source,
+                              replay=day <= (state.get("replay_until") or "")))
+    return body
 
 
 def archive_state(path: Path, state: dict) -> Path:
@@ -810,28 +836,16 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline:
                           and r["snapshot"].get("reference_version") != baseline.version]
             if unfaithful:
                 _log(out_dir, {**head, "horizon": h, "applied": False,
-                               "why": "a snapshot to form again was made under another reference than today's: stopped, fail closed"})
+                               "why": "a snapshot to form again was made under another reference than today's: "
+                                      "stopped, fail closed"})
                 said[h] = f"{day}: a snapshot cannot be formed again; stopped"
                 stopped = True
                 break
             reads = [r if r["snapshot"].get("constants_hash") == CONSTANTS_HASH
                      else {**r, "snapshot": reformed(r["snapshot"], state, baseline.whole_day(h))} for r in reads]
-            state["last_session_applied"] = day
-            body: dict = {"manifest": {"included": [r["row_ts"] for r in reads], "excluded": excluded}}
-            if reads:
-                version = reads[-1]["snapshot"]["reference_version"]
-                if state["reference_version"] not in (None, version):
-                    # a refitted baseline is a new reference: its calibration and the question tables, which counted
-                    # outcomes against the old one's expectations, start again
-                    state["cal"] = cold_state()["cal"]
-                    state["tables"] = {}
-                    body["reference_changed"] = {"from": state["reference_version"], "to": version}
-                state["reference_version"] = version
-                body["membership"] = membership(state, reads[-1]["snapshot"]["members"], day)
-                primary = h == lane.primary
-                body.update(apply_session(state, day, reads, minutes, primary,
-                                          states[order[0]]["phone"]["harm_60"] if primary and h != order[0] else None,
-                                          lane.graded_from_settled_open, replay=day <= (state.get("replay_until") or "")))
+            primary = h == lane.primary
+            harm_60 = states[order[0]]["phone"]["harm_60"] if primary and h != order[0] else None
+            body = learn_session(state, day, reads, excluded, minutes, primary, harm_60, lane.graded_from_settled_open)
             # rounded after every session, as saved, so one night at a time and a rebuild agree to the bit
             states[h] = json.loads(_canonical(state))
             _log(out_dir, {**head, "horizon": h, "applied": bool(reads), **_rounded(body)})
