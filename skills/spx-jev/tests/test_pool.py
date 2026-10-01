@@ -535,6 +535,36 @@ def test_an_old_snapshot_is_formed_again_in_any_run_and_one_from_another_referen
     assert json.loads((other / "pool_60.json").read_text())["last_session_applied"] == "2026-09-14"
 
 
+def test_a_rebuild_never_raises_the_evidence_for_the_pool_and_never_forgives_the_evidence_against_it(tmp_path):
+    """Each promotion e-process of a rebuilt state starts at the lower of where the old one stood and 1."""
+    _write_session(tmp_path, "2026-09-14", [("up", "up")])
+    update(tmp_path, today="2026-09-15")
+    path = tmp_path / "pool_30.json"
+    s = json.loads(path.read_text())
+    s["constants_hash"] = "deadbeefdeadbeef"
+    s["phone"]["promote"]["e"], s["phone"]["promote_spread"]["e"] = 0.4, 35.0       # one test losing, one well ahead
+    path.write_text(json.dumps(s))
+    update(tmp_path, today="2026-09-15")
+    phone = json.loads(path.read_text())["phone"]
+    assert phone["promote"] == {**new_eprocess(), "e": 0.4}
+    assert phone["promote_spread"] == phone["promote_learned"] == new_eprocess()
+
+
+def test_a_snapshot_formed_under_other_forming_settings_stops_a_rebuild(tmp_path):
+    """The experts a rebuild keeps as written (the JEV mixes, the blend, the calibration) are only kept when the read
+    formed them under today's settings, which each snapshot fingerprints; otherwise the run stops (fail closed)."""
+    _write_session(tmp_path, "2026-09-14", [("up", "up")])
+    hour = tmp_path / "hour" / "2026-09-14.jsonl"
+    recs = [json.loads(l) for l in hour.read_text().splitlines()]
+    assert recs[0]["pool"]["next_30"]["forming_hash"] == pool.FORMING_HASH
+    for r in recs:
+        for s in r["pool"].values():
+            s["constants_hash"], s["forming_hash"] = "deadbeefdeadbeef", "0000000000000000"
+    hour.write_text("".join(json.dumps(r) + "\n" for r in recs))
+    assert update(tmp_path, today="2026-09-15", baseline=FakeBaseline())["next_60"] == "2026-09-14: a snapshot cannot be formed again; stopped"
+    assert json.loads((tmp_path / "pool_60.json").read_text())["last_session_applied"] is None
+
+
 def test_a_session_with_a_read_missing_its_snapshot_fails_closed_and_an_event_read_is_left_out(tmp_path):
     _write_session(tmp_path, "2026-09-14", [("up", "up"), ("flat", "flat")], event_at=1)
     update(tmp_path, today="2026-09-15")

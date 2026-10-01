@@ -150,6 +150,11 @@ CODE_HASH = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:16]
 # the same constants under the names this loop's experts had before they were named by their source
 LEGACY_NAMES = {"clock": "baseline", "clock_cal": "baseline_cal", "raw_clock": "raw_baseline"}
 LEGACY_CONSTANTS_HASH = hashlib.sha256(json.dumps({**CONSTANTS, "w0": w0("clock")}, sort_keys=True).encode()).hexdigest()[:16]
+# what forms the experts a rebuild keeps as a snapshot wrote them (reformed): the JEV mixes, the blend and the reference's
+# calibration. Each snapshot keeps this fingerprint; one formed under other settings cannot be formed again faithfully,
+# so a rebuild meeting it stops (fail closed) rather than reuse its experts
+FORMING = {"eps": EPS, "jev_shares": JEV_SHARES, "blend_share": 0.5, "cal_decay": CAL_DECAY, "prior_days": PRIOR_DAYS}
+FORMING_HASH = hashlib.sha256(json.dumps(FORMING, sort_keys=True).encode()).hexdigest()[:16]
 
 
 def question_version(q: dict) -> str:
@@ -377,7 +382,8 @@ def snapshot(state: dict, reference: "Baseline", h: str, now: datetime, jev: dic
     mixes = _mixes(state, tables, experts, r, {q: answers[q] for q in part["awake"]}, long_run)
     return {**mixes, "blend50_exact": {k: round(float(v), 4) for k, v in shown.items() if isinstance(v, (int, float))},
             f"raw_{source}": _r4(raw), **part, "state_hash": state_hash(state), "reference_version": reference.version,
-            "last_session_applied": state["last_session_applied"], "constants_hash": CONSTANTS_HASH, "long_run": _r4(long_run)}
+            "last_session_applied": state["last_session_applied"], "constants_hash": CONSTANTS_HASH, "long_run": _r4(long_run),
+            "forming_hash": FORMING_HASH}
 
 
 def _mixes(state: dict, tables: dict, experts: dict[str, dict], r: dict[str, float], answers: dict[str, dict],
@@ -763,6 +769,16 @@ def archive_state(path: Path, state: dict) -> Path:
     return dest
 
 
+def carried_evidence(old: dict, new: dict) -> dict:
+    """A rebuilt state ``new`` with each promotion e-process starting where ``old``'s stood, but never above 1: the
+    evidence for the pool is not earned again by days the rebuild replays without bets, and the evidence against it
+    is not forgiven by the rebuild (09-30 review). The bets are sized afresh."""
+    for test in PROMOTION_TESTS:
+        e = (old.get("phone", {}).get(test) or {}).get("e", 1.0)
+        new["phone"][test] = {**new_eprocess(), "e": min(float(e), 1.0)}
+    return new
+
+
 def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline: "Baseline | None" = None) -> dict[str, str]:
     """Apply every sealed session after the watermark, oldest first, both horizons (the longer first,
     so the primary's promotion sees the same day's veto). A session is sealed once it is over and every
@@ -792,7 +808,7 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline:
                        "rebuild": {"from": {h: states[h].get("constants_hash") for h in order}, "to": CONSTANTS_HASH,
                                    "kept": kept, "replay_until": replay_until or None},
                        "why": f"constants changed since {', '.join(changed)} began: learned again from the records"})
-        states = {h: {**cold_state(), "replay_until": replay_until or None} for h in order}
+        states = {h: carried_evidence(states[h], {**cold_state(), "replay_until": replay_until or None}) for h in order}
     watermark = min((s["last_session_applied"] or "") for s in states.values())
     stopped = False
     hour_dir = out_dir / "hour"
@@ -831,13 +847,15 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline:
             if stale and baseline is None:
                 from .baseline import Baseline
                 baseline = Baseline.load()
-            unfaithful = [r["row_ts"] for r in stale if not r["snapshot"].get("long_run") and state["tables"]
-                          and state["reference_version"] in (None, r["snapshot"].get("reference_version"))
-                          and r["snapshot"].get("reference_version") != baseline.version]
+            # a snapshot from before its fingerprint was kept was formed under today's FORMING
+            unfaithful = [r["row_ts"] for r in stale if r["snapshot"].get("forming_hash") not in (None, FORMING_HASH)
+                          or (not r["snapshot"].get("long_run") and state["tables"]
+                              and state["reference_version"] in (None, r["snapshot"].get("reference_version"))
+                              and r["snapshot"].get("reference_version") != baseline.version)]
             if unfaithful:
                 _log(out_dir, {**head, "horizon": h, "applied": False,
-                               "why": "a snapshot to form again was made under another reference than today's: "
-                                      "stopped, fail closed"})
+                               "why": "a snapshot to form again was made under another reference or other forming settings "
+                                      "than today's: stopped, fail closed"})
                 said[h] = f"{day}: a snapshot cannot be formed again; stopped"
                 stopped = True
                 break

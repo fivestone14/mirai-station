@@ -211,7 +211,7 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Pat
                                 "replay_until": replay_until or None},
                     "why": f"constants changed since {h} began on the average price: learned again from the records"})
         # the replay's last day is kept in the state, so a rebuild stopped part way still bets nothing on those days
-        state = {**cold_state(), "replay_until": replay_until or None}
+        state = pool.carried_evidence(state, {**cold_state(), "replay_until": replay_until or None})
     said = {h: "nothing new to apply"}
     outcomes = pool.graded_outcomes(load_jsonl(out_dir / "grades.jsonl"), lane.horizons)
     lines = average_lines(out_dir, lane)
