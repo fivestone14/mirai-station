@@ -1049,7 +1049,7 @@ def pre_card(at="09:28", day=PRE_DAY, report=True, sent=None, checkpoints=CHECKP
     return {**card, **over}
 
 
-PRE_FNS = ("fits", "top1", "oddsKeys", "oddsWidth", "oddsBar", "tag", "skipLine", "averageWords", "endPriceRow", "ageWord", "mins", "untilWords", "expiryLine",
+PRE_FNS = ("fits", "top1", "oddsKeys", "oddsWidth", "oddsBar", "tag", "skipLine", "averageWords", "jevOwn", "endPriceRow", "ageWord", "mins", "untilWords", "expiryLine",
            "preLeads", "preMissed", "preJevRead", "preJevDue", "preUnsent", "preState", "shapeWords", "sumPick", "sumSaid", "preClock",
            "preCall", "preRulerLine", "preStaleLine", "checksSvg", "chipFits", "storySide", "storyHead", "storySvg", "preFacts", "paintPre")
 PRE_VARS = ("ODDS_ORDER", "ODDS_TRACK_PX", "ODDS_LETTERS", "ODDS_EM", "EXPIRY_TAGS", "PRE_LATE_MIN", "OPENS", "THEN", "CHECKS_LEAD_MIN", "CHIP_W")
@@ -1531,7 +1531,7 @@ def _parts(node):
 
 def _sum_card(c, tz=LA):
     js = (CARD_STUBS + _odds() + "".join(_fn(f) for f in ("top1", "oneAnswer", "phaseSpan", "howBar", "tile", "howChart", "tag", "skipLine", "plusIso",
-                                                            "averageWords", "endPriceRow", "jevOwn", "sumCard"))
+                                                            "averageWords", "jevOwn", "endPriceRow", "sumCard"))
           + "var main = el('main'); sumCard(D.c, main); console.log(JSON.stringify(dump(main.kids[0])));")
     return _parts(_run(js, {"c": c, "now": "2026-09-28T11:10:00-04:00"}, tz))
 
@@ -1579,7 +1579,7 @@ def test_the_last_reads_clock_looks_as_far_ahead_as_its_average_runs():
     its calls' horizon."""
     js = (CARD_STUBS + "function clockBlock(read, minutes, mark){ return el('div', 'clock', 'Looks ' + minutes + ' min ahead, graded ' + mark); }"
           + _odds() + "".join(_fn(f) for f in ("top1", "oneAnswer", "phaseSpan", "howBar", "tile", "howChart", "tag", "skipLine", "plusIso", "averageWords",
-                                                "endPriceRow", "jevOwn", "sumCard"))
+                                                "jevOwn", "endPriceRow", "sumCard"))
           + "console.log(JSON.stringify(D.c.map(function(c){ var main = el('main'); sumCard(c, main); return dump(main.kids[0]); })));")
     hour = {**END_30, "used": 12, "by": {"next_30": END_30}, "average": {**AVG, "minutes": 28}}
     c = {"row_ts": "2026-09-28T15:32:10-04:00", "hour": hour, "marks": {"next_30": "2026-09-28T16:00:00-04:00"},
@@ -1592,7 +1592,7 @@ def test_the_last_reads_clock_looks_as_far_ahead_as_its_average_runs():
 
 
 # the opening card's own parts, lifted with it
-LANE_FNS = ("top1", "tag", "skipLine", "endPriceRow", "indexLevel", "flatRange", "bandSpans", "moveScale", "keyRow", "stretchWords", "laneCard")
+LANE_FNS = ("top1", "tag", "skipLine", "jevOwn", "endPriceRow", "indexLevel", "flatRange", "bandSpans", "moveScale", "keyRow", "stretchWords", "laneCard")
 LANE_VARS = ("RULER_HELD_UNTIL", "MOVE_SCALE_OVER", "STRETCH_LEAD", "STRETCH_MOVE", "STRETCH_RANGE", "STRETCH_SIZE", "STRETCH_THIRD", "FIRST_READ")
 # the builder's own sentences (labels/range_size._since_last_read): the day's first read, from the owner's phone on
 # 09-29, and a later read's, from the same day's 10:30 card

@@ -670,7 +670,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   function fallbackLine(h, at){ return h && h.average && !h.average.probabilities ? skipLine(fallbackWords(h.average.error, at)) : null; }
   // the end-price sum kept beside the call: asked and graded as before, never the call
   function endPriceRow(h){
-    var p = h.probabilities, t = h.pick || top1(p), r = el('div', 'row60');
+    var own = jevOwn(h), p = own.probabilities, t = own.pick || top1(p), r = el('div', 'row60');
     r.appendChild(el('span', 'k', 'End-price question')); r.appendChild(el('b', null, cap(t) + ' ' + pct(p[t])));
     return r;
   }
@@ -715,11 +715,11 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // the phase's hours in the viewer's zone, without its New York name: "lunch, 12:00 to 14:00" reads "09:00 to 11:00"
   // in Los Angeles, never "lunch, 09:00 to 11:00"
   function phaseSpan(words, at){ return marketWords(String(words).replace(/^[^,]*,\s*/, ''), at); }
-  // The blend's two parts are drawn as two tiles, the call above them being what is shown: JEV's own answer, and how
-  // the last sessions went at this time of day, which opens the time-of-day sheet when the card carries its counts
-  // (the card's time_of_day, clock._blocks). The learned mix, once promoted, is the call above; the half-and-half it
-  // replaced is said under the tiles. The note reads the call's own shown_source (integral_loop.shown): the end-price
-  // loop's promotion reaches only the end-price sums beside the call, never these tiles.
+  // Under JEV's own call, two tiles: how the last sessions went at this time of day (the yardstick JEV has to beat),
+  // which opens the time-of-day sheet when the card carries its counts (the card's time_of_day, clock._blocks), and
+  // the call the calls in play grade, the half-and-half or, once promoted, the learned mix, the half-and-half it
+  // replaced said in the note. The note reads the call's own shown_source (integral_loop.shown): the end-price loop's
+  // promotion reaches only the end-price sums beside the call, never these tiles.
   function howBar(p){
     var b = el('div', 'how-bar');
     oddsKeys(p).forEach(function(k){ var i = el('i', 'o-' + k); i.style.flex = Math.max(0, p[k] || 0) + ' 1 0'; b.appendChild(i); });
@@ -1338,7 +1338,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       if(a !== h && h.probabilities) hc.appendChild(endPriceRow(h));
       var h60 = h.by && h.by.next_60;
       if(h60 && h60.probabilities){
-        var p60 = h60.probabilities, t60 = h60.pick || top1(p60);
+        var own60 = jevOwn(h60), p60 = own60.probabilities, t60 = own60.pick || top1(p60);
         var m60 = marks.next_60 !== undefined ? marks.next_60 : plusIso(c.row_ts, 60);
         var r60 = el('div', 'row60'), l60 = el('span', 'l');
         r60.appendChild(el('span', 'k', 'Next 60 min, end price')); r60.appendChild(el('b', null, cap(t60) + ' ' + pct(p60[t60]))); r60.appendChild(l60);
