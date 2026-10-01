@@ -3,8 +3,8 @@
 The design is 06-learning-loop-design (revised 2026-09-26). At every live read a handful of forecasts
 ("experts") of where SPX ends each horizon are written down beside the sum (snapshot); once a session
 is sealed, each expert's loss over the day is one piece of evidence and the experts' weights move by
-it (update). A trading day, never a read, is the unit of evidence, because reads on one day rise and
-fall together.
+it (update). The e-processes bet once a day, a day being one piece of evidence for a test; the weights and
+the tables learn from every read, since at 30 minutes the reads of a day are close to independent (09-30 review).
 
 The reference R is the frozen time-of-day odds (baseline.py; the movement-so-far split lost the
 validation and is dropped) calibrated by a three-number decaying table of what actually happened.
@@ -35,10 +35,10 @@ reads, forecast by the awake members' mix, as sleeping experts do). A state lear
 is kept in archive/ and learned again from the records, the sessions it had applied replayed without bets
 (update, reformed); nothing is ever added to it. A question is labelled earning only by e-BH
 over every question version ever tested; the pool becomes eligible for the phone only once its
-e-process against the exact blend, and its e-process against the blend with its unsure mass spread, both
-reach PROMOTE_E after MIN_DAYS days (so beating the exact blend on its unsure accounting alone earns
-nothing), and steps back on the same kind of test. It runs at the first grading run after a session ends
-(PoolWeights.learn).
+e-processes on PROMOTION_TESTS (against the exact blend, the blend with its unsure mass spread, and the pool at
+its starting weights) all reach PROMOTE_E after MIN_DAYS days, so beating the exact blend on its unsure
+accounting alone, or on the mix it began with, earns nothing; and it steps back on the same kind of test. It
+runs at the first grading run after a session ends (PoolWeights.learn).
 
 The reference's two experts and its raw odds on a snapshot (``raw_baseline``) are named by the
 reference's source (w0): ``baseline`` here, ``clock`` in the average-price loop (integral_loop.py),
@@ -131,6 +131,9 @@ CAP_BIND_WINDOW, CAP_BIND_LIMIT = 20, 0.05
 ROUND = 12
 LOG_NAME = "pool_log.jsonl"
 SHOWN_BLEND, SHOWN_POOL = "blend50_exact", "pool_v1"
+# promotion needs the pool to beat, at PROMOTE_E each: the exact blend as the phone showed it, the blend with its unsure
+# mass spread (so unsure accounting alone earns nothing), and itself at its starting weights (so the learning must count)
+PROMOTION_TESTS = ("promote", "promote_spread", "promote_learned")
 SIDES = ("M", "D")              # the move weights and the direction weights
 
 CONSTANTS = {"eps": EPS, "eta": ETA, "alpha": ALPHA, "gap_clip": GAP_CLIP, "block_cap": BLOCK_CAP,
@@ -202,9 +205,9 @@ def cold_state(source: str = SOURCE) -> dict:
             "top": {side: _logs(w0(source)) for side in SIDES}, "block": {side: {NO_CHANGE: 0.0} for side in SIDES},
             "members": {}, "tables": {}, "cal": {"O": {k: 0.0 for k in OUTCOMES}, "E": {k: 0.0 for k in OUTCOMES}},
             "evidence": {}, "family": [], "archived": {},
-            "phone": {"shows": "blend", "since": None, "promote": new_eprocess(), "promote_spread": new_eprocess(),
+            "phone": {"shows": "blend", "since": None, **{test: new_eprocess() for test in PROMOTION_TESTS},
                       "demote": new_eprocess(), "harm_60": new_eprocess()},
-            "cap_binds": [], "frozen": None, "last_session_applied": None}
+            "cap_binds": [], "frozen": None, "last_session_applied": None, "replay_until": None}
 
 
 def state_path(out_dir: Path, minutes: int) -> Path:
@@ -582,7 +585,8 @@ def apply_session(state: dict, day: str, reads: list[dict], minutes: int, primar
     starts at 1 on the first session after the rebuild (a bound chosen after seeing the replayed days would
     otherwise lower the bar). Returns what the log keeps."""
     reads = sorted(reads, key=lambda r: r["row_ts"])
-    c = [1.0] * len(reads) if same_window else coverage([parse_ts(r["row_ts"]) for r in reads], minutes)
+    # reads forecasting one window are one observation between them, however many there were
+    c = [1.0 / len(reads)] * len(reads) if same_window else coverage([parse_ts(r["row_ts"]) for r in reads], minutes)
     s_day = math.fsum(c)
     snaps, ys = [r["snapshot"] for r in reads], [r["outcome"] for r in reads]
     experts = [{n: floored(f) for n, f in s["experts"].items()} for s in snaps]
@@ -642,10 +646,14 @@ def apply_session(state: dict, day: str, reads: list[dict], minutes: int, primar
     pool_loss = day_mean(log_loss(floored(s["pool"]), y) for s, y in zip(snaps, ys))
     # the exact blend is scored as the phone showed it: unsure mass counts against it, no renormalising
     blend_loss = day_mean(-math.log(max(float(s["blend50_exact"].get(y, 0.0)), EPS)) for s, y in zip(snaps, ys))
-    # and with its unsure mass spread, so the pool must beat the blend on learning, not on that accounting alone
+    # and with its unsure mass spread, so the pool must beat the blend on more than that accounting
     spread_loss = day_mean(log_loss(f["blend50"], y) for f, y in zip(experts, ys))
-    log["pool_vs_blend"] = {"pool": pool_loss, "blend50_exact": blend_loss, "blend50": spread_loss}
+    # and the pool at its starting weights, so what it learned must count, not the mix it began with (09-30 review)
+    start = {side: _logs(w0(source)) for side in SIDES}
+    start_loss = day_mean(log_loss(floored(mixed(f, start)), y) for f, y in zip(experts, ys))
+    log["pool_vs_blend"] = {"pool": pool_loss, "blend50_exact": blend_loss, "blend50": spread_loss, "pool_at_start": start_loss}
     if replay:
+        state["cap_binds"] = (state["cap_binds"] + [[day, total, bound]])[-CAP_BIND_WINDOW:]
         return log
     log["evidence"] = {}
     for q, ev in sorted(state["evidence"].items()):
@@ -663,14 +671,15 @@ def apply_session(state: dict, day: str, reads: list[dict], minutes: int, primar
             bet(ev[part]["worse"], -x)
         log["evidence"][q] = {"days": ev["days"], **{part: {k: ev[part][k]["e"] for k in ("better", "worse")} for part in ("move", "direction")}}
     phone = state["phone"]
-    phone.setdefault("promote_spread", new_eprocess())     # a state from before the second test
+    for test in PROMOTION_TESTS[1:]:
+        phone.setdefault(test, new_eprocess())             # a state from before the test
     if primary:
         log["status_changes"] = statuses(state)
         if phone["shows"] == "blend":
-            bet(phone["promote"], day_score(pool_loss, blend_loss))
-            bet(phone["promote_spread"], day_score(pool_loss, spread_loss))
+            for test, against in zip(PROMOTION_TESTS, (blend_loss, spread_loss, start_loss)):
+                bet(phone[test], day_score(pool_loss, against))
             vetoed = harm_60 is not None and harm_60["e"] >= VETO_E
-            earned = min(phone["promote"]["e"], phone["promote_spread"]["e"]) >= PROMOTE_E
+            earned = min(phone[test]["e"] for test in PROMOTION_TESTS) >= PROMOTE_E
             if earned and phone["promote"]["n"] >= MIN_DAYS and not vetoed:
                 if SIM_GATES_PASSED:
                     phone.update({"shows": "pool", "since": day, "demote": new_eprocess()})
@@ -680,7 +689,7 @@ def apply_session(state: dict, day: str, reads: list[dict], minutes: int, primar
         else:
             bet(phone["demote"], day_score(blend_loss, pool_loss))
             if phone["demote"]["e"] >= DEMOTE_E:
-                phone.update({"shows": "blend", "since": day, "promote": new_eprocess(), "promote_spread": new_eprocess()})
+                phone.update({"shows": "blend", "since": day, **{test: new_eprocess() for test in PROMOTION_TESTS}})
                 log["phone"] = "demoted: back to the exact blend; the promotion evidence starts again"
     else:
         bet(phone["harm_60"], day_score(blend_loss, pool_loss))
@@ -719,7 +728,11 @@ def archive_state(path: Path, state: dict) -> Path:
     folder = path.parent / "archive"
     folder.mkdir(exist_ok=True)
     stamp = datetime.now(ET).date().isoformat()
-    dest = folder / f"{path.name}.pre-{state.get('constants_hash') or 'unknown'}-{stamp}"
+    base = f"{path.name}.pre-{state.get('constants_hash') or 'unknown'}-{stamp}"
+    dest, n = folder / base, 1
+    while dest.exists():                                   # never over a state kept earlier the same day
+        n += 1
+        dest = folder / f"{base}.{n}"
     dest.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
     return dest
 
@@ -732,8 +745,11 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline:
     from before the loop and is passed over. A session already applied is never applied again.
     A state made under other constants (its constants_hash) is kept in archive/ and learned again from the
     records: from cold, every session it had applied replayed under these constants (snapshots formed again,
-    reformed; no bets, so every e-process starts at 1), then on as usual. ``baseline`` gives the long-run shares
-    a snapshot from before they were kept is formed again with (the current Baseline when not given).
+    reformed; no bets, so every e-process starts at 1), then on as usual. The replay's last day is kept in the state
+    (``replay_until``), so a rebuild stopped part way (an unsealed session, say) still bets nothing on those days
+    when it goes on. ``baseline`` gives the long-run shares a snapshot from before they were kept is formed again
+    with (the current Baseline when not given); a snapshot whose tables were learned under another reference than
+    that Baseline's cannot be formed again faithfully, so it stops the run (fail closed).
     Returns ``{h: what happened}``."""
     out_dir = Path(out_dir)
     today = today or datetime.now(ET).date().isoformat()
@@ -741,7 +757,6 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline:
     order = sorted(lane.horizons, key=lambda h: -lane.horizons[h][0])
     states = {h: load_state(out_dir, lane.horizons[h][0]) for h in order}
     said = {h: "nothing new to apply" for h in order}
-    replay_until = ""
     changed = [h for h in order if states[h].get("constants_hash") != CONSTANTS_HASH]
     if changed:
         replay_until = max((s["last_session_applied"] or "") for s in states.values())
@@ -751,14 +766,9 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline:
                        "rebuild": {"from": {h: states[h].get("constants_hash") for h in order}, "to": CONSTANTS_HASH,
                                    "kept": kept, "replay_until": replay_until or None},
                        "why": f"constants changed since {', '.join(changed)} began: learned again from the records"})
-        states = {h: cold_state() for h in order}
-    long_run: dict[str, dict] = {}
-    if replay_until:
-        if baseline is None:
-            from .baseline import Baseline
-            baseline = Baseline.load()
-        long_run = {h: baseline.whole_day(h) for h in order}
+        states = {h: {**cold_state(), "replay_until": replay_until or None} for h in order}
     watermark = min((s["last_session_applied"] or "") for s in states.values())
+    stopped = False
     hour_dir = out_dir / "hour"
     for day in sorted(p.stem for p in hour_dir.glob("*.jsonl")) if hour_dir.exists() else []:
         if day <= watermark or day >= today:
@@ -785,14 +795,28 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline:
             state, minutes = states[h], lane.horizons[h][0]
             if (state["last_session_applied"] or "") >= day:
                 continue
-            state["last_session_applied"] = day
             if why or not recs:
+                state["last_session_applied"] = day
                 _log(out_dir, {**head, "horizon": h, "applied": False, "why": why or "no reads"})
                 continue
             reads, excluded = _session_reads(recs, outcomes, h, minutes)
             # a snapshot written under other constants is formed again from the state a read would have seen today
+            stale = [r for r in reads if r["snapshot"].get("constants_hash") != CONSTANTS_HASH]
+            if stale and baseline is None:
+                from .baseline import Baseline
+                baseline = Baseline.load()
+            unfaithful = [r["row_ts"] for r in stale if not r["snapshot"].get("long_run") and state["tables"]
+                          and state["reference_version"] in (None, r["snapshot"].get("reference_version"))
+                          and r["snapshot"].get("reference_version") != baseline.version]
+            if unfaithful:
+                _log(out_dir, {**head, "horizon": h, "applied": False,
+                               "why": "a snapshot to form again was made under another reference than today's: stopped, fail closed"})
+                said[h] = f"{day}: a snapshot cannot be formed again; stopped"
+                stopped = True
+                break
             reads = [r if r["snapshot"].get("constants_hash") == CONSTANTS_HASH
-                     else {**r, "snapshot": reformed(r["snapshot"], state, long_run.get(h) or {})} for r in reads]
+                     else {**r, "snapshot": reformed(r["snapshot"], state, baseline.whole_day(h))} for r in reads]
+            state["last_session_applied"] = day
             body: dict = {"manifest": {"included": [r["row_ts"] for r in reads], "excluded": excluded}}
             if reads:
                 version = reads[-1]["snapshot"]["reference_version"]
@@ -807,11 +831,13 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline:
                 primary = h == lane.primary
                 body.update(apply_session(state, day, reads, minutes, primary,
                                           states[order[0]]["phone"]["harm_60"] if primary and h != order[0] else None,
-                                          lane.graded_from_settled_open, replay=day <= replay_until))
+                                          lane.graded_from_settled_open, replay=day <= (state.get("replay_until") or "")))
             # rounded after every session, as saved, so one night at a time and a rebuild agree to the bit
             states[h] = json.loads(_canonical(state))
             _log(out_dir, {**head, "horizon": h, "applied": bool(reads), **_rounded(body)})
             said[h] = f"{day}: applied, {len(reads)} reads"
+        if stopped:
+            break
     for h in order:
         save_state(out_dir, lane.horizons[h][0], states[h])
     return said
@@ -826,11 +852,10 @@ def _log(out_dir: Path, line: dict) -> None:
 
 def phone_report(state: dict) -> dict:
     """The promotion evidence as weights.json reports it: what the state would show, whether the phone shows it
-    (never while POOL_ON_PHONE is off), and the pool's e-values against the exact blend and the spread blend."""
+    (never while POOL_ON_PHONE is off), and the pool's e-value on each of PROMOTION_TESTS."""
     phone = state["phone"]
-    spread = phone.get("promote_spread") or new_eprocess()
     return {"shows": phone["shows"], "on_phone": POOL_ON_PHONE and phone["shows"] == "pool",
-            "promote_e": phone["promote"]["e"], "promote_spread_e": spread["e"], "days": phone["promote"]["n"]}
+            **{f"{test}_e": (phone.get(test) or new_eprocess())["e"] for test in PROMOTION_TESTS}, "days": phone["promote"]["n"]}
 
 
 class PoolWeights(QuestionWeights):

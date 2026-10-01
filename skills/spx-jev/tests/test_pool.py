@@ -483,6 +483,56 @@ def test_a_state_made_under_other_constants_is_kept_and_learned_again_from_the_r
     assert len(replayed) == 2 and all(l["replay"] and "evidence" not in l for l in replayed)
 
 
+def test_a_rebuild_stopped_part_way_still_bets_nothing_on_the_days_it_replays_when_it_goes_on(tmp_path):
+    """The replay's last day is kept in the state: a rebuild that meets an unsealed session saves a cold state, and the
+    next run replays the old days without bets all the same (09-30 review: otherwise it bets on days already learned)."""
+    _write_session(tmp_path, "2026-09-14", [("up", "up")])
+    _write_session(tmp_path, "2026-09-15", [("flat", "flat")])
+    update(tmp_path, today="2026-09-16")
+    for name in ("pool_30.json", "pool_60.json"):
+        path = tmp_path / name
+        path.write_text(json.dumps({**json.loads(path.read_text()), "constants_hash": "deadbeefdeadbeef"}))
+    grades = tmp_path / "grades.jsonl"
+    kept = grades.read_text()
+    grades.write_text("".join(l + "\n" for l in kept.splitlines() if "2026-09-14" not in l))      # 09-14 not graded yet
+    assert update(tmp_path, today="2026-09-16")["next_30"] == "2026-09-14: unsealed; stopped"
+    assert json.loads((tmp_path / "pool_30.json").read_text())["replay_until"] == "2026-09-15"
+    grades.write_text(kept)
+    update(tmp_path, today="2026-09-16")
+    state = json.loads((tmp_path / "pool_30.json").read_text())
+    assert state["last_session_applied"] == "2026-09-15" and state["phone"]["promote"]["n"] == 0
+    assert state["evidence"]["q_a"]["days"] == 0
+
+
+def test_an_old_snapshot_is_formed_again_in_any_run_and_one_from_another_reference_stops_it(tmp_path):
+    """A snapshot written under other constants is formed again whenever it turns up, not only in a rebuild, from the
+    Baseline's long-run shares; when its tables were learned under another reference than that Baseline's, it cannot
+    be formed faithfully, so the run stops (fail closed) and nothing is applied."""
+    _write_session(tmp_path, "2026-09-14", [("up", "up"), ("down", "down")])
+    update(tmp_path, today="2026-09-15", baseline=FakeBaseline())
+    _write_session(tmp_path, "2026-09-15", [("up", "up")])
+    hour = tmp_path / "hour" / "2026-09-15.jsonl"
+    fresh = hour.read_text()
+    recs = [json.loads(l) for l in fresh.splitlines()]
+    for r in recs:                                                         # written by older code: no hash, no shares
+        for s in r["pool"].values():
+            s.pop("constants_hash"), s.pop("long_run")
+    hour.write_text("".join(json.dumps(r) + "\n" for r in recs))
+    assert update(tmp_path, today="2026-09-16", baseline=FakeBaseline())["next_30"] == "2026-09-15: applied, 1 reads"
+
+    class Refitted(FakeBaseline):
+        version = "v2:refitted"
+    other = tmp_path / "other"
+    _write_session(other, "2026-09-14", [("up", "up"), ("down", "down")])
+    update(other, today="2026-09-15", baseline=FakeBaseline())
+    (other / "hour" / "2026-09-15.jsonl").write_text(hour.read_text())
+    with open(other / "grades.jsonl", "a") as f:
+        f.write("".join(l + "\n" for l in (tmp_path / "grades.jsonl").read_text().splitlines() if "2026-09-15" in l))
+    said = update(other, today="2026-09-16", baseline=Refitted())
+    assert said["next_60"] == "2026-09-15: a snapshot cannot be formed again; stopped"
+    assert json.loads((other / "pool_60.json").read_text())["last_session_applied"] == "2026-09-14"
+
+
 def test_a_session_with_a_read_missing_its_snapshot_fails_closed_and_an_event_read_is_left_out(tmp_path):
     _write_session(tmp_path, "2026-09-14", [("up", "up"), ("flat", "flat")], event_at=1)
     update(tmp_path, today="2026-09-15")
@@ -516,13 +566,14 @@ def test_the_loop_leaves_out_what_the_read_recorded_beyond_the_tier_1_tag():
 
 def test_reads_forecasting_one_window_count_the_same_in_their_day():
     """The premarket reads all forecast the half hour after the settled open: by their own clocks the 09:05
-    read would cover only the part of its window the 08:48 read did not."""
+    read would cover only the part of its window the 08:48 read did not. Forecasting one window, they are one
+    observation between them, each a third of it."""
     by_clock, same = cold_state(), cold_state()
     for state in (by_clock, same):
         membership(state, MEMBERS, "2026-09-18")
     reads = [{"row_ts": at(hh, mm).isoformat(), "snapshot": _snap(same, t=at(hh, mm)), "outcome": "up"} for hh, mm in ((8, 48), (9, 5), (9, 28))]
     assert apply_session(by_clock, "2026-09-18", reads, 30, True, None)["coverage"] == pytest.approx([1.0, 17 / 30, 23 / 30])
-    assert apply_session(same, "2026-09-18", reads, 30, True, None, same_window=True)["coverage"] == [1.0, 1.0, 1.0]
+    assert apply_session(same, "2026-09-18", reads, 30, True, None, same_window=True)["coverage"] == pytest.approx([1 / 3] * 3)
 
 
 def test_the_premarket_loop_keeps_its_own_files_and_learns_nothing_from_reads_without_a_snapshot(tmp_path):
