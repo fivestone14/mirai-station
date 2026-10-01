@@ -446,7 +446,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 </div>
 <div id="state"></div>
 <main id="main" style="display:flex;flex-direction:column;gap:12px"></main>
-<p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are shadow questions, asked and logged, never graded and never weighted. A call is a forecast, not a trade signal, graded on the average price over its window: where each minute closed against the price at the read, averaged, in index points, and set against a flat band (the &plusmn; figure) narrower than an end price would get, because an average swings less than any one price. Its direction decides right or wrong; its size at the end price, where price stood highest and lowest (&ldquo;min 3&rdquo; is the window&rsquo;s third minute) and any sharp move are said beside it, and an unsure call is passed, never counted as a miss. For now each call also shows the old grade, on the end price alone, and a call the average could not grade stands on that, said so. The call is JEV&rsquo;s answer to that question itself: where the average will sit, up, flat or down within the &plusmn; figure, with no unsure; the old question on the end price is still asked and graded beside it, and shown muted as &ldquo;End-price question&rdquo;. When a sum says blended, it is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent SPX sessions. Through the first hour the opening lane reads every 5 minutes and its call, on the average price over the next 10 minutes, leads the page until its last call closes; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock. Before the open, the pre-market lane reads S&amp;P futures, 10-year bond futures, bitcoin futures and the morning&rsquo;s reports through the night and makes one call about the first half hour: the average price over the 30 minutes after the first settled price, four minutes after the open. It is a forecast too, graded by the bars. Every time here is in this phone's own time zone.</p>
+<p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are shadow questions, asked and logged, never graded and never weighted. A call is a forecast, not a trade signal, graded on the average price over its window: where each minute closed against the price at the read, averaged, in index points, and set against a flat band (the &plusmn; figure) narrower than an end price would get, because an average swings less than any one price. Its direction decides right or wrong; its size at the end price, where price stood highest and lowest (&ldquo;min 3&rdquo; is the window&rsquo;s third minute) and any sharp move are said beside it, and an unsure call is passed, never counted as a miss. For now each call also shows the old grade, on the end price alone, and a call the average could not grade stands on that, said so. The call is JEV&rsquo;s answer to that question itself: where the average will sit, up, flat or down within the &plusmn; figure, with no unsure; the old question on the end price is still asked and graded beside it, and shown muted as &ldquo;End-price question&rdquo;. The headline is JEV&rsquo;s own call. When a sum is blended, the call the calls in play grade is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent SPX sessions, shown in the tile beside those sessions&rsquo; own odds: the yardstick JEV has to beat. Through the first hour the opening lane reads every 5 minutes and its call, on the average price over the next 10 minutes, leads the page until its last call closes; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock. Before the open, the pre-market lane reads S&amp;P futures, 10-year bond futures, bitcoin futures and the morning&rsquo;s reports through the night and makes one call about the first half hour: the average price over the 30 minutes after the first settled price, four minutes after the open. It is a forecast too, graded by the bars. Every time here is in this phone's own time zone.</p>
 
 <div class="scrim" data-sheet-close></div>
 <div class="sheet" id="jevSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="csTitle">
@@ -648,10 +648,12 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     return box;
   }
 
-  // A call on this page is JEV's answer blended half and half with how this time of day went on prior
-  // sessions (the service's clock); JEV's own answer and the clock's odds ride beside it. Two lines:
-  // what the blend is made of, and each part's own leading answer, in the page's own option words.
+  // A call on this page is graded as JEV's answer blended half and half with how this time of day went on prior
+  // sessions (the service's clock), but JEV's own answer leads it (Will, 2026-09-30): the headline is JEV's, and the
+  // clock's odds and the half-and-half ride under it as two tiles, the clock the yardstick JEV has to beat.
   function top1(p){ return p ? Object.keys(p).sort(function(x, y){ return p[y] - p[x]; })[0] : null; }
+  // JEV's own odds for a call: a blended call's own answer from JEV, an unblended one as it came
+  function jevOwn(a){ return a && ((a.blend && a.blend.used) || a.blended) && a.jev && a.jev.probabilities ? a.jev : a; }
   function oneAnswer(p){ var k = top1(p); return k ? cap(k) + ' ' + Math.round((p[k] || 0) * 100) + '%' : 'none'; }
   // the sum a card's call is: the average-price one (the service's hour.average: up, flat or down over the window, no
   // unsure) once JEV answered it, else the end-price sum, on a card from before it or a read whose average-price
@@ -738,13 +740,14 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var j = h.jev, c = h.clock, pooled = /^pool/.test(h.shown_source || '');
     if(bl && bl.used && j && c){
       var g = el('div', 'tod'), days = 'Last ' + bl.sessions + ' days', span = bl.phase_words ? phaseSpan(bl.phase_words, at) : '';
-      g.appendChild(tile('JEV' + (j.confidence != null ? ' \u00B7 ' + pct(j.confidence) + ' sure' : ''), j.probabilities));
+      var graded = pooled ? 'Learned mix' : 'Half of each';
       g.appendChild(tile(days, c.probabilities, tod && tod.phases && tod.phases.length ? function(from){ openTod(tod, bl, at, from); } : null));
-      var only = ' ' + days + ' looks only at this time of day' + (span ? ' (' + span + ').' : '.');
-      g.appendChild(el('div', 'how-note', pooled
-        ? 'The call above is the learned mix. It took over from half of each once it did better over at least 20 trading days, and it hands' +
-          ' back if it starts doing worse' + (h.blend50_exact ? '; half of each reads ' + oneAnswer(h.blend50_exact) : '') + '.' + only
-        : 'The call above is half of each.' + only));
+      g.appendChild(tile(graded, h.probabilities));
+      var yardstick = ' ' + days + ' is what SPX did at this time of day' + (span ? ' (' + span + ')' : '') + ', the yardstick JEV has to beat.';
+      g.appendChild(el('div', 'how-note', 'The call above is JEV\u2019s own.' + yardstick + (pooled
+        ? ' The learned mix took over from half of each once it did better over at least 20 trading days, and it hands back if it' +
+          ' starts doing worse' + (h.blend50_exact ? '; half of each reads ' + oneAnswer(h.blend50_exact) : '') + '.'
+        : '') + ' The calls in play grade ' + (pooled ? 'the learned mix.' : 'half of each.')));
       return g;
     }
     var w = el('div', 'how');
@@ -1319,9 +1322,11 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       var hc = el('div', 'card dashed');
       hc.appendChild(el('div', 'mode', 'normal \u00B7 a call every 30 min'));
       hc.appendChild(clockBlock(c.row_ts, minutes, marks.next_30 !== undefined ? marks.next_30 : plusIso(c.row_ts, minutes)));
-      var hp = a.probabilities, top = a.pick || top1(hp);
+      // JEV's own read leads; the half-and-half the calls in play grade sits in the tiles under it
+      var own = jevOwn(a), hp = own.probabilities, top = own.pick || top1(hp);
       hc.appendChild(el('div', 'big', cap(top) + ' ' + pct(hp[top])));
       hc.appendChild(oddsBar(hp, top));
+      if(own !== a) hc.appendChild(tag('JEV’s own call' + (own.confidence != null ? ', ' + pct(own.confidence) + ' sure' : '')));
       if(a !== h) hc.appendChild(tag(averageWords(a, 'the next ' + a.minutes + ' minutes')));
       var fb = fallbackLine(h, c.row_ts); if(fb) hc.appendChild(fb);
       hc.appendChild(howChart(a, bl, c.row_ts, a !== h ? c.time_of_day : null));
@@ -1465,11 +1470,11 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   }
   // the 30-minute call while the opening leads: one line, with its own minutes left
   function foldLive(c){
-    var f = el('div', 'card fold'), h = callSum(c.hour), p = h && h.probabilities;
+    var f = el('div', 'card fold'), h = callSum(c.hour), own = jevOwn(h), p = own && own.probabilities;
     f.appendChild(el('span', 'k', '30-min read ' + viewerTime(c.row_ts)));
     var left = el('span', 'l');
     if(!p){ f.appendChild(left); left.textContent = noCallWords(c); return f; }
-    var top = h.pick || top1(p); f.appendChild(el('b', null, cap(top) + ' ' + pct(p[top])));
+    var top = own.pick || top1(p); f.appendChild(el('b', null, cap(top) + ' ' + pct(p[top])));
     f.appendChild(left);
     var m30 = c.marks && c.marks.next_30 !== undefined ? c.marks.next_30 : plusIso(c.row_ts, 30);
     function update(){ left.textContent = m30 ? (leftWords(Date.parse(m30), Date.now()) || 'Window closed at ' + viewerTime(m30)) : 'Never graded'; }

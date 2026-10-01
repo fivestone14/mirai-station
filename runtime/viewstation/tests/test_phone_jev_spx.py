@@ -778,8 +778,8 @@ def test_the_blend_note_names_the_phase_by_its_hours_in_the_viewers_zone():
          "clock": {"probabilities": {"up": 0.2, "down": 0.3, "flat": 0.5}}}
     got = _run(js, {"h": h, "at": "2026-09-28T12:31:00-04:00", "now": "2026-09-28T12:35:00-04:00",
                     "w": ["lunch, 12:00 to 14:00", "the afternoon, 14:00 to the close", "the opening half hour, before 10:00"]}, LA)
-    assert got == [f"The call above is half of each. Last 19 days looks only at this time of day ({span})."
-                   for span in ("09:00 to 11:00", "11:00 to the close", "before 07:00")]
+    assert got == [f"The call above is JEV\u2019s own. Last 19 days is what SPX did at this time of day ({span}), the yardstick JEV"
+                   " has to beat. The calls in play grade half of each." for span in ("09:00 to 11:00", "11:00 to the close", "before 07:00")]
 
 
 def _how():
@@ -788,9 +788,10 @@ def _how():
 
 
 def test_the_blend_is_drawn_as_two_tiles_and_only_the_time_of_day_one_opens_the_sheet():
-    """Will's layout of 09-29: the three rows (JEV, Time of day, Shown) fold into two tiles under the call, which is
-    what is shown. JEV's tile says how sure it was; the last sessions' tile opens the time-of-day sheet, and only when
-    the card carries its counts (the card's time_of_day), so a card without them draws a tile that is not a button."""
+    """Will's layout of 09-29, JEV leading since 09-30: under JEV's own call sit two tiles, the last sessions' odds (the
+    yardstick JEV has to beat) and the half-and-half the calls in play grade. The last sessions' tile opens the
+    time-of-day sheet, and only when the card carries its counts (the card's time_of_day), so a card without them draws
+    a tile that is not a button."""
     js = (_how() + "var opened = []; function openTod(tod, bl, at, from){ opened.push(from.tag); }"
           "var g = howChart(D.h, {used: true, sessions: 19, phase: 'lunch', phase_words: 'lunch, 12:00 to 14:00'}, D.at, D.tod);"
           "console.log(JSON.stringify(g.kids.map(function(k){ return [k.tag, k.attrs['class'], k.textContent]; })));")
@@ -799,8 +800,9 @@ def test_the_blend_is_drawn_as_two_tiles_and_only_the_time_of_day_one_opens_the_
     tod = {"phases": [{"phase": "lunch", "from": "12:00", "to": "14:00", "probabilities": {"up": 0.22, "down": 0.14, "flat": 0.64}, "n": 215}],
            "days": []}
     got = _run(js, {"h": h, "tod": tod, "at": "2026-09-29T13:01:00-04:00", "now": "2026-09-29T13:04:00-04:00"}, LA)
-    assert got == [["div", "tile", "JEV · 78% sureDown 85%"], ["button", "tile", "Last 19 daysFlat 64%"],
-                   ["div", "how-note", "The call above is half of each. Last 19 days looks only at this time of day (09:00 to 11:00)."]]
+    assert got == [["button", "tile", "Last 19 daysFlat 64%"], ["div", "tile", "Half of eachDown 50%"],
+                   ["div", "how-note", "The call above is JEV\u2019s own. Last 19 days is what SPX did at this time of day (09:00 to"
+                    " 11:00), the yardstick JEV has to beat. The calls in play grade half of each."]]
     bare = _run(js, {"h": h, "tod": None, "at": "2026-09-29T13:01:00-04:00", "now": "2026-09-29T13:04:00-04:00"}, LA)
     assert [k[0] for k in bare] == ["div", "div", "div"]
     assert "hc.appendChild(howChart(a, bl, c.row_ts, a !== h ? c.time_of_day : null));" in _fn("sumCard")
@@ -828,7 +830,7 @@ def test_every_question_group_has_a_heading_in_words():
 def test_the_folded_30_minute_line_counts_down_only_a_call_that_was_made():
     """The 09:32 read asks nothing, so from 09:35 to 10:02 the opening view has no 30-minute call to time."""
     js = ("var tickers = [], READ_MINUTES = [2, 32], LAST_READ_DEFAULT = '15:32';" + _fn("top1") + _fn("plusIso") + _fn("nextRead")
-          + _fn("noCallWords") + _fn("foldLive") + "var f = foldLive(D.c); console.log(JSON.stringify([f.kids.map(function(k){ return k.textContent; }), tickers.length]));")
+          + _fn("noCallWords") + _fn("jevOwn") + _fn("foldLive") + "var f = foldLive(D.c); console.log(JSON.stringify([f.kids.map(function(k){ return k.textContent; }), tickers.length]));")
     c = {"row_ts": "2026-09-28T09:31:20-04:00", "hour": None, "marks": {"next_30": "2026-09-28T10:00:00-04:00"},
          "session": {"close": "2026-09-28T16:00:00-04:00", "last_read": "2026-09-28T15:32:00-04:00"}}
     assert _run(js, {"now": "2026-09-28T09:52:00-04:00", "c": c}, LA) == [
@@ -949,13 +951,14 @@ def test_a_learned_mix_on_the_phone_is_named_as_such_with_the_half_and_half_kept
     h = {"probabilities": odds, "jev": {"probabilities": odds}, "clock": {"probabilities": odds}, "blend50_exact": half,
          "shown_source": "pool_v1"}
     got = _run(js, {"h": h, "at": "2026-09-28T12:31:00-04:00", "now": "2026-09-28T12:35:00-04:00"}, LA)
-    assert got[:2] == ["JEVFlat 50%", "Last 19 daysFlat 50%"]
-    assert got[2] == ("The call above is the learned mix. It took over from half of each once it did better over at least 20 trading days,"
-                      " and it hands back if it starts doing worse; half of each reads Flat 40%. Last 19 days looks only at this time of day"
-                      " (09:00 to 11:00).")
+    assert got[:2] == ["Last 19 daysFlat 50%", "Learned mixFlat 50%"]
+    assert got[2] == ("The call above is JEV\u2019s own. Last 19 days is what SPX did at this time of day (09:00 to 11:00), the yardstick"
+                      " JEV has to beat. The learned mix took over from half of each once it did better over at least 20 trading days,"
+                      " and it hands back if it starts doing worse; half of each reads Flat 40%. The calls in play grade the learned mix.")
     blend = _run(js, {"h": {**h, "shown_source": "blend50_exact"}, "at": "2026-09-28T12:31:00-04:00", "now": "2026-09-28T12:35:00-04:00"}, LA)
-    assert blend == ["JEVFlat 50%", "Last 19 daysFlat 50%",
-                     "The call above is half of each. Last 19 days looks only at this time of day (09:00 to 11:00)."]
+    assert blend == ["Last 19 daysFlat 50%", "Half of eachFlat 50%",
+                     "The call above is JEV\u2019s own. Last 19 days is what SPX did at this time of day (09:00 to 11:00), the yardstick"
+                     " JEV has to beat. The calls in play grade half of each."]
 
 
 def test_the_calls_chart_names_the_average_price_loops_learned_mix_and_never_the_end_price_loops(monkeypatch):
@@ -975,12 +978,12 @@ def test_the_calls_chart_names_the_average_price_loops_learned_mix_and_never_the
     c = {"row_ts": "2026-09-28T12:32:10-04:00", "marks": {"next_30": "2026-09-28T13:02:00-04:00"}, "calls": [],
          "hour": {**end, "shown_source": SHOWN_BLEND, "average": pooled}}
     how = next(v for k, v in _sum_card(c) if k == "tod")
-    assert "The call above is the learned mix" in how and "half of each reads Up 45%" in how
+    assert "The calls in play grade the learned mix" in how and "half of each reads Up 45%" in how
     # the end-price loop promoted, the call still on its blend: the tiles say the call is half of each
     c["hour"] = {**end, "shown_source": SHOWN_POOL, "blend50_exact": half,
                  "average": {**pooled, "probabilities": half, "pick": "up", "shown_source": SHOWN_BLEND}}
     how = next(v for k, v in _sum_card(c) if k == "tod")
-    assert "learned mix" not in how and "The call above is half of each." in how
+    assert "learned mix" not in how and "The calls in play grade half of each." in how
 
 
 # ---- before the open: the pre-market card (skills/spx-jev, spx_jev.premarket)
@@ -1528,9 +1531,24 @@ def _parts(node):
 
 def _sum_card(c, tz=LA):
     js = (CARD_STUBS + _odds() + "".join(_fn(f) for f in ("top1", "oneAnswer", "phaseSpan", "howBar", "tile", "howChart", "tag", "skipLine", "plusIso",
-                                                            "averageWords", "endPriceRow", "sumCard"))
+                                                            "averageWords", "endPriceRow", "jevOwn", "sumCard"))
           + "var main = el('main'); sumCard(D.c, main); console.log(JSON.stringify(dump(main.kids[0])));")
     return _parts(_run(js, {"c": c, "now": "2026-09-28T11:10:00-04:00"}, tz))
+
+
+def test_a_blended_call_leads_with_jevs_own_read_and_keeps_the_half_and_half_in_a_tile():
+    """Will, 2026-09-30: the main screen shows JEV's read. On a blended call the big number and the odds are JEV's own,
+    with how sure it was; the half-and-half the calls in play grade and the last sessions' odds sit in the tiles under it."""
+    blend = {"used": True, "jev_share": 0.5, "phase_words": "lunch, 12:00 to 14:00", "sessions": 19}
+    avg = {**AVG, "pick": "flat", "probabilities": {"up": 0.3, "flat": 0.45, "down": 0.25}, "blend": blend,
+           "jev": {"probabilities": {"up": 0.1, "flat": 0.2, "down": 0.7}, "confidence": 0.78},
+           "clock": {"probabilities": {"up": 0.2, "flat": 0.7, "down": 0.1}}}
+    c = {"row_ts": "2026-09-28T12:32:10-04:00", "marks": {"next_30": "2026-09-28T13:02:00-04:00"}, "calls": [],
+         "hour": {**END_30, "used": 12, "by": {"next_30": END_30}, "average": avg}}
+    parts = dict((k, v) for k, v in _sum_card(c) if k in ("big", "tag", "tod") and not (k == "tag" and "JEV" not in v))
+    assert parts["big"] == "Down 70%" and parts["tag"] == "JEV’s own call, 78% sure"
+    assert parts["tod"].startswith("Last 19 days") and "Half of eachFlat 45%" in parts["tod"]
+    assert "The calls in play grade half of each." in parts["tod"]
 
 
 def test_the_30_minute_card_leads_with_the_average_price_call_and_keeps_the_end_price_beside_it():
@@ -1561,7 +1579,7 @@ def test_the_last_reads_clock_looks_as_far_ahead_as_its_average_runs():
     its calls' horizon."""
     js = (CARD_STUBS + "function clockBlock(read, minutes, mark){ return el('div', 'clock', 'Looks ' + minutes + ' min ahead, graded ' + mark); }"
           + _odds() + "".join(_fn(f) for f in ("top1", "oneAnswer", "phaseSpan", "howBar", "tile", "howChart", "tag", "skipLine", "plusIso", "averageWords",
-                                                "endPriceRow", "sumCard"))
+                                                "endPriceRow", "jevOwn", "sumCard"))
           + "console.log(JSON.stringify(D.c.map(function(c){ var main = el('main'); sumCard(c, main); return dump(main.kids[0]); })));")
     hour = {**END_30, "used": 12, "by": {"next_30": END_30}, "average": {**AVG, "minutes": 28}}
     c = {"row_ts": "2026-09-28T15:32:10-04:00", "hour": hour, "marks": {"next_30": "2026-09-28T16:00:00-04:00"},
