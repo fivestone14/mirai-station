@@ -318,19 +318,26 @@ def test_on_a_session_before_the_question_is_passed_over_and_an_ungraded_read_st
 
 
 def test_neither_loop_ever_loads_the_others_state(tmp_path, clock):
-    """An end-price state where the switched loop keeps its own stops the switched loop, and the other way round,
-    before anything is applied: the constants each is keyed by tell them apart."""
+    """An end-price state where the switched loop keeps its own is never added to, and the other way round: the
+    constants each is keyed by tell them apart, so the stranger is kept in archive/ and each loop learns its own
+    again from the records."""
     out = _write(tmp_path)
     pool.update(out, today=DAYS[1])
     shutil.copy(out / "pool_30.json", out / "pool_30_integral.json")
     planted = (out / "pool_30_integral.json").read_bytes()
-    assert integral_loop.update(out, TODAY) == {"next_30": "constants changed; stopped"}
-    assert (out / "pool_30_integral.json").read_bytes() == planted and _log(out)[-1]["applied"] is False
+    integral_loop.update(out, TODAY)
+    [kept] = (out / "archive").glob(f"pool_30_integral.json.pre-{pool.CONSTANTS_HASH}-*")
+    assert kept.read_bytes() == planted
+    assert json.loads((out / "pool_30_integral.json").read_text())["constants_hash"] == integral_loop.CONSTANTS_HASH
+    assert any(x.get("rebuild", {}).get("from") == pool.CONSTANTS_HASH for x in _log(out))
     other = _write(tmp_path / "other")
     integral_loop.update(other, DAYS[1])
     for name in ("pool_30.json", "pool_60.json"):
         shutil.copy(other / "pool_30_integral.json", other / name)
-    assert pool.update(other, today=TODAY)["next_30"] == "constants changed; stopped"
+    pool.update(other, today=TODAY)
+    for name in ("pool_30.json", "pool_60.json"):
+        assert json.loads((other / name).read_text())["constants_hash"] == pool.CONSTANTS_HASH
+        assert list((other / "archive").glob(f"{name}.pre-{integral_loop.CONSTANTS_HASH}-*"))
 
 
 def test_flipping_the_switch_on_off_and_on_again_never_mixes_the_histories(tmp_path, clock):
@@ -397,10 +404,11 @@ def _promoted(out: Path) -> None:
     integral_loop.save_state(out, LIVE, state)
 
 
-def test_on_the_call_shows_its_blend_until_this_loops_pool_is_promoted_then_the_pool_with_the_blend_beside_it(tmp_path, clock):
-    """Will's decision of 2026-09-29: the average-price loop's promotion decides what the call shows, never the
-    end-price loop's. The pool shown is the one the update forms for the same read, and the update learns the read
-    against the exact blend kept beside it."""
+def test_on_the_call_shows_its_blend_until_this_loops_pool_is_promoted_then_the_pool_with_the_blend_beside_it(tmp_path, clock, monkeypatch):
+    """Will's decision of 2026-09-29, with the phone switch turned on (it is off since 2026-09-30, JEV leading the
+    phone): the average-price loop's promotion decides what the call shows, never the end-price loop's. The pool shown
+    is the one the update forms for the same read, and the update learns the read against the exact blend beside it."""
+    monkeypatch.setattr(pool, "POOL_ON_PHONE", True)
     out = _write(tmp_path)
     integral_loop.update(out, TODAY)
     rec = grade.load_jsonl(out / "hour" / f"{DAYS[0]}.jsonl")[0]

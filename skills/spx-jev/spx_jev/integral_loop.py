@@ -38,8 +38,9 @@ learned like any other once its read's end-price snapshot carries the questions'
 the snapshot keeps even when JEV's end-price sum is missing.
 
 Its constants are pool's with this loop's outcome, the grade's rule, the reference's rule and LOOP_VERSION: a state
-learned under any others, an end-price state among them, stops the update before anything is applied, as pool.update
-does, so the two histories can never be mixed, whichever way the switch is flipped.
+learned under any others, an end-price state among them, is never added to; it is kept in archive/ and the loop learns
+again from the records, as pool.update does, so the two histories can never be mixed, whichever way the switch is
+flipped.
 
 Files, beside the lane's records, apart from the end-price loop's:
     pool_30_integral.json        the state of the primary box (pool_{minutes}_integral.json)
@@ -191,18 +192,25 @@ def _session_reads(recs: list[dict], lines: dict[str, dict], state: dict, ref: R
 def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Path | None = None) -> dict[str, str]:
     """Apply every sealed session after the watermark, oldest first, to the primary box, reading the lane's records in
     ``out_dir`` and keeping the state and the log in ``into`` (``out_dir`` itself unless the dry run names another). A
-    session already applied is never applied again, and a state made under other constants stops the run before
-    anything is applied. Returns ``{h: what happened}``. Mirrors pool.update on the one box and the average-price label."""
+    session already applied is never applied again. A state made under other constants, the end price's among them,
+    is never added to: it is kept in archive/ and the loop learns again from cold, every session it had applied
+    replayed under these constants with no bets (pool.apply_session's ``replay``), then on as usual; the forecasts are
+    formed at the update, so the replay forms them under these constants. Returns ``{h: what happened}``. Mirrors
+    pool.update on the one box and the average-price label."""
     out_dir = Path(out_dir)
     into = Path(into) if into is not None else out_dir
     today = today or datetime.now(ET).date().isoformat()
     h = lane.primary
     state = load_state(into, lane)
+    replay_until = ""
     if state.get("constants_hash") != CONSTANTS_HASH:
-        # a state learned under other constants, the end price's among them, is never added to
+        replay_until = state.get("last_session_applied") or ""
+        path = state_path(into, lane)
+        kept = str(pool.archive_state(path, state)) if path.exists() else None
         _log(into, {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "code": CODE_HASH, "applied": False,
-                    "why": f"constants changed since {h} began on the average price: stopped, fail closed"})
-        return {h: "constants changed; stopped"}
+                    "rebuild": {"from": state.get("constants_hash"), "to": CONSTANTS_HASH, "kept": kept, "replay_until": replay_until or None},
+                    "why": f"constants changed since {h} began on the average price: learned again from the records"})
+        state = cold_state()
     said = {h: "nothing new to apply"}
     outcomes = pool.graded_outcomes(load_jsonl(out_dir / "grades.jsonl"), lane.horizons)
     lines = average_lines(out_dir, lane)
@@ -246,11 +254,14 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Pat
         if reads:
             ref_version = reads[-1]["snapshot"]["reference_version"]
             if state["reference_version"] not in (None, ref_version):
-                state["cal"] = cold_state()["cal"]     # a new counting rule is a new reference: its calibration starts again
+                # a new counting rule is a new reference: its calibration and the question tables start again
+                state["cal"] = cold_state()["cal"]
+                state["tables"] = {}
                 body["reference_changed"] = {"from": state["reference_version"], "to": ref_version}
             state["reference_version"] = ref_version
             body["membership"] = pool.membership(state, reads[-1]["snapshot"]["members"], day)
-            body.update(pool.apply_session(state, day, reads, lane.horizons[h][0], True, None, lane.graded_from_settled_open, SOURCE))
+            body.update(pool.apply_session(state, day, reads, lane.horizons[h][0], True, None, lane.graded_from_settled_open, SOURCE,
+                                           replay=day <= replay_until))
         state = json.loads(pool._canonical(state))      # rounded after every session, as pool.update does
         _log(into, {**head, "applied": bool(reads), **pool._rounded(body)})
         said[h] = f"{day}: applied, {len(reads)} reads"
@@ -343,9 +354,7 @@ class IntegralPoolWeights(pool.PoolWeights):
             questions[qid] = entry
         top = {side: pool._prob(state["top"][side]) for side in pool.SIDES}
         return cls(questions, {"applied": applied, "last_session_applied": state["last_session_applied"],
-                               "phone": {"shows": state["phone"]["shows"], "on_phone": pool.POOL_ON_PHONE and state["phone"]["shows"] == "pool",
-                                         "promote_e": state["phone"]["promote"]["e"], "days": state["phone"]["promote"]["n"]},
-                               "top": top, "frozen": state["frozen"], "outcome": "average price"})
+                               "phone": pool.phone_report(state), "top": top, "frozen": state["frozen"], "outcome": "average price"})
 
 
 def dry_run(out_dir: Path, lane: Lane = LIVE, today: str | None = None) -> dict:
