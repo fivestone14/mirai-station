@@ -127,8 +127,6 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 .sit-g .tick{stroke:var(--rule-soft);stroke-width:1}
 .sit-g .dot{fill:var(--px-ink)}
 .sit-g .lbl{fill:var(--i-mute);font:400 9.5px var(--sans)}
-.sit-key{display:flex;align-items:center;gap:6px;margin-top:6px;font:400 11.5px/1.2 var(--sans);color:var(--i-mute)}
-.sit-key i{width:18px;height:10px;border-radius:3px;background:var(--s2)}
 .sit-c{margin-top:4px;font:400 12.5px/1.35 var(--sans);color:var(--i-mute)}
 /* which call leads the page: the opening's 5-minute calls, or the 30-minute call */
 .mode{align-self:flex-start;padding:5px 9px;border-radius:8px;border:1px solid var(--rule-soft);background:var(--s);
@@ -1475,7 +1473,6 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   }
   function situationCard(c, ageText, old){
     var card = el('div', 'card'); card.appendChild(labRow('situation', ageText, old));
-    var key = card.appendChild(el('div', 'sit-key')); key.appendChild(el('i')); key.appendChild(el('span', null, '= normal range'));
     (c.situation || []).forEach(function(r){
       var row = el('div', 'sit-row');
       if(typeof r === 'string'){ row.appendChild(el('div', 'sit-c', sentence(r))); card.appendChild(row); return; }   // a card written before 2026-09-26
