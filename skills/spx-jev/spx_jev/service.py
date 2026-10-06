@@ -852,6 +852,13 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         cadence={"from": cad.get("recounted_from"), "held": {qid: h["held_from"] for qid, h in held.items()}, "not_due": skip,
                  "asked": [qid for r in requests for qid in r["questions"]], "reasked": reasked},
         market_context=scene.market.at(now) if scene.market else None, event=event, ruler=unit, band=band))
+    if do_send and lane.pool and day is None:
+        # the Mirai Prediction System forecasts this read in its own process (never on the read's path, never raises)
+        try:
+            from .mirai_prediction.service_hook import spawn_after_read
+            spawn_after_read(state_dir, lane.name, archive.read_id(lane.name, scene.row["ts"]))
+        except Exception as e:  # the prediction hook must never cost the read anything
+            log(f"the prediction hook was skipped this run: {type(e).__name__}: {e}")
     if do_send:
         # step 6, every run: grade every mark that has passed and refresh the weights step 3 reads
         try:
