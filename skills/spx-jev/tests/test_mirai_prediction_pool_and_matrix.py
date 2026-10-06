@@ -159,3 +159,57 @@ def test_existing_voices_for_the_average_sum_come_from_the_row():
     row = Row(read_id="live:t", row_ts="t", day="2026-10-01", sum_id="average_30", historical_odds_probs=F["historical_odds"],
               jev_own_probs=F["jev_own"], shown_probs=F["blend_50_50"], pool_v1_probs=None, outcome=None, learn_exclude=False)
     assert set(existing_voice_forecasts(row, None)) == {"historical_odds", "jev_own", "blend_50_50"}
+
+
+def test_overlapping_reads_count_by_their_coverage():
+    # 60-minute reads every 30 minutes: the first covers its whole window, each later one only its new half
+    times = ["2026-10-01T10:00:00-04:00", "2026-10-01T10:30:00-04:00", "2026-10-01T11:00:00-04:00"]
+    assert pool_v2.read_coverage(times, 60) == pytest.approx([1.0, 0.5, 0.5])
+    assert pool_v2.read_coverage(list(reversed(times)), 60) == pytest.approx([0.5, 0.5, 1.0])    # by time, not by list order
+    assert pool_v2.read_coverage(times, 30) == pytest.approx([1.0, 1.0, 1.0])                    # back to back: no overlap
+    assert pool_v2.read_coverage([None, None], 60) == [1.0, 1.0]
+
+
+def test_the_day_step_uses_the_counted_reads_like_pool_v1():
+    times = ["2026-10-01T10:00:00-04:00", "2026-10-01T10:30:00-04:00", "2026-10-01T11:00:00-04:00"]
+    reads = [(F, "flat"), (F, "up"), (F, "flat")]
+    state = pool_v2.new_pool_v2("next_60", list(F))
+    logs_before = dict(state["voice_log_weights"]["move"])
+    c = [1.0, 0.5, 0.5]
+    day_loss = {v: sum(ci * losses(floored(f[v]), y)[0] for ci, (f, y) in zip(c, reads)) / sum(c) for v in F}
+    theirs, _ = pool_v1.weights_step(logs_before, day_loss, "historical_odds", state["start_weights"], sum(c))
+    state, line = pool_v2.update_pool_v2_after_day(state, "2026-10-01", reads, times, 60)
+    mine = pool_v2.weight_shares(state, "move")
+    for v in F:
+        assert mine[v] == pytest.approx(theirs[v], abs=1e-9)
+    assert line["counted_reads"] == pytest.approx(2.0) and line["reads"] == 3
+
+
+def test_the_freeze_watches_the_existing_voices_only():
+    calm = {k: v for k, v in F.items() if k != "jev_own"}                    # no existing voice far from the odds on a flat read
+    wild = {**calm, "matcher": {"up": 0.98, "flat": 0.01, "down": 0.01}}       # a newcomer hits the clip every day
+    state = pool_v2.new_pool_v2("average_30", list(wild))
+    for d in range(pool_v2.FREEZE_WINDOW_DAYS + 2):
+        state, line = pool_v2.update_pool_v2_after_day(state, f"2026-08-{d + 1:02d}", [(wild, "flat")])
+    assert state["frozen"] is None and line["applied"]                       # the newcomer never freezes the pool
+
+
+def test_the_freeze_stops_the_weights_and_an_unfreeze_starts_them_again():
+    awful = {**F, "jev_own": {"up": 0.98, "flat": 0.01, "down": 0.01}}       # an existing voice clipped every day
+    state = pool_v2.new_pool_v2("average_30", list(F))
+    for d in range(pool_v2.FREEZE_WINDOW_DAYS):
+        state, line = pool_v2.update_pool_v2_after_day(state, f"2026-08-{d + 1:02d}", [(awful, "flat")])
+    assert state["frozen"] and "frozen" in line
+    before = dict(state["voice_log_weights"]["move"])
+    state, line = pool_v2.update_pool_v2_after_day(state, "2026-09-01", [(awful, "flat")])
+    assert not line["applied"] and state["voice_log_weights"]["move"] == before and "2026-09-01" in state["days_learned"]
+    state = pool_v2.unfreeze_pool_v2(state)
+    state, line = pool_v2.update_pool_v2_after_day(state, "2026-09-02", [(awful, "flat")])
+    assert line["applied"] and state["voice_log_weights"]["move"] != before
+
+
+def test_the_volume_grid_has_the_small_steps():
+    from spx_jev.mirai_prediction.additive_scorer import LAYER_VOLUME_GRID, VOLUME_SEARCH_PASSES
+    assert LAYER_VOLUME_GRID[:9] == [0.0, 0.005, 0.01, 0.02, 0.03, 0.05, 0.075, 0.10, 0.15]
+    assert LAYER_VOLUME_GRID[9] == 0.2 and LAYER_VOLUME_GRID[-1] == 1.5 and VOLUME_SEARCH_PASSES == 3
+    assert LAYER_VOLUME_GRID == sorted(set(LAYER_VOLUME_GRID))

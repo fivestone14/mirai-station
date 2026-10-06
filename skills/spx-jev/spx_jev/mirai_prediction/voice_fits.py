@@ -20,7 +20,7 @@ from .jev_corrected import JevCorrectedFit, fit_jev_corrected
 from .matcher import MatcherFit, fit_matcher
 from .paths import CATALOGS, VOICE_FITS, now_utc_iso, voice_fits_file, write_json_atomically
 
-FIT_VERSION = 2
+FIT_VERSION = 3                 # 3: the matcher fit holds groups (2026-10-06)
 
 
 class LeakError(RuntimeError):

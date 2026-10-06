@@ -100,11 +100,21 @@ def test_fit_round_trips_through_json():
 # ---------------------------------------------------------------- matcher
 
 def test_mismatch_counts_same_different_and_silent():
-    w = {c: 1.0 for c in ("q1", "q2", "q3", "q4", "q5")}
+    groups = {c: [c] for c in ("q1", "q2", "q3", "q4", "q5")}            # each question its own group
+    w = {g: 1.0 for g in groups}
     today = {"q1": "a", "q2": "b", "q3": "c", "q4": "d", "q5": "e"}
     past = {"q1": "a", "q2": "x", "q3": "c", "q4": "y"}          # q5 silent
-    d, shared = mismatch(today, past, w)
+    d, shared = mismatch(today, past, groups, w)
     assert d == pytest.approx((0 + 1 + 0 + 1 + 0.5) / 5) and shared == 4
+
+
+def test_a_big_group_counts_once_in_the_matcher():
+    # eight questions on one topic all differ; one question on another topic matches: each group is half the distance
+    groups = {"big": [f"b{i}" for i in range(8)], "small": ["s"]}
+    today = {**{f"b{i}": "x" for i in range(8)}, "s": "same"}
+    past = {**{f"b{i}": "y" for i in range(8)}, "s": "same"}
+    d, shared = mismatch(today, past, groups, {"big": 1.0, "small": 1.0})
+    assert d == pytest.approx(0.5) and shared == 9                         # per column it would have been 8/9
 
 
 def test_matcher_keeps_k_closest_and_uses_the_residual_form():

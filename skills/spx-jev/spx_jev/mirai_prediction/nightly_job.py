@@ -17,7 +17,7 @@ import traceback
 from datetime import date, timedelta
 from pathlib import Path
 
-from .name_map import SUMS_BY_LANE
+from .name_map import SUM_WINDOW_MINUTES, SUMS_BY_LANE
 from .paths import RAW, NEW_VOICE_FORECASTS, data_root, ensure_folders, log_job_run, now_utc_iso, prune_voice_fits, today_et
 from .pool_v2 import add_missing_voices, load_pool_v2, log_update, new_pool_v2, save_pool_v2, update_pool_v2_after_day
 from .scoreboard import write_scoreboard
@@ -32,21 +32,23 @@ def update_pool_v2_for_day(root: Path, state_dir: Path | str, lane: str, day: st
     outcomes = load_day_outcomes(state_dir, lane, day)
     result = {}
     for sum_id in SUMS_BY_LANE.get(lane, ()):
-        reads = []
+        reads, read_times = [], []
         for read_id, forecasts in day_forecasts_by_read(root, day, sum_id).items():
             outcome = outcomes.get((read_id, sum_id))
             if outcome is not None:
                 reads.append(({v: p for v, p in forecasts.items() if v not in ("pool_v2", "pool_v1")}, outcome))
+                read_times.append(read_id.split(":", 1)[1] if ":" in read_id else None)      # read_id = "<lane>:<row_ts>"
         voice_names = sorted({v for forecasts, _ in reads for v in forecasts})
         state = load_pool_v2(root, sum_id) or (new_pool_v2(sum_id, voice_names) if voice_names else None)
         if state is None:
             result[sum_id] = {"applied": False, "why": "no forecasts for the day"}
             continue
         state = add_missing_voices(state, voice_names)
-        state, line = update_pool_v2_after_day(state, day, reads)
+        state, line = update_pool_v2_after_day(state, day, reads, read_times, SUM_WINDOW_MINUTES.get(sum_id))
         save_pool_v2(root, state)
         log_update(root, state, line)
-        result[sum_id] = {"applied": line.get("applied"), "reads": line.get("reads"), "why": line.get("why")}
+        result[sum_id] = {"applied": line.get("applied"), "reads": line.get("reads"), "counted_reads": line.get("counted_reads"),
+                          "why": line.get("why"), **({"frozen": line["frozen"]} if line.get("frozen") else {})}
     return result
 
 

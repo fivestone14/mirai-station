@@ -53,6 +53,7 @@ LEARNER_NAMES = ("additive_scorer", "matcher", "jev_corrected")
 REFERENCE_VOICE = "historical_odds"            # every skill and every pool_v2 step is measured against this voice
 STAGES = ("move", "direction")                 # the two questions every forecast is split into: will it move? which way?
 SUMS_BY_LANE = {"live": ("average_30", "next_60")}   # what each lane learns on (only the live lane feeds this system)
+SUM_WINDOW_MINUTES = {"average_30": 30, "next_30": 30, "next_60": 60, "average_10": 10}   # how far ahead each sum looks
 
 
 def store_path(state_dir: Path | str, new_name: str) -> Path:

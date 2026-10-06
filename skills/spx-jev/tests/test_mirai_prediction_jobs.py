@@ -97,7 +97,7 @@ def test_load_fits_never_returns_a_later_days_fit(tmp_path):
     matrix = AnswerMatrix(lane="live", sum_id="average_30", built_for_day="2026-10-02", rows=[], columns={}, level_history={})
     doc = {"version": voice_fits.FIT_VERSION, "fit_day": "2026-10-02", "max_day_used": "2026-10-01",
            "additive_scorer": {"pushes": {}, "answer_normal_odds": {}, "layer_volume": {}, "columns": {}},
-           "matcher": {"column_weights": {}}, "jev_corrected": {"asleep": True}, "answer_matrix": matrix.to_json()}
+           "matcher": {"group_of_column": {}, "group_weights": {}}, "jev_corrected": {"asleep": True}, "answer_matrix": matrix.to_json()}
     paths.write_json_atomically(paths.voice_fits_file(root, "2026-10-02", "average_30"), doc)
     assert voice_fits.load_voice_fits(root, "average_30", "2026-10-01") is None            # only a later fit exists
     day_fits = voice_fits.load_voice_fits(root, "average_30", "2026-10-03")                # the newest earlier day's

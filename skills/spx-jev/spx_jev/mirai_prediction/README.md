@@ -64,3 +64,14 @@ against that symbol's own values from earlier days (trailing 60 sessions, at lea
 code label with few distinct texts (a category). Free-text labels are not used. Layer 3 (`jev:<question>`) is JEV's pick per
 answered question; the questions of one request group share a group, so the additive scorer takes one vote per group
 (19 groups over 77 questions today). The planned ~250-feature builder replaces layers 1-2.
+
+## Rules added 2026-10-06 (the design-spec review)
+
+- **Overlapping reads count once:** pool_v2's daily step counts each read by its window coverage (pool_v1's rule): a
+  60-minute read every 30 minutes shares half its window with the next, so a day's 11 such reads count as about 6.
+- **Matcher, one vote per group:** a column's distance (0 same / 1 different / 0.5 silent) is averaged within its group
+  before the groups are averaged, so a group of eight questions on one topic counts once.
+- **Finer layer volumes:** the scorer's grid starts 0, 0.005, 0.01, 0.02, 0.03, 0.05, 0.075, 0.10, 0.15, then 0.20 to 1.50
+  in 0.05 steps; three search passes.
+- **The freeze:** when the gap clip binds on more than 5% of the existing voices' voice-days over 20 learned days, pool_v2's
+  weights stop moving and `frozen` says why (the learners never count toward it); `pool_v2.unfreeze_pool_v2` after a review.

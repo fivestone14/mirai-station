@@ -24,10 +24,11 @@ from ..scores import floored
 from .name_map import STAGES
 
 ANSWER_PRIOR_READS = 40                      # the pretend normal reads blended into every answer's record
-LAYER_VOLUME_GRID = [round(0.05 * i, 2) for i in range(31)]   # 0.0 .. 1.5
+# the small steps matter: layer 1 sums dozens of group votes, so its best volume can sit well under 0.05
+LAYER_VOLUME_GRID = [0.0, 0.005, 0.01, 0.02, 0.03, 0.05, 0.075, 0.10, 0.15] + [round(0.05 * i, 2) for i in range(4, 31)]   # .. 1.50
 MIN_TRAIN_ROWS = 10                          # fewer graded rows than this: no pushes, and the scorer is asleep
 MIN_SCORED_READS_FOR_VOLUME = 20             # a layer volume is only chosen once this many walk-forward reads were scored
-VOLUME_SEARCH_PASSES = 2                     # coordinate passes over the layers when choosing volumes
+VOLUME_SEARCH_PASSES = 3                     # coordinate passes over the layers when choosing volumes
 PROB_CLIP = 0.005                            # the same clip the matcher and corrected JEV use
 
 
