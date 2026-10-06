@@ -81,7 +81,7 @@ def forecast_read(state_dir: Path | str, lane: str, day: str, read_id: str | Non
             written += 1
         if mixed is not None:
             append_json_line(raw_forecasts_file(root, day), {**line, "voice_name": "pool_v2", "voice_probs": mixed,
-                                                           "voices_mixed": sorted(forecasts)})
+                                                           "voices_mixed": sorted(v for v in forecasts if v in state["voice_log_weights"]["move"])})
             written += 1
             pool_v2_by_sum[sum_id] = mixed
     return {"read_id": next(iter(rows.values())).read_id, "written": written, "skipped": skipped,
