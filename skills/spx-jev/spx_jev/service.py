@@ -831,6 +831,39 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         # a question that left the doc, or went dark, has nothing to hold
         last = {qid: v for qid, v in last.items() if qid in by_id and by_id[qid].get("status") != "dark"}
         save_last(out_dir, last)
+    def read_record(hour_doc_now: dict | None) -> archive.ReadRecord:
+        return archive.ReadRecord(
+            read_id=archive.read_id(lane.name, scene.row["ts"]), lane=lane.name, row_ts=scene.row["ts"], sent=do_send,
+            spot=float(scene.row["spot"]), sigma=scene.sigma, labels=state, omitted=omitted, requests=requests, skipped=skipped,
+            responses=answers, hour_request=(hour_rec or {}).get("request"), hour_response=hour_reply, hour=hour_doc_now,
+            pool=(hour_rec or {}).get("pool"), average_request=(hour_rec or {}).get("average_request"), average_response=average_reply,
+            cadence={"from": cad.get("recounted_from"), "held": {qid: h["held_from"] for qid, h in held.items()}, "not_due": skip,
+                     "asked": [qid for r in requests for qid in r["questions"]], "reasked": reasked},
+            market_context=scene.market.at(now) if scene.market else None, event=event, ruler=unit, band=band)
+
+    def hour_line(hour_doc_now: dict | None) -> dict:
+        # the sum record step 6 grades: spot and sigma are needed to read the bars against it; a lane on the tape
+        # stores the bands JEV was told, in points, so the grader reads the same ones
+        return {"row_ts": scene.row["ts"], "spot": scene.row.get("spot"), "sigma": scene.sigma, "event": event, **learn,
+                **_stamp(lane, unit, band), **(hour_doc_now or {}), **hour_rec}
+
+    forecast_now_done = False
+    if do_send and lane.pool and day is None and hour is not None and hour_rec and hour_rec.get("request"):
+        # the Mirai Prediction System forecasts this read now, from the records as they stand (the call still its blend,
+        # so the blend stays a voice), and Pool 2's mix becomes the call the phone shows and the grader grades; the blend
+        # it replaced stays beside it as blend50_exact. Pool 1 is retired from the phone since 2026-10-06. Any failure
+        # leaves the call on its blend and the detached hook writes the day's lines instead.
+        try:
+            from .mirai_prediction import live_call
+            from dataclasses import asdict
+            forecasts = live_call.forecast_now(state_dir, lane.name, day_name, asdict(read_record(hour)), hour_line(hour))
+            forecast_now_done = True
+            if forecasts:
+                hour = live_call.take_over(hour, forecasts, lane)
+            else:
+                log("Pool 2 had no forecast for this read; the call stays on its blend")
+        except Exception as e:  # Pool 2 must never cost the read its call
+            log(f"Pool 2 was left out this run, the call stays on its blend: {type(e).__name__}: {e}")
     record = {"row_ts": scene.row["ts"], "sigma": scene.sigma, "event": event,
               **_stamp(lane, unit, band), "state": state, "omitted": omitted, "requests": requests, "skipped": skipped,
               "held": {qid: h["held_from"] for qid, h in held.items()}, "cadence_from": cad.get("recounted_from"),
@@ -838,22 +871,12 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
     with open(out_dir / f"{day_name}.jsonl", "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
     if hour_rec and hour_rec.get("request"):
-        # the sum record is what step 6 grades: spot and sigma are needed to read the bars against it
         (out_dir / "hour").mkdir(parents=True, exist_ok=True)
-        # a lane on the tape stores the bands JEV was told, in points, so the grader reads the same ones
         with open(out_dir / "hour" / f"{day_name}.jsonl", "a", encoding="utf-8") as f:
-            f.write(json.dumps({"row_ts": scene.row["ts"], "spot": scene.row.get("spot"), "sigma": scene.sigma, "event": event, **learn,
-                                **_stamp(lane, unit, band), **(hour or {}), **hour_rec}, ensure_ascii=False) + "\n")
-    archive.append(lane.archive_folder(state_dir, out_dir), day_name, archive.ReadRecord(
-        read_id=archive.read_id(lane.name, scene.row["ts"]), lane=lane.name, row_ts=scene.row["ts"], sent=do_send,
-        spot=float(scene.row["spot"]), sigma=scene.sigma, labels=state, omitted=omitted, requests=requests, skipped=skipped,
-        responses=answers, hour_request=(hour_rec or {}).get("request"), hour_response=hour_reply, hour=hour,
-        pool=(hour_rec or {}).get("pool"), average_request=(hour_rec or {}).get("average_request"), average_response=average_reply,
-        cadence={"from": cad.get("recounted_from"), "held": {qid: h["held_from"] for qid, h in held.items()}, "not_due": skip,
-                 "asked": [qid for r in requests for qid in r["questions"]], "reasked": reasked},
-        market_context=scene.market.at(now) if scene.market else None, event=event, ruler=unit, band=band))
-    if do_send and lane.pool and day is None:
-        # the Mirai Prediction System forecasts this read in its own process (never on the read's path, never raises)
+            f.write(json.dumps(hour_line(hour), ensure_ascii=False) + "\n")
+    archive.append(lane.archive_folder(state_dir, out_dir), day_name, read_record(hour))
+    if do_send and lane.pool and day is None and not forecast_now_done:
+        # the Mirai Prediction System's fallback: forecast this read in its own process (never on the read's path, never raises)
         try:
             from .mirai_prediction.service_hook import spawn_after_read
             spawn_after_read(state_dir, lane.name, archive.read_id(lane.name, scene.row["ts"]))

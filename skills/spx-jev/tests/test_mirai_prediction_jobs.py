@@ -150,3 +150,29 @@ def test_atomic_json_and_backups(tmp_path):
     assert json.loads(target.read_text()) == {"a": 1} and not target.with_name(target.name + ".tmp").exists()
     copy = paths.backup_before_change(root, target)
     assert copy and copy.exists() and copy.parent == root / "archive"
+
+
+def test_pool_2_takes_over_the_call_and_keeps_the_blend_beside_it():
+    from spx_jev.lane import LIVE
+    from spx_jev.mirai_prediction import live_call
+    blend = {"up": 0.3, "flat": 0.4, "down": 0.3}
+    hour = {"primary": "next_30", "shown_source": "blend50_exact",
+            "by": {"next_30": {"pick": "flat", "probabilities": blend}, "next_60": {"pick": "flat", "probabilities": blend}},
+            "pick": "flat", "probabilities": blend,
+            "average": {"pick": "flat", "probabilities": blend, "shown_source": "blend50_exact", "by": {"average_30": {"pick": "flat", "probabilities": blend}}}}
+    pool_2 = {"average_30": {"up": 0.6, "flat": 0.2, "down": 0.2}, "next_60": {"up": 0.1, "flat": 0.2, "down": 0.7}}
+    out = live_call.take_over(hour, pool_2, LIVE)
+    avg = out["average"]
+    assert avg["pick"] == "up" and avg["probabilities"] == pool_2["average_30"] and avg["blend50_exact"] == blend
+    assert avg["shown_source"] == "pool_v2" and avg["by"]["average_30"]["pick"] == "up"
+    assert out["by"]["next_60"]["pick"] == "down" and out["by"]["next_60"]["blend50_exact"] == blend
+    assert out["by"]["next_30"]["pick"] == "flat" and "blend50_exact" not in out["by"]["next_30"]   # not learned: untouched
+    assert out["pick"] == "flat" and out["shown_source"] == "pool_v2"                               # the primary (next_30) kept its blend
+    assert hour["average"]["pick"] == "flat"                                                        # the input is never changed in place
+
+
+def test_pool_2_leaves_a_sum_it_did_not_forecast_alone():
+    from spx_jev.lane import LIVE
+    from spx_jev.mirai_prediction import live_call
+    hour = {"by": {}, "average": {"pick": "flat", "probabilities": {"up": 0.3, "flat": 0.4, "down": 0.3}}}
+    assert live_call.take_over(hour, {}, LIVE) == hour

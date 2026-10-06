@@ -5,7 +5,9 @@ Today's voices come from the live system's own records, never recomputed:
                                          (historical_odds, historical_odds_calibrated, blend_50_50, question_tilt, jev_mix_*_percent;
                                          JEV's own call is there as jev_mix_100_percent, so it is not added a second time)
     sum "average_30" (the phone's call)  pool_v1 keeps no per-read snapshot for it, so its voices are the row's own columns:
-                                         historical_odds (clock_probs), jev_own (jev_probs), blend_50_50 (shown_probs)
+                                         historical_odds (clock_probs), jev_own (jev_probs), blend_50_50 (shown_probs while the
+                                         shown call was the blend; the service forecasts a read before Pool 2 takes it over,
+                                         so live rows always carry the blend there)
 The learners (additive_scorer, matcher, jev_corrected) forecast from the day's fits; a learner that is asleep or cannot
 forecast a read is simply absent, so pool_v2 neither mixes nor updates it for that read.
 """
@@ -34,7 +36,7 @@ def existing_voice_forecasts(row, pool_v1_snapshot: dict | None) -> dict[str, di
             out["pool_v1"] = floored(row.pool_v1_probs)
         if row.jev_own_probs is not None:
             out["jev_own"] = floored(row.jev_own_probs)
-        if row.shown_probs is not None:
+        if row.shown_probs is not None and row.shown_source != "pool_v2":
             out["blend_50_50"] = floored(row.shown_probs)
     if row.historical_odds_probs is not None:
         out.setdefault(REFERENCE_VOICE, floored(row.historical_odds_probs))

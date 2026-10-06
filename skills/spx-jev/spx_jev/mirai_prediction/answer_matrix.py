@@ -55,6 +55,7 @@ class Row:
     outcome: str | None                      # up / flat / down, or None while the window is still open or ungraded
     learn_exclude: bool
     answers: dict[str, str | None] = field(default_factory=dict)   # column id -> label, None when silent
+    shown_source: str | None = None          # what the shown call was: the blend, pool_v1 or (since 2026-10-06) pool_v2
 
     def is_trainable(self) -> bool:
         return self.outcome in OUTCOMES and not self.learn_exclude and self.historical_odds_probs is not None
@@ -132,7 +133,7 @@ def load_base_rows(state_dir: Path | str, lane: str, sum_id: str, before_day: st
         grade_cols = "g.outcome AS outcome"
     sql = f"""
         SELECT c.read_id, CAST(c.row_ts AS VARCHAR) AS row_ts, CAST(c.day AS VARCHAR) AS day, c.sum_id,
-               c.clock_probs, c.jev_probs, c.shown_probs, c.pool_probs, c.learn_exclude, {grade_cols}
+               c.clock_probs, c.jev_probs, c.shown_probs, c.pool_probs, c.learn_exclude, c.shown_source, {grade_cols}
         FROM read_parquet('{calls}', hive_partitioning=1) c
         {grade_join}
         WHERE c.lane = '{lane}' AND c.sum_id = '{sum_id}' AND CAST(c.day AS VARCHAR) < '{before_day}'
@@ -143,7 +144,8 @@ def load_base_rows(state_dir: Path | str, lane: str, sum_id: str, before_day: st
         rows.append(Row(read_id=r["read_id"], row_ts=str(r["row_ts"]), day=str(r["day"])[:10], sum_id=sum_id,
                         historical_odds_probs=_probs(r["clock_probs"]), jev_own_probs=_probs(r["jev_probs"]),
                         shown_probs=_probs(r["shown_probs"]), pool_v1_probs=_probs(r["pool_probs"]),
-                        outcome=r["outcome"] if r["outcome"] in OUTCOMES else None, learn_exclude=bool(r["learn_exclude"])))
+                        outcome=r["outcome"] if r["outcome"] in OUTCOMES else None, learn_exclude=bool(r["learn_exclude"]),
+                        shown_source=r["shown_source"]))
     return rows
 
 
@@ -291,17 +293,19 @@ def build_answer_matrix(state_dir: Path | str, lane: str, sum_id: str, before_da
 
 # ---------------------------------------------------------------- today's read (for the live hook)
 
-def todays_rows(state_dir: Path | str, lane: str, day: str, read_id: str | None, matrix_by_sum: dict[str, AnswerMatrix]) -> dict[str, Row]:
+def todays_rows(state_dir: Path | str, lane: str, day: str, read_id: str | None, matrix_by_sum: dict[str, AnswerMatrix],
+                read_record: dict | None = None, hour_record: dict | None = None) -> dict[str, Row]:
     """One ungraded Row per sum for a read made today, built from the raw archive record exactly as the store would
     (spx_jev.store._read_rows), with labels ranked against the matrices' history. ``matrix_by_sum`` is {sum_id: matrix}
-    built for today. Returns {sum_id: Row}; empty when the record cannot be found or has no sums."""
+    built for today. The records are read from the lane's files, or taken from ``read_record`` / ``hour_record`` when the
+    service passes them before they are written. Returns {sum_id: Row}; empty when the record cannot be found or has no sums."""
     from .. import store
     from .live_records import load_archive_read, load_hour_records
-    rec = load_archive_read(state_dir, lane, day, read_id)
+    rec = read_record if read_record is not None else load_archive_read(state_dir, lane, day, read_id)
     if rec is None:
         return {}
     row_ts = rec.get("row_ts")
-    hour_rec = load_hour_records(state_dir, lane, day).get(row_ts)
+    hour_rec = hour_record if hour_record is not None else load_hour_records(state_dir, lane, day).get(row_ts)
     hours = {(lane, row_ts): hour_rec} if hour_rec else {}
     parts = store._read_rows(date.fromisoformat(day), "live", rec, {}, hours)       # "live" is the store's label for a read record
     jev = {a["question_id"]: str(a["pick"]) for a in parts["answers"] if a.get("status") == "answered" and a.get("pick") is not None}
@@ -328,5 +332,6 @@ def todays_rows(state_dir: Path | str, lane: str, day: str, read_id: str | None,
         out[sum_id] = Row(read_id=rec["read_id"], row_ts=row_ts, day=day, sum_id=sum_id,
                           historical_odds_probs=_probs(call.get("clock_probs")), jev_own_probs=_probs(call.get("jev_probs")),
                           shown_probs=_probs(call.get("shown_probs")), pool_v1_probs=_probs(call.get("pool_probs")),
-                          outcome=None, learn_exclude=bool(call.get("learn_exclude")), answers=answers)
+                          outcome=None, learn_exclude=bool(call.get("learn_exclude")), answers=answers,
+                          shown_source=call.get("shown_source"))
     return out

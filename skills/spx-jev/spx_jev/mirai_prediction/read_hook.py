@@ -42,20 +42,22 @@ def day_fits_for(state_dir: Path | str, root: Path, lane: str, sum_id: str, day:
 
 def forecast_read(state_dir: Path | str, lane: str, day: str, read_id: str | None, source: str = "live",
                   day_fits_by_sum: dict[str, DayFits] | None = None, pool_v1_snapshots: dict | None = None,
-                  budget_seconds: float | None = TIME_BUDGET_SECONDS) -> dict:
-    """Forecast one read with every voice and write the lines. Returns counts. The optional caches let the replay reuse
-    the day's fits and pool_v1 snapshots across a day's reads."""
+                  budget_seconds: float | None = TIME_BUDGET_SECONDS, read_record: dict | None = None,
+                  hour_record: dict | None = None) -> dict:
+    """Forecast one read with every voice and write the lines. Returns counts and Pool 2's mix per sum ("pool_v2").
+    The optional caches let the replay reuse the day's fits and pool_v1 snapshots across a day's reads; the service
+    passes ``read_record`` and ``hour_record`` to forecast a read before its records are written (live_call)."""
     started = time.monotonic()
     root = ensure_folders(data_root(state_dir))
     sums = SUMS_BY_LANE.get(lane, ())
     day_fits_by_sum = dict(day_fits_by_sum or {})
     for sum_id in sums:
         day_fits_by_sum.setdefault(sum_id, day_fits_for(state_dir, root, lane, sum_id, day))
-    rows = todays_rows(state_dir, lane, day, read_id, {s: f.matrix for s, f in day_fits_by_sum.items()})
+    rows = todays_rows(state_dir, lane, day, read_id, {s: f.matrix for s, f in day_fits_by_sum.items()}, read_record, hour_record)
     if not rows:
         return {"read_id": read_id, "written": 0, "why": "no read record with sums found"}
     snapshots = pool_v1_snapshots if pool_v1_snapshots is not None else load_pool_v1_snapshots(state_dir, lane, day)
-    written, skipped = 0, []
+    written, skipped, pool_v2_by_sum = 0, [], {}
     for sum_id, row in rows.items():
         if written and budget_seconds is not None and time.monotonic() - started > budget_seconds:
             skipped.append(f"{sum_id}: out of time")
@@ -81,8 +83,9 @@ def forecast_read(state_dir: Path | str, lane: str, day: str, read_id: str | Non
             append_json_line(raw_forecasts_file(root, day), {**line, "voice_name": "pool_v2", "voice_probs": mixed,
                                                            "voices_mixed": sorted(forecasts)})
             written += 1
+            pool_v2_by_sum[sum_id] = mixed
     return {"read_id": next(iter(rows.values())).read_id, "written": written, "skipped": skipped,
-            "seconds": round(time.monotonic() - started, 3)}
+            "seconds": round(time.monotonic() - started, 3), "pool_v2": pool_v2_by_sum}
 
 
 def after_read(state_dir: Path | str, lane: str, read_id: str | None = None, day: str | None = None) -> dict:
@@ -92,7 +95,7 @@ def after_read(state_dir: Path | str, lane: str, read_id: str | None = None, day
     day = day or (read_id.split(":", 1)[1][:10] if read_id and ":" in read_id else today_et())
     try:
         result = forecast_read(state_dir, lane, day, read_id)
-        log_job_run(root, "read_hook", started_at, True, lane=lane, **{k: v for k, v in result.items() if k != "skipped"},
+        log_job_run(root, "read_hook", started_at, True, lane=lane, **{k: v for k, v in result.items() if k not in ("skipped", "pool_v2")},
                     skipped=len(result.get("skipped", [])))
         return result
     except Exception as e:
