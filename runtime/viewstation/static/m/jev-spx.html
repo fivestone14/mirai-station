@@ -446,6 +446,18 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 </div>
 <div id="state"></div>
 <main id="main" style="display:flex;flex-direction:column;gap:12px"></main>
+<!-- the Mirai Prediction System's scoreboard: after N graded reads, how right each voice is and how it compares with the
+     historical odds. Read from state/spx_jev/mirai_prediction/scoreboard.json; the card stays hidden until the file exists.
+     Pool 1 is today's learning loop, Pool 2 the new one with the three learners; neither is the call shown above. -->
+<section class="card" id="learn" hidden aria-labelledby="learnLab">
+  <div class="lab" id="learnLab">Learning loop<span class="r" id="learnR"></span></div>
+  <div class="lp-head" id="learnHead"></div>
+  <div class="lp-chip" id="learnChip"></div>
+  <svg class="lp-line" id="learnLine" viewBox="0 0 328 44" aria-hidden="true"></svg>
+  <table class="lp-t"><thead><tr><th>Voice</th><th>Right</th><th>vs odds</th></tr></thead><tbody id="learnRows"></tbody></table>
+  <div class="lp-foot">Right = the called direction matched the graded result. vs odds = forecast error compared with the historical
+    odds (how often this time of day moved on past sessions): plus is better. Too early = under 100 reads, or the range still crosses zero before 300; Edge or Worse once the whole range is on one side.</div>
+</section>
 <p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are shadow questions, asked and logged, never graded and never weighted. A call is a forecast, not a trade signal, graded on the average price over its window: where each minute closed against the price at the read, averaged, in index points, and set against a flat band (the &plusmn; figure) narrower than an end price would get, because an average swings less than any one price. Its direction decides right or wrong; its size at the end price, where price stood highest and lowest (&ldquo;min 3&rdquo; is the window&rsquo;s third minute) and any sharp move are said beside it, and an unsure call is passed, never counted as a miss. For now each call also shows the old grade, on the end price alone, and a call the average could not grade stands on that, said so. The call is JEV&rsquo;s answer to that question itself: where the average will sit, up, flat or down within the &plusmn; figure, with no unsure; the old question on the end price is still asked and graded beside it, and shown muted as &ldquo;End-price question&rdquo;. The headline is JEV&rsquo;s own call. When a sum is blended, the call the calls in play grade is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent SPX sessions, shown in the tile beside those sessions&rsquo; own odds: the yardstick JEV has to beat. Through the first hour the opening lane reads every 5 minutes and its call, on the average price over the next 10 minutes, leads the page until its last call closes; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock. Before the open, the pre-market lane reads S&amp;P futures, 10-year bond futures, bitcoin futures and the morning&rsquo;s reports through the night and makes one call about the first half hour: the average price over the 30 minutes after the first settled price, four minutes after the open. It is a forecast too, graded by the bars. Every time here is in this phone's own time zone.</p>
 
 <div class="scrim" data-sheet-close></div>
@@ -2070,6 +2082,79 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   window.addEventListener('pageshow', wake);
   window.addEventListener('focus', wake);
   window.addEventListener('online', wake);
+})();
+</script>
+<style>
+/* the learning loop card: the scoreboard of the Mirai Prediction System, 360px safe */
+#learn .lp-head{margin-top:10px;font:600 15px/1.4 var(--sans);color:var(--i)}
+#learn .lp-head b{font-weight:800}
+#learn .lp-chip{display:inline-block;margin-top:8px;padding:3px 9px;border-radius:999px;border:1px solid var(--rule-soft);font:700 11px/1.2 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--i-mute)}
+#learn .lp-chip.edge{background:var(--fill);color:var(--on-body);border-color:var(--fill)}
+#learn .lp-chip.worse{border-color:var(--o-dn);color:var(--o-dn)}
+#learn .lp-line{display:block;width:100%;height:44px;margin:10px 0 4px}
+#learn .lp-t{width:100%;border-collapse:collapse;font:400 13px/1.35 var(--sans);margin-top:4px}
+#learn .lp-t th{text-align:left;font:700 10px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint);padding:6px 0 5px;border-bottom:1px solid var(--s2)}
+#learn .lp-t th+th,#learn .lp-t td+td{text-align:right;white-space:nowrap;padding-left:12px}
+#learn .lp-t td{padding:6px 0;border-bottom:1px solid var(--s2);color:var(--i-body)}
+#learn .lp-t tr.pool td{font-weight:700;color:var(--i)}
+#learn .lp-t tr.learner td:first-child{padding-left:10px;color:var(--i-mute)}
+#learn .lp-t td.up{color:var(--o-up)} #learn .lp-t td.dn{color:var(--o-dn)}
+#learn .lp-t td small{color:var(--i-faint);font-size:11px;margin-left:4px}
+#learn .lp-foot{margin-top:8px;font:400 11px/1.45 var(--sans);color:var(--i-faint)}
+</style>
+<script>
+(function(){
+  // The Mirai Prediction System's scoreboard. One small file, read beside the card; the section stays hidden until it exists,
+  // and nothing here can break the rest of the page.
+  var LEARN_URL = '/api/raw/file?root=state&path=spx_jev/mirai_prediction/scoreboard.json';
+  var SUM = 'average_30', LEARN_MS = 60000;
+  function pct(v, signed){ if(v == null) return '—'; var s = (Math.round(v * 10) / 10).toFixed(1); return (signed && v > 0 ? '+' : '') + s + '%'; }
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function row(v, cls){
+    if(!v) return '';
+    var skill = v.skill_vs_historical_odds_pct, tone = skill == null ? '' : (skill > 0 ? ' class="up"' : (skill < 0 ? ' class="dn"' : ''));
+    return '<tr class="' + cls + '"><td>' + esc(v.plain_name) + '<small>' + (v.reads_count || 0) + ' reads</small></td><td>' + pct(v.right_pct) +
+           '</td><td' + tone + '>' + pct(skill, true) + '</td></tr>';
+  }
+  function line(daily){
+    var svg = document.getElementById('learnLine'); svg.innerHTML = '';
+    var pts = (daily || []).filter(function(d){ return typeof d.pool_v2_pct === 'number'; });
+    if(pts.length < 2) return;
+    var w = 328, h = 44, pad = 4, vals = pts.map(function(d){ return d.pool_v2_pct; });
+    var lo = Math.min.apply(null, vals.concat([0])), hi = Math.max.apply(null, vals.concat([0])); if(hi === lo) hi = lo + 1;
+    var x = function(i){ return pad + i * (w - 2 * pad) / (pts.length - 1); }, y = function(v){ return h - pad - (v - lo) / (hi - lo) * (h - 2 * pad); };
+    var ns = 'http://www.w3.org/2000/svg';
+    var zero = document.createElementNS(ns, 'line'); zero.setAttribute('x1', 0); zero.setAttribute('x2', w); zero.setAttribute('y1', y(0)); zero.setAttribute('y2', y(0));
+    zero.setAttribute('stroke', '#7E8779'); zero.setAttribute('stroke-dasharray', '3 3'); zero.setAttribute('stroke-width', '1'); svg.appendChild(zero);
+    var p = document.createElementNS(ns, 'polyline'); p.setAttribute('fill', 'none'); p.setAttribute('stroke', '#2F44B8'); p.setAttribute('stroke-width', '2');
+    p.setAttribute('points', pts.map(function(d, i){ return x(i).toFixed(1) + ',' + y(d.pool_v2_pct).toFixed(1); }).join(' ')); svg.appendChild(p);
+    var last = pts[pts.length - 1], c = document.createElementNS(ns, 'circle'); c.setAttribute('cx', x(pts.length - 1)); c.setAttribute('cy', y(last.pool_v2_pct));
+    c.setAttribute('r', 3); c.setAttribute('fill', '#2F44B8'); svg.appendChild(c);
+  }
+  function paint(board){
+    var sec = document.getElementById('learn');
+    var s = board && board.sums && board.sums[SUM];
+    if(!s || !s.graded_reads_count){ sec.hidden = true; return; }
+    var p2 = s.pool_v2, p1 = s.pool_v1, n = s.graded_reads_count;
+    document.getElementById('learnR').textContent = '30 min · since ' + (s.since_day || '').slice(5).replace('-', '/');
+    document.getElementById('learnHead').innerHTML = 'After <b>' + n + ' reads</b>, Pool 2 is right <b>' + pct(p2 && p2.right_pct) +
+      '</b> of the time · <b>' + pct(p2 && p2.skill_vs_historical_odds_pct, true) + '</b> vs historical odds';
+    var chip = document.getElementById('learnChip'), st = (p2 && p2.status) || 'Too early';
+    chip.textContent = st + (st === 'Too early' ? ' · decide at 300' : ''); chip.className = 'lp-chip ' + (st === 'Edge' ? 'edge' : st === 'Worse' ? 'worse' : '');
+    var html = row(p1, 'pool') + row(p2, 'pool');
+    (s.voices || []).forEach(function(v){ html += row(v, (/scorer|matcher|corrected/.test(v.name) ? 'learner' : 'voice')); });
+    document.getElementById('learnRows').innerHTML = html;
+    line(s.daily_skill);
+    sec.hidden = false;
+  }
+  function pollLearn(){
+    fetch(LEARN_URL, {cache:'no-store'}).then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){ try { paint(j && j.kind === 'json' ? j.data : j); } catch(e){ document.getElementById('learn').hidden = true; } })   // /api/raw/file wraps the file as {kind, data}
+      .catch(function(){});
+  }
+  pollLearn();
+  setInterval(function(){ if(!document.hidden) pollLearn(); }, LEARN_MS);
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden) pollLearn(); });
 })();
 </script>
 </body>
