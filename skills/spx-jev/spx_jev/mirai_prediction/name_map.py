@@ -44,8 +44,8 @@ PLAIN_NAMES = {
     "additive_scorer": "Additive scorer",
     "matcher": "Matcher",
     "jev_corrected": "Corrected JEV",
-    "pool_v1": "Pool 1",
-    "pool_v2": "Pool 2",
+    "pool_v1": "Old forecast (retired)",
+    "pool_v2": "Combined forecast",          # the user-facing name of pool_v2, Will 2026-10-06
     **{f"jev_mix_{p}_percent": f"JEV mix {p}%" for p in (0, 20, 40, 60, 80, 100)},
 }
 

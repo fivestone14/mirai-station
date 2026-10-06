@@ -451,7 +451,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 <main id="main" style="display:flex;flex-direction:column;gap:12px"></main>
 <!-- the Mirai Prediction System's scoreboard: after N graded reads, how right each voice is and how it compares with the
      historical odds. Read from state/spx_jev/mirai_prediction/scoreboard.json; the card stays hidden until the file exists.
-     Pool 1 is today's learning loop, Pool 2 the new one with the three learners; neither is the call shown above. -->
+     the Combined forecast (pool_v2) is the call shown above; the old call (the 50/50 blend) is scored beside it. -->
 <section class="card" id="learn" hidden aria-labelledby="learnLab">
   <div class="lab" id="learnLab">Learning loop<span class="r" id="learnR"></span></div>
   <div class="lp-head" id="learnHead"></div>
@@ -764,17 +764,17 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var j = h.jev, c = h.clock, pooled = /^pool/.test(h.shown_source || ''), pool2 = h.shown_source === 'pool_v2';
     if(bl && bl.used && j && c){
       var g = el('div', 'tod'), days = 'Last ' + bl.sessions + ' days', span = bl.phase_words ? phaseSpan(bl.phase_words, at) : '';
-      var graded = pool2 ? 'Pool 2' : pooled ? 'Learned mix' : 'Half of each';
+      var graded = pool2 ? 'Combined forecast' : pooled ? 'Learned mix' : 'Half of each';
       g.appendChild(tile(days, c.probabilities, tod && tod.phases && tod.phases.length ? function(from){ openTod(tod, bl, at, from); } : null));
       g.appendChild(tile(graded, h.probabilities));
       var yardstick = ' ' + days + ' is what SPX did at this time of day' + (span ? ' (' + span + ')' : '') + ', the yardstick JEV has to beat.';
       g.appendChild(el('div', 'how-note', 'The call above is JEV\u2019s own.' + yardstick + (pool2
-        ? ' Pool 2 is the Mirai Prediction System\u2019s mix of every voice, the three learners included; it took over from' +
+        ? ' The combined forecast mixes every forecaster, each weighted by how right it has been; it took over from' +
           ' half of each on 10/06' + (h.blend50_exact ? ', which reads ' + oneAnswer(h.blend50_exact) : '') + '.'
         : pooled
         ? ' The learned mix took over from half of each once it did better over at least 20 trading days, and it hands back if it' +
           ' starts doing worse' + (h.blend50_exact ? '; half of each reads ' + oneAnswer(h.blend50_exact) : '') + '.'
-        : '') + ' The calls in play grade ' + (pool2 ? 'Pool 2.' : pooled ? 'the learned mix.' : 'half of each.')));
+        : '') + ' The calls in play grade ' + (pool2 ? 'the combined forecast.' : pooled ? 'the learned mix.' : 'half of each.')));
       return g;
     }
     var w = el('div', 'how');
@@ -2153,7 +2153,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     if(!s || !s.graded_reads_count){ sec.hidden = true; return; }
     var p2 = s.pool_v2, p1 = s.pool_v1, n = s.graded_reads_count;
     document.getElementById('learnR').textContent = '30 min · since ' + (s.since_day || '').slice(5).replace('-', '/');
-    document.getElementById('learnHead').innerHTML = 'After <b>' + n + ' reads</b>, Pool 2 is right <b>' + pct(p2 && p2.right_pct) +
+    document.getElementById('learnHead').innerHTML = 'After <b>' + n + ' reads</b>, the combined forecast is right <b>' + pct(p2 && p2.right_pct) +
       '</b> of the time · <b>' + pct(p2 && p2.skill_vs_historical_odds_pct, true) + '</b> vs historical odds';
     var chip = document.getElementById('learnChip'), st = (p2 && p2.status) || 'Too early';
     chip.textContent = st + (st === 'Too early' ? ' · decide at 300' : ''); chip.className = 'lp-chip ' + (st === 'Edge' ? 'edge' : st === 'Worse' ? 'worse' : '');

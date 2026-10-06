@@ -109,7 +109,7 @@ def build_scoreboard(root: Path, lane: str, sums: tuple[str, ...]) -> dict:
             out["sums"][sum_id] = {"graded_reads_count": 0, "voices": [], "pool_v1": None, "pool_v2": None, "daily_skill": []}
             continue
         pool_v1_name = "pool_v1" if "pool_v1" in by_voice else POOL_V1_STAND_IN.get(sum_id)
-        pool_v1 = (voice_summary(pool_v1_name, by_voice[pool_v1_name], "Pool 1" + (" (retired · the 50/50 blend)" if pool_v1_name != "pool_v1" else " (retired)"))
+        pool_v1 = (voice_summary(pool_v1_name, by_voice[pool_v1_name], "Old call (retired · 50/50 blend)" if pool_v1_name != "pool_v1" else None)
                    if pool_v1_name in by_voice else None)
         pool_v2 = voice_summary("pool_v2", by_voice["pool_v2"]) if "pool_v2" in by_voice else None
         order = [REFERENCE_VOICE, "jev_own", "blend_50_50", "question_tilt"] + list(LEARNER_NAMES)
