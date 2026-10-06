@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mirai-station.spx-jev-prediction-nightly</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-spx-jev-prediction-nightly.sh</string>
+  </array>
+
+  <!-- The Mirai Prediction System's nightly job (spx_jev/mirai_prediction/nightly_job.py): after the learning store's
+       16:40 ET rebuild has the day's grades, it builds this system's tables from its raw files, scores every voice,
+       lets pool_v2 learn the day, refits the three learners for the next market day and writes the phone's
+       scoreboard. Reads the store only; writes only under state/spx_jev/mirai_prediction/. Fires at 17:05 ET.
+       NOTE: launchd's StartCalendarInterval uses SYSTEM-LOCAL time and ignores the TZ env var below. This box
+       runs on Pacific, so Hour=14 Minute=5 == 14:05 PT == 17:05 ET year-round (PT is ET minus 3h through DST). -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>14</integer>
+    <key>Minute</key>
+    <integer>5</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/mirai-station.spx-jev-prediction-nightly.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/mirai-station.spx-jev-prediction-nightly.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key>
+    <string>America/New_York</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

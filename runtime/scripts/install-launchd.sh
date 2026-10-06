@@ -49,6 +49,9 @@ PLISTS=(
   "com.mirai-station.spx-jev-save-day.plist"
   "com.mirai-station.spx-jev-overnight.plist"
   "com.mirai-station.spx-jev-store.plist"
+  # The Mirai Prediction System's nightly job (17:05 ET): its own tables, voice scores, pool_v2, the learners'
+  # refit for tomorrow and the phone's scoreboard, all under state/spx_jev/mirai_prediction/.
+  "com.mirai-station.spx-jev-prediction-nightly.plist"
   "com.mirai-station.voice.plist"
 )
 

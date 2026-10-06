@@ -121,6 +121,6 @@ def test_the_installed_plists_match_their_templates():
     that has no template."""
     templates = {p.name.removesuffix(".template") for p in LAUNCHD.glob("*.plist.template")}
     installed = {p.name for p in (REPO / "runtime" / "launchd").glob("com.mirai-station.spx-jev*.plist")}
-    assert len(templates) == 8 and installed == templates
+    assert len(templates) == 9 and installed == templates    # 8 service jobs + the Mirai Prediction System's nightly job
     for name in sorted(templates):
         assert (REPO / "runtime" / "launchd" / name).read_bytes() == (LAUNCHD / f"{name}.template").read_bytes(), name
