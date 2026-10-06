@@ -381,6 +381,9 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 .bar.long b{grid-column:2}
 .skip{margin-top:6px;font:400 12.5px/1.4 var(--sans);color:var(--i-mute)}
 .foot{padding:4px 4px 0;font:400 12px/1.5 var(--sans);color:var(--i-mute)}
+.foot.info-body{padding:0;font-size:13px;line-height:1.55;color:var(--i-body)}
+.vq.info{display:flex;align-items:center;justify-content:center;gap:8px}
+.vq.info i{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;border:1.5px solid currentColor;font:700 11px/1 var(--sans);font-style:normal}
 
 /* the first-load cover, the glance's own: opaque from the first frame, held for a floor so a
    fast load never stutters, and only between the header and the tab bar so both stay usable */
@@ -458,13 +461,21 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   <div class="lp-foot">Right = the called direction matched the graded result. vs odds = forecast error compared with the historical
     odds (how often this time of day moved on past sessions): plus is better. Too early = under 100 reads, or the range still crosses zero before 300; Edge or Worse once the whole range is on one side.</div>
 </section>
-<p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are shadow questions, asked and logged, never graded and never weighted. A call is a forecast, not a trade signal, graded on the average price over its window: where each minute closed against the price at the read, averaged, in index points, and set against a flat band (the &plusmn; figure) narrower than an end price would get, because an average swings less than any one price. Its direction decides right or wrong; its size at the end price, where price stood highest and lowest (&ldquo;min 3&rdquo; is the window&rsquo;s third minute) and any sharp move are said beside it, and an unsure call is passed, never counted as a miss. For now each call also shows the old grade, on the end price alone, and a call the average could not grade stands on that, said so. The call is JEV&rsquo;s answer to that question itself: where the average will sit, up, flat or down within the &plusmn; figure, with no unsure; the old question on the end price is still asked and graded beside it, and shown muted as &ldquo;End-price question&rdquo;. The headline is JEV&rsquo;s own call. When a sum is blended, the call the calls in play grade is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent SPX sessions, shown in the tile beside those sessions&rsquo; own odds: the yardstick JEV has to beat. Through the first hour the opening lane reads every 5 minutes and its call, on the average price over the next 10 minutes, leads the page until its last call closes; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock. Before the open, the pre-market lane reads S&amp;P futures, 10-year bond futures, bitcoin futures and the morning&rsquo;s reports through the night and makes one call about the first half hour: the average price over the 30 minutes after the first settled price, four minutes after the open. It is a forecast too, graded by the bars. Every time here is in this phone's own time zone.</p>
+<!-- the situation and the questions (the live card's own section) dock here, under the learning loop, since 2026-10-06 -->
+<div id="dock" style="display:flex;flex-direction:column;gap:12px"></div>
+<button class="vq info" id="infoBtn" type="button" aria-controls="infoSheet"><i aria-hidden="true">i</i>How to read this page</button>
 
 <div class="scrim" data-sheet-close></div>
 <div class="sheet" id="jevSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="csTitle">
   <div class="sh-grab"></div>
   <div class="sh-h" id="csTitle">The call</div>
   <div id="csBody"></div>
+  <button class="sh-close" type="button" data-sheet-close>Close</button>
+</div>
+<div class="sheet" id="infoSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="infoTitle">
+  <div class="sh-grab"></div>
+  <div class="sh-h" id="infoTitle">How to read this page</div>
+  <p class="foot info-body">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are shadow questions, asked and logged, never graded and never weighted. A call is a forecast, not a trade signal, graded on the average price over its window: where each minute closed against the price at the read, averaged, in index points, and set against a flat band (the &plusmn; figure) narrower than an end price would get, because an average swings less than any one price. Its direction decides right or wrong; its size at the end price, where price stood highest and lowest (&ldquo;min 3&rdquo; is the window&rsquo;s third minute) and any sharp move are said beside it, and an unsure call is passed, never counted as a miss. For now each call also shows the old grade, on the end price alone, and a call the average could not grade stands on that, said so. The call is JEV&rsquo;s answer to that question itself: where the average will sit, up, flat or down within the &plusmn; figure, with no unsure; the old question on the end price is still asked and graded beside it, and shown muted as &ldquo;End-price question&rdquo;. The headline is JEV&rsquo;s own call. When a sum is blended, the call the calls in play grade is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent SPX sessions, shown in the tile beside those sessions&rsquo; own odds: the yardstick JEV has to beat. Through the first hour the opening lane reads every 5 minutes and its call, on the average price over the next 10 minutes, leads the page until its last call closes; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock. Before the open, the pre-market lane reads S&amp;P futures, 10-year bond futures, bitcoin futures and the morning&rsquo;s reports through the night and makes one call about the first half hour: the average price over the 30 minutes after the first settled price, four minutes after the open. It is a forecast too, graded by the bars. Every time here is in this phone's own time zone.</p>
   <button class="sh-close" type="button" data-sheet-close>Close</button>
 </div>
 <div class="sheet qs" id="qSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="qsName">
@@ -750,17 +761,20 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     return t;
   }
   function howChart(h, bl, at, tod){
-    var j = h.jev, c = h.clock, pooled = /^pool/.test(h.shown_source || '');
+    var j = h.jev, c = h.clock, pooled = /^pool/.test(h.shown_source || ''), pool2 = h.shown_source === 'pool_v2';
     if(bl && bl.used && j && c){
       var g = el('div', 'tod'), days = 'Last ' + bl.sessions + ' days', span = bl.phase_words ? phaseSpan(bl.phase_words, at) : '';
-      var graded = pooled ? 'Learned mix' : 'Half of each';
+      var graded = pool2 ? 'Pool 2' : pooled ? 'Learned mix' : 'Half of each';
       g.appendChild(tile(days, c.probabilities, tod && tod.phases && tod.phases.length ? function(from){ openTod(tod, bl, at, from); } : null));
       g.appendChild(tile(graded, h.probabilities));
       var yardstick = ' ' + days + ' is what SPX did at this time of day' + (span ? ' (' + span + ')' : '') + ', the yardstick JEV has to beat.';
-      g.appendChild(el('div', 'how-note', 'The call above is JEV\u2019s own.' + yardstick + (pooled
+      g.appendChild(el('div', 'how-note', 'The call above is JEV\u2019s own.' + yardstick + (pool2
+        ? ' Pool 2 is the Mirai Prediction System\u2019s mix of every voice, the three learners included; it took over from' +
+          ' half of each on 10/06' + (h.blend50_exact ? ', which reads ' + oneAnswer(h.blend50_exact) : '') + '.'
+        : pooled
         ? ' The learned mix took over from half of each once it did better over at least 20 trading days, and it hands back if it' +
           ' starts doing worse' + (h.blend50_exact ? '; half of each reads ' + oneAnswer(h.blend50_exact) : '') + '.'
-        : '') + ' The calls in play grade ' + (pooled ? 'the learned mix.' : 'half of each.')));
+        : '') + ' The calls in play grade ' + (pool2 ? 'Pool 2.' : pooled ? 'the learned mix.' : 'half of each.')));
       return g;
     }
     var w = el('div', 'how');
@@ -854,12 +868,14 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     }
     if(preFolds(premarket, Date.now(), marketDay())) main.appendChild(preFold(premarket));
 
-    main.appendChild(situationCard(c, ageText, old));
+    // the situation and the questions sit at the foot of the page, under the learning loop (Will, 2026-10-06)
+    var dock = document.getElementById('dock'); dock.textContent = '';
+    dock.appendChild(situationCard(c, ageText, old));
 
     // the questions live in their own sheet (qsDeck); the page keeps one plain control for them
     var vq = el('button', 'vq', 'View questions'); vq.type = 'button'; vq.setAttribute('aria-controls', 'qSheet');
     vq.addEventListener('click', function(){ openQuestions(vq); });
-    main.appendChild(vq);
+    dock.appendChild(vq);
     if(qsOpen()){ qsLoad(c, true); qsDraw(true); }   // a new card while the sheet is open keeps the reader's place
   }
 
@@ -1659,7 +1675,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // is open, drawn alone under the header's words about the 30-minute card. False when there is nothing to draw.
   function laneOnly(){
     if(last || !laneLeads(tape, Date.now(), marketDay())) return false;
-    var main = $('main'); main.textContent = '';
+    var main = $('main'); main.textContent = ''; $('dock').textContent = '';
     tickers = []; shownLeads = true;
     main.appendChild(laneCard(tape, tapeOk));
     var f = el('div', 'card fold'); f.appendChild(el('span', 'k', '30-min card')); f.appendChild(el('span', 'l', 'not read yet'));
@@ -1955,7 +1971,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     tickers = []; shownPre = true; shownLeads = false;
     $('h1').textContent = (p.symbol || 'SPX') + ' \u00B7 JEV';
     var sub = $('sub'), st = $('state'), main = $('main');
-    sub.classList.remove('err'); sub.hidden = false; main.textContent = '';
+    sub.classList.remove('err'); sub.hidden = false; main.textContent = ''; $('dock').textContent = '';
     main.appendChild(el('div', 'mode', 'before the open'));
     var ex = expiryLine(p); if(ex) main.appendChild(ex);
     var card = el('div', 'card dashed pre'), age = el('span', 'r'), lab = el('div', 'lab');
@@ -2154,6 +2170,8 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   }
   pollLearn();
   setInterval(function(){ if(!document.hidden) pollLearn(); }, LEARN_MS);
+  var infoBtn = document.getElementById('infoBtn');
+  infoBtn.addEventListener('click', function(){ if(!MiraiSheet.isOpen()) MiraiSheet.open(infoBtn); });
   document.addEventListener('visibilitychange', function(){ if(!document.hidden) pollLearn(); });
 })();
 </script>
