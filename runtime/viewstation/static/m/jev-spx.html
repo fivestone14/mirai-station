@@ -136,7 +136,10 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 .answered{align-self:flex-start}
 .card>.answered{display:table;margin-top:12px}
 /* the live price: the SPX print on the station's quote, its change since the last close */
-.px{display:flex;align-items:flex-end;gap:10px;padding:10px 14px;border-radius:14px;background:var(--s);box-shadow:var(--sh1)}
+/* the live price stays in view under the sticky header (Will, 2026-10-06); --hd-h is the header's measured height, and the
+   band of page colour above the box hides the cards scrolling under it */
+.px{position:sticky;top:var(--hd-h,44px);z-index:5;display:flex;align-items:flex-end;gap:10px;padding:8px 14px;border-radius:14px;
+    background:var(--s);box-shadow:var(--sh1),0 -12px 0 0 var(--g),0 8px 0 0 var(--g)}
 .px[hidden]{display:none}
 .px-k{font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint)}
 .px-k i{display:inline-block;width:7px;height:7px;margin-right:6px;border-radius:50%;background:var(--o-up);vertical-align:1px}
@@ -447,6 +450,15 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 </div>
 <div id="state"></div>
 <main id="main" style="display:flex;flex-direction:column;gap:12px"></main>
+<script>
+/* --hd-h: the sticky header's height, so the price box sticks right under it whatever the header line wraps to */
+(function(){
+  var hd = document.querySelector('.hd'); if(!hd) return;
+  function set(){ document.documentElement.style.setProperty('--hd-h', hd.offsetHeight + 'px'); }
+  set();
+  if(window.ResizeObserver) new ResizeObserver(set).observe(hd); else window.addEventListener('resize', set);
+})();
+</script>
 <!-- the Mirai Prediction System's scoreboard: after N graded reads, how right each voice is and how it compares with the
      historical odds. Read from state/spx_jev/mirai_prediction/scoreboard.json; the card stays hidden until the file exists.
      the Combined forecast (pool_v2) is the call shown above; the old call (the 50/50 blend) is scored beside it. -->
@@ -865,7 +877,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     } else {
       sumCard(c, main, count);
       if(c.tally && c.tally.calls) main.appendChild(dayScore(c));
-      if(tape && tape.lane === 'tape' && String(tape.row_ts || '').slice(0, 10) === marketDay() && tape.tally && tape.tally.calls) main.appendChild(openingDone(tape));
+      // the opening lane's own day score is no longer drawn under the call (Will, 2026-10-06): the calls in play carry its calls
     }
     if(preFolds(premarket, Date.now(), marketDay())) main.appendChild(preFold(premarket));
 
@@ -1641,6 +1653,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     return y.graded || closed ? said.join(' \u00B7 ') : 'no calls graded yet';
   }
   // after the opening: one line with the morning's score
+  // the opening lane's day score (no longer drawn under the call since 2026-10-06; its tests still read the tally words through it)
   function openingDone(t){
     var f = el('div', 'card fold'), over = lastLaneRead(t);
     f.appendChild(el('span', 'k', over ? 'opening done' : 'opening lane, no call open'));

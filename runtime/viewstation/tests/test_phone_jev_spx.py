@@ -94,7 +94,7 @@ def test_the_page_reads_the_spx_cards_and_keeps_the_sndk_pages_modes():
     assert "fetch(URL_, {cache:'no-store'})" in JS and "fetch(TAPE_URL, {cache:'no-store'})" in JS
     assert "shownLeads = laneLeads(tape, Date.now(), marketDay());" in _fn("paint")
     assert "main.appendChild(laneCard(tape, tapeOk));" in _fn("paint") and "main.appendChild(foldLive(c));" in _fn("paint")
-    assert "sumCard(c, main, count);" in _fn("paint") and "openingDone(tape)" in _fn("paint")
+    assert "sumCard(c, main, count);" in _fn("paint") and "openingDone(tape)" not in _fn("paint")   # removed 2026-10-06
     assert "var ex = expiryLine(c); if(ex) main.appendChild(ex);" in _fn("paint")
     assert "laneLeads(tape, Date.now(), marketDay()) !== shownLeads" in _fn("tick")
     assert "setInterval(function(){ if(!document.hidden){ poll(); pollTape(); tick(); } }, POLL_MS);" in JS
@@ -345,7 +345,7 @@ def test_the_30_minute_calls_day_score_is_shown_under_the_call_as_the_openings_i
     Under the 30-minute call a line gives the day's score in the service's words, the opening's beside it."""
     got = _whole({k: MONDAY[k] for k in ("live", "tape", "premarket")}, "2026-09-28T16:04:00-04:00")
     assert ["card fold", "30-min calls, day done6 of 11 calls right"] in got["main"]
-    assert ["card fold", "opening done0 of 8 calls right"] in got["main"]
+    assert not any(t.startswith("opening done") for _, t in got["main"])      # removed from the page 2026-10-06
     kinds = [c for c, _ in got["main"]]
     assert kinds.index("card dashed") + 1 == got["main"].index(["card fold", "30-min calls, day done6 of 11 calls right"])
     live = {**MONDAY["live"], "closed_out_at": None, "tally": {"calls": 5, "graded": 3, "right": 1, "passed": 1, "end_price_only": 0, "closed": 0}}
