@@ -112,6 +112,7 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 #state{display:flex;flex-wrap:wrap;gap:6px}
 .state{display:inline-block;padding:5px 9px;border-radius:8px;border:1px solid var(--rule-soft);font:700 11px/1.2 var(--sans);
        letter-spacing:.08em;text-transform:uppercase;color:var(--i-mute);background:var(--s)}
+.lab.call{margin-top:14px}
 .big{margin-top:8px;font:700 30px/1.1 var(--sans);color:var(--i);letter-spacing:-.01em}
 /* the situation: each fact a row with its verdict in a word and a small gauge; the sentence is a tap away */
 .sit-row{padding:11px 0;border-top:1px solid var(--s2);cursor:pointer;-webkit-tap-highlight-color:transparent}
@@ -126,6 +127,8 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 .sit-g .tick{stroke:var(--rule-soft);stroke-width:1}
 .sit-g .dot{fill:var(--px-ink)}
 .sit-g .lbl{fill:var(--i-mute);font:400 9.5px var(--sans)}
+.sit-key{display:flex;align-items:center;gap:6px;margin-top:6px;font:400 11.5px/1.2 var(--sans);color:var(--i-mute)}
+.sit-key i{width:18px;height:10px;border-radius:3px;background:var(--s2)}
 .sit-c{margin-top:4px;font:400 12.5px/1.35 var(--sans);color:var(--i-mute)}
 /* which call leads the page: the opening's 5-minute calls, or the 30-minute call */
 .mode{align-self:flex-start;padding:5px 9px;border-radius:8px;border:1px solid var(--rule-soft);background:var(--s);
@@ -183,12 +186,14 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
       font:inherit;color:inherit;-webkit-tap-highlight-color:transparent}
 button.tile{cursor:pointer;border-color:var(--rule-soft);touch-action:manipulation}
 button.tile:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
-.tile-k{display:flex;gap:6px;font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint);white-space:nowrap}
-.tile-k span{overflow:hidden;text-overflow:ellipsis}
-button.tile .tile-k::after{content:"";flex:none;margin-left:auto;width:6px;height:6px;border-right:1.5px solid var(--i-mute);
-                           border-top:1.5px solid var(--i-mute);transform:rotate(45deg);align-self:center}
+.tile-k{display:flex;gap:6px;font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
+.tile-k span{min-width:0}
+/* the tap cue: on a tile that opens a sheet, and on the calls in play, whose bars each open one */
+.inplay-h.tap{display:flex;align-items:center}
+button.tile .tile-k::after,.inplay-h.tap::after{content:"";flex:none;margin-left:auto;width:6px;height:6px;border-right:1.5px solid var(--i-mute);
+                                                border-top:1.5px solid var(--i-mute);transform:rotate(45deg);align-self:center}
 .tile-v{margin:4px 0 7px;font:700 15px/1.2 var(--sans);color:var(--i)}
-.tod .how-note{grid-column:1 / -1}
+.tile.graded{border-color:var(--px-ink)}
 /* the time-of-day sheet: one row per part of the day, then the chosen part session by session */
 .tb{display:grid;grid-template-columns:96px minmax(0,1fr) 74px;gap:4px 10px;align-items:center;width:100%;margin-top:4px;padding:8px;
     border:1px solid transparent;border-radius:10px;background:none;text-align:left;font:inherit;color:inherit;cursor:pointer;
@@ -232,8 +237,7 @@ button.tile .tile-k::after{content:"";flex:none;margin-left:auto;width:6px;heigh
 .range b{font-weight:700}
 .range-n{margin-top:3px;font:400 12px/1.35 var(--sans);color:var(--i-faint)}
 /* what counts as a move: the end-price bands to scale on one bar, each edge's figure under its edge */
-.mv-bar,.mv-spans{display:grid}
-.mv-bar{height:28px;margin-top:8px;border-radius:8px;overflow:hidden}
+.mv-bar{display:grid;height:28px;margin-top:8px;border-radius:8px;overflow:hidden}
 .mv-bar span{display:flex;align-items:center;justify-content:center;font:700 12px/1 var(--sans)}
 .mv-bar span+span{border-left:1px solid var(--s)}
 /* size, never direction: a neutral ramp from light to dark, so a big fall is not painted in up's blue */
@@ -244,15 +248,11 @@ button.tile .tile-k::after{content:"";flex:none;margin-left:auto;width:6px;heigh
 .mv-ticks span{position:absolute;top:0;white-space:nowrap;transform:translateX(-50%)}
 .mv-ticks .lo{left:0;transform:none}
 .mv-ticks .hi{right:0;transform:none}
-.mv-spans{margin-top:1px;font:400 11px/1.3 var(--sans);color:var(--i-faint)}
-.mv-spans span:nth-child(2){text-align:center}
-.mv-spans span:last-child{text-align:right}
-/* what a point is, as labelled rows */
-.pt{margin-top:12px;padding:8px 12px;border:1px solid var(--s2);border-radius:12px}
-.pt-h{font:700 13px/1.3 var(--sans);color:var(--px-ink)}
-.pt-r{display:grid;grid-template-columns:72px minmax(0,1fr);gap:10px;align-items:baseline;padding:6px 0;font:400 13px/1.35 var(--sans);color:var(--i-body)}
+/* the info sheet's legend, as labelled rows */
+.pt-r{display:grid;grid-template-columns:96px minmax(0,1fr);gap:10px;align-items:baseline;padding:6px 0;font:400 13px/1.35 var(--sans);color:var(--i-body)}
 .pt-r+.pt-r{border-top:1px solid var(--s2)}
 .pt-r .k{font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
+.pt-r+.foot{margin-top:12px}
 /* the stretch since the last read, in a few words */
 .st{margin-top:6px;font:400 13.5px/1.45 var(--sans);color:var(--i-body)}
 .st b{font-weight:700;color:var(--i)}
@@ -381,7 +381,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 .bar.long b{grid-column:2}
 .skip{margin-top:6px;font:400 12.5px/1.4 var(--sans);color:var(--i-mute)}
 .foot{padding:4px 4px 0;font:400 12px/1.5 var(--sans);color:var(--i-mute)}
-.foot.info-body{padding:0;font-size:13px;line-height:1.55;color:var(--i-body)}
+#infoSheet .foot{padding:0;font-size:13px;line-height:1.55;color:var(--i-body)}
 .vq.info{display:flex;align-items:center;justify-content:center;gap:8px}
 .vq.info i{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;border:1.5px solid currentColor;font:700 11px/1 var(--sans);font-style:normal}
 
@@ -457,9 +457,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   <div class="lp-head" id="learnHead"></div>
   <div class="lp-chip" id="learnChip"></div>
   <svg class="lp-line" id="learnLine" viewBox="0 0 328 44" aria-hidden="true"></svg>
-  <table class="lp-t"><thead><tr><th>Voice</th><th>Right</th><th>vs odds</th></tr></thead><tbody id="learnRows"></tbody></table>
-  <div class="lp-foot">Right = the called direction matched the graded result. vs odds = forecast error compared with the historical
-    odds (how often this time of day moved on past sessions): plus is better. Too early = under 100 reads, or the range still crosses zero before 300; Edge or Worse once the whole range is on one side.</div>
+  <table class="lp-t"><thead><tr><th>Voice</th><th>Right</th><th>vs typical</th></tr></thead><tbody id="learnRows"></tbody></table>
 </section>
 <!-- the situation and the questions (the live card's own section) dock here, under the learning loop, since 2026-10-06 -->
 <div id="dock" style="display:flex;flex-direction:column;gap:12px"></div>
@@ -475,7 +473,14 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 <div class="sheet" id="infoSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="infoTitle">
   <div class="sh-grab"></div>
   <div class="sh-h" id="infoTitle">How to read this page</div>
-  <p class="foot info-body">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are shadow questions, asked and logged, never graded and never weighted. A call is a forecast, not a trade signal, graded on the average price over its window: where each minute closed against the price at the read, averaged, in index points, and set against a flat band (the &plusmn; figure) narrower than an end price would get, because an average swings less than any one price. Its direction decides right or wrong; its size at the end price, where price stood highest and lowest (&ldquo;min 3&rdquo; is the window&rsquo;s third minute) and any sharp move are said beside it, and an unsure call is passed, never counted as a miss. For now each call also shows the old grade, on the end price alone, and a call the average could not grade stands on that, said so. The call is JEV&rsquo;s answer to that question itself: where the average will sit, up, flat or down within the &plusmn; figure, with no unsure; the old question on the end price is still asked and graded beside it, and shown muted as &ldquo;End-price question&rdquo;. The headline is JEV&rsquo;s own call. When a sum is blended, the call the calls in play grade is JEV's sum mixed half and half with how often this time of day ended up, down or flat over recent SPX sessions, shown in the tile beside those sessions&rsquo; own odds: the yardstick JEV has to beat. Through the first hour the opening lane reads every 5 minutes and its call, on the average price over the next 10 minutes, leads the page until its last call closes; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock. Before the open, the pre-market lane reads S&amp;P futures, 10-year bond futures, bitcoin futures and the morning&rsquo;s reports through the night and makes one call about the first half hour: the average price over the 30 minutes after the first settled price, four minutes after the open. It is a forecast too, graded by the bars. Every time here is in this phone's own time zone.</p>
+  <div class="pt-r"><span class="k">Today&rsquo;s call</span><span>JEV&rsquo;s own forecast.</span></div>
+  <div class="pt-r"><span class="k">Typical</span><span>What SPX did this hour on recent days (the tile says how many); the bar to beat.</span></div>
+  <div class="pt-r"><span class="k">Combined &middot; graded</span><span>Every forecaster mixed by its track record (since 10/06); the calls in play are scored on it.</span></div>
+  <div class="pt-r"><span class="k">Point</span><span>A point is one step of the S&amp;P 500 index, e.g. 7,817 &rarr; 7,818.</span></div>
+  <div class="pt-r"><span class="k">Situation</span><span>Each row is one of the facts JEV reads; it answers questions about its sentence, word for word.</span></div>
+  <div class="pt-r"><span class="k">Learning loop</span><span>Right = called direction matched. vs typical = how much better (+) or worse (&minus;) than what this hour usually does. Too early until 100 reads; a verdict at 300.</span></div>
+  <div class="pt-r"><span class="k">Calls in play</span><span>Tap a call bar for its result.</span></div>
+  <p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are shadow questions, asked and logged, never graded and never weighted. A call is a forecast, not a trade signal, graded on the average price over its window: where each minute closed against the price at the read, averaged, in index points, and set against a flat band (the &plusmn; figure) narrower than an end price would get, because an average swings less than any one price. Its direction decides right or wrong; its size at the end price, where price stood highest and lowest (&ldquo;min 3&rdquo; is the window&rsquo;s third minute) and any sharp move are said beside it, and an unsure call is passed, never counted as a miss. For now each call also shows the old grade, on the end price alone, and a call the average could not grade stands on that, said so. The call is JEV&rsquo;s answer to that question itself: where the average will sit, up, flat or down within the &plusmn; figure, with no unsure; the old question on the end price is still asked and graded beside it, and shown muted as &ldquo;End price&rdquo;. Through the first hour the opening lane reads every 5 minutes and its call, on the average price over the next 10 minutes, leads the page until its last call closes; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock. Before the open, the pre-market lane reads S&amp;P futures, 10-year bond futures, bitcoin futures and the morning&rsquo;s reports through the night and makes one call about the first half hour: the average price over the 30 minutes after the first settled price, four minutes after the open. It is a forecast too, graded by the bars. Every time here is in this phone's own time zone.</p>
   <button class="sh-close" type="button" data-sheet-close>Close</button>
 </div>
 <div class="sheet qs" id="qSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="qsName">
@@ -671,9 +676,9 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     return box;
   }
 
-  // A call on this page is graded as JEV's answer blended half and half with how this time of day went on prior
-  // sessions (the service's clock), but JEV's own answer leads it (Will, 2026-09-30): the headline is JEV's, and the
-  // clock's odds and the half-and-half ride under it as two tiles, the clock the yardstick JEV has to beat.
+  // A call on this page is graded as a mix of JEV's answer with how this time of day went on prior sessions (the
+  // service's clock), but JEV's own answer leads it (Will, 2026-09-30): the headline is JEV's, and the clock's odds
+  // and the graded mix ride under it as two tiles, the clock the yardstick JEV has to beat.
   function top1(p){ return p ? Object.keys(p).sort(function(x, y){ return p[y] - p[x]; })[0] : null; }
   // JEV's own odds for a call: a blended call's own answer from JEV, an unblended one as it came
   function jevOwn(a){ return a && ((a.blend && a.blend.used) || a.blended) && a.jev && a.jev.probabilities ? a.jev : a; }
@@ -683,19 +688,24 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // question got no answer
   function callSum(h){ return h && h.average && h.average.probabilities ? h.average : h; }
   // what the average-price call is measured on, and its flat edge in index points, for the line under its odds
-  function averageWords(a, span){ return 'on the average price over ' + span + ', flat within \u00B1' + (+a.edge_points).toFixed(2) + ' points'; }
+  function averageWords(a){ return 'Average price \u00B7 flat \u00B1' + (+a.edge_points).toFixed(1) + ' pts'; }
   // a read whose average-price question got no answer calls the end-price question's pick, and says so in one
   // sentence with the service's own reason (the card's hour.average.error, a call's average_missing), its market
   // clock in the viewer's zone: "not asked: ..." is never said to be unanswered
   function fallbackWords(reason, at){
     return 'no average-price answer (' + marketWords(reason || 'no reason given', at) + '), so the call is the end-price question\u2019s';
   }
-  function fallbackLine(h, at){ return h && h.average && !h.average.probabilities ? skipLine(fallbackWords(h.average.error, at)) : null; }
+  // on a card the line is short, the service's reason a long-press away; the call sheet says it whole
+  function fallbackLine(h, at){
+    if(!(h && h.average && !h.average.probabilities)) return null;
+    var s = skipLine('No average answer; end-price call'); s.setAttribute('title', sentence(fallbackWords(h.average.error, at)));
+    return s;
+  }
   // the end-price sum kept beside the call: asked and graded as before, never the call, and shown by JEV's own pick
   // as the headline above it is
   function endPriceRow(h){
     var own = jevOwn(h), p = own.probabilities, t = own.pick || top1(p), r = el('div', 'row60');
-    r.appendChild(el('span', 'k', 'End-price question')); r.appendChild(el('b', null, cap(t) + ' ' + pct(p[t])));
+    r.appendChild(el('span', 'k', 'End price')); r.appendChild(el('b', null, cap(t) + ' ' + pct(p[t])));
     return r;
   }
   // the order a call's options are drawn and listed in, left to right: from the biggest fall to the
@@ -741,21 +751,21 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   function phaseSpan(words, at){ return marketWords(String(words).replace(/^[^,]*,\s*/, ''), at); }
   // Under JEV's own call, two tiles: how the last sessions went at this time of day (the yardstick JEV has to beat),
   // which opens the time-of-day sheet when the card carries its counts (the card's time_of_day, clock._blocks), and
-  // the call the calls in play grade, the half-and-half or, once promoted, the learned mix, the half-and-half it
-  // replaced said in the note. The note reads the call's own shown_source (integral_loop.shown): the end-price loop's
-  // promotion reaches only the end-price sums beside the call, never these tiles.
+  // the call the calls in play grade, outlined as the graded one: the combined forecast, or on an older card the
+  // learned mix or the half-and-half. Its key reads the call's own shown_source (integral_loop.shown): the end-price
+  // loop's promotion reaches only the end-price sums beside the call, never these tiles.
   function howBar(p){
     var b = el('div', 'how-bar');
     oddsKeys(p).forEach(function(k){ var i = el('i', 'o-' + k); i.style.flex = Math.max(0, p[k] || 0) + ' 1 0'; b.appendChild(i); });
     return b;
   }
-  function tile(key, p, open){
+  function tile(key, p, open, about){
     var t = el(open ? 'button' : 'div', 'tile'), k = el('div', 'tile-k');
     k.appendChild(el('span', null, key)); t.appendChild(k);
     t.appendChild(el('div', 'tile-v', oneAnswer(p))); t.appendChild(howBar(p));
+    if(open || about) t.setAttribute('aria-label', (about || key) + ': ' + oneAnswer(p) + (open ? '. Open each part of the day' : ''));
     if(open){
       t.type = 'button'; t.setAttribute('aria-controls', 'jevSheet');
-      t.setAttribute('aria-label', key + ': ' + oneAnswer(p) + '. Open each part of the day');
       t.addEventListener('click', function(){ open(t); });
     }
     return t;
@@ -763,23 +773,16 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   function howChart(h, bl, at, tod){
     var j = h.jev, c = h.clock, pooled = /^pool/.test(h.shown_source || ''), pool2 = h.shown_source === 'pool_v2';
     if(bl && bl.used && j && c){
-      var g = el('div', 'tod'), days = 'Last ' + bl.sessions + ' days', span = bl.phase_words ? phaseSpan(bl.phase_words, at) : '';
-      var graded = pool2 ? 'Combined forecast' : pooled ? 'Learned mix' : 'Half of each';
-      g.appendChild(tile(days, c.probabilities, tod && tod.phases && tod.phases.length ? function(from){ openTod(tod, bl, at, from); } : null));
-      g.appendChild(tile(graded, h.probabilities));
-      var yardstick = ' ' + days + ' is what SPX did at this time of day' + (span ? ' (' + span + ')' : '') + ', the yardstick JEV has to beat.';
-      g.appendChild(el('div', 'how-note', 'The call above is JEV\u2019s own.' + yardstick + (pool2
-        ? ' The combined forecast mixes every forecaster, each weighted by how right it has been; it took over from' +
-          ' half of each on 10/06' + (h.blend50_exact ? ', which reads ' + oneAnswer(h.blend50_exact) : '') + '.'
-        : pooled
-        ? ' The learned mix took over from half of each once it did better over at least 20 trading days, and it hands back if it' +
-          ' starts doing worse' + (h.blend50_exact ? '; half of each reads ' + oneAnswer(h.blend50_exact) : '') + '.'
-        : '') + ' The calls in play grade ' + (pool2 ? 'the combined forecast.' : pooled ? 'the learned mix.' : 'half of each.')));
+      var g = el('div', 'tod'), days = 'Typical \u00B7 ' + bl.sessions + ' days', span = bl.phase_words ? phaseSpan(bl.phase_words, at) : '';
+      var graded = (pool2 ? 'Combined' : pooled ? 'Learned mix' : 'Half of each') + ' \u00B7 graded';
+      g.appendChild(tile(days, c.probabilities, tod && tod.phases && tod.phases.length ? function(from){ openTod(tod, bl, at, from); } : null,
+                         span ? days + ', ' + span : null));
+      g.appendChild(tile(graded, h.probabilities)).setAttribute('class', 'tile graded');
       return g;
     }
     var w = el('div', 'how');
     w.appendChild(el('span', 'how-k jev', 'JEV')); w.appendChild(howBar(h.probabilities)); w.appendChild(el('span', 'how-v jev', oneAnswer(h.probabilities)));
-    if(bl && bl.why) w.appendChild(el('div', 'how-note', sentence('JEV\u2019s sum alone: ' + marketWords(bl.why, at))));
+    if(bl && bl.why) w.appendChild(el('div', 'how-note', 'JEV alone today')).setAttribute('title', sentence(marketWords(bl.why, at)));
     return w;
   }
   // The time-of-day sheet: each part of the day's odds over the counted sessions, its hours in the viewer's zone, the
@@ -1113,12 +1116,11 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     return !!(c && now < Date.parse(c.mark));
   }
 
-  // the call clock: how far ahead a call looks, how long it has left, and the minute it is graded
-  // (``mark``, the card's; null when the call ends past the close and is never graded)
+  // the call clock: how long a call has left, and the minute it is graded (``mark``, the card's; null when the call
+  // ends past the close and is never graded)
   function clockBlock(read, minutes, mark){
     var box = el('div');
-    var top = el('div', 'clock-top'); top.appendChild(el('span', null, 'Looks ' + minutes + ' min ahead'));
-    var left = el('b'); top.appendChild(left); box.appendChild(top);
+    var top = el('div', 'clock-top'), left = el('b'); top.appendChild(left); box.appendChild(top);
     var track = el('div', 'clock-bar'), fill = el('i'); track.appendChild(fill); box.appendChild(track);
     var sub = el('div', 'clock-sub'); sub.appendChild(el('span', null, 'Read ' + viewerTime(read, {zone: true})));
     sub.appendChild(el('span', null, mark ? 'Graded ' + viewerTime(mark) : 'Ends past the close, never graded')); box.appendChild(sub);
@@ -1329,8 +1331,8 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     MiraiSheet.open(from);
   }
   function inPlay(calls){
-    var box = el('div'), head = el('div', 'inplay-h'), holder = el('div');
-    box.appendChild(head); box.appendChild(holder); box.appendChild(tag('tap a call for its odds and result.'));
+    var box = el('div'), head = el('div', 'inplay-h tap'), holder = el('div');
+    box.appendChild(head); box.appendChild(holder);
     function update(){
       var now = Date.now(), open = fitting(calls).filter(function(c){ return now < Date.parse(c.mark); }).length;
       head.textContent = 'Calls in play \u00B7 ' + open + ' open';
@@ -1349,20 +1351,18 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       // the call's own window: the 15:32 read's average runs 28 minutes, to the close
       var bl = a.blend || null, minutes = (a !== h && a.minutes) || (c.calls && c.calls[0] && c.calls[0].minutes) || 30;
       var hc = el('div', 'card dashed');
-      hc.appendChild(el('div', 'mode', 'normal \u00B7 a call every 30 min'));
+      hc.appendChild(el('div', 'mode', '30-min call'));
       hc.appendChild(clockBlock(c.row_ts, minutes, marks.next_30 !== undefined ? marks.next_30 : plusIso(c.row_ts, minutes)));
-      // JEV's own read leads; the half-and-half the calls in play grade sits in the tiles under it
+      // JEV's own read leads; the call the calls in play grade sits in the tiles under it
       var own = jevOwn(a), hp = own.probabilities, top = own.pick || top1(hp);
+      hc.appendChild(labRow('Today\u2019s call \u00B7 JEV', own.confidence != null ? pct(own.confidence) + ' sure' : null)).setAttribute('class', 'lab call');
       hc.appendChild(el('div', 'big', cap(top) + ' ' + pct(hp[top])));
       hc.appendChild(oddsBar(hp, top));
-      if(own !== a) hc.appendChild(tag('JEV\u2019s own call' + (own.confidence != null ? ', ' + pct(own.confidence) + ' sure' : '')));
-      if(a !== h) hc.appendChild(tag(averageWords(a, 'the next ' + a.minutes + ' minutes')));
+      if(a !== h) hc.appendChild(tag(averageWords(a)));
       var fb = fallbackLine(h, c.row_ts); if(fb) hc.appendChild(fb);
       hc.appendChild(howChart(a, bl, c.row_ts, a !== h ? c.time_of_day : null));
-      // a scheduled event within the hour (the service's calendar): said once, in words; the read is
-      // still graded, and one due inside 30 minutes is kept out of the question weights
-      if(c.event && c.event.sentence) hc.appendChild(tag(sentence(marketWords(c.event.sentence, c.row_ts)) +
-        (c.event.within_30 ? '; this read is graded but kept out of the question weights' : '')));
+      // a scheduled event within the hour (the service's calendar): said once, in words
+      if(c.event && c.event.sentence) hc.appendChild(tag(sentence(marketWords(c.event.sentence, c.row_ts))));
       if(c.calls && c.calls.length) hc.appendChild(inPlay(c.calls));
       if(a !== h && h.probabilities) hc.appendChild(endPriceRow(h));
       var h60 = h.by && h.by.next_60;
@@ -1370,18 +1370,16 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
         var own60 = jevOwn(h60), p60 = own60.probabilities, t60 = own60.pick || top1(p60);
         var m60 = marks.next_60 !== undefined ? marks.next_60 : plusIso(c.row_ts, 60);
         var r60 = el('div', 'row60'), l60 = el('span', 'l');
-        r60.appendChild(el('span', 'k', 'Next 60 min, end price')); r60.appendChild(el('b', null, cap(t60) + ' ' + pct(p60[t60]))); r60.appendChild(l60);
+        r60.appendChild(el('span', 'k', '60 min \u00B7 end price')); r60.appendChild(el('b', null, cap(t60) + ' ' + pct(p60[t60]))); r60.appendChild(l60);
         var say60 = function(){ l60.textContent = m60 ? (leftWords(Date.parse(m60), Date.now()) || 'Window closed at ' + viewerTime(m60)) : 'Ends past the close, never graded'; };
         say60(); tickers.push(say60); hc.appendChild(r60);
       }
-      hc.appendChild(tag('from ' + h.used + ' answers' + (h.left_out ? ', ' + h.left_out + ' left out' : '') + (h.missing ? ', ' + h.missing + ' missing a label' : '') +
-                         ' \u00B7 a forecast, graded by the bars, not a trade signal'));
       if(count) hc.appendChild(count);
       main.appendChild(hc);
     } else {
       // a read with no sum says why: JEV's error when a sent read made none, otherwise that it made no call
-      var he = el('div', 'card dashed'); he.appendChild(el('div', 'mode', 'normal \u00B7 a call every 30 min'));
-      he.appendChild(labRow('next 30 minutes, the sum of the answers'));
+      var he = el('div', 'card dashed'); he.appendChild(el('div', 'mode', '30-min call'));
+      he.appendChild(labRow('Next 30 min'));
       he.appendChild(skipLine(h && h.error ? 'no sum on the ' + viewerTime(c.row_ts) + ' read: ' + h.error : noCallWords(c)));
       if(!(h && h.error)) he.appendChild(tag('the ' + viewerTime(c.row_ts) + ' read'));   // the header no longer names the row
       if(c.calls && c.calls.length) he.appendChild(inPlay(c.calls));
@@ -1405,7 +1403,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       var open = today > now && String(x.today_settles_at).slice(0, 10) === marketDay();
       row.textContent = '';
       if(open){
-        row.appendChild(el('span', null, 'Today\u2019s 0DTE settles ' + viewerTime(today, {zone: true})));
+        row.appendChild(el('span', null, 'Options settle ' + viewerTime(today, {zone: true})));
         row.appendChild(el('b', null, untilWords(today - now) + ' left'));
         tags.forEach(function(t){ row.appendChild(el('span', 'state', t)); });
       } else {
@@ -1424,7 +1422,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // a change that rounds to nothing at the figure's precision is no change, never "Up 0.0" beside a Flat verdict
   function signedWords(f, path){
     var v = f.value, shown = Math.abs(v).toFixed(f.unit === 'vol points' ? 1 : 2);
-    var mag = shown + (f.unit === 'vol points' ? ' vol points' : ' of a normal day\u2019s move');
+    var mag = shown + (f.unit === 'vol points' ? ' vol points' : '\u00D7 a usual day');
     if(Number(shown) === 0) return 'No change';
     if(path === 'price.vs_vwap') return sentence(mag + (v > 0 ? ' above' : ' below'));
     return (v > 0 ? 'Up ' : 'Down ') + mag;
@@ -1462,8 +1460,8 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   function measured(f){ return !!f && (f.kind === 'rank' ? f.under != null && f.of != null : f.value != null); }
   function factCaption(f, path){
     if(f.kind === 'signed') return signedWords(f, path);
-    if(f.kind === 'rank') return 'Busier than ' + f.under + ' of ' + f.of + ' past sessions at this time';
-    if(f.kind === 'distance') return sentence(f.name) + ', ' + f.value.toFixed(2) + ' of a normal day\u2019s move ' + f.side;
+    if(f.kind === 'rank') return 'Busier than ' + f.under + ' of ' + f.of + ' days';
+    if(f.kind === 'distance') return sentence(f.name) + ', ' + f.value.toFixed(2) + '\u00D7 a usual day ' + f.side;
     return '';
   }
   function openFact(r, from){
@@ -1473,11 +1471,11 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     v.appendChild(el('b', null, r.verdict || '')); res.appendChild(v);
     res.appendChild(el('p', null, sentence(marketWords(r.sentence, last && last.row_ts)) + '.'));
     body.appendChild(res);
-    body.appendChild(tag('one of the facts JEV reads; it answers questions about this sentence, word for word.'));
     MiraiSheet.open(from);
   }
   function situationCard(c, ageText, old){
     var card = el('div', 'card'); card.appendChild(labRow('situation', ageText, old));
+    var key = card.appendChild(el('div', 'sit-key')); key.appendChild(el('i')); key.appendChild(el('span', null, '= normal range'));
     (c.situation || []).forEach(function(r){
       var row = el('div', 'sit-row');
       if(typeof r === 'string'){ row.appendChild(el('div', 'sit-c', sentence(r))); card.appendChild(row); return; }   // a card written before 2026-09-26
@@ -1500,7 +1498,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // the 30-minute call while the opening leads: one line, with its own minutes left
   function foldLive(c){
     var f = el('div', 'card fold'), h = callSum(c.hour), own = jevOwn(h), p = own && own.probabilities;
-    f.appendChild(el('span', 'k', '30-min read ' + viewerTime(c.row_ts)));
+    f.appendChild(el('span', 'k', '30-min call \u00B7 ' + viewerTime(c.row_ts)));
     var left = el('span', 'l');
     if(!p){ f.appendChild(left); left.textContent = noCallWords(c); return f; }
     var top = own.pick || top1(p); f.appendChild(el('b', null, cap(top) + ' ' + pct(p[top])));
@@ -1527,19 +1525,16 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // an index level as the owner reads it, with its thousands comma, to a whole point or the given decimals
   function indexLevel(x, d){ return (+x).toLocaleString('en-US', {minimumFractionDigits: d || 0, maximumFractionDigits: d || 0}); }
   // the opening call in prices: where the average sits for the call to come true until its mark, from the read's price
-  // and the flat edge (hour.average price and edge_points), to a tenth so the two lines agree, then what flat on average
-  // is; a read with no price says that alone
+  // and the flat edge (hour.average price and edge_points), to a tenth so the two lines agree, then the flat band's two
+  // prices; a read with no price says the flat edge alone
   function flatRange(a, pick, at, mark){
     var box = el('div'), e = +a.edge_points, p = a.price;
-    if(p != null){
-      var lo = indexLevel(p - e, 1), hi = indexLevel(p + e, 1), s = el('div', 'range');
-      s.appendChild(el('span', null, 'SPX should average '));
-      s.appendChild(el('b', null, pick === 'up' ? 'above ' + hi : pick === 'down' ? 'below ' + lo : 'between ' + lo + ' and ' + hi));
-      s.appendChild(el('span', null, ' until ' + viewerTime(mark) + '.'));
-      box.appendChild(s);
-    }
-    box.appendChild(el('div', 'range-n', 'Flat on average is within ' + e.toFixed(1) + ' points of ' +
-      (p != null ? indexLevel(p, 1) + ', the price at ' : 'the price at ') + viewerTime(at) + '.'));
+    if(p == null){ box.appendChild(el('div', 'range-n', 'Flat: \u00B1' + e.toFixed(1) + ' pts from the ' + viewerTime(at) + ' price')); return box; }
+    var lo = indexLevel(p - e, 1), hi = indexLevel(p + e, 1), s = el('div', 'range');
+    s.appendChild(el('span', null, 'SPX should average '));
+    s.appendChild(el('b', null, pick === 'up' ? 'above ' + hi : pick === 'down' ? 'below ' + lo : 'between ' + lo + ' and ' + hi));
+    s.appendChild(el('span', null, ' until ' + viewerTime(mark) + '.'));
+    box.appendChild(s); box.appendChild(el('div', 'range-n', 'Flat: ' + lo + '\u2013' + hi));
     return box;
   }
   // the end-price question's bands (the card's band) in points, as the move bar and the stretch's verdict both say them
@@ -1548,28 +1543,20 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     return {flat: 'under ' + f, small: f + ' to ' + g, big: 'over ' + g};
   }
   // what counts as a move at the call's mark: the end-price bands to scale on one bar, which runs a third past the big
-  // edge so big has room, each edge's figure under it, then what a point is on the read's price
+  // edge so big has room, each edge's figure under it
   var MOVE_SCALE_OVER = 4 / 3;
-  function moveScale(b, price, mark){
-    var box = el('div'), f = +b.flat_points, g = +b.big_points, end = Math.ceil(g * MOVE_SCALE_OVER), said = bandSpans(b);
-    var cols = [f, g - f, end - g].map(function(w){ return w.toFixed(2) + 'fr'; }).join(' ');
-    var bar = el('div', 'mv-bar'), ticks = el('div', 'mv-ticks'), spans = el('div', 'mv-spans');
-    bar.style.gridTemplateColumns = spans.style.gridTemplateColumns = cols;
-    ['flat', 'small', 'big'].forEach(function(k){ bar.appendChild(el('span', 'mv-' + k, cap(k))); spans.appendChild(el('span', null, said[k])); });
+  function moveScale(b, mark){
+    var box = el('div'), f = +b.flat_points, g = +b.big_points, end = Math.ceil(g * MOVE_SCALE_OVER);
+    var bar = el('div', 'mv-bar'), ticks = el('div', 'mv-ticks');
+    bar.style.gridTemplateColumns = [f, g - f, end - g].map(function(w){ return w.toFixed(2) + 'fr'; }).join(' ');
+    ['flat', 'small', 'big'].forEach(function(k){ bar.appendChild(el('span', 'mv-' + k, cap(k))); });
     ticks.appendChild(el('span', 'lo', '0'));
     [f, g].forEach(function(v){ var k = ticks.appendChild(el('span', null, v.toFixed(1))); k.style.left = (v / end * 100).toFixed(2) + '%'; });
     ticks.appendChild(el('span', 'hi', end + '+ pts'));
-    box.appendChild(el('div', 'inplay-h', 'What counts as a move at ' + viewerTime(mark)));
-    box.appendChild(bar); box.appendChild(ticks); box.appendChild(spans);
-    var key = el('div', 'pt');
-    key.appendChild(el('div', 'pt-h', 'What’s a point?'));
-    key.appendChild(keyRow('Means', 'One step of the S&P 500 index'));
-    if(price != null) key.appendChild(keyRow('Example', indexLevel(price) + ' → ' + indexLevel(Math.round(price) + 1) + ' = 1 point'));
-    box.appendChild(key);
+    box.appendChild(el('div', 'inplay-h', 'Move size by ' + viewerTime(mark)));
+    box.appendChild(bar); box.appendChild(ticks);
     return box;
   }
-  // one labelled row of the point key
-  function keyRow(k, v){ var r = el('div', 'pt-r'); r.appendChild(el('span', 'k', k)); r.appendChild(el('span', null, v)); return r; }
   // the builder's sentences about the stretch since the last read (labels/range_size._since_last_read) in a few words:
   // the move with its verdict in the end-price bands, the range and how busy that is against the prior sessions at this
   // minute, then the tape unit as a typical 5-minute swing; a sentence in any other shape is said whole, as the builder
@@ -1598,7 +1585,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     if(st.range_since_read) plain(st.range_since_read, STRETCH_RANGE.exec(st.range_since_read), function(m){
       return [m[1] + ' points', ' from high to low. ', STRETCH_THIRD[m[2]] + ' for this time of day',
               ': busier than ' + m[3] + ' of the last ' + m[4] + ' days' + (/ruler estimated/.test(st.range_since_read) ? ' (estimated).' : '.')]; });
-    if(r) box.appendChild(tag('a typical 5-minute swing right now: about ' + (+r.unit_points).toFixed(1) + ' points' +
+    if(r) box.appendChild(tag('Typical 5-min swing: ' + (+r.unit_points).toFixed(1) + ' pts' +
       (r.source === 'held' ? ', an estimate until ' + viewerTime(marketAt(t.row_ts, RULER_HELD_UNTIL)) : '')));
     return box.childNodes.length ? box : null;
   }
@@ -1614,24 +1601,23 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       var fb = fallbackLine(h, t.row_ts); if(fb) box.appendChild(fb);
       if(a !== h && h.probabilities) box.appendChild(endPriceRow(h));
       // the end-price sum's odds read as a direction and as a size (the service's views), on one line; beside an
-      // average-price call only the size, its second line, said to be the end-price question's
+      // average-price call only the size, its second line
       var v = h.views || {}, d = a === h && v.direction && v.direction.probabilities, sz = v.size && v.size.probabilities, row = el('div', 'odds');
       if(d){ ['up', 'flat', 'down'].forEach(function(k){ if(k in d) row.appendChild(el('span', null, cap(k) + ' ' + pct(d[k]))); }); }
-      if(sz && 'big' in sz) row.appendChild(el('span', null, (a !== h ? 'End-price question: a big move ' : 'A big move ') + pct(sz.big)));
+      if(sz && 'big' in sz) row.appendChild(el('span', null, 'Big move ' + pct(sz.big)));
       if(row.childNodes.length) box.appendChild(row);
     } else {
       box.appendChild(el('div', 'big', cap(newest.pick) + ' ' + pct(newest.p)));
       box.appendChild(skipLine('no sum on the ' + viewerTime(t.row_ts) + ' read' + (h && h.error ? ': ' + h.error : '') + '; this is the ' + viewerTime(newest.read) + ' call'));
     }
     box.appendChild(inPlay(t.calls));
-    if(t.band) box.appendChild(moveScale(t.band, a && a.price, newest.mark));
+    if(t.band) box.appendChild(moveScale(t.band, newest.mark));
     var sw = stretchWords(t); if(sw) box.appendChild(sw);
     if(!ok) box.appendChild(tag('fetch failed, showing the last read'));
-    // when the 5-minute calls hand back to the 30-minute ones, and what a call is, on one closing line
-    var sch = t.schedule, until = !(sch && sch.reads && sch.reads.length) ? ''
-      : lastLaneRead(t) ? 'last 5-minute check; every 30 min again from ' + viewerTime(newest.mark) + '. '
-      : 'checks every 5 min until about ' + viewerTime(Date.parse(sch.reads[sch.reads.length - 1]) + sch.looks_ahead_min * 60000) + ', then every 30. ';
-    box.appendChild(tag(until + 'A forecast, not a trade signal.'));
+    // when the 5-minute calls hand back to the 30-minute ones, on one closing line
+    var sch = t.schedule;
+    if(sch && sch.reads && sch.reads.length) box.appendChild(tag(lastLaneRead(t) ? 'Last 5-min check; every 30 min again from ' + viewerTime(newest.mark)
+      : '5-min checks until ' + viewerTime(Date.parse(sch.reads[sch.reads.length - 1]) + sch.looks_ahead_min * 60000)));
     return box;
   }
   // the card's read is the lane's last of the day: it is stamped at a bar, which can be a minute behind the
@@ -1847,7 +1833,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       box.appendChild(el('div', 'big', cap(top) + ' ' + pct(pr[top])));
       if(s && a === h){ var sh = el('div', 'shape', s.title); sh.appendChild(el('span', null, ': ' + s.words)); box.appendChild(sh); }
       box.appendChild(oddsBar(pr, top));
-      if(a !== h) box.appendChild(tag(averageWords(a, 'the ' + a.minutes + ' minutes after the settled open')));
+      if(a !== h) box.appendChild(tag(averageWords(a)));
       var fb = fallbackLine(h, p.row_ts); if(fb) box.appendChild(fb);
       if(a !== h && h.probabilities) box.appendChild(endPriceRow(h));
       if(s && a !== h) box.appendChild(tag('end-price question: ' + s.title.charAt(0).toLowerCase() + s.title.slice(1) + ': ' + s.words));
@@ -2116,7 +2102,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 #learn .lp-t tr.learner td:first-child{padding-left:10px;color:var(--i-mute)}
 #learn .lp-t td.up{color:var(--o-up)} #learn .lp-t td.dn{color:var(--o-dn)}
 #learn .lp-t td small{color:var(--i-faint);font-size:11px;margin-left:4px}
-#learn .lp-foot{margin-top:8px;font:400 11px/1.45 var(--sans);color:var(--i-faint)}
+#learn .lp-line text{fill:var(--i-faint);font:400 9px var(--sans)}
 </style>
 <script>
 (function(){
@@ -2125,15 +2111,17 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   var LEARN_URL = '/api/raw/file?root=state&path=spx_jev/mirai_prediction/scoreboard.json';
   var SUM = 'average_30', LEARN_MS = 60000;
   function pct(v, signed){ if(v == null) return '—'; var s = (Math.round(v * 10) / 10).toFixed(1); return (signed && v > 0 ? '+' : '') + s + '%'; }
-  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  // built node by node, never from markup strings (the page never sets markup directly)
+  function node(tag, cls, text){ var n = document.createElement(tag); if(cls) n.className = cls; if(text != null) n.textContent = text; return n; }
   function row(v, cls){
-    if(!v) return '';
-    var skill = v.skill_vs_historical_odds_pct, tone = skill == null ? '' : (skill > 0 ? ' class="up"' : (skill < 0 ? ' class="dn"' : ''));
-    return '<tr class="' + cls + '"><td>' + esc(v.plain_name) + '<small>' + (v.reads_count || 0) + ' reads</small></td><td>' + pct(v.right_pct) +
-           '</td><td' + tone + '>' + pct(skill, true) + '</td></tr>';
+    var skill = v.skill_vs_historical_odds_pct, tr = node('tr', cls), name = node('td', null, String(v.plain_name).replace(' · 50/50 blend', ''));
+    name.appendChild(node('small', null, (v.reads_count || 0) + ' reads'));
+    tr.appendChild(name); tr.appendChild(node('td', null, pct(v.right_pct)));
+    tr.appendChild(node('td', skill == null ? null : skill > 0 ? 'up' : skill < 0 ? 'dn' : null, pct(skill, true)));
+    return tr;
   }
   function line(daily){
-    var svg = document.getElementById('learnLine'); svg.innerHTML = '';
+    var svg = document.getElementById('learnLine'); while(svg.firstChild) svg.removeChild(svg.firstChild);
     var pts = (daily || []).filter(function(d){ return typeof d.pool_v2_pct === 'number'; });
     if(pts.length < 2) return;
     var w = 328, h = 44, pad = 4, vals = pts.map(function(d){ return d.pool_v2_pct; });
@@ -2142,6 +2130,8 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var ns = 'http://www.w3.org/2000/svg';
     var zero = document.createElementNS(ns, 'line'); zero.setAttribute('x1', 0); zero.setAttribute('x2', w); zero.setAttribute('y1', y(0)); zero.setAttribute('y2', y(0));
     zero.setAttribute('stroke', '#7E8779'); zero.setAttribute('stroke-dasharray', '3 3'); zero.setAttribute('stroke-width', '1'); svg.appendChild(zero);
+    var zl = document.createElementNS(ns, 'text'); zl.setAttribute('x', w); zl.setAttribute('y', Math.max(9, y(0) - 3)); zl.setAttribute('text-anchor', 'end');
+    zl.textContent = 'typical'; svg.appendChild(zl);
     var p = document.createElementNS(ns, 'polyline'); p.setAttribute('fill', 'none'); p.setAttribute('stroke', '#2F44B8'); p.setAttribute('stroke-width', '2');
     p.setAttribute('points', pts.map(function(d, i){ return x(i).toFixed(1) + ',' + y(d.pool_v2_pct).toFixed(1); }).join(' ')); svg.appendChild(p);
     var last = pts[pts.length - 1], c = document.createElementNS(ns, 'circle'); c.setAttribute('cx', x(pts.length - 1)); c.setAttribute('cy', y(last.pool_v2_pct));
@@ -2153,13 +2143,14 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     if(!s || !s.graded_reads_count){ sec.hidden = true; return; }
     var p2 = s.pool_v2, p1 = s.pool_v1, n = s.graded_reads_count;
     document.getElementById('learnR').textContent = '30 min · since ' + (s.since_day || '').slice(5).replace('-', '/');
-    document.getElementById('learnHead').innerHTML = 'After <b>' + n + ' reads</b>, the combined forecast is right <b>' + pct(p2 && p2.right_pct) +
-      '</b> of the time · <b>' + pct(p2 && p2.skill_vs_historical_odds_pct, true) + '</b> vs historical odds';
+    var head = document.getElementById('learnHead'); head.textContent = '';
+    [[String(n), ' reads · '], [pct(p2 && p2.right_pct), ' right · '], [pct(p2 && p2.skill_vs_historical_odds_pct, true), ' vs typical']]
+      .forEach(function(part){ head.appendChild(node('b', null, part[0])); head.appendChild(document.createTextNode(part[1])); });
     var chip = document.getElementById('learnChip'), st = (p2 && p2.status) || 'Too early';
     chip.textContent = st + (st === 'Too early' ? ' · decide at 300' : ''); chip.className = 'lp-chip ' + (st === 'Edge' ? 'edge' : st === 'Worse' ? 'worse' : '');
-    var html = row(p1, 'pool') + row(p2, 'pool');
-    (s.voices || []).forEach(function(v){ html += row(v, (/scorer|matcher|corrected/.test(v.name) ? 'learner' : 'voice')); });
-    document.getElementById('learnRows').innerHTML = html;
+    var rows = document.getElementById('learnRows'); rows.textContent = '';
+    [[p1, 'pool'], [p2, 'pool']].concat((s.voices || []).map(function(v){ return [v, /scorer|matcher|corrected/.test(v.name) ? 'learner' : 'voice']; }))
+      .forEach(function(r){ if(r[0]) rows.appendChild(row(r[0], r[1])); });
     line(s.daily_skill);
     sec.hidden = false;
   }
