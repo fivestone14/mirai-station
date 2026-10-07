@@ -864,7 +864,10 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
                 **_stamp(lane, unit, band), **(hour_doc_now or {}), **hour_rec}
 
     forecast_now_done = False
-    if do_send and lane.pool and day is None and hour is not None and hour_rec and hour_rec.get("request"):
+    prediction_off = os.environ.get("SPX_JEV_PREDICTION_DISABLE") == "1"   # the kill switch: the call stays on its blend
+    if prediction_off:
+        log("the Mirai Prediction System is switched off (SPX_JEV_PREDICTION_DISABLE=1): the call stays on its blend")
+    if do_send and lane.pool and day is None and not prediction_off and hour is not None and hour_rec and hour_rec.get("request"):
         # the Mirai Prediction System forecasts this read now, from the records as they stand (the call still its blend,
         # so the blend stays a voice), and Pool 2's mix becomes the call the phone shows and the grader grades; the blend
         # it replaced stays beside it as blend50_exact. Pool 1 is retired from the phone since 2026-10-06. Any failure
@@ -891,7 +894,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         with open(out_dir / "hour" / f"{day_name}.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps(hour_line(hour), ensure_ascii=False) + "\n")
     archive.append(lane.archive_folder(state_dir, out_dir), day_name, read_record(hour))
-    if do_send and lane.pool and day is None and not forecast_now_done:
+    if do_send and lane.pool and day is None and not forecast_now_done and not prediction_off:
         # the Mirai Prediction System's fallback: forecast this read in its own process (never on the read's path, never raises)
         try:
             from .mirai_prediction.service_hook import spawn_after_read

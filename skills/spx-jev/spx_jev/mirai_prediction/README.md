@@ -60,7 +60,7 @@ python -m spx_jev.mirai_prediction.backfill_code_features --state-dir ../../stat
 python -m pytest tests/test_mirai_prediction_*.py -q
 ```
 
-Turn it off: `SPX_JEV_PREDICTION_DISABLE=1` stops both the hook and the nightly job (`SPX_JEV_DISABLE=1` stops the nightly
+Turn it off: `SPX_JEV_PREDICTION_DISABLE=1` keeps the call on its 50/50 blend (no in-read forecast, no hook) and stops the nightly job (`SPX_JEV_DISABLE=1` stops the nightly
 job too, with the rest of the service).
 
 ## The code feature builder (layers 1-2)
@@ -150,7 +150,7 @@ The questions are `shadow` in the set (each `shadow_proof` says why: not a proof
 answer out of the sums, `grade.live_options` and the weights never see it, `service.pool_snapshots` takes pool_v1's members from
 the live questions only, and the cadence never holds one. The learning store files a shadow question JEV answered as
 `status = answered` all the same (the status is the reply's, not the question's), so `answer_matrix.load_jev_answers` takes it
-as a layer-3 column `jev:<id>` in the group `jev:judgment`, with nothing added to the matrix code. The old loop is kept away
+as a layer-3 column `jev:<id>`, each its own voting group (they judge different things; answer_matrix.column_catalog). The old loop is kept away
 by the question's status alone.
 
 **The read's order changed:** `service.run_once` now has the code feature builder answer the read right after the labels are
