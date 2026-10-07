@@ -2,6 +2,7 @@
 
 It never touches the live read, the grader, pool_v1 or the phone's call. Its pieces, named as on the design diagram:
 
+    code_features      the code feature builder: the 51 ready code questions answered from each read's stored data (layers 1-2)
     answer_matrix      one row per past read: every answer (layers 1-3), the historical odds, JEV's own call, the result
     additive_scorer    each answer pushes the historical odds; one vote per group; a layer volume per layer and stage
     matcher            the 20 past reads most like today, tallied by how far each beat its own time-of-day odds

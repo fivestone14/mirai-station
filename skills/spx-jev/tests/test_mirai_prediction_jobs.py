@@ -86,7 +86,7 @@ def test_skill_is_one_minus_the_penalty_ratio():
 def test_fit_for_a_day_refuses_rows_from_that_day():
     row = Row(read_id="r", row_ts="2026-10-01T10:00:00", day="2026-10-01", sum_id="average_30", historical_odds_probs=PROBS,
               jev_own_probs=None, shown_probs=None, pool_v1_probs=None, outcome="flat", learn_exclude=False, answers={})
-    m = AnswerMatrix(lane="live", sum_id="average_30", built_for_day="2026-10-01", rows=[row], columns={}, level_history={})
+    m = AnswerMatrix(lane="live", sum_id="average_30", built_for_day="2026-10-01", rows=[row], columns={})
     with pytest.raises(voice_fits.LeakError):
         voice_fits.check_no_leak(m, "2026-10-01")
     voice_fits.check_no_leak(m, "2026-10-02")
@@ -94,7 +94,7 @@ def test_fit_for_a_day_refuses_rows_from_that_day():
 
 def test_load_fits_never_returns_a_later_days_fit(tmp_path):
     root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
-    matrix = AnswerMatrix(lane="live", sum_id="average_30", built_for_day="2026-10-02", rows=[], columns={}, level_history={})
+    matrix = AnswerMatrix(lane="live", sum_id="average_30", built_for_day="2026-10-02", rows=[], columns={})
     doc = {"version": voice_fits.FIT_VERSION, "fit_day": "2026-10-02", "max_day_used": "2026-10-01",
            "additive_scorer": {"pushes": {}, "answer_normal_odds": {}, "layer_volume": {}, "columns": {}},
            "matcher": {"group_of_column": {}, "group_weights": {}}, "jev_corrected": {"asleep": True}, "answer_matrix": matrix.to_json()}
@@ -102,6 +102,18 @@ def test_load_fits_never_returns_a_later_days_fit(tmp_path):
     assert voice_fits.load_voice_fits(root, "average_30", "2026-10-01") is None            # only a later fit exists
     day_fits = voice_fits.load_voice_fits(root, "average_30", "2026-10-03")                # the newest earlier day's
     assert day_fits.fit_day == "2026-10-02" and day_fits.fits["jev_corrected"].asleep and day_fits.matrix.rows == []
+
+
+def test_an_old_version_fit_is_passed_over_for_the_newest_current_one(tmp_path):
+    root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
+    matrix = AnswerMatrix(lane="live", sum_id="average_30", built_for_day="2026-10-02", rows=[], columns={})
+    doc = {"version": voice_fits.FIT_VERSION, "fit_day": "2026-10-02", "max_day_used": "2026-10-01",
+           "additive_scorer": {"pushes": {}, "answer_normal_odds": {}, "layer_volume": {}, "columns": {}},
+           "matcher": {"group_of_column": {}, "group_weights": {}}, "jev_corrected": {"asleep": True}, "answer_matrix": matrix.to_json()}
+    paths.write_json_atomically(paths.voice_fits_file(root, "2026-10-02", "average_30"), doc)
+    paths.write_json_atomically(paths.voice_fits_file(root, "2026-10-05", "average_30"), {**doc, "version": voice_fits.FIT_VERSION - 1, "fit_day": "2026-10-05"})
+    assert voice_fits.load_voice_fits(root, "average_30", "2026-10-05").fit_day == "2026-10-02"
+    assert voice_fits.load_voice_fits(root, "average_30", "2026-10-05", allow_earlier=False) is None
 
 
 def test_old_fit_files_are_pruned_and_the_newest_days_kept(tmp_path):

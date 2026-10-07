@@ -20,7 +20,7 @@ from .jev_corrected import JevCorrectedFit, fit_jev_corrected
 from .matcher import MatcherFit, fit_matcher
 from .paths import CATALOGS, VOICE_FITS, now_utc_iso, voice_fits_file, write_json_atomically
 
-FIT_VERSION = 3                 # 3: the matcher fit holds groups (2026-10-06)
+FIT_VERSION = 4                 # 4: layers 1-2 are the code features (2026-10-06); 3: the matcher fit holds groups
 
 
 class LeakError(RuntimeError):
@@ -63,23 +63,22 @@ def day_fits_from_document(doc: dict) -> DayFits:
 
 
 def load_voice_fits(root: Path, sum_id: str, day: str, allow_earlier: bool = True) -> DayFits | None:
-    """The DayFits for ``day``; with ``allow_earlier`` the newest earlier day's when the day has none.
-    A fit from a LATER day is never returned (it would have seen the read's own day)."""
+    """The DayFits for ``day``; with ``allow_earlier`` the newest earlier day's when the day has none. A file of an older
+    FIT_VERSION is passed over (the next current one is taken, or None and the caller fits afresh). A fit from a LATER
+    day is never returned (it would have seen the read's own day)."""
     folder = root / CATALOGS / VOICE_FITS
     if not folder.exists():
         return None
     candidates = sorted(p for p in folder.glob(f"*_{sum_id}.json") if p.name[:10] <= day)
-    if not candidates:
-        return None
-    chosen = candidates[-1]
-    if chosen.name[:10] != day and not allow_earlier:
-        return None
-    doc = json.loads(chosen.read_text(encoding="utf-8"))
-    if doc.get("max_day_used") and doc["max_day_used"] >= day:
-        raise LeakError(f"fit {chosen.name} used rows up to {doc['max_day_used']}, not before {day}")
-    if doc.get("version", 1) < FIT_VERSION:
-        return None                              # an older file without the matrix; the caller fits afresh
-    return day_fits_from_document(doc)
+    for chosen in reversed(candidates):
+        if chosen.name[:10] != day and not allow_earlier:
+            return None
+        doc = json.loads(chosen.read_text(encoding="utf-8"))
+        if doc.get("max_day_used") and doc["max_day_used"] >= day:
+            raise LeakError(f"fit {chosen.name} used rows up to {doc['max_day_used']}, not before {day}")
+        if doc.get("version", 1) >= FIT_VERSION:
+            return day_fits_from_document(doc)
+    return None
 
 
 def next_market_day(day: str) -> str:

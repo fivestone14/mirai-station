@@ -1,0 +1,2167 @@
+[
+ {
+  "new_id": "TREND-01",
+  "title": "Last 30-minute move, signed",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "price.recent_move",
+  "options": [
+   "big down",
+   "small down",
+   "flat",
+   "small up",
+   "big up"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "small down",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "price.recent_move": "over the last 30 minutes price fell 0.03 sigma, larger than 7 of the last 19 sessions at this minute, middle third: a move; the half hour closed between the top and bottom fifths of its own range"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "big down",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "price.recent_move": "over the last 30 minutes price fell 0.17 sigma, larger than 16 of the last 19 sessions at this minute, top third: a strong move; the half hour closed between the top and bottom fifths of its own range"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "big down",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "price.recent_move": "over the last 30 minutes price fell 0.13 sigma, larger than 17 of the last 19 sessions at this minute, top third: a strong move; the half hour closed between the top and bottom fifths of its own range"
+    }
+   }
+  ],
+  "notes": "sign from 'rose/fell/moved +-x'; bottom third = flat, middle = small, top = big. Rank is 30-min move vs same minute, last 19-20 sessions."
+ },
+ {
+  "new_id": "TREND-02",
+  "title": "Move since the open vs usual band",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "open.noise_band",
+  "options": [
+   "below band",
+   "down inside",
+   "flat",
+   "up inside",
+   "above band"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "inside (old 09-28 template, side not stated)",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "open.noise_band": "price is inside the usual move-from-the-open band for 15:00, 0.93 sigma below its upper edge and 0.17 sigma above its lower edge, more than the 0.05 sigma edge distance from both (edges anchored at the higher and lower of the open and yesterday's close, 14-session average move)"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "below band",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "open.noise_band": "price is 0.28 sigma below the lower of the settled open and yesterday's close, a stretch bigger than 13 of the last 19 sessions had moved from their settled open by this minute, top third: below the usual move-from-the-open band for 11:31"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "up inside",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "open.noise_band": "price is 0.04 sigma above the higher of the settled open and yesterday's close, a stretch bigger than 1 of the last 19 sessions had moved from their settled open by this minute, bottom third: inside the usual move-from-the-open band for 13:30"
+    }
+   }
+  ],
+  "notes": "'above/below the usual move-from-the-open band' = outside; 'above the higher / below the lower ... inside or at the edge' = up/down inside; 'between the settled open and yesterday's close' = flat. Label is in sigma not opening-straddle units (rank is unit-free). 09-28 reads use an older template that does not say the side."
+ },
+ {
+  "new_id": "TREND-03",
+  "title": "Afternoon leg since 14:00",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "price.afternoon_leg",
+  "options": [
+   "strong down",
+   "down",
+   "flat",
+   "up",
+   "strong up"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "down",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "price.afternoon_leg": "since 14:00 price has fallen 0.08 sigma, larger than 10 of the last 19 sessions at this minute, middle third: a move; the day is 0.62 sigma below yesterday's close and price sits at 51% of today's range; the last 30 minutes fell 0.03 sigma"
+    }
+   },
+   {
+    "read": "live 2026-09-29T14:31",
+    "answer": "strong up",
+    "row_ts": "2026-09-29T14:31:33.462863-04:00",
+    "labels": {
+     "price.afternoon_leg": "since 14:00 price has risen 0.13 sigma, larger than 17 of the last 19 sessions at this minute, top third: a strong move; the day is 0.20 sigma below yesterday's close and price sits at 28% of today's range; the last 30 minutes rose 0.01 sigma"
+    }
+   },
+   {
+    "read": "live 2026-09-30T14:30",
+    "answer": "strong down",
+    "row_ts": "2026-09-30T14:30:34.114929-04:00",
+    "labels": {
+     "price.afternoon_leg": "since 14:00 price has fallen 0.10 sigma, larger than 16 of the last 19 sessions at this minute, top third: a strong move; the day is 0.27 sigma above yesterday's close and price sits at 22% of today's range; the last 30 minutes fell 0.10 sigma"
+    }
+   }
+  ],
+  "notes": "only reads at/after 14:30. Sign + tercile like TREND-01. Bug seen: at 14:00 the move is ~0 but ranks 'larger than 20 of 20, top third' - ignore pre-14:30 reads."
+ },
+ {
+  "new_id": "TREND-05",
+  "title": "One-way hour, signed",
+  "answered_by": "code_L1",
+  "method": "bars",
+  "source": "net60 = C[t]-C[t-60]; path = sum_{i=0..11}|C[t-5i]-C[t-5i-5]|; eff = net60/path. |net60| bottom third vs this minute = 'no hour move'; else direction = sign(net60), one-way if |eff| ranks top half vs this minute, else two-way. Field: close of state/spx_jev/bars (or store spx_bars).",
+  "options": [
+   "one-way up",
+   "two-way up",
+   "no hour move",
+   "two-way down",
+   "one-way down"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "net -0.038 sigma, efficiency -0.13 (rank both vs this minute)",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {}
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "net -0.296 sigma, efficiency -0.60 (rank both vs this minute)",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {}
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "net -0.124 sigma, efficiency -0.35 (rank both vs this minute)",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {}
+   }
+  ],
+  "notes": "price.hour_one_way is close but measures crossings of the hourly average, not net/summed-5-min efficiency; use bars. History: store spx_bars has 66 sessions (07-06 on), live bars files only 12 days."
+ },
+ {
+  "new_id": "TREND-06",
+  "title": "Trend day or range day so far",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "price.day_character",
+  "options": [
+   "building",
+   "mixed",
+   "cancelling"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "mixed",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "price.day_character": "so far today, 30-minute stretches have been 0.98 times what their 5-minute pieces would suggest, higher than 10 of the last 20 sessions at this minute, middle third: mixed"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "mixed",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "price.day_character": "so far today, 30-minute stretches have been 1.30 times what their 5-minute pieces would suggest, higher than 12 of the last 20 sessions at this minute, middle third: mixed"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "cancelling",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "price.day_character": "so far today, 30-minute stretches have been 0.36 times what their 5-minute pieces would suggest, higher than 0 of the last 20 sessions at this minute, bottom third: cancelling"
+    }
+   }
+  ],
+  "notes": "exact match: the variance-ratio sentence ends 'top third: building / middle: mixed / bottom: cancelling'. Omitted until 12 5-min returns since 10:00 (~11:00)."
+ },
+ {
+  "new_id": "TREND-08",
+  "title": "Move speeding up or fading",
+  "answered_by": "code_L1",
+  "method": "bars",
+  "source": "d20 = C[t-10]-C[t-30]; d10 = C[t]-C[t-10]; ratio = sign(d20)*d10 / (|d20|/2). 'reversing' if ratio < 0 by more than a fixed tolerance (in opening-straddle units: |d10|/em_open > tol); else rank ratio vs this minute: top third accelerating, middle steady, bottom fading. em_open from the diary row (state/reversion range_ruler.em_open).",
+  "options": [
+   "accelerating",
+   "steady",
+   "fading",
+   "reversing"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "d10 -2.03 pts, prior d20 +2.51 pts, pace ratio -1.62 (opposite)",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {}
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "d10 -1.95 pts, prior d20 -12.99 pts, pace ratio +0.30 (rank vs this minute)",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {}
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "d10 +0.81 pts, prior d20 -14.39 pts, pace ratio -0.11 (opposite)",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {}
+   }
+  ],
+  "notes": "momentum.pace is unsigned and compares 10 vs the previous 10 minutes (not 20) with fixed 2/3 and 1.5 cuts, so it cannot give 'reversing'."
+ },
+ {
+  "new_id": "TREND-09",
+  "title": "Pullback in the leg, signed",
+  "answered_by": "code_L1",
+  "method": "bars",
+  "source": "60-min window [t-60,t]: net = C[t]-C[t-60]; leg only if |net| > this minute's median |net| on prior sessions. Up leg: ext = max high in window at minute i; push = ext-C[t-60]; giveback = (ext-C[t])/push; deep = giveback > this minute's median giveback; fast = (ext-C[t])/(60-i) > push/i. Mirror for down legs.",
+  "options": [
+   "up leg shallow-slow",
+   "up leg deep-or-fast",
+   "no leg",
+   "down leg deep-or-fast",
+   "down leg shallow-slow"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "60m net -0.038 sigma, given back 63%, pullback faster than push",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {}
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "60m net -0.296 sigma, given back 13%, pullback faster than push",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {}
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "60m net -0.124 sigma, given back 33%, pullback faster than push",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {}
+   }
+  ],
+  "notes": "two medians (leg size, giveback) per minute-of-day from prior sessions; spx_bars store covers it."
+ },
+ {
+  "new_id": "TREND-10",
+  "title": "60-minute range sweep: held or failed",
+  "answered_by": "code_L2",
+  "method": "bars",
+  "source": "H/L = max high / min low over bars [t-70,t-10); break up if max high of bars [t-10,t) > H + 0.02*sigma (fixed tolerance); held if C[t] > H else failed; mirror for down. sigma = read's sigma.",
+  "options": [
+   "up held",
+   "up failed",
+   "none",
+   "down failed",
+   "down held"
+  ],
+  "rank_against": "fixed rule (no ranking)",
+  "history_sessions": 0,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "none",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {}
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "down held",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {}
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "down failed",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {}
+   }
+  ],
+  "notes": "no history needed; tolerance value (0.02 sigma here) is a design choice to fix."
+ },
+ {
+  "new_id": "TREND-12",
+  "title": "Biggest 1-minute bar vs normal",
+  "answered_by": "code_L1",
+  "method": "bars",
+  "source": "ratio = max(high-low) / median(high-low) over the last 30 finished 1-min bars; rank vs same minute prior sessions (cut points e.g. <2/3 normal, 2/3-90% large, >=90% burst).",
+  "options": [
+   "normal",
+   "large",
+   "burst"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "max/median 1-min range 1.90 (rank vs this minute)",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {}
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "max/median 1-min range 2.54 (rank vs this minute)",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {}
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "max/median 1-min range 3.40 (rank vs this minute)",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {}
+   }
+  ],
+  "notes": "price.minute_width only compares the current minute to today's typical minute with a fixed 2x cut; shock.burst is 5-minute moves. Use bars. Bars volume field is 0 for SPX (index), so no volume weighting."
+ },
+ {
+  "new_id": "TREND-14",
+  "title": "Latest leg with or against the day",
+  "answered_by": "code_L2",
+  "method": "label",
+  "source": "price.prior_close_push",
+  "options": [
+   "with the day's side",
+   "against the day's side",
+   "flat day",
+   "quiet leg"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "with the day's side",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "price.prior_close_push": "over the last 30 minutes price fell 0.03 sigma away from yesterday's close, larger than 7 of the last 19 sessions at this minute, middle third: a move; it now sits 0.62 sigma below it, further from it than 13 of the last 19 sessions at this minute, top third: far from it; it has not crossed it in the last 30 minutes or today"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "flat day",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "price.prior_close_push": "over the last 30 minutes price fell 0.17 sigma away from yesterday's close, larger than 16 of the last 19 sessions at this minute, top third: a strong move; it now sits 0.28 sigma below it, further from it than 4 of the last 19 sessions at this minute, bottom third: near it; it has not crossed it in the last 30 minutes, though it did earlier today"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "flat day",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "price.prior_close_push": "over the last 30 minutes price fell 0.13 sigma toward yesterday's close, larger than 17 of the last 19 sessions at this minute, top third: a strong move; it now sits 0.30 sigma above it, further from it than 6 of the last 19 sessions at this minute, bottom third: near it; it has not crossed it in the last 30 minutes or today"
+    }
+   }
+  ],
+  "notes": "first tercile (30-min move) bottom = quiet; second tercile (distance from yesterday's close) bottom 'near it' = flat day; else 'away from' = with, 'toward' = against."
+ },
+ {
+  "new_id": "VOLATILITY-01",
+  "title": "Straddle held up vs clock decay",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "vol.straddle_vs_clock",
+  "options": [
+   "kept more",
+   "usual share",
+   "kept less"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": "partial",
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "kept more",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "vol.straddle_vs_clock": "the same-day straddle for the rest of today is 1.30 times its usual share of the opening straddle at 15:00 (its median on the last 18 sessions), higher than 14 of the last 18 sessions at this minute, top third"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "kept more",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "vol.straddle_vs_clock": "the same-day straddle for the rest of today is 1.24 times its usual share of the opening straddle at 11:31 (its median on the last 18 sessions), higher than 16 of the last 18 sessions at this minute, top third"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "usual share",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "vol.straddle_vs_clock": "the same-day straddle for the rest of today is 1.07 times its usual share of the opening straddle at 13:30 (its median on the last 17 sessions), higher than 10 of the last 17 sessions at this minute, middle third"
+    }
+   }
+  ],
+  "notes": "tercile of 'times its usual share ... higher than k of n sessions at this minute'. Missing on 10-06 (row carried no straddle)."
+ },
+ {
+  "new_id": "VOLATILITY-02",
+  "title": "Last 30 min swing vs same half hour",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "vol.realized_vs_clock",
+  "options": [
+   "quiet",
+   "ordinary",
+   "busy"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "ordinary",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "vol.realized_vs_clock": "over the last 30 minutes SPX's realized swing was 0.08 sigma, more than 8 of the last 19 sessions at this time of day, between the top and bottom fifths; its largest 10-minute move inside them was 0.10 sigma, larger than 11 of the last 19 sessions' largest in the same half hour, middle third: a real move"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "ordinary",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "vol.realized_vs_clock": "over the last 30 minutes SPX's realized swing was 0.12 sigma, more than 8 of the last 19 sessions at this time of day, between the top and bottom fifths; its largest 10-minute move inside them was 0.17 sigma, larger than 17 of the last 19 sessions' largest in the same half hour, top third: a real move"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "ordinary",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "vol.realized_vs_clock": "over the last 30 minutes SPX's realized swing was 0.10 sigma, more than 13 of the last 19 sessions at this time of day, between the top and bottom fifths: ordinary for this half hour"
+    }
+   }
+  ],
+  "notes": "current template uses fifths (bottom fifth quiet / between ordinary / top fifth busy); 09-28 reads used terciles. vol.realized_vs_clock_rank is the same idea as a pace ratio."
+ },
+ {
+  "new_id": "VOLATILITY-03",
+  "title": "Share of expected range used",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "range.pace_vs_priced",
+  "options": [
+   "little",
+   "normal share",
+   "most"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "most",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "range.pace_vs_priced": "today's range so far is 0.81 of a one-sigma move for the 330 minutes since the open, larger than 13 of the last 19 sessions at this time of day, top third: over the usual pace"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "normal share",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "range.pace_vs_priced": "today's range so far is 0.93 of a one-sigma move for the 121 minutes since the open, larger than 8 of the last 19 sessions at this time of day, middle third: near the usual pace"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "little",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "range.pace_vs_priced": "today's range so far is 0.46 of a one-sigma move for the 240 minutes since the open, larger than 2 of the last 19 sessions at this time of day, bottom third: under the usual pace"
+    }
+   }
+  ],
+  "notes": "'under / near / over the usual pace' terciles. iv.expected_move_used is the unranked alternative."
+ },
+ {
+  "new_id": "VOLATILITY-05",
+  "title": "VIX move beyond what price explains",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "vol.vix_vs_price",
+  "options": [
+   "more fearful",
+   "in line",
+   "calmer"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "more fearful",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "vol.vix_vs_price": "over the last 30 minutes VIX ended 0.03 points (0.22% of VIX) above what price explains: it rose 0.07 points, and the 0.03 sigma SPX drop alone would lift it about 0.04; ranked with VIX furthest above what price explains highest, higher than 13 of the last 19 sessions at this minute, top third"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "more fearful",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "vol.vix_vs_price": "over the last 30 minutes VIX ended 0.19 points (1.17% of VIX) above what price explains: it rose 0.38 points, and the 0.17 sigma SPX drop alone would lift it about 0.19; ranked with VIX furthest above what price explains highest, higher than 16 of the last 18 sessions at this minute, top third"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "in line",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "vol.vix_vs_price": "over the last 30 minutes VIX ended 0.00 points (0.02% of VIX) below what price explains: it rose 0.14 points, and the 0.13 sigma SPX drop alone would lift it about 0.14; ranked with VIX furthest above what price explains highest, higher than 8 of the last 18 sessions at this minute, middle third"
+    }
+   }
+  ],
+  "notes": "ranked with VIX furthest above what price explains highest: top third = more fearful."
+ },
+ {
+  "new_id": "VOLATILITY-06",
+  "title": "Same-day IV move beyond price",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "vol.atm_iv_residual",
+  "options": [
+   "risen more",
+   "about as much",
+   "less"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T14:31",
+    "answer": "about as much",
+    "row_ts": "2026-09-28T14:31:08.252264-04:00",
+    "labels": {
+     "vol.atm_iv_residual": "over the last 30 minutes same-day at-the-money vol rose 0.32 points while price fell 0.05 sigma; the fall alone explains a rise of 0.11, so vol ended 0.21 points above what price explains; ranked with vol furthest above what price explains highest, higher than 9 of the last 18 sessions at this minute, middle third"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "risen more",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "vol.atm_iv_residual": "over the last 30 minutes same-day at-the-money vol rose 1.97 points while price fell 0.17 sigma; the fall alone explains a rise of 0.38, so vol ended 1.59 points above what price explains; ranked with vol furthest above what price explains highest, higher than 17 of the last 18 sessions at this minute, top third"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "risen more",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "vol.atm_iv_residual": "over the last 30 minutes same-day at-the-money vol rose 2.77 points while price fell 0.13 sigma; the fall alone explains a rise of 0.29, so vol ended 2.48 points above what price explains; ranked with vol furthest above what price explains highest, higher than 17 of the last 18 sessions at this minute, top third"
+    }
+   }
+  ],
+  "notes": "top third = vol above what price explains. vol.straddle_reprice_30 is the straddle twin."
+ },
+ {
+  "new_id": "VOLATILITY-09",
+  "title": "Skew change beyond price",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "skew.shift_vs_price",
+  "options": [
+   "puts richer",
+   "in line",
+   "puts cheaper"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": "partial",
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "in line",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "skew.shift_vs_price": "over the last 30 minutes the gap between same-day put and call prices narrowed 0.023 of at-the-money vol while price rose 0.01 sigma; price explains a narrowing of 0.001, so puts got cheaper by 0.021 beyond the move; ranked with puts getting dearest highest, higher than 10 of the last 17 sessions at this minute, middle third"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "in line",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "skew.shift_vs_price": "over the last 30 minutes the gap between same-day put and call prices widened 0.027 of at-the-money vol while price fell 0.18 sigma; price explains a widening of 0.033, so puts got cheaper by 0.006 beyond the move; ranked with puts getting dearest highest, higher than 6 of the last 17 sessions at this minute, middle third"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "puts richer",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "skew.shift_vs_price": "over the last 30 minutes the gap between same-day put and call prices widened 0.061 of at-the-money vol while price fell 0.14 sigma; price explains a widening of 0.027, so puts got dearer by 0.034 beyond the move; ranked with puts getting dearest highest, higher than 13 of the last 16 sessions at this minute, top third"
+    }
+   }
+  ],
+  "notes": "needs the lob_flow 0DTE tape; missing 10-06 (collector did not run). Prior-session history limited by lob_flow/raw (from 09-08, ~21 sessions); labels show 16-18 sessions."
+ },
+ {
+  "new_id": "VOLATILITY-10",
+  "title": "Put tilt vs same minute",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "skew.put_tilt_vs_usual",
+  "options": [
+   "steep",
+   "usual",
+   "flat",
+   "tilted to calls"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": "partial",
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "flat (old template, from rank)",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "skew.put_tilt_vs_usual": "same-day 25-delta puts are priced 0.0 vol points above 25-delta calls, 0.00 of the at-the-money level; steeper than 1 of the last 17 sessions at 15:00, past the flat rank; far puts (10-delta) are at a usual premium to 25-delta puts"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "flat (old template, from rank)",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "skew.put_tilt_vs_usual": "same-day 25-delta puts are priced 1.2 vol points above 25-delta calls, 0.06 of the at-the-money level; steeper than 0 of the last 18 sessions at 11:31, past the flat rank; far puts (10-delta) are at a flatter premium than usual to 25-delta puts, past the flat rank"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "usual",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "skew.put_tilt_vs_usual": "same-day 25-delta puts are priced 1.7 vol points above 25-delta calls, 0.11 of the at-the-money level; its tilt beats 11 of the last 17 sessions at 13:30: a usual tilt for this minute; the far-put wing (10-delta over 25-delta puts) is usual for this minute"
+    }
+   }
+  ],
+  "notes": "words 'a steep put tilt / a usual tilt / a flat tilt'; 'calls are priced above puts, a call tilt' = tilted to calls. An older template ('steeper than k of n, past the flat rank') ran on early days - map from rank. Missing 10-06."
+ },
+ {
+  "new_id": "VOLATILITY-11",
+  "title": "VVIX beyond VIX and price",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "vol.vvix_vs_vix",
+  "options": [
+   "more",
+   "about as much",
+   "less"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "about as much",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "vol.vvix_vs_vix": "over the last 30 minutes VVIX rose 0.14 points; VIX's and SPX's moves explain a fall of about 0.04; the 0.18 left over is bigger than on 7 of the last 19 sessions at this minute, under the median, while SPX or VIX also moved (one or both 30-minute moves above the bottom third of the last sessions' at this minute)"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "more",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "vol.vvix_vs_vix": "over the last 30 minutes VVIX rose 1.50 points; VIX's and SPX's moves explain a rise of about 1.00; the 0.50 left over is bigger than on 12 of the last 19 sessions at this minute, at or above the median, short of the top fifth, while SPX or VIX also moved (one or both 30-minute moves above the bottom third of the last sessions' at this minute)"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "about as much",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "vol.vvix_vs_vix": "over the last 30 minutes VVIX rose 0.54 points; VIX's and SPX's moves explain a rise of about 0.45; the 0.09 left over is bigger than on 2 of the last 19 sessions at this minute, under the median, while SPX or VIX also moved (one or both 30-minute moves above the bottom third of the last sessions' at this minute)"
+    }
+   }
+  ],
+  "notes": "label ranks the size of the leftover only; sign = (VVIX change - explained), parsed from the two numbers. Leftover under the median = about as much; at/above median = more or less by sign."
+ },
+ {
+  "new_id": "VOLATILITY-13",
+  "title": "Front fear shifting",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "vol.front_fear_shift",
+  "options": [
+   "risen",
+   "held",
+   "fallen"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "held",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "vol.front_fear_shift": "over the last 30 minutes nine-day VIX rose 0.04 points against the 30-day VIX, from 1.70 under it to 1.66 under it; ranked with nine-day VIX gaining highest, higher than 13 of the last 20 sessions at this minute, middle third"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "risen",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "vol.front_fear_shift": "over the last 30 minutes nine-day VIX rose 0.08 points against the 30-day VIX, from 1.72 under it to 1.64 under it; ranked with nine-day VIX gaining highest, higher than 16 of the last 20 sessions at this minute, top third"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "risen",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "vol.front_fear_shift": "over the last 30 minutes nine-day VIX rose 0.09 points against the 30-day VIX, from 2.26 under it to 2.17 under it; ranked with nine-day VIX gaining highest, higher than 17 of the last 20 sessions at this minute, top third"
+    }
+   }
+  ],
+  "notes": "ranked with nine-day VIX gaining highest."
+ },
+ {
+  "new_id": "VOLATILITY-16",
+  "title": "Priced move loaded by an event",
+  "answered_by": "code_L2",
+  "method": "label",
+  "source": "vol.ruler_event_load",
+  "options": [
+   "swollen + event ahead",
+   "swollen + released",
+   "normal + ...",
+   "compressed + ...",
+   "x no event"
+  ],
+  "rank_against": "prior values",
+  "history_sessions": 20,
+  "backfill_ok": "partial",
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "normal, event released",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "vol.ruler_event_load": "normal: the same-day straddle prices a 30-minute move 0.73 times what the tape's recent 5-minute ranges scale to, higher than 16 of the last 18 sessions at 15:00 (in the top fifth); on the event calendar today: a Fed governor at 10:05; this morning's sigma ruler is 1.08 times its 19-session median, larger than 12 of the last 19 sessions' morning rulers, middle third"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "swollen, event ahead",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "vol.ruler_event_load": "normal: the same-day straddle prices a 30-minute move 0.49 times what the tape's recent 5-minute ranges scale to, higher than 13 of the last 18 sessions at 11:31 (between the top and bottom fifths); on the event calendar today: the Conference Board's consumer confidence report at 10:00, the job openings report at 10:00, a Fed governor at 12:40, a Fed governor at 13:25; this morning's sigma ruler is 1.19 times its 19-session median, larger than 15 of the last 19 sessions' morning rulers, top third"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "swollen, event ahead",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "vol.ruler_event_load": "normal: the same-day straddle prices a 30-minute move 0.46 times what the tape's recent 5-minute ranges scale to, higher than 2 of the last 17 sessions at 13:30 (in the bottom fifth); on the event calendar today: the GDP report at 08:30, the PCE inflation report at 08:30, a Fed governor at 15:00, the quarter-end close at 16:00; none of them is the Fed's rate decision, the Fed chair's testimony or the Fed chair's Jackson Hole speech; this morning's sigma ruler is 1.28 times its 19-session median, larger than 16 of the last 19 sessions' morning rulers, top third"
+    }
+   }
+  ],
+  "notes": "ruler part: 'this morning's sigma ruler is X times its N-session median ... (bottom|middle|top) third' = compressed/normal/swollen (vs prior mornings, once a day). Event part: parse the free-text calendar list 'name at HH:MM' and compare to read time. Missing 10-06."
+ },
+ {
+  "new_id": "LEVELS-01",
+  "title": "Gap still holding",
+  "answered_by": "code_L2",
+  "method": "label",
+  "source": "gap.fill_progress",
+  "options": [
+   "holding up",
+   "holding down",
+   "filled / too small"
+  ],
+  "rank_against": "fixed rule (no ranking)",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "holding down",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "gap.fill_progress": "the gap down is still open after 325 minutes: price sits 0.62 sigma below yesterday's close and keeps 128% of the 0.48 sigma gap, at or above the half line; it has not touched yesterday's close (within 0.02 sigma); the gap was larger than 14 of the last 19 days' gaps, top third, a real gap"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "filled / too small",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "gap.fill_progress": "there was no real gap: price opened 0.00 sigma above yesterday's close, a gap no larger than any of the last 19 days' gaps, bottom third; it now sits 0.28 sigma below yesterday's close"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "holding up",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "gap.fill_progress": "the gap up is still open after 235 minutes: price sits 0.30 sigma above yesterday's close and keeps 113% of the 0.27 sigma gap, at or above the half line; it has not touched yesterday's close (within 0.02 sigma); the gap was larger than 8 of the last 19 days' gaps, middle third, a real gap"
+    }
+   }
+  ],
+  "notes": "sentence opens 'the gap up/down is still open' or 'there was no real gap' (a 'filled' opening should exist in code but has not occurred yet). Gap 'real' = vs last 20 days' gaps."
+ },
+ {
+  "new_id": "LEVELS-02",
+  "title": "Distance from yesterday's close",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "price.day_move_split",
+  "options": [
+   "far above",
+   "above",
+   "near the close",
+   "below",
+   "far below"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "far below; mostly gap",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "price.day_move_split": "SPX is 0.62 sigma below yesterday's close, further from it than 13 of the last 19 sessions at this minute, top third: far from it; 0.48 sigma down came from the opening gap and 0.14 sigma down from trading since the open, so the gap is 78% of the day's move, at least half: most of it came from the gap"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "near the close; mostly trading",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "price.day_move_split": "SPX is 0.28 sigma below yesterday's close, further from it than 4 of the last 19 sessions at this minute, bottom third: near it; 0.00 sigma up came from the opening gap and 0.29 sigma down from trading since the open"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "near the close; mostly trading",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "price.day_move_split": "SPX is 0.30 sigma above yesterday's close, further from it than 6 of the last 19 sessions at this minute, bottom third: near it; 0.27 sigma up came from the opening gap and 0.04 sigma up from trading since the open"
+    }
+   }
+  ],
+  "notes": "side + tercile ('near it / away from it / far from it'); plus 'mostly gap / mostly trading' from 'so the gap is N% of the day's move' (>=50% gap)."
+ },
+ {
+  "new_id": "LEVELS-03",
+  "title": "Yesterday's range: accepted or rejected",
+  "answered_by": "code_L2",
+  "method": "label",
+  "source": "levels.prior_day",
+  "options": [
+   "accepted above",
+   "beyond, not yet accepted",
+   "rejected from high",
+   "inside",
+   "rejected from low",
+   "accepted below"
+  ],
+  "rank_against": "fixed rule (no ranking)",
+  "history_sessions": 5,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "rejected from low",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "levels.prior_day": "price is back inside yesterday's range, 0.04 sigma above yesterday's low, after trading below it 160 minutes ago"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "beyond, not yet accepted",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "levels.prior_day": "price crossed below yesterday's low 13 minutes ago and has stayed below it for 13 finished minutes, short of the 20-minute acceptance time; it now sits 0.08 sigma below it, beyond the 0.05 sigma reach"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "rejected from high",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "levels.prior_day": "price is back inside yesterday's range, 0.00 sigma below yesterday's high, after trading above it 7 minutes ago"
+    }
+   }
+  ],
+  "notes": "acceptance = 20 finished minutes beyond. Week high/low flag is NOT in any label: compute from store spx_bars (max high / min low of the prior 5 sessions) - bars, no ranking."
+ },
+ {
+  "new_id": "LEVELS-04",
+  "title": "Yesterday's value area vs today's move",
+  "answered_by": "code_L2",
+  "method": "label",
+  "source": "levels.prior_value + price.day_move",
+  "options": [
+   "above, with",
+   "above, against",
+   "inside",
+   "below, with",
+   "below, against"
+  ],
+  "rank_against": "fixed rule (no ranking)",
+  "history_sessions": 1,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "below, with",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "levels.prior_value": "price is 0.35 sigma below the low of yesterday's value area (the band where SPX spent 70% of yesterday's session, 0.35 sigma wide), beyond the 0.02 sigma edge distance; yesterday's busiest level is 0.57 sigma above price",
+     "price.day_move": "since the settled 09:35 open SPX has moved -0.14 sigma, larger than 5 of the last 19 sessions at this minute, bottom third: no real move"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "below, with",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "levels.prior_value": "price is 0.30 sigma below the low of yesterday's value area (the band where SPX spent 70% of yesterday's session, 0.33 sigma wide), beyond the 0.02 sigma edge distance; yesterday's busiest level is 0.49 sigma above price",
+     "price.day_move": "since the settled 09:35 open SPX has fallen 0.29 sigma, larger than 11 of the last 19 sessions at this minute, middle third: a move"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "above, with",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "levels.prior_value": "price is 0.24 sigma above the high of yesterday's value area (the band where SPX spent 70% of yesterday's session, 0.24 sigma wide), beyond the 0.02 sigma edge distance; yesterday's busiest level is 0.41 sigma below price",
+     "price.day_move": "since the settled 09:35 open SPX has moved +0.04 sigma, larger than 1 of the last 19 sessions at this minute, bottom third: no real move"
+    }
+   }
+  ],
+  "notes": "value-area side from levels.prior_value; with/against from the sign of price.day_move (move since the settled open)."
+ },
+ {
+  "new_id": "LEVELS-05",
+  "title": "Fresh session extreme",
+  "answered_by": "code_L2",
+  "method": "label",
+  "source": "open.fresh_extreme (+ price.session_extreme_recent for minutes since)",
+  "options": [
+   "new high",
+   "new low",
+   "top fifth",
+   "middle",
+   "bottom fifth"
+  ],
+  "rank_against": "fixed rule (no ranking)",
+  "history_sessions": 0,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "middle",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "open.fresh_extreme": "in the last 30 minutes price set no new session high or low; the high from 12:28 is 0.37 sigma above price and the low from 10:56 is 0.38 sigma below it; price is between the bands of today's 0.75 sigma range (51% of the way up, between the 25% and 75% lines); it is below the first-15-minute range, which it first broke at 10:38"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "new low",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "open.fresh_extreme": "in the last 30 minutes price set a new session low, 0.22 sigma below the earlier low from 11:01; it now sits 0.05 sigma above that low; price is in the bottom band of today's 0.52 sigma range (9% of the way up, at or under the 25% line); it is below the first-15-minute range, which it first broke at 09:49"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "middle",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "open.fresh_extreme": "in the last 30 minutes price set no new session high or low; the high from 10:56 is 0.25 sigma above price and the low from 09:31 is 0.11 sigma below it; price is between the bands of today's 0.36 sigma range (31% of the way up, between the 25% and 75% lines); it is inside the first-15-minute range"
+    }
+   }
+  ],
+  "notes": "window is 30 min on live, 5 min on tape (as asked). Position: parse '(N% of the way up' and cut at 20/80 (label's own bands are 25/75). Minutes since last extreme: price.session_extreme_recent 'N minutes ago' (only shown when recent)."
+ },
+ {
+  "new_id": "LEVELS-06",
+  "title": "First-hour range break",
+  "answered_by": "code_L2",
+  "method": "label",
+  "source": "range.first_hour (>=10:30), range.box_status (<10:30, first 30 min box)",
+  "options": [
+   "up break holding",
+   "up break failed",
+   "inside",
+   "down break failed",
+   "down break holding"
+  ],
+  "rank_against": "fixed rule (no ranking)",
+  "history_sessions": 0,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "down break holding",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "range.first_hour": "price is below the first hour's low, 0.02 sigma beyond it; the first hour spanned 0.31 sigma; since 10:30 price broke both edges: above its high 152 minutes ago, reached 0.03 sigma beyond it, further than 0 of the 15 first-hour breaks the last 19 sessions had made by this minute, bottom third; and below its low 261 minutes ago, reached 0.40 sigma beyond it, further than 13 of the 15 first-hour breaks the last 19 sessions had made by this minute, top third",
+     "range.box_status": "price is inside the opening box; earlier today it broke below the box and came back inside; the box is 0.27 sigma wide"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "down break holding",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "range.first_hour": "price is below the first hour's low, 0.19 sigma beyond it; the first hour spanned 0.28 sigma; since 10:30 price broke below its low 28 minutes ago, reached 0.24 sigma beyond it, further than 8 of the 11 first-hour breaks the last 19 sessions had made by this minute, top third, and never broke its high",
+     "range.box_status": "price has broken below the opening box and sits 0.18 sigma beyond its bottom; the box is 0.27 sigma wide"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "inside",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "range.first_hour": "price is inside the first hour's range; the first hour spanned 0.34 sigma; since 10:30 no bar has gone more than the 0.03 sigma break buffer past either edge",
+     "range.box_status": "price is inside the opening box; earlier today it broke above the box and came back inside; the box is 0.21 sigma wide"
+    }
+   }
+  ],
+  "notes": "range.box_status is exactly the first-30-minute box (OPENING_BOX_MIN=30). 'extended' detail: range.first_hour ranks how far the break reached vs prior sessions' first-hour breaks."
+ },
+ {
+  "new_id": "LEVELS-08",
+  "title": "Overnight range size (premarket)",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "overnight.range_vs_normal (premarket lane)",
+  "options": [
+   "small",
+   "normal",
+   "large"
+  ],
+  "rank_against": "prior nights to this time",
+  "history_sessions": 19,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "premarket 2026-09-28T09:28",
+    "answer": "normal",
+    "row_ts": "2026-09-28T09:28:05-04:00",
+    "labels": {
+     "overnight.range_vs_normal": "at 09:28 S&P futures stand 0.46 sigma below their 16:00 price; since the 18:00 reopen their high-low range is 0.65 sigma (0.59% of price), larger than 9 of the last 19 nights' ranges to this time, middle third"
+    }
+   },
+   {
+    "read": "premarket 2026-09-29T09:28",
+    "answer": "normal",
+    "row_ts": "2026-09-29T09:28:00-04:00",
+    "labels": {
+     "overnight.range_vs_normal": "at 09:28 S&P futures stand 0.17 sigma above their 16:00 price; since the 18:00 reopen their high-low range is 0.77 sigma (0.71% of price), larger than 12 of the last 19 nights' ranges to this time, middle third"
+    }
+   },
+   {
+    "read": "premarket 2026-09-30T09:28",
+    "answer": "normal",
+    "row_ts": "2026-09-30T09:28:04-04:00",
+    "labels": {
+     "overnight.range_vs_normal": "at 09:28 S&P futures stand 0.30 sigma above their 16:00 price; since the 18:00 reopen their high-low range is 0.69 sigma (0.67% of price), larger than 10 of the last 19 nights' ranges to this time, middle third"
+    }
+   }
+  ],
+  "notes": "only on premarket-lane reads; live/tape reads must carry the day's last premarket value (09:28 checkpoint)."
+ },
+ {
+  "new_id": "LEVELS-09",
+  "title": "Opening size (bar, then range)",
+  "answered_by": "code_L1",
+  "method": "bars",
+  "source": "before 10:05: R5 = max high - min low of the 09:30-09:34 bars (sigma units), plus pace = sum |dC| of 1-min closes since 09:30; rank vs the same window on prior sessions (quartiles: quiet/normal/busy/very busy). From 10:05: R30 = max high - min low of the 09:35-10:04 bars, rank vs prior sessions (terciles narrow/normal/wide).",
+  "options": [
+   "quiet",
+   "normal",
+   "busy",
+   "very busy",
+   "narrow",
+   "normal",
+   "wide"
+  ],
+  "rank_against": "prior values",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "09:35-10:04 range 0.175 sigma",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {}
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "09:35-10:04 range 0.146 sigma",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {}
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "09:35-10:04 range 0.278 sigma",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {}
+   }
+  ],
+  "notes": "fixed window, so ranking is vs prior sessions' same window. No label gives the first-5-min bar or the 09:35-10:04 range (range.today_vs_normal is range-so-far; tape.unit_vs_normal is tape-lane only)."
+ },
+ {
+  "new_id": "LEVELS-11",
+  "title": "Break setup armed",
+  "answered_by": "code_L2",
+  "method": "label",
+  "source": "levels.break_armed",
+  "options": [
+   "armed up",
+   "armed down",
+   "expired / called off",
+   "nothing armed"
+  ],
+  "rank_against": "fixed rule (no ranking)",
+  "history_sessions": 0,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "nothing armed",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "levels.break_armed": "no break is armed, and none expired or was called off in the last 30 minutes"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "armed up",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "levels.break_armed": "a break upward is armed: 19 minutes ago price was turned back at the call-side heavy strike while the book leaned to puts, and it now sits 0.48 sigma below that level; it expires in 25 minutes if price does not close through that level"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "nothing armed",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "levels.break_armed": "no break is armed, and none expired or was called off in the last 30 minutes"
+    }
+   }
+  ],
+  "notes": "exact: 'a break upward/downward is armed', 'no break is armed now: ... expired without firing', 'no break is armed, and none expired'."
+ },
+ {
+  "new_id": "OPTIONS-01",
+  "title": "Signed distance from the gamma flip",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "gex.flip_distance",
+  "options": [
+   "far below",
+   "below",
+   "near",
+   "above",
+   "far above"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "below",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "gex.flip_distance": "price is 0.33 sigma below the gamma flip, the level where today's same-day book switches between call-heavy and put-heavy gamma under the usual assumption that dealers hold the calls and are short the puts; farther from price than on 8 of the last 19 sessions at this minute, middle third: near the flip; it has not crossed the flip in the last 30 minutes"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "below",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "gex.flip_distance": "price is 0.60 sigma below the gamma flip, the level where today's same-day book switches between call-heavy and put-heavy gamma under the usual assumption that dealers hold the calls and are short the puts; farther from price than on 10 of the last 19 sessions at this minute, middle third: near the flip; it has not crossed the flip in the last 30 minutes"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "near",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "gex.flip_distance": "price is 0.21 sigma above the gamma flip, the level where today's same-day book switches between call-heavy and put-heavy gamma under the usual assumption that dealers hold the calls and are short the puts; farther from price than on 5 of the last 19 sessions at this minute, bottom third: near the flip; it has not crossed the flip in the last 30 minutes"
+    }
+   }
+  ],
+  "notes": "side from 'sigma above/below the gamma flip'; bottom third = near, middle = above/below, top = far. Units are sigma, not expected-move units (ranking is unit-free)."
+ },
+ {
+  "new_id": "OPTIONS-02",
+  "title": "Gamma packed near spot",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "gex.magnet_distance (grip clause)",
+  "options": [
+   "low",
+   "normal",
+   "high"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "normal",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "gex.magnet_distance": "today's heaviest same-day strike (the magnet) sits 0.05 sigma above price, farther from price than on 6 of the last 19 sessions at this minute, bottom third: seated on it; its grip (top-strike share) is stronger than on 7 of the last 19 sessions at 15:00 ET, below the median; it is the same strike as 30 minutes ago; over the last 30 minutes price sat 0.02 sigma from it on average, farther than on 2 of the last 19 sessions at this minute, bottom third: held there"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "low",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "gex.magnet_distance": "today's heaviest same-day strike (the magnet) sits 0.24 sigma above price, farther from price than on 10 of the last 19 sessions at this minute, middle third: near it; its grip (top-strike share) is stronger than on 2 of the last 19 sessions at 11:31 ET, below the median; it is a different strike from 30 minutes ago; over the last 30 minutes price sat 0.16 sigma from it on average, farther than on 9 of the last 19 sessions at this minute, middle third: not held there"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "normal",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "gex.magnet_distance": "today's heaviest same-day strike (the magnet) sits 0.00 sigma above price, farther from price than on 1 of the last 19 sessions at this minute, bottom third: seated on it; its grip (top-strike share) is stronger than on 7 of the last 19 sessions at 13:30 ET, below the median; it is the same strike as 30 minutes ago; over the last 30 minutes price sat 0.07 sigma from it on average, farther than on 8 of the last 19 sessions at this minute, middle third: not held there"
+    }
+   }
+  ],
+  "notes": "APPROXIMATE: the ranked top-strike share in gex.magnet_distance ('its grip ... stronger than k of n sessions') is the 0DTE book only and not limited to one expected move; gex.heaviest_strike_grip uses fixed 4%/16% cuts. 0-7DTE within 1 EM is not built."
+ },
+ {
+  "new_id": "OPTIONS-03",
+  "title": "Signed distance from the heaviest strike",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "gex.magnet_distance",
+  "options": [
+   "far below",
+   "below",
+   "on it",
+   "above",
+   "far above"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "on it",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "gex.magnet_distance": "today's heaviest same-day strike (the magnet) sits 0.05 sigma above price, farther from price than on 6 of the last 19 sessions at this minute, bottom third: seated on it; its grip (top-strike share) is stronger than on 7 of the last 19 sessions at 15:00 ET, below the median; it is the same strike as 30 minutes ago; over the last 30 minutes price sat 0.02 sigma from it on average, farther than on 2 of the last 19 sessions at this minute, bottom third: held there"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "below",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "gex.magnet_distance": "today's heaviest same-day strike (the magnet) sits 0.24 sigma above price, farther from price than on 10 of the last 19 sessions at this minute, middle third: near it; its grip (top-strike share) is stronger than on 2 of the last 19 sessions at 11:31 ET, below the median; it is a different strike from 30 minutes ago; over the last 30 minutes price sat 0.16 sigma from it on average, farther than on 9 of the last 19 sessions at this minute, middle third: not held there"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "on it",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "gex.magnet_distance": "today's heaviest same-day strike (the magnet) sits 0.00 sigma above price, farther from price than on 1 of the last 19 sessions at this minute, bottom third: seated on it; its grip (top-strike share) is stronger than on 7 of the last 19 sessions at 13:30 ET, below the median; it is the same strike as 30 minutes ago; over the last 30 minutes price sat 0.07 sigma from it on average, farther than on 8 of the last 19 sessions at this minute, middle third: not held there"
+    }
+   }
+  ],
+  "notes": "strike 'above price' means SPX is below it. bottom third 'seated on it' = on it. PARTIAL: the after-14:00 1DTE magnet is dark (expiry_calendar: 'the SPX scan writes no 1DTE slice')."
+ },
+ {
+  "new_id": "OPTIONS-05",
+  "title": "Market makers defending the contested strike",
+  "answered_by": "code_L2",
+  "method": "label",
+  "source": "options.strike_defense",
+  "options": [
+   "defended above",
+   "defended below",
+   "abandoned above",
+   "abandoned below"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": "partial",
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "abandoned above",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "options.strike_defense": "of the book's magnet and walls, the strikes the collector tests, the nearest where same-day quotes keep getting hit is 0.05 sigma above price, farther than the nearest one on 12 of the last 18 sessions at this minute, middle third: within reach; it was hit 468 times in the last 15 minutes, at least the 10-hit minimum; market makers refilled its quotes at price at some point in those 15 minutes on 279 of them (60%), higher than 8 of the last 19 sessions at this minute, below the middle: abandoned"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:58",
+    "answer": "abandoned below",
+    "row_ts": "2026-09-29T11:58:07.905105-04:00",
+    "labels": {
+     "options.strike_defense": "of the book's magnet and walls, the strikes the collector tests, the nearest where same-day quotes keep getting hit is 0.13 sigma below price, farther than the nearest one on 12 of the last 18 sessions at this minute, middle third: within reach; it was hit 233 times in the last 15 minutes, at least the 10-hit minimum; market makers refilled its quotes at price at some point in those 15 minutes on 183 of them (79%), higher than 8 of the last 18 sessions at this minute, below the middle: abandoned"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "abandoned above",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "options.strike_defense": "of the book's magnet and walls, the strikes the collector tests, the nearest where same-day quotes keep getting hit is 0.00 sigma above price, farther than the nearest one on 2 of the last 17 sessions at this minute, bottom third: within reach; it was hit 725 times in the last 15 minutes, at least the 10-hit minimum; market makers refilled its quotes at price at some point in those 15 minutes on 325 of them (45%), higher than 0 of the last 17 sessions at this minute, below the middle: abandoned"
+    }
+   }
+  ],
+  "notes": "refill share ranked vs this minute ('at or above the middle: defended / below the middle: abandoned'). Label's hit minimum is 10 hits, not the question's 3+. Missing 10-06 (no lob_flow tape)."
+ },
+ {
+  "new_id": "OPTIONS-07",
+  "title": "One-sided 0DTE option flow",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "options.flow_lean_30",
+  "options": [
+   "strong put lean",
+   "put lean",
+   "balanced",
+   "call lean",
+   "strong call lean"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": "partial",
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "put lean",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "options.flow_lean_30": "over the last 30 minutes the near-price 0DTE tape leaned toward buying puts and selling calls by 0.05 of signed premium below its usual level for this half hour, higher than 3 of the last 18 sessions at this minute, at or under the 20% rank line"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "balanced",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "options.flow_lean_30": "over the last 30 minutes the near-price 0DTE tape leaned toward buying puts and selling calls by 0.04 of signed premium below its usual level for this half hour, higher than 5 of the last 19 sessions at this minute, between the 20% and 80% rank lines, no lean"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "balanced",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "options.flow_lean_30": "over the last 30 minutes the near-price 0DTE tape leaned toward buying puts and selling calls by 0.01 of signed premium below its usual level for this half hour, higher than 9 of the last 19 sessions at this minute, between the 20% and 80% rank lines, no lean"
+    }
+   }
+  ],
+  "notes": "label gives 3 bins (20%/80% rank lines); 5 bins come from parsing 'higher than k of n' (<=10% / <=20% / mid / >=80% / >=90%). Missing 10-06."
+ },
+ {
+  "new_id": "OPTIONS-09",
+  "title": "Gamma above or below spot",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "gex.weight_both_books + gex.delta_weight_side",
+  "options": [
+   "mostly below",
+   "balanced",
+   "mostly above"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "today balanced; week balanced; delta mostly above",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "gex.weight_both_books": "today's same-day options gamma has 47% of it above price, a larger share than on 11 of the last 19 sessions at this minute, middle third: about as usual; the 1-to-7-day book (today's expiry excluded) has 50% of it above price, a larger share than on 10 of the last 19 sessions at this minute, middle third: also about as usual",
+     "gex.delta_weight_side": "53% of the directional exposure across the 0-to-7-day books, under the usual assumption that dealers hold the calls and are short the puts, sits at strikes above price, a larger share than on 17 of the last 19 sessions at this minute, top third: more of it above price than usual"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "today mostly below; week mostly below; delta mostly above",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "gex.weight_both_books": "today's same-day options gamma has 40% of it above price, a larger share than on 3 of the last 19 sessions at this minute, bottom third: more of it below price than usual; the 1-to-7-day book (today's expiry excluded) has 39% of it above price, a larger share than on 5 of the last 19 sessions at this minute, bottom third: also more of it below price than usual",
+     "gex.delta_weight_side": "56% of the directional exposure across the 0-to-7-day books, under the usual assumption that dealers hold the calls and are short the puts, sits at strikes above price, a larger share than on 17 of the last 19 sessions at this minute, top third: more of it above price than usual"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "today balanced; week mostly above; delta balanced",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "gex.weight_both_books": "today's same-day options gamma has 49% of it above price, a larger share than on 10 of the last 19 sessions at this minute, middle third: about as usual; the 1-to-7-day book (today's expiry excluded) has 53% of it above price, a larger share than on 14 of the last 19 sessions at this minute, top third: more of it above price than usual",
+     "gex.delta_weight_side": "51% of the directional exposure across the 0-to-7-day books, under the usual assumption that dealers hold the calls and are short the puts, sits at strikes above price, a larger share than on 11 of the last 19 sessions at this minute, middle third: about as usual"
+    }
+   }
+  ],
+  "notes": "terciles for today's book and the 1-7 day book (two clauses) plus delta share. Label shares are over the whole book, not limited to one 60-min expected move."
+ },
+ {
+  "new_id": "OPTIONS-10",
+  "title": "Charm wall vs price (last two hours)",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "gex.charm_wall_distance",
+  "options": [
+   "at price",
+   "near above",
+   "near below",
+   "far"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "far",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "gex.charm_wall_distance": "the charm wall of today's same-day book (the strike where its delta decay piles up) sits 0.47 sigma below price, farther from price than on 15 of the last 19 sessions at this minute, top third: far from price, 3.5 remaining straddles away"
+    }
+   },
+   {
+    "read": "live 2026-09-29T14:00",
+    "answer": "near above",
+    "row_ts": "2026-09-29T14:00:56.451367-04:00",
+    "labels": {
+     "gex.charm_wall_distance": "the charm wall of today's same-day book (the strike where its delta decay piles up) sits 0.41 sigma above price, farther from price than on 11 of the last 18 sessions at this minute, middle third: near price, 2.8 remaining straddles away"
+    }
+   },
+   {
+    "read": "live 2026-09-30T14:01",
+    "answer": "near above",
+    "row_ts": "2026-09-30T14:01:33.055565-04:00",
+    "labels": {
+     "gex.charm_wall_distance": "the charm wall of today's same-day book (the strike where its delta decay piles up) sits 0.40 sigma above price, farther from price than on 11 of the last 18 sessions at this minute, middle third: near price, 3.1 remaining straddles away"
+    }
+   }
+  ],
+  "notes": "only reads at/after 14:00. 'at price / near price / far from price' terciles + side from 'sigma above/below price'."
+ },
+ {
+  "new_id": "OPTIONS-11",
+  "title": "Heaviest strikes shifting",
+  "answered_by": "code_L2",
+  "method": "label",
+  "source": "gex.walls_since_30min",
+  "options": [
+   "both moved up",
+   "both moved down",
+   "pulled in",
+   "spread out",
+   "stand still"
+  ],
+  "rank_against": "fixed rule (no ranking)",
+  "history_sessions": 0,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "stand still",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "gex.walls_since_30min": "over the last 30 minutes neither heavy strike of today's same-day book has moved: the call-side and the put-side strikes both stayed put"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "stand still",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "gex.walls_since_30min": "over the last 30 minutes neither heavy strike of today's same-day book has moved: the call-side and the put-side strikes both stayed put"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "spread out",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "gex.walls_since_30min": "over the last 30 minutes the call-side heavy strike of today's same-day book stayed put and the put-side strike moved down 0.11 sigma, so the two are further apart"
+    }
+   }
+  ],
+  "notes": "parse which strike moved which way; both same way = both up/down, else 'closer together' = pulled in, 'further apart' = spread out."
+ },
+ {
+  "new_id": "BREADTH-01",
+  "title": "Equal-weight vs cap-weight",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "leaders.equal_weight_vs_cap_30m",
+  "options": [
+   "more up",
+   "as expected",
+   "more down"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "as expected",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "leaders.equal_weight_vs_cap_30m": "equal-weight RSP usually moves 0.77 times the index (SPY), so +0.02 sigma was expected over the last 30 minutes; it rose 0.04 sigma, 0.03 sigma above that, by size higher than 5 of the last 19 sessions at this minute, bottom third: no split"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "as expected",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "leaders.equal_weight_vs_cap_30m": "equal-weight RSP usually moves 0.82 times the index (SPY), so -0.13 sigma was expected over the last 30 minutes; it fell 0.14 sigma, 0.00 sigma below that, by size higher than 1 of the last 19 sessions at this minute, bottom third: no split"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "as expected",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "leaders.equal_weight_vs_cap_30m": "equal-weight RSP usually moves 0.82 times the index (SPY), so -0.11 sigma was expected over the last 30 minutes; it fell 0.09 sigma, 0.03 sigma above that, by size higher than 7 of the last 19 sessions at this minute, middle third: no split"
+    }
+   }
+  ],
+  "notes": "rank is of the size of the gap ('by size higher than k of n'); top third + 'above/below that' = more up/down."
+ },
+ {
+  "new_id": "BREADTH-04",
+  "title": "Sector lockstep",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "sectors.agreement_30m",
+  "options": [
+   "more together",
+   "about usual",
+   "less together"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "less together",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "sectors.agreement_30m": "over the last 30 minutes 3 of 11 sector funds moved the index's way, each by a move above the bottom third of its own at this minute; that count is higher than 5 of the last 20 sessions at this minute, bottom third: not one way; sector dispersion beyond each fund's usual multiple was 0.09 sigma, higher than 4 of the last 19 sessions at this minute, bottom third: not wide"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "about usual",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "sectors.agreement_30m": "over the last 30 minutes 7 of 11 sector funds moved the index's way, each by a move above the bottom third of its own at this minute; that count is higher than 13 of the last 20 sessions at this minute, middle third: not one way; sector dispersion beyond each fund's usual multiple was 0.11 sigma, higher than 4 of the last 19 sessions at this minute, bottom third: not wide"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "more together",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "sectors.agreement_30m": "over the last 30 minutes 7 of 11 sector funds moved the index's way, each by a move above the bottom third of its own at this minute; that count is higher than 14 of the last 20 sessions at this minute, top third: one way; sector dispersion beyond each fund's usual multiple was 0.10 sigma, higher than 9 of the last 19 sessions at this minute, middle third: not wide"
+    }
+   }
+  ],
+  "notes": "first tercile is the count of funds moving the index's way; a dispersion tercile follows as a second clause."
+ },
+ {
+  "new_id": "BREADTH-05",
+  "title": "Cyclicals vs defensives rotation",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "leaders.rotation_30m",
+  "options": [
+   "beat",
+   "match",
+   "lag"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "lag",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "leaders.rotation_30m": "over the last 30 minutes, after allowing for each sector's usual link to the index, financials, discretionary and industrials trailed utilities, staples and health care by 0.08 sigma, higher than 1 of the last 19 sessions at this minute, bottom third: the defensives ahead"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "lag",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "leaders.rotation_30m": "over the last 30 minutes, after allowing for each sector's usual link to the index, financials, discretionary and industrials trailed utilities, staples and health care by 0.18 sigma, higher than 4 of the last 19 sessions at this minute, bottom third: the defensives ahead"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "match",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "leaders.rotation_30m": "over the last 30 minutes, after allowing for each sector's usual link to the index, financials, discretionary and industrials trailed utilities, staples and health care by 0.05 sigma, higher than 7 of the last 19 sessions at this minute, middle third: level"
+    }
+   }
+  ],
+  "notes": "exact match: 'the sensitive sectors ahead / level / the defensives ahead'."
+ },
+ {
+  "new_id": "BREADTH-06",
+  "title": "Semis lead beyond SPX",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "leaders.semis_vs_index_30m (live); tells.sector_lead_10m SMH clause (tape)",
+  "options": [
+   "more up",
+   "in line",
+   "more down"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "in line",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "leaders.semis_vs_index_30m": "chips (SMH) usually move 1.7 times the index; over the last 30 minutes they beat that by 0.15 sigma, in line: between the top and bottom fifths for this half hour, higher than 15 of the last 19 sessions at this minute"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "more down",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "leaders.semis_vs_index_30m": "chips (SMH) usually move 1.8 times the index; over the last 30 minutes they trailed that by 0.15 sigma, ahead downward: in the bottom fifth for this half hour, higher than 3 of the last 19 sessions at this minute"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "more up",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "leaders.semis_vs_index_30m": "chips (SMH) usually move 1.8 times the index; over the last 30 minutes they beat that by 0.16 sigma, ahead upward: in the top fifth for this half hour, higher than 16 of the last 19 sessions at this minute"
+    }
+   }
+  ],
+  "notes": "fifths: top fifth more up, between in line, bottom fifth more down. Tape lane: first clause of tells.sector_lead_10m (multi-clause sentence, one per sector)."
+ },
+ {
+  "new_id": "BREADTH-11",
+  "title": "Opening breadth vs the gap (tape lane)",
+  "answered_by": "code_L1",
+  "method": "market_value",
+  "source": "$ADD (market_context, derived live from $ADVN - $DECN since 88c7adc) x sign of gap.size; compare with prior mornings' $ADD at the same minute regressed on gap size (context_bars $ADD).",
+  "options": [
+   "more than usual",
+   "about as usual",
+   "less than usual"
+  ],
+  "rank_against": "this time of day on prior sessions, conditional on gap size",
+  "history_sessions": 20,
+  "backfill_ok": "partial",
+  "examples": [
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "$ADD -311 x gap side +1 = -311 (compare with prior mornings' $ADD for a gap that size)",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "gap.size": "this morning's gap of 0.27 sigma is larger than 8 of the last 19 days' gaps, middle third: price opened above yesterday's close, measured at 09:35 because the 09:30 print uses stale prices; 1.0 times this morning's same-day straddle"
+    }
+   },
+   {
+    "read": "live 2026-10-01T10:30",
+    "answer": "$ADD -1036 x gap side +1 = -1036 (compare with prior mornings' $ADD for a gap that size)",
+    "row_ts": "2026-10-01T10:30:22.037041-04:00",
+    "labels": {
+     "gap.size": "this morning's gap of 0.20 sigma is larger than 6 of the last 20 days' gaps, bottom third: price opened above yesterday's close, measured at 09:35 because the 09:30 print uses stale prices; 0.8 times this morning's same-day straddle"
+    }
+   },
+   {
+    "read": "live 2026-10-02T14:31",
+    "answer": "$ADD +713 x gap side +1 = +713 (compare with prior mornings' $ADD for a gap that size)",
+    "row_ts": "2026-10-02T14:31:20.839665-04:00",
+    "labels": {
+     "gap.size": "this morning's gap of 0.83 sigma is larger than 19 of the last 20 days' gaps, top third: price opened above yesterday's close, measured at 09:35 because the 09:30 print uses stale prices; 2.7 times this morning's same-day straddle"
+    }
+   }
+  ],
+  "notes": "no label: breadth.opening_tick is NYSE TICK, not $ADD. Archive has $ADD on tape reads only from 09-30 (5 days); history must come from store context_bars ($ADD from 08-11, 40 sessions, next-day clean). Same-day Schwab $ADD is wrong, so only the derived value is usable live."
+ },
+ {
+  "new_id": "FLOW-01",
+  "title": "Stretch from VWAP",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "price.vs_vwap",
+  "options": [
+   "far below",
+   "near below",
+   "at",
+   "near above",
+   "far above"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "at",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "price.vs_vwap": "price is 0.04 sigma below the day's volume-weighted average price, further from it than 6 of the last 19 sessions at this minute, bottom third: at the average; it last traded at the average 5 minutes ago"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "far below",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "price.vs_vwap": "price is 0.23 sigma below the day's volume-weighted average price, further from it than 14 of the last 19 sessions at this minute, top third: far from it; it last traded at the average 34 minutes ago"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "near below",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "price.vs_vwap": "price is 0.09 sigma below the day's volume-weighted average price (VWAP), further from it than 10 of the last 19 sessions at this minute, middle third: away from it; it last traded at VWAP 17 minutes ago"
+    }
+   }
+  ],
+  "notes": "side + tercile ('at VWAP / away from it / far from it'). Units are the read's sigma ruler, as asked."
+ },
+ {
+  "new_id": "FLOW-03",
+  "title": "Thin SPY book",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "liquidity.spy_quote (second clause)",
+  "options": [
+   "thin",
+   "normal",
+   "thick"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "thin",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "liquidity.spy_quote": "over the last 5 minutes SPY's quoted spread has been 2 cents, wider than on 3 of the last 20 sessions at this minute, bottom third: its usual width for this time; the size showing at SPY's best bid and offer combined is between the bottom and top fifths for 15:00, higher than 11 of the last 20 sessions at this minute"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "thin",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "liquidity.spy_quote": "over the last 5 minutes SPY's quoted spread has been 2 cents, wider than on 1 of the last 20 sessions at this minute, bottom third: its usual width for this time; the size showing at SPY's best bid and offer combined is between the bottom and top fifths for 11:31, higher than 13 of the last 20 sessions at this minute"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "thin",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "liquidity.spy_quote": "over the last 5 minutes SPY's quoted spread has been 2 cents, wider than on 1 of the last 20 sessions at this minute, bottom third: its usual width for this time; the size showing at SPY's best bid and offer combined is in the bottom fifth for 13:30, higher than 3 of the last 20 sessions at this minute"
+    }
+   }
+  ],
+  "notes": "second clause 'the size showing at SPY's best bid and offer combined is in the bottom fifth / between / in the top fifth for HH:MM'."
+ },
+ {
+  "new_id": "FLOW-08",
+  "title": "Opening type",
+  "answered_by": "code_L2",
+  "method": "bars",
+  "source": "09:30-09:59 1-min bars; references: prior session high/low (store spx_bars) and overnight /ES high/low converted to SPX by the 09:30 /ES-SPX basis (state/spx_jev/overnight). Drive = opens in the outer 10% of the 30-min range and closes in the opposite 20% without trading back through the open; test-then-drive = first tags a reference level (within a fixed tolerance) then closes in the far 20% the other way; else rotation.",
+  "options": [
+   "drive",
+   "test-then-drive",
+   "rotation"
+  ],
+  "rank_against": "fixed rule (no ranking)",
+  "history_sessions": 1,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "open at 100% of 09:30-10:00 range, close at 61% (apply drive / test-drive / rotation rules vs prior-day and overnight H/L)",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {}
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "open at 100% of 09:30-10:00 range, close at 4% (apply drive / test-drive / rotation rules vs prior-day and overnight H/L)",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {}
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "open at 0% of 09:30-10:00 range, close at 99% (apply drive / test-drive / rotation rules vs prior-day and overnight H/L)",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {}
+   }
+  ],
+  "notes": "rules are not written anywhere yet; thresholds above are a draft. Answer is fixed from 10:00 for the rest of the day."
+ },
+ {
+  "new_id": "MACRO-08",
+  "title": "When the overnight range was built",
+  "answered_by": "code_L1",
+  "method": "bars",
+  "source": "overnight /ES 1-min bars (state/spx_jev/overnight/{day}.jsonl, session != regular) from the 18:00 reopen to the read: late_share = 1 - range(bars before 03:00)/range(all bars); 'late' if late_share > the median of prior nights to the same time.",
+  "options": [
+   "mostly late (after 03:00)",
+   "mostly Asia"
+  ],
+  "rank_against": "prior nights to this time",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "22% of the night's /ES range was added after 03:00 (rank vs prior nights to this time)",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {}
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "33% of the night's /ES range was added after 03:00 (rank vs prior nights to this time)",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {}
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "54% of the night's /ES range was added after 03:00 (rank vs prior nights to this time)",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {}
+   }
+  ],
+  "notes": "overnight.gap_origin names the most unusual stretch, not the share of range built late. Store overnight_bars goes back to 03-05 (149 nights)."
+ },
+ {
+  "new_id": "MACRO-09",
+  "title": "Overnight legs agree on direction",
+  "answered_by": "code_L2",
+  "method": "label",
+  "source": "premarket.legs (premarket lane)",
+  "options": [
+   "all agree",
+   "split, latest with the night",
+   "latest turned against",
+   "one leg moved",
+   "night quiet"
+  ],
+  "rank_against": "fixed rule (no ranking)",
+  "history_sessions": 19,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "premarket 2026-09-28T09:28",
+    "answer": "split, latest with the night",
+    "row_ts": "2026-09-28T09:28:05-04:00",
+    "labels": {
+     "premarket.legs": "oldest first: after hours quiet; Asia down 0.51 sigma; Europe's open and Europe's morning quiet; 08:00-08:30 up 0.09; 08:30-08:45 up 0.05; since 08:45 down 0.09 so far. 4 moved, split; the latest with the night's fall"
+    }
+   },
+   {
+    "read": "premarket 2026-09-29T09:28",
+    "answer": "night quiet",
+    "row_ts": "2026-09-29T09:28:00-04:00",
+    "labels": {
+     "premarket.legs": "oldest first: after hours and Asia quiet; Europe's open up 0.06 sigma; Europe's morning up 0.24; 08:00-08:30 down 0.05; 08:30-08:45 quiet; since 08:45 quiet so far. The night's net move is quiet, bottom third for this time"
+    }
+   },
+   {
+    "read": "premarket 2026-09-30T09:28",
+    "answer": "latest turned against",
+    "row_ts": "2026-09-30T09:28:04-04:00",
+    "labels": {
+     "premarket.legs": "oldest first: after hours up 0.08 sigma; Asia quiet; Europe's open up 0.09; Europe's morning down 0.18; before the report quiet; the report window up 0.31; since 08:45 down 0.04 so far. 5 moved; the latest against the night's rise"
+    }
+   }
+  ],
+  "notes": "FREE TEXT: verdict is the tail after 'so far.' ('N moved, all with the night's rise: one way' / 'split; the latest with...' / 'the latest against...' / 'Only one finished leg' / 'net move is quiet'). Legs judged 'moved' vs prior nights' same stretch."
+ },
+ {
+  "new_id": "MACRO-10",
+  "title": "Overnight path since the night's move (premarket)",
+  "answered_by": "code_L2",
+  "method": "label",
+  "source": "premarket.arc + premarket.since_checkpoint (premarket lane)",
+  "options": [
+   "built",
+   "held",
+   "faded",
+   "reversed",
+   "no real move"
+  ],
+  "rank_against": "prior nights to this time",
+  "history_sessions": 19,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "premarket 2026-09-28T09:28",
+    "answer": "held; since checkpoint added",
+    "row_ts": "2026-09-28T09:28:05-04:00",
+    "labels": {
+     "premarket.arc": "futures are 0.46 sigma below their 16:00 price; the night's first leg that moved was Asia, down 0.51 sigma, top third; they keep 92% of it: the first move held",
+     "premarket.since_checkpoint": "futures are 0.46 sigma below their 16:00 price; since the 09:05 checkpoint they fell 0.05 sigma, middle third for 09:05-09:28 over the last 19 nights, with the night's fall before it: the latest leg added"
+    }
+   },
+   {
+    "read": "premarket 2026-09-29T09:28",
+    "answer": "built; since checkpoint small / no verdict",
+    "row_ts": "2026-09-29T09:28:00-04:00",
+    "labels": {
+     "premarket.arc": "futures are 0.17 sigma above their 16:00 price; the night's first leg that moved was Europe's open, up 0.06 sigma, middle third; they keep 266% of it: later trading built on it",
+     "premarket.since_checkpoint": "futures are 0.17 sigma above their 16:00 price; since the 09:05 checkpoint they rose 0.07 sigma, middle third for 09:05-09:28 over the last 19 nights, with the night's rise before it"
+    }
+   },
+   {
+    "read": "premarket 2026-09-30T09:28",
+    "answer": "built; since checkpoint gave back",
+    "row_ts": "2026-09-30T09:28:04-04:00",
+    "labels": {
+     "premarket.arc": "futures are 0.30 sigma above their 16:00 price; the night's first leg that moved was after hours, up 0.08 sigma, top third; they keep 396% of it: later trading built on it",
+     "premarket.since_checkpoint": "futures are 0.30 sigma above their 16:00 price; since the 09:05 checkpoint they fell 0.08 sigma, middle third for 09:05-09:28 over the last 19 nights, against the night's rise before it: the latest leg gave back"
+    }
+   }
+  ],
+  "notes": "arc verdict words fixed in story.py (built/held/faded/reversed); checkpoint verdict 'the latest leg added / gave back / crossed their 16:00 price' (absent when the leg is small)."
+ },
+ {
+  "new_id": "EVENTS-04",
+  "title": "State after an unscheduled burst",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "shock.burst + shock.vs_day_range",
+  "options": [
+   "fresh",
+   "round-tripped",
+   "settling"
+  ],
+  "rank_against": "fixed rule (no ranking)",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T14:01",
+    "answer": "settling; no new extreme",
+    "row_ts": "2026-09-28T14:01:02.703384-04:00",
+    "labels": {
+     "shock.burst": "47 minutes ago price fell 0.19 sigma in 5 minutes, larger than the biggest five-minute move of the hour to that minute on 19 of the last 19 sessions, past the shock rule; not at a scheduled release time; the burst ended 42 minutes ago, older than the 10-minute fresh window; since then price has given back none of it, within the half line",
+     "shock.vs_day_range": "the shock stayed inside the day's earlier range: its low stopped 0.47 sigma short of the earlier session low"
+    }
+   },
+   {
+    "read": "live 2026-10-01T10:30",
+    "answer": "settling; new extreme held",
+    "row_ts": "2026-10-01T10:30:22.037041-04:00",
+    "labels": {
+     "shock.burst": "33 minutes ago price fell 0.25 sigma in 5 minutes, larger than the biggest five-minute move from the settled open to that minute on 20 of the last 20 sessions, past the shock rule; inside the first 15 minutes after the ISM manufacturing report at 10:00; the burst ended 28 minutes ago, older than the 10-minute fresh window; since then price has given back 12% of it, within the half line",
+     "shock.vs_day_range": "the shock took price to a new session low, 0.22 sigma under the earlier low, which price has since pushed 0.03 sigma further, and price is 0.07 sigma above that new low, farther from it than 5 of the last 20 sessions sat from their own session low at this minute, bottom third, so it is still at the new extreme"
+    }
+   },
+   {
+    "read": "live 2026-10-02T10:31",
+    "answer": "round-tripped; no new extreme",
+    "row_ts": "2026-10-02T10:31:00.140098-04:00",
+    "labels": {
+     "shock.burst": "41 minutes ago price fell 0.25 sigma in 5 minutes, larger than the biggest five-minute move from the settled open to that minute on 20 of the last 20 sessions, past the shock rule; not at a scheduled release time; the burst ended 36 minutes ago, older than the 10-minute fresh window; since then price has given back 100% of it, past the half line",
+     "shock.vs_day_range": "the shock stayed inside the day's earlier range: its low stopped 0.00 sigma short of the earlier session low"
+    }
+   }
+  ],
+  "notes": "FREE TEXT: fresh = 'inside the 10-minute fresh window'; round-tripped = 'given back N%, past the half line'; else settling. Extreme from shock.vs_day_range ('stayed inside' / 'still at the new extreme' / above it = given up). Only 3 of 7 live days had a shock."
+ },
+ {
+  "new_id": "SESSION-01",
+  "title": "Expiry and quarter-end calendar",
+  "answered_by": "code_L2",
+  "method": "label",
+  "source": "calendar.expiry_phase + calendar.month_turn + expiry.opex_today",
+  "options": [
+   "quarter-end",
+   "monthly/quarterly expiry day",
+   "OPEX week",
+   "week after OPEX",
+   "ordinary"
+  ],
+  "rank_against": "fixed rule (no ranking)",
+  "history_sessions": 0,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "ordinary",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "calendar.expiry_phase": "today, Monday 28 September, has only the daily SPXW expiry; the 16 October monthly is 14 trading days away, outside the 4-day opex-week window; the 18 September monthly was 6 trading days ago, outside the 5-day after-opex window; an ordinary day in the expiry cycle",
+     "calendar.month_turn": "today, Monday 28 September, is the 19th trading day of September with 2 trading days left after it, outside the month's first 3 and last 2 trading days",
+     "expiry.opex_today": "today is an ordinary daily expiry; the next monthly expiry is 14 trading days away"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "ordinary",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "calendar.expiry_phase": "today, Tuesday 29 September, has only the daily SPXW expiry; the 16 October monthly is 13 trading days away, outside the 4-day opex-week window; the 18 September monthly was 7 trading days ago, outside the 5-day after-opex window; an ordinary day in the expiry cycle",
+     "calendar.month_turn": "today, Tuesday 29 September, is the second-to-last trading day of the month, inside the month's last 2 trading days",
+     "expiry.opex_today": "today is an ordinary daily expiry; the next monthly expiry is 13 trading days away"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "quarter-end",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "calendar.expiry_phase": "today, Wednesday 30 September, is the quarter's last trading day: the quarter-end SPXW options settle at today's 16:00 close; the 16 October monthly is 12 trading days away, outside the 4-day opex-week window; the 18 September monthly was 8 trading days ago, outside the 5-day after-opex window",
+     "calendar.month_turn": "today, Wednesday 30 September, is the last trading day of the month and of the quarter, inside the month's last 2 trading days; the next session is the first trading day of October",
+     "expiry.opex_today": "today is an ordinary daily expiry; the next monthly expiry is 12 trading days away; it is also the quarter's last trading day, when the quarter-end SPXW options settle at the close"
+    }
+   }
+  ],
+  "notes": "calendar-only, no market data; backfill is trivial for any date."
+ },
+ {
+  "new_id": "SENTIMENT-01",
+  "title": "Bitcoin running ahead of SPX",
+  "answered_by": "code_L1",
+  "method": "label",
+  "source": "xasset.btc_gap_30min (+ xasset.btc_link, xasset.btc_gap_streak as context)",
+  "options": [
+   "ahead up",
+   "in line",
+   "ahead down"
+  ],
+  "rank_against": "this time of day on prior sessions",
+  "history_sessions": 20,
+  "backfill_ok": true,
+  "examples": [
+   {
+    "read": "live 2026-09-28T15:00",
+    "answer": "in line",
+    "row_ts": "2026-09-28T15:00:41.467668-04:00",
+    "labels": {
+     "xasset.btc_gap_30min": "over the last 30 minutes bitcoin futures (/MBT) rose 0.6 times its normal half-hour gap more than the index's move usually brings it, between the top and bottom fifths for this half hour, higher than 13 of the last 20 sessions at this minute; over the last 20 sessions bitcoin up has gone with stocks up, so bitcoin is in line with the index"
+    }
+   },
+   {
+    "read": "live 2026-09-29T11:31",
+    "answer": "ahead down (contrarian: lean up)",
+    "row_ts": "2026-09-29T11:31:21.301078-04:00",
+    "labels": {
+     "xasset.btc_gap_30min": "over the last 30 minutes bitcoin futures (/MBT) fell 2.3 times its normal half-hour gap more than the index's move usually brings it, in the bottom fifth for this half hour, higher than 1 of the last 20 sessions at this minute; over the last 20 sessions bitcoin up has gone with stocks up, so bitcoin is ahead in the stocks-down direction"
+    }
+   },
+   {
+    "read": "live 2026-09-30T13:30",
+    "answer": "in line",
+    "row_ts": "2026-09-30T13:30:47.116114-04:00",
+    "labels": {
+     "xasset.btc_gap_30min": "over the last 30 minutes bitcoin futures (/MBT) rose 0.6 times its normal half-hour gap more than the index's move usually brings it, between the top and bottom fifths for this half hour, higher than 13 of the last 20 sessions at this minute; over the last 20 sessions bitcoin up has gone with stocks up, so bitcoin is in line with the index"
+    }
+   }
+  ],
+  "notes": "direction words 'ahead in the stocks-up / stocks-down direction / in line'; contrarian read applied downstream. Roll withholding: label is omitted across a /MBT roll."
+ }
+]

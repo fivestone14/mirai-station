@@ -8,22 +8,20 @@ the live hook never scans the store; the hook only adds today's row to it:
     graded_results (average_grades)  the result of that sum's window: up, flat or down, joined on (read_id, sum_id) - never on horizon
     jev_answers (answers)            layer 3: JEV's pick per question where status == "answered"; anything else is silent (None);
                                      the questions of one request group share one group, so a group casts one vote in the scorer
-    code_facts (facts)               interim layers 1-2 until the code feature builder exists:
-                                       layer 2 "fact:<name>"    a code label whose text takes few distinct values (a category, e.g. gap_open)
-                                       layer 1 "level:<symbol>" a market value ranked against that symbol's own earlier values:
-                                                                "low" (bottom 30%), "middle", "high" (top 30%); None with too little history
+    raw/code_features/{day}.jsonl    layers 1-2: the code feature builder's answer per catalog question ("code:<question_id>"),
+                                     this system's own raw record (code_features.py), joined on read_id; a read with no line
+                                     has None in every code column. Each column's layer and group come from the catalog.
 
-SHRINK FIRST, THEN JOIN: each long table is pivoted to one row per read before joining, so a read never multiplies
-(250 facts x 25 answers x 2 sums would be thousands of rows). The base is forecasts_at_read_time JOIN graded_results
-on (read_id, sum_id); the pivots are LEFT-joined onto it, so a read with no answers is kept with blanks, never dropped.
+SHRINK FIRST, THEN JOIN: each long table is pivoted to one row per read before joining, so a read never multiplies.
+The base is forecasts_at_read_time JOIN graded_results on (read_id, sum_id); the pivots are LEFT-joined onto it, so a
+read with no answers is kept with blanks, never dropped.
 
-WALK-FORWARD: build_answer_matrix(..., before_day) holds only reads from days strictly before ``before_day``, and a
-market value is ranked only against values from earlier DAYS (never the same day's earlier reads, so a training row is
-labelled exactly as a live row is), so nothing a learner sees comes from its own day or later.
+WALK-FORWARD: build_answer_matrix(..., before_day) holds only reads from days strictly before ``before_day``, and the
+code features of a read were computed from data known at its read time (prior sessions' history only), so nothing a
+learner sees comes from its own day or later.
 """
 from __future__ import annotations
 
-import bisect
 import json
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
@@ -31,14 +29,9 @@ from datetime import date
 from pathlib import Path
 
 from ..scores import OUTCOMES
+from .code_features import column_name, load_catalog
 from .name_map import store_path
-
-MAX_DISTINCT_LABEL_TEXTS = 8      # a code label with more distinct texts than this is free text, not a category
-MIN_HISTORY_FOR_RANK = 20         # a market value needs this many earlier values before it is ranked low / middle / high
-RANK_LOW_PERCENT = 30.0           # bottom 30% -> "low", top 30% -> "high", between -> "middle"
-RANK_HIGH_PERCENT = 70.0
-RANK_HISTORY_SESSIONS = 60        # rank against the trailing 60 sessions only
-LAYER_OF_PREFIX = {"level": 1, "fact": 2, "jev": 3}
+from .paths import CODE_FEATURES, RAW, data_root, read_json_lines
 
 
 @dataclass
@@ -68,7 +61,6 @@ class AnswerMatrix:
     built_for_day: str                        # every row's day is strictly before this
     rows: list[Row]
     columns: dict[str, dict]                  # column id -> {"layer": 1|2|3, "group": str, "family": str}
-    level_history: dict[str, list[tuple[str, float]]]   # symbol -> [(row_ts, value)] sorted by row_ts, for ranking new values
 
     def trainable_rows(self) -> list[Row]:
         return [r for r in self.rows if r.is_trainable()]
@@ -78,12 +70,12 @@ class AnswerMatrix:
 
     def to_json(self) -> dict:
         return {"lane": self.lane, "sum_id": self.sum_id, "built_for_day": self.built_for_day, "rows": [asdict(r) for r in self.rows],
-                "columns": self.columns, "level_history": self.level_history}
+                "columns": self.columns}
 
     @classmethod
     def from_json(cls, d: dict) -> "AnswerMatrix":
         return cls(lane=d["lane"], sum_id=d["sum_id"], built_for_day=d["built_for_day"], rows=[Row(**r) for r in d["rows"]],
-                   columns=d["columns"], level_history={s: [(ts, float(v)) for ts, v in series] for s, series in d["level_history"].items()})
+                   columns=d["columns"])
 
 
 # ---------------------------------------------------------------- reading the store
@@ -167,97 +159,36 @@ def load_jev_answers(state_dir: Path | str, lane: str, before_day: str) -> tuple
     return picks, group_of
 
 
-def load_code_facts(state_dir: Path | str, lane: str, before_day: str) -> tuple[dict[str, dict[str, str]], dict[str, str], dict[str, list[tuple[str, float]]]]:
-    """The code's written labels and market values before ``before_day``:
-    (read_id -> {name: text}, name -> family, symbol -> [(row_ts, value)] sorted by row_ts)."""
-    facts = _parquet_glob(store_path(state_dir, "code_facts"))
-    if facts is None:
-        return {}, {}, {}
-    sql = f"""
-        SELECT read_id, CAST(row_ts AS VARCHAR) AS row_ts, source, path, family, name, text, value
-        FROM read_parquet('{facts}', hive_partitioning=1)
-        WHERE lane = '{lane}' AND status = 'written' AND CAST(day AS VARCHAR) < '{before_day}'
-    """
-    labels: dict[str, dict[str, str]] = defaultdict(dict)
-    family_of: dict[str, str] = {}
-    levels: dict[str, list[tuple[str, float]]] = defaultdict(list)
-    for r in _query(sql):
-        if r["source"] == "label" and r["name"] and r["text"] is not None:
-            labels[r["read_id"]][r["name"]] = str(r["text"])
-            family_of[r["name"]] = r["family"] or "label"
-        elif r["source"] == "market_context" and r["path"] and r["value"] is not None:
-            try:
-                levels[r["path"]].append((str(r["row_ts"]), float(r["value"])))
-            except (TypeError, ValueError):
-                continue
-    for symbol in levels:
-        levels[symbol].sort()
-    return labels, family_of, levels
+def load_code_features(state_dir: Path | str, lane: str, before_day: str) -> dict[str, dict[str, str | None]]:
+    """read_id -> {question_id: answer} from this system's raw/code_features files for days before ``before_day``
+    (the last line for a read wins), for layers 1-2."""
+    folder = data_root(state_dir) / RAW / CODE_FEATURES
+    out: dict[str, dict[str, str | None]] = {}
+    for path in sorted(folder.glob("????-??-??.jsonl")) if folder.exists() else []:
+        if path.stem >= before_day:
+            continue
+        for line in read_json_lines(path):
+            if line.get("read_id") and line.get("lane", lane) == lane and isinstance(line.get("answers"), dict):
+                out[line["read_id"]] = line["answers"]
+    return out
 
 
-# ---------------------------------------------------------------- labels
+# ---------------------------------------------------------------- columns
 
-def categorical_label_names(labels_by_read: dict[str, dict[str, str]]) -> set[str]:
-    """The code labels whose text repeats (a category), not the ones that embed numbers (free text)."""
-    texts: dict[str, set[str]] = defaultdict(set)
-    for per_read in labels_by_read.values():
-        for name, text in per_read.items():
-            texts[name].add(text)
-    return {name for name, seen in texts.items() if 1 <= len(seen) <= MAX_DISTINCT_LABEL_TEXTS}
-
-
-def level_days(level_history: dict[str, list[tuple[str, float]]]) -> dict[str, list[str]]:
-    """symbol -> its sorted distinct days, so rank_label can cut the trailing sessions with a bisect."""
-    return {symbol: sorted({ts[:10] for ts, _ in series}) for symbol, series in level_history.items()}
-
-
-def rank_label(history: list[tuple[str, float]], days: list[str], row_ts: str, value: float) -> str | None:
-    """A value's place among the symbol's values from EARLIER DAYS (the trailing RANK_HISTORY_SESSIONS of them):
-    "low", "middle", "high", or None with fewer than MIN_HISTORY_FOR_RANK such values. ``days`` are the history's sorted
-    distinct days (level_days)."""
-    row_day = row_ts[:10]
-    cut = bisect.bisect_left(history, (row_day, float("-inf")))          # the first value on or after this read's day
-    earlier_days = bisect.bisect_left(days, row_day)
-    start = 0
-    if earlier_days > RANK_HISTORY_SESSIONS:
-        start = bisect.bisect_left(history, (days[earlier_days - RANK_HISTORY_SESSIONS], float("-inf")))
-    earlier = history[start:cut]
-    if len(earlier) < MIN_HISTORY_FOR_RANK:
-        return None
-    values = sorted(v for _, v in earlier)
-    below = bisect.bisect_left(values, value)
-    percent = 100.0 * below / len(values)
-    if percent < RANK_LOW_PERCENT:
-        return "low"
-    if percent >= RANK_HIGH_PERCENT:
-        return "high"
-    return "middle"
-
-
-def row_answers(row_ts: str, jev_answers: dict[str, str], labels: dict[str, str], label_names: set[str],
-                level_values: dict[str, float], level_history: dict[str, list[tuple[str, float]]],
-                days_by_symbol: dict[str, list[str]]) -> dict[str, str | None]:
-    """One read's answers across the layers, keyed by column id."""
-    out: dict[str, str | None] = {}
-    for name in label_names:
-        out[f"fact:{name}"] = labels.get(name)
-    for symbol, value in level_values.items():
-        out[f"level:{symbol}"] = rank_label(level_history.get(symbol, []), days_by_symbol.get(symbol, []), row_ts, value)
+def row_answers(code_answers: dict[str, str | None], jev_answers: dict[str, str]) -> dict[str, str | None]:
+    """One read's answers across the layers, keyed by column id: every catalog question (None when unanswered), then JEV's picks."""
+    out: dict[str, str | None] = {column_name(q["id"]): code_answers.get(q["id"]) for q in load_catalog()}
     for qid, pick in jev_answers.items():
         out[f"jev:{qid}"] = pick
     return out
 
 
-def column_catalog(label_names: set[str], family_of: dict[str, str], symbols: set[str], question_ids: set[str],
-                   group_of_question: dict[str, str]) -> dict[str, dict]:
-    """Every column with its layer, group and family. A layer-3 question's group is its request group (the questions JEV
-    was asked together), so the scorer takes one vote per group; a layer 1-2 column is its own group until the code feature
-    builder names its groups."""
+def column_catalog(question_ids: set[str], group_of_question: dict[str, str]) -> dict[str, dict]:
+    """Every column with its layer, group and family: the code features' layer and group are the catalog's (layers 1-2);
+    a layer-3 question's group is its request group (the questions JEV was asked together), so the scorer takes one vote per group."""
     cols: dict[str, dict] = {}
-    for symbol in sorted(symbols):
-        cols[f"level:{symbol}"] = {"layer": 1, "group": f"level:{symbol}", "family": "market_level"}
-    for name in sorted(label_names):
-        cols[f"fact:{name}"] = {"layer": 2, "group": f"fact:{name}", "family": family_of.get(name, "label")}
+    for q in load_catalog():
+        cols[column_name(q["id"])] = {"layer": int(q["layer"]), "group": q["group"], "family": q["method"]}
     for qid in sorted(question_ids):
         cols[f"jev:{qid}"] = {"layer": 3, "group": f"jev:{group_of_question.get(qid, qid)}", "family": "jev"}
     return cols
@@ -269,67 +200,41 @@ def build_answer_matrix(state_dir: Path | str, lane: str, sum_id: str, before_da
     """The matrix for one lane and sum, holding reads from days strictly before ``before_day`` (YYYY-MM-DD)."""
     base = load_base_rows(state_dir, lane, sum_id, before_day)
     jev_answers, group_of_question = load_jev_answers(state_dir, lane, before_day)
-    labels, family_of, level_history = load_code_facts(state_dir, lane, before_day)
-    label_names = categorical_label_names(labels)
-    days_by_symbol = level_days(level_history)
-    value_at: dict[str, dict[str, float]] = defaultdict(dict)       # read_id -> symbol -> value (this read's own value)
-    ts_of = {r.read_id: r.row_ts for r in base}
-    for symbol, series in level_history.items():
-        by_ts = dict(series)
-        for read_id, ts in ts_of.items():
-            if ts in by_ts:
-                value_at[read_id][symbol] = by_ts[ts]
+    code_answers = load_code_features(state_dir, lane, before_day)
     question_ids = {q for per_read in jev_answers.values() for q in per_read}
+    columns = column_catalog(question_ids, group_of_question)
     for row in base:
-        row.answers = row_answers(row.row_ts, jev_answers.get(row.read_id, {}), labels.get(row.read_id, {}),
-                                  label_names, value_at.get(row.read_id, {}), level_history, days_by_symbol)
-    columns = column_catalog(label_names, family_of, set(level_history), question_ids, group_of_question)
-    for row in base:
+        row.answers = row_answers(code_answers.get(row.read_id, {}), jev_answers.get(row.read_id, {}))
         for col in columns:
             row.answers.setdefault(col, None)
-    return AnswerMatrix(lane=lane, sum_id=sum_id, built_for_day=before_day, rows=base, columns=columns,
-                        level_history=dict(level_history))
+    return AnswerMatrix(lane=lane, sum_id=sum_id, built_for_day=before_day, rows=base, columns=columns)
 
 
 # ---------------------------------------------------------------- today's read (for the live hook)
 
-def todays_rows(state_dir: Path | str, lane: str, day: str, read_id: str | None, matrix_by_sum: dict[str, AnswerMatrix],
-                read_record: dict | None = None, hour_record: dict | None = None) -> dict[str, Row]:
+def todays_rows(state_dir: Path | str, lane: str, day: str, read_record: dict, matrix_by_sum: dict[str, AnswerMatrix],
+                code_answers: dict[str, str | None], hour_record: dict | None = None) -> dict[str, Row]:
     """One ungraded Row per sum for a read made today, built from the raw archive record exactly as the store would
-    (spx_jev.store._read_rows), with labels ranked against the matrices' history. ``matrix_by_sum`` is {sum_id: matrix}
-    built for today. The records are read from the lane's files, or taken from ``read_record`` / ``hour_record`` when the
-    service passes them before they are written. Returns {sum_id: Row}; empty when the record cannot be found or has no sums."""
+    (spx_jev.store._read_rows), with the code feature builder's answers for the read and JEV's picks. ``matrix_by_sum`` is
+    {sum_id: matrix} built for today. The hour record is read from the lane's file unless the service passes it before
+    it is written. Returns {sum_id: Row}; empty when the record has no sums."""
     from .. import store
-    from .live_records import load_archive_read, load_hour_records
-    rec = read_record if read_record is not None else load_archive_read(state_dir, lane, day, read_id)
-    if rec is None:
-        return {}
-    row_ts = rec.get("row_ts")
+    from .live_records import load_hour_records
+    row_ts = read_record.get("row_ts")
     hour_rec = hour_record if hour_record is not None else load_hour_records(state_dir, lane, day).get(row_ts)
     hours = {(lane, row_ts): hour_rec} if hour_rec else {}
-    parts = store._read_rows(date.fromisoformat(day), "live", rec, {}, hours)       # "live" is the store's label for a read record
+    parts = store._read_rows(date.fromisoformat(day), "live", read_record, {}, hours)       # "live" is the store's label for a read record
     jev = {a["question_id"]: str(a["pick"]) for a in parts["answers"] if a.get("status") == "answered" and a.get("pick") is not None}
-    labels = {f["name"]: str(f["text"]) for f in parts["facts"] if f.get("source") == "label" and f.get("status") == "written" and f.get("text") is not None}
-    levels = {}
-    for f in parts["facts"]:
-        if f.get("source") == "market_context" and f.get("value") is not None:
-            try:
-                levels[f["path"]] = float(f["value"])
-            except (TypeError, ValueError):
-                pass
     out: dict[str, Row] = {}
-    days_by_symbol_of: dict[str, dict[str, list[str]]] = {}
     for call in parts["calls"]:
         sum_id = call["sum_id"]
         matrix = matrix_by_sum.get(sum_id)
         if matrix is None:
             continue
-        days_by_symbol = days_by_symbol_of.setdefault(sum_id, level_days(matrix.level_history))
-        label_names = {c[len("fact:"):] for c in matrix.columns if c.startswith("fact:")}
-        answers = row_answers(row_ts, jev, labels, label_names, levels, matrix.level_history, days_by_symbol)
+        answers = row_answers(code_answers, jev)
         for col in matrix.columns:
             answers.setdefault(col, None)
-        out[sum_id] = Row(read_id=rec["read_id"], row_ts=row_ts, day=day, sum_id=sum_id,
+        out[sum_id] = Row(read_id=read_record["read_id"], row_ts=row_ts, day=day, sum_id=sum_id,
                           historical_odds_probs=_probs(call.get("clock_probs")), jev_own_probs=_probs(call.get("jev_probs")),
                           shown_probs=_probs(call.get("shown_probs")), pool_v1_probs=_probs(call.get("pool_probs")),
                           outcome=None, learn_exclude=bool(call.get("learn_exclude")), answers=answers,

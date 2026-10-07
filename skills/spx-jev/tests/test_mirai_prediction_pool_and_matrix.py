@@ -1,4 +1,4 @@
-"""pool_v2's mix and update against pool_v1's own rules; the answer matrix's labels and walk-forward; the voices."""
+"""pool_v2's mix and update against pool_v1's own rules; the answer matrix's columns; the voices."""
 from __future__ import annotations
 
 import math
@@ -7,7 +7,8 @@ import pytest
 
 from spx_jev import pool as pool_v1
 from spx_jev.mirai_prediction import pool_v2
-from spx_jev.mirai_prediction.answer_matrix import Row, categorical_label_names, level_days, rank_label, row_answers
+from spx_jev.mirai_prediction.answer_matrix import Row, column_catalog, row_answers
+from spx_jev.mirai_prediction.code_features import load_catalog
 from spx_jev.mirai_prediction.name_map import rename_voice, store_path
 from spx_jev.mirai_prediction.voices import existing_voice_forecasts
 from spx_jev.scores import floored, losses
@@ -97,39 +98,19 @@ def test_zero_start_weight_is_refused():
 
 # ---------------------------------------------------------------- answer matrix
 
-def test_rank_label_uses_only_earlier_days():
-    history = [(f"2026-09-{d:02d}T10:00:00", float(d)) for d in range(1, 29)]
-    days = level_days({"x": history})["x"]
-    assert rank_label(history, days, "2026-09-29T10:00:00", 1.0) == "low"
-    assert rank_label(history, days, "2026-09-29T10:00:00", 28.0) == "high"
-    assert rank_label(history, days, "2026-09-29T10:00:00", 14.0) == "middle"
-    assert rank_label(history, days, "2026-09-05T10:00:00", 2.0) is None           # too few earlier values
-    assert rank_label(history, days, "2026-09-10T10:00:00", 100.0) is None         # still under the minimum history
-    # the same day's earlier reads never count: a 09:00 read on 09-28 sees only 27 values, the 10:00 read's included
-    two_a_day = sorted(history + [(f"2026-09-{d:02d}T09:00:00", 100.0) for d in range(1, 29)])
-    days = level_days({"x": two_a_day})["x"]
-    assert rank_label(two_a_day, days, "2026-09-28T09:30:00", 50.0) == rank_label(two_a_day, days, "2026-09-28T15:30:00", 50.0)
-
-
-def test_rank_label_keeps_only_the_trailing_sessions():
-    from spx_jev.mirai_prediction.answer_matrix import RANK_HISTORY_SESSIONS
-    old = [(f"2025-01-{d:02d}T10:00:00", 1000.0) for d in range(1, 29)]                 # far earlier, huge values
-    recent = [(f"2026-0{m}-{d:02d}T10:00:00", float(d)) for m in (7, 8, 9) for d in range(1, 29)]
-    history = old + recent
-    days = level_days({"x": history})["x"]
-    assert len(recent) // 28 * 28 > 0 and len({ts[:10] for ts, _ in recent}) > RANK_HISTORY_SESSIONS
-    assert rank_label(history, days, "2026-10-01T10:00:00", 27.0) == "high"           # the old 1000s are out of the window
-
-
-def test_categorical_labels_are_the_ones_with_few_distinct_texts():
-    labels = {f"r{i}": {"gap": "no gap" if i % 2 else "gap up", "note": f"text {i}"} for i in range(30)}
-    assert categorical_label_names(labels) == {"gap"}
-
-
 def test_row_answers_keys_and_silence():
-    history = {"$VIX": [(f"2026-09-{d:02d}T10:00:00", 15.0 + d) for d in range(1, 29)]}
-    out = row_answers("2026-09-30T10:00:00", {"q1": "yes"}, {"gap": "no gap"}, {"gap", "burst"}, {"$VIX": 40.0}, history, level_days(history))
-    assert out == {"fact:gap": "no gap", "fact:burst": None, "level:$VIX": "high", "jev:q1": "yes"}
+    out = row_answers({"TREND-01": "big up", "LEVELS-01": None}, {"q1": "yes"})
+    assert out["code:TREND-01"] == "big up" and out["code:LEVELS-01"] is None and out["jev:q1"] == "yes"
+    assert {c for c in out if c.startswith("code:")} == {f"code:{q['id']}" for q in load_catalog()}      # every question, answered or not
+    assert not any(c.startswith(("level:", "fact:")) for c in out)
+
+
+def test_column_catalog_layers_and_groups_come_from_the_catalog():
+    cols = column_catalog({"q1", "q2"}, {"q1": "g"})
+    assert cols["code:TREND-01"] == {"layer": 1, "group": "trend/last_30m_move", "family": "label"}
+    assert cols["code:TREND-10"]["layer"] == 2 and cols["code:LEVELS-03"]["group"] == cols["code:TREND-10"]["group"]
+    assert cols["jev:q1"] == {"layer": 3, "group": "jev:g", "family": "jev"} and cols["jev:q2"]["group"] == "jev:q2"
+    assert not any(c.startswith(("level:", "fact:")) for c in cols)
 
 
 def test_store_names_map_to_the_live_folders(tmp_path):

@@ -1,0 +1,968 @@
+[
+ {
+  "id": "TREND-01",
+  "title": "Last 30-minute move, signed",
+  "layer": 1,
+  "group": "trend/last_30m_move",
+  "method": "label",
+  "source": "price.recent_move",
+  "label_keys": [
+   "price.recent_move"
+  ],
+  "options": [
+   "big down",
+   "small down",
+   "flat",
+   "small up",
+   "big up"
+  ],
+  "notes": "sign from 'rose/fell/moved +-x'; bottom third = flat, middle = small, top = big. Rank is 30-min move vs same minute, last 19-20 sessions."
+ },
+ {
+  "id": "TREND-02",
+  "title": "Move since the open vs usual band",
+  "layer": 1,
+  "group": "trend/move_from_open",
+  "method": "label",
+  "source": "open.noise_band",
+  "label_keys": [
+   "open.noise_band"
+  ],
+  "options": [
+   "below band",
+   "down inside",
+   "flat",
+   "up inside",
+   "above band"
+  ],
+  "notes": "'above/below the usual move-from-the-open band' = outside; 'above the higher / below the lower ... inside or at the edge' = up/down inside; 'between the settled open and yesterday's close' = flat. Label is in sigma not opening-straddle units (rank is unit-free). 09-28 reads use an older template that does not say the side. The older 09-28 template (side not stated) answers None."
+ },
+ {
+  "id": "TREND-03",
+  "title": "Afternoon leg since 14:00",
+  "layer": 1,
+  "group": "trend/late_leg",
+  "method": "label",
+  "source": "price.afternoon_leg",
+  "label_keys": [
+   "price.afternoon_leg"
+  ],
+  "options": [
+   "strong down",
+   "down",
+   "flat",
+   "up",
+   "strong up"
+  ],
+  "notes": "only reads at/after 14:30. Sign + tercile like TREND-01. Bug seen: at 14:00 the move is ~0 but ranks 'larger than 20 of 20, top third' - ignore pre-14:30 reads."
+ },
+ {
+  "id": "TREND-05",
+  "title": "One-way hour, signed",
+  "layer": 1,
+  "group": "trend/trend_vs_chop",
+  "method": "bars",
+  "source": "net60 = C[t]-C[t-60]; path = sum_{i=0..11}|C[t-5i]-C[t-5i-5]|; eff = net60/path. |net60| bottom third vs this minute = 'no hour move'; else direction = sign(net60), one-way if |eff| ranks top half vs this minute, else two-way. Field: close of state/spx_jev/bars (or store spx_bars).",
+  "label_keys": [],
+  "options": [
+   "one-way up",
+   "two-way up",
+   "no hour move",
+   "two-way down",
+   "one-way down"
+  ],
+  "notes": "price.hour_one_way is close but measures crossings of the hourly average, not net/summed-5-min efficiency; use bars. History: store spx_bars has 66 sessions (07-06 on), live bars files only 12 days."
+ },
+ {
+  "id": "TREND-06",
+  "title": "Trend day or range day so far",
+  "layer": 1,
+  "group": "trend/day_character",
+  "method": "label",
+  "source": "price.day_character",
+  "label_keys": [
+   "price.day_character"
+  ],
+  "options": [
+   "building",
+   "mixed",
+   "cancelling"
+  ],
+  "notes": "exact match: the variance-ratio sentence ends 'top third: building / middle: mixed / bottom: cancelling'. Omitted until 12 5-min returns since 10:00 (~11:00)."
+ },
+ {
+  "id": "TREND-08",
+  "title": "Move speeding up or fading",
+  "layer": 1,
+  "group": "trend/leg_aging",
+  "method": "bars",
+  "source": "d20 = C[t-10]-C[t-30]; d10 = C[t]-C[t-10]; ratio = sign(d20)*d10 / (|d20|/2). 'reversing' if ratio < 0 by more than a fixed tolerance (in opening-straddle units: |d10|/em_open > tol); else rank ratio vs this minute: top third accelerating, middle steady, bottom fading. em_open from the diary row (state/reversion range_ruler.em_open).",
+  "label_keys": [],
+  "options": [
+   "accelerating",
+   "steady",
+   "fading",
+   "reversing"
+  ],
+  "notes": "momentum.pace is unsigned and compares 10 vs the previous 10 minutes (not 20) with fixed 2/3 and 1.5 cuts, so it cannot give 'reversing'. Reversing when the ratio is negative and |d10| exceeds a fixed share of the read's sigma."
+ },
+ {
+  "id": "TREND-09",
+  "title": "Pullback in the leg, signed",
+  "layer": 1,
+  "group": "trend/leg_aging",
+  "method": "bars",
+  "source": "60-min window [t-60,t]: net = C[t]-C[t-60]; leg only if |net| > this minute's median |net| on prior sessions. Up leg: ext = max high in window at minute i; push = ext-C[t-60]; giveback = (ext-C[t])/push; deep = giveback > this minute's median giveback; fast = (ext-C[t])/(60-i) > push/i. Mirror for down legs.",
+  "label_keys": [],
+  "options": [
+   "up leg shallow-slow",
+   "up leg deep-or-fast",
+   "no leg",
+   "down leg deep-or-fast",
+   "down leg shallow-slow"
+  ],
+  "notes": "two medians (leg size, giveback) per minute-of-day from prior sessions; spx_bars store covers it."
+ },
+ {
+  "id": "TREND-10",
+  "title": "60-minute range sweep: held or failed",
+  "layer": 2,
+  "group": "shared/break_held_or_failed",
+  "method": "bars",
+  "source": "H/L = max high / min low over bars [t-70,t-10); break up if max high of bars [t-10,t) > H + 0.02*sigma (fixed tolerance); held if C[t] > H else failed; mirror for down. sigma = read's sigma.",
+  "label_keys": [],
+  "options": [
+   "up held",
+   "up failed",
+   "none",
+   "down failed",
+   "down held"
+  ],
+  "notes": "no history needed; tolerance value (0.02 sigma here) is a design choice to fix."
+ },
+ {
+  "id": "TREND-12",
+  "title": "Biggest 1-minute bar vs normal",
+  "layer": 1,
+  "group": "shared/burst",
+  "method": "bars",
+  "source": "ratio = max(high-low) / median(high-low) over the last 30 finished 1-min bars; rank vs same minute prior sessions (cut points e.g. <2/3 normal, 2/3-90% large, >=90% burst).",
+  "label_keys": [],
+  "options": [
+   "normal",
+   "large",
+   "burst"
+  ],
+  "notes": "price.minute_width only compares the current minute to today's typical minute with a fixed 2x cut; shock.burst is 5-minute moves. Use bars. Bars volume field is 0 for SPX (index), so no volume weighting."
+ },
+ {
+  "id": "TREND-14",
+  "title": "Latest leg with or against the day",
+  "layer": 2,
+  "group": "trend/leg_vs_day",
+  "method": "label",
+  "source": "price.prior_close_push",
+  "label_keys": [
+   "price.prior_close_push"
+  ],
+  "options": [
+   "with the day's side",
+   "against the day's side",
+   "flat day",
+   "quiet leg"
+  ],
+  "notes": "first tercile (30-min move) bottom = quiet; second tercile (distance from yesterday's close) bottom 'near it' = flat day; else 'away from' = with, 'toward' = against."
+ },
+ {
+  "id": "VOLATILITY-01",
+  "title": "Straddle held up vs clock decay",
+  "layer": 1,
+  "group": "volatility/implied_size",
+  "method": "label",
+  "source": "vol.straddle_vs_clock",
+  "label_keys": [
+   "vol.straddle_vs_clock"
+  ],
+  "options": [
+   "kept more",
+   "usual share",
+   "kept less"
+  ],
+  "notes": "tercile of 'times its usual share ... higher than k of n sessions at this minute'. Missing on 10-06 (row carried no straddle)."
+ },
+ {
+  "id": "VOLATILITY-02",
+  "title": "Last 30 min swing vs same half hour",
+  "layer": 1,
+  "group": "volatility/realized_size",
+  "method": "label",
+  "source": "vol.realized_vs_clock",
+  "label_keys": [
+   "vol.realized_vs_clock"
+  ],
+  "options": [
+   "quiet",
+   "ordinary",
+   "busy"
+  ],
+  "notes": "current template uses fifths (bottom fifth quiet / between ordinary / top fifth busy); 09-28 reads used terciles. vol.realized_vs_clock_rank is the same idea as a pace ratio."
+ },
+ {
+  "id": "VOLATILITY-03",
+  "title": "Share of expected range used",
+  "layer": 1,
+  "group": "volatility/range_used",
+  "method": "label",
+  "source": "range.pace_vs_priced",
+  "label_keys": [
+   "range.pace_vs_priced"
+  ],
+  "options": [
+   "little",
+   "normal share",
+   "most"
+  ],
+  "notes": "'under / near / over the usual pace' terciles. iv.expected_move_used is the unranked alternative."
+ },
+ {
+  "id": "VOLATILITY-05",
+  "title": "VIX move beyond what price explains",
+  "layer": 1,
+  "group": "volatility/vol_vs_price",
+  "method": "label",
+  "source": "vol.vix_vs_price",
+  "label_keys": [
+   "vol.vix_vs_price"
+  ],
+  "options": [
+   "more fearful",
+   "in line",
+   "calmer"
+  ],
+  "notes": "ranked with VIX furthest above what price explains highest: top third = more fearful."
+ },
+ {
+  "id": "VOLATILITY-06",
+  "title": "Same-day IV move beyond price",
+  "layer": 1,
+  "group": "volatility/vol_vs_price",
+  "method": "label",
+  "source": "vol.atm_iv_residual",
+  "label_keys": [
+   "vol.atm_iv_residual"
+  ],
+  "options": [
+   "risen more",
+   "about as much",
+   "less"
+  ],
+  "notes": "top third = vol above what price explains. vol.straddle_reprice_30 is the straddle twin."
+ },
+ {
+  "id": "VOLATILITY-09",
+  "title": "Skew change beyond price",
+  "layer": 1,
+  "group": "volatility/skew_change",
+  "method": "label",
+  "source": "skew.shift_vs_price",
+  "label_keys": [
+   "skew.shift_vs_price"
+  ],
+  "options": [
+   "puts richer",
+   "in line",
+   "puts cheaper"
+  ],
+  "notes": "needs the lob_flow 0DTE tape; missing 10-06 (collector did not run). Prior-session history limited by lob_flow/raw (from 09-08, ~21 sessions); labels show 16-18 sessions."
+ },
+ {
+  "id": "VOLATILITY-10",
+  "title": "Put tilt vs same minute",
+  "layer": 1,
+  "group": "volatility/skew_level",
+  "method": "label",
+  "source": "skew.put_tilt_vs_usual",
+  "label_keys": [
+   "skew.put_tilt_vs_usual"
+  ],
+  "options": [
+   "steep",
+   "usual",
+   "flat",
+   "tilted to calls"
+  ],
+  "notes": "words 'a steep put tilt / a usual tilt / a flat tilt'; 'calls are priced above puts, a call tilt' = tilted to calls. An older template ('steeper than k of n, past the flat rank') ran on early days - map from rank. Missing 10-06. The older template is mapped from its rank."
+ },
+ {
+  "id": "VOLATILITY-11",
+  "title": "VVIX beyond VIX and price",
+  "layer": 1,
+  "group": "volatility/vol_of_vol",
+  "method": "label",
+  "source": "vol.vvix_vs_vix",
+  "label_keys": [
+   "vol.vvix_vs_vix"
+  ],
+  "options": [
+   "more",
+   "about as much",
+   "less"
+  ],
+  "notes": "label ranks the size of the leftover only; sign = (VVIX change - explained), parsed from the two numbers. Leftover under the median = about as much; at/above median = more or less by sign."
+ },
+ {
+  "id": "VOLATILITY-13",
+  "title": "Front fear shifting",
+  "layer": 1,
+  "group": "volatility/front_curve",
+  "method": "label",
+  "source": "vol.front_fear_shift",
+  "label_keys": [
+   "vol.front_fear_shift"
+  ],
+  "options": [
+   "risen",
+   "held",
+   "fallen"
+  ],
+  "notes": "ranked with nine-day VIX gaining highest."
+ },
+ {
+  "id": "VOLATILITY-16",
+  "title": "Priced move loaded by an event",
+  "layer": 2,
+  "group": "volatility/event_ruler",
+  "method": "label",
+  "source": "vol.ruler_event_load",
+  "label_keys": [
+   "vol.ruler_event_load"
+  ],
+  "options": [
+   "compressed, no event",
+   "compressed, event ahead",
+   "compressed, event released",
+   "normal, no event",
+   "normal, event ahead",
+   "normal, event released",
+   "swollen, no event",
+   "swollen, event ahead",
+   "swollen, event released"
+  ],
+  "notes": "ruler part: 'this morning's sigma ruler is X times its N-session median ... (bottom|middle|top) third' = compressed/normal/swollen (vs prior mornings, once a day). Event part: parse the free-text calendar list 'name at HH:MM' and compare to read time. Missing 10-06. Answer = '<ruler>, <event>'."
+ },
+ {
+  "id": "LEVELS-01",
+  "title": "Gap still holding",
+  "layer": 2,
+  "group": "levels/prior_close",
+  "method": "label",
+  "source": "gap.fill_progress",
+  "label_keys": [
+   "gap.fill_progress"
+  ],
+  "options": [
+   "holding up",
+   "holding down",
+   "filled / too small"
+  ],
+  "notes": "sentence opens 'the gap up/down is still open' or 'there was no real gap' (a 'filled' opening should exist in code but has not occurred yet). Gap 'real' = vs last 20 days' gaps."
+ },
+ {
+  "id": "LEVELS-02",
+  "title": "Distance from yesterday's close",
+  "layer": 1,
+  "group": "levels/prior_close",
+  "method": "label",
+  "source": "price.day_move_split",
+  "label_keys": [
+   "price.day_move_split"
+  ],
+  "options": [
+   "far above; mostly gap",
+   "far above; mostly trading",
+   "far above; mixed",
+   "above; mostly gap",
+   "above; mostly trading",
+   "above; mixed",
+   "near the close; mostly gap",
+   "near the close; mostly trading",
+   "near the close; mixed",
+   "below; mostly gap",
+   "below; mostly trading",
+   "below; mixed",
+   "far below; mostly gap",
+   "far below; mostly trading",
+   "far below; mixed"
+  ],
+  "notes": "side + tercile ('near it / away from it / far from it'); plus 'mostly gap / mostly trading' from 'so the gap is N% of the day's move' (>=50% gap). Answer = '<position>; <driver>'."
+ },
+ {
+  "id": "LEVELS-03",
+  "title": "Yesterday's range: accepted or rejected",
+  "layer": 2,
+  "group": "shared/break_held_or_failed",
+  "method": "label",
+  "source": "levels.prior_day",
+  "label_keys": [
+   "levels.prior_day"
+  ],
+  "options": [
+   "accepted above",
+   "beyond, not yet accepted",
+   "rejected from high",
+   "inside",
+   "rejected from low",
+   "accepted below"
+  ],
+  "notes": "acceptance = 20 finished minutes beyond. Week high/low flag is NOT in any label: compute from store spx_bars (max high / min low of the prior 5 sessions) - bars, no ranking."
+ },
+ {
+  "id": "LEVELS-04",
+  "title": "Yesterday's value area vs today's move",
+  "layer": 2,
+  "group": "levels/prior_day_location",
+  "method": "label",
+  "source": "levels.prior_value + price.day_move",
+  "label_keys": [
+   "levels.prior_value",
+   "price.day_move"
+  ],
+  "options": [
+   "above, with",
+   "above, against",
+   "inside",
+   "below, with",
+   "below, against"
+  ],
+  "notes": "value-area side from levels.prior_value; with/against from the sign of price.day_move (move since the settled open)."
+ },
+ {
+  "id": "LEVELS-05",
+  "title": "Fresh session extreme",
+  "layer": 2,
+  "group": "levels/today_range_position",
+  "method": "label",
+  "source": "open.fresh_extreme (+ price.session_extreme_recent for minutes since)",
+  "label_keys": [
+   "open.fresh_extreme"
+  ],
+  "options": [
+   "new high",
+   "new low",
+   "top fifth",
+   "middle",
+   "bottom fifth"
+  ],
+  "notes": "window is 30 min on live, 5 min on tape (as asked). Position: parse '(N% of the way up' and cut at 20/80 (label's own bands are 25/75). Minutes since last extreme: price.session_extreme_recent 'N minutes ago' (only shown when recent)."
+ },
+ {
+  "id": "LEVELS-06",
+  "title": "First-hour range break",
+  "layer": 2,
+  "group": "levels/today_range_position",
+  "method": "label",
+  "source": "range.first_hour (>=10:30), range.box_status (<10:30, first 30 min box)",
+  "label_keys": [
+   "range.first_hour",
+   "range.box_status"
+  ],
+  "options": [
+   "up break holding",
+   "up break failed",
+   "inside",
+   "down break failed",
+   "down break holding"
+  ],
+  "notes": "range.box_status is exactly the first-30-minute box (OPENING_BOX_MIN=30). 'extended' detail: range.first_hour ranks how far the break reached vs prior sessions' first-hour breaks."
+ },
+ {
+  "id": "LEVELS-08",
+  "title": "Overnight range size (premarket)",
+  "layer": 1,
+  "group": "levels/opening_size",
+  "method": "label",
+  "source": "overnight.range_vs_normal (premarket lane)",
+  "label_keys": [
+   "overnight.range_vs_normal"
+  ],
+  "options": [
+   "small",
+   "normal",
+   "large"
+  ],
+  "notes": "only on premarket-lane reads; live/tape reads must carry the day's last premarket value (09:28 checkpoint). Live reads take the day's last premarket read."
+ },
+ {
+  "id": "LEVELS-09",
+  "title": "Opening size (bar, then range)",
+  "layer": 1,
+  "group": "levels/opening_size",
+  "method": "bars",
+  "source": "before 10:05: R5 = max high - min low of the 09:30-09:34 bars (sigma units), plus pace = sum |dC| of 1-min closes since 09:30; rank vs the same window on prior sessions (quartiles: quiet/normal/busy/very busy). From 10:05: R30 = max high - min low of the 09:35-10:04 bars, rank vs prior sessions (terciles narrow/normal/wide).",
+  "label_keys": [],
+  "options": [
+   "quiet",
+   "normal",
+   "busy",
+   "very busy",
+   "narrow",
+   "wide"
+  ],
+  "notes": "fixed window, so ranking is vs prior sessions' same window. No label gives the first-5-min bar or the 09:35-10:04 range (range.today_vs_normal is range-so-far; tape.unit_vs_normal is tape-lane only). Ranked in points (prior sessions' sigma is not in the bars)."
+ },
+ {
+  "id": "LEVELS-11",
+  "title": "Break setup armed",
+  "layer": 2,
+  "group": "shared/break_held_or_failed",
+  "method": "label",
+  "source": "levels.break_armed",
+  "label_keys": [
+   "levels.break_armed"
+  ],
+  "options": [
+   "armed up",
+   "armed down",
+   "expired / called off",
+   "nothing armed"
+  ],
+  "notes": "exact: 'a break upward/downward is armed', 'no break is armed now: ... expired without firing', 'no break is armed, and none expired'."
+ },
+ {
+  "id": "OPTIONS-01",
+  "title": "Signed distance from the gamma flip",
+  "layer": 1,
+  "group": "options/gamma_state",
+  "method": "label",
+  "source": "gex.flip_distance",
+  "label_keys": [
+   "gex.flip_distance"
+  ],
+  "options": [
+   "far below",
+   "below",
+   "near",
+   "above",
+   "far above"
+  ],
+  "notes": "side from 'sigma above/below the gamma flip'; bottom third = near, middle = above/below, top = far. Units are sigma, not expected-move units (ranking is unit-free)."
+ },
+ {
+  "id": "OPTIONS-02",
+  "title": "Gamma packed near spot",
+  "layer": 1,
+  "group": "shared/pinned",
+  "method": "label",
+  "source": "gex.magnet_distance (grip clause)",
+  "label_keys": [
+   "gex.magnet_distance"
+  ],
+  "options": [
+   "low",
+   "normal",
+   "high"
+  ],
+  "notes": "APPROXIMATE: the ranked top-strike share in gex.magnet_distance ('its grip ... stronger than k of n sessions') is the 0DTE book only and not limited to one expected move; gex.heaviest_strike_grip uses fixed 4%/16% cuts. 0-7DTE within 1 EM is not built."
+ },
+ {
+  "id": "OPTIONS-03",
+  "title": "Signed distance from the heaviest strike",
+  "layer": 1,
+  "group": "options/magnet",
+  "method": "label",
+  "source": "gex.magnet_distance",
+  "label_keys": [
+   "gex.magnet_distance"
+  ],
+  "options": [
+   "far below",
+   "below",
+   "on it",
+   "above",
+   "far above"
+  ],
+  "notes": "strike 'above price' means SPX is below it. bottom third 'seated on it' = on it. PARTIAL: the after-14:00 1DTE magnet is dark (expiry_calendar: 'the SPX scan writes no 1DTE slice')."
+ },
+ {
+  "id": "OPTIONS-05",
+  "title": "Market makers defending the contested strike",
+  "layer": 2,
+  "group": "shared/pinned",
+  "method": "label",
+  "source": "options.strike_defense",
+  "label_keys": [
+   "options.strike_defense"
+  ],
+  "options": [
+   "defended above",
+   "defended below",
+   "abandoned above",
+   "abandoned below"
+  ],
+  "notes": "refill share ranked vs this minute ('at or above the middle: defended / below the middle: abandoned'). Label's hit minimum is 10 hits, not the question's 3+. Missing 10-06 (no lob_flow tape)."
+ },
+ {
+  "id": "OPTIONS-07",
+  "title": "One-sided 0DTE option flow",
+  "layer": 1,
+  "group": "options/option_flow",
+  "method": "label",
+  "source": "options.flow_lean_30",
+  "label_keys": [
+   "options.flow_lean_30"
+  ],
+  "options": [
+   "strong put lean",
+   "put lean",
+   "balanced",
+   "call lean",
+   "strong call lean"
+  ],
+  "notes": "label gives 3 bins (20%/80% rank lines); 5 bins come from parsing 'higher than k of n' (<=10% / <=20% / mid / >=80% / >=90%). Missing 10-06."
+ },
+ {
+  "id": "OPTIONS-09",
+  "title": "Gamma above or below spot",
+  "layer": 1,
+  "group": "options/gamma_state",
+  "method": "label",
+  "source": "gex.weight_both_books + gex.delta_weight_side",
+  "label_keys": [
+   "gex.weight_both_books",
+   "gex.delta_weight_side"
+  ],
+  "options": [
+   "today mostly below; week mostly below; delta mostly below",
+   "today mostly below; week mostly below; delta balanced",
+   "today mostly below; week mostly below; delta mostly above",
+   "today mostly below; week balanced; delta mostly below",
+   "today mostly below; week balanced; delta balanced",
+   "today mostly below; week balanced; delta mostly above",
+   "today mostly below; week mostly above; delta mostly below",
+   "today mostly below; week mostly above; delta balanced",
+   "today mostly below; week mostly above; delta mostly above",
+   "today balanced; week mostly below; delta mostly below",
+   "today balanced; week mostly below; delta balanced",
+   "today balanced; week mostly below; delta mostly above",
+   "today balanced; week balanced; delta mostly below",
+   "today balanced; week balanced; delta balanced",
+   "today balanced; week balanced; delta mostly above",
+   "today balanced; week mostly above; delta mostly below",
+   "today balanced; week mostly above; delta balanced",
+   "today balanced; week mostly above; delta mostly above",
+   "today mostly above; week mostly below; delta mostly below",
+   "today mostly above; week mostly below; delta balanced",
+   "today mostly above; week mostly below; delta mostly above",
+   "today mostly above; week balanced; delta mostly below",
+   "today mostly above; week balanced; delta balanced",
+   "today mostly above; week balanced; delta mostly above",
+   "today mostly above; week mostly above; delta mostly below",
+   "today mostly above; week mostly above; delta balanced",
+   "today mostly above; week mostly above; delta mostly above"
+  ],
+  "notes": "terciles for today's book and the 1-7 day book (two clauses) plus delta share. Label shares are over the whole book, not limited to one 60-min expected move. Answer = 'today <share>; week <share>; delta <share>'."
+ },
+ {
+  "id": "OPTIONS-10",
+  "title": "Charm wall vs price (last two hours)",
+  "layer": 1,
+  "group": "options/magnet",
+  "method": "label",
+  "source": "gex.charm_wall_distance",
+  "label_keys": [
+   "gex.charm_wall_distance"
+  ],
+  "options": [
+   "at price",
+   "near above",
+   "near below",
+   "far"
+  ],
+  "notes": "only reads at/after 14:00. 'at price / near price / far from price' terciles + side from 'sigma above/below price'."
+ },
+ {
+  "id": "OPTIONS-11",
+  "title": "Heaviest strikes shifting",
+  "layer": 2,
+  "group": "options/magnet",
+  "method": "label",
+  "source": "gex.walls_since_30min",
+  "label_keys": [
+   "gex.walls_since_30min"
+  ],
+  "options": [
+   "both moved up",
+   "both moved down",
+   "pulled in",
+   "spread out",
+   "stand still"
+  ],
+  "notes": "parse which strike moved which way; both same way = both up/down, else 'closer together' = pulled in, 'further apart' = spread out."
+ },
+ {
+  "id": "BREADTH-01",
+  "title": "Equal-weight vs cap-weight",
+  "layer": 1,
+  "group": "breadth/participation",
+  "method": "label",
+  "source": "leaders.equal_weight_vs_cap_30m",
+  "label_keys": [
+   "leaders.equal_weight_vs_cap_30m"
+  ],
+  "options": [
+   "more up",
+   "as expected",
+   "more down"
+  ],
+  "notes": "rank is of the size of the gap ('by size higher than k of n'); top third + 'above/below that' = more up/down."
+ },
+ {
+  "id": "BREADTH-04",
+  "title": "Sector lockstep",
+  "layer": 1,
+  "group": "breadth/sector_lockstep",
+  "method": "label",
+  "source": "sectors.agreement_30m",
+  "label_keys": [
+   "sectors.agreement_30m"
+  ],
+  "options": [
+   "more together",
+   "about usual",
+   "less together"
+  ],
+  "notes": "first tercile is the count of funds moving the index's way; a dispersion tercile follows as a second clause."
+ },
+ {
+  "id": "BREADTH-05",
+  "title": "Cyclicals vs defensives rotation",
+  "layer": 1,
+  "group": "breadth/risk_rotation",
+  "method": "label",
+  "source": "leaders.rotation_30m",
+  "label_keys": [
+   "leaders.rotation_30m"
+  ],
+  "options": [
+   "beat",
+   "match",
+   "lag"
+  ],
+  "notes": "exact match: 'the sensitive sectors ahead / level / the defensives ahead'."
+ },
+ {
+  "id": "BREADTH-06",
+  "title": "Semis lead beyond SPX",
+  "layer": 1,
+  "group": "breadth/heavyweight_pull",
+  "method": "label",
+  "source": "leaders.semis_vs_index_30m (live); tells.sector_lead_10m SMH clause (tape)",
+  "label_keys": [
+   "leaders.semis_vs_index_30m"
+  ],
+  "options": [
+   "more up",
+   "in line",
+   "more down"
+  ],
+  "notes": "fifths: top fifth more up, between in line, bottom fifth more down. Tape lane: first clause of tells.sector_lead_10m (multi-clause sentence, one per sector)."
+ },
+ {
+  "id": "BREADTH-11",
+  "title": "Opening breadth vs the gap (tape lane)",
+  "layer": 1,
+  "group": "breadth/opening_breadth",
+  "method": "market_value",
+  "source": "$ADD (market_context, derived live from $ADVN - $DECN since 88c7adc) x sign of gap.size; compare with prior mornings' $ADD at the same minute regressed on gap size (context_bars $ADD).",
+  "label_keys": [
+   "gap.size"
+  ],
+  "options": [
+   "more than usual",
+   "about as usual",
+   "less than usual"
+  ],
+  "notes": "no label: breadth.opening_tick is NYSE TICK, not $ADD. Archive has $ADD on tape reads only from 09-30 (5 days); history must come from store context_bars ($ADD from 08-11, 40 sessions, next-day clean). Same-day Schwab $ADD is wrong, so only the derived value is usable live. Built here as derived $ADD x gap side, ranked against prior sessions' same-minute value (no gap-size regression yet)."
+ },
+ {
+  "id": "FLOW-01",
+  "title": "Stretch from VWAP",
+  "layer": 1,
+  "group": "flow/vwap_stretch",
+  "method": "label",
+  "source": "price.vs_vwap",
+  "label_keys": [
+   "price.vs_vwap"
+  ],
+  "options": [
+   "far below",
+   "near below",
+   "at",
+   "near above",
+   "far above"
+  ],
+  "notes": "side + tercile ('at VWAP / away from it / far from it'). Units are the read's sigma ruler, as asked."
+ },
+ {
+  "id": "FLOW-03",
+  "title": "Thin SPY book",
+  "layer": 1,
+  "group": "flow/ease_of_movement",
+  "method": "label",
+  "source": "liquidity.spy_quote (second clause)",
+  "label_keys": [
+   "liquidity.spy_quote"
+  ],
+  "options": [
+   "thin",
+   "normal",
+   "thick"
+  ],
+  "notes": "second clause 'the size showing at SPY's best bid and offer combined is in the bottom fifth / between / in the top fifth for HH:MM'."
+ },
+ {
+  "id": "FLOW-08",
+  "title": "Opening type",
+  "layer": 2,
+  "group": "flow/opening_type",
+  "method": "bars",
+  "source": "09:30-09:59 1-min bars; references: prior session high/low (store spx_bars) and overnight /ES high/low converted to SPX by the 09:30 /ES-SPX basis (state/spx_jev/overnight). Drive = opens in the outer 10% of the 30-min range and closes in the opposite 20% without trading back through the open; test-then-drive = first tags a reference level (within a fixed tolerance) then closes in the far 20% the other way; else rotation.",
+  "label_keys": [],
+  "options": [
+   "drive",
+   "test-then-drive",
+   "rotation"
+  ],
+  "notes": "rules are not written anywhere yet; thresholds above are a draft. Answer is fixed from 10:00 for the rest of the day."
+ },
+ {
+  "id": "MACRO-08",
+  "title": "When the overnight range was built",
+  "layer": 1,
+  "group": "macro/overnight_timing",
+  "method": "bars",
+  "source": "overnight /ES 1-min bars (state/spx_jev/overnight/{day}.jsonl, session != regular) from the 18:00 reopen to the read: late_share = 1 - range(bars before 03:00)/range(all bars); 'late' if late_share > the median of prior nights to the same time.",
+  "label_keys": [],
+  "options": [
+   "mostly late (after 03:00)",
+   "mostly Asia"
+  ],
+  "notes": "overnight.gap_origin names the most unusual stretch, not the share of range built late. Store overnight_bars goes back to 03-05 (149 nights)."
+ },
+ {
+  "id": "MACRO-09",
+  "title": "Overnight legs agree on direction",
+  "layer": 2,
+  "group": "macro/overnight_direction",
+  "method": "label",
+  "source": "premarket.legs (premarket lane)",
+  "label_keys": [
+   "premarket.legs"
+  ],
+  "options": [
+   "all agree",
+   "split, latest with the night",
+   "latest turned against",
+   "one leg moved",
+   "night quiet"
+  ],
+  "notes": "FREE TEXT: verdict is the tail after 'so far.' ('N moved, all with the night's rise: one way' / 'split; the latest with...' / 'the latest against...' / 'Only one finished leg' / 'net move is quiet'). Legs judged 'moved' vs prior nights' same stretch. Live reads take the day's last premarket read."
+ },
+ {
+  "id": "MACRO-10",
+  "title": "Overnight path since the night's move (premarket)",
+  "layer": 2,
+  "group": "macro/overnight_direction",
+  "method": "label",
+  "source": "premarket.arc + premarket.since_checkpoint (premarket lane)",
+  "label_keys": [
+   "premarket.arc",
+   "premarket.since_checkpoint"
+  ],
+  "options": [
+   "built; since checkpoint added",
+   "built; since checkpoint gave back",
+   "built; since checkpoint crossed 16:00",
+   "built; since checkpoint small / no verdict",
+   "held; since checkpoint added",
+   "held; since checkpoint gave back",
+   "held; since checkpoint crossed 16:00",
+   "held; since checkpoint small / no verdict",
+   "faded; since checkpoint added",
+   "faded; since checkpoint gave back",
+   "faded; since checkpoint crossed 16:00",
+   "faded; since checkpoint small / no verdict",
+   "reversed; since checkpoint added",
+   "reversed; since checkpoint gave back",
+   "reversed; since checkpoint crossed 16:00",
+   "reversed; since checkpoint small / no verdict",
+   "no real move; since checkpoint added",
+   "no real move; since checkpoint gave back",
+   "no real move; since checkpoint crossed 16:00",
+   "no real move; since checkpoint small / no verdict"
+  ],
+  "notes": "arc verdict words fixed in story.py (built/held/faded/reversed); checkpoint verdict 'the latest leg added / gave back / crossed their 16:00 price' (absent when the leg is small). Answer = '<arc>; since checkpoint <verdict>'. Live reads take the day's last premarket read."
+ },
+ {
+  "id": "EVENTS-04",
+  "title": "State after an unscheduled burst",
+  "layer": 1,
+  "group": "shared/burst",
+  "method": "label",
+  "source": "shock.burst + shock.vs_day_range",
+  "label_keys": [
+   "shock.burst",
+   "shock.vs_day_range"
+  ],
+  "options": [
+   "fresh; no new extreme",
+   "fresh; new extreme held",
+   "fresh; new extreme given up",
+   "round-tripped; no new extreme",
+   "round-tripped; new extreme held",
+   "round-tripped; new extreme given up",
+   "settling; no new extreme",
+   "settling; new extreme held",
+   "settling; new extreme given up"
+  ],
+  "notes": "FREE TEXT: fresh = 'inside the 10-minute fresh window'; round-tripped = 'given back N%, past the half line'; else settling. Extreme from shock.vs_day_range ('stayed inside' / 'still at the new extreme' / above it = given up). Only 3 of 7 live days had a shock. Answer = '<state>; <extreme>'."
+ },
+ {
+  "id": "SESSION-01",
+  "title": "Expiry and quarter-end calendar",
+  "layer": 2,
+  "group": "session/expiry_cycle",
+  "method": "label",
+  "source": "calendar.expiry_phase + calendar.month_turn + expiry.opex_today",
+  "label_keys": [
+   "calendar.expiry_phase",
+   "calendar.month_turn",
+   "expiry.opex_today"
+  ],
+  "options": [
+   "quarter-end",
+   "monthly/quarterly expiry day",
+   "OPEX week",
+   "week after OPEX",
+   "ordinary"
+  ],
+  "notes": "calendar-only, no market data; backfill is trivial for any date."
+ },
+ {
+  "id": "SENTIMENT-01",
+  "title": "Bitcoin running ahead of SPX",
+  "layer": 1,
+  "group": "sentiment/bitcoin_lead",
+  "method": "label",
+  "source": "xasset.btc_gap_30min (+ xasset.btc_link, xasset.btc_gap_streak as context)",
+  "label_keys": [
+   "xasset.btc_gap_30min"
+  ],
+  "options": [
+   "ahead up",
+   "in line",
+   "ahead down"
+  ],
+  "notes": "direction words 'ahead in the stocks-up / stocks-down direction / in line'; contrarian read applied downstream. Roll withholding: label is omitted across a /MBT roll. The contrarian lean is for the reader, not the answer."
+ }
+]

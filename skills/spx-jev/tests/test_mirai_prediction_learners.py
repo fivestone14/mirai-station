@@ -24,15 +24,15 @@ def make_row(i: int, day: str, answers: dict, outcome: str | None, jev=None, odd
 
 
 def make_matrix(rows: list[Row], columns: dict, before_day: str = "2026-10-10") -> AnswerMatrix:
-    return AnswerMatrix(lane="live", sum_id="average_30", built_for_day=before_day, rows=rows, columns=columns, level_history={})
+    return AnswerMatrix(lane="live", sum_id="average_30", built_for_day=before_day, rows=rows, columns=columns)
 
 
-COLUMNS = {"fact:a": {"layer": 2, "group": "fact:a", "family": "t"}, "level:b": {"layer": 1, "group": "level:b", "family": "m"},
+COLUMNS = {"code:A": {"layer": 2, "group": "code:A", "family": "t"}, "code:B": {"layer": 1, "group": "code:B", "family": "m"},
            "jev:q": {"layer": 3, "group": "jev:q", "family": "jev"}}
 
 
 def signal_rows(n: int = 240, seed: int = 1) -> list[Row]:
-    """'fact:a' = "hot" precedes a move 80% of the time, "cold" 20%; the other columns are noise."""
+    """'code:A' = "hot" precedes a move 80% of the time, "cold" 20%; the other columns are noise."""
     rng = random.Random(seed)
     rows = []
     for i in range(n):
@@ -40,7 +40,7 @@ def signal_rows(n: int = 240, seed: int = 1) -> list[Row]:
         hot = rng.random() < 0.5
         moved = rng.random() < (0.8 if hot else 0.2)
         outcome = ("up" if rng.random() < 0.5 else "down") if moved else "flat"
-        answers = {"fact:a": "hot" if hot else "cold", "level:b": rng.choice(["low", "middle", "high"]), "jev:q": rng.choice(["yes", "no"])}
+        answers = {"code:A": "hot" if hot else "cold", "code:B": rng.choice(["low", "middle", "high"]), "jev:q": rng.choice(["yes", "no"])}
         rows.append(make_row(i, day, answers, outcome, jev={"up": 0.4, "flat": 0.2, "down": 0.4}))
     return rows
 
@@ -48,13 +48,13 @@ def signal_rows(n: int = 240, seed: int = 1) -> list[Row]:
 # ---------------------------------------------------------------- additive scorer
 
 def test_push_is_distance_from_the_answers_own_normal():
-    rows = [make_row(i, DAYS[i % 5], {"fact:a": "hot"}, "up" if i % 4 else "flat") for i in range(40)]
+    rows = [make_row(i, DAYS[i % 5], {"code:A": "hot"}, "up" if i % 4 else "flat") for i in range(40)]
     pushes, bases = fit_pushes(rows, "move")
     n, k = 40, 30
     base = 1 - ODDS["flat"]
     blend = (k + ANSWER_PRIOR_READS * base) / (n + ANSWER_PRIOR_READS)
-    assert pushes["fact:a"]["hot"] == pytest.approx(logit(blend) - logit(base))
-    assert bases["fact:a"]["hot"] == pytest.approx(base)
+    assert pushes["code:A"]["hot"] == pytest.approx(logit(blend) - logit(base))
+    assert bases["code:A"]["hot"] == pytest.approx(base)
 
 
 def test_volume_zero_reproduces_the_historical_odds():
@@ -69,10 +69,10 @@ def test_volume_zero_reproduces_the_historical_odds():
 def test_a_signal_column_gets_a_positive_push_and_its_layer_a_volume():
     rows = signal_rows()
     fit = fit_additive_scorer(make_matrix(rows, COLUMNS))
-    assert fit.pushes["move"]["fact:a"]["hot"] > 0 > fit.pushes["move"]["fact:a"]["cold"]
+    assert fit.pushes["move"]["code:A"]["hot"] > 0 > fit.pushes["move"]["code:A"]["cold"]
     assert fit.layer_volume["move"][2] > 0           # the layer with the signal is turned up
-    hot = forecast_with_additive_scorer(fit, make_row(999, "2026-10-09", {"fact:a": "hot"}, None))
-    cold = forecast_with_additive_scorer(fit, make_row(998, "2026-10-09", {"fact:a": "cold"}, None))
+    hot = forecast_with_additive_scorer(fit, make_row(999, "2026-10-09", {"code:A": "hot"}, None))
+    cold = forecast_with_additive_scorer(fit, make_row(998, "2026-10-09", {"code:A": "cold"}, None))
     assert 1 - hot["flat"] > 1 - cold["flat"]
 
 
@@ -121,7 +121,7 @@ def test_matcher_keeps_k_closest_and_uses_the_residual_form():
     rows = signal_rows(n=120)
     matrix = make_matrix(rows, COLUMNS)
     fit = fit_matcher(matrix)
-    today = make_row(500, "2026-10-09", {"fact:a": "hot", "level:b": "low", "jev:q": "yes"}, None)
+    today = make_row(500, "2026-10-09", {"code:A": "hot", "code:B": "low", "jev:q": "yes"}, None)
     probs, diag = forecast_with_matcher(fit, today, matrix.trainable_rows())
     earlier_days = sum(1 for r in rows if r.day < today.day)              # a read from today's own day is never a candidate
     assert diag["kept_count"] == MATCHER_NEIGHBOR_COUNT and diag["candidates"] == earlier_days < len(rows)
@@ -144,7 +144,7 @@ def test_matcher_prior_reads_pull_toward_the_odds():
     rows = signal_rows(n=40)
     matrix = make_matrix(rows, COLUMNS)
     fit = fit_matcher(matrix)
-    today = make_row(500, "2026-10-09", {"fact:a": "hot"}, None)
+    today = make_row(500, "2026-10-09", {"code:A": "hot"}, None)
     probs, diag = forecast_with_matcher(fit, today, matrix.trainable_rows())
     assert probs is not None and diag["effective_reads"] <= MATCHER_NEIGHBOR_COUNT
     assert abs(probs["flat"] - ODDS["flat"]) < 0.5      # pulled, not a hard vote

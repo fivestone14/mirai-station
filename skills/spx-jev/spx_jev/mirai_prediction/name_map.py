@@ -14,7 +14,6 @@ from .paths import spx_jev_dir
 STORE_NAMES = {
     "jev_reads": "reads",                      # one row per read of any lane
     "jev_answers": "answers",                  # JEV's answer per question per read (layer 3)
-    "code_facts": "facts",                     # the code's labels and market values per read (interim layers 1-2)
     "forecasts_at_read_time": "calls",         # one row per sum per read: historical odds, JEV's call, the shown call, pool_v1's mix
     "graded_results": "average_grades",        # the average-price grade per sum per read (the older end-price grade is not used)
 }

@@ -2,6 +2,8 @@
 
     <state_dir>/spx_jev/mirai_prediction/
         raw/new_voice_forecasts/{day}.jsonl        written live by the read hook; append-only; the record
+        raw/code_features/{day}.jsonl              the code feature builder's answers per read (layers 1-2), written live
+                                                    before the read is forecast, or by the backfill; append-only; the record
         tables/new_voice_forecasts/day=.../         built nightly from raw/ with checks; safe to delete and rebuild
         tables/voice_scores/day=.../                each voice's penalty per graded read
         tables/_checks/refused_rows/{day}.jsonl     rows a check refused, with the reason
@@ -28,6 +30,7 @@ CATALOGS = "catalogs"
 RUN_LOGS = "run_logs"
 ARCHIVE = "archive"
 NEW_VOICE_FORECASTS = "new_voice_forecasts"
+CODE_FEATURES = "code_features"
 VOICE_SCORES = "voice_scores"
 REFUSED_ROWS = "_checks/refused_rows"
 POOL_V2 = "pool_v2"
@@ -49,7 +52,7 @@ def data_root(state_dir: Path | str) -> Path:
 
 def ensure_folders(root: Path) -> Path:
     """Create every folder of the layout; returns the root."""
-    for sub in (f"{RAW}/{NEW_VOICE_FORECASTS}", f"{TABLES}/{NEW_VOICE_FORECASTS}", f"{TABLES}/{VOICE_SCORES}",
+    for sub in (f"{RAW}/{NEW_VOICE_FORECASTS}", f"{RAW}/{CODE_FEATURES}", f"{TABLES}/{NEW_VOICE_FORECASTS}", f"{TABLES}/{VOICE_SCORES}",
                 f"{TABLES}/{REFUSED_ROWS}", f"{POOLS}/{POOL_V2}", f"{CATALOGS}/{VOICE_FITS}", RUN_LOGS, ARCHIVE):
         (root / sub).mkdir(parents=True, exist_ok=True)
     return root
@@ -57,6 +60,10 @@ def ensure_folders(root: Path) -> Path:
 
 def raw_forecasts_file(root: Path, day: str) -> Path:
     return root / RAW / NEW_VOICE_FORECASTS / f"{day}.jsonl"
+
+
+def raw_code_features_file(root: Path, day: str) -> Path:
+    return root / RAW / CODE_FEATURES / f"{day}.jsonl"
 
 
 def forecasts_table_dir(root: Path) -> Path:

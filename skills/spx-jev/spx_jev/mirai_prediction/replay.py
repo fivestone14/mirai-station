@@ -15,6 +15,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .code_feature_inputs import load_market_history
 from .live_records import load_pool_v1_snapshots
 from .name_map import SUMS_BY_LANE, store_path
 from .nightly_job import run_nightly
@@ -73,10 +74,11 @@ def run_replay(state_dir: Path | str, lane: str, from_day: str, to_day: str, for
             continue
         day_fits_by_sum = {sum_id: fit_voices_for_day(state_dir, root, lane, sum_id, day)[0] for sum_id in sums}
         snapshots = load_pool_v1_snapshots(state_dir, lane, day)
+        history = load_market_history(state_dir, lane, day)
         written = 0
         for read_id in read_ids_of_day(state_dir, lane, day):
             result = forecast_read(state_dir, lane, day, read_id, source="replay", day_fits_by_sum=day_fits_by_sum,
-                                   pool_v1_snapshots=snapshots, budget_seconds=None)
+                                   pool_v1_snapshots=snapshots, budget_seconds=None, market_history=history)
             written += result.get("written", 0)
         night = run_nightly(state_dir, lane, day, fit_next=False, scoreboard=False)
         report["days"][day] = {"forecast_lines": written, "night": {k: v for k, v in night.items() if k not in ("day", "lane")}}
