@@ -483,9 +483,9 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 <div class="sheet" id="infoSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="infoTitle">
   <div class="sh-grab"></div>
   <div class="sh-h" id="infoTitle">How to read this page</div>
-  <div class="pt-r"><span class="k">Today&rsquo;s call</span><span>JEV&rsquo;s own forecast.</span></div>
+  <div class="pt-r"><span class="k">Today&rsquo;s call</span><span>The combined forecast: every forecaster mixed by its track record (since 10/06). This is the call the calls in play are scored on.</span></div>
   <div class="pt-r"><span class="k">Typical</span><span>What SPX did this hour on recent days (the tile says how many); the bar to beat.</span></div>
-  <div class="pt-r"><span class="k">Combined &middot; graded</span><span>Every forecaster mixed by its track record (since 10/06); the calls in play are scored on it.</span></div>
+  <div class="pt-r"><span class="k">JEV alone</span><span>JEV&rsquo;s own forecast, one of the voices mixed into the call; not scored as the call.</span></div>
   <div class="pt-r"><span class="k">Point</span><span>A point is one step of the S&amp;P 500 index, e.g. 7,817 &rarr; 7,818.</span></div>
   <div class="pt-r"><span class="k">Situation</span><span>Each row is one of the facts JEV reads; it answers questions about its sentence, word for word.</span></div>
   <div class="pt-r"><span class="k">Learning loop</span><span>Right = called direction matched. vs typical = how much better (+) or worse (&minus;) than what this hour usually does. Too early until 100 reads; a verdict at 300.</span></div>
@@ -785,9 +785,10 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var j = h.jev, c = h.clock, pooled = /^pool/.test(h.shown_source || ''), pool2 = h.shown_source === 'pool_v2';
     if(bl && bl.used && j && c){
       var g = el('div', 'tod'), days = 'Typical \u00B7 ' + bl.sessions + ' days', span = bl.phase_words ? phaseSpan(bl.phase_words, at) : '';
-      var graded = (pool2 ? 'Combined' : pooled ? 'Learned mix' : 'Half of each') + ' \u00B7 graded';
       g.appendChild(tile(days, c.probabilities, tod && tod.phases && tod.phases.length ? function(from){ openTod(tod, bl, at, from); } : null,
                          span ? days + ', ' + span : null));
+      if(pool2){ g.appendChild(tile('JEV alone', j.probabilities)); return g; }      // the headline is the graded call: JEV's own read beside it
+      var graded = (pooled ? 'Learned mix' : 'Half of each') + ' \u00B7 graded';
       g.appendChild(tile(graded, h.probabilities)).setAttribute('class', 'tile graded');
       return g;
     }
@@ -1374,9 +1375,12 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       var hc = el('div', 'card dashed');
       hc.appendChild(el('div', 'mode', '30-min call'));
       hc.appendChild(clockBlock(c.row_ts, minutes, marks.next_30 !== undefined ? marks.next_30 : plusIso(c.row_ts, minutes)));
-      // JEV's own read leads; the call the calls in play grade sits in the tiles under it
-      var own = jevOwn(a), hp = own.probabilities, top = own.pick || top1(hp);
-      hc.appendChild(labRow('Today\u2019s call \u00B7 JEV', own.confidence != null ? pct(own.confidence) + ' sure' : null)).setAttribute('class', 'lab call');
+      // the headline is the call the calls in play grade: since 2026-10-06 the combined forecast (Pool 2), with JEV's own
+      // read as one tile under it (Will, 2026-10-07: two different answers on one screen confused); a card from before
+      // the combined forecast leads with JEV's own read as it always did
+      var combined = a.shown_source === 'pool_v2', own = combined ? a : jevOwn(a), hp = own.probabilities, top = own.pick || top1(hp);
+      hc.appendChild(labRow(combined ? 'Today\u2019s call \u00B7 combined' : 'Today\u2019s call \u00B7 JEV',
+                            !combined && own.confidence != null ? pct(own.confidence) + ' sure' : null)).setAttribute('class', 'lab call');
       hc.appendChild(el('div', 'big', cap(top) + ' ' + pct(hp[top])));
       hc.appendChild(oddsBar(hp, top));
       if(a !== h) hc.appendChild(tag(averageWords(a)));
@@ -1388,7 +1392,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       if(a !== h && h.probabilities) hc.appendChild(endPriceRow(h));
       var h60 = h.by && h.by.next_60;
       if(h60 && h60.probabilities){
-        var own60 = jevOwn(h60), p60 = own60.probabilities, t60 = own60.pick || top1(p60);
+        var own60 = h.shown_source === 'pool_v2' ? h60 : jevOwn(h60), p60 = own60.probabilities, t60 = own60.pick || top1(p60);
         var m60 = marks.next_60 !== undefined ? marks.next_60 : plusIso(c.row_ts, 60);
         var r60 = el('div', 'row60'), l60 = el('span', 'l');
         r60.appendChild(el('span', 'k', '60 min \u00B7 end price')); r60.appendChild(el('b', null, cap(t60) + ' ' + pct(p60[t60]))); r60.appendChild(l60);

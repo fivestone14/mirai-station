@@ -1558,6 +1558,25 @@ def test_a_blended_call_leads_with_jevs_own_read_and_keeps_the_half_and_half_in_
     assert parts["tod"].startswith("Typical · 19 days") and "Half of each · gradedFlat 45%" in parts["tod"]
 
 
+def test_the_combined_forecast_leads_the_card_and_jevs_own_read_sits_in_a_tile():
+    """Will, 2026-10-07: once the combined forecast is the call (shown_source pool_v2), the headline is the call the calls in
+    play grade, labelled combined; JEV's own read moves to a "JEV alone" tile beside the usual odds, and the 60-minute line
+    is the combined forecast's too. (The 13:29 ET read of 10-07 showed JEV's Up 67% big while the graded call was Flat 47%.)"""
+    blend = {"used": True, "jev_share": 0.5, "phase_words": "afternoon, 13:00 to 14:00", "sessions": 20}
+    avg = {**AVG, "pick": "flat", "probabilities": {"up": 0.38, "flat": 0.47, "down": 0.15}, "blend": blend, "shown_source": "pool_v2",
+           "jev": {"probabilities": {"up": 0.67, "flat": 0.2, "down": 0.13}, "confidence": 0.6},
+           "clock": {"probabilities": {"up": 0.22, "flat": 0.61, "down": 0.17}}}
+    n60 = {"pick": "flat", "probabilities": {"up": 0.2, "flat": 0.5, "down": 0.3}, "blended": True,
+           "jev": {"pick": "up", "probabilities": {"up": 0.9, "flat": 0.05, "down": 0.05}}}
+    c = {"row_ts": "2026-09-28T13:29:10-04:00", "marks": {"next_30": "2026-09-28T13:59:00-04:00", "next_60": "2026-09-28T14:29:00-04:00"},
+         "calls": [], "hour": {**END_30, "used": 2, "shown_source": "pool_v2", "by": {"next_30": END_30, "next_60": n60}, "average": avg}}
+    parts = _sum_card(c)
+    got = dict((k, v) for k, v in parts if k in ("big", "lab call", "tod"))
+    assert got["big"] == "Flat 47%" and got["lab call"].startswith("Today’s call · combined") and "sure" not in got["lab call"]
+    assert got["tod"].startswith("Typical · 20 days") and "JEV aloneUp 67%" in got["tod"] and "graded" not in got["tod"]
+    assert any(k == "row60" and v.startswith("60 min \u00B7 end priceFlat 50%") for k, v in parts)
+
+
 def test_the_30_minute_card_leads_with_the_average_price_call_and_keeps_the_end_price_beside_it():
     """The big number, the odds and how the call was made are the average-price sum's, with what it is measured on and
     its edge in points; the end-price sum rides beside it as one muted line, and the blend note is the average's own."""
