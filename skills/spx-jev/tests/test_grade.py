@@ -203,3 +203,17 @@ def test_the_vix_anchor_waits_for_the_settled_open():
     market = MarketContext({"$VIX": [(at(9, 31), 16.0)]})
     assert read_anchor(late, flat_bars(390), market, at(9, 34, ss=30).isoformat()) is None
     assert read_anchor(late, flat_bars(390), market, at(9, 35).isoformat()) == SigmaRuler(7700.0 * 16.0 / 100.0 / math.sqrt(252), "vix")
+
+
+def test_a_hand_regrade_after_the_cut_over_weighs_no_retired_question(tmp_path, monkeypatch):
+    """grade.main loads the doc through ask.retired for the day it grades (--day, else today), as the service's runs do,
+    so a re-grade after 2026-10-08 never admits the retired questions back into the weights."""
+    from spx_jev import grade
+    seen = {}
+    def run(state_dir, out_dir, allowed, day, lane):
+        seen[day] = allowed
+        return {"sums": {}, "questions": {}, "new_this_run": 0, "graded_runs": 0, "method": "neutral"}
+    monkeypatch.setattr(grade, "run", run)
+    for day in ("2026-10-07", "2026-10-08"):
+        assert grade.main(["--state-dir", str(tmp_path), "--out-dir", str(tmp_path / "live"), "--day", day]) == 0
+    assert "price_move_5way" in seen["2026-10-07"] and seen["2026-10-08"] == {}

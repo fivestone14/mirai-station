@@ -261,7 +261,7 @@ def base_row(read_id: str, day: str) -> Row:
 def test_matrix_takes_the_code_columns_and_leaves_a_read_without_a_line_silent(tmp_path, monkeypatch):
     root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
     monkeypatch.setattr(answer_matrix, "load_base_rows", lambda *a: [base_row("live:a", "2026-09-16"), base_row("live:b", "2026-09-17")])
-    monkeypatch.setattr(answer_matrix, "load_jev_answers", lambda *a: ({"live:a": {"q1": "yes"}}, {"q1": "g"}))
+    monkeypatch.setattr(answer_matrix, "load_jev_answers", lambda *a: ({"live:a": {"q1": "yes"}}, {"q1": "g"}, {"q1": "2026-09-16"}))
     paths.append_json_line(paths.raw_code_features_file(root, "2026-09-16"), {"read_id": "live:a", "lane": "live", "answers": {"TREND-01": "big up"}})
     paths.append_json_line(paths.raw_code_features_file(root, "2026-09-18"), {"read_id": "live:b", "lane": "live", "answers": {"TREND-01": "flat"}})
     m = build_answer_matrix(tmp_path, "live", "average_30", before_day="2026-09-18")

@@ -22,6 +22,13 @@ window sits against the read, up, flat or down, with no unsure. Its context line
 average is and gives the flat edge in index points for the read (average_window: the end price's
 flat band narrowed by integral.factor, the edge the average-price grade sets it against). Its
 summary (average_summary) rides on the hour summary under ``average``: the phone's call.
+
+From the cut-over (cuts.CUT_OVER_DAY) the live lane's sentences are no longer the live questions' answers, which are
+retired that day (ask.retired): cut_over_sentences writes, in order, the judgment questions' answers given afresh on
+the read (the one group kept, its shadow status no bar here) and the read's code-feature answers as plain sentences
+("<catalog title>: <answer>", keyed ``code:<question id>``), so JEV sums the market state the code measured. The
+request is shaped as before; its units line says what the lines are. A read with no sentence at all still asks the
+sums, over an empty answers map. Before the cut-over nothing of this runs.
 """
 from __future__ import annotations
 
@@ -33,7 +40,9 @@ from pathlib import Path
 from . import integral
 from .ask import fill_question, jev_only
 from .cuts import TAPE_BIG_UNITS, TAPE_FLAT_UNITS
+from .judgment import GATES
 from .lane import LIVE, RECORD, Lane
+from .mirai_prediction.code_features import column_name, load_catalog
 from .weights import MIN_WEIGHT, QuestionWeights
 
 FIVE = ("down_big", "down_small", "flat", "up_small", "up_big")   # a RECORD horizon's outcomes, in order
@@ -41,6 +50,9 @@ PER_READ = ("window_minutes",)     # the names in the average-price sum's text t
 AVERAGE_OUTCOMES = ("up", "flat", "down")
 UNITS = ("sigma is today's expected move for the S&P 500 index. Each answer below was given by JEV about this moment, "
          "except those marked held, which were given at the time shown and carried forward unchanged")
+# the units line from the cut-over: the lines are the code's measurements, and JEV's own judgments where it was asked one
+CUT_OVER_UNITS = ("sigma is today's expected move for the S&P 500 index. Each line below is a measurement the code made about this "
+                  "moment, named by what it measures, except those that say JEV was sure, which are judgments JEV gave about this moment")
 
 
 def load_hour_doc(path: Path | str | None = None, lane: Lane = LIVE) -> dict:
@@ -132,6 +144,37 @@ def answer_sentences(doc: dict, answered: dict[str, dict], weights: QuestionWeig
             left_out[qid] = "no pick in the answer"
             continue
         sentences[qid] = s
+    return sentences, left_out
+
+
+def code_sentence(question: dict, answer: str) -> str:
+    """'<the catalog title>: <the answer>', one code-feature answer as JEV reads it."""
+    return f"{question['title']}: {answer}"
+
+
+def cut_over_sentences(doc: dict, fresh: dict[str, dict], code_answers: dict[str, str | None] | None) -> tuple[dict[str, str], dict[str, str]]:
+    """Step 3 from the cut-over. The judgment questions' answers given afresh on this read come first, each the sentence
+    answer_sentences would write (one_sentence), then every code-feature answer the read has, in the catalog's order, as
+    code_sentence under ``code:<question id>``. Returns the sentences and what was left out and why: a fresh answer to
+    any other question (none is asked from the cut-over; one that is, is not an input), or a judgment answer with no
+    pick. A code question the builder could not answer (None) is left out silently, as the matrix holds it."""
+    by_id = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
+    sentences: dict[str, str] = {}
+    left_out: dict[str, str] = {}
+    for qid, a in fresh.items():
+        q = by_id.get(qid)
+        if q is None or qid not in GATES:
+            left_out[qid] = "not a judgment question: not an input from the cut-over"
+            continue
+        s = one_sentence(q, a)
+        if s is None:
+            left_out[qid] = "no pick in the answer"
+            continue
+        sentences[qid] = s
+    for q in load_catalog():
+        answer = (code_answers or {}).get(q["id"])
+        if answer is not None:
+            sentences[column_name(q["id"])] = code_sentence(q, str(answer))
     return sentences, left_out
 
 

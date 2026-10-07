@@ -11,7 +11,7 @@ hand. On the way each question is keyed by its id inside its group, and:
   list in level order. The set's ``criteria``, the rule code judges each option by, ride beside them as
   ``code_criteria``; the option names are kept in order as ``options``.
 * Every field the code reads is kept as the set wrote it: status, dark_reason, type, serves, lanes, the per-lane
-  schedule and horizon, cadence (for people), sleep_when, code_answer, ref_side, shadow_proof, and why;
+  schedule, horizon and retired_from (the day a lane stops asking the question; the cut-over), cadence (for people), sleep_when, code_answer, ref_side, shadow_proof, and why;
   merged_id (the id a judgment question had in the merged set); and ``ask``, the question in one short plain sentence that the sums read an answer after (hour.py)
   and the phone shows, never sent to JEV with the question itself.
   The review record (evidence, origin, sources, labels_needed) stays in the set; ``labels`` names what
@@ -41,7 +41,7 @@ from spx_jev.cuts import QUESTION_CONSTANTS  # noqa: E402
 from spx_jev.lane import LANES, QUESTIONS  # noqa: E402
 
 QUESTION_SET = SKILL / "spec" / "question_set.json"
-KEPT = ("status", "type", "serves", "lanes", "schedule", "horizon", "cadence", "sleep_when", "code_answer", "ref_side",
+KEPT = ("status", "type", "serves", "lanes", "schedule", "horizon", "retired_from", "cadence", "sleep_when", "code_answer", "ref_side",
         "shadow_proof", "ask", "instructions", "dark_reason", "merged_id")
 
 

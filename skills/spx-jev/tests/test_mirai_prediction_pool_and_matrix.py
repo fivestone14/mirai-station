@@ -194,3 +194,42 @@ def test_the_volume_grid_has_the_small_steps():
     assert LAYER_VOLUME_GRID[:9] == [0.0, 0.005, 0.01, 0.02, 0.03, 0.05, 0.075, 0.10, 0.15]
     assert LAYER_VOLUME_GRID[9] == 0.2 and LAYER_VOLUME_GRID[-1] == 1.5 and VOLUME_SEARCH_PASSES == 3
     assert LAYER_VOLUME_GRID == sorted(set(LAYER_VOLUME_GRID))
+
+
+def test_a_fit_after_the_cut_over_drops_the_jev_columns_last_answered_before_it_and_keeps_every_code_column():
+    """From the cut-over the live lane asks only the judgment questions, so a pre-merge question's column goes silent; the
+    matcher reads a silent column as half a mismatch, so a fit for a day after the cut-over leaves those columns out."""
+    from spx_jev.mirai_prediction import answer_matrix
+    from spx_jev.mirai_prediction.name_map import CUT_OVER_DAY
+    assert CUT_OVER_DAY == "2026-10-08"
+    last = {"price_move_5way": "2026-10-07", "news_reaction": "2026-10-08", "quiet_coiled_or_resting": "2026-10-02"}
+    ids = set(last) | {"never_answered"}
+    for before_day in ("2026-10-07", "2026-10-08"):
+        cols = column_catalog(ids, {}, last, before_day)
+        assert {c for c in cols if c.startswith("jev:")} == {f"jev:{q}" for q in ids}
+    cols = column_catalog(ids, {}, last, "2026-10-09")
+    assert {c for c in cols if c.startswith("jev:")} == {"jev:news_reaction", "jev:never_answered"}
+    assert {c for c in cols if c.startswith("code:")} == {f"code:{q['id']}" for q in load_catalog()}
+    assert column_catalog(ids, {}) == column_catalog(ids, {}, last, "2026-10-08")      # without a day nothing is dropped
+
+
+def test_the_rows_of_a_matrix_built_after_the_cut_over_lose_the_dropped_columns_too(tmp_path, monkeypatch):
+    from spx_jev.mirai_prediction import answer_matrix, paths
+    from spx_jev.mirai_prediction.answer_matrix import build_answer_matrix
+
+    def row(read_id, day):
+        return Row(read_id=read_id, row_ts=f"{day}T11:00:00-04:00", day=day, sum_id="average_30",
+                   historical_odds_probs=F["historical_odds"], jev_own_probs=None, shown_probs=None, pool_v1_probs=None,
+                   outcome="flat", learn_exclude=False)
+    paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
+    monkeypatch.setattr(answer_matrix, "load_base_rows", lambda *a: [row("live:a", "2026-10-07"), row("live:b", "2026-10-08")])
+    monkeypatch.setattr(answer_matrix, "load_jev_answers",
+                        lambda *a: ({"live:a": {"old": "up", "news_reaction": "shrugging_off"}, "live:b": {"news_reaction": "overreacting"}},
+                                    {"old": "g1", "news_reaction": "judgment"}, {"old": "2026-10-07", "news_reaction": "2026-10-08"}))
+    m = build_answer_matrix(tmp_path, "live", "average_30", before_day="2026-10-09")
+    assert "jev:old" not in m.columns and m.columns["jev:news_reaction"]["group"] == "jev:judgment"
+    a, b = m.rows
+    assert set(a.answers) == set(b.answers) == set(m.columns)
+    assert a.answers["jev:news_reaction"] == "shrugging_off" and b.answers["jev:news_reaction"] == "overreacting"
+    kept = build_answer_matrix(tmp_path, "live", "average_30", before_day="2026-10-08")
+    assert "jev:old" in kept.columns and kept.rows[0].answers["jev:old"] == "up"

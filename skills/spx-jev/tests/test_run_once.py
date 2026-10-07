@@ -567,3 +567,94 @@ def test_the_judgment_group_failing_never_costs_the_read(tmp_path, monkeypatch):
     q = {e["id"]: e for e in c["questions"]}
     assert q["q_dir"]["answer"]["pick"] == "rising" and c["hour"]["pick"] == "flat"
     assert q["news_reaction"]["skipped"] == "gate: headlines not fired: the judgment group failed (ZeroDivisionError)"
+
+
+# ---- the cut-over (Phase 4): date-gated, nothing moves before CUT_OVER_DAY
+
+CUT_DOC = {"version": "test", "groups": [
+    {**JUDGMENT_DOC["groups"][0], "questions": {"q_dir": {**JUDGMENT_DOC["groups"][0]["questions"]["q_dir"], "retired_from": "2026-10-08"}}},
+    JUDGMENT_DOC["groups"][1]]}
+EVE, CUT = "2026-10-07", "2026-10-08"
+
+
+def _state_on(tmp_path, day: str):
+    """A 10:35 row and 70 bars on ``day``, over enough flat prior sessions, read every five minutes, for the time-of-day
+    blend and so the learning loop's snapshot."""
+    from spx_jev.clock import MIN_SESSIONS
+    prior = {f"2026-09-{d:02d}": flat_bars(390, day=f"2026-09-{d:02d}") for d in range(1, MIN_SESSIONS + 1)}
+    write_prior_rows(tmp_path, {d: [make_row(at(9 + (30 + m) // 60, (30 + m) % 60, day=d), 7700.0) for m in range(0, 390, 5)] for d in prior})
+    return write_state(tmp_path, day, [make_row(at(10, 35, day=day, ss=10), 7700.0)], flat_bars(70, day=day), prior)
+
+
+def _headline_on(state, day: str, title: str):
+    from spx_jev.headlines import folder
+    folder(state).mkdir(parents=True, exist_ok=True)
+    line = {"captured_at": at(10, 25, day=day).isoformat(timespec="seconds"), "pub_claimed": None, "feed": "cnbc_top", "source": "CNBC",
+            "title": title, "url": None, "guid": None}
+    with open(folder(state) / f"{day}.jsonl", "a") as f:
+        f.write(json.dumps(line) + "\n")
+
+
+def _cut_over_read(tmp_path, monkeypatch, day: str, doc: dict, code: dict | None):
+    from spx_jev import judgment
+    state = _state_on(tmp_path, day)
+    out = state / "spx_jev"
+    _headline_on(state, day, "Nvidia slips as export curbs widen")
+    monkeypatch.setattr(judgment, "code_answers_for", lambda *a, **k: dict(code or {}))
+    sent = []
+    real = _answers()
+    monkeypatch.setattr(service, "send_all", lambda requests, **kw: sent.extend(r["id"] for r in requests) or real(requests, **kw))
+    monkeypatch.setattr(service, "send", _sums)
+    c = run_once(state, out, doc, True, day)
+    hour_rec = json.loads((out / "hour" / f"{day}.jsonl").read_text().splitlines()[0])
+    return c, hour_rec, sent, out
+
+
+def test_the_eve_of_the_cut_over_reads_exactly_as_a_doc_that_never_retires(tmp_path, monkeypatch):
+    """On 2026-10-07 a retiring question is asked, summed and held as it was, and the sums' request is byte for byte the
+    one the same read makes from a doc without retired_from: the code's sentences are not in it."""
+    from spx_jev.hour import UNITS
+    code = {"TREND-01": "big up", "TREND-10": "up held", "TREND-11": "none"}
+    c, rec, sent, _ = _cut_over_read(tmp_path / "retiring", monkeypatch, EVE, CUT_DOC, code)
+    c0, rec0, sent0, _ = _cut_over_read(tmp_path / "plain", monkeypatch, EVE, JUDGMENT_DOC, code)
+    assert sent == sent0 == ["g1", "judgment"]
+    assert json.dumps(rec["request"], sort_keys=True) == json.dumps(rec0["request"], sort_keys=True)
+    assert json.dumps(rec["average_request"], sort_keys=True) == json.dumps(rec0["average_request"], sort_keys=True)
+    assert list(rec["request"]["state"]["answers"]) == ["q_dir"] and rec["request"]["state"]["context"]["units"] == UNITS
+    assert rec["used"] == {"q_dir": "rising"} and rec["left_out"]["news_reaction"] == "a shadow forecast, never an input"
+    assert "code_sentences" not in rec and "code_sentences" not in c["hour"]
+    assert {e["id"] for e in c["questions"]} == {"q_dir", "news_reaction", "push_blowoff_or_fresh"} and c["dark"] == []
+    assert rec["pool"]["next_30"]["members"].keys() == {"q_dir"} and rec["pool"]["next_30"]["awake"] == ["q_dir"]
+
+
+def test_from_the_cut_over_the_retired_question_is_dark_and_the_sums_ride_on_the_judgment_and_code_answers(tmp_path, monkeypatch):
+    from spx_jev.ask import RETIRED
+    from spx_jev.hour import CUT_OVER_UNITS
+    code = {"TREND-01": "big up", "TREND-10": "up held", "TREND-11": "none", "LEVELS-01": None}
+    c, rec, sent, out = _cut_over_read(tmp_path, monkeypatch, CUT, CUT_DOC, code)
+    assert sent == ["judgment"]
+    req = rec["request"]
+    assert req["id"] == "hour" and set(req) == {"id", "state", "questions"} and set(req["state"]) == {"context", "answers"}
+    assert list(req["questions"]) == ["next_30", "next_60"] and req["state"]["context"]["units"] == CUT_OVER_UNITS
+    assert list(req["state"]["answers"]) == ["news_reaction", "push_blowoff_or_fresh", "code:TREND-01", "code:TREND-10", "code:TREND-11"]
+    assert req["state"]["answers"]["news_reaction"] == "Is SPX shrugging off, overreacting or in proportion? shrugging off, JEV was 85% sure"
+    assert req["state"]["answers"]["code:TREND-01"] == "Last 30-minute move, signed: big up"
+    assert "q_dir" not in json.dumps(req) and rec["average_request"]["state"]["answers"] == req["state"]["answers"]
+    assert rec["used"] == {"news_reaction": "shrugging_off", "push_blowoff_or_fresh": "blow_off"} and rec["fresh"] == {} and rec["left_out"] == {}
+    assert rec["code_sentences"] == 3 and c["hour"]["pick"] == "flat" and c["hour"]["used"] == 2 and c["hour"]["code_sentences"] == 3
+    # the card: the retired question is listed apart with its reason and never counted; the pool still forms its snapshot
+    assert [e["id"] for e in c["questions"]] == ["news_reaction", "push_blowoff_or_fresh"] and c["fresh_count"] == 2
+    assert c["dark"] == [{"id": "q_dir", "viewpoint": "volume_price", "ask": "Did price rise, fall, or go nowhere?", "dark_reason": RETIRED}]
+    snap = rec["pool"]["next_30"]
+    assert set(snap["experts"]) == set(service.pool.W0) and snap["members"] == {} and snap["awake"] == []
+    record = json.loads((out / f"{CUT}.jsonl").read_text().splitlines()[0])
+    assert record["skipped"]["g1"] == {"q_dir": f"dark: {RETIRED}", "*": "nothing to ask in this group this read"}
+    assert "q_dir" not in json.loads((out / "last_asked.json").read_text())
+
+
+def test_from_the_cut_over_a_read_with_no_judgment_and_no_code_answer_still_asks_the_sums_over_nothing(tmp_path, monkeypatch):
+    doc = {"version": "test", "groups": [CUT_DOC["groups"][0]]}
+    c, rec, sent, _ = _cut_over_read(tmp_path, monkeypatch, CUT, doc, {})
+    assert sent == [] and c["asked"] == 0
+    assert rec["request"] is not None and rec["request"]["state"]["answers"] == {} and rec["average_request"]["state"]["answers"] == {}
+    assert c["hour"]["pick"] == "flat" and c["hour"]["used"] == 0 and rec["sentences"] == {} and "code_sentences" not in rec

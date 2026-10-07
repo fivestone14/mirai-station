@@ -66,19 +66,21 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from . import archive, ask, integral, judgment, pool
-from .ask import build_requests, confidence, load_questions, pick, plain_error, send, send_all
+from .ask import build_requests, confidence, load_questions, pick, plain_error, retired, send, send_all
 from .baseline import Baseline
 from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, lost_today, mark_asleep,
                       plan, save_last, unheld)
 from .clock import blend as clock_blend, integral_odds as clock_integral_odds, odds as clock_odds
+from .cuts import CUT_OVER_DAY
 from .events import learn_exclude, tag as event_tag
 from .expiry import calendar_of
 from .grade import (INTEGRAL_NAME, average_alone, average_call, horizon_start, live_options, mark_at, read_anchor, run as grade_run,
                     told_edge)
-from .hour import (answer_sentences, average_request, average_summary, average_window, band_of, hour_request, hour_summary, load_hour_doc,
-                   named_levels)
+from .hour import (CUT_OVER_UNITS, answer_sentences, average_request, average_summary, average_window, band_of, cut_over_sentences, hour_request,
+                   hour_summary, load_hour_doc, named_levels)
 from .labels.registry import build_labels
 from .lane import LANES, LANES_BY_KEY, LIVE, RECORD, Lane
+from .mirai_prediction.code_features import COLUMN_PREFIX
 from .schedule import not_due, read_slot
 from .sessions import session_close, session_open
 from .state_builder import DEFAULT_STATE_DIR, NoBarYet, Scene, load_bars, load_jsonl, load_rows, make_scene, parse_ts
@@ -235,26 +237,34 @@ def plain_errors(hour: dict) -> dict:
 def sum_the_hour(doc: dict, hour_doc: dict, answered: dict[str, dict], weights: QuestionWeights,
                  fresh: dict[str, dict] | None = None, missing: list[str] | None = None,
                  lane: Lane = LIVE, unit: dict | None = None, deadline: float | None = None,
-                 window: dict | str | None = None) -> tuple[dict, dict | None, dict | None, dict | None]:
+                 window: dict | str | None = None, day: str | None = None,
+                 code_answers: dict[str, str | None] | None = None) -> tuple[dict, dict | None, dict | None, dict | None]:
     """Steps 3 and 4: sentences from the answers, the lane's end-price sums over them in one request and its
     average-price sum in another over ``window`` (box_window; a reason instead, and it is not asked), both sent at
     once and retried until ``deadline`` (ask.send). Returns the hour record (what was used, what was fresh, what
     was left out or missing, both requests), JEV's summary with the average-price sum's under ``average``, and its
     two replies untouched, for the archive. A lane on the tape needs its ``unit`` to price the bands: without one
-    there is no sum to ask."""
-    sentences, left_out = answer_sentences(doc, answered, weights)
+    there is no sum to ask. On a lane that learns the loop (the live lane) from the cut-over (``day`` on or after
+    CUT_OVER_DAY) the sentences are the judgment questions' fresh answers and the read's ``code_answers`` instead
+    (hour.cut_over_sentences), the units line says so, and the sums are asked even over no sentence at all."""
+    cut_over = lane.pool and day is not None and day >= CUT_OVER_DAY
     fresh = fresh if fresh is not None else answered
+    sentences, left_out = cut_over_sentences(doc, fresh, code_answers) if cut_over else answer_sentences(doc, answered, weights)
     by_id = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
     # the grader pairs only answers given afresh on this read with the read's outcome
     fresh_picks = {qid: a["pick"] for qid, a in fresh.items() if by_id.get(qid, {}).get("status") == "live" and a.get("pick") is not None}
-    base = {"used": {qid: answered[qid]["pick"] for qid in sentences}, "fresh": fresh_picks,
-            "left_out": left_out, "missing": sorted(missing or []), "sentences": sentences}
-    if not sentences:
+    code_sentences = sum(1 for qid in sentences if qid.startswith(f"{COLUMN_PREFIX}:"))
+    base = {"used": {qid: answered[qid]["pick"] for qid in sentences if qid in answered}, "fresh": fresh_picks,
+            "left_out": left_out, "missing": sorted(missing or []), "sentences": sentences,
+            # the code's measurements the sums rode on beside the answers (from the cut-over); absent before it
+            **({"code_sentences": code_sentences} if code_sentences else {})}
+    if not sentences and not cut_over:
         return {**base, "request": None}, None, None, None
     if lane.bar_clock and not unit:
         return {**base, "request": None, "no_sum": "no tape unit this read: the bars have stopped, so the bands cannot be priced"}, None, None, None
-    req = hour_request(sentences, hour_doc, lane=lane, ruler=unit)
-    avg_req = average_request(sentences, window, hour_doc, lane=lane) if lane.average and isinstance(window, dict) else None
+    context = {"units": CUT_OVER_UNITS} if cut_over else None
+    req = hour_request(sentences, hour_doc, context, lane=lane, ruler=unit)
+    avg_req = average_request(sentences, window, hour_doc, context, lane=lane) if lane.average and isinstance(window, dict) else None
     replies = send_sums([req, avg_req], send, deadline)
     reply, avg_reply = replies[req["id"]], replies.get("average")
     return ({**base, "request": req, "average_request": avg_req}, with_average(hour_summary(reply, lane), lane, window, avg_reply),
@@ -639,7 +649,7 @@ def card(scene, state: dict, omitted: dict, doc: dict, requests: list, skipped: 
         "cadence_from": cad.get("recounted_from"),
         "cadence_note": "a question is asked at the reads its schedule names, a live one afresh only when its cadence has elapsed; in between, its last answer is held and says since when",
         "dark": dark,
-        "dark_note": "dark questions are never asked and never counted; each waits for the source it needs",
+        "dark_note": "dark questions are never asked and never counted; each waits for the source it needs, or was retired at the cut-over",
         "hour": hour,
         # a tier-1 scheduled event due within the hour (events.py): a tag for the reader, never sent to JEV
         "event": event,
@@ -709,13 +719,19 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
     # what the learning loop leaves out, per horizon, decided now so a later calendar edit cannot move it
     learn = {"learn_exclude": learn_exclude(now, tuple(m for m, _ in lane.horizons.values()))} if lane.pool else {}
     day_name = scene.row["ts"][:10]
+    # a question retired from the lane by this day is dark from here on (ask.retired): the live lane's pre-merge
+    # questions from the cut-over
+    doc = retired(doc, day_name)
     gates = dict(labels.gates)
-    if gated := judgment.gated_questions(doc):
+    code_answers: dict[str, str | None] = {}
+    if (gated := judgment.gated_questions(doc)) or (lane.pool and day_name >= CUT_OVER_DAY):
         # the judgment questions stand behind the code feature builder's answers, so those are answered now, before the
         # requests are built: a live read records them under raw/code_features/ (the forecast after the read reuses
         # the line by read_id), a replay or an unsent run computes them and writes nothing. Never raises: a failure
-        # leaves every judgment question not fired, with the failure as its reason
-        verdicts = judgment.judge(state_dir, lane.name, day_name, scene, labels, event, gated, record=do_send and lane.pool and day is None)
+        # leaves every judgment question not fired, with the failure as its reason. From the cut-over the live lane's
+        # sums ride on these answers, so they are answered whether or not the doc holds the judgment group
+        verdicts, code_answers = judgment.judge(state_dir, lane.name, day_name, scene, labels, event, gated,
+                                                record=do_send and lane.pool and day is None)
         gates.update(verdicts)
     by_id = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
     live_ids = {qid for qid, q in by_id.items() if q.get("status") == "live"}
@@ -779,7 +795,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         hour_doc = load_hour_doc(lane=lane)
         window = box_window(scene.row["ts"], band, scene, lane) if lane.average else None
         hour_rec, hour, hour_reply, average_reply = sum_the_hour(doc, hour_doc, answered, QuestionWeights.load(out_dir), fresh, missing, lane,
-                                                                 unit, t0 + SEND_READ_S, window)
+                                                                 unit, t0 + SEND_READ_S, window, day_name, code_answers)
         send_seconds = round(_clock.monotonic() - t0, 3)      # JEV's round trips only; the blend below is code
         if hour is not None and lane.clock_blend:
             # the end-price sums the grader scores are JEV's sum blended half and half with
@@ -824,7 +840,8 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
                 hour = {**hour, "average": {**hour["average"], "shown_source": pool.SHOWN_BLEND,
                                             "shown_why": f"the average-price loop failed this run: {type(e).__name__}"}}
         if hour is not None:
-            hour = {**hour, "used": len(hour_rec["used"]), "left_out": len(hour_rec["left_out"]), "missing": len(missing)}
+            hour = {**hour, "used": len(hour_rec["used"]), "left_out": len(hour_rec["left_out"]), "missing": len(missing),
+                    **({"code_sentences": hour_rec["code_sentences"]} if hour_rec.get("code_sentences") else {})}
             if hour.get("error"):
                 log(f"the end-price sums got no answer: {hour['error']}")
             if (hour.get("average") or {}).get("error"):
@@ -974,9 +991,10 @@ def close_out(state_dir: Path, out_dir: Path, doc: dict, lane: Lane, day: str | 
     not come keeps it open, the phone keeps asking for it, and each live run tries again (retry_close_outs).
     A ``retry`` archives a close-out record only when its tally moved. None when the lane did not read
     on ``day``, today unless a replay names one. A grading failure is logged, as run_once's is, and the card and
-    the close-out record are still written from what is on file."""
+    the close-out record are still written from what is on file. A question retired from the lane by the day is
+    not weighed (ask.retired)."""
     try:
-        grade_run(state_dir, out_dir, live_options(doc), lane=lane)
+        grade_run(state_dir, out_dir, live_options(retired(doc, day or today_et())), lane=lane)
     except Exception as e:  # grading must never stop the close-out's card
         log(f"grading skipped this close-out: {type(e).__name__}: {e}\n{traceback.format_exc()}")
     try:

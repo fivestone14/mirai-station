@@ -135,6 +135,9 @@
       "opening_five_minute": "10min_opening",
       "thirty_minute": "30min"
      },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 5 min 09:45-10:30 with a 5-minute window; then every 30-minute read with a 30-minute window",
      "code_answer": true,
      "ask": "Did price just set a new session high or low, or stall near one?",
@@ -503,6 +506,9 @@
       "opening_five_minute": "10min_opening",
       "thirty_minute": "30min"
      },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 5 min 09:35-10:30, then every 30-minute read",
      "code_answer": true,
      "ask": "How steeply are same-day puts priced over calls against recent sessions at this minute?",
@@ -704,6 +710,9 @@
       "opening_five_minute": "10min_opening",
       "thirty_minute": "60min"
      },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "once at the 09:35 read on the settled open; answer held as a day constant through the lane and the 30-minute reads to 11:32",
      "sleep_when": "|largest single-name contribution| not in the top third of the last {night_rank_count} sessions' largest",
      "code_answer": true,
@@ -759,6 +768,9 @@
       "opening_five_minute": "10min_opening",
       "thirty_minute": "60min"
      },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "once at the 09:35 read; answer held as a day constant through the lane and the 30-minute reads to 11:32",
      "code_answer": true,
      "ask": "Where did the open land against yesterday's high and low?",
@@ -809,6 +821,9 @@
       "opening_five_minute": "10min_opening",
       "thirty_minute": "60min"
      },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "once at the 09:35 read; answer held as a day constant through the lane and the 30-minute reads to 11:32",
      "code_answer": true,
      "ask": "Did VIX open higher, in line or lower than the overnight gap would leave it?",
@@ -855,6 +870,9 @@
      "horizon": {
       "opening_five_minute": "10min_opening",
       "thirty_minute": "60min"
+     },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
      },
      "cadence": "once at the 09:35 read; answer held as a day constant through the lane and the 30-minute reads to 11:32",
      "code_answer": true,
@@ -914,6 +932,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ask": "Over the last {window_30_min} minutes, how did price move?",
@@ -959,6 +980,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read 10:02-14:32 (sign flips into the close)",
      "code_answer": true,
      "ref_side": "day side from yesterday's close",
@@ -1006,6 +1030,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ask": "How was the last half hour's move made?",
@@ -1049,6 +1076,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:32",
      "code_answer": true,
      "ask": "Was the last {window_60_min} minutes one-way or two-way?",
@@ -1094,6 +1124,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:32",
      "code_answer": true,
      "ask": "Did the last half hour move, and was its range narrow or wide?",
@@ -1137,6 +1170,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 11:02, the first its label can be measured on (an hour of 5-minute returns from 10:00)",
      "code_answer": true,
      "ask": "So far today, are the moves building or cancelling out?",
@@ -1194,6 +1230,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read 10:02-14:32",
      "code_answer": true,
      "ask": "Is this morning's gap intact or being lost?",
@@ -1240,6 +1279,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read, awake only while code's answer key for gap_side_now is gap_up_losing or gap_down_losing (never JEV's own answer, which would be circular)",
      "sleep_when": "code's answer key for gap_side_now is not gap_up_losing / gap_down_losing",
      "code_answer": false,
@@ -1279,6 +1321,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read 11:32-14:32, awake only on real-gap days",
      "code_answer": true,
      "ref_side": "gap side",
@@ -1320,6 +1365,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read 10:02-14:32 (not after: the sign flips into the close)",
      "code_answer": true,
      "ask": "Is SPX's move from yesterday's close from the gap or built today?",
@@ -1365,6 +1413,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:32 (asleep before)",
      "code_answer": true,
      "ref_side": "broken edge side",
@@ -1411,6 +1462,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ask": "Where is price against the usual move-from-the-open band for this minute?",
@@ -1454,6 +1508,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "the 14:32 and 15:02 reads, awake only when the last half hour made a real move toward yesterday's close (out of the bottom third for this time of day) and price is near it (the bottom third of the same distance) or crossed it in the window",
      "sleep_when": "last-30 move not toward prior_close, or in the bottom third of the last {night_rank_count} sessions' |30-minute move| at this minute; or price out of the bottom third of the same distance from prior_close without a cross; or the session has no half hour yet",
      "code_answer": true,
@@ -1514,6 +1571,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ask": "How busy was the last half hour against the same half hour on recent sessions?",
@@ -1559,6 +1619,9 @@
       }
      },
      "horizon": "all",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ask": "Is the rest of today priced cheaper or richer than usual for this time of day?",
@@ -1607,6 +1670,9 @@
       "opening_five_minute": "10min_opening",
       "thirty_minute": "30min"
      },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 5 min 09:40-10:30 with a 10-minute window; every 30-minute read from 10:02 with a 30-minute window (the 10:02 read measures VIX since the open)",
      "code_answer": true,
      "ask": "How much has VIX moved as a share of its level?",
@@ -1649,6 +1715,9 @@
       }
      },
      "horizon": "30min (asked once a read; the label's 60-minute clause is not this question's)",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ask": "How wide is the flat band against SPX's typical move over the horizon?",
@@ -1688,6 +1757,9 @@
       }
      },
      "horizon": "all",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ask": "How does today's range so far compare with a normal day's pace?",
@@ -1730,6 +1802,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:32 (no effect before 10:30)",
      "code_answer": true,
      "ask": "Is SPY's quote wider or thinner than usual for this time of day?",
@@ -1772,6 +1847,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:32",
      "code_answer": true,
      "ask": "Did the last {window_30_min} minutes reprice the rest of today richer or cheaper than the clock?",
@@ -1811,6 +1889,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:32, awake only while price is away from the day's VWAP (out of the bottom third of the same distance for this time of day)",
      "sleep_when": "|spot - vwap| further than under a third of the last {night_rank_count} sessions' at this minute (bottom third)",
      "code_answer": false,
@@ -1865,6 +1946,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ask": "Did VIX move more or less fearfully than the SPX move explains?",
@@ -1904,6 +1988,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ask": "Did VVIX stir beyond what the VIX and SPX moves explain?",
@@ -1946,6 +2033,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ref_side": "last-30 move side",
@@ -1986,6 +2076,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ask": "Did nine-day fear rise or fall against the VIX?",
@@ -2025,6 +2118,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ask": "Did downside protection get dearer or cheaper than the SPX move explains?",
@@ -2064,6 +2160,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ask": "Did same-day at-the-money vol move more or less than the price move explains?",
@@ -2130,6 +2229,9 @@
       "thirty_minute": "all",
       "opening_five_minute": "10min_opening"
      },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:02; in the opening lane at 09:35 and again at 10:05, after the 10:00 releases, each answer held to the next (release_in_lane carries the 10-minute clock)",
      "sleep_when": "no scheduled event today, or every event came out beyond the digest window",
      "code_answer": true,
@@ -2176,6 +2278,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read, awake only on the eve of the Fed or of a report before the open, or the day after a major release",
      "sleep_when": "no jobs report, consumer price report or Fed decision on the previous session, before the next open or at the next session (an ordinary day)",
      "code_answer": true,
@@ -2256,6 +2361,9 @@
       }
      },
      "horizon": "all",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every other 30-minute read (hourly), from 10:02",
      "code_answer": true,
      "ask": "Is today's priced move swollen or compressed, and is an event behind it?",
@@ -2303,6 +2411,9 @@
       }
      },
      "horizon": "all",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "the 10:02 read, then only when the answer changes",
      "code_answer": true,
      "ask": "How is the VIX curve shaped against its usual?",
@@ -2348,6 +2459,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read, awake only while the stress label is written",
      "code_answer": true,
      "ask": "What kind of selloff is this stress day?",
@@ -2407,6 +2521,9 @@
       }
      },
      "horizon": "all",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ask": "Which way do today's same-day options books lean at the current price?",
@@ -2456,6 +2573,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ref_side": "price's side of the flip",
@@ -2499,6 +2619,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ref_side": "last-30 move side",
@@ -2543,6 +2666,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 11:32 (asleep before the late-morning gate)",
      "sleep_when": "before 11:30 ET (the gamma family's clock gate, gamma.BOOK_VS_PACE_FROM)",
      "code_answer": true,
@@ -2590,6 +2716,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ask": "How much room does the book's balance have before it tips?",
@@ -2639,6 +2768,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ask": "Where does the gamma sit in today's book and the week's?",
@@ -2701,6 +2833,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ask": "Is price seated on today's heaviest strike, near it, or away?",
@@ -2743,6 +2878,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ask": "How tight is the box between the heaviest call-side and put-side strikes?",
@@ -2786,6 +2924,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ask": "How did the heaviest strikes move over the last {window_30_min} minutes?",
@@ -2831,6 +2972,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read, awake only when a wall or the magnet was touched in the last half hour",
      "code_answer": true,
      "ask": "What happened at the heavy strike price touched?",
@@ -2879,6 +3023,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read, awake only when a contested strike is within reach: its distance from price not in the top third of the nearest contested strike's distance at this minute on recent sessions",
      "code_answer": true,
      "ask": "Are market makers defending the nearest heavily hit strike or leaving it?",
@@ -2921,6 +3068,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:32",
      "code_answer": true,
      "ask": "Which side of the day's VWAP (volume-weighted average price) is SPX, and do the books agree?",
@@ -2987,6 +3137,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read 10:02-15:02",
      "code_answer": true,
      "ask": "Where is price against yesterday's value area, and which way is today going?",
@@ -3033,6 +3186,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ref_side": "edge side (high +1, low -1)",
@@ -3085,6 +3241,9 @@
       "thirty_minute": "30min",
       "opening_five_minute": "10min_opening"
      },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read and every 5-minute lane read, awake only near or just through a round level",
      "code_answer": true,
      "ask": "Has price just crossed a round level, or is it pressing one?",
@@ -3127,6 +3286,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:02, awake only while a break is armed or recently expired",
      "sleep_when": "break_state idle and nothing expired or decocked within {window_30_min} minutes",
      "code_answer": true,
@@ -3175,6 +3337,9 @@
      "horizon": {
       "opening_five_minute": "10min_opening",
       "thirty_minute": "30min"
+     },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
      },
      "cadence": "every 5 min 09:35-10:30, then every 30-minute read",
      "code_answer": true,
@@ -3226,6 +3391,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ask": "Did option or SPY activity come with a price move?",
@@ -3290,6 +3458,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ref_side": "last-30 move side",
@@ -3337,6 +3508,9 @@
       }
      },
      "horizon": "all",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:32",
      "code_answer": true,
      "ask": "Since the open, has volume been lopsided, rotating or leaning?",
@@ -3382,6 +3556,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ask": "Did the NYSE tick lean to buying or selling more than usual for this half hour?",
@@ -3427,6 +3604,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read, awake only when SPX set a new session extreme within the recent window",
      "code_answer": true,
      "ref_side": "extreme side (high +1, low -1)",
@@ -3465,6 +3645,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:32",
      "code_answer": true,
      "ask": "Is SPX's move since the open backed by net buying in its own stocks?",
@@ -3511,6 +3694,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:32",
      "code_answer": true,
      "ask": "Has net volume in S&P 500 stocks been stronger or weaker than across the NYSE?",
@@ -3550,6 +3736,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read, awake only within the digest window after an in-session release, once its first reaction is over",
      "sleep_when": "no in-session release within {event_digest_min} minutes, or the newest one's first reaction is not over (the same wait as move_reaction_path)",
      "code_answer": true,
@@ -3593,6 +3782,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ask": "Did volume run heavier in rising or falling stocks than their count suggests?",
@@ -3649,6 +3841,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ref_side": "last-30 move side",
@@ -3693,6 +3888,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ask": "Did semiconductors run ahead of the index, and which way?",
@@ -3736,6 +3934,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ask": "Did the sector funds move together with the index?",
@@ -3779,6 +3980,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ask": "How did the largest index stocks move together over the last {window_30_min} minutes?",
@@ -3825,6 +4029,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ask": "Which part of the index did the moving over the last {window_30_min} minutes?",
@@ -3874,6 +4081,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:32 (signal measured from 12:00; asked earlier so the weights learn the morning is weak)",
      "code_answer": true,
      "ask": "Since the open, have tech or small caps led the index?",
@@ -3940,6 +4150,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ask": "Are Treasuries ahead of the index, and which way?",
@@ -3982,6 +4195,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ask": "Did oil move further than its usual link to the index explains?",
@@ -4021,6 +4237,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read",
      "code_answer": true,
      "ask": "Are bonds, credit, oil, gold and the euro ahead of the index, and which way?",
@@ -4062,6 +4281,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 10:02",
      "code_answer": true,
      "ask": "Did risk-on sectors beat or trail the defensive ones?",
@@ -4102,6 +4324,9 @@
       }
      },
      "horizon": "all",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "the 10:02 read and the 14:02 read, awake only on an expiry day or inside the opex-week or after-opex window",
      "sleep_when": "no quarter-end or monthly expiry today, and outside the opex-week window ({one_day} to {opex_week_days} trading days before the monthly) and the after-opex window ({one_day} to {after_opex_days} trading days after it)",
      "code_answer": true,
@@ -4148,6 +4373,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "the 10:02, 12:02, 14:32 and 15:32 reads, awake only in the month's first or last days",
      "sleep_when": "outside the month's first {month_turn_days} and last {rebal_window_days} trading days",
      "code_answer": true,
@@ -4218,6 +4446,9 @@
       "thirty_minute": "30min",
       "opening_five_minute": "10min_opening"
      },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read and every 5-minute lane read",
      "sleep_when": "no five-minute window in the last {shock_lookback_min} minutes larger than the biggest five-minute move of the {shock_lookback_min} minutes to its minute (from the settled open when that is shorter) on every one of up to the last {night_rank_count} sessions, or the session's first five minutes are not over",
      "code_answer": true,
@@ -4258,6 +4489,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read, awake only within an hour of a shock",
      "code_answer": true,
      "ref_side": "shock side",
@@ -4308,6 +4542,9 @@
       "thirty_minute": "60min",
       "opening_five_minute": "10min_opening"
      },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read and lane read, awake 10-120 minutes after a release, Fed remarks, or a detected burst",
      "sleep_when": "no release, Fed remarks or burst in the digest window whose first reaction is over, or that first reaction's move is in the bottom third of the same minutes' moves on the last {night_rank_count} sessions, event or not",
      "code_answer": true,
@@ -4352,6 +4589,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read, awake only within an hour of a shock",
      "code_answer": true,
      "ref_side": "shock side",
@@ -4393,6 +4633,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read, awake only within an hour of a shock",
      "code_answer": true,
      "ask": "Which group led the shock?",
@@ -4450,6 +4693,9 @@
      "horizon": {
       "thirty_minute": "30min",
       "opening_five_minute": "10min_opening"
+     },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
      },
      "cadence": "every 30-minute read and lane read, awake only when a top-8 name's 10-minute move beat every one of its own last 20 sessions at this minute",
      "sleep_when": "no top-{mega_count} name's |{window_10_min}-minute move| higher than every one of its own last {night_rank_count} sessions at this minute",
@@ -4512,6 +4758,9 @@
       }
      },
      "horizon": "30min at the 15:32 read; 60min at the 15:02 read",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "the 15:02 and 15:32 reads only (weights keyed per read slot)",
      "code_answer": true,
      "ask": "Which way has price run since the early afternoon?",
@@ -4554,6 +4803,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "the 14:02, 14:32, 15:02 and 15:32 reads (weights keyed per read slot: the pull shows only after 15:30)",
      "sleep_when": "magnet_seat's code answer is held_on_magnet or seated_fresh (the magnet's distance in the bottom third)",
      "code_answer": true,
@@ -4600,6 +4852,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "the 14:02 to 15:32 reads",
      "code_answer": true,
      "ask": "Where does the charm wall sit against price?",
@@ -4643,6 +4898,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "the 15:02 and 15:32 reads",
      "code_answer": true,
      "ask": "How heavy was trading in the last {window_30_min} minutes for this time of day?",
@@ -4683,6 +4941,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read after the press conference starts, FOMC days only (none in the test window; next 10-28)",
      "code_answer": true,
      "ask": "Since the Fed press conference began, has price extended or reversed the statement's move?",
@@ -4726,6 +4987,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "the 15:02 and 15:32 reads (weights keyed per read slot)",
      "code_answer": true,
      "ask": "Has VIX drifted up, held or drifted down since the early afternoon?",
@@ -4777,6 +5041,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 11:02",
      "sleep_when": "|day move from the settled open| ranks below {third_lo} against the same move at this minute on the last {night_rank_count} sessions (bottom third), the day has not left the settled open at any read, or fewer than two earlier reads today",
      "code_answer": true,
@@ -4818,6 +5085,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 11:02",
      "sleep_when": "|day move from the settled open| ranks below {third_lo} against the same move at this minute on the last {night_rank_count} sessions (bottom third), or fewer than two earlier reads today",
      "code_answer": true,
@@ -4873,6 +5143,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read",
      "sleep_when": "excess rank in the middle three fifths",
      "code_answer": true,
@@ -4910,6 +5183,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read from 11:02 (needs three prior half-hours)",
      "sleep_when": "the three signs are mixed, or the summed excess is in the middle third",
      "code_answer": true,
@@ -4947,6 +5223,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every other 30-minute read (hourly)",
      "sleep_when": "link rank in the middle third",
      "code_answer": true,
@@ -4991,6 +5270,9 @@
      "horizon": {
       "opening_five_minute": "10min_opening",
       "thirty_minute": "day"
+     },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
      },
      "cadence": "once at the 09:35 read; answer held as a day constant through the 30-minute reads",
      "sleep_when": "rank in the middle three fifths",
@@ -5608,6 +5890,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every other 30-minute read (hourly)",
      "code_answer": true,
      "shadow_proof": "SPX aggressor tape, 20 and 46 days, worse than clock and shuffles",
@@ -5652,6 +5937,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every other 30-minute read (hourly)",
      "code_answer": true,
      "shadow_proof": "partial corr 0.005 after past movement, 21 days",
@@ -5692,6 +5980,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every other 30-minute read (hourly)",
      "code_answer": true,
      "shadow_proof": "residual -0.01 after spot; tracks price at -0.76",
@@ -6029,6 +6320,9 @@
       }
      },
      "horizon": "10min after 15:50",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "would need a 15:52 read with an 8-minute horizon (last live read is 15:32)",
      "code_answer": true,
      "ask": "Which side is the closing imbalance on, and is it large?",
@@ -6069,6 +6363,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read when a feed exists",
      "code_answer": true,
      "ask": "Have index ETFs been created or redeemed heavily today?",
@@ -6109,6 +6406,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "on each new headline once a writer exists",
      "sleep_when": "no headline within {window_30_min} minutes",
      "code_answer": false,
@@ -6150,6 +6450,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read when a feed exists",
      "code_answer": true,
      "ask": "Did Nasdaq volume lean the same way as the NYSE?",
@@ -6199,6 +6502,9 @@
       "thirty_minute": "30min",
       "opening_five_minute": "10min_opening"
      },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 5-minute lane read and 30-minute read once persisted",
      "code_answer": true,
      "ask": "Has the pressure at SPY's best prices been on the buy or the sell side?",
@@ -6240,6 +6546,9 @@
       }
      },
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "the 15:02 and 15:32 reads once a 1DTE slice is scanned",
      "code_answer": true,
      "ask": "Where does tomorrow's heaviest strike sit as today's options run out?",
@@ -6283,6 +6592,9 @@
       }
      },
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "cadence": "every 30-minute read on the quarter's last trading day (09-30, 12-31) once the band is kept",
      "code_answer": true,
      "ask": "Where is price against today's largest quarter-end strikes?",

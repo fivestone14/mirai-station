@@ -141,7 +141,8 @@
   "horizon": "horizon is a {lane: horizon} map on every multi-lane question; single-lane questions keep a plain string.",
   "needs_engine_edit": "needs_engine_edit marks engine labels (spec/labels.json) this set rewords. availability says whether the data is on the row; whether a label is built is the code's to say: a label no family writes is omitted as not built (labels/registry.py), and a question reading it is skipped as missing it.",
   "score_criteria": "type score: criteria is an ordered list, index = level, in the same order as options (spec 01).",
-  "tags": "tags marks a kind of question across groups. SEQUENTIAL_READ: the label states two or more steps in time order and the answer depends on that order; a question's steps are rebuilt from bars at every read, never from JEV's earlier answers. Untagged questions carry no tags field."
+  "tags": "tags marks a kind of question across groups. SEQUENTIAL_READ: the label states two or more steps in time order and the answer depends on that order; a question's steps are rebuilt from bars at every read, never from JEV's earlier answers. Untagged questions carry no tags field.",
+  "retired_from": "retired_from = the day a question stops being asked on a lane, a YYYY-MM-DD day per lane key like schedule and horizon. From that day the lane reads the question as dark with the reason 'retired at the cut-over' (ask.retired): never asked, never counted, never summed, weighed, held or pooled; before it nothing changes. The question stays in the set, dated, and is never deleted: its answers before the day are on record and the matrix keeps them until a fit for a day after the cut-over drops its column. The cut-over (Phase 4, cuts.CUT_OVER_DAY = 2026-10-08) retires every pre-merge question from the thirty_minute lane: from that day the live lane asks only the judgment group, and the sums ride on those answers and the code feature builder's answers in words. The opening and pre-market lanes keep asking their questions, shared ones included: no code feature builder answers their reads, so their sums have nothing else to ride on."
  },
  "daily_expiry_handling": {
   "summary": "SPX lists an SPXW expiry every trading day. The question set treats today's 0DTE book as the dealer book of record, but corrects for what a daily expiry does.",
@@ -731,6 +732,9 @@
       "opening_five_minute": "10min_opening",
       "thirty_minute": "30min"
      },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "opening_five_minute",
       "thirty_minute"
@@ -1257,6 +1261,9 @@
       "opening_five_minute": "10min_opening",
       "thirty_minute": "30min"
      },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "opening_five_minute",
       "thirty_minute"
@@ -1539,6 +1546,9 @@
       "opening_five_minute": "10min_opening",
       "thirty_minute": "60min"
      },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "opening_five_minute",
       "thirty_minute"
@@ -1617,6 +1627,9 @@
       "opening_five_minute": "10min_opening",
       "thirty_minute": "60min"
      },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "opening_five_minute",
       "thirty_minute"
@@ -1684,6 +1697,9 @@
       "opening_five_minute": "10min_opening",
       "thirty_minute": "60min"
      },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "opening_five_minute",
       "thirty_minute"
@@ -1745,6 +1761,9 @@
      "horizon": {
       "opening_five_minute": "10min_opening",
       "thirty_minute": "60min"
+     },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
      },
      "lanes": [
       "opening_five_minute",
@@ -1826,6 +1845,9 @@
      "type": "score",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -1890,6 +1912,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -1966,6 +1991,9 @@
      "type": "choice",
      "serves": "size",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -2033,6 +2061,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -2100,6 +2131,9 @@
      "type": "choice",
      "serves": "size",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -2167,6 +2201,9 @@
      "type": "choice",
      "serves": "regime",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -2239,6 +2276,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -2314,6 +2354,9 @@
      "type": "noul",
      "serves": "size",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -2380,6 +2423,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -2449,6 +2495,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -2519,6 +2568,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -2587,6 +2639,9 @@
      "type": "choice",
      "serves": "regime",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -2646,6 +2701,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -2725,6 +2783,9 @@
      "type": "choice",
      "serves": "size",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -2789,6 +2850,9 @@
      "type": "score",
      "serves": "size",
      "horizon": "all",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -2845,6 +2909,9 @@
      "horizon": {
       "opening_five_minute": "10min_opening",
       "thirty_minute": "30min"
+     },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
      },
      "lanes": [
       "opening_five_minute",
@@ -2911,6 +2978,9 @@
      "type": "score",
      "serves": "size",
      "horizon": "30min (asked once a read; the label's 60-minute clause is not this question's)",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -2965,6 +3035,9 @@
      "type": "score",
      "serves": "size",
      "horizon": "all",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -3024,6 +3097,9 @@
      "type": "choice",
      "serves": "size",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -3083,6 +3159,9 @@
      "type": "score",
      "serves": "size",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -3137,6 +3216,9 @@
      "type": "noul",
      "serves": "size",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -3211,6 +3293,9 @@
      "type": "choice",
      "serves": "size",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -3265,6 +3350,9 @@
      "type": "choice",
      "serves": "size",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -3327,6 +3415,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -3382,6 +3473,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -3436,6 +3530,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -3490,6 +3587,9 @@
      "type": "score",
      "serves": "size",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -3562,6 +3662,9 @@
      "horizon": {
       "thirty_minute": "all",
       "opening_five_minute": "10min_opening"
+     },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
      },
      "lanes": [
       "thirty_minute",
@@ -3636,6 +3739,9 @@
      "type": "choice",
      "serves": "size",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -3746,6 +3852,9 @@
      "type": "choice",
      "serves": "regime",
      "horizon": "all",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -3818,6 +3927,9 @@
      "type": "choice",
      "serves": "regime",
      "horizon": "all",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -3883,6 +3995,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -3965,6 +4080,9 @@
      "type": "choice",
      "serves": "regime",
      "horizon": "all",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -4042,6 +4160,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -4102,6 +4223,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -4170,6 +4294,9 @@
      "type": "choice",
      "serves": "size",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -4243,6 +4370,9 @@
      "type": "choice",
      "serves": "size",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -4313,6 +4443,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -4394,6 +4527,9 @@
      "type": "choice",
      "serves": "size",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -4453,6 +4589,9 @@
      "type": "choice",
      "serves": "size",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -4520,6 +4659,9 @@
      "type": "choice",
      "serves": "size",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -4584,6 +4726,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -4656,6 +4801,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -4715,6 +4863,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -4807,6 +4958,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -4882,6 +5036,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -4947,6 +5104,9 @@
      "horizon": {
       "thirty_minute": "30min",
       "opening_five_minute": "10min_opening"
+     },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
      },
      "lanes": [
       "thirty_minute",
@@ -5016,6 +5176,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -5079,6 +5242,9 @@
      "horizon": {
       "opening_five_minute": "10min_opening",
       "thirty_minute": "30min"
+     },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
      },
      "lanes": [
       "thirty_minute",
@@ -5167,6 +5333,9 @@
      "type": "choice",
      "serves": "size",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -5262,6 +5431,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -5335,6 +5507,9 @@
      "type": "choice",
      "serves": "regime",
      "horizon": "all",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -5399,6 +5574,9 @@
      "type": "score",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -5463,6 +5641,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -5524,6 +5705,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -5596,6 +5780,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -5650,6 +5837,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -5713,6 +5903,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -5784,6 +5977,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -5852,6 +6048,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -5919,6 +6118,9 @@
      "type": "choice",
      "serves": "size",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -5986,6 +6188,9 @@
      "type": "choice",
      "serves": "size",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -6051,6 +6256,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -6121,6 +6329,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -6208,6 +6419,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -6270,6 +6484,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -6324,6 +6541,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -6387,6 +6607,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -6441,6 +6664,9 @@
      "type": "choice",
      "serves": "size",
      "horizon": "all",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -6502,6 +6728,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -6597,6 +6826,9 @@
       "thirty_minute": "30min",
       "opening_five_minute": "10min_opening"
      },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute",
       "opening_five_minute"
@@ -6664,6 +6896,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -6732,6 +6967,9 @@
      "horizon": {
       "thirty_minute": "60min",
       "opening_five_minute": "10min_opening"
+     },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
      },
      "lanes": [
       "thirty_minute",
@@ -6803,6 +7041,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -6866,6 +7107,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -6945,6 +7189,9 @@
      "horizon": {
       "thirty_minute": "30min",
       "opening_five_minute": "10min_opening"
+     },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
      },
      "lanes": [
       "thirty_minute",
@@ -7029,6 +7276,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min at the 15:32 read; 60min at the 15:02 read",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -7084,6 +7334,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -7152,6 +7405,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -7211,6 +7467,9 @@
      "type": "choice",
      "serves": "size",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -7266,6 +7525,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -7329,6 +7591,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -7397,6 +7662,9 @@
      "serves": "direction",
      "ref_side": "the day's move from the settled open",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -7456,6 +7724,9 @@
      "serves": "direction",
      "ref_side": "the day's move from the settled open",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -7528,6 +7799,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -7578,6 +7852,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -7631,6 +7908,9 @@
      "type": "choice",
      "serves": "regime",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -7683,6 +7963,9 @@
      "horizon": {
       "opening_five_minute": "10min_opening",
       "thirty_minute": "day"
+     },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
      },
      "lanes": [
       "opening_five_minute",
@@ -8568,6 +8851,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -8636,6 +8922,9 @@
      "type": "choice",
      "serves": "size",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -8691,6 +8980,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -9168,6 +9460,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "10min after 15:50",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -9224,6 +9519,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -9279,6 +9577,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -9335,6 +9636,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -9392,6 +9696,9 @@
      "horizon": {
       "thirty_minute": "30min",
       "opening_five_minute": "10min_opening"
+     },
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
      },
      "lanes": [
       "thirty_minute",
@@ -9457,6 +9764,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "30min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -9518,6 +9828,9 @@
      "type": "choice",
      "serves": "direction",
      "horizon": "60min",
+     "retired_from": {
+      "thirty_minute": "2026-10-08"
+     },
      "lanes": [
       "thirty_minute"
      ],
@@ -12765,6 +13078,13 @@
    "decision": "six JEV judgment questions of the merged set (TREND-13, VOLATILITY-15, BREADTH-10, MACRO-03, EVENTS-06, EVENTS-07) as shadow questions behind code gates",
    "reason": "each is asked only when the code feature builder's answers, the headline feed or the ten-year yield's move say the moment calls for a judgment (spx_jev/judgment.py); shadow keeps them out of the old loop while the learning store files their answers for the Mirai Prediction System's matrix",
    "source": "Will 2026-10-07; the merged set's final_question_set.json"
+  },
+  {
+   "subject": "the pre-merge questions on the thirty_minute lane (Phase 4, the cut-over)",
+   "action": "retire from the live lane on 2026-10-08 (retired_from)",
+   "decision": "accepted",
+   "reason": "from cuts.CUT_OVER_DAY the live lane no longer asks the 104 pre-merge questions it asked (every question outside the judgment group whose lanes name thirty_minute): each carries retired_from {thirty_minute: 2026-10-08} and reads as dark from that day. JEV's own call, the sums, rides on the judgment questions' fresh answers and the read's code-feature answers as plain sentences instead (hour.cut_over_sentences). The questions stay in the set, dated, never deleted. The opening and pre-market lanes are not cut over: the 13 opening-only and 12 pre-market-only questions, and the live-lane questions those lanes share, stay live there.",
+   "source": "Will 2026-10-07; Phase 4 build"
   }
  ],
  "unresolved": [

@@ -111,3 +111,20 @@ def test_a_view_whose_likeliest_mass_ties_with_unsure_picks_unsure():
     assert v["size"]["pick"] == "small"                             # 0.55 against 0.45: no tie, a committed size
     tied = views_of({"down_big": 0.1, "down_small": 0.2, "flat": 0.1, "up_small": 0.2, "up_big": 0.1, "unsure": 0.3})
     assert tied["direction"]["pick"] == "unsure"                    # up 0.3, down 0.3 and unsure 0.3, summed in floats
+
+
+# ---- the cut-over (Phase 4): the sums ride on the judgment answers and the code's measurements
+
+def test_the_cut_over_sentences_are_the_judgment_answers_then_the_code_answers_in_the_catalogs_order():
+    from spx_jev.hour import code_sentence, cut_over_sentences
+    from spx_jev.mirai_prediction.code_features import catalog_by_id
+    fresh = {"news_reaction": {"pick": "shrugging_off", "probabilities": {"shrugging_off": 0.7}},
+             "price_move_5way": {"pick": "small_up", "probabilities": {"small_up": 0.6}},
+             "push_blowoff_or_fresh": {"pick": None}}
+    code = {"TREND-10": "up held", "TREND-01": "big up", "LEVELS-01": None}
+    sentences, left_out = cut_over_sentences(DOC, fresh, code)
+    assert list(sentences) == ["news_reaction", "code:TREND-01", "code:TREND-10"]
+    assert sentences["news_reaction"] == f"{BY_ID['news_reaction']['ask']} shrugging off, JEV was 70% sure"
+    assert sentences["code:TREND-01"] == code_sentence(catalog_by_id()["TREND-01"], "big up") == "Last 30-minute move, signed: big up"
+    assert left_out == {"price_move_5way": "not a judgment question: not an input from the cut-over", "push_blowoff_or_fresh": "no pick in the answer"}
+    assert cut_over_sentences(DOC, {}, None) == ({}, {})

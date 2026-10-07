@@ -421,7 +421,7 @@ def ensure_cadence(out_dir: Path, doc: dict, today: str) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    from .ask import load_questions
+    from .ask import load_questions, retired
     ap = argparse.ArgumentParser(description="Recount each question's cadence from a day's runs.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
     ap.add_argument("--day", help="the day to recount; default the newest day with records")
@@ -433,7 +433,8 @@ def main(argv: list[str] | None = None) -> int:
     if not day:
         print("no day with records", file=sys.stderr)
         return 1
-    new = recount(load_jsonl(out_dir / f"{day}.jsonl"), doc, load_cadence(out_dir), day)
+    # a question retired from the lane by that day has no cadence (ask.retired), as the service's own recount
+    new = recount(load_jsonl(out_dir / f"{day}.jsonl"), retired(doc, day), load_cadence(out_dir), day)
     for qid, v in sorted(new["questions"].items(), key=lambda kv: (kv[1]["minutes"], kv[0])):
         print(f"{v['minutes']:4d} min  {qid:30s} {v['why']}")
     if args.write:

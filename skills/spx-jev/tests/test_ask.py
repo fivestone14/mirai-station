@@ -550,3 +550,54 @@ def test_the_shipped_doc_is_what_the_question_set_makes():
     writer = Path(__file__).resolve().parent.parent / "spec" / "write_question_docs.py"
     done = subprocess.run([sys.executable, str(writer), "--check"], capture_output=True, text=True, timeout=60)
     assert done.returncode == 0, done.stdout + done.stderr
+
+
+# ---- the cut-over (Phase 4)
+
+RETIRING = {"groups": [{"id": "a", "reads": ["context"], "questions": {
+    "old": {"status": "live", "type": "noul", "instructions": "Read `context.symbol`.", "criteria": {"true": "t", "false": "f"},
+            "retired_from": "2026-10-08"},
+    "kept": {"status": "shadow", "type": "noul", "instructions": "Read `context.symbol`.", "criteria": {"true": "t", "false": "f"}},
+    "never": {"status": "dark", "dark_reason": "no feed", "type": "noul", "instructions": "Read `context.symbol`.",
+              "criteria": {"true": "t", "false": "f"}, "retired_from": "2026-10-08"}}}]}
+
+
+def test_a_retired_question_is_as_it_was_before_its_day_and_dark_from_it():
+    from spx_jev.ask import RETIRED, retired
+    before = retired(RETIRING, "2026-10-07")
+    assert before["groups"][0]["questions"] == RETIRING["groups"][0]["questions"]
+    for day in ("2026-10-08", "2026-10-09"):
+        after = retired(RETIRING, day)
+        old, kept, never = (after["groups"][0]["questions"][q] for q in ("old", "kept", "never"))
+        assert old["status"] == "dark" and old["dark_reason"] == RETIRED == "retired at the cut-over" and old["retired_from"] == "2026-10-08"
+        assert kept == RETIRING["groups"][0]["questions"]["kept"] and never["dark_reason"] == "no feed"
+    reqs, skipped = build_requests({"context": {"symbol": "SPX"}}, retired(RETIRING, "2026-10-08"))
+    assert [list(r["questions"]) for r in reqs] == [["kept"]] and skipped["a"]["old"] == "dark: retired at the cut-over"
+    reqs, _ = build_requests({"context": {"symbol": "SPX"}}, retired(RETIRING, "2026-10-07"))
+    assert list(reqs[0]["questions"]) == ["old", "kept"]
+    assert RETIRING["groups"][0]["questions"]["old"]["status"] == "live"       # never changed in place
+
+
+def test_retired_from_is_a_day_per_lane_and_each_lane_loads_its_own(tmp_path):
+    from spx_jev.ask import for_lane
+    q = {"status": "live", "lanes": ["thirty_minute", "opening_five_minute"], "retired_from": {"thirty_minute": "2026-10-08"}}
+    assert for_lane(q, "thirty_minute")["retired_from"] == "2026-10-08" and "retired_from" not in for_lane(q, "opening_five_minute")
+    doc = {"groups": [{"id": "a", "reads": ["context"], "questions": {"q": {"status": "live", "type": "noul", "lanes": ["thirty_minute"],
+                                                                            "instructions": "Read `context.symbol`.", "criteria": {"true": "t", "false": "f"},
+                                                                            "retired_from": {"thirty_minute": "next week"}}}}]}
+    path = tmp_path / "q.json"
+    path.write_text(json.dumps(doc))
+    with pytest.raises(ValueError, match="retired_from is 'next week'"):
+        load_questions(path, "thirty_minute")
+
+
+def test_the_shipped_doc_retires_every_pre_merge_question_from_the_live_lane_on_the_cut_over_day_and_no_other_lanes():
+    from spx_jev.cuts import CUT_OVER_DAY
+    from spx_jev.judgment import GATES
+    from spx_jev.lane import LIVE, PREMARKET, TAPE
+    live = {qid: q for g in load_questions(LIVE.questions, LIVE.key)["groups"] for qid, q in g["questions"].items()}
+    assert CUT_OVER_DAY == "2026-10-08"
+    assert {qid: q.get("retired_from") for qid, q in live.items() if qid not in GATES} == {qid: CUT_OVER_DAY for qid in live if qid not in GATES}
+    assert set(GATES) <= set(live) and not any("retired_from" in live[qid] for qid in GATES)
+    for lane in (TAPE, PREMARKET):
+        assert not any("retired_from" in q for g in load_questions(lane.questions, lane.key)["groups"] for q in g["questions"].values())

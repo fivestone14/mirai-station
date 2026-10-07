@@ -159,6 +159,42 @@ computes nothing twice. A replay or an unsent run computes the answers and write
 catches its own failure (the code answers, the headlines, the yield's move, each gate): a failure leaves the question not
 fired, with the failure named in its reason, and the read goes on; the step never raises.
 
-**Not built:** the cut-over of the old 129 questions to the merged set (Phase 4); OPTIONS-12 and FLOW-09 (no feed; silent in the
-catalog); EVENTS-09 (Kalshi); the scope of the news (index-wide or one name) that EVENTS-07's merged wording asks for, since a
-choice carries one answer; a fifth-based gate for MACRO-03 (MACRO-02 ranks in thirds).
+**Not built:** OPTIONS-12 and FLOW-09 (no feed; silent in the catalog); EVENTS-09 (Kalshi); the scope of the news (index-wide or
+one name) that EVENTS-07's merged wording asks for, since a choice carries one answer; a fifth-based gate for MACRO-03 (MACRO-02
+ranks in thirds).
+
+## Phase 4 (built 2026-10-07, live from 2026-10-08): the cut-over
+
+**The day:** `cuts.CUT_OVER_DAY = "2026-10-08"`, read here through `name_map.CUT_OVER_DAY`. Every edit is gated on it: a read
+on 2026-10-07 is byte for byte what it was (the golden old-sums test and `test_run_once`'s eve-of-the-cut-over test hold it).
+
+**What JEV is asked from that day, on the live lane:** the six gated judgment questions (Phase 3), when their gates fire, and the
+sums: the end-price sums and the average-price sum, in the same two requests as before, whose `state.answers` is now, in order,
+the judgment questions' fresh answers in their old sentence form ("<ask> <pick>, JEV was N% sure") and the read's code-feature
+answers as plain sentences, `code:<id>: "<catalog title>: <answer>"` for every catalog question the builder answered
+(`hour.cut_over_sentences`; a None is left out, as the matrix holds it). The context's units line says the lines are the code's
+measurements and JEV's own judgments. A read with no judgment answer and no code answer still asks the sums over an empty map.
+The hour record and the card's `hour` keep `used` (the answered questions summed) and `code_sentences` (how many code measurements
+rode beside them; absent before the cut-over). The code answers are the same line `raw/code_features/{day}.jsonl` holds for the read: `judgment.judge` returns them to
+`service.run_once` beside the gate verdicts, and from the cut-over the live lane answers them whether or not the doc holds the
+judgment group.
+
+**What is no longer asked:** the 104 pre-merge questions of the live lane (every question outside the judgment group whose
+`lanes` name `thirty_minute`). Each carries `retired_from: {"thirty_minute": "2026-10-08"}` in `spec/question_set.json` (the
+writer keeps it in the doc; `--check` holds the doc to the set) and `ask.retired(doc, day)` reads it as dark from that day with
+the reason `retired at the cut-over`: `build_requests` skips it, the cadence, the sums' `used`/`fresh`, `grade.live_options` and
+the weights, `pool_snapshots`' members and `last_asked.json` all keep to live questions, and the card lists it under `dark`
+with that reason (the phone's "N of M answered" counts the card's questions, so never a retired one; the questions sheet deals
+them as their own last group, "retired at the cut-over, no longer asked"). The questions stay in the set and the doc, dated,
+never deleted; their answers before the day stay in the store and the archive.
+
+**What stays:** pool_v1 forms its snapshot at every read as before and stays a voice source (`pool_v1` in pool_v2's mix), its
+members empty from the cut-over, so its question block is the prior alone; the blend, the historical odds and the learners are
+untouched. The opening and pre-market lanes are not cut over: no code feature builder answers their reads, so their sums have
+nothing else to ride on; the 13 opening-only and 12 pre-market-only questions, and the live-lane questions those lanes share,
+stay live there, `retired_from` naming the live lane alone.
+
+**The matrix:** `answer_matrix.column_catalog` drops a `jev:` column whose last answered day is before the cut-over once the
+matrix is built for a day after it (`before_day > CUT_OVER_DAY`), and the rows' answers with it, so a post-cut fit never carries
+the dead columns (the matcher reads a silent column as half a mismatch, which would dilute every match). Every `code:` column
+is kept. A matrix for the cut-over day or earlier keeps every column, so the fits before it are what they were.

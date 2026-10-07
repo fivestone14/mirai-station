@@ -2,12 +2,14 @@
 
 The live store keeps its folder names; this system reads them through STORE_NAMES so every other module uses the
 diagram's words. Pool_v1's expert names become voice names the same way (VOICE_NAMES). Nothing on disk is renamed.
-STAGES, SUMS_BY_LANE and REFERENCE_VOICE live here too, so the hook, the nightly job and the learners share one spelling.
+STAGES, SUMS_BY_LANE and REFERENCE_VOICE live here too, so the hook, the nightly job and the learners share one spelling, and
+CUT_OVER_DAY (cuts.py's) is read from here: the day the live lane stopped asking the pre-merge questions.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
+from ..cuts import CUT_OVER_DAY  # noqa: F401  (the cut-over day is cuts.py's; this system reads it from here)
 from .paths import spx_jev_dir
 
 # diagram name -> the live store's folder under state/spx_jev/store/ (hive-partitioned Parquet, one folder per day)

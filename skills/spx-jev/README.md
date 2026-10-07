@@ -205,10 +205,32 @@ archive there too, under `archive/`.
    whose label is missing, or that is asleep, is skipped. A live question whose
    ask got no answer (JEV failed after its retries) is asked again at the lane's
    next read that can ask it, a day constant or a held one included.
+   **The cut-over (Phase 4, `cuts.CUT_OVER_DAY` = 2026-10-08):** from that day
+   the live lane asks none of its 104 pre-merge questions. Each carries
+   `retired_from: {thirty_minute: 2026-10-08}` in the set and the read reads it
+   as dark, reason "retired at the cut-over" (`ask.retired`, applied to the doc
+   on every read and close-out by the read's day): never asked, counted, held,
+   weighed or pooled, listed apart on the card. The live lane asks only the six
+   gated judgment questions. The questions stay in the set and the doc, dated,
+   never deleted; their answers before the day stay on record. The opening and
+   pre-market lanes are not cut over (no code feature builder answers their
+   reads, so their sums would have nothing to ride on): the questions they
+   share with the live lane stay live there. Before the day nothing changes.
 3. Answers as sentences, code (`hour.py`): "Over the last 30 minutes, did price
    rise, fall, or go nowhere? rising, JEV was 98% sure", with "held since 11:02
    ET" on a held one. Shadow answers never go in; a question under the weight
-   cut would be left out, and with neutral weights none is.
+   cut would be left out, and with neutral weights none is. From the cut-over,
+   on the live lane (`hour.cut_over_sentences`): the judgment questions'
+   answers given afresh on the read, in the same words, then every code-feature
+   answer the read has as "<catalog title>: <answer>" ("Last 30-minute move,
+   signed: big up", keyed `code:<id>`), so JEV sums the market state the code
+   measured; the request is shaped as before, its units line saying what the
+   lines are, and the sums are asked even over no sentence at all. The hour
+   record and the card's `hour` keep `used` as the answered questions summed
+   and, from the cut-over, `code_sentences`, how many of the code's
+   measurements the sum rode on beside them. The old
+   loop's `pool_v1` keeps forming its snapshot as a voice source with no
+   members.
 4. The sums, JEV (`questions/spx_hour.json`), two requests sent at once on
    the same sentences. The call: where the average price over the next 30
    minutes sits against the price now, every minute counting equally, up,
@@ -537,6 +559,8 @@ running.
   answer is asked once more within the same read while the second round and
   the sums still fit before the open; a read too close to the open for both
   asks once, and no later checkpoint asks its questions again.
+- The cut-over retires the live lane's questions only; the opening and
+  pre-market lanes still ask theirs, with no code sentences in their sums.
 - Nothing works out the set's `code_answer`s yet, so re-asking a question when
   the code's answer changes (a schedule's `then`) is built only on the cadence
   side: such a question is held.

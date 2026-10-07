@@ -290,13 +290,14 @@ def build_judgment_labels(facts: Facts) -> LabelSet:
 
 
 def judge(state_dir: Path | str, lane_name: str, day: str, scene: Scene, labels: LabelSet, event: dict | None, qids,
-          record: bool) -> dict[str, str | None]:
-    """The judgment questions' gate verdicts for one read, never raising. The labels go into ``labels``; a failure
-    leaves every gate not fired, with the failure as its reason."""
+          record: bool) -> tuple[dict[str, str | None], dict[str, str | None]]:
+    """The judgment questions' gate verdicts for one read and the code feature builder's answers the gates read (what
+    the sums ride on from the cut-over, hour.cut_over_sentences), never raising. The labels go into ``labels``; a failure
+    leaves every gate not fired, with the failure as its reason, and no code answers."""
     try:
         facts = facts_for(state_dir, lane_name, day, read_record_for_code(lane_name, scene, labels, event), record)
         labels.update(build_judgment_labels(facts))
-        return verdicts(qids, facts)
+        return verdicts(qids, facts), facts.code
     except Exception as e:  # the judgment group must never cost the read
         _log(f"left out this read: {type(e).__name__}: {e}")
-        return {qid: f"{GATED} {' or '.join(GATES[qid].reads)} not fired: the judgment group failed ({type(e).__name__})" for qid in qids}
+        return {qid: f"{GATED} {' or '.join(GATES[qid].reads)} not fired: the judgment group failed ({type(e).__name__})" for qid in qids}, {}

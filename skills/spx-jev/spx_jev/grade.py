@@ -122,7 +122,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from . import archive, events, integral, scores
-from .ask import load_questions
+from .ask import load_questions, retired
 from .hour import FIVE, average_probabilities
 from .labels.measures import SETTLED_OPEN_BAR, close_at, settled_open
 from .labels.rulers import SigmaRuler, morning_ruler, vix_at_settled_open
@@ -855,7 +855,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"average-price grade: {sum(1 for g in new if g.get('graded'))} new windows graded, "
               f"{sum(1 for g in new if not g.get('graded'))} not graded, into {out_dir / INTEGRAL_NAME}", file=sys.stderr)
         return 0
-    w = run(state_dir, out_dir, live_options(load_questions(lane.questions, lane.key)), args.day, lane)
+    # a question retired from the lane by the day graded is not weighed (ask.retired), as the service's own runs do not
+    day = args.day or datetime.now(ET).date().isoformat()
+    w = run(state_dir, out_dir, live_options(retired(load_questions(lane.questions, lane.key), day)), args.day, lane)
     for qid, s in w["sums"].items():
         print(f"{qid}: its record failed: {s['failed']}" if "failed" in s else
               f"{qid}: graded {s['n']}; hit rate {s['hit_rate']} vs always-flat {s['always_flat_hit_rate']}; mean Brier {s['mean_brier']}; bands {s['bands']}",

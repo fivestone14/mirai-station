@@ -13,6 +13,13 @@ The question docs carry no numbers of their own: every threshold in their text
 is a name in braces ("{move_rule_sigma}") filled from cuts.QUESTION_CONSTANTS
 when the doc is loaded, so the words JEV reads and the cut the code judged by
 are the same number.
+
+A question retired from a lane (``retired_from``, a day per lane in the set, the
+lane's own after load_questions) is dark on that lane from that day on: the
+service reads its doc through ``retired(doc, day)`` on every read, so before the
+day nothing changes and from it the question is neither asked nor counted, with
+RETIRED as its reason. The pre-merge questions of the live lane retire on
+cuts.CUT_OVER_DAY.
 """
 from __future__ import annotations
 
@@ -23,6 +30,7 @@ import re
 import time
 import urllib.error
 import urllib.request
+from datetime import date
 from pathlib import Path
 from string import Formatter
 from typing import Any
@@ -66,13 +74,40 @@ def fill_question(question: dict, where: str, keep: tuple[str, ...] = ()) -> dic
 
 
 def for_lane(question: dict, lane_key: str) -> dict:
-    """A question as one lane asks it: that lane's schedule entry and horizon in place of the per-lane maps."""
+    """A question as one lane asks it: that lane's schedule entry, horizon and retirement day in place of the per-lane
+    maps (a question retired from no lane, or not from this one, has no ``retired_from``)."""
     out = dict(question)
     if isinstance(question.get("schedule"), dict):
         out["schedule"] = question["schedule"].get(lane_key)
     if isinstance(question.get("horizon"), dict):
         out["horizon"] = question["horizon"].get(lane_key)
+    if isinstance(question.get("retired_from"), dict):
+        day = question["retired_from"].get(lane_key)
+        if day is None:
+            del out["retired_from"]
+        else:
+            out["retired_from"] = day
     return out
+
+
+RETIRED = "retired at the cut-over"
+
+
+def retired(doc: dict, day: str) -> dict:
+    """``doc`` as the read on ``day`` asks from it: a question whose ``retired_from`` (its lane's day, YYYY-MM-DD) is on
+    or before ``day`` is dark, with RETIRED as its reason, so nothing downstream (the requests, the cadence, the sums, the
+    weights, the pool's members, the card) asks or counts it; its ``retired_from`` stays on it, so a reader can tell a
+    retired question from a dark one. Before its day the question is as it was. The doc is not changed in place."""
+    groups = []
+    for group in doc["groups"]:
+        questions = {}
+        for qid, q in group.get("questions", {}).items():
+            when = q.get("retired_from")
+            if isinstance(when, str) and when <= day and q.get("status") != "dark":
+                q = {**q, "status": "dark", "dark_reason": RETIRED}
+            questions[qid] = q
+        groups.append({**group, "questions": questions})
+    return {**doc, "groups": groups}
 
 
 def load_questions(path: Path | str = DEFAULT_QUESTIONS, lane_key: str | None = None) -> dict:
@@ -91,6 +126,11 @@ def load_questions(path: Path | str = DEFAULT_QUESTIONS, lane_key: str | None = 
         for qid, q in questions.items():
             for lane, entry in (q.get("schedule") or {}).items():
                 check_schedule(entry, f"{Path(path).name} {qid} ({lane})")
+            for lane, day in (q.get("retired_from") or {}).items():
+                try:
+                    date.fromisoformat(day)
+                except (TypeError, ValueError):
+                    raise ValueError(f"{Path(path).name} {qid} ({lane}) retired_from is {day!r}, not a YYYY-MM-DD day") from None
         group["questions"] = {qid: fill_question(q if lane_key is None else for_lane(q, lane_key), f"{Path(path).name} {qid}")
                               for qid, q in questions.items() if lane_key is None or lane_key in q.get("lanes", [lane_key])}
     if lane_key is not None:

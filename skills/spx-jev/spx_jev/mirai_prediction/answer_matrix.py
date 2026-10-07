@@ -19,6 +19,13 @@ read with no answers is kept with blanks, never dropped.
 WALK-FORWARD: build_answer_matrix(..., before_day) holds only reads from days strictly before ``before_day``, and the
 code features of a read were computed from data known at its read time (prior sessions' history only), so nothing a
 learner sees comes from its own day or later.
+
+THE CUT-OVER (name_map.CUT_OVER_DAY, Phase 4): from that day the live lane asks only the judgment questions, so a ``jev:``
+column of a pre-merge question stops being answered. A matrix built for a day after the cut-over (before_day > CUT_OVER_DAY)
+drops every ``jev:`` column whose last answered day is before the cut-over (column_catalog), and its rows' answers with it:
+the matcher reads a column neither read answered as half a mismatch, so dead columns would dilute every match against
+the old reads. Every ``code:`` column is kept whatever its answers: the catalog is the same before and after. A matrix built
+for the cut-over day itself, or before it, keeps every column, so the fits before the cut-over are what they were.
 """
 from __future__ import annotations
 
@@ -30,7 +37,7 @@ from pathlib import Path
 
 from ..scores import OUTCOMES
 from .code_features import column_name, load_catalog
-from .name_map import store_path
+from .name_map import CUT_OVER_DAY, store_path
 from .paths import CODE_FEATURES, RAW, data_root, read_json_lines
 
 
@@ -141,22 +148,27 @@ def load_base_rows(state_dir: Path | str, lane: str, sum_id: str, before_day: st
     return rows
 
 
-def load_jev_answers(state_dir: Path | str, lane: str, before_day: str) -> tuple[dict[str, dict[str, str]], dict[str, str]]:
-    """(read_id -> {question_id: pick} for answered questions only, question_id -> its request group) for layer 3."""
+def load_jev_answers(state_dir: Path | str, lane: str, before_day: str) -> tuple[dict[str, dict[str, str]], dict[str, str], dict[str, str]]:
+    """(read_id -> {question_id: pick} for answered questions only, question_id -> its request group, question_id -> the last
+    day it was answered) for layer 3."""
     answers = _parquet_glob(store_path(state_dir, "jev_answers"))
     if answers is None:
-        return {}, {}
+        return {}, {}, {}
     sql = f"""
-        SELECT read_id, question_id, pick, group_id FROM read_parquet('{answers}', hive_partitioning=1)
+        SELECT read_id, question_id, pick, group_id, CAST(day AS VARCHAR) AS day FROM read_parquet('{answers}', hive_partitioning=1)
         WHERE lane = '{lane}' AND status = 'answered' AND pick IS NOT NULL AND CAST(day AS VARCHAR) < '{before_day}'
     """
     picks: dict[str, dict[str, str]] = defaultdict(dict)
     group_of: dict[str, str] = {}
+    last_day: dict[str, str] = {}
     for r in _query(sql):
         picks[r["read_id"]][r["question_id"]] = str(r["pick"])
         if r["group_id"]:
             group_of[r["question_id"]] = str(r["group_id"])
-    return picks, group_of
+        day = str(r["day"])[:10]
+        if day > last_day.get(r["question_id"], ""):
+            last_day[r["question_id"]] = day
+    return picks, group_of, last_day
 
 
 def load_code_features(state_dir: Path | str, lane: str, before_day: str) -> dict[str, dict[str, str | None]]:
@@ -183,13 +195,25 @@ def row_answers(code_answers: dict[str, str | None], jev_answers: dict[str, str]
     return out
 
 
-def column_catalog(question_ids: set[str], group_of_question: dict[str, str]) -> dict[str, dict]:
-    """Every column with its layer, group and family: the code features' layer and group are the catalog's (layers 1-2);
-    a layer-3 question's group is its request group (the questions JEV was asked together), so the scorer takes one vote per group."""
+def retired_before_cut_over(question_ids: set[str], last_day_of_question: dict[str, str], before_day: str) -> set[str]:
+    """The questions whose ``jev:`` column a matrix built for ``before_day`` leaves out: once the matrix is for a day after the
+    cut-over, every question last answered before the cut-over day (one never answered counts as never: kept)."""
+    if before_day <= CUT_OVER_DAY:
+        return set()
+    return {qid for qid in question_ids if (last := last_day_of_question.get(qid)) is not None and last < CUT_OVER_DAY}
+
+
+def column_catalog(question_ids: set[str], group_of_question: dict[str, str], last_day_of_question: dict[str, str] | None = None,
+                   before_day: str | None = None) -> dict[str, dict]:
+    """Every column with its layer, group and family: the code features' layer and group are the catalog's (layers 1-2), every
+    one of them whatever the reads answered; a layer-3 question's group is its request group (the questions JEV was asked
+    together), so the scorer takes one vote per group. With ``before_day`` and each question's last answered day, a matrix for a
+    day after the cut-over leaves out the questions retired before it (retired_before_cut_over)."""
     cols: dict[str, dict] = {}
     for q in load_catalog():
         cols[column_name(q["id"])] = {"layer": int(q["layer"]), "group": q["group"], "family": q["method"]}
-    for qid in sorted(question_ids):
+    dropped = retired_before_cut_over(question_ids, last_day_of_question or {}, before_day) if before_day else set()
+    for qid in sorted(question_ids - dropped):
         cols[f"jev:{qid}"] = {"layer": 3, "group": f"jev:{group_of_question.get(qid, qid)}", "family": "jev"}
     return cols
 
@@ -199,14 +223,13 @@ def column_catalog(question_ids: set[str], group_of_question: dict[str, str]) ->
 def build_answer_matrix(state_dir: Path | str, lane: str, sum_id: str, before_day: str) -> AnswerMatrix:
     """The matrix for one lane and sum, holding reads from days strictly before ``before_day`` (YYYY-MM-DD)."""
     base = load_base_rows(state_dir, lane, sum_id, before_day)
-    jev_answers, group_of_question = load_jev_answers(state_dir, lane, before_day)
+    jev_answers, group_of_question, last_day_of_question = load_jev_answers(state_dir, lane, before_day)
     code_answers = load_code_features(state_dir, lane, before_day)
     question_ids = {q for per_read in jev_answers.values() for q in per_read}
-    columns = column_catalog(question_ids, group_of_question)
+    columns = column_catalog(question_ids, group_of_question, last_day_of_question, before_day)
     for row in base:
-        row.answers = row_answers(code_answers.get(row.read_id, {}), jev_answers.get(row.read_id, {}))
-        for col in columns:
-            row.answers.setdefault(col, None)
+        answers = row_answers(code_answers.get(row.read_id, {}), jev_answers.get(row.read_id, {}))
+        row.answers = {col: answers.get(col) for col in columns}      # a dropped column leaves the row too
     return AnswerMatrix(lane=lane, sum_id=sum_id, built_for_day=before_day, rows=base, columns=columns)
 
 

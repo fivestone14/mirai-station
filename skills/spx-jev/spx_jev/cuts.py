@@ -163,6 +163,14 @@ COLLAR_NEAR_SIGMA = 0.5  # near a quarter-end collar strike
 HEADLINE_WINDOW_MIN = 60  # the headlines a judgment question reads: captured within this many minutes before the read
 HEADLINE_CUT_MIN = 2  # and at least this many minutes before it (headlines.py)
 
+# The cut-over day (Phase 4): from this day the live lane no longer asks the question set's pre-merge questions. Each
+# carries ``retired_from`` in the set with this day (ask.retired turns it dark from that day on, with the reason
+# ask.RETIRED), and JEV's own call, the sums, rides on the judgment questions' fresh answers and the read's code-feature
+# answers instead (hour.cut_over_sentences). The Mirai matrix drops a ``jev:`` column last answered before this day once it
+# fits for a day after it (answer_matrix.column_catalog). Before this day nothing changes. A date string, so a read's day
+# compares to it as the records stamp days.
+CUT_OVER_DAY = "2026-10-08"
+
 # What a question doc may name in braces. The key is the constant's name in lower case.
 QUESTION_CONSTANTS = {name.lower(): value for name, value in dict(globals()).items()
                       if name.isupper() and isinstance(value, (int, float))}

@@ -280,3 +280,20 @@ def test_ensure_cadence_recounts_once_from_the_previous_day(tmp_path):
 
 
 DAY_BEFORE = "2026-09-17"
+
+
+def test_a_hand_recount_after_the_cut_over_counts_no_retired_question(tmp_path, monkeypatch):
+    """cadence.main recounts from the doc as ask.retired reads it for the day, so a retired question gets no cadence."""
+    import json as _json
+    from spx_jev import cadence
+    out = tmp_path / "spx_jev"
+    out.mkdir(parents=True)
+    seen = {}
+    def recount(records, doc, previous, day):
+        seen[day] = {qid for g in doc["groups"] for qid, q in g["questions"].items() if q.get("status") == "live"}
+        return {"questions": {}}
+    monkeypatch.setattr(cadence, "recount", recount)
+    for day in ("2026-10-07", "2026-10-08"):
+        (out / f"{day}.jsonl").write_text(_json.dumps({"row_ts": f"{day}T10:02:00-04:00"}) + "\n")
+        assert cadence.main(["--state-dir", str(tmp_path), "--day", day]) == 0
+    assert "price_move_5way" in seen["2026-10-07"] and seen["2026-10-08"] == set()

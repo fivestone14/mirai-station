@@ -433,6 +433,17 @@ def test_the_answered_chip_reads_the_cards_counts_under_their_own_names():
         assert got["state"] == []
 
 
+def test_a_read_that_asked_no_question_says_so_instead_of_a_count_of_nothing():
+    """From the cut-over a read whose gates all stayed shut asks nothing: the chip says "no question asked this read",
+    never "0 of 6 answered"; a read that answered, or held, something keeps its count."""
+    live = {k: v for k, v in MONDAY["live"].items() if k not in ("fresh", "held", "labels")}
+    none = {**live, "asked": 0, "fresh_count": 0, "held_count": 0, "questions": [{**q, "answer": None, "skipped": "gate: not fired"} for q in live["questions"]]}
+    got = _whole({"live": none, "tape": MONDAY["tape"], "premarket": MONDAY["premarket"]}, "2026-09-28T15:40:00-04:00")
+    card = next(d for k, d in zip(got["main"], got["dom"]) if k[0] == "card dashed")
+    assert _flat_text(card["kids"][-1]) == "no question asked this read" and card["kids"][-1]["attrs"]["class"] == "state answered"
+    assert "!answered && !c.asked" in _fn("paint")
+
+
 def test_the_header_line_is_kept_for_a_stale_card_alone():
     """Will's layout of 09-29: the row line under the title is gone. A fresh card and the day's last one after the
     close say nothing there (the live price and the card's own clock do); a card gone stale mid-session still says so,
@@ -2046,6 +2057,22 @@ def test_a_new_card_keeps_the_question_in_view():
             "qsLoad(D.c, true); var kept = [qs.g, qs.i, qs.deck[qs.g].qs[qs.i].id === id]; qsLoad(D.c); console.log(JSON.stringify([first, kept, [qs.g, qs.i]]));")
     assert _run(js, {"c": MONDAY["live"], "g": 3, "i": 2}) == [[0, 0], [3, 2, True], [0, 0]]
     assert "qsLoad(last, true);" in _fn("openQuestions") and "if(qsOpen()){ qsLoad(c, true); qsDraw(true); }" in _fn("paint")
+
+
+def test_a_question_retired_at_the_cut_over_sits_in_its_own_last_group_and_never_in_the_count():
+    """From the cut-over (2026-10-08) the service lists the live lane's pre-merge questions under ``dark`` with the reason
+    "retired at the cut-over": the sheet deals them as a group of their own after the dark ones, says they are no longer
+    asked, and the card's count ("N of M answered") is its questions alone, so a retired one is never among the M."""
+    live = {**MONDAY["live"], "dark": [
+        {"id": "news_headline", "viewpoint": "dark", "ask": "What kind of market news just came out?", "dark_reason": "no news feed"},
+        {"id": "price_move_5way", "viewpoint": "price_move", "ask": "How did price move?", "dark_reason": "retired at the cut-over"}]}
+    deck = _deck(live)
+    (dark_name, _, dark_cards), (name, answered, cards) = deck[-2], deck[-1]
+    assert dark_name == "dark, each waiting for its source" and dark_cards == ["What kind of market news just came out?Dark: no news feed"]
+    assert name == "retired at the cut-over, no longer asked" and answered == 0
+    assert cards == ["How did price move?Retired at the cut-over: its answers before it stay on record"]
+    assert sum(len(g[2]) for g in deck[:-2]) == len(live["questions"]) and "no longer asked" in _fn("qsDraw")
+    assert "c.questions.length + ' answered'" in _fn("paint")
 
 
 def test_the_questions_sheet_is_a_sheet_with_no_control_but_its_handle():
