@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mirai-station.spx-jev-headlines</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-spx-jev-headlines.sh</string>
+  </array>
+
+  <!-- The headline feed, a poll every 3 minutes: four public RSS feeds (CNBC Top News, Google News search,
+       MarketWatch Top Stories, the Fed's press feed), each new item appended to
+       state/spx_jev/headlines/{date}.jsonl stamped with the poll's own clock (spx_jev/headlines.py), for the
+       judgment questions (spx_jev/judgment.py). Stdlib only, no Schwab. The poll gates itself to 07:00-16:30 ET
+       on weekdays, so the interval runs all day and the poll says when it is outside the window. -->
+  <key>StartInterval</key>
+  <integer>180</integer>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/mirai-station.spx-jev-headlines.out</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/mirai-station.spx-jev-headlines.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key>
+    <string>America/New_York</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

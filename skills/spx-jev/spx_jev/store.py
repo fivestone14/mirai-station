@@ -77,7 +77,7 @@ import pyarrow.parquet as pq
 
 from . import grade, integral_loop, pool
 from .archive import ARCHIVE_SUBDIR
-from .ask import confidence as answer_confidence, pick as answer_pick
+from .ask import GATED as GATE_REASON_PREFIX, confidence as answer_confidence, pick as answer_pick
 from .daily_closes import DAILY_CLOSES_SUBDIR
 from .events import CALENDAR, ET
 from .hour import FIVE
@@ -524,7 +524,9 @@ def question_hash(question: dict) -> str:
 def _skip_status(qid: str, reason: str, not_due: dict) -> str:
     if qid in not_due:
         return "not_due"
-    for prefix, status in (("asleep:", "asleep"), ("missing ", "missing"), ("dark:", "dark"), ("the group does not read", "unread")):
+    # a judgment question whose gate is not fired (ask.GATED) is asleep on the code's answer
+    for prefix, status in (("asleep:", "asleep"), (GATE_REASON_PREFIX, "asleep"), ("missing ", "missing"), ("dark:", "dark"),
+                           ("the group does not read", "unread")):
         if reason.startswith(prefix):
             return status
     return "other"

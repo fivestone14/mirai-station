@@ -138,6 +138,9 @@ NO_GATE = "no label family decides its gate"
 # by starting its reason with this: the question is missing data, never asleep, since a gap must not pass for
 # "nothing happened". Its reason starts "missing ", as a missing label's does, so it is counted and held the same way.
 UNMEASURED = "could not measure"
+# A judgment question's gate (judgment.py) says why it is not fired with a reason starting with this, kept as it is:
+# the question is asleep on the code's answer, as a question whose label says nothing happened is.
+GATED = "gate:"
 
 
 def build_requests(state: dict, doc: dict, skip: dict[str, str] | None = None,
@@ -180,8 +183,10 @@ def build_requests(state: dict, doc: dict, skip: dict[str, str] | None = None,
                 continue
             if q.get("sleep_when") and (gate := gates.get(qid, NO_GATE)) is not None:
                 # asleep: its default "nothing happened" state holds, and a default must never reach the weights; a gate
-                # that could not measure is missing data instead
-                skipped.setdefault(gid, {})[qid] = f"missing data: {gate}" if str(gate).startswith(UNMEASURED) else f"asleep: {gate}"
+                # that could not measure is missing data instead; a judgment gate's reason stands as it is
+                gate = str(gate)
+                skipped.setdefault(gid, {})[qid] = (f"missing data: {gate}" if gate.startswith(UNMEASURED) else gate if gate.startswith(GATED)
+                                                    else f"asleep: {gate}")
                 continue
             missing = [p for p in paths_in(q) if get_path(state, p) is None]
             # a label the state has but this group does not read would leave JEV blind to it

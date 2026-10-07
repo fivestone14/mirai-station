@@ -92,8 +92,8 @@ the backfill, which walk a day's reads together).
 Each read's answers are written to `raw/code_features/{day}.jsonl` first (live, before the read is forecast; or by the
 backfill command, idempotent, source `backfill`) and the nightly matrix joins them on `read_id` as columns
 `code:<question_id>` with the catalog's layer and group; a read without a line is silent in every code column. Layer 3
-(`jev:<question>`) is unchanged: JEV's pick per answered question of the live set, grouped by request group. The six JEV
-judgment questions of the merged set are NOT built yet, and the live question set is still the one asked.
+(`jev:<question>`) is JEV's pick per answered question of the live set, grouped by request group; since Phase 3 that includes
+the six judgment questions (below). The live question set is still the one asked.
 
 ## Feeds (Phase 1, 2026-10-06)
 
@@ -116,3 +116,49 @@ The feeds the blocked questions of the merged set waited for, built first; the P
   in 0.05 steps; three search passes.
 - **The freeze:** when the gap clip binds on more than 5% of the existing voices' voice-days over 20 learned days, pool_v2's
   weights stop moving and `frozen` says why (the learners never count toward it); `pool_v2.unfreeze_pool_v2` after a review.
+
+## Phase 3 (2026-10-07): the headline feed and the judgment group
+
+**The headline feed** (`spx_jev/headlines.py`, job `com.mirai-station.spx-jev-headlines`, every 180 s; the poll keeps itself to
+07:00-16:30 ET on weekdays, `--now` runs it by hand). Four public RSS feeds, stdlib only, a 10-second timeout each: CNBC Top News
+(`cnbc.com/id/100003114/device/rss/rss.html`), a Google News search (`"S&P 500" OR Nvidia OR Fed OR tariff OR "Treasury yields"`,
+the last hour; the outlet from its `<source>` tag), MarketWatch Top Stories (`feeds.content.dowjones.io/public/rss/mw_topstories`)
+and the Fed's press feed (`federalreserve.gov/feeds/press_all.xml`). One JSON line per NEW item to `state/spx_jev/headlines/{day}.jsonl`
+(ET day): `captured_at` (the poll's own clock, ISO ET: **the truth**), `pub_claimed` (the raw pubDate, untrusted), `feed`, `source`,
+`title`, `url`, `guid`. `seen.json` dedupes across polls (sha1 of the url and of the lower-cased title, pruned to 48 h, written
+atomically); a feed that fails goes to `errors.jsonl` and costs only its own items; `.lock` keeps two polls apart. **The
+capture-time rule:** a question reads only what the station captured by its cut: `headlines_before(state_dir, row_ts, minutes)`
+returns the lines captured in the `headline_window_min` (60) minutes ending `headline_cut_min` (2) minutes before the read, newest
+first, never one captured later, whatever its feed claimed.
+
+**The judgment group** (`spx_jev/judgment.py`; `spec/question_set.json` group `judgment`, lane `thirty_minute`, every 30-minute
+read): the six JEV judgment questions of the merged set, each behind a gate read off the code feature builder's answers (the
+same answers the matrix holds as layers 1-2), the headline feed, or the ten-year yield's move. A gate whose code answer is
+None is not fired; a question not fired is skipped with `gate: <code question> not fired: <what it read>` and sends nothing.
+
+| id (`jev:<id>` column) | merged id | gate | labels it reads |
+|---|---|---|---|
+| `push_blowoff_or_fresh` | TREND-13 | TREND-10 or TREND-11 reads anything but `none` | `judgment.push_exhaustion` (TREND-10, TREND-11, TREND-04 in words), `price.recent_move`, `range.today_vs_normal` |
+| `quiet_coiled_or_resting` | VOLATILITY-15 | VOLATILITY-04 reads `compressed` (from 10:32) | `judgment.quiet` (VOLATILITY-04, VOLATILITY-02, BREADTH-09, the yield's move), `judgment.headlines`, `iv.trend_30min`, `price.day_range_position` |
+| `heavyweight_catalyst_or_flow` | BREADTH-10 | BREADTH-09 reads `in play, ...` | `judgment.heavyweight`, `judgment.headlines` |
+| `macro_gap_equity_reason` | MACRO-03 | MACRO-02 reads `up` or `down` (the code ranks the gap in thirds; it gives no fifth) | `judgment.macro_gap`, `judgment.headlines` |
+| `yield_move_meaning` | EVENTS-06 | the ten-year yield's move since the prior close ranks top third at this minute (`judgment.yield_move`: today's `$TNX` quote against its prior close, each prior session's `context/bars` reading at the minute against its own daily close, 20 sessions, needing 10), and EVENTS-05 does not read `large` | `judgment.yield_move`, `judgment.headlines` |
+| `news_reaction` | EVENTS-07 | a headline was captured in the window | `judgment.headlines`, `price.recent_move`, `price.day_range_position` |
+
+The questions are `shadow` in the set (each `shadow_proof` says why: not a proof, a wall): `hour.answer_sentences` leaves a shadow
+answer out of the sums, `grade.live_options` and the weights never see it, `service.pool_snapshots` takes pool_v1's members from
+the live questions only, and the cadence never holds one. The learning store files a shadow question JEV answered as
+`status = answered` all the same (the status is the reply's, not the question's), so `answer_matrix.load_jev_answers` takes it
+as a layer-3 column `jev:<id>` in the group `jev:judgment`, with nothing added to the matrix code. The old loop is kept away
+by the question's status alone.
+
+**The read's order changed:** `service.run_once` now has the code feature builder answer the read right after the labels are
+built and before the requests are packed (`judgment.judge`), so the gates can read the answers. A live read records the line
+under `raw/code_features/{day}.jsonl` first (source `live`); `live_call.forecast_now` after the read finds it by `read_id` and
+computes nothing twice. A replay or an unsent run computes the answers and writes nothing. Every part of the judgment step
+catches its own failure (the code answers, the headlines, the yield's move, each gate): a failure leaves the question not
+fired, with the failure named in its reason, and the read goes on; the step never raises.
+
+**Not built:** the cut-over of the old 129 questions to the merged set (Phase 4); OPTIONS-12 and FLOW-09 (no feed; silent in the
+catalog); EVENTS-09 (Kalshi); the scope of the news (index-wide or one name) that EVENTS-07's merged wording asks for, since a
+choice carries one answer; a fifth-based gate for MACRO-03 (MACRO-02 ranks in thirds).

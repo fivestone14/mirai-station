@@ -52,6 +52,9 @@ PLISTS=(
   # The Mirai Prediction System's nightly job (17:05 ET): its own tables, voice scores, pool_v2, the learners'
   # refit for tomorrow and the phone's scoreboard, all under state/spx_jev/mirai_prediction/.
   "com.mirai-station.spx-jev-prediction-nightly.plist"
+  # The headline feed (Phase 3, 2026-10-07): four public RSS feeds polled every 3 minutes, each new item stamped with
+  # the poll's own clock under state/spx_jev/headlines/, for the judgment questions. Stdlib only, no Schwab.
+  "com.mirai-station.spx-jev-headlines.plist"
   "com.mirai-station.voice.plist"
 )
 

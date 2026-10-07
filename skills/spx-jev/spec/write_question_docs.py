@@ -12,7 +12,7 @@ hand. On the way each question is keyed by its id inside its group, and:
   ``code_criteria``; the option names are kept in order as ``options``.
 * Every field the code reads is kept as the set wrote it: status, dark_reason, type, serves, lanes, the per-lane
   schedule and horizon, cadence (for people), sleep_when, code_answer, ref_side, shadow_proof, and why;
-  and ``ask``, the question in one short plain sentence that the sums read an answer after (hour.py)
+  merged_id (the id a judgment question had in the merged set); and ``ask``, the question in one short plain sentence that the sums read an answer after (hour.py)
   and the phone shows, never sent to JEV with the question itself.
   The review record (evidence, origin, sources, labels_needed) stays in the set; ``labels`` names what
   the question reads.
@@ -42,7 +42,7 @@ from spx_jev.lane import LANES, QUESTIONS  # noqa: E402
 
 QUESTION_SET = SKILL / "spec" / "question_set.json"
 KEPT = ("status", "type", "serves", "lanes", "schedule", "horizon", "cadence", "sleep_when", "code_answer", "ref_side",
-        "shadow_proof", "ask", "instructions", "dark_reason")
+        "shadow_proof", "ask", "instructions", "dark_reason", "merged_id")
 
 
 def jev_criteria(q: dict) -> dict | list:

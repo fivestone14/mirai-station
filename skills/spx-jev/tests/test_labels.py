@@ -25,11 +25,14 @@ def test_every_label_has_exactly_one_family_and_every_builder_is_named_for_its_f
 
 
 def test_every_label_the_questions_read_and_every_gate_they_sleep_on_has_a_family():
-    owned = {p for f in FAMILIES for p in f.labels}
+    """The judgment group's labels and gates are the judgment module's, decided in the service once the code feature
+    builder has answered (judgment.py), not a scene family's: owned there."""
+    from spx_jev import judgment
+    owned = {p for f in FAMILIES for p in f.labels} | set(judgment.LABELS)
     assert {lab["name"] for lab in QUESTION_SET["labels"]} <= owned
     questions = [q for g in QUESTION_SET["groups"] for q in g["questions"]]
     assert {lab["name"] for q in questions for lab in q["labels_needed"]} <= owned
-    gates = [qid for f in FAMILIES for qid in f.gates]
+    gates = [qid for f in FAMILIES for qid in f.gates] + list(judgment.GATES)
     assert sorted(gates) == sorted(q["id"] for q in questions if q.get("sleep_when"))
     assert {p: f.name for f in FAMILIES for p in f.dark} == {
         lab["name"]: next(f.name for f in FAMILIES if lab["name"] in f.labels) for lab in QUESTION_SET["labels"] if lab["availability"] == "dark"}

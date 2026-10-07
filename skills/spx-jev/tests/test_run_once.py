@@ -471,3 +471,99 @@ def test_the_live_lanes_fire_after_the_close_grades_the_last_calls_and_asks_jev_
     c = json.loads((out / "latest.json").read_text())
     assert c["closed_out_at"] and c["tally"]["graded"] == 1
     assert (out / f"{DAY}.jsonl").read_text() == reads_before
+
+
+# ---- the judgment group (Phase 3): the code's answers before the requests, the gate, never a raise
+
+JUDGMENT_DOC = {"version": "test", "groups": [
+    {"id": "g1", "reads": ["context", "price.recent_move"],
+     "questions": {"q_dir": {"status": "live", "viewpoint": "volume_price", "type": "choice", "ask": "Did price rise, fall, or go nowhere?",
+                             "instructions": "Read `price.recent_move`.",
+                             "criteria": {"rising": "r", "falling": "f", "going_nowhere": "n", "unsure": "u"}}}},
+    {"id": "judgment", "reads": ["context", "judgment"],
+     "questions": {"news_reaction": {"status": "shadow", "viewpoint": "judgment", "type": "choice", "sleep_when": "no headline captured",
+                                     "ask": "Is SPX shrugging off, overreacting or in proportion?", "instructions": "Read `judgment.headlines`.",
+                                     "criteria": {"shrugging_off": "s", "overreacting": "o", "in_proportion": "p", "unclear": "u"}},
+                   "push_blowoff_or_fresh": {"status": "shadow", "viewpoint": "judgment", "type": "choice", "sleep_when": "no push",
+                                             "ask": "Blow-off or fresh push?", "instructions": "Read `judgment.push_exhaustion`.",
+                                             "criteria": {"blow_off": "b", "unclear": "u", "fresh_push": "f"}}}},
+]}
+
+
+def _headlines(state, minutes_before: int, title: str):
+    from spx_jev.headlines import folder
+    folder(state).mkdir(parents=True, exist_ok=True)
+    line = {"captured_at": (at(10, 35, ss=10) - __import__("datetime").timedelta(minutes=minutes_before)).isoformat(timespec="seconds"),
+            "pub_claimed": None, "feed": "cnbc_top", "source": "CNBC", "title": title, "url": None, "guid": None}
+    with open(folder(state) / f"{DAY}.jsonl", "a") as f:
+        f.write(json.dumps(line) + "\n")
+
+
+def test_the_code_answers_the_gates_before_the_requests_and_a_fired_judgment_question_is_asked_unsummed(tmp_path, monkeypatch):
+    from spx_jev import judgment
+    state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
+    out = state / "spx_jev"
+    _headlines(state, 10, "Nvidia slips as export curbs widen")
+    order = []
+
+    def code_answers(state_dir, lane_name, day, rec, record):
+        order.append(("code", record, rec["read_id"], sorted(rec["labels"])))
+        return {"TREND-10": "up held", "TREND-11": "none"}
+    real = _answers()
+
+    def send_all(requests, **kw):
+        order.append(("send", sorted(r["id"] for r in requests)))
+        return real(requests, **kw)
+    monkeypatch.setattr(judgment, "code_answers_for", code_answers)
+    monkeypatch.setattr(service, "send_all", send_all)
+    monkeypatch.setattr(service, "send", _sums)
+    c = run_once(state, out, JUDGMENT_DOC, True, DAY)
+    assert [o[0] for o in order] == ["code", "send"] and order[1][1] == ["g1", "judgment"]
+    assert order[0][1] is False and order[0][2] == f"live:{at(10, 35, ss=10).isoformat()}" and "price" in order[0][3] and "judgment" not in order[0][3]
+    q = {e["id"]: e for e in c["questions"]}
+    assert q["news_reaction"]["answer"]["pick"] == "shrugging_off" and q["push_blowoff_or_fresh"]["answer"]["pick"] == "blow_off"
+    rec = json.loads((out / f"{DAY}.jsonl").read_text().splitlines()[0])
+    assert rec["state"]["judgment"]["headlines"].startswith("1 headlines captured from 10:25 to 10:25 ET") and "Nvidia slips" in rec["state"]["judgment"]["headlines"]
+    assert rec["state"]["judgment"]["push_exhaustion"].startswith("the code's 60-minute range sweep reads 'up held' (TREND-10)")
+    assert [r["id"] for r in rec["requests"]] == ["g1", "judgment"] and rec["skipped"].get("judgment") is None
+    hour_rec = json.loads((out / "hour" / f"{DAY}.jsonl").read_text().splitlines()[0])
+    assert hour_rec["used"] == {"q_dir": "rising"} and hour_rec["left_out"]["news_reaction"] == "a shadow forecast, never an input"
+    assert c["held_count"] == 0
+    assert not list((state / "spx_jev" / "mirai_prediction").rglob("*.jsonl")) if (state / "spx_jev" / "mirai_prediction").exists() else True
+
+
+def test_a_judgment_question_whose_gate_is_off_costs_the_read_nothing(tmp_path, monkeypatch):
+    from spx_jev import judgment
+    state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
+    out = state / "spx_jev"
+    monkeypatch.setattr(judgment, "code_answers_for", lambda *a, **k: {"TREND-10": "none", "TREND-11": None})
+    sent = []
+    real = _answers()
+    monkeypatch.setattr(service, "send_all", lambda requests, **kw: sent.extend(r["id"] for r in requests) or real(requests, **kw))
+    monkeypatch.setattr(service, "send", _sums)
+    c = run_once(state, out, JUDGMENT_DOC, True, DAY)
+    assert sent == ["g1"]
+    q = {e["id"]: e for e in c["questions"]}
+    assert q["news_reaction"]["answer"] is None and q["news_reaction"]["skipped"] == "gate: headlines not fired: no headlines captured in the 60 minutes before the read"
+    assert q["push_blowoff_or_fresh"]["skipped"] == "gate: TREND-10 or TREND-11 not fired: TREND-10 'none', TREND-11 not measured this read"
+    rec = json.loads((out / f"{DAY}.jsonl").read_text().splitlines()[0])
+    assert set(rec["skipped"]["judgment"]) == {"news_reaction", "push_blowoff_or_fresh", "*"} and "judgment" in rec["state"]
+
+
+def test_the_judgment_group_failing_never_costs_the_read(tmp_path, monkeypatch):
+    from spx_jev import judgment
+    state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
+    out = state / "spx_jev"
+    _headlines(state, 10, "a headline")
+    monkeypatch.setattr(judgment, "code_answers_for", lambda *a, **k: 1 / 0)
+    monkeypatch.setattr(service, "send_all", _answers())
+    monkeypatch.setattr(service, "send", _sums)
+    c = run_once(state, out, JUDGMENT_DOC, True, DAY)        # the code part fails: the headline gate still fires, the push gate reads not measured
+    q = {e["id"]: e for e in c["questions"]}
+    assert q["news_reaction"]["answer"]["pick"] == "shrugging_off" and q["push_blowoff_or_fresh"]["skipped"].startswith("gate: TREND-10 or TREND-11 not fired")
+    monkeypatch.setattr(judgment, "facts_for", lambda *a, **k: 1 / 0)
+    _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0), make_row(at(11, 5, ss=20), 7701.0)], 101)
+    c = run_once(state, out, JUDGMENT_DOC, True, DAY)        # the whole group fails: every judgment question is not fired, the read goes on
+    q = {e["id"]: e for e in c["questions"]}
+    assert q["q_dir"]["answer"]["pick"] == "rising" and c["hour"]["pick"] == "flat"
+    assert q["news_reaction"]["skipped"] == "gate: headlines not fired: the judgment group failed (ZeroDivisionError)"

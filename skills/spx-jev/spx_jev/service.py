@@ -65,7 +65,7 @@ from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import archive, ask, integral, pool
+from . import archive, ask, integral, judgment, pool
 from .ask import build_requests, confidence, load_questions, pick, plain_error, send, send_all
 from .baseline import Baseline
 from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, lost_today, mark_asleep,
@@ -709,6 +709,14 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
     # what the learning loop leaves out, per horizon, decided now so a later calendar edit cannot move it
     learn = {"learn_exclude": learn_exclude(now, tuple(m for m, _ in lane.horizons.values()))} if lane.pool else {}
     day_name = scene.row["ts"][:10]
+    gates = dict(labels.gates)
+    if gated := judgment.gated_questions(doc):
+        # the judgment questions stand behind the code feature builder's answers, so those are answered now, before the
+        # requests are built: a live read records them under raw/code_features/ (the forecast after the read reuses
+        # the line by read_id), a replay or an unsent run computes them and writes nothing. Never raises: a failure
+        # leaves every judgment question not fired, with the failure as its reason
+        verdicts = judgment.judge(state_dir, lane.name, day_name, scene, labels, event, gated, record=do_send and lane.pool and day is None)
+        gates.update(verdicts)
     by_id = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
     live_ids = {qid for qid, q in by_id.items() if q.get("status") == "live"}
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -731,7 +739,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         last = load_last(out_dir)
         skip, held = plan(doc, last, cad, now, skip, borrowed_answers(state_dir, doc, lane), read_slot(lane, now, fired),
                           learned=lane.cadence, no_hold=no_hold)
-    requests, skipped = build_requests(state, doc, skip=skip, gates=labels.gates, ended=labels.ended_reasons())
+    requests, skipped = build_requests(state, doc, skip=skip, gates=gates, ended=labels.ended_reasons())
     if do_send:
         # a question asleep this read holds nothing from before it again, whatever a later read finds
         mark_asleep(last, skipped, live_ids, scene.row["ts"])

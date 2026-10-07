@@ -160,6 +160,8 @@ BRIEF_CONF_MIN = 0.3  # brief confidence
 FLOW_LEAN_RANK = 0.8  # flow lean rank vs clock
 OFI_Z = 1.0  # order-flow imbalance z
 COLLAR_NEAR_SIGMA = 0.5  # near a quarter-end collar strike
+HEADLINE_WINDOW_MIN = 60  # the headlines a judgment question reads: captured within this many minutes before the read
+HEADLINE_CUT_MIN = 2  # and at least this many minutes before it (headlines.py)
 
 # What a question doc may name in braces. The key is the constant's name in lower case.
 QUESTION_CONSTANTS = {name.lower(): value for name, value in dict(globals()).items()

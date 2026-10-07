@@ -32,7 +32,7 @@ DEFINITIONS = {
     "lookbacks and counts": {"night_rank_count", "overnight_rank_min_nights", "same_clock_min_sessions", "big_min_prints",
                              "defense_min_events", "open_cluster_min", "tick_cluster", "mega_count", "spread_count"},
     "clocks and calendar": {"accept_minutes", "cross_lookback_min", "event_due_min", "event_digest_min", "speaker_window_min",
-                            "shock_lookback_min", "shock_fresh_min", "one_day", "opex_week_days", "after_opex_days",
+                            "shock_lookback_min", "shock_fresh_min", "one_day", "opex_week_days", "after_opex_days", "headline_window_min", "headline_cut_min",
                             "rebal_window_days", "month_turn_days"},
     "shares that define a word": {"gap_half_share", "giveback_third", "range_top_share", "range_bottom_share", "move_burst_share",
                                   "mega_one_name_share", "one_name_share", "stress_retreat_share", "stress_hold_share",
@@ -452,7 +452,7 @@ def test_each_lane_asks_its_share_of_one_doc_with_its_own_schedule_and_horizon()
     live = {qid: q for g in load_questions(LANES["live"].questions, "thirty_minute")["groups"] for qid, q in g["questions"].items()}
     tape = {qid: q for g in load_questions(LANES["tape"].questions, "opening_five_minute")["groups"] for qid, q in g["questions"].items()}
     premarket = {qid: q for g in load_questions(LANES["premarket"].questions, "premarket")["groups"] for qid, q in g["questions"].items()}
-    assert len(live) == 104 and len(tape) == 28 and len(premarket) == 12 and "gap_size" not in live and "price_move_5way" not in tape
+    assert len(live) == 110 and len(tape) == 28 and len(premarket) == 12 and "gap_size" not in live and "price_move_5way" not in tape
     assert tape["vix_stir"]["schedule"] == {"every_min": 5, "from": "09:40", "to": "10:30"} and tape["vix_stir"]["horizon"] == "10min_opening"
     assert live["vix_stir"]["schedule"] == {"every_min": 30, "from": "10:02", "to": "15:32"} and live["vix_stir"]["horizon"] == "30min"
     assert tape["open_vs_prior_range"]["schedule"] == {"at": ["09:35"], "hold": True} and live["open_vs_prior_range"]["schedule"] == {"hold_until": "11:32"}

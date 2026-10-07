@@ -5720,6 +5720,285 @@
    }
   },
   {
+   "id": "judgment",
+   "lane": "thirty_minute",
+   "purpose": "The six JEV judgment questions of the merged set, each asked only when its gate fires on the code feature builder's answers for the read, the headline feed or the ten-year yield's move (spx_jev/judgment.py). Shadow: asked and logged, never graded and never weighted by the old loop; the Mirai Prediction System takes their answers as its layer-3 columns.",
+   "reads": [
+    "context",
+    "judgment.push_exhaustion",
+    "judgment.quiet",
+    "judgment.heavyweight",
+    "judgment.macro_gap",
+    "judgment.yield_move",
+    "judgment.headlines",
+    "price.recent_move",
+    "price.day_range_position",
+    "range.today_vs_normal",
+    "iv.trend_30min"
+   ],
+   "questions": {
+    "push_blowoff_or_fresh": {
+     "status": "shadow",
+     "type": "choice",
+     "serves": "direction",
+     "lanes": [
+      "thirty_minute"
+     ],
+     "schedule": {
+      "thirty_minute": {
+       "every_min": 30,
+       "from": "10:02",
+       "to": "15:32"
+      }
+     },
+     "horizon": "30min",
+     "cadence": "every 30-minute read from 10:02, asked only when the code's 60-minute range sweep or its volume spike fires (TREND-10 or TREND-11)",
+     "sleep_when": "TREND-10 and TREND-11 both read 'none' or are not measured",
+     "code_answer": false,
+     "shadow_proof": "not a proof: shadow keeps it out of the old loop (the sums, the weights, pool_v1 and the cadence all keep to live questions) while the Mirai Prediction System takes its answers as a layer-3 column; promoted only if it beats the learners' own inputs there",
+     "ask": "Is the partly given-back push a crowded blow-off likely to reverse, or a fresh push pausing?",
+     "instructions": "Read `judgment.push_exhaustion`, `price.recent_move` and `range.today_vs_normal`. The code saw the latest push past the hour's range, or a volume spike, and says whether it held. Compared with the earlier pushes in the leg, does the latest look like a crowded blow-off likely to reverse, or a fresh push pausing before it continues?",
+     "merged_id": "TREND-13",
+     "options": [
+      "blow_off",
+      "unclear",
+      "fresh_push"
+     ],
+     "criteria": {
+      "blow_off": "the push ran past the hour's range or on a spike and failed to hold: crowded, likely to reverse",
+      "unclear": "the pushes do not say which",
+      "fresh_push": "the push held past the hour's range or its spike: fresh, pausing before it continues"
+     },
+     "code_criteria": {
+      "blow_off": "TREND-10 says the break failed, or TREND-11 says the spike faded",
+      "unclear": "neither reads clearly",
+      "fresh_push": "TREND-10 says the break held, or TREND-11 says the spike held"
+     },
+     "labels": [
+      "judgment.push_exhaustion"
+     ],
+     "why": "True judgment weighing several pushes in context; the code hands JEV the break and spike reads and the question is dropped if those alone match JEV."
+    },
+    "quiet_coiled_or_resting": {
+     "status": "shadow",
+     "type": "choice",
+     "serves": "size",
+     "lanes": [
+      "thirty_minute"
+     ],
+     "schedule": {
+      "thirty_minute": {
+       "every_min": 30,
+       "from": "10:32",
+       "to": "15:32"
+      }
+     },
+     "horizon": "30min",
+     "cadence": "every 30-minute read from 10:32, asked only when the code reads the range compressed (VOLATILITY-04)",
+     "sleep_when": "VOLATILITY-04 does not read 'compressed'",
+     "code_answer": false,
+     "shadow_proof": "not a proof: shadow keeps it out of the old loop (the sums, the weights, pool_v1 and the cadence all keep to live questions) while the Mirai Prediction System takes its answers as a layer-3 column; promoted only if it beats the learners' own inputs there",
+     "ask": "With the range compressed, is the quiet coiled or resting?",
+     "instructions": "Read `judgment.quiet`, `judgment.headlines`, `iv.trend_30min` and `price.day_range_position`. The code says the last half hour's range is compressed against the half hour before. Is the quiet coiled (heavyweights, yields or implied volatility moving underneath, or a release or a range edge near) or resting?",
+     "merged_id": "VOLATILITY-15",
+     "options": [
+      "coiled",
+      "resting",
+      "unclear"
+     ],
+     "criteria": {
+      "coiled": "something moves underneath the quiet, or a release or range edge is near: a move is being wound up",
+      "resting": "nothing moves underneath and nothing is near: the quiet is a rest",
+      "unclear": "the evidence does not say which"
+     },
+     "code_criteria": {
+      "coiled": "a heavyweight in play, the yield's move ranked top third, implied volatility trending, or a release within the hour",
+      "resting": "none of those",
+      "unclear": "mixed"
+     },
+     "labels": [
+      "judgment.quiet",
+      "judgment.headlines"
+     ],
+     "why": "Weighing conflicting evidence is judgment; sharpens the flat odds."
+    },
+    "heavyweight_catalyst_or_flow": {
+     "status": "shadow",
+     "type": "choice",
+     "serves": "direction",
+     "lanes": [
+      "thirty_minute"
+     ],
+     "schedule": {
+      "thirty_minute": {
+       "every_min": 30,
+       "from": "10:02",
+       "to": "15:32"
+      }
+     },
+     "horizon": "30min",
+     "cadence": "every 30-minute read from 10:02, asked only when the code reads a heavyweight in play (BREADTH-09)",
+     "sleep_when": "BREADTH-09 does not read a heavyweight in play",
+     "code_answer": false,
+     "shadow_proof": "not a proof: shadow keeps it out of the old loop (the sums, the weights, pool_v1 and the cadence all keep to live questions) while the Mirai Prediction System takes its answers as a layer-3 column; promoted only if it beats the learners' own inputs there",
+     "ask": "Does a headline give the heavyweight in play a material cause, or is it flow with none?",
+     "instructions": "Read `judgment.heavyweight` and `judgment.headlines`. The code says a heavyweight is moving beyond its usual link to the index since the close. Do the headlines captured before the read show a timely, material cause for it (likely to persist), or is it flow with no clear cause (likely to revert)?",
+     "merged_id": "BREADTH-10",
+     "options": [
+      "material_cause",
+      "no_clear_cause",
+      "unclear"
+     ],
+     "criteria": {
+      "material_cause": "a headline before the read names a timely, material cause for the name's move: likely to persist",
+      "no_clear_cause": "no headline explains it: flow, likely to revert",
+      "unclear": "the headlines do not say"
+     },
+     "code_criteria": {
+      "material_cause": "a captured headline names the heavyweight and a cause",
+      "no_clear_cause": "none does",
+      "unclear": "ambiguous"
+     },
+     "labels": [
+      "judgment.heavyweight",
+      "judgment.headlines"
+     ],
+     "why": "Real judgment on materiality, scoped to the named heavyweight so it does not double-count news_reaction."
+    },
+    "macro_gap_equity_reason": {
+     "status": "shadow",
+     "type": "choice",
+     "serves": "direction",
+     "lanes": [
+      "thirty_minute"
+     ],
+     "schedule": {
+      "thirty_minute": {
+       "every_min": 30,
+       "from": "10:02",
+       "to": "15:32"
+      }
+     },
+     "horizon": "30min",
+     "cadence": "every 30-minute read from 10:02, asked only when the code reads SPX away from what bonds imply (MACRO-02 up or down)",
+     "sleep_when": "MACRO-02 reads 'nowhere' or is not measured",
+     "code_answer": false,
+     "shadow_proof": "not a proof: shadow keeps it out of the old loop (the sums, the weights, pool_v1 and the cadence all keep to live questions) while the Mirai Prediction System takes its answers as a layer-3 column; promoted only if it beats the learners' own inputs there",
+     "ask": "Is there an equity-side reason keeping SPX away from what bonds imply, or should the gap close?",
+     "instructions": "Read `judgment.macro_gap` and `judgment.headlines`. The code says SPX is away from what bonds imply since the close. Is there an equity-side reason in the headlines keeping the gap open, or none, so it should close?",
+     "merged_id": "MACRO-03",
+     "options": [
+      "equity_reason",
+      "no_reason",
+      "unclear"
+     ],
+     "criteria": {
+      "equity_reason": "a headline before the read gives stocks their own reason: the gap can stay open",
+      "no_reason": "nothing equity-side explains the gap: it should close",
+      "unclear": "the headlines do not say"
+     },
+     "code_criteria": {
+      "equity_reason": "a captured headline names an equity-side cause",
+      "no_reason": "none does",
+      "unclear": "ambiguous"
+     },
+     "labels": [
+      "judgment.macro_gap",
+      "judgment.headlines"
+     ],
+     "why": "True judgment that decides whether the code's gap closes; gated to the gap being there."
+    },
+    "yield_move_meaning": {
+     "status": "shadow",
+     "type": "choice",
+     "serves": "direction",
+     "lanes": [
+      "thirty_minute"
+     ],
+     "schedule": {
+      "thirty_minute": {
+       "every_min": 30,
+       "from": "10:02",
+       "to": "15:32"
+      }
+     },
+     "horizon": "30min",
+     "cadence": "every 30-minute read from 10:02, asked only when the ten-year yield has moved more than usual since the prior close and no release's rates surprise is fresh",
+     "sleep_when": "the ten-year yield's move since the prior close is not top third at this minute, or EVENTS-05 reads large",
+     "code_answer": false,
+     "shadow_proof": "not a proof: shadow keeps it out of the old loop (the sums, the weights, pool_v1 and the cadence all keep to live questions) while the Mirai Prediction System takes its answers as a layer-3 column; promoted only if it beats the learners' own inputs there",
+     "ask": "Is the ten-year yield's larger-than-usual move a growth story, an inflation or Fed story, or unclear?",
+     "instructions": "Read `judgment.yield_move` and `judgment.headlines`. The code says the ten-year yield has moved more than usual since the prior close for this minute. From the headlines captured before the read, is the move a growth story (a tailwind for stocks), an inflation or Fed story (a headwind), or unclear?",
+     "merged_id": "EVENTS-06",
+     "options": [
+      "growth_tailwind",
+      "inflation_headwind",
+      "unclear"
+     ],
+     "criteria": {
+      "growth_tailwind": "yields move on growth: a tailwind for stocks",
+      "inflation_headwind": "yields move on inflation or the Fed: a headwind",
+      "unclear": "the headlines do not say why"
+     },
+     "code_criteria": {
+      "growth_tailwind": "the headlines name growth or earnings",
+      "inflation_headwind": "the headlines name inflation, the Fed or supply",
+      "unclear": "neither"
+     },
+     "labels": [
+      "judgment.yield_move",
+      "judgment.headlines"
+     ],
+     "why": "True judgment that flips the sign of the rates-stocks link."
+    },
+    "news_reaction": {
+     "status": "shadow",
+     "type": "choice",
+     "serves": "direction",
+     "lanes": [
+      "thirty_minute"
+     ],
+     "schedule": {
+      "thirty_minute": {
+       "every_min": 30,
+       "from": "10:02",
+       "to": "15:32"
+      }
+     },
+     "horizon": "30min",
+     "cadence": "every 30-minute read from 10:02, asked only when headlines were captured before the read",
+     "sleep_when": "no headline was captured in the {headline_window_min} minutes before the read",
+     "code_answer": false,
+     "shadow_proof": "not a proof: shadow keeps it out of the old loop (the sums, the weights, pool_v1 and the cadence all keep to live questions) while the Mirai Prediction System takes its answers as a layer-3 column; promoted only if it beats the learners' own inputs there",
+     "ask": "Is SPX shrugging off bad news, overreacting to stale news, or reacting in proportion?",
+     "instructions": "Read `judgment.headlines`, `price.recent_move` and `price.day_range_position`. The headlines are those captured in the {headline_window_min} minutes ending {headline_cut_min} minutes before the read. Given what the material ones should do to stocks, is SPX shrugging off bad news, overreacting to stale or immaterial news (likely to fade), or reacting in proportion?",
+     "merged_id": "EVENTS-07",
+     "options": [
+      "shrugging_off",
+      "overreacting",
+      "in_proportion",
+      "unclear"
+     ],
+     "criteria": {
+      "shrugging_off": "the news is bad for stocks and SPX has not moved on it",
+      "overreacting": "the news is stale or immaterial and SPX has moved on it: likely to fade",
+      "in_proportion": "SPX's move matches what the news should do",
+      "unclear": "no headline is material, or the reaction cannot be judged"
+     },
+     "code_criteria": {
+      "shrugging_off": "material bad news and a move ranked bottom third",
+      "overreacting": "no material news and a move ranked top third",
+      "in_proportion": "material news and a move its way",
+      "unclear": "otherwise"
+     },
+     "labels": [
+      "judgment.headlines"
+     ],
+     "why": "Signed and needs reading comprehension: whether the tape has already paid for the news. The scope of the news (index-wide or one name) is asked for in the words but a choice carries one answer, so it is not stored as its own field."
+    }
+   }
+  },
+  {
    "id": "dark",
    "lane": "none",
    "purpose": "Dark: the feed or data is missing on Monday; never asked. (Questions waiting only on a build stay dark in their home group.)",

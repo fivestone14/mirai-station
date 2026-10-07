@@ -85,7 +85,8 @@ def test_the_premarket_job_fires_at_every_checkpoint_of_the_year_and_its_close_o
                                                 ("com.mirai-station.spx-jev-context", "run-spx-jev-context.sh", None),
                                                 ("com.mirai-station.spx-jev-save-day", "run-spx-jev-save-day.sh", None),
                                                 ("com.mirai-station.spx-jev-overnight", "run-spx-jev-overnight.sh", None),
-                                                ("com.mirai-station.spx-jev-store", "run-spx-jev-store.sh", None)])
+                                                ("com.mirai-station.spx-jev-store", "run-spx-jev-store.sh", None),
+                                                ("com.mirai-station.spx-jev-headlines", "run-spx-jev-headlines.sh", None)])
 def test_each_job_runs_its_repo_script_and_logs_to_its_own_files(name, script, lane):
     job = _job(name)
     command = job["ProgramArguments"][2]
@@ -99,6 +100,7 @@ def test_each_job_runs_its_repo_script_and_logs_to_its_own_files(name, script, l
 def test_the_feeds_run_every_minute_and_the_day_is_saved_after_the_close():
     assert _job("com.mirai-station.spx-jev-bars")["StartInterval"] == 60
     assert _job("com.mirai-station.spx-jev-context")["StartInterval"] == 60
+    assert _job("com.mirai-station.spx-jev-headlines")["StartInterval"] == 180      # the poll gates itself to 07:00-16:30 ET weekdays
     save = _job("com.mirai-station.spx-jev-save-day")["StartCalendarInterval"]
     assert (save["Hour"], save["Minute"]) == _pacific("16:20")        # after the bars feed's last run and gex-polarity's save
 
@@ -121,6 +123,6 @@ def test_the_installed_plists_match_their_templates():
     that has no template."""
     templates = {p.name.removesuffix(".template") for p in LAUNCHD.glob("*.plist.template")}
     installed = {p.name for p in (REPO / "runtime" / "launchd").glob("com.mirai-station.spx-jev*.plist")}
-    assert len(templates) == 9 and installed == templates    # 8 service jobs + the Mirai Prediction System's nightly job
+    assert len(templates) == 10 and installed == templates   # 8 service jobs, the Mirai Prediction System's nightly job, the headline feed
     for name in sorted(templates):
         assert (REPO / "runtime" / "launchd" / name).read_bytes() == (LAUNCHD / f"{name}.template").read_bytes(), name
