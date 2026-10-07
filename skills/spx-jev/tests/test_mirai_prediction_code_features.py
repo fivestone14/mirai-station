@@ -14,11 +14,13 @@ from conftest import PRIOR_DAYS, at, bars_from_closes
 from spx_jev.mirai_prediction import answer_matrix, code_feature_inputs, paths, read_hook
 from spx_jev.mirai_prediction.answer_matrix import Row, build_answer_matrix
 from spx_jev.mirai_prediction.backfill_code_features import run_backfill
-from spx_jev.mirai_prediction.code_features import (BARS_ANSWERERS, LABEL_PARSERS, PREMARKET_QUESTIONS, MarketHistory,
-                                                    answer_code_features, bars_up_to, load_catalog)
+from spx_jev.mirai_prediction.code_features import (BARS_ANSWERERS, LABEL_PARSERS, PREMARKET_QUESTIONS, MarketHistory, answer_code_features,
+                                                    bars_up_to, load_catalog)
+from spx_jev.mirai_prediction.code_features_market import MARKET_ANSWERERS
 from spx_jev.mirai_prediction.voice_fits import DayFits
 
-MAPPING = json.loads((Path(__file__).parent / "data" / "ready_mapping.json").read_text(encoding="utf-8"))
+MAPPING = [m for name in ("ready_mapping.json", "phase2_mapping.json")
+           for m in json.loads((Path(__file__).parent / "data" / name).read_text(encoding="utf-8"))]
 CATALOG = {q["id"]: q for q in load_catalog()}
 DAY = "2026-09-18"
 SIGMA = 75.0
@@ -38,16 +40,21 @@ def record(row_ts: str, labels: dict[str, str] | None = None, **more) -> dict:
 
 # ---------------------------------------------------------------- the catalog
 
-def test_catalog_has_the_51_questions_with_valid_layers_groups_and_options():
+def test_catalog_has_the_90_questions_with_valid_layers_groups_and_options():
     rows = load_catalog()
-    assert len(rows) == 51 and len({q["id"] for q in rows}) == 51
+    assert len(rows) == 90 and len({q["id"] for q in rows}) == 90
     for q in rows:
         assert q["layer"] in (1, 2) and isinstance(q["group"], str) and "/" in q["group"]
         assert q["options"] and len(set(q["options"])) == len(q["options"]) and all(isinstance(o, str) and o for o in q["options"])
         assert q["method"] in ("label", "bars", "market_value") and q["title"] and q["notes"]
-        assert (q["id"] in LABEL_PARSERS) != (q["id"] in BARS_ANSWERERS)
+        registered = sum((q["id"] in LABEL_PARSERS, q["id"] in BARS_ANSWERERS, q["id"] in MARKET_ANSWERERS))
+        if q.get("status") == "needs_new_feed":
+            assert registered == 0 and "needs_new_feed" in q["notes"]             # in the catalog, silent until its feed exists
+        else:
+            assert registered == 1
         if q["method"] == "label":
             assert q["label_keys"]
+    assert {q["id"] for q in rows if q.get("status") == "needs_new_feed"} == {"OPTIONS-12", "FLOW-09"}
     assert {q["new_id"] for q in MAPPING} == set(CATALOG)
 
 
@@ -81,13 +88,22 @@ def test_premarket_questions_take_the_days_last_premarket_read_before_the_read()
 
 # ---------------------------------------------------------------- silence, never an error
 
+CALENDAR_QUESTIONS = ("EVENTS-01", "EVENTS-02", "EVENTS-03", "EVENTS-05")      # read the skill's own calendar, which covers DAY
+
+
+def silent_values(answers: dict) -> set:
+    """Every answer but the calendar questions', which answer from calendar/events.json even with no other data."""
+    assert all(answers[q] is None or answers[q] in CATALOG[q]["options"] for q in CALENDAR_QUESTIONS)
+    return {v for q, v in answers.items() if q not in CALENDAR_QUESTIONS}
+
+
 def test_unknown_templates_and_missing_data_answer_none_without_raising():
     keys = {k for q in load_catalog() for k in q["label_keys"]}
     garbage = record(f"{DAY}T11:00:00-04:00", {k: "lorem ipsum dolor sit amet" for k in keys})
-    assert set(answer_code_features(garbage, [], MarketHistory()).values()) == {None}
-    assert set(answer_code_features({"row_ts": f"{DAY}T11:00:00-04:00"}, [], None).values()) == {None}
+    assert silent_values(answer_code_features(garbage, [], MarketHistory())) == {None}
+    assert silent_values(answer_code_features({"row_ts": f"{DAY}T11:00:00-04:00"}, [], None)) == {None}
     broken_bars = [{"ts": f"{DAY}T09:30:00-04:00"}] * 100
-    assert set(answer_code_features({"row_ts": f"{DAY}T11:00:00-04:00", "sigma": "?"}, broken_bars, MarketHistory()).values()) == {None}
+    assert silent_values(answer_code_features({"row_ts": f"{DAY}T11:00:00-04:00", "sigma": "?"}, broken_bars, MarketHistory())) == {None}
     assert set(answer_code_features(record(f"{DAY}T11:00:00-04:00"), [], MarketHistory()).keys()) == set(CATALOG)
 
 

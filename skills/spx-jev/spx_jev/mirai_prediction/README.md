@@ -37,7 +37,7 @@ The live store keeps its folder names; `name_map.py` maps them (`graded_results`
 
 - **At every live read** `service.py` calls `live_call.forecast_now` inside the read (Pool 2's mix is the call since
   2026-10-06), falling back to `service_hook.spawn_after_read`, which starts `read_hook` in its own process. The hook
-  first has the code feature builder answer its 51 questions for the read and appends the line to `raw/code_features/`
+  first has the code feature builder answer its 90 questions for the read and appends the line to `raw/code_features/`
   (the record the nightly matrix joins on), then loads the day's fit file (fits + answer matrix, no store scan), adds
   today's row with those answers and JEV's picks, forecasts the read with every voice and appends the lines to `raw/`
   (about 0.4 s; the first sum always runs, a later one is skipped past the 5-second budget; never raises). Each line
@@ -64,16 +64,30 @@ job too, with the rest of the service).
 
 ## The code feature builder (layers 1-2)
 
-`code_features.py` answers the 51 ready code questions of the merged question set for one read, from the read's own
-record and what was known at its time: the label sentences as archived (one small parser per template), the SPX minute
-bars finished by the read (TREND-05/08/09/10/12, LEVELS-09, FLOW-08), the night's /ES bars (MACRO-08) and the derived
-advance-decline line `$ADVN - $DECN` against the gap's side (BREADTH-11). `code_feature_catalog.json` beside it lists
-every question with its id, title, layer, group (the voting group of the question set, kept as it is), method, source,
-label keys, the exact answer list and notes. A ranked measure is compared with the same measure at the same minute on
-the trailing 20 sessions (at least 10, else None), from `bars/` and the store's `spx_bars`, `overnight_bars` and
-`context_bars` (`code_feature_inputs.py`); the three premarket questions (LEVELS-08, MACRO-09, MACRO-10) take the day's
-last premarket-lane read. A question whose data is missing, or whose sentence is a template the parser does not know,
-answers None, never an error. FLOW-08's thresholds are a draft.
+`code_features.py` answers the 90 code questions of the merged question set for one read (the 51 ready ones, and since
+2026-10-07 the 39 of Phase 2), from the read's own record and what was known at its time: the label sentences as
+archived (one small parser per template), the SPX minute bars finished by the read (TREND-04/05/08/09/10/12, LEVELS-09,
+FLOW-08, VOLATILITY-04/14, ...), the night's /ES bars (MACRO-08, LEVELS-07) and the derived advance-decline line
+`$ADVN - $DECN` against the gap's side (BREADTH-11). `code_features_market.py` holds the Phase 2 answerers that read the
+Phase 1 feeds: the market feed's minute bars per symbol (`context/bars/`, today's from the quotes until the day is saved)
+for SPY/QQQ/IWM, /ZN, HYG/USO/GLD, KRE/XHB/XLE, the 3x funds, the megacaps, $VIX/$VIX9D and breadth; the daily closes
+(VOLATILITY-08/17, SESSION-02); the index weights dated on or before the day (BREADTH-03/07/08/09); the calendar read at
+the read's time (EVENTS-01/02/03/05, the auction tier answered from the rows present, so never named until rows exist);
+the day's diary walls and magnet (OPTIONS-04/06); and the lob-flow quote sweeps (OPTIONS-08). Two catalog entries carry
+`status: needs_new_feed` and stay silent: OPTIONS-12 (no 1-to-7-day volume by strike anywhere) and FLOW-09 (the
+collector folds SPY's bid and ask size into one). `code_feature_catalog.json` beside it lists every question with its
+id, title, layer, group (the voting group of the question set, kept as it is), method, source (the exact formula and
+window), label keys, the exact answer list and notes (every DRAFT threshold says so). A ranked measure is compared with
+the same measure at the same minute on the trailing 20 sessions (at least 10, else None), from `bars/`, `context/bars/`
+and the store's `spx_bars`, `overnight_bars` and `context_bars` (`code_feature_inputs.py`; the SPX bars reach 60 sessions
+for the gap rank); a symbol's usual multiple of SPX (the beta of its 30-minute returns on SPX's over the prior sessions'
+half hours) is fitted once per day and applied to every session in a rank. The three premarket questions (LEVELS-08,
+MACRO-09, MACRO-10) take the day's last premarket-lane read. A question whose data is missing, or whose sentence is a
+template the parser does not know, answers None, never an error. A symbol's own-day bars live are the quotes
+(one price a snapshot), so every market answerer reads closes and volume only, never a minute's high or low: live and
+backfill measure the same thing. A live read runs in a fresh process, so each read loads the day's history cold (about
+1.1 s) and answers all 90 in about 0.3 s; the prior-sessions parts are cached only within one process (the replay and
+the backfill, which walk a day's reads together).
 
 Each read's answers are written to `raw/code_features/{day}.jsonl` first (live, before the read is forecast; or by the
 backfill command, idempotent, source `backfill`) and the nightly matrix joins them on `read_id` as columns
@@ -83,7 +97,7 @@ judgment questions of the merged set are NOT built yet, and the live question se
 
 ## Feeds (Phase 1, 2026-10-06)
 
-The feeds the blocked questions of the merged set wait for, built first; no question reads them yet.
+The feeds the blocked questions of the merged set waited for, built first; the Phase 2 questions read them since 2026-10-07.
 
 | feed | where it lives | what it is | unblocks |
 |---|---|---|---|

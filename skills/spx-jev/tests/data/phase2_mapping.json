@@ -1,0 +1,603 @@
+[
+ {
+  "new_id": "TREND-04",
+  "title": "Trend vs chop, last 30 min",
+  "method": "bars",
+  "source": "SPX 1-min closes: |net move| / sum of |1-min moves| over the last 30 minutes, or since 09:35 before 10:05; ranked against the same measure at the same minute on the trailing 20 sessions (at least 10): top third clean, middle mixed, bottom choppy.",
+  "options": [
+   "clean",
+   "mixed",
+   "choppy"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Fix applied: before 10:05 the window runs from the settled open (09:35), so it replaces opening_chop on the tape lane. Needs 25 bars (5 before 10:05)."
+ },
+ {
+  "new_id": "TREND-07",
+  "title": "VWAP balance: one-sided or orbiting",
+  "method": "bars",
+  "source": "SPY minute bars (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)): session VWAP = cumulative typical price x volume / volume; minutes since SPY's last 5-minute close (09:34, 09:39, ...) on the other side of its VWAP, and the bars of the last 30 minutes whose high-low held the VWAP; each ranked against the same measure at the same minute on the trailing 20 sessions (at least 10). Touches top third = orbiting; else minutes-since top third = long one-sided; else recently crossed.",
+  "options": [
+   "long one-sided",
+   "recently crossed",
+   "orbiting"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "VWAP is volume-weighted from SPY's own minute volume (SPX bars carry none); the fix's 60-session backfill is not applied: the history is the builder's 20 sessions. DRAFT: the orbiting-first precedence."
+ },
+ {
+  "new_id": "TREND-11",
+  "title": "Volume spike follow-through, signed",
+  "method": "bars",
+  "source": "SPY volume per finished 5-minute slot (09:30-09:34, ...) of the last 30 minutes; a slot whose volume is at or above the 90th percentile of the same slot on the trailing 20 sessions (at least 10) is a spike; the latest spike's SPX direction = close - open over the slot, held when the latest SPX close is past the slot's high-low midpoint in that direction.",
+  "options": [
+   "up spike held",
+   "down spike held",
+   "spike faded",
+   "none"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Fix applied: volume from SPY's minute bars ({CTX}), since $SPX has none. DRAFT: the 90th-percentile cut (the question's 'top 10%')."
+ },
+ {
+  "new_id": "VOLATILITY-04",
+  "title": "Range compressing or expanding",
+  "method": "bars",
+  "source": "SPX 1-min bars: high-low range of the last 30 minutes over the range of the 30 minutes before it; ranked against the same measure at the same minute on the trailing 20 sessions (at least 10): bottom third compressed, top expanded.",
+  "options": [
+   "compressed",
+   "normal",
+   "expanded"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Needs 25 bars in each half hour, so None before 10:30."
+ },
+ {
+  "new_id": "VOLATILITY-07",
+  "title": "VIX open vs what the gap implies",
+  "method": "market_value",
+  "source": "$VIX and SPX minute bars (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)): the 09:35 VIX (the 09:34 bar's close) less (the prior session's last VIX + VIX_PER_GAP_PCT x the gap from the prior close to the settled open in percent); ranked against the same measure on the trailing 20 sessions (at least 10): top third richer, bottom cheaper.",
+  "options": [
+   "richer",
+   "in line",
+   "cheaper"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Fix applied: the 09:35 VIX print, not the first diary print; walk-forward (prior sessions only). Opening reads only: reads from 09:35 to 10:35 answer, later ones None. DRAFT: VIX_PER_GAP_PCT = -1.7 points per 1% gap (labels/vol.py's -1.7 per sigma, a sigma near 1%)."
+ },
+ {
+  "new_id": "VOLATILITY-08",
+  "title": "Gap size in implied units",
+  "method": "bars",
+  "source": "SPX bars (bars/ and store spx_bars, 60 sessions): gap = settled open (09:34 close) - prior close; implied one-day move = prior close x prior-close $VIX (daily_closes) / 100 / sqrt(252); |gap / implied| ranked against the same on the trailing 60 sessions (at least 10): bottom third small, middle normal, top large, signed by the gap.",
+  "options": [
+   "large down",
+   "normal down",
+   "small",
+   "normal up",
+   "large up"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Fix applied: the prior-close VIX / sqrt(252) ruler and a 60-session rank. The premarket half (/ES vs 16:00 before 09:35) is not built: the live lane has no read before 09:35. LEVELS-01 keeps its own gap-fill answer."
+ },
+ {
+  "new_id": "VOLATILITY-12",
+  "title": "Front VIX curve shape",
+  "method": "market_value",
+  "source": "$VIX9D / $VIX at the read (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)): at or above 1.00 = inverted; else ranked against the same measure at the same minute on the trailing 20 sessions (at least 10): bottom third calm, otherwise normal.",
+  "options": [
+   "calm",
+   "normal",
+   "inverted"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Fix applied: ranked against the sessions on file (the context bars, from 2026-08-11), not a year; VIX/VIX3M is not used as a fallback."
+ },
+ {
+  "new_id": "VOLATILITY-14",
+  "title": "Vol fails to confirm a new extreme",
+  "method": "bars",
+  "source": "SPX bars: a session high (low) set in the last 30 minutes above (below) an earlier one; $VIX (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)) at the new extreme's minute against VIX at the earlier extreme's: a new high with VIX at or below, or a new low with VIX at or above, is confirmed; else vol disagrees. Mechanical first: the read in the last hour (from 15:00), a Friday or pre-holiday session, or a calendar row in its first 15 minutes.",
+  "options": [
+   "no new extreme",
+   "mechanical",
+   "new high, vol confirms",
+   "new high, vol disagrees",
+   "new low, vol confirms",
+   "new low, vol disagrees"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Converted from JEV to code. Same-day ATM IV is not read (VIX only); VIX expiry days are not a mechanical cause yet. Shares one vote with BREADTH-03."
+ },
+ {
+  "new_id": "VOLATILITY-17",
+  "title": "Recent days' range regime",
+  "method": "market_value",
+  "source": "daily_closes/$SPX.jsonl (sessions before the day): daily range = (high - low) / close; the mean of the last 5 sessions ranked against the trailing 60 sessions' rolling 5-session means: bottom third quiet, top wide.",
+  "options": [
+   "quiet",
+   "normal",
+   "wide"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Ranked against recent sessions (60), per Will's note. The context fields (10-session trend strength, intraday character) are not stored: the matrix holds answers only."
+ },
+ {
+  "new_id": "LEVELS-07",
+  "title": "Overnight range position",
+  "method": "market_value",
+  "source": "The read's /ES quote (market_context) against the night's /ES high and low (overnight/{day}.jsonl, session != regular, bars before 09:30). Roll guard: the quote more than 2% from the night's last bar is another contract, so None.",
+  "options": [
+   "above overnight high",
+   "inside overnight range",
+   "below overnight low"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "147 nights on disk; the guard's 2% is a DRAFT."
+ },
+ {
+  "new_id": "LEVELS-10",
+  "title": "Room to the next barrier",
+  "method": "bars",
+  "source": "In the direction of SPX's last 30-minute move, the distance (share of price) to the nearest level beyond price: the prior session's high, low and close, the night's /ES high and low moved onto SPX by the 09:30 basis, today's session high and low, the next round number (25-point steps); ranked against the same measure at the same minute on the trailing 20 sessions (at least 10): bottom third close, top far.",
+  "options": [
+   "close",
+   "normal",
+   "far"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Walls and VWAP are not in the level library yet (no wall history for the prior sessions; the S11 library is not built), so the rank is over the same levels on every session. DRAFT: the 25-point round numbers."
+ },
+ {
+  "new_id": "LEVELS-12",
+  "title": "Which side is tiring at a tested edge or extreme",
+  "method": "bars",
+  "source": "Edges: today's high and low before the last 30 minutes, the prior session's high and low. A test = a run of bars reaching within 0.05 sigma of the edge; an edge with 2+ runs in the last 30 minutes (the latest-tested wins). First run vs latest: depth past the edge, SPY volume over the run, rejection (the extreme against the closes of the 3 bars after); the latest shallower, lighter and sharper-rejected on 2 of 3 = buyers tiring at a high edge, sellers tiring at a low edge.",
+  "options": [
+   "buyers tiring",
+   "sellers tiring",
+   "neither",
+   "no tested edge"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Converted from JEV to code without the S11 test ledger: the three ratios compare the latest test with the first directly, not ranked against the time of day. The weaker-extreme field (J2-02) is not stored. DRAFT thresholds: 0.05 sigma touch, 3 rejection bars, 2 of 3."
+ },
+ {
+  "new_id": "OPTIONS-04",
+  "title": "Wall test in the last hour",
+  "method": "bars",
+  "source": "The day's SPX diary rows (reversion/{day}.jsonl) at each bar of the last 60 minutes: the 0DTE and 1-to-7-day call and put walls; a bar whose high-low reaches within 0.10 sigma (the label's touch rule) of a wall touches it; the latest touch's wall, with price now at or on the held side (at or below a call wall, at or above a put wall) = held, else broke.",
+  "options": [
+   "no touch",
+   "held at call wall",
+   "broke call wall",
+   "held at put wall",
+   "broke put wall"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Never empty when the diary and bars are on file (the live label is missing on a quarter of reads). Shares the held-or-failed vote."
+ },
+ {
+  "new_id": "OPTIONS-06",
+  "title": "Pin holding or breaking loose",
+  "method": "bars",
+  "source": "The diary's magnet, 0DTE and 1-to-7-day walls at the read; over the last 60 minutes' SPX closes, a level crossed 3+ times is the pin (the most crossed); price now more than one 30-minute expected move (sigma x sqrt(30/390)) from it = broke loose; the current swing away wider than the median earlier swing and longer (bars since the last crossing) = stretching; else holding.",
+  "options": [
+   "holding",
+   "stretching",
+   "broke loose",
+   "not pinned"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Moved from JEV to code. DRAFT: 3 crossings, medians of the earlier swings. Shares the pinned vote."
+ },
+ {
+  "new_id": "OPTIONS-08",
+  "title": "Same-day option quote width",
+  "method": "market_value",
+  "source": "The lob-flow collector's quote sweeps (state/lob_flow/raw/{day}/sweeps.jsonl(.gz)): the 25-40 delta bucket's quoted spread, the median of the last 5 minutes' sweeps, ranked against the same minute on the trailing 20 sessions (at least 10): under a third tight, under two thirds normal, under 0.9 wide, else very wide.",
+  "options": [
+   "tight",
+   "normal",
+   "wide",
+   "very wide"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "The sweep carries no vega, so the spread is ranked in dollars, not per unit of vega. 21 days of sweeps on file."
+ },
+ {
+  "new_id": "OPTIONS-12",
+  "title": "Short-dated hedge buying",
+  "method": "market_value",
+  "source": "A 1-to-7-day put-to-call volume ratio over the last 30 minutes, ranked against this time of day.",
+  "options": [
+   "low",
+   "normal",
+   "high"
+  ],
+  "status": "needs_new_feed",
+  "examples": [],
+  "notes": "needs_new_feed: no source carries 1-to-7-day volume by strike. The diary holds the 0DTE volume by strike (gex_views.vol_side_by_strike) and the 1-to-7-day net gamma by strike only, and the lob-flow collector sweeps the 0DTE chain only; adding a second expiry's sweep is not a pure addition to the daemon. Always None until a feed exists."
+ },
+ {
+  "new_id": "BREADTH-02",
+  "title": "NYSE breadth beyond the day move (live lane)",
+  "method": "market_value",
+  "source": "The read's derived advance-decline ($ADVN - $DECN, else $ADD) against SPX's move since the prior close: on the trailing 20 sessions at this minute the line (from state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)) is regressed on the move; today's residual ranked against the sessions' residuals: top third stronger, bottom weaker.",
+  "options": [
+   "stronger",
+   "in line",
+   "weaker"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Live lane only (the derived line is the live reading). Needs 10 sessions with both; the store's $ADVN starts 09-28, the context bars files earlier."
+ },
+ {
+  "new_id": "BREADTH-03",
+  "title": "Breadth and small caps confirm a new extreme",
+  "method": "bars",
+  "source": "A new session high (low) in the last 30 minutes (as VOLATILITY-14); three confirmations: the derived advance-decline now above (below) its level at the earlier extreme's minute; IWM within 0.05% of its own session high (low); the 8 largest names' weighted return from the earlier extreme's minute to now positive (negative). Weights: state/spx_leaders/weights.json, the entry dated on or before the day; prices from state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live).",
+  "options": [
+   "no new extreme",
+   "all confirm",
+   "some confirm",
+   "none confirm"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "$VOLD leg replaced by the derived $ADD. None before the first weights entry (2026-10-06). DRAFT: the 0.05% IWM tolerance. Shares one vote with VOLATILITY-14."
+ },
+ {
+  "new_id": "BREADTH-07",
+  "title": "Biggest heavyweight shock beyond SPX",
+  "method": "market_value",
+  "source": "The 8 largest names (weights dated on or before the day; GOOG summed into GOOGL, BRK/B as the feed names it): each one's 30-minute return less its usual multiple of SPX's (the slope of its 30-minute returns on SPX's over the prior sessions' half hours, at least 20 pairs); the largest weight x residual; |pull| ranked against the largest pull at the same minute on the trailing sessions: top third large (signed), else small; followed when 4+ of the other 7 moved beyond SPX the same way.",
+  "options": [
+   "large up, followed",
+   "large up, alone",
+   "large down, followed",
+   "large down, alone",
+   "small"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Weights are taken as of on or before the read's day (the task's rule), not strictly before as the question's note asked; the first entry is 2026-10-06, so earlier reads are None. TSLA and BRK/B are in the feed since 08-21."
+ },
+ {
+  "new_id": "BREADTH-08",
+  "title": "Day's leader fading",
+  "method": "market_value",
+  "source": "The name whose weight x return since the settled open contributed most in SPX's day direction (SPX's close now against its 09:34 close); its 30-minute return beyond its usual multiple of SPX, |residual| ranked against its own at this minute: bottom third neither; else against the day direction fading, with it kept leading.",
+  "options": [
+   "fading",
+   "kept leading",
+   "neither"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Same weights rule as BREADTH-07; shadow."
+ },
+ {
+  "new_id": "BREADTH-09",
+  "title": "Heavyweight in play since the close (gate)",
+  "method": "market_value",
+  "source": "Each of the 8 largest names' return since the prior session's close less its usual multiple (BREADTH-07's) of SPX's since the same close, weighted; |largest pull| top third at this minute against the trailing sessions = in play; the rest of the index (SPX's move less the names' weighted moves) followed when it has the pull's sign and is above the bottom third of its own.",
+  "options": [
+   "in play, rest followed",
+   "in play, rest did not",
+   "none in play"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Gate for BREADTH-10 (no vote). DRAFT: the 30-minute multiple stands in for a since-the-close one."
+ },
+ {
+  "new_id": "FLOW-02",
+  "title": "Volume backs the move",
+  "method": "market_value",
+  "source": "Over the last 30 minutes the share of SPY's minute volume (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)) traded in the minutes SPX's bar closed the way the half hour went (close - open of the window); ranked against the same measure at the same minute on the trailing 20 sessions (at least 10): top third confirmed, bottom diverging.",
+  "options": [
+   "confirmed",
+   "balanced",
+   "diverging"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "A flat half hour (net 0) is None. Drop if Cramer's V vs TREND-01 >= 0.7 (not measured here)."
+ },
+ {
+  "new_id": "FLOW-04",
+  "title": "Price travel per volume",
+  "method": "market_value",
+  "source": "SPX points travelled (sum of |1-min moves|) over the last 30 minutes per million SPY shares (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)); ranked against the same measure at the same minute on the trailing 20 sessions (at least 10): bottom third heavy with little travel, top easy travel on light volume.",
+  "options": [
+   "heavy with little travel",
+   "normal",
+   "easy travel on light volume"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Amihud thinness. Keep only if < 0.8 with FLOW-05 and VOLATILITY-02 (not measured here)."
+ },
+ {
+  "new_id": "FLOW-05",
+  "title": "Volume pace vs clock",
+  "method": "label",
+  "source": "volume.spy_pace_30",
+  "options": [
+   "light",
+   "normal",
+   "heavy"
+  ],
+  "status": "built",
+  "examples": [
+   {
+    "read": "live 2026-09-28T10:30",
+    "answer": "light",
+    "row_ts": "2026-09-28T10:30:46.451741-04:00",
+    "labels": {
+     "volume.spy_pace_30": "SPY traded 0.8 times its usual volume for this half hour, in the bottom fifth, higher than 3 of the last 20 sessions at this minute"
+    }
+   },
+   {
+    "read": "live 2026-09-28T12:01",
+    "answer": "normal",
+    "row_ts": "2026-09-28T12:01:26.850303-04:00",
+    "labels": {
+     "volume.spy_pace_30": "SPY traded 0.9 times its usual volume for this half hour, between the top and bottom fifths, higher than 9 of the last 20 sessions at this minute"
+    }
+   },
+   {
+    "read": "live 2026-09-28T11:00",
+    "answer": "heavy",
+    "row_ts": "2026-09-28T11:00:35.039265-04:00",
+    "labels": {
+     "volume.spy_pace_30": "SPY traded 1.7 times its usual volume for this half hour, in the top fifth, higher than 19 of the last 20 sessions at this minute"
+    }
+   }
+  ],
+  "notes": "k / n from 'higher than k of the last n sessions at this minute': bottom third light, top heavy. The label is SPY's volume over the half hour against the same half hour on the prior sessions on file."
+ },
+ {
+  "new_id": "FLOW-06",
+  "title": "Volume profile location",
+  "method": "market_value",
+  "source": "The last 5 sessions' profile: SPY's minute volume (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)) summed into 5-point bins of SPX's close; a bin at or above the 75th percentile of bin volume is a high-volume node, at or below the 25th low; the bin of SPX's last close, and whether the nearest high-volume node is above or below.",
+  "options": [
+   "high-volume node",
+   "low-volume node, next node above",
+   "low-volume node, next node below",
+   "between, next node above",
+   "between, next node below"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "5 sessions kept. DRAFT: 5-point bins, the quartile cuts."
+ },
+ {
+  "new_id": "FLOW-07",
+  "title": "Index move alignment",
+  "method": "market_value",
+  "source": "SPY, QQQ and IWM 30-minute returns (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)), each |return| ranked against its own at this minute: a move above the bottom third counts, signed; all three moved the same way = same way; movers both ways = in conflict; no mover = none moved; else mixed.",
+  "options": [
+   "same way",
+   "mixed",
+   "in conflict",
+   "none moved"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Rebuilt on QQQ and IWM (no /NQ, /RTY). Shares the participation vote with BREADTH-01/02."
+ },
+ {
+  "new_id": "MACRO-01",
+  "title": "Outside markets ahead of SPX, 30 min",
+  "method": "market_value",
+  "source": "/ZN, HYG, USO and GLD (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)): each one's 30-minute return beyond its usual multiple of SPX's (BREADTH-07's fit), divided by its residual spread and signed by the multiple's sign (its usual link with stocks), averaged; ranked against the same measure at the same minute on the trailing 20 sessions (at least 10): top fifth up, bottom fifth down, else no clear lean.",
+  "options": [
+   "up",
+   "down",
+   "no clear lean"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Fix applied: /6E dropped, /ZN added; a session without /ZN bars (a bond holiday) is None. The label's hour-by-hour minute link is replaced by the usual multiple's sign."
+ },
+ {
+  "new_id": "MACRO-02",
+  "title": "SPX vs what bonds imply since the close",
+  "method": "market_value",
+  "source": "SPX's return since the prior close less beta x /ZN's since its 16:00 close (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live); beta = the slope of SPX's close-to-close returns on /ZN's over the trailing sessions, at least 10); |gap| ranked against the same at this minute: bottom third nowhere; SPX short of what bonds imply = up, past it = down.",
+  "options": [
+   "up",
+   "down",
+   "nowhere"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Runs on /ZN now that it is in the feed. Shares MACRO-01's vote."
+ },
+ {
+  "new_id": "MACRO-04",
+  "title": "Macro tone since settle (context)",
+  "method": "market_value",
+  "source": "/ZN, GLD and HYG since the prior close (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)), each counted when |move| is above the bottom third of its own at this minute: /ZN up and GLD up are risk-off, HYG up risk-on; only risk-on flags = risk-on, only risk-off = risk-off, both = mixed, none = quiet.",
+  "options": [
+   "risk-on",
+   "risk-off",
+   "mixed",
+   "quiet"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Context and gate for MACRO-05, no vote. The yen leg waits on /6J."
+ },
+ {
+  "new_id": "MACRO-05",
+  "title": "Do the macro story's sectors confirm it",
+  "method": "market_value",
+  "source": "Tone from MACRO-04's legs: yields falling (/ZN up since the close, above the bottom third) expects XHB and IWM beyond SPX up and KRE down (rising: the reverse); oil (USO) moved expects XLE beyond SPX the same way. Each leg's since-the-close return less its usual multiple of SPX's; more matches than mismatches = confirm, more mismatches = contradict, no tone or a tie = nothing.",
+  "options": [
+   "confirm",
+   "contradict",
+   "nothing"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "DRAFT rubric (J2-21's map, as code): the regional banks lag on falling yields; no transports symbol, so the energy-vs-transports leg is energy alone. Gate for MACRO-03, no vote."
+ },
+ {
+  "new_id": "MACRO-06",
+  "title": "Stock-bond link: today vs normal (conditioner)",
+  "method": "market_value",
+  "source": "The correlation of SPX's and /ZN's 1-minute returns since 09:35 (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live), at least 20 shared minutes): past +0.2 together, under -0.2 opposite, else unlinked; |correlation| ranked against the same at this minute: top half stronger than usual, else weaker.",
+  "options": [
+   "together, stronger than usual",
+   "together, weaker than usual",
+   "opposite, stronger than usual",
+   "opposite, weaker than usual",
+   "unlinked"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Conditioner for MACRO-01's bond leg, no vote. DRAFT: the 0.2 line, the half split."
+ },
+ {
+  "new_id": "MACRO-07",
+  "title": "Rates tape busy vs normal",
+  "method": "market_value",
+  "source": "/ZN's volume over the last 30 minutes (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)) ranked against the same half hour on the trailing sessions: bottom third quiet, top busy.",
+  "options": [
+   "quiet",
+   "normal",
+   "busy"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "The 10-minute companion is not built. Fold into VOLATILITY-02 if > 0.8."
+ },
+ {
+  "new_id": "EVENTS-01",
+  "title": "Scheduled event in window",
+  "method": "market_value",
+  "source": "calendar/events.json at the read (events.session_rows: every tier but the minor pre-open releases): a row under way (start <= now < end) first; then one started within the last 15 minutes (just out); then one due within 60 minutes, tier 1 or a lower tier; else nothing. A day the calendar does not cover is None.",
+  "options": [
+   "under way",
+   "just out",
+   "due within 60 minutes, tier 1",
+   "due within 60 minutes, lower tier",
+   "nothing"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "The auction tier has a shape and no rows: the answer is honest to the rows present, so no auction is ever named until rows are added. learn_exclude still drops reads with an event in window, so the due states cannot earn weight yet."
+ },
+ {
+  "new_id": "EVENTS-02",
+  "title": "Event-day phase",
+  "method": "market_value",
+  "source": "Fixed tier map on calendar/events.json: high = FOMC, FOMC_PRESSER, CPI, JOBS, PCE; medium = PPI, RETAIL_SALES, GDP, ISM_MANUFACTURING, ISM_SERVICES, JOLTS, FOMC_MINUTES, FED_CHAIR_TESTIMONY, FED_CHAIR_JACKSON_HOLE, CONSUMER_CONFIDENCE, UMICH_SENTIMENT. In order: a high-tier row today; the next trading day high (eve); the previous trading day high (day after); a medium row today; else ordinary. Uncovered days are None.",
+  "options": [
+   "high-tier day",
+   "eve of a high-tier day",
+   "day after a high-tier day",
+   "medium-tier day",
+   "ordinary"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Fix applied: a fixed tier map instead of a learned yearly ranking."
+ },
+ {
+  "new_id": "EVENTS-03",
+  "title": "Follow-through after the latest release",
+  "method": "bars",
+  "source": "The latest calendar row whose first 15 minutes are over, within 120 minutes of the read (Fed statement and presser are separate rows). In the session: SPX closes at the row's start, 15 minutes after, and now; before the open: /ES night bars at those minutes and the read's /ES quote as now. Back through the start = reversed; past the 15-minute price by more than 0.05 sigma = extended; more than half given back = faded; else held.",
+  "options": [
+   "extended",
+   "held",
+   "faded",
+   "reversed",
+   "no release"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Release types pooled (one verdict for data, Fed remarks and the presser). The rank against past releases is not applied: the verdict uses the fixed 0.05-sigma and half-line rules of labels/events_shocks.py."
+ },
+ {
+  "new_id": "EVENTS-05",
+  "title": "Rates surprise at the latest release",
+  "method": "market_value",
+  "source": "The latest calendar row whose first 15 minutes are over (as EVENTS-03): /ZN's return over those 15 minutes (its session bars, or its night bars before the open); |return| ranked against every row's 15-minute /ZN return on the trailing 20 sessions (at least 10 rows): top third large, signed by yields (/ZN up = yields down); else small.",
+  "options": [
+   "large, yields up",
+   "large, yields down",
+   "small",
+   "no release"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Distinct from MACRO-01's rolling gap. Needs 10 prior rows with /ZN bars."
+ },
+ {
+  "new_id": "SESSION-02",
+  "title": "Month-turn rebalance side and size",
+  "method": "market_value",
+  "source": "The day's place among the month's trading days (sessions.is_trading_day): the first 3 = new-month inflow; the last 2 = the month-to-date $SPX minus TLT return (daily_closes, the last close before the day against the prior month's last close) ranked against every full month on file: top fifth sell big, then sell, small, buy, bottom fifth buy big; other days None.",
+  "options": [
+   "sell big",
+   "sell",
+   "small",
+   "buy",
+   "buy big",
+   "new-month inflow"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "Fix applied: the daily-closes job's $SPX and TLT closes (from 2016) replace the hard-coded flows.rebalance_side. Shadow."
+ },
+ {
+  "new_id": "SENTIMENT-02",
+  "title": "Leveraged ETF bull/bear tilt",
+  "method": "market_value",
+  "source": "SPXL + TQQQ minus SPXS + SQQQ dollar volume (close x volume, state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)) over the last 30 minutes as a share of the five funds' total, less what SPX's 30-minute move predicts (a line fitted on the prior sessions' half hours, at least 20); the residual ranked against the same measure at the same minute on the trailing 20 sessions (at least 10): top third high, bottom low.",
+  "options": [
+   "high",
+   "normal",
+   "low"
+  ],
+  "status": "built",
+  "examples": [],
+  "notes": "The four funds are in the feed since 08-21 (thin, missing a few minutes a day). Read contrarian by the learners, not here. Untested; shadow."
+ },
+ {
+  "new_id": "FLOW-09",
+  "title": "SPY book lean (log only)",
+  "method": "market_value",
+  "source": "Resting size at SPY's best bid against the best offer over the last 5 minutes, ranked against this minute on the prior sessions.",
+  "options": [
+   "bid larger",
+   "about equal",
+   "offer larger"
+  ],
+  "status": "needs_new_feed",
+  "examples": [],
+  "notes": "needs_new_feed: the lob-flow collector's SPY depth fold keeps the combined size only (the spy_depth engine's size|spy baseline rows); a bid/ask split needs the engine's snapshot changed, not a pure addition to the daemon. Always None until the split is saved. Log only, no vote."
+ }
+]

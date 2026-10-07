@@ -1,16 +1,20 @@
-"""The code feature builder: the 51 ready code questions of the merged set, answered by code from one read's stored data.
+"""The code feature builder: the 90 code questions of the merged set (the 51 ready ones and the 39 of Phase 2), answered by
+code from one read's stored data.
 
 The catalog (code_feature_catalog.json beside this file) lists every question: id, title, layer (1 a market value ranked
 against its own history, 2 a discrete label), group (the voting group the scorer and matcher take one vote per), method
-(label / bars / market_value), source, label_keys, options (the exact answer list) and notes.
+(label / bars / market_value), source, label_keys, options (the exact answer list) and notes; an entry with status
+needs_new_feed is in the catalog and silent until its feed exists.
 
     answer_code_features(read_record, bars_up_to_read, market_history) -> {question_id: answer | None}
 
 answers every question for one read from what was known at the read time only: the label sentences as archived, the SPX
-minute bars finished by row_ts, and a MarketHistory of prior sessions (never the read's own day) plus the night's /ES bars
-and the day's premarket reads. A question whose data is missing, or whose sentence is an unknown template, answers None
-(silent) and never raises. Every parser is a pure function of the sentences; the bars questions compute their measure
-from the bars and rank it against the same measure at the same minute on the trailing HISTORY_SESSIONS sessions.
+minute bars finished by row_ts, and a MarketHistory of prior sessions (never the read's own day) plus the night's /ES and
+/ZN bars, the day's premarket reads, and (code_features_market.py) the market feed's symbols cut at the read, the daily
+closes before the day, the index weights dated on or before it, the calendar, the day's diary rows and quote sweeps. A
+question whose data is missing, or whose sentence is an unknown template, answers None (silent) and never raises. Every
+parser is a pure function of the sentences; the bars and market questions compute their measure and rank it against the
+same measure at the same minute on the trailing HISTORY_SESSIONS sessions.
 """
 from __future__ import annotations
 
@@ -27,6 +31,7 @@ COLUMN_PREFIX = "code"               # a question's column in the answer matrix 
 
 HISTORY_SESSIONS = 20                # a measure is ranked against the trailing 20 sessions at the same minute
 MIN_HISTORY_SESSIONS = 10            # fewer prior sessions with the measure than this: the rank is unknown, the answer None
+GAP_HISTORY_SESSIONS = 60            # VOLATILITY-08 ranks the opening gap against 60 sessions: the SPX bars history reaches that far
 BREAK_TOLERANCE_SIGMA = 0.02         # TREND-10: a break must clear the 60-minute high/low by this share of the read's sigma
 REVERSE_TOLERANCE_SIGMA = 0.02       # TREND-08: an opposite 10-minute move smaller than this share of sigma is ranked, not "reversing"
 # FLOW-08's thresholds are a DRAFT (the rules are not written anywhere else yet): the open sits in the outer
@@ -62,11 +67,30 @@ class MarketHistory:
                            (its bars are cut at the read time)
     add_by_day             prior sessions' advance-decline line ($ADD) per minute: day -> [{"ts", "value"}] in time order
     premarket_reads        the read's day's premarket-lane read records, in time order (only those before the read are used)
+    zn_night_bars_by_day   /ZN bars outside the regular session, as es_night_bars_by_day
+    context_bars_by_day    the market feed's minute bars per symbol (context/bars, with volume): day -> symbol -> bars in
+                           time order, prior sessions and the read's own day (its bars are cut at the read time)
+    daily_closes           symbol -> daily rows (day, open, high, low, close) of the sessions before the read's day
+    index_weights          the index weights document (index_weights.pick takes the entry dated on or before the day)
+    diary_rows             the read's day's SPX diary rows, slim: ts, call_wall, put_wall, call_wall_tenor, put_wall_tenor,
+                           magnet, atm_iv (only those at or before the read are used)
+    quote_sweeps_by_day    the lob-flow collector's quote sweeps: day -> [(ts, 25-40 delta quoted spread)], prior sessions
+                           and the read's day (cut at the read)
+    calendar_path          the event calendar file read for the EVENTS questions; None for the skill's own calendar/events.json
+    cache                  what the market answerers derive once per day (series, usual links), never saved
     """
     spx_bars_by_day: dict[str, list[dict]] = field(default_factory=dict)
     es_night_bars_by_day: dict[str, list[dict]] = field(default_factory=dict)
     add_by_day: dict[str, list[dict]] = field(default_factory=dict)
     premarket_reads: list[dict] = field(default_factory=list)
+    zn_night_bars_by_day: dict[str, list[dict]] = field(default_factory=dict)
+    context_bars_by_day: dict[str, dict[str, list[dict]]] = field(default_factory=dict)
+    daily_closes: dict[str, list[dict]] = field(default_factory=dict)
+    index_weights: dict | None = None
+    diary_rows: list[dict] = field(default_factory=list)
+    quote_sweeps_by_day: dict[str, list[tuple[str, float]]] = field(default_factory=dict)
+    calendar_path: str | None = None
+    cache: dict = field(default_factory=dict, repr=False)
 
 
 # ---------------------------------------------------------------- the read's own pieces
@@ -568,6 +592,12 @@ def parse_breadth_04(labels, hhmm):
     return words_by_third("sectors.agreement_30m", ("less together", "about usual", "more together"), nth=1)(labels, hhmm)
 
 
+def parse_flow_05(labels, hhmm):
+    s = labels.get("volume.spy_pace_30")
+    k = rank_of(s) if s else None
+    return {"bottom": "light", "middle": "normal", "top": "heavy"}[third_of(k)] if k is not None else None
+
+
 LABEL_PARSERS = {
     "TREND-01": parse_trend_01, "TREND-02": parse_trend_02, "TREND-03": parse_trend_03, "TREND-06": parse_trend_06,
     "TREND-14": parse_trend_14,
@@ -590,7 +620,7 @@ LABEL_PARSERS = {
     "BREADTH-05": words_by_third("leaders.rotation_30m", ("lag", "match", "beat")),
     "BREADTH-06": parse_breadth_06,
     "FLOW-01": parse_flow_01,
-    "FLOW-03": words_by_third("liquidity.spy_quote", ("thin", "normal", "thick"), fifths=True),
+    "FLOW-03": words_by_third("liquidity.spy_quote", ("thin", "normal", "thick"), fifths=True), "FLOW-05": parse_flow_05,
     "MACRO-09": parse_macro_09, "MACRO-10": parse_macro_10,
     "EVENTS-04": parse_events_04, "SESSION-01": parse_session_01, "SENTIMENT-01": parse_sentiment_01,
 }
@@ -919,6 +949,7 @@ def premarket_labels(history: MarketHistory, row_ts: str) -> dict[str, str]:
 def answer_code_features(read_record: dict, bars_up_to_read: list[dict], market_history: MarketHistory | None = None) -> dict[str, str | None]:
     """Every catalog question's answer for one read, None where the data is missing or the sentence is not a known template.
     Never raises: a parser's error is that question's None."""
+    from .code_features_market import MARKET_ANSWERERS         # the market answerers use this module's helpers, so they import it, not the reverse
     history = market_history or MarketHistory()
     row_ts = read_record.get("row_ts") or ""
     day, hhmm = row_ts[:10], hhmm_of(row_ts)
@@ -933,9 +964,12 @@ def answer_code_features(read_record: dict, bars_up_to_read: list[dict], market_
                 answer = LABEL_PARSERS[qid](labels, hhmm)
             elif qid in BARS_ANSWERERS:
                 answer = BARS_ANSWERERS[qid](read_record, bars_up_to_read, history, day, hhmm)
+            elif qid in MARKET_ANSWERERS:
+                answer = MARKET_ANSWERERS[qid](read_record, bars_up_to_read, history, day, hhmm)
             else:
                 answer = None
         except Exception:
             answer = None
         answers[qid] = answer if answer in question["options"] else None
     return answers
+

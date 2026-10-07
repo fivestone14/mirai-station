@@ -1,9 +1,13 @@
 """What the code feature builder reads from the state dir (read-only), and the raw-first record of its answers.
 
     load_day_bars            today's SPX minute bars, bars/{day}.jsonl (the live-bars sidecar)
-    load_market_history      the trailing sessions' SPX bars, the nights' /ES bars, the sessions' $ADD and the day's
-                             premarket reads: bars/ and overnight/ files where they exist, the store's Parquet tables
-                             (spx_bars, overnight_bars, context_bars) for the sessions before the files begin
+    load_market_history      the trailing sessions' SPX bars, the nights' /ES and /ZN bars, the sessions' $ADD, the market
+                             feed's minute bars per symbol, the daily closes, the index weights, the day's SPX diary rows,
+                             the lob-flow quote sweeps and the day's premarket reads: bars/, overnight/, context/bars/,
+                             daily_closes/, reversion/ and lob_flow/raw/ files where they exist, the store's Parquet tables
+                             (spx_bars, overnight_bars, context_bars) for the sessions before the files begin. The parts
+                             that are prior sessions only are cached in-process for the day (the live service loads them
+                             once, then each read loads the day's own parts).
     record_code_features     the answers for one read: the raw line already written for it, else computed now and
                              appended to raw/code_features/{day}.jsonl BEFORE anything forecasts with them (the write
                              path rule: new data goes to raw JSONL first, every table is built from it)
@@ -12,31 +16,42 @@ Every bar's ts is normalised to ET so the builder compares minutes of day as str
 """
 from __future__ import annotations
 
+import gzip
+import json
 from datetime import datetime
 from pathlib import Path
 
+from .. import daily_closes
 from ..events import ET
+from ..index_weights import WEIGHTS_FILE
 from ..state_builder import LIVE_BARS_SUBDIR, load_jsonl
-from .code_features import HISTORY_SESSIONS, MarketHistory, answer_code_features, bars_up_to
+from .code_features import GAP_HISTORY_SESSIONS, HISTORY_SESSIONS, MarketHistory, answer_code_features, bars_up_to
 from .live_records import _json_lines
 from .paths import append_json_line, now_utc_iso, raw_code_features_file, read_json_lines, spx_jev_dir
 
 OVERNIGHT_SUBDIR = "overnight"
+CONTEXT_SUBDIR = "context"                           # context/{day}.jsonl quotes a minute apart; context/bars/{day}.jsonl full days
+DIARY_SUBDIR = "reversion"                           # the SPX diary (walls, magnet, at-the-money vol) a minute apart
+SWEEPS_SUBDIR = Path("lob_flow") / "raw"             # the lob-flow collector's quote sweeps, {day}/sweeps.jsonl(.gz)
+SWEEP_BUCKET = "d25_40"                              # the 25-40 delta bucket of a sweep (OPTIONS-08)
 STORE_SPX_BARS = "spx_bars"
 STORE_OVERNIGHT_BARS = "overnight_bars"
 STORE_CONTEXT_BARS = "context_bars"
 ES = "/ES"
+ZN = "/ZN"
 ADD = "$ADD"
+DIARY_FIELDS = ("call_wall", "put_wall", "call_wall_tenor", "put_wall_tenor", "atm_iv")
 
 
 def _et(ts: str) -> str:
     return datetime.fromisoformat(ts).astimezone(ET).isoformat()
 
 
-def _bar(ts, open_, high, low, close) -> dict | None:
+def _bar(ts, open_, high, low, close, volume=0.0) -> dict | None:
     """One bar in the builder's shape, or None when a field is missing or malformed (a bad line is skipped, never fatal)."""
     try:
-        return {"ts": _et(ts), "open": float(open_), "high": float(high), "low": float(low), "close": float(close)}
+        return {"ts": _et(ts), "open": float(open_), "high": float(high), "low": float(low), "close": float(close),
+                "volume": float(volume) if isinstance(volume, (int, float)) else 0.0}
     except (TypeError, ValueError):
         return None
 
@@ -90,38 +105,182 @@ def load_spx_bars_by_day(state_dir: Path | str, before_day: str, sessions: int =
     return out
 
 
-def load_night_bars(state_dir: Path | str, day: str) -> list[dict]:
-    """The /ES bars outside the regular session for the night into ``day`` from overnight/{day}.jsonl, in time order."""
+def load_night_bars(state_dir: Path | str, day: str, symbol: str = ES) -> list[dict]:
+    """The symbol's bars outside the regular session for the night into ``day`` from overnight/{day}.jsonl, in time order."""
     rows = load_jsonl(Path(state_dir) / "spx_jev" / OVERNIGHT_SUBDIR / f"{day}.jsonl")
-    bars = [_bar(b.get("ts"), b.get("open"), b.get("high"), b.get("low"), b.get("close"))
-            for b in rows if b.get("symbol") == ES and b.get("session") != "regular" and isinstance(b.get("ts"), str)]
+    bars = [_bar(b.get("ts"), b.get("open"), b.get("high"), b.get("low"), b.get("close"), b.get("volume"))
+            for b in rows if b.get("symbol") == symbol and b.get("session") != "regular" and isinstance(b.get("ts"), str)]
     return sorted((b for b in bars if b), key=lambda b: b["ts"])
 
 
-def load_es_night_bars_by_day(state_dir: Path | str, day: str, sessions: int = HISTORY_SESSIONS) -> dict[str, list[dict]]:
-    """The night into ``day`` (its overnight/ file, the night still being written) and the trailing ``sessions`` nights
-    before it from the store, with the overnight/ files filling any night the store does not hold yet. The files are
-    large (every symbol, every session), so only the nights the store lacks are read from them."""
+def load_night_bars_by_day(state_dir: Path | str, day: str, symbol: str = ES, sessions: int = HISTORY_SESSIONS,
+                           with_day: bool = True) -> dict[str, list[dict]]:
+    """The trailing ``sessions`` nights before ``day`` from the store, with the overnight/ files filling any night the
+    store does not hold yet, and (``with_day``) the night into ``day`` itself from its overnight/ file, the night still
+    being written. The files are large (every symbol, every session), so only the nights the store lacks are read from them."""
     out: dict[str, list[dict]] = {}
     glob = _store_glob(state_dir, STORE_OVERNIGHT_BARS)
     store_days: list[str] = []
     if glob is not None:
         store_days = [r[0] for r in _rows(f"SELECT DISTINCT CAST(day AS VARCHAR) FROM read_parquet('{glob}', hive_partitioning=1) "
-                                          f"WHERE symbol = '{ES}' AND CAST(day AS VARCHAR) < '{day}' ORDER BY 1")]
+                                          f"WHERE symbol = '{symbol}' AND CAST(day AS VARCHAR) < '{day}' ORDER BY 1")]
     file_days = [d for d in _file_days(Path(state_dir) / "spx_jev" / OVERNIGHT_SUBDIR) if d < day]
     prior = sorted(set(store_days) | set(file_days))[-sessions:]
     from_store = [d for d in prior if d in store_days]
     if from_store:
-        sql = (f"SELECT CAST(day AS VARCHAR), CAST(ts AS VARCHAR), open, high, low, close FROM read_parquet('{glob}', hive_partitioning=1) "
-               f"WHERE symbol = '{ES}' AND session <> 'regular' AND CAST(day AS VARCHAR) IN ({', '.join(repr(d) for d in from_store)}) ORDER BY ts")
-        for d, ts, o, h, l, c in _rows(sql):
-            bar = _bar(ts, o, h, l, c)
+        sql = (f"SELECT CAST(day AS VARCHAR), CAST(ts AS VARCHAR), open, high, low, close, volume FROM read_parquet('{glob}', hive_partitioning=1) "
+               f"WHERE symbol = '{symbol}' AND session <> 'regular' AND CAST(day AS VARCHAR) IN ({', '.join(repr(d) for d in from_store)}) ORDER BY ts")
+        for d, ts, o, h, l, c, v in _rows(sql):
+            bar = _bar(ts, o, h, l, c, v)
             if bar:
                 out.setdefault(d, []).append(bar)
-    for d in [x for x in prior if x not in out] + [day]:
-        bars = load_night_bars(state_dir, d)
+    for d in [x for x in prior if x not in out] + ([day] if with_day else []):
+        bars = load_night_bars(state_dir, d, symbol)
         if bars:
             out[d] = bars
+    return out
+
+
+# ---------------------------------------------------------------- the Phase 1 feeds
+
+def _context_bars_file(state_dir: Path | str, day: str) -> Path:
+    return spx_jev_dir(state_dir) / CONTEXT_SUBDIR / "bars" / f"{day}.jsonl"
+
+
+def load_context_bars(state_dir: Path | str, day: str) -> dict[str, list[dict]]:
+    """A saved session's minute bars per symbol from context/bars/{day}.jsonl (one line a minute, every symbol's bar
+    under ``bars``), symbol -> bars in time order; a malformed bar is skipped."""
+    out: dict[str, list[dict]] = {}
+    for line in load_jsonl(_context_bars_file(state_dir, day)):
+        bars = line.get("bars")
+        if not isinstance(bars, dict):
+            continue
+        for symbol, b in bars.items():
+            if isinstance(b, dict) and isinstance(b.get("ts"), str):
+                bar = _bar(b.get("ts"), b.get("open"), b.get("high"), b.get("low"), b.get("close"), b.get("volume"))
+                if bar:
+                    out.setdefault(symbol, []).append(bar)
+    for bars in out.values():
+        bars.sort(key=lambda b: b["ts"])
+    return out
+
+
+def load_context_quotes_as_bars(state_dir: Path | str, day: str) -> dict[str, list[dict]]:
+    """Today's symbols, before the day's bars file is saved (the day saver writes it after the close): each quote
+    snapshot of context/{day}.jsonl as a one-price bar (open = high = low = close = last) at its snapshot time, its
+    volume the day's cumulative volume since the snapshot before; the breadth symbols come as bars already. Symbol ->
+    bars in time order. So a market answerer reads a symbol's closes and volume only, never its high or low: live and
+    backfill then measure the same thing."""
+    out: dict[str, list[dict]] = {}
+    cumulative: dict[str, float] = {}
+    for line in load_jsonl(spx_jev_dir(state_dir) / CONTEXT_SUBDIR / f"{day}.jsonl"):
+        ts = line.get("ts")
+        if not isinstance(ts, str):
+            continue
+        for symbol, q in (line.get("quotes") or {}).items():
+            last = q.get("last") if isinstance(q, dict) else None
+            if not isinstance(last, (int, float)):
+                continue
+            total = q.get("volume")
+            traded = 0.0
+            if isinstance(total, (int, float)):
+                traded = max(float(total) - cumulative.get(symbol, float(total)), 0.0)
+                cumulative[symbol] = float(total)
+            bar = _bar(ts, last, last, last, last, traded)
+            if bar:
+                out.setdefault(symbol, []).append(bar)
+        for symbol, b in (line.get("bars") or {}).items():
+            if isinstance(b, dict) and isinstance(b.get("ts"), str):
+                bar = _bar(b.get("ts"), b.get("open"), b.get("high"), b.get("low"), b.get("close"), b.get("volume"))
+                if bar and (not out.get(symbol) or out[symbol][-1]["ts"] != bar["ts"]):
+                    out.setdefault(symbol, []).append(bar)
+    for bars in out.values():
+        bars.sort(key=lambda b: b["ts"])
+    return out
+
+
+def load_context_bars_by_day(state_dir: Path | str, before_day: str, sessions: int = HISTORY_SESSIONS) -> dict[str, dict[str, list[dict]]]:
+    """The trailing ``sessions`` saved sessions' minute bars per symbol before ``before_day`` (the context/bars files hold
+    every symbol the market feed carries, the new ones backfilled; the store's context_bars does not carry them)."""
+    out: dict[str, dict[str, list[dict]]] = {}
+    for day in [d for d in _file_days(spx_jev_dir(state_dir) / CONTEXT_SUBDIR / "bars") if d < before_day][-sessions:]:
+        bars = load_context_bars(state_dir, day)
+        if bars:
+            out[day] = bars
+    return out
+
+
+def load_todays_context_bars(state_dir: Path | str, day: str) -> dict[str, list[dict]]:
+    """The read's day's symbols: the saved bars file once the day saver has written it, else the quotes so far."""
+    if _context_bars_file(state_dir, day).exists():
+        return load_context_bars(state_dir, day)
+    return load_context_quotes_as_bars(state_dir, day)
+
+
+def load_daily_closes(state_dir: Path | str, before_day: str) -> dict[str, list[dict]]:
+    """Each daily-closes symbol's sessions before the day (daily_closes.load, the point-in-time read), symbol -> rows."""
+    return {symbol: daily_closes.load(Path(state_dir), symbol, before=before_day) for symbol in daily_closes.SYMBOLS}
+
+
+def load_index_weights(state_dir: Path | str) -> dict | None:
+    """The index weights file as a document (index_weights.pick chooses the entry for a day), or None without one."""
+    path = Path(state_dir) / WEIGHTS_FILE
+    if not path.exists():
+        return None
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    return doc if isinstance(doc, dict) else None
+
+
+def load_diary_rows(state_dir: Path | str, day: str) -> list[dict]:
+    """The day's SPX diary rows (reversion/{day}.jsonl), slimmed to the fields the builder reads: ts, the 0DTE and
+    1-to-7-day walls, the magnet and the at-the-money vol; in time order, a malformed row skipped."""
+    out = []
+    for row in load_jsonl(Path(state_dir) / DIARY_SUBDIR / f"{day}.jsonl"):
+        ts = row.get("ts")
+        if not isinstance(ts, str):
+            continue
+        try:
+            slim = {"ts": _et(ts), "magnet": (row.get("gex_views") or {}).get("magnet")}
+        except (TypeError, ValueError, AttributeError):
+            continue
+        slim.update({k: row.get(k) for k in DIARY_FIELDS})
+        out.append(slim)
+    return sorted(out, key=lambda r: r["ts"])
+
+
+def load_quote_sweeps(state_dir: Path | str, day: str) -> list[tuple[str, float]]:
+    """The day's lob-flow quote sweeps as (ts, the 25-40 delta bucket's quoted spread) where the bucket held a spread."""
+    folder = Path(state_dir) / SWEEPS_SUBDIR / day
+    path = next((p for p in (folder / "sweeps.jsonl", folder / "sweeps.jsonl.gz") if p.exists()), None)
+    if path is None:
+        return []
+    out = []
+    opener = gzip.open if path.suffix == ".gz" else open
+    with opener(path, "rt", encoding="utf-8") as f:
+        for line in f:
+            try:
+                sweep = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(sweep, dict) or not isinstance(sweep.get("ts"), str):
+                continue
+            spread = ((sweep.get("buckets") or {}).get(SWEEP_BUCKET) or {}).get("spread")
+            if isinstance(spread, (int, float)):
+                try:
+                    out.append((_et(sweep["ts"]), float(spread)))
+                except ValueError:
+                    continue
+    return sorted(out)
+
+
+def load_quote_sweeps_by_day(state_dir: Path | str, before_day: str, sessions: int = HISTORY_SESSIONS) -> dict[str, list[tuple[str, float]]]:
+    folder = Path(state_dir) / SWEEPS_SUBDIR
+    days = sorted(p.name for p in folder.glob("????-??-??") if p.name < before_day) if folder.exists() else []
+    out = {}
+    for day in days[-sessions:]:
+        sweeps = load_quote_sweeps(state_dir, day)
+        if sweeps:
+            out[day] = sweeps
     return out
 
 
@@ -150,19 +309,53 @@ def load_premarket_reads(state_dir: Path | str, lane: str, day: str) -> list[dic
     return sorted(reads, key=lambda r: r["row_ts"])
 
 
+def _part(load, empty):
+    try:
+        return load()
+    except Exception:
+        return empty
+
+
+_PRIOR_SESSIONS_CACHE: dict[tuple[str, str, str], dict] = {}    # one day's prior-sessions parts, reused across its reads
+
+
+def _prior_sessions_parts(state_dir: Path | str, lane: str, day: str) -> dict:
+    """The parts of a day's history that hold prior sessions only (fixed for the day), loaded once per process and day."""
+    key = (str(state_dir), lane, day)
+    parts = _PRIOR_SESSIONS_CACHE.get(key)
+    if parts is None:
+        parts = {"spx_bars_by_day": _part(lambda: load_spx_bars_by_day(state_dir, day, GAP_HISTORY_SESSIONS), {}),
+                 "es_night_bars_by_day": _part(lambda: load_night_bars_by_day(state_dir, day, ES, with_day=False), {}),
+                 "zn_night_bars_by_day": _part(lambda: load_night_bars_by_day(state_dir, day, ZN, with_day=False), {}),
+                 "add_by_day": _part(lambda: load_add_by_day(state_dir, day), {}),
+                 "context_bars_by_day": _part(lambda: load_context_bars_by_day(state_dir, day), {}),
+                 "daily_closes": _part(lambda: load_daily_closes(state_dir, day), {}),
+                 "index_weights": _part(lambda: load_index_weights(state_dir), None),
+                 "quote_sweeps_by_day": _part(lambda: load_quote_sweeps_by_day(state_dir, day), {})}
+        _PRIOR_SESSIONS_CACHE.clear()
+        _PRIOR_SESSIONS_CACHE[key] = parts
+    return parts
+
+
 def load_market_history(state_dir: Path | str, lane: str, day: str) -> MarketHistory:
     """Everything the builder needs beyond the read's own record and the day's bars, for one day (reuse it across the day's reads).
     Each part is loaded on its own: a store that cannot be read, or a broken file, empties that part only, so the label
-    questions (which need none of this) still answer."""
-    def part(load, empty):
-        try:
-            return load()
-        except Exception:
-            return empty
-    return MarketHistory(spx_bars_by_day=part(lambda: load_spx_bars_by_day(state_dir, day), {}),
-                         es_night_bars_by_day=part(lambda: load_es_night_bars_by_day(state_dir, day), {}),
-                         add_by_day=part(lambda: load_add_by_day(state_dir, day), {}),
-                         premarket_reads=part(lambda: load_premarket_reads(state_dir, lane, day), []))
+    questions (which need none of this) still answer. The prior sessions' parts are cached for the day; the day's own
+    (the night into it, its symbols so far, its diary, its sweeps, its premarket reads) are read fresh each call."""
+    prior = _prior_sessions_parts(state_dir, lane, day)
+    tonight = {s: _part(lambda s=s: load_night_bars(state_dir, day, s), []) for s in (ES, ZN)}
+    today_bars = _part(lambda: load_todays_context_bars(state_dir, day), {})
+    today_sweeps = _part(lambda: load_quote_sweeps(state_dir, day), [])
+    return MarketHistory(spx_bars_by_day=prior["spx_bars_by_day"],
+                         es_night_bars_by_day={**prior["es_night_bars_by_day"], **({day: tonight[ES]} if tonight[ES] else {})},
+                         zn_night_bars_by_day={**prior["zn_night_bars_by_day"], **({day: tonight[ZN]} if tonight[ZN] else {})},
+                         add_by_day=prior["add_by_day"],
+                         context_bars_by_day={**prior["context_bars_by_day"], **({day: today_bars} if today_bars else {})},
+                         daily_closes=prior["daily_closes"],
+                         index_weights=prior["index_weights"],
+                         diary_rows=_part(lambda: load_diary_rows(state_dir, day), []),
+                         quote_sweeps_by_day={**prior["quote_sweeps_by_day"], **({day: today_sweeps} if today_sweeps else {})},
+                         premarket_reads=_part(lambda: load_premarket_reads(state_dir, lane, day), []))
 
 
 # ---------------------------------------------------------------- the raw record
