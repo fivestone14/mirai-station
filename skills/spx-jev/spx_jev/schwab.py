@@ -1,5 +1,5 @@
-"""The station's Schwab login, borrowed: minute bars and quotes for the SPX feeds (bars.py, market_context.py,
-overnight.py).
+"""The station's Schwab login, borrowed: minute, daily bars and quotes for the SPX feeds (bars.py, market_context.py,
+overnight.py, daily_closes.py).
 
 The client is the one every station job uses, ``lefteye_fetcher._client()`` over iv-viability's
 vault (it saves a refreshed token the way the station always does, and nothing else). The lob-flow
@@ -35,6 +35,12 @@ def minute_bars(symbol: str, start: datetime, end: datetime, extended_hours: boo
 def five_minute_bars(symbol: str, start: datetime, end: datetime, extended_hours: bool = False) -> list[dict]:
     """minute_bars in 5-minute candles, which Schwab keeps about five times further back."""
     return _bars("get_price_history_every_five_minutes", symbol, start, end, extended_hours)
+
+
+def daily_bars(symbol: str, start: datetime, end: datetime) -> list[dict]:
+    """minute_bars in daily candles, which Schwab keeps for years (one call covers them all): each bar's ``ts`` is
+    the instant Schwab stamps its session with, so a caller takes the session's day from it in New York time."""
+    return _bars("get_price_history_every_day", symbol, start, end, False)
 
 
 def _bars(method: str, symbol: str, start: datetime, end: datetime, extended_hours: bool) -> list[dict]:

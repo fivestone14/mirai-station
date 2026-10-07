@@ -285,6 +285,20 @@ def test_the_largest_names_need_the_index_weights(tmp_path):
     assert omitted["leaders.pull_vs_rest_30m"] == f"the index weights in {WEIGHTS_FILE} name 1 stocks, fewer than the 8 largest"
 
 
+def test_the_largest_names_read_the_weights_dated_on_or_before_the_day_never_a_later_entry(tmp_path):
+    """The weights file keeps every set under its as_of day (index_weights.py): the read takes the newest on or before
+    its own day, so an entry added later, with NVDA no longer first, does not change what 09-18 reads."""
+    later = {**WEIGHTS, "NVDA": 0.01}
+    got, _, _ = labels(read(weights={"entries": [{"as_of": "2026-09-17", "weights": WEIGHTS}, {"as_of": "2026-09-19", "weights": later}]},
+                            tmp_path=tmp_path, move_points=60.0, jumps={s: {JUMP: 0.0} for s in NAMES}))
+    assert "the 8 largest names (37% of the index)" in got["leaders.pull_vs_rest_30m"] and "approximate" not in got["leaders.pull_vs_rest_30m"]
+    got, _, _ = labels(read(weights={"entries": [{"as_of": "2026-09-17", "approximate": True, "weights": WEIGHTS}]},
+                            tmp_path=tmp_path, move_points=60.0, jumps={s: {JUMP: 0.0} for s in NAMES}))
+    assert got["leaders.pull_vs_rest_30m"].endswith("the same way (approximate weights)")    # a hand-kept set says so
+    _, omitted, _ = labels(read(weights={"entries": [{"as_of": "2026-09-19", "weights": later}]}, tmp_path=tmp_path))
+    assert omitted["leaders.pull_vs_rest_30m"] == f"the index weights in {WEIGHTS_FILE} carry no date on or before {DAY}"
+
+
 def weighed(tmp_path, **kw):
     return read(weights={"as_of": "2026-09-17", "weights": WEIGHTS}, tmp_path=tmp_path, **kw)
 

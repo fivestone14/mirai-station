@@ -62,8 +62,10 @@ returns a probability for each answer option. A call is a forecast, not a trade 
 | `spx_jev/labels/bitcoin.py` | The Bitcoin Family | Micro bitcoin futures (/MBT) against the index. Before the open, its night beyond its usual multiple of /ES, and after a weekend or holiday its weekend and reopen legs; in the session, its half hour, three-half-hour streak, link since 09:35 and last five sessions. Each is ranked against the last nights or sessions, never across a roll, and refused while a roll is pending. |
 | `spx_jev/labels/read_sequence.py` | The Read Sequence | The 30-minute lane's last reads rebuilt from the bars at each scheduled read minute (`seq.*`): the day's move from the settled open and the rising-stock volume share beside it, ranked against the same reads on the prior sessions. |
 | `spx_jev/bars.py` | The Bars Feed | Appends today's finished SPX minute bars to `state/spx_jev/bars/{day}.jsonl` every minute, from the station's Schwab client. Past sessions come from `state/reversion/bars/{day}-SPX.json`, saved after each close. |
-| `spx_jev/market_context.py` | The Market Feed | A snapshot a minute of the market around SPX (NYSE breadth, the VIX family, the ES future and micro bitcoin futures (/MBT), rates, the 11 sector funds, SMH, RSP, QQQ, IWM, SPY, the seven megacaps, and TLT, HYG, USO and GLD) to `state/spx_jev/context/{day}.jsonl`, and a backfill of past sessions' minute bars, since Schwab keeps only about 34 sessions. The labeller reads a futures quote under its root (Schwab answers `/ES` as `/ESZ26`) and the Treasury yields in percent (Schwab quotes `$TNX` at ten times the yield). A minute Schwab serves no `$VOLD` for takes it from `$UVOL` and `$DVOL` (their difference times 1000, marked `derived`) while those are in thousands of shares, and a breadth symbol answered with no bars is logged and counted under the snapshot's `failed`. |
-| `spx_jev/save_day.py` | The Day Saver | After the close, every market-feed symbol's full 1-minute day to `state/spx_jev/context/bars/{day}.jsonl`, and SPX's own day to `state/spx_jev/bars/{day}.jsonl` when that file is short; market days only, a day on disk never fetched again, a missed night caught up by the next. |
+| `spx_jev/market_context.py` | The Market Feed | A snapshot a minute of the market around SPX (NYSE breadth, the VIX family, the ES, ten-year note (/ZN, from 2026-10-06) and micro bitcoin (/MBT) futures, rates, the 11 sector funds, KRE and XHB, SMH, RSP, QQQ, IWM, SPY, the 3x funds SPXL, TQQQ, SPXS and SQQQ, the nine megacaps (TSLA and BRK/B from 2026-10-06), and TLT, HYG, USO and GLD) to `state/spx_jev/context/{day}.jsonl`, and a backfill of past sessions' minute bars, since Schwab keeps only about 34 sessions (`--backfill --symbols` puts a symbol added later into the saved sessions). The labeller reads a futures quote under its root (Schwab answers `/ES` as `/ESZ26`) and the Treasury yields in percent (Schwab quotes `$TNX` at ten times the yield). A minute Schwab serves no `$VOLD` for takes it from `$UVOL` and `$DVOL` (their difference times 1000, marked `derived`) while those are in thousands of shares, and a breadth symbol answered with no bars is logged and counted under the snapshot's `failed`. |
+| `spx_jev/save_day.py` | The Day Saver | After the close, every market-feed symbol's full 1-minute day to `state/spx_jev/context/bars/{day}.jsonl`, and SPX's own day to `state/spx_jev/bars/{day}.jsonl` when that file is short; market days only, a day on disk never fetched again, a missed night caught up by the next. Then the daily closes (below). |
+| `spx_jev/daily_closes.py` | The Daily Closes | Each session's open, high, low, close and volume for $SPX, TLT, $TNX, $VIX and $VIX9D, years back (Schwab serves a symbol's whole daily history in one call), to `state/spx_jev/daily_closes/{symbol}.jsonl`, one line per market day as served, the file rewritten whole and atomically by every run of the day saver; `load` gives a day the sessions before it only. |
+| `spx_jev/index_weights.py` | The Index Weights | `state/spx_leaders/weights.json`: dated sets of the largest stocks' shares of the S&P 500 for the megacap labels. A read takes the newest set dated on or before its day; a new set is a new entry under its own day, never written over an old one (`--add`); the first entry (2026-10-06) is approximate and hand-kept. |
 | `spx_jev/overnight.py` | The Overnight Store | At 09:26 and 16:20 ET on market days, every /ES, /ZN, /BTC and /MBT bar, 1- and 5-minute, from five minutes before the prior close to the read, to `state/spx_jev/overnight/{day}.jsonl`, one file per night named for the day it leads into: merged, never written twice, a bad bar kept with its flags, and a manifest line of checks (bars against the market's hours, gaps, flags, duplicates, contracts) in `manifest.jsonl` for each save that changed a night; a save that added nothing writes none. `--backfill` takes every night Schwab still serves (1-minute from mid-August, 5-minute from March). Bitcoin is saved twice: /MBT, which trades nearly every minute, is the one labels read; /BTC is the same price, thinly traded. |
 | `spx_jev/rolls.py` | The Roll Table | Schwab's futures history is one series stitched across contracts, so a roll looks like a move (on 09-14 it turned a big-down open into "up"). Each roll is found in the saved data as a step in the futures' basis against a cash market that does not roll ($SPX, IBIT, the ten-year yield) inside the product's roll window (the /ES expiry Friday left out), named back from the quoted contract, and kept for good in `state/spx_jev/overnight/rolls.json`, the current contract counted from the rolls; `same_contract` says whether two moments can be compared. |
 | `spx_jev/night_ranks.py` | The Night Ranks | A night's measure against the same measure at the same minute on the last 20 nights, in thirds, leaving out roll, holiday and short nights; under 10 usable nights it is omitted with the reason. `night_move` and `ranked_move` measure and rank the move from the prior close on one contract; `window_move` and `window_range` with `prior_window_nights` and `prior_window_ranges` rank a stretch's move or high-low range against the same stretch on the last nights; `quoted_contract` reads the manifest for the roll guard. |
@@ -95,7 +97,9 @@ returns a probability for each answer option. A call is a forecast, not a trade 
     python3 -m spx_jev.bars                                   # today's finished bars
     python3 -m spx_jev.market_context                         # one market snapshot
     python3 -m spx_jev.market_context --backfill 2026-08-10   # every past session's minute bars since then
-    python3 -m spx_jev.save_day                               # after the close: today's full minute bars, and any missed day
+    python3 -m spx_jev.save_day                               # after the close: today's full minute bars, any missed day, the daily closes
+    python3 -m spx_jev.daily_closes                           # the daily closes alone, every symbol's history to the last closed session
+    python3 -m spx_jev.index_weights --show                   # the index weights on file; --add YYYY-MM-DD SYMBOL=SHARE ... adds a dated set
     python3 -m spx_jev.overnight                              # the overnight futures: tonight's and the last week's nights
     python3 -m spx_jev.overnight --day 2026-09-25             # one night by hand, named for the day it leads into
     python3 -m spx_jev.overnight --backfill                   # every night Schwab still serves, then the roll table
@@ -297,6 +301,9 @@ archive there too, under `archive/`.
 - `bars/{day}.jsonl` (the bars feed) and `context/{day}.jsonl`,
   `context/bars/{day}.jsonl` (the market feed, and its full days from the
   backfill and the day saver).
+- `daily_closes/{symbol}.jsonl`, each symbol's sessions years back, one line per
+  market day (`day`, `ts`, the prices and volume, `fetched_at`), rewritten whole by
+  the day saver; and `state/spx_leaders/weights.json`, the dated index weights.
 - `lanes/tape/`: the opening lane's own records, card, grades and weights.
 - `lanes/premarket/`: `{day}.jsonl`, one read per checkpoint; `hour/{day}.jsonl`, its sums;
   `latest.json`, the before-the-open card; `grades.jsonl` (each line with `from.settled_open`
@@ -512,12 +519,13 @@ running.
 ## Not done yet
 
 - Every question whose data no feed carries yet, or whose label is not built,
-  is dark and says what it waits for (its `dark_reason`): among them the index
-  weights (`state/spx_leaders/weights.json`) for the four largest-stock
-  questions, the index's daily closes for the month-turn rebalance, and the
-  /6E future for the macro lean (the /ZN future is saved in the overnight
-  store, not yet in the market feed). The set's `monday_prerequisites` list
-  the rest.
+  is dark and says what it waits for (its `dark_reason`): among them the
+  /6E future for the macro lean. The set's `monday_prerequisites` list the
+  rest. Since 2026-10-06 the index weights (`state/spx_leaders/weights.json`,
+  approximate and hand-kept: replace them with SSGA's SPY holdings as a new
+  dated entry), the daily closes (`state/spx_jev/daily_closes/`) and the /ZN
+  future are on file, for the Mirai Prediction System's questions first
+  (`spx_jev/mirai_prediction/README.md`, "Feeds").
 - The premarket lane keeps no learning loop and its weights are neutral: the
   settled-open odds forecast its window worse than even thirds, so its sums
   stand unblended.

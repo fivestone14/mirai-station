@@ -7,7 +7,10 @@ so a Fed minute cannot teach a question what an ordinary half hour looks like.
 
 The other tiers are for the event labels (labels/events_shocks.py): the releases before the open
 (PRE_OPEN), the 10:00 and 14:00 releases (DATA_10AM, DATA_2PM) and the Fed officials' scheduled
-remarks (FED_SPEAKER). The learning loop keeps out more than the weights do (learn_exclude, 06's
+remarks (FED_SPEAKER). AUCTION is the Treasury's note and bond auctions (results about 13:00 ET), a
+tier the calendar has no rows of yet: a row is {"date", "time_et": "13:00", "kind": "AUCTION_10Y", "tier":
+"auction", "scope": "rates", "source": the Treasury's tentative schedule}, added only from the published
+schedule, and no label or learn_exclude reads the tier yet. The learning loop keeps out more than the weights do (learn_exclude, 06's
 guardrails): the 10:00 and 14:00 releases and the Fed speakers too, and the close of a monthly
 expiry and of the month's last session. The calendar is kept by hand from ``covers_from`` through ``covers_through``,
 its releases before the open from ``pre_open_covers_from``; outside those days a label cannot tell a quiet
@@ -29,7 +32,8 @@ from .sessions import session_close
 CALENDAR = Path(__file__).resolve().parent.parent / "calendar" / "events.json"
 ET = ZoneInfo("America/New_York")
 TIER = "1"
-PRE_OPEN, DATA_10AM, DATA_2PM, FED_SPEAKER = "pre_open", "data_10am", "data_2pm", "fed_speaker"
+PRE_OPEN, DATA_10AM, DATA_2PM, FED_SPEAKER, AUCTION = "pre_open", "data_10am", "data_2pm", "fed_speaker", "auction"
+TIERS = frozenset({TIER, PRE_OPEN, DATA_10AM, DATA_2PM, FED_SPEAKER, AUCTION})   # every tier a calendar row may carry
 LEARN_TIERS = frozenset({TIER, DATA_10AM, DATA_2PM, FED_SPEAKER})   # kept out of the learning loop (learn_exclude)
 WINDOW_MIN = 60          # tagged when due within the longer graded horizon
 SPEAKER_MIN = 60         # a Fed speaker row with no end_et runs this long, remarks and questions (the calendar's own note)
@@ -72,6 +76,8 @@ WORDS = {
     "FED_VICE_CHAIR_SPEECH": "the Fed vice chair",
     "FED_VICE_CHAIR_SUPERVISION_SPEECH": "the Fed's vice chair for supervision",
     "FED_GOVERNOR_SPEECH": "a Fed governor",
+    "AUCTION_10Y": "the 10-year Treasury note auction",
+    "AUCTION_30Y": "the 30-year Treasury bond auction",
 }
 # Releases before the open listed for the premarket lane's report window (story.releases) and left out of the
 # session's event labels (session_rows), minor for the index: they would turn a quiet session into a report day.

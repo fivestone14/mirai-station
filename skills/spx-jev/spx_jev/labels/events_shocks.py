@@ -754,9 +754,10 @@ def _megacap_share(scene: Scene, prices: Session, burst: Burst) -> str:
     the burst, as a share of the index's return over the same instants (``prices``), the largest judged against
     ONE_NAME_SHARE; or why no share is measured (the weights not on file, a name without a price at the burst's
     edges, an index that did not move between them)."""
-    names = _largest_names(scene)
-    if isinstance(names, str):
-        return f"no megacap's share of it is measured ({names})"
+    largest = _largest_names(scene)
+    if isinstance(largest, str):
+        return f"no megacap's share of it is measured ({largest})"
+    names, _ = largest           # the share is a ratio of weights: an approximate set is not repeated in this sentence
     i0, i1 = prices.price(SPX, burst.start), prices.price(SPX, burst.end)
     if not i0 or i1 is None or i1 == i0:
         return f"no megacap's share of it is measured ({SPX} has no move within {FEED_MAX_AGE_MIN} minutes of the burst's start and end)"

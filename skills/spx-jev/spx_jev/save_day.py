@@ -1,4 +1,5 @@
-"""After the close: save the day's full 1-minute bars, the market feed's and SPX's own, before Schwab forgets them.
+"""After the close: save the day's full 1-minute bars, the market feed's and SPX's own, before Schwab forgets them,
+and the daily closes of the few symbols kept years back.
 
     python3 -m spx_jev.save_day                    # the launchd job's run: today once it has closed, and any missed day
     python3 -m spx_jev.save_day --day 2026-09-25   # one past session by hand
@@ -22,6 +23,10 @@ Market days only (sessions.is_trading_day; a calendar that cannot be read falls 
 Friday, and a holiday fetched that way writes nothing, since Schwab has no bars for it). A session is
 saved only once it is SAVE_AFTER_CLOSE_MIN past its close (13:00 on a half day): a day written half
 way would be taken as on disk and never completed.
+
+Daily closes. The same run then saves each daily-closes symbol's whole history through the last closed session
+(daily_closes.save: one call a symbol, the file rewritten whole), after the days above and never in their way: a
+failed symbol is reported and the run exits 1, so the next run fetches it again.
 """
 from __future__ import annotations
 
@@ -31,7 +36,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import bars, market_context
+from . import bars, daily_closes, market_context
 from .sessions import is_trading_day, session_close, session_minutes
 from .state_builder import CONTEXT_SUBDIR, DEFAULT_STATE_DIR, load_jsonl
 
@@ -40,10 +45,15 @@ CATCH_UP_DAYS = 7              # a run also saves any market day this many calen
 SAVE_AFTER_CLOSE_MIN = 5       # the session's last bar (15:59) has finished and Schwab has served it
 
 
+def last_closed(now: datetime) -> date:
+    """Today once it is SAVE_AFTER_CLOSE_MIN past its close, else the day before (a market day or not)."""
+    today = now.date()
+    return today if now >= session_close(now) + timedelta(minutes=SAVE_AFTER_CLOSE_MIN) else today - timedelta(days=1)
+
+
 def days_to_save(now: datetime, catch_up: int = CATCH_UP_DAYS) -> list[date]:
     """The market days from ``catch_up`` days back to today, today only once it has closed."""
-    today = now.date()
-    last = today if now >= session_close(now) + timedelta(minutes=SAVE_AFTER_CLOSE_MIN) else today - timedelta(days=1)
+    today, last = now.date(), last_closed(now)
     return [d for k in range(catch_up, -1, -1) if (d := today - timedelta(days=k)) <= last and is_trading_day(d)]
 
 
@@ -104,7 +114,23 @@ def main(argv: list[str] | None = None) -> int:
         breadth = "; breadth fetched again, put right" if r["breadth"] else ""
         print(f"spx-jev-save-day :: {d} {context}{breadth}; SPX +{r['spx_bars_added']} bars")
     print(f"spx-jev-save-day :: {len(days) - failed} of {len(days)} days saved under {state_dir / CONTEXT_SUBDIR / 'bars'}")
-    return 1 if failed else 0
+    closes = save_daily_closes(state_dir, now)
+    return 1 if failed or closes["failed"] else 0
+
+
+def save_daily_closes(state_dir: Path, now: datetime) -> dict:
+    """daily_closes.save through the last closed session, each symbol's count printed, a failed one named; a
+    failure it does not catch itself is reported as every symbol's."""
+    try:
+        r = daily_closes.save(state_dir, last_closed(now), now)
+    except Exception as e:  # the days above are saved; the next run fetches the closes again
+        print(f"spx-jev-save-day :: daily closes failed: {type(e).__name__}: {e}", file=sys.stderr)
+        return {"saved": {}, "failed": {s: type(e).__name__ for s in daily_closes.SYMBOLS}}
+    for symbol, why in r["failed"].items():
+        print(f"spx-jev-save-day :: daily closes of {symbol} not saved: {why}", file=sys.stderr)
+    print("spx-jev-save-day :: daily closes " + (", ".join(f"{s} {n} sessions" for s, n in r["saved"].items()) or "none saved")
+          + f" under {state_dir / daily_closes.DAILY_CLOSES_SUBDIR}")
+    return r
 
 
 if __name__ == "__main__":

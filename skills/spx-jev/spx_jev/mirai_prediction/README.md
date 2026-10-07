@@ -81,6 +81,17 @@ backfill command, idempotent, source `backfill`) and the nightly matrix joins th
 (`jev:<question>`) is unchanged: JEV's pick per answered question of the live set, grouped by request group. The six JEV
 judgment questions of the merged set are NOT built yet, and the live question set is still the one asked.
 
+## Feeds (Phase 1, 2026-10-06)
+
+The feeds the blocked questions of the merged set wait for, built first; no question reads them yet.
+
+| feed | where it lives | what it is | unblocks |
+|---|---|---|---|
+| market-feed symbols | `state/spx_jev/context/{day}.jsonl` (quotes, a minute apart) and `context/bars/{day}.jsonl` (full days); `market_context.SYMBOLS` | /ZN (the ten-year note future, under its root), KRE and XHB (`industry_funds`), SPXL, TQQQ, SPXS and SQQQ (`leveraged_funds`), TSLA and BRK/B (`megacaps`, Schwab's name for Berkshire's B share). The 41 saved sessions back to 2026-08-11 were backfilled once for the new symbols (`--backfill --symbols`, 2026-10-07 01:30 ET); Schwab served the funds and stocks from 2026-08-21 and /ZN from 2026-08-24, so the eight oldest saved sessions lack them all and 08-21 lacks /ZN (31 sessions hold all nine; the thin 3x funds and XHB miss a few minutes a day, as any thin fund does). The 11-sector group and the other groups the labels count are unchanged. | /ZN: MACRO-01, MACRO-02, MACRO-06, MACRO-07, EVENTS-05; KRE/XHB: MACRO-05; the 3x funds: SENTIMENT-02; TSLA/BRK/B: MACRO-04 |
+| daily closes | `state/spx_jev/daily_closes/{symbol}.jsonl` (`daily_closes.py`; the store's `daily_closes` table, one row per symbol per built day) | $SPX, TLT, $TNX, $VIX and $VIX9D, one line per market day from 2016-10-10, as Schwab served it ($TNX at ten times the yield; the store row in percent), rewritten whole by the 16:20 day saver, so a missed night costs nothing. `daily_closes.load(state_dir, symbol, before=day)` is the point-in-time read: the sessions before the day only. | VOLATILITY-17, VOLATILITY-12, SESSION-02 |
+| index weights | `state/spx_leaders/weights.json` (`index_weights.py`) | Dated sets of the largest stocks' shares of the index, read by `labels/leadership.py` (the newest set dated on or before the read's day, so a day replayed later reads what it had); a new set goes under its own `as_of`, never over an old one. The first entry, as_of 2026-10-06, is approximate and hand-kept from memory (NVDA 7.8%, MSFT 6.6%, AAPL 6.2%, AMZN 3.9%, GOOGL 2.5% + GOOG 2.0%, META 2.9%, AVGO 2.6%, TSLA 1.9%, BRK/B 1.6%); replace it with SSGA's SPY holdings as a new entry. With it on file the four megacap labels (`leaders.heavyweight_gap`, `.megacap_cohesion_30m`, `.pull_vs_rest_30m`, `.single_name_10m`) read from the next live read on. | BREADTH-03, BREADTH-07, BREADTH-08, BREADTH-09 |
+| event calendar | `calendar/events.json`, `events.AUCTION` | The tier `auction` (Treasury note and bond auctions, results about 13:00 ET) has a shape and a name; the calendar has no rows of it yet, and none are invented: add them from the Treasury's published schedule. `learn_exclude` does not read the tier (that would change what the live loop learns from; a later phase). | EVENTS-05 (with /ZN), once rows exist |
+
 ## Rules added 2026-10-06 (the design-spec review)
 
 - **Overlapping reads count once:** pool_v2's daily step counts each read by its window coverage (pool_v1's rule): a

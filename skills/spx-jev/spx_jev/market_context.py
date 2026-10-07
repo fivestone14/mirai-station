@@ -3,6 +3,7 @@ the funds for bonds, credit, oil and gold.
 
     python3 -m spx_jev.market_context                        # one snapshot now (the launchd job's run)
     python3 -m spx_jev.market_context --backfill 2026-08-10  # every past session's minute bars since then
+    python3 -m spx_jev.market_context --backfill --symbols /ZN,KRE   # those symbols into every saved session lacking them
 
 Schwab keeps about 34 sessions of 1-minute history, so anything wanted for longer has to be saved as
 it happens. Two files per day under ``state/spx_jev/context/``:
@@ -16,7 +17,10 @@ it happens. Two files per day under ``state/spx_jev/context/``:
                        saves no bars, so each run also saves every earlier finished breadth bar of the day
                        not yet on file, one line per minute before its snapshot: {"ts", "bars"}.
     bars/{day}.jsonl   one line per minute of a past session, written by --backfill:
-                       {"ts": the minute's end, "bars": {symbol: bar}}; a day already on disk is skipped.
+                       {"ts": the minute's end, "bars": {symbol: bar}}; a day already on disk is skipped, unless
+                       --symbols names symbols it lacks, which are fetched and put into it (a symbol added to
+                       SYMBOLS later than the saved days: --backfill --symbols /ZN,KRE once, for the sessions
+                       Schwab still serves).
 
 The labeller reads both through ``state_builder.load_market_context``, point in time: a bar counts once
 its minute has finished, a quote once its snapshot was taken. A symbol with nothing on disk simply
@@ -26,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from datetime import date, datetime, timedelta
@@ -43,12 +48,16 @@ JOB = "spx-jev-context"
 SYMBOLS = {
     "breadth": ("$TICK", "$ADD", "$TRIN", "$VOLD", "$UVOL", "$DVOL", "$VOLSPD", "$ADVN", "$DECN"),
     "volatility": ("$VIX", "$VIX9D", "$VVIX", "$VIX3M", "$VIX1D"),
-    "futures": ("/ES", "/MBT"),                    # /MBT, micro bitcoin, for the session bitcoin labels (labels/bitcoin.py)
+    "futures": ("/ES", "/MBT", "/ZN"),             # /MBT, micro bitcoin, for the session bitcoin labels (labels/bitcoin.py);
+                                                   # /ZN, the ten-year note, quoted since 2026-10-06 for the rates questions
     "rates": ("$TNX", "$IRX"),
-    "sectors": ("XLK", "XLF", "XLE", "XLV", "XLY", "XLI", "XLC", "XLP", "XLU", "XLB", "XLRE"),
+    "sectors": ("XLK", "XLF", "XLE", "XLV", "XLY", "XLI", "XLC", "XLP", "XLU", "XLB", "XLRE"),   # the 11 the sector labels count: never more
+    "industry_funds": ("KRE", "XHB"),              # regional banks and homebuilders, since 2026-10-06
     "index_funds": ("SMH", "RSP", "QQQ", "IWM", "SPY"),
+    "leveraged_funds": ("SPXL", "TQQQ", "SPXS", "SQQQ"),   # the 3x long and short index funds, since 2026-10-06
     "macro_funds": ("TLT", "HYG", "USO", "GLD"),   # the bond, oil and pooled-markets labels (labels/macro.py)
-    "megacaps": ("NVDA", "MSFT", "AAPL", "AMZN", "GOOGL", "META", "AVGO"),
+    # Schwab names Berkshire's B share "BRK/B"; the index weights (labels/leadership.py) name it the same way.
+    "megacaps": ("NVDA", "MSFT", "AAPL", "AMZN", "GOOGL", "META", "AVGO", "TSLA", "BRK/B"),
 }
 ALL_SYMBOLS = tuple(s for group in SYMBOLS.values() for s in group)
 # The index itself, quoted in every snapshot beside the rest and never backfilled (its bars are the SPX bar files):
@@ -210,6 +219,32 @@ def backfill_day(state_dir: Path, day: date) -> Path | None:
     return path
 
 
+def add_symbols(state_dir: Path, day: date, symbols: tuple[str, ...]) -> Path | None:
+    """The named symbols' minute bars put into one saved session that lacks them, every other symbol's bars kept
+    as saved; a day not on disk is backfill_day's, and one that already holds every symbol asked costs no call. A
+    symbol Schwab serves no bars for (a session older than it keeps) is logged, and the file is rewritten only when
+    something came back. Returns the file when it was written."""
+    path = Path(state_dir) / CONTEXT_SUBDIR / "bars" / f"{day.isoformat()}.jsonl"
+    if not path.exists():
+        return backfill_day(state_dir, day)
+    by_minute = {line["ts"]: dict(line["bars"]) for line in load_jsonl(path)
+                 if isinstance(line.get("ts"), str) and isinstance(line.get("bars"), dict)}
+    wanted = tuple(s for s in symbols if s not in NO_HISTORY and not any(s in bars for bars in by_minute.values()))
+    if not wanted:
+        return None
+    fresh, empty = _session_bars(wanted, day)
+    for symbol in empty:
+        _no_bars(symbol, f"for the {day.isoformat()} session")
+    if not fresh:
+        return None
+    for ts, bars in fresh.items():
+        by_minute.setdefault(ts, {}).update(bars)
+    written = path.stat().st_mtime
+    _write_day(path, by_minute)
+    os.utime(path, (written, written))     # refresh_breadth reads a day's mtime for whether its breadth was put right
+    return path
+
+
 def refresh_breadth(state_dir: Path, day: date) -> Path | None:
     """The saved day's breadth fetched again and put in its file, when the file was written on the session's own
     day, before Schwab put its breadth right (labels/plausible.SAME_DAY_WRONG); the other symbols' bars are kept as
@@ -276,13 +311,14 @@ def _write_day(path: Path, by_minute: dict[str, dict]) -> None:
     tmp.replace(path)                    # a day is on disk whole or not at all, so a rerun never skips half a day
 
 
-def backfill(state_dir: Path, first: date, last: date) -> list[Path]:
-    """backfill_day for every trading day from ``first`` to ``last``; returns the files written. A market holiday is
-    never asked: Schwab serves futures on some (Labor Day's /ES), which would write a session that never was."""
+def backfill(state_dir: Path, first: date, last: date, symbols: tuple[str, ...] = ()) -> list[Path]:
+    """backfill_day for every trading day from ``first`` to ``last``, or with ``symbols`` add_symbols for them; returns
+    the files written. A market holiday is never asked: Schwab serves futures on some (Labor Day's /ES), which would
+    write a session that never was."""
     written, d = [], first
     while d <= last:
         if is_trading_day(d):
-            p = backfill_day(state_dir, d)
+            p = add_symbols(state_dir, d, symbols) if symbols else backfill_day(state_dir, d)
             if p:
                 written.append(p)
         d += timedelta(days=1)
@@ -294,11 +330,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
     ap.add_argument("--backfill", metavar="FROM", nargs="?", const=FIRST_BACKFILL_DAY,
                     help=f"save every past session's minute bars from this day (default {FIRST_BACKFILL_DAY}) to yesterday")
+    ap.add_argument("--symbols", metavar="A,B", help="with --backfill: only these symbols, put into each saved session lacking them")
     args = ap.parse_args(argv)
     state_dir, now = Path(args.state_dir), datetime.now(ET)
     if args.backfill:
-        written = backfill(state_dir, date.fromisoformat(args.backfill), now.date() - timedelta(days=1))
-        log(JOB, f"backfilled {len(written)} sessions under {state_dir / CONTEXT_SUBDIR / 'bars'}")
+        symbols = tuple(s for s in (args.symbols or "").split(",") if s)
+        unknown = [s for s in symbols if s not in ALL_SYMBOLS]
+        if unknown:
+            ap.error(f"not in SYMBOLS: {', '.join(unknown)}")
+        written = backfill(state_dir, date.fromisoformat(args.backfill), now.date() - timedelta(days=1), symbols)
+        log(JOB, f"backfilled {len(written)} sessions under {state_dir / CONTEXT_SUBDIR / 'bars'}"
+                 f"{' for ' + ', '.join(symbols) if symbols else ''}")
         return 0
     line = snapshot(now, saved_bars(state_dir, now.date()))
     path = append_snapshot(state_dir, line)

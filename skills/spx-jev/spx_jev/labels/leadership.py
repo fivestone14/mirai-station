@@ -6,8 +6,8 @@ Each label's sentence, how it is computed and its source are in spec/question_se
 fund and stock is measured against its usual multiple of the index (usual_link), and every size is ranked
 against the same measure at this minute on up to the last 20 sessions, needing 10 (ranks.rank_sessions),
 never against a fixed line; a stock's own move against its own (usual_link.OwnMoves). The megacap labels read
-the index weights from ``state/spx_leaders/weights.json``, ``{"as_of": day, "weights": {symbol: share of
-the index}}``, written from SSGA's SPY holdings; without it they are omitted with the reason.
+the index weights from ``state/spx_leaders/weights.json`` (index_weights.py: dated entries of ``{symbol: share
+of the index}``, the newest dated on or before the read's day); without it they are omitted with the reason.
 
 Not built: the heavyweight gap's earnings tag (the spec's "NVDA reported after yesterday's close"). It waits
 for megacap earnings rows in calendar/events.json, which has none and no row format for them yet.
@@ -20,6 +20,7 @@ from datetime import date, datetime, timedelta
 from typing import Callable
 
 from ..cuts import MEGA_COUNT, MEGA_ONE_NAME_SHARE, SPREAD_COUNT, WINDOW_10_MIN, WINDOW_30_MIN
+from ..index_weights import pick as weights_on
 from ..market_context import SYMBOLS
 from ..sessions import next_trading_day
 from ..state_builder import MarketContext, Scene
@@ -39,6 +40,7 @@ GATES = tuple(GATE_OF.values())
 DARK: dict[str, str] = {}
 
 WEIGHTS_FILE = "spx_leaders/weights.json"
+APPROXIMATE_NOTE = " (approximate weights)"     # on the share-of-the-index sentence while the weights on file are hand-kept
 # Alphabet's two share classes count as one name, priced by the class the market feed carries.
 SHARE_CLASSES = {"GOOG": "GOOGL"}
 CAP_WEIGHT, EQUAL_WEIGHT, SEMIS, FINANCIALS = "SPY", "RSP", "SMH", "XLF"
@@ -64,13 +66,14 @@ def build_leadership_labels(scene: Scene) -> LabelSet:
     _size_spread(against, ls)
     _sector_agreement(against, ls)
     _rotation(against, ls)
-    names = _largest_names(scene)
-    if isinstance(names, str):
+    largest = _largest_names(scene)
+    if isinstance(largest, str):
         for path in ("leaders.heavyweight_gap", "leaders.megacap_cohesion_30m", "leaders.pull_vs_rest_30m", "leaders.single_name_10m"):
-            _unmeasured(ls, path, names)
+            _unmeasured(ls, path, largest)
         return ls
+    names, weights_note = largest
     _heavyweight_gap(against, names, ls)
-    _megacaps(against, names, ls)
+    _megacaps(against, names, ls, weights_note)
     _single_name(against, names, ls)
     return ls
 
@@ -298,9 +301,10 @@ def _rotation(against: AgainstIndex, ls: LabelSet) -> None:
                  f"{rank.band}: {verdict}{against.ruler_note}")
 
 
-def _largest_names(scene: Scene) -> list[tuple[str, float]] | str:
+def _largest_names(scene: Scene) -> tuple[list[tuple[str, float]], str] | str:
     """The MEGA_COUNT largest index stocks and their shares of the index, largest first, from the weights on
-    file; or the reason they are not known at this read."""
+    file, with APPROXIMATE_NOTE when the set on file says it is not from a holdings file; or the reason they are
+    not known at this read."""
     if scene.state_dir is None:
         return "no state folder to read the index weights from"
     path = scene.state_dir / WEIGHTS_FILE
@@ -310,17 +314,17 @@ def _largest_names(scene: Scene) -> list[tuple[str, float]] | str:
         return f"no index weights: {WEIGHTS_FILE} is not written yet"
     except (OSError, ValueError) as e:
         return f"the index weights in {WEIGHTS_FILE} cannot be read: {type(e).__name__}"
-    as_of = doc.get("as_of") if isinstance(doc, dict) else None
-    if not isinstance(as_of, str) or as_of > scene.day:
+    entry = weights_on(doc, scene.day)
+    if entry is None:
         return f"the index weights in {WEIGHTS_FILE} carry no date on or before {scene.day}"
     weights: dict[str, float] = {}
-    for symbol, w in (doc.get("weights") or {}).items():
+    for symbol, w in (entry.get("weights") or {}).items():
         if isinstance(w, (int, float)) and not isinstance(w, bool) and 0 < w < 1:
             name = SHARE_CLASSES.get(symbol, symbol)
             weights[name] = weights.get(name, 0.0) + float(w)
     if len(weights) < MEGA_COUNT:
         return f"the index weights in {WEIGHTS_FILE} name {len(weights)} stocks, fewer than the {MEGA_COUNT} largest"
-    return sorted(weights.items(), key=lambda kv: -kv[1])[:MEGA_COUNT]
+    return sorted(weights.items(), key=lambda kv: -kv[1])[:MEGA_COUNT], APPROXIMATE_NOTE if entry.get("approximate") is True else ""
 
 
 def _overnight(yesterday: Session, today: Session, closed_at: datetime, open_at: datetime,
@@ -410,7 +414,7 @@ def _heavyweight_gap(against: AgainstIndex, names: list[tuple[str, float]], ls: 
                       f"(the largest, {name}, {sig(abs(shock))}, {shock_rank.band})")
 
 
-def _megacaps(against: AgainstIndex, names: list[tuple[str, float]], ls: LabelSet) -> None:
+def _megacaps(against: AgainstIndex, names: list[tuple[str, float]], ls: LabelSet, weights_note: str = "") -> None:
     """The largest stocks over the last 30 minutes: how many moved together, each by a move above the bottom third
     of its own, the one that supplied most of the index's move, and their summed pull against the rest of the
     index, each ranked against the same half hour of the prior sessions."""
@@ -424,7 +428,7 @@ def _megacaps(against: AgainstIndex, names: list[tuple[str, float]], ls: LabelSe
         for path in paths:
             ls.omit(path, needs_move(missing, WINDOW_30_MIN))
         return
-    _pull_vs_rest(against, names, index_move, moves, ls)
+    _pull_vs_rest(against, names, index_move, moves, ls, weights_note)
 
     path = "leaders.megacap_cohesion_30m"
     idx = against.sigma(index_move)
@@ -468,7 +472,7 @@ def _megacaps(against: AgainstIndex, names: list[tuple[str, float]], ls: LabelSe
 
 
 def _pull_vs_rest(against: AgainstIndex, names: list[tuple[str, float]], index_move: float, moves: dict[str, float],
-                  ls: LabelSet) -> None:
+                  ls: LabelSet, weights_note: str = "") -> None:
     """The largest names' summed pull on the index over the last 30 minutes and the rest's, each ranked by size
     against the same half hour of the prior sessions: a part moved when it is above the bottom third."""
     path = "leaders.pull_vs_rest_30m"
@@ -498,7 +502,7 @@ def _pull_vs_rest(against: AgainstIndex, names: list[tuple[str, float]], index_m
     share = sum(w for _, w in names)
     ls.put(path, f"over the last {WINDOW_30_MIN} minutes the {len(names)} largest names ({pct(share)} of the index) contributed {signed(lead)} "
                  f"sigma, by size {lead_rank.words()}, {lead_rank.band}, and the other {pct(1 - share)} contributed {signed(rest)} sigma, "
-                 f"by size {rest_rank.words()}, {rest_rank.band}; {passed}{against.ruler_note}")
+                 f"by size {rest_rank.words()}, {rest_rank.band}; {passed}{weights_note}{against.ruler_note}")
 
 
 def _single_name(against: AgainstIndex, names: list[tuple[str, float]], ls: LabelSet) -> None:

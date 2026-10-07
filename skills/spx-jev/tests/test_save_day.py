@@ -20,6 +20,7 @@ def _schwab(monkeypatch, calls):
         calls.append((symbol, start.date().isoformat()))
         return flat_bars(390, day=start.date().isoformat())
     monkeypatch.setattr(schwab, "minute_bars", minute_bars)
+    monkeypatch.setattr(schwab, "daily_bars", lambda symbol, start, end: [])     # the daily closes: test_daily_closes.py
 
 
 def test_today_is_saved_only_once_it_has_closed_and_missed_market_days_are_caught_up():

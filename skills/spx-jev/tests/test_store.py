@@ -125,6 +125,11 @@ def _state(tmp_path, archive: list | None = None, extra_lines: list[str] = ()) -
               "flags": []}]
     night.insert(0, {**night[0], "ts": "2026-09-17T15:55:00-04:00", "session": "regular"})     # Thursday's last minutes
     (folder / "overnight" / f"{DAY}.jsonl").write_text("".join(json.dumps(b) + "\n" for b in night))
+    (folder / "daily_closes").mkdir()
+    for symbol, close in (("$SPX", 6600.0), ("$TNX", 41.2)):
+        (folder / "daily_closes" / f"{symbol}.jsonl").write_text("".join(json.dumps(
+            {"day": d, "open": close, "high": close + 1, "low": close - 1, "close": close, "volume": 0.0, "fetched_at": f"{d}T16:20:00-04:00"}) + "\n"
+            for d in ("2026-09-17", DAY)))
     (folder / "overnight" / "rolls.json").write_text(json.dumps({"schema_version": 1, "current": {"/ES": "/ESZ26"}, "rolls": [
         {"symbol": "/ES", "day": DAY, "at": "2026-09-17T18:00:00-04:00", "from": "/ESU26", "to": "/ESZ26", "basis_step": 0.7,
          "basis_unit": "percent", "step_vs_typical": 20.0, "reference": "$SPX", "jump": 60.0}]}))
@@ -405,6 +410,9 @@ def test_the_bars_keep_one_row_a_minute_the_better_source_winning_and_every_copy
     assert [(b["ts"], b["prior_session"]) for b in night] == [(at(15, 55, day="2026-09-17"), True), (at(8, 0), False)]
     assert night[1]["contract"] == "/ESZ26" and night[1]["overnight_schema"] == 1      # the overnight file's version
     assert [r["to_contract"] for r in _table(root, "rolls")] == ["/ESZ26"]
+    closes = {r["symbol"]: r for r in _table(root, "daily_closes")}
+    assert closes["$SPX"]["close"] == 6600.0 and closes["$SPX"]["fetched_at"] == at(16, 20)       # the day's own session only
+    assert closes["$TNX"]["close"] == 4.12                                     # the yield in percent, as the labels read it
     assert [(e["kind"], e["ends_at"]) for e in _table(root, "events")] == [("FED_SPEAKER", at(10, 30))]
 
 
@@ -444,6 +452,16 @@ def test_every_refused_row_is_quarantined_with_its_reason_and_none_is_dropped(tm
     assert sum(c["quarantined"] for c in log.values()) == len(bad) and rows_in["raw_line"] == 2
     validation = {v["table_name"]: v for v in _table(tmp_path, "validation")}
     assert validation["grades"]["quarantined"] == 2 and validation["grades"]["store_schema"] == store.SCHEMA_VERSION
+
+
+def test_a_daily_close_fetched_before_its_session_closed_is_quarantined(tmp_path, monkeypatch):
+    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path))
+    early = {"day": DAY, "open": 16.0, "high": 17.0, "low": 15.0, "close": 16.5, "volume": 0.0, "fetched_at": f"{DAY}T12:00:00-04:00"}
+    (tmp_path / "spx_jev" / "daily_closes" / "$VIX.jsonl").write_text(json.dumps(early) + "\n")
+    log = store.build_day(tmp_path, D, at(16, 45))
+    assert log["daily_closes"]["quarantined"] == 1 and log["daily_closes"]["kept"] == 2
+    why = {q["key"]: q["reason"] for q in _table(tmp_path, "quarantine") if q["table_name"] == "daily_closes"}
+    assert why["$VIX"].startswith(f"fetched at {DAY}T12:00:00-04:00, before its session closed")
 
 
 def test_a_second_grade_of_the_same_sum_that_disagrees_is_quarantined_not_kept_over_the_first(tmp_path, monkeypatch):

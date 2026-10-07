@@ -73,6 +73,18 @@ def test_the_shipped_calendar_reaches_the_year_end_with_each_tier_on_its_clock()
     assert [e.start.date() for e in rows if e.kind == "QUARTER_END"] == [date(2026, 9, 30), date(2026, 12, 31)]
 
 
+def test_every_shipped_row_carries_a_known_tier_and_the_auction_tier_is_known_with_no_rows_yet():
+    """The Treasury auction tier (events.AUCTION) is defined ahead of its rows, so a row added from the published
+    schedule has a shape and a name; nothing reads it yet, and no row is invented."""
+    events._load.cache_clear()
+    doc = json.loads(events.CALENDAR.read_text(encoding="utf-8"))
+    assert {str(e["tier"]) for e in doc["events"]} <= events.TIERS
+    assert events.AUCTION in events.TIERS and events.AUCTION not in events.LEARN_TIERS
+    assert not [e for e in doc["events"] if str(e["tier"]) == events.AUCTION]
+    assert any("tier auction" in h for h in doc["how_to_use"])
+    assert events.words("AUCTION_10Y") == "the 10-year Treasury note auction"
+
+
 def test_the_releases_before_the_open_reach_back_to_august_each_from_its_source():
     """August is listed ahead of covers_from, from pre_open_covers_from: the premarket lane's report labels, which ask
     events.uncovered for the pre_open tier, read them from there; every other event label from covers_from."""

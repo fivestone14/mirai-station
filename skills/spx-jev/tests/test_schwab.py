@@ -35,6 +35,9 @@ class _Client:
     def get_price_history_every_five_minutes(self, **kw):
         return self._history("five_minutes", **kw)
 
+    def get_price_history_every_day(self, **kw):
+        return self._history("day", **kw)
+
     def get_quotes(self, symbols):
         self.asked.append(("quotes", list(symbols)))
         return _Answer({"/ESZ26": {"quote": {"lastPrice": 6700.0}}, "/ZNZ26": {"quote": {"lastPrice": 112.0}}})
@@ -66,6 +69,13 @@ def test_the_existing_callers_still_ask_for_regular_hours(client):
 def test_five_minute_bars_use_the_five_minute_history(client):
     out = schwab.five_minute_bars("/ES", at(9, 30), at(16, 0), extended_hours=True)
     assert client.asked[0][0] == "five_minutes" and out[0]["close"] == 1.5
+
+
+def test_daily_bars_use_the_daily_history_regular_hours_in_the_station_bar_shape(client):
+    out = schwab.daily_bars("SPX", at(9, 30, day="2016-09-25"), at(16, 0))
+    name, kw = client.asked[0]
+    assert name == "day" and kw["symbol"] == "$SPX" and kw["need_extended_hours_data"] is False
+    assert kw["start_datetime"] == at(9, 30, day="2016-09-25").astimezone(timezone.utc) and out[0]["close"] == 1.5
 
 
 def test_front_contracts_name_each_root_by_the_key_schwab_answers_with(client):

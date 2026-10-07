@@ -35,6 +35,7 @@ The tables, each defined in TABLES with its columns, its key and its checks:
     overnight_bars  the overnight futures store's bars with their contract; a night starts in the prior session's
                     last minutes, which that session's own night also holds, so those are marked ``prior_session``
     rolls           the futures rolls found in the roll table, by the day they took effect
+    daily_closes    the day's session of each daily-closes symbol (daily_closes.py's per-symbol files), its fetch time
     events          the calendar's scheduled events on the day
     quarantine      every row a check refused, with the check's reason and the raw row
     validation      per table per day: rows read, kept, exact duplicates, rows a better source replaced, quarantined
@@ -77,6 +78,7 @@ import pyarrow.parquet as pq
 from . import grade, integral_loop, pool
 from .archive import ARCHIVE_SUBDIR
 from .ask import confidence as answer_confidence, pick as answer_pick
+from .daily_closes import DAILY_CLOSES_SUBDIR
 from .events import CALENDAR, ET
 from .hour import FIVE
 from .labels.registry import RENAMED
@@ -296,6 +298,12 @@ def _saved_after_finish(r: dict) -> str | None:
     return None if r["saved_at"] + TIME_TOLERANCE >= done else f"saved at {r['saved_at'].isoformat()}, before the bar finished at {done.isoformat()}"
 
 
+def _fetched_after_close(r: dict) -> str | None:
+    """Point in time: a session's daily bar is fetched once it has closed."""
+    close = session_close(datetime.combine(r["day"], datetime.min.time(), tzinfo=ET))
+    return None if r["fetched_at"] >= close else f"fetched at {r['fetched_at'].isoformat()}, before its session closed at {close.isoformat()}"
+
+
 def _night_ends_by_close(r: dict) -> str | None:
     close = session_close(datetime.combine(r["day"], datetime.min.time(), tzinfo=ET))
     return None if r["ts"] < close else f"ts {r['ts'].isoformat()} is past the {r['day']} close the night leads into"
@@ -438,6 +446,10 @@ ROLLS = Table("rolls", (("day", DAY, True), ("symbol", STR, True), ("rolled_at",
               checks=(_roll_changes, lambda r: None if r["rolled_at"] is None or r["rolled_at"].astimezone(ET).date() <= r["day"]
                       else f"rolled_at {r['rolled_at'].isoformat()} is after its day {r['day']}"))
 
+DAILY_CLOSES = Table("daily_closes", (("day", DAY, True), ("symbol", STR, True)) + _BAR + (("fetched_at", TS, True),),
+                     key=("symbol",),
+                     checks=(_positive("open", "high", "low", "close"), _not_negative("volume"), _bar_shape, _fetched_after_close))
+
 EVENTS = Table("events", (("day", DAY, True), ("starts_at", TS, True), ("ends_at", TS, False), ("kind", STR, True),
                           ("tier", STR, True), ("scope", STR, False), ("in_session", BOOL, False), ("verified", BOOL, False),
                           ("q_and_a", BOOL, False), ("note", STR, False), ("source", STR, False), ("calendar_built", STR, False)),
@@ -452,7 +464,8 @@ VALIDATION = Table("validation", (("day", DAY, True), ("table_name", STR, True),
                                   ("reasons", COUNTS, True), ("sources", WORDS, True), ("store_schema", INT, True),
                                   ("built_at", TS, True)), key=())
 
-TABLES = (READS, FACTS, ANSWERS, CALLS, GRADES, AVERAGE_GRADES, POOL_LOG, SPX_BARS, CONTEXT_BARS, CONTEXT_QUOTES, OVERNIGHT_BARS, ROLLS, EVENTS)
+TABLES = (READS, FACTS, ANSWERS, CALLS, GRADES, AVERAGE_GRADES, POOL_LOG, SPX_BARS, CONTEXT_BARS, CONTEXT_QUOTES, OVERNIGHT_BARS, ROLLS,
+          DAILY_CLOSES, EVENTS)
 BY_NAME = {t.name: t for t in TABLES + (QUARANTINE, VALIDATION)}
 
 
@@ -959,6 +972,15 @@ def read_raw(state_dir: Path, day: date) -> Raw:
                                       "to_contract": r.get("to"), **{k: r.get(k) for k in ("basis_step", "basis_unit",
                                                                                           "step_vs_typical", "reference", "jump")},
                                       "_source": f"{rel(table)}#rolls[{i}]"})
+
+    # one file per symbol holding every session: the day's line is its row, the yield in percent as the labels read it
+    for path in sorted((state_dir / DAILY_CLOSES_SUBDIR).glob("*.jsonl")):
+        for w, line in lines(path, "daily_closes"):
+            if line.get("day") == iso:
+                symbol = path.stem
+                prices = {k: _label_unit(symbol, line.get(k)) for k in ("open", "high", "low", "close")}
+                rows["daily_closes"].append({"day": day, "symbol": symbol, **prices, "volume": line.get("volume"),
+                                             "fetched_at": line.get("fetched_at"), "_source": w})
 
     calendar, _ = _json_file(CALENDAR)
     sources["events"].append(CALENDAR.name)

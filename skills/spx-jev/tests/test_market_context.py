@@ -7,8 +7,8 @@ from datetime import date, datetime, timedelta
 
 from conftest import DAY, at
 from spx_jev import market_context, schwab
-from spx_jev.market_context import (ALL_SYMBOLS, BAR_SYMBOLS, DERIVED_ADD, DERIVED_VOLD, NO_HISTORY, append_snapshot, backfill,
-                                    backfill_day, derived_add, derived_vold, refresh_breadth, snapshot)
+from spx_jev.market_context import (ALL_SYMBOLS, BAR_SYMBOLS, DERIVED_ADD, DERIVED_VOLD, NO_HISTORY, SYMBOLS, add_symbols,
+                                    append_snapshot, backfill, backfill_day, derived_add, derived_vold, refresh_breadth, snapshot)
 from spx_jev.state_builder import load_market_context
 
 
@@ -294,3 +294,50 @@ def test_the_saved_day_wins_over_what_the_live_snapshot_kept_for_the_same_minute
     (folder / f"{DAY}.jsonl").write_text(json.dumps({"ts": minute, "bars": {"$TICK": {**_bar(at(10, 0), 0.0)}}}) + "\n")
     (folder / "bars" / f"{DAY}.jsonl").write_text(json.dumps({"ts": minute, "bars": {"$TICK": {**_bar(at(10, 0), -300.0)}}}) + "\n")
     assert load_market_context(tmp_path, DAY).last("$TICK", at(10, 1)) == -300.0
+
+
+# ---- the symbols added on 2026-10-06
+
+def test_the_feed_carries_the_symbols_added_for_the_prediction_questions_and_the_older_groups_as_they_were():
+    """/ZN, the industry and leveraged funds, TSLA and BRK/B are quoted beside the rest; the groups the labels count
+    (the 11 sectors, the futures' order, the seven megacaps' order) are unchanged, and every quote still fits in two
+    batched calls, so the minute's snapshot costs what it did."""
+    assert SYMBOLS["futures"] == ("/ES", "/MBT", "/ZN")
+    assert SYMBOLS["sectors"] == ("XLK", "XLF", "XLE", "XLV", "XLY", "XLI", "XLC", "XLP", "XLU", "XLB", "XLRE")
+    assert SYMBOLS["industry_funds"] == ("KRE", "XHB") and SYMBOLS["leveraged_funds"] == ("SPXL", "TQQQ", "SPXS", "SQQQ")
+    assert SYMBOLS["megacaps"][:7] == ("NVDA", "MSFT", "AAPL", "AMZN", "GOOGL", "META", "AVGO") and SYMBOLS["megacaps"][7:] == ("TSLA", "BRK/B")
+    assert SYMBOLS["index_funds"] == ("SMH", "RSP", "QQQ", "IWM", "SPY") and SYMBOLS["macro_funds"] == ("TLT", "HYG", "USO", "GLD")
+    assert len(set(ALL_SYMBOLS)) == len(ALL_SYMBOLS) and "/ZN" not in BAR_SYMBOLS
+    assert 1 + len([s for s in ALL_SYMBOLS if s not in BAR_SYMBOLS]) <= 2 * schwab.QUOTE_BATCH
+
+
+def test_a_symbol_added_later_is_put_into_each_saved_session_lacking_it_the_rest_kept_as_saved(tmp_path, monkeypatch, capsys):
+    """A saved day holds the symbols of its time; --backfill --symbols fetches only the named ones into it. A day that
+    already holds them costs no call, a day Schwab serves nothing for is left as it was and said so, and a day not on
+    disk is saved whole."""
+    _no_sleep(monkeypatch)
+    old = tuple(s for s in ALL_SYMBOLS if s not in ("/ZN", "KRE", "XHB") and s not in NO_HISTORY)
+    monkeypatch.setattr(schwab, "minute_bars", _session_of(lambda s: 1.0 if s in old else None))
+    path = backfill_day(tmp_path, date.fromisoformat(DAY))
+    _saved_on(path, at(16, 20))
+    assert "/ZN" not in json.loads(path.read_text().splitlines()[0])["bars"]
+    asked = []
+    monkeypatch.setattr(schwab, "minute_bars", lambda symbol, start, end: asked.append(symbol) or _session_of(lambda s: 112.0)(symbol, start, end))
+    assert add_symbols(tmp_path, date.fromisoformat(DAY), ("/ZN", "KRE", "XLK")) == path and asked == ["/ZN", "KRE"]   # XLK was there
+    mk = load_market_context(tmp_path, DAY)
+    assert mk.last("/ZN", at(10, 0)) == 112.0 and mk.last("KRE", at(10, 0)) == 112.0 and mk.last("XLK", at(10, 0)) == 1.0
+    assert len(path.read_text().splitlines()) == 390
+    assert datetime.fromtimestamp(path.stat().st_mtime, at(16, 20).tzinfo) == at(16, 20)   # still a day saved on its own evening
+    asked.clear()
+    assert add_symbols(tmp_path, date.fromisoformat(DAY), ("/ZN", "KRE")) is None and asked == []
+    monkeypatch.setattr(schwab, "minute_bars", lambda symbol, start, end: [])
+    kept = path.read_text()
+    assert add_symbols(tmp_path, date.fromisoformat(DAY), ("XHB",)) is None and path.read_text() == kept
+    assert "XHB returned no minute bars for the 2026-09-18 session" in capsys.readouterr().err
+    monkeypatch.setattr(schwab, "minute_bars", _session_of(lambda s: 2.0))
+    written = backfill(tmp_path, date(2026, 9, 17), date.fromisoformat(DAY), symbols=("XHB",))
+    assert [p.name for p in written] == ["2026-09-17.jsonl", f"{DAY}.jsonl"]
+    whole = json.loads((tmp_path / "spx_jev" / "context" / "bars" / "2026-09-17.jsonl").read_text().splitlines()[0])["bars"]
+    assert len(whole) == len(ALL_SYMBOLS) - len(NO_HISTORY) and load_market_context(tmp_path, DAY).last("XHB", at(10, 0)) == 2.0
+    assert market_context.main(["--state-dir", str(tmp_path), "--backfill", "2026-09-18", "--symbols", "XHB,KRE"]) == 0
+    assert "for XHB, KRE" in capsys.readouterr().out
