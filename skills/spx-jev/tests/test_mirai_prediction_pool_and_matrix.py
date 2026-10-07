@@ -1,7 +1,6 @@
 """pool_v2's mix and update against pool_v1's own rules; the answer matrix's columns; the voices."""
 from __future__ import annotations
 
-import math
 
 import pytest
 
@@ -199,7 +198,6 @@ def test_the_volume_grid_has_the_small_steps():
 def test_a_fit_after_the_cut_over_drops_the_jev_columns_last_answered_before_it_and_keeps_every_code_column():
     """From the cut-over the live lane asks only the judgment questions, so a pre-merge question's column goes silent; the
     matcher reads a silent column as half a mismatch, so a fit for the cut-over day or later leaves those columns out."""
-    from spx_jev.mirai_prediction import answer_matrix
     from spx_jev.mirai_prediction.name_map import CUT_OVER_DAY
     assert CUT_OVER_DAY == "2026-10-08"
     last = {"price_move_5way": "2026-10-07", "news_reaction": "2026-10-08", "quiet_coiled_or_resting": "2026-10-02"}

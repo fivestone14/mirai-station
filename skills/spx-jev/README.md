@@ -267,7 +267,7 @@ archive there too, under `archive/`.
    loop's report; the end-price loop keeps learning beside it, byte for
    byte as with the switch off. Neither loop's pool decides the call: the
    call carries its exact blend, `shown_source` on `hour.average` saying so
-   (`integral_loop.shown`), and since 2026-10-06 Pool 2's combined forecast
+   (`pool.SHOWN_BLEND`), and since 2026-10-06 Pool 2's combined forecast
    replaces it after the read (`mirai_prediction/live_call.py`); the
    promotion that once decided the call was retired on 2026-10-07. A
    session is learnt at the first grading run after its reads' average-price

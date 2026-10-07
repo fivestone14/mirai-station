@@ -1,4 +1,4 @@
-"""The learning loop: the forecasts at a read, the day-level update, the e-processes, the seal, the rebuild, the shown blend."""
+"""The learning loop: the forecasts at a read, the day-level update, the e-processes, the seal, the rebuild."""
 from __future__ import annotations
 
 import json
@@ -10,7 +10,7 @@ import pytest
 from conftest import at
 from spx_jev import pool
 from spx_jev.pool import (NO_CHANGE, REFERENCE, W0, apply_session, bet, cold_state, coverage, membership, new_eprocess,
-                          shown, snapshot, statuses, update)
+                          snapshot, statuses, update)
 from spx_jev.scores import floored
 
 CLOCK = {"up": 0.2, "flat": 0.6, "down": 0.2}
@@ -268,15 +268,6 @@ def test_a_questions_version_changes_with_any_word_jev_is_sent_and_with_its_opti
     assert pool.question_version(reworded) != pool.question_version(choice)
     assert pool.question_version(reordered) != pool.question_version(score)
     assert pool.question_version(dict(choice)) == pool.question_version(choice)
-
-
-PHONE_HOUR = {"pick": "flat", "probabilities": SHOWN, "by": {"next_30": {"pick": "flat", "probabilities": SHOWN}}}
-
-
-def test_the_end_price_sums_always_show_the_exact_blend():
-    """The pool never reaches the phone: the sums are returned as they were, said under shown_source (the promotion
-    that once put the pool there was retired on 2026-10-07; Pool 2 takes the call over after the read)."""
-    assert shown(PHONE_HOUR) == {**PHONE_HOUR, "shown_source": "blend50_exact"}
 
 
 def test_a_state_saved_with_the_retired_phone_block_loads_without_it_and_is_never_written_with_it_again(tmp_path):

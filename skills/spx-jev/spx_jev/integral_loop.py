@@ -258,16 +258,6 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Pat
     return said
 
 
-def shown(average: dict | None) -> dict | None:
-    """The call as the phone shows it and the grader grades it: the average-price sum as it came, its exact blend, said
-    under ``shown_source`` (pool.SHOWN_BLEND). This loop's pool never replaces it (the promotion was retired on
-    2026-10-07; Pool 2 takes the call over after the read, mirai_prediction.live_call). An average with no odds (its
-    error) is returned as it came."""
-    if not isinstance(average, dict) or not isinstance(average.get("probabilities"), dict):
-        return average
-    return {**average, "shown_source": pool.SHOWN_BLEND}
-
-
 def _log(out_dir: Path, line: dict) -> None:
     with open(Path(out_dir) / LOG_NAME, "a", encoding="utf-8") as f:
         f.write(json.dumps(line, ensure_ascii=False, sort_keys=True) + "\n")

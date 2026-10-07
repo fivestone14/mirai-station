@@ -54,7 +54,7 @@ The question weights
     (integral_loop.IntegralPoolWeights), in state of its own, reported beside the end-price loop's under
     ``pool_integral``; the end-price loop keeps learning and its report stays where it was. Neither loop's pool
     reaches the phone (the promotion was retired on 2026-10-07): the call and the end-price sums keep their exact
-    blend (integral_loop.shown, pool.shown).
+    blend (shown_source = pool.SHOWN_BLEND).
 
 A lane (lane.py) grades by its own settings. The tape lane's one horizon is banded from the record
 itself: the tape unit measured at the read prices a flat and a big band in index points, and the

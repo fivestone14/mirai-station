@@ -397,19 +397,6 @@ def test_on_only_the_current_rule_versions_label_of_the_box_is_learned(tmp_path,
     assert (noisy / "pool_30_integral.json").read_bytes() == (base / "pool_30_integral.json").read_bytes()
 
 
-def test_the_call_always_shows_its_exact_blend_and_an_error_is_returned_as_it_came(tmp_path, clock):
-    """This loop's pool never reaches the call (the promotion was retired on 2026-10-07): the average-price sum is
-    returned as it came, said under shown_source, and the grader grades what the phone shows."""
-    out = _write(tmp_path)
-    integral_loop.update(out, TODAY)
-    rec = grade.load_jsonl(out / "hour" / f"{DAYS[0]}.jsonl")[0]
-    call = {**rec["average"], "by": {"average_30": {"pick": rec["average"]["pick"], "probabilities": SHOWN_AVG}}}
-    got = integral_loop.shown(call)
-    assert got == {**call, "shown_source": pool.SHOWN_BLEND}
-    assert grade.average_call({"average": got}, "next_30") is got
-    assert integral_loop.shown({"error": "HTTP 529"}) == {"error": "HTTP 529"}
-
-
 def test_on_a_read_is_forecast_on_jevs_own_average_odds_the_shown_blend_and_its_fresh_answers(tmp_path):
     """JEV's own odds, not the blend the phone showed, are the JEV side of the mixes; the blend is blend50 as shown;
     the questions' answers and which were fresh are the read's own."""

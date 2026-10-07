@@ -119,9 +119,8 @@ SUPPRESS_E, LIFT_E = 20.0, 5.0
 CAP_BIND_WINDOW, CAP_BIND_LIMIT = 20, 0.05
 ROUND = 12
 LOG_NAME = "pool_log.jsonl"
-# what a sum record's shown_source says: the blend, always, since the promotion was retired (2026-10-07); SHOWN_POOL is
-# the name the phone's chart still knows a pool-shown sum by
-SHOWN_BLEND, SHOWN_POOL = "blend50_exact", "pool_v1"
+# what a sum record's shown_source says: the blend, always, since the promotion was retired (2026-10-07)
+SHOWN_BLEND = "blend50_exact"
 SIDES = ("M", "D")              # the move weights and the direction weights
 
 CONSTANTS = {"eps": EPS, "eta": ETA, "alpha": ALPHA, "gap_clip": GAP_CLIP, "block_cap": BLOCK_CAP,
@@ -399,12 +398,6 @@ def reformed(snap: dict, state: dict, long_run: dict[str, float]) -> dict:
     mixes = _mixes(state, state["tables"] if same_reference else {}, experts, experts[REFERENCE],
                    {q: snap["q_probs"][q] for q in snap["awake"]}, snap.get("long_run") or long_run)
     return {**snap, **mixes, "state_hash": state_hash(state), "constants_hash": CONSTANTS_HASH, "reformed": True}
-
-
-def shown(hour: dict) -> dict:
-    """The end-price sums as the card keeps them beside the call and the grader scores them: today's exact blend,
-    said under ``shown_source``. The pool never replaces them (the promotion was retired on 2026-10-07)."""
-    return {**hour, "shown_source": SHOWN_BLEND}
 
 
 # ----------------------------------------------------------------------------- the update

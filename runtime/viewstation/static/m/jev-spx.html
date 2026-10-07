@@ -126,7 +126,6 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 .sit-g .track{stroke:var(--rule-soft);stroke-width:1.2}
 .sit-g .tick{stroke:var(--rule-soft);stroke-width:1}
 .sit-g .dot{fill:var(--px-ink)}
-.sit-g .lbl{fill:var(--i-mute);font:400 9.5px var(--sans)}
 .sit-c{margin-top:4px;font:400 12.5px/1.35 var(--sans);color:var(--i-mute)}
 /* which call leads the page: the opening's 5-minute calls, or the 30-minute call */
 .mode{align-self:flex-start;padding:5px 9px;border-radius:8px;border:1px solid var(--rule-soft);background:var(--s);
@@ -216,7 +215,32 @@ button.tile .tile-k::after,.inplay-h.tap::after{content:"";flex:none;margin-left
 .row60{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-top:12px;padding-top:11px;border-top:1px solid var(--s2)}
 .row60 .k{font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
 .row60 b{font:700 14px/1.2 var(--sans);color:var(--i)}
-.row60 .l{margin-left:auto;font:400 12.5px/1.2 var(--sans);color:var(--i-mute)}
+/* the 30-minute call's price under its odds: the read's price, the flat edge as a pill, then the flat band on a small bar
+   with its two prices under it */
+.avg-at{display:flex;align-items:baseline;gap:6px;margin-top:12px;font:400 12.5px/1.2 var(--sans);color:var(--i-mute)}
+.avg-at b{font:700 17px/1.2 var(--sans);color:var(--i)}
+.pill{margin-left:auto;align-self:center;padding:3px 8px;border:1px solid var(--rule-soft);border-radius:999px;font:600 12px/1.2 var(--sans);
+      color:var(--i-body);white-space:nowrap}
+.avg-bar{position:relative;height:8px;margin-top:10px;border-radius:4px;background:var(--s2)}
+.avg-bar i{position:absolute;display:block}
+.avg-bar .band{top:0;bottom:0;left:10%;right:10%;border-radius:4px;background:var(--o-fl)}
+.avg-bar .at{top:-3px;bottom:-3px;left:50%;width:2px;margin-left:-1px;border-radius:1px;background:var(--i)}
+.avg-lab{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;margin-top:5px;font:400 11.5px/1.2 var(--sans);color:var(--i-mute)}
+.avg-lab .c{text-align:center}
+/* what went into the combined forecast: one row per voice, its own odds, by its say in the mix */
+.mix{margin-top:14px;padding-top:11px;border-top:1px solid var(--s2)}
+.mix-r{display:grid;grid-template-columns:104px minmax(0,1fr) 76px;gap:8px;align-items:center;margin-top:7px;font:400 12.5px/1.2 var(--sans);color:var(--i-body)}
+.mix-r .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mix-r .v{text-align:right;white-space:nowrap;color:var(--i-mute);font-variant-numeric:tabular-nums}
+/* the end-price sums beside the call, one row each: the window and its mark, then the pick, the flat band and whose it is */
+.ep{margin-top:14px;padding-top:11px;border-top:1px solid var(--s2)}
+.ep-r{display:grid;grid-template-columns:64px minmax(0,1fr);gap:5px 12px;align-items:start;margin-top:9px}
+.ep-l{grid-row:span 2}
+.ep-k{font:700 12.5px/1.2 var(--sans);color:var(--i)}
+.ep-at{margin-top:2px;font:400 11.5px/1.2 var(--sans);color:var(--i-mute)}
+.ep-v{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;min-width:0;font:400 12px/1.2 var(--sans);color:var(--i-mute)}
+.ep-v b{font:700 14px/1.2 var(--sans);color:var(--i)}
+.ep-v .src{margin-left:auto;padding:2px 6px;border:1px solid var(--s2);border-radius:6px;font:600 10.5px/1.2 var(--sans);white-space:nowrap}
 /* the calls in play: every call of the morning or the day on one clock, newest on top */
 .inplay-h{margin-top:14px;font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint)}
 .inplay{display:block;width:100%;height:auto;margin-top:6px;font-family:var(--sans)}
@@ -688,8 +712,8 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   }
 
   // A call on this page is graded as a mix of JEV's answer with how this time of day went on prior sessions (the
-  // service's clock), but JEV's own answer leads it (Will, 2026-09-30): the headline is JEV's, and the clock's odds
-  // and the graded mix ride under it as two tiles, the clock the yardstick JEV has to beat.
+  // service's clock), and the graded call leads it: the headline is the combined forecast since 2026-10-06, JEV's own
+  // read on an older card, with the clock's odds under it as a tile, the yardstick JEV has to beat.
   function top1(p){ return p ? Object.keys(p).sort(function(x, y){ return p[y] - p[x]; })[0] : null; }
   // JEV's own odds for a call: a blended call's own answer from JEV, an unblended one as it came
   function jevOwn(a){ return a && ((a.blend && a.blend.used) || a.blended) && a.jev && a.jev.probabilities ? a.jev : a; }
@@ -718,6 +742,69 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var own = jevOwn(h), p = own.probabilities, t = own.pick || top1(p), r = el('div', 'row60');
     r.appendChild(el('span', 'k', 'End price')); r.appendChild(el('b', null, cap(t) + ' ' + pct(p[t])));
     return r;
+  }
+  // the 30-minute call's price under its odds (hour.average price and edge_points): the read's price, the flat edge as a
+  // pill, and the flat band on a small bar, a tick at the price, its two prices to a tenth under it; a call without both
+  // says its edge in words, as it did
+  function calledAt(a, minutes){
+    var p = a.price, e = a.edge_points;
+    if(typeof p !== 'number' || typeof e !== 'number') return tag(averageWords(a));
+    var box = el('div'), at = el('div', 'avg-at'), track = el('div', 'avg-bar'), lab = el('div', 'avg-lab');
+    var lo = indexLevel(p - e, 1), hi = indexLevel(p + e, 1);
+    at.appendChild(el('span', null, 'Called at')); at.appendChild(el('b', null, indexLevel(p, 2)));
+    at.appendChild(el('span', 'pill', '\u00B1 ' + e.toFixed(1) + ' pts'));
+    track.appendChild(el('i', 'band')); track.appendChild(el('i', 'at'));
+    track.setAttribute('role', 'img'); track.setAttribute('aria-label', 'Flat from ' + lo + ' to ' + hi);
+    lab.appendChild(el('span', null, lo)); lab.appendChild(el('span', 'c', 'flat on the ' + minutes + '-min average')); lab.appendChild(el('span', null, hi));
+    box.appendChild(at); box.appendChild(track); box.appendChild(lab);
+    return box;
+  }
+  // a forecast's down, flat and up alone, for a bar that reads like the price axis: unsure is left out of the bar
+  function threeWay(p){ var o = {}; ['down', 'flat', 'up'].forEach(function(k){ if(k in p) o[k] = p[k]; }); return o; }
+  // what went into the combined forecast (the call's voices, live_call.take_over): each voice's own odds, most say first,
+  // named in the phone's words; a card without them has no such section
+  var VOICE_WORDS = {jev_own: 'JEV alone', jev_mix_100_percent: 'JEV alone', historical_odds: 'Usual odds'};
+  function voiceName(v){ return VOICE_WORDS[v.name] || v.plain_name || words(v.name); }
+  function mixRows(a){
+    var vs = (Array.isArray(a.voices) ? a.voices : []).filter(function(v){ return v && v.probabilities && typeof v.share === 'number'; });
+    if(!vs.length) return null;
+    var box = el('div', 'mix');
+    box.appendChild(labRow('What went into it', 'D \u00B7 F \u00B7 U'));
+    vs.slice().sort(function(x, y){ return y.share - x.share; }).forEach(function(v){
+      var p = v.probabilities, r = el('div', 'mix-r');
+      r.appendChild(el('span', 'n', voiceName(v))); r.appendChild(howBar(threeWay(p)));
+      r.appendChild(el('span', 'v', ['down', 'flat', 'up'].map(function(k){ return Math.round((p[k] || 0) * 100); }).join(' \u00B7 ')));
+      box.appendChild(r);
+    });
+    box.appendChild(tag('listed by how much say each has'));
+    return box;
+  }
+  // whose forecast an end-price sum is: the combined forecast where it took the sum over, else the half-and-half, or
+  // JEV's own on a sum that was never blended
+  function sumSource(s, h){
+    if(s.shown_source === 'pool_v2' || (h.shown_source === 'pool_v2' && s.blend50_exact)) return 'combined';
+    return s.blended ? '50/50 blend' : 'JEV alone';
+  }
+  // the end-price sums beside the call (hour.by), one row each: the window and the minute its end price is taken, in the
+  // viewer's zone, then the pick, the flat band the grader sets it against (the service's flat_points), whose forecast
+  // it is, and its odds on a bar, unsure left out; the 30-minute one only beside an average-price call
+  function endPriceBlock(h, c, with30){
+    var by = h.by || {}, marks = c.marks || {};
+    var rows = [['next_30', 30], ['next_60', 60]].filter(function(x){ return (with30 || x[1] === 60) && by[x[0]] && by[x[0]].probabilities; });
+    if(!rows.length) return null;
+    var box = el('div', 'ep');
+    box.appendChild(labRow('End price', 'price at the bell'));
+    rows.forEach(function(x){
+      var s = by[x[0]], p = s.probabilities, t = s.pick || top1(p), mark = marks[x[0]] !== undefined ? marks[x[0]] : plusIso(c.row_ts, x[1]);
+      var r = el('div', 'ep-r'), l = el('div', 'ep-l'), v = el('div', 'ep-v');
+      l.appendChild(el('div', 'ep-k', x[1] + ' min')); l.appendChild(el('div', 'ep-at', mark ? 'at ' + viewerTime(mark) : 'past the close'));
+      v.appendChild(el('b', null, cap(t) + ' ' + pct(p[t])));
+      if(typeof s.flat_points === 'number') v.appendChild(el('span', null, '\u00B1 ' + s.flat_points.toFixed(1) + ' pts'));
+      v.appendChild(el('span', 'src', sumSource(s, h)));
+      r.appendChild(l); r.appendChild(v); r.appendChild(howBar(threeWay(p)));
+      box.appendChild(r);
+    });
+    return box;
   }
   // the order a call's options are drawn and listed in, left to right: from the biggest fall to the
   // biggest rise, unsure last, so the bar reads like the price axis
@@ -760,11 +847,10 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // the phase's hours in the viewer's zone, without its New York name: "lunch, 12:00 to 14:00" reads "09:00 to 11:00"
   // in Los Angeles, never "lunch, 09:00 to 11:00"
   function phaseSpan(words, at){ return marketWords(String(words).replace(/^[^,]*,\s*/, ''), at); }
-  // Under JEV's own call, two tiles: how the last sessions went at this time of day (the yardstick JEV has to beat),
+  // Under the graded call, two tiles: how the last sessions went at this time of day (the yardstick JEV has to beat),
   // which opens the time-of-day sheet when the card carries its counts (the card's time_of_day, clock._blocks), and
-  // the call the calls in play grade, outlined as the graded one: the combined forecast, or on an older card the
-  // learned mix or the half-and-half. Its key reads the call's own shown_source (integral_loop.shown): the end-price
-  // loop's promotion reaches only the end-price sums beside the call, never these tiles.
+  // JEV's own read under the combined forecast (shown_source pool_v2), or on an older card the half-and-half the calls
+  // in play grade, outlined as the graded one.
   function howBar(p){
     var b = el('div', 'how-bar');
     oddsKeys(p).forEach(function(k){ var i = el('i', 'o-' + k); i.style.flex = Math.max(0, p[k] || 0) + ' 1 0'; b.appendChild(i); });
@@ -782,14 +868,13 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     return t;
   }
   function howChart(h, bl, at, tod){
-    var j = h.jev, c = h.clock, pooled = /^pool/.test(h.shown_source || ''), pool2 = h.shown_source === 'pool_v2';
+    var j = h.jev, c = h.clock, pool2 = h.shown_source === 'pool_v2';
     if(bl && bl.used && j && c){
       var g = el('div', 'tod'), days = 'Typical \u00B7 ' + bl.sessions + ' days', span = bl.phase_words ? phaseSpan(bl.phase_words, at) : '';
       g.appendChild(tile(days, c.probabilities, tod && tod.phases && tod.phases.length ? function(from){ openTod(tod, bl, at, from); } : null,
                          span ? days + ', ' + span : null));
       if(pool2){ g.appendChild(tile('JEV alone', j.probabilities)); return g; }      // the headline is the graded call: JEV's own read beside it
-      var graded = (pooled ? 'Learned mix' : 'Half of each') + ' \u00B7 graded';
-      g.appendChild(tile(graded, h.probabilities)).setAttribute('class', 'tile graded');
+      g.appendChild(tile('Half of each \u00B7 graded', h.probabilities)).setAttribute('class', 'tile graded');
       return g;
     }
     var w = el('div', 'how');
@@ -1383,22 +1468,14 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
                             !combined && own.confidence != null ? pct(own.confidence) + ' sure' : null)).setAttribute('class', 'lab call');
       hc.appendChild(el('div', 'big', cap(top) + ' ' + pct(hp[top])));
       hc.appendChild(oddsBar(hp, top));
-      if(a !== h) hc.appendChild(tag(averageWords(a)));
+      if(a !== h) hc.appendChild(calledAt(a, minutes));
       var fb = fallbackLine(h, c.row_ts); if(fb) hc.appendChild(fb);
       hc.appendChild(howChart(a, bl, c.row_ts, a !== h ? c.time_of_day : null));
+      var mix = a !== h ? mixRows(a) : null; if(mix) hc.appendChild(mix);
       // a scheduled event within the hour (the service's calendar): said once, in words
       if(c.event && c.event.sentence) hc.appendChild(tag(sentence(marketWords(c.event.sentence, c.row_ts))));
       if(c.calls && c.calls.length) hc.appendChild(inPlay(c.calls));
-      if(a !== h && h.probabilities) hc.appendChild(endPriceRow(h));
-      var h60 = h.by && h.by.next_60;
-      if(h60 && h60.probabilities){
-        var own60 = h.shown_source === 'pool_v2' ? h60 : jevOwn(h60), p60 = own60.probabilities, t60 = own60.pick || top1(p60);
-        var m60 = marks.next_60 !== undefined ? marks.next_60 : plusIso(c.row_ts, 60);
-        var r60 = el('div', 'row60'), l60 = el('span', 'l');
-        r60.appendChild(el('span', 'k', '60 min \u00B7 end price')); r60.appendChild(el('b', null, cap(t60) + ' ' + pct(p60[t60]))); r60.appendChild(l60);
-        var say60 = function(){ l60.textContent = m60 ? (leftWords(Date.parse(m60), Date.now()) || 'Window closed at ' + viewerTime(m60)) : 'Ends past the close, never graded'; };
-        say60(); tickers.push(say60); hc.appendChild(r60);
-      }
+      var ep = endPriceBlock(h, c, a !== h); if(ep) hc.appendChild(ep);
       if(count) hc.appendChild(count);
       main.appendChild(hc);
     } else {
@@ -1666,14 +1743,6 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     if(pending > 0) said.push(pending + ' still to grade');
     if(closed) said.push(closed + ' never graded');
     return y.graded || closed ? said.join(' \u00B7 ') : 'no calls graded yet';
-  }
-  // after the opening: one line with the morning's score
-  // the opening lane's day score (no longer drawn under the call since 2026-10-06; its tests still read the tally words through it)
-  function openingDone(t){
-    var f = el('div', 'card fold'), over = lastLaneRead(t);
-    f.appendChild(el('span', 'k', over ? 'opening done' : 'opening lane, no call open'));
-    f.appendChild(el('span', 'l', tallyWords(t.tally)));
-    return f;
   }
   // under the 30-minute call: the day's score of its calls so far, or the day's once its close-out has graded them
   function dayScore(c){

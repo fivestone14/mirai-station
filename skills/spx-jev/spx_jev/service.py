@@ -35,8 +35,8 @@ where. Every read carries the tier-1 events due within the hour
 
 On the live lane every sum also carries the learning loop's forecasts (pool.snapshot): the fixed
 mixes of JEV's sum with the price-only reference, today's blend, the question block and the pool,
-scored once the session is sealed. The call and the end-price sums keep their exact blend (``shown_source``,
-integral_loop.shown and pool.shown); neither loop's pool reaches the phone. Since 2026-10-06 Pool 2's combined
+scored once the session is sealed. The call and the end-price sums keep their exact blend (``shown_source`` =
+pool.SHOWN_BLEND); neither loop's pool reaches the phone. Since 2026-10-06 Pool 2's combined
 forecast takes the call over after the read (mirai_prediction.live_call), the blend kept beside it.
 
 A lane (lane.py) is the same run with its own docs, folder, clock and grader. The tape lane
@@ -380,15 +380,34 @@ def day_integral(out_dir: Path, day: str, lane: Lane = LIVE, horizon: str | None
     return out
 
 
-def box_flat_points(row_ts: str, band: dict | None, scene: Scene, lane: Lane = LIVE) -> float | None:
-    """The flat band in points the grader sets the lane's primary box against for the read at ``row_ts``: the read's own
-    ``band`` on a RECORD box, else the morning anchor the read could know (grade.read_anchor) times the box's band; None
-    without one."""
-    flat = lane.horizons[lane.primary][1]
+def horizon_flat_points(row_ts: str, band: dict | None, scene: Scene, lane: Lane, horizon: str) -> float | None:
+    """The flat band in points the grader sets the lane's box ``horizon`` against for the read at ``row_ts``: the read's
+    own ``band`` on a RECORD box, else the morning anchor the read could know (grade.read_anchor) times the box's band;
+    None without one."""
+    flat = lane.horizons[horizon][1]
     if flat == RECORD:
         return (band or {}).get("flat_points")
     anchor = read_anchor(scene.rows_today, scene.bars, scene.market, row_ts)
     return flat * anchor.points if anchor else None
+
+
+def box_flat_points(row_ts: str, band: dict | None, scene: Scene, lane: Lane = LIVE) -> float | None:
+    """The flat band in points the grader sets the lane's primary box against (horizon_flat_points)."""
+    return horizon_flat_points(row_ts, band, scene, lane, lane.primary)
+
+
+def with_flat_points(hour: dict, row_ts: str, band: dict | None, scene: Scene, lane: Lane = LIVE) -> dict:
+    """The hour with each end-price sum's flat band in points beside it (``by[h].flat_points``, horizon_flat_points), the
+    phone's ± at the end price; a sum without one is left as it was. A lane graded from the settled open measures its
+    boxes in another ruler, so its sums are left as they were."""
+    by = hour.get("by")
+    if lane.graded_from_settled_open or not isinstance(by, dict):
+        return hour
+    out = {}
+    for horizon, sum_doc in by.items():
+        points = horizon_flat_points(row_ts, band, scene, lane, horizon) if horizon in lane.horizons and isinstance(sum_doc, dict) else None
+        out[horizon] = {**sum_doc, "flat_points": round(float(points), 2)} if points else sum_doc
+    return {**hour, "by": out}
 
 
 def box_window(row_ts: str, band: dict | None, scene: Scene, lane: Lane = LIVE) -> dict | str:
@@ -549,7 +568,7 @@ def still_to_grade(tally: dict) -> int:
 
 
 def tally_words(tally: dict) -> str:
-    """A close-out's tally in the phone's words (jev-spx.html openingDone): '2 of 3 calls right · 1 passed', the
+    """A close-out's tally in the phone's words (jev-spx.html tallyWords): '2 of 3 calls right · 1 passed', the
     passes apart, then how many stood on the end price alone, what is still to grade and what never will be; a
     morning of passes only is '3 passed', one with nothing graded and nothing closed 'no calls graded yet'."""
     passed, alone, closed = tally.get("passed", 0), tally.get("end_price_only", 0), tally.get("closed", 0)
@@ -822,7 +841,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
                 log(f"the learning loop's snapshot was left out this run: {type(e).__name__}: {e}")
                 hour_rec["pool"] = {h: {"left_out": f"the snapshot failed this run: {type(e).__name__}"} for h in lane.horizons}
             if isinstance(hour.get("by"), dict):
-                hour = pool.shown(hour)
+                hour = {**hour, "shown_source": pool.SHOWN_BLEND}
         if hour is not None and lane.clock_blend and "probabilities" in (hour.get("average") or {}):
             # the phone's call is blended the same way, with how often the average over the same window ended each way
             # at this time of day, counted on the average price alone (clock.integral_odds)
@@ -836,9 +855,8 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
                 why = f"the time-of-day odds on the average price failed this run: {type(e).__name__}"
                 hour = {**hour, "average": {**hour["average"], "blend": {"used": False, "why": why}}}
         if hour is not None and lane.integral_loop and "probabilities" in (hour.get("average") or {}):
-            # the call shows its exact blend, said under shown_source (integral_loop.shown)
-            from . import integral_loop   # only when switched on, as the grader imports it
-            hour = {**hour, "average": integral_loop.shown(hour["average"])}
+            # the call shows its exact blend, said under shown_source
+            hour = {**hour, "average": {**hour["average"], "shown_source": pool.SHOWN_BLEND}}
         if hour is not None:
             hour = {**hour, "used": len(hour_rec["used"]), "left_out": len(hour_rec["left_out"]), "missing": len(missing),
                     **({"code_sentences": hour_rec["code_sentences"]} if hour_rec.get("code_sentences") else {})}
@@ -847,6 +865,10 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
             if (hour.get("average") or {}).get("error"):
                 log(f"the average-price sum got no answer: {hour['average']['error']}")
             hour = plain_errors(hour)
+            try:
+                hour = with_flat_points(hour, scene.row["ts"], band, scene, lane)
+            except Exception as e:  # the phone's ± must never cost the read its sums
+                log(f"the end-price flat bands were left off this run: {type(e).__name__}: {e}")
         for qid, ans in fresh.items():
             # how far this answer moved from the last fresh one on the same day: past CHANGE_CUT the
             # question is in motion. Yesterday's closing answer is not a move, it is a new day.
@@ -884,10 +906,10 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         try:
             from .mirai_prediction import live_call
             from dataclasses import asdict
-            forecasts = live_call.forecast_now(state_dir, lane.name, day_name, asdict(read_record(hour)), hour_line(hour))
+            forecasts, voices = live_call.forecast_now_with_voices(state_dir, lane.name, day_name, asdict(read_record(hour)), hour_line(hour))
             forecast_now_done = True
             if forecasts:
-                hour = live_call.take_over(hour, forecasts, lane)
+                hour = live_call.take_over(hour, forecasts, lane, voices)
             else:
                 log("Pool 2 had no forecast for this read; the call stays on its blend")
         except Exception as e:  # Pool 2 must never cost the read its call

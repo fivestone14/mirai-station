@@ -1,7 +1,6 @@
 """The three learners on synthetic answer matrices: pushes, matching, correction. No host state."""
 from __future__ import annotations
 
-import math
 import random
 
 import pytest
@@ -10,7 +9,7 @@ from spx_jev.mirai_prediction.additive_scorer import (ANSWER_PRIOR_READS, Additi
                                                        forecast_with_additive_scorer, logit)
 from spx_jev.mirai_prediction.answer_matrix import AnswerMatrix, Row
 from spx_jev.mirai_prediction.jev_corrected import MIN_GRADED_ROWS, correct_jev_call, fit_jev_corrected, forecast_with_jev_corrected
-from spx_jev.mirai_prediction.matcher import (MATCHER_NEIGHBOR_COUNT, MATCHER_PRIOR_READS, fit_matcher, forecast_with_matcher, mismatch)
+from spx_jev.mirai_prediction.matcher import (MATCHER_NEIGHBOR_COUNT, fit_matcher, forecast_with_matcher, mismatch)
 from spx_jev.scores import floored, log_loss
 
 ODDS = {"up": 0.2, "flat": 0.55, "down": 0.25}

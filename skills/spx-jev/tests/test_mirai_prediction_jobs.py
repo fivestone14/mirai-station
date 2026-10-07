@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 
 import pytest
 
@@ -209,6 +208,100 @@ def test_pool_2_leaves_a_sum_it_did_not_forecast_alone():
     from spx_jev.mirai_prediction import live_call
     hour = {"by": {}, "average": {"pick": "flat", "probabilities": {"up": 0.3, "flat": 0.4, "down": 0.3}}}
     assert live_call.take_over(hour, {}, LIVE) == hour
+
+
+def _pool_2_hour():
+    blend = {"up": 0.3, "flat": 0.4, "down": 0.3}
+    return {"primary": "next_30", "shown_source": "blend50_exact",
+            "by": {"next_30": {"pick": "flat", "probabilities": blend}, "next_60": {"pick": "flat", "probabilities": blend}},
+            "pick": "flat", "probabilities": blend,
+            "average": {"pick": "flat", "probabilities": blend, "shown_source": "blend50_exact", "by": {"average_30": {"pick": "flat", "probabilities": blend}}}}
+
+
+def _mixed(**shares):
+    return {"probabilities": {v: {"up": 0.2, "flat": 0.5, "down": 0.3} for v in shares}, "shares": shares}
+
+
+def test_pool_2_takes_over_with_the_voices_that_went_into_each_sum_most_say_first():
+    """The phone lists what went into the combined forecast: each mixed voice's own odds and its share of the say, on the
+    call (the average-price sum) and on the 60-minute sum, ordered by the share; the 30-minute sum Pool 2 never forecast
+    carries none."""
+    from spx_jev.lane import LIVE
+    from spx_jev.mirai_prediction import live_call
+    pool_2 = {"average_30": {"up": 0.6, "flat": 0.2, "down": 0.2}, "next_60": {"up": 0.1, "flat": 0.2, "down": 0.7}}
+    voices = {"average_30": _mixed(historical_odds=0.2, matcher=0.5, jev_own=0.3), "next_60": _mixed(blend_50_50=0.1, additive_scorer=0.9)}
+    out = live_call.take_over(_pool_2_hour(), pool_2, LIVE, voices)
+    avg = out["average"]["voices"]
+    assert [v["name"] for v in avg] == ["matcher", "jev_own", "historical_odds"] and [v["share"] for v in avg] == [0.5, 0.3, 0.2]
+    assert avg[0] == {"name": "matcher", "plain_name": "Matcher", "probabilities": {"up": 0.2, "flat": 0.5, "down": 0.3}, "share": 0.5}
+    assert [v["name"] for v in out["by"]["next_60"]["voices"]] == ["additive_scorer", "blend_50_50"]
+    assert out["by"]["next_60"]["shown_source"] == "pool_v2" and "voices" not in out["by"]["next_30"]
+    assert "voices" not in out and out["average"]["pick"] == "up"
+
+
+def test_no_forecast_means_no_voices_and_a_voice_list_that_cannot_be_read_never_costs_the_call():
+    from spx_jev.lane import LIVE
+    from spx_jev.mirai_prediction import live_call
+    voices = {"average_30": _mixed(matcher=1.0), "next_60": _mixed(matcher=1.0)}
+    assert live_call.take_over(_pool_2_hour(), {}, LIVE, voices) == _pool_2_hour()
+    pool_2 = {"average_30": {"up": 0.6, "flat": 0.2, "down": 0.2}}
+    out = live_call.take_over(_pool_2_hour(), pool_2, LIVE, {"average_30": {"probabilities": {"matcher": {}}}})   # no shares
+    assert out["average"]["pick"] == "up" and out["average"]["shown_source"] == "pool_v2" and "voices" not in out["average"]
+    assert "voices" not in live_call.take_over(_pool_2_hour(), pool_2, LIVE)["average"]
+
+
+def test_the_voices_mixed_are_the_ones_pool_2_weighs_never_the_pools_with_shares_summing_to_one():
+    from spx_jev.mirai_prediction.pool_v2 import new_pool_v2
+    state = new_pool_v2("average_30", ["historical_odds", "matcher", "jev_own"])
+    forecasts = {v: PROBS for v in ("historical_odds", "matcher", "jev_own", "pool_v1", "not_in_the_pool")}
+    got = read_hook.mixed_voices(state, forecasts)
+    assert set(got["probabilities"]) == set(got["shares"]) == {"historical_odds", "matcher", "jev_own"}
+    assert abs(sum(got["shares"].values()) - 1.0) < 1e-9
+    assert read_hook.mixed_voices(state, {"pool_v1": PROBS}) == {"probabilities": {}, "shares": {}}
+
+
+def test_the_live_forecast_returns_each_sums_mixed_voices_beside_its_mix_and_the_log_keeps_neither(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from spx_jev.mirai_prediction import live_call
+    root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
+    monkeypatch.setattr(read_hook, "data_root", lambda s: root)
+    monkeypatch.setattr(read_hook, "code_features_for_read", lambda *a: {})
+    empty = AnswerMatrix(lane="live", sum_id="average_30", built_for_day="2026-10-01", rows=[], columns={})
+    monkeypatch.setattr(read_hook, "day_fits_for", lambda *a: voice_fits.DayFits(fits={}, matrix=empty, fit_day=None))
+    row = SimpleNamespace(read_id="live:2026-10-01T10:00:00-04:00", row_ts="2026-10-01T10:00:00-04:00", learn_exclude=False)
+    monkeypatch.setattr(read_hook, "todays_rows", lambda *a: {"average_30": row})
+    forecasts = {"historical_odds": PROBS, "jev_own": {"up": 0.6, "flat": 0.2, "down": 0.2}, "pool_v1": PROBS}
+    monkeypatch.setattr(read_hook, "all_voice_forecasts", lambda *a: (forecasts, {}))
+    rec = {"read_id": row.read_id}
+    mixed, voices = live_call.forecast_now_with_voices(tmp_path, "live", "2026-10-01", rec, {"row_ts": row.row_ts})
+    assert set(mixed) == set(voices) == {"average_30"}
+    assert set(voices["average_30"]["probabilities"]) == set(voices["average_30"]["shares"]) == {"historical_odds", "jev_own"}
+    assert live_call.forecast_now_with_voices(tmp_path, "live", "2026-10-02", rec, {"row_ts": row.row_ts})[0] == mixed
+    monkeypatch.setattr(read_hook, "load_archive_read", lambda *a: rec)
+    read_hook.after_read(tmp_path, "live", row.read_id, "2026-10-03")
+    logged = paths.read_json_lines(paths.job_run_log_file(root))[-1]
+    assert logged["ok"] is True and "voices" not in logged and "pool_v2" not in logged
+
+
+def test_a_voices_list_that_fails_drops_only_that_list_and_the_sum_keeps_its_mix(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from spx_jev.mirai_prediction import live_call
+    root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
+    monkeypatch.setattr(read_hook, "data_root", lambda s: root)
+    monkeypatch.setattr(read_hook, "code_features_for_read", lambda *a: {})
+    empty = AnswerMatrix(lane="live", sum_id="average_30", built_for_day="2026-10-01", rows=[], columns={})
+    monkeypatch.setattr(read_hook, "day_fits_for", lambda *a: voice_fits.DayFits(fits={}, matrix=empty, fit_day=None))
+    row = SimpleNamespace(read_id="live:2026-10-01T10:00:00-04:00", row_ts="2026-10-01T10:00:00-04:00", learn_exclude=False)
+    monkeypatch.setattr(read_hook, "todays_rows", lambda *a: {"average_30": row})
+    monkeypatch.setattr(read_hook, "all_voice_forecasts", lambda *a: ({"historical_odds": PROBS, "jev_own": PROBS}, {}))
+
+    def broken(*a):
+        raise KeyError("move")
+    monkeypatch.setattr(read_hook, "mixed_voices", broken)
+    mixed, voices = live_call.forecast_now_with_voices(tmp_path, "live", "2026-10-01", {"read_id": row.read_id}, {"row_ts": row.row_ts})
+    assert set(mixed) == {"average_30"} and voices == {}
+    logged = paths.read_json_lines(paths.job_run_log_file(root))[-1]
+    assert logged["job_name"] == "mixed_voices" and logged["ok"] is False and logged["sum_id"] == "average_30"
 
 
 def test_prune_archive_on_a_missing_or_empty_folder_deletes_nothing(tmp_path):

@@ -36,8 +36,9 @@ The live store keeps its folder names; `name_map.py` maps them (`graded_results`
 
 ## How it runs
 
-- **At every live read** `service.py` calls `live_call.forecast_now` inside the read (Pool 2's mix is the call since
-  2026-10-06), falling back to `service_hook.spawn_after_read`, which starts `read_hook` in its own process. The hook
+- **At every live read** `service.py` calls `live_call.forecast_now_with_voices` inside the read (Pool 2's mix is the call
+  since 2026-10-06; the voices it mixed ride on each sum it took over as `voices`, most say first, for the phone's "what
+  went into it"), falling back to `service_hook.spawn_after_read`, which starts `read_hook` in its own process. The hook
   first has the code feature builder answer its 90 questions for the read and appends the line to `raw/code_features/`
   (the record the nightly matrix joins on), then loads the day's fit file (fits + answer matrix, no store scan), adds
   today's row with those answers and JEV's picks, forecasts the read with every voice and appends the lines to `raw/`
@@ -155,7 +156,7 @@ by the question's status alone.
 
 **The read's order changed:** `service.run_once` now has the code feature builder answer the read right after the labels are
 built and before the requests are packed (`judgment.judge`), so the gates can read the answers. A live read records the line
-under `raw/code_features/{day}.jsonl` first (source `live`); `live_call.forecast_now` after the read finds it by `read_id` and
+under `raw/code_features/{day}.jsonl` first (source `live`); `live_call.forecast_now_with_voices` after the read finds it by `read_id` and
 computes nothing twice. A replay or an unsent run computes the answers and writes nothing. Every part of the judgment step
 catches its own failure (the code answers, the headlines, the yield's move, each gate): a failure leaves the question not
 fired, with the failure named in its reason, and the read goes on; the step never raises.

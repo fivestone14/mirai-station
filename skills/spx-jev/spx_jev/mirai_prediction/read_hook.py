@@ -1,12 +1,13 @@
 """After every live read: every voice forecasts the read, pool_v2 mixes them, and the lines are written to raw/.
 
-Runs inside the live read (live_call.forecast_now) or in its own process (service_hook.spawn_after_read). First the code
+Runs inside the live read (live_call.forecast_now_with_voices) or in its own process (service_hook.spawn_after_read). First the code
 feature builder answers its questions for the read and the line goes to raw/code_features/{day}.jsonl (the record the
 nightly matrix joins on), so today's row carries them. Then, for each sum the lane learns on (SUMS_BY_LANE), it loads the
 day's fits with the answer matrix they were fitted on (or the newest earlier day's), builds today's row from the raw
 records, asks every voice, mixes pool_v2 over the voices present, and appends one line per voice plus one for "pool_v2"
 to raw/new_voice_forecasts/{day}.jsonl. The first sum always runs; a later sum is skipped once the time budget is spent.
-A code feature failure is logged and the read is forecast with no code answers; after_read never raises.
+A code feature failure is logged and the read is forecast with no code answers; a failure listing a sum's voices is
+logged and drops only that sum's list, never its mix; after_read never raises.
 
     python -m spx_jev.mirai_prediction.read_hook --state-dir <state> --lane live [--read-id <id>] [--day YYYY-MM-DD]
 """
@@ -24,7 +25,7 @@ from .code_features import MarketHistory
 from .live_records import load_archive_read, load_pool_v1_snapshots
 from .name_map import SUMS_BY_LANE
 from .paths import (append_json_lines, data_root, ensure_folders, log_job_run, now_utc_iso, raw_forecasts_file, read_json_lines, today_et)
-from .pool_v2 import add_missing_voices, load_pool_v2, mix_pool_v2, new_pool_v2, save_pool_v2
+from .pool_v2 import NEVER_MIXED, add_missing_voices, load_pool_v2, mix_pool_v2, new_pool_v2, save_pool_v2, weight_shares
 from .voice_fits import DayFits, load_voice_fits
 from .voices import all_voice_forecasts
 
@@ -57,12 +58,19 @@ def code_features_for_read(root: Path, state_dir: Path | str, lane: str, day: st
     return answers
 
 
+def mixed_voices(state: dict, forecasts: dict[str, dict[str, float]]) -> dict:
+    """The voices Pool 2 mixed for one read and sum (the pools never among them): ``{"probabilities": {voice: probs},
+    "shares": {voice: its share of the "move" weights over them}}``, the say each had in the mix."""
+    present = [v for v in forecasts if v in state["voice_log_weights"]["move"] and v not in NEVER_MIXED]
+    return {"probabilities": {v: forecasts[v] for v in present}, "shares": weight_shares(state, "move", present) if present else {}}
+
+
 def forecast_read(state_dir: Path | str, lane: str, day: str, read_id: str | None, source: str = "live",
                   day_fits_by_sum: dict[str, DayFits] | None = None, pool_v1_snapshots: dict | None = None,
                   budget_seconds: float | None = TIME_BUDGET_SECONDS, read_record: dict | None = None,
                   hour_record: dict | None = None, market_history: MarketHistory | None = None) -> dict:
-    """Forecast one read with every voice and write the lines, the read's code features recorded first. Returns counts
-    and Pool 2's mix per sum ("pool_v2"). The optional caches let the replay reuse the day's fits, pool_v1 snapshots and
+    """Forecast one read with every voice and write the lines, the read's code features recorded first. Returns counts,
+    Pool 2's mix per sum ("pool_v2") and the voices it mixed per sum with their say ("voices", mixed_voices). The optional caches let the replay reuse the day's fits, pool_v1 snapshots and
     market history across a day's reads; the service passes ``read_record`` and ``hour_record`` to forecast a read before
     its records are written (live_call)."""
     started = time.monotonic()
@@ -80,7 +88,7 @@ def forecast_read(state_dir: Path | str, lane: str, day: str, read_id: str | Non
         return {"read_id": rec["read_id"], "written": 0, "why": "no read record with sums found",
                 "code_features": sum(v is not None for v in code_answers.values())}
     snapshots = pool_v1_snapshots if pool_v1_snapshots is not None else load_pool_v1_snapshots(state_dir, lane, day)
-    written, skipped, pool_v2_by_sum = 0, [], {}
+    written, skipped, pool_v2_by_sum, voices_by_sum = 0, [], {}, {}
     for sum_id, row in rows.items():
         if written and budget_seconds is not None and time.monotonic() - started > budget_seconds:
             skipped.append(f"{sum_id}: out of time")
@@ -104,10 +112,15 @@ def forecast_read(state_dir: Path | str, lane: str, day: str, read_id: str | Non
             lines.append({**line, "voice_name": "pool_v2", "voice_probs": mixed,
                           "voices_mixed": sorted(v for v in forecasts if v in state["voice_log_weights"]["move"])})
             pool_v2_by_sum[sum_id] = mixed
+            try:
+                voices_by_sum[sum_id] = mixed_voices(state, forecasts)
+            except Exception as e:  # the voices list is the phone's alone: a failure never costs the sum its mix
+                log_job_run(root, "mixed_voices", now_utc_iso(), False, error=f"{type(e).__name__}: {e}", lane=lane,
+                            read_id=row.read_id, sum_id=sum_id, trace=traceback.format_exc()[-1500:])
         append_json_lines(raw_forecasts_file(root, day), lines)     # one write per sum: never a half-written sum
         written += len(lines)
     return {"read_id": rec["read_id"], "written": written, "skipped": skipped, "seconds": round(time.monotonic() - started, 3),
-            "code_features": sum(v is not None for v in code_answers.values()), "pool_v2": pool_v2_by_sum}
+            "code_features": sum(v is not None for v in code_answers.values()), "pool_v2": pool_v2_by_sum, "voices": voices_by_sum}
 
 
 def after_read(state_dir: Path | str, lane: str, read_id: str | None = None, day: str | None = None) -> dict:
@@ -117,7 +130,7 @@ def after_read(state_dir: Path | str, lane: str, read_id: str | None = None, day
     day = day or (read_id.split(":", 1)[1][:10] if read_id and ":" in read_id else today_et())
     try:
         result = forecast_read(state_dir, lane, day, read_id)
-        log_job_run(root, "read_hook", started_at, True, lane=lane, **{k: v for k, v in result.items() if k not in ("skipped", "pool_v2")},
+        log_job_run(root, "read_hook", started_at, True, lane=lane, **{k: v for k, v in result.items() if k not in ("skipped", "pool_v2", "voices")},
                     skipped=len(result.get("skipped", [])))
         return result
     except Exception as e:

@@ -94,7 +94,7 @@ def test_the_page_reads_the_spx_cards_and_keeps_the_sndk_pages_modes():
     assert "fetch(URL_, {cache:'no-store'})" in JS and "fetch(TAPE_URL, {cache:'no-store'})" in JS
     assert "shownLeads = laneLeads(tape, Date.now(), marketDay());" in _fn("paint")
     assert "main.appendChild(laneCard(tape, tapeOk));" in _fn("paint") and "main.appendChild(foldLive(c));" in _fn("paint")
-    assert "sumCard(c, main, count);" in _fn("paint") and "openingDone(tape)" not in _fn("paint")   # removed 2026-10-06
+    assert "sumCard(c, main, count);" in _fn("paint")
     assert "var ex = expiryLine(c); if(ex) main.appendChild(ex);" in _fn("paint")
     assert "laneLeads(tape, Date.now(), marketDay()) !== shownLeads" in _fn("tick")
     assert "setInterval(function(){ if(!document.hidden){ poll(); pollTape(); tick(); } }, POLL_MS);" in JS
@@ -281,9 +281,8 @@ def test_the_sheet_gives_the_reason_a_call_was_not_graded_in_the_viewers_zone():
 
 
 def _opening(tallies):
-    sched = {"reads": ["2026-09-28T09:35:00-04:00", "2026-09-28T10:30:00-04:00"], "looks_ahead_min": 10}
-    return _run(_fn("tallyWords") + _fn("openingDone") + "console.log(JSON.stringify(D.t.map(function(t){ return openingDone(t).kids[1].textContent; })));",
-                {"t": [{"row_ts": "2026-09-28T10:30:00-04:00", "schedule": sched, "tally": t} for t in tallies]})
+    return _run(_fn("tallyWords") + _fn("dayScore") + "console.log(JSON.stringify(D.t.map(function(t){ return dayScore(t).kids[1].textContent; })));",
+                {"t": [{"closed_out_at": "2026-09-28T16:03:00-04:00", "tally": t} for t in tallies]})
 
 
 def test_an_unsure_call_is_passed_on_the_page_with_its_lean_never_a_wrong_one():
@@ -325,19 +324,17 @@ def test_a_call_closed_for_good_is_never_graded_on_the_page_not_still_to_grade()
     """A lane call whose window was halted is closed for good (tally.closed): the morning's line counts it apart, in
     the service's words (service.tally_words), never as a call still to grade. A card from before the average-price
     grade counted its passes as unsure."""
-    sched = {"reads": ["2026-09-29T09:35:00-04:00", "2026-09-29T10:30:00-04:00"], "looks_ahead_min": 10}
-    lines = _run(_fn("tallyWords") + _fn("openingDone") + "console.log(JSON.stringify(D.t.map(function(t){ return dump(openingDone(t)); })));", {"t": [
-        {"row_ts": "2026-09-29T10:30:00-04:00", "schedule": sched, "tally": {"calls": 12, "graded": 11, "right": 3, "closed": 1}},
-        {"row_ts": "2026-09-29T10:30:00-04:00", "schedule": sched, "tally": {"calls": 12, "graded": 9, "right": 3, "closed": 1}},
-        {"row_ts": "2026-09-29T10:30:00-04:00", "schedule": sched, "tally": {"calls": 12, "graded": 11, "right": 3, "unsure": 2, "closed": 1}},
-        {"row_ts": "2026-09-29T10:30:00-04:00", "schedule": sched,
-         "tally": {"calls": 12, "graded": 11, "right": 3, "passed": 2, "end_price_only": 1, "closed": 1}},
-        {"row_ts": "2026-09-29T10:30:00-04:00", "schedule": sched, "tally": {"calls": 1, "graded": 0, "right": 0, "passed": 0, "closed": 1}}]})
-    assert [_flat_text(l) for l in lines] == ["opening done3 of 11 calls right \u00B7 1 never graded",
-                                              "opening done3 of 9 calls right \u00B7 2 still to grade \u00B7 1 never graded",
-                                              "opening done3 of 9 calls right \u00B7 2 passed \u00B7 1 never graded",
-                                              "opening done3 of 9 calls right \u00B7 2 passed \u00B7 1 on the end price only \u00B7 1 never graded",
-                                              "opening done1 never graded"]
+    lines = _run(_fn("tallyWords") + _fn("dayScore") + "console.log(JSON.stringify(D.t.map(function(t){ return dump(dayScore(t)); })));", {"t": [
+        {"tally": {"calls": 12, "graded": 11, "right": 3, "closed": 1}},
+        {"tally": {"calls": 12, "graded": 9, "right": 3, "closed": 1}},
+        {"tally": {"calls": 12, "graded": 11, "right": 3, "unsure": 2, "closed": 1}},
+        {"tally": {"calls": 12, "graded": 11, "right": 3, "passed": 2, "end_price_only": 1, "closed": 1}},
+        {"tally": {"calls": 1, "graded": 0, "right": 0, "passed": 0, "closed": 1}}]})
+    assert [_flat_text(l) for l in lines] == ["30-min calls so far3 of 11 calls right \u00B7 1 never graded",
+                                              "30-min calls so far3 of 9 calls right \u00B7 2 still to grade \u00B7 1 never graded",
+                                              "30-min calls so far3 of 9 calls right \u00B7 2 passed \u00B7 1 never graded",
+                                              "30-min calls so far3 of 9 calls right \u00B7 2 passed \u00B7 1 on the end price only \u00B7 1 never graded",
+                                              "30-min calls so far1 never graded"]
 
 
 def test_the_30_minute_calls_day_score_is_shown_under_the_call_as_the_openings_is():
@@ -363,11 +360,9 @@ def test_a_call_closed_at_its_end_price_but_graded_on_the_average_reads_graded_o
     got = _run("console.log(JSON.stringify(callWords(D.c, Date.parse(D.now))));", {"c": both, "now": "2026-09-28T10:45:00-04:00"})
     assert got == {"text": "Was Up \u00B7 ", "strong": "Right", "short": "Up \u00B7 "}
     assert _result(both, "2026-09-28T10:45:00-04:00")[0] == "RightResult"
-    sched = {"reads": ["2026-09-29T09:35:00-04:00", "2026-09-29T10:30:00-04:00"], "looks_ahead_min": 10}
     tally = {"calls": 2, "graded": 1, "right": 1, "passed": 0, "end_price_only": 0, "closed": 0}
-    line = _run(_fn("tallyWords") + _fn("openingDone") + "console.log(JSON.stringify(dump(openingDone(D.t))));",
-                {"t": {"row_ts": "2026-09-29T10:30:00-04:00", "schedule": sched, "tally": tally}})
-    assert _flat_text(line) == "opening done1 of 1 calls right \u00B7 1 still to grade"
+    line = _run(_fn("tallyWords") + _fn("dayScore") + "console.log(JSON.stringify(dump(dayScore(D.t))));", {"t": {"tally": tally}})
+    assert _flat_text(line) == "30-min calls so far1 of 1 calls right \u00B7 1 still to grade"
 
 
 def test_a_close_out_that_leaves_a_call_to_grade_still_redraws_the_page():
@@ -949,44 +944,15 @@ def test_the_mode_and_answered_chips_live_inside_the_leading_card():
     assert ".card>.mode{width:fit-content;margin-bottom:12px}" in SPX and ".card>.answered{display:table;margin-top:12px}" in SPX
 
 
-def test_a_learned_mix_on_the_phone_is_named_as_such_with_the_half_and_half_kept_beneath():
-    """A loop's shown swaps the learned mix into the odds it shows, keeps the exact blend beside it and marks
-    shown_source; the chart must name which one is shown and still draw the other."""
+def test_an_older_cards_half_and_half_is_named_as_the_graded_tile():
+    """A card from before the combined forecast shows the exact blend (shown_source blend50_exact): the chart names it
+    the graded half-and-half beside the typical day."""
     js = (_how() + "var g = howChart(D.h, {used: true, sessions: 19, phase_words: 'lunch, 12:00 to 14:00'}, D.at);"
           "console.log(JSON.stringify(g.kids.map(function(k){ return k.textContent; })));")
     odds = {"up": 0.2, "down": 0.3, "flat": 0.5}
-    half = {"up": 0.3, "down": 0.1, "flat": 0.4, "unsure": 0.2}
-    h = {"probabilities": odds, "jev": {"probabilities": odds}, "clock": {"probabilities": odds}, "blend50_exact": half,
-         "shown_source": "pool_v1"}
-    got = _run(js, {"h": h, "at": "2026-09-28T12:31:00-04:00", "now": "2026-09-28T12:35:00-04:00"}, LA)
-    assert got == ["Typical \u00B7 19 daysFlat 50%", "Learned mix \u00B7 gradedFlat 50%"]
-    blend = _run(js, {"h": {**h, "shown_source": "blend50_exact"}, "at": "2026-09-28T12:31:00-04:00", "now": "2026-09-28T12:35:00-04:00"}, LA)
+    h = {"probabilities": odds, "jev": {"probabilities": odds}, "clock": {"probabilities": odds}, "shown_source": "blend50_exact"}
+    blend = _run(js, {"h": h, "at": "2026-09-28T12:31:00-04:00", "now": "2026-09-28T12:35:00-04:00"}, LA)
     assert blend == ["Typical \u00B7 19 daysFlat 50%", "Half of each \u00B7 gradedFlat 50%"]
-
-
-def test_the_calls_chart_names_the_average_price_loops_learned_mix_and_never_the_end_price_loops(monkeypatch):
-    """Will's decision of 09-29: once the average-price loop's pool is promoted it is what the call shows
-    (integral_loop.shown marks hour.average with pool.SHOWN_POOL and keeps the exact blend beside it), and the
-    end-price loop's promotion reaches only the end-price sums. The call's chart reads the call's own shown_source,
-    so it names the learned mix for the first and never for the second."""
-    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[3] / "skills" / "spx-jev"))
-    from spx_jev.pool import SHOWN_BLEND, SHOWN_POOL
-    odds, half = {"up": 0.52, "flat": 0.33, "down": 0.15}, {"up": 0.45, "flat": 0.35, "down": 0.2}
-    blend = {"used": True, "jev_share": 0.5, "phase_words": "lunch, 12:00 to 14:00", "sessions": 19}
-    pooled = {**AVG, "pick": "up", "probabilities": odds, "blend50_exact": half, "blend": blend, "shown_source": SHOWN_POOL,
-              "jev": {"probabilities": {"up": 0.6, "flat": 0.3, "down": 0.1}, "confidence": 0.3},
-              "clock": {"probabilities": {"up": 0.3, "flat": 0.4, "down": 0.3}}}
-    end = {**END_30, "used": 12, "by": {"next_30": END_30}, "blend": blend, "jev": {"probabilities": END_30["probabilities"]},
-           "clock": {"probabilities": END_30["probabilities"]}}
-    c = {"row_ts": "2026-09-28T12:32:10-04:00", "marks": {"next_30": "2026-09-28T13:02:00-04:00"}, "calls": [],
-         "hour": {**end, "shown_source": SHOWN_BLEND, "average": pooled}}
-    how = next(v for k, v in _sum_card(c) if k == "tod")
-    assert "Learned mix \u00B7 graded" in how
-    # the end-price loop promoted, the call still on its blend: the tiles say the call is half of each
-    c["hour"] = {**end, "shown_source": SHOWN_POOL, "blend50_exact": half,
-                 "average": {**pooled, "probabilities": half, "pick": "up", "shown_source": SHOWN_BLEND}}
-    how = next(v for k, v in _sum_card(c) if k == "tod")
-    assert "learned mix" not in how.lower() and "Half of each \u00B7 graded" in how
 
 
 # ---- before the open: the pre-market card (skills/spx-jev, spx_jev.premarket)
@@ -1085,10 +1051,6 @@ def _card_parts(got):
     """The pre-market card's children, each as [class, flat text]."""
     card = [m[1] for m in got["main"] if "pre" in m[0].split()][0]
     return [[k["attrs"].get("class", k["tag"]), _flat_text(k)] for k in card["kids"]]
-
-
-def _texts(svg, cls=None):
-    return [k["text"] for k in svg["kids"] if k["tag"] == "text" and (cls is None or k["attrs"].get("class") == cls)]
 
 
 def test_the_page_reads_the_premarket_card_and_it_leads_before_the_open():
@@ -1532,9 +1494,12 @@ def _parts(node):
     return [[k["attrs"].get("class", k["tag"]), _flat_text(k)] for k in node["kids"]]
 
 
+SUM_CARD_FNS = ("top1", "oneAnswer", "phaseSpan", "howBar", "tile", "howChart", "tag", "skipLine", "plusIso", "averageWords", "jevOwn",
+                "labRow", "indexLevel", "calledAt", "threeWay", "voiceName", "mixRows", "sumSource", "endPriceBlock", "sumCard")
+
+
 def _sum_card(c, tz=LA, whole=False):
-    js = (CARD_STUBS + _odds() + "".join(_fn(f) for f in ("top1", "oneAnswer", "phaseSpan", "howBar", "tile", "howChart", "tag", "skipLine", "plusIso",
-                                                            "averageWords", "jevOwn", "endPriceRow", "labRow", "sumCard"))
+    js = (CARD_STUBS + _odds() + "".join(_fn(f) for f in SUM_CARD_FNS) + _var("VOICE_WORDS")
           + "var main = el('main'); sumCard(D.c, main); console.log(JSON.stringify(dump(main.kids[0])));")
     card = _run(js, {"c": c, "now": "2026-09-28T11:10:00-04:00"}, tz)
     return card if whole else _parts(card)
@@ -1567,14 +1532,87 @@ def test_the_combined_forecast_leads_the_card_and_jevs_own_read_sits_in_a_tile()
            "jev": {"probabilities": {"up": 0.67, "flat": 0.2, "down": 0.13}, "confidence": 0.6},
            "clock": {"probabilities": {"up": 0.22, "flat": 0.61, "down": 0.17}}}
     n60 = {"pick": "flat", "probabilities": {"up": 0.2, "flat": 0.5, "down": 0.3}, "blended": True,
-           "jev": {"pick": "up", "probabilities": {"up": 0.9, "flat": 0.05, "down": 0.05}}}
+           "blend50_exact": {"up": 0.5, "flat": 0.3, "down": 0.2}, "jev": {"pick": "up", "probabilities": {"up": 0.9, "flat": 0.05, "down": 0.05}}}
     c = {"row_ts": "2026-09-28T13:29:10-04:00", "marks": {"next_30": "2026-09-28T13:59:00-04:00", "next_60": "2026-09-28T14:29:00-04:00"},
          "calls": [], "hour": {**END_30, "used": 2, "shown_source": "pool_v2", "by": {"next_30": END_30, "next_60": n60}, "average": avg}}
     parts = _sum_card(c)
     got = dict((k, v) for k, v in parts if k in ("big", "lab call", "tod"))
     assert got["big"] == "Flat 47%" and got["lab call"].startswith("Today’s call · combined") and "sure" not in got["lab call"]
     assert got["tod"].startswith("Typical · 20 days") and "JEV aloneUp 67%" in got["tod"] and "graded" not in got["tod"]
-    assert any(k == "row60" and v.startswith("60 min \u00B7 end priceFlat 50%") for k, v in parts)
+    assert ["ep", "End priceprice at the bell30 minat 10:59Flat 80%JEV alone60 minat 11:29Flat 50%combined"] in parts
+
+
+def _voice(name, plain, down, flat, up, share):
+    return {"name": name, "plain_name": plain, "probabilities": {"up": up, "flat": flat, "down": down}, "share": share}
+
+
+# the 15:29 ET card of 2026-10-07 (state/spx_jev/latest.json) as the service now writes it: the call's voices beside it
+# (live_call.take_over, listed in the order written, not by share) and each end-price sum's flat band in points
+REAL_AVG = {"pick": "flat", "probabilities": {"up": 0.1653, "flat": 0.4803, "down": 0.3545}, "primary": "average_30", "box": "next_30",
+            "minutes": 30, "flat_points": 3.62, "edge_points": 2.14, "price": 7798.0, "shown_source": "pool_v2",
+            "blend": {"used": True, "jev_share": 0.5, "phase_words": "close, 15:00 to 16:00", "sessions": 20},
+            "jev": {"probabilities": {"up": 0.13, "flat": 0.15, "down": 0.72}}, "clock": {"probabilities": {"up": 0.17, "flat": 0.65, "down": 0.17}},
+            "voices": [_voice("historical_odds", "Historical odds", 0.172, 0.654, 0.173, 0.224),
+                       _voice("blend_50_50", "50/50 blend", 0.446, 0.402, 0.152, 0.604),
+                       _voice("jev_corrected", "Corrected JEV", 0.144, 0.69, 0.167, 0.045),
+                       _voice("matcher", "Matcher", 0.134, 0.712, 0.153, 0.079),
+                       _voice("jev_own", "JEV's own call", 0.72, 0.15, 0.13, 0.021),
+                       _voice("additive_scorer", "Additive scorer", 0.109, 0.781, 0.11, 0.026)]}
+REAL_30 = {"pick": "flat", "probabilities": {"up": 0.1419, "down": 0.2058, "flat": 0.5472, "unsure": 0.105}, "blended": True, "flat_points": 3.62}
+REAL_60 = {"pick": "flat", "probabilities": {"up": 0.1543, "flat": 0.6974, "down": 0.1483}, "blended": True, "flat_points": 5.69,
+           "shown_source": "pool_v2", "blend50_exact": {"up": 0.1288, "down": 0.2043, "flat": 0.527, "unsure": 0.14}}
+REAL = {"row_ts": "2026-10-07T15:29:17.137096-04:00", "marks": {"next_30": "2026-10-07T15:59:00-04:00", "next_60": None}, "calls": [],
+        "hour": {**REAL_30, "primary": "next_30", "shown_source": "pool_v2", "by": {"next_30": REAL_30, "next_60": REAL_60}, "average": REAL_AVG}}
+
+
+def test_the_combined_call_says_its_price_its_flat_band_what_went_into_it_and_both_end_prices():
+    """The owner's mockup of 2026-10-07: under the odds the price the call was made at with its flat edge as a pill and
+    the band's two prices; then every voice of the combined forecast, most say first; then one end-price block with a
+    row per window, each with its mark, the pick, the flat band in points and whose forecast it is."""
+    card = _sum_card(REAL, whole=True)
+    parts = _parts(card)
+    kinds = [k for k, _ in parts]
+    at = _cls(card, "avg-at")[0]
+    assert [_flat_text(k) for k in at["kids"]] == ["Called at", "7,798.00", "\u00B1 2.1 pts"] and at["kids"][1]["tag"] == "b"
+    assert _texts(card, "pill") == ["\u00B1 2.1 pts"]
+    assert [_flat_text(k) for k in _cls(card, "avg-lab")[0]["kids"]] == ["7,795.9", "flat on the 30-min average", "7,800.1"]
+    assert [k["attrs"]["class"] for k in _cls(card, "avg-bar")[0]["kids"]] == ["band", "at"]
+    assert not any(v.startswith("Average price") for _, v in parts)          # the line it replaces
+    mix = _cls(card, "mix")[0]
+    assert _flat_text(mix["kids"][0]) == "What went into itD \u00B7 F \u00B7 U"
+    assert _texts(mix, "n") == ["50/50 blend", "Usual odds", "Matcher", "Corrected JEV", "Additive scorer", "JEV alone"]
+    assert _texts(mix, "v") == ["45 \u00B7 40 \u00B7 15", "17 \u00B7 65 \u00B7 17", "13 \u00B7 71 \u00B7 15", "14 \u00B7 69 \u00B7 17",
+                                "11 \u00B7 78 \u00B7 11", "72 \u00B7 15 \u00B7 13"]
+    assert [k["attrs"]["class"] for k in _cls(mix, "how-bar")[0]["kids"]] == ["o-down", "o-flat", "o-up"]
+    assert _flat_text(mix["kids"][-1]) == "Listed by how much say each has"
+    assert "JEV aloneDown 72%" in dict(parts)["tod"]                          # the tile stays beside the usual odds
+    rows = [[_flat_text(n) for n in k["kids"][:2]] for k in _cls(card, "ep-r")]
+    assert rows == [["30 minat 12:59", "Flat 55%\u00B1 3.6 pts50/50 blend"], ["60 minpast the close", "Flat 70%\u00B1 5.7 pts" + "combined"]]
+    assert _texts(card, "src") == ["50/50 blend", "combined"] and _flat_text(_cls(card, "ep")[0]["kids"][0]) == "End priceprice at the bell"
+    bar = _cls(_cls(card, "ep-r")[0], "how-bar")[0]
+    assert [k["attrs"]["class"] for k in bar["kids"]] == ["o-down", "o-flat", "o-up"]  # unsure is left out of the bar
+    assert not any(k == "row60" for k, _ in parts)                            # the two old end-price lines are gone
+    assert kinds.index("mix") < kinds.index("ep")
+
+
+def test_a_combined_call_without_the_new_fields_keeps_its_edge_line_and_has_no_voices_or_band():
+    avg = {k: v for k, v in REAL_AVG.items() if k not in ("price", "voices")}
+    by = {h: {k: v for k, v in s.items() if k != "flat_points"} for h, s in REAL["hour"]["by"].items()}
+    parts = _sum_card({**REAL, "hour": {**REAL["hour"], "by": by, "average": avg}})
+    assert ["tag", "Average price \u00B7 flat \u00B12.1 pts"] in parts and not any(k in ("mix", "avg-at") for k, _ in parts)
+    assert ["ep", "End priceprice at the bell30 minat 12:59Flat 55%50/50 blend60 minpast the closeFlat 70%combined"] in parts
+
+
+def test_the_new_rows_fit_the_owners_360px_phone():
+    """The 294px inside a dashed card at 360: a voice row's name and figures leave its bar room, the end-price row's
+    window column leaves the pick, the band and the source tag a line (they wrap if not), and the price line's pill sits
+    beside the price."""
+    inner = 360 - 2 * 16 - 2 * _px(".card", "padding") - 2
+    cols = re.search(r"grid-template-columns:(\d+)pxminmax\(0,1fr\)(\d+)px;gap:(\d+)px", _rule(".mix-r"))
+    assert inner - int(cols.group(1)) - int(cols.group(2)) - 2 * int(cols.group(3)) >= 90
+    assert "text-overflow:ellipsis" in _rule(".mix-r .n") and "flex-wrap:wrap" in _rule(".ep-v") and "min-width:0" in _rule(".ep-v")
+    assert inner - _px(".ep-r", "grid-template-columns") - 12 >= 210
+    assert "margin-left:auto" in _rule(".pill") and "white-space:nowrap" in _rule(".pill")
 
 
 def test_the_30_minute_card_leads_with_the_average_price_call_and_keeps_the_end_price_beside_it():
@@ -1589,16 +1627,16 @@ def test_the_30_minute_card_leads_with_the_average_price_call_and_keeps_the_end_
     parts = _sum_card(c)
     assert parts[0] == ["mode", "30-min call"]   # the mode chip heads the card
     assert parts[3] == ["big", "Up 55%"]
-    said = dict((k, v) for k, v in parts if k in ("tag", "row60") and v.startswith(("Average price", "End price")))
-    assert said == {"tag": "Average price \u00B7 flat \u00B13.1 pts", "row60": "End priceFlat 80%"}
+    said = dict((k, v) for k, v in parts if k in ("tag", "ep") and v.startswith(("Average price", "End price")))
+    assert said == {"tag": "Average price \u00B7 flat \u00B13.1 pts", "ep": "End priceprice at the bell30 minat 08:32Flat 80%JEV alone60 minat 09:02Up 50%JEV alone"}
     how = next(k for k in _sum_card(c, whole=True)["kids"] if k["attrs"].get("class") == "how")
     note = how["kids"][-1]
     assert _flat_text(how).startswith("JEVUp 55%") and _flat_text(note) == "JEV alone today"
     assert note["attrs"]["title"] == sentence_(why) and "end-price clock" not in json.dumps(how)
-    assert any(k == "row60" and v.startswith("60 min \u00B7 end priceUp 50%") for k, v in parts)   # an end-price sum, said so
     # a card from before the average-price sum leads with the end-price sum and has no end-price line beside it
     old = _sum_card({**c, "hour": {k: v for k, v in hour.items() if k != "average"}})
-    assert old[3] == ["big", "Flat 80%"] and not any(v.startswith(("End price", "Average price")) for _, v in old)
+    assert old[3] == ["big", "Flat 80%"] and not any(v.startswith("Average price") for _, v in old)
+    assert ["ep", "End priceprice at the bell60 minat 09:02Up 50%JEV alone"] in old            # the call is the 30-minute end price
 
 
 def test_the_last_reads_clock_looks_as_far_ahead_as_its_average_runs():
@@ -1606,8 +1644,7 @@ def test_the_last_reads_clock_looks_as_far_ahead_as_its_average_runs():
     28 minutes": the clock takes the call's own minutes (hour.average.minutes); a card with no average-price call keeps
     its calls' horizon."""
     js = (CARD_STUBS + "function clockBlock(read, minutes, mark){ return el('div', 'clock', 'Looks ' + minutes + ' min ahead, graded ' + mark); }"
-          + _odds() + "".join(_fn(f) for f in ("top1", "oneAnswer", "phaseSpan", "howBar", "tile", "howChart", "tag", "skipLine", "plusIso", "averageWords",
-                                                "jevOwn", "endPriceRow", "labRow", "sumCard"))
+          + _odds() + "".join(_fn(f) for f in SUM_CARD_FNS) + _var("VOICE_WORDS")
           + "console.log(JSON.stringify(D.c.map(function(c){ var main = el('main'); sumCard(c, main); return dump(main.kids[0]); })));")
     hour = {**END_30, "used": 12, "by": {"next_30": END_30}, "average": {**AVG, "minutes": 28}}
     c = {"row_ts": "2026-09-28T15:32:10-04:00", "hour": hour, "marks": {"next_30": "2026-09-28T16:00:00-04:00"},

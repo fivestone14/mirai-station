@@ -391,15 +391,15 @@ def _average_sums(req, **kw):
 
 
 def test_the_call_shows_its_exact_blend_said_under_shown_source(tmp_path, monkeypatch):
-    """The call keeps its exact blend, said under shown_source (integral_loop.shown), on the card and in the sum record;
-    neither loop's pool replaces it (the promotion was retired on 2026-10-07)."""
+    """The call and the end-price sums keep their exact blend, said under shown_source, on the card and in the sum
+    record (store falls back to "jev" without it); neither loop's pool replaces it (the promotion was retired on 2026-10-07)."""
     state = _state(tmp_path, [make_row(at(12, 2, ss=10), 7700.0)], 150)
     monkeypatch.setattr(service, "send_all", _answers())
     monkeypatch.setattr(service, "send", _average_sums)
     c = run_once(state, state / "spx_jev", DOC, True, DAY)
     rec = json.loads((state / "spx_jev" / "hour" / f"{DAY}.jsonl").read_text().splitlines()[0])
     assert c["hour"]["average"]["shown_source"] == rec["average"]["shown_source"] == "blend50_exact"
-    assert c["hour"]["average"]["pick"] == "up" and c["hour"]["shown_source"] == "blend50_exact"
+    assert c["hour"]["average"]["pick"] == "up" and c["hour"]["shown_source"] == rec["shown_source"] == "blend50_exact"
 
 
 def test_a_failing_average_price_loop_costs_neither_the_read_nor_the_close_out(tmp_path, monkeypatch, capsys):
@@ -660,3 +660,45 @@ def test_the_prediction_kill_switch_keeps_the_call_on_its_blend_and_never_foreca
     assert "prediction_off = prediction_switched_off()" in source
     assert "and not prediction_off and hour is not None" in source                 # the in-read forecast
     assert "and not forecast_now_done and not prediction_off:" in source           # the fallback hook
+
+
+def _live_pool_2_read(tmp_path, monkeypatch, voice_list=None):
+    """A live read (today's row, sent) whose in-read forecast is Pool 2's, with the voices it mixed beside it."""
+    from spx_jev.mirai_prediction import live_call
+    state = _state(tmp_path, [make_row(at(12, 2, ss=10), 7700.0)], 150)
+    monkeypatch.setattr(service, "send_all", _answers())
+    monkeypatch.setattr(service, "send", _average_sums)
+    monkeypatch.setattr(service, "today_et", lambda: DAY)
+    monkeypatch.setattr(service, "STALE_ROW_SKIP_MIN", 1e9)
+    monkeypatch.delenv("SPX_JEV_PREDICTION_DISABLE", raising=False)
+    mixed = {"average_30": {"up": 0.2, "flat": 0.3, "down": 0.5}, "next_60": {"up": 0.1, "flat": 0.8, "down": 0.1}}
+    voices = {s: {"probabilities": {"matcher": {"up": 0.1, "flat": 0.2, "down": 0.7}, "historical_odds": {"up": 0.3, "flat": 0.4, "down": 0.3}},
+                  "shares": {"matcher": 0.25, "historical_odds": 0.75}} for s in mixed}
+    monkeypatch.setattr(live_call, "forecast_now_with_voices", lambda *a: (mixed, voices))
+    if voice_list is not None:
+        monkeypatch.setattr(live_call, "voice_list", voice_list)
+    return run_once(state, state / "spx_jev", DOC, True, None)
+
+
+def test_a_live_read_carries_the_voices_of_the_combined_forecast_and_each_end_price_sums_flat_band(tmp_path, monkeypatch):
+    """The phone's "what went into it" and its end-price ±: the voices Pool 2 mixed ride on the call and on the 60-minute
+    sum, most say first, and each end-price sum carries the flat band in points the grader sets it against."""
+    from spx_jev.cuts import NEXT_30_FLAT_BAND_SIGMA, NEXT_60_FLAT_BAND_SIGMA
+    h = _live_pool_2_read(tmp_path, monkeypatch)["hour"]
+    assert h["average"]["shown_source"] == "pool_v2" and h["average"]["pick"] == "down"
+    assert [v["name"] for v in h["average"]["voices"]] == ["historical_odds", "matcher"]
+    assert [v["name"] for v in h["by"]["next_60"]["voices"]] == ["historical_odds", "matcher"] and "voices" not in h["by"]["next_30"]
+    f30, f60 = h["by"]["next_30"]["flat_points"], h["by"]["next_60"]["flat_points"]
+    assert f30 == h["average"]["flat_points"]                       # the same band the average-price call's edge is priced from
+    assert abs(f60 - f30 * NEXT_60_FLAT_BAND_SIGMA / NEXT_30_FLAT_BAND_SIGMA) < 0.02
+
+
+def test_a_failure_listing_the_voices_or_the_flat_bands_never_costs_the_read_its_combined_call(tmp_path, monkeypatch, capsys):
+    def boom(*a, **k):
+        raise RuntimeError("the voices broke")
+    monkeypatch.setattr(service, "with_flat_points", boom)
+    c = _live_pool_2_read(tmp_path, monkeypatch, voice_list=boom)
+    h = c["hour"]
+    assert h["average"]["shown_source"] == "pool_v2" and h["average"]["pick"] == "down" and h["by"]["next_60"]["pick"] == "flat"
+    assert "voices" not in h["average"] and "voices" not in h["by"]["next_60"] and "flat_points" not in h["by"]["next_30"]
+    assert "the end-price flat bands were left off this run: RuntimeError" in capsys.readouterr().err
