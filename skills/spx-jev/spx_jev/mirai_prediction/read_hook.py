@@ -23,7 +23,7 @@ from .code_feature_inputs import record_code_features
 from .code_features import MarketHistory
 from .live_records import load_archive_read, load_pool_v1_snapshots
 from .name_map import SUMS_BY_LANE
-from .paths import (append_json_line, data_root, ensure_folders, log_job_run, now_utc_iso, raw_forecasts_file, read_json_lines, today_et)
+from .paths import (append_json_lines, data_root, ensure_folders, log_job_run, now_utc_iso, raw_forecasts_file, read_json_lines, today_et)
 from .pool_v2 import add_missing_voices, load_pool_v2, mix_pool_v2, new_pool_v2, save_pool_v2
 from .voice_fits import DayFits, load_voice_fits
 from .voices import all_voice_forecasts
@@ -98,15 +98,14 @@ def forecast_read(state_dir: Path | str, lane: str, day: str, read_id: str | Non
         mixed = mix_pool_v2(state, forecasts)
         line = {"read_id": row.read_id, "lane": lane, "day": day, "row_ts": row.row_ts, "sum_id": sum_id, "fit_day": day_fits.fit_day,
                 "created_at": now_utc_iso(), "source": source, "learn_exclude": row.learn_exclude}
-        for voice, probs in forecasts.items():
-            append_json_line(raw_forecasts_file(root, day), {**line, "voice_name": voice, "voice_probs": probs,
-                                                           **({"notes": notes[voice]} if voice in notes else {})})
-            written += 1
+        lines = [{**line, "voice_name": voice, "voice_probs": probs, **({"notes": notes[voice]} if voice in notes else {})}
+                 for voice, probs in forecasts.items()]
         if mixed is not None:
-            append_json_line(raw_forecasts_file(root, day), {**line, "voice_name": "pool_v2", "voice_probs": mixed,
-                                                           "voices_mixed": sorted(v for v in forecasts if v in state["voice_log_weights"]["move"])})
-            written += 1
+            lines.append({**line, "voice_name": "pool_v2", "voice_probs": mixed,
+                          "voices_mixed": sorted(v for v in forecasts if v in state["voice_log_weights"]["move"])})
             pool_v2_by_sum[sum_id] = mixed
+        append_json_lines(raw_forecasts_file(root, day), lines)     # one write per sum: never a half-written sum
+        written += len(lines)
     return {"read_id": rec["read_id"], "written": written, "skipped": skipped, "seconds": round(time.monotonic() - started, 3),
             "code_features": sum(v is not None for v in code_answers.values()), "pool_v2": pool_v2_by_sum}
 

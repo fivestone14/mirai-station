@@ -216,7 +216,7 @@ def test_an_answered_judgment_question_is_a_layer_three_column_of_the_matrix_and
     jev = {a["question_id"]: str(a["pick"]) for a in parts["answers"] if a["status"] == "answered" and a["pick"] is not None}
     row = row_answers({}, jev)
     assert row["jev:news_reaction"] == "overreacting" and "jev:macro_gap_equity_reason" not in row
-    assert column_catalog(set(jev), {"news_reaction": "judgment"})["jev:news_reaction"] == {"layer": 3, "group": "jev:judgment", "family": "jev"}
+    assert column_catalog(set(jev), {"news_reaction": "judgment"})["jev:news_reaction"] == {"layer": 3, "group": "jev:news_reaction", "family": "jev"}   # its own vote
     lost = {a["question_id"]: a for a in store._read_rows(date.fromisoformat(DAY), "live", _read_with_judgment_answer(False), {}, {})["answers"]}
     assert lost["news_reaction"]["status"] == "lost"
 

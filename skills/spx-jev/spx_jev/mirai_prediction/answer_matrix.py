@@ -21,7 +21,7 @@ code features of a read were computed from data known at its read time (prior se
 learner sees comes from its own day or later.
 
 THE CUT-OVER (name_map.CUT_OVER_DAY, Phase 4): from that day the live lane asks only the judgment questions, so a ``jev:``
-column of a pre-merge question stops being answered. A matrix built for a day after the cut-over (before_day > CUT_OVER_DAY)
+column of a pre-merge question stops being answered. A matrix built for the cut-over day or later (before_day >= CUT_OVER_DAY)
 drops every ``jev:`` column whose last answered day is before the cut-over (column_catalog), and its rows' answers with it:
 the matcher reads a column neither read answered as half a mismatch, so dead columns would dilute every match against
 the old reads. Every ``code:`` column is kept whatever its answers: the catalog is the same before and after. A matrix built
@@ -37,7 +37,7 @@ from pathlib import Path
 
 from ..scores import OUTCOMES
 from .code_features import column_name, load_catalog
-from .name_map import CUT_OVER_DAY, store_path
+from .name_map import CUT_OVER_DAY, JUDGMENT_GROUP, store_path
 from .paths import CODE_FEATURES, RAW, data_root, read_json_lines
 
 
@@ -196,9 +196,10 @@ def row_answers(code_answers: dict[str, str | None], jev_answers: dict[str, str]
 
 
 def retired_before_cut_over(question_ids: set[str], last_day_of_question: dict[str, str], before_day: str) -> set[str]:
-    """The questions whose ``jev:`` column a matrix built for ``before_day`` leaves out: once the matrix is for a day after the
-    cut-over, every question last answered before the cut-over day (one never answered counts as never: kept)."""
-    if before_day <= CUT_OVER_DAY:
+    """The questions whose ``jev:`` column a matrix built for ``before_day`` leaves out: once the matrix is for the cut-over
+    day or later (no read from then on can answer them), every question last answered before the cut-over day (one never
+    answered counts as never: kept)."""
+    if before_day < CUT_OVER_DAY:
         return set()
     return {qid for qid in question_ids if (last := last_day_of_question.get(qid)) is not None and last < CUT_OVER_DAY}
 
@@ -214,7 +215,9 @@ def column_catalog(question_ids: set[str], group_of_question: dict[str, str], la
         cols[column_name(q["id"])] = {"layer": int(q["layer"]), "group": q["group"], "family": q["method"]}
     dropped = retired_before_cut_over(question_ids, last_day_of_question or {}, before_day) if before_day else set()
     for qid in sorted(question_ids - dropped):
-        cols[f"jev:{qid}"] = {"layer": 3, "group": f"jev:{group_of_question.get(qid, qid)}", "family": "jev"}
+        # the judgment questions each judge a different thing, so each is its own group; the old request groups vote once
+        group = group_of_question.get(qid, qid)
+        cols[f"jev:{qid}"] = {"layer": 3, "group": f"jev:{qid if group == JUDGMENT_GROUP else group}", "family": "jev"}
     return cols
 
 

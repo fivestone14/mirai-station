@@ -568,3 +568,16 @@ def test_breadth_02_and_03_use_the_derived_advance_decline_only():
     for s in ("$ADVN", "$DECN"):
         ctx.pop(s)
     assert ask("BREADTH-03", h, rising, today_ctx=ctx) is None                                  # no derived line, no answer
+
+
+def test_the_option_spread_falls_back_to_the_next_delta_bucket_when_the_near_one_is_empty(tmp_path):
+    import json
+    from spx_jev.mirai_prediction import code_feature_inputs as inputs
+    folder = tmp_path / inputs.SWEEPS_SUBDIR / "2026-10-06"
+    folder.mkdir(parents=True)
+    rows = [{"ts": "2026-10-06T13:00:00-04:00", "buckets": {"d25_40": {"spread": 1.5}, "d10_25": {"spread": 0.9}}},
+            {"ts": "2026-10-06T14:00:00-04:00", "buckets": {"d25_40": {}, "d10_25": {"spread": 0.8}}},
+            {"ts": "2026-10-06T15:00:00-04:00", "buckets": {"d00_10": {"spread": 0.3}}},
+            {"ts": "2026-10-06T15:30:00-04:00", "buckets": {}}]
+    (folder / "sweeps.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    assert [s for _, s in inputs.load_quote_sweeps(tmp_path, "2026-10-06")] == [1.5, 0.8, 0.3]

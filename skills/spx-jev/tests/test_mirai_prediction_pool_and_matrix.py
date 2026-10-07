@@ -198,19 +198,19 @@ def test_the_volume_grid_has_the_small_steps():
 
 def test_a_fit_after_the_cut_over_drops_the_jev_columns_last_answered_before_it_and_keeps_every_code_column():
     """From the cut-over the live lane asks only the judgment questions, so a pre-merge question's column goes silent; the
-    matcher reads a silent column as half a mismatch, so a fit for a day after the cut-over leaves those columns out."""
+    matcher reads a silent column as half a mismatch, so a fit for the cut-over day or later leaves those columns out."""
     from spx_jev.mirai_prediction import answer_matrix
     from spx_jev.mirai_prediction.name_map import CUT_OVER_DAY
     assert CUT_OVER_DAY == "2026-10-08"
     last = {"price_move_5way": "2026-10-07", "news_reaction": "2026-10-08", "quiet_coiled_or_resting": "2026-10-02"}
     ids = set(last) | {"never_answered"}
-    for before_day in ("2026-10-07", "2026-10-08"):
+    cols = column_catalog(ids, {}, last, "2026-10-07")                                   # the eve: every column still there
+    assert {c for c in cols if c.startswith("jev:")} == {f"jev:{q}" for q in ids}
+    for before_day in ("2026-10-08", "2026-10-09"):                                        # from the cut-over day itself
         cols = column_catalog(ids, {}, last, before_day)
-        assert {c for c in cols if c.startswith("jev:")} == {f"jev:{q}" for q in ids}
-    cols = column_catalog(ids, {}, last, "2026-10-09")
-    assert {c for c in cols if c.startswith("jev:")} == {"jev:news_reaction", "jev:never_answered"}
+        assert {c for c in cols if c.startswith("jev:")} == {"jev:news_reaction", "jev:never_answered"}
     assert {c for c in cols if c.startswith("code:")} == {f"code:{q['id']}" for q in load_catalog()}
-    assert column_catalog(ids, {}) == column_catalog(ids, {}, last, "2026-10-08")      # without a day nothing is dropped
+    assert column_catalog(ids, {}) == column_catalog(ids, {}, last, "2026-10-07")      # without a day nothing is dropped
 
 
 def test_the_rows_of_a_matrix_built_after_the_cut_over_lose_the_dropped_columns_too(tmp_path, monkeypatch):
@@ -227,9 +227,9 @@ def test_the_rows_of_a_matrix_built_after_the_cut_over_lose_the_dropped_columns_
                         lambda *a: ({"live:a": {"old": "up", "news_reaction": "shrugging_off"}, "live:b": {"news_reaction": "overreacting"}},
                                     {"old": "g1", "news_reaction": "judgment"}, {"old": "2026-10-07", "news_reaction": "2026-10-08"}))
     m = build_answer_matrix(tmp_path, "live", "average_30", before_day="2026-10-09")
-    assert "jev:old" not in m.columns and m.columns["jev:news_reaction"]["group"] == "jev:judgment"
+    assert "jev:old" not in m.columns and m.columns["jev:news_reaction"]["group"] == "jev:news_reaction"   # each judgment question votes on its own
     a, b = m.rows
     assert set(a.answers) == set(b.answers) == set(m.columns)
     assert a.answers["jev:news_reaction"] == "shrugging_off" and b.answers["jev:news_reaction"] == "overreacting"
-    kept = build_answer_matrix(tmp_path, "live", "average_30", before_day="2026-10-08")
+    kept = build_answer_matrix(tmp_path, "live", "average_30", before_day="2026-10-07")
     assert "jev:old" in kept.columns and kept.rows[0].answers["jev:old"] == "up"

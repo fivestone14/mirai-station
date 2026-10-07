@@ -33,7 +33,8 @@ OVERNIGHT_SUBDIR = "overnight"
 CONTEXT_SUBDIR = "context"                           # context/{day}.jsonl quotes a minute apart; context/bars/{day}.jsonl full days
 DIARY_SUBDIR = "reversion"                           # the SPX diary (walls, magnet, at-the-money vol) a minute apart
 SWEEPS_SUBDIR = Path("lob_flow") / "raw"             # the lob-flow collector's quote sweeps, {day}/sweeps.jsonl(.gz)
-SWEEP_BUCKET = "d25_40"                              # the 25-40 delta bucket of a sweep (OPTIONS-08)
+SWEEP_BUCKETS = ("d25_40", "d10_25", "d00_10")      # the sweep's delta buckets OPTIONS-08 reads, nearest the money first: the
+                                                     # 25-40 bucket empties after ~13:10 ET, so the next one out stands in
 STORE_SPX_BARS = "spx_bars"
 STORE_OVERNIGHT_BARS = "overnight_bars"
 STORE_CONTEXT_BARS = "context_bars"
@@ -245,7 +246,7 @@ def load_diary_rows(state_dir: Path | str, day: str) -> list[dict]:
 
 
 def load_quote_sweeps(state_dir: Path | str, day: str) -> list[tuple[str, float]]:
-    """The day's lob-flow quote sweeps as (ts, the 25-40 delta bucket's quoted spread) where the bucket held a spread."""
+    """The day's lob-flow quote sweeps as (ts, the quoted spread of the nearest-the-money bucket that held one; SWEEP_BUCKETS)."""
     folder = Path(state_dir) / SWEEPS_SUBDIR / day
     path = next((p for p in (folder / "sweeps.jsonl", folder / "sweeps.jsonl.gz") if p.exists()), None)
     if path is None:
@@ -260,7 +261,8 @@ def load_quote_sweeps(state_dir: Path | str, day: str) -> list[tuple[str, float]
                 continue
             if not isinstance(sweep, dict) or not isinstance(sweep.get("ts"), str):
                 continue
-            spread = ((sweep.get("buckets") or {}).get(SWEEP_BUCKET) or {}).get("spread")
+            buckets = sweep.get("buckets") or {}
+            spread = next((v for v in ((buckets.get(name) or {}).get("spread") for name in SWEEP_BUCKETS) if isinstance(v, (int, float))), None)
             if isinstance(spread, (int, float)):
                 try:
                     out.append((_et(sweep["ts"]), float(spread)))

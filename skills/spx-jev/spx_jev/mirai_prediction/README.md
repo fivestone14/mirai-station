@@ -1,7 +1,8 @@
 # Mirai Prediction System
 
-A second learning loop that runs beside the SPX JEV service and learns on its own. It never touches the live read, the
-grader, pool_v1 or the call the phone shows. Its names are the design diagram's names.
+The learning loop behind the SPX call. Since 2026-10-06 its combined forecast (pool_v2) IS the call the phone shows and
+the grader grades; it runs inside each live read with a fallback to the old 50/50 blend, never writes pool_v1's own state
+(pool_v1 only supplies voices), and learns every night. Its names are the design diagram's names.
 
 ```
 market data --> layer 1 (code feature builder: measures ranked vs their own history)  --\

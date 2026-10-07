@@ -138,9 +138,15 @@ def write_json_atomically(path: Path, data: object) -> None:
 
 def append_json_line(path: Path, record: dict) -> None:
     """Append one JSON line (the raw record files and the logs are append-only)."""
+    append_json_lines(path, [record])
+
+
+def append_json_lines(path: Path, records: list[dict]) -> None:
+    """Append several JSON lines in one write, so a set that belongs together (one sum's voices) lands whole or not at all."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    text = "".join(json.dumps(record, ensure_ascii=False, sort_keys=True, default=str) + "\n" for record in records)
     with open(path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False, sort_keys=True, default=str) + "\n")
+        f.write(text)
 
 
 def read_json_lines(path: Path) -> list[dict]:
