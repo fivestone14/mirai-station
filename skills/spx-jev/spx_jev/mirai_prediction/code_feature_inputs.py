@@ -68,10 +68,6 @@ def _rows(sql: str) -> list[tuple]:
     return duckdb.sql(sql).fetchall()
 
 
-def _days_between(from_day: str, before_day: str) -> str:
-    return f"CAST(day AS VARCHAR) >= '{from_day}' AND CAST(day AS VARCHAR) < '{before_day}'"
-
-
 def load_day_bars(state_dir: Path | str, day: str) -> list[dict]:
     """The day's SPX minute bars from the live-bars sidecar, in time order."""
     bars = [_bar(b.get("ts"), b.get("open"), b.get("high"), b.get("low"), b.get("close"))

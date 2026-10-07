@@ -1,14 +1,14 @@
 """The learning loop on the average-price grade, switched on for the live lane (lane.Lane.integral_loop).
 
 Switched on, the grader runs this loop beside pool.PoolWeights and weights.json reports it under ``pool_integral``, beside
-the end-price loop's report: the same experts, day-level update, e-processes, statuses and promotion (pool.py, read as a
+the end-price loop's report: the same experts, day-level update, e-processes and statuses (pool.py, read as a
 library, never changed here), learned on the
 lane's primary box from the average-price sum's graded reads alone, each read's outcome the label integral_grades.jsonl
-gave it under this integral.RULE_VERSION, never the end price's band. The end-price loop keeps learning beside it,
-its promotion reaching only the end-price sums kept beside the call (pool.shown). This loop's promotion, once it
-clears the same evidence bar and the simulation gates (pool.SIM_GATES_PASSED), decides what the call shows: its pool,
-formed at the read as the update will form it, with the exact blend beside it (shown, Will's decision of
-2026-09-29). Switched off, nothing here is imported, read or written. The gate for trusting and promoting what it learns is GATE_SESSIONS SPX sessions of average-price grades;
+gave it under this integral.RULE_VERSION, never the end price's band. The end-price loop keeps learning beside it.
+Neither loop's pool reaches the phone: the call keeps its exact blend here (shown), and since 2026-10-06 Pool 2's
+combined forecast replaces it after the read (mirai_prediction.live_call); the promotion that once decided the call
+was retired on 2026-10-07. Switched off, nothing here is imported, read or written. The gate for trusting what it
+learns is GATE_SESSIONS SPX sessions of average-price grades;
 the dry run shows what the loop has learnt from the graded history, and how far the gate is:
 
     python3 -m spx_jev.grade --integral-loop-dry-run    # built from nothing in a scratch folder; no live file is written
@@ -211,7 +211,7 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Pat
                                 "replay_until": replay_until or None},
                     "why": f"constants changed since {h} began on the average price: learned again from the records"})
         # the replay's last day is kept in the state, so a rebuild stopped part way still bets nothing on those days
-        state = pool.carried_evidence(state, {**cold_state(), "replay_until": replay_until or None})
+        state = {**cold_state(), "replay_until": replay_until or None}
     said = {h: "nothing new to apply"}
     outcomes = pool.graded_outcomes(load_jsonl(out_dir / "grades.jsonl"), lane.horizons)
     lines = average_lines(out_dir, lane)
@@ -250,7 +250,7 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Pat
             _log(into, {**head, "applied": False, "why": why or "no reads"})
             continue
         reads, excluded = _session_reads(recs, lines, state, ref, lane)
-        body = pool.learn_session(state, day, reads, excluded, lane.horizons[h][0], True, None, lane.graded_from_settled_open, SOURCE)
+        body = pool.learn_session(state, day, reads, excluded, lane.horizons[h][0], True, lane.graded_from_settled_open, SOURCE)
         state = json.loads(pool._canonical(state))      # rounded after every session, as pool.update does
         _log(into, {**head, "applied": bool(reads), **pool._rounded(body)})
         said[h] = f"{day}: applied, {len(reads)} reads"
@@ -258,39 +258,14 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Pat
     return said
 
 
-def shown(out_dir: Path, average: dict | None, own: dict | None, now: datetime, lane: Lane = LIVE) -> dict | None:
-    """The call as the phone shows it and the grader grades it: the average-price sum as it came, its exact blend,
-    unless pool.POOL_ON_PHONE is set and this loop's pool was promoted on its evidence (which needs
-    pool.SIM_GATES_PASSED); then this loop's pool at this read, formed as the update will form it (_session_reads:
-    the reference a read today could know, JEV's own and the clock's odds on the average price, and the answers the
-    read's end-price snapshot ``own`` kept), with the exact blend beside it as ``blend50_exact``. ``shown_source``
-    says which, pool.SHOWN_BLEND or pool.SHOWN_POOL; a promoted pool that cannot be formed at this read leaves the
-    call on its blend and says why under ``shown_why``. An average with no odds (its error) is returned as it came."""
+def shown(average: dict | None) -> dict | None:
+    """The call as the phone shows it and the grader grades it: the average-price sum as it came, its exact blend, said
+    under ``shown_source`` (pool.SHOWN_BLEND). This loop's pool never replaces it (the promotion was retired on
+    2026-10-07; Pool 2 takes the call over after the read, mirai_prediction.live_call). An average with no odds (its
+    error) is returned as it came."""
     if not isinstance(average, dict) or not isinstance(average.get("probabilities"), dict):
         return average
-    on_blend = {**average, "shown_source": pool.SHOWN_BLEND}
-    state = load_state(out_dir, lane)
-    if not (pool.POOL_ON_PHONE and state.get("constants_hash") == CONSTANTS_HASH and state["phone"]["shows"] == "pool"):
-        return on_blend
-    own = own or {}
-    cache, version = references(out_dir, lane)
-    ref = reference(cache, now.astimezone(ET).date().isoformat(), version)
-    blended = (average.get("blend") or {}).get("used")
-    why = ("the call was not blended with the time-of-day odds" if not blended else
-           "no answers on file: the read's end-price snapshot was left out" if "members" not in own else
-           f"fewer than {clock.MIN_SESSIONS} sessions of time-of-day odds on the average price" if ref is None else None)
-    if why is None:
-        snap = pool.snapshot(state, ref, lane.primary, now, average["jev"]["probabilities"], average["clock"]["probabilities"],
-                             average["probabilities"], own["q_probs"], own["members"], set(own["fresh"]), SOURCE)
-        why = snap.get("left_out")
-    if why:
-        return {**on_blend, "shown_why": f"the average-price pool is promoted but cannot be formed at this read: {why}"}
-    p = snap["pool"]
-    pick = max(p, key=p.get)
-    by = dict(average.get("by") or {})
-    by[lane.average] = {**by.get(lane.average, {}), "pick": pick, "probabilities": p, "blend50_exact": average["probabilities"]}
-    return {**average, "pick": pick, "probabilities": p, "blend50_exact": average["probabilities"], "by": by,
-            "shown_source": pool.SHOWN_POOL}
+    return {**average, "shown_source": pool.SHOWN_BLEND}
 
 
 def _log(out_dir: Path, line: dict) -> None:
@@ -318,8 +293,7 @@ def learned_fresh(out_dir: Path) -> list[dict]:
 class IntegralPoolWeights(pool.PoolWeights):
     """pool.PoolWeights on the average-price grade (its learn, mirrored): learn() applies every newly sealed session to
     this loop's state and reports each live question's standing from it, every weight still 1.0, and its ``n`` over the
-    reads this loop learned from (learned_fresh), not the end-price loop's. Once promoted, this pool is what the call
-    on the phone shows (shown), and ``on_phone`` says so."""
+    reads this loop learned from (learned_fresh), not the end-price loop's."""
 
     method = "pool_v1_integral"
 
@@ -343,7 +317,7 @@ class IntegralPoolWeights(pool.PoolWeights):
             questions[qid] = entry
         top = {side: pool._prob(state["top"][side]) for side in pool.SIDES}
         return cls(questions, {"applied": applied, "last_session_applied": state["last_session_applied"],
-                               "phone": pool.phone_report(state), "top": top, "frozen": state["frozen"], "outcome": "average price"})
+                               "top": top, "frozen": state["frozen"], "outcome": "average price"})
 
 
 def dry_run(out_dir: Path, lane: Lane = LIVE, today: str | None = None) -> dict:
@@ -361,8 +335,7 @@ def dry_run(out_dir: Path, lane: Lane = LIVE, today: str | None = None) -> dict:
 def describe(run: dict, lane: Lane = LIVE) -> list[str]:
     """dry_run's result in plain lines: the sessions and reads it learned from, the sessions passed over (before the
     question, or no reads) apart from those every read of which was left out, what it left out and why, the pool's
-    weights, its evidence against the blend with every promotion step pool.apply_session logged (held on the blend while
-    pool.SIM_GATES_PASSED is off, and said so there), and each question's standing against "no change"."""
+    weights, whether they are frozen, and each question's standing against "no change"."""
     state, log = run["state"], run["log"]
     applied = [x for x in log if x.get("applied")]
     left_out = Counter(why for x in log for why in (x.get("manifest") or {}).get("excluded", {}).values())
@@ -378,12 +351,7 @@ def describe(run: dict, lane: Lane = LIVE) -> list[str]:
     out += [f"  {n} {why}" for why, n in left_out.most_common()]
     top = {side: pool._prob(state["top"][side]) for side in pool.SIDES}
     out.append("the pool's weights, move / direction: " + ", ".join(f"{n} {top['M'][n]:.3f} / {top['D'][n]:.3f}" for n in sorted(top["M"])))
-    phone = pool.phone_report(state)
-    others = "; ".join(f"{test} e {phone[f'{test}_e']:.2f}" for test in pool.PROMOTION_TESTS[1:])
-    out.append(f"the pool against the blend: e {phone['promote_e']:.2f} over {phone['days']} days ({others}; promotion needs "
-               f"{pool.PROMOTE_E:g} on each after {pool.MIN_DAYS} days, and the simulation gates, pool.SIM_GATES_PASSED "
-               f"{'on' if pool.SIM_GATES_PASSED else 'off'}); shows {phone['shows']}; frozen: {state['frozen'] or 'no'}")
-    out += [f"  {x['session']}: {x['phone']}" for x in applied if x.get("phone")]
+    out.append(f"frozen: {state['frozen'] or 'no'}")
     block = {side: pool._prob(state["block"][side]) for side in pool.SIDES}
     for q, ev in sorted(state["evidence"].items()):
         vs = {side: block[side].get(q, 0.0) / block[side][pool.NO_CHANGE] for side in pool.SIDES}

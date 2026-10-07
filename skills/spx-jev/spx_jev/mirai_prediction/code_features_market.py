@@ -124,9 +124,6 @@ class Series:
     def volume(self, hhmm: str, minutes: int) -> float:
         return sum(float(b.get("volume") or 0.0) for b in self.window(hhmm, minutes))
 
-    def last_close(self) -> float | None:
-        return float(self.bars[-1]["close"]) if self.bars else None
-
 
 class DayView:
     """One session's series: SPX's own bars and the feed's symbols, by name."""

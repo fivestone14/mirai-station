@@ -52,9 +52,9 @@ The question weights
     standing reported, every weight still 1.0); the tape and premarket lanes' weights are neutral. With the lane's
     integral_loop switch on (on the live lane) a second loop learns from the average-price grade beside it
     (integral_loop.IntegralPoolWeights), in state of its own, reported beside the end-price loop's under
-    ``pool_integral``; the end-price loop keeps learning and its report stays where it was. Once promoted, the
-    average-price loop's pool is what the call shows (integral_loop.shown), the end-price loop's what the end-price
-    sums beside it show (pool.shown).
+    ``pool_integral``; the end-price loop keeps learning and its report stays where it was. Neither loop's pool
+    reaches the phone (the promotion was retired on 2026-10-07): the call and the end-price sums keep their exact
+    blend (integral_loop.shown, pool.shown).
 
 A lane (lane.py) grades by its own settings. The tape lane's one horizon is banded from the record
 itself: the tape unit measured at the read prices a flat and a big band in index points, and the
@@ -462,7 +462,7 @@ def weights_from(grades: list[dict], allowed: dict[str, set[str]], lane: Lane = 
     weights = PoolWeights.learn(graded, allowed, out_dir, lane) if lane.pool else QuestionWeights.learn(graded, allowed, out_dir)
     out = {"graded_runs": len(primary), "primary": lane.primary, "sums": sums, **weights.as_json()}
     if lane.pool and lane.integral_loop:
-        # the end-price loop above keeps learning and keeps its report, its promotion reaching the end-price sums alone
+        # the end-price loop above keeps learning and keeps its report
         try:
             from .integral_loop import IntegralPoolWeights   # only when switched on: it reads this module, through clock too
             out["pool_integral"] = IntegralPoolWeights.learn(graded, allowed, out_dir, lane).as_json()

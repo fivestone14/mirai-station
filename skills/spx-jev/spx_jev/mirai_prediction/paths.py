@@ -13,13 +13,16 @@
                                                     matrix they were fitted on; only the newest FIT_FILES_KEPT_DAYS days are kept
         scoreboard.json                             the phone card's file
         run_logs/job_run_log.jsonl                  every job and hook run
-        archive/                                    backups taken before any state file changes
+        archive/                                    backups taken before any state file changes (the newest
+                                                    ARCHIVE_BACKUPS_KEPT per file name) and what a forced replay
+                                                    cleared (replay_force_*, REPLAY_BACKUPS_KEPT_DAYS days)
 """
 from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+import shutil
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 SYSTEM_FOLDER = "mirai_prediction"
@@ -38,6 +41,9 @@ VOICE_FITS = "voice_fits"
 SCOREBOARD_FILE = "scoreboard.json"
 JOB_RUN_LOG = "job_run_log.jsonl"
 FIT_FILES_KEPT_DAYS = 10         # older fit files are deleted by the nightly job (every one can be rebuilt from the store)
+ARCHIVE_BACKUPS_KEPT = 10        # archive/ keeps the newest backups per file name; the nightly job deletes the rest
+REPLAY_BACKUPS_KEPT_DAYS = 7     # and a forced replay's backup folder (replay_force_<stamp>) once it is this old
+STAMP = "%Y%m%dT%H%M%SZ"         # the UTC stamp every backup is named by
 
 
 def spx_jev_dir(state_dir: Path | str) -> Path:
@@ -166,8 +172,42 @@ def backup_before_change(root: Path, path: Path) -> Path | None:
     """Copy a state file into archive/ before it changes; returns the copy's path, or None when there was no file."""
     if not path.exists():
         return None
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(timezone.utc).strftime(STAMP)
     copy = root / ARCHIVE / f"{path.name}.{stamp}"
     copy.parent.mkdir(parents=True, exist_ok=True)
     copy.write_bytes(path.read_bytes())
     return copy
+
+
+def prune_archive(root: Path, now: datetime | None = None, keep: int = ARCHIVE_BACKUPS_KEPT,
+                  replay_days: int = REPLAY_BACKUPS_KEPT_DAYS) -> list[str]:
+    """Delete all but the newest ``keep`` backups of each file name in archive/, and a forced replay's backup folder
+    older than ``replay_days`` days; returns the names deleted. A name without the backup stamp is left alone."""
+    folder = root / ARCHIVE
+    if not folder.exists():
+        return []
+    now = now or datetime.now(timezone.utc)
+    deleted: list[str] = []
+    by_name: dict[str, list[Path]] = {}
+    for path in sorted(folder.iterdir()):                  # by name, so a file's backups come oldest first
+        if path.is_dir() and path.name.startswith("replay_force_"):
+            stamped = _stamped(path.name[len("replay_force_"):]) or datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
+            if now - stamped > timedelta(days=replay_days):                   # by its name's stamp, else by its age on disk
+                shutil.rmtree(path)
+                deleted.append(path.name)
+        elif path.is_file():
+            name, _, stamp = path.name.rpartition(".")
+            if _stamped(stamp) is not None:
+                by_name.setdefault(name, []).append(path)
+    for backups in by_name.values():
+        for path in backups[:len(backups) - keep]:
+            path.unlink()
+            deleted.append(path.name)
+    return deleted
+
+
+def _stamped(stamp: str) -> datetime | None:
+    try:
+        return datetime.strptime(stamp, STAMP).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None

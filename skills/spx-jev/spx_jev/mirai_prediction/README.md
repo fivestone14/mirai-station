@@ -28,7 +28,7 @@ graded result -> scored per voice -> pool_v2 weights -> refit each morning -> ph
 | `catalogs/voice_fits/{day}_{sum_id}.json` | the three learners fitted for that day (on days before it) and the answer matrix they were fitted on; the newest 10 days are kept, older files are pruned (every one can be rebuilt) |
 | `scoreboard.json` | the phone card's file |
 | `run_logs/job_run_log.jsonl` | every job and hook run |
-| `archive/` | backups taken before a state file changes |
+| `archive/` | backups taken before a state file changes (the newest 10 per file name are kept) and what a forced replay cleared (`replay_force_<stamp>/`, kept 7 days); the nightly job prunes the rest |
 
 The live store keeps its folder names; `name_map.py` maps them (`graded_results` = `store/average_grades`,
 `forecasts_at_read_time` = `store/calls`, `jev_answers` = `store/answers`).
@@ -45,8 +45,8 @@ The live store keeps its folder names; `name_map.py` maps them (`graded_results`
 - **At 17:05 ET** (`com.mirai-station.spx-jev-prediction-nightly`, after the store's 16:40 rebuild) `nightly_job` first catches
   up any day of the last 10 with raw lines pool_v2 has not learned (a night the box slept through), then for today builds the
   tables, scores every voice against `graded_results` (joined on `read_id` + `sum_id`; excluded reads are scored and flagged
-  but not learned), lets pool_v2 learn the day, refits the learners for the next market day, prunes old fit files, and writes
-  `scoreboard.json`.
+  but not learned), lets pool_v2 learn the day, refits the learners for the next market day, prunes old fit files, writes
+  `scoreboard.json`, and prunes `archive/`.
 - **Walk-forward, always:** a fit for day D uses graded rows from days before D only (`voice_fits.check_no_leak`), and a
   market value is ranked against earlier days only, never the same day's earlier reads.
 
@@ -188,7 +188,9 @@ with that reason (the phone's "N of M answered" counts the card's questions, so 
 them as their own last group, "retired at the cut-over, no longer asked"). The questions stay in the set and the doc, dated,
 never deleted; their answers before the day stay in the store and the archive.
 
-**What stays:** pool_v1 forms its snapshot at every read as before and stays a voice source (`pool_v1` in pool_v2's mix), its
+**What stays:** pool_v1 forms its snapshot at every read as before and stays a voice source (`pool_v1` in pool_v2's mix; its own
+phone promotion, which could never reach the phone once Pool 2 took the call, was retired on 2026-10-07 and its state files are
+read without their `phone` block), its
 members empty from the cut-over, so its question block is the prior alone; the blend, the historical odds and the learners are
 untouched. The opening and pre-market lanes are not cut over: no code feature builder answers their reads, so their sums have
 nothing else to ride on; the 13 opening-only and 12 pre-market-only questions, and the live-lane questions those lanes share,

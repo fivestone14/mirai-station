@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -124,6 +125,26 @@ def test_old_fit_files_are_pruned_and_the_newest_days_kept(tmp_path):
     assert len(deleted) == 11 and sorted(p.name[:10] for p in (root / "catalogs" / "voice_fits").glob("*.json")) == ["2026-09-12", "2026-09-13", "2026-09-14"]
 
 
+def test_the_archive_keeps_the_newest_backups_per_file_and_a_weeks_forced_replays(tmp_path):
+    root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
+    archive = root / "archive"
+    for d in range(1, 13):
+        for name in ("weights_average_30.json", "2026-10-01.jsonl"):
+            (archive / f"{name}.202610{d:02d}T060000Z").write_text("{}")
+    (archive / "weights_next_30.json.20261001T060000Z").write_text("{}")          # one backup: kept
+    (archive / "notes.txt").write_text("")                                        # no stamp: left alone
+    for d in (1, 5, 6):
+        (archive / f"replay_force_202610{d:02d}T060000Z").mkdir()
+        (archive / f"replay_force_202610{d:02d}T060000Z" / "pool_v2").mkdir()
+    deleted = paths.prune_archive(root, now=datetime(2026, 10, 12, 5, tzinfo=timezone.utc), keep=10, replay_days=7)
+    assert sorted(deleted) == sorted([f"{n}.202610{d:02d}T060000Z" for n in ("weights_average_30.json", "2026-10-01.jsonl") for d in (1, 2)]
+                                     + ["replay_force_20261001T060000Z"])
+    left = sorted(p.name for p in archive.iterdir())
+    assert len([n for n in left if n.startswith("weights_average_30.json.")]) == 10 and "notes.txt" in left
+    assert "weights_next_30.json.20261001T060000Z" in left and "replay_force_20261005T060000Z" in left
+    assert paths.prune_archive(root, now=datetime(2026, 10, 12, 5, tzinfo=timezone.utc)) == []
+
+
 def test_the_nightly_job_catches_up_the_days_pool_v2_has_not_learned(tmp_path):
     root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
     for day in ("2026-09-20", "2026-10-01", "2026-10-02"):
@@ -188,3 +209,22 @@ def test_pool_2_leaves_a_sum_it_did_not_forecast_alone():
     from spx_jev.mirai_prediction import live_call
     hour = {"by": {}, "average": {"pick": "flat", "probabilities": {"up": 0.3, "flat": 0.4, "down": 0.3}}}
     assert live_call.take_over(hour, {}, LIVE) == hour
+
+
+def test_prune_archive_on_a_missing_or_empty_folder_deletes_nothing(tmp_path):
+    from datetime import datetime, timezone
+    root = tmp_path / "spx_jev" / "mirai_prediction"
+    assert paths.prune_archive(root, now=datetime(2026, 10, 7, tzinfo=timezone.utc)) == []        # no archive folder yet
+    (root / "archive").mkdir(parents=True)
+    assert paths.prune_archive(root, now=datetime(2026, 10, 7, tzinfo=timezone.utc)) == []        # an empty one
+
+
+def test_a_forced_replay_folder_without_a_readable_stamp_is_pruned_by_its_age(tmp_path):
+    import os, time
+    from datetime import datetime, timezone
+    root = tmp_path / "spx_jev" / "mirai_prediction"
+    old = root / "archive" / "replay_force_odd-name"
+    old.mkdir(parents=True)
+    stale = time.time() - 30 * 86400
+    os.utime(old, (stale, stale))
+    assert paths.prune_archive(root, now=datetime.now(timezone.utc)) == ["replay_force_odd-name"]

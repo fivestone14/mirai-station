@@ -176,29 +176,6 @@ def test_a_read_is_one_row_with_its_times_ruler_counts_and_reasons(built):
     assert (tape["ruler_source"], tape["ruler_points"], tape["ruler_unit_sigma"], tape["band_flat_points"]) == ("tape", 6.1, 0.08, 2.5)
 
 
-def test_a_fact_is_written_omitted_or_asleep_on_the_reason_its_question_sleeps_on(built):
-    root, _ = built
-    facts = {(f["read_id"], f["path"]): f for f in _table(root, "facts")}
-    assert facts[(f"live:{READ}", "shock.burst")]["status"] == "asleep"
-    assert facts[(f"live:{EARLY}", "shock.burst")]["status"] == "omitted"        # nothing slept on it at that read
-    assert facts[(f"live:{READ}", "breadth.advance_decline")]["status"] == "omitted"
-    vix = facts[(f"live:{READ}", "$VIX")]
-    assert vix["source"] == "market_context" and vix["value"] == 16.2 and vix["known_at"] < datetime.fromisoformat(READ)
-
-
-def test_a_label_archived_under_its_old_name_is_filed_under_its_new_one(tmp_path, monkeypatch):
-    rows = _day_archive()
-    rows[0]["labels"]["breadth"] = {"upvol_share_30m": "over the last 30 minutes NYSE net volume changed by +12M"}
-    rows[1]["omitted"]["vol.vix_change_30"] = "no VIX 30 minutes ago"
-    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path, rows))
-    store.build_day(tmp_path, D, at(16, 45))
-    facts = {(f["read_id"], f["path"]): f for f in _table(tmp_path, "facts")}
-    net = facts[(f"live:{EARLY}", "breadth.net_volume_change_30m")]
-    assert (net["family"], net["name"], net["status"]) == ("breadth", "net_volume_change_30m", "written")
-    assert facts[(f"live:{READ}", "vol.vix_change")]["reason"] == "no VIX 30 minutes ago"
-    assert not any(p in ("breadth.upvol_share_30m", "vol.vix_change_30") for _, p in facts)
-
-
 def test_each_question_of_a_read_has_its_status_its_options_and_the_question_it_was_sent(built):
     root, _ = built
     ans = {(a["read_id"], a["question_id"]): a for a in _table(root, "answers")}
@@ -419,7 +396,6 @@ def test_the_bars_keep_one_row_a_minute_the_better_source_winning_and_every_copy
 def _bad_archive() -> list[dict]:
     rows = _day_archive()
     early, read = rows[0], rows[1]
-    read["market_context"]["$VVIX"] = {"value": 90.0, "known_at": "2026-09-18T10:40:00-04:00"}     # seen after the read
     read["responses"]["price_move"]["answers"]["move_shape"]["probabilities"] = {"clean": 1.4, "burst": 0.1}
     early["spot"] = -1.0                                                                          # its children follow it out
     rows[3]["archived_at"] = "2026-09-18T14:50:00+00:00"                                          # graded before its 11:02 mark
@@ -437,7 +413,6 @@ def test_every_refused_row_is_quarantined_with_its_reason_and_none_is_dropped(tm
     log = store.build_day(tmp_path, D, at(16, 45))
     bad = _table(tmp_path, "quarantine")
     why = {(q["table_name"], q["key"]): q["reason"] for q in bad}
-    assert why[("facts", f"live:{READ}|market_context|$VVIX")].startswith("known after its read")
     assert "outside 0 to 1" in why[("answers", f"live:{READ}|move_shape")]
     assert why[("reads", f"live:{EARLY}")] == "spot -1.0 is not above zero"
     assert why[("answers", f"live:{EARLY}|day_character")] == f"its read live:{EARLY} is not among the day's kept reads"
@@ -519,6 +494,18 @@ def test_the_duckdb_file_has_a_view_per_table_and_is_left_alone_once_current(bui
         assert store.write_views(s) is False                    # a reader holding the file open does not stop a run
 
 
+def test_a_view_over_a_table_the_store_no_longer_keeps_is_dropped(built):
+    root, _ = built
+    s = store.store_dir(root)
+    store.write_views(s)
+    with duckdb.connect(str(s / store.DB_NAME)) as con:
+        con.execute("CREATE VIEW facts AS SELECT 1 AS n")       # the facts table, kept until 2026-10-07
+    assert store.write_views(s) is True
+    with duckdb.connect(str(s / store.DB_NAME), read_only=True) as con:
+        views = {r[0] for r in con.execute("SELECT view_name FROM duckdb_views() WHERE NOT internal").fetchall()}
+    assert views == set(store.BY_NAME)
+
+
 def test_today_is_built_once_its_saves_have_run_and_only_market_days(tmp_path):
     assert D not in store.days_to_build(at(16, 25)) and store.days_to_build(at(16, 40))[-1] == D
     assert store.days_to_build(at(16, 40), catch_up=7)[0] == date(2026, 9, 11)
@@ -544,7 +531,7 @@ def test_the_command_builds_the_day_names_its_counts_and_writes_the_views(tmp_pa
     monkeypatch.setattr(store, "CALENDAR", _state(tmp_path))
     assert store.main(["--state-dir", str(tmp_path), "--day", DAY]) == 0
     out = capsys.readouterr().out
-    assert f"{DAY} reads 3, facts " in out and "grades 2 rows (0 quarantined)" in out and "views written" in out
+    assert f"{DAY} reads 3, answers " in out and "grades 2 rows (0 quarantined)" in out and "views written" in out
     assert (store.store_dir(tmp_path) / store.DB_NAME).exists()
 
 

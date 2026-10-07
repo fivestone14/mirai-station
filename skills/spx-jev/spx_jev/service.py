@@ -35,10 +35,9 @@ where. Every read carries the tier-1 events due within the hour
 
 On the live lane every sum also carries the learning loop's forecasts (pool.snapshot): the fixed
 mixes of JEV's sum with the price-only reference, today's blend, the question block and the pool,
-scored once the session is sealed. The call keeps its exact blend (``shown_source`` on ``hour.average``)
-until the average-price loop is promoted, then shows that loop's pool with the blend beside it, until it
-is demoted (integral_loop.shown, pool.POOL_ON_PHONE); the end-price loop's promotion reaches only the
-end-price sums kept beside the call (pool.shown).
+scored once the session is sealed. The call and the end-price sums keep their exact blend (``shown_source``,
+integral_loop.shown and pool.shown); neither loop's pool reaches the phone. Since 2026-10-06 Pool 2's combined
+forecast takes the call over after the read (mirai_prediction.live_call), the blend kept beside it.
 
 A lane (lane.py) is the same run with its own docs, folder, clock and grader. The tape lane
 (``--lane tape``) stamps each read at the newest finished bar by its fire minute (a sent run first waits, up to
@@ -806,16 +805,15 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
                 log(f"the clock was left out this run: {type(e).__name__}: {e}")
                 hour = {**hour, "blend": {"used": False, "why": f"the time-of-day odds failed this run: {type(e).__name__}"}}
         if hour is not None and lane.pool and (isinstance(hour.get("by"), dict) or average_alone(hour, lane)):
-            # every forecast the learning loop will score, written down now; the phone keeps the exact
-            # blend unless the loop's promotion and POOL_ON_PHONE both say otherwise. A call on its average alone
-            # keeps the questions' answers, for the average-price loop to learn from
+            # every forecast the learning loop will score, written down now; the phone keeps the exact blend. A call
+            # on its average alone keeps the questions' answers, for the average-price loop to learn from
             try:
                 hour_rec["pool"] = pool_snapshots(out_dir, hour, doc, answered, set(fresh), now, lane)
             except Exception as e:  # the loop must never cost the read its sum
                 log(f"the learning loop's snapshot was left out this run: {type(e).__name__}: {e}")
                 hour_rec["pool"] = {h: {"left_out": f"the snapshot failed this run: {type(e).__name__}"} for h in lane.horizons}
             if isinstance(hour.get("by"), dict):
-                hour = pool.shown(hour, hour_rec["pool"], pool.load_state(out_dir, lane.horizons[lane.primary][0]))
+                hour = pool.shown(hour)
         if hour is not None and lane.clock_blend and "probabilities" in (hour.get("average") or {}):
             # the phone's call is blended the same way, with how often the average over the same window ended each way
             # at this time of day, counted on the average price alone (clock.integral_odds)
@@ -829,16 +827,9 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
                 why = f"the time-of-day odds on the average price failed this run: {type(e).__name__}"
                 hour = {**hour, "average": {**hour["average"], "blend": {"used": False, "why": why}}}
         if hour is not None and lane.integral_loop and "probabilities" in (hour.get("average") or {}):
-            # the call shows its exact blend until the average-price loop is promoted, then that loop's pool, the blend
-            # beside it (integral_loop.shown); the end-price loop's promotion reaches the end-price sums alone
-            try:
-                from . import integral_loop   # only when switched on, as the grader imports it
-                own = ((hour_rec.get("pool") or {}).get(lane.primary)) if hour_rec else None
-                hour = {**hour, "average": integral_loop.shown(out_dir, hour["average"], own, now, lane)}
-            except Exception as e:  # the loop must never cost the read its call
-                log(f"the average-price loop's choice was left out this run: {type(e).__name__}: {e}")
-                hour = {**hour, "average": {**hour["average"], "shown_source": pool.SHOWN_BLEND,
-                                            "shown_why": f"the average-price loop failed this run: {type(e).__name__}"}}
+            # the call shows its exact blend, said under shown_source (integral_loop.shown)
+            from . import integral_loop   # only when switched on, as the grader imports it
+            hour = {**hour, "average": integral_loop.shown(hour["average"])}
         if hour is not None:
             hour = {**hour, "used": len(hour_rec["used"]), "left_out": len(hour_rec["left_out"]), "missing": len(missing),
                     **({"code_sentences": hour_rec["code_sentences"]} if hour_rec.get("code_sentences") else {})}

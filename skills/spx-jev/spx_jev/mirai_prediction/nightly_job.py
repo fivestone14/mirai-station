@@ -1,4 +1,5 @@
-"""After the close, once a day: build the tables from raw/, score every voice, update pool_v2, refit for tomorrow, scoreboard.
+"""After the close, once a day: build the tables from raw/, score every voice, update pool_v2, refit for tomorrow, scoreboard,
+prune the archive.
 
     python -m spx_jev.mirai_prediction.nightly_job --state-dir <state> --lane live [--day YYYY-MM-DD]
 
@@ -18,7 +19,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from .name_map import SUM_WINDOW_MINUTES, SUMS_BY_LANE
-from .paths import RAW, NEW_VOICE_FORECASTS, data_root, ensure_folders, log_job_run, now_utc_iso, prune_voice_fits, today_et
+from .paths import RAW, NEW_VOICE_FORECASTS, data_root, ensure_folders, log_job_run, now_utc_iso, prune_archive, prune_voice_fits, today_et
 from .pool_v2 import add_missing_voices, load_pool_v2, log_update, new_pool_v2, save_pool_v2, update_pool_v2_after_day
 from .scoreboard import write_scoreboard
 from .table_builder import build_new_voice_forecasts_table, build_voice_scores_table, day_forecasts_by_read, load_day_outcomes
@@ -75,6 +76,7 @@ def run_nightly(state_dir: Path | str, lane: str, day: str, fit_next: bool = Tru
         steps.append(("refit_for_next_day", lambda: refit_for_next_day(root, state_dir, lane, day)))
     if scoreboard:
         steps.append(("write_scoreboard", lambda: str(write_scoreboard(root, lane, SUMS_BY_LANE.get(lane, ())))))
+        steps.append(("prune_archive", lambda: {"deleted": prune_archive(root)}))
     ok = True
     for name, step in steps:
         started = now_utc_iso()

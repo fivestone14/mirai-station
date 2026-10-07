@@ -34,11 +34,7 @@ awake on in its current version, against "no change" on those same reads (the we
 reads, forecast by the awake members' mix, as sleeping experts do). A state learned under other constants
 is kept in archive/ and learned again from the records, the sessions it had applied replayed without bets
 (update, reformed); nothing is ever added to it. A question is labelled earning only by e-BH
-over every question version ever tested; the pool becomes eligible for the phone only once its
-e-processes on PROMOTION_TESTS (against the exact blend, the blend with its unsure mass spread, and the pool at
-its starting weights) all reach PROMOTE_E after MIN_DAYS days, so beating the exact blend on its unsure
-accounting alone, or on the mix it began with, earns nothing; and it steps back on the same kind of test. It
-runs at the first grading run after a session ends (PoolWeights.learn).
+over every question version ever tested. It runs at the first grading run after a session ends (PoolWeights.learn).
 
 The reference's two experts and its raw odds on a snapshot (``raw_baseline``) are named by the
 reference's source (w0): ``baseline`` here, ``clock`` in the average-price loop (integral_loop.py),
@@ -48,13 +44,12 @@ version as ``reference_version``. A state or a snapshot written before these nam
 2026-09-29) is read under them (renamed, legacy_snapshot).
 
 Nothing here changes JEV's prompt: every live question keeps its sentence and weighs 1.0 in step 3.
-The end-price sums kept beside the call keep today's exact 50/50 blend until this loop's pool is
-promoted (at least MIN_DAYS days, its e-processes on PROMOTION_TESTS at PROMOTE_E, and SIM_GATES_PASSED,
-the simulation 06 requires first); then they show the pool, the blend kept beside it, and go back to
-the blend by itself when the demotion e-process reaches DEMOTE_E (shown). The call the phone shows,
-the average-price sum, follows the average-price loop's own promotion by the same rules on the
-average-price grade (integral_loop.shown), never this one's. POOL_ON_PHONE turns both off, and is off since
-2026-09-30: JEV's own read leads the phone, and both loops' evidence is kept in the background.
+The end-price sums kept beside the call show today's exact 50/50 blend (shown), and the pool never reaches
+the phone: since 2026-10-06 the call is Pool 2's combined forecast (mirai_prediction.live_call), which mixes
+this loop's pool as one voice among its others (pool_v1). The promotion machinery that once decided whether
+the pool replaced the blend (the phone's e-processes, POOL_ON_PHONE, SIM_GATES_PASSED) was retired on
+2026-10-07; a state file written with its ``phone`` block is read without it and never written with it again
+(renamed), and its bars stay in CONSTANTS so no live state is learned again for the retirement.
 
 A lane graded from the settled open keeps its own loop state in its own folder, on its sums from the
 settled open. Every one of its reads forecasts the same window, the half hour after 09:34, so each
@@ -88,13 +83,6 @@ from .weights import QuestionWeights
 if TYPE_CHECKING:
     from .baseline import Baseline
 
-# a promoted pool never takes over the phone: JEV's own read leads it and the loop's numbers stay in the background
-# (Will's decision, 2026-09-30, replacing those of 2026-09-28 and 29)
-POOL_ON_PHONE = False
-# 06 requires the spec-exact simulation's acceptance gates to pass before any promotion; they are not
-# built, so the promotion evidence builds up but the pool is not promoted until this is set
-SIM_GATES_PASSED = False
-
 JEV_SHARES = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
 REFERENCE = "jev_share_0.0"
 SOURCE = "baseline"             # this loop's reference: the frozen time-of-day odds (baseline.py)
@@ -123,7 +111,6 @@ DAY_SCORE_BOUND = 0.25          # a day's loss difference is clipped to this man
                                 # floor: at 0.15 or under, thin days promote a worse pool (09-30 review)
 BET_CAP = 0.5
 BET_PRIOR_DAYS, BET_PRIOR_VARIANCE = 5.0, 0.25
-PROMOTE_E, DEMOTE_E, VETO_E = 20.0, 10.0, 10.0
 MIN_DAYS = 20
 EBH_LEVEL = 0.10
 SUPPRESS_E, LIFT_E = 20.0, 5.0
@@ -132,17 +119,18 @@ SUPPRESS_E, LIFT_E = 20.0, 5.0
 CAP_BIND_WINDOW, CAP_BIND_LIMIT = 20, 0.05
 ROUND = 12
 LOG_NAME = "pool_log.jsonl"
+# what a sum record's shown_source says: the blend, always, since the promotion was retired (2026-10-07); SHOWN_POOL is
+# the name the phone's chart still knows a pool-shown sum by
 SHOWN_BLEND, SHOWN_POOL = "blend50_exact", "pool_v1"
-# promotion needs the pool to beat, at PROMOTE_E each: the exact blend as the phone showed it, the blend with its unsure
-# mass spread (so unsure accounting alone earns nothing), and itself at its starting weights (so the learning must count)
-PROMOTION_TESTS = ("promote", "promote_spread", "promote_learned")
 SIDES = ("M", "D")              # the move weights and the direction weights
 
 CONSTANTS = {"eps": EPS, "eta": ETA, "alpha": ALPHA, "gap_clip": GAP_CLIP, "block_cap": BLOCK_CAP,
              "table_decay": TABLE_DECAY, "cal_decay": CAL_DECAY, "prior_days": PRIOR_DAYS, "table_prior_reads": TABLE_PRIOR_READS,
              "centred": True, "day_score_bound": DAY_SCORE_BOUND,
              "bet_cap": BET_CAP, "bet_prior_days": BET_PRIOR_DAYS, "bet_prior_variance": BET_PRIOR_VARIANCE,
-             "promote_e": PROMOTE_E, "demote_e": DEMOTE_E, "veto_e": VETO_E, "min_days": MIN_DAYS, "ebh_level": EBH_LEVEL,
+             # the retired promotion's bars at their last values: dropping them would change CONSTANTS_HASH and make every
+             # live state learn again from the records (2026-10-07)
+             "promote_e": 20.0, "demote_e": 10.0, "veto_e": 10.0, "min_days": MIN_DAYS, "ebh_level": EBH_LEVEL,
              "suppress_e": SUPPRESS_E, "lift_e": LIFT_E, "w0": W0, "no_change_prior": NO_CHANGE_PRIOR, "jev_shares": JEV_SHARES,
              "cap_bind_window": CAP_BIND_WINDOW, "cap_bind_limit": CAP_BIND_LIMIT}
 CONSTANTS_HASH = hashlib.sha256(json.dumps(CONSTANTS, sort_keys=True).encode()).hexdigest()[:16]
@@ -207,13 +195,11 @@ def _new_evidence() -> dict:
 
 
 def cold_state(source: str = SOURCE) -> dict:
-    """Monday's state: every weight at its prior, empty tables, every e-value 1, the phone on the blend."""
+    """Monday's state: every weight at its prior, empty tables, every e-value 1."""
     return {"constants_hash": CONSTANTS_HASH, "reference_version": None,
             "top": {side: _logs(w0(source)) for side in SIDES}, "block": {side: {NO_CHANGE: 0.0} for side in SIDES},
             "members": {}, "tables": {}, "cal": {"O": {k: 0.0 for k in OUTCOMES}, "E": {k: 0.0 for k in OUTCOMES}},
             "evidence": {}, "family": [], "archived": {},
-            "phone": {"shows": "blend", "since": None, **{test: new_eprocess() for test in PROMOTION_TESTS},
-                      "demote": new_eprocess(), "harm_60": new_eprocess()},
             "cap_binds": [], "frozen": None, "last_session_applied": None, "replay_until": None}
 
 
@@ -231,10 +217,13 @@ def load_state(out_dir: Path, minutes: int) -> dict:
 
 def renamed(state: dict, experts: dict[str, str] | None = None, hashes: tuple[str, str] | None = None) -> dict:
     """A saved state under the names it is read by now: its reference's version as ``reference_version`` (``baseline``
-    before), and, learned under ``hashes[0]``, the same constants under the old names, its experts renamed by
-    ``experts`` and its constants_hash ``hashes[1]``, so the loop carries on where it stood."""
+    before), the retired promotion's ``phone`` block (until 2026-10-07) left out, and, learned under ``hashes[0]``, the
+    same constants under the old names, its experts renamed by ``experts`` and its constants_hash ``hashes[1]``, so the
+    loop carries on where it stood."""
     if "baseline" in state and "reference_version" not in state:
         state["reference_version"] = state.pop("baseline")
+    if "phone" in state:
+        del state["phone"]
     if hashes and state.get("constants_hash") == hashes[0]:
         for side in SIDES:
             state["top"][side] = {(experts or {}).get(n, n): v for n, v in state["top"][side].items()}
@@ -412,23 +401,10 @@ def reformed(snap: dict, state: dict, long_run: dict[str, float]) -> dict:
     return {**snap, **mixes, "state_hash": state_hash(state), "constants_hash": CONSTANTS_HASH, "reformed": True}
 
 
-def shown(hour: dict, snaps: dict[str, dict], state_primary: dict) -> dict:
-    """The end-price sums as the card keeps them beside the call and the grader scores them: today's
-    exact blend, unless POOL_ON_PHONE is set and the pool was promoted on the primary horizon's
-    evidence; then the pool at every horizon, the exact blend kept beside it. The sum says which under
-    ``shown_source``."""
-    use_pool = POOL_ON_PHONE and state_primary["phone"]["shows"] == "pool" and all("pool" in s for s in snaps.values())
-    if not use_pool:
-        return {**hour, "shown_source": SHOWN_BLEND}
-    by = dict(hour.get("by") or {})
-    for h, s in snaps.items():
-        p = s["pool"]
-        by[h] = {**by.get(h, {}), "pick": max(p, key=p.get), "probabilities": p, "blend50_exact": s["blend50_exact"]}
-    out = {**hour, "by": by, "shown_source": SHOWN_POOL}
-    prim = by.get(hour.get("primary") or LIVE.primary)
-    if prim:
-        out.update({"pick": prim["pick"], "probabilities": prim["probabilities"], "blend50_exact": prim["blend50_exact"]})
-    return out
+def shown(hour: dict) -> dict:
+    """The end-price sums as the card keeps them beside the call and the grader scores them: today's exact blend,
+    said under ``shown_source``. The pool never replaces them (the promotion was retired on 2026-10-07)."""
+    return {**hour, "shown_source": SHOWN_BLEND}
 
 
 # ----------------------------------------------------------------------------- the update
@@ -582,11 +558,11 @@ def on_version(snap: dict, q: str, version: str) -> bool:
     return q in snap["q_probs"] and (snap.get("members") or {}).get(q) == version
 
 
-def apply_session(state: dict, day: str, reads: list[dict], minutes: int, primary: bool, harm_60: dict | None,
+def apply_session(state: dict, day: str, reads: list[dict], minutes: int, primary: bool,
                   same_window: bool = False, source: str = SOURCE, replay: bool = False) -> dict:
     """One sealed session for one horizon, ``reads`` being its included ``{"row_ts", "snapshot",
     "outcome"}``: the day-mean losses, the weights steps, the tables, the e-processes, and on the
-    primary horizon the statuses and the phone's promotion (vetoed while ``harm_60`` is at VETO_E).
+    primary horizon the statuses.
     ``same_window``: every read forecasts one window (a lane graded from the settled open), so each
     counts the same in the day. ``source`` names the reference's experts (w0). ``replay``: a session learned
     again in a rebuild, which moves the weights, tables and calibration but bets nothing, so every e-process
@@ -657,7 +633,7 @@ def apply_session(state: dict, day: str, reads: list[dict], minutes: int, primar
     blend_loss = day_mean(-math.log(max(float(s["blend50_exact"].get(y, 0.0)), EPS)) for s, y in zip(snaps, ys))
     # and with its unsure mass spread, so the pool must beat the blend on more than that accounting
     spread_loss = day_mean(log_loss(f["blend50"], y) for f, y in zip(experts, ys))
-    # and the pool at its starting weights, so what it learned must count, not the mix it began with (09-30 review)
+    # and the pool at its starting weights, so the log shows whether what it learned counts (09-30 review)
     start = {side: _logs(w0(source)) for side in SIDES}
     start_loss = day_mean(log_loss(floored(mixed(f, start)), y) for f, y in zip(experts, ys))
     log["pool_vs_blend"] = {"pool": pool_loss, "blend50_exact": blend_loss, "blend50": spread_loss, "pool_at_start": start_loss}
@@ -680,29 +656,8 @@ def apply_session(state: dict, day: str, reads: list[dict], minutes: int, primar
             bet(ev[part]["better"], x)
             bet(ev[part]["worse"], -x)
         log["evidence"][q] = {"days": ev["days"], **{part: {k: ev[part][k]["e"] for k in ("better", "worse")} for part in ("move", "direction")}}
-    phone = state["phone"]
-    for test in PROMOTION_TESTS[1:]:
-        phone.setdefault(test, new_eprocess())             # a state from before the test
     if primary:
         log["status_changes"] = statuses(state)
-        if phone["shows"] == "blend":
-            for test, against in zip(PROMOTION_TESTS, (blend_loss, spread_loss, start_loss)):
-                bet(phone[test], day_score(pool_loss, against))
-            vetoed = harm_60 is not None and harm_60["e"] >= VETO_E
-            earned = min(phone[test]["e"] for test in PROMOTION_TESTS) >= PROMOTE_E
-            if earned and phone["promote"]["n"] >= MIN_DAYS and not vetoed:
-                if SIM_GATES_PASSED:
-                    phone.update({"shows": "pool", "since": day, "demote": new_eprocess()})
-                    log["phone"] = "promoted: the pool is eligible for the phone"
-                else:
-                    log["phone"] = "held on the blend: the evidence is there, but the simulation gates (06) have not passed"
-        else:
-            bet(phone["demote"], day_score(blend_loss, pool_loss))
-            if phone["demote"]["e"] >= DEMOTE_E:
-                phone.update({"shows": "blend", "since": day, **{test: new_eprocess() for test in PROMOTION_TESTS}})
-                log["phone"] = "demoted: back to the exact blend; the promotion evidence starts again"
-    else:
-        bet(phone["harm_60"], day_score(blend_loss, pool_loss))
     seen, hit = sum(t for _, t, _ in state["cap_binds"]), sum(b for _, _, b in state["cap_binds"])
     if state["frozen"] is None and len(state["cap_binds"]) >= CAP_BIND_WINDOW and seen and hit / seen > CAP_BIND_LIMIT:
         state["frozen"] = (f"the gap clip bound on more than {CAP_BIND_LIMIT:.0%} of the pool's expert-days over "
@@ -732,7 +687,7 @@ def _session_reads(recs: list[dict], outcomes: dict[str, dict], h: str, minutes:
 
 
 def learn_session(state: dict, day: str, reads: list[dict], excluded: dict[str, str], minutes: int, primary: bool,
-                  harm_60: dict | None, same_window: bool, source: str = SOURCE) -> dict:
+                  same_window: bool, source: str = SOURCE) -> dict:
     """One sealed session's included ``reads`` learned into ``state``, as both loops' updates learn it: the watermark
     moved to ``day``, the reads' reference taken up, the block brought to their live questions (membership), and
     apply_session, a day up to the state's ``replay_until`` replayed without bets. Returns what the log keeps."""
@@ -749,7 +704,7 @@ def learn_session(state: dict, day: str, reads: list[dict], excluded: dict[str, 
         body["reference_changed"] = {"from": state["reference_version"], "to": version}
     state["reference_version"] = version
     body["membership"] = membership(state, reads[-1]["snapshot"]["members"], day)
-    body.update(apply_session(state, day, reads, minutes, primary, harm_60, same_window, source,
+    body.update(apply_session(state, day, reads, minutes, primary, same_window, source,
                               replay=day <= (state.get("replay_until") or "")))
     return body
 
@@ -769,19 +724,8 @@ def archive_state(path: Path, state: dict) -> Path:
     return dest
 
 
-def carried_evidence(old: dict, new: dict) -> dict:
-    """A rebuilt state ``new`` with each promotion e-process starting where ``old``'s stood, but never above 1: the
-    evidence for the pool is not earned again by days the rebuild replays without bets, and the evidence against it
-    is not forgiven by the rebuild (09-30 review). The bets are sized afresh."""
-    for test in PROMOTION_TESTS:
-        e = (old.get("phone", {}).get(test) or {}).get("e", 1.0)
-        new["phone"][test] = {**new_eprocess(), "e": min(float(e), 1.0)}
-    return new
-
-
 def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline: "Baseline | None" = None) -> dict[str, str]:
-    """Apply every sealed session after the watermark, oldest first, both horizons (the longer first,
-    so the primary's promotion sees the same day's veto). A session is sealed once it is over and every
+    """Apply every sealed session after the watermark, oldest first, both horizons (the longer first). A session is sealed once it is over and every
     read has a terminal grade at every horizon. An unsealed session, or one some of whose reads carry no
     snapshot, stops the run and is logged (fail closed); one none of whose reads carries a snapshot is
     from before the loop and is passed over. A session already applied is never applied again.
@@ -808,7 +752,7 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline:
                        "rebuild": {"from": {h: states[h].get("constants_hash") for h in order}, "to": CONSTANTS_HASH,
                                    "kept": kept, "replay_until": replay_until or None},
                        "why": f"constants changed since {', '.join(changed)} began: learned again from the records"})
-        states = {h: carried_evidence(states[h], {**cold_state(), "replay_until": replay_until or None}) for h in order}
+        states = {h: {**cold_state(), "replay_until": replay_until or None} for h in order}
     watermark = min((s["last_session_applied"] or "") for s in states.values())
     stopped = False
     hour_dir = out_dir / "hour"
@@ -862,8 +806,7 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline:
             reads = [r if r["snapshot"].get("constants_hash") == CONSTANTS_HASH
                      else {**r, "snapshot": reformed(r["snapshot"], state, baseline.whole_day(h))} for r in reads]
             primary = h == lane.primary
-            harm_60 = states[order[0]]["phone"]["harm_60"] if primary and h != order[0] else None
-            body = learn_session(state, day, reads, excluded, minutes, primary, harm_60, lane.graded_from_settled_open)
+            body = learn_session(state, day, reads, excluded, minutes, primary, lane.graded_from_settled_open)
             # rounded after every session, as saved, so one night at a time and a rebuild agree to the bit
             states[h] = json.loads(_canonical(state))
             _log(out_dir, {**head, "horizon": h, "applied": bool(reads), **_rounded(body)})
@@ -881,14 +824,6 @@ def _log(out_dir: Path, line: dict) -> None:
 
 
 # ----------------------------------------------------------------------------- the seam
-
-def phone_report(state: dict) -> dict:
-    """The promotion evidence as weights.json reports it: what the state would show, whether the phone shows it
-    (never while POOL_ON_PHONE is off), and the pool's e-value on each of PROMOTION_TESTS."""
-    phone = state["phone"]
-    return {"shows": phone["shows"], "on_phone": POOL_ON_PHONE and phone["shows"] == "pool",
-            **{f"{test}_e": (phone.get(test) or new_eprocess())["e"] for test in PROMOTION_TESTS}, "days": phone["promote"]["n"]}
-
 
 class PoolWeights(QuestionWeights):
     """The loop behind the question-weights seam. learn() applies every newly sealed session and reports
@@ -920,7 +855,7 @@ class PoolWeights(QuestionWeights):
             questions[qid] = entry
         top = {side: _prob(state["top"][side]) for side in SIDES}
         return cls(questions, {"applied": applied, "last_session_applied": state["last_session_applied"],
-                               "phone": phone_report(state), "top": top, "frozen": state["frozen"]})
+                               "top": top, "frozen": state["frozen"]})
 
     def as_json(self) -> dict:
         return {**super().as_json(), "pool": self.pool}

@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from conftest import at
-from spx_jev import grade, integral, integral_loop, lane, pool
+from spx_jev import grade, integral, integral_loop, pool
 from spx_jev.scores import floored
 from spx_jev.clock import INTEGRAL_CACHE_NAME, MIN_SESSIONS, PHASES, _integral_rule_key
 from spx_jev.grade import INTEGRAL_NAME, weights_from
@@ -181,7 +181,7 @@ def test_with_the_switch_off_the_grader_never_imports_the_switched_loop(tmp_path
 # ---- on
 
 def test_on_the_loop_learns_from_the_average_price_label_beside_the_end_price_loop_learning_as_it_does_off(tmp_path, clock):
-    """Switched on, the end-price loop, whose pool the phone shows and demotes, keeps learning to the byte what it learns
+    """Switched on, the end-price loop keeps learning to the byte what it learns
     switched off; the switched loop writes only its own two files beside it."""
     out, off = _write(tmp_path / "out"), _write(tmp_path / "off")
     before = _tree(out)
@@ -195,7 +195,7 @@ def test_on_the_loop_learns_from_the_average_price_label_beside_the_end_price_lo
     # the weights keep the end-price loop's report, as with the switch off, and the switched loop's is beside it
     assert {k: v for k, v in w.items() if k != "pool_integral"} == _learn(_write(tmp_path / "off2"), OFF)
     w = w["pool_integral"]
-    assert w["method"] == "pool_v1_integral" and w["pool"]["last_session_applied"] == DAYS[-1] and w["pool"]["phone"]["on_phone"] is False
+    assert w["method"] == "pool_v1_integral" and w["pool"]["last_session_applied"] == DAYS[-1]
     assert w["questions"]["q_a"]["days"] == 3 and w["questions"]["q_a"]["weight"] == 1.0
     state = json.loads((out / "pool_30_integral.json").read_text())
     assert state["constants_hash"] == integral_loop.CONSTANTS_HASH != pool.CONSTANTS_HASH
@@ -397,57 +397,17 @@ def test_on_only_the_current_rule_versions_label_of_the_box_is_learned(tmp_path,
     assert (noisy / "pool_30_integral.json").read_bytes() == (base / "pool_30_integral.json").read_bytes()
 
 
-def _promoted(out: Path) -> None:
-    """This loop's state as it would stand once its pool had cleared the promotion bar and the simulation gates."""
-    state = integral_loop.load_state(out)
-    state["phone"].update({"shows": "pool", "since": DAYS[-1]})
-    integral_loop.save_state(out, LIVE, state)
-
-
-def test_on_the_call_shows_its_blend_until_this_loops_pool_is_promoted_then_the_pool_with_the_blend_beside_it(tmp_path, clock, monkeypatch):
-    """Will's decision of 2026-09-29, with the phone switch turned on (it is off since 2026-09-30, JEV leading the
-    phone): the average-price loop's promotion decides what the call shows, never the end-price loop's. The pool shown
-    is the one the update forms for the same read, and the update learns the read against the exact blend beside it."""
-    monkeypatch.setattr(pool, "POOL_ON_PHONE", True)
+def test_the_call_always_shows_its_exact_blend_and_an_error_is_returned_as_it_came(tmp_path, clock):
+    """This loop's pool never reaches the call (the promotion was retired on 2026-10-07): the average-price sum is
+    returned as it came, said under shown_source, and the grader grades what the phone shows."""
     out = _write(tmp_path)
     integral_loop.update(out, TODAY)
     rec = grade.load_jsonl(out / "hour" / f"{DAYS[0]}.jsonl")[0]
-    now, own = datetime.fromisoformat(rec["row_ts"]).replace(day=17), rec["pool"]["next_30"]
     call = {**rec["average"], "by": {"average_30": {"pick": rec["average"]["pick"], "probabilities": SHOWN_AVG}}}
-    assert integral_loop.shown(out, call, own, now) == {**call, "shown_source": pool.SHOWN_BLEND}
-    end_state = pool.load_state(out, 30)
-    end_state["phone"]["shows"] = "pool"                                  # the end-price loop's promotion reaches no call
-    pool.save_state(out, 30, end_state)
-    assert integral_loop.shown(out, call, own, now)["shown_source"] == pool.SHOWN_BLEND
-    assert _learn(out)["pool_integral"]["pool"]["phone"]["on_phone"] is False
-    _promoted(out)
-    got = integral_loop.shown(out, call, own, now)
-    cache, version = integral_loop.references(out)
-    want = pool.snapshot(integral_loop.load_state(out), integral_loop.reference(cache, TODAY, version), "next_30", now, JEV_AVG, CLOCK_AVG,
-                         SHOWN_AVG, own["q_probs"], own["members"], set(own["fresh"]), integral_loop.SOURCE)["pool"]
-    assert got["shown_source"] == pool.SHOWN_POOL and got["probabilities"] == want and got["pick"] == max(want, key=want.get)
-    assert got["blend50_exact"] == SHOWN_AVG and got["by"]["average_30"]["probabilities"] == want and got["jev"] == call["jev"]
-    assert grade.average_call({"average": got}, "next_30") is got                   # the grader grades what the phone shows
-    assert _learn(out)["pool_integral"]["pool"]["phone"]["on_phone"] is True
-    # the update learns a read that showed the pool against the blend it would have shown
-    ref = integral_loop.reference(cache, DAYS[0], version)
-    reads, _ = integral_loop._session_reads([{**rec, "average": got}], {rec["row_ts"]: {"graded": True, "label": "up"}},
-                                            integral_loop.cold_state(), ref, LIVE)
-    assert reads[0]["snapshot"]["blend50_exact"] == pytest.approx(SHOWN_AVG)
-    unblended = {**call, "blend": {"used": False, "why": "only 9 prior sessions"}}
-    held = integral_loop.shown(out, unblended, own, now)
-    assert held["shown_source"] == pool.SHOWN_BLEND and held["probabilities"] == SHOWN_AVG and "not blended" in held["shown_why"]
-    assert integral_loop.shown(out, {"error": "HTTP 529"}, own, now) == {"error": "HTTP 529"}
-
-
-def test_on_the_call_stays_on_its_blend_with_the_pool_off_the_phone(tmp_path, clock, monkeypatch):
-    out = _write(tmp_path)
-    integral_loop.update(out, TODAY)
-    _promoted(out)
-    monkeypatch.setattr(pool, "POOL_ON_PHONE", False)
-    rec = grade.load_jsonl(out / "hour" / f"{DAYS[0]}.jsonl")[0]
-    assert integral_loop.shown(out, rec["average"], rec["pool"]["next_30"], at(10, 2, day=TODAY))["shown_source"] == pool.SHOWN_BLEND
-    assert _learn(out)["pool_integral"]["pool"]["phone"]["on_phone"] is False
+    got = integral_loop.shown(call)
+    assert got == {**call, "shown_source": pool.SHOWN_BLEND}
+    assert grade.average_call({"average": got}, "next_30") is got
+    assert integral_loop.shown({"error": "HTTP 529"}) == {"error": "HTTP 529"}
 
 
 def test_on_a_read_is_forecast_on_jevs_own_average_odds_the_shown_blend_and_its_fresh_answers(tmp_path):
@@ -539,5 +499,4 @@ def test_the_dry_run_says_when_the_gate_is_met_and_keeps_passed_over_sessions_ap
     _edit(mixed / "hour" / "2026-09-17.jsonl", lambda r: {**r, "event": {"within_30": True}})
     said = integral_loop.describe(integral_loop.dry_run(mixed, LIVE, "2026-09-18"))
     assert said[1].startswith("sessions learned from: 3, the gate is 10 (7 to go); passed over: 1; every read left out: 1")
-    assert "promote_spread e 1.00; promote_learned e 1.00; promotion needs 20 on each after 20 days, and the simulation gates," in said[-2]
-    assert "pool.SIM_GATES_PASSED off)" in said[-2]
+    assert said[-2] == "frozen: no"

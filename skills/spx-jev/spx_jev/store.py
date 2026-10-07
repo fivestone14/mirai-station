@@ -15,9 +15,6 @@ The tables, each defined in TABLES with its columns, its key and its checks:
 
     reads           one row per read of any lane (archive ``read`` records): its lane and times, its ruler, how
                     many questions were asked, answered, lost, held, not due, asleep, missing and dark, and why
-    facts           one row per label per read, written, omitted or asleep, with the reason for a missing one, a
-                    label archived under a name it has since lost filed under its new one (labels.registry.RENAMED),
-                    and one per market-context value the read could see, with when it became known
     answers         one row per question per read: its status, JEV's probability per option, the pick, where a
                     held answer came from (a lost ask the lane held its last answer for is held, its reason
                     saying so), whether it was asked again after a lost ask, and the hash of the question
@@ -81,7 +78,6 @@ from .ask import GATED as GATE_REASON_PREFIX, confidence as answer_confidence, p
 from .daily_closes import DAILY_CLOSES_SUBDIR
 from .events import CALENDAR, ET
 from .hour import FIVE
-from .labels.registry import RENAMED
 from .lane import LANES, RECORD
 from .overnight import OVERNIGHT_SUBDIR
 from .rolls import table_path as rolls_path
@@ -92,7 +88,7 @@ from .state_builder import (CONTEXT_SUBDIR, DEFAULT_STATE_DIR, LIVE_BARS_SUBDIR,
 STORE_SUBDIR = Path("spx_jev") / "store"
 DB_NAME = "spx_jev.duckdb"
 PART = "part-0.parquet"
-SCHEMA_VERSION = 3              # 3: the average-price call, its answer and grade, and both loops' logs; overnight_schema
+SCHEMA_VERSION = 4              # 4: no facts table (2026-10-07); 3: the average-price call, its answer and grade, both loops' logs
 CATCH_UP_DAYS = 7              # a run rebuilds every market day this many calendar days back, so a late save is picked up
 BUILD_AFTER_CLOSE_MIN = 30     # today counts from its close plus this (16:30, 13:30 on a half day); the 16:40 job runs after the 16:20 saves either way
 PROB_SUM_TOLERANCE = 0.05      # JEV rounds each option to two places, so six options can sum to 0.97
@@ -264,14 +260,6 @@ def _answered(r: dict) -> str | None:
     return None
 
 
-def _labelled(r: dict) -> str | None:
-    if r["source"] == "label" and r["status"] == "written" and not r["text"]:
-        return "a written label with no sentence"
-    if r["status"] in ("omitted", "asleep") and not r["reason"]:
-        return f"{r['status']} with no reason"
-    return None
-
-
 def _outcome(r: dict) -> str | None:
     bands = FIVE if LANES[r["lane"]].horizons.get(r["horizon"], (0, None))[1] == RECORD else grade.BANDS
     return None if r["outcome"] in bands else f"outcome {r['outcome']!r} is not one of {', '.join(bands)}"
@@ -313,7 +301,6 @@ LANE_NAMES = tuple(LANES)
 AVERAGE_OUTCOMES = ("up", "flat", "down")
 LOOPS = {"end_price": pool.LOG_NAME, "average_price": integral_loop.LOG_NAME}   # each learning loop and the log it keeps
 ANSWER_STATUSES = ("answered", "lost", "unsent", "held", "not_due", "asleep", "missing", "dark", "unread", "other")
-FACT_STATUSES = ("written", "omitted", "asleep")
 
 READS = Table("reads", _read_cols(
     ("archived_at", TS, True), ("minute_et", INT, False), ("minutes_from_open", INT, False), ("checkpoint", STR, False),
@@ -329,14 +316,6 @@ READS = Table("reads", _read_cols(
     key=("read_id",),
     checks=(_is("lane", LANE_NAMES), _read_id_matches, _on_day("row_ts"), _positive("spot", "sigma", "ruler_points"),
             _not_after("row_ts", "archived_at", "archived before its read")))
-
-FACTS = Table("facts", _read_cols(
-    ("source", STR, True), ("path", STR, True), ("family", STR, False), ("name", STR, False), ("status", STR, True),
-    ("text", STR, False), ("reason", STR, False), ("value", NUM, False), ("known_at", TS, True)),
-    key=("read_id", "source", "path"),
-    checks=(_is("source", ("label", "market_context")), _is("status", FACT_STATUSES), _labelled,
-            _not_after("known_at", "row_ts", "known after its read")),
-    of_read=True)
 
 ANSWERS = Table("answers", _read_cols(
     ("group_id", STR, False), ("question_id", STR, True), ("status", STR, True), ("reason", STR, False),
@@ -464,7 +443,7 @@ VALIDATION = Table("validation", (("day", DAY, True), ("table_name", STR, True),
                                   ("reasons", COUNTS, True), ("sources", WORDS, True), ("store_schema", INT, True),
                                   ("built_at", TS, True)), key=())
 
-TABLES = (READS, FACTS, ANSWERS, CALLS, GRADES, AVERAGE_GRADES, POOL_LOG, SPX_BARS, CONTEXT_BARS, CONTEXT_QUOTES, OVERNIGHT_BARS, ROLLS,
+TABLES = (READS, ANSWERS, CALLS, GRADES, AVERAGE_GRADES, POOL_LOG, SPX_BARS, CONTEXT_BARS, CONTEXT_QUOTES, OVERNIGHT_BARS, ROLLS,
           DAILY_CLOSES, EVENTS)
 BY_NAME = {t.name: t for t in TABLES + (QUARANTINE, VALIDATION)}
 
@@ -573,7 +552,7 @@ def _answer_fields(a: dict | None) -> dict:
 
 
 def _read_rows(day: date, src: str, rec: dict, asked_by: dict, hours: dict) -> dict[str, list[dict]]:
-    """One archive read as its reads, facts, answers and calls rows."""
+    """One archive read as its reads, answers and calls rows."""
     lane, row_ts = rec.get("lane"), rec.get("row_ts")
     rid = rec.get("read_id")
     base = {"day": day, "read_id": rid, "lane": lane, "row_ts": row_ts, "_source": src}
@@ -630,24 +609,10 @@ def _read_rows(day: date, src: str, rec: dict, asked_by: dict, hours: dict) -> d
                         "held_from": since, "held_found": source is not None}
 
     call_answers = _average_answers(base, rec, responses is not None and bool(rec.get("sent")))
+    # a label omitted on a reason a question slept on was asleep, not missing
     asleep_reasons = {str(why)[len("asleep:"):].strip() for why in skip_reasons.values() if str(why).startswith("asleep:")}
-    facts = []
-    for family, labels in (rec.get("labels") or {}).items():
-        for name, text in (labels or {}).items():
-            path = RENAMED.get(f"{family}.{name}", f"{family}.{name}")
-            family_now, _, name_now = path.partition(".")
-            facts.append({**base, "source": "label", "path": path, "family": family_now, "name": name_now,
-                          "status": "written", "text": text, "reason": None, "value": None, "known_at": row_ts})
-    for path, why in (rec.get("omitted") or {}).items():
-        path = RENAMED.get(str(path), path)
-        family, _, name = str(path).partition(".")
-        facts.append({**base, "source": "label", "path": path, "family": family, "name": name or None,
-                      "status": "asleep" if why in asleep_reasons else "omitted", "text": None, "reason": why,
-                      "value": None, "known_at": row_ts})
-    for symbol, seen in (rec.get("market_context") or {}).items():
-        seen = seen if isinstance(seen, dict) else {}
-        facts.append({**base, "source": "market_context", "path": symbol, "family": None, "name": None, "status": "written",
-                      "text": None, "reason": None, "value": seen.get("value"), "known_at": seen.get("known_at")})
+    omitted = list((rec.get("omitted") or {}).values())
+    asleep = sum(1 for why in omitted if why in asleep_reasons)
 
     hour = rec.get("hour") if isinstance(rec.get("hour"), dict) else {}
     ruler = rec.get("ruler") if isinstance(rec.get("ruler"), dict) else {}
@@ -670,16 +635,15 @@ def _read_rows(day: date, src: str, rec: dict, asked_by: dict, hours: dict) -> d
             "event_soonest_min": event.get("soonest_min"), "event_within_30": event.get("within_30"),
             "questions": len(answers), **{s: counts.get(s, 0) for s in ANSWER_STATUSES},
             "reasked": sum(1 for a in answers.values() if a["reasked"]) if reask_known else None,
-            "labels_written": sum(1 for f in facts if f["source"] == "label" and f["status"] == "written"),
-            "labels_omitted": sum(1 for f in facts if f["source"] == "label" and f["status"] == "omitted"),
-            "labels_asleep": sum(1 for f in facts if f["status"] == "asleep"),
-            "market_values": sum(1 for f in facts if f["source"] == "market_context"),
+            "labels_written": sum(len(labels or {}) for labels in (rec.get("labels") or {}).values()),
+            "labels_omitted": len(omitted) - asleep, "labels_asleep": asleep,
+            "market_values": len(rec.get("market_context") or {}),
             "sum_used": hour.get("used") if not isinstance(hour.get("used"), dict) else len(hour["used"]),
             "sum_left_out": hour.get("left_out"), "sum_missing": hour.get("missing"), "sum_error": hour_error,
             "average_error": average_error,
             "skip_reasons": skip_reasons, "ruler_json": _json(rec.get("ruler")), "band_json": _json(rec.get("band")),
             "event_json": _json(rec.get("event")), "night_json": _json(rec.get("night")), "archive_schema": rec.get("schema_version")}
-    return {"reads": [read], "facts": facts, "answers": list(answers.values()) + call_answers,
+    return {"reads": [read], "answers": list(answers.values()) + call_answers,
             "calls": _call_rows(base, rec, hour, pool_snap, hours.get((lane, row_ts)), minute_et, from_open)}
 
 
@@ -905,7 +869,7 @@ def read_raw(state_dir: Path, day: date) -> Raw:
         for table, more in got.items():
             rows[table].extend(more)
 
-    archive = list(lines(state_dir / ARCHIVE_SUBDIR / f"{iso}.jsonl", "reads", "facts", "answers", "calls", "grades"))
+    archive = list(lines(state_dir / ARCHIVE_SUBDIR / f"{iso}.jsonl", "reads", "answers", "calls", "grades"))
     reads = [(w, r) for w, r in archive if r.get("kind") == "read"]
     for w, r in archive:
         if r.get("kind") not in ("read", "grade", "close_out"):
@@ -1131,7 +1095,7 @@ def _views_current(db: Path, store: Path) -> bool:
             meta = con.execute("SELECT schema_version, store FROM meta").fetchone()
     except duckdb.Error:
         return False
-    return views >= set(BY_NAME) and meta == (SCHEMA_VERSION, str(store))
+    return views == set(BY_NAME) and meta == (SCHEMA_VERSION, str(store))
 
 
 def _held_open(e: duckdb.Error) -> bool:
@@ -1141,11 +1105,15 @@ def _held_open(e: duckdb.Error) -> bool:
 
 def write_views(store: Path) -> bool:
     """A view per table over its day files, and ``meta`` (the schema version and the store it reads), in
-    ``spx_jev.duckdb``; nothing is written when they are already there. True when the file was written."""
+    ``spx_jev.duckdb``, a view over a table no longer kept dropped; nothing is written when they are already there.
+    True when the file was written."""
     db = store / DB_NAME
     if _views_current(db, store):
         return False
     with duckdb.connect(str(db)) as con:
+        stale = {r[0] for r in con.execute("SELECT view_name FROM duckdb_views() WHERE NOT internal").fetchall()} - set(BY_NAME)
+        for name in sorted(stale):                       # a table the store no longer keeps (facts, until 2026-10-07)
+            con.execute(f"DROP VIEW {name}")
         for name in BY_NAME:
             files = (store / name).as_posix().replace("'", "''") + "/day=*/*.parquet"
             con.execute(f"CREATE OR REPLACE VIEW {name} AS SELECT day, * EXCLUDE (day) FROM read_parquet('{files}', "

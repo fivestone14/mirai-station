@@ -350,15 +350,14 @@ def test_a_live_read_writes_the_loops_forecasts_keeps_the_blend_on_the_phone_and
     assert read["schema_version"] == archive.SCHEMA_VERSION and read["pool"]["next_60"]["experts"]
     # the day is over and both marks were graded in the same run: the end-price loop learned it at once
     learned = json.loads((out / "pool_30.json").read_text())
-    assert learned["last_session_applied"] == DAY and learned["evidence"]["q_dir"]["days"] == 1 and learned["phone"]["shows"] == "blend"
+    assert learned["last_session_applied"] == DAY and learned["evidence"]["q_dir"]["days"] == 1
     assert json.loads((out / "pool_60.json").read_text())["last_session_applied"] == DAY
     # the weights report it as they did, and the average-price loop beside it passes the day over: no read had an
     # average-price call
     weights = json.loads((out / "weights.json").read_text())
     assert weights["method"] == "pool_v1" and weights["pool"]["last_session_applied"] == DAY and weights["questions"]["q_dir"]["days"] == 1
-    assert weights["pool"]["phone"] == {**weights["pool"]["phone"], "shows": "blend", "on_phone": False}
     beside = weights["pool_integral"]
-    assert beside["method"] == "pool_v1_integral" and beside["pool"]["last_session_applied"] == DAY and not beside["pool"]["phone"]["on_phone"]
+    assert beside["method"] == "pool_v1_integral" and beside["pool"]["last_session_applied"] == DAY
     assert beside["questions"]["q_dir"]["weight"] == 1.0 and "days" not in beside["questions"]["q_dir"]
     said = [json.loads(line) for line in (out / "pool_integral_log.jsonl").read_text().splitlines()]
     assert [(x["session"], x["applied"], x["why"]) for x in said] == [(DAY, False, "no read carries an average-price call: before the question")]
@@ -391,27 +390,16 @@ def _average_sums(req, **kw):
                                                          "probabilities": {"up": 0.6, "flat": 0.3, "down": 0.1}}}}
 
 
-def test_the_call_shows_what_the_average_price_loop_chooses_and_its_exact_blend_until_promoted(tmp_path, monkeypatch):
-    """The average-price loop's promotion decides what the call shows (integral_loop.shown): unpromoted, the exact
-    blend, said under shown_source; its choice, whatever it is, is what the card and the sum record carry."""
+def test_the_call_shows_its_exact_blend_said_under_shown_source(tmp_path, monkeypatch):
+    """The call keeps its exact blend, said under shown_source (integral_loop.shown), on the card and in the sum record;
+    neither loop's pool replaces it (the promotion was retired on 2026-10-07)."""
     state = _state(tmp_path, [make_row(at(12, 2, ss=10), 7700.0)], 150)
     monkeypatch.setattr(service, "send_all", _answers())
     monkeypatch.setattr(service, "send", _average_sums)
     c = run_once(state, state / "spx_jev", DOC, True, DAY)
-    assert c["hour"]["average"]["shown_source"] == "blend50_exact" and c["hour"]["average"]["pick"] == "up"
-    seen = []
-
-    def promoted(out_dir, average, own, now, lane):
-        seen.append((own, lane.name))
-        return {**average, "pick": "down", "probabilities": {"up": 0.1, "flat": 0.2, "down": 0.7},
-                "blend50_exact": average["probabilities"], "shown_source": "pool"}
-    from spx_jev import integral_loop
-    monkeypatch.setattr(integral_loop, "shown", promoted)
-    state2 = _state(tmp_path / "b", [make_row(at(12, 2, ss=10), 7700.0)], 150)
-    c = run_once(state2, state2 / "spx_jev", DOC, True, DAY)
-    rec = json.loads((state2 / "spx_jev" / "hour" / f"{DAY}.jsonl").read_text().splitlines()[0])
-    assert c["hour"]["average"]["shown_source"] == rec["average"]["shown_source"] == "pool"
-    assert c["calls"][0]["pick"] == "down" and seen == [(rec["pool"]["next_30"], "live")]
+    rec = json.loads((state / "spx_jev" / "hour" / f"{DAY}.jsonl").read_text().splitlines()[0])
+    assert c["hour"]["average"]["shown_source"] == rec["average"]["shown_source"] == "blend50_exact"
+    assert c["hour"]["average"]["pick"] == "up" and c["hour"]["shown_source"] == "blend50_exact"
 
 
 def test_a_failing_average_price_loop_costs_neither_the_read_nor_the_close_out(tmp_path, monkeypatch, capsys):
