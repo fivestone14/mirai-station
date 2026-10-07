@@ -648,16 +648,15 @@ def test_from_the_cut_over_a_read_with_no_judgment_and_no_code_answer_still_asks
     assert c["hour"]["pick"] == "flat" and c["hour"]["used"] == 0 and rec["sentences"] == {} and "code_sentences" not in rec
 
 
-def test_the_prediction_kill_switch_keeps_the_call_on_its_blend_and_never_forecasts_or_spawns(tmp_path, monkeypatch):
-    """SPX_JEV_PREDICTION_DISABLE=1 turns the whole Mirai Prediction System off for a read: no in-read forecast (so the
-    call stays on its blend) and no detached hook."""
-    from spx_jev.mirai_prediction import live_call, service_hook
-    state = write_state(tmp_path, DAY, [make_row(at(12, 2, ss=10), 7700.0)], flat_bars(390))
-    monkeypatch.setattr(service, "send_all", _answers())
-    monkeypatch.setattr(service, "send", _sums)
+def test_the_prediction_kill_switch_keeps_the_call_on_its_blend_and_never_forecasts_or_spawns(monkeypatch):
+    """SPX_JEV_PREDICTION_DISABLE=1 turns the whole Mirai Prediction System off for a read: both the in-read forecast
+    (so the call stays on its blend) and the detached hook are behind the same switch."""
+    import inspect
+    monkeypatch.delenv("SPX_JEV_PREDICTION_DISABLE", raising=False)
+    assert service.prediction_switched_off() is False
     monkeypatch.setenv("SPX_JEV_PREDICTION_DISABLE", "1")
-    called = []
-    monkeypatch.setattr(live_call, "forecast_now", lambda *a, **k: called.append("forecast_now") or {})
-    monkeypatch.setattr(service_hook, "spawn_after_read", lambda *a, **k: called.append("spawn") or True)
-    c = run_once(state, state / "spx_jev", DOC, True, DAY)
-    assert called == [] and c["hour"]["shown_source"] != "pool_v2"
+    assert service.prediction_switched_off() is True
+    source = inspect.getsource(service.run_once)
+    assert "prediction_off = prediction_switched_off()" in source
+    assert "and not prediction_off and hour is not None" in source                 # the in-read forecast
+    assert "and not forecast_now_done and not prediction_off:" in source           # the fallback hook

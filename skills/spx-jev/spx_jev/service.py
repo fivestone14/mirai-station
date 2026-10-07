@@ -233,6 +233,15 @@ def plain_errors(hour: dict) -> dict:
     return out
 
 
+PREDICTION_DISABLE_ENV = "SPX_JEV_PREDICTION_DISABLE"
+
+
+def prediction_switched_off() -> bool:
+    """The Mirai Prediction System's kill switch: with it set to 1 a read makes no in-read forecast and starts no hook,
+    so the call stays on its 50/50 blend."""
+    return os.environ.get(PREDICTION_DISABLE_ENV) == "1"
+
+
 def sum_the_hour(doc: dict, hour_doc: dict, answered: dict[str, dict], weights: QuestionWeights,
                  fresh: dict[str, dict] | None = None, missing: list[str] | None = None,
                  lane: Lane = LIVE, unit: dict | None = None, deadline: float | None = None,
@@ -864,7 +873,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
                 **_stamp(lane, unit, band), **(hour_doc_now or {}), **hour_rec}
 
     forecast_now_done = False
-    prediction_off = os.environ.get("SPX_JEV_PREDICTION_DISABLE") == "1"   # the kill switch: the call stays on its blend
+    prediction_off = prediction_switched_off()                       # the kill switch: the call stays on its blend
     if prediction_off:
         log("the Mirai Prediction System is switched off (SPX_JEV_PREDICTION_DISABLE=1): the call stays on its blend")
     if do_send and lane.pool and day is None and not prediction_off and hour is not None and hour_rec and hour_rec.get("request"):
