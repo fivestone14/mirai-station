@@ -524,18 +524,15 @@
   "title": "Gamma packed near spot",
   "layer": 1,
   "group": "shared/pinned",
-  "method": "label",
-  "source": "gex.magnet_distance (grip clause)",
-  "label_keys": [
-   "gex.magnet_distance"
-  ],
+  "method": "market_value",
+  "source": "The share of today's 0DTE book's gamma (the diary row's gex_views.mass_by_strike, reversion/{day}.jsonl) at strikes within one 30-minute expected move of spot (the row's sigma x sqrt(30/390)), ranked against the same share at the same clock on the trailing sessions whose diary row then was SPX's own book (each prior session's newest row written by that clock, within 5 minutes; at least 10): bottom third low, middle normal, top third high.",
+  "label_keys": [],
   "options": [
    "low",
    "normal",
    "high"
   ],
-  "notes": "APPROXIMATE: the ranked top-strike share in gex.magnet_distance ('its grip ... stronger than k of n sessions') is the 0DTE book only and not limited to one expected move; gex.heaviest_strike_grip uses fixed 4%/16% cuts. 0-7DTE within 1 EM is not built. Question pressure test 2026-10-07: answered only while the read's diary row is SPX's own book (gex_source 'native'): on 10-06 and 10-07 every row was a SPY stand-in scaled by a factor that changed each minute, ranked against real SPX sessions. No vote (\"votes\": false) until the measure is rebuilt as the share of gamma within one 30-minute expected move ranked against the same minute (labels/gamma.py, step 2): today it is a day flag (89% of reads carry the day's usual answer). Decided in step 1 on the decision's own condition ('drop if that can't be built'): it can be built, in the label writer, so it is kept, without a vote meanwhile.",
-  "votes": false
+  "notes": "Question pressure test 2026-10-07: answered only while the read's diary row is SPX's own book (gex_source 'native'): on 10-06 and 10-07 every row was a SPY stand-in scaled by a factor that changed each minute, ranked against real SPX sessions. Until step 2 (2026-10-08) it parsed the grip clause of gex.magnet_distance (the heaviest strike's top-strike share, the whole 0DTE book, a day flag: 89% of reads carried the day's usual answer) and cast no vote; since step 2 the builder measures the share of gamma near spot itself from the stored diary rows, live and in backfill alike, the label sentence unchanged, and it votes. The 0-7DTE books are not in the diary's per-strike gamma, so the 0DTE book stands for them."
  },
  {
   "id": "OPTIONS-03",
@@ -561,18 +558,16 @@
   "title": "Market makers defending the contested strike",
   "layer": 2,
   "group": "options/strike_defense",
-  "method": "label",
-  "source": "options.strike_defense",
-  "label_keys": [
-   "options.strike_defense"
-  ],
+  "method": "market_value",
+  "source": "The lob-flow collector's refill test (lob_flow/agg/{day}.jsonl, the readings by the read, the newest within 3 minutes): of the book's magnet and walls hit 3 times or more in its last 15 minutes, the nearest to spot, when within one 30-minute expected move of it (the read's sigma x sqrt(30/390)); its refill share (refilled / hits) ranked against the same minute's nearest contested strike (3 hits or more) on the trailing sessions (at least 10): at or above the middle = defended, below = abandoned; above / below by the strike's side of spot.",
+  "label_keys": [],
   "options": [
    "defended above",
    "defended below",
    "abandoned above",
    "abandoned below"
   ],
-  "notes": "refill share ranked vs this minute ('at or above the middle: defended / below the middle: abandoned'). Label's hit minimum is 10 hits, not the question's 3+. Missing 10-06 (no lob_flow tape). Question pressure test 2026-10-07: its own group options/strike_defense (directional; it shared the shared/pinned vote). The label's reach and hit minimum (labels/options_flow.py _strike_defense) are step 2."
+  "notes": "Missing 10-06 (no lob_flow tape). Question pressure test 2026-10-07: its own group options/strike_defense (directional; it shared the shared/pinned vote). Until step 2 (2026-10-08) it parsed options.strike_defense, whose reach is a top-third rank against other sessions' nearest strikes (often right at price, so a strike 5-12 points away was out of reach) and whose minimum is 10 hits; since step 2 the builder reads the collector's record itself with a fixed reach and a 3-hit minimum, live and in backfill alike, the label sentence unchanged. DRAFT: the 3-hit minimum and the reach are the decision's, not measured cuts."
  },
  {
   "id": "OPTIONS-07",
@@ -616,11 +611,9 @@
   "title": "Heaviest strikes shifting",
   "layer": 2,
   "group": "options/magnet",
-  "method": "label",
-  "source": "gex.walls_since_30min",
-  "label_keys": [
-   "gex.walls_since_30min"
-  ],
+  "method": "market_value",
+  "source": "The diary row's heaviest call-side and put-side gamma strikes of today's 0DTE book (gex_views.call_wall_gamma / put_wall_gamma, reversion/{day}.jsonl) at the read against the newest row written by 30 minutes before it (within 5 minutes): a shift under one strike step (5 points) stayed put; both stayed put = stand still; both moved the same way = both moved up / down; else the pair's width grew = spread out, shrank = pulled in.",
+  "label_keys": [],
   "options": [
    "both moved up",
    "both moved down",
@@ -628,7 +621,7 @@
    "spread out",
    "stand still"
   ],
-  "notes": "parse which strike moved which way; both same way = both up/down, else 'closer together' = pulled in, 'further apart' = spread out. Question pressure test 2026-10-07: answered only while the read's diary row is SPX's own book (gex_source 'native'): on 10-06 and 10-07 every row was a SPY stand-in scaled by a factor that changed each minute, ranked against real SPX sessions. The one-strike rule for 'stayed put' (labels/gamma.py _walls_since_30min) is step 2."
+  "notes": "Question pressure test 2026-10-07: answered only while the read's diary row is SPX's own book (gex_source 'native'): on 10-06 and 10-07 every row was a SPY stand-in scaled by a factor that changed each minute, ranked against real SPX sessions. Until step 2 (2026-10-08) it parsed gex.walls_since_30min, where any shift, however small, was a move; since step 2 the builder compares the stored diary rows itself with the one-strike rule, live and in backfill alike, the label sentence unchanged."
  },
  {
   "id": "BREADTH-01",
@@ -732,7 +725,7 @@
    "normal",
    "thick"
   ],
-  "notes": "the clause after '; the size showing': 'higher than k of the last n sessions at this minute', its third = thin / normal / thick. Question pressure test 2026-10-07: it read the fifth words, and the label's reversed 'between the bottom and top fifths' fell through to the spread clause on middle-size books; the rank is read directly (old and new wordings alike), and fifth() knows both orders. The label writer's wording (labels/options_flow.py) is step 2."
+  "notes": "the clause after '; the size showing': 'higher than k of the last n sessions at this minute', its third of k/n = thin / normal / thick. Question pressure test 2026-10-07: it read the fifth words, and the label's reversed 'between the bottom and top fifths' fell through to the spread clause on middle-size books; the rank is read directly, so the wording never decides the answer. Since step 2 (2026-10-08) the label writes the standard 'between the top and bottom fifths'; fifth() reads both orders, so the archived sentences parse as before."
  },
  {
   "id": "FLOW-08",
@@ -1152,14 +1145,16 @@
   "layer": 2,
   "group": "breadth/heavyweight_in_play",
   "method": "market_value",
-  "source": "Each of the 8 largest names' return since the prior session's close less its usual multiple (BREADTH-07's) of SPX's since the same close, weighted; |largest pull| top third at this minute against the trailing sessions = in play; the rest of the index (SPX's move less the names' weighted moves) followed when it has the pull's sign and is above the bottom third of its own.",
+  "source": "Each of the 8 largest names' return since the prior session's close less its usual multiple (BREADTH-07's) of SPX's since the same close, weighted; |largest pull| top third at this minute against the trailing sessions = in play, up or down by the pull's sign; the rest of the index (SPX's move less the names' weighted moves) followed when it has the pull's sign and is above the bottom third of its own.",
   "label_keys": [],
   "options": [
-   "in play, rest followed",
-   "in play, rest did not",
+   "in play up, rest followed",
+   "in play up, rest did not",
+   "in play down, rest followed",
+   "in play down, rest did not",
    "none in play"
   ],
-  "notes": "Gate for the heavyweight_catalyst_or_flow judgment question (BREADTH-10) and a VOLATILITY-18 input; \"votes\": false: computed and stored, no vote (until 2026-10-07 the '(gate, no vote)' group name was text only and it voted, a near-constant answer, 68 of 70). The rank's history uses the same since-close residual (since_close_beyond) with today's fitted links as today's value (checked in step 1). DRAFT: the 30-minute multiple stands in for a since-the-close one.",
+  "notes": "Gate for the heavyweight_catalyst_or_flow judgment question (BREADTH-10) and a VOLATILITY-18 input; \"votes\": false: computed and stored, no vote (until 2026-10-07 the '(gate, no vote)' group name was text only and it voted, a near-constant answer, 68 of 70). Since step 2 (2026-10-08) the answer carries the pull's side ('in play up' / 'in play down'), which the heavyweight question's stored pick is signed by (answer_matrix.row_answers). The rank's history uses the same since-close residual (since_close_beyond) with today's fitted links as today's value (checked in step 1). DRAFT: the 30-minute multiple stands in for a since-the-close one.",
   "votes": false
  },
  {
@@ -1275,7 +1270,7 @@
    "down",
    "far down"
   ],
-  "notes": "Runs on /ZN. Question pressure test 2026-10-07: no vote (\"votes\": false): as a voter it was the day's since-close move relabelled (V 0.72-0.86 with LEVELS) and diluted MACRO-01, which now holds macro/macro_gap alone. Kept computed for the macro_gap judgment gate; the rank share it gates on is exposed in the answer itself (step 1's choice of 'expose the rank share'): 'far up / far down' is the top fifth, so judgment.py can gate on rank >= 0.8 from the answers it already reads.",
+  "notes": "Runs on /ZN. Question pressure test 2026-10-07: no vote (\"votes\": false): as a voter it was the day's since-close move relabelled (V 0.72-0.86 with LEVELS) and diluted MACRO-01, which now holds macro/macro_gap alone. Kept computed for the macro_gap judgment gate; the rank share it gates on is exposed in the answer itself (step 1's choice of 'expose the rank share'): 'far up / far down' is the top fifth, so judgment.py can gate on rank >= 0.8 from the answers it already reads. Since step 2 (2026-10-08) the macro_gap gate fires only on 'far up' / 'far down', once until the answer changes, and its label states the gap's size and side (code_features_market.macro_gap).",
   "votes": false
  },
  {

@@ -33,6 +33,7 @@ DEFINITIONS = {
                              "defense_min_events", "open_cluster_min", "tick_cluster", "mega_count", "spread_count"},
     "clocks and calendar": {"accept_minutes", "cross_lookback_min", "event_due_min", "event_digest_min", "speaker_window_min",
                             "shock_lookback_min", "shock_fresh_min", "one_day", "opex_week_days", "after_opex_days", "headline_window_min", "headline_cut_min",
+                            "headline_fresh_min",
                             "rebal_window_days", "month_turn_days"},
     "shares that define a word": {"gap_half_share", "giveback_third", "range_top_share", "range_bottom_share", "move_burst_share",
                                   "mega_one_name_share", "one_name_share", "stress_retreat_share", "stress_hold_share",

@@ -3,8 +3,9 @@
     load_day_bars            today's SPX minute bars, bars/{day}.jsonl (the live-bars sidecar)
     load_market_history      the trailing sessions' SPX bars, the nights' /ES bars, the market feed's minute bars per
                              symbol (the read's day's SPY volume from the siege box's minute volumes), the daily closes,
-                             the index weights, the day's SPX diary rows, the lob-flow quote sweeps and the day's premarket
-                             reads: bars/, overnight/, context/, context/bars/, daily_closes/, reversion/, lob_flow/raw/ and
+                             the index weights, the day's SPX diary rows (and the prior sessions' row at a read's minute),
+                             the lob-flow quote sweeps and collector records, and the day's premarket reads: bars/,
+                             overnight/, context/, context/bars/, daily_closes/, reversion/, lob_flow/raw/, lob_flow/agg/ and
                              siege/baseline.json files where they exist, the store's Parquet tables (spx_bars,
                              overnight_bars) for the sessions before the files begin. The parts that are prior sessions
                              only are cached in-process for the day (the live service loads them once, then each read
@@ -19,14 +20,15 @@ from __future__ import annotations
 
 import gzip
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from .. import daily_closes
 from ..events import ET
 from ..index_weights import WEIGHTS_FILE
-from ..labels.options_flow import SPY_VOLUMES, _read_spy_volumes
-from ..state_builder import LIVE_BARS_SUBDIR, load_jsonl
+from ..labels.gamma import ROW_SLACK_MIN, ROW_TS
+from ..labels.options_flow import SPY_VOLUMES, CollectorRecord, _read_spy_volumes, collector_record
+from ..state_builder import LIVE_BARS_SUBDIR, OPTIONS_TAPE_SUBDIR, load_jsonl
 from .code_features import GAP_HISTORY_SESSIONS, HISTORY_SESSIONS, MarketHistory, answer_code_features, bars_up_to
 from .live_records import _json_lines
 from .paths import append_json_line, now_utc_iso, raw_code_features_file, read_json_lines, spx_jev_dir
@@ -42,8 +44,9 @@ STORE_OVERNIGHT_BARS = "overnight_bars"
 ES = "/ES"
 SPY = "SPY"
 QUOTE_BAR_SYMBOLS = ("SPY", "QQQ", "IWM")           # FLOW-07 reads the read's day's quotes for these, saved bars or not
-DIARY_FIELDS = ("call_wall", "put_wall", "call_wall_tenor", "put_wall_tenor", "atm_iv", "gex_source")
-DIARY_GAMMA_FIELDS = ("call_wall_gamma", "put_wall_gamma")    # the near gamma walls, under the row's gex_views
+DIARY_FIELDS = ("spot", "sigma", "call_wall", "put_wall", "call_wall_tenor", "put_wall_tenor", "atm_iv", "gex_source")
+# under the row's gex_views: the near gamma walls, and today's 0DTE book's gamma per strike near price (OPTIONS-02)
+DIARY_GAMMA_FIELDS = ("call_wall_gamma", "put_wall_gamma", "mass_by_strike")
 
 
 def _et(ts: str) -> str:
@@ -257,23 +260,60 @@ def load_index_weights(state_dir: Path | str) -> dict | None:
     return doc if isinstance(doc, dict) else None
 
 
+def slim_diary_row(row: dict) -> dict | None:
+    """One SPX diary row slimmed to the fields the builder reads: ts, spot, the day's sigma, the 0DTE and 1-to-7-day
+    open-interest walls, the near gamma walls, the magnet, the 0DTE book's gamma per strike, the at-the-money vol and the
+    book's source ("native", or a scaled SPY stand-in); None for a malformed row."""
+    ts = row.get("ts")
+    if not isinstance(ts, str):
+        return None
+    try:
+        views = row.get("gex_views") or {}
+        slim = {"ts": _et(ts), "magnet": views.get("magnet"), **{k: views.get(k) for k in DIARY_GAMMA_FIELDS}}
+    except (TypeError, ValueError, AttributeError):
+        return None
+    slim.update({k: row.get(k) for k in DIARY_FIELDS})
+    return slim
+
+
 def load_diary_rows(state_dir: Path | str, day: str) -> list[dict]:
-    """The day's SPX diary rows (reversion/{day}.jsonl), slimmed to the fields the builder reads: ts, the 0DTE and
-    1-to-7-day open-interest walls, the near gamma walls, the magnet, the at-the-money vol and the book's source
-    ("native", or a scaled SPY stand-in); in time order, a malformed row skipped."""
-    out = []
-    for row in load_jsonl(Path(state_dir) / DIARY_SUBDIR / f"{day}.jsonl"):
-        ts = row.get("ts")
-        if not isinstance(ts, str):
-            continue
-        try:
-            views = row.get("gex_views") or {}
-            slim = {"ts": _et(ts), "magnet": views.get("magnet"), **{k: views.get(k) for k in DIARY_GAMMA_FIELDS}}
-        except (TypeError, ValueError, AttributeError):
-            continue
-        slim.update({k: row.get(k) for k in DIARY_FIELDS})
-        out.append(slim)
+    """The day's SPX diary rows (reversion/{day}.jsonl), slim (slim_diary_row), in time order, a malformed row skipped."""
+    out = [slim for row in load_jsonl(Path(state_dir) / DIARY_SUBDIR / f"{day}.jsonl") if (slim := slim_diary_row(row)) is not None]
     return sorted(out, key=lambda r: r["ts"])
+
+
+def diary_row_at(state_dir: Path | str, day: str, clock: str) -> dict | None:
+    """A prior session's slim diary row at ``clock`` (HH:MM:SS, ET): the newest written by then and not more than the
+    labeller's ROW_SLACK_MIN before it (labels/gamma.py's rule). A day's diary is about 10 MB, so it is read a line at a
+    time up to the clock and only the chosen row is parsed; the scanner writes its rows in time order."""
+    path = Path(state_dir) / DIARY_SUBDIR / f"{day}.jsonl"
+    if not path.exists():
+        return None
+    then = datetime.fromisoformat(f"{day}T{clock}").replace(tzinfo=ET)
+    chosen = None
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            m = ROW_TS.match(line)
+            if m is None:
+                continue
+            try:
+                if datetime.fromisoformat(m.group(1)) > then:
+                    break
+            except ValueError:
+                continue
+            chosen = line
+    try:
+        slim = slim_diary_row(json.loads(chosen)) if chosen else None
+    except ValueError:
+        return None
+    return slim if slim and datetime.fromisoformat(slim["ts"]) >= then - timedelta(minutes=ROW_SLACK_MIN) else None
+
+
+def load_collector_records(state_dir: Path | str, before_day: str, sessions: int = HISTORY_SESSIONS) -> dict[str, CollectorRecord]:
+    """The lob-flow collector's records (lob_flow/agg/{day}.jsonl) of the trailing sessions before ``before_day``."""
+    folder = Path(state_dir) / OPTIONS_TAPE_SUBDIR
+    days = sorted(p.stem for p in folder.glob("????-??-??.jsonl") if p.stem < before_day) if folder.exists() else []
+    return {day: record for day in days[-sessions:] if (record := collector_record(Path(state_dir), day)) is not None}
 
 
 def load_quote_sweeps(state_dir: Path | str, day: str) -> list[tuple[str, float, str]]:
@@ -342,7 +382,8 @@ def _prior_sessions_parts(state_dir: Path | str, lane: str, day: str) -> dict:
                  "context_bars_by_day": _part(lambda: load_context_bars_by_day(state_dir, day), {}),
                  "daily_closes": _part(lambda: load_daily_closes(state_dir, day), {}),
                  "index_weights": _part(lambda: load_index_weights(state_dir), None),
-                 "quote_sweeps_by_day": _part(lambda: load_quote_sweeps_by_day(state_dir, day), {})}
+                 "quote_sweeps_by_day": _part(lambda: load_quote_sweeps_by_day(state_dir, day), {}),
+                 "collector_records": _part(lambda: load_collector_records(state_dir, day), {})}
         _PRIOR_SESSIONS_CACHE.clear()
         _PRIOR_SESSIONS_CACHE[key] = parts
     return parts
@@ -352,8 +393,8 @@ def load_market_history(state_dir: Path | str, lane: str, day: str) -> MarketHis
     """Everything the builder needs beyond the read's own record and the day's bars, for one day (reuse it across the day's reads).
     Each part is loaded on its own: a store that cannot be read, or a broken file, empties that part only, so the label
     questions (which need none of this) still answer. The prior sessions' parts are cached for the day; the day's own
-    (the night into it, its symbols so far, its quotes, SPY's minute volumes, its diary, its sweeps, its premarket reads)
-    are read fresh each call."""
+    (the night into it, its symbols so far, its quotes, SPY's minute volumes, its diary, its sweeps, its collector record,
+    its premarket reads) are read fresh each call; a prior session's diary row is read at each read's own minute."""
     prior = _prior_sessions_parts(state_dir, lane, day)
     tonight = _part(lambda: load_night_bars(state_dir, day, ES), [])
     quotes = _part(lambda: load_context_quotes_as_bars(state_dir, day), {})
@@ -364,6 +405,7 @@ def load_market_history(state_dir: Path | str, lane: str, day: str) -> MarketHis
     spy_minutes = _part(lambda: load_spy_minute_volumes(state_dir, day), {})
     today_bars = _part(lambda: with_siege_spy_volume(today, spy_minutes, day, saved is None or bool(quotes.get(SPY))), today)
     today_sweeps = _part(lambda: load_quote_sweeps(state_dir, day), [])
+    today_record = _part(lambda: collector_record(Path(state_dir), day), None)
     return MarketHistory(spx_bars_by_day=prior["spx_bars_by_day"],
                          es_night_bars_by_day={**prior["es_night_bars_by_day"], **({day: tonight} if tonight else {})},
                          context_bars_by_day={**prior["context_bars_by_day"], **({day: today_bars} if today_bars else {})},
@@ -372,6 +414,8 @@ def load_market_history(state_dir: Path | str, lane: str, day: str) -> MarketHis
                          daily_closes=prior["daily_closes"],
                          index_weights=prior["index_weights"],
                          diary_rows=_part(lambda: load_diary_rows(state_dir, day), []),
+                         prior_diary_row_at=lambda d, clock: diary_row_at(state_dir, d, clock) if d < day else None,
+                         collector_records={**prior["collector_records"], **({day: today_record} if today_record is not None else {})},
                          quote_sweeps_by_day={**prior["quote_sweeps_by_day"], **({day: today_sweeps} if today_sweeps else {})},
                          premarket_reads=_part(lambda: load_premarket_reads(state_dir, lane, day), []))
 

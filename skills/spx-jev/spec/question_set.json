@@ -117,7 +117,7 @@
    }
   },
   "labels": 142,
-  "constants": 68,
+  "constants": 69,
   "label_availability": {
    "live": 77,
    "cheap_add": 57,
@@ -581,6 +581,12 @@
   "headline_cut_min": {
    "value": 2,
    "note": "and at least this many minutes before it, so JEV reads only what the station could have read (headlines.py)",
+   "cuts_json_name": null,
+   "in_cuts_py": true
+  },
+  "headline_fresh_min": {
+   "value": 30,
+   "note": "news_reaction is asked only when a material headline was first captured in this many minutes before the cut (judgment.py)",
    "cuts_json_name": null,
    "in_cuts_py": true
   }
@@ -9158,7 +9164,7 @@
       {
        "name": "judgment.headlines",
        "example": "3 headlines captured from 10:02 to 10:29 ET, all before the read, newest first: Nvidia shares slip as export curbs widen (CNBC, 10:29 ET); Treasury yields climb after jobs data (MarketWatch, 10:14 ET); Fed's Waller sees room for cuts (Reuters, 10:02 ET)",
-       "computed_how": "headlines.headlines_before: every line of state/spx_jev/headlines/{day}.jsonl captured in the {headline_window_min} minutes ending {headline_cut_min} minutes before the read, newest first, at most 25 titles, each with its outlet and the minute it was captured (never the feed's own pubDate, which is kept but not trusted); 'no headlines captured in the 60 minutes before the read' when there are none",
+       "computed_how": "headlines.headlines_before: every line of state/spx_jev/headlines/{day}.jsonl first captured in the {headline_window_min} minutes ending {headline_cut_min} minutes before the read, each story once (a copy of a title captured earlier, the same words under another outlet, case or punctuation, is dropped), newest first, at most 25 titles, the CNBC, MarketWatch and Fed titles and the material ones (stocks, rates, the Fed, a heavyweight) shown first when there are more, each with its outlet and the minute it was captured (never the feed's own pubDate, which is kept but not trusted); 'no headlines captured in the 60 minutes before the read' when there are none",
        "source": "the headline feed: CNBC Top News, Google News (search), MarketWatch Top Stories and the Fed's press RSS, polled every 3 minutes 07:00-16:30 ET weekdays by com.mirai-station.spx-jev-headlines (spx_jev/headlines.py)",
        "availability": "live",
        "needs_engine_edit": false
@@ -9193,15 +9199,15 @@
      "shadow_proof": "not a proof: shadow keeps it out of the old loop (the sums, the weights, pool_v1 and the cadence all keep to live questions) while the Mirai Prediction System takes its answers as a layer-3 column; promoted only if it beats the learners' own inputs there",
      "cadence": "every 30-minute read from 10:02, asked only when the code reads a heavyweight in play (BREADTH-09)",
      "ask": "Does a headline give the heavyweight in play a material cause, or is it flow with none?",
-     "instructions": "Read `judgment.heavyweight` and `judgment.headlines`. The code says a heavyweight is moving beyond its usual link to the index since the close. Do the headlines captured before the read show a timely, material cause for it (likely to persist), or is it flow with no clear cause (likely to revert)?",
+     "instructions": "Read `judgment.heavyweight`. The code says which heavyweight is moving beyond its usual link to the index since the close, which way it pulls the index and how far, and lists the headlines captured before the read that name it. Do they show a timely, material cause for its move (likely to persist), or is it flow with no clear cause (likely to revert)?",
      "options": [
       {
        "name": "material_cause",
-       "description": "a headline before the read names a timely, material cause for the name's move: likely to persist"
+       "description": "a headline before the read names a timely, material cause for this stock's move: likely to persist"
       },
       {
        "name": "no_clear_cause",
-       "description": "no headline explains it: flow, likely to revert"
+       "description": "no headline explains this stock's move: flow, likely to revert"
       },
       {
        "name": "unclear",
@@ -9209,30 +9215,22 @@
       }
      ],
      "criteria": {
-      "material_cause": "a captured headline names the heavyweight and a cause",
+      "material_cause": "a captured headline names the heavyweight and a cause for its move the way it pulls",
       "no_clear_cause": "none does",
       "unclear": "ambiguous"
      },
      "labels_needed": [
       {
        "name": "judgment.heavyweight",
-       "example": "the heavyweights since the close reads 'in play, rest followed' (BREADTH-09)",
-       "computed_how": "the code feature builder's answer to BREADTH-09 for this read (spx_jev/mirai_prediction/code_features.py, the same answer the Mirai Prediction System's matrix holds as its code column), written as a sentence; the gate: asked only when BREADTH-09 reads 'in play, ...'; an answer the code could not give reads 'not measured this read'",
-       "source": "the read's own record and the trailing sessions' bars and market feed (code_feature_inputs.load_market_history); recorded under state/spx_jev/mirai_prediction/raw/code_features/{day}.jsonl on a live read",
-       "availability": "live",
-       "needs_engine_edit": false
-      },
-      {
-       "name": "judgment.headlines",
-       "example": "3 headlines captured from 10:02 to 10:29 ET, all before the read, newest first: Nvidia shares slip as export curbs widen (CNBC, 10:29 ET); Treasury yields climb after jobs data (MarketWatch, 10:14 ET); Fed's Waller sees room for cuts (Reuters, 10:02 ET)",
-       "computed_how": "headlines.headlines_before: every line of state/spx_jev/headlines/{day}.jsonl captured in the {headline_window_min} minutes ending {headline_cut_min} minutes before the read, newest first, at most 25 titles, each with its outlet and the minute it was captured (never the feed's own pubDate, which is kept but not trusted); 'no headlines captured in the 60 minutes before the read' when there are none",
-       "source": "the headline feed: CNBC Top News, Google News (search), MarketWatch Top Stories and the Fed's press RSS, polled every 3 minutes 07:00-16:30 ET weekdays by com.mirai-station.spx-jev-headlines (spx_jev/headlines.py)",
+       "example": "the heavyweights since the close reads 'in play down, rest did not' (BREADTH-09): NVDA pulls the index down, its move since the prior close beyond its usual link to the index worth -0.12% of the index; the rest of the index moved +0.05% since the close; headlines naming NVDA or Nvidia, newest first: Nvidia shares slip as export curbs widen (CNBC, 10:29 ET)",
+       "computed_how": "the code feature builder's answer to BREADTH-09 for this read (spx_jev/mirai_prediction/code_features.py, the same answer the Mirai Prediction System's matrix holds as its code column), written as a sentence, and while a heavyweight is in play its measure (code_features_market.heavyweight_pull): which stock, the way it pulls, its pull and the rest of the index's move since the prior close, and the headlines of the window that name it or its ticker; the gate: asked only when BREADTH-09 reads 'in play ...'; an answer the code could not give reads 'not measured this read'",
+       "source": "the read's own record and the trailing sessions' bars and market feed (code_feature_inputs.load_market_history), the headline feed; recorded under state/spx_jev/mirai_prediction/raw/code_features/{day}.jsonl on a live read",
        "availability": "live",
        "needs_engine_edit": false
       }
      ],
      "why": "Real judgment on materiality, scoped to the named heavyweight so it does not double-count news_reaction.",
-     "evidence": "merged set: needs the headline feed, live since 2026-10-07.",
+     "evidence": "merged set: needs the headline feed, live since 2026-10-07. Question pressure test round 2 (step 2, 2026-10-08): JEV was told neither which stock nor which way, so the stored pick had no direction; the label now names the stock, its side and pull and the headlines naming it, and the matrix stores the pick signed by the pull ('material_cause:up').",
      "origin": "merged set 2026-10-05 (BREADTH-10, plan_v2); built 2026-10-07 as a gated judgment question",
      "code_answer": false,
      "sleep_when": "BREADTH-09 does not read a heavyweight in play",
@@ -9257,13 +9255,13 @@
      ],
      "status": "shadow",
      "shadow_proof": "not a proof: shadow keeps it out of the old loop (the sums, the weights, pool_v1 and the cadence all keep to live questions) while the Mirai Prediction System takes its answers as a layer-3 column; promoted only if it beats the learners' own inputs there",
-     "cadence": "every 30-minute read from 10:02, asked only when the code reads SPX away from what bonds imply (MACRO-02 up, down, far up or far down)",
+     "cadence": "every 30-minute read from 10:02, asked only when the code reads SPX far from what bonds imply (MACRO-02 far up or far down, its top fifth), and answered once until that answer changes (an ask JEV did not answer is asked again)",
      "ask": "Is there an equity-side reason keeping SPX away from what bonds imply, or should the gap close?",
-     "instructions": "Read `judgment.macro_gap` and `judgment.headlines`. The code says SPX is away from what bonds imply since the close. Is there an equity-side reason in the headlines keeping the gap open, or none, so it should close?",
+     "instructions": "Read `judgment.macro_gap` and `judgment.headlines`. The code says SPX is far from what bonds imply since the close, on which side and by how much. Is there an equity-side reason in the headlines that points SPX the way it has moved from what bonds imply (good news for stocks with SPX above it, bad news with SPX below it), keeping the gap open, or none, so it should close?",
      "options": [
       {
        "name": "equity_reason",
-       "description": "a headline before the read gives stocks their own reason: the gap can stay open"
+       "description": "a headline before the read gives stocks their own reason, pointing the gap's way: the gap can stay open"
       },
       {
        "name": "no_reason",
@@ -9275,15 +9273,15 @@
       }
      ],
      "criteria": {
-      "equity_reason": "a captured headline names an equity-side cause",
+      "equity_reason": "a captured headline names an equity-side cause pointing SPX the way the gap stands (up with SPX above what bonds imply, down with it below)",
       "no_reason": "none does",
       "unclear": "ambiguous"
      },
      "labels_needed": [
       {
        "name": "judgment.macro_gap",
-       "example": "SPX against what bonds imply since the close reads 'far up' (MACRO-02): 'up' is SPX short of what bonds imply, 'down' past it, 'far' the top fifth",
-       "computed_how": "the code feature builder's answer to MACRO-02 for this read (spx_jev/mirai_prediction/code_features.py; a context column since 2026-10-07, kept without a vote), written as a sentence; the gate: asked only when MACRO-02 reads up or down (the gap above the bottom third; 'far' marks the top fifth); an answer the code could not give reads 'not measured this read'",
+       "example": "SPX against what bonds imply since the close reads 'far up' (MACRO-02): 'up' is SPX short of what bonds imply, 'down' past it, 'far' the top fifth; SPX sits 0.42% (about 33 points) below what the ten-year note's move since the prior close implies, so the gap closing would move SPX up",
+       "computed_how": "the code feature builder's answer to MACRO-02 for this read (spx_jev/mirai_prediction/code_features.py; a context column since 2026-10-07, kept without a vote), written as a sentence, and in its top fifth the gap's size and side (code_features_market.macro_gap, in points at the read's spot); the gate: asked only when MACRO-02 reads 'far up' or 'far down' (the gap's top fifth) and the day's last read JEV answered this question on did not read the same (answered once until it changes; a lost ask is retried); an answer the code could not give reads 'not measured this read'",
        "source": "the read's own record and the trailing sessions' bars and market feed (code_feature_inputs.load_market_history); recorded under state/spx_jev/mirai_prediction/raw/code_features/{day}.jsonl on a live read",
        "availability": "live",
        "needs_engine_edit": false
@@ -9291,17 +9289,17 @@
       {
        "name": "judgment.headlines",
        "example": "3 headlines captured from 10:02 to 10:29 ET, all before the read, newest first: Nvidia shares slip as export curbs widen (CNBC, 10:29 ET); Treasury yields climb after jobs data (MarketWatch, 10:14 ET); Fed's Waller sees room for cuts (Reuters, 10:02 ET)",
-       "computed_how": "headlines.headlines_before: every line of state/spx_jev/headlines/{day}.jsonl captured in the {headline_window_min} minutes ending {headline_cut_min} minutes before the read, newest first, at most 25 titles, each with its outlet and the minute it was captured (never the feed's own pubDate, which is kept but not trusted); 'no headlines captured in the 60 minutes before the read' when there are none",
+       "computed_how": "headlines.headlines_before: every line of state/spx_jev/headlines/{day}.jsonl first captured in the {headline_window_min} minutes ending {headline_cut_min} minutes before the read, each story once (a copy of a title captured earlier, the same words under another outlet, case or punctuation, is dropped), newest first, at most 25 titles, the CNBC, MarketWatch and Fed titles and the material ones (stocks, rates, the Fed, a heavyweight) shown first when there are more, each with its outlet and the minute it was captured (never the feed's own pubDate, which is kept but not trusted); 'no headlines captured in the 60 minutes before the read' when there are none",
        "source": "the headline feed: CNBC Top News, Google News (search), MarketWatch Top Stories and the Fed's press RSS, polled every 3 minutes 07:00-16:30 ET weekdays by com.mirai-station.spx-jev-headlines (spx_jev/headlines.py)",
        "availability": "live",
        "needs_engine_edit": false
       }
      ],
      "why": "True judgment that decides whether the code's gap closes; gated to the gap being there.",
-     "evidence": "merged set: MACRO-02 ranks the gap in thirds and, since 2026-10-07, names the top fifth 'far'; the gate is any side.",
+     "evidence": "merged set: MACRO-02 ranks the gap in thirds and, since 2026-10-07, names the top fifth 'far'. Question pressure test round 2 (step 2, 2026-10-08): it fired on any side 8-12 times a day on one constant fact and JEV picked equity_reason 8 of 8; it now fires on the top fifth once until the answer changes, the label states the gap's size and side, and the matrix stores no_reason signed by the gap's side ('no_reason:up'). Drop it if it is still one answer after about 20 fires.",
      "origin": "merged set 2026-10-05 (MACRO-03, plan_v2); built 2026-10-07 as a gated judgment question",
      "code_answer": false,
-     "sleep_when": "MACRO-02 reads 'nowhere' or is not measured",
+     "sleep_when": "MACRO-02 does not read 'far up' or 'far down', or reads the same as on the day's last read JEV answered this question on",
      "schedule": {
       "thirty_minute": {
        "every_min": 30,
@@ -9324,16 +9322,16 @@
      "status": "shadow",
      "shadow_proof": "not a proof: shadow keeps it out of the old loop (the sums, the weights, pool_v1 and the cadence all keep to live questions) while the Mirai Prediction System takes its answers as a layer-3 column; promoted only if it beats the learners' own inputs there",
      "cadence": "every 30-minute read from 10:02, asked only when the ten-year yield has moved more than usual since the prior close and no release is in its reaction window",
-     "ask": "Is the ten-year yield's larger-than-usual move a growth story, an inflation or Fed story, or unclear?",
-     "instructions": "Read `judgment.yield_move` and `judgment.headlines`. The code says the ten-year yield has moved more than usual since the prior close for this minute. From the headlines captured before the read, is the move a growth story (a tailwind for stocks), an inflation or Fed story (a headwind), or unclear?",
+     "ask": "Is the ten-year yield's larger-than-usual move good for stocks, bad for stocks, or unclear?",
+     "instructions": "Read `judgment.yield_move` and `judgment.headlines`. The code says the ten-year yield has moved more than usual since the prior close for this minute, and which way. From the headlines captured before the read, is that move a tailwind for stocks (yields up on growth, or down on softer inflation or an easier Fed), a headwind (yields up on inflation, the Fed or supply, or down on growth fears), or unclear?",
      "options": [
       {
-       "name": "growth_tailwind",
-       "description": "yields move on growth: a tailwind for stocks"
+       "name": "stock_tailwind",
+       "description": "the yield's move, read with its cause, is good for stocks"
       },
       {
-       "name": "inflation_headwind",
-       "description": "yields move on inflation or the Fed: a headwind"
+       "name": "stock_headwind",
+       "description": "the yield's move, read with its cause, is bad for stocks"
       },
       {
        "name": "unclear",
@@ -9341,8 +9339,8 @@
       }
      ],
      "criteria": {
-      "growth_tailwind": "the headlines name growth or earnings",
-      "inflation_headwind": "the headlines name inflation, the Fed or supply",
+      "stock_tailwind": "yields up and the headlines name growth or earnings, or yields down and they name softer inflation or an easier Fed",
+      "stock_headwind": "yields up and the headlines name inflation, the Fed or supply, or yields down and they name growth fears",
       "unclear": "neither"
      },
      "labels_needed": [
@@ -9357,14 +9355,14 @@
       {
        "name": "judgment.headlines",
        "example": "3 headlines captured from 10:02 to 10:29 ET, all before the read, newest first: Nvidia shares slip as export curbs widen (CNBC, 10:29 ET); Treasury yields climb after jobs data (MarketWatch, 10:14 ET); Fed's Waller sees room for cuts (Reuters, 10:02 ET)",
-       "computed_how": "headlines.headlines_before: every line of state/spx_jev/headlines/{day}.jsonl captured in the {headline_window_min} minutes ending {headline_cut_min} minutes before the read, newest first, at most 25 titles, each with its outlet and the minute it was captured (never the feed's own pubDate, which is kept but not trusted); 'no headlines captured in the 60 minutes before the read' when there are none",
+       "computed_how": "headlines.headlines_before: every line of state/spx_jev/headlines/{day}.jsonl first captured in the {headline_window_min} minutes ending {headline_cut_min} minutes before the read, each story once (a copy of a title captured earlier, the same words under another outlet, case or punctuation, is dropped), newest first, at most 25 titles, the CNBC, MarketWatch and Fed titles and the material ones (stocks, rates, the Fed, a heavyweight) shown first when there are more, each with its outlet and the minute it was captured (never the feed's own pubDate, which is kept but not trusted); 'no headlines captured in the 60 minutes before the read' when there are none",
        "source": "the headline feed: CNBC Top News, Google News (search), MarketWatch Top Stories and the Fed's press RSS, polled every 3 minutes 07:00-16:30 ET weekdays by com.mirai-station.spx-jev-headlines (spx_jev/headlines.py)",
        "availability": "live",
        "needs_engine_edit": false
       }
      ],
      "why": "True judgment that flips the sign of the rates-stocks link.",
-     "evidence": "merged set: $TNX live, the headline feed since 2026-10-07; off while EVENTS-03 reads a release (until 2026-10-07 while EVENTS-05, the rates surprise, read large; EVENTS-05 left the set in the question pressure test).",
+     "evidence": "merged set: $TNX live, the headline feed since 2026-10-07; off while EVENTS-03 reads a release (until 2026-10-07 while EVENTS-05, the rates surprise, read large; EVENTS-05 left the set in the question pressure test). Question pressure test round 2 (step 2, 2026-10-08): growth_tailwind and inflation_headwind fit only rising yields, so the options say what the move means for stocks, either way.",
      "origin": "merged set 2026-10-05 (EVENTS-06, plan_v2); built 2026-10-07 as a gated judgment question",
      "code_answer": false,
      "sleep_when": "the ten-year yield's move since the prior close is not top third at this minute, or EVENTS-03 reads a release in its reaction window",
@@ -9389,17 +9387,25 @@
      ],
      "status": "shadow",
      "shadow_proof": "not a proof: shadow keeps it out of the old loop (the sums, the weights, pool_v1 and the cadence all keep to live questions) while the Mirai Prediction System takes its answers as a layer-3 column; promoted only if it beats the learners' own inputs there",
-     "cadence": "every 30-minute read from 10:02, asked only when headlines were captured before the read",
-     "ask": "Is SPX shrugging off bad news, overreacting to stale news, or reacting in proportion?",
-     "instructions": "Read `judgment.headlines`, `price.recent_move` and `price.day_range_position`. The headlines are those captured in the {headline_window_min} minutes ending {headline_cut_min} minutes before the read. Given what the material ones should do to stocks, is SPX shrugging off bad news, overreacting to stale or immaterial news (likely to fade), or reacting in proportion?",
+     "cadence": "every 30-minute read from 10:02, asked only when a new index-wide headline was captured since the last ask",
+     "ask": "Has SPX priced the news and leaned one way, or should its move fade, or is it in proportion?",
+     "instructions": "Read `judgment.headlines`, `price.recent_move` and `price.day_range_position`. The headlines are those first captured in the {headline_window_min} minutes ending {headline_cut_min} minutes before the read, at least one of them material and fresh. Given what the material ones should do to stocks and which way SPX has moved, has SPX already priced the news and leans one way through it, moved on stale or immaterial news so the move should fade, or reacted in proportion?",
      "options": [
       {
-       "name": "shrugging_off",
-       "description": "the news is bad for stocks and SPX has not moved on it"
+       "name": "priced_lean_up",
+       "description": "SPX has priced the news and leans up through it (rising through bad news, or holding up on good news)"
       },
       {
-       "name": "overreacting",
-       "description": "the news is stale or immaterial and SPX has moved on it: likely to fade"
+       "name": "priced_lean_down",
+       "description": "SPX has priced the news and leans down through it (falling through good news, or holding down on bad news)"
+      },
+      {
+       "name": "fading_up_move",
+       "description": "SPX rose on stale or immaterial news: the up move should fade"
+      },
+      {
+       "name": "fading_down_move",
+       "description": "SPX fell on stale or immaterial news: the down move should fade"
       },
       {
        "name": "in_proportion",
@@ -9411,26 +9417,28 @@
       }
      ],
      "criteria": {
-      "shrugging_off": "material bad news and a move ranked bottom third",
-      "overreacting": "no material news and a move ranked top third",
-      "in_proportion": "material news and a move its way",
+      "priced_lean_up": "material news and SPX moving up through it or past what it should do",
+      "priced_lean_down": "material news and SPX moving down through it or past what it should do",
+      "fading_up_move": "no material news behind an up move",
+      "fading_down_move": "no material news behind a down move",
+      "in_proportion": "material news and a move its way, about as large as it should be",
       "unclear": "otherwise"
      },
      "labels_needed": [
       {
        "name": "judgment.headlines",
        "example": "3 headlines captured from 10:02 to 10:29 ET, all before the read, newest first: Nvidia shares slip as export curbs widen (CNBC, 10:29 ET); Treasury yields climb after jobs data (MarketWatch, 10:14 ET); Fed's Waller sees room for cuts (Reuters, 10:02 ET)",
-       "computed_how": "headlines.headlines_before: every line of state/spx_jev/headlines/{day}.jsonl captured in the {headline_window_min} minutes ending {headline_cut_min} minutes before the read, newest first, at most 25 titles, each with its outlet and the minute it was captured (never the feed's own pubDate, which is kept but not trusted); 'no headlines captured in the 60 minutes before the read' when there are none",
+       "computed_how": "headlines.headlines_before: every line of state/spx_jev/headlines/{day}.jsonl first captured in the {headline_window_min} minutes ending {headline_cut_min} minutes before the read, each story once (a copy of a title captured earlier, the same words under another outlet, case or punctuation, is dropped), newest first, at most 25 titles, the CNBC, MarketWatch and Fed titles and the material ones (stocks, rates, the Fed, a heavyweight) shown first when there are more, each with its outlet and the minute it was captured (never the feed's own pubDate, which is kept but not trusted); 'no headlines captured in the 60 minutes before the read' when there are none",
        "source": "the headline feed: CNBC Top News, Google News (search), MarketWatch Top Stories and the Fed's press RSS, polled every 3 minutes 07:00-16:30 ET weekdays by com.mirai-station.spx-jev-headlines (spx_jev/headlines.py)",
        "availability": "live",
        "needs_engine_edit": false
       }
      ],
-     "why": "Signed and needs reading comprehension: whether the tape has already paid for the news. The scope of the news (index-wide or one name) is asked for in the words but a choice carries one answer, so it is not stored as its own field.",
-     "evidence": "merged set: blocked on a capture-time-stamped headline feed, live since 2026-10-07.",
+     "why": "Signed and needs reading comprehension: whether the tape has already paid for the news, and which way it leans. The scope of the news (index-wide or one name) is asked for in the words but a choice carries one answer, so it is not stored as its own field.",
+     "evidence": "merged set: blocked on a capture-time-stamped headline feed, live since 2026-10-07. Question pressure test round 2 (step 2, 2026-10-08): the gate (any headline) passed 12 of 12 reads, JEV saw only the newest 3-20 minutes of the window, and shrugging_off (meant for a flat tape) was picked 10 of 12 on a +35-point day; the gate now needs a fresh material headline, copies are dropped, the label favours CNBC, MarketWatch, the Fed and market news, and every option but in_proportion and unclear says which way. Its first fresh-material gate still fired on all 13 reads of 10-07 (about 85% of titles matched); it now reads a headline from CNBC, MarketWatch or the Fed's feed (never Google News) naming an index-wide mover (the Fed, FOMC or Powell; CPI, PPI, jobs or payrolls, GDP, PCE or retail sales; tariffs or trade; Treasury yields; a heavyweight's earnings, guidance or outlook: judgment.INDEX_NEWS, MEGACAP_RESULTS), first captured in the {headline_fresh_min} minutes before the cut and after the cut of the day's last read that asked it, which fires on 2 of 10-07's 13 reads (11:31, 14:31).",
      "origin": "merged set 2026-10-05 (EVENTS-07, plan_v2); built 2026-10-07 as a gated judgment question",
      "code_answer": false,
-     "sleep_when": "no headline was captured in the {headline_window_min} minutes before the read",
+     "sleep_when": "no a headline from CNBC, MarketWatch or the Fed's feed (never Google News) naming an index-wide mover (the Fed, FOMC or Powell; CPI, PPI, jobs or payrolls, GDP, PCE or retail sales; tariffs or trade; Treasury yields; a heavyweight's earnings, guidance or outlook: judgment.INDEX_NEWS, MEGACAP_RESULTS), first captured in the {headline_fresh_min} minutes before the cut and after the cut of the day's last read that asked it",
      "schedule": {
       "thirty_minute": {
        "every_min": 30,
@@ -11028,23 +11036,23 @@
   {
    "name": "judgment.headlines",
    "example": "3 headlines captured from 10:02 to 10:29 ET, all before the read, newest first: Nvidia shares slip as export curbs widen (CNBC, 10:29 ET); Treasury yields climb after jobs data (MarketWatch, 10:14 ET); Fed's Waller sees room for cuts (Reuters, 10:02 ET)",
-   "computed_how": "headlines.headlines_before: every line of state/spx_jev/headlines/{day}.jsonl captured in the {headline_window_min} minutes ending {headline_cut_min} minutes before the read, newest first, at most 25 titles, each with its outlet and the minute it was captured (never the feed's own pubDate, which is kept but not trusted); 'no headlines captured in the 60 minutes before the read' when there are none",
+   "computed_how": "headlines.headlines_before: every line of state/spx_jev/headlines/{day}.jsonl first captured in the {headline_window_min} minutes ending {headline_cut_min} minutes before the read, each story once (a copy of a title captured earlier, the same words under another outlet, case or punctuation, is dropped), newest first, at most 25 titles, the CNBC, MarketWatch and Fed titles and the material ones (stocks, rates, the Fed, a heavyweight) shown first when there are more, each with its outlet and the minute it was captured (never the feed's own pubDate, which is kept but not trusted); 'no headlines captured in the 60 minutes before the read' when there are none",
    "source": "the headline feed: CNBC Top News, Google News (search), MarketWatch Top Stories and the Fed's press RSS, polled every 3 minutes 07:00-16:30 ET weekdays by com.mirai-station.spx-jev-headlines (spx_jev/headlines.py)",
    "availability": "live",
    "needs_engine_edit": false
   },
   {
    "name": "judgment.heavyweight",
-   "example": "the heavyweights since the close reads 'in play, rest followed' (BREADTH-09)",
-   "computed_how": "the code feature builder's answer to BREADTH-09 for this read (spx_jev/mirai_prediction/code_features.py, the same answer the Mirai Prediction System's matrix holds as its code column), written as a sentence; the gate: asked only when BREADTH-09 reads 'in play, ...'; an answer the code could not give reads 'not measured this read'",
-   "source": "the read's own record and the trailing sessions' bars and market feed (code_feature_inputs.load_market_history); recorded under state/spx_jev/mirai_prediction/raw/code_features/{day}.jsonl on a live read",
+   "example": "the heavyweights since the close reads 'in play down, rest did not' (BREADTH-09): NVDA pulls the index down, its move since the prior close beyond its usual link to the index worth -0.12% of the index; the rest of the index moved +0.05% since the close; headlines naming NVDA or Nvidia, newest first: Nvidia shares slip as export curbs widen (CNBC, 10:29 ET)",
+   "computed_how": "the code feature builder's answer to BREADTH-09 for this read (spx_jev/mirai_prediction/code_features.py, the same answer the Mirai Prediction System's matrix holds as its code column), written as a sentence, and while a heavyweight is in play its measure (code_features_market.heavyweight_pull): which stock, the way it pulls, its pull and the rest of the index's move since the prior close, and the headlines of the window that name it or its ticker; the gate: asked only when BREADTH-09 reads 'in play ...'; an answer the code could not give reads 'not measured this read'",
+   "source": "the read's own record and the trailing sessions' bars and market feed (code_feature_inputs.load_market_history), the headline feed; recorded under state/spx_jev/mirai_prediction/raw/code_features/{day}.jsonl on a live read",
    "availability": "live",
    "needs_engine_edit": false
   },
   {
    "name": "judgment.macro_gap",
-   "example": "SPX against what bonds imply since the close reads 'far up' (MACRO-02): 'up' is SPX short of what bonds imply, 'down' past it, 'far' the top fifth",
-   "computed_how": "the code feature builder's answer to MACRO-02 for this read (spx_jev/mirai_prediction/code_features.py; a context column since 2026-10-07, kept without a vote), written as a sentence; the gate: asked only when MACRO-02 reads up or down (the gap above the bottom third; 'far' marks the top fifth); an answer the code could not give reads 'not measured this read'",
+   "example": "SPX against what bonds imply since the close reads 'far up' (MACRO-02): 'up' is SPX short of what bonds imply, 'down' past it, 'far' the top fifth; SPX sits 0.42% (about 33 points) below what the ten-year note's move since the prior close implies, so the gap closing would move SPX up",
+   "computed_how": "the code feature builder's answer to MACRO-02 for this read (spx_jev/mirai_prediction/code_features.py; a context column since 2026-10-07, kept without a vote), written as a sentence, and in its top fifth the gap's size and side (code_features_market.macro_gap, in points at the read's spot); the gate: asked only when MACRO-02 reads 'far up' or 'far down' (the gap's top fifth) and the day's last read JEV answered this question on did not read the same (answered once until it changes; a lost ask is retried); an answer the code could not give reads 'not measured this read'",
    "source": "the read's own record and the trailing sessions' bars and market feed (code_feature_inputs.load_market_history); recorded under state/spx_jev/mirai_prediction/raw/code_features/{day}.jsonl on a live read",
    "availability": "live",
    "needs_engine_edit": false
@@ -13094,6 +13102,13 @@
    "action": "dark push_blowoff_or_fresh and quiet_coiled_or_resting; yield_move_meaning's gate reads EVENTS-03; MACRO-02 names its top fifth",
    "decision": "accepted",
    "reason": "the pressure test of the 96 questions dropped the two judgment questions (each kept, dated, dark); quiet_coiled_or_resting returns as the code question VOLATILITY-18. EVENTS-05 left the code catalog, so yield_move_meaning stays off while EVENTS-03 reads a release in its reaction window instead. MACRO-02 is a context column without a vote and says 'far' for its top fifth, the rank the macro_gap gate is to read.",
+   "source": "Will 2026-10-07 (build it in the three steps); the round-2 decisions"
+  },
+  {
+   "subject": "the judgment group (the question pressure test, round 2, step 2)",
+   "action": "heavyweight_catalyst_or_flow names the stock, its side and the headlines naming it; macro_gap_equity_reason fires on MACRO-02's top fifth once until it changes; yield_move_meaning's options say what the move means for stocks; news_reaction needs a fresh material headline and its options are signed",
+   "decision": "accepted",
+   "reason": "the round-2 decisions: JEV could not tell which stock or way (BREADTH-10), was asked one constant fact 8-12 times a day (MACRO-03), had growth/inflation options that fit rising yields only (EVENTS-06), and was gated on any headline and asked a flat-tape option on a moving day (EVENTS-07). The matrix stores the heavyweight and no-reason picks signed by the code's side, and leaves out a judgment pick no longer among the options.",
    "source": "Will 2026-10-07 (build it in the three steps); the round-2 decisions"
   }
  ],

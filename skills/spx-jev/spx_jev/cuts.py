@@ -162,6 +162,7 @@ OFI_Z = 1.0  # order-flow imbalance z
 COLLAR_NEAR_SIGMA = 0.5  # near a quarter-end collar strike
 HEADLINE_WINDOW_MIN = 60  # the headlines a judgment question reads: captured within this many minutes before the read
 HEADLINE_CUT_MIN = 2  # and at least this many minutes before it (headlines.py)
+HEADLINE_FRESH_MIN = 30  # news_reaction is asked only when a material headline was first captured in this many minutes before the cut
 
 # The cut-over day (Phase 4): from this day the live lane no longer asks the question set's pre-merge questions. Each
 # carries ``retired_from`` in the set with this day (ask.retired turns it dark from that day on, with the reason

@@ -24,12 +24,14 @@ import statistics
 from datetime import date, datetime, timedelta
 
 from .. import events
-from ..cuts import THIRD_HI
+from ..cuts import HALF_RANK, THIRD_HI
 from ..index_weights import pick as pick_weights
+from ..labels.gamma import ROW_SLACK_MIN
+from ..labels.options_flow import _contested, _stopped
 from ..labels.vol import LOADING_EVENTS
 from ..sessions import is_trading_day, next_trading_day, previous_trading_day
-from .code_features import (MIN_HISTORY_SESSIONS, MarketHistory, _reference_levels, flat_labels, hhmm_of, night_bars_up_to,
-                            rank_fraction, third_of, trailing_days)
+from .code_features import (MIN_HISTORY_SESSIONS, NATIVE_BOOK, MarketHistory, _reference_levels, bars_before_minute, flat_labels, hhmm_of,
+                            night_bars_up_to, rank_fraction, third_of, trailing_days)
 
 SPX = "$SPX"                          # the index: its own minute bars, under this name in a DayView
 SPY, QQQ, IWM, ES, ZN = "SPY", "QQQ", "IWM", "/ES", "/ZN"
@@ -75,6 +77,8 @@ BARRIER_SKIP_SIGMA = 0.02                              # LEVELS-10: a level this
 STRETCH_SHARE = 0.25                                   # OPTIONS-06: stretching needs price this share of a 30-minute expected move off the pin
 MIN_SWING_BARS = 2                                     # OPTIONS-06: a swing across the pin shorter than this is a wiggle
 FAR_GAP_RANK = 0.8                                     # MACRO-02: the gap's top fifth, the rank the macro_gap judgment gate reads
+STRIKE_STEP = 5.0                                      # OPTIONS-11: SPX's strike step near the money; a shift under it stayed put
+DEFENSE_MIN_HITS = 3                                   # OPTIONS-05: a strike hit this many times is contested (the label's is 10)
 LOADING_AHEAD_MIN = 60                                 # VOLATILITY-18: a ruler-loading event within the hour winds the quiet up
 HIGH_TIER = frozenset({"FOMC", "FOMC_PRESSER", "CPI", "JOBS", "PCE"})                                                        # EVENTS-02
 MEDIUM_TIER = frozenset({"PPI", "RETAIL_SALES", "GDP", "ISM_MANUFACTURING", "ISM_SERVICES", "JOLTS", "FOMC_MINUTES",
@@ -729,6 +733,98 @@ def gamma_wall_levels(row: dict | None) -> dict[str, list[float]]:
     return out
 
 
+def expected_move_30(sigma: float) -> float:
+    """The move a day's sigma scales to over 30 minutes, in points: the reach OPTIONS-02 and OPTIONS-05 measure in."""
+    return sigma * math.sqrt(WINDOW_30 / 390.0)
+
+
+def near_gamma_share(row: dict | None) -> float | None:
+    """OPTIONS-02's measure: the share of today's 0DTE book's gamma (the diary row's gex_views.mass_by_strike, the strikes
+    near price) at strikes within one 30-minute expected move of spot, the move scaled from the row's own sigma."""
+    mass, spot, sigma = (row or {}).get("mass_by_strike"), (row or {}).get("spot"), (row or {}).get("sigma")
+    if not isinstance(mass, list) or not isinstance(spot, (int, float)) or not isinstance(sigma, (int, float)) or sigma <= 0:
+        return None
+    pairs = [(float(k), float(m)) for k, m in (p[:2] for p in mass if isinstance(p, (list, tuple)) and len(p) >= 2)
+             if isinstance(k, (int, float)) and isinstance(m, (int, float)) and m > 0]
+    total = sum(m for _, m in pairs)
+    if total <= 0:
+        return None
+    reach = expected_move_30(float(sigma))
+    return sum(m for k, m in pairs if abs(k - float(spot)) <= reach) / total
+
+
+def answer_options_02(record, bars, history, day, hhmm):
+    """The share of today's 0DTE gamma within one 30-minute expected move of spot, ranked against the same clock on the
+    trailing sessions whose diary row then was SPX's own book (a scaled SPY stand-in's coarser strikes pack it tighter)."""
+    share = near_gamma_share(diary_at(history, record["row_ts"]))
+    if share is None or history.prior_diary_row_at is None:
+        return None
+    clock = datetime.fromisoformat(record["row_ts"]).astimezone(events.ET).strftime("%H:%M:%S")
+    earlier = [v for d in trailing_days(history.spx_bars_by_day, day)
+               if (row := history.prior_diary_row_at(d, clock)) is not None and row.get("gex_source") == NATIVE_BOOK
+               and (v := near_gamma_share(row)) is not None]
+    rank = rank_fraction(share, earlier)
+    return None if rank is None else {"bottom": "low", "middle": "normal", "top": "high"}[third_of(rank)]
+
+
+def answer_options_05(record, bars, history, day, hhmm):
+    """The nearest strike of the book's magnet and walls the collector's refill test saw hit DEFENSE_MIN_HITS times or more
+    in its last 15 minutes, when it is within one 30-minute expected move of price (a fixed reach: ranked against other
+    sessions' strikes, which sit right at price, a strike 5-12 points away read as out of reach): its refill share at or
+    above the middle of the same minute's nearest contested strike on the trailing sessions = defended, else abandoned,
+    by its side of price."""
+    sigma, spot = record.get("sigma"), record.get("spot")
+    today = history.collector_records.get(day)
+    if not isinstance(sigma, (int, float)) or sigma <= 0 or not isinstance(spot, (int, float)) or today is None:
+        return None
+    now = datetime.fromisoformat(record["row_ts"]).astimezone(events.ET)
+    if _stopped([ts for ts, _ in today.defense], now):
+        return None
+    got = _contested(today, now, float(spot), DEFENSE_MIN_HITS)
+    if got is None or abs(got[0] - float(spot)) > expected_move_30(float(sigma)):
+        return None
+    strike, hit, refilled = got
+    held = []
+    for d in trailing_days(history.spx_bars_by_day, day):
+        prior, before = history.collector_records.get(d), bars_before_minute(history.spx_bars_by_day[d], hhmm)
+        then = datetime.combine(date.fromisoformat(d), now.time(), tzinfo=events.ET)
+        if prior is not None and before and (p := _contested(prior, then, float(before[-1]["close"]), DEFENSE_MIN_HITS)) is not None:
+            held.append(p[2] / p[1])
+    rank = rank_fraction(refilled / hit, held)
+    if rank is None:
+        return None
+    return f"{'defended' if rank >= HALF_RANK else 'abandoned'} {'above' if strike >= float(spot) else 'below'}"
+
+
+def gamma_walls(row: dict | None) -> tuple[float, float] | None:
+    """(the call-side, the put-side) heaviest gamma strike of a diary row's 0DTE book."""
+    call, put = (row or {}).get("call_wall_gamma"), (row or {}).get("put_wall_gamma")
+    return (float(call), float(put)) if isinstance(call, (int, float)) and isinstance(put, (int, float)) else None
+
+
+def answer_options_11(record, bars, history, day, hhmm):
+    """The heaviest call-side and put-side gamma strikes now against the diary row of 30 minutes ago (the newest written
+    by then, within the labeller's ROW_SLACK_MIN): a shift under one STRIKE_STEP stayed put, so both under it = stand
+    still; both moved the same way = both moved up/down; else the pair pulled in or spread out."""
+    now_ts = datetime.fromisoformat(record["row_ts"])
+    then = now_ts - timedelta(minutes=WINDOW_30)
+    earlier = [r for r in history.diary_rows if then - timedelta(minutes=ROW_SLACK_MIN) <= datetime.fromisoformat(r["ts"]) <= then]
+    now, before = gamma_walls(diary_at(history, record["row_ts"])), gamma_walls(earlier[-1] if earlier else None)
+    if now is None or before is None:
+        return None
+
+    def way(new: float, old: float) -> str | None:
+        return None if abs(new - old) < STRIKE_STEP else "up" if new > old else "down"
+
+    call_way, put_way = way(now[0], before[0]), way(now[1], before[1])
+    if call_way is None and put_way is None:
+        return "stand still"
+    if call_way == put_way:
+        return f"both moved {call_way}"
+    widening = (now[0] - now[1]) - (before[0] - before[1])
+    return "spread out" if widening > 0 else "pulled in" if widening < 0 else None
+
+
 def answer_options_04(record, bars, history, day, hhmm):
     sigma = record.get("sigma")
     if not isinstance(sigma, (int, float)) or sigma <= 0 or not bars or not history.diary_rows:
@@ -927,16 +1023,24 @@ def gap_pulls(history: MarketHistory, view: DayView, hhmm: str, names: list[tupl
     return name, pulls[name], (spx_now / spx_prior - 1.0) - lead
 
 
-def answer_breadth_09(record, bars, history, day, hhmm):
+def heavyweight_pull(record, bars, history, day, hhmm) -> tuple[str, float, float] | None:
+    """BREADTH-09's measure for the read: (the heavyweight pulling hardest beyond its usual link since the prior close,
+    its weighted pull as a share of the index, the rest of the index's move), or None. judgment.py names the stock
+    and the pull's side in its label."""
     names = megacaps(history, day)
     links = links_for(history, day, [s for s, _ in names]) if names else None
     if links is None:
         return None
-    view = today_view(history, day, bars, record["row_ts"])
-    got = gap_pulls(history, view, hhmm, names, links)
+    return gap_pulls(history, today_view(history, day, bars, record["row_ts"]), hhmm, names, links)
+
+
+def answer_breadth_09(record, bars, history, day, hhmm):
+    got = heavyweight_pull(record, bars, history, day, hhmm)
     if got is None:
         return None
     name, pull, rest = got
+    names = megacaps(history, day)
+    links = links_for(history, day, [s for s, _ in names])
     pull_rank = rank_vs_prior(history, day, hhmm, abs(pull), lambda v, h: unsigned(part_of(gap_pulls(history, v, h, names, links), 1)))
     rest_rank = rank_vs_prior(history, day, hhmm, abs(rest), lambda v, h: unsigned(part_of(gap_pulls(history, v, h, names, links), 2)))
     if pull_rank is None or rest_rank is None:
@@ -944,7 +1048,7 @@ def answer_breadth_09(record, bars, history, day, hhmm):
     if third_of(pull_rank) != "top":
         return "none in play"
     followed = (rest > 0) == (pull > 0) and third_of(rest_rank) != "bottom"
-    return "in play, rest followed" if followed else "in play, rest did not"
+    return f"in play {'up' if pull > 0 else 'down'}, {'rest followed' if followed else 'rest did not'}"
 
 
 def directional_volume_share(view: DayView, hhmm: str) -> tuple[float, int] | None:
@@ -1123,14 +1227,18 @@ def bond_gap(history: MarketHistory, view: DayView, hhmm: str, beta: float) -> f
     return (spx_now / spx_prior - 1.0) - beta * (zn_now / zn_prior - 1.0)
 
 
-def answer_macro_02(record, bars, history, day, hhmm):
+def macro_gap(record, bars, history, day, hhmm) -> float | None:
+    """MACRO-02's measure for the read: SPX's move since the prior close less what /ZN's implies (negative: SPX short of
+    it). judgment.py states its size and side in its label."""
     beta = daily_link(history, day, ZN)
-    if beta is None:
-        return None
-    view = today_view(history, day, bars, record["row_ts"])
-    gap = bond_gap(history, view, hhmm, beta)
+    return None if beta is None else bond_gap(history, today_view(history, day, bars, record["row_ts"]), hhmm, beta)
+
+
+def answer_macro_02(record, bars, history, day, hhmm):
+    gap = macro_gap(record, bars, history, day, hhmm)
     if gap is None:
         return None
+    beta = daily_link(history, day, ZN)
     rank = rank_vs_prior(history, day, hhmm, abs(gap), lambda v, h: unsigned(bond_gap(history, v, h, beta)))
     if rank is None:
         return None
@@ -1368,7 +1476,8 @@ MARKET_ANSWERERS = {
     "VOLATILITY-12": answer_volatility_12, "VOLATILITY-14": answer_volatility_14, "VOLATILITY-17": answer_volatility_17,
     "VOLATILITY-18": answer_volatility_18,
     "LEVELS-07": answer_levels_07, "LEVELS-10": answer_levels_10, "LEVELS-12": answer_levels_12,
-    "OPTIONS-04": answer_options_04, "OPTIONS-06": answer_options_06, "OPTIONS-08": answer_options_08,
+    "OPTIONS-02": answer_options_02, "OPTIONS-04": answer_options_04, "OPTIONS-05": answer_options_05, "OPTIONS-06": answer_options_06,
+    "OPTIONS-08": answer_options_08, "OPTIONS-11": answer_options_11,
     "BREADTH-02": answer_breadth_02, "BREADTH-03": answer_breadth_03, "BREADTH-07": answer_breadth_07, "BREADTH-09": answer_breadth_09,
     "FLOW-02": answer_flow_02, "FLOW-04": answer_flow_04, "FLOW-06": answer_flow_06, "FLOW-07": answer_flow_07,
     "MACRO-01": answer_macro_01, "MACRO-02": answer_macro_02, "MACRO-07": answer_macro_07,

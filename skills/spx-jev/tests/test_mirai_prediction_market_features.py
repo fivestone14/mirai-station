@@ -315,6 +315,72 @@ def test_options_06_pin_holding_stretching_or_broke_loose():
     assert ask("OPTIONS-06", h, bars_from_closes(closes(120, 7700.0, step=0.5))) == "not pinned"
 
 
+def book_row(ts: str, spot: float, mass: list[list[float]], source: str = "native", sigma: float = SIGMA) -> dict:
+    return {"ts": ts, "spot": spot, "sigma": sigma, "mass_by_strike": mass, "gex_source": source}
+
+
+def test_options_02_ranks_the_gamma_within_one_30_minute_move_of_spot_against_the_same_clock():
+    """75 sigma scales to a 20.8-point half hour: 7690 and 7710 are near 7700, 7725 is not."""
+    today = [book_row(f"{DAY}T11:30:05-04:00", 7700.0, [[7690.0, 30.0], [7710.0, 50.0], [7725.0, 20.0]])]          # 80% near
+    asked = []
+
+    def prior_row(d, clock):
+        asked.append(clock)
+        k = DAYS.index(d)
+        return book_row(f"{d}T11:30:00-04:00", 7700.0, [[7700.0, 10.0 + 4 * k], [7740.0, 90.0 - 4 * k]])            # 10% to 50% near
+    h = history(diary_rows=today, prior_diary_row_at=prior_row)
+    assert ask("OPTIONS-02", h, []) == "high" and set(asked) == {"11:30:30"}
+    assert market.near_gamma_share(today[0]) == pytest.approx(0.8)
+    low = history(diary_rows=[book_row(f"{DAY}T11:30:05-04:00", 7700.0, [[7700.0, 5.0], [7760.0, 95.0]])], prior_diary_row_at=prior_row)
+    assert ask("OPTIONS-02", low, []) == "low"
+    stand_ins = history(diary_rows=today, prior_diary_row_at=lambda d, clock: {**prior_row(d, clock), "gex_source": "spy_proxy×10.03"} if d > DAYS[1] else prior_row(d, clock))
+    assert ask("OPTIONS-02", stand_ins, []) is None                       # a stand-in session never ranks: two native left
+    assert ask("OPTIONS-02", history(diary_rows=today), []) is None       # no prior diary on hand
+
+
+def walls_row(ts, call: float, put: float) -> dict:
+    return {"ts": ts, "call_wall_gamma": call, "put_wall_gamma": put, "gex_source": "native"}
+
+
+@pytest.mark.parametrize("now, answer", [
+    ((7753.0, 7648.0), "stand still"),            # each under one 5-point strike step: stayed put
+    ((7760.0, 7660.0), "both moved up"),
+    ((7740.0, 7640.0), "both moved down"),
+    ((7760.0, 7652.0), "spread out"),             # the put side stayed put
+    ((7745.0, 7655.0), "pulled in"),
+])
+def test_options_11_the_heaviest_strikes_against_30_minutes_ago_with_the_one_strike_rule(now, answer):
+    rows = [walls_row((at(10, 50) + timedelta(minutes=i)).isoformat(), *((7750.0, 7650.0) if i < 25 else now)) for i in range(41)]
+    assert ask("OPTIONS-11", MarketHistory(diary_rows=rows), [], "11:30") == answer
+
+
+def test_options_11_needs_a_row_from_30_minutes_ago():
+    rows = [walls_row(at(10, 40).isoformat(), 7750.0, 7650.0), walls_row(at(11, 30).isoformat(), 7760.0, 7660.0)]
+    assert ask("OPTIONS-11", MarketHistory(diary_rows=rows), [], "11:30") is None          # 10:40 is past the 5-minute slack
+
+
+def defense_record(t, *strikes: tuple[float, int, int]):
+    """A collector record with one refill-test reading at ``t``: each (strike, refilled, not refilled)."""
+    from spx_jev.labels.options_flow import CollectorRecord
+    block = {f"k{i}": {"strike": k, "n_events": refilled, "n_unrecovered": lost} for i, (k, refilled, lost) in enumerate(strikes)}
+    return CollectorRecord([(t, block)], [])
+
+
+def test_options_05_the_nearest_contested_strike_within_a_30_minute_move_defended_or_abandoned():
+    prior = {d: defense_record(at(11, 30, d), (7710.0, 1 + k % 4, 5)) for k, d in enumerate(DAYS)}       # refill shares 1/6 to 4/9
+
+    def asked(*strikes, t=at(11, 30)):
+        h = history(collector_records={**prior, DAY: defense_record(t, *strikes)})
+        return ask("OPTIONS-05", h, [], spot=7700.0)
+    assert asked((7712.0, 3, 1)) == "defended above"                     # 3 hits is enough; 12 points is inside the 20.8-point reach
+    assert asked((7690.0, 0, 4)) == "abandoned below"
+    assert asked((7690.0, 0, 4), (7680.0, 9, 0)) == "abandoned below"    # the nearest contested strike speaks
+    assert asked((7725.0, 3, 1)) is None                                 # out of reach
+    assert asked((7712.0, 1, 1)) is None                                 # 2 hits: not contested
+    assert asked((7712.0, 3, 1), t=at(11, 26)) is None                   # the collector stopped 4 minutes before the read
+    assert ask("OPTIONS-05", history(collector_records={DAY: defense_record(at(11, 30), (7712.0, 3, 1))}), [], spot=7700.0) is None   # nothing to rank against
+
+
 def test_options_08_quote_width_against_the_same_minute_and_bucket():
     sweeps = {d: [((at(9, 31, d) + timedelta(minutes=i)).isoformat(), 0.10 + 0.01 * (k % 5), "d25_40") for i in range(390)] for k, d in enumerate(DAYS)}
     today = [((at(9, 31, DAY) + timedelta(minutes=i)).isoformat(), 0.30, "d25_40") for i in range(120)]
@@ -366,7 +432,12 @@ def test_breadth_09_heavyweight_in_play():
     spx_flat, ctx_flat = carried(h)
     assert ask("BREADTH-09", h, spx_flat, today_ctx=ctx_flat) == "none in play"
     _, gapped = feed_day(DAY, seed=0, extra={"NVDA": [200.0] * 120})
-    assert ask("BREADTH-09", h, bars_from_closes([7700.0] * 120), today_ctx=gapped) in ("in play, rest followed", "in play, rest did not")
+    assert ask("BREADTH-09", h, bars_from_closes([7700.0] * 120), today_ctx=gapped) in ("in play up, rest followed", "in play up, rest did not")
+    _, sunk = feed_day(DAY, seed=0, extra={"NVDA": [160.0] * 120})
+    assert ask("BREADTH-09", h, bars_from_closes([7700.0] * 120), today_ctx=sunk).startswith("in play down, ")
+    row_ts = f"{DAY}T11:30:30-04:00"
+    name, pull, rest = market.heavyweight_pull(record(row_ts), bars_up_to(bars_from_closes([7700.0] * 120), row_ts), h, DAY, "11:30")
+    assert name == "NVDA" and pull < 0 and isinstance(rest, float)            # what judgment.py names in its label
 
 
 def test_breadth_02_and_03_advance_decline_beyond_the_day_move_and_the_new_extreme():
@@ -576,6 +647,34 @@ def test_diary_and_sweeps_loaders_tolerate_bad_lines(tmp_path):
         f.write(json.dumps({**sweep, "ts": "2026-10-05T10:00:03-04:00"}) + "\n")
     assert inputs.load_quote_sweeps(tmp_path, "2026-10-06") == [("2026-10-06T10:00:03-04:00", 0.1, "d25_40")]
     assert list(inputs.load_quote_sweeps_by_day(tmp_path, "2026-10-06")) == ["2026-10-05"]
+
+
+def test_a_prior_sessions_diary_row_is_the_newest_by_the_clock_within_the_slack(tmp_path):
+    (tmp_path / "reversion").mkdir()
+    day = "2026-10-05"
+    rows = [{"ts": f"{day}T{hm}:04-04:00", "spot": 7700.0 + i, "sigma": 70.0, "gex_source": "native",
+             "gex_views": {"magnet": 7700.0, "mass_by_strike": [[7700.0, 1.0]], "net_by_strike": [[7700.0, 9.0]]}}
+            for i, hm in enumerate(("11:00", "11:29", "11:40"))]
+    (tmp_path / "reversion" / f"{day}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    got = inputs.diary_row_at(tmp_path, day, "11:30:30")
+    assert got["spot"] == 7701.0 and got["mass_by_strike"] == [[7700.0, 1.0]] and got["sigma"] == 70.0 and "net_by_strike" not in got
+    assert inputs.diary_row_at(tmp_path, day, "11:36:00") is None        # the 11:29 row is more than 5 minutes old by then
+    assert inputs.diary_row_at(tmp_path, "2026-10-02", "11:30:30") is None
+    inputs._PRIOR_SESSIONS_CACHE.clear()
+    h = inputs.load_market_history(tmp_path, "live", day)
+    assert h.prior_diary_row_at(day, "11:30:30") is None and h.diary_rows[1]["spot"] == 7701.0     # the read's own day is its rows, cut at the read
+    assert inputs.load_market_history(tmp_path, "live", "2026-10-06").prior_diary_row_at(day, "11:30:30")["spot"] == 7701.0
+    inputs._PRIOR_SESSIONS_CACHE.clear()
+
+
+def test_the_collector_records_are_the_trailing_sessions_before_the_day(tmp_path):
+    folder = tmp_path / "lob_flow" / "agg"
+    folder.mkdir(parents=True)
+    line = {"engine": "lob_flow", "snapshot": {"defense": {"k": {"strike": 7700.0, "n_events": 1, "n_unrecovered": 2}}}}
+    for day in ("2026-10-01", "2026-10-02", "2026-10-05"):
+        (folder / f"{day}.jsonl").write_text(json.dumps({**line, "ts": f"{day}T11:00:00-04:00"}) + "\n")
+    assert list(inputs.load_collector_records(tmp_path, "2026-10-05")) == ["2026-10-01", "2026-10-02"]
+    assert list(inputs.load_collector_records(tmp_path, "2026-10-05", sessions=1)) == ["2026-10-02"]
 
 
 def test_market_history_caches_the_prior_sessions_for_the_day_and_reads_the_day_fresh(tmp_path, monkeypatch):

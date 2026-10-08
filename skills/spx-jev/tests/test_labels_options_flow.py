@@ -487,7 +487,7 @@ def test_strike_defense_sleeps_with_no_contested_strike_in_reach_but_not_on_a_da
     (0.01, 900.0, PRIOR_DAYS, "1 cent, wider than on 0 of the last 12 sessions at this minute, at the tight tick; the size showing at SPY's best "
                               "bid and offer combined is in the top fifth for 10:00, higher than 12 of the last 12 sessions at this minute"),
     (0.02, 520.0, PRIOR_DAYS[:10], "2 cents, wider than on 0 of the last 10 sessions at this minute, bottom third: its usual width for this time; "
-                                   "the size showing at SPY's best bid and offer combined is between the bottom and top fifths for 10:00, "
+                                   "the size showing at SPY's best bid and offer combined is between the top and bottom fifths for 10:00, "
                                    "higher than 3 of the last 10 sessions at this minute"),
 ])
 def test_spy_quote_ranks_the_spread_in_whole_cents_and_the_size_at_this_minute(scene_factory, tmp_path, spread, size, prior_days, sentence):

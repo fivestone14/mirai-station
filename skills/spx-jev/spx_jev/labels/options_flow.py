@@ -42,7 +42,7 @@ from ..state_builder import (ET, OPTIONS_TAPE_MAX_AGE_MIN, OPTIONS_TAPE_SUBDIR, 
                              parse_ts)
 from .label_set import LabelSet
 from .measures import close_at, is_num, minute_of_day
-from .ranks import fifth, rank_sessions, same_clock_values
+from .ranks import FIFTH_WORDS, fifth, rank_sessions, same_clock_values
 from .rulers import estimated_note, sigma_anchor
 from .vol_sources import TAPE_LINE_START, TAPE_RAW_SUBDIR, tape_path
 from .words import pct, plural, sig, signed
@@ -623,16 +623,16 @@ def _quote_liquidity(scene: Scene, ls: LabelSet) -> None:
                                       f"{fifth(rank)}, {rank.words()}")
 
 
-def _contested(record: CollectorRecord, t: datetime, spot: float) -> tuple[float, int, int] | None:
-    """The refill test's newest reading by ``t``: of the strikes hit DEFENSE_MIN_EVENTS times or more, the nearest to
+def _contested(record: CollectorRecord, t: datetime, spot: float, min_hits: int = DEFENSE_MIN_EVENTS) -> tuple[float, int, int] | None:
+    """The refill test's newest reading by ``t``: of the strikes hit ``min_hits`` times or more, the nearest to
     ``spot`` as ``(strike, hits, refilled)``; None with no such strike, or with no reading in the
-    OPTIONS_TAPE_MAX_AGE_MIN minutes to ``t``."""
+    OPTIONS_TAPE_MAX_AGE_MIN minutes to ``t``. The code question OPTIONS-05 reads it with its own minimum."""
     seen = [(ts, x) for ts, x in record.defense if ts <= t]
     if not seen or t - seen[-1][0] > timedelta(minutes=OPTIONS_TAPE_MAX_AGE_MIN):
         return None
     hits = [(float(v["strike"]), int(v["n_events"]) + int(v["n_unrecovered"]), int(v["n_events"])) for v in seen[-1][1].values()
             if isinstance(v, dict) and all(is_num(v.get(k)) for k in ("strike", "n_events", "n_unrecovered"))]
-    contested = [h for h in hits if h[1] >= DEFENSE_MIN_EVENTS]
+    contested = [h for h in hits if h[1] >= min_hits]
     return min(contested, key=lambda h: abs(h[0] - spot)) if contested else None
 
 
@@ -732,7 +732,7 @@ def _spy_quote(scene: Scene, ls: LabelSet) -> None:
     width = ("at the tight tick" if spread < SPY_SPREAD_TIGHT else
              "top third: wide for this time" if wide.band == "top third" else f"{wide.band}: its usual width for this time")
     # the spy_liquidity question's thin book is strictly under the bottom fifth
-    fifth = "in the bottom fifth" if rank.share < BOTTOM_FIFTH else "in the top fifth" if rank.share >= TOP_FIFTH else "between the bottom and top fifths"
+    fifth = "in the bottom fifth" if rank.share < BOTTOM_FIFTH else "in the top fifth" if rank.share >= TOP_FIFTH else FIFTH_WORDS[0]
     ls.put("liquidity.spy_quote", f"over the last {QUOTE_WINDOW_MIN} minutes SPY's quoted spread has been {_cents(spread)}, "
                                   f"wider than on {wide.higher_than} of the last {wide.of} sessions at this minute, {width}; "
                                   f"the size showing at SPY's best bid and offer combined is {fifth} for {now_et:%H:%M}, {rank.words()}")

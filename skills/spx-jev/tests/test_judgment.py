@@ -5,13 +5,14 @@ from __future__ import annotations
 
 import json
 from datetime import date, timedelta
+from pathlib import Path
 
 import pytest
 from conftest import DAY, PRIOR_DAYS, at
 
 from spx_jev import cadence, grade, hour, judgment, store
 from spx_jev.ask import GATED, build_requests, load_questions
-from spx_jev.cuts import HEADLINE_WINDOW_MIN
+from spx_jev.cuts import HEADLINE_FRESH_MIN, HEADLINE_WINDOW_MIN
 from spx_jev.headlines import MAX_TITLES, folder as headlines_folder
 from spx_jev.judgment import GATES, Facts, YieldMove, build_judgment_labels, gated_questions, verdicts, yield_move
 from spx_jev.labels.ranks import SameClockRank
@@ -31,6 +32,15 @@ def _judgment_group():
 
 def _fired(rank: SameClockRank | None = SameClockRank(15, 20)) -> YieldMove:
     return YieldMove(4.0, rank, None)
+
+
+def _ago(minutes: int) -> str:
+    """A capture time this many minutes before ROW."""
+    return (at(10, 32, ss=15) - timedelta(minutes=minutes)).isoformat(timespec="seconds")
+
+
+def _news(title: str, minutes_before: int, feed: str = "cnbc_top") -> dict:
+    return {"title": title, "captured_at": _ago(minutes_before), "feed": feed, "source": feed}
 
 
 # ---------------------------------------------------------------- the gates
@@ -57,14 +67,17 @@ def test_every_judgment_question_in_the_set_is_shadow_gated_and_known_here():
     ("quiet_coiled_or_resting", Facts(code={"VOLATILITY-04": "compressed"}), True),
     ("quiet_coiled_or_resting", Facts(code={"VOLATILITY-04": "expanded"}), False),
     ("quiet_coiled_or_resting", Facts(code={"VOLATILITY-04": None}), False),
-    ("heavyweight_catalyst_or_flow", Facts(code={"BREADTH-09": "in play, rest followed"}), True),
-    ("heavyweight_catalyst_or_flow", Facts(code={"BREADTH-09": "in play, rest did not"}), True),
+    ("heavyweight_catalyst_or_flow", Facts(code={"BREADTH-09": "in play up, rest followed"}), True),
+    ("heavyweight_catalyst_or_flow", Facts(code={"BREADTH-09": "in play down, rest did not"}), True),
     ("heavyweight_catalyst_or_flow", Facts(code={"BREADTH-09": "none in play"}), False),
     ("heavyweight_catalyst_or_flow", Facts(code={"BREADTH-09": None}), False),
-    ("macro_gap_equity_reason", Facts(code={"MACRO-02": "up"}), True),
-    ("macro_gap_equity_reason", Facts(code={"MACRO-02": "down"}), True),
+    ("macro_gap_equity_reason", Facts(code={"MACRO-02": "up"}), False),             # the top fifth only
+    ("macro_gap_equity_reason", Facts(code={"MACRO-02": "down"}), False),
     ("macro_gap_equity_reason", Facts(code={"MACRO-02": "far up"}), True),
     ("macro_gap_equity_reason", Facts(code={"MACRO-02": "far down"}), True),
+    ("macro_gap_equity_reason", Facts(code={"MACRO-02": "far up"}, answered_code={"MACRO-02": "up"}), True),
+    ("macro_gap_equity_reason", Facts(code={"MACRO-02": "far up"}, answered_code={"MACRO-02": "far down"}), True),
+    ("macro_gap_equity_reason", Facts(code={"MACRO-02": "far up"}, answered_code={"MACRO-02": "far up"}), False),   # once until it changes
     ("macro_gap_equity_reason", Facts(code={"MACRO-02": "nowhere"}), False),
     ("macro_gap_equity_reason", Facts(code={"MACRO-02": None}), False),
     ("yield_move_meaning", Facts(code={"EVENTS-03": "no release"}, yield_move=_fired()), True),
@@ -74,7 +87,15 @@ def test_every_judgment_question_in_the_set_is_shadow_gated_and_known_here():
     ("yield_move_meaning", Facts(code={"EVENTS-03": "no release"}, yield_move=_fired(SameClockRank(10, 20))), False),
     ("yield_move_meaning", Facts(code={"EVENTS-03": "no release"}, yield_move=YieldMove(None, None, "no quote")), False),
     ("yield_move_meaning", Facts(code={"EVENTS-03": "no release"}), False),
-    ("news_reaction", Facts(headlines=[{"title": "x", "captured_at": ROW}]), True),
+    ("news_reaction", Facts(headlines=[_news("Treasury yields jump after hot CPI", 5)], row_ts=ROW), True),
+    ("news_reaction", Facts(headlines=[_news("Nvidia raises its guidance", 31)], row_ts=ROW), True),        # a heavyweight's results
+    ("news_reaction", Facts(headlines=[_news("Nvidia unveils a chip", 5)], row_ts=ROW), False),              # a heavyweight, no results
+    ("news_reaction", Facts(headlines=[_news("Stocks slide as yields jump", 5)], row_ts=ROW), False),        # not an index-wide mover
+    ("news_reaction", Facts(headlines=[_news("Fed's Waller sees room to cut", 5, "google_news")], row_ts=ROW), False),   # not a preferred feed
+    ("news_reaction", Facts(headlines=[_news("Fed's Waller sees room to cut", 33)], row_ts=ROW), False),     # not fresh
+    ("news_reaction", Facts(headlines=[_news("Fed's Waller sees room to cut", 10)], row_ts=ROW, news_seen_until=_ago(8)), False),   # seen by the last ask
+    ("news_reaction", Facts(headlines=[_news("Fed's Waller sees room to cut", 6)], row_ts=ROW, news_seen_until=_ago(8)), True),
+    ("news_reaction", Facts(headlines=[_news("Fed's Waller sees room to cut", 5)]), False),                  # no read time
     ("news_reaction", Facts(), False),
 ])
 def test_the_gate_table(qid, facts, fired):
@@ -87,6 +108,13 @@ def test_a_gate_not_fired_says_so_with_what_it_read_and_a_failed_gate_is_not_fir
     assert v["push_blowoff_or_fresh"] == f"{GATED} TREND-10 or TREND-11 not fired: TREND-10 'none', TREND-11 not measured this read"
     assert v["quiet_coiled_or_resting"] == f"{GATED} VOLATILITY-04 not fired: VOLATILITY-04 not measured this read"
     assert v["news_reaction"] == f"{GATED} headlines not fired: no headlines captured in the {HEADLINE_WINDOW_MIN} minutes before the read"
+    stale = verdicts(["news_reaction", "macro_gap_equity_reason"], Facts(code={"MACRO-02": "far down"}, answered_code={"MACRO-02": "far down"},
+                                                                         headlines=[_news("Fed's Waller sees room to cut", 40)], row_ts=ROW))
+    assert stale["news_reaction"] == (f"{GATED} headlines not fired: no new index-wide headline (CNBC, MarketWatch or the Fed: the Fed, a major "
+                                      f"release, trade, Treasury yields, a heavyweight's results) first captured in the {HEADLINE_FRESH_MIN} minutes "
+                                      f"before the cut and since the last ask, of 1 in the {HEADLINE_WINDOW_MIN}")
+    assert stale["macro_gap_equity_reason"] == (f"{GATED} MACRO-02 not fired: MACRO-02 'far down' as on the last read JEV answered it on "
+                                                f"(answered once until it changes)")
     assert v["yield_move_meaning"].startswith(f"{GATED} $TNX or EVENTS-03 not fired: the ten-year yield rose 1.0 basis points since the prior close, not ranked")
     assert all(why.startswith(GATED) for why in v.values())
     monkeypatch.setitem(GATES, "news_reaction", judgment.Gate(("headlines",), lambda f: 1 / 0))
@@ -96,9 +124,9 @@ def test_a_gate_not_fired_says_so_with_what_it_read_and_a_failed_gate_is_not_fir
 def test_a_question_whose_gate_is_off_is_skipped_on_the_gates_reason_and_costs_no_request():
     """The packer keeps a gate's reason as it is (never 'asleep: gate: ...'), and the group sends nothing for it."""
     doc = _doc()
-    labels = build_judgment_labels(Facts(code={"BREADTH-09": "in play, rest followed"}, headlines=[]))
+    labels = build_judgment_labels(Facts(code={"BREADTH-09": "in play up, rest followed"}, headlines=[]))
     state = {"context": {"symbol": "SPX"}, **labels.state}
-    gates = verdicts(GATES, Facts(code={"BREADTH-09": "in play, rest followed"}, headlines=[]))
+    gates = verdicts(GATES, Facts(code={"BREADTH-09": "in play up, rest followed"}, headlines=[]))
     requests, skipped = build_requests(state, doc, gates=gates)
     mine = next(r for r in requests if r["id"] == "judgment")
     assert list(mine["questions"]) == ["heavyweight_catalyst_or_flow"] and "judgment" in mine["state"]
@@ -145,8 +173,14 @@ def test_the_headline_label_lists_the_titles_newest_first_with_outlet_and_minute
                      "Yields climb (Reuters, 10:12 ET)")
     many = Facts(headlines=[_headline(k + 2, f"title {k}") for k in range(30)])
     label = build_judgment_labels(many).state["judgment"]["headlines"]
-    assert label.startswith("30 headlines captured") and "(5 more not shown)" in label and label.count(" ET)") == MAX_TITLES
+    assert label.startswith("30 headlines captured from 10:01 to 10:30 ET") and "(5 more not shown; " in label and label.count(" ET)") == MAX_TITLES
     assert "title 24 (" in label and "title 25 (" not in label
+    # more than a label holds: the CNBC, MarketWatch and Fed titles and the market news go first, whatever their age
+    noisy = [{**_headline(k + 2, f"noise {k}"), "feed": "google_news"} for k in range(30)]
+    older = [{**_headline(50, "Treasury yields climb"), "feed": "google_news"}, {**_headline(55, "a CNBC feature"), "feed": "cnbc_top"}]
+    label = build_judgment_labels(Facts(headlines=noisy + older)).state["judgment"]["headlines"]
+    assert "Treasury yields climb (" in label and "a CNBC feature (" in label and "noise 22 (" in label and "noise 23 (" not in label
+    assert label.index("noise 0 (") < label.index("Treasury yields climb (") < label.index("a CNBC feature (")          # still newest first
     feed_down = Facts(headlines=[], headlines_why="the headline feed could not be read: OSError")
     assert build_judgment_labels(feed_down).state["judgment"]["headlines"].endswith("(the headline feed could not be read: OSError)")
 
@@ -156,10 +190,11 @@ def test_the_facts_read_the_headlines_captured_at_least_two_minutes_before_the_r
     monkeypatch.setattr(judgment, "code_answers_for", lambda *a, **k: {})
     hf = headlines_folder(tmp_path)
     hf.mkdir(parents=True)
-    lines = [_headline(1, "too fresh"), _headline(2, "at the cut"), _headline(61, "kept, 59 minutes before the cut"), _headline(63, "too old")]
+    lines = [_headline(1, "Fed too fresh"), _headline(2, "Fed at the cut"), _headline(61, "Fed kept, 59 minutes before the cut"),
+             _headline(63, "Fed too old")]
     (hf / f"{DAY}.jsonl").write_text("".join(json.dumps(l) + "\n" for l in lines))
     facts = judgment.facts_for(tmp_path, "live", DAY, {"read_id": f"live:{ROW}", "row_ts": ROW}, record=False)
-    assert [h["title"] for h in facts.headlines] == ["at the cut", "kept, 59 minutes before the cut"]
+    assert [h["title"] for h in facts.headlines] == ["Fed at the cut", "Fed kept, 59 minutes before the cut"] and facts.row_ts == ROW
     assert verdicts(["news_reaction"], facts)["news_reaction"] is None
     assert facts.yield_move.basis_points is None and "no $TNX quote" in facts.yield_move.why
 
@@ -239,3 +274,97 @@ def test_the_old_loop_never_sums_weights_holds_or_pools_a_judgment_answer():
     skip, held = cadence.plan(doc, {"news_reaction": {"row_ts": ROW, "answer": answered["news_reaction"]}}, {}, at(11, 2), {}, {}, "11:02")
     assert "news_reaction" not in held and "news_reaction" not in skip         # never held: asked afresh whenever its gate fires
     assert "news_reaction" not in cadence.recount([], doc)["questions"]
+
+
+# ---------------------------------------------------------------- the round-2 fixes (step 2, 2026-10-08)
+
+def test_the_heavyweight_label_names_the_stock_its_side_and_pull_and_the_headlines_naming_it():
+    facts = Facts(code={"BREADTH-09": "in play down, rest did not"}, heavyweight=("NVDA", -0.0012, 0.0005),
+                  headlines=[_headline(3, "Nvidia shares slip as export curbs widen"), _headline(9, "Oil climbs"), _headline(12, "NVDA options swell")])
+    label = build_judgment_labels(facts).state["judgment"]["heavyweight"]
+    assert label == ("the heavyweights since the close reads 'in play down, rest did not' (BREADTH-09): NVDA pulls the index down, its move since "
+                     "the prior close beyond its usual link to the index worth -0.12% of the index; the rest of the index moved +0.05% since the "
+                     "close; headlines naming NVDA or Nvidia, newest first: Nvidia shares slip as export curbs widen (CNBC, 10:29 ET); "
+                     "NVDA options swell (CNBC, 10:20 ET)")
+    alone = build_judgment_labels(Facts(code={"BREADTH-09": "in play up, rest followed"}, heavyweight=("BRK/B", 0.0004, 0.001))).state["judgment"]["heavyweight"]
+    assert alone.endswith("no captured headline names BRK/B or Berkshire or BRK.B")
+    quiet = build_judgment_labels(Facts(code={"BREADTH-09": "none in play"}, heavyweight=("NVDA", 0.0001, 0.0))).state["judgment"]["heavyweight"]
+    assert quiet == "the heavyweights since the close reads 'none in play' (BREADTH-09)"
+
+
+def test_the_macro_gap_label_states_the_gaps_size_and_side_in_its_top_fifth():
+    far = build_judgment_labels(Facts(code={"MACRO-02": "far up"}, macro_gap=(-0.0042, -32.6))).state["judgment"]["macro_gap"]
+    assert far.endswith("; SPX sits 0.42% (about 33 points) below what the ten-year note's move since the prior close implies, so the gap "
+                        "closing would move SPX up")
+    past = build_judgment_labels(Facts(code={"MACRO-02": "far down"}, macro_gap=(0.003, 23.1))).state["judgment"]["macro_gap"]
+    assert "0.30% (about 23 points) above" in past and past.endswith("would move SPX down")
+    near = build_judgment_labels(Facts(code={"MACRO-02": "up"}, macro_gap=(-0.001, -7.7))).state["judgment"]["macro_gap"]
+    assert near == "SPX against what bonds imply since the close reads 'up' (MACRO-02): 'up' is SPX short of what bonds imply, 'down' past it, 'far' the top fifth"
+
+
+def _archived_read(hhmm: tuple[int, int], asked: tuple[str, ...] = (), answered: dict | None = None, lost: bool = False) -> dict:
+    row_ts = at(*hhmm).isoformat()
+    replies = {"judgment": {"error": "JEV unreachable"}} if lost else {
+        "judgment": {"answers": {q: {"type": "choice", "choice": c} for q, c in (answered or {}).items()}}}
+    return {"kind": "read", "read_id": f"live:{row_ts}", "lane": "live", "row_ts": row_ts,
+            "requests": [{"id": "judgment", "questions": {q: {} for q in asked}}], "responses": replies}
+
+
+def _day_on_file(tmp_path, reads: list[dict], code: dict[str, str]):
+    from spx_jev.lane import LANES
+    from spx_jev.mirai_prediction.paths import data_root, raw_code_features_file
+    archive = Path(LANES["live"].archive_folder(tmp_path)) / f"{DAY}.jsonl"
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    archive.write_text("".join(json.dumps(r) + "\n" for r in reads))
+    raw = raw_code_features_file(data_root(tmp_path), DAY)
+    raw.parent.mkdir(parents=True, exist_ok=True)
+    raw.write_text("".join(json.dumps({"read_id": r["read_id"], "lane": "live", "row_ts": r["row_ts"], "answers": {"MACRO-02": code[r["row_ts"]]}}) + "\n"
+                           for r in reads))
+
+
+def test_the_bond_gap_is_answered_once_until_it_changes_and_a_lost_ask_is_retried(tmp_path):
+    """The once-only rule reads the last read JEV ANSWERED the question on, never one whose ask was lost."""
+    q = "macro_gap_equity_reason"
+    first, lost = _archived_read((10, 1), (q,), {q: "no_reason"}), _archived_read((10, 31), (q,), lost=True)
+    _day_on_file(tmp_path, [first, lost], {first["row_ts"]: "far down", lost["row_ts"]: "far down"})
+    facts = Facts(code={"MACRO-02": "far down"})
+    judgment.asks_before(facts, tmp_path, "live", DAY, at(11, 1).isoformat())
+    assert facts.answered_code == {"MACRO-02": "far down"} and verdicts([q], facts)[q] is not None          # answered at 10:01: held
+    _day_on_file(tmp_path, [_archived_read((10, 1), (q,), lost=True)], {at(10, 1).isoformat(): "far down"})
+    retry = Facts(code={"MACRO-02": "far down"})
+    judgment.asks_before(retry, tmp_path, "live", DAY, at(10, 31).isoformat())
+    assert retry.answered_code == {} and verdicts([q], retry)[q] is None                                 # the lost ask is asked again
+    changed = Facts(code={"MACRO-02": "far up"}, answered_code={"MACRO-02": "far down"})
+    assert verdicts([q], changed)[q] is None
+
+
+def test_the_news_gate_starts_after_the_cut_of_the_last_read_that_asked_it(tmp_path):
+    asked = _archived_read((10, 1), ("news_reaction",), {"news_reaction": "in_proportion"})
+    _day_on_file(tmp_path, [asked, _archived_read((10, 31))], {asked["row_ts"]: "up", at(10, 31).isoformat(): "up"})
+    facts = Facts()
+    judgment.asks_before(facts, tmp_path, "live", DAY, at(11, 1).isoformat())
+    assert facts.news_seen_until == at(9, 59).isoformat()
+
+
+def test_the_matrix_signs_the_picks_that_point_a_way_only_with_the_codes_side():
+    code = {"BREADTH-09": "in play down, rest followed", "MACRO-02": "far up"}
+    row = row_answers(code, {"heavyweight_catalyst_or_flow": "no_clear_cause", "macro_gap_equity_reason": "no_reason", "news_reaction": "fading_up_move"})
+    assert (row["jev:heavyweight_catalyst_or_flow"], row["jev:macro_gap_equity_reason"], row["jev:news_reaction"]) == (
+        "no_clear_cause:down", "no_reason:up", "fading_up_move")
+    assert row_answers(code, {"macro_gap_equity_reason": "equity_reason"})["jev:macro_gap_equity_reason"] == "equity_reason"
+    assert row_answers({}, {"heavyweight_catalyst_or_flow": "material_cause"})["jev:heavyweight_catalyst_or_flow"] == "material_cause"   # no side known
+
+
+def test_a_judgment_pick_renamed_out_of_its_options_is_left_out_of_the_matrix(monkeypatch):
+    from spx_jev.mirai_prediction import answer_matrix
+    from spx_jev.mirai_prediction.answer_matrix import judgment_options
+    stored = [{"read_id": "live:a", "question_id": "news_reaction", "pick": "shrugging_off", "group_id": "judgment", "day": "2026-10-07"},
+              {"read_id": "live:b", "question_id": "news_reaction", "pick": "fading_up_move", "group_id": "judgment", "day": "2026-10-08"},
+              {"read_id": "live:a", "question_id": "q_old", "pick": "rising", "group_id": "price_move", "day": "2026-10-07"}]
+    monkeypatch.setattr(answer_matrix, "_parquet_glob", lambda folder: "answers")
+    monkeypatch.setattr(answer_matrix, "_query", lambda sql: stored)
+    picks, groups, last = answer_matrix.load_jev_answers("state", "live", "2026-10-09")
+    assert picks == {"live:a": {"q_old": "rising"}, "live:b": {"news_reaction": "fading_up_move"}} and last["news_reaction"] == "2026-10-08"
+    options = judgment_options()
+    assert options["news_reaction"] == {"priced_lean_up", "priced_lean_down", "fading_up_move", "fading_down_move", "in_proportion", "unclear"}
+    assert options["yield_move_meaning"] == {"stock_tailwind", "stock_headwind", "unclear"} and "shrugging_off" not in options["news_reaction"]

@@ -75,7 +75,8 @@ Phase 1 feeds: the market feed's minute bars per symbol (`context/bars/`, today'
 for SPY/QQQ/IWM, /ZN, HYG/USO/GLD, the 3x funds, the megacaps, $VIX/$VIX9D/$TNX and breadth; the daily closes
 (VOLATILITY-08/17, SESSION-02, VOLATILITY-18's yield move); the index weights dated on or before the day
 (BREADTH-03/07/09); the calendar read at the read's time (EVENTS-02/03, VOLATILITY-14/18); the day's diary walls, gamma
-walls, magnet and book source (OPTIONS-04/06, the options-book gate); and the lob-flow quote sweeps (OPTIONS-08).
+walls, magnet, per-strike gamma and book source (OPTIONS-02/04/06/11, the options-book gate) and the prior sessions' diary
+row at the read's clock (OPTIONS-02); the lob-flow quote sweeps (OPTIONS-08) and the collector's refill test (OPTIONS-05).
 `code_feature_catalog.json` beside it lists every question with its id, title, layer, group (the voting group), method,
 source (the exact formula and window), label keys, the exact answer list, notes (every DRAFT threshold says so, and every
 question the pressure test changed says how and why) and, for a question kept as context only, `"votes": false`. A ranked
@@ -92,7 +93,8 @@ SPY/QQQ/IWM from their quotes whether or not the day is saved. A live read runs 
 history cold and answering every question takes about 1.2 s (a 10-07 read, 2026-10-07); the prior-sessions parts are
 cached only within one process (the replay and the backfill, which walk a day's reads together).
 
-**Non-voting questions.** `"votes": false` (BREADTH-09, VOLATILITY-12, VOLATILITY-17, MACRO-02, SENTIMENT-02, OPTIONS-02)
+**Non-voting questions.** `"votes": false` (BREADTH-09, VOLATILITY-12, VOLATILITY-17, MACRO-02, SENTIMENT-02; OPTIONS-02 until
+step 2 rebuilt its measure)
 keeps a question answered, stored under `raw/code_features/` and in the matrix as context (the judgment gates read
 BREADTH-09 and MACRO-02, VOLATILITY-18 reads BREADTH-09, and from the cut-over JEV's sentences carry every answer), but
 `answer_matrix.voting_columns` leaves it out of the additive scorer's pushes and volumes and the matcher's distance. Each
@@ -113,9 +115,26 @@ VOLATILITY-08/LEVELS-01/02, VOLATILITY-04/18, MACRO-09 and its arc; EVENTS-04 an
 options-book questions (OPTIONS-01/02/03/04/06/10/11) answer only while the diary row's book is SPX's own: on 10-06 and
 10-07 it was a scaled SPY stand-in. The backfill (09-28 to 10-07), the replay (09-29 to 10-06) and the night of 10-07 were
 re-run on the new catalog, so the fits for 2026-10-08 hold no dropped column. Left for later steps: the label writers'
-fixes (labels/: VOLATILITY-16's straddle, OPTIONS-02's measure, OPTIONS-05, OPTIONS-11, FLOW-03's wording), the judgment
-fixes (BREADTH-10, MACRO-03, EVENTS-06, EVENTS-07) and the operations ones (the straddle's em_points, the lob_flow tape
+fixes, the judgment fixes (both step 2, below) and the operations ones (the straddle's em_points, the lob_flow tape
 collector, the native SPX options read).
+
+**Step 2 (2026-10-08): the measures the label writers got wrong, rebuilt in the builder.** A label sentence is archived as
+written at read time, and the parsers read sentences, so a changed label writer would answer live on a new rule while every
+past read keeps the old one. So the corrected measures are computed by the builder itself from the stored raw data, the
+same way live and in backfill, and the label writers are left as they were: OPTIONS-02 is the share of today's 0DTE gamma
+(the diary's `gex_views.mass_by_strike`) within one 30-minute expected move of spot (the row's sigma x sqrt(30/390)),
+ranked against the same clock on the trailing native sessions (each prior diary read a line at a time up to the clock), and
+votes again (on the rebuilt days it carries the day's usual answer on 66% of reads, against 89% before); OPTIONS-05 reads
+the collector's refill test (`lob_flow/agg/`) with a fixed reach of one 30-minute move and a 3-hit minimum (the label keeps
+its rank reach and 10 hits); OPTIONS-11 compares the diary's heaviest gamma strikes with the row of 30 minutes before, a
+shift under one 5-point strike counting as stayed put. FLOW-03 changed wording only: `liquidity.spy_quote` writes the
+standard "between the top and bottom fifths" (no question JEV is asked reads it since the cut-over), and the parser reads
+the size's own rank, so both wordings give the same answer (a test holds both). VOLATILITY-16 needs nothing here: its
+outage is the straddle (`range_ruler.em_points`) the upstream SPX scanner stopped writing, an operations fix. BREADTH-09's
+answer now carries the pull's side (`in play up, ...` / `in play down, ...`). The backfill (09-28 to 10-07), the replay
+(09-29 to 10-06) and the night of 10-07 were re-run, so the fits for 2026-10-08 hold the new measures; a live-path
+simulation (each read's day's diary, collector record, quotes and SPY volumes cut to what existed at the read) answers
+every changed question as the backfill does on every 10-07 read, and on 09-29, 10-02 and 10-05 for the options questions.
 
 Each read's answers are written to `raw/code_features/{day}.jsonl` first (live, before the read is forecast; or by the
 backfill command, idempotent, source `backfill`) and the nightly matrix joins them on `read_id` as columns
@@ -168,10 +187,10 @@ None is not fired; a question not fired is skipped with `gate: <code question> n
 |---|---|---|---|
 | `push_blowoff_or_fresh` (dark since 2026-10-07) | TREND-13 | TREND-10 or TREND-11 reads anything but `none` | `judgment.push_exhaustion` (TREND-10, TREND-11, TREND-04 in words), `price.recent_move`, `range.today_vs_normal` |
 | `quiet_coiled_or_resting` (dark since 2026-10-07; now the code question VOLATILITY-18) | VOLATILITY-15 | VOLATILITY-04 reads `compressed` (from 10:32) | `judgment.quiet` (VOLATILITY-04, VOLATILITY-02, BREADTH-09, the yield's move), `judgment.headlines`, `iv.trend_30min`, `price.day_range_position` |
-| `heavyweight_catalyst_or_flow` | BREADTH-10 | BREADTH-09 reads `in play, ...` | `judgment.heavyweight`, `judgment.headlines` |
-| `macro_gap_equity_reason` | MACRO-03 | MACRO-02 reads `up`, `down`, `far up` or `far down` (the gap above its bottom third; `far` is its top fifth, since 2026-10-07) | `judgment.macro_gap`, `judgment.headlines` |
+| `heavyweight_catalyst_or_flow` | BREADTH-10 | BREADTH-09 reads `in play up, ...` or `in play down, ...` | `judgment.heavyweight` (the stock, the way it pulls, its pull and the rest of the index since the close, `code_features_market.heavyweight_pull`, and the window's headlines naming it or its ticker) |
+| `macro_gap_equity_reason` | MACRO-03 | MACRO-02 reads `far up` or `far down` (the gap's top fifth) and the day's last read JEV answered the question on (the archive's responses; its code answers from `raw/code_features/`) did not read the same: answered once until the answer changes, a lost ask retried | `judgment.macro_gap` (the answer, and the gap's size in percent and points and its side, `code_features_market.macro_gap`), `judgment.headlines` |
 | `yield_move_meaning` | EVENTS-06 | the ten-year yield's move since the prior close ranks top third at this minute (`judgment.yield_move`: today's `$TNX` quote against its prior close, each prior session's `context/bars` reading at the minute against its own daily close, 20 sessions, needing 10), and EVENTS-03 reads no release in its reaction window (EVENTS-05 until 2026-10-07) | `judgment.yield_move`, `judgment.headlines` |
-| `news_reaction` | EVENTS-07 | a headline was captured in the window | `judgment.headlines`, `price.recent_move`, `price.day_range_position` |
+| `news_reaction` | EVENTS-07 | a CNBC, MarketWatch or Fed-feed headline (never Google News) naming an index-wide mover (the Fed/FOMC/Powell, CPI/PPI/jobs/payrolls/GDP/PCE/retail sales, tariffs or trade, Treasury yields, a heavyweight's earnings or guidance: `judgment.INDEX_NEWS`, `MEGACAP_RESULTS`) first captured in the `HEADLINE_FRESH_MIN` (30) minutes before the cut and after the cut of the day's last read that asked it; on 10-07 it fires on 2 of 13 reads (09-29 to 10-06 have no headlines) | `judgment.headlines`, `price.recent_move`, `price.day_range_position` |
 
 The questions are `shadow` in the set (each `shadow_proof` says why: not a proof, a wall): `hour.answer_sentences` leaves a shadow
 answer out of the sums, `grade.live_options` and the weights never see it, `service.pool_snapshots` takes pool_v1's members from
@@ -187,9 +206,21 @@ computes nothing twice. A replay or an unsent run computes the answers and write
 catches its own failure (the code answers, the headlines, the yield's move, each gate): a failure leaves the question not
 fired, with the failure named in its reason, and the read goes on; the step never raises.
 
-**Not built:** EVENTS-09 (Kalshi); the scope of the news (index-wide or
-one name) that EVENTS-07's merged wording asks for, since a choice carries one answer; the fifth-based gate for MACRO-03
-(MACRO-02 names its top fifth `far` since 2026-10-07; the gate still fires on any side until the judgment fixes).
+**The judgment fixes (round 2, step 2, 2026-10-08).** The headline reader keeps each story once, from its first capture
+(`headlines.normalized_title`: Google News' " - Outlet" tail, case and punctuation dropped), and a label with more titles
+than it holds shows the CNBC, MarketWatch and Fed titles and the material ones first. The options of two questions were
+renamed: `yield_move_meaning` asks `stock_tailwind` / `stock_headwind` / `unclear` (growth/inflation fit rising yields
+only; the label already says which way the yield moved), and `news_reaction` asks `priced_lean_up` / `priced_lean_down` /
+`fading_up_move` / `fading_down_move` / `in_proportion` / `unclear`. `answer_matrix.load_jev_answers` leaves out a judgment
+pick that is no longer among its question's options (10-07's `shrugging_off` and `growth_tailwind`), and `row_answers`
+stores the picks that point a way only with the code's side signed by it (`SIGNED_PICKS`: the heavyweight's
+`material_cause` / `no_clear_cause` by BREADTH-09's side, `no_reason` by MACRO-02's), the same function live and nightly.
+`yield_move_meaning` stays off while EVENTS-03 reads any release but a Fed speaker's in its 15-120-minute window: EVENTS-03
+has no size answer to narrow it with, and over 09-28 to 10-07 it held the gate off on 1 of 29 reads where the yield's move
+fired (10-05 12:00, the ISM services report, which does move yields), so it is not too broad.
+
+**Not built:** EVENTS-09 (Kalshi); the scope of the news (index-wide or one name) that EVENTS-07's merged wording asks for,
+since a choice carries one answer.
 
 ## Phase 4 (built 2026-10-07, live from 2026-10-08): the cut-over
 

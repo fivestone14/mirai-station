@@ -12,8 +12,8 @@ from conftest import DAY, at
 
 from spx_jev import headlines
 from spx_jev.cuts import HEADLINE_CUT_MIN
-from spx_jev.headlines import (FEEDS, MAX_TITLES, PollRunning, folder, headlines_before, in_capture_window, keys_of, parse_items, poll,
-                               prune_seen, take_lock)
+from spx_jev.headlines import (FEEDS, MAX_TITLES, PollRunning, folder, headlines_before, in_capture_window, keys_of, normalized_title,
+                               parse_items, poll, prune_seen, take_lock)
 
 RSS = """<?xml version="1.0"?><rss version="2.0"><channel><title>Feed</title>
 <item><title>Nvidia slips as export curbs widen</title><link>https://x/1</link><guid>g1</guid><pubDate>Fri, 18 Sep 2026 13:50:00 GMT</pubDate></item>
@@ -132,6 +132,24 @@ def test_the_reader_spans_midnight_and_skips_malformed_lines(tmp_path):
     with open(folder(tmp_path) / f"{DAY}.jsonl", "a") as f:
         f.write('{"captured_at": "not a time", "title": "bad"}\n{"title": "no stamp"}\n')
     assert [h["title"] for h in headlines_before(tmp_path, read, 60)] == ["this morning", "last night"]
+
+
+def test_the_reader_keeps_each_story_once_from_its_first_capture(tmp_path):
+    """Google News carries one wire story under many outlets, each title ending " - <outlet>": the first capture stands, and
+    a copy captured later never makes the story fresh again, even when the first is older than the window."""
+    read = at(10, 32, ss=20)
+    lines = [{"captured_at": at(9, 10).isoformat(timespec="seconds"), "feed": "google_news", "source": "WHTC",
+              "title": "Wall St futures slip as yields rebound - WHTC"},
+             {"captured_at": at(10, 12).isoformat(timespec="seconds"), "feed": "google_news", "source": "Reuters",
+              "title": "Wall St futures slip as yields rebound - Reuters"},
+             {"captured_at": at(10, 14).isoformat(timespec="seconds"), "feed": "cnbc_top", "source": "cnbc_top", "title": "Fed's Waller: room to cut"},
+             {"captured_at": at(10, 20).isoformat(timespec="seconds"), "feed": "google_news", "source": "Axios",
+              "title": "FED'S WALLER -- room to cut! - Axios"}]
+    folder(tmp_path).mkdir(parents=True)
+    (folder(tmp_path) / f"{DAY}.jsonl").write_text("".join(json.dumps(l) + "\n" for l in lines))
+    got = headlines_before(tmp_path, read, 60)
+    assert [(h["title"], h["captured_at"][11:16]) for h in got] == [("Fed's Waller: room to cut", "10:14")]
+    assert normalized_title(lines[0]) == normalized_title(lines[1]) == "wall st futures slip as yields rebound"
 
 
 def test_the_label_cap_is_twenty_five_titles():

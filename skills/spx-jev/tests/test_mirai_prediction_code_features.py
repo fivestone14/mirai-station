@@ -32,7 +32,9 @@ ROUND_2_DROPPED = {"OPTIONS-12", "FLOW-09", "LEVELS-04", "BREADTH-08", "MACRO-04
                    "EVENTS-05", "BREADTH-11", "MACRO-10",
                    "OPTIONS-09"}                 # dropped on its own condition: V 0.90 with VOLATILITY-12 after the fix
 ROUND_2_NEW = {"VOLATILITY-18", "MACRO-09-ARC"}
-NON_VOTING = {"BREADTH-09", "VOLATILITY-12", "VOLATILITY-17", "MACRO-02", "SENTIMENT-02", "OPTIONS-02"}
+NON_VOTING = {"BREADTH-09", "VOLATILITY-12", "VOLATILITY-17", "MACRO-02", "SENTIMENT-02"}
+# Step 2 of round 2 (2026-10-08): measured by the builder from the stored diary rows and collector records, not the sentences
+FROM_STORED_DATA = {"OPTIONS-02", "OPTIONS-05", "OPTIONS-11"}
 ROUND_2_ANSWERS = {      # (mapping id, read) -> (catalog id, answer)
     ("TREND-03", "live 2026-09-29T14:31"): ("TREND-03", None),                      # from 14:45: at 14:30 the leg is TREND-01's
     ("TREND-03", "live 2026-09-30T14:30"): ("TREND-03", None),
@@ -102,7 +104,7 @@ def test_the_pressure_tests_shared_groups_give_a_counted_twice_fact_one_vote():
 # the prototype's three out-of-option strings and what the builder answers instead
 EXPECTED_INSTEAD = {"inside (old 09-28 template, side not stated)": None, "flat (old template, from rank)": "flat",
                     "ahead down (contrarian: lean up)": "ahead down", "ahead up (contrarian: lean down)": "ahead up"}
-LABEL_EXAMPLES = [(m["new_id"], ex) for m in MAPPING if m["method"] == "label" and m["new_id"] not in ROUND_2_DROPPED - {"MACRO-10"}
+LABEL_EXAMPLES = [(m["new_id"], ex) for m in MAPPING if m["method"] == "label" and m["new_id"] not in (ROUND_2_DROPPED - {"MACRO-10"}) | FROM_STORED_DATA
                   for ex in m["examples"]]
 
 
@@ -136,6 +138,9 @@ def test_the_options_book_questions_are_silent_on_a_spy_stand_in_book():
     ({"leaders.equal_weight_vs_cap_30m": "equal-weight RSP usually moves 0.82 times the index (SPY), so 0.10 sigma was expected over the last 30 minutes; it rose 0.11 sigma, 0.01 sigma above that, by size higher than 2 of the last 19 sessions at this minute, bottom third: no split"}, "11:00", "as expected"),
     ({"sectors.agreement_30m": "over the last 30 minutes 9 of 11 sector funds moved the index's way, each by a move above the bottom third of its own at this minute; that count is higher than 18 of the last 20 sessions at this minute, top third: one way; sector dispersion beyond each fund's usual multiple was 0.06 sigma, higher than 2 of the last 19 sessions at this minute, bottom third: tight"}, "11:00", "more together"),
     ({"liquidity.spy_quote": "over the last 5 minutes SPY's quoted spread has been 1 cent, wider than on 0 of the last 20 sessions at this minute, at the tight tick; the size showing at SPY's best bid and offer combined is in the bottom fifth for 12:31, higher than 2 of the last 20 sessions at this minute"}, "12:31", "thin"),
+    # the label's middle words before step 2 (2026-10-08) and since: the size's own rank decides, never the wording
+    ({"liquidity.spy_quote": "over the last 5 minutes SPY's quoted spread has been 2 cents, wider than on 3 of the last 20 sessions at this minute, bottom third: its usual width for this time; the size showing at SPY's best bid and offer combined is between the bottom and top fifths for 10:00, higher than 11 of the last 20 sessions at this minute"}, "10:00", "normal"),
+    ({"liquidity.spy_quote": "over the last 5 minutes SPY's quoted spread has been 2 cents, wider than on 3 of the last 20 sessions at this minute, bottom third: its usual width for this time; the size showing at SPY's best bid and offer combined is between the top and bottom fifths for 10:00, higher than 11 of the last 20 sessions at this minute"}, "10:00", "normal"),
     ({"skew.put_tilt_vs_usual": "same-day 25-delta puts are priced 2.0 vol points above 25-delta calls, 0.10 of the at-the-money level; steeper than 14 of the last 18 sessions at 11:00"}, "11:00", "usual"),     # 0.78: under the label's top fifth
     ({"skew.put_tilt_vs_usual": "same-day 25-delta puts are priced 2.4 vol points above 25-delta calls, 0.12 of the at-the-money level; steeper than 16 of the last 18 sessions at 11:00"}, "11:00", "steep"),
     ({"vol.ruler_event_load": "normal: the same-day straddle prices a 30-minute move 0.6 times what the tape's recent 5-minute ranges scale to, higher than 9 of the last 18 sessions at 11:00 (between the top and bottom fifths); on the event calendar today: the job openings report at 10:00, the Fed's rate decision at 14:00; the Fed's rate decision is still ahead; this morning's sigma ruler is 0.90 times its 19-session median, larger than 3 of the last 19 sessions' morning rulers, bottom third"}, "11:00", "compressed, event ahead"),

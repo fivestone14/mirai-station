@@ -19,7 +19,9 @@ Stdlib only (urllib, xml.etree). The feeds are read with a 10-second timeout eac
 itself to CAPTURE_FROM-CAPTURE_TO ET on weekdays; ``--now`` runs regardless.
 
 ``headlines_before(state_dir, row_ts, minutes)`` is the questions' reader: the titles captured in the ``minutes`` ending
-HEADLINE_CUT_MIN minutes before the read, newest first, never one captured after it.
+HEADLINE_CUT_MIN minutes before the read, newest first, never one captured after it, each story once: a copy of a title
+captured earlier (the same words under another outlet, Google News' " - Outlet" tail, case or punctuation; normalized_title)
+is dropped, so a story counts from when the station first captured it.
 """
 from __future__ import annotations
 
@@ -27,6 +29,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -187,22 +190,36 @@ def poll(state_dir: Path | str, now: datetime, fetcher=None) -> dict[str, int | 
     return counts
 
 
+def normalized_title(line: dict) -> str:
+    """A title as the copies of one story share it: without a trailing " - <outlet>" (Google News' tail), lower-cased,
+    every run of anything but letters and digits one space."""
+    title = line["title"]
+    source = line.get("source")
+    if isinstance(source, str) and source and title.endswith(f" - {source}"):
+        title = title[: -len(source) - 3]
+    return re.sub(r"[^0-9a-z]+", " ", title.lower()).strip()
+
+
 def headlines_before(state_dir: Path | str, row_ts: str | datetime, minutes: int, cut_min: int = HEADLINE_CUT_MIN) -> list[dict]:
-    """The headlines a read at ``row_ts`` may know: captured within the ``minutes`` that end ``cut_min`` minutes before
-    the read, newest first; never one captured after that cut, whatever its feed claimed. Each is the stored line."""
+    """The headlines a read at ``row_ts`` may know: first captured within the ``minutes`` that end ``cut_min`` minutes
+    before the read, newest first; never one captured after that cut, whatever its feed claimed, and a copy of a story
+    captured earlier (normalized_title, over the day before and the day to the cut) never. Each is the stored line."""
     end = (parse_ts(row_ts) if isinstance(row_ts, str) else row_ts) - timedelta(minutes=cut_min)
     start = end - timedelta(minutes=minutes)
     day = end.astimezone(ET).date()
-    out = []
+    lines = []
     for d in (day - timedelta(days=1), day):
         for line in load_jsonl(folder(state_dir) / f"{d.isoformat()}.jsonl"):
             try:
                 t = parse_ts(line["captured_at"])
             except (KeyError, TypeError, ValueError):
                 continue
-            if start < t <= end and isinstance(line.get("title"), str):
-                out.append(line)
-    return sorted(out, key=lambda h: h["captured_at"], reverse=True)
+            if t <= end and isinstance(line.get("title"), str):
+                lines.append((t, line))
+    first: dict[str, tuple[datetime, dict]] = {}
+    for t, line in sorted(lines, key=lambda x: x[0]):
+        first.setdefault(normalized_title(line), (t, line))
+    return sorted((line for t, line in first.values() if start < t), key=lambda h: h["captured_at"], reverse=True)
 
 
 def main(argv: list[str] | None = None) -> int:

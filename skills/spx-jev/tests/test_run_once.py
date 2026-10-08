@@ -491,10 +491,10 @@ def test_the_code_answers_the_gates_before_the_requests_and_a_fired_judgment_que
     from spx_jev import judgment
     state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
     out = state / "spx_jev"
-    _headlines(state, 10, "Nvidia slips as export curbs widen")
+    _headlines(state, 10, "Nvidia slips as its guidance disappoints")
     order = []
 
-    def code_answers(state_dir, lane_name, day, rec, record):
+    def code_answers(state_dir, lane_name, day, rec, record, **day_parts):
         order.append(("code", record, rec["read_id"], sorted(rec["labels"])))
         return {"TREND-10": "up held", "TREND-11": "none"}
     real = _answers()
@@ -542,7 +542,7 @@ def test_the_judgment_group_failing_never_costs_the_read(tmp_path, monkeypatch):
     from spx_jev import judgment
     state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
     out = state / "spx_jev"
-    _headlines(state, 10, "a headline")
+    _headlines(state, 10, "Stocks slip as Treasury yields climb")
     monkeypatch.setattr(judgment, "code_answers_for", lambda *a, **k: 1 / 0)
     monkeypatch.setattr(service, "send_all", _answers())
     monkeypatch.setattr(service, "send", _sums)
@@ -587,7 +587,7 @@ def _cut_over_read(tmp_path, monkeypatch, day: str, doc: dict, code: dict | None
     from spx_jev import judgment
     state = _state_on(tmp_path, day)
     out = state / "spx_jev"
-    _headline_on(state, day, "Nvidia slips as export curbs widen")
+    _headline_on(state, day, "Nvidia slips as its guidance disappoints")
     monkeypatch.setattr(judgment, "code_answers_for", lambda *a, **k: dict(code or {}))
     sent = []
     real = _answers()

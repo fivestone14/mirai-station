@@ -7,7 +7,10 @@ the live hook never scans the store; the hook only adds today's row to it:
                                      the call the phone showed (shown_probs), pool_v1's mix (pool_probs), learn_exclude
     graded_results (average_grades)  the result of that sum's window: up, flat or down, joined on (read_id, sum_id) - never on horizon
     jev_answers (answers)            layer 3: JEV's pick per question where status == "answered"; anything else is silent (None);
-                                     the questions of one request group share one group, so a group casts one vote in the scorer
+                                     the questions of one request group share one group, so a group casts one vote in the scorer;
+                                     a judgment question's pick outside its options today (renamed in the question pressure test)
+                                     is silent, and the picks that point a way only with the code's side are stored signed by it
+                                     (SIGNED_PICKS: "material_cause:up"), live and in the nightly matrix alike (row_answers)
     raw/code_features/{day}.jsonl    layers 1-2: the code feature builder's answer per catalog question ("code:<question_id>"),
                                      this system's own raw record (code_features.py), joined on read_id; a read with no line
                                      has None in every code column. Each column's layer and group come from the catalog;
@@ -91,6 +94,26 @@ class AnswerMatrix:
                    columns=d["columns"])
 
 
+# A judgment pick that says which way SPX goes only with the side the code measured, by question: (the code question whose
+# answer carries the side, the picks signed by it). The heavyweight's cause persists or reverts the pull's way; with no
+# equity reason the bond gap closes its way ('up': SPX short of what bonds imply).
+SIGNED_PICKS = {"heavyweight_catalyst_or_flow": ("BREADTH-09", ("material_cause", "no_clear_cause")),
+                "macro_gap_equity_reason": ("MACRO-02", ("no_reason",))}
+
+
+def code_side(answer: str | None) -> str | None:
+    """'up' or 'down' from a signed code answer ('in play up, rest followed', 'far down'), else None."""
+    words = (answer or "").replace(",", " ").split()
+    return "up" if "up" in words else "down" if "down" in words else None
+
+
+def signed_pick(question_id: str, pick: str, code_answers: dict[str, str | None]) -> str:
+    """The pick as the matrix stores it: signed by its code question's side where SIGNED_PICKS says so and the side is known."""
+    code_qid, picks = SIGNED_PICKS.get(question_id, (None, ()))
+    side = code_side(code_answers.get(code_qid)) if pick in picks else None
+    return f"{pick}:{side}" if side else pick
+
+
 # ---------------------------------------------------------------- reading the store
 
 def _probs(v) -> dict | None:
@@ -156,7 +179,7 @@ def load_base_rows(state_dir: Path | str, lane: str, sum_id: str, before_day: st
 
 def load_jev_answers(state_dir: Path | str, lane: str, before_day: str) -> tuple[dict[str, dict[str, str]], dict[str, str], dict[str, str]]:
     """(read_id -> {question_id: pick} for answered questions only, question_id -> its request group, question_id -> the last
-    day it was answered) for layer 3."""
+    day it was answered) for layer 3. A judgment question's pick that is no longer one of its options is left out."""
     answers = _parquet_glob(store_path(state_dir, "jev_answers"))
     if answers is None:
         return {}, {}, {}
@@ -167,7 +190,10 @@ def load_jev_answers(state_dir: Path | str, lane: str, before_day: str) -> tuple
     picks: dict[str, dict[str, str]] = defaultdict(dict)
     group_of: dict[str, str] = {}
     last_day: dict[str, str] = {}
+    options = judgment_options()
     for r in _query(sql):
+        if r["question_id"] in options and str(r["pick"]) not in options[r["question_id"]]:
+            continue
         picks[r["read_id"]][r["question_id"]] = str(r["pick"])
         if r["group_id"]:
             group_of[r["question_id"]] = str(r["group_id"])
@@ -194,11 +220,18 @@ def load_code_features(state_dir: Path | str, lane: str, before_day: str) -> dic
 # ---------------------------------------------------------------- columns
 
 def row_answers(code_answers: dict[str, str | None], jev_answers: dict[str, str]) -> dict[str, str | None]:
-    """One read's answers across the layers, keyed by column id: every catalog question (None when unanswered), then JEV's picks."""
+    """One read's answers across the layers, keyed by column id: every catalog question (None when unanswered), then JEV's
+    picks, signed where SIGNED_PICKS says so by the read's own code answers."""
     out: dict[str, str | None] = {column_name(q["id"]): code_answers.get(q["id"]) for q in load_catalog()}
     for qid, pick in jev_answers.items():
-        out[f"jev:{qid}"] = pick
+        out[f"jev:{qid}"] = signed_pick(qid, pick, code_answers)
     return out
+
+
+def judgment_options(questions_file: Path = QUESTIONS) -> dict[str, set[str]]:
+    """The judgment group's questions with their options as the question doc has them today."""
+    doc = json.loads(questions_file.read_text(encoding="utf-8"))
+    return {qid: set(q["options"]) for g in doc["groups"] if g["id"] == JUDGMENT_GROUP for qid, q in g["questions"].items()}
 
 
 def dark_judgment_questions(questions_file: Path = QUESTIONS) -> set[str]:

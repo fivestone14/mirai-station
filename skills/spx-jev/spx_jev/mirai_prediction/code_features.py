@@ -12,7 +12,8 @@ vote: the answer matrix marks its column and the scorer and the matcher leave it
 answers every question for one read from what was known at the read time only: the label sentences as archived, the SPX
 minute bars finished by row_ts, and a MarketHistory of prior sessions (never the read's own day) plus the night's /ES and
 the day's premarket reads, and (code_features_market.py) the market feed's symbols cut at the read, the daily
-closes before the day, the index weights dated on or before it, the calendar, the day's diary rows and quote sweeps. A
+closes before the day, the index weights dated on or before it, the calendar, the day's diary rows (and the prior
+sessions' at the read's clock), the quote sweeps and the lob-flow collector's records. A
 question whose data is missing, or whose sentence is an unknown template, answers None (silent) and never raises. Every
 parser is a pure function of the sentences; the bars and market questions compute their measure and rank it against the
 same measure at the same minute on the trailing HISTORY_SESSIONS sessions. The options-book questions (GEX_BOOK_QUESTIONS)
@@ -27,9 +28,11 @@ from functools import lru_cache
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Callable
 
 from ..cuts import SKEW_FLAT_RANK, SKEW_STEEP_RANK
 from ..events import WORDS as EVENT_WORDS
+from ..labels.options_flow import CollectorRecord
 from ..labels.measures import move_bar
 from ..labels.vol import LOADING_EVENTS
 
@@ -93,9 +96,13 @@ class MarketHistory:
     today_context_from_quotes  the read's day's symbols came from the quotes (its bars file not saved yet: a live read)
     daily_closes           symbol -> daily rows (day, open, high, low, close) of the sessions before the read's day
     index_weights          the index weights document (index_weights.pick takes the entry dated on or before the day)
-    diary_rows             the read's day's SPX diary rows, slim: ts, call_wall, put_wall, call_wall_tenor, put_wall_tenor,
-                           call_wall_gamma, put_wall_gamma, magnet, atm_iv, gex_source (only those at or before the read
-                           are used)
+    diary_rows             the read's day's SPX diary rows, slim: ts, spot, sigma, call_wall, put_wall, call_wall_tenor,
+                           put_wall_tenor, call_wall_gamma, put_wall_gamma, magnet, mass_by_strike, atm_iv, gex_source (only
+                           those at or before the read are used)
+    prior_diary_row_at     (day, "HH:MM:SS") -> a prior session's slim diary row at that clock (the newest written by it,
+                           within the labeller's slack), or None; None when no diary is on hand
+    collector_records      the lob-flow collector's record per day (labels/options_flow.CollectorRecord: the refill test's
+                           readings), prior sessions and the read's day (only readings at or before the read are used)
     quote_sweeps_by_day    the lob-flow collector's quote sweeps: day -> [(ts, quoted spread, delta bucket)], prior
                            sessions and the read's day (cut at the read)
     calendar_path          the event calendar file read for the EVENTS questions; None for the skill's own calendar/events.json
@@ -110,6 +117,8 @@ class MarketHistory:
     daily_closes: dict[str, list[dict]] = field(default_factory=dict)
     index_weights: dict | None = None
     diary_rows: list[dict] = field(default_factory=list)
+    prior_diary_row_at: Callable[[str, str], dict | None] | None = None
+    collector_records: dict[str, CollectorRecord] = field(default_factory=dict)
     quote_sweeps_by_day: dict[str, list[tuple[str, float, str]]] = field(default_factory=dict)
     calendar_path: str | None = None
     cache: dict = field(default_factory=dict, repr=False)
@@ -408,15 +417,6 @@ def parse_options_01(labels, hhmm):
     return "near" if t == "bottom" else side if t == "middle" else f"far {side}"
 
 
-def parse_options_02(labels, hhmm):
-    s = labels.get("gex.magnet_distance")
-    m = re.search(r"its grip \(top-strike share\) is stronger than on (\d+) of the last (\d+)", s) if s else None
-    if not m or int(m.group(2)) == 0:
-        return None
-    k = int(m.group(1)) / int(m.group(2))
-    return "high" if k >= 2 / 3 else "low" if k < 1 / 3 else "normal"
-
-
 def parse_options_03(labels, hhmm):
     s = labels.get("gex.magnet_distance")
     t = third(s) if s else None
@@ -424,15 +424,6 @@ def parse_options_03(labels, hhmm):
         return None
     spx_side = "below" if "sigma above price" in s.split(",")[0] else "above"      # a strike above price: SPX is below it
     return "on it" if t == "bottom" else spx_side if t == "middle" else f"far {spx_side}"
-
-
-def parse_options_05(labels, hhmm):
-    s = labels.get("options.strike_defense")
-    if not s or ("defended" not in s and "abandoned" not in s):
-        return None
-    side = "above" if re.search(r"is [\d.]+ sigma above price", s) else "below"
-    verdict = "defended" if s.rstrip().endswith("defended") or ": defended" in s else "abandoned"
-    return f"{verdict} {side}"
 
 
 def parse_options_07(labels, hhmm):
@@ -454,22 +445,6 @@ def parse_options_10(labels, hhmm):
     if "near price" in s:
         return f"near {side}"
     return "far" if "from price" in s else None
-
-
-def parse_options_11(labels, hhmm):
-    s = labels.get("gex.walls_since_30min")
-    if not s:
-        return None
-    if "both stayed put" in s:
-        return "stand still"
-    call = re.search(r"call-side heavy strike of today's same-day book (moved (up|down)|stayed put)", s)
-    put = re.search(r"put-side strike (moved (up|down)|stayed put)", s)
-    call_way, put_way = (call.group(2) if call else None), (put.group(2) if put else None)
-    if call_way and call_way == put_way:
-        return f"both moved {call_way}"
-    if "closer together" in s:
-        return "pulled in"
-    return "spread out" if "further apart" in s or "farther apart" in s else None
 
 
 def parse_breadth_01(labels, hhmm):
@@ -598,8 +573,7 @@ LABEL_PARSERS = {
     "VOLATILITY-16": parse_volatility_16,
     "LEVELS-01": parse_levels_01, "LEVELS-02": parse_levels_02, "LEVELS-03": parse_levels_03, "LEVELS-05": parse_levels_05,
     "LEVELS-11": parse_levels_11,
-    "OPTIONS-01": parse_options_01, "OPTIONS-02": parse_options_02, "OPTIONS-03": parse_options_03, "OPTIONS-05": parse_options_05,
-    "OPTIONS-07": parse_options_07, "OPTIONS-10": parse_options_10, "OPTIONS-11": parse_options_11,
+    "OPTIONS-01": parse_options_01, "OPTIONS-03": parse_options_03, "OPTIONS-07": parse_options_07, "OPTIONS-10": parse_options_10,
     "BREADTH-01": parse_breadth_01, "BREADTH-04": parse_breadth_04,
     "BREADTH-05": words_by_third("leaders.rotation_30m", ("lag", "match", "beat")),
     "BREADTH-06": parse_breadth_06,

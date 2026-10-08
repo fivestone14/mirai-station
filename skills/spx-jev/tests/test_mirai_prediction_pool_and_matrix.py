@@ -253,6 +253,6 @@ def test_a_dark_judgment_question_leaves_the_matrix_from_the_cut_over():
 def test_the_catalogs_non_voting_questions_keep_their_columns_marked_and_out_of_the_voting_set():
     from spx_jev.mirai_prediction.answer_matrix import voting_columns
     cols = column_catalog(set(), {})
-    silent = {f"code:{q}" for q in ("BREADTH-09", "VOLATILITY-12", "VOLATILITY-17", "MACRO-02", "SENTIMENT-02", "OPTIONS-02")}
+    silent = {f"code:{q}" for q in ("BREADTH-09", "VOLATILITY-12", "VOLATILITY-17", "MACRO-02", "SENTIMENT-02")}
     assert {c for c, m in cols.items() if m.get("votes") is False} == silent
     assert set(voting_columns(cols)) == set(cols) - silent and all("votes" not in m for m in voting_columns(cols).values())
