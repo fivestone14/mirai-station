@@ -41,7 +41,7 @@
   "id": "TREND-03",
   "title": "Afternoon leg since 14:00",
   "layer": 1,
-  "group": "trend/late_leg",
+  "group": "trend/leg_aging",
   "method": "label",
   "source": "price.afternoon_leg",
   "label_keys": [
@@ -54,15 +54,15 @@
    "up",
    "strong up"
   ],
-  "notes": "only reads at/after 14:30. Sign + tercile like TREND-01. Bug seen: at 14:00 the move is ~0 but ranks 'larger than 20 of 20, top third' - ignore pre-14:30 reads."
+  "notes": "only reads at/after 14:45 (at 14:30 the leg since 14:00 is TREND-01's 30 minutes). Sign + tercile like TREND-01. Bug seen: at 14:00 the move is ~0 but ranks 'larger than 20 of 20, top third'. Question pressure test 2026-10-07: the gate moved from 14:30 to 14:45 and the question joined trend/leg_aging: at 15:00 the leg since 14:00 is TREND-05's 60-minute move."
  },
  {
   "id": "TREND-05",
   "title": "One-way hour, signed",
   "layer": 1,
-  "group": "trend/trend_vs_chop",
+  "group": "trend/leg_aging",
   "method": "bars",
-  "source": "net60 = C[t]-C[t-60]; path = sum_{i=0..11}|C[t-5i]-C[t-5i-5]|; eff = net60/path. |net60| bottom third vs this minute = 'no hour move'; else direction = sign(net60), one-way if |eff| ranks top half vs this minute, else two-way. Field: close of state/spx_jev/bars (or store spx_bars).",
+  "source": "net60 = C[t]-C[t-60]; path = sum_{i=0..11}|C[t-5i]-C[t-5i-5]|; eff = net60/path. |net60| bottom third vs this minute = 'no hour move'; else direction = sign(net60), one-way if |eff| ranks top half against the prior sessions at this minute whose own |net60| is above their bottom third, else two-way. Field: close of state/spx_jev/bars (or store spx_bars).",
   "label_keys": [],
   "options": [
    "one-way up",
@@ -71,11 +71,11 @@
    "two-way down",
    "one-way down"
   ],
-  "notes": "price.hour_one_way is close but measures crossings of the hourly average, not net/summed-5-min efficiency; use bars. History: store spx_bars has 66 sessions (07-06 on), live bars files only 12 days."
+  "notes": "price.hour_one_way is close but measures crossings of the hourly average, not net/summed-5-min efficiency; use bars. History: store spx_bars has 66 sessions (07-06 on), live bars files only 12 days. Question pressure test 2026-10-07: the efficiency is ranked only against the hours that moved (an hour that went nowhere made 'one-way' near automatic, 45 to 14); moved from trend/trend_vs_chop to trend/leg_aging, since it carries TREND-09's 60-minute sign."
  },
  {
   "id": "TREND-06",
-  "title": "Trend day or range day so far",
+  "title": "Have the day's 5-minute moves followed through or reversed each other, around the day's own drift?",
   "layer": 1,
   "group": "trend/day_character",
   "method": "label",
@@ -84,27 +84,31 @@
    "price.day_character"
   ],
   "options": [
-   "building",
+   "followed-through",
    "mixed",
-   "cancelling"
+   "reversed"
   ],
-  "notes": "exact match: the variance-ratio sentence ends 'top third: building / middle: mixed / bottom: cancelling'. Omitted until 12 5-min returns since 10:00 (~11:00)."
+  "notes": "exact match: the variance-ratio sentence ends 'top third: building / middle: mixed / bottom: cancelling'. Omitted until 12 5-min returns since 10:00 (~11:00). Question pressure test 2026-10-07: retitled and the answers renamed (building = followed-through, cancelling = reversed): the drift-adjusted variance ratio measures follow-through against reversal, not a trend day (10-05, a steady up day, read 'cancelling'). The measure is unchanged."
  },
  {
   "id": "TREND-08",
   "title": "Move speeding up or fading",
   "layer": 1,
-  "group": "trend/leg_aging",
+  "group": "trend/pace_change",
   "method": "bars",
-  "source": "d20 = C[t-10]-C[t-30]; d10 = C[t]-C[t-10]; ratio = sign(d20)*d10 / (|d20|/2). 'reversing' if ratio < 0 by more than a fixed tolerance (in opening-straddle units: |d10|/em_open > tol); else rank ratio vs this minute: top third accelerating, middle steady, bottom fading. em_open from the diary row (state/reversion range_ruler.em_open).",
+  "source": "d20 = C[t-10]-C[t-30]; d10 = C[t]-C[t-10]; ratio = sign(d20)*d10 / (|d20|/2); tol = 0.05 x the read's sigma. |d20| <= tol: None (no leg to age). 'reversing' when ratio < 0 and |d10| > tol; else ratio ranked against the prior sessions' non-negative ratios at this minute: top third accelerating, middle steady, bottom fading. Every answer leads with d20's side.",
   "label_keys": [],
   "options": [
-   "accelerating",
-   "steady",
-   "fading",
-   "reversing"
+   "up accelerating",
+   "up steady",
+   "up fading",
+   "up reversing",
+   "down accelerating",
+   "down steady",
+   "down fading",
+   "down reversing"
   ],
-  "notes": "momentum.pace is unsigned and compares 10 vs the previous 10 minutes (not 20) with fixed 2/3 and 1.5 cuts, so it cannot give 'reversing'. Reversing when the ratio is negative and |d10| exceeds a fixed share of the read's sigma."
+  "notes": "momentum.pace is unsigned and compares 10 vs the previous 10 minutes (not 20) with fixed 2/3 and 1.5 cuts, so it cannot give 'reversing'. Question pressure test 2026-10-07: the tolerance rose from 0.02 to 0.05 sigma ('reversing' fired on 38 of 99 reads after any wiggle following a ~1.4-point leg), the answer carries d20's side, and the rank is against prior non-negative ratios only. Its own group trend/pace_change (decided in step 1, not in the decisions): leg_aging would hold four members sharing one vote, three of them the 60-minute leg, which would dilute this 10-against-20-minute reversal to a quarter vote."
  },
  {
   "id": "TREND-09",
@@ -112,7 +116,7 @@
   "layer": 1,
   "group": "trend/leg_aging",
   "method": "bars",
-  "source": "60-min window [t-60,t]: net = C[t]-C[t-60]; leg only if |net| > this minute's median |net| on prior sessions. Up leg: ext = max high in window at minute i; push = ext-C[t-60]; giveback = (ext-C[t])/push; deep = giveback > this minute's median giveback; fast = (ext-C[t])/(60-i) > push/i. Mirror for down legs.",
+  "source": "60-min window [t-60,t]: net = C[t]-C[t-60]; leg only if |net| > this minute's median |net| on prior sessions. Up leg: ext = max high in window at minute i; push = ext-C[t-60]; giveback = (ext-C[t])/push; deep = giveback > this minute's median giveback; fast = the extreme is 5+ minutes old, (ext-C[t])/(60-i) > push/i, and giveback >= half this minute's median giveback. Mirror for down legs.",
   "label_keys": [],
   "options": [
    "up leg shallow-slow",
@@ -121,7 +125,7 @@
    "down leg deep-or-fast",
    "down leg shallow-slow"
   ],
-  "notes": "two medians (leg size, giveback) per minute-of-day from prior sessions; spx_bars store covers it."
+  "notes": "two medians (leg size, giveback) per minute-of-day from prior sessions; spx_bars store covers it. Question pressure test 2026-10-07: an extreme 2-3 minutes old divided by 2-3 made a 2-5% give-back read 'fast' (18 of 43 deep-or-fast): 'fast' now needs 5 minutes since the extreme and half the usual give-back. It anchors trend/leg_aging."
  },
  {
   "id": "TREND-10",
@@ -168,10 +172,9 @@
   "options": [
    "with the day's side",
    "against the day's side",
-   "flat day",
-   "quiet leg"
+   "flat day"
   ],
-  "notes": "first tercile (30-min move) bottom = quiet; second tercile (distance from yesterday's close) bottom 'near it' = flat day; else 'away from' = with, 'toward' = against."
+  "notes": "second tercile (distance from yesterday's close) bottom 'near it' = flat day; else 'away from' = with, 'toward' = against. Question pressure test 2026-10-07: the 'quiet leg' answer (the first tercile's bottom) is gone: it was TREND-01's bottom tercile counted again."
  },
  {
   "id": "VOLATILITY-01",
@@ -188,7 +191,7 @@
    "usual share",
    "kept less"
   ],
-  "notes": "tercile of 'times its usual share ... higher than k of n sessions at this minute'. Missing on 10-06 (row carried no straddle)."
+  "notes": "tercile of 'times its usual share ... higher than k of n sessions at this minute'. Missing on 10-06 (row carried no straddle). Question pressure test 2026-10-07: dark on 10-06 and 10-07: the read row carried no straddle (range_ruler.em_points). The parser is right; the fix is upstream (operations, step 3)."
  },
  {
   "id": "VOLATILITY-02",
@@ -273,7 +276,7 @@
    "in line",
    "puts cheaper"
   ],
-  "notes": "needs the lob_flow 0DTE tape; missing 10-06 (collector did not run). Prior-session history limited by lob_flow/raw (from 09-08, ~21 sessions); labels show 16-18 sessions."
+  "notes": "needs the lob_flow 0DTE tape; missing 10-06 (collector did not run). Prior-session history limited by lob_flow/raw (from 09-08, ~21 sessions); labels show 16-18 sessions. Question pressure test 2026-10-07: dark on 10-06 and 10-07 for lack of the lob_flow tape (operations, step 3); the mapping is right."
  },
  {
   "id": "VOLATILITY-10",
@@ -291,7 +294,7 @@
    "flat",
    "tilted to calls"
   ],
-  "notes": "words 'a steep put tilt / a usual tilt / a flat tilt'; 'calls are priced above puts, a call tilt' = tilted to calls. An older template ('steeper than k of n, past the flat rank') ran on early days - map from rank. Missing 10-06. The older template is mapped from its rank."
+  "notes": "words 'a steep put tilt / a usual tilt / a flat tilt'; 'calls are priced above puts, a call tilt' = tilted to calls. An older template ('steeper than k of n, past the flat rank') ran on early days and is mapped from its rank at the label's fifths (cuts.SKEW_STEEP_RANK 0.8, SKEW_FLAT_RANK 0.2; it cut at thirds before 2026-10-07). Dark on 10-06/07 (no lob_flow tape)."
  },
  {
   "id": "VOLATILITY-11",
@@ -348,7 +351,7 @@
    "swollen, event ahead",
    "swollen, event released"
   ],
-  "notes": "ruler part: 'this morning's sigma ruler is X times its N-session median ... (bottom|middle|top) third' = compressed/normal/swollen (vs prior mornings, once a day). Event part: parse the free-text calendar list 'name at HH:MM' and compare to read time. Missing 10-06. Answer = '<ruler>, <event>'."
+  "notes": "ruler part: 'this morning's sigma ruler is X times its N-session median ... (bottom|middle|top) third' = compressed/normal/swollen (vs prior mornings, once a day). Event part: only the calendar rows named with the ruler-loading events' words (labels/vol.py LOADING_EVENTS: the Fed's rate decision, the chair's testimony, Jackson Hole), at HH:MM against the read time; '; none of them is' in the label (its own clause, from about 10-02) = no event. Answer = '<ruler>, <event>'. Question pressure test 2026-10-07: every calendar row counted as an event (the 09-30 quarter-end close made every read 'event ahead'). The straddle outage (dark 10-06/07) is upstream (step 3)."
  },
  {
   "id": "LEVELS-01",
@@ -363,9 +366,11 @@
   "options": [
    "holding up",
    "holding down",
-   "filled / too small"
+   "fading",
+   "filled",
+   "no real gap"
   ],
-  "notes": "sentence opens 'the gap up/down is still open' or 'there was no real gap' (a 'filled' opening should exist in code but has not occurred yet). Gap 'real' = vs last 20 days' gaps."
+  "notes": "sentence opens 'the gap up/down is still open' (holding), 'the gap up/down is losing ground' (below the half line or touched: fading; with 'it first touched yesterday's close' filled) or 'there was no real gap'. Gap 'real' = vs last 20 days' gaps. Question pressure test 2026-10-07: a fading gap was filed as 'filled / too small' because the sentence holds 'gap'; gap-and-go against gap-fill is the mechanism."
  },
  {
   "id": "LEVELS-02",
@@ -378,23 +383,13 @@
    "price.day_move_split"
   ],
   "options": [
-   "far above; mostly gap",
-   "far above; mostly trading",
-   "far above; mixed",
-   "above; mostly gap",
-   "above; mostly trading",
-   "above; mixed",
-   "near the close; mostly gap",
-   "near the close; mostly trading",
-   "near the close; mixed",
-   "below; mostly gap",
-   "below; mostly trading",
-   "below; mixed",
-   "far below; mostly gap",
-   "far below; mostly trading",
-   "far below; mixed"
+   "far above",
+   "above",
+   "near the close",
+   "below",
+   "far below"
   ],
-  "notes": "side + tercile ('near it / away from it / far from it'); plus 'mostly gap / mostly trading' from 'so the gap is N% of the day's move' (>=50% gap). Answer = '<position>; <driver>'."
+  "notes": "side + tercile ('near it / away from it / far from it'). Question pressure test 2026-10-07: position only: the gap-or-trading part read 'mostly trading' by default (17 of 28 'near the close' reads wrong) and repeated LEVELS-01 in the same group."
  },
  {
   "id": "LEVELS-03",
@@ -415,26 +410,6 @@
    "accepted below"
   ],
   "notes": "acceptance = 20 finished minutes beyond. Week high/low flag is NOT in any label: compute from store spx_bars (max high / min low of the prior 5 sessions) - bars, no ranking."
- },
- {
-  "id": "LEVELS-04",
-  "title": "Yesterday's value area vs today's move",
-  "layer": 2,
-  "group": "levels/prior_day_location",
-  "method": "label",
-  "source": "levels.prior_value + price.day_move",
-  "label_keys": [
-   "levels.prior_value",
-   "price.day_move"
-  ],
-  "options": [
-   "above, with",
-   "above, against",
-   "inside",
-   "below, with",
-   "below, against"
-  ],
-  "notes": "value-area side from levels.prior_value; with/against from the sign of price.day_move (move since the settled open)."
  },
  {
   "id": "LEVELS-05",
@@ -461,7 +436,7 @@
   "layer": 2,
   "group": "levels/today_range_position",
   "method": "label",
-  "source": "range.first_hour (>=10:30), range.box_status (<10:30, first 30 min box)",
+  "source": "range.first_hour (>=10:30), range.box_status (<10:30, first 30 min box); the SPX bars for the box's both-ways case",
   "label_keys": [
    "range.first_hour",
    "range.box_status"
@@ -473,7 +448,7 @@
    "down break failed",
    "down break holding"
   ],
-  "notes": "range.box_status is exactly the first-30-minute box (OPENING_BOX_MIN=30). 'extended' detail: range.first_hour ranks how far the break reached vs prior sessions' first-hour breaks."
+  "notes": "range.box_status is exactly the first-30-minute box (OPENING_BOX_MIN=30). Question pressure test 2026-10-07: 'no bar has gone more than' the break buffer = inside (it read 'break holding' with no real break); price back inside after breaking both edges = the failed break of the side broken more recently: the first-hour label gives each break's minutes ago, the box label ('broke out both ways and came back') does not, so the bars say which side a close last broke past (the label's own rule: the box edge plus measures.move_bar)."
  },
  {
   "id": "LEVELS-08",
@@ -481,7 +456,7 @@
   "layer": 1,
   "group": "levels/opening_size",
   "method": "label",
-  "source": "overnight.range_vs_normal (premarket lane)",
+  "source": "overnight.range_vs_normal (premarket lane); without one before the read, the night's /ES high-low from the 18:00 reopen to 09:30 (1-minute night bars, as a share of price) ranked against the trailing nights' in terciles",
   "label_keys": [
    "overnight.range_vs_normal"
   ],
@@ -490,7 +465,7 @@
    "normal",
    "large"
   ],
-  "notes": "only on premarket-lane reads; live/tape reads must carry the day's last premarket value (09:28 checkpoint). Live reads take the day's last premarket read."
+  "notes": "only on premarket-lane reads; live/tape reads must carry the day's last premarket value (09:28 checkpoint). Live reads take the day's last premarket read. Question pressure test 2026-10-07: one missing premarket read emptied the whole day (59-60 of 70); the night's own /ES bars now stand in."
  },
  {
   "id": "LEVELS-09",
@@ -498,17 +473,14 @@
   "layer": 1,
   "group": "levels/opening_size",
   "method": "bars",
-  "source": "before 10:05: R5 = max high - min low of the 09:30-09:34 bars (sigma units), plus pace = sum |dC| of 1-min closes since 09:30; rank vs the same window on prior sessions (quartiles: quiet/normal/busy/very busy). From 10:05: R30 = max high - min low of the 09:35-10:04 bars, rank vs prior sessions (terciles narrow/normal/wide).",
+  "source": "From 10:05: R30 = max high - min low of the 09:35-10:04 bars in points, ranked against the same window on the prior sessions in terciles (narrow/normal/wide); None before 10:05.",
   "label_keys": [],
   "options": [
-   "quiet",
-   "normal",
-   "busy",
-   "very busy",
    "narrow",
+   "normal",
    "wide"
   ],
-  "notes": "fixed window, so ranking is vs prior sessions' same window. No label gives the first-5-min bar or the 09:35-10:04 range (range.today_vs_normal is range-so-far; tape.unit_vs_normal is tape-lane only). Ranked in points (prior sessions' sigma is not in the bars)."
+  "notes": "fixed window, so ranking is vs prior sessions' same window. Ranked in points (prior sessions' sigma is not in the bars). Question pressure test 2026-10-07: the first-five-minute answers are gone: the 'pace' was never computed, the source said sigma while the code ranked points, and 'busy' never fired."
  },
  {
   "id": "LEVELS-11",
@@ -545,7 +517,7 @@
    "above",
    "far above"
   ],
-  "notes": "side from 'sigma above/below the gamma flip'; bottom third = near, middle = above/below, top = far. Units are sigma, not expected-move units (ranking is unit-free)."
+  "notes": "side from 'sigma above/below the gamma flip'; bottom third = near, middle = above/below, top = far. Units are sigma, not expected-move units (ranking is unit-free). Question pressure test 2026-10-07: answered only while the read's diary row is SPX's own book (gex_source 'native'): on 10-06 and 10-07 every row was a SPY stand-in scaled by a factor that changed each minute, ranked against real SPX sessions."
  },
  {
   "id": "OPTIONS-02",
@@ -562,7 +534,8 @@
    "normal",
    "high"
   ],
-  "notes": "APPROXIMATE: the ranked top-strike share in gex.magnet_distance ('its grip ... stronger than k of n sessions') is the 0DTE book only and not limited to one expected move; gex.heaviest_strike_grip uses fixed 4%/16% cuts. 0-7DTE within 1 EM is not built."
+  "notes": "APPROXIMATE: the ranked top-strike share in gex.magnet_distance ('its grip ... stronger than k of n sessions') is the 0DTE book only and not limited to one expected move; gex.heaviest_strike_grip uses fixed 4%/16% cuts. 0-7DTE within 1 EM is not built. Question pressure test 2026-10-07: answered only while the read's diary row is SPX's own book (gex_source 'native'): on 10-06 and 10-07 every row was a SPY stand-in scaled by a factor that changed each minute, ranked against real SPX sessions. No vote (\"votes\": false) until the measure is rebuilt as the share of gamma within one 30-minute expected move ranked against the same minute (labels/gamma.py, step 2): today it is a day flag (89% of reads carry the day's usual answer). Decided in step 1 on the decision's own condition ('drop if that can't be built'): it can be built, in the label writer, so it is kept, without a vote meanwhile.",
+  "votes": false
  },
  {
   "id": "OPTIONS-03",
@@ -581,13 +554,13 @@
    "above",
    "far above"
   ],
-  "notes": "strike 'above price' means SPX is below it. bottom third 'seated on it' = on it. PARTIAL: the after-14:00 1DTE magnet is dark (expiry_calendar: 'the SPX scan writes no 1DTE slice')."
+  "notes": "strike 'above price' means SPX is below it. bottom third 'seated on it' = on it. PARTIAL: the after-14:00 1DTE magnet is dark (expiry_calendar: 'the SPX scan writes no 1DTE slice'). Question pressure test 2026-10-07: answered only while the read's diary row is SPX's own book (gex_source 'native'): on 10-06 and 10-07 every row was a SPY stand-in scaled by a factor that changed each minute, ranked against real SPX sessions."
  },
  {
   "id": "OPTIONS-05",
   "title": "Market makers defending the contested strike",
   "layer": 2,
-  "group": "shared/pinned",
+  "group": "options/strike_defense",
   "method": "label",
   "source": "options.strike_defense",
   "label_keys": [
@@ -599,7 +572,7 @@
    "abandoned above",
    "abandoned below"
   ],
-  "notes": "refill share ranked vs this minute ('at or above the middle: defended / below the middle: abandoned'). Label's hit minimum is 10 hits, not the question's 3+. Missing 10-06 (no lob_flow tape)."
+  "notes": "refill share ranked vs this minute ('at or above the middle: defended / below the middle: abandoned'). Label's hit minimum is 10 hits, not the question's 3+. Missing 10-06 (no lob_flow tape). Question pressure test 2026-10-07: its own group options/strike_defense (directional; it shared the shared/pinned vote). The label's reach and hit minimum (labels/options_flow.py _strike_defense) are step 2."
  },
  {
   "id": "OPTIONS-07",
@@ -621,48 +594,6 @@
   "notes": "label gives 3 bins (20%/80% rank lines); 5 bins come from parsing 'higher than k of n' (<=10% / <=20% / mid / >=80% / >=90%). Missing 10-06."
  },
  {
-  "id": "OPTIONS-09",
-  "title": "Gamma above or below spot",
-  "layer": 1,
-  "group": "options/gamma_state",
-  "method": "label",
-  "source": "gex.weight_both_books + gex.delta_weight_side",
-  "label_keys": [
-   "gex.weight_both_books",
-   "gex.delta_weight_side"
-  ],
-  "options": [
-   "today mostly below; week mostly below; delta mostly below",
-   "today mostly below; week mostly below; delta balanced",
-   "today mostly below; week mostly below; delta mostly above",
-   "today mostly below; week balanced; delta mostly below",
-   "today mostly below; week balanced; delta balanced",
-   "today mostly below; week balanced; delta mostly above",
-   "today mostly below; week mostly above; delta mostly below",
-   "today mostly below; week mostly above; delta balanced",
-   "today mostly below; week mostly above; delta mostly above",
-   "today balanced; week mostly below; delta mostly below",
-   "today balanced; week mostly below; delta balanced",
-   "today balanced; week mostly below; delta mostly above",
-   "today balanced; week balanced; delta mostly below",
-   "today balanced; week balanced; delta balanced",
-   "today balanced; week balanced; delta mostly above",
-   "today balanced; week mostly above; delta mostly below",
-   "today balanced; week mostly above; delta balanced",
-   "today balanced; week mostly above; delta mostly above",
-   "today mostly above; week mostly below; delta mostly below",
-   "today mostly above; week mostly below; delta balanced",
-   "today mostly above; week mostly below; delta mostly above",
-   "today mostly above; week balanced; delta mostly below",
-   "today mostly above; week balanced; delta balanced",
-   "today mostly above; week balanced; delta mostly above",
-   "today mostly above; week mostly above; delta mostly below",
-   "today mostly above; week mostly above; delta balanced",
-   "today mostly above; week mostly above; delta mostly above"
-  ],
-  "notes": "terciles for today's book and the 1-7 day book (two clauses) plus delta share. Label shares are over the whole book, not limited to one 60-min expected move. Answer = 'today <share>; week <share>; delta <share>'."
- },
- {
   "id": "OPTIONS-10",
   "title": "Charm wall vs price (last two hours)",
   "layer": 1,
@@ -678,7 +609,7 @@
    "near below",
    "far"
   ],
-  "notes": "only reads at/after 14:00. 'at price / near price / far from price' terciles + side from 'sigma above/below price'."
+  "notes": "only reads at/after 14:00. 'at price / near price / far from price' terciles + side from 'sigma above/below price'. Question pressure test 2026-10-07: answered only while the read's diary row is SPX's own book (gex_source 'native'): on 10-06 and 10-07 every row was a SPY stand-in scaled by a factor that changed each minute, ranked against real SPX sessions."
  },
  {
   "id": "OPTIONS-11",
@@ -697,7 +628,7 @@
    "spread out",
    "stand still"
   ],
-  "notes": "parse which strike moved which way; both same way = both up/down, else 'closer together' = pulled in, 'further apart' = spread out."
+  "notes": "parse which strike moved which way; both same way = both up/down, else 'closer together' = pulled in, 'further apart' = spread out. Question pressure test 2026-10-07: answered only while the read's diary row is SPX's own book (gex_source 'native'): on 10-06 and 10-07 every row was a SPY stand-in scaled by a factor that changed each minute, ranked against real SPX sessions. The one-strike rule for 'stayed put' (labels/gamma.py _walls_since_30min) is step 2."
  },
  {
   "id": "BREADTH-01",
@@ -714,7 +645,7 @@
    "as expected",
    "more down"
   ],
-  "notes": "rank is of the size of the gap ('by size higher than k of n'); top third + 'above/below that' = more up/down."
+  "notes": "rank is of the size of the gap ('by size higher than k of n'): bottom third = as expected; middle or top with 'sigma above/below that' = more up/down. Question pressure test 2026-10-07: only the top third had a side before, so 48 of 66 reads collapsed to 'as expected'."
  },
  {
   "id": "BREADTH-04",
@@ -731,7 +662,7 @@
    "about usual",
    "less together"
   ],
-  "notes": "first tercile is the count of funds moving the index's way; a dispersion tercile follows as a second clause."
+  "notes": "the clause 'that count is ... (bottom|middle|top) third' (the count of funds moving the index's way, against the same minute) is read by name; a dispersion tercile follows it. Question pressure test 2026-10-07: it was right only by the filler wording (the second tercile of the sentence); a wording change would have read the dispersion one."
  },
  {
   "id": "BREADTH-05",
@@ -756,7 +687,7 @@
   "layer": 1,
   "group": "breadth/heavyweight_pull",
   "method": "label",
-  "source": "leaders.semis_vs_index_30m (live); tells.sector_lead_10m SMH clause (tape)",
+  "source": "leaders.semis_vs_index_30m",
   "label_keys": [
    "leaders.semis_vs_index_30m"
   ],
@@ -765,24 +696,7 @@
    "in line",
    "more down"
   ],
-  "notes": "fifths: top fifth more up, between in line, bottom fifth more down. Tape lane: first clause of tells.sector_lead_10m (multi-clause sentence, one per sector)."
- },
- {
-  "id": "BREADTH-11",
-  "title": "Opening breadth vs the gap (tape lane)",
-  "layer": 1,
-  "group": "breadth/opening_breadth",
-  "method": "market_value",
-  "source": "$ADD (market_context, derived live from $ADVN - $DECN since 88c7adc) x sign of gap.size; compare with prior mornings' $ADD at the same minute regressed on gap size (context_bars $ADD).",
-  "label_keys": [
-   "gap.size"
-  ],
-  "options": [
-   "more than usual",
-   "about as usual",
-   "less than usual"
-  ],
-  "notes": "no label: breadth.opening_tick is NYSE TICK, not $ADD. Archive has $ADD on tape reads only from 09-30 (5 days); history must come from store context_bars ($ADD from 08-11, 40 sessions, next-day clean). Same-day Schwab $ADD is wrong, so only the derived value is usable live. Built here as derived $ADD x gap side, ranked against prior sessions' same-minute value (no gap-size regression yet)."
+  "notes": "fifths: top fifth more up, between in line, bottom fifth more down."
  },
  {
   "id": "FLOW-01",
@@ -818,7 +732,7 @@
    "normal",
    "thick"
   ],
-  "notes": "second clause 'the size showing at SPY's best bid and offer combined is in the bottom fifth / between / in the top fifth for HH:MM'."
+  "notes": "the clause after '; the size showing': 'higher than k of the last n sessions at this minute', its third = thin / normal / thick. Question pressure test 2026-10-07: it read the fifth words, and the label's reversed 'between the bottom and top fifths' fell through to the spread clause on middle-size books; the rank is read directly (old and new wordings alike), and fifth() knows both orders. The label writer's wording (labels/options_flow.py) is step 2."
  },
  {
   "id": "FLOW-08",
@@ -826,28 +740,16 @@
   "layer": 2,
   "group": "flow/opening_type",
   "method": "bars",
-  "source": "09:30-09:59 1-min bars; references: prior session high/low (store spx_bars) and overnight /ES high/low converted to SPX by the 09:30 /ES-SPX basis (state/spx_jev/overnight). Drive = opens in the outer 10% of the 30-min range and closes in the opposite 20% without trading back through the open; test-then-drive = first tags a reference level (within a fixed tolerance) then closes in the far 20% the other way; else rotation.",
+  "source": "09:30-09:59 1-min bars; the settled open = the 09:31 bar's open; references: prior session high/low (store spx_bars) and overnight /ES high/low converted to SPX by the 09:30 /ES-SPX basis (state/spx_jev/overnight). Drive up (down) = the settled open in the bottom (top) 10% of the 30-min range, the close in the opposite 20%, and no later bar's low (high) back through the open by more than 0.05 sigma; test-then-drive = a bar tags a reference level (within 0.05 sigma) before the first close reaches the far 20%, and the half hour closes there; else rotation. Answers from 10:30.",
   "label_keys": [],
   "options": [
-   "drive",
-   "test-then-drive",
+   "drive up",
+   "drive down",
+   "test-then-drive up",
+   "test-then-drive down",
    "rotation"
   ],
-  "notes": "rules are not written anywhere yet; thresholds above are a draft. Answer is fixed from 10:00 for the rest of the day."
- },
- {
-  "id": "MACRO-08",
-  "title": "When the overnight range was built",
-  "layer": 1,
-  "group": "macro/overnight_timing",
-  "method": "bars",
-  "source": "overnight /ES 1-min bars (state/spx_jev/overnight/{day}.jsonl, session != regular) from the 18:00 reopen to the read: late_share = 1 - range(bars before 03:00)/range(all bars); 'late' if late_share > the median of prior nights to the same time.",
-  "label_keys": [],
-  "options": [
-   "mostly late (after 03:00)",
-   "mostly Asia"
-  ],
-  "notes": "overnight.gap_origin names the most unusual stretch, not the share of range built late. Store overnight_bars goes back to 03-05 (149 nights)."
+  "notes": "rules are not written anywhere yet; thresholds above are a DRAFT. Answer is fixed for the rest of the day. Question pressure test 2026-10-07: 'drive' had no side, the open-edge test was near automatic (6 of 8 days, on the 09:30 bar's stale open) and test-then-drive never fired; from 10:30 (at 10:00 its window is TREND-02's). Judge it in sessions (30+), not reads."
  },
  {
   "id": "MACRO-09",
@@ -866,66 +768,44 @@
    "one leg moved",
    "night quiet"
   ],
-  "notes": "FREE TEXT: verdict is the tail after 'so far.' ('N moved, all with the night's rise: one way' / 'split; the latest with...' / 'the latest against...' / 'Only one finished leg' / 'net move is quiet'). Legs judged 'moved' vs prior nights' same stretch. Live reads take the day's last premarket read."
+  "notes": "FREE TEXT: verdict is the tail after 'so far.' ('N moved, all with the night's rise: one way' / 'split; the latest with...' / 'the latest against...' / 'Only one finished leg' / 'No finished leg' or 'net move is quiet' = night quiet). Legs judged 'moved' vs prior nights' same stretch. Live reads take the day's last premarket read. Question pressure test 2026-10-07: a quiet night read as missing, and it repeated all day as a day label: answered to 11:00 only. MACRO-10 merged in as the second column MACRO-09-ARC (same group, one vote)."
  },
  {
-  "id": "MACRO-10",
-  "title": "Overnight path since the night's move (premarket)",
+  "id": "MACRO-09-ARC",
+  "title": "Overnight arc: the night's first move built, held, faded or reversed",
   "layer": 2,
   "group": "macro/overnight_direction",
   "method": "label",
-  "source": "premarket.arc + premarket.since_checkpoint (premarket lane)",
+  "source": "premarket.arc (premarket lane)",
   "label_keys": [
-   "premarket.arc",
-   "premarket.since_checkpoint"
+   "premarket.arc"
   ],
   "options": [
-   "built; since checkpoint added",
-   "built; since checkpoint gave back",
-   "built; since checkpoint crossed 16:00",
-   "built; since checkpoint small / no verdict",
-   "held; since checkpoint added",
-   "held; since checkpoint gave back",
-   "held; since checkpoint crossed 16:00",
-   "held; since checkpoint small / no verdict",
-   "faded; since checkpoint added",
-   "faded; since checkpoint gave back",
-   "faded; since checkpoint crossed 16:00",
-   "faded; since checkpoint small / no verdict",
-   "reversed; since checkpoint added",
-   "reversed; since checkpoint gave back",
-   "reversed; since checkpoint crossed 16:00",
-   "reversed; since checkpoint small / no verdict",
-   "no real move; since checkpoint added",
-   "no real move; since checkpoint gave back",
-   "no real move; since checkpoint crossed 16:00",
-   "no real move; since checkpoint small / no verdict"
+   "built",
+   "held",
+   "faded",
+   "reversed",
+   "no real move"
   ],
-  "notes": "arc verdict words fixed in story.py (built/held/faded/reversed); checkpoint verdict 'the latest leg added / gave back / crossed their 16:00 price' (absent when the leg is small). Answer = '<arc>; since checkpoint <verdict>'. Live reads take the day's last premarket read."
+  "notes": "MACRO-10 merged into MACRO-09 in the question pressure test 2026-10-07: of its 20 answers (the arc word times the checkpoint verdict, a once-a-day fact over 6-7 nights) only the 5-way arc word survives, as MACRO-09's second column in its group. Arc words fixed in story.py. Live reads take the day's last premarket read; answered to 11:00 only, as MACRO-09."
  },
  {
   "id": "EVENTS-04",
   "title": "State after an unscheduled burst",
   "layer": 1,
-  "group": "shared/burst",
+  "group": "events/burst_state",
   "method": "label",
-  "source": "shock.burst + shock.vs_day_range",
+  "source": "shock.burst",
   "label_keys": [
-   "shock.burst",
-   "shock.vs_day_range"
+   "shock.burst"
   ],
   "options": [
-   "fresh; no new extreme",
-   "fresh; new extreme held",
-   "fresh; new extreme given up",
-   "round-tripped; no new extreme",
-   "round-tripped; new extreme held",
-   "round-tripped; new extreme given up",
-   "settling; no new extreme",
-   "settling; new extreme held",
-   "settling; new extreme given up"
+   "up burst held",
+   "up burst given back",
+   "down burst held",
+   "down burst given back"
   ],
-  "notes": "FREE TEXT: fresh = 'inside the 10-minute fresh window'; round-tripped = 'given back N%, past the half line'; else settling. Extreme from shock.vs_day_range ('stayed inside' / 'still at the new extreme' / above it = given up). Only 3 of 7 live days had a shock. Answer = '<state>; <extreme>'."
+  "notes": "FREE TEXT: the burst's side from 'price rose / fell'; given back = 'past the half line', else held. A burst inside a release's first 15 minutes ('inside the first') is None: that is EVENTS-03's reaction. Question pressure test 2026-10-07: with 1 scored read its near-zero push halved TREND-12's burst vote (now its own group events/burst_state), scheduled bursts counted twice with EVENTS-03, and the answer had no side."
  },
  {
   "id": "SESSION-01",
@@ -984,16 +864,17 @@
   "id": "TREND-07",
   "title": "VWAP balance: one-sided or orbiting",
   "layer": 1,
-  "group": "trend/day_character",
+  "group": "flow/vwap_stretch",
   "method": "bars",
-  "source": "SPY minute bars (state/spx_jev/context/bars/{day}.jsonl for prior sessions; the day's own quotes live, so closes and volume only): session VWAP = cumulative close x volume / volume; minutes since SPY's close at a 5-minute mark (09:35, 09:40, ...) last sat on the other side of its VWAP, and the closes of the last 30 minutes within 0.01% of the VWAP (touches); each ranked against the same measure at the same minute on the trailing 20 sessions (at least 10). Touches top third = orbiting; else minutes-since top third = long one-sided; else recently crossed.",
+  "source": "SPY minute bars (state/spx_jev/context/bars/{day}.jsonl for prior sessions; the day's own quotes live, its volume the siege box's minute volume), closes only: session VWAP = cumulative close x volume / volume; at each 5-minute mark (09:35, 09:40, ...) SPY's close above or below its VWAP; minutes since the last mark on the other side, and the side flips between the marks of the last 30 minutes; each ranked against the same measure at the same minute on the trailing 20 sessions (at least 10). Flips top third = orbiting; else minutes-since top third = long above / long below VWAP (the latest mark's side); else recently crossed.",
   "label_keys": [],
   "options": [
-   "long one-sided",
+   "long above VWAP",
+   "long below VWAP",
    "recently crossed",
    "orbiting"
   ],
-  "notes": "VWAP is volume-weighted from SPY's own minute volume (SPX bars carry none), on closes so the live quotes and the saved bars agree; the fix's 60-session backfill is not applied: the history is the builder's 20 sessions. DRAFT: the 0.01% touch band, the orbiting-first precedence."
+  "notes": "VWAP is volume-weighted from SPY's own minute volume (SPX bars carry none), on closes so the live quotes and the saved bars agree. Question pressure test 2026-10-07: 'long one-sided' now names its side; the touch count (closes within 0.01% of VWAP, which depended on how often prices arrive: live and saved bars disagreed on 10-07 10:01) is replaced by the side flips at the 5-minute marks; joined flow/vwap_stretch with FLOW-01, whose VWAP side it repeats once it has one. DRAFT: the orbiting-first precedence."
  },
  {
   "id": "TREND-11",
@@ -1001,15 +882,16 @@
   "layer": 1,
   "group": "shared/break_held_or_failed",
   "method": "bars",
-  "source": "SPY volume per finished 5-minute slot (09:30-09:34, ...) of the last 30 minutes; a slot whose volume is at or above the 90th percentile of the same slot on the trailing 20 sessions (at least 10) is a spike; the latest spike's SPX direction = close - open over the slot, held when the latest SPX close is past the slot's high-low midpoint in that direction.",
+  "source": "SPY volume per finished 5-minute slot (09:30-09:34, ...) of the last 30 minutes; a slot whose volume is at or above the 90th percentile of the same slot on the trailing 20 sessions (at least 10) is a spike; the latest spike's SPX direction = close - open over the slot (0 = none), held when the latest SPX close is past the slot's high-low midpoint in that direction, else faded, both signed. The read's day's SPY volume is the siege box's minute volume (state/siege/baseline.json), the same figures as the saved minute bars.",
   "label_keys": [],
   "options": [
    "up spike held",
    "down spike held",
-   "spike faded",
+   "up spike faded",
+   "down spike faded",
    "none"
   ],
-  "notes": "Fix applied: volume from SPY's minute bars ({CTX}), since $SPX has none. DRAFT: the 90th-percentile cut (the question's 'top 10%')."
+  "notes": "Fix applied: volume from SPY's minute bars ({CTX}), since $SPX has none. DRAFT: the 90th-percentile cut (the question's 'top 10%'). Question pressure test 2026-10-07: live volume came from ~70-second quote snapshots (about 22% above the saved bars, in lumps: 4 of 12 live spikes on 10-07 were not in the bars); the siege box's minute volumes match the bars exactly. 'Spike faded' is split by side; a flat spike slot is 'none'."
  },
  {
   "id": "VOLATILITY-04",
@@ -1025,6 +907,22 @@
    "expanded"
   ],
   "notes": "Needs 25 bars in each half hour, so None before 10:30."
+ },
+ {
+  "id": "VOLATILITY-18",
+  "title": "Compressed range: coiled or resting",
+  "layer": 2,
+  "group": "volatility/range_expansion",
+  "method": "market_value",
+  "source": "Only when VOLATILITY-04 reads compressed (else None). Coiled when any of: a ruler-loading event (labels/vol.py LOADING_EVENTS) due within 60 minutes on the calendar; iv.trend_30min on the read says at-the-money implied volatility rose or fell past its flat band; the ten-year yield's move since the prior close ($TNX against its prior daily close) ranks in the top third against the same minute on the trailing 20 sessions (at least 10; judgment.YieldMove.fired's rule); BREADTH-09 reads 'in play'. Resting when none fires; None when none could be measured.",
+  "label_keys": [
+   "iv.trend_30min"
+  ],
+  "options": [
+   "coiled",
+   "resting"
+  ],
+  "notes": "New in the question pressure test 2026-10-07: the code version of the dropped JEV question quiet_coiled_or_resting (VOLATILITY-15, whose criteria were this fixed OR of code facts, applied loosely). It shares VOLATILITY-04's group, so a compressed range still casts one vote. The cheap checks run first; BREADTH-09 is measured only when they are all quiet. DRAFT: the 60-minute event window."
  },
  {
   "id": "VOLATILITY-07",
@@ -1045,9 +943,9 @@
   "id": "VOLATILITY-08",
   "title": "Gap size in implied units",
   "layer": 1,
-  "group": "volatility/gap_vs_implied",
+  "group": "levels/prior_close",
   "method": "bars",
-  "source": "SPX bars (bars/ and store spx_bars, 60 sessions): gap = settled open (09:34 close) - prior close; implied one-day move = prior close x prior-close $VIX (daily_closes) / 100 / sqrt(252); |gap / implied| ranked against the same on the trailing 60 sessions (at least 10): bottom third small, middle normal, top large, signed by the gap.",
+  "source": "SPX bars (bars/ and store spx_bars, 60 sessions): gap = settled open (09:34 close) - prior close; implied one-day move = prior close x prior-close $VIX (daily_closes) / 100 / sqrt(252); |gap / implied| ranked against the same on the trailing 60 sessions (at least 10): bottom third small, middle normal, top large, signed by the gap. Answers the opening reads only (09:35-10:35).",
   "label_keys": [],
   "options": [
    "large down",
@@ -1056,13 +954,13 @@
    "normal up",
    "large up"
   ],
-  "notes": "Fix applied: the prior-close VIX / sqrt(252) ruler and a 60-session rank. The premarket half (/ES vs 16:00 before 09:35) is not built: the live lane has no read before 09:35. LEVELS-01 keeps its own gap-fill answer."
+  "notes": "Fix applied: the prior-close VIX / sqrt(252) ruler and a 60-session rank. The premarket half (/ES vs 16:00 before 09:35) is not built: the live lane has no read before 09:35. LEVELS-01 keeps its own gap-fill answer. Question pressure test 2026-10-07: answers only the opening reads (it repeated one day answer on every read); moved into levels/prior_close with LEVELS-01/02, since it measures the same gap size and side (V 0.88)."
  },
  {
   "id": "VOLATILITY-12",
   "title": "Front VIX curve shape",
   "layer": 1,
-  "group": "volatility/front_curve",
+  "group": "volatility/front_curve_level",
   "method": "market_value",
   "source": "$VIX9D / $VIX at the read (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)): at or above 1.00 = inverted; else ranked against the same measure at the same minute on the trailing 20 sessions (at least 10): bottom third calm, otherwise normal.",
   "label_keys": [],
@@ -1071,7 +969,8 @@
    "normal",
    "inverted"
   ],
-  "notes": "Fix applied: ranked against the sessions on file (the context bars, from 2026-08-11), not a year; VIX/VIX3M is not used as a fallback."
+  "notes": "Fix applied: ranked against the sessions on file (the context bars, from 2026-08-11), not a year; VIX/VIX3M is not used as a fallback. Question pressure test 2026-10-07: no vote (\"votes\": false): inversion is a rare stress state nothing else measures, kept on record; as a level that holds all day it took half of front_curve's vote and weighed in the matcher as a day fingerprint.",
+  "votes": false
  },
  {
   "id": "VOLATILITY-14",
@@ -1079,17 +978,16 @@
   "layer": 2,
   "group": "shared/extreme_confirmation",
   "method": "bars",
-  "source": "SPX bars: a session high (low) set in the last 30 minutes above (below) an earlier one; $VIX (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)) at the new extreme's minute against VIX at the earlier extreme's: a new high with VIX at or below, or a new low with VIX at or above, is confirmed; else vol disagrees. Mechanical first: the read in the last hour (from 15:00), a Friday or pre-holiday session, or a calendar row in its first 15 minutes.",
+  "source": "SPX bars: a session high (low) set in the last 30 minutes beyond the extreme of the bars before them (new_extreme_vs_prior_swing: at least 30 earlier bars, the earlier swing's own extreme, not the runner-up a minute before); $VIX (state/spx_jev/context/bars/{day}.jsonl for prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live) at the new extreme's minute against VIX at the earlier extreme's: a new high with VIX lower, or a new low with VIX higher, or VIX within 0.05 points either way, confirms; else VIX diverges. Mechanical first: the read in the last hour (from 15:00), the monthly expiry (the third Friday) or a pre-holiday session, or a calendar row in its first 15 minutes. No new extreme: None (LEVELS-05 says it).",
   "label_keys": [],
   "options": [
-   "no new extreme",
    "mechanical",
-   "new high, vol confirms",
-   "new high, vol disagrees",
-   "new low, vol confirms",
-   "new low, vol disagrees"
+   "new high, VIX confirms",
+   "new high, VIX diverges",
+   "new low, VIX confirms",
+   "new low, VIX diverges"
   ],
-  "notes": "Converted from JEV to code. Same-day ATM IV is not read (VIX only); VIX expiry days are not a mechanical cause yet. Shares one vote with BREADTH-03."
+  "notes": "Converted from JEV to code. Same-day ATM IV is not read (VIX only). Shares one vote with BREADTH-03. Question pressure test 2026-10-07: it compared VIX with the runner-up bar 1-3 minutes earlier, so ties flipped between live and backfill; 'no new extreme' repeated LEVELS-05 in a second group and is now None; the answer names its side; every Friday was mechanical, now only the third."
  },
  {
   "id": "VOLATILITY-17",
@@ -1104,7 +1002,8 @@
    "normal",
    "wide"
   ],
-  "notes": "Ranked against recent sessions (60), per Will's note. The context fields (10-session trend strength, intraday character) are not stored: the matrix holds answers only."
+  "notes": "Ranked against recent sessions (60), per Will's note. The context fields (10-session trend strength, intraday character) are not stored: the matrix holds answers only. Question pressure test 2026-10-07: no vote (\"votes\": false): about one answer change a week with no 30-60 minute mechanism; regime context, not a voter.",
+  "votes": false
  },
  {
   "id": "LEVELS-07",
@@ -1112,14 +1011,14 @@
   "layer": 2,
   "group": "levels/overnight_location",
   "method": "market_value",
-  "source": "The read's /ES quote (market_context) against the night's /ES high and low (overnight/{day}.jsonl, session != regular, bars before 09:30). Roll guard: the quote more than 2% from the night's last bar is another contract, so None.",
+  "source": "The read's /ES quote (market_context) against the night's /ES high and low (overnight/{day}.jsonl, session != regular, 1-minute bars only, bars before 09:30). Roll guard: the quote more than 2% from the night's last bar is another contract, so None.",
   "label_keys": [],
   "options": [
    "above overnight high",
    "inside overnight range",
    "below overnight low"
   ],
-  "notes": "147 nights on disk; the guard's 2% is a DRAFT."
+  "notes": "147 nights on disk; the guard's 2% is a DRAFT. Question pressure test 2026-10-07: the night files hold 5-minute bars beside the 1-minute ones; the loader keeps bar_minutes == 1 only (found in the MACRO-08 review)."
  },
  {
   "id": "LEVELS-10",
@@ -1127,22 +1026,22 @@
   "layer": 1,
   "group": "levels/barrier_room",
   "method": "bars",
-  "source": "In the direction of SPX's last 30-minute move, the distance (share of price) to the nearest level beyond price: the prior session's high, low and close, the night's /ES high and low moved onto SPX by the 09:30 basis, today's session high and low, the next round number (25-point steps); ranked against the same measure at the same minute on the trailing 20 sessions (at least 10): bottom third close, top far.",
+  "source": "In the direction of SPX's last 30-minute move, the distance (share of price) to the nearest level beyond price by more than 0.02 sigma: the prior session's high, low and close, the night's /ES high and low moved onto SPX by the 09:30 basis, the session's high and low before the last 30 minutes, the next round number (25-point steps); ranked against the same measure at the same minute on the trailing 20 sessions (at least 10): bottom third close, top far.",
   "label_keys": [],
   "options": [
    "close",
    "normal",
    "far"
   ],
-  "notes": "Walls and VWAP are not in the level library yet (no wall history for the prior sessions; the S11 library is not built), so the rank is over the same levels on every session. DRAFT: the 25-point round numbers."
+  "notes": "Walls and VWAP are not in the level library yet (no wall history for the prior sessions; the S11 library is not built), so the rank is over the same levels on every session. DRAFT: the 25-point round numbers. Question pressure test 2026-10-07: the last 30 minutes' own new high counted as the nearest barrier, so 'close' repeated LEVELS-05: today's high and low are taken from before the half hour, and a level within 0.02 sigma of price is passed over. DRAFT: the 0.02 sigma."
  },
  {
   "id": "LEVELS-12",
   "title": "Which side is tiring at a tested edge or extreme",
-  "layer": 1,
+  "layer": 2,
   "group": "levels/edge_fatigue",
   "method": "bars",
-  "source": "Edges: today's high and low before the last 30 minutes, the prior session's high and low. A test = a run of bars reaching within 0.05 sigma of the edge; an edge with 2+ runs in the last 30 minutes (the latest-tested wins). First run vs latest: depth past the edge, SPY volume over the run, rejection (the extreme against the closes of the 3 bars after); the latest shallower, lighter and sharper-rejected on 2 of 3 = buyers tiring at a high edge, sellers tiring at a low edge.",
+  "source": "Edges: today's high and low before the last 30 minutes, the prior session's high and low. A test = a run of bars reaching within 0.05 sigma of the edge; an edge with 2+ runs in the last 30 minutes (the latest-tested wins). First run vs latest: depth past the edge, mean SPY volume per bar of the run, rejection (the extreme against the closes of the 3 bars after); the latest shallower, lighter and sharper-rejected on 2 of 3 = buyers tiring at a high edge, sellers tiring at a low edge; when either run has no bar after it yet, shallower and lighter both.",
   "label_keys": [],
   "options": [
    "buyers tiring",
@@ -1150,7 +1049,7 @@
    "neither",
    "no tested edge"
   ],
-  "notes": "Converted from JEV to code without the S11 test ledger: the three ratios compare the latest test with the first directly, not ranked against the time of day. The weaker-extreme field (J2-02) is not stored. DRAFT thresholds: 0.05 sigma touch, 3 rejection bars, 2 of 3."
+  "notes": "Converted from JEV to code without the S11 test ledger: the three ratios compare the latest test with the first directly, not ranked against the time of day. The weaker-extreme field (J2-02) is not stored. DRAFT thresholds: 0.05 sigma touch, 3 rejection bars, 2 of 3. Question pressure test 2026-10-07: summed volume made longer tests look heavier (now the mean per bar), and a run ending on the last bar scored rejection 0, which leaned the answer to 'neither'; layer 2, a discrete label."
  },
  {
   "id": "OPTIONS-04",
@@ -1158,7 +1057,7 @@
   "layer": 2,
   "group": "shared/break_held_or_failed",
   "method": "bars",
-  "source": "The day's SPX diary rows (reversion/{day}.jsonl) at each bar of the last 60 minutes: the 0DTE and 1-to-7-day call and put walls; a bar whose high-low reaches within 0.10 sigma (the label's touch rule) of a wall touches it; the latest touch's wall, with price now at or on the held side (at or below a call wall, at or above a put wall) = held, else broke.",
+  "source": "The day's SPX diary rows (reversion/{day}.jsonl) at each bar of the last 60 minutes: the near gamma walls (gex_views.call_wall_gamma / put_wall_gamma); a bar whose high-low reaches within 0.10 sigma (the label's touch rule) of a wall touches it; the latest touch's wall, with price now at or on the held side (at or below a call wall, at or above a put wall) = held, else broke.",
   "label_keys": [],
   "options": [
    "no touch",
@@ -1167,7 +1066,7 @@
    "held at put wall",
    "broke put wall"
   ],
-  "notes": "Never empty when the diary and bars are on file (the live label is missing on a quarter of reads). Shares the held-or-failed vote."
+  "notes": "Shares the held-or-failed vote. Question pressure test 2026-10-07: it read the far open-interest walls (100+ points away) and answered 'no touch' on 94 of 94 reads; it reads the near gamma walls the diary already stores. Answered only while the read's diary row is spx's own book (gex_source 'native'): on 10-06 and 10-07 every row was a spy stand-in scaled by a factor that changed each minute, ranked against real spx sessions."
  },
  {
   "id": "OPTIONS-06",
@@ -1175,7 +1074,7 @@
   "layer": 1,
   "group": "shared/pinned",
   "method": "bars",
-  "source": "The diary's magnet, 0DTE and 1-to-7-day walls at the read; over the last 60 minutes' SPX closes, a level crossed 3+ times is the pin (the most crossed); price now more than one 30-minute expected move (sigma x sqrt(30/390)) from it = broke loose; the current swing away wider than the median earlier swing and longer (bars since the last crossing) = stretching; else holding.",
+  "source": "The diary's magnet, 0DTE and 1-to-7-day walls and near gamma walls at the read; over the last 60 minutes' SPX closes, a level crossed 3+ times is the pin (the most crossed); price now more than one 30-minute expected move (sigma x sqrt(30/390)) from it = broke loose; the distance now wider than the median earlier swing (swings of 2+ bars, the hour's first left out) and the current swing longer, with the distance past a quarter of the expected move = stretching; else holding.",
   "label_keys": [],
   "options": [
    "holding",
@@ -1183,7 +1082,7 @@
    "broke loose",
    "not pinned"
   ],
-  "notes": "Moved from JEV to code. DRAFT: 3 crossings, medians of the earlier swings. Shares the pinned vote."
+  "notes": "Moved from JEV to code. DRAFT: 3 crossings, medians of the earlier swings. Shares the pinned vote. Question pressure test 2026-10-07: 'stretching' fired 31 to 4 against 'holding' because a swing that had come back still counted as wide: the distance is today's, earlier one-bar swings and the window's cut first swing are left out, and stretching needs a quarter of the expected move. Answered only while the read's diary row is spx's own book (gex_source 'native'): on 10-06 and 10-07 every row was a spy stand-in scaled by a factor that changed each minute, ranked against real spx sessions. DRAFT: the quarter."
  },
  {
   "id": "OPTIONS-08",
@@ -1191,7 +1090,7 @@
   "layer": 1,
   "group": "options/option_quote_width",
   "method": "market_value",
-  "source": "The lob-flow collector's quote sweeps (state/lob_flow/raw/{day}/sweeps.jsonl(.gz)): the 25-40 delta bucket's quoted spread, the median of the last 5 minutes' sweeps, ranked against the same minute on the trailing 20 sessions (at least 10): under a third tight, under two thirds normal, under 0.9 wide, else very wide.",
+  "source": "The lob-flow collector's quote sweeps (state/lob_flow/raw/{day}/sweeps.jsonl(.gz)): the nearest-the-money bucket's quoted spread (25-40 delta, after ~13:10 the 10-25 one), rounded to the cent; the median of the last 5 minutes' sweeps in the newest sweep's bucket, ranked against the prior sessions quoting the same bucket at the same minute (at least 10), ties counted half: under a third tight, under two thirds normal, under 0.9 wide, else very wide.",
   "label_keys": [],
   "options": [
    "tight",
@@ -1199,23 +1098,7 @@
    "wide",
    "very wide"
   ],
-  "notes": "The sweep carries no vega, so the spread is ranked in dollars, not per unit of vega. 21 days of sweeps on file."
- },
- {
-  "id": "OPTIONS-12",
-  "title": "Short-dated hedge buying",
-  "layer": 1,
-  "group": "options/option_flow",
-  "method": "market_value",
-  "source": "A 1-to-7-day put-to-call volume ratio over the last 30 minutes, ranked against this time of day.",
-  "label_keys": [],
-  "options": [
-   "low",
-   "normal",
-   "high"
-  ],
-  "notes": "needs_new_feed: no source carries 1-to-7-day volume by strike. The diary holds the 0DTE volume by strike (gex_views.vol_side_by_strike) and the 1-to-7-day net gamma by strike only, and the lob-flow collector sweeps the 0DTE chain only; adding a second expiry's sweep is not a pure addition to the daemon. Always None until a feed exists.",
-  "status": "needs_new_feed"
+  "notes": "The sweep carries no vega, so the spread is ranked in dollars, not per unit of vega. 21 days of sweeps on file. Question pressure test 2026-10-07: the ranks rested on floating-point leftovers around 5-cent ticks. Of the two fixes offered, the rank within the same bucket with half-counted ties was chosen (step 1): fixed tick cuts would read every afternoon as tight, since the stand-in 10-25 bucket quotes about half the 25-40 bucket's width (0.05 against 0.10 on file)."
  },
  {
   "id": "BREADTH-02",
@@ -1238,15 +1121,15 @@
   "layer": 2,
   "group": "shared/extreme_confirmation",
   "method": "bars",
-  "source": "A new session high (low) in the last 30 minutes (as VOLATILITY-14); three confirmations: the derived advance-decline now above (below) its level at the earlier extreme's minute; IWM's close within 0.05% of its own session high (low) of closes; the 8 largest names' weighted return from the earlier extreme's minute to now positive (negative). Weights: state/spx_leaders/weights.json, the entry dated on or before the day; prices from state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live).",
+  "source": "A new session high (low) in the last 30 minutes beyond the extreme before them (new_extreme_vs_prior_swing, as VOLATILITY-14); three confirmations: the derived advance-decline now above (below) its level at the earlier extreme's minute; IWM's close within 0.05% of its own session high (low) of closes; the 8 largest names' weighted return from the earlier extreme's minute to now positive (negative); 2 of 3 = confirmed. No new extreme: None (LEVELS-05 says it). Weights: state/spx_leaders/weights.json, the entry dated on or before the day; prices from state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live).",
   "label_keys": [],
   "options": [
-   "no new extreme",
-   "all confirm",
-   "some confirm",
-   "none confirm"
+   "new high, confirmed",
+   "new high, not confirmed",
+   "new low, confirmed",
+   "new low, not confirmed"
   ],
-  "notes": "$VOLD leg replaced by the derived $ADVN - $DECN (nothing from the same-day-wrong list, nor $ADD). IWM's extreme is of closes, so live quotes and saved bars agree. None before the first weights entry (2026-10-06). DRAFT: the 0.05% IWM tolerance. Shares one vote with VOLATILITY-14."
+  "notes": "$VOLD leg replaced by the derived $ADVN - $DECN (nothing from the same-day-wrong list, nor $ADD). IWM's extreme is of closes, so live quotes and saved bars agree. Reads from the weights file's oldest entry (2026-08-21, the 10-06 shares backdated to when TSLA and BRK/B entered the feed) on; the old 'None before 2026-10-06' no longer holds. DRAFT: the 0.05% IWM tolerance. Shares one vote with VOLATILITY-14. Question pressure test 2026-10-07: the earlier extreme was the previous minute and the answer had no side."
  },
  {
   "id": "BREADTH-07",
@@ -1254,37 +1137,20 @@
   "layer": 1,
   "group": "breadth/heavyweight_pull",
   "method": "market_value",
-  "source": "The 8 largest names (weights dated on or before the day; GOOG summed into GOOGL, BRK/B as the feed names it): each one's 30-minute return less its usual multiple of SPX's (the slope of its 30-minute returns on SPX's over the prior sessions' half hours, at least 20 pairs); the largest weight x residual; |pull| ranked against the largest pull at the same minute on the trailing sessions: top third large (signed), else small; followed when 4+ of the other 7 moved beyond SPX the same way.",
+  "source": "The 8 largest names (weights dated on or before the day; GOOG summed into GOOGL, BRK/B as the feed names it): each one's 30-minute return less its usual multiple of SPX's (the slope of its 30-minute returns on SPX's over the prior sessions' half hours, at least 20 pairs); the largest weight x residual; |pull| ranked against the largest pull at the same minute on the trailing sessions: top third large, signed, else small.",
   "label_keys": [],
   "options": [
-   "large up, followed",
-   "large up, alone",
-   "large down, followed",
-   "large down, alone",
+   "large up",
+   "large down",
    "small"
   ],
-  "notes": "Weights are taken as of on or before the read's day (the task's rule), not strictly before as the question's note asked; the first entry is 2026-10-06, so earlier reads are None. TSLA and BRK/B are in the feed since 08-21."
- },
- {
-  "id": "BREADTH-08",
-  "title": "Day's leader fading",
-  "layer": 1,
-  "group": "breadth/heavyweight_pull",
-  "method": "market_value",
-  "source": "The name whose weight x return since the settled open contributed most in SPX's day direction (SPX's close now against its 09:34 close); its 30-minute return beyond its usual multiple of SPX, |residual| ranked against its own at this minute: bottom third neither; else against the day direction fading, with it kept leading.",
-  "label_keys": [],
-  "options": [
-   "fading",
-   "kept leading",
-   "neither"
-  ],
-  "notes": "Same weights rule as BREADTH-07; shadow."
+  "notes": "Weights are taken as of on or before the read's day (the task's rule), not strictly before as the question's note asked; the weights file (state/spx_leaders/weights.json) holds the 2026-10-06 entry and a 2026-08-21 one (the same approximate shares, backdated to the day TSLA and BRK/B entered the feed, so the heavyweight questions have history); reads before 08-21 are None. TSLA and BRK/B are in the feed since 08-21. Question pressure test 2026-10-07: the 'followed / alone' split is gone: each of its four large answers held 3-6 reads, and 'followed' counted any follower however small."
  },
  {
   "id": "BREADTH-09",
   "title": "Heavyweight in play since the close (gate)",
   "layer": 2,
-  "group": "breadth/heavyweight_in_play (gate, no vote)",
+  "group": "breadth/heavyweight_in_play",
   "method": "market_value",
   "source": "Each of the 8 largest names' return since the prior session's close less its usual multiple (BREADTH-07's) of SPX's since the same close, weighted; |largest pull| top third at this minute against the trailing sessions = in play; the rest of the index (SPX's move less the names' weighted moves) followed when it has the pull's sign and is above the bottom third of its own.",
   "label_keys": [],
@@ -1293,22 +1159,25 @@
    "in play, rest did not",
    "none in play"
   ],
-  "notes": "Gate for BREADTH-10 (no vote). DRAFT: the 30-minute multiple stands in for a since-the-close one."
+  "notes": "Gate for the heavyweight_catalyst_or_flow judgment question (BREADTH-10) and a VOLATILITY-18 input; \"votes\": false: computed and stored, no vote (until 2026-10-07 the '(gate, no vote)' group name was text only and it voted, a near-constant answer, 68 of 70). The rank's history uses the same since-close residual (since_close_beyond) with today's fitted links as today's value (checked in step 1). DRAFT: the 30-minute multiple stands in for a since-the-close one.",
+  "votes": false
  },
  {
   "id": "FLOW-02",
   "title": "Volume backs the move",
   "layer": 1,
-  "group": "flow/signed_flow",
+  "group": "trend/last_30m_move",
   "method": "market_value",
-  "source": "Over the last 30 minutes the share of SPY's minute volume (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)) traded in the minutes SPX's bar closed the way the half hour went (close - open of the window); ranked against the same measure at the same minute on the trailing 20 sessions (at least 10): top third confirmed, bottom diverging.",
+  "source": "Over the last 30 minutes the share of SPY's minute volume (state/spx_jev/context/bars/{day}.jsonl for prior sessions; the read's day's from the siege box's minute volumes, state/siege/baseline.json) traded in the minutes SPX's bar closed the way the half hour went (close - open of the window); ranked against the same measure at the same minute on the trailing 20 sessions (at least 10): top third confirmed, bottom diverging, both signed by the half hour's move; middle balanced.",
   "label_keys": [],
   "options": [
-   "confirmed",
+   "confirmed up",
+   "confirmed down",
    "balanced",
-   "diverging"
+   "diverging up",
+   "diverging down"
   ],
-  "notes": "A flat half hour (net 0) is None. Drop if Cramer's V vs TREND-01 >= 0.7 (not measured here)."
+  "notes": "A flat half hour (net 0) is None. Question pressure test 2026-10-07: signed; live volume came from ~70-second quote snapshots while training used minute bars, now the siege box's minute volumes for both; joined trend/last_30m_move with TREND-01 and FLOW-07, since once signed it carries TREND-01's 30-minute sign (its own information is the volume share; judge it on that)."
  },
  {
   "id": "FLOW-04",
@@ -1316,14 +1185,14 @@
   "layer": 1,
   "group": "flow/ease_of_movement",
   "method": "market_value",
-  "source": "SPX points travelled (sum of |1-min moves|) over the last 30 minutes per million SPY shares (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)); ranked against the same measure at the same minute on the trailing 20 sessions (at least 10): bottom third heavy with little travel, top easy travel on light volume.",
+  "source": "SPX points travelled (sum of |1-min moves|) over the last 30 minutes per million SPY shares (state/spx_jev/context/bars/{day}.jsonl for prior sessions; the read's day's from the siege box's minute volumes); None when fewer than 24 of the 30 minutes carry SPY volume; ranked against the same measure at the same minute on the trailing 20 sessions (at least 10): bottom third heavy with little travel, top easy travel on light volume.",
   "label_keys": [],
   "options": [
    "heavy with little travel",
    "normal",
    "easy travel on light volume"
   ],
-  "notes": "Amihud thinness. Keep only if < 0.8 with FLOW-05 and VOLATILITY-02 (not measured here)."
+  "notes": "Amihud thinness. Keep only if < 0.8 with FLOW-05 and VOLATILITY-02 (not measured here). Question pressure test 2026-10-07: it divided by quote-snapshot volume (up to double the bars', or near zero after an outage); the siege box's minute volumes now, and a 24-minute coverage floor."
  },
  {
   "id": "FLOW-05",
@@ -1348,32 +1217,33 @@
   "layer": 1,
   "group": "flow/volume_profile",
   "method": "market_value",
-  "source": "The last 5 sessions' profile: SPY's minute volume (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)) summed into 5-point bins of SPX's close; a bin at or above the 75th percentile of bin volume is a high-volume node, at or below the 25th low; the bin of SPX's last close, and whether the nearest high-volume node is above or below.",
+  "source": "The last 5 sessions' profile: SPY's minute volume (state/spx_jev/context/bars/{day}.jsonl) summed into 5-point bins of SPX's close; a bin at or above the 75th percentile of bin volume is a high-volume node. SPX's last close above or below every bin = outside the profile; in a node = at a node; else the nearer node above or below (equally near = at a node).",
   "label_keys": [],
   "options": [
-   "high-volume node",
-   "low-volume node, next node above",
-   "low-volume node, next node below",
-   "between, next node above",
-   "between, next node below"
+   "outside the profile, above",
+   "outside the profile, below",
+   "at a node",
+   "node above",
+   "node below"
   ],
-  "notes": "5 sessions kept. DRAFT: 5-point bins, the quartile cuts."
+  "notes": "5 sessions kept. DRAFT: 5-point bins, the quartile cuts. Question pressure test 2026-10-07: new ground was filed as 'low-volume node' (36 of 94), ties leaned 'below', and five answers were too thin for ~60 reads. DRAFT marks kept."
  },
  {
   "id": "FLOW-07",
   "title": "Index move alignment",
   "layer": 1,
-  "group": "breadth/participation",
+  "group": "trend/last_30m_move",
   "method": "market_value",
-  "source": "SPY, QQQ and IWM 30-minute returns (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)), each |return| ranked against its own at this minute: a move above the bottom third counts, signed; all three moved the same way = same way; movers both ways = in conflict; no mover = none moved; else mixed.",
+  "source": "SPY, QQQ and IWM 30-minute returns: prior sessions from state/spx_jev/context/bars/{day}.jsonl; the read's day from its quote snapshots (context/{day}.jsonl), live and in backfill alike; each |return| ranked against its own at this minute: a move above the bottom third counts, signed; all three moved the same way = same way up / down; movers both ways = in conflict; no mover = none moved; else mixed.",
   "label_keys": [],
   "options": [
-   "same way",
+   "same way up",
+   "same way down",
    "mixed",
    "in conflict",
    "none moved"
   ],
-  "notes": "Rebuilt on QQQ and IWM (no /NQ, /RTY). Shares the participation vote with BREADTH-01/02."
+  "notes": "Rebuilt on QQQ and IWM (no /NQ, /RTY). Question pressure test 2026-10-07: signed; live and graded agreed on only 84 of 99 reads, so the read's day is built from its quotes in backfill too; joined trend/last_30m_move (its sign is TREND-01's; its own information is the three indexes agreeing)."
  },
  {
   "id": "MACRO-01",
@@ -1396,62 +1266,17 @@
   "layer": 1,
   "group": "macro/macro_gap",
   "method": "market_value",
-  "source": "SPX's return since the prior close less beta x /ZN's since its 16:00 close (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live); beta = the slope of SPX's close-to-close returns on /ZN's over the trailing sessions, at least 10); |gap| ranked against the same at this minute: bottom third nowhere; SPX short of what bonds imply = up, past it = down.",
+  "source": "SPX's return since the prior close less beta x /ZN's since its 16:00 close (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live); beta = the slope of SPX's close-to-close returns on /ZN's over the trailing sessions, at least 10); |gap| ranked against the same at this minute: bottom third nowhere; SPX short of what bonds imply = up, past it = down; the top fifth (rank 0.8+) = far up / far down.",
   "label_keys": [],
   "options": [
+   "far up",
    "up",
+   "nowhere",
    "down",
-   "nowhere"
+   "far down"
   ],
-  "notes": "Runs on /ZN now that it is in the feed. Shares MACRO-01's vote."
- },
- {
-  "id": "MACRO-04",
-  "title": "Macro tone since settle (context)",
-  "layer": 1,
-  "group": "macro/macro_tone (context and gate, no vote)",
-  "method": "market_value",
-  "source": "/ZN, GLD and HYG since the prior close (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)), each counted when |move| is above the bottom third of its own at this minute: /ZN up and GLD up are risk-off, HYG up risk-on; only risk-on flags = risk-on, only risk-off = risk-off, both = mixed, none = quiet.",
-  "label_keys": [],
-  "options": [
-   "risk-on",
-   "risk-off",
-   "mixed",
-   "quiet"
-  ],
-  "notes": "Context and gate for MACRO-05, no vote. The yen leg waits on /6J."
- },
- {
-  "id": "MACRO-05",
-  "title": "Do the macro story's sectors confirm it",
-  "layer": 1,
-  "group": "macro/macro_tone (context and gate, no vote)",
-  "method": "market_value",
-  "source": "Tone from MACRO-04's legs: yields falling (/ZN up since the close, above the bottom third) expects XHB and IWM beyond SPX up and KRE down (rising: the reverse); oil (USO) moved expects XLE beyond SPX the same way. Each leg's since-the-close return less its usual multiple of SPX's; more matches than mismatches = confirm, more mismatches = contradict, no tone or a tie = nothing.",
-  "label_keys": [],
-  "options": [
-   "confirm",
-   "contradict",
-   "nothing"
-  ],
-  "notes": "DRAFT rubric (J2-21's map, as code): the regional banks lag on falling yields; no transports symbol, so the energy-vs-transports leg is energy alone. Gate for MACRO-03, no vote."
- },
- {
-  "id": "MACRO-06",
-  "title": "Stock-bond link: today vs normal (conditioner)",
-  "layer": 1,
-  "group": "macro/stock_bond_link (conditioner, no vote)",
-  "method": "market_value",
-  "source": "The correlation of SPX's and /ZN's 1-minute returns since 09:35 (state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live), at least 20 shared minutes): past +0.2 together, under -0.2 opposite, else unlinked; |correlation| ranked against the same at this minute: top half stronger than usual, else weaker.",
-  "label_keys": [],
-  "options": [
-   "together, stronger than usual",
-   "together, weaker than usual",
-   "opposite, stronger than usual",
-   "opposite, weaker than usual",
-   "unlinked"
-  ],
-  "notes": "Conditioner for MACRO-01's bond leg, no vote. DRAFT: the 0.2 line, the half split."
+  "notes": "Runs on /ZN. Question pressure test 2026-10-07: no vote (\"votes\": false): as a voter it was the day's since-close move relabelled (V 0.72-0.86 with LEVELS) and diluted MACRO-01, which now holds macro/macro_gap alone. Kept computed for the macro_gap judgment gate; the rank share it gates on is exposed in the answer itself (step 1's choice of 'expose the rank share'): 'far up / far down' is the top fifth, so judgment.py can gate on rank >= 0.8 from the answers it already reads.",
+  "votes": false
  },
  {
   "id": "MACRO-07",
@@ -1469,23 +1294,6 @@
   "notes": "The 10-minute companion is not built. Fold into VOLATILITY-02 if > 0.8."
  },
  {
-  "id": "EVENTS-01",
-  "title": "Scheduled event in window",
-  "layer": 2,
-  "group": "events/event_window",
-  "method": "market_value",
-  "source": "calendar/events.json at the read (events.session_rows: every tier but the minor pre-open releases): a row under way (start <= now < end) first; then one started within the last 15 minutes (just out); then one due within 60 minutes, tier 1 or a lower tier; else nothing. A day the calendar does not cover is None.",
-  "label_keys": [],
-  "options": [
-   "under way",
-   "just out",
-   "due within 60 minutes, tier 1",
-   "due within 60 minutes, lower tier",
-   "nothing"
-  ],
-  "notes": "The auction tier has a shape and no rows: the answer is honest to the rows present, so no auction is ever named until rows are added. learn_exclude still drops reads with an event in window, so the due states cannot earn weight yet."
- },
- {
   "id": "EVENTS-02",
   "title": "Event-day phase",
   "layer": 2,
@@ -1500,7 +1308,7 @@
    "medium-tier day",
    "ordinary"
   ],
-  "notes": "Fix applied: a fixed tier map instead of a learned yearly ranking."
+  "notes": "Fix applied: a fixed tier map instead of a learned yearly ranking. Question pressure test 2026-10-07: when only one neighbouring day was outside the calendar the read leaked through as medium or ordinary: an uncovered next day is None before the eve check, an uncovered previous day before the day-after check."
  },
  {
   "id": "EVENTS-03",
@@ -1508,32 +1316,18 @@
   "layer": 1,
   "group": "events/reaction_path",
   "method": "bars",
-  "source": "The latest calendar row whose first 15 minutes are over, within 120 minutes of the read (Fed statement and presser are separate rows). In the session: SPX closes at the row's start, 15 minutes after, and now; before the open: /ES night bars at those minutes and the read's /ES quote as now. Back through the start = reversed; past the 15-minute price by more than 0.05 sigma = extended; more than half given back = faded; else held.",
+  "source": "The latest calendar row (Fed speakers' remarks left out) whose first 15 minutes are over, within 120 minutes of the read (Fed statement and presser are separate rows). In the session: SPX closes at the row's start (the first bar's open for a 09:30 row), 15 minutes after, and now; before the open: /ES night bars at those minutes and the read's /ES quote as now (else the night's last /ES bar). Back through the start = reversed, named by the way price went; past the 15-minute price by more than 0.05 of the normal-day sigma (rulers.normal_day_sigma, as the premarket lane stamps it) = extended; else held/faded; each signed by the first reaction.",
   "label_keys": [],
   "options": [
-   "extended",
-   "held",
-   "faded",
-   "reversed",
+   "up then extended",
+   "up then held/faded",
+   "down then extended",
+   "down then held/faded",
+   "reversed up",
+   "reversed down",
    "no release"
   ],
-  "notes": "Release types pooled (one verdict for data, Fed remarks and the presser). The rank against past releases is not applied: the verdict uses the fixed 0.05-sigma and half-line rules of labels/events_shocks.py."
- },
- {
-  "id": "EVENTS-05",
-  "title": "Rates surprise at the latest release",
-  "layer": 1,
-  "group": "events/rates_meaning",
-  "method": "market_value",
-  "source": "The latest calendar row whose first 15 minutes are over (as EVENTS-03): /ZN's return over those 15 minutes (its session bars, or its night bars before the open); |return| ranked against every row's 15-minute /ZN return on the trailing 20 sessions (at least 10 rows): top third large, signed by yields (/ZN up = yields down); else small.",
-  "label_keys": [],
-  "options": [
-   "large, yields up",
-   "large, yields down",
-   "small",
-   "no release"
-  ],
-  "notes": "Distinct from MACRO-01's rolling gap. Needs 10 prior rows with /ZN bars."
+  "notes": "Release types pooled (data, the Fed statement and the presser). The rank against past releases is not applied: the verdict uses the fixed 0.05-sigma rule of labels/events_shocks.py. Question pressure test 2026-10-07: it had no side, so the direction stage averaged it to zero; Fed speeches counted as releases; its sigma was the read's own, not the label rule's normal-day sigma. A first reaction of exactly 0 has no side: None."
  },
  {
   "id": "SESSION-02",
@@ -1551,7 +1345,7 @@
    "buy big",
    "new-month inflow"
   ],
-  "notes": "Fix applied: the daily-closes job's $SPX and TLT closes (from 2016) replace the hard-coded flows.rebalance_side. Shadow."
+  "notes": "Fix applied: the daily-closes job's $SPX and TLT closes (from 2016) replace the hard-coded flows.rebalance_side. Shadow. Question pressure test 2026-10-07: on the month's last 2 days the gap is measured once, through the last close before the first of them (ranks of 0.78 and 0.805 straddled the 0.8 cut, so one month's size changed between its two days)."
  },
  {
   "id": "SENTIMENT-02",
@@ -1559,29 +1353,14 @@
   "layer": 1,
   "group": "sentiment/leveraged_etf_tilt",
   "method": "market_value",
-  "source": "SPXL + TQQQ minus SPXS + SQQQ dollar volume (close x volume, state/spx_jev/context/bars/{day}.jsonl (prior sessions; the day's own bars cut at the read, or context/{day}.jsonl quotes live)) over the last 30 minutes as a share of the five funds' total, less what SPX's 30-minute move predicts (a line fitted on the prior sessions' half hours, at least 20); the residual ranked against the same measure at the same minute on the trailing 20 sessions (at least 10): top third high, bottom low.",
+  "source": "SPXL and TQQQ (bull) against SPXS and SQQQ (bear): each fund's 30-minute share volume over its own median at this minute on the prior sessions (state/spx_jev/context/bars/{day}.jsonl), bull and bear the equal-weight means, tilt = (bull - bear) / (bull + bear), less what SPX's 30-minute move predicts (a line fitted on the prior sessions' half hours, at least 20); the residual ranked against the same measure at the same minute on the trailing 20 sessions (at least 10): top third high, bottom low. None on a live read (the day's bars not saved yet).",
   "label_keys": [],
   "options": [
    "high",
    "normal",
    "low"
   ],
-  "notes": "The four funds are in the feed since 08-21 (thin, missing a few minutes a day). Read contrarian by the learners, not here. Untested; shadow."
- },
- {
-  "id": "FLOW-09",
-  "title": "SPY book lean (log only)",
-  "layer": 1,
-  "group": "flow/book_lean (log only, no vote)",
-  "method": "market_value",
-  "source": "Resting size at SPY's best bid against the best offer over the last 5 minutes, ranked against this minute on the prior sessions.",
-  "label_keys": [],
-  "options": [
-   "bid larger",
-   "about equal",
-   "offer larger"
-  ],
-  "notes": "needs_new_feed: the lob-flow collector's SPY depth fold keeps the combined size only (the spy_depth engine's size|spy baseline rows); a bid/ask split needs the engine's snapshot changed, not a pure addition to the daemon. Always None until the split is saved. Log only, no vote.",
-  "status": "needs_new_feed"
+  "notes": "The four funds are in the feed since 08-21 (thin, missing a few minutes a day). Read contrarian by the learners, not here. Question pressure test 2026-10-07: quote volume ran ~21% high on SPXL live (3 of 13 reads flipped) and the dollar share leaned high (50 to 8) from the bear funds' decay and TQQQ/SQQQ's size: each fund now against its own usual. It answers only once the day's bars are saved, so no live read has an answer: no vote (\"votes\": false, step 1's decision, as the critic counted it). Drop it if it is still at or below the null after ~20 more days.",
+  "votes": false
  }
 ]

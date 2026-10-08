@@ -35,12 +35,16 @@ def _fired(rank: SameClockRank | None = SameClockRank(15, 20)) -> YieldMove:
 
 # ---------------------------------------------------------------- the gates
 
+DROPPED = {"push_blowoff_or_fresh", "quiet_coiled_or_resting"}       # dark since the question pressure test of 2026-10-07
+
+
 def test_every_judgment_question_in_the_set_is_shadow_gated_and_known_here():
     g = _judgment_group()
-    assert set(g["questions"]) == set(GATES) and gated_questions(_doc()).keys() == set(GATES)
+    assert set(g["questions"]) == set(GATES) and gated_questions(_doc()).keys() == set(GATES) - DROPPED
     for qid, q in g["questions"].items():
-        assert q["status"] == "shadow" and q["sleep_when"] and q["lanes"] == ["thirty_minute"] and q["merged_id"]
+        assert q["status"] == ("dark" if qid in DROPPED else "shadow") and q["sleep_when"] and q["lanes"] == ["thirty_minute"] and q["merged_id"]
         assert "shadow_proof" in q and "never graded and never weighted" in g["purpose"]
+    assert all(g["questions"][qid]["dark_reason"] == "dropped in the question pressure test 2026-10-07" for qid in DROPPED)
     assert {q["merged_id"] for q in g["questions"].values()} == {"TREND-13", "VOLATILITY-15", "BREADTH-10", "MACRO-03", "EVENTS-06", "EVENTS-07"}
 
 
@@ -59,14 +63,17 @@ def test_every_judgment_question_in_the_set_is_shadow_gated_and_known_here():
     ("heavyweight_catalyst_or_flow", Facts(code={"BREADTH-09": None}), False),
     ("macro_gap_equity_reason", Facts(code={"MACRO-02": "up"}), True),
     ("macro_gap_equity_reason", Facts(code={"MACRO-02": "down"}), True),
+    ("macro_gap_equity_reason", Facts(code={"MACRO-02": "far up"}), True),
+    ("macro_gap_equity_reason", Facts(code={"MACRO-02": "far down"}), True),
     ("macro_gap_equity_reason", Facts(code={"MACRO-02": "nowhere"}), False),
     ("macro_gap_equity_reason", Facts(code={"MACRO-02": None}), False),
-    ("yield_move_meaning", Facts(code={"EVENTS-05": "small"}, yield_move=_fired()), True),
-    ("yield_move_meaning", Facts(code={"EVENTS-05": None}, yield_move=_fired()), True),
-    ("yield_move_meaning", Facts(code={"EVENTS-05": "large, yields up"}, yield_move=_fired()), False),
-    ("yield_move_meaning", Facts(code={"EVENTS-05": "small"}, yield_move=_fired(SameClockRank(10, 20))), False),
-    ("yield_move_meaning", Facts(code={"EVENTS-05": "small"}, yield_move=YieldMove(None, None, "no quote")), False),
-    ("yield_move_meaning", Facts(code={"EVENTS-05": "small"}), False),
+    ("yield_move_meaning", Facts(code={"EVENTS-03": "no release"}, yield_move=_fired()), True),
+    ("yield_move_meaning", Facts(code={"EVENTS-03": None}, yield_move=_fired()), True),
+    ("yield_move_meaning", Facts(code={"EVENTS-03": "up then extended"}, yield_move=_fired()), False),     # the release names the cause
+    ("yield_move_meaning", Facts(code={"EVENTS-03": "reversed down"}, yield_move=_fired()), False),
+    ("yield_move_meaning", Facts(code={"EVENTS-03": "no release"}, yield_move=_fired(SameClockRank(10, 20))), False),
+    ("yield_move_meaning", Facts(code={"EVENTS-03": "no release"}, yield_move=YieldMove(None, None, "no quote")), False),
+    ("yield_move_meaning", Facts(code={"EVENTS-03": "no release"}), False),
     ("news_reaction", Facts(headlines=[{"title": "x", "captured_at": ROW}]), True),
     ("news_reaction", Facts(), False),
 ])
@@ -80,7 +87,7 @@ def test_a_gate_not_fired_says_so_with_what_it_read_and_a_failed_gate_is_not_fir
     assert v["push_blowoff_or_fresh"] == f"{GATED} TREND-10 or TREND-11 not fired: TREND-10 'none', TREND-11 not measured this read"
     assert v["quiet_coiled_or_resting"] == f"{GATED} VOLATILITY-04 not fired: VOLATILITY-04 not measured this read"
     assert v["news_reaction"] == f"{GATED} headlines not fired: no headlines captured in the {HEADLINE_WINDOW_MIN} minutes before the read"
-    assert v["yield_move_meaning"].startswith(f"{GATED} $TNX or EVENTS-05 not fired: the ten-year yield rose 1.0 basis points since the prior close, not ranked")
+    assert v["yield_move_meaning"].startswith(f"{GATED} $TNX or EVENTS-03 not fired: the ten-year yield rose 1.0 basis points since the prior close, not ranked")
     assert all(why.startswith(GATED) for why in v.values())
     monkeypatch.setitem(GATES, "news_reaction", judgment.Gate(("headlines",), lambda f: 1 / 0))
     assert verdicts(["news_reaction"], Facts(headlines=[{}]))["news_reaction"] == f"{GATED} headlines not fired: the gate failed (ZeroDivisionError)"
@@ -118,7 +125,7 @@ def _headline(minutes_before: int, title: str, source: str = "CNBC") -> dict:
 
 def test_the_labels_say_each_code_answer_the_ask_names_and_not_measured_for_a_none():
     facts = Facts(code={"TREND-10": "up failed", "TREND-11": None, "VOLATILITY-04": "compressed", "BREADTH-09": "none in play", "MACRO-02": "up",
-                        "EVENTS-05": "small"}, yield_move=_fired())
+                        "EVENTS-03": "no release"}, yield_move=_fired())
     ls = build_judgment_labels(facts)
     assert set(ls.paths()) == set(judgment.LABELS) and not ls.omitted
     s = ls.state["judgment"]
@@ -126,8 +133,8 @@ def test_the_labels_say_each_code_answer_the_ask_names_and_not_measured_for_a_no
     assert s["quiet"].startswith("the last 30 minutes' range against the half hour before reads 'compressed' (VOLATILITY-04)")
     assert s["quiet"].endswith("the ten-year yield rose 4.0 basis points since the prior close, higher than 15 of the last 20 sessions at this minute, top third")
     assert s["heavyweight"] == "the heavyweights since the close reads 'none in play' (BREADTH-09)"
-    assert s["macro_gap"] == "SPX against what bonds imply since the close reads 'up' (MACRO-02): 'up' is SPX short of what bonds imply, 'down' past it"
-    assert s["yield_move"].endswith("; the latest release's rates surprise reads 'small' (EVENTS-05)")
+    assert s["macro_gap"] == "SPX against what bonds imply since the close reads 'up' (MACRO-02): 'up' is SPX short of what bonds imply, 'down' past it, 'far' the top fifth"
+    assert s["yield_move"].endswith("; the latest release's reaction reads 'no release' (EVENTS-03)")
     assert s["headlines"] == f"no headlines captured in the {HEADLINE_WINDOW_MIN} minutes before the read"
 
 
@@ -191,7 +198,7 @@ def test_too_few_sessions_leave_the_yields_move_unranked_and_the_gate_off(tmp_pa
     _write_tnx(tmp_path, 43.0, 41.0, [(d, 41.1) for d in PRIOR_DAYS[:4]])
     ym = yield_move(tmp_path, DAY, ROW)
     assert ym.basis_points == 20.0 and ym.rank is None and "needs 10 prior sessions" in ym.why and not ym.fired
-    assert verdicts(["yield_move_meaning"], Facts(yield_move=ym))["yield_move_meaning"].startswith(f"{GATED} $TNX or EVENTS-05 not fired: the ten-year yield rose 20.0 basis points")
+    assert verdicts(["yield_move_meaning"], Facts(yield_move=ym))["yield_move_meaning"].startswith(f"{GATED} $TNX or EVENTS-03 not fired: the ten-year yield rose 20.0 basis points")
 
 
 # ---------------------------------------------------------------- the matrix takes them, the old loop does not

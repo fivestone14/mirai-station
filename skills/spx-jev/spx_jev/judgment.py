@@ -92,18 +92,21 @@ def _in_play(facts: Facts) -> bool:
 
 
 def _yield_moved(facts: Facts) -> bool:
-    # off while a release's rates surprise is fresh (EVENTS-05): that question already names the cause
+    # off while a release is in its reaction window (EVENTS-03; EVENTS-05, the rates surprise, left the set on 2026-10-07):
+    # the release names the cause
     return (facts.yield_move is not None and facts.yield_move.fired
-            and not str(_code(facts, "EVENTS-05") or "").startswith("large"))
+            and _code(facts, "EVENTS-03") in (None, "no release"))
 
 
-# the judgment questions of spec/question_set.json by id, each with the gate it is asked behind
+# the judgment questions of spec/question_set.json by id, each with the gate it is asked behind. push_blowoff_or_fresh and
+# quiet_coiled_or_resting are dark since the question pressure test of 2026-10-07 (gated_questions passes them over; the
+# second lives on as the code question VOLATILITY-18); the set keeps them, dated, so their gates and labels stay.
 GATES: dict[str, Gate] = {
     "push_blowoff_or_fresh": Gate(("TREND-10", "TREND-11"), _push),
     "quiet_coiled_or_resting": Gate(("VOLATILITY-04",), lambda f: _code(f, "VOLATILITY-04") == "compressed"),
     "heavyweight_catalyst_or_flow": Gate(("BREADTH-09",), _in_play),
-    "macro_gap_equity_reason": Gate(("MACRO-02",), lambda f: _code(f, "MACRO-02") in ("up", "down")),
-    "yield_move_meaning": Gate((TNX, "EVENTS-05"), _yield_moved),
+    "macro_gap_equity_reason": Gate(("MACRO-02",), lambda f: _code(f, "MACRO-02") in ("far up", "up", "down", "far down")),
+    "yield_move_meaning": Gate((TNX, "EVENTS-03"), _yield_moved),
     "news_reaction": Gate(("headlines",), lambda f: bool(f.headlines)),
 }
 LABELS = ("judgment.push_exhaustion", "judgment.quiet", "judgment.heavyweight", "judgment.macro_gap", "judgment.yield_move",
@@ -279,12 +282,12 @@ def build_judgment_labels(facts: Facts) -> LabelSet:
     swing = _said(facts, "VOLATILITY-02", "the last 30 minutes' swing against the same half hour")
     heavy = _said(facts, "BREADTH-09", "the heavyweights since the close")
     gap = _said(facts, "MACRO-02", "SPX against what bonds imply since the close")
-    surprise = _said(facts, "EVENTS-05", "the latest release's rates surprise")
+    release = _said(facts, "EVENTS-03", "the latest release's reaction")
     ls.put("judgment.push_exhaustion", "; ".join((sweep, spike, trend)))
     ls.put("judgment.quiet", "; ".join((compression, swing, heavy, yields)))
     ls.put("judgment.heavyweight", heavy)
-    ls.put("judgment.macro_gap", f"{gap}: 'up' is SPX short of what bonds imply, 'down' past it")
-    ls.put("judgment.yield_move", "; ".join((yields, surprise)))
+    ls.put("judgment.macro_gap", f"{gap}: 'up' is SPX short of what bonds imply, 'down' past it, 'far' the top fifth")
+    ls.put("judgment.yield_move", "; ".join((yields, release)))
     ls.put("judgment.headlines", headline_label(facts))
     return ls
 

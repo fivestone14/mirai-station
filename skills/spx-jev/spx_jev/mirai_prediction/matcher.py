@@ -18,6 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ..scores import OUTCOMES, floored
+from .answer_matrix import voting_columns
 
 MATCHER_NEIGHBOR_COUNT = 20
 MATCHER_PRIOR_READS = 10
@@ -51,10 +52,10 @@ class MatcherFit:
 
 
 def fit_matcher(matrix, group_weights: dict[str, float] | None = None) -> MatcherFit:
-    """The matcher's fit is each column's group and the group weights (equal for now; later the scorer's). The candidates
-    stay in the matrix."""
+    """The matcher's fit is each voting column's group and the group weights (equal for now; later the scorer's). The
+    candidates stay in the matrix; a column that does not vote is no part of any distance."""
     rows = matrix.trainable_rows()
-    group_of_column = {c: m["group"] for c, m in matrix.columns.items()}
+    group_of_column = {c: m["group"] for c, m in voting_columns(matrix.columns).items()}
     weights = group_weights or {g: 1.0 for g in set(group_of_column.values())}
     return MatcherFit(group_of_column=group_of_column, group_weights=weights, rows_used=len(rows),
                       max_day_used=max((r.day for r in rows), default=None))

@@ -121,12 +121,31 @@ def test_volatility_14_new_extreme_against_vix_and_mechanical_causes(tmp_path):
         h.context_bars_by_day[wednesday] = {"$VIX": ctx_bars(wednesday, vix)}
         return MARKET_ANSWERERS["VOLATILITY-14"](record(row_ts), bars_up_to(bars_from_closes(spx, day=wednesday), row_ts), h, wednesday, hhmm)
     rising = closes(120, 7700.0, step=0.5)
-    assert on_wednesday(rising, closes(120, 16.0, step=-0.01)) == "new high, vol confirms"
-    assert on_wednesday(rising, closes(120, 16.0, step=0.01)) == "new high, vol disagrees"
-    assert on_wednesday(closes(120, 7700.0, step=-0.5), closes(120, 16.0, step=0.01)) == "new low, vol confirms"
-    assert on_wednesday([7700.0] * 60 + [7690.0] + [7695.0] * 59, [16.0] * 120) == "no new extreme"
+    assert on_wednesday(rising, closes(120, 16.0, step=-0.01)) == "new high, VIX confirms"
+    assert on_wednesday(rising, closes(120, 16.0, step=0.01)) == "new high, VIX diverges"
+    assert on_wednesday(rising, [16.0] * 119 + [16.04]) == "new high, VIX confirms"                       # within 0.05 points: a tie confirms
+    assert on_wednesday(closes(120, 7700.0, step=-0.5), closes(120, 16.0, step=0.01)) == "new low, VIX confirms"
+    assert on_wednesday([7700.0] * 60 + [7690.0] + [7695.0] * 59, [16.0] * 120) is None                  # no new extreme: LEVELS-05's
     assert on_wednesday(closes(340, 7700.0, step=0.5), [16.0] * 340, "15:10") == "mechanical"               # the last hour
-    assert ask("VOLATILITY-14", h, bars_from_closes(rising), today_ctx={"$VIX": ctx_bars(DAY, [16.0] * 120)}) == "mechanical"   # DAY is a Friday
+    assert ask("VOLATILITY-14", h, bars_from_closes(rising), today_ctx={"$VIX": ctx_bars(DAY, [16.0] * 120)}) == "mechanical"   # DAY is the third Friday
+    second_friday = "2026-09-11"
+    row_ts = f"{second_friday}T11:30:30-04:00"
+    h.context_bars_by_day[second_friday] = {"$VIX": ctx_bars(second_friday, closes(120, 16.0, step=-0.01))}
+    assert MARKET_ANSWERERS["VOLATILITY-14"](record(row_ts), bars_up_to(bars_from_closes(rising, day=second_friday), row_ts), h,
+                                             second_friday, "11:30") == "new high, VIX confirms"     # only the monthly expiry Friday is mechanical
+    before_labor_day = "2026-09-04"
+    row_ts = f"{before_labor_day}T11:30:30-04:00"
+    h.context_bars_by_day[before_labor_day] = {"$VIX": ctx_bars(before_labor_day, closes(120, 16.0, step=-0.01))}
+    assert MARKET_ANSWERERS["VOLATILITY-14"](record(row_ts), bars_up_to(bars_from_closes(rising, day=before_labor_day), row_ts), h,
+                                             before_labor_day, "11:30") == "mechanical"            # the session before a holiday
+
+
+def test_a_new_extreme_beats_the_earlier_swings_extreme_not_the_bar_before():
+    """The runner-up a minute before the new high is not the earlier extreme: the highest bar before the last 30 minutes is."""
+    values = [10.0] * 20 + [15.0] + [11.0] * 69 + [12.0, 14.0, 16.0] + [13.0] * 27
+    assert market.new_extreme_vs_prior_swing(values, 90) == (92, 20)
+    assert market.new_extreme_vs_prior_swing(values[:92] + [14.5] + [13.0] * 27, 90) is None             # under the earlier swing's 15
+    assert market.new_extreme_vs_prior_swing(values, 20) is None                                         # under 30 earlier bars
 
 
 def test_trend_11_volume_spike_held_or_faded():
@@ -142,13 +161,17 @@ def test_trend_11_volume_spike_held_or_faded():
     up = bars_from_closes([7700.0] * 95 + [7710.0] * 5 + [7712.0] * 20)                     # the spike's 5 minutes rise and hold
     assert ask("TREND-11", h, up, today_ctx=ctx) == "up spike held"
     faded = bars_from_closes([7700.0] * 95 + [7710.0] * 5 + [7698.0] * 20)
-    assert ask("TREND-11", h, faded, today_ctx=ctx) == "spike faded"
+    assert ask("TREND-11", h, faded, today_ctx=ctx) == "up spike faded"
+    down_faded = bars_from_closes([7700.0] * 95 + [7690.0] * 5 + [7702.0] * 20)
+    assert ask("TREND-11", h, down_faded, today_ctx=ctx) == "down spike faded"
 
 
 def test_trend_07_vwap_balance_words():
     h = history()
     _, ctx = feed_day(DAY, seed=0, extra={"SPY": closes(120, 770.0, step=0.05)})          # SPY climbs away from its VWAP all morning
-    assert ask("TREND-07", h, bars_from_closes([7700.0] * 120), today_ctx=ctx) == "long one-sided"
+    assert ask("TREND-07", h, bars_from_closes([7700.0] * 120), today_ctx=ctx) == "long above VWAP"
+    _, ctx = feed_day(DAY, seed=0, extra={"SPY": closes(120, 770.0, step=-0.05)})
+    assert ask("TREND-07", h, bars_from_closes([7700.0] * 120), today_ctx=ctx) == "long below VWAP"
     _, ctx = feed_day(DAY, seed=0, extra={"SPY": [770.0 + 0.02 * ((i % 2) * 2 - 1) for i in range(120)]})
     assert ask("TREND-07", h, bars_from_closes([7700.0] * 120), today_ctx=ctx) == "orbiting"
 
@@ -186,6 +209,7 @@ def test_volatility_08_gap_in_implied_units_against_60_sessions():
     assert ask("VOLATILITY-08", h, bars_from_closes([7640.0] * 10), "09:40") == "large down"
     prior_close = h.spx_bars_by_day[max(d for d in h.spx_bars_by_day if d < DAY)][-1]["close"]
     assert ask("VOLATILITY-08", h, bars_from_closes([prior_close] * 10), "09:40") == "small"
+    assert ask("VOLATILITY-08", h, bars_from_closes([7760.0] * 120), "11:30") is None             # the opening reads only (to 10:35)
 
 
 def test_volatility_17_day_range_regime_ignores_a_close_dated_the_read_day():
@@ -221,6 +245,17 @@ def test_levels_10_room_to_the_next_barrier():
     assert ask("LEVELS-10", h, bars_from_closes([7700.0] * 120)) is None                    # no move, no direction
 
 
+def test_levels_10_passes_over_the_half_hours_own_high_and_a_level_at_price():
+    """Rising into a new high: the high is behind price, not ahead of it; the next barrier is the round number."""
+    rising = bars_from_closes(closes(120, 7700.0, step=0.3))
+    view = market.DayView(DAY, rising, {})
+    price = rising[-1]["close"]
+    assert market.barrier_room(MarketHistory(), view, "11:30", SIGMA) == pytest.approx((7750.0 - price) / price)
+    at_round = bars_from_closes(closes(119, 7700.0, step=0.42) + [7749.5])                    # 0.5 points under 7750: within 0.02 sigma
+    prior = MarketHistory(spx_bars_by_day={PRIOR_DAYS[0]: bars_from_closes([7700.0] * 200 + [7760.0] + [7700.0] * 189, day=PRIOR_DAYS[0])})
+    assert market.barrier_room(prior, market.DayView(DAY, at_round, {}), "11:30", SIGMA) == pytest.approx((7760.5 - 7749.5) / 7749.5)
+
+
 def test_levels_12_tested_edge_and_who_is_tiring():
     h = MarketHistory()                                                                       # no prior session: today's edges only
     ctx = {"SPY": ctx_bars(DAY, [770.0] * 130, volume=1000.0)}
@@ -233,15 +268,33 @@ def test_levels_12_tested_edge_and_who_is_tiring():
     assert ask("LEVELS-12", h, bars_from_closes(base + [7700.0 + 0.1 * (i % 2) for i in range(30)], wick=0.1), today_ctx=ctx) == "no tested edge"
 
 
+def test_levels_12_compares_the_tests_mean_volume_per_bar_not_their_totals():
+    """A four-bar latest test at 900 a bar against a three-bar first one at 1000: lighter per bar though heavier in total."""
+    h = MarketHistory()
+    base = [7700.0] * 30 + [7720.0] + [7708.0] * 59
+    first_test = [7719.0, 7721.0, 7712.0, 7705.0, 7708.0]
+    second_test = [7716.9, 7717.5, 7718.0, 7712.0]                                            # shallower, a milder rejection
+    bars = bars_from_closes(base + first_test + [7708.0] * 10 + second_test + [7708.0] * 11, wick=0.5)
+    spy = ctx_bars(DAY, [770.0] * 130, volume=1000.0)
+    for b in spy:
+        if "11:15" <= b["ts"][11:16] <= "11:18":
+            b["volume"] = 900.0
+    assert ask("LEVELS-12", h, bars, "11:30", today_ctx={"SPY": spy}) == "buyers tiring"
+    still_testing = bars_from_closes(base + first_test + [7708.0] * 21 + second_test, wick=0.5)   # the latest test runs to the read
+    assert ask("LEVELS-12", h, still_testing, "11:30", today_ctx={"SPY": [dict(b, volume=900.0 if b["ts"][11:16] >= "11:26" else 1000.0) for b in spy]}) == "buyers tiring"
+
+
 # ---------------------------------------------------------------- the diary: walls and the pin
 
-def diary(day: str, call_wall: float, put_wall: float, magnet: float) -> list[dict]:
-    return [{"ts": (at(9, 31, day) + timedelta(minutes=i)).isoformat(), "call_wall": call_wall, "put_wall": put_wall,
-             "call_wall_tenor": call_wall, "put_wall_tenor": put_wall, "magnet": magnet, "atm_iv": 0.15} for i in range(390)]
+def diary(day: str, call_wall: float, put_wall: float, magnet: float, far: float = 0.0) -> list[dict]:
+    """A day's diary rows: the near gamma walls at ``call_wall`` / ``put_wall``, the open-interest walls ``far`` points beyond."""
+    return [{"ts": (at(9, 31, day) + timedelta(minutes=i)).isoformat(), "call_wall": call_wall + far, "put_wall": put_wall - far,
+             "call_wall_tenor": call_wall + far, "put_wall_tenor": put_wall - far, "call_wall_gamma": call_wall, "put_wall_gamma": put_wall,
+             "magnet": magnet, "atm_iv": 0.15, "gex_source": "native"} for i in range(390)]
 
 
 def test_options_04_wall_touch_held_or_broke():
-    h = MarketHistory(diary_rows=diary(DAY, 7750.0, 7650.0, 7700.0))
+    h = MarketHistory(diary_rows=diary(DAY, 7750.0, 7650.0, 7700.0, far=100.0))      # the open-interest walls 100 points out: never read
     touched_held = bars_from_closes([7700.0] * 100 + [7748.0] * 5 + [7730.0] * 15, wick=0.5)
     assert ask("OPTIONS-04", h, touched_held) == "held at call wall"
     assert ask("OPTIONS-04", h, bars_from_closes([7700.0] * 100 + [7748.0] * 5 + [7760.0] * 15, wick=0.5)) == "broke call wall"
@@ -256,18 +309,29 @@ def test_options_06_pin_holding_stretching_or_broke_loose():
     assert ask("OPTIONS-06", h, orbit) == "holding"
     stretched = bars_from_closes([7700.0 + 2.0 * ((i // 5) % 2 * 2 - 1) for i in range(100)] + [7700.0 + 0.5 * i for i in range(20)])
     assert ask("OPTIONS-06", h, stretched) == "stretching"
+    back = bars_from_closes([7700.0 + 2.0 * ((i // 5) % 2 * 2 - 1) for i in range(100)] + [7700.0 + 0.5 * i for i in range(19)] + [7702.5])
+    assert ask("OPTIONS-06", h, back) == "holding"                       # wide earlier in the swing, but 2.5 points off the pin now
     assert ask("OPTIONS-06", h, bars_from_closes([7700.0 + 2.0 * ((i // 5) % 2 * 2 - 1) for i in range(100)] + [7760.0] * 20)) == "broke loose"
     assert ask("OPTIONS-06", h, bars_from_closes(closes(120, 7700.0, step=0.5))) == "not pinned"
 
 
-def test_options_08_quote_width_against_the_same_minute():
-    sweeps = {d: [((at(9, 31, d) + timedelta(minutes=i)).isoformat(), 0.10 + 0.01 * (k % 5)) for i in range(390)] for k, d in enumerate(DAYS)}
-    today = [((at(9, 31, DAY) + timedelta(minutes=i)).isoformat(), 0.30) for i in range(120)]
+def test_options_08_quote_width_against_the_same_minute_and_bucket():
+    sweeps = {d: [((at(9, 31, d) + timedelta(minutes=i)).isoformat(), 0.10 + 0.01 * (k % 5), "d25_40") for i in range(390)] for k, d in enumerate(DAYS)}
+    today = [((at(9, 31, DAY) + timedelta(minutes=i)).isoformat(), 0.30, "d25_40") for i in range(120)]
     h = MarketHistory(quote_sweeps_by_day={**sweeps, DAY: today})
     assert ask("OPTIONS-08", h, []) == "very wide"
-    h.quote_sweeps_by_day[DAY] = [(ts, 0.05) for ts, _ in today]
+    h.quote_sweeps_by_day[DAY] = [(ts, 0.05, "d25_40") for ts, _, _ in today]
     assert ask("OPTIONS-08", h, []) == "tight"
+    h.quote_sweeps_by_day[DAY] = [(ts, 0.05, "d10_25") for ts, _, _ in today]
+    assert ask("OPTIONS-08", h, []) is None                              # no prior session quoted the stand-in bucket at this minute
     assert ask("OPTIONS-08", MarketHistory(quote_sweeps_by_day={DAY: today}), []) is None
+
+
+def test_options_08_counts_a_tie_with_the_usual_tick_as_half():
+    """Whole ticks: on a 0.10 day against priors mostly at 0.10 a strict rank would read tight; ties count half."""
+    sweeps = {d: [((at(9, 31, d) + timedelta(minutes=i)).isoformat(), 0.20 if k == 0 else 0.10, "d25_40") for i in range(390)] for k, d in enumerate(DAYS)}
+    today = [((at(9, 31, DAY) + timedelta(minutes=i)).isoformat(), 0.10, "d25_40") for i in range(120)]
+    assert ask("OPTIONS-08", MarketHistory(quote_sweeps_by_day={**sweeps, DAY: today}), []) == "normal"
 
 
 # ---------------------------------------------------------------- breadth, the heavyweights and the weights' date
@@ -293,17 +357,12 @@ def test_breadth_07_largest_pull_beyond_spx():
     _, calm = feed_day(DAY, seed=0)
     assert ask("BREADTH-07", h, flat, today_ctx=calm) == "small"
     _, shock = feed_day(DAY, seed=0, extra={"NVDA": [180.0] * 90 + [180.0 + 0.4 * i for i in range(30)]})
-    assert ask("BREADTH-07", h, flat, today_ctx=shock) == "large up, alone"
+    assert ask("BREADTH-07", h, flat, today_ctx=shock) == "large up"
     assert ask("BREADTH-07", history(index_weights=weights_doc("2026-09-19")), flat, today_ctx=shock) is None
 
 
-def test_breadth_08_and_09_leader_fading_and_in_play():
+def test_breadth_09_heavyweight_in_play():
     h = history(index_weights=weights_doc(DAY))
-    day_up = bars_from_closes(closes(120, 7700.0, step=0.1))
-    _, ctx = feed_day(DAY, seed=0, extra={"NVDA": [180.0 + 0.2 * i for i in range(90)] + [197.8 - 0.3 * i for i in range(30)]})
-    assert ask("BREADTH-08", h, day_up, today_ctx=ctx) == "fading"
-    _, ctx = feed_day(DAY, seed=0, extra={"NVDA": [180.0 + 0.2 * i for i in range(120)]})
-    assert ask("BREADTH-08", h, day_up, today_ctx=ctx) == "kept leading"
     spx_flat, ctx_flat = carried(h)
     assert ask("BREADTH-09", h, spx_flat, today_ctx=ctx_flat) == "none in play"
     _, gapped = feed_day(DAY, seed=0, extra={"NVDA": [200.0] * 120})
@@ -320,8 +379,11 @@ def test_breadth_02_and_03_advance_decline_beyond_the_day_move_and_the_new_extre
     rising = bars_from_closes(closes(120, 7700.0, step=0.5))
     _, confirm = feed_day(DAY, seed=0, extra={"$ADVN": [1000.0 + 10.0 * i for i in range(120)], "$DECN": [1000.0] * 120,
                                               "IWM": [230.0 + 0.1 * i for i in range(120)], "NVDA": [180.0 + 0.1 * i for i in range(120)]})
-    assert ask("BREADTH-03", h, rising, today_ctx=confirm) in ("all confirm", "some confirm")
-    assert ask("BREADTH-03", h, flat, today_ctx=confirm) == "no new extreme"
+    assert ask("BREADTH-03", h, rising, today_ctx=confirm) == "new high, confirmed"
+    _, against = feed_day(DAY, seed=0, extra={"$ADVN": [2000.0 - 10.0 * i for i in range(120)], "$DECN": [1000.0] * 120,
+                                              "IWM": [230.0 - 0.1 * i for i in range(120)], "NVDA": [180.0 - 0.1 * i for i in range(120)]})
+    assert ask("BREADTH-03", h, rising, today_ctx=against) == "new high, not confirmed"
+    assert ask("BREADTH-03", h, flat, today_ctx=confirm) is None                     # no new extreme: LEVELS-05's
 
 
 # ---------------------------------------------------------------- flow
@@ -331,18 +393,25 @@ def test_flow_02_04_07_and_sentiment_02_on_spy_volume_and_the_funds():
     _, ctx = feed_day(DAY, seed=0)
     up = bars_from_closes(closes(120, 7700.0, step=0.5))
     ctx["SPY"] = ctx_bars(DAY, closes(120, 770.0, step=0.05), volume=1000.0)
-    assert ask("FLOW-02", h, up, today_ctx=ctx) == "confirmed"                            # every minute's volume is with the move
+    assert ask("FLOW-02", h, up, today_ctx=ctx) == "confirmed up"                         # every minute's volume is with the move
     ctx["SPY"] = ctx_bars(DAY, closes(120, 770.0), volume=1.0)
     assert ask("FLOW-04", h, up, today_ctx=ctx) == "easy travel on light volume"
     ctx["SPY"] = ctx_bars(DAY, closes(120, 770.0), volume=1e6)
     assert ask("FLOW-04", h, up, today_ctx=ctx) == "heavy with little travel"
-    _, same = feed_day(DAY, seed=0, extra={s: closes(120, p, step=p * 0.001) for s, p in (("SPY", 770.0), ("QQQ", 600.0), ("IWM", 230.0))})
-    assert ask("FLOW-07", h, up, today_ctx=same) == "same way"
-    _, conflict = feed_day(DAY, seed=0, extra={"SPY": closes(120, 770.0, step=0.77), "QQQ": closes(120, 600.0, step=-0.6), "IWM": closes(120, 230.0, step=0.23)})
-    assert ask("FLOW-07", h, up, today_ctx=conflict) == "in conflict"
+    ctx["SPY"] = [dict(b, volume=1e6 if i % 2 else 0.0) for i, b in enumerate(ctx["SPY"])]          # volume on half the minutes: a feed hole
+    assert ask("FLOW-04", h, up, today_ctx=ctx) is None
+    h.today_quote_bars = {s: ctx_bars(DAY, closes(120, p, step=p * 0.001)) for s, p in (("SPY", 770.0), ("QQQ", 600.0), ("IWM", 230.0))}
+    assert ask("FLOW-07", h, up, today_ctx=feed_day(DAY, seed=0)[1]) == "same way up"         # the day's quotes, not its bars
+    h.today_quote_bars = {"SPY": ctx_bars(DAY, closes(120, 770.0, step=0.77)), "QQQ": ctx_bars(DAY, closes(120, 600.0, step=-0.6)),
+                          "IWM": ctx_bars(DAY, closes(120, 230.0, step=0.23))}
+    assert ask("FLOW-07", h, up, today_ctx=feed_day(DAY, seed=0)[1]) == "in conflict"
+    h.today_quote_bars = {}
+    assert ask("FLOW-07", h, up, today_ctx=feed_day(DAY, seed=0)[1]) is None
     _, bulls = feed_day(DAY, seed=0, extra={"SPXL": [200.0] * 120})
     bulls["SPXL"] = ctx_bars(DAY, [200.0] * 120, volume=1e6)
     assert ask("SENTIMENT-02", h, bars_from_closes([7700.0] * 120), today_ctx=bulls) == "high"
+    h.today_context_from_quotes = True                                                         # a live read: the funds' volume is snapshots
+    assert ask("SENTIMENT-02", h, bars_from_closes([7700.0] * 120), today_ctx=bulls) is None
 
 
 def test_flow_06_volume_profile_nodes():
@@ -351,38 +420,28 @@ def test_flow_06_volume_profile_nodes():
     for d in DAYS[-5:]:
         h.spx_bars_by_day[d] = bars_from_closes([p for p, n in minutes for _ in range(n)], day=d)
         h.context_bars_by_day[d]["SPY"] = ctx_bars(d, [770.0] * 390, volume=1000.0)
-    assert ask("FLOW-06", h, bars_from_closes([7701.0] * 120)) == "high-volume node"
-    assert ask("FLOW-06", h, bars_from_closes([7731.0] * 120)) == "low-volume node, next node above"
-    assert ask("FLOW-06", h, bars_from_closes([7711.0] * 120)) == "between, next node below"
+    assert ask("FLOW-06", h, bars_from_closes([7701.0] * 120)) == "at a node"
+    assert ask("FLOW-06", h, bars_from_closes([7731.0] * 120)) == "node above"
+    assert ask("FLOW-06", h, bars_from_closes([7711.0] * 120)) == "node below"
+    assert ask("FLOW-06", h, bars_from_closes([7726.0] * 120)) == "at a node"                 # 25 points to either node: a tie
+    assert ask("FLOW-06", h, bars_from_closes([7761.0] * 120)) == "outside the profile, above"
+    assert ask("FLOW-06", h, bars_from_closes([7690.0] * 120)) == "outside the profile, below"
 
 
 # ---------------------------------------------------------------- macro
 
-def test_macro_01_02_04_05_06_07_on_the_outside_markets():
+def test_macro_01_02_07_on_the_outside_markets():
     h = history()
     flat = bars_from_closes([7700.0] * 120)
     _, risk_off = feed_day(DAY, seed=0, extra={"/ZN": [112.0] * 120, "GLD": [306.0] * 120, "HYG": [78.0] * 120})
-    assert ask("MACRO-04", h, flat, today_ctx=risk_off) == "risk-off"
-    _, risk_on = feed_day(DAY, seed=0, extra={"/ZN": [108.0] * 120, "GLD": [294.0] * 120, "HYG": [82.0] * 120})
-    assert ask("MACRO-04", h, flat, today_ctx=risk_on) == "risk-on"
+    assert ask("MACRO-02", h, flat, today_ctx=risk_off) in ("far up", "up", "down", "far down", "nowhere")
     spx_flat, ctx_flat = carried(h)
-    assert ask("MACRO-04", h, spx_flat, today_ctx=ctx_flat) == "quiet"
-    _, confirm = feed_day(DAY, seed=0, extra={"/ZN": [112.0] * 120, "XHB": [104.0] * 120, "IWM": [236.0] * 120, "KRE": [57.0] * 120})
-    assert ask("MACRO-05", h, flat, today_ctx=confirm) == "confirm"
-    _, contradict = feed_day(DAY, seed=0, extra={"/ZN": [112.0] * 120, "XHB": [96.0] * 120, "IWM": [224.0] * 120, "KRE": [63.0] * 120})
-    assert ask("MACRO-05", h, flat, today_ctx=contradict) == "contradict"
-    assert ask("MACRO-05", h, spx_flat, today_ctx=ctx_flat) == "nothing"
-    assert ask("MACRO-02", h, flat, today_ctx=risk_off) in ("up", "down", "nowhere")
+    assert ask("MACRO-02", h, spx_flat, today_ctx=ctx_flat) == "nowhere"
     _, busy = feed_day(DAY, seed=0)
     busy["/ZN"] = ctx_bars(DAY, [110.0] * 120, volume=1e6)
     assert ask("MACRO-07", h, flat, today_ctx=busy) == "busy"
     busy["/ZN"] = ctx_bars(DAY, [110.0] * 120, volume=1.0)
     assert ask("MACRO-07", h, flat, today_ctx=busy) == "quiet"
-    spx_path = closes(120, 7700.0, noise=2.0, seed=7)
-    _, linked = feed_day(DAY, seed=0, extra={"/ZN": [110.0 * (1 + (p - 7700.0) / 7700.0) for p in spx_path]})
-    assert ask("MACRO-06", h, bars_from_closes(spx_path), today_ctx=linked) == "together, stronger than usual"
-    _, opposite = feed_day(DAY, seed=0, extra={"/ZN": [110.0 * (1 - (p - 7700.0) / 7700.0) for p in spx_path]})
-    assert ask("MACRO-06", h, bars_from_closes(spx_path), today_ctx=opposite) == "opposite, stronger than usual"
     assert ask("MACRO-01", h, flat, today_ctx=feed_day(DAY, seed=0)[1]) in ("up", "down", "no clear lean")
 
 
@@ -393,18 +452,6 @@ def calendar(tmp_path: Path, rows: list[dict], covers_from: str = "2026-09-01", 
     path = tmp_path / f"events_{len(list(tmp_path.glob('events_*.json')))}.json"
     path.write_text(json.dumps({"covers_from": covers_from, "pre_open_covers_from": covers_from, "covers_through": covers_through, "events": rows}))
     return str(path)
-
-
-def test_events_01_due_under_way_just_out_or_nothing(tmp_path):
-    rows = [{"date": DAY, "time_et": "12:00", "kind": "FOMC", "tier": 1}, {"date": DAY, "time_et": "10:00", "kind": "ISM_SERVICES", "tier": "data_10am"},
-            {"date": DAY, "time_et": "13:00", "end_et": "14:00", "kind": "FED_GOVERNOR_SPEECH", "tier": "fed_speaker"}]
-    h = MarketHistory(calendar_path=calendar(tmp_path, rows))
-    assert ask("EVENTS-01", h, [], "11:30") == "due within 60 minutes, tier 1"
-    assert ask("EVENTS-01", h, [], "09:35") == "due within 60 minutes, lower tier"
-    assert ask("EVENTS-01", h, [], "10:05") == "just out"
-    assert ask("EVENTS-01", h, [], "13:30") == "under way"
-    assert ask("EVENTS-01", h, [], "15:00") == "nothing"
-    assert ask("EVENTS-01", MarketHistory(calendar_path=calendar(tmp_path, rows, covers_through="2026-09-17")), [], "11:30") is None
 
 
 def test_events_02_fixed_tier_map(tmp_path):
@@ -419,28 +466,37 @@ def test_events_02_fixed_tier_map(tmp_path):
     assert ask("EVENTS-02", MarketHistory(calendar_path=calendar(tmp_path, rows)), []) == "medium-tier day"
     assert ask("EVENTS-02", MarketHistory(calendar_path=calendar(tmp_path, [])), []) == "ordinary"
     assert ask("EVENTS-02", MarketHistory(calendar_path=calendar(tmp_path, [], covers_from="2026-10-01")), []) is None
+    # one neighbour past the calendar: it could be a high-tier day, so the read is not medium or ordinary
+    rows = [{"date": DAY, "time_et": "10:00", "kind": "ISM_SERVICES", "tier": "data_10am"}]
+    assert ask("EVENTS-02", MarketHistory(calendar_path=calendar(tmp_path, rows, covers_through=DAY)), []) is None
+    assert ask("EVENTS-02", MarketHistory(calendar_path=calendar(tmp_path, rows, covers_from=DAY)), []) is None
+
+
+PREMARKET = [{"row_ts": f"{DAY}T09:28:00-04:00", "lane": "premarket", "sigma": 60.0}]      # the normal-day sigma, as the premarket lane stamps it
 
 
 def test_events_03_follow_through_after_the_latest_release(tmp_path):
-    rows = [{"date": DAY, "time_et": "10:00", "kind": "ISM_SERVICES", "tier": "data_10am"}]
-    h = MarketHistory(calendar_path=calendar(tmp_path, rows))
+    rows = [{"date": DAY, "time_et": "10:00", "kind": "ISM_SERVICES", "tier": "data_10am"},
+            {"date": DAY, "time_et": "10:30", "end_et": "10:45", "kind": "FED_GOVERNOR_SPEECH", "tier": "fed_speaker"}]
+    h = MarketHistory(calendar_path=calendar(tmp_path, rows), premarket_reads=PREMARKET)
     before, reaction = [7700.0] * 30, [7700.0 + 1.0 * i for i in range(1, 16)]              # 10:00 .. 10:14 rise 15 points
-    assert ask("EVENTS-03", h, bars_from_closes(before + reaction + [7725.0] * 50), "11:05") == "extended"
-    assert ask("EVENTS-03", h, bars_from_closes(before + reaction + [7714.0] * 50), "11:05") == "held"
-    assert ask("EVENTS-03", h, bars_from_closes(before + reaction + [7704.0] * 50), "11:05") == "faded"
-    assert ask("EVENTS-03", h, bars_from_closes(before + reaction + [7690.0] * 50), "11:05") == "reversed"
+    assert ask("EVENTS-03", h, bars_from_closes(before + reaction + [7725.0] * 50), "11:05") == "up then extended"   # 10 points past: > 0.05 x 60
+    assert ask("EVENTS-03", h, bars_from_closes(before + reaction + [7717.0] * 50), "11:05") == "up then held/faded"  # 2 points past: < 3
+    assert ask("EVENTS-03", h, bars_from_closes(before + reaction + [7704.0] * 50), "11:05") == "up then held/faded"
+    assert ask("EVENTS-03", h, bars_from_closes(before + reaction + [7690.0] * 50), "11:05") == "reversed down"
+    falling = [7700.0 - 1.0 * i for i in range(1, 16)]
+    assert ask("EVENTS-03", h, bars_from_closes(before + falling + [7710.0] * 50), "11:05") == "reversed up"
     assert ask("EVENTS-03", h, bars_from_closes(before + reaction), "10:10") == "no release"           # its first 15 minutes are not over
-    assert ask("EVENTS-03", h, bars_from_closes(before + reaction + [7725.0] * 150), "12:30") == "no release"   # digested
+    assert ask("EVENTS-03", h, bars_from_closes(before + reaction + [7725.0] * 150), "12:30") == "no release"   # digested; Fed remarks are no release
+    assert ask("EVENTS-03", MarketHistory(calendar_path=h.calendar_path), bars_from_closes(before + reaction + [7725.0] * 50), "11:05") is None   # no ruler
 
 
-def test_events_05_rates_surprise_against_prior_releases(tmp_path):
-    rows = [{"date": d, "time_et": "10:00", "kind": "ISM_SERVICES", "tier": "data_10am"} for d in DAYS + (DAY,)]
-    h = history(calendar_path=calendar(tmp_path, rows))
-    _, big = feed_day(DAY, seed=0, extra={"/ZN": [110.0] * 30 + [109.0] * 90})
-    assert ask("EVENTS-05", h, bars_from_closes([7700.0] * 120), "10:20", today_ctx=big) == "large, yields up"
-    _, small = feed_day(DAY, seed=0, extra={"/ZN": [110.0] * 120})
-    assert ask("EVENTS-05", h, bars_from_closes([7700.0] * 120), "10:20", today_ctx=small) == "small"
-    assert ask("EVENTS-05", h, bars_from_closes([7700.0] * 120), "10:05", today_ctx=small) == "no release"
+def test_events_03_a_release_at_the_open_starts_from_the_first_bars_open(tmp_path):
+    rows = [{"date": DAY, "time_et": "09:30", "kind": "ISM_SERVICES", "tier": "data_10am"}]
+    h = MarketHistory(calendar_path=calendar(tmp_path, rows), premarket_reads=PREMARKET)
+    bars = bars_from_closes([7710.0 + 1.0 * i for i in range(15)] + [7740.0] * 30)
+    bars[0]["open"] = 7700.0
+    assert ask("EVENTS-03", h, bars, "10:15") == "up then extended"
 
 
 # ---------------------------------------------------------------- the month turn
@@ -458,6 +514,9 @@ def test_session_02_month_turn_from_the_daily_closes():
         d += timedelta(days=1)
     h = MarketHistory(daily_closes={"$SPX": rows_spx, "TLT": rows_tlt})
     assert MARKET_ANSWERERS["SESSION-02"](record("2026-09-30T11:00:00-04:00"), [], h, "2026-09-30", "11:00") == "sell big"
+    crash = MarketHistory(daily_closes={"$SPX": [dict(r, close=50.0) if r["day"] == "2026-09-29" else r for r in rows_spx], "TLT": rows_tlt})
+    both = [MARKET_ANSWERERS["SESSION-02"](record(f"{d}T11:00:00-04:00"), [], crash, d, "11:00") for d in ("2026-09-29", "2026-09-30")]
+    assert both == ["sell big", "sell big"]          # the month-end window's gap is measured once, through 09-28: 09-29's close does not move it
     assert MARKET_ANSWERERS["SESSION-02"](record("2026-10-01T11:00:00-04:00"), [], h, "2026-10-01", "11:00") == "new-month inflow"
     assert MARKET_ANSWERERS["SESSION-02"](record(f"{DAY}T11:00:00-04:00"), [], h, DAY, "11:00") is None
 
@@ -471,8 +530,8 @@ def test_every_market_answer_is_in_its_options_and_the_unfed_questions_are_silen
     row_ts = f"{DAY}T11:30:30-04:00"
     answers = answer_code_features(record(row_ts, market_context={"$ADVN": {"value": 2000.0}, "$DECN": {"value": 900.0}}), bars_up_to(spx, row_ts), h)
     assert all(a is None or a in CATALOG[q]["options"] for q, a in answers.items())
-    assert answers["OPTIONS-12"] is None and answers["FLOW-09"] is None
-    assert sum(answers[q] is not None for q in MARKET_ANSWERERS) >= 20
+    assert set(answers) == set(CATALOG) and not {"OPTIONS-12", "FLOW-09", "MACRO-04", "EVENTS-05", "BREADTH-11"} & set(answers)
+    assert sum(answers[q] is not None for q in MARKET_ANSWERERS) >= 18
 
 
 # ---------------------------------------------------------------- the loaders
@@ -496,16 +555,18 @@ def test_quotes_as_bars_carry_the_minute_volume_from_the_cumulative_count(tmp_pa
              {"ts": "2026-10-06T09:32:10-04:00", "quotes": {"SPY": {"last": 770.5, "volume": 1600}, "/ZN": {"last": None}}, "bars": {}},
              {"ts": "bad"}, {"ts": "2026-10-06T09:33:10-04:00", "quotes": {"SPY": {"last": 770.2, "volume": 1500}}, "bars": {}}]
     (folder / "2026-10-06.jsonl").write_text("\n".join(json.dumps(l) for l in lines) + "\n")
-    bars = inputs.load_todays_context_bars(tmp_path, "2026-10-06")
+    bars = inputs.load_context_quotes_as_bars(tmp_path, "2026-10-06")
     assert [b["volume"] for b in bars["SPY"]] == [0.0, 600.0, 0.0] and bars["$ADVN"][0]["close"] == 1200.0 and "/ZN" not in bars
 
 
 def test_diary_and_sweeps_loaders_tolerate_bad_lines(tmp_path):
     (tmp_path / "reversion").mkdir()
-    rows = [{"ts": "2026-10-06T09:31:00-04:00", "call_wall": 7750.0, "gex_views": {"magnet": 7700.0}}, {"no": "ts"}, {"ts": "2026-10-06T09:32:00-04:00", "gex_views": None}]
+    rows = [{"ts": "2026-10-06T09:31:00-04:00", "call_wall": 7750.0, "gex_source": "spy_proxy×10.0361",
+             "gex_views": {"magnet": 7700.0, "call_wall_gamma": 7725.0, "put_wall_gamma": 7720.0}}, {"no": "ts"}, {"ts": "2026-10-06T09:32:00-04:00", "gex_views": None}]
     (tmp_path / "reversion" / "2026-10-06.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\nnot json\n")
     diary = inputs.load_diary_rows(tmp_path, "2026-10-06")
     assert [r["magnet"] for r in diary] == [7700.0, None] and diary[0]["call_wall"] == 7750.0 and diary[1]["put_wall"] is None
+    assert (diary[0]["call_wall_gamma"], diary[0]["put_wall_gamma"], diary[0]["gex_source"]) == (7725.0, 7720.0, "spy_proxy×10.0361")
     raw = tmp_path / "lob_flow" / "raw"
     (raw / "2026-10-05").mkdir(parents=True)
     (raw / "2026-10-06").mkdir()
@@ -513,18 +574,19 @@ def test_diary_and_sweeps_loaders_tolerate_bad_lines(tmp_path):
     (raw / "2026-10-06" / "sweeps.jsonl").write_text(json.dumps(sweep) + "\n{bad\n" + json.dumps({"gap": True, "ts": "2026-10-06T10:01:03-04:00"}) + "\n")
     with gzip.open(raw / "2026-10-05" / "sweeps.jsonl.gz", "wt") as f:
         f.write(json.dumps({**sweep, "ts": "2026-10-05T10:00:03-04:00"}) + "\n")
-    assert inputs.load_quote_sweeps(tmp_path, "2026-10-06") == [("2026-10-06T10:00:03-04:00", 0.1)]
+    assert inputs.load_quote_sweeps(tmp_path, "2026-10-06") == [("2026-10-06T10:00:03-04:00", 0.1, "d25_40")]
     assert list(inputs.load_quote_sweeps_by_day(tmp_path, "2026-10-06")) == ["2026-10-05"]
 
 
 def test_market_history_caches_the_prior_sessions_for_the_day_and_reads_the_day_fresh(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(inputs, "load_context_bars_by_day", lambda *a, **k: calls.append("prior") or {"2026-10-05": {"SPY": []}})
-    monkeypatch.setattr(inputs, "load_todays_context_bars", lambda *a, **k: calls.append("today") or {"SPY": [{"ts": "2026-10-06T09:30:00-04:00", "open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0, "volume": 0.0}]})
+    monkeypatch.setattr(inputs, "load_context_quotes_as_bars", lambda *a, **k: calls.append("today") or {"SPY": [{"ts": "2026-10-06T09:30:00-04:00", "open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0, "volume": 0.0}]})
     inputs._PRIOR_SESSIONS_CACHE.clear()
     first = inputs.load_market_history(tmp_path, "live", "2026-10-06")
     second = inputs.load_market_history(tmp_path, "live", "2026-10-06")
     assert calls.count("prior") == 1 and calls.count("today") == 2
+    assert first.today_context_from_quotes and first.today_quote_bars == {"SPY": first.context_bars_by_day["2026-10-06"]["SPY"]}
     assert set(first.context_bars_by_day) == set(second.context_bars_by_day) == {"2026-10-05", "2026-10-06"}
     assert all(rows == [] for rows in first.daily_closes.values()) and first.index_weights is None and first.diary_rows == []
     inputs._PRIOR_SESSIONS_CACHE.clear()
@@ -553,7 +615,7 @@ def test_trend_07_and_breadth_03_read_closes_only_so_live_quotes_match_saved_bar
     ctx["IWM"] = [dict(b, high=b["close"] + 3.0) for b in ctx["IWM"]]                              # a wick above every close
     saved = ask("BREADTH-03", h, rising, today_ctx=ctx)
     live = ask("BREADTH-03", h, rising, today_ctx={s: as_quotes(b) for s, b in ctx.items()})
-    assert saved == live == "all confirm"
+    assert saved == live == "new high, confirmed"
 
 
 def test_breadth_02_and_03_use_the_derived_advance_decline_only():
@@ -580,4 +642,95 @@ def test_the_option_spread_falls_back_to_the_next_delta_bucket_when_the_near_one
             {"ts": "2026-10-06T15:00:00-04:00", "buckets": {"d00_10": {"spread": 0.3}}},
             {"ts": "2026-10-06T15:30:00-04:00", "buckets": {}}]
     (folder / "sweeps.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
-    assert [s for _, s in inputs.load_quote_sweeps(tmp_path, "2026-10-06")] == [1.5, 0.8, 0.3]
+    assert [(s, b) for _, s, b in inputs.load_quote_sweeps(tmp_path, "2026-10-06")] == [(1.5, "d25_40"), (0.8, "d10_25"), (0.3, "d00_10")]
+
+
+# ---------------------------------------------------------------- VOLATILITY-18: a compressed range, coiled or resting
+
+WIDE_THEN_QUIET = [7700.0] * 60 + [7700.0 + (i % 2) * 8.0 for i in range(30)] + [7708.0 - (i % 2) * 0.2 for i in range(30)]
+IV_FLAT = {"iv": {"trend_30min": "over the last 30 minutes at-the-money implied volatility stayed within the 0.8 vol point flat band, changing +0.1 vol points"}}
+IV_RISING = {"iv": {"trend_30min": "over the last 30 minutes at-the-money implied volatility rose 1.20 vol points, more than the 0.8 point flat band"}}
+
+
+def test_volatility_18_coiled_or_resting_only_when_the_range_is_compressed(tmp_path):
+    quiet = bars_from_closes(WIDE_THEN_QUIET, wick=0.05)
+    h = history(calendar_path=calendar(tmp_path, []))
+    assert ask("VOLATILITY-04", h, quiet) == "compressed"
+    assert ask("VOLATILITY-18", h, quiet, labels=IV_FLAT) == "resting"                        # nothing underneath
+    assert ask("VOLATILITY-18", h, quiet, labels=IV_RISING) == "coiled"                       # implied volatility trending
+    fomc = history(calendar_path=calendar(tmp_path, [{"date": DAY, "time_et": "12:15", "kind": "FOMC", "tier": 1}]))
+    assert ask("VOLATILITY-18", fomc, quiet, labels=IV_FLAT) == "coiled"                      # the Fed's decision within the hour
+    later = history(calendar_path=calendar(tmp_path, [{"date": DAY, "time_et": "14:00", "kind": "FOMC", "tier": 1}]))
+    assert ask("VOLATILITY-18", later, quiet, labels=IV_FLAT) == "resting"                    # 150 minutes away is not near
+    data = history(calendar_path=calendar(tmp_path, [{"date": DAY, "time_et": "12:00", "kind": "ISM_SERVICES", "tier": "data_10am"}]))
+    assert ask("VOLATILITY-18", data, quiet, labels=IV_FLAT) == "resting"                     # only the ruler-loading events count
+    assert ask("VOLATILITY-18", h, bars_from_closes([7700.0] * 90 + [7700.0 + (i % 2) * 8.0 for i in range(30)], wick=0.05), labels=IV_RISING) is None
+    uncovered = history(calendar_path=calendar(tmp_path, [], covers_from="2026-10-01"))
+    assert ask("VOLATILITY-18", uncovered, quiet) is None                                     # nothing could be measured: no calendar, no label
+
+
+def test_volatility_18_reads_the_ten_year_yields_move_against_the_same_minute(tmp_path):
+    quiet = bars_from_closes(WIDE_THEN_QUIET, wick=0.05)
+    h = history(calendar_path=calendar(tmp_path, []))
+    for k, d in enumerate(DAYS):
+        h.context_bars_by_day[d]["$TNX"] = ctx_bars(d, [41.0 + 0.02 * k] * 390)               # moves of 0 to 0.2 since each prior close
+    h.daily_closes = {"$TNX": [{"day": (date.fromisoformat(DAYS[0]) - timedelta(days=1)).isoformat(), "close": 41.0}]
+                      + [{"day": d, "close": 41.0} for d in DAYS]}
+    _, ctx = feed_day(DAY, seed=0, extra={"$TNX": [43.0] * 120})                             # 20 basis points: the top third
+    assert ask("VOLATILITY-18", h, quiet, today_ctx=ctx, labels=IV_FLAT) == "coiled"
+    _, ctx = feed_day(DAY, seed=0, extra={"$TNX": [41.0] * 120})
+    assert ask("VOLATILITY-18", h, quiet, today_ctx=ctx, labels=IV_FLAT) == "resting"
+
+
+# ---------------------------------------------------------------- the day's SPY volume, and the night's 1-minute bars
+
+def test_the_days_spy_volume_comes_from_the_siege_box_minute_by_minute(tmp_path):
+    (tmp_path / "siege").mkdir()
+    (tmp_path / "siege" / "baseline.json").write_text(json.dumps({"days": {"2026-10-06": {"601": 500, "602": 700, "603": 0}}}))
+    minutes = inputs.load_spy_minute_volumes(tmp_path, "2026-10-06")
+    assert minutes == {601: 500.0, 602: 700.0, 603: 0.0} and inputs.load_spy_minute_volumes(tmp_path, "2026-10-07") == {}
+    quote = lambda hh, mm, ss, last, volume: {"ts": f"2026-10-06T{hh}:{mm}:{ss}-04:00", "open": last, "high": last, "low": last, "close": last, "volume": volume}
+    today = {"SPY": [quote("10", "00", "40", 770.0, 9999.0), quote("10", "01", "50", 771.0, 1.0), quote("10", "03", "05", 772.0, 5.0)],
+             "QQQ": [quote("10", "00", "40", 600.0, 3.0)]}
+    out = inputs.with_siege_spy_volume(today, minutes, "2026-10-06", from_quotes=True)
+    assert [(b["ts"], b["close"], b["volume"]) for b in out["SPY"]] == [("2026-10-06T10:01:00-04:00", 771.0, 500.0),
+                                                                        ("2026-10-06T10:02:00-04:00", 771.0, 700.0),
+                                                                        ("2026-10-06T10:03:00-04:00", 772.0, 0.0)]
+    assert out["QQQ"] == today["QQQ"]
+    assert [b["volume"] for b in inputs.with_siege_spy_volume(today, {}, "2026-10-06", from_quotes=True)["SPY"]] == [0.0, 0.0, 0.0]
+    assert inputs.with_siege_spy_volume(today, {}, "2026-10-06", from_quotes=False) == today        # a saved day keeps its bars
+
+
+def test_the_night_loader_keeps_the_one_minute_bars_only(tmp_path):
+    folder = tmp_path / "spx_jev" / "overnight"
+    folder.mkdir(parents=True)
+    rows = [{"ts": "2026-10-05T18:00:00-04:00", "symbol": "/ES", "session": "overnight", "bar_minutes": 1, "open": 1, "high": 2, "low": 0.5, "close": 1.5},
+            {"ts": "2026-10-05T18:00:00-04:00", "symbol": "/ES", "session": "overnight", "bar_minutes": 5, "open": 1, "high": 9, "low": 0.1, "close": 1.5},
+            {"ts": "2026-10-05T15:59:00-04:00", "symbol": "/ES", "session": "regular", "bar_minutes": 1, "open": 1, "high": 2, "low": 0.5, "close": 1.5}]
+    (folder / "2026-10-06.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    assert [b["high"] for b in inputs.load_night_bars(tmp_path, "2026-10-06")] == [2.0]
+
+
+def test_trend_07_reads_the_same_spy_closes_live_and_after_the_day_is_saved(tmp_path):
+    """Live the day's SPY is its quotes; once saved, its bars, a few cents apart near VWAP. Both paths take the quotes' prices
+    and the siege box's volume, so TREND-07 answers the same (10-07 11:59, 14:00 and 14:31 had flipped)."""
+    day = DAY
+    path = tuple(770.0 + 0.03 * ((i // 7) % 2 * 2 - 1) for i in range(120))               # SPY swinging a few cents round its VWAP
+    lines = [{"ts": f"{day}T{9 + (30 + i) // 60:02d}:{(30 + i) % 60:02d}:40-04:00", "quotes": {"SPY": {"last": p, "volume": 1000 * (i + 1)}}}
+             for i, p in enumerate(path)]
+    ctx = tmp_path / "spx_jev" / "context"
+    (ctx / "bars").mkdir(parents=True)
+    (ctx / f"{day}.jsonl").write_text("".join(json.dumps(l) + "\n" for l in lines))
+    (tmp_path / "siege").mkdir()
+    (tmp_path / "siege" / "baseline.json").write_text(json.dumps({"days": {day: {str(570 + i): 1000 for i in range(120)}}}))
+    inputs._PRIOR_SESSIONS_CACHE.clear()
+    live = inputs.load_market_history(tmp_path, "live", day).context_bars_by_day[day]["SPY"]
+    saved = [{"ts": f"{day}T{9 + (30 + i) // 60:02d}:{(30 + i) % 60:02d}:00-04:00", "bars": {"SPY": {"ts": f"{day}T{9 + (30 + i) // 60:02d}:{(30 + i) % 60:02d}:00-04:00",
+              "open": p, "high": p, "low": p, "close": p - 0.04, "volume": 1000}}} for i, p in enumerate(path)]
+    (ctx / "bars" / f"{day}.jsonl").write_text("".join(json.dumps(l) + "\n" for l in saved))
+    after = inputs.load_market_history(tmp_path, "live", day).context_bars_by_day[day]["SPY"]
+    inputs._PRIOR_SESSIONS_CACHE.clear()
+    assert live == after and live[0]["volume"] == 1000.0
+    h = history()
+    answers = [ask("TREND-07", h, bars_from_closes([7700.0] * 120), today_ctx={**feed_day(DAY, seed=0)[1], "SPY": spy}) for spy in (live, after)]
+    assert answers[0] == answers[1] and answers[0] is not None

@@ -24,17 +24,18 @@ import statistics
 from datetime import date, datetime, timedelta
 
 from .. import events
+from ..cuts import THIRD_HI
 from ..index_weights import pick as pick_weights
+from ..labels.vol import LOADING_EVENTS
 from ..sessions import is_trading_day, next_trading_day, previous_trading_day
-from .code_features import (MIN_HISTORY_SESSIONS, MarketHistory, _reference_levels, hhmm_of, night_bars_up_to, rank_fraction,
-                            third_of, trailing_days)
+from .code_features import (MIN_HISTORY_SESSIONS, MarketHistory, _reference_levels, flat_labels, hhmm_of, night_bars_up_to,
+                            rank_fraction, third_of, trailing_days)
 
 SPX = "$SPX"                          # the index: its own minute bars, under this name in a DayView
 SPY, QQQ, IWM, ES, ZN = "SPY", "QQQ", "IWM", "/ES", "/ZN"
-VIX, VIX9D = "$VIX", "$VIX9D"
+VIX, VIX9D, TNX = "$VIX", "$VIX9D", "$TNX"
 ADVANCING, DECLINING, ADD = "$ADVN", "$DECN", "$ADD"
 MACRO_COMPLEX = (ZN, "HYG", "USO", "GLD")              # MACRO-01: bonds (the ten-year future), high-yield credit, oil, gold; /6E dropped
-TONE_SYMBOLS = (ZN, "GLD", "HYG")                      # MACRO-04: up = risk-off, risk-off, risk-on
 BULL_FUNDS, BEAR_FUNDS = ("SPXL", "TQQQ"), ("SPXS", "SQQQ")
 SHARE_CLASSES = {"GOOG": "GOOGL"}                      # a share class the feed does not carry, summed into the one it does
 MEGACAP_COUNT = 8
@@ -59,20 +60,22 @@ WALL_TOUCH_SIGMA = 0.10                                # OPTIONS-04: the label's
 PIN_CROSSINGS = 3                                      # OPTIONS-06
 OPTION_WIDTH_MINUTES = 5                               # OPTIONS-08: the median spread of the last five sweeps
 EXTREME_TOLERANCE = 0.0005                             # BREADTH-03: IWM's close within 0.05% of its own session extreme (closes)
-VWAP_TOUCH_SHARE = 0.0001                              # TREND-07: a SPY close within 0.01% of its VWAP touches it
 FIVE_MINUTE_MARKS = [f"{h:02d}:{m:02d}" for h in range(9, 17) for m in range(0, 60, 5) if (h, m) > (9, 30) and (h, m) <= (16, 0)]
-FOLLOW_COUNT = 4                                       # BREADTH-07: at least four of the other seven names moved the same way beyond SPX
-LINK_TOGETHER = 0.2                                    # MACRO-06: a minute-by-minute link past +-0.2 is together / opposite
-MIN_LINK_MINUTES = 20                                  # MACRO-06
 PROFILE_BIN = 5.0                                      # FLOW-06: SPX price bins of 5 points
 PROFILE_SESSIONS = 5
-NODE_HIGH_SHARE, NODE_LOW_SHARE = 0.75, 0.25           # FLOW-06: a bin at or above the 75th percentile of bin volume is a high-volume node, at or below the 25th low
-EVENT_WINDOW_MIN = 60                                  # EVENTS-01: the longer graded horizon
-REACTION_MIN = 15                                      # EVENTS-01/03/05: a release's first reaction (labels/events_shocks.py)
-DIGEST_MIN = 120                                       # EVENTS-03/05: a release older than this is digested
-REACTION_EXTEND_SIGMA = 0.05                           # EVENTS-03: past the first reaction by this share of sigma is extended (cuts.py)
-GIVE_BACK_HALF = 0.5
+NODE_HIGH_SHARE = 0.75                                 # FLOW-06: a bin at or above the 75th percentile of bin volume is a high-volume node
+MIN_VOLUME_MINUTES = 24                                # FLOW-04: fewer of the 30 minutes with SPY volume than this is a feed hole
+REACTION_MIN = 15                                      # EVENTS-03: a release's first reaction (labels/events_shocks.py)
+DIGEST_MIN = 120                                       # EVENTS-03: a release older than this is digested
+REACTION_EXTEND_SIGMA = 0.05                           # EVENTS-03: past the first reaction by this share of the normal-day sigma is extended (cuts.py)
 LAST_HOUR_FROM = "15:00"                               # VOLATILITY-14: the last 0DTE hour is a mechanical cause
+NEW_EXTREME_EARLIER = 30                               # VOLATILITY-14, BREADTH-03: a new extreme needs 30 earlier bars to beat
+VIX_TIE = 0.05                                         # VOLATILITY-14: VIX within 0.05 points of its level at the earlier extreme confirms
+BARRIER_SKIP_SIGMA = 0.02                              # LEVELS-10: a level this close to price is where price is, not ahead of it
+STRETCH_SHARE = 0.25                                   # OPTIONS-06: stretching needs price this share of a 30-minute expected move off the pin
+MIN_SWING_BARS = 2                                     # OPTIONS-06: a swing across the pin shorter than this is a wiggle
+FAR_GAP_RANK = 0.8                                     # MACRO-02: the gap's top fifth, the rank the macro_gap judgment gate reads
+LOADING_AHEAD_MIN = 60                                 # VOLATILITY-18: a ruler-loading event within the hour winds the quiet up
 HIGH_TIER = frozenset({"FOMC", "FOMC_PRESSER", "CPI", "JOBS", "PCE"})                                                        # EVENTS-02
 MEDIUM_TIER = frozenset({"PPI", "RETAIL_SALES", "GDP", "ISM_MANUFACTURING", "ISM_SERVICES", "JOLTS", "FOMC_MINUTES",
                          "FED_CHAIR_TESTIMONY", "FED_CHAIR_JACKSON_HOLE", "CONSUMER_CONFIDENCE", "UMICH_SENTIMENT"})
@@ -282,9 +285,10 @@ def running_vwap(bars: list[dict]) -> list[float | None]:
     return out
 
 
-def vwap_balance(view: DayView, hhmm: str) -> tuple[int, int] | None:
-    """TREND-07's measure on SPY closes: (minutes since its last close at a 5-minute mark on the other side of its VWAP,
-    closes of the last 30 minutes within VWAP_TOUCH_SHARE of the VWAP)."""
+def vwap_balance(view: DayView, hhmm: str) -> tuple[int, int, int] | None:
+    """TREND-07's measure on SPY closes at the 5-minute marks: (minutes since its last mark on the other side of its VWAP,
+    side flips between the marks of the last 30 minutes, the latest mark's side: +1 above, -1 below). Marks, not every
+    close, so live quotes and saved bars count the same flips."""
     spy = view.series(SPY)
     bars = spy.bars[:spy.count_before(hhmm)]
     vwap = running_vwap(bars)
@@ -303,9 +307,9 @@ def vwap_balance(view: DayView, hhmm: str) -> tuple[int, int] | None:
     latest = at_mark[marks[-1]]
     crossed = next((m for m in reversed(marks) if at_mark[m] != latest), None)
     since = minutes_between(crossed or marks[0], hhmm)
-    start = len(bars) - len(spy.window(hhmm, WINDOW_30))
-    touches = sum(1 for i in range(start, len(bars)) if vwap[i] is not None and abs(float(bars[i]["close"]) - vwap[i]) <= VWAP_TOUCH_SHARE * vwap[i])
-    return since, touches
+    recent = [at_mark[m] for m in marks if minutes_between(m, hhmm) <= WINDOW_30]
+    flips = sum(1 for a, b in zip(recent, recent[1:]) if a != b)
+    return since, flips, latest
 
 
 def range_ratio(view: DayView, hhmm: str) -> float | None:
@@ -319,22 +323,30 @@ def range_ratio(view: DayView, hhmm: str) -> float | None:
     return now / before if before > 0 else None
 
 
-def new_extreme(bars: list[dict], minutes: int = WINDOW_30) -> tuple[str, int, int] | None:
-    """A session extreme set in the last ``minutes`` of ``bars`` (finished by the read) with an earlier one to compare
-    with: ("high" | "low", the index of the new extreme's bar, the index of the earlier extreme's bar); the later of a
-    new high and a new low wins. None without one."""
-    if len(bars) < 2:
+def new_extreme_vs_prior_swing(values: list[float], window_from: int) -> tuple[int, int] | None:
+    """(i, j): the highest of ``values`` from ``window_from`` on (i) beats the highest before it (j), the extreme of the
+    earlier swing, not the runner-up bar a minute before; None with fewer than NEW_EXTREME_EARLIER earlier values or no
+    new extreme. Lows are passed negated."""
+    if window_from < NEW_EXTREME_EARLIER or window_from >= len(values):
+        return None
+    earlier = values[:window_from]
+    j = earlier.index(max(earlier))
+    recent = values[window_from:]
+    i = recent.index(max(recent)) + window_from
+    return (i, j) if values[i] > values[j] else None
+
+
+def session_new_extreme(bars: list[dict], minutes: int = WINDOW_30) -> tuple[str, int, int] | None:
+    """A session high or low set in the last ``minutes`` of ``bars`` (finished by the read) beyond the extreme before
+    them: ("high" | "low", the new extreme's bar index, the earlier extreme's bar index); the later of the two wins."""
+    if not bars:
         return None
     window_from = len(bars) - len([b for b in bars if hhmm_of(b["ts"]) >= shift_minute(hhmm_of(bars[-1]["ts"]), -minutes + 1)])
     found = []
-    for kind, field, best in (("high", "high", max), ("low", "low", min)):
-        values = [float(b[field]) for b in bars]
-        i = values.index(best(values))
-        if i >= window_from and i > 0:
-            earlier = values[:i]
-            j = earlier.index(best(earlier))
-            if (kind == "high" and values[i] > values[j]) or (kind == "low" and values[i] < values[j]):
-                found.append((i, kind, j))
+    for kind, sign in (("high", 1.0), ("low", -1.0)):
+        got = new_extreme_vs_prior_swing([sign * float(b[kind]) for b in bars], window_from)
+        if got is not None:
+            found.append((got[0], kind, got[1]))
     if not found:
         return None
     i, kind, j = max(found)
@@ -342,11 +354,13 @@ def new_extreme(bars: list[dict], minutes: int = WINDOW_30) -> tuple[str, int, i
 
 
 def mechanical_cause(history: MarketHistory, day: str, hhmm: str) -> bool:
-    """VOLATILITY-14's mechanical causes: a release in its first reaction, the last 0DTE hour, a Friday or pre-holiday."""
+    """VOLATILITY-14's mechanical causes: a release in its first reaction, the last 0DTE hour, the monthly expiry (the
+    third Friday) or a pre-holiday session."""
     if hhmm >= LAST_HOUR_FROM:
         return True
     d = date.fromisoformat(day)
-    if d.weekday() == 4 or (next_trading_day(d) - d).days > 1:
+    next_weekday = d + timedelta(days=3 if d.weekday() == 4 else 1)          # a weekend is no holiday: every Friday was mechanical
+    if (d.weekday() == 4 and 15 <= d.day <= 21) or next_trading_day(d) > next_weekday:
         return True
     now = datetime.fromisoformat(f"{day}T{hhmm}:00").replace(tzinfo=events.ET)
     return any(e.start <= now < e.start + timedelta(minutes=REACTION_MIN) for e in calendar_rows(history, day))
@@ -368,9 +382,11 @@ def read_moment(day: str, hhmm: str) -> datetime:
 
 
 def latest_release(history: MarketHistory, day: str, hhmm: str) -> events.Event | None:
-    """The latest row of the day whose first REACTION_MIN minutes are over by the read, within DIGEST_MIN of it."""
+    """The latest release of the day whose first REACTION_MIN minutes are over by the read, within DIGEST_MIN of it; Fed
+    speakers' remarks are not releases."""
     now = read_moment(day, hhmm)
-    done = [e for e in calendar_rows(history, day) if e.start + timedelta(minutes=REACTION_MIN) <= now <= e.start + timedelta(minutes=DIGEST_MIN)]
+    done = [e for e in calendar_rows(history, day) if e.tier != events.FED_SPEAKER
+            and e.start + timedelta(minutes=REACTION_MIN) <= now <= e.start + timedelta(minutes=DIGEST_MIN)]
     return max(done, key=lambda e: e.start) if done else None
 
 
@@ -382,6 +398,8 @@ def reaction_prices(history: MarketHistory, record: dict, view: DayView, e: even
     if e.start.strftime("%H:%M") >= "09:30":
         s = view.series(symbol)
         p0, p1, now = s.close_before(start), s.close_before(end), s.close_before(hhmm)
+        if p0 is None and start == "09:30" and s.bars and hhmm_of(s.bars[0]["ts"]) == "09:30":
+            p0 = float(s.bars[0]["open"])                         # a release at the open: the first session bar's open
     else:
         night = Series(night_bars_up_to(night_bars or [], view.day, "09:30"))
         p0, p1 = night.close_before(start), night.close_before(end)
@@ -389,6 +407,9 @@ def reaction_prices(history: MarketHistory, record: dict, view: DayView, e: even
         if now is None:
             quote = ((record.get("market_context") or {}).get(ES if symbol == SPX else symbol) or {}).get("value")
             now = float(quote) if isinstance(quote, (int, float)) else None
+        if now is None and symbol == SPX:                         # no /ES quote on the read: the night's last /ES bar by it
+            last = night_bars_up_to(night_bars or [], view.day, hhmm)
+            now = float(last[-1]["close"]) if last else None
     return (p0, p1, now) if p0 is not None and p1 is not None and now is not None else None
 
 
@@ -408,14 +429,16 @@ def answer_trend_07(record, bars, history, day, hhmm):
     m = vwap_balance(view, hhmm)
     if m is None:
         return None
-    since, touches = m
-    touch_rank = rank_vs_prior(history, day, hhmm, touches, lambda v, h: part_of(vwap_balance(v, h), 1))
+    since, flips, latest = m
+    flip_rank = rank_vs_prior(history, day, hhmm, flips, lambda v, h: part_of(vwap_balance(v, h), 1))
     since_rank = rank_vs_prior(history, day, hhmm, since, lambda v, h: part_of(vwap_balance(v, h), 0))
-    if touch_rank is None or since_rank is None:
+    if flip_rank is None or since_rank is None:
         return None
-    if third_of(touch_rank) == "top":
+    if third_of(flip_rank) == "top":
         return "orbiting"
-    return "long one-sided" if third_of(since_rank) == "top" else "recently crossed"
+    if third_of(since_rank) == "top":
+        return f"long {'above' if latest > 0 else 'below'} VWAP"
+    return "recently crossed"
 
 
 def slot_volumes(view: DayView, hhmm: str) -> dict[tuple[str, str], float]:
@@ -450,11 +473,11 @@ def answer_trend_11(record, bars, history, day, hhmm):
         return None
     net = float(inside[-1]["close"]) - float(inside[0]["open"])
     if net == 0:
-        return "spike faded"
+        return "none"
     midpoint = (max(float(b["high"]) for b in inside) + min(float(b["low"]) for b in inside)) / 2.0
     now = float(bars[-1]["close"])
     held = now > midpoint if net > 0 else now < midpoint
-    return ("up spike held" if net > 0 else "down spike held") if held else "spike faded"
+    return f"{'up' if net > 0 else 'down'} spike {'held' if held else 'faded'}"
 
 
 def answer_volatility_04(record, bars, history, day, hhmm):
@@ -501,7 +524,7 @@ def implied_gap_ratio(history: MarketHistory, day: str, prior_day: str, settled_
 
 
 def answer_volatility_08(record, bars, history, day, hhmm):
-    if hhmm < SETTLED_OPEN:
+    if hhmm < SETTLED_OPEN or hhmm > OPENING_READS_UNTIL:       # one answer a day: stale after the opening reads
         return None
     opened = Series(bars).close_before(SETTLED_OPEN)
     days = sorted(history.spx_bars_by_day)
@@ -544,9 +567,9 @@ def answer_volatility_12(record, bars, history, day, hhmm):
 
 
 def answer_volatility_14(record, bars, history, day, hhmm):
-    found = new_extreme(bars)
-    if found is None:
-        return "no new extreme" if bars else None
+    found = session_new_extreme(bars)
+    if found is None:                      # no new extreme: LEVELS-05 says so
+        return None
     kind, i, j = found
     if mechanical_cause(history, day, hhmm):
         return "mechanical"
@@ -554,8 +577,8 @@ def answer_volatility_14(record, bars, history, day, hhmm):
     at_new, at_old = vix.close_before(shift_minute(hhmm_of(bars[i]["ts"]), 1)), vix.close_before(shift_minute(hhmm_of(bars[j]["ts"]), 1))
     if at_new is None or at_old is None:
         return None
-    confirms = at_new <= at_old if kind == "high" else at_new >= at_old
-    return f"new {kind}, vol {'confirms' if confirms else 'disagrees'}"
+    confirms = abs(at_new - at_old) < VIX_TIE or (at_new < at_old if kind == "high" else at_new > at_old)
+    return f"new {kind}, VIX {'confirms' if confirms else 'diverges'}"
 
 
 def answer_volatility_17(record, bars, history, day, hhmm):
@@ -583,12 +606,14 @@ def answer_levels_07(record, bars, history, day, hhmm):
     return "above overnight high" if es_now > high else "below overnight low" if es_now < low else "inside overnight range"
 
 
-def barrier_room(history: MarketHistory, view: DayView, hhmm: str) -> float | None:
+def barrier_room(history: MarketHistory, view: DayView, hhmm: str, sigma: float) -> float | None:
     """LEVELS-10's measure: the distance, as a share of price, to the nearest level beyond price in the direction of the
-    last 30-minute move: the prior session's high, low and close, the night's /ES edges moved onto SPX, today's session
-    high and low, and the next round number."""
+    last 30-minute move: the prior session's high, low and close, the night's /ES edges moved onto SPX, the session's
+    high and low before the last 30 minutes (the half hour's own new extreme is LEVELS-05's), and the next round number;
+    a level within BARRIER_SKIP_SIGMA of price is passed over."""
     spx = view.series(SPX)
     bars = spx.bars[:spx.count_before(hhmm)]
+    before = spx.bars[:spx.count_before(shift_minute(hhmm, -WINDOW_30))]
     move = spx.move_pct(hhmm, WINDOW_30)
     if not bars or not move:
         return None
@@ -597,18 +622,22 @@ def barrier_room(history: MarketHistory, view: DayView, hhmm: str) -> float | No
     prior_days = trailing_days(history.spx_bars_by_day, view.day, 1)
     if prior_days:
         levels.append(float(history.spx_bars_by_day[prior_days[0]][-1]["close"]))
-    levels += [max(float(b["high"]) for b in bars), min(float(b["low"]) for b in bars)]
+    if before:
+        levels += [max(float(b["high"]) for b in before), min(float(b["low"]) for b in before)]
     levels.append((math.floor(price / ROUND_STEP) + (1 if side > 0 else 0)) * ROUND_STEP)
-    beyond = [(l - price) * side for l in levels if (l - price) * side > 0]
+    beyond = [(l - price) * side for l in levels if (l - price) * side > BARRIER_SKIP_SIGMA * sigma]
     return min(beyond) / price if beyond else None
 
 
 def answer_levels_10(record, bars, history, day, hhmm):
+    sigma = record.get("sigma")
+    if not isinstance(sigma, (int, float)) or sigma <= 0:
+        return None
     view = today_view(history, day, bars, record["row_ts"])
-    room = barrier_room(history, view, hhmm)
+    room = barrier_room(history, view, hhmm, sigma)
     if room is None:
         return None
-    rank = rank_vs_prior(history, day, hhmm, room, lambda v, h: barrier_room(history, v, h))
+    rank = rank_vs_prior(history, day, hhmm, room, lambda v, h: barrier_room(history, v, h, sigma))
     return {"bottom": "close", "middle": "normal", "top": "far"}[third_of(rank)] if rank is not None else None
 
 
@@ -649,21 +678,25 @@ def answer_levels_12(record, bars, history, day, hhmm):
     runs, edge, high_edge = max(tested, key=lambda t: (t[0][-1][1], len(t[0])))
 
     def measure(run):
-        """(depth past the edge, SPY volume over the test, the rejection over the bars after it)."""
+        """(depth past the edge, mean SPY volume per bar of the test, the rejection over the bars after it, None with none
+        after it yet)."""
         first, last = run
         inside, after = window[first:last + 1], window[last + 1:last + 1 + REJECTION_BARS]
         extreme = max(float(b["high"]) for b in inside) if high_edge else min(float(b["low"]) for b in inside)
         minutes = {hhmm_of(b["ts"]) for b in inside}
-        volume = sum(float(b.get("volume") or 0.0) for b in spy.bars if hhmm_of(b["ts"]) in minutes)
+        volume = sum(float(b.get("volume") or 0.0) for b in spy.bars if hhmm_of(b["ts"]) in minutes) / len(inside)
         if not after:
-            rejection = 0.0
+            rejection = None
         elif high_edge:
             rejection = extreme - min(float(b["close"]) for b in after)
         else:
             rejection = max(float(b["close"]) for b in after) - extreme
         return (extreme - edge) * (1 if high_edge else -1), volume, rejection
     first, latest = measure(runs[0]), measure(runs[-1])
-    tiring = sum((latest[0] < first[0], latest[1] < first[1], latest[2] > first[2]))
+    if first[2] is None or latest[2] is None:       # a test still running has no rejection yet: depth and volume both must tire
+        tiring = 2 if latest[0] < first[0] and latest[1] < first[1] else 0
+    else:
+        tiring = sum((latest[0] < first[0], latest[1] < first[1], latest[2] > first[2]))
     if tiring < 2:
         return "neither"
     return "buyers tiring" if high_edge else "sellers tiring"
@@ -686,6 +719,16 @@ def wall_levels(row: dict | None) -> dict[str, list[float]]:
     return out
 
 
+def gamma_wall_levels(row: dict | None) -> dict[str, list[float]]:
+    """{"call": [...], "put": [...]}: the near gamma walls a diary row names (gex_views.call_wall_gamma / put_wall_gamma)."""
+    out = {"call": [], "put": []}
+    for side in out:
+        level = (row or {}).get(f"{side}_wall_gamma")
+        if isinstance(level, (int, float)):
+            out[side].append(float(level))
+    return out
+
+
 def answer_options_04(record, bars, history, day, hhmm):
     sigma = record.get("sigma")
     if not isinstance(sigma, (int, float)) or sigma <= 0 or not bars or not history.diary_rows:
@@ -694,7 +737,7 @@ def answer_options_04(record, bars, history, day, hhmm):
     hour = Series(bars).window(hhmm, WINDOW_60)
     touched = None
     for b in hour:
-        walls = wall_levels(diary_at(history, b["ts"]))
+        walls = gamma_wall_levels(diary_at(history, b["ts"]))
         for side in ("call", "put"):
             for level in walls[side]:
                 if float(b["low"]) - touch <= level <= float(b["high"]) + touch:
@@ -714,8 +757,8 @@ def answer_options_06(record, bars, history, day, hhmm):
         return None
     hour = closes_of(Series(bars).window(hhmm, WINDOW_60))
     expected = sigma * math.sqrt(WINDOW_30 / 390.0)
-    walls = wall_levels(row)
-    levels = [l for l in [row.get("magnet")] + walls["call"] + walls["put"] if isinstance(l, (int, float))]
+    walls, gamma = wall_levels(row), gamma_wall_levels(row)
+    levels = [l for l in [row.get("magnet")] + walls["call"] + walls["put"] + gamma["call"] + gamma["put"] if isinstance(l, (int, float))]
     def crossings(level: float) -> int:
         sides = [1 if c >= level else -1 for c in hour]
         return sum(1 for a, b in zip(sides, sides[1:]) if a != b)
@@ -723,7 +766,8 @@ def answer_options_06(record, bars, history, day, hhmm):
     if not crossed:
         return "not pinned"
     level = max(crossed)[1]
-    if abs(hour[-1] - level) > expected:
+    distance = abs(hour[-1] - level)
+    if distance > expected:
         return "broke loose"
     swings, start = [], 0
     sides = [1 if c >= level else -1 for c in hour]
@@ -731,36 +775,45 @@ def answer_options_06(record, bars, history, day, hhmm):
         if sides[i] != sides[i - 1]:
             swings.append((max(abs(c - level) for c in hour[start:i]), i - start))
             start = i
-    current = (max(abs(c - level) for c in hour[start:]), len(hour) - start)
+    # the hour's first swing is cut by the window, a one-bar swing is a wiggle across the pin: neither sets the usual
+    swings = [s for s in swings[1:] if s[1] >= MIN_SWING_BARS]
     if not swings:
         return "holding"
-    wider = current[0] > statistics.median(s[0] for s in swings)
-    slower = current[1] > statistics.median(s[1] for s in swings)
-    return "stretching" if wider and slower else "holding"
+    wider = distance > statistics.median(s[0] for s in swings)
+    slower = len(hour) - start > statistics.median(s[1] for s in swings)
+    return "stretching" if wider and slower and distance > STRETCH_SHARE * expected else "holding"
 
 
-def quote_width(sweeps: list[tuple[str, float]], hhmm: str) -> float | None:
-    """OPTIONS-08's measure: the median 25-40 delta quoted spread of the sweeps in the OPTION_WIDTH_MINUTES before ``hhmm``."""
+def quote_width(sweeps: list[tuple[str, float, str]], hhmm: str) -> tuple[float, str] | None:
+    """OPTIONS-08's measure: (the median quoted spread of the sweeps in the OPTION_WIDTH_MINUTES before ``hhmm`` in the
+    newest sweep's delta bucket, that bucket)."""
     lo = shift_minute(hhmm, -OPTION_WIDTH_MINUTES)
-    recent = [spread for ts, spread in sweeps if lo <= hhmm_of(ts) < hhmm]
-    return statistics.median(recent) if recent else None
+    recent = [(spread, bucket) for ts, spread, bucket in sweeps if lo <= hhmm_of(ts) < hhmm]
+    if not recent:
+        return None
+    bucket = recent[-1][1]
+    return statistics.median(spread for spread, b in recent if b == bucket), bucket
 
 
 def answer_options_08(record, bars, history, day, hhmm):
-    today = [(ts, s) for ts, s in history.quote_sweeps_by_day.get(day, []) if ts <= record["row_ts"]]
+    """The width ranked only against the prior sessions quoting the same delta bucket at the minute (after ~13:10 the
+    25-40 bucket empties and the nearer one, about half as wide, stands in), ties counted half: the spreads are whole
+    ticks, so a strict rank would read the usual tick as tight."""
+    today = [sweep for sweep in history.quote_sweeps_by_day.get(day, []) if sweep[0] <= record["row_ts"]]
     width = quote_width(today, hhmm)
     if width is None:
         return None
-    prior = [w for d in trailing_days(history.quote_sweeps_by_day, day) if (w := quote_width(history.quote_sweeps_by_day[d], hhmm)) is not None]
-    rank = rank_fraction(width, prior)
-    if rank is None:
+    prior = [w[0] for d in trailing_days(history.quote_sweeps_by_day, day)
+             if (w := quote_width(history.quote_sweeps_by_day[d], hhmm)) is not None and w[1] == width[1]]
+    if len(prior) < MIN_HISTORY_SESSIONS:
         return None
+    rank = (sum(1 for w in prior if w < width[0]) + 0.5 * sum(1 for w in prior if w == width[0])) / len(prior)
     return "tight" if rank < 1 / 3 else "normal" if rank < 2 / 3 else "wide" if rank < 0.9 else "very wide"
 
 
 def advance_decline(view: DayView, hhmm: str) -> float | None:
     """A prior session's advance-decline line at the minute: the derived $ADVN - $DECN, else the saved $ADD (clean once
-    the session is saved the next day, as BREADTH-11 reads it); nothing from labels/plausible.py's SAME_DAY_WRONG list.
+    the session is saved the next day); nothing from labels/plausible.py's SAME_DAY_WRONG list.
     The read's own day is never read here (derived_add takes the record's derived value)."""
     up, down = view.series(ADVANCING).close_before(hhmm), view.series(DECLINING).close_before(hhmm)
     if up is not None and down is not None:
@@ -797,9 +850,9 @@ def answer_breadth_02(record, bars, history, day, hhmm):
 
 
 def answer_breadth_03(record, bars, history, day, hhmm):
-    found = new_extreme(bars)
-    if found is None:
-        return "no new extreme" if bars else None
+    found = session_new_extreme(bars)
+    if found is None:                      # no new extreme: LEVELS-05 says so
+        return None
     kind, i, j = found
     view = today_view(history, day, bars, record["row_ts"])
     then, now = shift_minute(hhmm_of(bars[j]["ts"]), 1), hhmm
@@ -823,7 +876,7 @@ def answer_breadth_03(record, bars, history, day, hhmm):
     confirmed = sum((add_now > add_then if up else add_now < add_then,
                      abs(iwm_now - iwm_extreme) / iwm_extreme <= EXTREME_TOLERANCE,
                      basket > 0 if up else basket < 0))
-    return "all confirm" if confirmed == 3 else "none confirm" if confirmed == 0 else "some confirm"
+    return f"new {kind}, {'confirmed' if confirmed >= 2 else 'not confirmed'}"
 
 
 def largest_pull(view: DayView, hhmm: str, names: list[tuple[str, float]], links: dict[str, tuple[float, float]]) -> tuple[str, float, dict[str, float]] | None:
@@ -854,36 +907,7 @@ def answer_breadth_07(record, bars, history, day, hhmm):
         return None
     if third_of(rank) != "top":
         return "small"
-    followed = sum(1 for s, r in residuals.items() if s != name and (r > 0) == (residuals[name] > 0)) >= FOLLOW_COUNT
-    return f"large {'up' if pull > 0 else 'down'}, {'followed' if followed else 'alone'}"
-
-
-def answer_breadth_08(record, bars, history, day, hhmm):
-    names = megacaps(history, day)
-    view = today_view(history, day, bars, record["row_ts"])
-    spx = view.series(SPX)
-    opened, now = spx.close_before(SETTLED_OPEN), spx.close_before(hhmm)
-    if names is None or not opened or now is None or now == opened:
-        return None
-    day_side = 1 if now > opened else -1
-    contributions = {}
-    for symbol, w in names:
-        a, b = view.series(symbol).close_before(SETTLED_OPEN), view.series(symbol).close_before(hhmm)
-        if a and b is not None:
-            contributions[symbol] = w * (b / a - 1.0) * day_side
-    if not contributions:
-        return None
-    leader = max(contributions, key=contributions.get)
-    link = usual_link(history, day, leader)
-    r = beyond_link(view, leader, hhmm, WINDOW_30, link) if link else None
-    if r is None:
-        return None
-    rank = rank_vs_prior(history, day, hhmm, abs(r), lambda v, h: unsigned(beyond_link(v, leader, h, WINDOW_30, link)))
-    if rank is None:
-        return None
-    if third_of(rank) == "bottom":
-        return "neither"
-    return "fading" if (r > 0) != (day_side > 0) else "kept leading"
+    return f"large {'up' if pull > 0 else 'down'}"
 
 
 def gap_pulls(history: MarketHistory, view: DayView, hhmm: str, names: list[tuple[str, float]], links: dict[str, tuple[float, float]]) -> tuple[str, float, float] | None:
@@ -923,8 +947,9 @@ def answer_breadth_09(record, bars, history, day, hhmm):
     return "in play, rest followed" if followed else "in play, rest did not"
 
 
-def directional_volume_share(view: DayView, hhmm: str) -> float | None:
-    """FLOW-02's measure: the share of SPY's volume over the last 30 minutes traded in the minutes SPX moved the way the half hour did."""
+def directional_volume_share(view: DayView, hhmm: str) -> tuple[float, int] | None:
+    """FLOW-02's measure: (the share of SPY's volume over the last 30 minutes traded in the minutes SPX moved the way the
+    half hour did, that way: +1 up, -1 down)."""
     spx, spy = view.series(SPX), view.series(SPY)
     bars = spx.window(hhmm, WINDOW_30)
     if len(bars) < 25:
@@ -937,23 +962,29 @@ def directional_volume_share(view: DayView, hhmm: str) -> float | None:
     if total <= 0:
         return None
     with_it = sum(volume.get(hhmm_of(b["ts"]), 0.0) for b in bars if (float(b["close"]) - float(b["open"])) * net > 0)
-    return with_it / total
+    return with_it / total, 1 if net > 0 else -1
 
 
 def answer_flow_02(record, bars, history, day, hhmm):
     view = today_view(history, day, bars, record["row_ts"])
-    share = directional_volume_share(view, hhmm)
-    if share is None:
+    m = directional_volume_share(view, hhmm)
+    if m is None:
         return None
-    rank = rank_vs_prior(history, day, hhmm, share, directional_volume_share)
-    return {"top": "confirmed", "middle": "balanced", "bottom": "diverging"}[third_of(rank)] if rank is not None else None
+    share, way = m
+    rank = rank_vs_prior(history, day, hhmm, share, lambda v, h: part_of(directional_volume_share(v, h), 0))
+    if rank is None:
+        return None
+    side = "up" if way > 0 else "down"
+    return {"top": f"confirmed {side}", "middle": "balanced", "bottom": f"diverging {side}"}[third_of(rank)]
 
 
 def travel_per_volume(view: DayView, hhmm: str) -> float | None:
-    """FLOW-04's measure: SPX points travelled over the last 30 minutes per million SPY shares."""
+    """FLOW-04's measure: SPX points travelled over the last 30 minutes per million SPY shares; None when fewer than
+    MIN_VOLUME_MINUTES of the 30 minutes carry SPY volume (a feed hole, not a quiet tape)."""
     c = closes_of(view.series(SPX).window(hhmm, WINDOW_30))
-    volume = view.series(SPY).volume(hhmm, WINDOW_30)
-    if len(c) < 25 or volume <= 0:
+    spy = view.series(SPY).window(hhmm, WINDOW_30)
+    volume = sum(float(b.get("volume") or 0.0) for b in spy)
+    if len(c) < 25 or volume <= 0 or sum(1 for b in spy if float(b.get("volume") or 0.0) > 0) < MIN_VOLUME_MINUTES:
         return None
     return sum(abs(b - a) for a, b in zip(c, c[1:])) / (volume / 1e6)
 
@@ -991,13 +1022,19 @@ def answer_flow_06(record, bars, history, day, hhmm):
     volumes = sorted(v for v in bins.values() if v > 0)
     if not volumes:
         return None
-    high_cut, low_cut = volumes[min(int(NODE_HIGH_SHARE * len(volumes)), len(volumes) - 1)], volumes[int(NODE_LOW_SHARE * len(volumes))]
+    if here > max(bins):
+        return "outside the profile, above"
+    if here < min(bins):
+        return "outside the profile, below"
+    high_cut = volumes[min(int(NODE_HIGH_SHARE * len(volumes)), len(volumes) - 1)]
     nodes = [p for p, v in bins.items() if v >= high_cut]
     if here in nodes:
-        return "high-volume node"
-    nearest = min(nodes, key=lambda p: (abs(p - here), p))
-    where = "low-volume node" if bins.get(here, 0.0) <= low_cut else "between"
-    return f"{where}, next node {'above' if nearest > here else 'below'}"
+        return "at a node"
+    above = min((p - here for p in nodes if p > here), default=math.inf)
+    below = min((here - p for p in nodes if p < here), default=math.inf)
+    if above == below:
+        return "at a node"
+    return "node above" if above < below else "node below"
 
 
 def moved_sign(history: MarketHistory, day: str, view: DayView, symbol: str, hhmm: str, minutes: int) -> int | None:
@@ -1012,7 +1049,9 @@ def moved_sign(history: MarketHistory, day: str, view: DayView, symbol: str, hhm
 
 
 def answer_flow_07(record, bars, history, day, hhmm):
-    view = today_view(history, day, bars, record["row_ts"])
+    """The day's SPY/QQQ/IWM from its quote snapshots (history.today_quote_bars), whether or not its bars are saved, so a
+    backfilled read measures what the live read did."""
+    view = DayView(day, bars, {s: cut_at(history.today_quote_bars.get(s, []), record["row_ts"]) for s in (SPY, QQQ, IWM)})
     signs = [moved_sign(history, day, view, s, hhmm, WINDOW_30) for s in (SPY, QQQ, IWM)]
     if None in signs:
         return None
@@ -1020,7 +1059,7 @@ def answer_flow_07(record, bars, history, day, hhmm):
     if not movers:
         return "none moved"
     if len(movers) == 3 and len(set(movers)) == 1:
-        return "same way"
+        return f"same way {'up' if movers[0] > 0 else 'down'}"
     return "in conflict" if len(set(movers)) == 2 else "mixed"
 
 
@@ -1097,95 +1136,8 @@ def answer_macro_02(record, bars, history, day, hhmm):
         return None
     if third_of(rank) == "bottom":
         return "nowhere"
-    return "up" if gap < 0 else "down"
-
-
-def since_close_sign(history: MarketHistory, day: str, view: DayView, symbol: str, hhmm: str) -> int | None:
-    """+1 / -1 for a move since the prior close above the bottom third of the symbol's own at this minute, else 0."""
-    def move(v: DayView, h: str) -> float | None:
-        prior, now = prior_close_of(history, v.day, symbol), v.series(symbol).close_before(h)
-        return now / prior - 1.0 if prior and now is not None else None
-    m = move(view, hhmm)
-    if m is None:
-        return None
-    rank = rank_vs_prior(history, day, hhmm, abs(m), lambda v, h: unsigned(move(v, h)))
-    if rank is None:
-        return None
-    return 0 if third_of(rank) == "bottom" else (1 if m > 0 else -1)
-
-
-def answer_macro_04(record, bars, history, day, hhmm):
-    view = today_view(history, day, bars, record["row_ts"])
-    signs = {s: since_close_sign(history, day, view, s, hhmm) for s in TONE_SYMBOLS}
-    if None in signs.values():
-        return None
-    risk_on = (signs["HYG"] > 0) + (signs[ZN] < 0) + (signs["GLD"] < 0)
-    risk_off = (signs["HYG"] < 0) + (signs[ZN] > 0) + (signs["GLD"] > 0)
-    if risk_on and not risk_off:
-        return "risk-on"
-    if risk_off and not risk_on:
-        return "risk-off"
-    return "mixed" if risk_on and risk_off else "quiet"
-
-
-def answer_macro_05(record, bars, history, day, hhmm):
-    view = today_view(history, day, bars, record["row_ts"])
-    yields_up = since_close_sign(history, day, view, ZN, hhmm)
-    oil_up = since_close_sign(history, day, view, "USO", hhmm)
-    if yields_up is None or oil_up is None:
-        return None
-    yields_up = -yields_up                                 # /ZN up is yields down
-    expected: list[tuple[str, int]] = []
-    if yields_up:
-        expected += [("XHB", -yields_up), (IWM, -yields_up), ("KRE", yields_up)]
-    if oil_up:
-        expected.append(("XLE", oil_up))
-    if not expected:
-        return "nothing"
-    matches = mismatches = 0
-    for symbol, sign in expected:
-        link = usual_link(history, day, symbol)
-        r = since_close_beyond(history, view, symbol, hhmm, link) if link else None
-        if r is None:
-            return None
-        if r == 0:
-            continue
-        if (r > 0) == (sign > 0):
-            matches += 1
-        else:
-            mismatches += 1
-    return "confirm" if matches > mismatches else "contradict" if mismatches > matches else "nothing"
-
-
-def minute_link(view: DayView, hhmm: str) -> float | None:
-    """MACRO-06's measure: the correlation of SPX's and /ZN's 1-minute returns since 09:35."""
-    spx = {hhmm_of(b["ts"]): float(b["close"]) for b in view.series(SPX).between(shift_minute(SETTLED_OPEN, -1), hhmm)}
-    zn = {hhmm_of(b["ts"]): float(b["close"]) for b in view.series(ZN).between(shift_minute(SETTLED_OPEN, -1), hhmm)}
-    minutes = sorted(set(spx) & set(zn))
-    xs, ys = [], []
-    for a, b in zip(minutes, minutes[1:]):
-        if minutes_between(a, b) == 1 and spx[a] and zn[a]:
-            xs.append(spx[b] / spx[a] - 1.0)
-            ys.append(zn[b] / zn[a] - 1.0)
-    if len(xs) < MIN_LINK_MINUTES:
-        return None
-    try:
-        return statistics.correlation(xs, ys)
-    except statistics.StatisticsError:
-        return None
-
-
-def answer_macro_06(record, bars, history, day, hhmm):
-    view = today_view(history, day, bars, record["row_ts"])
-    link = minute_link(view, hhmm)
-    if link is None:
-        return None
-    if abs(link) <= LINK_TOGETHER:
-        return "unlinked"
-    rank = rank_vs_prior(history, day, hhmm, abs(link), lambda v, h: unsigned(minute_link(v, h)))
-    if rank is None:
-        return None
-    return f"{'together' if link > 0 else 'opposite'}, {'stronger' if rank >= 0.5 else 'weaker'} than usual"
+    # the top fifth is said apart: the macro_gap judgment gate reads it (FAR_GAP_RANK)
+    return f"{'far ' if rank >= FAR_GAP_RANK else ''}{'up' if gap < 0 else 'down'}"
 
 
 def answer_macro_07(record, bars, history, day, hhmm):
@@ -1195,21 +1147,6 @@ def answer_macro_07(record, bars, history, day, hhmm):
         return None
     rank = rank_vs_prior(history, day, hhmm, volume, lambda v, h: v.series(ZN).volume(h, WINDOW_30) or None)
     return {"bottom": "quiet", "middle": "normal", "top": "busy"}[third_of(rank)] if rank is not None else None
-
-
-def answer_events_01(record, bars, history, day, hhmm):
-    if not calendar_covers(history, day):
-        return None
-    now = read_moment(day, hhmm)
-    rows = calendar_rows(history, day)
-    if any(e.end is not None and e.start <= now < e.end for e in rows):
-        return "under way"
-    if any(e.start <= now < e.start + timedelta(minutes=REACTION_MIN) for e in rows):
-        return "just out"
-    due = [e for e in rows if now < e.start <= now + timedelta(minutes=EVENT_WINDOW_MIN)]
-    if due:
-        return "due within 60 minutes, tier 1" if any(e.tier == events.TIER for e in due) else "due within 60 minutes, lower tier"
-    return "nothing"
 
 
 def day_tier(history: MarketHistory, d: date) -> str | None:
@@ -1227,18 +1164,27 @@ def answer_events_02(record, bars, history, day, hhmm):
         return None
     if today == "high":
         return "high-tier day"
+    if after is None:                      # the next session is past the calendar: it could be the eve of one
+        return None
     if after == "high":
         return "eve of a high-tier day"
+    if before is None:
+        return None
     if before == "high":
         return "day after a high-tier day"
-    if after is None and before is None:
-        return None
     return "medium-tier day" if today == "medium" else "ordinary"
 
 
+def normal_day_sigma(history: MarketHistory, row_ts: str) -> float | None:
+    """The normal-day sigma (labels/rulers.normal_day_sigma: the median morning ruler of the prior sessions), as the
+    premarket lane stamps it on the day's reads before ``row_ts``."""
+    return next((float(r["sigma"]) for r in reversed(history.premarket_reads)
+                 if isinstance(r.get("row_ts"), str) and r["row_ts"] <= row_ts and isinstance(r.get("sigma"), (int, float)) and r["sigma"] > 0), None)
+
+
 def answer_events_03(record, bars, history, day, hhmm):
-    sigma = record.get("sigma")
-    if not calendar_covers(history, day) or not isinstance(sigma, (int, float)) or sigma <= 0:
+    sigma = normal_day_sigma(history, record["row_ts"])        # the label rule's ruler, not the read's own morning one
+    if not calendar_covers(history, day) or sigma is None:
         return None
     e = latest_release(history, day, hhmm)
     if e is None:
@@ -1250,52 +1196,26 @@ def answer_events_03(record, bars, history, day, hhmm):
     p0, p1, now = prices
     first = p1 - p0
     if first == 0:
-        return "held"
+        return None
     side = 1 if first > 0 else -1
     if (now - p0) * side < 0:
-        return "reversed"
-    further = (now - p1) * side
-    if further > REACTION_EXTEND_SIGMA * sigma:
-        return "extended"
-    return "faded" if -further / abs(first) > GIVE_BACK_HALF else "held"
+        return f"reversed {'down' if side > 0 else 'up'}"
+    way = "up" if side > 0 else "down"
+    return f"{way} then {'extended' if (now - p1) * side > REACTION_EXTEND_SIGMA * sigma else 'held/faded'}"
 
 
-def rates_reaction(history: MarketHistory, view: DayView, e: events.Event) -> float | None:
-    """/ZN's return over the 15 minutes after a release: from its bars in the session, or the night's before the open."""
-    start, end = e.start.strftime("%H:%M"), (e.start + timedelta(minutes=REACTION_MIN)).strftime("%H:%M")
-    s = view.series(ZN) if start >= "09:30" else Series(night_bars_up_to(history.zn_night_bars_by_day.get(view.day, []), view.day, "09:30"))
-    p0, p1 = s.close_before(start), s.close_before(end)
-    return p1 / p0 - 1.0 if p0 and p1 is not None else None
-
-
-def answer_events_05(record, bars, history, day, hhmm):
-    if not calendar_covers(history, day):
-        return None
-    e = latest_release(history, day, hhmm)
-    if e is None:
-        return "no release"
-    move = rates_reaction(history, today_view(history, day, bars, record["row_ts"]), e)
-    if move is None:
-        return None
-    prior = [abs(m) for v in prior_views(history, day) if calendar_covers(history, v.day)
-             for row in calendar_rows(history, v.day) if (m := rates_reaction(history, v, row)) is not None]
-    rank = rank_fraction(abs(move), prior)
-    if rank is None:
-        return None
-    if third_of(rank) != "top":
-        return "small"
-    return f"large, yields {'down' if move > 0 else 'up'}"
-
-
-def month_position(d: date) -> tuple[int, int]:
-    """(the day's number among the month's trading days, the trading days left after it)."""
-    first = d.replace(day=1)
-    days = []
-    x = first
+def month_trading_days(d: date) -> list[date]:
+    days, x = [], d.replace(day=1)
     while x.month == d.month:
         if is_trading_day(x):
             days.append(x)
         x += timedelta(days=1)
+    return days
+
+
+def month_position(d: date) -> tuple[int, int]:
+    """(the day's number among the month's trading days, the trading days left after it)."""
+    days = month_trading_days(d)
     before = sum(1 for x in days if x <= d)
     return before, len(days) - before
 
@@ -1320,9 +1240,11 @@ def answer_session_02(record, bars, history, day, hhmm):
         return "new-month inflow"
     if left >= MONTH_LAST_DAYS:
         return None
+    # the month-end window's gap is measured once, through the last close before its first day, so its days agree
+    window_from = month_trading_days(d)[-MONTH_LAST_DAYS].isoformat()
     spx, tlt = history.daily_closes.get(SPX, []), history.daily_closes.get("TLT", [])
     spx, tlt = [r for r in spx if r.get("day", "") < day], [r for r in tlt if r.get("day", "") < day]
-    gap = month_gap(spx, tlt, day)
+    gap = month_gap([r for r in spx if r["day"] < window_from], [r for r in tlt if r["day"] < window_from], window_from)
     if gap is None:
         return None
     month_ends = sorted({r["day"][:7] for r in spx if r["day"][:7] < day[:7]})
@@ -1333,25 +1255,44 @@ def answer_session_02(record, bars, history, day, hhmm):
     return "sell big" if rank >= 0.8 else "sell" if rank >= 0.6 else "small" if rank >= 0.4 else "buy" if rank >= 0.2 else "buy big"
 
 
-def leveraged_tilt(view: DayView, hhmm: str) -> tuple[float, float] | None:
-    """SENTIMENT-02's measure: (bull-minus-bear dollar volume as a share of both over the last 30 minutes, SPX's 30-minute move)."""
-    def dollars(symbols):
-        return sum(float(b["close"]) * float(b.get("volume") or 0.0) for s in symbols for b in view.series(s).window(hhmm, WINDOW_30))
-    bull, bear = dollars(BULL_FUNDS), dollars(BEAR_FUNDS)
+def usual_fund_volumes(history: MarketHistory, day: str, hhmm: str) -> dict[str, float] | None:
+    """Each 3x fund's median 30-minute share volume at this minute over the prior sessions; None when one has none.
+    Cached on the history for the day and minute."""
+    key = ("fund_volume", day, hhmm)
+    if key not in history.cache:
+        usual = {}
+        for symbol in BULL_FUNDS + BEAR_FUNDS:
+            seen = [v for view in prior_views(history, day) if (v := view.series(symbol).volume(hhmm, WINDOW_30)) > 0]
+            usual[symbol] = statistics.median(seen) if len(seen) >= MIN_HISTORY_SESSIONS else None
+        history.cache[key] = None if None in usual.values() else usual
+    return history.cache[key]
+
+
+def leveraged_tilt(history: MarketHistory, day: str, view: DayView, hhmm: str) -> tuple[float, float] | None:
+    """SENTIMENT-02's measure: (bull-minus-bear over both, where bull and bear are the equal-weight means of each fund's
+    30-minute share volume over its own usual at this minute, SPX's 30-minute move). Each fund against its own usual, so
+    the bear funds' decay and TQQQ/SQQQ's size do not tilt it."""
+    usual = usual_fund_volumes(history, day, hhmm)
     spx = view.series(SPX).move_pct(hhmm, WINDOW_30)
-    if bull + bear <= 0 or spx is None:
+    if usual is None or spx is None:
+        return None
+    bull = statistics.fmean(view.series(s).volume(hhmm, WINDOW_30) / usual[s] for s in BULL_FUNDS)
+    bear = statistics.fmean(view.series(s).volume(hhmm, WINDOW_30) / usual[s] for s in BEAR_FUNDS)
+    if bull + bear <= 0:
         return None
     return (bull - bear) / (bull + bear), spx
 
 
 def answer_sentiment_02(record, bars, history, day, hhmm):
+    if history.today_context_from_quotes:       # the funds' live volume is quote snapshots, not the minute bars it was fitted on
+        return None
     view = today_view(history, day, bars, record["row_ts"])
-    m = leveraged_tilt(view, hhmm)
+    m = leveraged_tilt(history, day, view, hhmm)
     if m is None:
         return None
     key = ("tilt_fit", day)
     if key not in history.cache:
-        pairs = [t for v in prior_views(history, day) for end in LINK_WINDOW_ENDS if (t := leveraged_tilt(v, end)) is not None]
+        pairs = [t for v in prior_views(history, day) for end in LINK_WINDOW_ENDS if (t := leveraged_tilt(history, day, v, end)) is not None]
         fit = None
         if len(pairs) >= MIN_LINK_PAIRS:
             xs, ys = [p[1] for p in pairs], [p[0] for p in pairs]
@@ -1365,21 +1306,71 @@ def answer_sentiment_02(record, bars, history, day, hhmm):
 
     def residual(t):
         return t[0] - fit[0] - fit[2] * (t[1] - fit[1])
-    rank = rank_vs_prior(history, day, hhmm, residual(m), lambda v, h: residual(t) if (t := leveraged_tilt(v, h)) is not None else None)
+    rank = rank_vs_prior(history, day, hhmm, residual(m), lambda v, h: residual(t) if (t := leveraged_tilt(history, day, v, h)) is not None else None)
     return {"top": "high", "middle": "normal", "bottom": "low"}[third_of(rank)] if rank is not None else None
+
+
+def loading_event_ahead(history: MarketHistory, day: str, hhmm: str) -> bool | None:
+    """A ruler-loading event (labels/vol.py LOADING_EVENTS: the Fed's decision, the chair's testimony or Jackson Hole) due
+    within LOADING_AHEAD_MIN minutes; None when the calendar does not cover the day."""
+    if not calendar_covers(history, day):
+        return None
+    now = read_moment(day, hhmm)
+    return any(e.kind in LOADING_EVENTS and now < e.start <= now + timedelta(minutes=LOADING_AHEAD_MIN) for e in calendar_rows(history, day))
+
+
+def implied_vol_trending(record: dict) -> bool | None:
+    """iv.trend_30min on the read: at-the-money implied volatility rose or fell past its flat band; None when omitted."""
+    s = flat_labels(record).get("iv.trend_30min")
+    if not s:
+        return None
+    if "stayed within" in s:
+        return False
+    return True if "implied volatility rose" in s or "implied volatility fell" in s else None
+
+
+def yield_move_fired(history: MarketHistory, day: str, view: DayView, hhmm: str) -> bool | None:
+    """The ten-year yield's move since the prior close in the top third at this minute (judgment.YieldMove.fired's rule:
+    $TNX against its prior daily close, ranked against the prior sessions at the same minute)."""
+    def move(v: DayView, h: str) -> float | None:
+        rows = [r for r in history.daily_closes.get(TNX, []) if r.get("day", "") < v.day and isinstance(r.get("close"), (int, float))]
+        now = v.series(TNX).close_before(h)
+        return abs(now - float(rows[-1]["close"])) if rows and now is not None else None
+    m = move(view, hhmm)
+    if m is None:
+        return None
+    rank = rank_vs_prior(history, day, hhmm, m, move)
+    return rank >= THIRD_HI if rank is not None else None
+
+
+def answer_volatility_18(record, bars, history, day, hhmm):
+    """Coiled or resting, asked only of a compressed range (VOLATILITY-04): coiled when a ruler-loading event is due within
+    the hour, implied volatility is trending, the ten-year yield moves more than usual, or a heavyweight is in play
+    (BREADTH-09); resting when none is. The cheap checks go first: BREADTH-09 is measured only when they are all quiet."""
+    if answer_volatility_04(record, bars, history, day, hhmm) != "compressed":
+        return None
+    view = today_view(history, day, bars, record["row_ts"])
+    checks = (lambda: loading_event_ahead(history, day, hhmm), lambda: implied_vol_trending(record),
+              lambda: yield_move_fired(history, day, view, hhmm),
+              lambda: (lambda a: a.startswith("in play") if a else None)(answer_breadth_09(record, bars, history, day, hhmm)))
+    measured = False
+    for check in checks:
+        fired = check()
+        if fired:
+            return "coiled"
+        measured = measured or fired is not None
+    return "resting" if measured else None
 
 
 MARKET_ANSWERERS = {
     "TREND-04": answer_trend_04, "TREND-07": answer_trend_07, "TREND-11": answer_trend_11,
     "VOLATILITY-04": answer_volatility_04, "VOLATILITY-07": answer_volatility_07, "VOLATILITY-08": answer_volatility_08,
     "VOLATILITY-12": answer_volatility_12, "VOLATILITY-14": answer_volatility_14, "VOLATILITY-17": answer_volatility_17,
+    "VOLATILITY-18": answer_volatility_18,
     "LEVELS-07": answer_levels_07, "LEVELS-10": answer_levels_10, "LEVELS-12": answer_levels_12,
     "OPTIONS-04": answer_options_04, "OPTIONS-06": answer_options_06, "OPTIONS-08": answer_options_08,
-    "BREADTH-02": answer_breadth_02, "BREADTH-03": answer_breadth_03, "BREADTH-07": answer_breadth_07, "BREADTH-08": answer_breadth_08,
-    "BREADTH-09": answer_breadth_09,
+    "BREADTH-02": answer_breadth_02, "BREADTH-03": answer_breadth_03, "BREADTH-07": answer_breadth_07, "BREADTH-09": answer_breadth_09,
     "FLOW-02": answer_flow_02, "FLOW-04": answer_flow_04, "FLOW-06": answer_flow_06, "FLOW-07": answer_flow_07,
-    "MACRO-01": answer_macro_01, "MACRO-02": answer_macro_02, "MACRO-04": answer_macro_04, "MACRO-05": answer_macro_05,
-    "MACRO-06": answer_macro_06, "MACRO-07": answer_macro_07,
-    "EVENTS-01": answer_events_01, "EVENTS-02": answer_events_02, "EVENTS-03": answer_events_03, "EVENTS-05": answer_events_05,
-    "SESSION-02": answer_session_02, "SENTIMENT-02": answer_sentiment_02,
+    "MACRO-01": answer_macro_01, "MACRO-02": answer_macro_02, "MACRO-07": answer_macro_07,
+    "EVENTS-02": answer_events_02, "EVENTS-03": answer_events_03, "SESSION-02": answer_session_02, "SENTIMENT-02": answer_sentiment_02,
 }

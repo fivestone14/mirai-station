@@ -239,3 +239,20 @@ def test_the_judgment_questions_are_never_dropped_at_the_cut_over_even_if_last_a
     groups = {"old_question": "g1", "news_reaction": "judgment"}
     cols = column_catalog(set(last), groups, last, "2026-10-08")
     assert "jev:news_reaction" in cols and "jev:old_question" not in cols
+
+
+def test_a_dark_judgment_question_leaves_the_matrix_from_the_cut_over():
+    """push_blowoff_or_fresh was answered on 10-07 and dropped that night: from the cut-over its column retires like a pre-merge one."""
+    last = {"push_blowoff_or_fresh": "2026-10-07", "quiet_coiled_or_resting": "2026-10-07", "news_reaction": "2026-10-07"}
+    groups = dict.fromkeys(last, "judgment")
+    cols = column_catalog(set(last), groups, last, "2026-10-08")
+    assert {c for c in cols if c.startswith("jev:")} == {"jev:news_reaction"}
+    assert {c for c in column_catalog(set(last), groups, last, "2026-10-07") if c.startswith("jev:")} == {f"jev:{q}" for q in last}
+
+
+def test_the_catalogs_non_voting_questions_keep_their_columns_marked_and_out_of_the_voting_set():
+    from spx_jev.mirai_prediction.answer_matrix import voting_columns
+    cols = column_catalog(set(), {})
+    silent = {f"code:{q}" for q in ("BREADTH-09", "VOLATILITY-12", "VOLATILITY-17", "MACRO-02", "SENTIMENT-02", "OPTIONS-02")}
+    assert {c for c, m in cols.items() if m.get("votes") is False} == silent
+    assert set(voting_columns(cols)) == set(cols) - silent and all("votes" not in m for m in voting_columns(cols).values())

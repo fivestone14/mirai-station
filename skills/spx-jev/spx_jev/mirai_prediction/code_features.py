@@ -1,20 +1,22 @@
-"""The code feature builder: the 90 code questions of the merged set (the 51 ready ones and the 39 of Phase 2), answered by
-code from one read's stored data.
+"""The code feature builder: the code questions of the merged set, as the question pressure test of 2026-10-07 left them
+(code_feature_catalog.json), answered by code from one read's stored data.
 
 The catalog (code_feature_catalog.json beside this file) lists every question: id, title, layer (1 a market value ranked
 against its own history, 2 a discrete label), group (the voting group the scorer and matcher take one vote per), method
-(label / bars / market_value), source, label_keys, options (the exact answer list) and notes; an entry with status
-needs_new_feed is in the catalog and silent until its feed exists.
+(label / bars / market_value), source, label_keys, options (the exact answer list) and notes. An entry with
+``"votes": false`` is answered and stored like any other (the judgment gates and JEV's sentences read it) but casts no
+vote: the answer matrix marks its column and the scorer and the matcher leave it out (answer_matrix.voting_columns).
 
     answer_code_features(read_record, bars_up_to_read, market_history) -> {question_id: answer | None}
 
 answers every question for one read from what was known at the read time only: the label sentences as archived, the SPX
 minute bars finished by row_ts, and a MarketHistory of prior sessions (never the read's own day) plus the night's /ES and
-/ZN bars, the day's premarket reads, and (code_features_market.py) the market feed's symbols cut at the read, the daily
+the day's premarket reads, and (code_features_market.py) the market feed's symbols cut at the read, the daily
 closes before the day, the index weights dated on or before it, the calendar, the day's diary rows and quote sweeps. A
 question whose data is missing, or whose sentence is an unknown template, answers None (silent) and never raises. Every
 parser is a pure function of the sentences; the bars and market questions compute their measure and rank it against the
-same measure at the same minute on the trailing HISTORY_SESSIONS sessions.
+same measure at the same minute on the trailing HISTORY_SESSIONS sessions. The options-book questions (GEX_BOOK_QUESTIONS)
+answer only while the read's diary row comes from SPX's own book: a scaled SPY stand-in is not ranked against SPX sessions.
 """
 from __future__ import annotations
 
@@ -26,6 +28,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from ..cuts import SKEW_FLAT_RANK, SKEW_STEEP_RANK
+from ..events import WORDS as EVENT_WORDS
+from ..labels.measures import move_bar
+from ..labels.vol import LOADING_EVENTS
+
 CATALOG_FILE = Path(__file__).with_name("code_feature_catalog.json")
 COLUMN_PREFIX = "code"               # a question's column in the answer matrix is "code:<question_id>"
 
@@ -33,17 +40,28 @@ HISTORY_SESSIONS = 20                # a measure is ranked against the trailing 
 MIN_HISTORY_SESSIONS = 10            # fewer prior sessions with the measure than this: the rank is unknown, the answer None
 GAP_HISTORY_SESSIONS = 60            # VOLATILITY-08 ranks the opening gap against 60 sessions: the SPX bars history reaches that far
 BREAK_TOLERANCE_SIGMA = 0.02         # TREND-10: a break must clear the 60-minute high/low by this share of the read's sigma
-REVERSE_TOLERANCE_SIGMA = 0.02       # TREND-08: an opposite 10-minute move smaller than this share of sigma is ranked, not "reversing"
-# FLOW-08's thresholds are a DRAFT (the rules are not written anywhere else yet): the open sits in the outer
-# FLOW_08_OPEN_EDGE of the first half hour's range, the close in the opposite FLOW_08_CLOSE_EDGE, and a reference level
-# counts as tagged within FLOW_08_TOUCH_SIGMA of the read's sigma.
+# TREND-08: a 20-minute leg within this share of sigma has no side (None), and an opposite 10-minute move within it is
+# ranked, not "reversing" (0.02 let any wiggle after a 1.4-point leg read as a reversal)
+REVERSE_TOLERANCE_SIGMA = 0.05
+FAST_GIVE_BACK_SHARE = 0.5           # TREND-09: a pullback counts as fast only once it has given back half the usual give-back
+FAST_MIN_MINUTES = 5                 # TREND-09: and only once the extreme is this many minutes old (a 2-minute pullback is noise)
+# FLOW-08's thresholds are a DRAFT (the rules are not written anywhere else yet): the settled open (the 09:31 bar's open)
+# sits in the outer FLOW_08_OPEN_EDGE of the first half hour's range, the close in the opposite FLOW_08_CLOSE_EDGE, and a
+# level counts as tagged, or re-crossed, within FLOW_08_TOUCH_SIGMA of the read's sigma.
 FLOW_08_OPEN_EDGE = 0.10
 FLOW_08_CLOSE_EDGE = 0.20
 FLOW_08_TOUCH_SIGMA = 0.05
-LATE_NIGHT_FROM = "03:00"            # MACRO-08: the night's range built from this hour ET is "late", before it "Asia"
-FIRST_BAR_WINDOW = ("09:30", "09:34")        # LEVELS-09 before 10:05: the first five minutes
+FLOW_08_FROM = "10:30"               # FLOW-08 answers from 10:30: at 10:00 its window is TREND-02's
+FLOW_08_SETTLED_BAR = "09:31"        # FLOW-08's open: the 09:31 bar's open (the 09:30 bar opens on the last print)
 OPENING_RANGE_WINDOW = ("09:35", "10:04")    # LEVELS-09 from 10:05: the first 30 minutes from the settled open
-OPENING_HALF_HOUR = ("09:30", "09:59")       # FLOW-08
+OPENING_HALF_HOUR = ("09:30", "09:59")       # FLOW-08, and LEVELS-06's opening box
+NIGHT_REOPEN = "18:00"               # LEVELS-08's fallback: the night's range since the 18:00 reopen ...
+NIGHT_UNTIL = "09:30"                # ... to the cash open, as overnight.range_vs_normal measures it
+MACRO_09_UNTIL = "11:00"             # MACRO-09 answers the first cash hours only: later it is a day label
+LOADING_WORDS = tuple(EVENT_WORDS[k] for k in LOADING_EVENTS)    # VOLATILITY-16: the events that load the ruler (labels/vol.py)
+# OPTIONS-01/02/03/04/06/10/11 read the diary's options book: answered only while it is SPX's own (gex_source "native")
+GEX_BOOK_QUESTIONS = frozenset({"OPTIONS-01", "OPTIONS-02", "OPTIONS-03", "OPTIONS-04", "OPTIONS-06", "OPTIONS-10", "OPTIONS-11"})
+NATIVE_BOOK = "native"
 
 
 @lru_cache(maxsize=1)
@@ -63,32 +81,36 @@ def column_name(question_id: str) -> str:
 class MarketHistory:
     """What a read's own record does not carry. Prior sessions only, never the read's day, except where said:
     spx_bars_by_day        prior sessions' SPX minute bars (the bars/{day}.jsonl shape, ts in ET), day -> bars in time order
-    es_night_bars_by_day   /ES bars outside the regular session for the night into each day, the read's own day included
-                           (its bars are cut at the read time)
-    add_by_day             prior sessions' advance-decline line ($ADD) per minute: day -> [{"ts", "value"}] in time order
+    es_night_bars_by_day   /ES 1-minute bars outside the regular session for the night into each day, the read's own day
+                           included (its bars are cut at the read time)
     premarket_reads        the read's day's premarket-lane read records, in time order (only those before the read are used)
-    zn_night_bars_by_day   /ZN bars outside the regular session, as es_night_bars_by_day
     context_bars_by_day    the market feed's minute bars per symbol (context/bars, with volume): day -> symbol -> bars in
-                           time order, prior sessions and the read's own day (its bars are cut at the read time)
+                           time order, prior sessions and the read's own day (its bars are cut at the read time; its SPY
+                           is its quotes' prices with the siege box's minute volume, saved or not:
+                           code_feature_inputs.with_siege_spy_volume)
+    today_quote_bars       the read's day's quote snapshots as one-price bars for SPY, QQQ and IWM (context/{day}.jsonl),
+                           whether or not the day's bars are saved: FLOW-07 reads them, live and in backfill alike
+    today_context_from_quotes  the read's day's symbols came from the quotes (its bars file not saved yet: a live read)
     daily_closes           symbol -> daily rows (day, open, high, low, close) of the sessions before the read's day
     index_weights          the index weights document (index_weights.pick takes the entry dated on or before the day)
     diary_rows             the read's day's SPX diary rows, slim: ts, call_wall, put_wall, call_wall_tenor, put_wall_tenor,
-                           magnet, atm_iv (only those at or before the read are used)
-    quote_sweeps_by_day    the lob-flow collector's quote sweeps: day -> [(ts, 25-40 delta quoted spread)], prior sessions
-                           and the read's day (cut at the read)
+                           call_wall_gamma, put_wall_gamma, magnet, atm_iv, gex_source (only those at or before the read
+                           are used)
+    quote_sweeps_by_day    the lob-flow collector's quote sweeps: day -> [(ts, quoted spread, delta bucket)], prior
+                           sessions and the read's day (cut at the read)
     calendar_path          the event calendar file read for the EVENTS questions; None for the skill's own calendar/events.json
     cache                  what the market answerers derive once per day (series, usual links), never saved
     """
     spx_bars_by_day: dict[str, list[dict]] = field(default_factory=dict)
     es_night_bars_by_day: dict[str, list[dict]] = field(default_factory=dict)
-    add_by_day: dict[str, list[dict]] = field(default_factory=dict)
     premarket_reads: list[dict] = field(default_factory=list)
-    zn_night_bars_by_day: dict[str, list[dict]] = field(default_factory=dict)
     context_bars_by_day: dict[str, dict[str, list[dict]]] = field(default_factory=dict)
+    today_quote_bars: dict[str, list[dict]] = field(default_factory=dict)
+    today_context_from_quotes: bool = False
     daily_closes: dict[str, list[dict]] = field(default_factory=dict)
     index_weights: dict | None = None
     diary_rows: list[dict] = field(default_factory=list)
-    quote_sweeps_by_day: dict[str, list[tuple[str, float]]] = field(default_factory=dict)
+    quote_sweeps_by_day: dict[str, list[tuple[str, float, str]]] = field(default_factory=dict)
     calendar_path: str | None = None
     cache: dict = field(default_factory=dict, repr=False)
 
@@ -152,10 +174,11 @@ def third(s: str, nth: int = 0) -> str | None:
 
 
 def fifth(s: str, nth: int = 0) -> str | None:
-    m = re.findall(r"(in the bottom fifth|between the top and bottom fifths|in the top fifth)", s)
+    m = re.findall(r"(in the bottom fifth|between the top and bottom fifths|between the bottom and top fifths|in the top fifth)", s)
     if len(m) <= nth:
         return None
-    return {"in the bottom fifth": "bottom", "between the top and bottom fifths": "middle", "in the top fifth": "top"}[m[nth]]
+    return {"in the bottom fifth": "bottom", "between the top and bottom fifths": "middle", "between the bottom and top fifths": "middle",
+            "in the top fifth": "top"}[m[nth]]
 
 
 def rank_of(s: str, nth: int = 0) -> float | None:
@@ -226,7 +249,7 @@ def parse_trend_02(labels, hhmm):
 
 def parse_trend_03(labels, hhmm):
     s = labels.get("price.afternoon_leg")
-    if not s or hhmm < "14:30":
+    if not s or hhmm < "14:45":                  # at 14:30 the leg since 14:00 is TREND-01's 30 minutes
         return None
     return signed_third(move_sign(s), third(s), ("strong down", "down", "flat", "up", "strong up"))
 
@@ -236,15 +259,13 @@ def parse_trend_06(labels, hhmm):
     if not s:
         return None
     word = s.rsplit(": ", 1)[-1].replace(" (ruler estimated)", "")
-    return word if word in ("building", "mixed", "cancelling") else None
+    return {"building": "followed-through", "mixed": "mixed", "cancelling": "reversed"}.get(word)
 
 
 def parse_trend_14(labels, hhmm):
     s = labels.get("price.prior_close_push")
     if not s:
         return None
-    if third(s, 0) == "bottom":
-        return "quiet leg"
     if third(s, 1) == "bottom":
         return "flat day"
     if " away from yesterday's close" in s:
@@ -273,10 +294,10 @@ def parse_volatility_10(labels, hhmm):
     for words, answer in (("a steep put tilt", "steep"), ("a usual tilt", "usual"), ("a flat tilt", "flat")):
         if words in s:
             return answer
-    k = rank_of(s)                   # the older template: "steeper than k of n sessions"
+    k = rank_of(s)                   # the older template: "steeper than k of n sessions", cut at the label's fifths
     if k is None:
         return None
-    return "steep" if k >= 2 / 3 else "flat" if k < 1 / 3 else "usual"
+    return "steep" if k >= SKEW_STEEP_RANK else "flat" if k <= SKEW_FLAT_RANK else "usual"
 
 
 def parse_volatility_11(labels, hhmm):
@@ -301,8 +322,10 @@ def parse_volatility_16(labels, hhmm):
     if not m:
         return None
     size = {"bottom": "compressed", "middle": "normal", "top": "swollen"}[m.group(1)]
-    calendar = re.search(r"on the event calendar today: (.*?)(?:; none of them|; this morning)", s)
-    times = re.findall(r" at (\d\d:\d\d)", calendar.group(1)) if calendar else []
+    calendar = re.search(r"on the event calendar today: ([^;]*)", s)
+    times = []
+    if calendar and "; none of them is" not in s:          # the label's own clause: no event of the day loads the ruler
+        times = [t for words in LOADING_WORDS for t in re.findall(re.escape(words) + r" at (\d\d:\d\d)", calendar.group(1))]
     event = "no event" if not times else ("event ahead" if any(t > hhmm for t in times) else "event released")
     return f"{size}, {event}"
 
@@ -315,7 +338,11 @@ def parse_levels_01(labels, hhmm):
         return "holding up"
     if s.startswith("the gap down is still open"):
         return "holding down"
-    return "filled / too small" if "gap" in s else None
+    if s.startswith("there was no real gap"):
+        return "no real gap"
+    if s.startswith("the gap up is losing ground") or s.startswith("the gap down is losing ground"):
+        return "filled" if "it first touched yesterday's close" in s else "fading"     # the label's losing side holds both
+    return None
 
 
 def parse_levels_02(labels, hhmm):
@@ -324,15 +351,7 @@ def parse_levels_02(labels, hhmm):
     if not t:
         return None
     side = "above" if " above yesterday's close" in s.split(";")[0] else "below"
-    position = "near the close" if t == "bottom" else f"far {side}" if t == "top" else side
-    m = re.search(r"so the gap is (-?\d+)% of the day's move", s)
-    if m:
-        driver = "mostly gap" if int(m.group(1)) >= 50 else "mostly trading"
-    elif "came from the opening gap" in s and "most of it came from the gap" in s:
-        driver = "mostly gap"
-    else:
-        driver = "mostly trading" if "trading" in s.split(";")[-1] else "mixed"
-    return f"{position}; {driver}"
+    return "near the close" if t == "bottom" else f"far {side}" if t == "top" else side
 
 
 def parse_levels_03(labels, hhmm):
@@ -352,23 +371,6 @@ def parse_levels_03(labels, hhmm):
     return "beyond, not yet accepted" if "yesterday's" in s else None
 
 
-def parse_levels_04(labels, hhmm):
-    s = labels.get("levels.prior_value")
-    if not s:
-        return None
-    side = ("above" if "above the high of yesterday's value area" in s
-            else "below" if "below the low of yesterday's value area" in s else "inside")
-    move = labels.get("price.day_move")
-    if "value area" not in s:
-        return None
-    if side == "inside":
-        return side
-    if not move:
-        return None
-    with_it = (move_sign(move) > 0) == (side == "above")
-    return f"{side}, {'with' if with_it else 'against'}"
-
-
 def parse_levels_05(labels, hhmm):
     s = labels.get("open.fresh_extreme")
     if not s:
@@ -382,20 +384,6 @@ def parse_levels_05(labels, hhmm):
         return None
     p = int(m.group(1))
     return "top fifth" if p >= 80 else "bottom fifth" if p <= 20 else "middle"
-
-
-def parse_levels_06(labels, hhmm):
-    s = labels.get("range.first_hour") if hhmm >= "10:30" else labels.get("range.box_status")
-    if not s or "still forming" in s:
-        return None
-    if s.startswith("price is above the first hour's high") or s.startswith("price has broken above"):
-        return "up break holding"
-    if s.startswith("price is below the first hour's low") or s.startswith("price has broken below"):
-        return "down break holding"
-    if "back inside" in s or "came back inside" in s:
-        broke_up = "broke above" in s or ("broke its high" in s and "never broke its high" not in s)
-        return "up break failed" if broke_up else "down break failed"
-    return "inside" if "inside" in s else None
 
 
 def parse_levels_11(labels, hhmm):
@@ -456,18 +444,6 @@ def parse_options_07(labels, hhmm):
             else "call lean" if k < 0.9 else "strong call lean")
 
 
-def parse_options_09(labels, hhmm):
-    s, d = labels.get("gex.weight_both_books"), labels.get("gex.delta_weight_side")
-    if not s or not d:
-        return None
-    thirds = (third(s, 0), third(s, 1), third(d))
-    if None in thirds:
-        return None
-    words = {"bottom": "mostly below", "middle": "balanced", "top": "mostly above"}
-    today, week, delta = (words[t] for t in thirds)
-    return f"today {today}; week {week}; delta {delta}"
-
-
 def parse_options_10(labels, hhmm):
     s = labels.get("gex.charm_wall_distance")
     if not s or hhmm < "14:00":
@@ -501,9 +477,11 @@ def parse_breadth_01(labels, hhmm):
     t = third(s) if s else None
     if t is None:
         return None
-    if t != "top":
+    if t == "bottom":
         return "as expected"
-    return "more up" if re.search(r"[\d.]+ sigma above that", s) else "more down"
+    if re.search(r"[\d.]+ sigma above that", s):
+        return "more up"
+    return "more down" if re.search(r"[\d.]+ sigma below that", s) else None
 
 
 def parse_breadth_06(labels, hhmm):
@@ -525,7 +503,11 @@ def parse_macro_09(labels, hhmm):
     s = labels.get("premarket.legs")
     if not s:
         return None
+    if hhmm > MACRO_09_UNTIL:
+        return None
     tail = s.split("so far. ")[-1]
+    if "No finished leg" in tail:
+        return "night quiet"
     if "one way" in tail:
         return "all agree"
     if "the latest against" in tail:
@@ -539,27 +521,22 @@ def parse_macro_09(labels, hhmm):
     return None
 
 
-def parse_macro_10(labels, hhmm):
-    s, c = labels.get("premarket.arc"), labels.get("premarket.since_checkpoint")
-    if not s or not c:
+def parse_macro_09_arc(labels, hhmm):
+    s = labels.get("premarket.arc")
+    if not s or hhmm > MACRO_09_UNTIL:
         return None
-    arc = next((a for w, a in (("built on it", "built"), ("first move held", "held"), ("first move faded", "faded"),
-                               ("reversed its first move", "reversed"), ("no finished leg", "no real move")) if w in s), None)
-    if arc is None:
-        return None
-    verdict = next((a for w, a in (("latest leg added", "added"), ("latest leg gave back", "gave back"),
-                                   ("latest leg crossed", "crossed 16:00")) if w in c), "small / no verdict")
-    return f"{arc}; since checkpoint {verdict}"
+    return next((a for w, a in (("built on it", "built"), ("first move held", "held"), ("first move faded", "faded"),
+                                ("reversed its first move", "reversed"), ("no finished leg", "no real move")) if w in s), None)
 
 
 def parse_events_04(labels, hhmm):
-    s, v = labels.get("shock.burst"), labels.get("shock.vs_day_range")
-    if not s or not v or "shock" not in s or "shock" not in v:
+    s = labels.get("shock.burst")
+    if not s or "shock" not in s or "inside the first" in s:       # a burst at a release is EVENTS-03's reaction
         return None
-    state = ("fresh" if "inside the 10-minute fresh window" in s else "round-tripped" if "past the half line" in s else "settling")
-    extreme = ("no new extreme" if "stayed inside" in v
-               else "new extreme held" if "still at the new extreme" in v or "at or" in v else "new extreme given up")
-    return f"{state}; {extreme}"
+    side = "up" if "price rose" in s else "down" if "price fell" in s else None
+    if side is None:
+        return None
+    return f"{side} burst {'given back' if 'past the half line' in s else 'held'}"
 
 
 def parse_session_01(labels, hhmm):
@@ -589,7 +566,16 @@ def parse_sentiment_01(labels, hhmm):
 
 
 def parse_breadth_04(labels, hhmm):
-    return words_by_third("sectors.agreement_30m", ("less together", "about usual", "more together"), nth=1)(labels, hhmm)
+    s = labels.get("sectors.agreement_30m")
+    m = re.search(r"that count is .*?(bottom|middle|top) third", s) if s else None
+    return {"bottom": "less together", "middle": "about usual", "top": "more together"}[m.group(1)] if m else None
+
+
+def parse_flow_03(labels, hhmm):
+    s = labels.get("liquidity.spy_quote")
+    size = s.split("; the size showing", 1)[1] if s and "; the size showing" in s else None
+    k = rank_of(size) if size else None
+    return {"bottom": "thin", "middle": "normal", "top": "thick"}[third_of(k)] if k is not None else None
 
 
 def parse_flow_05(labels, hhmm):
@@ -610,21 +596,19 @@ LABEL_PARSERS = {
     "VOLATILITY-10": parse_volatility_10, "VOLATILITY-11": parse_volatility_11,
     "VOLATILITY-13": words_by_third("vol.front_fear_shift", ("fallen", "held", "risen")),
     "VOLATILITY-16": parse_volatility_16,
-    "LEVELS-01": parse_levels_01, "LEVELS-02": parse_levels_02, "LEVELS-03": parse_levels_03, "LEVELS-04": parse_levels_04,
-    "LEVELS-05": parse_levels_05, "LEVELS-06": parse_levels_06,
-    "LEVELS-08": words_by_third("overnight.range_vs_normal", ("small", "normal", "large")),
+    "LEVELS-01": parse_levels_01, "LEVELS-02": parse_levels_02, "LEVELS-03": parse_levels_03, "LEVELS-05": parse_levels_05,
     "LEVELS-11": parse_levels_11,
     "OPTIONS-01": parse_options_01, "OPTIONS-02": parse_options_02, "OPTIONS-03": parse_options_03, "OPTIONS-05": parse_options_05,
-    "OPTIONS-07": parse_options_07, "OPTIONS-09": parse_options_09, "OPTIONS-10": parse_options_10, "OPTIONS-11": parse_options_11,
+    "OPTIONS-07": parse_options_07, "OPTIONS-10": parse_options_10, "OPTIONS-11": parse_options_11,
     "BREADTH-01": parse_breadth_01, "BREADTH-04": parse_breadth_04,
     "BREADTH-05": words_by_third("leaders.rotation_30m", ("lag", "match", "beat")),
     "BREADTH-06": parse_breadth_06,
     "FLOW-01": parse_flow_01,
-    "FLOW-03": words_by_third("liquidity.spy_quote", ("thin", "normal", "thick"), fifths=True), "FLOW-05": parse_flow_05,
-    "MACRO-09": parse_macro_09, "MACRO-10": parse_macro_10,
+    "FLOW-03": parse_flow_03, "FLOW-05": parse_flow_05,
+    "MACRO-09": parse_macro_09, "MACRO-09-ARC": parse_macro_09_arc,
     "EVENTS-04": parse_events_04, "SESSION-01": parse_session_01, "SENTIMENT-01": parse_sentiment_01,
 }
-PREMARKET_QUESTIONS = ("LEVELS-08", "MACRO-09", "MACRO-10")      # their labels live on the premarket lane's reads
+PREMARKET_QUESTIONS = ("MACRO-09", "MACRO-09-ARC")      # their labels live on the premarket lane's reads (LEVELS-08 too, answer_levels_08)
 
 
 # ---------------------------------------------------------------- bars measures (one per bars question)
@@ -643,19 +627,20 @@ def hour_path(bars: list[dict]) -> tuple[float, float] | None:
     return net, (net / path if path else 0.0)
 
 
-def pace_ratio(bars: list[dict]) -> tuple[float, float] | None:
-    """TREND-08's measure: (d10, ratio) with d20 = C[t-10]-C[t-30], d10 = C[t]-C[t-10], ratio = sign(d20) d10 / (|d20| / 2)."""
+def pace_ratio(bars: list[dict]) -> tuple[float, float, float] | None:
+    """TREND-08's measure: (d10, ratio, d20) with d20 = C[t-10]-C[t-30], d10 = C[t]-C[t-10], ratio = sign(d20) d10 / (|d20| / 2)."""
     if len(bars) < 31:
         return None
     c = _closes(bars)
     d10, d20 = c[-1] - c[-11], c[-11] - c[-31]
     if d20 == 0:
         return None
-    return d10, (d10 * (1 if d20 > 0 else -1)) / (abs(d20) / 2)
+    return d10, (d10 * (1 if d20 > 0 else -1)) / (abs(d20) / 2), d20
 
 
 def leg_shape(bars: list[dict]) -> tuple[float, float, bool] | None:
-    """TREND-09's measure over the last 60 minutes: (net, given-back share of the push, pullback faster per minute than the push)."""
+    """TREND-09's measure over the last 60 minutes: (net, given-back share of the push, pullback faster per minute than the
+    push, counted only once the extreme is FAST_MIN_MINUTES old)."""
     if len(bars) < 61:
         return None
     w = bars[-61:]
@@ -670,7 +655,7 @@ def leg_shape(bars: list[dict]) -> tuple[float, float, bool] | None:
         extreme = float(w[i]["low"])
         push, back = start - extreme, now - extreme
     give_back = back / push if push else 0.0
-    fast = back / max(60 - i, 1) > push / max(i, 1)
+    fast = 60 - i >= FAST_MIN_MINUTES and back / (60 - i) > push / max(i, 1)
     return net, give_back, fast
 
 
@@ -691,65 +676,18 @@ def window_range(bars: list[dict], window: tuple[str, str], minutes: int) -> flo
     return max(float(b["high"]) for b in inside) - min(float(b["low"]) for b in inside)
 
 
-def night_late_share(night_bars: list[dict], day: str) -> float | None:
-    """MACRO-08's measure: the share of the night's /ES range not already built before LATE_NIGHT_FROM on ``day``."""
-    if not night_bars:
-        return None
-    highs = [float(b["high"]) for b in night_bars]
-    lows = [float(b["low"]) for b in night_bars]
-    whole = max(highs) - min(lows)
-    if whole <= 0:
-        return None
-    early = [b for b in night_bars if not (b["ts"][:10] == day and hhmm_of(b["ts"]) >= LATE_NIGHT_FROM)]
-    if not early:
-        return 1.0
-    early_range = max(float(b["high"]) for b in early) - min(float(b["low"]) for b in early)
-    return 1 - early_range / whole
-
-
 def night_bars_up_to(night_bars: list[dict], day: str, hhmm: str) -> list[dict]:
     """A night's bars finished by ``hhmm`` on ``day`` (every bar from the earlier calendar days, then those before the minute)."""
     return [b for b in night_bars if b["ts"][:10] < day or (b["ts"][:10] == day and hhmm_of(b["ts"]) < hhmm)]
 
 
-def gap_side_from_bars(day_bars: list[dict], prior_bars: list[dict]) -> int | None:
-    """+1 / -1 for a session that settled (at 09:35) above / below the prior session's last close; None without both."""
-    settled = next((b for b in day_bars if hhmm_of(b["ts"]) == OPENING_RANGE_WINDOW[0]), None)
-    if settled is None or not prior_bars:
+def night_range_share(night_bars: list[dict], day: str) -> float | None:
+    """LEVELS-08's fallback measure: the night's /ES high-low from the NIGHT_REOPEN reopen to NIGHT_UNTIL, as a share of its
+    last price there."""
+    night = [b for b in night_bars_up_to(night_bars, day, NIGHT_UNTIL) if b["ts"][:10] == day or hhmm_of(b["ts"]) >= NIGHT_REOPEN]
+    if not night or not float(night[-1]["close"]):
         return None
-    gap = float(settled["open"]) - float(prior_bars[-1]["close"])
-    return 1 if gap >= 0 else -1
-
-
-def gap_side_from_label(labels: dict[str, str]) -> int | None:
-    s = labels.get("gap.size")
-    if not s:
-        return None
-    return 1 if "opened above" in s else -1 if "opened below" in s else None
-
-
-def add_value(record: dict) -> float | None:
-    """The read's advance-decline line: $ADVN - $DECN from its market context (the derived value), else $ADD."""
-    context = record.get("market_context") or {}
-
-    def number(symbol):
-        v = (context.get(symbol) or {}).get("value") if isinstance(context.get(symbol), dict) else None
-        return float(v) if isinstance(v, (int, float)) else None
-    advancing, declining = number("$ADVN"), number("$DECN")
-    if advancing is not None and declining is not None:
-        return advancing - declining
-    return number("$ADD")
-
-
-def add_at_minute(series: list[dict], hhmm: str) -> float | None:
-    """The last $ADD value finished by the minute, from a prior session's per-minute series."""
-    value = None
-    for point in series:
-        if hhmm_of(point["ts"]) < hhmm:
-            value = point.get("value")
-        else:
-            break
-    return float(value) if isinstance(value, (int, float)) else None
+    return (max(float(b["high"]) for b in night) - min(float(b["low"]) for b in night)) / float(night[-1]["close"])
 
 
 # ---------------------------------------------------------------- the bars questions
@@ -769,12 +707,17 @@ def answer_trend_05(record, bars, history, day, hhmm):
     if m is None:
         return None
     prior = prior_measures(history, day, hhmm, hour_path)
-    size = rank_fraction(abs(m[0]), [abs(p[0]) for p in prior])
+    nets = [abs(p[0]) for p in prior]
+    size = rank_fraction(abs(m[0]), nets)
     if size is None:
         return None
     if third_of(size) == "bottom":
         return "no hour move"
-    efficiency = rank_fraction(abs(m[1]), [abs(p[1]) for p in prior])
+    # a big hour is ranked against the hours that moved: an hour that went nowhere has no telling efficiency
+    moved = [abs(p[1]) for p in prior if rank_fraction(abs(p[0]), nets) >= 1 / 3]
+    efficiency = rank_fraction(abs(m[1]), moved)
+    if efficiency is None:
+        return None
     way = "one-way" if efficiency >= 0.5 else "two-way"
     return f"{way} {'up' if m[0] > 0 else 'down'}"
 
@@ -784,13 +727,17 @@ def answer_trend_08(record, bars, history, day, hhmm):
     sigma = record.get("sigma")
     if m is None or not isinstance(sigma, (int, float)) or sigma <= 0:
         return None
-    d10, ratio = m
-    if ratio < 0 and abs(d10) > REVERSE_TOLERANCE_SIGMA * sigma:
-        return "reversing"
-    rank = rank_fraction(ratio, [p[1] for p in prior_measures(history, day, hhmm, pace_ratio)])
+    d10, ratio, d20 = m
+    tolerance = REVERSE_TOLERANCE_SIGMA * sigma
+    if abs(d20) <= tolerance:
+        return None
+    side = "up" if d20 > 0 else "down"
+    if ratio < 0 and abs(d10) > tolerance:
+        return f"{side} reversing"
+    rank = rank_fraction(ratio, [p[1] for p in prior_measures(history, day, hhmm, pace_ratio) if p[1] >= 0])
     if rank is None:
         return None
-    return {"top": "accelerating", "middle": "steady", "bottom": "fading"}[third_of(rank)]
+    return f"{side} {({'top': 'accelerating', 'middle': 'steady', 'bottom': 'fading'})[third_of(rank)]}"
 
 
 def answer_trend_09(record, bars, history, day, hhmm):
@@ -803,7 +750,9 @@ def answer_trend_09(record, bars, history, day, hhmm):
     net, give_back, fast = m
     if abs(net) <= statistics.median(abs(p[0]) for p in prior):
         return "no leg"
-    deep = give_back > statistics.median(p[1] for p in prior)
+    usual_give_back = statistics.median(p[1] for p in prior)
+    deep = give_back > usual_give_back
+    fast = fast and give_back >= FAST_GIVE_BACK_SHARE * usual_give_back
     return f"{'up' if net > 0 else 'down'} leg {'deep-or-fast' if deep or fast else 'shallow-slow'}"
 
 
@@ -835,19 +784,80 @@ def answer_trend_12(record, bars, history, day, hhmm):
 
 def answer_levels_09(record, bars, history, day, hhmm):
     if hhmm < "10:05":
-        window, minutes = FIRST_BAR_WINDOW, 5
-    else:
-        window, minutes = OPENING_RANGE_WINDOW, 30
-    size = window_range(bars, window, minutes)
+        return None
+    size = window_range(bars, OPENING_RANGE_WINDOW, 30)
     if size is None:
         return None
-    prior = [r for d in trailing_days(history.spx_bars_by_day, day) if (r := window_range(history.spx_bars_by_day[d], window, minutes)) is not None]
+    prior = [r for d in trailing_days(history.spx_bars_by_day, day) if (r := window_range(history.spx_bars_by_day[d], OPENING_RANGE_WINDOW, 30)) is not None]
     rank = rank_fraction(size, prior)
     if rank is None:
         return None
-    if minutes == 5:
-        return "quiet" if rank < 0.25 else "normal" if rank < 0.5 else "busy" if rank < 0.75 else "very busy"
     return {"bottom": "narrow", "middle": "normal", "top": "wide"}[third_of(rank)]
+
+
+def _minutes_ago(s: str, words: str) -> int | None:
+    m = re.search(words + r" (\d+) minutes? ago", s)
+    return int(m.group(1)) if m else None
+
+
+def box_latest_break(bars: list[dict]) -> str | None:
+    """"up" / "down": the side of the opening box (the first 30 minutes) a close after it broke past most recently, by
+    range.box_status's rule (past the box by measures.move_bar); None without the box or a break."""
+    box = bars_in_window(bars, OPENING_HALF_HOUR)
+    bar = move_bar(bars)
+    if len(box) < 30 or bar is None:
+        return None
+    high, low = max(float(b["high"]) for b in box), min(float(b["low"]) for b in box)
+    for b in reversed([b for b in bars if hhmm_of(b["ts"]) > OPENING_HALF_HOUR[1]]):
+        if float(b["close"]) > high + bar:
+            return "up"
+        if float(b["close"]) < low - bar:
+            return "down"
+    return None
+
+
+def answer_levels_06(record, bars, history, day, hhmm):
+    """The first hour's range from 10:30, the opening box before it. A break past both edges is the failed break of the
+    side broken more recently: the first-hour label says how many minutes ago each was; the box label does not, so the
+    bars say which side broke last."""
+    labels = flat_labels(record)
+    s = labels.get("range.first_hour") if hhmm >= "10:30" else labels.get("range.box_status")
+    if not s or "still forming" in s:
+        return None
+    if "no bar has gone more than" in s:                       # within the break buffer: no break, whatever side price sits
+        return "inside"
+    if s.startswith("price is above the first hour's high") or s.startswith("price has broken above"):
+        return "up break holding"
+    if s.startswith("price is below the first hour's low") or s.startswith("price has broken below"):
+        return "down break holding"
+    if "broke both edges" in s:
+        up, down = _minutes_ago(s, "above its high"), _minutes_ago(s, "below its low")
+        if up is None or down is None:
+            return None
+        return "up break failed" if up < down else "down break failed"
+    if "broke out both ways and came back" in s:
+        side = box_latest_break(bars)
+        return f"{side} break failed" if side else None
+    if "back inside" in s or "came back inside" in s:
+        broke_up = "broke above" in s or ("broke its high" in s and "never broke its high" not in s)
+        return "up break failed" if broke_up else "down break failed"
+    return "inside" if "inside" in s else None
+
+
+def answer_levels_08(record, bars, history, day, hhmm):
+    """The night's range by its third: the day's last premarket read's overnight.range_vs_normal, else (no such label before
+    the read) the night's /ES high-low since the reopen ranked against the trailing nights'."""
+    s = premarket_labels(history, record.get("row_ts") or "").get("overnight.range_vs_normal")
+    words = {"bottom": "small", "middle": "normal", "top": "large"}
+    if s:
+        t = third(s)
+        return words[t] if t else None
+    tonight = night_range_share(history.es_night_bars_by_day.get(day, []), day)
+    if tonight is None:
+        return None
+    prior = [r for d in trailing_days(history.es_night_bars_by_day, day) if (r := night_range_share(history.es_night_bars_by_day[d], d)) is not None]
+    rank = rank_fraction(tonight, prior)
+    return words[third_of(rank)] if rank is not None else None
 
 
 def _reference_levels(history: MarketHistory, day: str, first_bar: dict) -> list[float]:
@@ -867,74 +877,45 @@ def _reference_levels(history: MarketHistory, day: str, first_bar: dict) -> list
 
 def answer_flow_08(record, bars, history, day, hhmm):
     sigma = record.get("sigma")
-    if hhmm < "10:00" or not isinstance(sigma, (int, float)) or sigma <= 0:
+    if hhmm < FLOW_08_FROM or not isinstance(sigma, (int, float)) or sigma <= 0:
         return None
     half_hour = bars_in_window(bars, OPENING_HALF_HOUR)
-    if len(half_hour) < 30:
+    settled = next((i for i, b in enumerate(half_hour) if hhmm_of(b["ts"]) == FLOW_08_SETTLED_BAR), None)
+    if len(half_hour) < 30 or settled is None:
         return None
     high = max(float(b["high"]) for b in half_hour)
     low = min(float(b["low"]) for b in half_hour)
     if high <= low:
         return None
     span = high - low
-    open_at = (float(half_hour[0]["open"]) - low) / span
+    first_open = float(half_hour[settled]["open"])
+    open_at = (first_open - low) / span
     close_at = (float(half_hour[-1]["close"]) - low) / span
-    first_open = float(half_hour[0]["open"])
     touch = FLOW_08_TOUCH_SIGMA * sigma
-    later_closes = [float(b["close"]) for b in half_hour[1:]]
-    if open_at <= FLOW_08_OPEN_EDGE and close_at >= 1 - FLOW_08_CLOSE_EDGE and min(later_closes) >= first_open - touch:
-        return "drive"
-    if open_at >= 1 - FLOW_08_OPEN_EDGE and close_at <= FLOW_08_CLOSE_EDGE and max(later_closes) <= first_open + touch:
-        return "drive"
+    later = half_hour[settled + 1:]
+    if open_at <= FLOW_08_OPEN_EDGE and close_at >= 1 - FLOW_08_CLOSE_EDGE and min(float(b["low"]) for b in later) >= first_open - touch:
+        return "drive up"
+    if open_at >= 1 - FLOW_08_OPEN_EDGE and close_at <= FLOW_08_CLOSE_EDGE and max(float(b["high"]) for b in later) <= first_open + touch:
+        return "drive down"
     middle = low + span / 2
     for level in _reference_levels(history, day, half_hour[0]):
-        tagged = any(float(b["low"]) - touch <= level <= float(b["high"]) + touch for b in half_hour)
-        if not tagged:
+        tags = [i for i, b in enumerate(half_hour) if float(b["low"]) - touch <= level <= float(b["high"]) + touch]
+        if not tags:
             continue
-        if level >= middle and close_at <= FLOW_08_CLOSE_EDGE:
-            return "test-then-drive"
-        if level < middle and close_at >= 1 - FLOW_08_CLOSE_EDGE:
-            return "test-then-drive"
+        down = level >= middle
+        if not (close_at <= FLOW_08_CLOSE_EDGE if down else close_at >= 1 - FLOW_08_CLOSE_EDGE):
+            continue
+        far = next(i for i, b in enumerate(half_hour)
+                   if ((float(b["close"]) - low) / span <= FLOW_08_CLOSE_EDGE if down else (float(b["close"]) - low) / span >= 1 - FLOW_08_CLOSE_EDGE))
+        if tags[0] < far:                                         # the test came before the drive reached the far edge
+            return f"test-then-drive {'down' if down else 'up'}"
     return "rotation"
-
-
-def answer_macro_08(record, bars, history, day, hhmm):
-    tonight = night_late_share(night_bars_up_to(history.es_night_bars_by_day.get(day, []), day, hhmm), day)
-    if tonight is None:
-        return None
-    prior = []
-    for d in trailing_days(history.es_night_bars_by_day, day):
-        share = night_late_share(night_bars_up_to(history.es_night_bars_by_day[d], d, hhmm), d)
-        if share is not None:
-            prior.append(share)
-    if len(prior) < MIN_HISTORY_SESSIONS:
-        return None
-    return "mostly late (after 03:00)" if tonight > statistics.median(prior) else "mostly Asia"
-
-
-def answer_breadth_11(record, bars, history, day, hhmm):
-    add = add_value(record)
-    side = gap_side_from_label(flat_labels(record))
-    if add is None or side is None:
-        return None
-    prior = []
-    days = sorted(history.spx_bars_by_day)
-    for d in trailing_days(history.add_by_day, day):
-        value = add_at_minute(history.add_by_day[d], hhmm)
-        earlier = [x for x in days if x < d]
-        prior_side = gap_side_from_bars(history.spx_bars_by_day.get(d, []), history.spx_bars_by_day.get(earlier[-1], []) if earlier else [])
-        if value is not None and prior_side is not None:
-            prior.append(value * prior_side)
-    rank = rank_fraction(add * side, prior)
-    if rank is None:
-        return None
-    return {"top": "more than usual", "middle": "about as usual", "bottom": "less than usual"}[third_of(rank)]
 
 
 BARS_ANSWERERS = {
     "TREND-05": answer_trend_05, "TREND-08": answer_trend_08, "TREND-09": answer_trend_09, "TREND-10": answer_trend_10,
-    "TREND-12": answer_trend_12, "LEVELS-09": answer_levels_09, "FLOW-08": answer_flow_08, "MACRO-08": answer_macro_08,
-    "BREADTH-11": answer_breadth_11,
+    "TREND-12": answer_trend_12, "LEVELS-06": answer_levels_06, "LEVELS-08": answer_levels_08, "LEVELS-09": answer_levels_09,
+    "FLOW-08": answer_flow_08,
 }
 
 
@@ -946,6 +927,12 @@ def premarket_labels(history: MarketHistory, row_ts: str) -> dict[str, str]:
     return flat_labels(before[-1]) if before else {}
 
 
+def book_is_native(history: MarketHistory, row_ts: str) -> bool:
+    """The read's newest diary row at or before it carries SPX's own options book, not a scaled SPY stand-in."""
+    rows = [r for r in history.diary_rows if r["ts"] <= row_ts]
+    return bool(rows) and rows[-1].get("gex_source") == NATIVE_BOOK
+
+
 def answer_code_features(read_record: dict, bars_up_to_read: list[dict], market_history: MarketHistory | None = None) -> dict[str, str | None]:
     """Every catalog question's answer for one read, None where the data is missing or the sentence is not a known template.
     Never raises: a parser's error is that question's None."""
@@ -955,11 +942,14 @@ def answer_code_features(read_record: dict, bars_up_to_read: list[dict], market_
     day, hhmm = row_ts[:10], hhmm_of(row_ts)
     own = flat_labels(read_record)
     night = premarket_labels(history, row_ts) if history.premarket_reads else {}
+    native = book_is_native(history, row_ts)
     answers: dict[str, str | None] = {}
     for question in load_catalog():
         qid = question["id"]
         try:
-            if qid in LABEL_PARSERS:
+            if qid in GEX_BOOK_QUESTIONS and not native:
+                answer = None
+            elif qid in LABEL_PARSERS:
                 labels = night if qid in PREMARKET_QUESTIONS else own
                 answer = LABEL_PARSERS[qid](labels, hhmm)
             elif qid in BARS_ANSWERERS:
@@ -972,4 +962,3 @@ def answer_code_features(read_record: dict, bars_up_to_read: list[dict], market_
             answer = None
         answers[qid] = answer if answer in question["options"] else None
     return answers
-

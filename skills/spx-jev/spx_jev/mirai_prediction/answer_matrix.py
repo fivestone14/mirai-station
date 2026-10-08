@@ -10,7 +10,10 @@ the live hook never scans the store; the hook only adds today's row to it:
                                      the questions of one request group share one group, so a group casts one vote in the scorer
     raw/code_features/{day}.jsonl    layers 1-2: the code feature builder's answer per catalog question ("code:<question_id>"),
                                      this system's own raw record (code_features.py), joined on read_id; a read with no line
-                                     has None in every code column. Each column's layer and group come from the catalog.
+                                     has None in every code column. Each column's layer and group come from the catalog;
+                                     a question the catalog marks "votes": false keeps its column (context: the judgment
+                                     gates and JEV's sentences read it) with "votes": false, and every learner takes only
+                                     voting_columns, so it casts no vote and weighs nothing in a match.
 
 SHRINK FIRST, THEN JOIN: each long table is pivoted to one row per read before joining, so a read never multiplies.
 The base is forecasts_at_read_time JOIN graded_results on (read_id, sum_id); the pivots are LEFT-joined onto it, so a
@@ -25,7 +28,9 @@ column of a pre-merge question stops being answered. A matrix built for the cut-
 drops every ``jev:`` column whose last answered day is before the cut-over (column_catalog), and its rows' answers with it:
 the matcher reads a column neither read answered as half a mismatch, so dead columns would dilute every match against
 the old reads. Every ``code:`` column is kept whatever its answers: the catalog is the same before and after. A matrix built
-for the cut-over day itself, or before it, keeps every column, so the fits before the cut-over are what they were.
+for the cut-over day itself, or before it, keeps every column, so the fits before the cut-over are what they were. The
+judgment questions are kept past the cut-over (they are still asked), except one the set has dark: the question pressure
+test of 2026-10-07 dropped push_blowoff_or_fresh and quiet_coiled_or_resting, answered on 10-07 only.
 """
 from __future__ import annotations
 
@@ -35,6 +40,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import date
 from pathlib import Path
 
+from ..lane import QUESTIONS
 from ..scores import OUTCOMES
 from .code_features import column_name, load_catalog
 from .name_map import CUT_OVER_DAY, JUDGMENT_GROUP, store_path
@@ -67,7 +73,7 @@ class AnswerMatrix:
     sum_id: str
     built_for_day: str                        # every row's day is strictly before this
     rows: list[Row]
-    columns: dict[str, dict]                  # column id -> {"layer": 1|2|3, "group": str, "family": str}
+    columns: dict[str, dict]                  # column id -> {"layer": 1|2|3, "group": str, "family": str[, "votes": False]}
 
     def trainable_rows(self) -> list[Row]:
         return [r for r in self.rows if r.is_trainable()]
@@ -195,6 +201,12 @@ def row_answers(code_answers: dict[str, str | None], jev_answers: dict[str, str]
     return out
 
 
+def dark_judgment_questions(questions_file: Path = QUESTIONS) -> set[str]:
+    """The judgment group's questions the question doc has dark: never asked again, so they retire like the pre-merge ones."""
+    doc = json.loads(questions_file.read_text(encoding="utf-8"))
+    return {qid for g in doc["groups"] if g["id"] == JUDGMENT_GROUP for qid, q in g["questions"].items() if q.get("status") == "dark"}
+
+
 def retired_before_cut_over(question_ids: set[str], last_day_of_question: dict[str, str], before_day: str) -> set[str]:
     """The questions whose ``jev:`` column a matrix built for ``before_day`` leaves out: once the matrix is for the cut-over
     day or later (no read from then on can answer them), every question last answered before the cut-over day (one never
@@ -208,18 +220,27 @@ def column_catalog(question_ids: set[str], group_of_question: dict[str, str], la
                    before_day: str | None = None) -> dict[str, dict]:
     """Every column with its layer, group and family: the code features' layer and group are the catalog's (layers 1-2), every
     one of them whatever the reads answered; a layer-3 question's group is its request group (the questions JEV was asked
-    together), so the scorer takes one vote per group. With ``before_day`` and each question's last answered day, a matrix for a
-    day after the cut-over leaves out the questions retired before it (retired_before_cut_over)."""
+    together), so the scorer takes one vote per group. A catalog question with ``"votes": false`` is marked so (voting_columns
+    leaves it out). With ``before_day`` and each question's last answered day, a matrix for a day after the cut-over leaves out
+    the questions retired before it (retired_before_cut_over)."""
     cols: dict[str, dict] = {}
     for q in load_catalog():
-        cols[column_name(q["id"])] = {"layer": int(q["layer"]), "group": q["group"], "family": q["method"]}
+        cols[column_name(q["id"])] = {"layer": int(q["layer"]), "group": q["group"], "family": q["method"],
+                                      **({"votes": False} if q.get("votes") is False else {})}
     dropped = retired_before_cut_over(question_ids, last_day_of_question or {}, before_day) if before_day else set()
-    dropped = {qid for qid in dropped if group_of_question.get(qid) != JUDGMENT_GROUP}   # the judgment questions live on past the cut-over
+    if dropped:                                                    # the judgment questions live on past the cut-over, unless dark
+        dark = dark_judgment_questions()
+        dropped = {qid for qid in dropped if group_of_question.get(qid) != JUDGMENT_GROUP or qid in dark}
     for qid in sorted(question_ids - dropped):
         # the judgment questions each judge a different thing, so each is its own group; the old request groups vote once
         group = group_of_question.get(qid, qid)
         cols[f"jev:{qid}"] = {"layer": 3, "group": f"jev:{qid if group == JUDGMENT_GROUP else group}", "family": "jev"}
     return cols
+
+
+def voting_columns(columns: dict[str, dict]) -> dict[str, dict]:
+    """The columns that vote: all but those marked ``"votes": false``, which stay in the matrix as context only."""
+    return {col: meta for col, meta in columns.items() if meta.get("votes", True) is not False}
 
 
 # ---------------------------------------------------------------- building

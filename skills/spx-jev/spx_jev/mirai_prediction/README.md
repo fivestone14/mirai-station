@@ -39,7 +39,7 @@ The live store keeps its folder names; `name_map.py` maps them (`graded_results`
 - **At every live read** `service.py` calls `live_call.forecast_now_with_voices` inside the read (Pool 2's mix is the call
   since 2026-10-06; the voices it mixed ride on each sum it took over as `voices`, most say first, for the phone's "what
   went into it"), falling back to `service_hook.spawn_after_read`, which starts `read_hook` in its own process. The hook
-  first has the code feature builder answer its 90 questions for the read and appends the line to `raw/code_features/`
+  first has the code feature builder answer its questions for the read and appends the line to `raw/code_features/`
   (the record the nightly matrix joins on), then loads the day's fit file (fits + answer matrix, no store scan), adds
   today's row with those answers and JEV's picks, forecasts the read with every voice and appends the lines to `raw/`
   (about 0.4 s; the first sum always runs, a later one is skipped past the 5-second budget; never raises). Each line
@@ -66,30 +66,56 @@ job too, with the rest of the service).
 
 ## The code feature builder (layers 1-2)
 
-`code_features.py` answers the 90 code questions of the merged question set for one read (the 51 ready ones, and since
-2026-10-07 the 39 of Phase 2), from the read's own record and what was known at its time: the label sentences as
-archived (one small parser per template), the SPX minute bars finished by the read (TREND-04/05/08/09/10/12, LEVELS-09,
-FLOW-08, VOLATILITY-04/14, ...), the night's /ES bars (MACRO-08, LEVELS-07) and the derived advance-decline line
-`$ADVN - $DECN` against the gap's side (BREADTH-11). `code_features_market.py` holds the Phase 2 answerers that read the
+`code_features.py` answers the code questions of the merged question set for one read, 78 questions in 79 catalog columns
+since the question pressure test of 2026-10-07 (below; MACRO-09 answers in two columns), from the read's own record and
+what was known at its time: the label sentences as archived (one small parser per template), the SPX minute bars finished
+by the read (TREND-05/08/09/10/12, LEVELS-06's opening box, LEVELS-09, FLOW-08, ...) and the night's 1-minute /ES bars
+(LEVELS-07, LEVELS-08 without a premarket read). `code_features_market.py` holds the Phase 2 answerers that read the
 Phase 1 feeds: the market feed's minute bars per symbol (`context/bars/`, today's from the quotes until the day is saved)
-for SPY/QQQ/IWM, /ZN, HYG/USO/GLD, KRE/XHB/XLE, the 3x funds, the megacaps, $VIX/$VIX9D and breadth; the daily closes
-(VOLATILITY-08/17, SESSION-02); the index weights dated on or before the day (BREADTH-03/07/08/09); the calendar read at
-the read's time (EVENTS-01/02/03/05, the auction tier answered from the rows present, so never named until rows exist);
-the day's diary walls and magnet (OPTIONS-04/06); and the lob-flow quote sweeps (OPTIONS-08). Two catalog entries carry
-`status: needs_new_feed` and stay silent: OPTIONS-12 (no 1-to-7-day volume by strike anywhere) and FLOW-09 (the
-collector folds SPY's bid and ask size into one). `code_feature_catalog.json` beside it lists every question with its
-id, title, layer, group (the voting group of the question set, kept as it is), method, source (the exact formula and
-window), label keys, the exact answer list and notes (every DRAFT threshold says so). A ranked measure is compared with
-the same measure at the same minute on the trailing 20 sessions (at least 10, else None), from `bars/`, `context/bars/`
-and the store's `spx_bars`, `overnight_bars` and `context_bars` (`code_feature_inputs.py`; the SPX bars reach 60 sessions
-for the gap rank); a symbol's usual multiple of SPX (the beta of its 30-minute returns on SPX's over the prior sessions'
-half hours) is fitted once per day and applied to every session in a rank. The three premarket questions (LEVELS-08,
-MACRO-09, MACRO-10) take the day's last premarket-lane read. A question whose data is missing, or whose sentence is a
-template the parser does not know, answers None, never an error. A symbol's own-day bars live are the quotes
-(one price a snapshot), so every market answerer reads closes and volume only, never a minute's high or low: live and
-backfill measure the same thing. A live read runs in a fresh process, so each read loads the day's history cold (about
-1.1 s) and answers all 90 in about 0.3 s; the prior-sessions parts are cached only within one process (the replay and
-the backfill, which walk a day's reads together).
+for SPY/QQQ/IWM, /ZN, HYG/USO/GLD, the 3x funds, the megacaps, $VIX/$VIX9D/$TNX and breadth; the daily closes
+(VOLATILITY-08/17, SESSION-02, VOLATILITY-18's yield move); the index weights dated on or before the day
+(BREADTH-03/07/09); the calendar read at the read's time (EVENTS-02/03, VOLATILITY-14/18); the day's diary walls, gamma
+walls, magnet and book source (OPTIONS-04/06, the options-book gate); and the lob-flow quote sweeps (OPTIONS-08).
+`code_feature_catalog.json` beside it lists every question with its id, title, layer, group (the voting group), method,
+source (the exact formula and window), label keys, the exact answer list, notes (every DRAFT threshold says so, and every
+question the pressure test changed says how and why) and, for a question kept as context only, `"votes": false`. A ranked
+measure is compared with the same measure at the same minute on the trailing 20 sessions (at least 10, else None), from
+`bars/`, `context/bars/` and the store's `spx_bars` and `overnight_bars` (`code_feature_inputs.py`; the SPX bars reach 60
+sessions for the gap rank); a symbol's usual multiple of SPX (the beta of its 30-minute returns on SPX's over the prior
+sessions' half hours) is fitted once per day and applied to every session in a rank. The premarket questions (MACRO-09
+and its arc column, LEVELS-08) take the day's last premarket-lane read. A question whose data is missing, or whose
+sentence is a template the parser does not know, answers None, never an error. A symbol's own-day bars live are the
+quotes (one price a snapshot), so every market answerer reads closes and volume only, never a minute's high or low: live
+and backfill measure the same thing. The read's day's SPY volume is the siege box's minute volume
+(`state/siege/baseline.json`, the same figures as the saved minute bars), live and in backfill; FLOW-07 reads the day's
+SPY/QQQ/IWM from their quotes whether or not the day is saved. A live read runs in a fresh process: loading the day's
+history cold and answering every question takes about 1.2 s (a 10-07 read, 2026-10-07); the prior-sessions parts are
+cached only within one process (the replay and the backfill, which walk a day's reads together).
+
+**Non-voting questions.** `"votes": false` (BREADTH-09, VOLATILITY-12, VOLATILITY-17, MACRO-02, SENTIMENT-02, OPTIONS-02)
+keeps a question answered, stored under `raw/code_features/` and in the matrix as context (the judgment gates read
+BREADTH-09 and MACRO-02, VOLATILITY-18 reads BREADTH-09, and from the cut-over JEV's sentences carry every answer), but
+`answer_matrix.voting_columns` leaves it out of the additive scorer's pushes and volumes and the matcher's distance. Each
+fit file names them (`non_voting_columns`, beside `columns_by_layer` and `voting_columns_by_layer`; fit version 5).
+
+**The question pressure test (2026-10-07).** Every one of the 96 questions (90 code, 6 judgment) was decided: kept,
+fixed, merged or dropped, each with its reason in the catalog's notes. Dropped from the catalog with their answerers:
+OPTIONS-12, FLOW-09 (no feed), LEVELS-04, BREADTH-08, MACRO-04, MACRO-05, MACRO-06, MACRO-08, EVENTS-01, EVENTS-05, and
+OPTIONS-09 on its own condition (after the fix it still agreed with VOLATILITY-12 at V 0.90). Merged: BREADTH-11 into
+BREADTH-02 (nothing of it kept; the $ADD history it alone read is no longer loaded), MACRO-10 into MACRO-09 (its 5-way arc
+word as the column MACRO-09-ARC in MACRO-09's group). New: VOLATILITY-18, the code version of the dropped judgment question
+quiet_coiled_or_resting, in VOLATILITY-04's group and None unless VOLATILITY-04 reads compressed. The judgment questions
+push_blowoff_or_fresh and quiet_coiled_or_resting are dark in the set ("dropped in the question pressure test
+2026-10-07"; their gates and labels stay while the set keeps them, and their `jev:` columns retire at the cut-over).
+Facts counted twice now share a group: TREND-01/FLOW-02/FLOW-07 (`trend/last_30m_move`), TREND-03/05/09
+(`trend/leg_aging`; TREND-08 has its own `trend/pace_change` so its reversal is not a quarter vote), TREND-07/FLOW-01,
+VOLATILITY-08/LEVELS-01/02, VOLATILITY-04/18, MACRO-09 and its arc; EVENTS-04 and OPTIONS-05 have their own groups. The
+options-book questions (OPTIONS-01/02/03/04/06/10/11) answer only while the diary row's book is SPX's own: on 10-06 and
+10-07 it was a scaled SPY stand-in. The backfill (09-28 to 10-07), the replay (09-29 to 10-06) and the night of 10-07 were
+re-run on the new catalog, so the fits for 2026-10-08 hold no dropped column. Left for later steps: the label writers'
+fixes (labels/: VOLATILITY-16's straddle, OPTIONS-02's measure, OPTIONS-05, OPTIONS-11, FLOW-03's wording), the judgment
+fixes (BREADTH-10, MACRO-03, EVENTS-06, EVENTS-07) and the operations ones (the straddle's em_points, the lob_flow tape
+collector, the native SPX options read).
 
 Each read's answers are written to `raw/code_features/{day}.jsonl` first (live, before the read is forecast; or by the
 backfill command, idempotent, source `backfill`) and the nightly matrix joins them on `read_id` as columns
@@ -105,7 +131,7 @@ The feeds the blocked questions of the merged set waited for, built first; the P
 |---|---|---|---|
 | market-feed symbols | `state/spx_jev/context/{day}.jsonl` (quotes, a minute apart) and `context/bars/{day}.jsonl` (full days); `market_context.SYMBOLS` | /ZN (the ten-year note future, under its root), KRE and XHB (`industry_funds`), SPXL, TQQQ, SPXS and SQQQ (`leveraged_funds`), TSLA and BRK/B (`megacaps`, Schwab's name for Berkshire's B share). The 41 saved sessions back to 2026-08-11 were backfilled once for the new symbols (`--backfill --symbols`, 2026-10-07 01:30 ET); Schwab served the funds and stocks from 2026-08-21 and /ZN from 2026-08-24, so the eight oldest saved sessions lack them all and 08-21 lacks /ZN (31 sessions hold all nine; the thin 3x funds and XHB miss a few minutes a day, as any thin fund does). The 11-sector group and the other groups the labels count are unchanged. | /ZN: MACRO-01, MACRO-02, MACRO-06, MACRO-07, EVENTS-05; KRE/XHB: MACRO-05; the 3x funds: SENTIMENT-02; TSLA/BRK/B: MACRO-04 |
 | daily closes | `state/spx_jev/daily_closes/{symbol}.jsonl` (`daily_closes.py`; the store's `daily_closes` table, one row per symbol per built day) | $SPX, TLT, $TNX, $VIX and $VIX9D, one line per market day from 2016-10-10, as Schwab served it ($TNX at ten times the yield; the store row in percent), rewritten whole by the 16:20 day saver, so a missed night costs nothing. `daily_closes.load(state_dir, symbol, before=day)` is the point-in-time read: the sessions before the day only. | VOLATILITY-17, VOLATILITY-12, SESSION-02 |
-| index weights | `state/spx_leaders/weights.json` (`index_weights.py`) | Dated sets of the largest stocks' shares of the index, read by `labels/leadership.py` (the newest set dated on or before the read's day, so a day replayed later reads what it had); a new set goes under its own `as_of`, never over an old one. The first entry, as_of 2026-10-06, is approximate and hand-kept from memory (NVDA 7.8%, MSFT 6.6%, AAPL 6.2%, AMZN 3.9%, GOOGL 2.5% + GOOG 2.0%, META 2.9%, AVGO 2.6%, TSLA 1.9%, BRK/B 1.6%); replace it with SSGA's SPY holdings as a new entry. With it on file the four megacap labels (`leaders.heavyweight_gap`, `.megacap_cohesion_30m`, `.pull_vs_rest_30m`, `.single_name_10m`) read from the next live read on. | BREADTH-03, BREADTH-07, BREADTH-08, BREADTH-09 |
+| index weights | `state/spx_leaders/weights.json` (`index_weights.py`) | Dated sets of the largest stocks' shares of the index, read by `labels/leadership.py` (the newest set dated on or before the read's day, so a day replayed later reads what it had); a new set goes under its own `as_of`, never over an old one. The first entry, as_of 2026-10-06, is approximate and hand-kept from memory (NVDA 7.8%, MSFT 6.6%, AAPL 6.2%, AMZN 3.9%, GOOGL 2.5% + GOOG 2.0%, META 2.9%, AVGO 2.6%, TSLA 1.9%, BRK/B 1.6%); a second entry, as_of 2026-08-21, holds the same shares backdated to the day TSLA and BRK/B entered the feed, so the heavyweight questions have history; replace them with SSGA's SPY holdings as a new entry. With it on file the four megacap labels (`leaders.heavyweight_gap`, `.megacap_cohesion_30m`, `.pull_vs_rest_30m`, `.single_name_10m`) read from the next live read on. | BREADTH-03, BREADTH-07, BREADTH-08, BREADTH-09 |
 | event calendar | `calendar/events.json`, `events.AUCTION` | The tier `auction` (Treasury note and bond auctions, results about 13:00 ET) has a shape and a name; the calendar has no rows of it yet, and none are invented: add them from the Treasury's published schedule. `learn_exclude` does not read the tier (that would change what the live loop learns from; a later phase). | EVENTS-05 (with /ZN), once rows exist |
 
 ## Rules added 2026-10-06 (the design-spec review)
@@ -140,11 +166,11 @@ None is not fired; a question not fired is skipped with `gate: <code question> n
 
 | id (`jev:<id>` column) | merged id | gate | labels it reads |
 |---|---|---|---|
-| `push_blowoff_or_fresh` | TREND-13 | TREND-10 or TREND-11 reads anything but `none` | `judgment.push_exhaustion` (TREND-10, TREND-11, TREND-04 in words), `price.recent_move`, `range.today_vs_normal` |
-| `quiet_coiled_or_resting` | VOLATILITY-15 | VOLATILITY-04 reads `compressed` (from 10:32) | `judgment.quiet` (VOLATILITY-04, VOLATILITY-02, BREADTH-09, the yield's move), `judgment.headlines`, `iv.trend_30min`, `price.day_range_position` |
+| `push_blowoff_or_fresh` (dark since 2026-10-07) | TREND-13 | TREND-10 or TREND-11 reads anything but `none` | `judgment.push_exhaustion` (TREND-10, TREND-11, TREND-04 in words), `price.recent_move`, `range.today_vs_normal` |
+| `quiet_coiled_or_resting` (dark since 2026-10-07; now the code question VOLATILITY-18) | VOLATILITY-15 | VOLATILITY-04 reads `compressed` (from 10:32) | `judgment.quiet` (VOLATILITY-04, VOLATILITY-02, BREADTH-09, the yield's move), `judgment.headlines`, `iv.trend_30min`, `price.day_range_position` |
 | `heavyweight_catalyst_or_flow` | BREADTH-10 | BREADTH-09 reads `in play, ...` | `judgment.heavyweight`, `judgment.headlines` |
-| `macro_gap_equity_reason` | MACRO-03 | MACRO-02 reads `up` or `down` (the code ranks the gap in thirds; it gives no fifth) | `judgment.macro_gap`, `judgment.headlines` |
-| `yield_move_meaning` | EVENTS-06 | the ten-year yield's move since the prior close ranks top third at this minute (`judgment.yield_move`: today's `$TNX` quote against its prior close, each prior session's `context/bars` reading at the minute against its own daily close, 20 sessions, needing 10), and EVENTS-05 does not read `large` | `judgment.yield_move`, `judgment.headlines` |
+| `macro_gap_equity_reason` | MACRO-03 | MACRO-02 reads `up`, `down`, `far up` or `far down` (the gap above its bottom third; `far` is its top fifth, since 2026-10-07) | `judgment.macro_gap`, `judgment.headlines` |
+| `yield_move_meaning` | EVENTS-06 | the ten-year yield's move since the prior close ranks top third at this minute (`judgment.yield_move`: today's `$TNX` quote against its prior close, each prior session's `context/bars` reading at the minute against its own daily close, 20 sessions, needing 10), and EVENTS-03 reads no release in its reaction window (EVENTS-05 until 2026-10-07) | `judgment.yield_move`, `judgment.headlines` |
 | `news_reaction` | EVENTS-07 | a headline was captured in the window | `judgment.headlines`, `price.recent_move`, `price.day_range_position` |
 
 The questions are `shadow` in the set (each `shadow_proof` says why: not a proof, a wall): `hour.answer_sentences` leaves a shadow
@@ -161,9 +187,9 @@ computes nothing twice. A replay or an unsent run computes the answers and write
 catches its own failure (the code answers, the headlines, the yield's move, each gate): a failure leaves the question not
 fired, with the failure named in its reason, and the read goes on; the step never raises.
 
-**Not built:** OPTIONS-12 and FLOW-09 (no feed; silent in the catalog); EVENTS-09 (Kalshi); the scope of the news (index-wide or
-one name) that EVENTS-07's merged wording asks for, since a choice carries one answer; a fifth-based gate for MACRO-03 (MACRO-02
-ranks in thirds).
+**Not built:** EVENTS-09 (Kalshi); the scope of the news (index-wide or
+one name) that EVENTS-07's merged wording asks for, since a choice carries one answer; the fifth-based gate for MACRO-03
+(MACRO-02 names its top fifth `far` since 2026-10-07; the gate still fires on any side until the judgment fixes).
 
 ## Phase 4 (built 2026-10-07, live from 2026-10-08): the cut-over
 

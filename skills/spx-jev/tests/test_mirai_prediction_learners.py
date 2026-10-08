@@ -173,3 +173,41 @@ def test_fit_lowers_the_penalty_when_jev_over_calls_moves():
     after = sum(log_loss(forecast_with_jev_corrected(fit, r), r.outcome) for r in m.trainable_rows()) / len(m.trainable_rows())
     assert after < before
     assert fit.flat_offset > 0          # it learned to give flat more
+
+
+# ---------------------------------------------------------------- non-voting columns (catalog "votes": false)
+
+def test_a_non_voting_column_stays_in_the_matrix_and_neither_learner_counts_it():
+    """The signal column marked "votes": false: no push, no layer volume, no group in the matcher; its answers stay on the rows."""
+    rows = signal_rows()
+    columns = {**COLUMNS, "code:A": {**COLUMNS["code:A"], "votes": False}}
+    matrix = make_matrix(rows, columns)
+    fit = fit_additive_scorer(matrix)
+    assert "code:A" not in fit.columns and all("code:A" not in pushes for pushes in fit.pushes.values())
+    assert 2 not in fit.layer_volume["move"]                            # code:A was layer 2's only column: the layer has no volume to choose
+    hot = forecast_with_additive_scorer(fit, make_row(999, "2026-10-09", {"code:A": "hot", "code:B": "low"}, None))
+    cold = forecast_with_additive_scorer(fit, make_row(998, "2026-10-09", {"code:A": "cold", "code:B": "low"}, None))
+    assert hot == cold                                                   # the column moves nothing
+    matcher = fit_matcher(matrix)
+    assert "code:A" not in matcher.group_of_column and set(matcher.group_of_column) == {"code:B", "jev:q"}
+    assert all(r.answers["code:A"] in ("hot", "cold") for r in matrix.rows)          # kept as context
+
+
+def test_a_non_voting_column_weighs_nothing_in_a_match():
+    today = {"code:A": "hot", "code:B": "low"}
+    columns = {"code:A": {"layer": 2, "group": "g:a", "family": "t", "votes": False}, "code:B": {"layer": 1, "group": "g:b", "family": "m"}}
+    past = [make_row(i, "2026-10-01", {"code:A": "cold" if i % 2 else "hot", "code:B": "low"}, "up") for i in range(20)]
+    fit = fit_matcher(make_matrix(past, columns))
+    by_group = fit.columns_by_group()
+    assert [mismatch(today, p.answers, by_group, fit.group_weights)[0] for p in past] == [0.0] * 20
+
+
+def test_the_fit_file_names_the_columns_that_do_not_vote(tmp_path, monkeypatch):
+    import json
+    from spx_jev.mirai_prediction import voice_fits
+    columns = {**COLUMNS, "code:A": {**COLUMNS["code:A"], "votes": False}}
+    monkeypatch.setattr(voice_fits, "build_answer_matrix", lambda *a, **k: make_matrix(signal_rows(), columns, "2026-10-10"))
+    _, path = voice_fits.fit_voices_for_day(tmp_path, tmp_path, "live", "average_30", "2026-10-10")
+    doc = json.loads(path.read_text())
+    assert doc["non_voting_columns"] == ["code:A"] and doc["columns_by_layer"] == {"1": 1, "2": 1, "3": 1}
+    assert doc["voting_columns_by_layer"] == {"1": 1, "2": 0, "3": 1} and "code:A" not in doc["additive_scorer"]["columns"]

@@ -1,13 +1,14 @@
 """What the code feature builder reads from the state dir (read-only), and the raw-first record of its answers.
 
     load_day_bars            today's SPX minute bars, bars/{day}.jsonl (the live-bars sidecar)
-    load_market_history      the trailing sessions' SPX bars, the nights' /ES and /ZN bars, the sessions' $ADD, the market
-                             feed's minute bars per symbol, the daily closes, the index weights, the day's SPX diary rows,
-                             the lob-flow quote sweeps and the day's premarket reads: bars/, overnight/, context/bars/,
-                             daily_closes/, reversion/ and lob_flow/raw/ files where they exist, the store's Parquet tables
-                             (spx_bars, overnight_bars, context_bars) for the sessions before the files begin. The parts
-                             that are prior sessions only are cached in-process for the day (the live service loads them
-                             once, then each read loads the day's own parts).
+    load_market_history      the trailing sessions' SPX bars, the nights' /ES bars, the market feed's minute bars per
+                             symbol (the read's day's SPY volume from the siege box's minute volumes), the daily closes,
+                             the index weights, the day's SPX diary rows, the lob-flow quote sweeps and the day's premarket
+                             reads: bars/, overnight/, context/, context/bars/, daily_closes/, reversion/, lob_flow/raw/ and
+                             siege/baseline.json files where they exist, the store's Parquet tables (spx_bars,
+                             overnight_bars) for the sessions before the files begin. The parts that are prior sessions
+                             only are cached in-process for the day (the live service loads them once, then each read
+                             loads the day's own parts).
     record_code_features     the answers for one read: the raw line already written for it, else computed now and
                              appended to raw/code_features/{day}.jsonl BEFORE anything forecasts with them (the write
                              path rule: new data goes to raw JSONL first, every table is built from it)
@@ -24,6 +25,7 @@ from pathlib import Path
 from .. import daily_closes
 from ..events import ET
 from ..index_weights import WEIGHTS_FILE
+from ..labels.options_flow import SPY_VOLUMES, _read_spy_volumes
 from ..state_builder import LIVE_BARS_SUBDIR, load_jsonl
 from .code_features import GAP_HISTORY_SESSIONS, HISTORY_SESSIONS, MarketHistory, answer_code_features, bars_up_to
 from .live_records import _json_lines
@@ -37,11 +39,11 @@ SWEEP_BUCKETS = ("d25_40", "d10_25", "d00_10")      # the sweep's delta buckets 
                                                      # 25-40 bucket empties after ~13:10 ET, so the next one out stands in
 STORE_SPX_BARS = "spx_bars"
 STORE_OVERNIGHT_BARS = "overnight_bars"
-STORE_CONTEXT_BARS = "context_bars"
 ES = "/ES"
-ZN = "/ZN"
-ADD = "$ADD"
-DIARY_FIELDS = ("call_wall", "put_wall", "call_wall_tenor", "put_wall_tenor", "atm_iv")
+SPY = "SPY"
+QUOTE_BAR_SYMBOLS = ("SPY", "QQQ", "IWM")           # FLOW-07 reads the read's day's quotes for these, saved bars or not
+DIARY_FIELDS = ("call_wall", "put_wall", "call_wall_tenor", "put_wall_tenor", "atm_iv", "gex_source")
+DIARY_GAMMA_FIELDS = ("call_wall_gamma", "put_wall_gamma")    # the near gamma walls, under the row's gex_views
 
 
 def _et(ts: str) -> str:
@@ -103,10 +105,12 @@ def load_spx_bars_by_day(state_dir: Path | str, before_day: str, sessions: int =
 
 
 def load_night_bars(state_dir: Path | str, day: str, symbol: str = ES) -> list[dict]:
-    """The symbol's bars outside the regular session for the night into ``day`` from overnight/{day}.jsonl, in time order."""
+    """The symbol's 1-minute bars outside the regular session for the night into ``day`` from overnight/{day}.jsonl, in
+    time order (the file also holds 5-minute bars of the same stretch, left out)."""
     rows = load_jsonl(Path(state_dir) / "spx_jev" / OVERNIGHT_SUBDIR / f"{day}.jsonl")
     bars = [_bar(b.get("ts"), b.get("open"), b.get("high"), b.get("low"), b.get("close"), b.get("volume"))
-            for b in rows if b.get("symbol") == symbol and b.get("session") != "regular" and isinstance(b.get("ts"), str)]
+            for b in rows if b.get("symbol") == symbol and b.get("session") != "regular" and b.get("bar_minutes") == 1
+            and isinstance(b.get("ts"), str)]
     return sorted((b for b in bars if b), key=lambda b: b["ts"])
 
 
@@ -126,7 +130,7 @@ def load_night_bars_by_day(state_dir: Path | str, day: str, symbol: str = ES, se
     from_store = [d for d in prior if d in store_days]
     if from_store:
         sql = (f"SELECT CAST(day AS VARCHAR), CAST(ts AS VARCHAR), open, high, low, close, volume FROM read_parquet('{glob}', hive_partitioning=1) "
-               f"WHERE symbol = '{symbol}' AND session <> 'regular' AND CAST(day AS VARCHAR) IN ({', '.join(repr(d) for d in from_store)}) ORDER BY ts")
+               f"WHERE symbol = '{symbol}' AND session <> 'regular' AND bar_minutes = 1 AND CAST(day AS VARCHAR) IN ({', '.join(repr(d) for d in from_store)}) ORDER BY ts")
         for d, ts, o, h, l, c, v in _rows(sql):
             bar = _bar(ts, o, h, l, c, v)
             if bar:
@@ -167,7 +171,8 @@ def load_context_quotes_as_bars(state_dir: Path | str, day: str) -> dict[str, li
     snapshot of context/{day}.jsonl as a one-price bar (open = high = low = close = last) at its snapshot time, its
     volume the day's cumulative volume since the snapshot before; the breadth symbols come as bars already. Symbol ->
     bars in time order. So a market answerer reads a symbol's closes and volume only, never its high or low: live and
-    backfill then measure the same thing."""
+    backfill then measure the same thing. The snapshot volume arrives in lumps about 70 seconds apart and runs above the
+    saved bars', so SPY's is replaced by the siege box's minute volumes (with_siege_spy_volume)."""
     out: dict[str, list[dict]] = {}
     cumulative: dict[str, float] = {}
     for line in load_jsonl(spx_jev_dir(state_dir) / CONTEXT_SUBDIR / f"{day}.jsonl"):
@@ -207,11 +212,35 @@ def load_context_bars_by_day(state_dir: Path | str, before_day: str, sessions: i
     return out
 
 
-def load_todays_context_bars(state_dir: Path | str, day: str) -> dict[str, list[dict]]:
-    """The read's day's symbols: the saved bars file once the day saver has written it, else the quotes so far."""
-    if _context_bars_file(state_dir, day).exists():
-        return load_context_bars(state_dir, day)
-    return load_context_quotes_as_bars(state_dir, day)
+def load_spy_minute_volumes(state_dir: Path | str, day: str) -> dict[int, float]:
+    """SPY's volume per minute of the day as the siege box keeps it (state/siege/baseline.json, a minute keyed by its
+    start in minutes after midnight ET, 570 = 09:30): the same figures as the saved minute bars, live and after the save."""
+    path = Path(state_dir) / SPY_VOLUMES
+    if not path.exists():
+        return {}
+    return dict(_read_spy_volumes(str(path), path.stat().st_mtime_ns).get(day) or {})
+
+
+def with_siege_spy_volume(today: dict[str, list[dict]], minutes: dict[int, float], day: str, from_quotes: bool) -> dict[str, list[dict]]:
+    """The read's day's symbols with SPY rebuilt one bar a minute from the siege box's minute volumes, its close the last
+    SPY price at or before the minute. load_market_history hands it SPY's quotes whether or not the day is saved, so live
+    and backfill read the same closes and the same volume. Without the siege box's minutes, SPY from saved bars keeps its
+    bars; SPY from quotes keeps the prices with no volume, so the volume questions stay silent rather than read the lumpy
+    snapshot volume."""
+    spy = today.get(SPY)
+    if not spy:
+        return today
+    if not minutes:
+        return today if not from_quotes else {**today, SPY: [{**b, "volume": 0.0} for b in spy]}
+    rebuilt, k = [], 0
+    for minute in sorted(minutes):
+        stamp = datetime(*map(int, day.split("-")), minute // 60, minute % 60, tzinfo=ET).isoformat()
+        while k < len(spy) and spy[k]["ts"][:16] <= stamp[:16]:
+            k += 1
+        if k:
+            close = spy[k - 1]["close"]
+            rebuilt.append({"ts": stamp, "open": close, "high": close, "low": close, "close": close, "volume": minutes[minute]})
+    return {**today, SPY: rebuilt}
 
 
 def load_daily_closes(state_dir: Path | str, before_day: str) -> dict[str, list[dict]]:
@@ -230,14 +259,16 @@ def load_index_weights(state_dir: Path | str) -> dict | None:
 
 def load_diary_rows(state_dir: Path | str, day: str) -> list[dict]:
     """The day's SPX diary rows (reversion/{day}.jsonl), slimmed to the fields the builder reads: ts, the 0DTE and
-    1-to-7-day walls, the magnet and the at-the-money vol; in time order, a malformed row skipped."""
+    1-to-7-day open-interest walls, the near gamma walls, the magnet, the at-the-money vol and the book's source
+    ("native", or a scaled SPY stand-in); in time order, a malformed row skipped."""
     out = []
     for row in load_jsonl(Path(state_dir) / DIARY_SUBDIR / f"{day}.jsonl"):
         ts = row.get("ts")
         if not isinstance(ts, str):
             continue
         try:
-            slim = {"ts": _et(ts), "magnet": (row.get("gex_views") or {}).get("magnet")}
+            views = row.get("gex_views") or {}
+            slim = {"ts": _et(ts), "magnet": views.get("magnet"), **{k: views.get(k) for k in DIARY_GAMMA_FIELDS}}
         except (TypeError, ValueError, AttributeError):
             continue
         slim.update({k: row.get(k) for k in DIARY_FIELDS})
@@ -245,8 +276,9 @@ def load_diary_rows(state_dir: Path | str, day: str) -> list[dict]:
     return sorted(out, key=lambda r: r["ts"])
 
 
-def load_quote_sweeps(state_dir: Path | str, day: str) -> list[tuple[str, float]]:
-    """The day's lob-flow quote sweeps as (ts, the quoted spread of the nearest-the-money bucket that held one; SWEEP_BUCKETS)."""
+def load_quote_sweeps(state_dir: Path | str, day: str) -> list[tuple[str, float, str]]:
+    """The day's lob-flow quote sweeps as (ts, the quoted spread of the nearest-the-money bucket that held one, rounded to
+    the cent, that bucket; SWEEP_BUCKETS)."""
     folder = Path(state_dir) / SWEEPS_SUBDIR / day
     path = next((p for p in (folder / "sweeps.jsonl", folder / "sweeps.jsonl.gz") if p.exists()), None)
     if path is None:
@@ -262,16 +294,16 @@ def load_quote_sweeps(state_dir: Path | str, day: str) -> list[tuple[str, float]
             if not isinstance(sweep, dict) or not isinstance(sweep.get("ts"), str):
                 continue
             buckets = sweep.get("buckets") or {}
-            spread = next((v for v in ((buckets.get(name) or {}).get("spread") for name in SWEEP_BUCKETS) if isinstance(v, (int, float))), None)
-            if isinstance(spread, (int, float)):
+            found = next(((v, name) for name in SWEEP_BUCKETS if isinstance(v := (buckets.get(name) or {}).get("spread"), (int, float))), None)
+            if found is not None:
                 try:
-                    out.append((_et(sweep["ts"]), float(spread)))
+                    out.append((_et(sweep["ts"]), round(float(found[0]), 2), found[1]))
                 except ValueError:
                     continue
     return sorted(out)
 
 
-def load_quote_sweeps_by_day(state_dir: Path | str, before_day: str, sessions: int = HISTORY_SESSIONS) -> dict[str, list[tuple[str, float]]]:
+def load_quote_sweeps_by_day(state_dir: Path | str, before_day: str, sessions: int = HISTORY_SESSIONS) -> dict[str, list[tuple[str, float, str]]]:
     folder = Path(state_dir) / SWEEPS_SUBDIR
     days = sorted(p.name for p in folder.glob("????-??-??") if p.name < before_day) if folder.exists() else []
     out = {}
@@ -279,23 +311,6 @@ def load_quote_sweeps_by_day(state_dir: Path | str, before_day: str, sessions: i
         sweeps = load_quote_sweeps(state_dir, day)
         if sweeps:
             out[day] = sweeps
-    return out
-
-
-def load_add_by_day(state_dir: Path | str, before_day: str, sessions: int = HISTORY_SESSIONS) -> dict[str, list[dict]]:
-    """The trailing sessions' $ADD per minute from the store's context_bars (clean the next day), day -> [{ts, value}]."""
-    glob = _store_glob(state_dir, STORE_CONTEXT_BARS)
-    if glob is None:
-        return {}
-    days = [r[0] for r in _rows(f"SELECT DISTINCT CAST(day AS VARCHAR) FROM read_parquet('{glob}', hive_partitioning=1) "
-                                f"WHERE symbol = '{ADD}' AND CAST(day AS VARCHAR) < '{before_day}' ORDER BY 1")][-sessions:]
-    if not days:
-        return {}
-    sql = (f"SELECT CAST(day AS VARCHAR), CAST(ts AS VARCHAR), close FROM read_parquet('{glob}', hive_partitioning=1) "
-           f"WHERE symbol = '{ADD}' AND CAST(day AS VARCHAR) IN ({', '.join(repr(d) for d in days)}) ORDER BY ts")
-    out: dict[str, list[dict]] = {}
-    for day, ts, value in _rows(sql):
-        out.setdefault(day, []).append({"ts": _et(ts), "value": value})
     return out
 
 
@@ -324,8 +339,6 @@ def _prior_sessions_parts(state_dir: Path | str, lane: str, day: str) -> dict:
     if parts is None:
         parts = {"spx_bars_by_day": _part(lambda: load_spx_bars_by_day(state_dir, day, GAP_HISTORY_SESSIONS), {}),
                  "es_night_bars_by_day": _part(lambda: load_night_bars_by_day(state_dir, day, ES, with_day=False), {}),
-                 "zn_night_bars_by_day": _part(lambda: load_night_bars_by_day(state_dir, day, ZN, with_day=False), {}),
-                 "add_by_day": _part(lambda: load_add_by_day(state_dir, day), {}),
                  "context_bars_by_day": _part(lambda: load_context_bars_by_day(state_dir, day), {}),
                  "daily_closes": _part(lambda: load_daily_closes(state_dir, day), {}),
                  "index_weights": _part(lambda: load_index_weights(state_dir), None),
@@ -339,16 +352,23 @@ def load_market_history(state_dir: Path | str, lane: str, day: str) -> MarketHis
     """Everything the builder needs beyond the read's own record and the day's bars, for one day (reuse it across the day's reads).
     Each part is loaded on its own: a store that cannot be read, or a broken file, empties that part only, so the label
     questions (which need none of this) still answer. The prior sessions' parts are cached for the day; the day's own
-    (the night into it, its symbols so far, its diary, its sweeps, its premarket reads) are read fresh each call."""
+    (the night into it, its symbols so far, its quotes, SPY's minute volumes, its diary, its sweeps, its premarket reads)
+    are read fresh each call."""
     prior = _prior_sessions_parts(state_dir, lane, day)
-    tonight = {s: _part(lambda s=s: load_night_bars(state_dir, day, s), []) for s in (ES, ZN)}
-    today_bars = _part(lambda: load_todays_context_bars(state_dir, day), {})
+    tonight = _part(lambda: load_night_bars(state_dir, day, ES), [])
+    quotes = _part(lambda: load_context_quotes_as_bars(state_dir, day), {})
+    saved = _part(lambda: load_context_bars(state_dir, day) if _context_bars_file(state_dir, day).exists() else None, None)
+    today = saved if saved is not None else quotes
+    if quotes.get(SPY):         # SPY's prices from the quotes on both paths: a saved bar's close a few cents off flips TREND-07's side
+        today = {**today, SPY: quotes[SPY]}
+    spy_minutes = _part(lambda: load_spy_minute_volumes(state_dir, day), {})
+    today_bars = _part(lambda: with_siege_spy_volume(today, spy_minutes, day, saved is None or bool(quotes.get(SPY))), today)
     today_sweeps = _part(lambda: load_quote_sweeps(state_dir, day), [])
     return MarketHistory(spx_bars_by_day=prior["spx_bars_by_day"],
-                         es_night_bars_by_day={**prior["es_night_bars_by_day"], **({day: tonight[ES]} if tonight[ES] else {})},
-                         zn_night_bars_by_day={**prior["zn_night_bars_by_day"], **({day: tonight[ZN]} if tonight[ZN] else {})},
-                         add_by_day=prior["add_by_day"],
+                         es_night_bars_by_day={**prior["es_night_bars_by_day"], **({day: tonight} if tonight else {})},
                          context_bars_by_day={**prior["context_bars_by_day"], **({day: today_bars} if today_bars else {})},
+                         today_quote_bars={s: quotes[s] for s in QUOTE_BAR_SYMBOLS if quotes.get(s)},
+                         today_context_from_quotes=saved is None,
                          daily_closes=prior["daily_closes"],
                          index_weights=prior["index_weights"],
                          diary_rows=_part(lambda: load_diary_rows(state_dir, day), []),

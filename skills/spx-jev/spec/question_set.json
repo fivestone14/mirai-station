@@ -15,8 +15,8 @@
   "questions": 135,
   "by_status": {
    "live": 111,
-   "dark": 15,
-   "shadow": 9
+   "dark": 17,
+   "shadow": 7
   },
   "live_market_questions": 111,
   "premarket_questions": 12,
@@ -109,7 +109,8 @@
     "shadow": 3
    },
    "judgment": {
-    "shadow": 6
+    "shadow": 4,
+    "dark": 2
    },
    "dark": {
     "dark": 7
@@ -9062,7 +9063,7 @@
      "lanes": [
       "thirty_minute"
      ],
-     "status": "shadow",
+     "status": "dark",
      "shadow_proof": "not a proof: shadow keeps it out of the old loop (the sums, the weights, pool_v1 and the cadence all keep to live questions) while the Mirai Prediction System takes its answers as a layer-3 column; promoted only if it beats the learners' own inputs there",
      "cadence": "every 30-minute read from 10:02, asked only when the code's 60-minute range sweep or its volume spike fires (TREND-10 or TREND-11)",
      "ask": "Is the partly given-back push a crowded blow-off likely to reverse, or a fresh push pausing?",
@@ -9097,7 +9098,7 @@
       }
      ],
      "why": "True judgment weighing several pushes in context; the code hands JEV the break and spike reads and the question is dropped if those alone match JEV.",
-     "evidence": "merged set: asked on about a quarter of reads (TREND-10 or TREND-11 firing); untested against the learners yet.",
+     "evidence": "merged set: asked on about a quarter of reads (TREND-10 or TREND-11 firing); untested against the learners yet. Pressure test 2026-10-07: JEV repeated TREND-10/11's held-or-failed words (7 of 7) in its own jev: group, so the fact counted twice; no direction and no history of earlier pushes.",
      "origin": "merged set 2026-10-05 (TREND-13, plan_v2); built 2026-10-07 as a gated judgment question",
      "code_answer": false,
      "sleep_when": "TREND-10 and TREND-11 both read 'none' or are not measured",
@@ -9108,7 +9109,8 @@
        "to": "15:32"
       }
      },
-     "merged_ask": "The last push into SPX's latest extreme has been partly given back. Compared with the earlier pushes in the leg, does it look like a crowded blow-off likely to reverse, or a fresh push pausing before it continues (blow-off / unclear / fresh push)?"
+     "merged_ask": "The last push into SPX's latest extreme has been partly given back. Compared with the earlier pushes in the leg, does it look like a crowded blow-off likely to reverse, or a fresh push pausing before it continues (blow-off / unclear / fresh push)?",
+     "dark_reason": "dropped in the question pressure test 2026-10-07"
     },
     {
      "id": "quiet_coiled_or_resting",
@@ -9120,7 +9122,7 @@
      "lanes": [
       "thirty_minute"
      ],
-     "status": "shadow",
+     "status": "dark",
      "shadow_proof": "not a proof: shadow keeps it out of the old loop (the sums, the weights, pool_v1 and the cadence all keep to live questions) while the Mirai Prediction System takes its answers as a layer-3 column; promoted only if it beats the learners' own inputs there",
      "cadence": "every 30-minute read from 10:32, asked only when the code reads the range compressed (VOLATILITY-04)",
      "ask": "With the range compressed, is the quiet coiled or resting?",
@@ -9163,7 +9165,7 @@
       }
      ],
      "why": "Weighing conflicting evidence is judgment; sharpens the flat odds.",
-     "evidence": "merged set: VOLATILITY-04 reads None before 10:30, so the first ask is 10:32.",
+     "evidence": "merged set: VOLATILITY-04 reads None before 10:30, so the first ask is 10:32. Pressure test 2026-10-07: the criteria are a fixed OR of code facts, JEV applied them loosely (coiled at 12:30 for an event 90 minutes away) and gave one answer on 4 of 4 with no direction; rebuilt as the code question VOLATILITY-18.",
      "origin": "merged set 2026-10-05 (VOLATILITY-15, plan_v2); built 2026-10-07 as a gated judgment question",
      "code_answer": false,
      "sleep_when": "VOLATILITY-04 does not read 'compressed'",
@@ -9174,7 +9176,8 @@
        "to": "15:32"
       }
      },
-     "merged_ask": "With SPX range compressed (VOLATILITY-04), is the quiet coiled (heavyweights, yields or VIX moving underneath, or a release or range edge near) or resting?"
+     "merged_ask": "With SPX range compressed (VOLATILITY-04), is the quiet coiled (heavyweights, yields or VIX moving underneath, or a release or range edge near) or resting?",
+     "dark_reason": "dropped in the question pressure test 2026-10-07"
     },
     {
      "id": "heavyweight_catalyst_or_flow",
@@ -9254,7 +9257,7 @@
      ],
      "status": "shadow",
      "shadow_proof": "not a proof: shadow keeps it out of the old loop (the sums, the weights, pool_v1 and the cadence all keep to live questions) while the Mirai Prediction System takes its answers as a layer-3 column; promoted only if it beats the learners' own inputs there",
-     "cadence": "every 30-minute read from 10:02, asked only when the code reads SPX away from what bonds imply (MACRO-02 up or down)",
+     "cadence": "every 30-minute read from 10:02, asked only when the code reads SPX away from what bonds imply (MACRO-02 up, down, far up or far down)",
      "ask": "Is there an equity-side reason keeping SPX away from what bonds imply, or should the gap close?",
      "instructions": "Read `judgment.macro_gap` and `judgment.headlines`. The code says SPX is away from what bonds imply since the close. Is there an equity-side reason in the headlines keeping the gap open, or none, so it should close?",
      "options": [
@@ -9279,8 +9282,8 @@
      "labels_needed": [
       {
        "name": "judgment.macro_gap",
-       "example": "SPX against what bonds imply since the close reads 'up' (MACRO-02): 'up' is SPX short of what bonds imply, 'down' past it",
-       "computed_how": "the code feature builder's answer to MACRO-02 for this read (spx_jev/mirai_prediction/code_features.py, the same answer the Mirai Prediction System's matrix holds as its code column), written as a sentence; the gate: asked only when MACRO-02 reads 'up' or 'down' (the gap above the bottom third; the code gives no fifth); an answer the code could not give reads 'not measured this read'",
+       "example": "SPX against what bonds imply since the close reads 'far up' (MACRO-02): 'up' is SPX short of what bonds imply, 'down' past it, 'far' the top fifth",
+       "computed_how": "the code feature builder's answer to MACRO-02 for this read (spx_jev/mirai_prediction/code_features.py; a context column since 2026-10-07, kept without a vote), written as a sentence; the gate: asked only when MACRO-02 reads up or down (the gap above the bottom third; 'far' marks the top fifth); an answer the code could not give reads 'not measured this read'",
        "source": "the read's own record and the trailing sessions' bars and market feed (code_feature_inputs.load_market_history); recorded under state/spx_jev/mirai_prediction/raw/code_features/{day}.jsonl on a live read",
        "availability": "live",
        "needs_engine_edit": false
@@ -9295,7 +9298,7 @@
       }
      ],
      "why": "True judgment that decides whether the code's gap closes; gated to the gap being there.",
-     "evidence": "merged set: MACRO-02 ranks the gap in thirds, so the gate is 'up' or 'down', not the fifths the ask names.",
+     "evidence": "merged set: MACRO-02 ranks the gap in thirds and, since 2026-10-07, names the top fifth 'far'; the gate is any side.",
      "origin": "merged set 2026-10-05 (MACRO-03, plan_v2); built 2026-10-07 as a gated judgment question",
      "code_answer": false,
      "sleep_when": "MACRO-02 reads 'nowhere' or is not measured",
@@ -9320,7 +9323,7 @@
      ],
      "status": "shadow",
      "shadow_proof": "not a proof: shadow keeps it out of the old loop (the sums, the weights, pool_v1 and the cadence all keep to live questions) while the Mirai Prediction System takes its answers as a layer-3 column; promoted only if it beats the learners' own inputs there",
-     "cadence": "every 30-minute read from 10:02, asked only when the ten-year yield has moved more than usual since the prior close and no release's rates surprise is fresh",
+     "cadence": "every 30-minute read from 10:02, asked only when the ten-year yield has moved more than usual since the prior close and no release is in its reaction window",
      "ask": "Is the ten-year yield's larger-than-usual move a growth story, an inflation or Fed story, or unclear?",
      "instructions": "Read `judgment.yield_move` and `judgment.headlines`. The code says the ten-year yield has moved more than usual since the prior close for this minute. From the headlines captured before the read, is the move a growth story (a tailwind for stocks), an inflation or Fed story (a headwind), or unclear?",
      "options": [
@@ -9345,8 +9348,8 @@
      "labels_needed": [
       {
        "name": "judgment.yield_move",
-       "example": "the ten-year yield rose 4.0 basis points since the prior close, higher than 17 of the last 20 sessions at this minute, top third; the latest release's rates surprise reads 'small' (EVENTS-05)",
-       "computed_how": "the code feature builder's answer to the ten-year yield's move since the prior close ranked at this minute (judgment.yield_move) and EVENTS-05 for this read (spx_jev/mirai_prediction/code_features.py, the same answer the Mirai Prediction System's matrix holds as its code column), written as a sentence; the gate: asked only when the yield's move ranks top third and EVENTS-05 does not read 'large' (a release's surprise is EVENTS-05's to name); an answer the code could not give reads 'not measured this read'",
+       "example": "the ten-year yield rose 4.0 basis points since the prior close, higher than 17 of the last 20 sessions at this minute, top third; the latest release's reaction reads 'no release' (EVENTS-03)",
+       "computed_how": "the code feature builder's answer to the ten-year yield's move since the prior close ranked at this minute (judgment.yield_move) and EVENTS-03 for this read (spx_jev/mirai_prediction/code_features.py, the same answer the Mirai Prediction System's matrix holds as its code column), written as a sentence; the gate: asked only when the yield's move ranks top third and EVENTS-03 reads no release in its reaction window (a release names the cause); an answer the code could not give reads 'not measured this read'",
        "source": "the read's own record and the trailing sessions' bars and market feed (code_feature_inputs.load_market_history); recorded under state/spx_jev/mirai_prediction/raw/code_features/{day}.jsonl on a live read",
        "availability": "live",
        "needs_engine_edit": false
@@ -9361,10 +9364,10 @@
       }
      ],
      "why": "True judgment that flips the sign of the rates-stocks link.",
-     "evidence": "merged set: $TNX live, the headline feed since 2026-10-07; off while EVENTS-05 fires.",
+     "evidence": "merged set: $TNX live, the headline feed since 2026-10-07; off while EVENTS-03 reads a release (until 2026-10-07 while EVENTS-05, the rates surprise, read large; EVENTS-05 left the set in the question pressure test).",
      "origin": "merged set 2026-10-05 (EVENTS-06, plan_v2); built 2026-10-07 as a gated judgment question",
      "code_answer": false,
-     "sleep_when": "the ten-year yield's move since the prior close is not top third at this minute, or EVENTS-05 reads large",
+     "sleep_when": "the ten-year yield's move since the prior close is not top third at this minute, or EVENTS-03 reads a release in its reaction window",
      "schedule": {
       "thirty_minute": {
        "every_min": 30,
@@ -11040,16 +11043,16 @@
   },
   {
    "name": "judgment.macro_gap",
-   "example": "SPX against what bonds imply since the close reads 'up' (MACRO-02): 'up' is SPX short of what bonds imply, 'down' past it",
-   "computed_how": "the code feature builder's answer to MACRO-02 for this read (spx_jev/mirai_prediction/code_features.py, the same answer the Mirai Prediction System's matrix holds as its code column), written as a sentence; the gate: asked only when MACRO-02 reads 'up' or 'down' (the gap above the bottom third; the code gives no fifth); an answer the code could not give reads 'not measured this read'",
+   "example": "SPX against what bonds imply since the close reads 'far up' (MACRO-02): 'up' is SPX short of what bonds imply, 'down' past it, 'far' the top fifth",
+   "computed_how": "the code feature builder's answer to MACRO-02 for this read (spx_jev/mirai_prediction/code_features.py; a context column since 2026-10-07, kept without a vote), written as a sentence; the gate: asked only when MACRO-02 reads up or down (the gap above the bottom third; 'far' marks the top fifth); an answer the code could not give reads 'not measured this read'",
    "source": "the read's own record and the trailing sessions' bars and market feed (code_feature_inputs.load_market_history); recorded under state/spx_jev/mirai_prediction/raw/code_features/{day}.jsonl on a live read",
    "availability": "live",
    "needs_engine_edit": false
   },
   {
    "name": "judgment.yield_move",
-   "example": "the ten-year yield rose 4.0 basis points since the prior close, higher than 17 of the last 20 sessions at this minute, top third; the latest release's rates surprise reads 'small' (EVENTS-05)",
-   "computed_how": "the code feature builder's answer to the ten-year yield's move since the prior close ranked at this minute (judgment.yield_move) and EVENTS-05 for this read (spx_jev/mirai_prediction/code_features.py, the same answer the Mirai Prediction System's matrix holds as its code column), written as a sentence; the gate: asked only when the yield's move ranks top third and EVENTS-05 does not read 'large' (a release's surprise is EVENTS-05's to name); an answer the code could not give reads 'not measured this read'",
+   "example": "the ten-year yield rose 4.0 basis points since the prior close, higher than 17 of the last 20 sessions at this minute, top third; the latest release's reaction reads 'no release' (EVENTS-03)",
+   "computed_how": "the code feature builder's answer to the ten-year yield's move since the prior close ranked at this minute (judgment.yield_move) and EVENTS-03 for this read (spx_jev/mirai_prediction/code_features.py, the same answer the Mirai Prediction System's matrix holds as its code column), written as a sentence; the gate: asked only when the yield's move ranks top third and EVENTS-03 reads no release in its reaction window (a release names the cause); an answer the code could not give reads 'not measured this read'",
    "source": "the read's own record and the trailing sessions' bars and market feed (code_feature_inputs.load_market_history); recorded under state/spx_jev/mirai_prediction/raw/code_features/{day}.jsonl on a live read",
    "availability": "live",
    "needs_engine_edit": false
@@ -13085,6 +13088,13 @@
    "decision": "accepted",
    "reason": "from cuts.CUT_OVER_DAY the live lane no longer asks the 104 pre-merge questions it asked (every question outside the judgment group whose lanes name thirty_minute): each carries retired_from {thirty_minute: 2026-10-08} and reads as dark from that day. JEV's own call, the sums, rides on the judgment questions' fresh answers and the read's code-feature answers as plain sentences instead (hour.cut_over_sentences). The questions stay in the set, dated, never deleted. The opening and pre-market lanes are not cut over: the 13 opening-only and 12 pre-market-only questions, and the live-lane questions those lanes share, stay live there.",
    "source": "Will 2026-10-07; Phase 4 build"
+  },
+  {
+   "subject": "the judgment group and the code feature builder (the question pressure test, round 2)",
+   "action": "dark push_blowoff_or_fresh and quiet_coiled_or_resting; yield_move_meaning's gate reads EVENTS-03; MACRO-02 names its top fifth",
+   "decision": "accepted",
+   "reason": "the pressure test of the 96 questions dropped the two judgment questions (each kept, dated, dark); quiet_coiled_or_resting returns as the code question VOLATILITY-18. EVENTS-05 left the code catalog, so yield_move_meaning stays off while EVENTS-03 reads a release in its reaction window instead. MACRO-02 is a context column without a vote and says 'far' for its top fifth, the rank the macro_gap gate is to read.",
+   "source": "Will 2026-10-07 (build it in the three steps); the round-2 decisions"
   }
  ],
  "unresolved": [

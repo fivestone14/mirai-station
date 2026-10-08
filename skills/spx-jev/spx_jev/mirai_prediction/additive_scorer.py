@@ -21,6 +21,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from ..scores import floored
+from .answer_matrix import voting_columns
 from .name_map import STAGES
 
 ANSWER_PRIOR_READS = 40                      # the pretend normal reads blended into every answer's record
@@ -85,8 +86,8 @@ class AdditiveScorerFit:
 
 # ---------------------------------------------------------------- pushes
 
-def fit_pushes(rows, stage: str) -> tuple[dict[str, dict[str, float]], dict[str, dict[str, float]]]:
-    """(pushes, answer_normal_odds) for one stage from trainable rows: column -> label -> value."""
+def fit_pushes(rows, stage: str, columns: dict[str, dict] | None = None) -> tuple[dict[str, dict[str, float]], dict[str, dict[str, float]]]:
+    """(pushes, answer_normal_odds) for one stage from trainable rows: column -> label -> value; with ``columns``, only theirs."""
     hits: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     seen: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     odds_sum: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
@@ -96,7 +97,7 @@ def fit_pushes(rows, stage: str) -> tuple[dict[str, dict[str, float]], dict[str,
             continue
         own = stage_odds(row.historical_odds_probs, stage)
         for col, label in row.answers.items():
-            if label is None:
+            if label is None or (columns is not None and col not in columns):
                 continue
             seen[col][label] += 1
             hits[col][label] += target
@@ -155,7 +156,7 @@ def choose_layer_volumes(rows, columns: dict[str, dict], stage: str, layers: lis
         train = [r for r in rows if r.day < day]
         if len(train) < MIN_TRAIN_ROWS:
             continue
-        pushes, _ = fit_pushes(train, stage)
+        pushes, _ = fit_pushes(train, stage, columns)
         for r in rows:
             if r.day != day:
                 continue
@@ -189,9 +190,10 @@ def choose_layer_volumes(rows, columns: dict[str, dict], stage: str, layers: lis
 # ---------------------------------------------------------------- public
 
 def fit_additive_scorer(matrix) -> AdditiveScorerFit:
-    """Fit on the matrix's trainable rows (graded, not excluded). With too few rows the fit is empty and the scorer is asleep."""
+    """Fit on the matrix's trainable rows (graded, not excluded), over its voting columns only. With too few rows the fit is
+    empty and the scorer is asleep."""
     rows = matrix.trainable_rows()
-    columns = {c: {"layer": int(m["layer"]), "group": m["group"]} for c, m in matrix.columns.items()}
+    columns = {c: {"layer": int(m["layer"]), "group": m["group"]} for c, m in voting_columns(matrix.columns).items()}
     layers = sorted({m["layer"] for m in columns.values()})
     fit = AdditiveScorerFit(pushes={}, answer_normal_odds={}, layer_volume={s: {layer: 0.0 for layer in layers} for s in STAGES},
                             columns=columns, rows_used=len(rows), max_day_used=max((r.day for r in rows), default=None))
@@ -199,7 +201,7 @@ def fit_additive_scorer(matrix) -> AdditiveScorerFit:
         fit.notes["why"] = f"only {len(rows)} trainable rows; the scorer is asleep until {MIN_TRAIN_ROWS}"
         return fit
     for stage in STAGES:
-        fit.pushes[stage], fit.answer_normal_odds[stage] = fit_pushes(rows, stage)
+        fit.pushes[stage], fit.answer_normal_odds[stage] = fit_pushes(rows, stage, columns)
         fit.layer_volume[stage], fit.notes[f"{stage}_volume_search"] = choose_layer_volumes(rows, columns, stage, layers)
     return fit
 

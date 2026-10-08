@@ -15,12 +15,12 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from .additive_scorer import AdditiveScorerFit, fit_additive_scorer
-from .answer_matrix import AnswerMatrix, build_answer_matrix
+from .answer_matrix import AnswerMatrix, build_answer_matrix, voting_columns
 from .jev_corrected import JevCorrectedFit, fit_jev_corrected
 from .matcher import MatcherFit, fit_matcher
 from .paths import CATALOGS, VOICE_FITS, now_utc_iso, voice_fits_file, write_json_atomically
 
-FIT_VERSION = 4                 # 4: layers 1-2 are the code features (2026-10-06); 3: the matcher fit holds groups
+FIT_VERSION = 5                 # 5: the question pressure test's catalog, non-voting columns (2026-10-07); 4: layers 1-2 are the code features (2026-10-06); 3: the matcher fit holds groups
 
 
 class LeakError(RuntimeError):
@@ -49,6 +49,8 @@ def fit_voices_for_day(state_dir: Path | str, root: Path, lane: str, sum_id: str
     doc = {"version": FIT_VERSION, "lane": lane, "sum_id": sum_id, "fit_day": day, "fitted_at": now_utc_iso(),
            "rows_in_matrix": len(matrix.rows), "trainable_rows": len(matrix.trainable_rows()), "max_day_used": matrix.max_day(),
            "columns_by_layer": {str(layer): sum(1 for m in matrix.columns.values() if m["layer"] == layer) for layer in (1, 2, 3)},
+           "voting_columns_by_layer": {str(layer): sum(1 for m in voting_columns(matrix.columns).values() if m["layer"] == layer) for layer in (1, 2, 3)},
+           "non_voting_columns": sorted(set(matrix.columns) - set(voting_columns(matrix.columns))),
            "additive_scorer": fits["additive_scorer"].to_json(), "matcher": fits["matcher"].to_json(),
            "jev_corrected": fits["jev_corrected"].to_json(), "answer_matrix": matrix.to_json()}
     path = voice_fits_file(root, day, sum_id)
