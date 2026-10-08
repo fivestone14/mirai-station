@@ -2256,3 +2256,16 @@ def test_every_colour_and_size_the_page_names_is_defined():
     every var(--name) the page uses is one of its own custom properties."""
     used = set(re.findall(r"var\(--([a-z0-9-]+)", SPX))
     assert not used - set(re.findall(r"--([a-z0-9-]+)\s*:", SPX))
+
+
+def test_the_learning_loop_scores_the_call_against_the_usual_odds_guess():
+    """The card compares the combined forecast with the usual-odds guess (the historical odds voice), listed first as the
+    0 line; the old call has no row of its own (it is the 50/50 blend voice) and no status chip is drawn."""
+    card = SPX[SPX.index('<section class="card" id="learn"'):SPX.index("</section>", SPX.index('id="learn"'))]
+    learn = next(s for s in re.findall(r"(?s)<script>(.*?)</script>", SPX) if "LEARN_URL" in s)
+    assert "<th>Score vs guess</th>" in card and 'id="learnBars"' in card and 'id="learnVerdict"' in card
+    assert "var BASE = 'historical_odds', BASE_WORDS = 'Usual-odds guess'" in learn and "'0 · baseline'" in learn
+    assert "[[guess], [p2, 'pool']]" in learn
+    for gone in ("vs typical", "pool_v1", "learnHead", "learnChip", ".status"):
+        assert gone not in card and gone not in learn, gone
+    assert "lp-chip" not in SPX and "lp-head" not in SPX and "innerHTML" not in learn

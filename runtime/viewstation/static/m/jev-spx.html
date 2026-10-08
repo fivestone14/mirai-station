@@ -485,13 +485,16 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 </script>
 <!-- the Mirai Prediction System's scoreboard: after N graded reads, how right each voice is and how it compares with the
      historical odds. Read from state/spx_jev/mirai_prediction/scoreboard.json; the card stays hidden until the file exists.
-     the Combined forecast (pool_v2) is the call shown above; the old call (the 50/50 blend) is scored beside it. -->
+     the Combined forecast (pool_v2) is the call shown above, its right rate set beside the usual-odds guess (the
+     historical odds) it is scored against; every other voice, the old 50/50 blend among them, is listed below. -->
 <section class="card" id="learn" hidden aria-labelledby="learnLab">
   <div class="lab" id="learnLab">Learning loop<span class="r" id="learnR"></span></div>
-  <div class="lp-head" id="learnHead"></div>
-  <div class="lp-chip" id="learnChip"></div>
+  <div class="lp-sub">How often the direction was right</div>
+  <div id="learnBars"></div>
+  <div class="lp-verdict" id="learnVerdict"></div>
+  <div class="lp-key">Above 0 = beating the usual-odds guess &middot; below 0 = losing to it &middot; too early to judge until 300 reads</div>
   <svg class="lp-line" id="learnLine" viewBox="0 0 328 44" aria-hidden="true"></svg>
-  <table class="lp-t"><thead><tr><th>Voice</th><th>Right</th><th>vs typical</th></tr></thead><tbody id="learnRows"></tbody></table>
+  <table class="lp-t"><thead><tr><th>Voice</th><th>Right</th><th>Score vs guess</th></tr></thead><tbody id="learnRows"></tbody></table>
 </section>
 <!-- the situation and the questions (the live card's own section) dock here, under the learning loop, since 2026-10-06 -->
 <div id="dock" style="display:flex;flex-direction:column;gap:12px"></div>
@@ -512,7 +515,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   <div class="pt-r"><span class="k">JEV alone</span><span>JEV&rsquo;s own forecast, one of the voices mixed into the call; not scored as the call.</span></div>
   <div class="pt-r"><span class="k">Point</span><span>A point is one step of the S&amp;P 500 index, e.g. 7,817 &rarr; 7,818.</span></div>
   <div class="pt-r"><span class="k">Situation</span><span>Each row is one of the facts JEV reads; it answers questions about its sentence, word for word.</span></div>
-  <div class="pt-r"><span class="k">Learning loop</span><span>Right = called direction matched. vs typical = how much better (+) or worse (&minus;) than what this hour usually does. Too early until 100 reads; a verdict at 300.</span></div>
+  <div class="pt-r"><span class="k">Learning loop</span><span>Right = called direction matched. The usual-odds guess always says what this time of day usually does; it is right often on its own because most half hours are flat. Score vs guess = how much better (+) or worse (&minus;) a forecast&rsquo;s odds are than that guess, with confident misses costing most. Too early to judge until 300 reads.</span></div>
   <div class="pt-r"><span class="k">Calls in play</span><span>Tap a call bar for its result.</span></div>
   <p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are shadow questions, asked and logged, never graded and never weighted. A call is a forecast, not a trade signal, graded on the average price over its window: where each minute closed against the price at the read, averaged, in index points, and set against a flat band (the &plusmn; figure) narrower than an end price would get, because an average swings less than any one price. Its direction decides right or wrong; its size at the end price, where price stood highest and lowest (&ldquo;min 3&rdquo; is the window&rsquo;s third minute) and any sharp move are said beside it, and an unsure call is passed, never counted as a miss. For now each call also shows the old grade, on the end price alone, and a call the average could not grade stands on that, said so. The call is JEV&rsquo;s answer to that question itself: where the average will sit, up, flat or down within the &plusmn; figure, with no unsure; the old question on the end price is still asked and graded beside it, and shown muted as &ldquo;End price&rdquo;. Through the first hour the opening lane reads every 5 minutes and its call, on the average price over the next 10 minutes, leads the page until its last call closes; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock. Before the open, the pre-market lane reads S&amp;P futures, 10-year bond futures, bitcoin futures and the morning&rsquo;s reports through the night and makes one call about the first half hour: the average price over the 30 minutes after the first settled price, four minutes after the open. It is a forecast too, graded by the bars. Every time here is in this phone's own time zone.</p>
   <button class="sh-close" type="button" data-sheet-close>Close</button>
@@ -2182,11 +2185,18 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 </script>
 <style>
 /* the learning loop card: the scoreboard of the Mirai Prediction System, 360px safe */
-#learn .lp-head{margin-top:10px;font:600 15px/1.4 var(--sans);color:var(--i)}
-#learn .lp-head b{font-weight:800}
-#learn .lp-chip{display:inline-block;margin-top:8px;padding:3px 9px;border-radius:999px;border:1px solid var(--rule-soft);font:700 11px/1.2 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--i-mute)}
-#learn .lp-chip.edge{background:var(--fill);color:var(--on-body);border-color:var(--fill)}
-#learn .lp-chip.worse{border-color:var(--o-dn);color:var(--o-dn)}
+#learn .lp-sub{margin-top:10px;font:400 12px/1.3 var(--sans);color:var(--i-mute)}
+#learn .lp-br{display:grid;grid-template-columns:minmax(0,9.5em) minmax(0,1fr) 3em;gap:8px;align-items:center;margin-top:6px;font:400 13px/1.3 var(--sans);color:var(--i-body)}
+#learn .lp-br .v{text-align:right;font-weight:700;color:var(--i)}
+#learn .lp-br.base,#learn .lp-br.base .v{color:var(--i-mute);font-weight:400}
+#learn .lp-tr{height:8px;border-radius:4px;background:var(--s2);overflow:hidden}
+#learn .lp-tr i{display:block;height:100%;border-radius:4px;background:#2F44B8}
+#learn .lp-br.base .lp-tr i{background:#7E8779}
+#learn .lp-verdict{margin-top:12px;padding:8px 10px;border-radius:8px;border:1px solid var(--rule-soft);font:400 13px/1.35 var(--sans);color:var(--i-body)}
+#learn .lp-verdict b{font-weight:800}
+#learn .lp-verdict.up{border-color:var(--o-up);color:var(--o-up)}
+#learn .lp-verdict.dn{border-color:var(--o-dn);color:var(--o-dn)}
+#learn .lp-key{margin-top:5px;font:400 11px/1.35 var(--sans);color:var(--i-faint)}
 #learn .lp-line{display:block;width:100%;height:44px;margin:10px 0 4px}
 #learn .lp-t{width:100%;border-collapse:collapse;font:400 13px/1.35 var(--sans);margin-top:4px}
 #learn .lp-t th{text-align:left;font:700 10px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint);padding:6px 0 5px;border-bottom:1px solid var(--s2)}
@@ -2194,6 +2204,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 #learn .lp-t td{padding:6px 0;border-bottom:1px solid var(--s2);color:var(--i-body)}
 #learn .lp-t tr.pool td{font-weight:700;color:var(--i)}
 #learn .lp-t tr.learner td:first-child{padding-left:10px;color:var(--i-mute)}
+#learn .lp-t tr.base td{color:var(--i-mute)}
 #learn .lp-t td.up{color:var(--o-up)} #learn .lp-t td.dn{color:var(--o-dn)}
 #learn .lp-t td small{color:var(--i-faint);font-size:11px;margin-left:4px}
 #learn .lp-line text{fill:var(--i-faint);font:400 9px var(--sans)}
@@ -2204,15 +2215,28 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // and nothing here can break the rest of the page.
   var LEARN_URL = '/api/raw/file?root=state&path=spx_jev/mirai_prediction/scoreboard.json';
   var SUM = 'average_30', LEARN_MS = 60000;
-  function pct(v, signed){ if(v == null) return '—'; var s = (Math.round(v * 10) / 10).toFixed(1); return (signed && v > 0 ? '+' : '') + s + '%'; }
+  function pct(v, signed){ if(v == null) return '—'; var s = (Math.round(v * 10) / 10).toFixed(1); return (signed && v > 0 ? '+' : '') + s.replace('-', '\u2212') + '%'; }
   // built node by node, never from markup strings (the page never sets markup directly)
   function node(tag, cls, text){ var n = document.createElement(tag); if(cls) n.className = cls; if(text != null) n.textContent = text; return n; }
+  // the bar every forecast is scored against: the historical odds, in the card's words
+  var BASE = 'historical_odds', BASE_WORDS = 'Usual-odds guess', DECIDE_AT = 300;
+  // how a score against the guess reads in words: better or worse, "a bit" under 10 points either way
+  function verdictWords(v){ return v == null ? '' : v === 0 ? 'even' : (Math.abs(v) < 10 ? 'a bit ' : '') + (v > 0 ? 'better' : 'worse'); }
+  function sideOf(v){ return v == null || v === 0 ? null : v > 0 ? 'up' : 'dn'; }
   function row(v, cls){
-    var skill = v.skill_vs_historical_odds_pct, tr = node('tr', cls), name = node('td', null, String(v.plain_name).replace(' · 50/50 blend', ''));
+    var base = v.name === BASE, skill = v.skill_vs_historical_odds_pct, tr = node('tr', base ? 'base' : cls);
+    var name = node('td', null, base ? BASE_WORDS : v.plain_name);
     name.appendChild(node('small', null, (v.reads_count || 0) + ' reads'));
     tr.appendChild(name); tr.appendChild(node('td', null, pct(v.right_pct)));
-    tr.appendChild(node('td', skill == null ? null : skill > 0 ? 'up' : skill < 0 ? 'dn' : null, pct(skill, true)));
+    tr.appendChild(node('td', base ? null : sideOf(skill), base ? '0 · baseline' : skill == null ? '—' : pct(skill, true) + ' ' + verdictWords(skill)));
     return tr;
+  }
+  // one "how often right" bar: the forecast in blue, the guess it is scored against in grey
+  function bar(label, v, base){
+    var r = node('div', 'lp-br' + (base ? ' base' : '')), tr = node('div', 'lp-tr'), fill = node('i');
+    fill.style.width = Math.max(0, Math.min(100, v || 0)) + '%'; tr.appendChild(fill);
+    r.appendChild(node('span', null, label)); r.appendChild(tr); r.appendChild(node('span', 'v', pct(v).replace('.0%', '%')));
+    return r;
   }
   function line(daily){
     var svg = document.getElementById('learnLine'); while(svg.firstChild) svg.removeChild(svg.firstChild);
@@ -2225,7 +2249,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var zero = document.createElementNS(ns, 'line'); zero.setAttribute('x1', 0); zero.setAttribute('x2', w); zero.setAttribute('y1', y(0)); zero.setAttribute('y2', y(0));
     zero.setAttribute('stroke', '#7E8779'); zero.setAttribute('stroke-dasharray', '3 3'); zero.setAttribute('stroke-width', '1'); svg.appendChild(zero);
     var zl = document.createElementNS(ns, 'text'); zl.setAttribute('x', w); zl.setAttribute('y', Math.max(9, y(0) - 3)); zl.setAttribute('text-anchor', 'end');
-    zl.textContent = 'typical'; svg.appendChild(zl);
+    zl.textContent = 'usual guess'; svg.appendChild(zl);
     var p = document.createElementNS(ns, 'polyline'); p.setAttribute('fill', 'none'); p.setAttribute('stroke', '#2F44B8'); p.setAttribute('stroke-width', '2');
     p.setAttribute('points', pts.map(function(d, i){ return x(i).toFixed(1) + ',' + y(d.pool_v2_pct).toFixed(1); }).join(' ')); svg.appendChild(p);
     var last = pts[pts.length - 1], c = document.createElementNS(ns, 'circle'); c.setAttribute('cx', x(pts.length - 1)); c.setAttribute('cy', y(last.pool_v2_pct));
@@ -2235,15 +2259,21 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var sec = document.getElementById('learn');
     var s = board && board.sums && board.sums[SUM];
     if(!s || !s.graded_reads_count){ sec.hidden = true; return; }
-    var p2 = s.pool_v2, p1 = s.pool_v1, n = s.graded_reads_count;
-    document.getElementById('learnR').textContent = '30 min · since ' + (s.since_day || '').slice(5).replace('-', '/');
-    var head = document.getElementById('learnHead'); head.textContent = '';
-    [[String(n), ' reads · '], [pct(p2 && p2.right_pct), ' right · '], [pct(p2 && p2.skill_vs_historical_odds_pct, true), ' vs typical']]
-      .forEach(function(part){ head.appendChild(node('b', null, part[0])); head.appendChild(document.createTextNode(part[1])); });
-    var chip = document.getElementById('learnChip'), st = (p2 && p2.status) || 'Too early';
-    chip.textContent = st + (st === 'Too early' ? ' · decide at 300' : ''); chip.className = 'lp-chip ' + (st === 'Edge' ? 'edge' : st === 'Worse' ? 'worse' : '');
+    var p2 = s.pool_v2, n = s.graded_reads_count;
+    var voices = s.voices || [], guess = voices.filter(function(v){ return v.name === BASE; })[0];
+    document.getElementById('learnR').textContent = '30 min · ' + n + ' of ' + DECIDE_AT + ' reads';
+    var bars = document.getElementById('learnBars'); bars.textContent = '';
+    if(p2) bars.appendChild(bar('Combined forecast', p2.right_pct));
+    if(guess) bars.appendChild(bar(BASE_WORDS, guess.right_pct, true));
+    var skill = p2 && p2.skill_vs_historical_odds_pct, verdict = document.getElementById('learnVerdict'); verdict.textContent = '';
+    verdict.className = 'lp-verdict' + (sideOf(skill) ? ' ' + sideOf(skill) : '');
+    verdict.appendChild(document.createTextNode('Score vs the usual-odds guess: '));
+    verdict.appendChild(node('b', null, pct(skill, true)));
+    if(skill != null) verdict.appendChild(document.createTextNode(' · ' + verdictWords(skill)));
     var rows = document.getElementById('learnRows'); rows.textContent = '';
-    [[p1, 'pool'], [p2, 'pool']].concat((s.voices || []).map(function(v){ return [v, /scorer|matcher|corrected/.test(v.name) ? 'learner' : 'voice']; }))
+    // the guess first as the 0 line, then the call, then every other voice (the retired old call is its 50/50 blend voice)
+    [[guess], [p2, 'pool']].concat(voices.filter(function(v){ return v.name !== BASE; })
+      .map(function(v){ return [v, /scorer|matcher|corrected/.test(v.name) ? 'learner' : null]; }))
       .forEach(function(r){ if(r[0]) rows.appendChild(row(r[0], r[1])); });
     line(s.daily_skill);
     sec.hidden = false;
