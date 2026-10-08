@@ -231,3 +231,11 @@ def test_the_rows_of_a_matrix_built_after_the_cut_over_lose_the_dropped_columns_
     assert a.answers["jev:news_reaction"] == "shrugging_off" and b.answers["jev:news_reaction"] == "overreacting"
     kept = build_answer_matrix(tmp_path, "live", "average_30", before_day="2026-10-07")
     assert "jev:old" in kept.columns and kept.rows[0].answers["jev:old"] == "up"
+
+
+def test_the_judgment_questions_are_never_dropped_at_the_cut_over_even_if_last_answered_before_it():
+    """They are asked after the cut-over too (when their gate fires); only the retired pre-merge questions leave the matrix."""
+    last = {"old_question": "2026-10-07", "news_reaction": "2026-10-07"}
+    groups = {"old_question": "g1", "news_reaction": "judgment"}
+    cols = column_catalog(set(last), groups, last, "2026-10-08")
+    assert "jev:news_reaction" in cols and "jev:old_question" not in cols

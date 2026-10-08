@@ -214,6 +214,7 @@ def column_catalog(question_ids: set[str], group_of_question: dict[str, str], la
     for q in load_catalog():
         cols[column_name(q["id"])] = {"layer": int(q["layer"]), "group": q["group"], "family": q["method"]}
     dropped = retired_before_cut_over(question_ids, last_day_of_question or {}, before_day) if before_day else set()
+    dropped = {qid for qid in dropped if group_of_question.get(qid) != JUDGMENT_GROUP}   # the judgment questions live on past the cut-over
     for qid in sorted(question_ids - dropped):
         # the judgment questions each judge a different thing, so each is its own group; the old request groups vote once
         group = group_of_question.get(qid, qid)
