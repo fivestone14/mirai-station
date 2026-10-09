@@ -581,6 +581,8 @@ def test_no_phone_page_reads_a_viewport_unit():
         assert found == ["100dvh"], f"{name} reads a viewport unit: {found}"
         assert re.search(r"--app-h:100dvh;", css), f"{name} lost the token"
         assert "var(--app-h)" in css, f"{name} declares the token and never reads it"
+    # the SPX reads (2026-10-09) has no sheet, so no height token: it reads no viewport unit at all
+    assert _UNIT.findall(_css_code((M / "reads.html").read_text())) == []
     for name, js in (("page.js", PAGE),):
         code = "\n".join(l.split("//")[0] for l in js.splitlines()
                          if not l.strip().startswith(("//", "*", "/*")))

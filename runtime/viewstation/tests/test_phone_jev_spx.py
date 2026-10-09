@@ -742,7 +742,7 @@ def test_both_jev_pages_carry_one_switch_that_remembers_the_choice():
         assert _rule(sel, sndk) == _rule(sel, SPX), sel
     for html in (sndk, SPX):
         nav = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', html).group(1)
-        assert re.findall(r'<a class="tab" href="([^"]+)"', nav) == ["/m/", "/m/thread.html"]
+        assert re.findall(r'<a class="tab" href="([^"]+)"', nav) == ["/m/", "/m/reads.html"]
         assert nav.count('<span class="tab on">') == 1 and "<s>FORECAST</s>" in nav
 
 
@@ -750,7 +750,7 @@ def test_the_forecast_tab_is_drawn_alike_on_every_page():
     """Will, 2026-10-09: the third tab is Forecast, its icon the price so far and a dashed cone of where it may go, in
     place of JEV Beta and its scales; the same on every page that carries the bar, lit only on the two forecast pages."""
     icon = re.compile(r'(?s)<svg[^>]*><path d="M3 17l3.5-3.5 3 2L13 12"/>.*?</svg>\s*<s>FORECAST</s>')
-    for page in ("index.html", "thread.html", "jev.html", "jev-spx.html"):
+    for page in ("index.html", "thread.html", "reads.html", "jev.html", "jev-spx.html"):
         html = (M / page).read_text()
         nav = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', html).group(1)
         assert len(icon.findall(nav)) == 1 and "BETA" not in nav and "M12 4v16" not in nav, page

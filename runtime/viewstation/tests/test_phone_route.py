@@ -1109,7 +1109,8 @@ def test_the_chart_may_be_opened_and_the_glance_is_still_not_a_control():
     # 2026-09-22: a second link, the JEV beta tab. The JEV card is a separate
     # page because every JEV answer is a forecast and the glance carries none.
     assert len(links) == 2, f"two links are allowed on the glance, the reads tab and the JEV tab, found {len(links)}: {links}"
-    assert 'href="/m/thread.html"' in links[0], links[0]
+    # 2026-10-09: the reads tab opens the SPX reads (reads.html, Will's design D)
+    assert 'href="/m/reads.html"' in links[0], links[0]
     assert 'href="/m/jev.html"' in links[1], links[1]
 
     assert "data-hold" not in PHONE + _code_only(PAGE), "a press-and-hold is back on the glance"

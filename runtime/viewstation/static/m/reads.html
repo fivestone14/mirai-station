@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>SPX reads · Mirai</title>
+<!--
+  The SPX reads: every graded 30-minute call, a day at a time (Will's design D of 2026-10-09). The newest day
+  is open; the others fold to their score and one square per call, filled when the call was right, oldest on
+  the left. An open day lists its calls newest first: the time, where the 30-minute average went and what was
+  called, a picture of the window against the call, and Right or Wrong. A tap on a call opens its numbers.
+
+  Reads state/spx_jev/integral_grades.jsonl through the viewstation's read-only raw-file route, one row per
+  graded window (skills/spx-jev grade.py, the average-price grade): horizon next_30 only, the last row of a
+  read kept. ``from`` is the price the call was made at, ``edge`` its flat band either side, ``g`` the 30-minute
+  average's move from it, ``worst`` and ``best`` the window's low and high, ``label`` where the average went,
+  ``pick`` the call and ``verdict`` the grade. Nothing in server.py changes for it.
+
+  The picture: the call's price is the ink tick in the middle, its flat band the shaded box, the window's low to
+  high the line, and the average, the number that is graded, the dot, coloured by where it went (up the page's
+  blue, down its rust, flat ink). The scale is SCALE_PTS either side on every row, so the rows compare.
+
+  Times are the viewer's, through viewerTime as on the forecast page; which day a call belongs to is its
+  market day (the stamp's own date, written in New York's offset). Same paper as the forecast page: its tokens,
+  its card, its label row, its tab bar. Text goes in with textContent only; a failed fetch keeps the last list
+  on screen and says so. Nothing here reads a viewport unit.
+-->
+<link rel="preload" href="/m/pjs-153fc85b7029.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+@font-face{font-family:"Jakarta";src:url("/m/pjs-153fc85b7029.woff2") format("woff2");font-weight:200 800;font-style:normal;font-display:swap}
+:root{
+  --g:#E4E0D8; --s:#F4F1EB; --s2:#DCD7CD; --fill:#1F2622;
+  --i:#161A17; --i-body:#333B35; --i-mute:#535B52; --i-faint:#5C6459;
+  --on-body:#E4E6DF; --rule-soft:#7E8779;
+  --o-dn:#A8492F; --o-fl:#B9B2A4; --o-flat-zone:#C9C2B5; --o-up:#2F44B8; --o-un:#9C9586;
+  --sh1:0 1px 1px -.5px rgba(58,48,32,.05),0 3px 6px -1px rgba(58,48,32,.06),0 10px 22px -6px rgba(58,48,32,.07);
+  --tap-min:48px; --state-press:.12; --press-in:80ms; --press-out:200ms; --ease-out:cubic-bezier(.2,0,0,1);
+  --sans:"Jakarta",system-ui,Roboto,"Segoe UI",sans-serif;
+  --tab-h:74px;
+}
+*{box-sizing:border-box}
+html{background:var(--g)}
+body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sans);font-variant-numeric:tabular-nums;
+     -webkit-font-smoothing:antialiased;padding:0 16px calc(var(--tab-h) + 16px);display:flex;flex-direction:column;gap:10px;
+     max-width:560px;margin:0 auto}
+
+/* header, as the forecast page draws it */
+.hd{position:sticky;top:0;z-index:5;margin:0 -16px;padding:calc(env(safe-area-inset-top) + 12px) 16px 10px;background:var(--g)}
+.hd-1{font:700 11px/1.2 var(--sans);letter-spacing:.16em;color:var(--i-faint);text-transform:uppercase}
+.hd-2{margin-top:3px;font:400 13px/1.3 var(--sans);color:var(--i-mute)}
+.hd-2.err{color:var(--o-dn)}
+
+.card{background:var(--s);border-radius:18px;padding:12px 14px;box-shadow:var(--sh1)}
+.lab{display:flex;align-items:center;gap:8px;font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint)}
+.lab .r{margin-left:auto;font-size:12.5px;letter-spacing:0;text-transform:none;color:var(--i);white-space:nowrap}
+.cap{margin-top:3px;font:400 11.5px/1.35 var(--sans);color:var(--i-mute)}
+
+/* a day: its header a button that opens and folds it, its calls as squares, filled when right, oldest on the left */
+.dh{display:flex;align-items:center;gap:8px;width:100%;min-height:var(--tap-min);margin:-12px 0 0;padding:12px 0 0;border:0;
+    background:none;font:inherit;color:inherit;text-align:left;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.dh .lab{flex:1 1 auto}
+.dh:focus-visible,.call:focus-visible{outline:2px solid var(--o-up);outline-offset:2px;border-radius:8px}
+.chev{flex:none;width:7px;height:7px;margin:0 3px 3px 4px;border-right:1.5px solid var(--i-mute);border-bottom:1.5px solid var(--i-mute);
+      transform:rotate(-45deg);transition:transform .2s var(--ease-out)}
+.dh[aria-expanded="true"] .chev{transform:rotate(45deg)}
+.sq{display:flex;flex-wrap:wrap;gap:3px;margin-top:6px}
+.sq i{display:block;width:10px;height:10px;border-radius:2px;border:1.2px solid var(--o-un)}
+.sq i.ok{background:var(--fill);border-color:var(--fill)}
+
+/* a call: time, where the average went over what was called, the picture, the grade; a tap opens its numbers */
+.calls{margin-top:8px}
+.calls[hidden]{display:none}
+.call{display:grid;grid-template-columns:40px minmax(0,1fr) 104px 52px;gap:8px;align-items:center;width:100%;min-height:44px;
+      padding:6px 0;border:0;border-top:1px solid var(--s2);background:none;font:inherit;color:inherit;text-align:left;
+      touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.call .t{font:700 12.5px/1.2 var(--sans);color:var(--i)}
+.call .w{min-width:0;font:400 11.5px/1.25 var(--sans);color:var(--i-mute)}
+.call .w b{display:block;font:700 12.5px/1.2 var(--sans)}
+.call .w b.up{color:var(--o-up)} .call .w b.down{color:var(--o-dn)} .call .w b.flat{color:var(--i)}
+.call svg{display:block;width:104px;height:18px}
+.grade{justify-self:end;padding:2px 6px;border-radius:6px;border:1px solid var(--o-fl);font:700 11px/1.3 var(--sans);color:var(--i-faint)}
+.grade.ok{background:var(--fill);border-color:var(--fill);color:var(--on-body)}
+.nums{padding:0 0 8px 48px;font:400 11.5px/1.45 var(--sans);color:var(--i-mute)}
+.nums[hidden]{display:none}
+.nums b{font-weight:700;color:var(--i)}
+.dh.is-pressed,.call.is-pressed{background:rgba(22,26,23,var(--state-press));transition:background var(--press-in)}
+
+/* the tab bar, the glance's own, with this page lit */
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;justify-content:space-evenly;align-items:flex-start;
+      padding:11px 0 calc(env(safe-area-inset-bottom) + 12px);background:var(--s);border-radius:22px 22px 0 0;
+      box-shadow:0 -6px 22px -10px rgba(58,48,32,.16)}
+.tab{position:relative;isolation:isolate;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:var(--tap-min);
+     padding:4px 12px 2px;border-radius:14px;color:var(--i-faint);text-decoration:none;touch-action:manipulation;
+     -webkit-user-select:none;user-select:none}
+.tab::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:max(100%,var(--tap-min));height:var(--tap-min)}
+.tab.on{color:var(--i)}
+.tab:focus-visible{outline:2px solid var(--o-up);outline-offset:2px}
+.tab svg{display:block;width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.tab s{font:500 10px/1 var(--sans);letter-spacing:.1em;text-decoration:none}
+.tab i{width:4px;height:4px;border-radius:50%;background:transparent;margin-top:1px}
+.tab.on i{background:var(--i)}
+@media (prefers-reduced-motion:reduce){.chev{transition:none}}
+</style>
+</head>
+<body>
+<header class="hd">
+  <div class="hd-1">SPX &middot; Reads</div>
+  <div class="hd-2" id="sub">loading</div>
+</header>
+<main id="main"></main>
+<nav class="tabs">
+  <a class="tab" href="/m/" aria-label="Now" data-press data-haptic>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/></svg>
+    <s>NOW</s><i></i>
+  </a>
+  <span class="tab on">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+    <s>READS</s><i></i>
+  </span>
+  <a class="tab" href="/m/jev.html" aria-label="Forecast" data-press data-haptic>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l3.5-3.5 3 2L13 12"/><path d="M13 12 21 6.5" stroke-dasharray="1.5 2.6"/><path d="M13 12l8 2.5" stroke-dasharray="1.5 2.6"/><circle cx="13" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <s>FORECAST</s><i></i>
+  </a>
+</nav>
+<script src="/m/press.js"></script>
+<script>
+(function(){
+  'use strict';
+  var GRADES_URL = '/api/raw/file?root=state&path=spx_jev/integral_grades.jsonl&limit=400';
+  var DAYS_SUMMED = 5, SCALE_PTS = 32, POLL_MS = 60000;
+  var STRIP_W = 104, STRIP_H = 18;
+  var NS = 'http://www.w3.org/2000/svg';
+  var days = null, drawn = null, failed = false, opened = {};   // opened: the days the reader opened or folded by hand
+
+  function $(id){ return document.getElementById(id); }
+  function el(tag, cls, text){ var e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
+  function svgEl(tag, attrs){ var e = document.createElementNS(NS, tag); Object.keys(attrs).forEach(function(k){ e.setAttribute(k, attrs[k]); }); return e; }
+  // every time on the page in the phone's own zone, 24-hour, as the forecast page draws it
+  var VIEWER_FMT = {};
+  function viewerTime(t, how){
+    var ms = typeof t === 'number' ? t : Date.parse(t);
+    if(t == null || isNaN(ms)) return '?';
+    how = how || {};
+    var key = how.zone ? 'z' : '';
+    try {
+      var f = VIEWER_FMT[key] || (VIEWER_FMT[key] = new Intl.DateTimeFormat('en-US', {hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+                                   timeZoneName: how.zone ? 'short' : undefined}));
+      var p = {}; f.formatToParts(new Date(ms)).forEach(function(x){ p[x.type] = x.value; });
+      return ('0' + (+p.hour % 24)).slice(-2) + ':' + p.minute + (how.zone && p.timeZoneName ? ' ' + p.timeZoneName : '');
+    } catch(e){ return '?'; }
+  }
+  function money(x){ return (+x).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+  function signed(x){ x = +x; return (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x).toFixed(1); }
+  function cap(s){ s = String(s); return s.charAt(0).toUpperCase() + s.slice(1); }
+
+  // the graded 30-minute calls by market day, newest day first and each day's newest call first; a read graded
+  // twice keeps its last row
+  function callDays(rows){
+    var byRead = {}, byDay = {};
+    (rows || []).forEach(function(r){ if(r && r.horizon === 'next_30' && r.graded && r.row_ts) byRead[r.row_ts] = r; });
+    Object.keys(byRead).forEach(function(ts){ var d = ts.slice(0, 10); (byDay[d] = byDay[d] || []).push(byRead[ts]); });
+    return Object.keys(byDay).sort().reverse().map(function(d){
+      return {day: d, calls: byDay[d].sort(function(a, b){ return Date.parse(b.row_ts) - Date.parse(a.row_ts); })};
+    });
+  }
+  function isRight(c){ return c.verdict === 'right'; }
+  function rightOf(calls){ return calls.filter(isRight).length + ' of ' + calls.length + ' right'; }
+  // "Thu 10-08": the market day's weekday and date, never the viewer's
+  function dayName(d){
+    var t = Date.parse(d + 'T12:00:00Z');
+    return isNaN(t) ? d : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(t).getUTCDay()] + ' ' + d.slice(5);
+  }
+
+  // the window against the call on one scale: the flat band as a box, low to high as a line, the call's price as
+  // the tick in the middle, the graded average as the dot in where-it-went's colour; past the scale rests at an end
+  function strip(c){
+    var mid = STRIP_W / 2, y = STRIP_H / 2, per = (mid - 5) / SCALE_PTS;
+    function x(v){ return Math.max(4, Math.min(STRIP_W - 4, mid + v * per)).toFixed(1); }
+    var lo = c.worst ? c.worst.points : c.g, hi = c.best ? c.best.points : c.g, edge = +c.edge || 0;
+    var svg = svgEl('svg', {viewBox: '0 0 ' + STRIP_W + ' ' + STRIP_H, role: 'img',
+                            'aria-label': 'Low ' + signed(lo) + ', average ' + signed(c.g) + ', high ' + signed(hi) + ' points; flat within ' + edge.toFixed(1)});
+    svg.appendChild(svgEl('line', {x1: 2, y1: y, x2: STRIP_W - 2, y2: y, stroke: '#DCD7CD', 'stroke-width': 1}));
+    svg.appendChild(svgEl('rect', {x: (mid - edge * per).toFixed(1), y: y - 5, width: (2 * edge * per).toFixed(1), height: 10, rx: 2, fill: '#C9C2B5'}));
+    svg.appendChild(svgEl('line', {x1: x(lo), y1: y, x2: x(hi), y2: y, stroke: '#535B52', 'stroke-width': 1.6, 'stroke-linecap': 'round'}));
+    svg.appendChild(svgEl('line', {x1: mid, y1: y - 7, x2: mid, y2: y + 7, stroke: '#161A17', 'stroke-width': 1.2}));
+    var dot = {up: '#2F44B8', down: '#A8492F'}[c.label] || '#161A17';
+    svg.appendChild(svgEl('circle', {cx: x(c.g), cy: y, r: 4.2, fill: dot, stroke: '#F4F1EB', 'stroke-width': 1.5}));
+    return svg;
+  }
+  function squares(calls){
+    var box = el('div', 'sq');
+    calls.slice().reverse().forEach(function(c){ box.appendChild(el('i', isRight(c) ? 'ok' : null)); });
+    box.setAttribute('role', 'img'); box.setAttribute('aria-label', rightOf(calls) + ', oldest first');
+    return box;
+  }
+  function callRow(c){
+    var row = el('button', 'call'), nums = el('div', 'nums');
+    row.type = 'button'; row.setAttribute('aria-expanded', 'false'); row.setAttribute('data-press', '');
+    row.appendChild(el('span', 't', viewerTime(c.row_ts)));
+    var w = el('span', 'w'); w.appendChild(el('b', c.label, cap(c.label))); w.appendChild(document.createTextNode('called ' + c.pick));
+    row.appendChild(w);
+    row.appendChild(strip(c));
+    row.appendChild(el('span', isRight(c) ? 'grade ok' : 'grade', isRight(c) ? 'Right' : 'Wrong'));
+    var lo = c.worst ? c.worst.points : null, hi = c.best ? c.best.points : null;
+    nums.appendChild(document.createTextNode('Low ' + (lo == null ? '?' : signed(lo)) + ' · average '));
+    nums.appendChild(el('b', null, signed(c.g)));
+    nums.appendChild(document.createTextNode(' · high ' + (hi == null ? '?' : signed(hi)) + ' pts'));
+    nums.appendChild(el('br'));
+    nums.appendChild(document.createTextNode('Called at ' + money(c.from) + ' · flat within ±' + (+c.edge).toFixed(1)));
+    nums.hidden = true;
+    row.addEventListener('click', function(){ var o = nums.hidden; nums.hidden = !o; row.setAttribute('aria-expanded', String(o)); });
+    return [row, nums];
+  }
+  function dayCard(d, open){
+    var card = el('section', 'card'), head = el('button', 'dh'), list = el('div', 'calls');
+    head.type = 'button'; head.setAttribute('aria-expanded', String(open)); head.setAttribute('data-press', '');
+    var lab = el('span', 'lab', dayName(d.day)); lab.appendChild(el('span', 'r', rightOf(d.calls)));
+    head.appendChild(lab); head.appendChild(el('i', 'chev'));
+    card.appendChild(head); card.appendChild(squares(d.calls));
+    d.calls.forEach(function(c){ callRow(c).forEach(function(n){ list.appendChild(n); }); });
+    list.hidden = !open;
+    head.addEventListener('click', function(){
+      var now = list.hidden; list.hidden = !now; head.setAttribute('aria-expanded', String(now)); opened[d.day] = now;
+    });
+    card.appendChild(list);
+    return card;
+  }
+  function summary(ds){
+    var recent = ds.slice(0, DAYS_SUMMED), all = [].concat.apply([], recent.map(function(d){ return d.calls; }));
+    var card = el('section', 'card'), lab = el('div', 'lab', 'Last ' + recent.length + (recent.length === 1 ? ' day' : ' days'));
+    lab.appendChild(el('span', 'r', rightOf(all)));
+    card.appendChild(lab);
+    card.appendChild(el('div', 'cap', 'A filled square is a right call, oldest on the left. Tap a day for its calls.'));
+    return card;
+  }
+  function draw(){
+    var main = $('main'), sub = $('sub');
+    sub.className = failed ? 'hd-2 err' : 'hd-2';
+    var zone = viewerTime(Date.now(), {zone: true}).split(' ')[1] || '';
+    sub.textContent = (failed ? 'Fetch failed, showing the last list · ' : '') + '30-min calls, graded on the average' + (zone ? ' · ' + zone : '');
+    if(!days) return;
+    main.textContent = '';
+    if(!days.length){ main.appendChild(el('section', 'card', 'No graded calls yet.')); return; }
+    main.appendChild(summary(days));
+    days.forEach(function(d, i){ main.appendChild(dayCard(d, d.day in opened ? opened[d.day] : i === 0)); });
+  }
+  function poll(){
+    fetch(GRADES_URL, {cache: 'no-store'}).then(function(r){ return r.ok ? r.json() : null; }).then(function(j){
+      if(!j || j.kind !== 'jsonl') throw new Error('no grades');
+      // the same list again leaves the page alone, so a call the reader opened stays open
+      var next = callDays(j.rows), key = JSON.stringify(next.map(function(d){ return [d.day, d.calls.length, d.calls[0].row_ts]; }));
+      if(key === drawn && !failed) return;
+      days = next; drawn = key; failed = false; draw();
+    }).catch(function(){ failed = true; draw(); });
+  }
+  poll();
+  setInterval(function(){ if(!document.hidden) poll(); }, POLL_MS);
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden) poll(); });
+})();
+</script>
+</body>
+</html>
