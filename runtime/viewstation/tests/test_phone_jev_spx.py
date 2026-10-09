@@ -485,10 +485,8 @@ def test_the_last_lane_read_is_known_from_the_schedules_stamps():
     cards = [{"row_ts": f"2026-09-28T{t}:00-04:00", "schedule": {"reads": reads}} for t in ("10:30", "10:29", "10:27", "10:25")]
     cards.append({"row_ts": "2026-09-28T10:20:00-04:00", "schedule": {"reads": reads}, "closed_out_at": "2026-09-28T14:42:10+00:00"})
     assert _run("console.log(JSON.stringify(D.map(lastLaneRead)));", cards, TOKYO) == [True, True, False, False, True]
-    # the hand-back and the held unit are instants from the card, drawn in the viewer's zone
-    body = _fn("laneCard")
-    assert "viewerTime(Date.parse(sch.reads[sch.reads.length - 1]) + sch.looks_ahead_min * 60000)" in body
-    assert "viewerTime(marketAt(t.row_ts, RULER_HELD_UNTIL))" in _fn("stretchWords") and "RULER_HELD_UNTIL = '09:45'" in JS
+    # the hand-back is an instant from the card, drawn in the viewer's zone
+    assert "viewerTime(Date.parse(sch.reads[sch.reads.length - 1]) + sch.looks_ahead_min * 60000)" in _fn("laneCard")
 
 
 # ---- the expiry line
@@ -523,7 +521,7 @@ def test_after_the_settle_the_line_names_the_next_expiry_with_its_day():
 
 def test_every_line_the_page_writes_starts_with_a_capital():
     assert JS.count("el('div', 'tag', ") == 1 and JS.count("el('div', 'skip', ") == 1
-    for word in ("'Options settle '", "'Next expiry settles '", "'Flat: '", "'SPX should average '",
+    for word in ("'Options settle '", "'Next expiry settles '", "'Opening call'", "'No change'",
                  "'Price ended '", "'Read '", "'Graded '"):
         assert word in JS, word
 
@@ -938,7 +936,7 @@ def test_the_mode_and_answered_chips_live_inside_the_leading_card():
     """The mode chip heads the leading card and the answered chip closes it, each in its own box; the top keeps only
     trouble (a failed fetch, an unsent read, a stale row's note)."""
     assert "hc.appendChild(el('div', 'mode', '30-min call'));" in _fn("sumCard")
-    assert "box.appendChild(el('div', 'mode', 'opening \\u00B7 a call every 5 min'));" in _fn("laneCard")
+    assert "box.appendChild(el('div', 'mode', newest.minutes + '-min call \\u00B7 every ' + TAPE_STEP_MIN + ' min'));" in _fn("laneCard")
     assert "'mode'" not in _fn("laneOnly") and "main.appendChild(el('div', 'mode'" not in _fn("paint")
     assert "if(count) hc.appendChild(count);" in _fn("sumCard") and "if(count) he.appendChild(count);" in _fn("sumCard")
     assert ".card>.mode{width:fit-content;margin-bottom:12px}" in SPX and ".card>.answered{display:table;margin-top:12px}" in SPX
@@ -1657,8 +1655,8 @@ def test_the_last_reads_clock_looks_as_far_ahead_as_its_average_runs():
 
 
 # the opening card's own parts, lifted with it
-LANE_FNS = ("top1", "tag", "skipLine", "jevOwn", "endPriceRow", "indexLevel", "flatRange", "bandSpans", "moveScale", "stretchWords", "laneCard")
-LANE_VARS = ("RULER_HELD_UNTIL", "MOVE_SCALE_OVER", "STRETCH_LEAD", "STRETCH_MOVE", "STRETCH_RANGE", "STRETCH_SIZE", "STRETCH_THIRD", "FIRST_READ")
+LANE_FNS = ("top1", "tag", "skipLine", "jevOwn", "endPriceRow", "indexLevel", "averageWords", "labRow", "calledAt", "stretchRow", "laneCard")
+LANE_VARS = ("TAPE_STEP_MIN", "STRETCH_MOVE", "STRETCH_BUSY", "STRETCH_THIRD")
 # the builder's own sentences (labels/range_size._since_last_read): the day's first read, from the owner's phone on
 # 09-29, and a later read's, from the same day's 10:30 card
 FIRST_RANGE = ("the range since the open, 5 minutes ago, is 18.1 points, 1.78 tape units (one is 10.2 points), in the middle third "
@@ -1667,11 +1665,27 @@ LATER = {"move_since_read": "since the last read, 5 minutes ago, price ended 1.8
                             "within the 0.42 cut, so it held",
          "range_since_read": "the range since the last read, 5 minutes ago, is 7.7 points, 1.08 tape units (one is 7.2 points), in the top "
                              "third for this minute, higher than 14 of 19 prior sessions, each in its own morning ruler"}
+# the owner's 10:30 card of 2026-10-08, the lane's last read that day (state/spx_jev/lanes/tape/latest.json): the average
+# call flat on 7,792.23 with a 1.17-point edge, the end price unsure, price up 2.4 points since 10:25 on a busy range
+TAPE_READS = [f"2026-10-08T{t}:00-04:00" for t in ("09:35", "09:40", "09:45", "09:50", "09:55", "10:00", "10:05", "10:10",
+                                                    "10:15", "10:20", "10:25", "10:30")]
+OCT8 = {"lane": "tape", "row_ts": "2026-10-08T10:30:00-04:00",
+        "hour": {"pick": "unsure", "probabilities": {"down_big": 0.0, "down_small": 0.01, "flat": 0.16, "up_small": 0.36, "up_big": 0.06, "unsure": 0.41},
+                 "views": {"direction": {"probabilities": {"up": 0.42, "flat": 0.16, "down": 0.01, "unsure": 0.41}},
+                           "size": {"probabilities": {"big": 0.06, "small": 0.53, "unsure": 0.41}}},
+                 "average": {"pick": "flat", "probabilities": {"up": 0.48, "down": 0.02, "flat": 0.5}, "primary": "average_10", "box": "next_10",
+                             "minutes": 10, "flat_points": 1.88, "edge_points": 1.17, "price": 7792.23}},
+        "calls": [{"read": "2026-10-08T10:30:00-04:00", "mark": "2026-10-08T10:40:00-04:00", "minutes": 10, "pick": "flat", "p": 0.5}],
+        "band": {"flat_points": 1.88, "big_points": 3.98}, "ruler": {"unit_points": 4.47, "source": "tape"},
+        "stretch": {"move_since_read": "since the last read, 5 minutes ago, price ended 2.4 points above it, 0.54 of a tape unit (4.5 points), "
+                                       "more than the 0.42 cut and no more than 0.89, so it rose small",
+                    "range_since_read": "the range since the last read, 5 minutes ago, is 5.8 points, 1.30 tape units (one is 4.5 points), in the "
+                                        "top third for this minute, higher than 16 of 19 prior sessions, each in its own morning ruler"},
+        "schedule": {"reads": TAPE_READS, "looks_ahead_min": 10}, "closed_out_at": "2026-10-08T14:42:14+00:00"}
 
 
 def _lane(ts, now="2026-09-28T10:42:00-04:00"):
-    js = (CARD_STUBS + "Object.defineProperty(Node.prototype, 'childNodes', {get: function(){ return this.kids; }});" + _odds()
-          + "".join(_var(v) for v in LANE_VARS) + "".join(_fn(f) for f in LANE_FNS)
+    js = (CARD_STUBS + _odds() + "".join(_var(v) for v in LANE_VARS) + "".join(_fn(f) for f in LANE_FNS)
           + "console.log(JSON.stringify(D.t.map(function(t){ return dump(laneCard(t, true)); })));")
     return _run(js, {"t": ts, "now": now})
 
@@ -1686,108 +1700,102 @@ def _texts(node, cls):
     return [_flat_text(n) for n in _cls(node, cls)]
 
 
-def test_the_opening_card_leads_with_the_average_call_and_keeps_the_end_prices_size_as_its_second_line():
-    five = {"down_big": 0.05, "down_small": 0.1, "flat": 0.3, "up_small": 0.4, "up_big": 0.1, "unsure": 0.05}
-    hour = {"pick": "up_small", "probabilities": five, "views": {"direction": {"probabilities": {"up": 0.5, "flat": 0.3, "down": 0.15}},
-                                                                 "size": {"probabilities": {"big": 0.15, "small": 0.8}}},
-            "average": {**AVG, "primary": "average_10", "box": "next_10", "minutes": 10, "edge_points": 1.66, "price": 6701.4}}
-    t = {"lane": "tape", "row_ts": "2026-09-28T10:40:00-04:00", "hour": hour, "calls": [call("10:40", "10:50", "up", 0.55)], "stretch": {}}
-    card = _lane([t])[0]
+def test_the_opening_card_is_the_30_minute_cards_shape():
+    """Will, 2026-10-08: the 5-minute card reads as the 30-minute one does, lean. Its call and odds under a call label, the
+    price it was called at with the flat band on the 10-minute average, the calls in play, then one row for the end price
+    and one for the stretch since the last read, and the hand-back last. Nothing else: no sentence of where SPX should
+    average, no flat range line, no direction or size odds row, no move-size scale, no typical-swing note."""
+    card = _lane([OCT8], "2026-10-08T10:42:00-04:00")[0]
     parts = _parts(card)
-    assert parts[0] == ["mode", "opening · a call every 5 min"]   # the mode chip heads the lane card
-    assert parts[2] == ["big", "Up 55%"] and ["row60", "End priceUp small 40%"] in parts
-    assert ["odds", "Big move 15%"] in parts   # the size, from the end-price sum; its direction is the call's
-    # the call in prices, on the read's price and the average's edge, till its mark, in the viewer's zone, both lines to
-    # a tenth so they agree: 6,701.4 + 1.66 is 6,703.06
-    assert _texts(card, "range") == ["SPX should average above 6,703.1 until 07:50."]
-    assert _texts(card, "range-n") == ["Flat: 6,699.7\u20136,703.1"]
-
-
-def test_the_opening_calls_range_follows_its_pick_and_says_what_flat_is_without_a_price():
-    """Flat averages between the edges, down below the lower one; a read with no price names no level at all."""
-    base = {"lane": "tape", "row_ts": "2026-09-28T10:40:00-04:00", "calls": [call("10:40", "10:50", "flat", 0.6)], "stretch": {}}
-    avg = {**AVG, "minutes": 10, "edge_points": 2.65, "price": 6700.0}
-    cards = [{**base, "hour": {**END_30, "average": {**avg, "pick": pick}}} for pick in ("flat", "down")]
-    cards.append({**base, "hour": {**END_30, "average": {k: v for k, v in avg.items() if k != "price"}}})
-    got = [(_texts(c, "range"), _texts(c, "range-n")) for c in _lane(cards)]
-    assert got[0][0] == ["SPX should average between 6,697.4 and 6,702.7 until 07:50."]
-    assert got[1][0] == ["SPX should average below 6,697.4 until 07:50."]
-    assert got[2] == ([], ["Flat: \u00B12.6 pts from the 07:40 price"])
-
-
-def test_the_opening_card_draws_the_end_price_bands_to_scale_and_says_what_a_point_is():
-    """What counts as a move is the end-price question's bands (the card's band), never the call's own edge: flat, small
-    and big share one bar in proportion to their points, the bar running a third past big, each edge's figure sat on
-    its edge. What a point is reads off the read's price; a card with no average call has no price and no example.
-    Neither the card nor the footer says the call is sized in tape units, and the footer describes the pre-market call
-    as the 30-minute average it is."""
-    hour = {"pick": "up_small", "probabilities": {"down_big": 0.05, "down_small": 0.1, "flat": 0.3, "up_small": 0.4, "up_big": 0.1, "unsure": 0.05},
-            "average": {**AVG, "primary": "average_10", "box": "next_10", "minutes": 10, "edge_points": 2.07, "price": 7682.79}}
-    t = {"lane": "tape", "row_ts": "2026-09-28T10:40:00-04:00", "hour": hour, "calls": [call("10:40", "10:50", "up", 0.55)], "stretch": {},
-         "band": {"flat_points": 3.0, "big_points": 6.36}}
-    now, before = _lane([t, {**t, "hour": {k: v for k, v in hour.items() if k != "average"}}])
-    bar, = _cls(now, "mv-bar")
-    assert bar["attrs"] == {"class": "mv-bar"} and [(k["attrs"]["class"], k["text"]) for k in bar["kids"]] == [
-        ("mv-flat", "Flat"), ("mv-small", "Small"), ("mv-big", "Big")]
-    ticks, = _cls(now, "mv-ticks")
-    assert [k["text"] for k in ticks["kids"]] == ["0", "3.0", "6.4", "9+ pts"]
-    assert not _cls(now, "mv-spans")                                     # the tick figures are the bands' edges
-    assert _texts(now, "inplay-h")[-1] == "Move size by 07:50"
-    assert not _cls(now, "pt-r") and not _cls(before, "pt-r")           # what a point is lives in the info sheet
+    assert [k for k, _ in parts] == ["mode", "clock", "lab call", "big", "div", "div", "inplay", "row60", "row60", "tag"]
+    assert [v for _, v in parts[:4]] == ["10-min call \u00B7 every 5 min", "", "Opening call", "Flat 50%"]
+    assert [v for _, v in parts[7:]] == ["End priceUnsure 41%", "Last 5 minUp 2.4 pts \u00B7 busy",
+                                         "Last 5-min check; every 30 min again from 07:40"]
+    assert [k["attrs"]["class"] for k in card["kids"][4]["kids"]] == ["odds-bar", "odds-lab"]
+    assert [k["attrs"]["class"] for k in card["kids"][5]["kids"]] == ["avg-at", "avg-bar", "avg-lab"]
+    at = _cls(card, "avg-at")[0]
+    assert [_flat_text(k) for k in at["kids"]] == ["Called at", "7,792.23", "\u00B1 1.2 pts"]
+    assert [_flat_text(k) for k in _cls(card, "avg-lab")[0]["kids"]] == ["7,791.1", "flat on the 10-min average", "7,793.4"]
+    flat = json.dumps(card)
+    for gone in ("SPX should average", "Flat: ", "Big move", "Move size", "Typical 5-min swing", "mv-bar", "\"range\"", "\"odds\""):
+        assert gone not in flat, gone
+    # a point is said once, in the info sheet; neither the card nor the footer sizes the call in tape units
     assert "A point is one step of the S&amp;P 500 index, e.g. 7,817 &rarr; 7,818." in SPX
-    js = ("function el(tag, cls){ return {tag: tag, cls: cls, style: {}, kids: [], appendChild: function(n){ this.kids.push(n); return n; }}; }"
-          + _fn("viewerTime") + _fn("cap") + _var("MOVE_SCALE_OVER") + _fn("moveScale")
-          + "var b = moveScale({flat_points: 3.0, big_points: 6.36}, D.now); console.log(JSON.stringify([b.kids[1].style, b.kids[2].kids.map(function(k){ return k.style; })]));")
-    bar_style, tick_styles = _run(js, {"now": "2026-09-28T10:50:00-04:00"})
-    assert bar_style == {"gridTemplateColumns": "3.00fr 3.36fr 2.64fr"}
-    assert tick_styles == [{}, {"left": "33.33%"}, {"left": "70.67%"}, {}]              # each edge's figure at its edge's share of 9 points
     foot = re.search(r'(?s)<p class="foot">(.*?)</p>', SPX).group(1)
     assert "sized in tape units" not in foot and "tape unit" not in _fn("laneCard")
     assert "the average price over the 30 minutes after the first settled price" in foot and "where price stands 10 and 30" not in foot
 
 
-def test_the_stretch_since_the_last_read_is_said_in_a_few_plain_words():
-    """The builder's sentences come down to their figures and verdicts: the move in points with its verdict named in the
-    end-price bands the bar above draws, the range and its third against prior sessions at this minute, under a heading
-    naming the stretch. The day's first read has no move and says nothing of it; a move missing for any other reason says
-    the builder's reason; a sentence in a shape the page does not know is said whole."""
-    band = {"flat_points": 3.0, "big_points": 6.36}
-    base = {"lane": "tape", "row_ts": "2026-09-28T09:35:00-04:00", "hour": {}, "calls": [call("09:35", "09:45", "flat", 0.89)], "band": band}
-    first = {**base, "stretch": {"range_since_read": FIRST_RANGE}, "omitted": {"tape.move_since_read": "the day's first read: no earlier read today to measure from"},
-             "ruler": {"unit_points": 10.2, "source": "held"}}
-    later = {**base, "row_ts": "2026-09-28T10:30:00-04:00", "stretch": LATER, "ruler": {"unit_points": 7.15, "source": "tape"}}
-    odd = {**base, "stretch": {"range_since_read": "the range since the open is wide"}}
-    gap = {**base, "row_ts": "2026-09-28T10:30:00-04:00", "stretch": {}, "omitted": {"tape.move_since_read": "no finished bar at the last read"}}
-    a, b, c, d = _lane([first, later, odd, gap], "2026-09-28T09:40:00-04:00")
-    assert _texts(a, "inplay-h")[-1] == "Since the open"
-    assert _texts(a, "st") == ["18.1 points from high to low. Normal for this time of day: busier than 10 of the last 19 days."]
-    assert "Typical 5-min swing: 10.2 pts, an estimate until 06:45" in _texts(a, "tag")
-    assert not _texts(a, "say") and "first read" not in json.dumps(a)
-    assert _texts(b, "inplay-h")[-1] == "Last 5 minutes"
-    assert _texts(b, "st") == ["Up 1.8 points: flat (under 3.0).",
-                               "7.7 points from high to low. Busy for this time of day: busier than 14 of the last 19 days."]
-    assert "Typical 5-min swing: 7.2 pts" in _texts(b, "tag")
-    assert _texts(c, "say") == ["The range since the open is wide"] and not _texts(c, "st")
-    assert "No finished bar at the last read" in _texts(d, "tag")
+def test_an_opening_call_on_the_end_price_alone_or_with_no_sum_still_says_its_call():
+    """A card from before the average-price call (Monday 09-28's) or a read whose average went unanswered calls the end
+    price: its pick and odds lead, with no price it was called at and no end-price row beside it, and an unanswered
+    average says so. A read with no sum keeps the newest call it has, said to be that read's."""
+    five = {"down_big": 0.05, "down_small": 0.1, "flat": 0.3, "up_small": 0.4, "up_big": 0.1, "unsure": 0.05}
+    base = {"lane": "tape", "row_ts": "2026-09-28T10:40:00-04:00", "calls": [call("10:40", "10:50", "up_small", 0.4)], "stretch": LATER}
+    old = {**base, "hour": {"pick": "up_small", "probabilities": five}}
+    lost = {**base, "hour": {"pick": "up_small", "probabilities": five, "average": {"error": "jev timed out"}}}
+    none = {**base, "row_ts": "2026-09-28T10:45:00-04:00", "hour": {"error": "jev timed out"}}
+    got = [_parts(c) for c in _lane([old, lost, none])]
+    for parts in got[:2]:
+        assert parts[2:4] == [["lab call", "Opening call"], ["big", "Up small 40%"]]
+        assert not any(k in ("avg-at", "tag") for k, _ in parts) and ["row60", "Last 5 minUp 1.8 pts \u00B7 busy"] in parts
+        assert not any(v.startswith("End price") for _, v in parts)
+    assert ["skip", "No average answer; end-price call"] in got[1] and not any(k == "skip" for k, _ in got[0])
+    assert got[2][2:5] == [["lab call", "Opening call"], ["big", "Up small 40%"],
+                           ["skip", "No sum on the 07:45 read: jev timed out; this is the 07:40 call"]]
+    assert not any(v.startswith("End price") for _, v in got[2])
 
 
-@pytest.mark.parametrize("move, said", [
-    ("price ended level with it, 0 of a tape unit (7.2 points), within the 0.42 cut, so it held", "No change: flat (under 3.0)."),
-    ("price ended 4.1 points below it, 0.57 of a tape unit (7.2 points), more than the 0.42 cut and no more than 0.89, so it fell small",
-     "Down 4.1 points: a small move (3.0 to 6.4)."),
-    ("price ended 9.9 points above it, 1.38 tape units (one is 7.2 points), more than the 0.89 cut, so it rose big", "Up 9.9 points: a big move (over 6.4)."),
+@pytest.mark.parametrize("move, rng, said", [
+    (LATER["move_since_read"], LATER["range_since_read"], "Last 5 minUp 1.8 pts \u00B7 busy"),
+    ("since the last read, 5 minutes ago, price ended level with it, 0 of a tape unit (7.2 points), within the 0.42 cut, so it held",
+     None, "Last 5 minNo change"),
+    ("since the last read, 5 minutes ago, price ended 4.1 points below it, 0.57 of a tape unit (7.2 points), more than the 0.42 cut "
+     "and no more than 0.89, so it fell small",
+     "the range since the last read, 5 minutes ago, is 2.1 points, 0.29 of a tape unit (7.2 points), in the bottom third for this "
+     "minute, higher than 0 of 19 prior sessions, each in its own morning ruler (ruler estimated)", "Last 5 minDown 4.1 pts \u00B7 quiet"),
+    ("since the last read, 10 minutes ago, price ended 9.9 points above it, 1.38 tape units (one is 7.2 points), more than the 0.89 "
+     "cut, so it rose big",
+     "the range since the last read, 10 minutes ago, is 12.0 points, 1.67 tape units (one is 7.2 points), in the middle third for "
+     "this minute, higher than 10 of 19 prior sessions, each in its own morning ruler", "Last 10 minUp 9.9 pts \u00B7 normal"),
 ])
-def test_every_move_the_builder_can_write_comes_down_to_its_size(move, said):
-    t = {"lane": "tape", "row_ts": "2026-09-28T10:30:00-04:00", "hour": {}, "calls": [call("10:30", "10:40", "flat", 0.5)],
-         "band": {"flat_points": 3.0, "big_points": 6.36}, "stretch": {"move_since_read": "since the last read, 5 minutes ago, " + move}}
-    assert _texts(_lane([t])[0], "st") == [said]
+def test_the_last_5_minutes_row_says_the_move_and_how_busy_it_was(move, rng, said):
+    """The builder's sentences come down to one row: the move since the last read in points, and the range's third for
+    this minute against the prior sessions as quiet, normal or busy. The row names the minutes the builder measured, so
+    a read after a missed one says its 10."""
+    stretch = {"move_since_read": move, **({"range_since_read": rng} if rng else {})}
+    t = {"lane": "tape", "row_ts": "2026-09-28T10:30:00-04:00", "hour": {}, "calls": [call("10:30", "10:40", "flat", 0.5)], "stretch": stretch}
+    assert _texts(_lane([t])[0], "row60") == [said]
 
 
-def test_a_quiet_range_on_an_estimated_ruler_says_so():
-    rng = ("the range since the last read, 5 minutes ago, is 2.1 points, 0.29 of a tape unit (7.2 points), in the bottom third for this "
-           "minute, higher than 0 of 19 prior sessions, each in its own morning ruler (ruler estimated)")
-    t = {"lane": "tape", "row_ts": "2026-09-28T10:30:00-04:00", "hour": {}, "calls": [call("10:30", "10:40", "flat", 0.5)], "stretch": {"range_since_read": rng}}
-    assert _texts(_lane([t])[0], "st") == ["2.1 points from high to low. Quiet for this time of day: busier than 0 of the last 19 days (estimated)."]
+def test_the_days_first_read_and_a_move_the_page_cannot_read_have_no_last_5_minutes_row():
+    """The day's first read has nothing before it to have moved from; a move the builder left out for another reason, or
+    wrote in a shape the page does not know, is left out too, never said whole or as the builder's reason."""
+    base = {"lane": "tape", "row_ts": "2026-09-28T09:35:00-04:00", "hour": {}, "calls": [call("09:35", "09:45", "flat", 0.89)]}
+    first = {**base, "stretch": {"range_since_read": FIRST_RANGE}, "omitted": {"tape.move_since_read": "the day's first read: no earlier read today to measure from"}}
+    gap = {**base, "row_ts": "2026-09-28T10:30:00-04:00", "stretch": {}, "omitted": {"tape.move_since_read": "no finished bar at the last read"}}
+    odd = {**base, "stretch": {"move_since_read": "price moved a little", "range_since_read": LATER["range_since_read"]}}
+    for card in _lane([first, gap, odd], "2026-09-28T09:40:00-04:00"):
+        assert not _cls(card, "row60") and not _cls(card, "tag")
+        assert "first read" not in json.dumps(card) and "finished bar" not in json.dumps(card) and "a little" not in json.dumps(card)
+
+
+# the opening card's widest lines in the shipped face (Plus Jakarta Sans, its advance widths at the line's weight, size
+# and spacing): a stretch row after a missed read with a two-figure move, the mode chip with its padding and border
+_LANE_W = {"LAST 10 MIN": 76.16, "Down 12.3 pts \u00B7 normal": 152.89, "END PRICE": 67.22, "Down small 100%": 120.55,
+           "10-MIN CALL \u00B7 EVERY 5 MIN": 192.70, "flat on the 10-min average": 141.08, "7,791.1": 34.28}
+
+
+def test_the_opening_cards_rows_fit_the_owners_360px_phone():
+    """At 360 the dashed card holds 294px: each row's name and words sit on one line, and wrap under it if a figure
+    ever grows; the flat band's prices and its words fit their grid."""
+    inner = 360 - 2 * 16 - 2 * _px(".card", "padding") - 2
+    assert "flex-wrap:wrap" in _rule(".row60")
+    between = float(re.search(r"gap:[\d.]+px([\d.]+)px", _rule(".row60")).group(1))   # the column gap, after the row gap
+    for k, v in (("LAST 10 MIN", "Down 12.3 pts \u00B7 normal"), ("END PRICE", "Down small 100%")):
+        assert _LANE_W[k] + between + _LANE_W[v] <= inner, f"{k} {v} runs past the card at 360"
+    assert _LANE_W["10-MIN CALL \u00B7 EVERY 5 MIN"] <= inner
+    assert 2 * _LANE_W["7,791.1"] + 2 * _px(".avg-lab", "gap") + _LANE_W["flat on the 10-min average"] <= inner
 
 
 def test_the_opening_cards_last_line_says_when_it_hands_back_and_what_a_call_is():
@@ -1975,7 +1983,7 @@ def _whole(cards, now, tz=LA):
 @pytest.mark.parametrize("tz", [LA, TOKYO, NY, KOLKATA])
 @pytest.mark.parametrize("now, leads", [
     ("2026-09-28T09:30:00-04:00", "before the open"),                 # the 09:28 pre-market card leads
-    ("2026-09-28T10:35:00-04:00", "opening · a call every 5 min"),    # the 10:30 lane call is open
+    ("2026-09-28T10:35:00-04:00", "10-min call · every 5 min"),       # the 10:30 lane call is open
     ("2026-09-28T15:40:00-04:00", "30-min call"),    # the 15:32 read's call is open
     ("2026-09-28T16:10:00-04:00", "30-min call"),
 ])
@@ -1989,6 +1997,12 @@ def test_mondays_real_cards_draw_whole_in_every_zone(now, leads, tz):
     card = next(d for k, d in zip(got["main"], got["dom"]) if k[0] == "card dashed")
     assert [card["kids"][0]["attrs"]["class"], _flat_text(card["kids"][0])] == ["mode", leads]
     assert got["sub"] == "" and not any(k[0] == "mode" for k in got["main"])
+    if leads.startswith("10-min"):
+        # Monday's lane card is from before the average-price call: its end-price pick, the stretch row, the hand-back
+        parts = _parts(card)
+        assert parts[2:4] == [["lab call", "Opening call"], ["big", "Down small 44%"]]
+        assert [v for k, v in parts if k == "row60"] == ["Last 5 minDown 2.7 pts \u00B7 normal"]
+        assert parts[-1][1].startswith("Last 5-min check; every 30 min again from ")
 
 
 @pytest.mark.parametrize("tz", [LA, TOKYO, KOLKATA])
