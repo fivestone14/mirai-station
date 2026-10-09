@@ -6,10 +6,12 @@
 <meta name="color-scheme" content="light">
 <title>SPX reads · Mirai</title>
 <!--
-  The SPX reads: every graded 30-minute call, a day at a time (Will's design D of 2026-10-09). The newest day
-  is open; the others fold to their score and one square per call, filled when the call was right, oldest on
-  the left. An open day lists its calls newest first: the time, where the 30-minute average went and what was
-  called, a picture of the window against the call, and Right or Wrong. A tap on a call opens its numbers.
+  The SPX reads: every graded 30-minute call, a day at a time (Will's design D of 2026-10-09). The last five
+  days' score stays pinned at the top with the header, beside a Collapse all / Open all control. Under it the
+  days, newest first, a sliver apart: the newest open, the others folded to their score and one square per
+  call, filled when the call was right, oldest on the left. An open day lists its calls earliest to latest in
+  the viewer's zone: the time, where the 30-minute average went and what was called, a picture of the window
+  against the call, and Right or Wrong. A tap on a call opens its numbers.
 
   Reads state/spx_jev/integral_grades.jsonl through the viewstation's read-only raw-file route, one row per
   graded window (skills/spx-jev grade.py, the average-price grade): horizon next_30 only, the last row of a
@@ -46,12 +48,23 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
      max-width:560px;margin:0 auto}
 
 /* header, as the forecast page draws it */
-.hd{position:sticky;top:0;z-index:5;margin:0 -16px;padding:calc(env(safe-area-inset-top) + 12px) 16px 10px;background:var(--g)}
+.hd{position:sticky;top:0;z-index:5;margin:0 -16px;padding:calc(env(safe-area-inset-top) + 12px) 16px 10px;background:var(--g);
+    box-shadow:0 8px 12px -10px rgba(58,48,32,.35)}       /* the days scroll under it, the pinned summary with it */
 .hd-1{font:700 11px/1.2 var(--sans);letter-spacing:.16em;color:var(--i-faint);text-transform:uppercase}
 .hd-2{margin-top:3px;font:400 13px/1.3 var(--sans);color:var(--i-mute)}
 .hd-2.err{color:var(--o-dn)}
 
 .card{background:var(--s);border-radius:18px;padding:12px 14px;box-shadow:var(--sh1)}
+main{display:flex;flex-direction:column;gap:6px}         /* a sliver between days */
+/* the last five days, pinned in the header: the score, and the one control for every day */
+.sum{display:flex;align-items:center;gap:10px;margin-top:8px}
+.sum[hidden]{display:none}
+.sum-l{flex:1 1 auto;min-width:0}
+.sum-v{margin-top:2px;font:700 16px/1.2 var(--sans);color:var(--i)}
+.all{position:relative;flex:none;min-height:34px;padding:0 12px;border:1px solid var(--rule-soft);border-radius:10px;background:var(--s);
+     font:700 11px/1 var(--sans);letter-spacing:.06em;color:var(--i);touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.all::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:max(100%,var(--tap-min));height:var(--tap-min)}
+.all:focus-visible{outline:2px solid var(--o-up);outline-offset:2px}
 .lab{display:flex;align-items:center;gap:8px;font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint)}
 .lab .r{margin-left:auto;font-size:12.5px;letter-spacing:0;text-transform:none;color:var(--i);white-space:nowrap}
 .cap{margin-top:3px;font:400 11.5px/1.35 var(--sans);color:var(--i-mute)}
@@ -84,7 +97,7 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 .nums{padding:0 0 8px 48px;font:400 11.5px/1.45 var(--sans);color:var(--i-mute)}
 .nums[hidden]{display:none}
 .nums b{font-weight:700;color:var(--i)}
-.dh.is-pressed,.call.is-pressed{background:rgba(22,26,23,var(--state-press));transition:background var(--press-in)}
+.dh.is-pressed,.call.is-pressed,.all.is-pressed{background:rgba(22,26,23,var(--state-press));transition:background var(--press-in)}
 
 /* the tab bar, the glance's own, with this page lit */
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;justify-content:space-evenly;align-items:flex-start;
@@ -107,6 +120,7 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 <header class="hd">
   <div class="hd-1">SPX &middot; Reads</div>
   <div class="hd-2" id="sub">loading</div>
+  <section class="card sum" id="sum" hidden></section>
 </header>
 <main id="main"></main>
 <nav class="tabs">
@@ -131,7 +145,7 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
   var DAYS_SUMMED = 5, SCALE_PTS = 32, POLL_MS = 60000;
   var STRIP_W = 104, STRIP_H = 18;
   var NS = 'http://www.w3.org/2000/svg';
-  var days = null, drawn = null, failed = false, opened = {};   // opened: the days the reader opened or folded by hand
+  var days = null, drawn = null, failed = false, opened = {};   // opened: each day's open or folded, the newest open at first
 
   function $(id){ return document.getElementById(id); }
   function el(tag, cls, text){ var e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
@@ -154,14 +168,14 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
   function signed(x){ x = +x; return (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x).toFixed(1); }
   function cap(s){ s = String(s); return s.charAt(0).toUpperCase() + s.slice(1); }
 
-  // the graded 30-minute calls by market day, newest day first and each day's newest call first; a read graded
+  // the graded 30-minute calls by market day, newest day first and each day's calls earliest first; a read graded
   // twice keeps its last row
   function callDays(rows){
     var byRead = {}, byDay = {};
     (rows || []).forEach(function(r){ if(r && r.horizon === 'next_30' && r.graded && r.row_ts) byRead[r.row_ts] = r; });
     Object.keys(byRead).forEach(function(ts){ var d = ts.slice(0, 10); (byDay[d] = byDay[d] || []).push(byRead[ts]); });
     return Object.keys(byDay).sort().reverse().map(function(d){
-      return {day: d, calls: byDay[d].sort(function(a, b){ return Date.parse(b.row_ts) - Date.parse(a.row_ts); })};
+      return {day: d, calls: byDay[d].sort(function(a, b){ return Date.parse(a.row_ts) - Date.parse(b.row_ts); })};
     });
   }
   function isRight(c){ return c.verdict === 'right'; }
@@ -190,7 +204,7 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
   }
   function squares(calls){
     var box = el('div', 'sq');
-    calls.slice().reverse().forEach(function(c){ box.appendChild(el('i', isRight(c) ? 'ok' : null)); });
+    calls.forEach(function(c){ box.appendChild(el('i', isRight(c) ? 'ok' : null)); });
     box.setAttribute('role', 'img'); box.setAttribute('aria-label', rightOf(calls) + ', oldest first');
     return box;
   }
@@ -221,19 +235,24 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
     d.calls.forEach(function(c){ callRow(c).forEach(function(n){ list.appendChild(n); }); });
     list.hidden = !open;
     head.addEventListener('click', function(){
-      var now = list.hidden; list.hidden = !now; head.setAttribute('aria-expanded', String(now)); opened[d.day] = now;
+      var now = list.hidden; list.hidden = !now; head.setAttribute('aria-expanded', String(now)); opened[d.day] = now; allLabel();
     });
     card.appendChild(list);
     return card;
   }
-  function summary(ds){
+  // the pinned summary's insides: the last DAYS_SUMMED days' score, and Collapse all, or Open all once every day is folded
+  function summary(box, ds){
     var recent = ds.slice(0, DAYS_SUMMED), all = [].concat.apply([], recent.map(function(d){ return d.calls; }));
-    var card = el('section', 'card'), lab = el('div', 'lab', 'Last ' + recent.length + (recent.length === 1 ? ' day' : ' days'));
-    lab.appendChild(el('span', 'r', rightOf(all)));
-    card.appendChild(lab);
-    card.appendChild(el('div', 'cap', 'A filled square is a right call, oldest on the left. Tap a day for its calls.'));
-    return card;
+    var left = el('div', 'sum-l'), btn = el('button', 'all');
+    left.appendChild(el('div', 'lab', 'Last ' + recent.length + (recent.length === 1 ? ' day' : ' days')));
+    left.appendChild(el('div', 'sum-v', rightOf(all)));
+    btn.type = 'button'; btn.id = 'all'; btn.setAttribute('data-press', '');
+    btn.textContent = anyOpen() ? 'Collapse all' : 'Open all';
+    btn.addEventListener('click', function(){ var open = !anyOpen(); days.forEach(function(d){ opened[d.day] = open; }); draw(); });
+    box.textContent = ''; box.appendChild(left); box.appendChild(btn); box.hidden = false;
   }
+  function anyOpen(){ return (days || []).some(function(d){ return opened[d.day]; }); }
+  function allLabel(){ var b = $('all'); if(b) b.textContent = anyOpen() ? 'Collapse all' : 'Open all'; }
   function draw(){
     var main = $('main'), sub = $('sub');
     sub.className = failed ? 'hd-2 err' : 'hd-2';
@@ -241,15 +260,16 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
     sub.textContent = (failed ? 'Fetch failed, showing the last list · ' : '') + '30-min calls, graded on the average' + (zone ? ' · ' + zone : '');
     if(!days) return;
     main.textContent = '';
-    if(!days.length){ main.appendChild(el('section', 'card', 'No graded calls yet.')); return; }
-    main.appendChild(summary(days));
-    days.forEach(function(d, i){ main.appendChild(dayCard(d, d.day in opened ? opened[d.day] : i === 0)); });
+    if(!days.length){ $('sum').hidden = true; main.appendChild(el('section', 'card', 'No graded calls yet.')); return; }
+    days.forEach(function(d, i){ if(!(d.day in opened)) opened[d.day] = i === 0; });   // a new day opens only if it is the newest
+    summary($('sum'), days);
+    days.forEach(function(d){ main.appendChild(dayCard(d, opened[d.day])); });
   }
   function poll(){
     fetch(GRADES_URL, {cache: 'no-store'}).then(function(r){ return r.ok ? r.json() : null; }).then(function(j){
       if(!j || j.kind !== 'jsonl') throw new Error('no grades');
       // the same list again leaves the page alone, so a call the reader opened stays open
-      var next = callDays(j.rows), key = JSON.stringify(next.map(function(d){ return [d.day, d.calls.length, d.calls[0].row_ts]; }));
+      var next = callDays(j.rows), key = JSON.stringify(next.map(function(d){ return [d.day, d.calls.length, d.calls[d.calls.length - 1].row_ts]; }));
       if(key === drawn && !failed) return;
       days = next; drawn = key; failed = false; draw();
     }).catch(function(){ failed = true; draw(); });

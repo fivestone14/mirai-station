@@ -38,9 +38,9 @@ def _run(js, data=None, tz=LA):
         pytest.skip("node is not installed")
     text = "document.createTextNode = function(t){ var n = new Node('#text'); n._t = String(t); return n; };"
     fns = "".join(_fn(f) for f in ("viewerTime", "money", "signed", "cap", "callDays", "isRight", "rightOf", "dayName",
-                                   "strip", "squares", "callRow", "dayCard", "summary"))
+                                   "strip", "squares", "callRow", "dayCard", "summary", "anyOpen"))
     script = ("const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + FAKE_DOM + text + _var("DAYS_SUMMED") + _var("STRIP_W")
-              + _var("NS") + "var VIEWER_FMT = {}, opened = {};" + "function svgEl(tag, attrs){ var e = new Node(tag);"
+              + _var("NS") + "var VIEWER_FMT = {}, opened = D.opened || {}, days = D.days || null;" + "function svgEl(tag, attrs){ var e = new Node(tag);"
               " Object.keys(attrs).forEach(function(k){ e.attrs[k] = String(attrs[k]); }); return e; }" + fns + js)
     out = subprocess.run([_NODE, "-e", script], input=json.dumps(data), capture_output=True, text=True, timeout=20,
                          env={**os.environ, "TZ": tz})
@@ -63,14 +63,16 @@ OCT8_1431 = grade("2026-10-08T14:31:03.112000-04:00", **{"from": 7756.79, "edge"
                                                          "worst": {"points": -3.6, "minute": 17}})
 
 
-def test_the_calls_are_the_30_minute_windows_by_market_day_newest_first_a_regrade_keeping_its_last_row():
+def test_the_calls_are_the_30_minute_windows_by_market_day_newest_day_first_each_days_calls_earliest_first():
+    """Will, 2026-10-09: the days newest first, and in each day the calls from earlier to later; a read graded twice
+    keeps its last row."""
     rows = [grade("2026-10-07T15:29:00-04:00"), grade("2026-10-08T09:30:00-04:00", verdict="wrong"),
             grade("2026-10-08T09:30:00-04:00", horizon="next_60"),                   # the end-price hour is not a 30-minute call
             OCT8_1431, OCT8_1500, grade("2026-10-08T09:30:00-04:00", verdict="right"),   # graded again: the last row stands
             grade("2026-10-08T10:01:00-04:00", graded=False)]                        # not graded yet: left out
     got = _run("console.log(JSON.stringify(callDays(D.rows).map(function(d){ return [d.day, d.calls.map(function(c){"
                " return c.row_ts.slice(11, 16) + ' ' + c.verdict; }), rightOf(d.calls), dayName(d.day)]; })));", {"rows": rows})
-    assert got == [["2026-10-08", ["15:00 wrong", "14:31 right", "09:30 right"], "2 of 3 right", "Thu 10-08"],
+    assert got == [["2026-10-08", ["09:30 right", "14:31 right", "15:00 wrong"], "2 of 3 right", "Thu 10-08"],
                    ["2026-10-07", ["15:29 right"], "1 of 1 right", "Wed 10-07"]]
 
 
@@ -105,7 +107,7 @@ def test_the_picture_puts_the_window_against_the_call_on_one_scale_and_rests_a_b
 
 
 def test_a_day_folds_to_its_score_and_squares_oldest_first_and_opens_to_its_calls():
-    d = {"day": "2026-10-08", "calls": [OCT8_1500, OCT8_1431, grade("2026-10-08T09:30:00-04:00", verdict="wrong", label="up")]}
+    d = {"day": "2026-10-08", "calls": [grade("2026-10-08T09:30:00-04:00", verdict="wrong", label="up"), OCT8_1431, OCT8_1500]}
     got = _run("var s = dayCard(D.d, D.open); console.log(JSON.stringify([dump(s), s.kids[2].hidden]));", {"d": d, "open": False})
     card, hidden = got
     head, sq, calls = card["kids"]
@@ -118,19 +120,28 @@ def test_a_day_folds_to_its_score_and_squares_oldest_first_and_opens_to_its_call
     assert opened == ["true", False]
 
 
-def test_the_summary_counts_the_last_five_days():
+def test_the_pinned_summary_counts_the_last_five_days_beside_one_control_for_every_day():
+    """The summary rides the sticky header so it is always in view; its button collapses every day, and says Open all
+    once every day is folded (Will, 2026-10-09)."""
     days = [{"day": f"2026-10-0{n}", "calls": [grade(f"2026-10-0{n}T10:00:00-04:00", verdict=v) for v in vs]}
             for n, vs in ((9, ["right", "wrong"]), (8, ["wrong"]), (7, ["right"]), (6, ["right"]), (5, ["wrong"]), (2, ["right"]))]
-    got = _run("console.log(JSON.stringify(dump(summary(D.days))));", {"days": days})
-    assert _flat_text(got["kids"][0]) == "Last 5 days3 of 6 right"                    # 10-02 is the sixth day: left out
-    assert _flat_text(got["kids"][1]) == "A filled square is a right call, oldest on the left. Tap a day for its calls."
+    js = "var box = el('section'); summary(box, D.days); console.log(JSON.stringify([dump(box), box.hidden]));"
+    some, shown = _run(js, {"days": days, "opened": {"2026-10-09": True}})
+    left, btn = some["kids"]
+    assert _flat_text(left) == "Last 5 days3 of 6 right" and shown is False          # 10-02 is the sixth day: left out
+    assert btn["tag"] == "button" and btn["attrs"]["class"] == "all" and _flat_text(btn) == "Collapse all"
+    none, _ = _run(js, {"days": days, "opened": {d["day"]: False for d in days}})
+    assert _flat_text(none["kids"][1]) == "Open all"
+    assert '<section class="card sum" id="sum" hidden></section>\n</header>' in READS     # inside the sticky header
+    assert ".hd{position:sticky;top:0;" in READS and "main{display:flex;flex-direction:column;gap:6px}" in READS
 
 
 def test_the_page_reads_the_grades_through_the_raw_route_and_keeps_an_opened_call_open():
     assert _var("GRADES_URL").strip() == "var GRADES_URL = '/api/raw/file?root=state&path=spx_jev/integral_grades.jsonl&limit=400';"
     assert _var("DAYS_SUMMED").strip() == "var DAYS_SUMMED = 5, SCALE_PTS = 32, POLL_MS = 60000;"
     assert "if(key === drawn && !failed) return;" in _fn("poll")                       # the same list leaves the page alone
-    assert "d.day in opened ? opened[d.day] : i === 0" in _fn("draw")                 # the newest day opens, a hand choice stays
+    assert "if(!(d.day in opened)) opened[d.day] = i === 0;" in _fn("draw")           # the newest day opens, a hand choice stays
+    assert "days.forEach(function(d){ opened[d.day] = open; }); draw();" in _fn("summary")
     assert "Fetch failed, showing the last list" in _fn("draw")
 
 
