@@ -104,15 +104,17 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 
 /* the card and its label row, the glance's own */
 .card{background:var(--s);border-radius:18px;padding:16px;box-shadow:var(--sh1)}
-.card.dashed{border:1px dashed var(--rule-soft);box-shadow:none}
+.card.dashed{border:1px dashed var(--rule-soft);box-shadow:none;padding-top:12px;padding-bottom:14px}
 .lab{display:flex;align-items:center;gap:8px;font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint)}
 .lab .r{margin-left:auto;color:var(--i-mute);white-space:nowrap}
 /* aging is a shape, not a hue: the outlined chip */
 .lab .r.old{padding:3px 7px;border:1px solid var(--i-mute);border-radius:6px}
 #state{display:flex;flex-wrap:wrap;gap:6px}
+#state:empty{display:none}                          /* with no trouble it takes no gap under the price box */
 .state{display:inline-block;padding:5px 9px;border-radius:8px;border:1px solid var(--rule-soft);font:700 11px/1.2 var(--sans);
        letter-spacing:.08em;text-transform:uppercase;color:var(--i-mute);background:var(--s)}
-.lab.call{margin-top:14px}
+.lab.call{margin-top:12px}
+.lab.call+.big{margin-top:4px}
 .big{margin-top:8px;font:700 30px/1.1 var(--sans);color:var(--i);letter-spacing:-.01em}
 /* the situation: each fact a row with its verdict in a word and a small gauge; the sentence is a tap away */
 .sit-row{padding:11px 0;border-top:1px solid var(--s2);cursor:pointer;-webkit-tap-highlight-color:transparent}
@@ -157,15 +159,19 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 /* today's 0DTE: when it settles, in the viewer's zone, the time left, and a tag on a monthly or quarter-end day */
 .exp{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:0 4px;font:400 12.5px/1.35 var(--sans);color:var(--i-mute)}
 .exp b{font-weight:700;color:var(--i)}
+main>.exp+.card{margin-top:-4px}                 /* the line belongs to the card under it: 8px, not the page's 12 */
 /* the call clock: how far ahead the leading call looks, and how long it has left */
-.clock-top{display:flex;align-items:baseline;gap:8px;font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
+.clock-top{display:flex;flex-wrap:wrap;align-items:center;gap:8px;row-gap:6px;font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
 .clock-top b{margin-left:auto;color:var(--i)}
-.clock-bar{margin-top:6px;height:6px;border-radius:3px;background:var(--s2)}
+/* a leading card's mode chip rides the clock's row, beside the time left and a size smaller; when both don't fit (the
+   opening's long chip at 320, or beside "under 1 min left") the time left wraps to its own line, right-aligned */
+.clock-top .mode{align-self:center;padding:3px 7px;border-radius:7px}
+.clock-bar{margin-top:8px;height:6px;border-radius:3px;background:var(--s2)}
 .clock-bar i{display:block;height:6px;border-radius:3px;background:var(--px-ink)}
 .clock-sub{display:flex;margin-top:4px;font:400 11.5px/1.2 var(--sans);color:var(--i-mute)}
 .clock-sub span:last-child{margin-left:auto}
 /* the odds as one bar: each option's share of the width, down on the left, up on the right, unsure last */
-.odds-bar{display:flex;gap:2px;height:12px;margin-top:10px}
+.odds-bar{display:flex;gap:2px;height:12px;margin-top:8px}
 .odds-bar i,.how-bar i{display:block;border-radius:3px;min-width:3px}
 .odds-lab{display:flex;gap:2px;margin-top:5px;font:400 11.5px/1.2 var(--sans);color:var(--i-mute)}
 .odds-lab span{overflow:hidden;white-space:nowrap}
@@ -222,7 +228,7 @@ button.tile .tile-k::after,.inplay-h.tap::after{content:"";flex:none;margin-left
 /* the 30-minute call's price under its odds: the read's price, the flat edge as a pill, then the flat band on a small bar
    with its two prices under it; on the bar the call's price is the ink needle, fixed, and the live price the blue one,
    moved by every quote (placeNow) */
-.avg-at{display:flex;align-items:baseline;gap:6px;margin-top:12px;font:400 12.5px/1.2 var(--sans);color:var(--i-mute)}
+.avg-at{display:flex;align-items:baseline;gap:6px;margin-top:10px;font:400 12.5px/1.2 var(--sans);color:var(--i-mute)}
 .avg-at b{font:700 17px/1.2 var(--sans);color:var(--i)}
 .pill{margin-left:auto;align-self:center;padding:3px 8px;border:1px solid var(--rule-soft);border-radius:999px;font:600 12px/1.2 var(--sans);
       color:var(--i-body);white-space:nowrap}
@@ -1231,10 +1237,10 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   }
 
   // the call clock: how long a call has left, and the minute it is graded (``mark``, the card's; null when the call
-  // ends past the close and is never graded)
-  function clockBlock(read, minutes, mark){
+  // ends past the close and is never graded); a leading card's mode ``chip`` heads its row, the time left beside it
+  function clockBlock(read, minutes, mark, chip){
     var box = el('div');
-    var top = el('div', 'clock-top'), left = el('b'); top.appendChild(left); box.appendChild(top);
+    var top = el('div', 'clock-top'), left = el('b'); if(chip) top.appendChild(chip); top.appendChild(left); box.appendChild(top);
     var track = el('div', 'clock-bar'), fill = el('i'); track.appendChild(fill); box.appendChild(track);
     var sub = el('div', 'clock-sub'); sub.appendChild(el('span', null, 'Read ' + viewerTime(read, {zone: true})));
     sub.appendChild(el('span', null, mark ? 'Graded ' + viewerTime(mark) : 'Ends past the close, never graded')); box.appendChild(sub);
@@ -1465,8 +1471,8 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       // the call's own window: the 15:32 read's average runs 28 minutes, to the close
       var bl = a.blend || null, minutes = (a !== h && a.minutes) || (c.calls && c.calls[0] && c.calls[0].minutes) || 30;
       var hc = el('div', 'card dashed');
-      hc.appendChild(el('div', 'mode', '30-min call'));
-      hc.appendChild(clockBlock(c.row_ts, minutes, marks.next_30 !== undefined ? marks.next_30 : plusIso(c.row_ts, minutes)));
+      hc.appendChild(clockBlock(c.row_ts, minutes, marks.next_30 !== undefined ? marks.next_30 : plusIso(c.row_ts, minutes),
+                                el('div', 'mode', '30-min call')));
       // the headline is the call the calls in play grade: since 2026-10-06 the combined forecast (Pool 2), with JEV's own
       // read as one tile under it (Will, 2026-10-07: two different answers on one screen confused); a card from before
       // the combined forecast leads with JEV's own read as it always did
@@ -1652,8 +1658,8 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // the stretch since the last read
   function laneCard(t, ok){
     var box = el('div', 'card dashed'), newest = t.calls[0], h = t.hour, a = callSum(h), p = a && a.probabilities;
-    box.appendChild(el('div', 'mode', newest.minutes + '-min call \u00B7 every ' + TAPE_STEP_MIN + ' min'));
-    box.appendChild(clockBlock(newest.read, newest.minutes, newest.mark));
+    box.appendChild(clockBlock(newest.read, newest.minutes, newest.mark,
+                               el('div', 'mode', newest.minutes + '-min call \u00B7 every ' + TAPE_STEP_MIN + ' min')));
     box.appendChild(labRow('Opening call')).setAttribute('class', 'lab call');
     if(p && t.row_ts === newest.read){
       var top = a.pick || top1(p);

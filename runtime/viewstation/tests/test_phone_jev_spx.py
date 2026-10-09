@@ -579,6 +579,30 @@ def test_the_page_fits_the_owners_360px_phone():
     assert "font:40011.5px/" in _rule(".odds-lab")              # ODDS_FONT_PX, the size the odds words are measured at
 
 
+# Chrome at 360 with the shipped face, measured on the live page on 2026-10-09: the leading card's mode chip in the clock's
+# row (11px capitals spaced .08em, 7px side padding, 1px border) and the time left beside it (11px bold, spaced .1em)
+_CLOCK_W = {"30-MIN CALL": 98.09, "10-MIN CALL · EVERY 5 MIN": 183.0, "WINDOW CLOSED": 113.5, "UNDER 1 MIN LEFT": 112.53,
+            "10 MIN LEFT": 74.7}
+
+
+def test_the_leading_cards_chip_and_time_left_share_one_row_on_the_owners_phone():
+    """Will's spacing pass of 2026-10-09: the mode chip and the time left are one row, so the 30-minute card's top is a line
+    shorter. At 360 the 30-minute chip fits beside the widest time left; the opening's longer chip fits beside its time
+    left until the call's last minute, when "Under 1 min left" wraps to its own line, right-aligned, never cut (the
+    opening's card leads only while its call is open, so it never says "Window closed"). The card's side padding stays
+    .card's 16px, which the 294px odds track is measured on; only its top and bottom tighten."""
+    card = 360 - 2 * 16 - 2 * _px(".card", "padding") - 2 * 1          # a dashed card: 1px border a side
+    gap = _px(".clock-top", "gap")
+    assert _CLOCK_W["30-MIN CALL"] + gap + _CLOCK_W["WINDOW CLOSED"] <= card
+    assert _CLOCK_W["10-MIN CALL · EVERY 5 MIN"] + gap + _CLOCK_W["10 MIN LEFT"] <= card
+    assert _CLOCK_W["30-MIN CALL"] + gap + _CLOCK_W["UNDER 1 MIN LEFT"] <= card
+    assert _CLOCK_W["10-MIN CALL · EVERY 5 MIN"] + gap + _CLOCK_W["UNDER 1 MIN LEFT"] > card   # so it wraps, which it may
+    assert _rule(".card.dashed").endswith("padding-top:12px;padding-bottom:14px") and "padding:" not in _rule(".card.dashed")
+    assert "#state:empty{display:none}" in SPX                    # no trouble, no gap under the price box
+    assert "main>.exp+.card{margin-top:-4px}" in SPX and ".lab.call+.big{margin-top:4px}" in SPX
+    assert "flex-wrap:wrap" in _rule(".clock-top") and "margin-left:auto" in _rule(".clock-top b")
+
+
 # Chrome at 360 with the shipped face: a calls row's words after its bar (10.5px, the verdict bold), and the sheet's
 # verdict row (22px bold beside 11px capitals spaced .1em)
 _ROW_W = {"Down · Wrong": 69.65, "Down · Passed": 72.33, "Flat · Passed": 61.86, "Grade pending": 75.27, "Never graded": 68.17,
@@ -968,9 +992,13 @@ def test_the_called_at_bar_keeps_the_call_fixed_and_moves_a_second_needle_with_t
 
 def test_the_mode_and_answered_chips_live_inside_the_leading_card():
     """The mode chip heads the leading card and the answered chip closes it, each in its own box; the top keeps only
-    trouble (a failed fetch, an unsent read, a stale row's note)."""
-    assert "hc.appendChild(el('div', 'mode', '30-min call'));" in _fn("sumCard")
-    assert "box.appendChild(el('div', 'mode', newest.minutes + '-min call \\u00B7 every ' + TAPE_STEP_MIN + ' min'));" in _fn("laneCard")
+    trouble (a failed fetch, an unsent read, a stale row's note). Since Will's 2026-10-09 spacing pass the chip rides the
+    clock's row, beside the time left, so the card's top is one row shorter; when both don't fit the time left wraps to
+    its own line, right-aligned."""
+    assert "el('div', 'mode', '30-min call')));" in _fn("sumCard")
+    assert "el('div', 'mode', newest.minutes + '-min call \\u00B7 every ' + TAPE_STEP_MIN + ' min')));" in _fn("laneCard")
+    assert "if(chip) top.appendChild(chip); top.appendChild(left);" in _fn("clockBlock")
+    assert "flex-wrap:wrap" in _rule(".clock-top") and ".clock-top .mode{align-self:center;" in SPX
     assert "'mode'" not in _fn("laneOnly") and "main.appendChild(el('div', 'mode'" not in _fn("paint")
     assert "if(count) hc.appendChild(count);" in _fn("sumCard") and "if(count) he.appendChild(count);" in _fn("sumCard")
     assert ".card>.mode{width:fit-content;margin-bottom:12px}" in SPX and ".card>.answered{display:table;margin-top:12px}" in SPX
@@ -1519,7 +1547,8 @@ def test_the_folded_premarket_call_fits_the_owners_360px_phone():
 AVG = {"pick": "up", "probabilities": {"up": 0.55, "flat": 0.3, "down": 0.15}, "primary": "average_30", "box": "next_30",
        "minutes": 30, "flat_points": 5.25, "edge_points": 3.11}
 END_30 = {"pick": "flat", "probabilities": {"up": 0.1, "flat": 0.8, "down": 0.05, "unsure": 0.05}}
-CARD_STUBS = "var tickers = []; function clockBlock(){ return el('div', 'clock'); } function inPlay(){ return el('div', 'inplay'); }"
+CARD_STUBS = ("var tickers = []; function clockBlock(read, minutes, mark, chip){ var b = el('div', 'clock'); if(chip) b.appendChild(chip); return b; }"
+              " function inPlay(){ return el('div', 'inplay'); }")
 # a card is drawn before any quote here, so its live-price needle starts hidden (placeNow)
 CARD_STUBS += "var spot = null; function todaysCard(){ return false; }" + _var("AVG_REACH") + _fn("placeNow") + _fn("money")
 
@@ -1659,8 +1688,8 @@ def test_the_30_minute_card_leads_with_the_average_price_call_and_keeps_the_end_
     c = {"row_ts": "2026-09-28T11:02:10-04:00", "hour": hour, "marks": {"next_30": "2026-09-28T11:32:00-04:00", "next_60": "2026-09-28T12:02:00-04:00"},
          "calls": [call("11:02", "11:32", "up", 0.55)]}
     parts = _sum_card(c)
-    assert parts[0] == ["mode", "30-min call"]   # the mode chip heads the card
-    assert parts[3] == ["big", "Up 55%"]
+    assert parts[0] == ["clock", "30-min call"]   # the mode chip heads the card, on the clock's row
+    assert parts[2] == ["big", "Up 55%"]
     said = dict((k, v) for k, v in parts if k in ("tag", "ep") and v.startswith(("Average price", "End price")))
     assert said == {"tag": "Average price \u00B7 flat \u00B13.1 pts", "ep": "End priceprice at the bell30 minat 08:32Flat 80%JEV alone60 minat 09:02Up 50%JEV alone"}
     how = next(k for k in _sum_card(c, whole=True)["kids"] if k["attrs"].get("class") == "how")
@@ -1669,7 +1698,7 @@ def test_the_30_minute_card_leads_with_the_average_price_call_and_keeps_the_end_
     assert note["attrs"]["title"] == sentence_(why) and "end-price clock" not in json.dumps(how)
     # a card from before the average-price sum leads with the end-price sum and has no end-price line beside it
     old = _sum_card({**c, "hour": {k: v for k, v in hour.items() if k != "average"}})
-    assert old[3] == ["big", "Flat 80%"] and not any(v.startswith("Average price") for _, v in old)
+    assert old[2] == ["big", "Flat 80%"] and not any(v.startswith("Average price") for _, v in old)
     assert ["ep", "End priceprice at the bell60 minat 09:02Up 50%JEV alone"] in old            # the call is the 30-minute end price
 
 
@@ -1685,9 +1714,9 @@ def test_the_last_reads_clock_looks_as_far_ahead_as_its_average_runs():
          "calls": [call("15:32", "16:00", "up", 0.55) | {"minutes": 30}]}
     old = {**c, "hour": {k: v for k, v in hour.items() if k != "average"}}
     now, before = [_parts(d) for d in _run(js, {"c": [c, old], "now": "2026-09-28T15:40:00-04:00"})]
-    assert now[1] == ["clock", "Looks 28 min ahead, graded 2026-09-28T16:00:00-04:00"]
+    assert now[0] == ["clock", "Looks 28 min ahead, graded 2026-09-28T16:00:00-04:00"]
     assert ["tag", "Average price \u00B7 flat \u00B13.1 pts"] in now
-    assert before[1] == ["clock", "Looks 30 min ahead, graded 2026-09-28T16:00:00-04:00"]
+    assert before[0] == ["clock", "Looks 30 min ahead, graded 2026-09-28T16:00:00-04:00"]
 
 
 # the opening card's own parts, lifted with it
@@ -1743,12 +1772,12 @@ def test_the_opening_card_is_the_30_minute_cards_shape():
     average, no flat range line, no direction or size odds row, no move-size scale, no typical-swing note."""
     card = _lane([OCT8], "2026-10-08T10:42:00-04:00")[0]
     parts = _parts(card)
-    assert [k for k, _ in parts] == ["mode", "clock", "lab call", "big", "div", "div", "inplay", "row60", "row60", "tag"]
-    assert [v for _, v in parts[:4]] == ["10-min call \u00B7 every 5 min", "", "Opening call", "Flat 50%"]
-    assert [v for _, v in parts[7:]] == ["End priceUnsure 41%", "Last 5 minUp 2.4 pts \u00B7 busy",
+    assert [k for k, _ in parts] == ["clock", "lab call", "big", "div", "div", "inplay", "row60", "row60", "tag"]
+    assert [v for _, v in parts[:3]] == ["10-min call \u00B7 every 5 min", "Opening call", "Flat 50%"]   # the chip on the clock's row
+    assert [v for _, v in parts[6:]] == ["End priceUnsure 41%", "Last 5 minUp 2.4 pts \u00B7 busy",
                                          "Last 5-min check; every 30 min again from 07:40"]
-    assert [k["attrs"]["class"] for k in card["kids"][4]["kids"]] == ["odds-bar", "odds-lab"]
-    assert [k["attrs"]["class"] for k in card["kids"][5]["kids"]] == ["avg-at", "avg-bar", "avg-lab"]
+    assert [k["attrs"]["class"] for k in card["kids"][3]["kids"]] == ["odds-bar", "odds-lab"]
+    assert [k["attrs"]["class"] for k in card["kids"][4]["kids"]] == ["avg-at", "avg-bar", "avg-lab"]
     at = _cls(card, "avg-at")[0]
     assert [_flat_text(k) for k in at["kids"]] == ["Called at", "7,792.23", "\u00B1 1.2 pts"]
     assert [_flat_text(k) for k in _cls(card, "avg-lab")[0]["kids"]] == ["7,791.1", "flat on the 10-min average", "7,793.4"]
@@ -1773,11 +1802,11 @@ def test_an_opening_call_on_the_end_price_alone_or_with_no_sum_still_says_its_ca
     none = {**base, "row_ts": "2026-09-28T10:45:00-04:00", "hour": {"error": "jev timed out"}}
     got = [_parts(c) for c in _lane([old, lost, none])]
     for parts in got[:2]:
-        assert parts[2:4] == [["lab call", "Opening call"], ["big", "Up small 40%"]]
+        assert parts[1:3] == [["lab call", "Opening call"], ["big", "Up small 40%"]]
         assert not any(k in ("avg-at", "tag") for k, _ in parts) and ["row60", "Last 5 minUp 1.8 pts \u00B7 busy"] in parts
         assert not any(v.startswith("End price") for _, v in parts)
     assert ["skip", "No average answer; end-price call"] in got[1] and not any(k == "skip" for k, _ in got[0])
-    assert got[2][2:5] == [["lab call", "Opening call"], ["big", "Up small 40%"],
+    assert got[2][1:4] == [["lab call", "Opening call"], ["big", "Up small 40%"],
                            ["skip", "No sum on the 07:45 read: jev timed out; this is the 07:40 call"]]
     assert not any(v.startswith("End price") for _, v in got[2])
 
@@ -1894,7 +1923,7 @@ def test_a_read_whose_average_question_went_unanswered_says_so_and_stands_on_its
     parts = _parts(card)
     fallback = "No average-price answer (HTTP 529), so the call is the end-price question\u2019s"
     skip, = _cls(card, "skip")
-    assert parts[3] == ["big", "Flat 80%"] and _flat_text(skip) == "No average answer; end-price call" and skip["attrs"]["title"] == fallback
+    assert parts[2] == ["big", "Flat 80%"] and _flat_text(skip) == "No average answer; end-price call" and skip["attrs"]["title"] == fallback
     assert not any(v.startswith("End price") for _, v in parts)
     fell = {**call("11:02", "11:32", "flat", 0.8), "sum": "next_30", "average_missing": "HTTP 529", "odds": END_30["probabilities"],
             "end_price": {"outcome": "flat", "hit": True, "pick": "flat", "p": 0.8}, "end_price_only": True}
@@ -2029,14 +2058,16 @@ def test_mondays_real_cards_draw_whole_in_every_zone(now, leads, tz):
     if leads == "before the open":
         assert got["main"][0] == ["mode", leads]
         return
-    # in the session the mode chip heads the leading card, and the header line says nothing of a fresh card
+    # in the session the mode chip heads the leading card, first on the clock's row, and the header line says nothing
+    # of a fresh card
     card = next(d for k, d in zip(got["main"], got["dom"]) if k[0] == "card dashed")
-    assert [card["kids"][0]["attrs"]["class"], _flat_text(card["kids"][0])] == ["mode", leads]
+    row = card["kids"][0]["kids"][0]
+    assert row["attrs"]["class"] == "clock-top" and [row["kids"][0]["attrs"]["class"], _flat_text(row["kids"][0])] == ["mode", leads]
     assert got["sub"] == "" and not any(k[0] == "mode" for k in got["main"])
     if leads.startswith("10-min"):
         # Monday's lane card is from before the average-price call: its end-price pick, the stretch row, the hand-back
         parts = _parts(card)
-        assert parts[2:4] == [["lab call", "Opening call"], ["big", "Down small 44%"]]
+        assert parts[1:3] == [["lab call", "Opening call"], ["big", "Down small 44%"]]
         assert [v for k, v in parts if k == "row60"] == ["Last 5 minDown 2.7 pts \u00B7 normal"]
         assert parts[-1][1].startswith("Last 5-min check; every 30 min again from ")
 
