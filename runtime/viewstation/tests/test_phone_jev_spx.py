@@ -900,7 +900,8 @@ def test_a_tap_on_another_part_lists_that_part_day_by_day():
 def _price_strip(data, tz=LA):
     js = ("var IDS = {}; ['px', 'pxLive', 'pxK', 'pxV', 'pxC', 'pxS'].forEach(function(k){ IDS[k] = el('div'); IDS[k].hidden = true; });"
           "function $(id){ return IDS[id]; } var last = D.last, spot = D.spot && {price: D.spot, at: Date.parse(D.at), fresh: D.fresh};"
-          + _var("SPOT_URL") + _var("SPOT_LIVE_MS") + _fn("within") + _fn("money") + _fn("todaysCard") + _fn("paintPx")
+          + _var("SPOT_URL") + _var("SPOT_LIVE_MS") + _var("AVG_REACH") + _fn("placeNow") + _fn("within") + _fn("money") + _fn("todaysCard")
+          + _fn("paintPx")
           + "paintPx(); console.log(JSON.stringify({shown: !IDS.px.hidden, live: !IDS.pxLive.hidden, k: IDS.pxK.textContent,"
           " v: IDS.pxV.textContent, c: IDS.pxC.textContent, cls: IDS.pxC.className, s: IDS.pxS.textContent}));")
     return _run(js, data, tz)
@@ -930,6 +931,39 @@ def test_the_live_price_says_its_change_since_the_last_close_only_on_todays_card
     assert _price_strip({"now": "2026-09-29T13:04:00-04:00", "at": "2026-09-29T13:04:00-04:00", "spot": None, "fresh": False, "last": last})["shown"] is False
     assert '<div class="px" id="px" hidden>' in SPX and ".px[hidden]{display:none}" in SPX
     assert _fn("draw").rstrip().endswith("paintPx(); }")          # a card that lands after the quote draws the strip again
+
+
+def _needle(price, card_day="2026-10-08", now="2026-10-08T14:35:00-04:00", later=None):
+    """The called-at bar of the owner's 14:31 call on 2026-10-08 (7,756.79, flat edge 2.24), drawn with a quote of
+    ``price`` (None: no quote yet), then, with ``later``, moved by the next quote through paintPx."""
+    js = ("var IDS = {}; ['px', 'pxLive', 'pxK', 'pxV', 'pxC', 'pxS'].forEach(function(k){ IDS[k] = el('div'); });"
+          "function $(id){ return IDS[id]; } var last = {row_ts: D.card + 'T14:31:03-04:00'};"
+          "var spot = D.price == null ? null : {price: D.price, at: Date.now(), fresh: true};"
+          + _var("SPOT_URL") + _var("SPOT_LIVE_MS") + _var("AVG_REACH") + "".join(_fn(f) for f in ("tag", "averageWords", "indexLevel", "money", "within",
+                                                                                 "todaysCard", "placeNow", "calledAt", "paintPx"))
+          + "var bar = calledAt({price: 7756.79, edge_points: 2.24}, 30).kids[1], n = bar.kids[2];"
+          "if(D.later != null){ spot = {price: D.later, at: Date.now(), fresh: true}; paintPx(); }"
+          "console.log(JSON.stringify({kids: bar.kids.map(function(k){ return k.attrs['class']; }), hidden: !!n.hidden,"
+          " left: n.style.left, label: bar.attrs['aria-label']}));")
+    return _run(js, {"price": price, "card": card_day, "now": now, "later": later})
+
+
+def test_the_called_at_bar_keeps_the_call_fixed_and_moves_a_second_needle_with_the_live_price():
+    """Will's mockup of 2026-10-09: the ink needle stays on the price the call was made at; a blue one follows the live
+    price across the bar, which reaches 1.25 flat edges either side of the call (the band is one), resting at an end
+    when price runs past it. No words say where price is: the price box already does."""
+    inside = _needle(7758.10)
+    assert inside["kids"] == ["band", "at", "now"] and inside["hidden"] is False and inside["left"] == "73.4%"
+    assert inside["label"].startswith("Flat from 7,754.") and inside["label"].endswith(", price now 7,758.10")
+    assert _needle(7756.79)["left"] == "50.0%"                                # on the call, over the ink needle
+    assert _needle(7765.0)["left"] == "100.0%" and _needle(7740.0)["left"] == "0.0%"   # past either end, it rests there
+    none = _needle(None)
+    assert none["hidden"] is True and ", price now" not in none["label"]       # no quote yet: only the call's needle
+    assert _needle(7758.10, card_day="2026-10-07")["hidden"] is True           # another day's card never shows today's price
+    moved = _needle(None, later=7755.39)                                       # the next quote moves it (paintPx)
+    assert moved["hidden"] is False and moved["left"] == "25.0%"
+    assert ".avg-bar .now[hidden]{display:none}" in SPX
+    assert "@media (prefers-reduced-motion:reduce){.avg-bar .now{transition:none}}" in SPX   # it jumps for those who ask for less motion
 
 
 def test_the_mode_and_answered_chips_live_inside_the_leading_card():
@@ -1486,6 +1520,8 @@ AVG = {"pick": "up", "probabilities": {"up": 0.55, "flat": 0.3, "down": 0.15}, "
        "minutes": 30, "flat_points": 5.25, "edge_points": 3.11}
 END_30 = {"pick": "flat", "probabilities": {"up": 0.1, "flat": 0.8, "down": 0.05, "unsure": 0.05}}
 CARD_STUBS = "var tickers = []; function clockBlock(){ return el('div', 'clock'); } function inPlay(){ return el('div', 'inplay'); }"
+# a card is drawn before any quote here, so its live-price needle starts hidden (placeNow)
+CARD_STUBS += "var spot = null; function todaysCard(){ return false; }" + _var("AVG_REACH") + _fn("placeNow") + _fn("money")
 
 
 def _parts(node):
@@ -1574,7 +1610,7 @@ def test_the_combined_call_says_its_price_its_flat_band_what_went_into_it_and_bo
     assert [_flat_text(k) for k in at["kids"]] == ["Called at", "7,798.00", "\u00B1 2.1 pts"] and at["kids"][1]["tag"] == "b"
     assert _texts(card, "pill") == ["\u00B1 2.1 pts"]
     assert [_flat_text(k) for k in _cls(card, "avg-lab")[0]["kids"]] == ["7,795.9", "flat on the 30-min average", "7,800.1"]
-    assert [k["attrs"]["class"] for k in _cls(card, "avg-bar")[0]["kids"]] == ["band", "at"]
+    assert [k["attrs"]["class"] for k in _cls(card, "avg-bar")[0]["kids"]] == ["band", "at", "now"]
     assert not any(v.startswith("Average price") for _, v in parts)          # the line it replaces
     mix = _cls(card, "mix")[0]
     assert _flat_text(mix["kids"][0]) == "What went into itD \u00B7 F \u00B7 U"

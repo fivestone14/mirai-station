@@ -220,15 +220,21 @@ button.tile .tile-k::after,.inplay-h.tap::after{content:"";flex:none;margin-left
 .row60 .k{font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
 .row60 b{font:700 14px/1.2 var(--sans);color:var(--i)}
 /* the 30-minute call's price under its odds: the read's price, the flat edge as a pill, then the flat band on a small bar
-   with its two prices under it */
+   with its two prices under it; on the bar the call's price is the ink needle, fixed, and the live price the blue one,
+   moved by every quote (placeNow) */
 .avg-at{display:flex;align-items:baseline;gap:6px;margin-top:12px;font:400 12.5px/1.2 var(--sans);color:var(--i-mute)}
 .avg-at b{font:700 17px/1.2 var(--sans);color:var(--i)}
 .pill{margin-left:auto;align-self:center;padding:3px 8px;border:1px solid var(--rule-soft);border-radius:999px;font:600 12px/1.2 var(--sans);
       color:var(--i-body);white-space:nowrap}
-.avg-bar{position:relative;height:8px;margin-top:10px;border-radius:4px;background:var(--s2)}
+.avg-bar{position:relative;height:8px;margin-top:14px;border-radius:4px;background:var(--s2)}
 .avg-bar i{position:absolute;display:block}
 .avg-bar .band{top:0;bottom:0;left:10%;right:10%;border-radius:4px;background:var(--o-fl)}
 .avg-bar .at{top:-3px;bottom:-3px;left:50%;width:2px;margin-left:-1px;border-radius:1px;background:var(--i)}
+.avg-bar .now{top:-8px;bottom:-3px;width:2px;margin-left:-1px;border-radius:1px;background:var(--o-up);transition:left .3s var(--ease-out)}
+.avg-bar .now::before{content:'';position:absolute;top:-4px;left:-3px;width:8px;height:8px;border-radius:50%;background:var(--o-up);
+                      box-shadow:0 0 0 2px var(--s)}
+.avg-bar .now[hidden]{display:none}
+@media (prefers-reduced-motion:reduce){.avg-bar .now{transition:none}}
 .avg-lab{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;margin-top:5px;font:400 11.5px/1.2 var(--sans);color:var(--i-mute)}
 .avg-lab .c{text-align:center}
 /* what went into the combined forecast: one row per voice, its own odds, by its say in the mix */
@@ -733,20 +739,32 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     return r;
   }
   // the 30-minute call's price under its odds (hour.average price and edge_points): the read's price, the flat edge as a
-  // pill, and the flat band on a small bar, a tick at the price, its two prices to a tenth under it; a call without both
-  // says its edge in words, as it did
+  // pill, and the flat band on a small bar, the price's needle fixed in its middle and the live price's moving over it
+  // (placeNow), its two prices to a tenth under it; a call without both says its edge in words, as it did
   function calledAt(a, minutes){
     var p = a.price, e = a.edge_points;
     if(typeof p !== 'number' || typeof e !== 'number') return tag(averageWords(a));
-    var box = el('div'), at = el('div', 'avg-at'), track = el('div', 'avg-bar'), lab = el('div', 'avg-lab');
+    var box = el('div'), at = el('div', 'avg-at'), track = el('div', 'avg-bar'), lab = el('div', 'avg-lab'), now = el('i', 'now');
     var lo = indexLevel(p - e, 1), hi = indexLevel(p + e, 1);
     at.appendChild(el('span', null, 'Called at')); at.appendChild(el('b', null, indexLevel(p, 2)));
     at.appendChild(el('span', 'pill', '\u00B1 ' + e.toFixed(1) + ' pts'));
-    track.appendChild(el('i', 'band')); track.appendChild(el('i', 'at'));
-    track.setAttribute('role', 'img'); track.setAttribute('aria-label', 'Flat from ' + lo + ' to ' + hi);
+    track.appendChild(el('i', 'band')); track.appendChild(el('i', 'at')); track.appendChild(now);
+    track.setAttribute('role', 'img');
     lab.appendChild(el('span', null, lo)); lab.appendChild(el('span', 'c', 'flat on the ' + minutes + '-min average')); lab.appendChild(el('span', null, hi));
     box.appendChild(at); box.appendChild(track); box.appendChild(lab);
+    var bar = {track: track, needle: now, price: p, edge: e, words: 'Flat from ' + lo + ' to ' + hi};
+    nowBars.push(bar); placeNow(bar);
     return box;
+  }
+  // the live price on a called-at bar: the bar reaches AVG_REACH flat edges either side of the call (the band, 10% to 90%
+  // in the CSS, is one), so a price past either end rests at that end; the needle shows only with a quote on today's
+  // card. nowBars are the bars on the page, each moved again by every quote (paintPx)
+  var AVG_REACH = 1.25, nowBars = [];
+  function placeNow(b){
+    var on = !!(spot && todaysCard()), f = on ? 0.5 + (spot.price - b.price) / (2 * AVG_REACH * b.edge) : 0.5;
+    b.needle.hidden = !on;
+    b.needle.style.left = (Math.min(1, Math.max(0, f)) * 100).toFixed(1) + '%';
+    b.track.setAttribute('aria-label', b.words + (on ? ', price now ' + money(spot.price) : ''));
   }
   // a forecast's down, flat and up alone, for a bar that reads like the price axis: unsure is left out of the bar
   function threeWay(p){ var o = {}; ['down', 'flat', 'up'].forEach(function(k){ if(k in p) o[k] = p[k]; }); return o; }
@@ -2067,6 +2085,8 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   function money(x){ return (+x).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
   function todaysCard(){ return !!(last && String(last.row_ts || '').slice(0, 10) === marketDay()); }
   function paintPx(){
+    nowBars = nowBars.filter(function(b){ return b.track.isConnected !== false; });   // a redrawn card's old bars drop out
+    nowBars.forEach(placeNow);
     var box = $('px'); if(!box || !spot) return;
     var open = todaysCard() && within(SESSION_HOURS), live = open && spot.fresh && Date.now() - spot.at < SPOT_LIVE_MS;
     box.hidden = false; $('pxLive').hidden = !live;
