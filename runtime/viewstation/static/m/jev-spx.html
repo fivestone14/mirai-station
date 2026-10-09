@@ -149,6 +149,11 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 .px-c.dn{color:var(--o-dn)}
 .px-c.up{color:var(--o-up)}
 .px-s{font:400 11.5px/1.3 var(--sans);color:var(--i-mute)}
+/* the options-data banner under the price box: the options provider's book is down, so its questions are blank */
+.od{padding:10px 14px;border-radius:14px;background:var(--o-dn);color:var(--s)}
+.od[hidden]{display:none}
+.od-1{font:700 14px/1.3 var(--sans)}
+.od-2{margin-top:2px;font:400 12.5px/1.35 var(--sans)}
 /* today's 0DTE: when it settles, in the viewer's zone, the time left, and a tag on a monthly or quarter-end day */
 .exp{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:0 4px;font:400 12.5px/1.35 var(--sans);color:var(--i-mute)}
 .exp b{font-weight:700;color:var(--i)}
@@ -472,6 +477,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   <div><div class="px-k"><i id="pxLive" hidden></i><span id="pxK">SPX</span></div><div class="px-v" id="pxV"></div></div>
   <div class="px-r"><div class="px-c" id="pxC"></div><div class="px-s" id="pxS"></div></div>
 </div>
+<div class="od" id="od" role="status" hidden></div>
 <div id="state"></div>
 <main id="main" style="display:flex;flex-direction:column;gap:12px"></main>
 <script>
@@ -2158,6 +2164,34 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   }
   setInterval(function(){ if(!document.hidden && todaysCard() && within(SESSION_HOURS)) pollSpot(); }, SPOT_MS);
 
+  // ---- options data: the station's alert pass (runtime/watch/intraday/gex_alerts.py) writes options_data.json on every
+  // in-session tick. Once the options provider's book has been down 15 minutes straight its questions are blank, and the
+  // banner under the price box says so. A file of another market day, or older than OPTIONS_FRESH_MS, means the alert
+  // pass is not running, which says nothing about the book: no banner.
+  var OPTIONS_URL = '/api/raw/file?root=state&path=spx_jev/mirai_prediction/options_data.json';
+  var OPTIONS_FRESH_MS = 10 * 60000;
+  var options = null;
+  function optionsDown(o, now, today){
+    return !!(o && o.down === true && today && String(o.updated || '').slice(0, 10) === today
+              && now - Date.parse(o.updated) <= OPTIONS_FRESH_MS);
+  }
+  function optionsBanner(box, o){
+    var down = optionsDown(o, Date.now(), marketDay()), n = down ? (o.blank_questions || []).length : 0;
+    box.textContent = '';
+    if(down){
+      box.appendChild(el('div', 'od-1', 'Options data down since ' + viewerTime(o.since)));
+      box.appendChild(el('div', 'od-2', n + ' options questions blank \u00B7 call uses the other ' + (o.total_questions - n)
+                                         + ' \u00B7 provider issue, not ours'));
+    }
+    box.hidden = !down;
+  }
+  function pollOptions(){
+    fetch(OPTIONS_URL, {cache:'no-store'}).then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){ options = j && j.kind === 'json' ? j.data : null; })   // /api/raw/file wraps the file as {kind, data}
+      .catch(function(){})                        // a failed fetch keeps the last file, which ages out on its own
+      .finally(function(){ var box = $('od'); if(box) optionsBanner(box, options); });
+  }
+
   // Refresh on its own: every POLL_MS while the page is in view, again the moment the page comes
   // back (tab switch, screen unlock, back-forward cache, network back), and a few seconds after each
   // :02 and :32 read mark so a new card shows within seconds of being written, never a minute later.
@@ -2181,6 +2215,9 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   window.addEventListener('pageshow', wake);
   window.addEventListener('focus', wake);
   window.addEventListener('online', wake);
+  pollOptions();
+  setInterval(function(){ if(!document.hidden) pollOptions(); }, POLL_MS);
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden) pollOptions(); });
 })();
 </script>
 <style>

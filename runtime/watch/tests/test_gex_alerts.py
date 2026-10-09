@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from zoneinfo import ZoneInfo
@@ -28,6 +28,22 @@ def _write_lens_rows(state_dir: Path, rows):
 def _row(ticker="SPX", spot=7500.0, cw=7520.0, pw=7400.0, sigma=50.0):
     return {"ticker": ticker, "ts": f"{DAY}T10:00:00-04:00", "spot": spot,
             "call_wall": cw, "put_wall": pw, "sigma": sigma}
+
+
+def _stand_in_rows(start, now, step_min=4, source="spy_proxy\u00d710.0348"):
+    """SPX rows on the SPY stand-in book every step_min from start, the last
+    written at now (this tick)."""
+    stamps = []
+    t = start
+    while t < now:
+        stamps.append(t)
+        t += timedelta(minutes=step_min)
+    stamps.append(now)
+    return [{**_row(), "ts": t.isoformat(), "gex_source": source} for t in stamps]
+
+
+def _options_data(state_dir):
+    return json.loads(gex_alerts._options_data_path(Path(state_dir)).read_text())
 
 
 def _write_expectation(state_dir: Path, direction=0.5):
@@ -175,58 +191,90 @@ class TestFeedHealthSiren(unittest.TestCase):
             out, _ = self._run(td)
             self.assertEqual(out["feed_sirens"], 0)
 
-    def test_proxy_source_and_dead_book_each_page_separately(self):
+    def test_dead_book_pages_at_once_and_the_stand_in_book_waits(self):
         with TemporaryDirectory() as td:
             r = self._fresh_row()
             r["native_coverage"] = {"zero_dte_dead": True}
-            r["gex_source"] = "spy_proxy\u00d710.0348"   # live vocabulary: per-tick rescale
+            r["gex_source"] = "spy_proxy×10.0348"   # live vocabulary: per-tick rescale
             _write_lens_rows(Path(td), [r])
             out, sent = self._run(td)
-            self.assertEqual(out["feed_sirens"], 2)
+            self.assertEqual(out["feed_sirens"], 1)
             self.assertTrue(any("half-dead" in s for s in sent))
-            self.assertTrue(any("source:spy_proxy" in s for s in sent))
-            # the rescale drifts every tick (11 distinct values on 07-10) — the
-            # dedup key must be the FAMILY, or a proxy day is a pager storm
-            r["gex_source"] = "spy_proxy\u00d710.0351"
-            _write_lens_rows(Path(td), [r])
-            out2, _ = self._run(td)
-            self.assertEqual(out2["feed_sirens"], 0)
+            self.assertFalse(any("Options data" in s for s in sent))
 
-    # --- the all-clear (2026-09-09) ----------------------------------------
-    # The 09-09 outage paged "source:spy_proxy" at 09:37 ET correctly and then
-    # never spoke again: the native chain came back at 15:51 and the phone still
-    # read "degraded". A siren with no recovery leaves the last word wrong for
-    # the rest of the session, and — because the flag was never cleared — went
-    # deaf to a second outage the same day.
+    # --- the options provider's outage (2026-10-08) --------------------------
+    # On 10-06..08 the provider sent empty SPX books; the scanner ran on the SPY
+    # stand-in and 14 of the 79 code questions went blank. The phone got a
+    # "gravity feed degraded: source:spy_proxy" page at once and "options flow
+    # dead" at 11:00, neither saying what was lost or whose problem it was.
 
-    def test_proxy_recovery_pages_the_all_clear_and_says_when_it_broke(self):
-        broke, healed = NOW.replace(hour=9, minute=37), NOW.replace(hour=15, minute=51)
+    def test_the_stand_in_book_pages_after_fifteen_minutes_straight(self):
+        start = NOW.replace(hour=9, minute=31)
         with TemporaryDirectory() as td:
-            r = _row()
-            r["ts"], r["gex_source"] = broke.isoformat(), "spy_proxy\u00d710.0348"
-            _write_lens_rows(Path(td), [r])
-            out1, _ = self._run(td, now=broke)
-            self.assertEqual(out1["feed_sirens"], 1)
+            _write_lens_rows(Path(td), _stand_in_rows(start, start + timedelta(minutes=12)))
+            out, sent = self._run(td, now=start + timedelta(minutes=12))
+            self.assertEqual((out["feed_sirens"], sent), (0, []))
+            _write_lens_rows(Path(td), _stand_in_rows(start, start + timedelta(minutes=16)))
+            out, sent = self._run(td, now=start + timedelta(minutes=16))
+            self.assertEqual(out["feed_sirens"], 1)
+            self.assertEqual(sent, [
+                "🩺 Options data down — 14 of 79 SPX questions are blank. The options provider "
+                "has sent empty books for 16 min. The call still runs on the other 65. "
+                "Nothing to do on our side."])
+            # the rescale drifts every tick (11 distinct values on 07-10): one page an outage
+            _write_lens_rows(Path(td), _stand_in_rows(start, start + timedelta(minutes=20),
+                                                      source="spy_proxy×10.0351"))
+            out, sent = self._run(td, now=start + timedelta(minutes=20))
+            self.assertEqual((out["feed_sirens"], sent), (0, []))
 
-            r["ts"], r["gex_source"] = healed.isoformat(), "native"   # the chain came back
-            _write_lens_rows(Path(td), [r])
-            out2, sent2 = self._run(td, now=healed)
-            self.assertEqual(out2["feed_recoveries"], 1)
-            self.assertTrue(any("off the proxy" in s for s in sent2))
-            # the all-clear carries the time it broke, so a phone read at 16:00
-            # can tell a five-minute blip from a lost session
-            self.assertTrue(any("degraded since 09:37 ET" in s for s in sent2))
+    def test_the_wait_is_measured_from_the_outages_first_stand_in_row(self):
+        """A morning on the native book, then the stand-in from 10:26: the clock
+        starts at 10:26, not at the day's first row and not at this tick."""
+        native = [{**_row(), "ts": (NOW.replace(hour=9, minute=30) + timedelta(minutes=i)).isoformat(),
+                   "gex_source": "native"} for i in range(0, 50, 4)]
+        start = NOW.replace(hour=10, minute=26)
+        with TemporaryDirectory() as td:
+            _write_lens_rows(Path(td), native + _stand_in_rows(start, start + timedelta(minutes=14)))
+            self.assertEqual(self._run(td, now=start + timedelta(minutes=14))[0]["feed_sirens"], 0)
+            _write_lens_rows(Path(td), native + _stand_in_rows(start, start + timedelta(minutes=15)))
+            self.assertEqual(self._run(td, now=start + timedelta(minutes=15))[0]["feed_sirens"], 1)
+
+    def test_the_all_clear_says_all_79_are_back_and_how_long_it_was_down(self):
+        start, healed = NOW.replace(hour=9, minute=31), NOW.replace(hour=14, minute=23)
+        with TemporaryDirectory() as td:
+            rows = _stand_in_rows(start, start + timedelta(minutes=16))
+            _write_lens_rows(Path(td), rows)
+            self.assertEqual(self._run(td, now=start + timedelta(minutes=16))[0]["feed_sirens"], 1)
+            back = {**_row(), "ts": healed.isoformat(), "gex_source": "native"}   # the chain came back
+            _write_lens_rows(Path(td), rows + [back])
+            out, sent = self._run(td, now=healed)
+            self.assertEqual(out["feed_recoveries"], 1)
+            self.assertEqual(sent, ["🩺 Options data back — all 79 questions answering again. Down 4 h 52 min."])
+
+    def test_an_outage_shorter_than_the_wait_never_pages_either_way(self):
+        start = NOW.replace(hour=9, minute=31)
+        with TemporaryDirectory() as td:
+            rows = _stand_in_rows(start, start + timedelta(minutes=8))
+            _write_lens_rows(Path(td), rows)
+            self._run(td, now=start + timedelta(minutes=8))
+            back = {**_row(), "ts": (start + timedelta(minutes=12)).isoformat(), "gex_source": "native"}
+            _write_lens_rows(Path(td), rows + [back])
+            out, sent = self._run(td, now=start + timedelta(minutes=12))
+            self.assertEqual((out["feed_sirens"], out["feed_recoveries"], sent), (0, 0, []))
+            self.assertFalse(_options_data(td)["down"])
+            self.assertIsNone(_options_data(td)["back_at"])
 
     def test_the_all_clear_is_sent_once_not_every_healthy_tick(self):
+        start = NOW - timedelta(minutes=20)
         with TemporaryDirectory() as td:
-            r = self._fresh_row()
-            r["gex_source"] = "spy_proxy\u00d710.0348"
-            _write_lens_rows(Path(td), [r])
+            rows = _stand_in_rows(start, NOW)
+            _write_lens_rows(Path(td), rows)
             self._run(td)
-            r["gex_source"] = "native"
-            _write_lens_rows(Path(td), [r])
-            self._run(td)                          # the recovery
-            out3, sent3 = self._run(td)            # and every tick after it
+            later = NOW + timedelta(minutes=4)
+            rows.append({**_row(), "ts": later.isoformat(), "gex_source": "native"})
+            _write_lens_rows(Path(td), rows)
+            self._run(td, now=later)               # the recovery
+            out3, sent3 = self._run(td, now=later)   # and every tick after it
             self.assertEqual(out3["feed_recoveries"], 0)
             self.assertEqual(sent3, [])
 
@@ -234,19 +282,89 @@ class TestFeedHealthSiren(unittest.TestCase):
         """The whole point of clearing the flag. Before this, a feed that broke
         at 09:37, healed at 11:00 and broke again at 14:00 paged for the morning
         and stayed mute all afternoon."""
+        first, healed, second = (NOW.replace(hour=9, minute=37), NOW.replace(hour=11, minute=0),
+                                 NOW.replace(hour=14, minute=0))
         with TemporaryDirectory() as td:
-            r = self._fresh_row()
-            r["gex_source"] = "spy_proxy\u00d710.0348"
-            _write_lens_rows(Path(td), [r])
-            self.assertEqual(self._run(td)[0]["feed_sirens"], 1)
-            r["gex_source"] = "native"
-            _write_lens_rows(Path(td), [r])
-            self.assertEqual(self._run(td)[0]["feed_recoveries"], 1)
-            r["gex_source"] = "spy_proxy\u00d710.0402"   # it broke again
-            _write_lens_rows(Path(td), [r])
+            rows = _stand_in_rows(first, first + timedelta(minutes=16))
+            _write_lens_rows(Path(td), rows)
+            self.assertEqual(self._run(td, now=first + timedelta(minutes=16))[0]["feed_sirens"], 1)
+            rows.append({**_row(), "ts": healed.isoformat(), "gex_source": "native"})
+            _write_lens_rows(Path(td), rows)
+            self.assertEqual(self._run(td, now=healed)[0]["feed_recoveries"], 1)
+            rows += _stand_in_rows(second, second + timedelta(minutes=15), source="spy_proxy×10.0402")
+            _write_lens_rows(Path(td), rows)
+            out, sent = self._run(td, now=second + timedelta(minutes=15))
+            self.assertEqual(out["feed_sirens"], 1)
+            self.assertTrue(any("empty books for 15 min" in s for s in sent))  # timed from 14:00, not 09:37
+
+    def test_flow_dead_keeps_quiet_through_a_stand_in_outage_and_after_it(self):
+        """10-08: the stand-in book from 09:30, back at 14:20 on a flow-blind row.
+        One page for the outage, one for its end; no "flow dead" in the wait,
+        none while it stands, and none on the flow-blind row it came back on."""
+        start = NOW.replace(hour=9, minute=30)
+        with TemporaryDirectory() as td:
+            rows = _stand_in_rows(start, NOW.replace(hour=9, minute=42))
+            _write_lens_rows(Path(td), rows)
+            self.assertEqual(self._run(td, now=NOW.replace(hour=9, minute=42))[1], [])
+            rows = _stand_in_rows(start, NOW.replace(hour=11, minute=30))
+            _write_lens_rows(Path(td), rows)
+            _, sent = self._run(td, now=NOW.replace(hour=11, minute=30))
+            self.assertEqual(len(sent), 1)
+            self.assertIn("Options data down", sent[0])
+            back = NOW.replace(hour=14, minute=20)
+            rows = _stand_in_rows(start, back - timedelta(minutes=4))
+            rows.append({**_row(), "ts": back.isoformat(), "gex_source": "native"})   # no gex_theta: flow-blind
+            _write_lens_rows(Path(td), rows)
+            out, sent = self._run(td, now=back)
+            self.assertEqual(len(sent), 1)
+            self.assertIn("Options data back", sent[0])
+            self.assertNotIn("flow_dead", gex_alerts._load_alerts_state(Path(td), DAY)["feedSirens"])
+
+    def test_flow_dead_still_pages_on_the_native_book(self):
+        with TemporaryDirectory() as td:
+            rows = [{**_row(), "ts": (NOW.replace(hour=9, minute=30) + timedelta(minutes=i)).isoformat(), "gex_source": "native"}
+                    for i in range(0, 80, 4)]
+            rows.append({**_row(), "ts": NOW.isoformat(), "gex_source": "native"})
+            _write_lens_rows(Path(td), rows)
             out, sent = self._run(td)
             self.assertEqual(out["feed_sirens"], 1)
-            self.assertTrue(any("source:spy_proxy" in s for s in sent))
+            self.assertTrue(any("options flow dead" in s for s in sent))
+
+    # --- the phone's status file ----------------------------------------------
+
+    def test_the_status_file_says_down_only_once_the_wait_is_over(self):
+        start = NOW.replace(hour=9, minute=31)
+        with TemporaryDirectory() as td:
+            _write_lens_rows(Path(td), _stand_in_rows(start, start + timedelta(minutes=8)))
+            self._run(td, now=start + timedelta(minutes=8))
+            self.assertEqual(_options_data(td), {
+                "down": False, "since": None, "back_at": None, "blank_questions": [],
+                "total_questions": 79, "updated": (start + timedelta(minutes=8)).isoformat()})
+            _write_lens_rows(Path(td), _stand_in_rows(start, start + timedelta(minutes=16)))
+            self._run(td, now=start + timedelta(minutes=16))
+            doc = _options_data(td)
+            self.assertTrue(doc["down"])
+            self.assertEqual(doc["since"], start.isoformat())
+            self.assertEqual(doc["blank_questions"], list(gex_alerts.PROVIDER_QUESTIONS))
+            self.assertIsNone(doc["back_at"])
+
+    def test_the_status_file_keeps_the_last_outage_once_it_is_back(self):
+        start, healed = NOW.replace(hour=9, minute=31), NOW.replace(hour=14, minute=23)
+        with TemporaryDirectory() as td:
+            rows = _stand_in_rows(start, start + timedelta(minutes=16))
+            _write_lens_rows(Path(td), rows)
+            self._run(td, now=start + timedelta(minutes=16))
+            _write_lens_rows(Path(td), rows + [{**_row(), "ts": healed.isoformat(), "gex_source": "native"}])
+            self._run(td, now=healed)
+            doc = _options_data(td)
+            self.assertEqual((doc["down"], doc["since"], doc["back_at"], doc["blank_questions"]),
+                             (False, start.isoformat(), healed.isoformat(), []))
+
+    def test_no_status_file_without_a_fresh_row(self):
+        with TemporaryDirectory() as td:
+            _write_lens_rows(Path(td), [_row()])  # ts 10:00 vs NOW 13:00: the scanner is silent
+            self._run(td)
+            self.assertFalse(gex_alerts._options_data_path(Path(td)).exists())
 
     def test_a_fresh_row_clears_the_scanner_silent_siren(self):
         with TemporaryDirectory() as td:
@@ -265,9 +383,7 @@ class TestFeedHealthSiren(unittest.TestCase):
             raise RuntimeError("ntfy unreachable")
 
         with TemporaryDirectory() as td:
-            r = self._fresh_row()
-            r["gex_source"] = "spy_proxy\u00d710.0348"
-            _write_lens_rows(Path(td), [r])
+            _write_lens_rows(Path(td), _stand_in_rows(NOW - timedelta(minutes=20), NOW))
             out1 = gex_alerts.run(NOW, state_dir=Path(td),
                                   redive_provider=lambda exp, ctx: None,
                                   channel=_dead)
@@ -275,7 +391,7 @@ class TestFeedHealthSiren(unittest.TestCase):
             self.assertTrue(out1.get("undelivered"))
             out2, sent2 = self._run(td)            # channel back → it tries again
             self.assertEqual(out2["feed_sirens"], 1)
-            self.assertTrue(any("source:spy_proxy" in s for s in sent2))
+            self.assertTrue(any("Options data down" in s for s in sent2))
 
     def test_non_dict_state_file_resets_instead_of_crashing(self):
         with TemporaryDirectory() as td:
@@ -301,6 +417,16 @@ class TestFeedHealthSiren(unittest.TestCase):
             out, _ = self._run(td)                # must page on the good row
             self.assertEqual(out["feed_sirens"], 1)
 
+
+def test_the_pages_question_counts_are_the_catalogs_own(monkeypatch):
+    """gex_alerts imports nothing from spx_jev, so its copies of the provider's
+    questions and the catalog's size are held to the code here."""
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[3] / "skills" / "spx-jev"))
+    from spx_jev.mirai_prediction.code_features import GEX_BOOK_QUESTIONS, PROVIDER_QUESTIONS, load_catalog
+    assert set(gex_alerts.PROVIDER_QUESTIONS) == PROVIDER_QUESTIONS and GEX_BOOK_QUESTIONS < PROVIDER_QUESTIONS
+    assert len(gex_alerts.PROVIDER_QUESTIONS) == len(PROVIDER_QUESTIONS)
+    assert gex_alerts.CODE_QUESTIONS_COUNT == len(load_catalog())
+    assert PROVIDER_QUESTIONS <= {q["id"] for q in load_catalog()}
 
 
 if __name__ == "__main__":

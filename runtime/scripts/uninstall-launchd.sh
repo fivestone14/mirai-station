@@ -30,6 +30,8 @@ PLISTS=(
   "com.mirai-station.spx-jev-save-day"
   "com.mirai-station.spx-jev-overnight"
   "com.mirai-station.spx-jev-store"
+  "com.mirai-station.spx-jev-prediction-nightly"
+  "com.mirai-station.spx-jev-headlines"
   # 08-30: `voice` was in install-launchd.sh's list and missing from this one,
   # which is exactly the drift the note below warns about — an uninstalled
   # station kept a voice agent loaded. Found while adding the deadman.

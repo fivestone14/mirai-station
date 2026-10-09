@@ -17,11 +17,14 @@ scan (run-watch-left-eye.sh → `python -m watch.cli gex-alerts`). Three jobs:
      using the day's first/last diary spots as the realized move.
 
 All best-effort: any failure costs a log line, never a tick. Idempotent
-state: state/market_expectation/alerts_state.json (resets per day).
+state: state/market_expectation/alerts_state.json (resets per day). The
+feed-health pass also writes state/spx_jev/mirai_prediction/options_data.json
+on every in-session tick, the SPX phone page's options-data banner.
 """
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -78,11 +81,63 @@ _FEED_RECOVERY_TEXT = {
 
 
 def _recovery_text(flag: str) -> str:
-    """What the all-clear says. The `source:` family is dynamic (the proxy label
-    embeds a per-tick rescale) so it cannot live in a literal table."""
-    if flag.startswith("source:"):
-        return "native chain restored — the gravity map is off the proxy"
+    """What the all-clear says for every flag but the `source:` family, whose
+    page is the options-data one below."""
     return _FEED_RECOVERY_TEXT.get(flag, f"back to normal: {flag}")
+
+
+# THE OPTIONS PROVIDER'S OUTAGE (2026-10-08). On 10-06..08 the provider sent empty
+# SPX books, the scanner ran on the SPY stand-in (`source:` flag), and the 14
+# questions built from the provider's data went blank. The phone got two
+# routine-looking pages (the stand-in book at once, flow_dead at 11:00) that said
+# neither what was lost nor whose problem it was. Now the stand-in book pages
+# once, after BOOK_OUT_WAIT_MIN straight, in those terms, and flow_dead keeps
+# quiet while it stands (same provider, same outage).
+#
+# The provider's questions (skills/spx-jev/spx_jev/mirai_prediction/
+# code_features.py PROVIDER_QUESTIONS) and the catalog's size
+# (code_feature_catalog.json). This module imports nothing from spx_jev;
+# runtime/watch/tests/test_gex_alerts.py holds these copies to it.
+PROVIDER_QUESTIONS = ("OPTIONS-01", "OPTIONS-02", "OPTIONS-03", "OPTIONS-04",
+                      "OPTIONS-05", "OPTIONS-06", "OPTIONS-07", "OPTIONS-08",
+                      "OPTIONS-10", "OPTIONS-11", "VOLATILITY-01",
+                      "VOLATILITY-09", "VOLATILITY-10", "VOLATILITY-16")
+CODE_QUESTIONS_COUNT = 79
+BOOK_OUT_WAIT_MIN = 15.0
+
+
+def _duration_text(minutes: float) -> str:
+    """'15 min', '1 h', '4 h 52 min'."""
+    h, m = divmod(int(minutes), 60)
+    return " ".join(p for p in (f"{h} h" if h else "", f"{m} min" if m or not h else "") if p)
+
+
+def _book_down_text(minutes_out: float) -> str:
+    n = len(PROVIDER_QUESTIONS)
+    return (f"Options data down — {n} of {CODE_QUESTIONS_COUNT} SPX questions are blank. "
+            f"The options provider has sent empty books for {_duration_text(minutes_out)}. "
+            f"The call still runs on the other {CODE_QUESTIONS_COUNT - n}. Nothing to do on our side.")
+
+
+def _book_back_text(minutes_out: float) -> str:
+    return (f"Options data back — all {CODE_QUESTIONS_COUNT} questions answering again. "
+            f"Down {_duration_text(minutes_out)}.")
+
+
+def _options_data_path(state_dir: Path) -> Path:
+    return Path(state_dir) / "spx_jev" / "mirai_prediction" / "options_data.json"
+
+
+def _save_options_data(state_dir: Path, doc: Dict[str, Any]) -> None:
+    """The phone's banner reads this; a reader must never see half a file."""
+    p = _options_data_path(state_dir)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_name(p.name + ".tmp")
+        tmp.write_text(json.dumps(doc))
+        os.replace(tmp, p)
+    except OSError:
+        pass
 
 
 def _alerts_state_path(state_dir: Path) -> Path:
@@ -153,6 +208,24 @@ def _feed_health_flags(row: dict) -> List[str]:
         # would defeat the once-per-day dedup and turn a proxy day into a pager storm
         flags.append("source:" + str(src).split("×", 1)[0])
     return flags
+
+
+def _on_stand_in(row: dict) -> bool:
+    """The row's gravity map ran on the stand-in book, not SPX's own."""
+    return any(f.startswith("source:") for f in _feed_health_flags(row))
+
+
+def _stand_in_since(rows: List[dict]) -> Optional[str]:
+    """The ts of the first row of the trailing run of stand-in-book rows: when
+    this outage began. None when the newest lens row is on the native book."""
+    since = None
+    for r in reversed(rows):
+        if r.get("ticker") not in LENS_TICKERS:
+            continue
+        if not _on_stand_in(r):
+            break
+        since = r.get("ts")
+    return since
 
 
 def _hunter_fires(date_iso: str) -> List[dict]:
@@ -331,7 +404,8 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
             tries again, and says so out loud."""
             if flag in sirens:
                 return
-            rec = push.send(f"🩺 {tk} feed: {text}", tag="gex-feed")
+            rec = push.send(f"🩺 {text}" if flag.startswith("source:")
+                            else f"🩺 {tk} feed: {text}", tag="gex-feed")
             if not rec.get("dispatched"):
                 out.setdefault("undelivered", []).append(
                     {"flag": flag, "why": rec.get("error") or "channel did not dispatch"})
@@ -347,10 +421,14 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
             for the morning and stayed mute through the afternoon."""
             if flag not in sirens:
                 return
-            since = down_since.get(flag)
-            when = f" (degraded since {str(since)[11:16]} ET)" if since else ""
-            rec = push.send(f"🩺 {tk} feed: {_recovery_text(flag)}{when}",
-                            tag="gex-feed")
+            if flag.startswith("source:"):
+                text = _book_back_text(_row_age_min(
+                    {"ts": st.get("bookOutSince") or down_since.get(flag)}, now_et) or 0.0)
+            else:
+                since = down_since.get(flag)
+                when = f" (degraded since {str(since)[11:16]} ET)" if since else ""
+                text = f"{tk} feed: {_recovery_text(flag)}{when}"
+            rec = push.send(f"🩺 {text}", tag="gex-feed")
             if not rec.get("dispatched"):
                 out.setdefault("undelivered", []).append(
                     {"flag": flag + ":recovery",
@@ -362,7 +440,18 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
 
         if age is not None and age < _FEED_FRESH_MIN:
             flags = _feed_health_flags(latest)
+            book_out = next((f for f in flags if f.startswith("source:")), None)
+            out_min = None
+            if book_out:
+                # the outage starts at its first stand-in row, kept so a page that
+                # waits (or retries) still measures from the real start
+                st["bookOutSince"] = st.get("bookOutSince") or _stand_in_since(rows)
+                out_min = _row_age_min({"ts": st["bookOutSince"]}, now_et)
             for flag in flags:
+                if flag == book_out:
+                    if out_min is not None and out_min >= BOOK_OUT_WAIT_MIN:
+                        _siren(flag, _book_down_text(out_min))
+                    continue
                 _siren(flag, _FEED_SIREN_TEXT.get(
                     flag, f"gravity feed degraded: {flag}"))
             # A fresh row IS the scanner speaking — clear the silence siren first
@@ -373,14 +462,37 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
             # per-row flag, so its own recovery test lives with its own siren.
             for flag in sorted(sirens - set(flags) - {"flow_dead"}):
                 _recover(flag)
+            # the outage is over once the book is native and its all-clear (if it
+            # ever paged) is delivered; one shorter than the wait leaves no trace
+            if (not book_out and st.get("bookOutSince")
+                    and not any(f.startswith("source:") for f in sirens)):
+                lasted = _row_age_min({"ts": st["bookOutSince"]}, now_et)
+                if lasted is not None and lasted >= BOOK_OUT_WAIT_MIN:
+                    st["bookLastSince"], st["bookBackAt"] = st["bookOutSince"], now_et.isoformat()
+                st["bookOutSince"] = None
+            down = bool(book_out and out_min is not None and out_min >= BOOK_OUT_WAIT_MIN)
+            _save_options_data(state_dir, {
+                "down": down,
+                "since": st.get("bookOutSince") if down else st.get("bookLastSince"),
+                "back_at": None if down else st.get("bookBackAt"),
+                "blank_questions": list(PROVIDER_QUESTIONS) if down else [],
+                "total_questions": CODE_QUESTIONS_COUNT,
+                "updated": now_et.isoformat()})
             # dead-flow siren (2026-07-20): the option_trade_flow feed was silently
             # empty for FIVE consecutive sessions (the provider's right:'both' path
             # died in its 07-11/12 deploy) and nothing paged — aggressor_flow=None
             # fails open by design ("no ticks yet"), so per-row honesty never trips.
             # A whole morning of Nones is not "no ticks yet": if every lens row so
             # far is flow-blind past mid-morning, the FEED is dead — page once.
-            lens_rows = [r for r in rows if r.get("ticker") in LENS_TICKERS]
-            if ("flow_dead" not in sirens and len(lens_rows) >= 20
+            # Not while the book is on the stand-in, and stand-in rows are no
+            # evidence after it: the flow comes from the same provider, so the
+            # options-data page already said it. On 10-08 the book came back at
+            # 14:20 on a flow-blind row, and a morning of stand-in rows would
+            # have paged "flow dead" right behind "options data back".
+            lens_rows = [r for r in rows
+                         if r.get("ticker") in LENS_TICKERS and not _on_stand_in(r)]
+            if ("flow_dead" not in sirens and not st.get("bookOutSince")
+                    and len(lens_rows) >= 20
                     and now_et.hour * 60 + now_et.minute >= 11 * 60
                     and all((r.get("gex_theta") or {}).get("aggressor_flow") is None
                             for r in lens_rows)):

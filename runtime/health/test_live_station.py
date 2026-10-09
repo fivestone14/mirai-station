@@ -53,9 +53,11 @@ PREMARKET_RUN_MIN = 10
 SPX_STORE_JOB = "com.mirai-station.spx-jev-store"
 STORE_FIRES_ET = "16:40"
 STORE_RUN_MIN = 10
-# the rest of the SPX fleet: the live and opening lanes and the four feeds they read
+# the rest of the SPX fleet: the live and opening lanes, the four feeds they read, the headline feed and the
+# prediction system's nightly fit
 SPX_JOBS = ("com.mirai-station.spx-jev", "com.mirai-station.spx-jev-tape", "com.mirai-station.spx-jev-bars",
-            "com.mirai-station.spx-jev-context", "com.mirai-station.spx-jev-overnight", "com.mirai-station.spx-jev-save-day")
+            "com.mirai-station.spx-jev-context", "com.mirai-station.spx-jev-overnight", "com.mirai-station.spx-jev-save-day",
+            "com.mirai-station.spx-jev-headlines", "com.mirai-station.spx-jev-prediction-nightly")
 # The live and opening lanes' reads in market time (skills/spx-jev/spx_jev/lane.py: LIVE_READS less its 16:02
 # close-out, and TAPE.schedule) and how many minutes before its read time a read may be stamped (each lane's
 # read_grace_min: the live lane's diary row, the opening lane's bar); a unit test holds these to the lane's code. A

@@ -1938,11 +1938,12 @@ Object.defineProperty(Node.prototype, 'classList', {get: function(){ var n = thi
           remove: function(k){ put(has().filter(function(x){ return x !== k; })); },
           toggle: function(k, on){ put(has().filter(function(x){ return x !== k; }).concat(on ? [k] : [])); }}; }});
 var ids = {};
-['h1', 'sub', 'state', 'main', 'dock', 'load', 'poll', 'csTitle', 'csBody'].forEach(function(id){ ids[id] = new Node('div'); });
+['h1', 'sub', 'state', 'main', 'dock', 'load', 'poll', 'csTitle', 'csBody', 'od'].forEach(function(id){ ids[id] = new Node('div'); });
 var document = {hidden: false, getElementById: function(id){ return ids[id] || null; }, createElement: function(t){ return new Node(t); },
                 createElementNS: function(ns, t){ return new Node(t); }, querySelectorAll: function(){ return []; }, addEventListener: function(){}};
 var window = {addEventListener: function(){}}, localStorage = {getItem: function(){ return null; }, setItem: function(){}}, MiraiSheet = {open: function(){}};
-var CARDS = {'spx_jev/latest.json': D.live, 'spx_jev/lanes/tape/latest.json': D.tape, 'spx_jev/lanes/premarket/latest.json': D.premarket};
+var CARDS = {'spx_jev/latest.json': D.live, 'spx_jev/lanes/tape/latest.json': D.tape, 'spx_jev/lanes/premarket/latest.json': D.premarket,
+             'spx_jev/mirai_prediction/options_data.json': D.options};
 function fetch(url){
   var c = CARDS[decodeURIComponent(url.split('path=')[1])];
   return Promise.resolve({ok: true, json: function(){ return Promise.resolve(c ? {kind: 'json', data: c} : {error: 'no such file'}); }});
@@ -1954,15 +1955,17 @@ function flat(n){ return n._t + n.kids.map(flat).join(''); }
 
 
 def _whole(cards, now, tz=LA):
-    """The page drawn at ``now`` in ``tz`` from ``cards`` (live, tape, premarket; a missing one is not on file):
-    the header line and whether it is an error, the state chips, and each of main's parts as [class, flat text]."""
+    """The page drawn at ``now`` in ``tz`` from ``cards`` (live, tape, premarket, options; a missing one is not on file):
+    the header line and whether it is an error, the state chips, each of main's parts as [class, flat text], and the
+    options-data banner's lines (None while it is hidden)."""
     if not _NODE:
         pytest.skip("node is not installed")
     script = ("const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + FIXED_NOW + WHOLE_DOM + MAIN_JS +
               "setImmediate(function(){ console.log(JSON.stringify({sub: ids.sub.textContent, err: ids.sub.classList.contains('err'),"
               " state: ids.state.kids.map(flat), main: ids.main.kids.map(function(k){ return [k.className || k.tag, flat(k)]; }),"
               " dom: ids.main.kids.map(dump),"
-              " dock: ids.dock.kids.map(function(k){ return [k.className || k.tag, flat(k)]; }), dock_dom: ids.dock.kids.map(dump)})); });")
+              " dock: ids.dock.kids.map(function(k){ return [k.className || k.tag, flat(k)]; }), dock_dom: ids.dock.kids.map(dump),"
+              " od: ids.od.hidden ? null : ids.od.kids.map(function(k){ return [k.className, flat(k)]; })})); });")
     out = subprocess.run([_NODE, "-e", script], input=json.dumps({**cards, "now": now}), capture_output=True, text=True, timeout=20,
                          env={**os.environ, "TZ": tz})
     assert out.returncode == 0, out.stderr
@@ -2269,3 +2272,77 @@ def test_the_learning_loop_scores_the_call_against_the_usual_odds_guess():
     for gone in ("vs typical", "pool_v1", "learnHead", "learnChip", ".status"):
         assert gone not in card and gone not in learn, gone
     assert "lp-chip" not in SPX and "lp-head" not in SPX and "innerHTML" not in learn
+
+
+# ---- the options-data banner (2026-10-08)
+
+# On 10-06..08 the options provider sent empty SPX books and 14 of the 79 code questions went blank. The station's
+# alert pass (runtime/watch/intraday/gex_alerts.py) writes spx_jev/mirai_prediction/options_data.json on every
+# in-session tick; the page says the outage in a red banner under the price box, and only from a file of today's
+# market day younger than 10 minutes. The 14 questions themselves are drawn nowhere on the page (the situation rows
+# are labels, the questions sheet JEV's own questions, and the card's hour.code_sentences only a count, not drawn), so
+# the banner is the whole of it.
+OUTAGE = {"down": True, "since": "2026-10-08T09:30:10.048035-04:00", "back_at": None,
+          "blank_questions": ["OPTIONS-01", "OPTIONS-02", "OPTIONS-03", "OPTIONS-04", "OPTIONS-05", "OPTIONS-06", "OPTIONS-07",
+                              "OPTIONS-08", "OPTIONS-10", "OPTIONS-11", "VOLATILITY-01", "VOLATILITY-09", "VOLATILITY-10",
+                              "VOLATILITY-16"],
+          "total_questions": 79, "updated": "2026-10-08T11:00:00-04:00"}
+
+
+def test_the_banner_reads_the_alert_passs_file_and_sits_under_the_price_box():
+    assert "var OPTIONS_URL = '/api/raw/file?root=state&path=spx_jev/mirai_prediction/options_data.json';" in JS
+    assert "options = j && j.kind === 'json' ? j.data : null;" in _fn("pollOptions")    # /api/raw/file wraps it as {kind, data}
+    body = SPX[SPX.index("<body>"):]
+    assert body.index('<div class="px" id="px" hidden>') < body.index('<div class="od" id="od" role="status" hidden></div>') \
+        < body.index('<div id="state"></div>')
+    assert "setInterval(function(){ if(!document.hidden) pollOptions(); }, POLL_MS);" in JS
+    assert "innerHTML" not in JS
+
+
+@pytest.mark.parametrize("o, now, today, down", [
+    (OUTAGE, "2026-10-08T11:04:00-04:00", "2026-10-08", True),
+    (OUTAGE, "2026-10-08T11:10:00-04:00", "2026-10-08", True),              # 10 minutes old: still the alert pass's word
+    (OUTAGE, "2026-10-08T11:10:01-04:00", "2026-10-08", False),             # older: the alert pass stopped, the book unknown
+    (OUTAGE, "2026-10-09T09:31:00-04:00", "2026-10-09", False),             # yesterday's file
+    ({**OUTAGE, "down": False}, "2026-10-08T11:04:00-04:00", "2026-10-08", False),
+    ({**OUTAGE, "updated": "soon"}, "2026-10-08T11:04:00-04:00", "2026-10-08", False),
+    (None, "2026-10-08T11:04:00-04:00", "2026-10-08", False),               # no file on the station
+    (OUTAGE, "2026-10-08T11:04:00-04:00", None, False),                     # no market calendar on this phone
+])
+def test_the_banner_shows_only_while_todays_fresh_file_says_down(o, now, today, down):
+    js = _var("OPTIONS_FRESH_MS") + _fn("optionsDown") + "console.log(JSON.stringify(optionsDown(D.o, Date.parse(D.t), D.today)));"
+    assert _run(js, {"o": o, "t": now, "today": today}) is down
+
+
+@pytest.mark.parametrize("tz, since", [(LA, "06:30"), (TOKYO, "22:30"), (NY, "09:30")])
+def test_the_banner_says_since_when_in_the_viewers_zone_and_what_the_call_runs_on(tz, since):
+    got = _whole({**{k: MONDAY[k] for k in ("live", "tape", "premarket")},
+                  "options": {**OUTAGE, "updated": "2026-09-28T11:00:00-04:00"}}, "2026-09-28T11:02:00-04:00", tz)
+    assert got["od"] == [["od-1", f"Options data down since {since}"],
+                         ["od-2", "14 options questions blank · call uses the other 65 · provider issue, not ours"]]
+
+
+def test_no_banner_without_a_file_or_once_the_book_is_back():
+    cards = {k: MONDAY[k] for k in ("live", "tape", "premarket")}
+    assert _whole(cards, "2026-09-28T11:02:00-04:00")["od"] is None
+    back = {**OUTAGE, "down": False, "back_at": "2026-09-28T10:40:00-04:00", "blank_questions": [], "updated": "2026-09-28T11:00:00-04:00"}
+    assert _whole({**cards, "options": back}, "2026-09-28T11:02:00-04:00")["od"] is None
+    stale = {**OUTAGE, "updated": "2026-09-28T10:40:00-04:00"}
+    assert _whole({**cards, "options": stale}, "2026-09-28T11:02:00-04:00")["od"] is None
+
+
+# Chrome at 360 with the shipped face (Plus Jakarta Sans): the banner's first line at its widest time, and the second
+# line's three parts, which wrap between words onto a second line inside the banner.
+_OD_W = {"Options data down since 23:59": 211.06, "14 options questions blank ·": 161.75, "call uses the other 65 ·": 128.88,
+         "provider issue, not ours": 136.41}
+
+
+def test_the_banner_fits_the_owners_360px_phone():
+    """Checked in Chrome at 360x800: the banner is the column's 328 wide, its first line on one line, its second on two,
+    nothing past the banner."""
+    inner = 360 - 2 * 16 - 2 * 14
+    assert re.search(r"padding:10px14px", _rule(".od"))
+    assert _OD_W["Options data down since 23:59"] <= inner
+    for part in ("14 options questions blank ·", "call uses the other 65 ·", "provider issue, not ours"):
+        assert _OD_W[part] <= inner, part
+    assert "nowrap" not in _rule(".od") + _rule(".od-1") + _rule(".od-2")

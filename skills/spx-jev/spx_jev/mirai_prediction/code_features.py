@@ -64,6 +64,13 @@ MACRO_09_UNTIL = "11:00"             # MACRO-09 answers the first cash hours onl
 LOADING_WORDS = tuple(EVENT_WORDS[k] for k in LOADING_EVENTS)    # VOLATILITY-16: the events that load the ruler (labels/vol.py)
 # OPTIONS-01/02/03/04/06/10/11 read the diary's options book: answered only while it is SPX's own (gex_source "native")
 GEX_BOOK_QUESTIONS = frozenset({"OPTIONS-01", "OPTIONS-02", "OPTIONS-03", "OPTIONS-04", "OPTIONS-06", "OPTIONS-10", "OPTIONS-11"})
+# Every question whose inputs come from the options data provider: the book's seven above, the lob-flow collector's refill
+# test and quote sweeps (OPTIONS-05, OPTIONS-08), and the labels built from its chain and trade tape (OPTIONS-07's flow lean,
+# VOLATILITY-01's straddle, VOLATILITY-09/10's skew, VOLATILITY-16's ruler). All 14 went blank together on 2026-10-06 and
+# 10-07, when the provider sent empty SPX books. runtime/watch/intraday/gex_alerts.py keeps a copy for the phone's page
+# and status file; runtime/watch/tests/test_gex_alerts.py holds it to this one.
+PROVIDER_QUESTIONS = GEX_BOOK_QUESTIONS | frozenset({"OPTIONS-05", "OPTIONS-07", "OPTIONS-08", "VOLATILITY-01", "VOLATILITY-09",
+                                                     "VOLATILITY-10", "VOLATILITY-16"})
 NATIVE_BOOK = "native"
 
 

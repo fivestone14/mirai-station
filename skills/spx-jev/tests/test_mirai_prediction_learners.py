@@ -6,8 +6,9 @@ import random
 import pytest
 
 from spx_jev.mirai_prediction.additive_scorer import (ANSWER_PRIOR_READS, AdditiveScorerFit, fit_additive_scorer, fit_pushes,
-                                                       forecast_with_additive_scorer, logit)
+                                                       forecast_with_additive_scorer, layer_sums, logit)
 from spx_jev.mirai_prediction.answer_matrix import AnswerMatrix, Row
+from spx_jev.mirai_prediction.code_features import PROVIDER_QUESTIONS, column_name, load_catalog
 from spx_jev.mirai_prediction.jev_corrected import MIN_GRADED_ROWS, correct_jev_call, fit_jev_corrected, forecast_with_jev_corrected
 from spx_jev.mirai_prediction.matcher import (MATCHER_NEIGHBOR_COUNT, fit_matcher, forecast_with_matcher, mismatch)
 from spx_jev.scores import floored, log_loss
@@ -211,3 +212,34 @@ def test_the_fit_file_names_the_columns_that_do_not_vote(tmp_path, monkeypatch):
     doc = json.loads(path.read_text())
     assert doc["non_voting_columns"] == ["code:A"] and doc["columns_by_layer"] == {"1": 1, "2": 1, "3": 1}
     assert doc["voting_columns_by_layer"] == {"1": 1, "2": 0, "3": 1} and "code:A" not in doc["additive_scorer"]["columns"]
+
+
+# ---------------------------------------------------------------- an options-provider outage (2026-10-06..08)
+
+def test_a_read_with_the_provider_questions_blank_pushes_nothing_for_them_and_leaves_the_rest_alone():
+    """Blank days, choice B: on an outage read the 14 provider questions are skipped, never counted as an answer of their own
+    ("no signal"). The read moves none of their pushes, every other column's push is what the read answered would make it,
+    and in a forecast or a match the blanks weigh as if the read never had those columns."""
+    catalog = load_catalog()
+    columns = {column_name(q["id"]): {"layer": q["layer"], "group": q["group"]} for q in catalog}
+    blank = {column_name(qid) for qid in PROVIDER_QUESTIONS}
+    rng = random.Random(7)
+
+    def answered(i: int, day: str, outcome: str) -> Row:
+        return make_row(i, day, {column_name(q["id"]): rng.choice(q["options"]) for q in catalog}, outcome)
+
+    normal = [answered(i, DAYS[i % 20], rng.choice(["up", "flat", "down"])) for i in range(60)]
+    full = answered(99, "2026-10-07", "up")
+    outage = make_row(99, "2026-10-07", {c: None if c in blank else a for c, a in full.answers.items()}, "up")
+    for stage in ("move", "direction"):
+        before, _ = fit_pushes(normal, stage, columns)
+        with_outage, _ = fit_pushes(normal + [outage], stage, columns)
+        as_answered, _ = fit_pushes(normal + [full], stage, columns)
+        assert blank <= set(before) and {c: with_outage[c] for c in blank} == {c: before[c] for c in blank}
+        assert {c: p for c, p in with_outage.items() if c not in blank} == {c: p for c, p in as_answered.items() if c not in blank}
+        assert all(None not in labels for labels in with_outage.values())
+    pushes, _ = fit_pushes(normal, "move", columns)
+    absent = make_row(98, "2026-10-08", {c: a for c, a in outage.answers.items() if c not in blank}, None)
+    assert layer_sums(outage, pushes, columns) == layer_sums(absent, pushes, columns)
+    matcher = fit_matcher(make_matrix(normal, columns))
+    assert mismatch(outage.answers, full.answers, matcher.columns_by_group(), matcher.group_weights)[1] == len(catalog) - len(blank)
