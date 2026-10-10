@@ -301,8 +301,8 @@ def test_the_saved_day_wins_over_what_the_live_snapshot_kept_for_the_same_minute
 def test_the_feed_carries_the_symbols_added_for_the_prediction_questions_and_the_older_groups_as_they_were():
     """/ZN, the leveraged funds, TSLA and BRK/B are quoted beside the rest; the groups the labels count (the 11 sectors,
     the futures' order, the seven megacaps' order) are unchanged; the symbols nothing read (KRE and XHB, added for a
-    question dropped on 2026-10-07, and $IRX) are gone; and every quote still fits in two batched calls, so the minute's
-    snapshot costs what it did."""
+    question dropped on 2026-10-07, and $IRX) are gone; and every quote fits in three batched calls (two until the foreign and
+    sentiment groups of 2026-10-10)."""
     assert SYMBOLS["futures"] == ("/ES", "/MBT", "/ZN")
     assert SYMBOLS["sectors"] == ("XLK", "XLF", "XLE", "XLV", "XLY", "XLI", "XLC", "XLP", "XLU", "XLB", "XLRE")
     assert SYMBOLS["rates"] == ("$TNX",) and SYMBOLS["leveraged_funds"] == ("SPXL", "TQQQ", "SPXS", "SQQQ")
@@ -310,7 +310,7 @@ def test_the_feed_carries_the_symbols_added_for_the_prediction_questions_and_the
     assert SYMBOLS["megacaps"][:7] == ("NVDA", "MSFT", "AAPL", "AMZN", "GOOGL", "META", "AVGO") and SYMBOLS["megacaps"][7:] == ("TSLA", "BRK/B")
     assert SYMBOLS["index_funds"] == ("SMH", "RSP", "QQQ", "IWM", "SPY") and SYMBOLS["macro_funds"] == ("TLT", "HYG", "USO", "GLD")
     assert len(set(ALL_SYMBOLS)) == len(ALL_SYMBOLS) and "/ZN" not in BAR_SYMBOLS
-    assert 1 + len([s for s in ALL_SYMBOLS if s not in BAR_SYMBOLS]) <= 2 * schwab.QUOTE_BATCH
+    assert 1 + len([s for s in ALL_SYMBOLS if s not in BAR_SYMBOLS]) <= 3 * schwab.QUOTE_BATCH
 
 
 def test_a_symbol_added_later_is_put_into_each_saved_session_lacking_it_the_rest_kept_as_saved(tmp_path, monkeypatch, capsys):

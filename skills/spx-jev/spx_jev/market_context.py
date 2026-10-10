@@ -57,17 +57,20 @@ SYMBOLS = {
     "macro_funds": ("TLT", "HYG", "USO", "GLD"),   # the bond, oil and pooled-markets labels (labels/macro.py)
     # Schwab names Berkshire's B share "BRK/B"; the index weights (labels/leadership.py) name it the same way.
     "megacaps": ("NVDA", "MSFT", "AAPL", "AMZN", "GOOGL", "META", "AVGO", "TSLA", "BRK/B"),
-    "foreign": ("$N225", "$FCHI", "$DAX", "/6J"),  # Tokyo, Paris, Frankfurt and the yen future, quoted since 2026-10-10 for the
-                                                   # Claude forecast's foreign block (skills/spx-claude-forecast, blocks/foreign.py)
+    "foreign": ("$N225", "$FCHI", "$DAX", "/6J", "$HSI"),  # Tokyo, Paris, Frankfurt, the yen future and Hong Kong, quoted since
+                                                           # 2026-10-10 for the Claude forecast's foreign block (blocks/foreign.py)
+    "sentiment": ("/NKD", "$SKEW", "UUP", "/ZT", "/HG", "$VXN", "ARKK"),   # since 2026-10-10: Nikkei futures (they trade in this
+                                                           # session, $N225 does not), crash-protection pricing, the dollar fund,
+                                                           # the two-year note, copper, Nasdaq volatility and speculative appetite
 }
 ALL_SYMBOLS = tuple(s for group in SYMBOLS.values() for s in group)
 # The index itself, quoted in every snapshot beside the rest and never backfilled (its bars are the SPX bar files):
 # today's moves of the other symbols are measured against it at the same instant (labels/usual_link.Session).
 QUOTE_ONLY = (INDEX_QUOTE,)
 BAR_SYMBOLS = SYMBOLS["breadth"]          # quotes come back as empty shells: read the newest finished bar instead
-NO_HISTORY = ("$VIX1D", *SYMBOLS["foreign"])   # quoted, never backfilled as bars: $VIX1D because Schwab keeps no history of it;
-                                               # the foreign group because it trades outside this session's hours, and only
-                                               # its live quote is ever read
+NO_HISTORY = ("$VIX1D", "$SKEW", *SYMBOLS["foreign"])   # quoted, never backfilled as bars: $VIX1D and $SKEW because Schwab keeps
+                                                        # no minute history of them; the foreign group because it trades outside
+                                                        # this session's hours, and only its live quote is ever read
 FIRST_BACKFILL_DAY = "2026-08-10"         # the oldest minute Schwab still served on 2026-09-26
 # $VOLD is NYSE up less down volume in shares, $UVOL and $DVOL those volumes in thousands of shares: on every
 # saved session from 2026-08-10 to 2026-09-25 each minute's $VOLD was their difference times this, to within
