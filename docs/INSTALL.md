@@ -3,7 +3,7 @@
 > Architecture is described in the top-level `README.md` and `docs/gex-glossary.md`.
 > This doc is the infra runbook (secrets, venv, launchd fleet). The live shape is:
 > hunter (Shift Manager) → Flow Sensor + Gravity Engine → three heads (Fade Lens,
-> Watchtower, Break Lens) → diary → nightly report cards → tablet + ntfy.
+> Watchtower, Break Lens) → diary → nightly report cards → viewstation + ntfy.
 
 End-state: a dedicated Mac mini that runs the left-eye scan tick about once a minute Mon–Fri 09:30–16:00 ET, pushes paper-fire alerts to your phone via **ntfy**, keeps the Schwab login alive with a daily auth-watch ping, and operates **without** access to the main machine's vault. It runs on a `claude -p` subscription and needs **no** Anthropic API key.
 
@@ -182,14 +182,14 @@ through it; every push intent is also logged to
 ~/.claude/plugins/mirai-station/runtime/scripts/install-launchd.sh
 ```
 
-This symlinks the plists into `~/Library/LaunchAgents/` and bootstraps them via `launchctl`: 24 agents, every one named in the installer's `PLISTS` list. The station `README.md`'s fleet table describes them, SPX JEV's nine jobs among them, and its kill-switch table gives `SPX_JEV_DISABLE=1` for those nine. The core seven:
+This symlinks the plists into `~/Library/LaunchAgents/` and bootstraps them via `launchctl`: 28 agents, every one named in the installer's `PLISTS` list. The station `README.md`'s fleet table describes them, SPX JEV's eleven jobs and the Claude forecast's two among them, and its kill-switch table gives `SPX_JEV_DISABLE=1` for those eleven (the forecast pair stands down with it, and has `SPX_CLAUDE_FORECAST_DISABLE=1` of its own). The core seven:
 
 | Label | Cadence | What |
 |---|---|---|
 | `com.mirai-station.left-eye`      | every 60 s (gates to RTH) | `run-watch-left-eye.sh` — the scan tick (Phase 1 hunter scan) + ntfy alerts (Phase 2, always) |
 | `com.mirai-station.caffeinate`    | always running            | keeps the mini awake |
 | `com.mirai-station.lob-collector` | every 60 s                | Layer-2 LOB flow collector (shadow) |
-| `com.mirai-station.viewstation`   | always running            | the Nightglass tablet HTTP server on :8787 |
+| `com.mirai-station.viewstation`   | always running            | the viewstation HTTP server on :8787 (the desktop page and the phone pages) |
 | `com.mirai-station.macro-brief`   | daily 09:00 ET            | morning Macro-Mood brief (`run-macro-brief.sh`) |
 | `com.mirai-station.gex-polarity`  | daily 16:15 ET            | after-close A/B report cards + LOB nightly fold (`run-gex-polarity.sh`) |
 | `com.mirai-station.auth-watch`    | daily 08:00 ET            | Schwab token keep-alive + dead-bearer ping (`run-auth-check.sh`) |
@@ -205,11 +205,12 @@ launchctl list | grep mirai-station
 ## 8. Smoke test the full chain
 
 ```bash
-# Run a single unified tick immediately (bypasses the launchd schedule)
+# Run a single tick immediately (bypasses the launchd schedule; quiet tape → no output is correct)
 ~/.claude/plugins/mirai-station/runtime/scripts/run-watch-left-eye.sh
 
-# Tail today's watch log
-tail -f ~/.claude/plugins/mirai-station/state/logs/watch-$(date +%Y-%m-%d).jsonl
+# Tail today's diary, and the log of every push the station meant to send
+tail -f ~/.claude/plugins/mirai-station/state/reversion/$(date +%Y-%m-%d).jsonl
+tail -f ~/.claude/plugins/mirai-station/state/logs/watch-pushes-$(date +%Y-%m-%d).jsonl
 ```
 
 If a signal clears the alert threshold, an ntfy push lands on your phone. If the tape is quiet, no push — that's correct.
@@ -222,7 +223,7 @@ sudo shutdown -r now
 
 Log back in, then:
 ```bash
-launchctl list | grep mirai-station   # all 24 should be listed
+launchctl list | grep mirai-station   # all 28 should be listed
 ps -ef | grep caffeinate              # caffeinate should be running
 ```
 
@@ -232,4 +233,91 @@ ps -ef | grep caffeinate              # caffeinate should be running
 
 The market-hours gate (`runtime/watch/intraday/market_status.py`) is a self-contained NYSE date-math calendar (holidays + half-days, no network call). Outside market hours the scan phase exits instantly; launchd still wakes left-eye every 60 s, that's fine and cheap (the alert phase still runs, which is how EOD scoring lands after the close).
 
-If you want fewer wake-ups, the optional `StartCalendarInterval` block in the plist already enumerates :00/:05/:10/…/:55 — you can constrain it to specific weekdays + hours and remove `StartInterval`. Default leaves both in: launchd will fire at whichever comes first.
+The left-eye plist carries `StartInterval` only. Its earlier `StartCalendarInterval` array was removed on purpose (the plist comment says why: entries with a weekday but no hour fired every hour), so fewer wake-ups means a longer interval, not a calendar.
+
+---
+
+## Moving to new hardware
+
+The plugin is self-contained inside its directory. To move an existing station to
+another Mac you copy the directory, provision the venv, populate the Keychain and the
+`.env` files, and load the launchd fleet. Everything derived at runtime (venv, logs,
+learned state) is *not* copied; each machine rebuilds it. The target Mac needs §0 and
+§1 above first (Python 3.12+, Claude Code signed into the subscription, a user whose
+Keychain the launchd jobs can read).
+
+### 1. Copy the plugin directory (code only, not state)
+
+```bash
+# On the source Mac. The venv lives outside the tree, so only state/ needs excluding:
+tar -C ~/.claude/plugins \
+    --exclude 'mirai-station/state' \
+    --exclude '__pycache__' \
+    -czf /tmp/mirai-station.tar.gz mirai-station
+
+# Transfer the tarball (scp / AirDrop / drive). Then on the target Mac:
+mkdir -p ~/.claude/plugins
+tar -C ~/.claude/plugins -xzf ~/Downloads/mirai-station.tar.gz
+```
+
+> **Do not copy `state/`.** Each instance rebuilds its own diary, grades, learned
+> baselines and option-book snapshots from scratch; copying them across machines
+> mixes two histories.
+
+The tarball carries the two TypeSafe key files, `skills/spx-jev/.env` and
+`skills/sndk-jev/.env`, because they sit inside the tree. A `git clone` does not
+(both are git-ignored): on a cloned station, copy each `.env.example` to `.env`,
+`chmod 600` it, and paste the key in.
+
+### 2. Provision the venv and the fleet
+
+§4 and §7 above, in short:
+
+```bash
+cd ~/.claude/plugins/mirai-station
+./runtime/scripts/venv-bootstrap.sh      # builds ~/.local/share/mirai-station/venv
+./runtime/scripts/install-launchd.sh     # symlink + bootstrap the 28-agent fleet
+```
+
+### 3. Populate the Keychain
+
+§3 above, on the new Mac: the ntfy topic by hand, Schwab through
+`iv_fetcher.py --setup`, Cassandra's Edge through `native_gex_feed.py --login`. The
+Cassandra enrolment does **not** transfer: the refresh token rotates on every use, so
+two stations sharing one would lock each other out. Enrol the new station on its own.
+Also copy the `mcpServers` block into the target's `~/.claude.json` (§5) so the morning
+macro brief can reach the Cassandra's Edge MCP servers.
+
+### 4. The iCloud mirror
+
+The Claude forecast's recorder mirrors `state/spx_claude_forecast/` to
+`~/Library/Mobile Documents/com~apple~CloudDocs/mirai-station-backups/spx_claude_forecast/`
+(nothing else in `state/` is backed up). The mirror only ever adds: a file deleted from
+`state/` stays in iCloud until removed there by hand. A new Mac signed into the same
+iCloud account inherits the folder and its recorder keeps adding to it, so a station
+retired with its mirror still in place leaves its forecast history behind on purpose.
+
+### 5. Smoke test
+
+```bash
+./runtime/scripts/run-watch-left-eye.sh      # one tick by hand; quiet tape → no output is correct
+launchctl list | grep mirai-station          # all 28 agents
+tail -f state/reversion/$(date +%Y-%m-%d).jsonl
+```
+
+If a paper fire clears threshold, an ntfy push lands on the subscribed phone.
+
+### Uninstalling
+
+```bash
+./runtime/scripts/uninstall-launchd.sh   # bootout + remove the plists
+rm -rf ~/.claude/plugins/mirai-station   # plugin, including the two .env files
+rm -rf ~/.local/share/mirai-station      # venv
+# Keychain: the Cassandra OAuth items are keyed by account, not by $USER, so wipe them
+# with the vault; the ntfy topic and the four Schwab items (service iv-viability-schwab,
+# accounts api_key / app_secret / callback_url / fernet_key) go by name.
+$PY skills/mirai-left-eye/native_gex_feed.py --logout
+security delete-generic-password -a "$USER" -s "mirai-station-ntfy"
+for a in api_key app_secret callback_url fernet_key; do security delete-generic-password -a "$a" -s "iv-viability-schwab"; done
+# The iCloud mirror (step 4) is not touched by any of this.
+```

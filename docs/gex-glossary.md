@@ -22,7 +22,7 @@ labeled levels in rendered views.
 ## Tick loop
 | Code | Plain name | What it actually does |
 |---|---|---|
-| `hunter.py` | Shift Manager | The every-5-minutes worker: wakes up, runs every read, records the results, rings alerts, goes back to sleep |
+| `hunter.py` | Shift Manager | The every-minute worker: wakes up, runs every read, records the results, rings alerts, goes back to sleep |
 | `reversion_lens.evaluate()` | Scan | One full look at one ticker: gathers all inputs, runs both gravity engines, packs one diary row |
 
 ## Fetch

@@ -39,7 +39,7 @@ lifecycle, its own kill switch, and its own posture.
 | 3 | **SIEGE** | Shadow sensor: underlying volume spent *at* a wall, and whether that predicts the break | SPY→SPX | shadow |
 | 4 | **LOB-FLOW** | Shadow sensor: Layer-2 order-book pressure | SPY | shadow |
 | 5 | **Dated Book** | Nightly sidecar for far-dated structural OI walls the 0–7 DTE live fetch can't see | SPX | record-only |
-| 6 | **Nightglass** | The read-only tablet view of everything above, on `:8787` | — | LAN-only |
+| 6 | **The viewstation** | The read-only web view of everything above, on `:8787`: the desktop page and the phone pages | — | read-only |
 | 7 | **Mirai Voice** | Ears + mouth: hold a spoken conversation about the SNDK board, on `:8788` | SNDK | live tool |
 | 8 | **Report Cards** | The after-close grader and the single Wilson gate between paper and live | all | the referee |
 
@@ -86,7 +86,7 @@ flowchart TB
 
   subgraph TELL["⑥ TELL"]
     direction LR
-    TABLET["Nightglass tablet<br/>:8787 · LAN-only"]
+    VIEW["viewstation<br/>:8787 · desktop + phone"]
     VOICE["Mirai Voice<br/>:8788 · spoken"]
     NOTE["Obsidian note"]
     BELL["ntfy phone push"]
@@ -122,7 +122,7 @@ two phases:
      walls, and regime;
    - the **three heads** each evaluate that map;
    - `record()` appends one row to today's **diary** (`state/reversion/<date>.jsonl`);
-   - the Obsidian "Today" note and the tablet refresh.
+   - the Obsidian "Today" note and the viewstation refresh.
 2. **Alerts** — `watch.cli gex-alerts` runs *always* (even after hours, so the EOD
    scoring window is never missed): fresh paper fires, wall-breach mood re-dives,
    and end-of-day direction scoring push to the phone via **ntfy**.
@@ -206,7 +206,7 @@ often than not, so it ships as a band, never a scalar; the old arrow pointed **8
 further than price travels** in the window it implied. Nothing on this surface is
 outside the noise band, and nothing here is presented as an edge.
 
-A **pause** switch (`state/sndk_reads/control.json`, flipped from the tablet) silences
+A **pause** switch (`state/sndk_reads/control.json`, flipped from the viewstation's SNDK tab) silences
 the model's *sentence* and nothing else — the gates and rankings are pure
 functions of a row already on disk, so every scan still lands a row, stamped
 `paused: true`. A gap in a training set costs more than a gap in the prose. Both
@@ -253,24 +253,15 @@ of the time), and **fail-open** (an error leaves the last good book untouched).
 
 ---
 
-## 6 · Nightglass — the tablet view
+## 6 · The viewstation
 
-A read-only web app on **`:8787`** showing the live state on the mini. Seven surfaces:
-
-| Tab | What it shows |
-|---|---|
-| **Map** | The live SPX dealer map — towers, walls, magnet, flip band, heat ladder, and the Watchtower's current read |
-| **Layers** | Data feeds → sensory layers → lenses → processor, as a stack; tap any block for what it does |
-| **Diary** | The night log: every Watchtower call, grouped by day |
-| **Processor** | The Sweep Ledger — every call graded by signed area, the day on one page |
-| **Replay** | How each call actually played out, scrubbed over any past day from `state/reversion/*.jsonl` |
-| **Dictionary** | How walls, magnets and pins are written everywhere on this station (`docs/gw-vocab.md` in plain English) |
-| **SNDK** β | The SNDK board, the model's reading, the 🎙 talk button, and the reasoning pause |
-
-It reuses the project's own renderers, so every number matches the canonical views.
-**LAN-only by design: read-only, no auth, and the SNDK reasoning toggle is the only
-write the server accepts.** Don't port-forward it. Details:
-`runtime/viewstation/README.md`.
+A read-only web app on **`:8787`** showing the live state on the mini: one desktop page
+(the SPX map, layers, diary, processor, replay and dictionary tabs, and the SNDK tabs
+beside them) and the phone pages under `/m`. It reuses the project's own renderers, so
+every number matches the canonical views. Reaching the port directly, by LAN or tailnet
+address, gets you everything; the front door for anything further away is a Cloudflare
+Tunnel into Caddy, which holds the password and proxies here. Never forward the port
+itself. Details: `runtime/viewstation/README.md`.
 
 ## 7 · Mirai Voice — the desk, spoken
 
@@ -318,7 +309,6 @@ The whole option-book foundation lives immutable in `state/gex_fills/`
 
 ```
 mirai-station/
-├── plugin.json                 skill manifest + runtime config
 ├── skills/
 │   ├── mirai-left-eye/         the SPX brain: hunter · reversion_lens (3 heads) ·
 │   │                           lefteye_gex_box (Gravity Engine) · native_gex_feed
@@ -329,6 +319,11 @@ mirai-station/
 │   │                           siege_bridge · lob_bridge · dashboard · price lenses
 │   ├── sndk-pro/               the isolated SNDK station: feed · views · hunter ·
 │   │                           read (model reading) · rag (on-demand memory)
+│   ├── sndk-jev/               the SNDK JEV decision service (TypeSafe)
+│   ├── spx-jev/                the SPX JEV decision service, its feeds, the headlines
+│   │                           feed and the Mirai Prediction System
+│   ├── spx-claude-forecast/    the Claude read over a frozen payload: recorder · nightly
+│   ├── book-flow/              Day-LOB boards (collector never switched on)
 │   ├── mirai-voice/            ears · jargon · convo · doctrine · mouth · voice_server
 │   ├── siege/                  effort-at-the-wall sensor (shadow, self-contained)
 │   ├── lob-flow/               Layer-2 order-book FLOW sensor (shadow, self-contained)
@@ -337,14 +332,15 @@ mirai-station/
 ├── runtime/
 │   ├── watch/                  the tick chassis: cli · hunter wrapper ·
 │   │   └── intraday/           market_status · gex_alerts · push_ntfy · macro_mood · auth
-│   ├── viewstation/            "Nightglass" — read-only HTTP on :8787
-│   ├── launchd/                24 LaunchAgent plists (the fleet, below)
+│   ├── viewstation/            read-only HTTP on :8787: the desktop page + the phone pages (static/m/)
+│   ├── launchd/                28 LaunchAgent plists (the fleet, below)
 │   └── scripts/                install/venv/run wrappers + env.sh (Keychain reader)
 ├── state/                      runtime-mutable — never copied between machines
 │   ├── reversion/              the SPX diary + nightly grades
 │   ├── spx_rag/                the Watchtower's memory (slices · summaries · terrain)
+│   ├── spx_jev/ spx_claude_forecast/ jev/               the JEV services and the Claude forecast
 │   ├── sndk_reversion/ sndk_reads/ sndk_gex/ sndk_rag/   the SNDK station
-│   ├── gex_fills/ dated_gex/ gex_uw/                     the book and its baselines
+│   ├── gex_fills/ dated_gex/                             the book and its baselines
 │   ├── siege/ lob_flow/ market_expectation/ tape_prev/   the shadow sensors
 │   └── voice/ logs/            conversation log + session continuity
 └── docs/                       INSTALL · OPERATIONS · gex-glossary · gw-vocab ·
@@ -352,7 +348,7 @@ mirai-station/
                                 sndk-payload-inventory · salvage-notes
 ```
 
-### The launchd fleet (24 agents)
+### The launchd fleet (28 agents)
 
 `runtime/scripts/install-launchd.sh` names every agent it loads (`PLISTS`); that list is
 the fleet.
@@ -362,9 +358,12 @@ the fleet.
 | `left-eye` | every 60 s (gated to RTH) | the SPX scan + alert tick |
 | `sndk` | every 120 s (gated to RTH) | the SNDK scan tick |
 | `sndk-read` | every 120 s (gated to RTH) | the SNDK reading — **its own job on purpose**, so a hung model call can never eat a diary row |
+| `sndk-bars` | every 60 s (gated to RTH, plus 12 min after the close) | SNDK's finished minute bars — its own job, so the price record survives a stuck scanner |
+| `sndk-deadman` | every 5 min | pages the phone when the SNDK scanner or its reader stops writing |
 | `sndk-jev` | :02 and :32 ET (gated to RTH) | the JEV decision service: labels the newest SNDK row, asks JEV, sums and grades, writes `state/jev/` — its own job, never on the scan path |
+| `sndk-jev-tape` | every 5 min 09:35 to 10:30 ET, and 10:42 (gated to RTH) | SNDK JEV's opening lane, writing only `state/jev/lanes/tape/` |
 | `lob-collector` | every 60 s | Layer-2 LOB flow collector (shadow) |
-| `viewstation` | continuous | the Nightglass HTTP server on :8787 |
+| `viewstation` | continuous | the viewstation HTTP server on :8787 (desktop + phone) |
 | `voice` | continuous | the voice WebSocket sidecar on :8788 |
 | `caffeinate` | continuous | keeps the mini awake |
 | `auth-watch` | 08:00 ET | Schwab token keep-alive + dead-bearer ping |
@@ -379,11 +378,15 @@ the fleet.
 | `spx-jev-context` | every 60 s (gated to RTH) | the market around SPX (breadth, VIX family, futures, rates, sectors, megacaps) for SPX JEV |
 | `spx-jev-save-day` | 16:20 ET | the day's full minute bars of every market-feed symbol |
 | `spx-jev-overnight` | 09:26 and 16:20 ET | the overnight futures (/ES, /ZN, /BTC, /MBT) and the roll table |
+| `spx-jev-headlines` | every 3 min, 07:00 to 16:30 ET weekdays | four public RSS feeds, each new item stamped with the poll's own clock under `state/spx_jev/headlines/`, for the judgment questions |
 | `spx-jev-store` | 16:40 ET | SPX JEV's learning store, rebuilt from its raw files into checked Parquet with DuckDB views |
+| `spx-jev-prediction-nightly` | 17:05 ET weekdays | the Mirai Prediction System's nightly job: its tables, the voice scores, pool_v2's learning, the learners' refit and the phone's scoreboard, under `state/spx_jev/mirai_prediction/` |
+| `spx-claude-forecast-recorder` | 08:40 and 16:25 ET, plus Fri 17:30 ET | copies station data before it is overwritten or deleted (the dated book, siege's SPY minutes, the raw tape, the $VIX1D close, SPX 5-minute bars) into `state/spx_claude_forecast/recorder/` and mirrors the folder to iCloud |
+| `spx-claude-forecast-nightly` | 17:15 ET weekdays | seals what happened after every Claude read, rebuilds the library of past moments, scores every forecaster, writes the scorecard |
 
 ### Kill switches
 
-Every optional subsystem can be turned off without touching code. The four that own a
+Every optional subsystem can be turned off without touching code. Those that own a
 launchd job are checked in the shell wrapper **and** again in Python, so neither path
 can be missed.
 
@@ -393,7 +396,9 @@ can be missed.
 | `SNDK_PRO_DISABLE=1` | the SNDK scanner (**and**, implicitly, its reading — with no fresh rows, reading on would only re-narrate a frozen book) |
 | `SNDK_READ_DISABLE=1` | the SNDK reading only |
 | `SNDK_JEV_DISABLE=1` | the JEV decision service (checked in its runner, `run-sndk-jev.sh`, which exits 0) |
-| `SPX_JEV_DISABLE=1` | SPX JEV and all nine of its jobs (checked in each `run-spx-*.sh` runner only, which exits 0) |
+| `SPX_JEV_DISABLE=1` | SPX JEV and all eleven of its jobs (checked in each `run-spx-jev*.sh` runner and the pre-market dead-man's, which exit 0); the two Claude forecast jobs stand down with it, since there is nothing to forecast |
+| `SPX_JEV_PREDICTION_DISABLE=1` | the Mirai Prediction System's nightly job only |
+| `SPX_CLAUDE_FORECAST_DISABLE=1` | the Claude forecast's recorder and nightly jobs (checked in their runners and again in Python) |
 | `MIRAI_VOICE_DISABLE=1` | the voice sidecar |
 | `DATED_BOOK_DISABLE=1` | the far-dated sidecar |
 | `SIEGE_DISABLE=1` | the effort-at-the-wall sensor |
@@ -408,7 +413,7 @@ The SNDK reasoning **pause** is deliberately *not* a kill switch — see §2.
 ```bash
 cd ~/.claude/plugins/mirai-station
 ./runtime/scripts/venv-bootstrap.sh      # provision ~/.local/share/mirai-station/venv
-./runtime/scripts/install-launchd.sh     # symlink + bootstrap the 24 agents
+./runtime/scripts/install-launchd.sh     # symlink + bootstrap the 28 agents
 ```
 
 Then:
@@ -450,7 +455,7 @@ export TZ=UTC                                               # commit dates must 
 
 - **Full setup** (auto-login, Caffeinate, Keychain secrets, MCP servers, ntfy):
   `docs/INSTALL.md`
-- **Moving to new hardware**: `TRANSFER.md`
+- **Moving to new hardware**: `docs/INSTALL.md`, the section of that name
 - **Runbook** (start/stop, logs, troubleshooting): `docs/OPERATIONS.md`
 - **Plain-name glossary** (every code identifier → what it actually does):
   `docs/gex-glossary.md`

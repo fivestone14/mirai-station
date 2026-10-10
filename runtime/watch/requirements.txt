@@ -1,4 +1,0 @@
-# Intentionally empty: none of the pins that used to live here (langgraph,
-# langgraph-checkpoint-sqlite, lancedb, pandas, pyarrow) are imported anywhere
-# in the codebase anymore. Runtime dependencies are managed by
-# runtime/scripts/venv-bootstrap.sh.
