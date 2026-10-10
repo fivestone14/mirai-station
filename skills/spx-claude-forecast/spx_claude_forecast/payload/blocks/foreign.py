@@ -1,8 +1,9 @@
 """The foreign block, background only: Tokyo, Paris and Frankfurt against their prior closes, and the yen.
 
 Built only from symbols the station's market context actually carries at the cut: the Nikkei ($N225), the
-CAC 40 ($FCHI), the DAX ($DAX) and the yen future (/6J), which the context job does not quote yet (the plan's
-recorder for them comes later), so on day one every field is absent as ``not_recorded`` and the block with it.
+CAC 40 ($FCHI), the DAX ($DAX) and the yen future (/6J), quoted every minute by the context job since
+2026-10-12 (market_context.SYMBOLS["foreign"]); a session with no prior session's quote on file (the first
+day, a day after an outage) leaves the field absent as ``not_recorded``, and the block with it when all are.
 Once a symbol is quoted, its one-day return is its newest quote at the cut against its last quote on the prior
 session's market context (the prior close as that session saw it: Tokyo and Europe have closed before New York
 does, so the prior session's last quote is their prior close). ``europe_at`` is the clock the CAC 40's quote
