@@ -70,14 +70,13 @@ def library_row(payload_line: dict, outcomes: list[dict]) -> dict:
     scene = payload_line.get("scene") or {}
     flags = payload_line.get("quality_flags") or {}
     suspect = unit_suspect_reason(payload_line)
-    stale = bool(flags.get("is_stale_read"))
     built = payload_line.get("status") == "built"
     row = {"read_id": payload_line.get("read_id"), "origin": payload_line.get("origin"),
            "trading_day": payload_line.get("trading_day"), "half_hour_slot_et": payload_line.get("half_hour_slot_et"),
            "slot_minute_of_day": _minute_of_day(payload_line.get("half_hour_slot_et")),
            "cut_at": payload_line.get("cut_at"), "claude_input_sha256": payload_line.get("claude_input_sha256"),
            "options_book": flags.get("options_book"), "anchor_vs_vix_x": flags.get("anchor_vs_vix_x"),
-           "is_unit_suspect": suspect is not None, "is_stale_read": stale, "exclude_reason": suspect,
+           "is_unit_suspect": suspect is not None, "exclude_reason": suspect,
            **fingerprint_of(scene)}
     final = {h: None for h in HORIZONS}
     for line in outcomes:
@@ -85,6 +84,8 @@ def library_row(payload_line: dict, outcomes: list[dict]) -> dict:
         if horizon in final and (final[horizon] is None or
                                  int(line.get("finalize_attempt_number", 1)) >= int(final[horizon].get("finalize_attempt_number", 1))):
             final[horizon] = line
+    stale = bool(((final["next_30_minutes"] or {}).get("result") or {}).get("is_stale_read"))
+    row["is_stale_read"] = stale
     for horizon in HORIZONS:
         result = (final[horizon] or {}).get("result") or {}
         row[f"{horizon}_status"] = result.get("status") or "missing"

@@ -228,23 +228,15 @@ def _price_sized_numbers(node, key: str, under_count_key: bool = False):
 
 def quality_flags(inputs: FrozenInputs, builder_errors: list[str]) -> dict:
     """What a reviewer or the library needs to weigh the read: where the ruler came from and how it sits against the
-    VIX, the options book, whether code's answers were live, whether the read was stale, and what could not be
-    loaded or built. A missing flag is one that could not be told."""
+    VIX, the options book, whether code's answers were live, and what could not be loaded or built. A missing flag
+    is one that could not be told. Whether the read was stale is not here: the station's rule looks at the bar of the
+    read's own minute, which has not finished at the cut, so the grader judges it and the outcome line carries it."""
     anchor = inputs.anchor
     flags = {"anchor_src": getattr(anchor, "source", None), "anchor_vs_vix_x": _anchor_vs_vix(inputs),
              "options_book": inputs.options_book or "unknown",
              "code_source": "live" if inputs.code_answers else "none",
-             "is_stale_read": _is_stale_read(inputs),
              "load_notes": list(inputs.load_notes), "builder_errors": builder_errors}
     return {k: v for k, v in flags.items() if v not in (None, [], {})}
-
-
-def _is_stale_read(inputs: FrozenInputs) -> bool | None:
-    """The station's own stale-read rule (spx_jev.integral.stale_read, the guard its grades carry): the read's spot was
-    not traded by any bar of the last STALE_READ_MIN minutes before its row minute, so the diary row lagged the tape.
-    Judged on the bars finished by the cut; None when none of them is near the row minute."""
-    integral = station_stores.import_spx_jev("integral")
-    return integral.stale_read(inputs.scene.bars, inputs.horizon_start, inputs.spot)
 
 
 def _anchor_vs_vix(inputs: FrozenInputs) -> float | None:

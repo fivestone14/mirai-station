@@ -322,11 +322,10 @@ def test_load_notes_stay_on_the_payload_line_and_out_of_the_scene(tmp_path):
     assert build.leak_checks({"data_sources": build_data_sources_block(inputs).data}) == []
 
 
-def test_the_stale_read_flag_follows_the_stations_rule(tmp_path):
-    assert build.quality_flags(fake_inputs(tmp_path), [])["is_stale_read"] is False               # the flat bars trade the row's spot
-    off_the_tape = fake_inputs(tmp_path, row=make_row(CUT, spot=SPOT + 20.0))                   # no bar near the row minute traded it
-    assert build.quality_flags(off_the_tape, [])["is_stale_read"] is True
-    assert "is_stale_read" not in build.quality_flags(fake_inputs(tmp_path, bars=[]), [])        # nothing to judge on
+def test_the_payload_carries_no_stale_flag_because_the_cut_cannot_judge_it(tmp_path):
+    """The station's stale rule needs the bar of the read's own minute, which has not finished at the cut; the
+    grader judges it and the outcome line carries it (library rows read it from there)."""
+    assert "is_stale_read" not in build.quality_flags(fake_inputs(tmp_path), [])
 
 
 def test_built_at_and_the_lag_are_one_instant(tmp_path):
