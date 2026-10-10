@@ -57,7 +57,10 @@ STORE_RUN_MIN = 10
 # prediction system's nightly fit
 SPX_JOBS = ("com.mirai-station.spx-jev", "com.mirai-station.spx-jev-tape", "com.mirai-station.spx-jev-bars",
             "com.mirai-station.spx-jev-context", "com.mirai-station.spx-jev-overnight", "com.mirai-station.spx-jev-save-day",
-            "com.mirai-station.spx-jev-headlines", "com.mirai-station.spx-jev-prediction-nightly")
+            "com.mirai-station.spx-jev-headlines", "com.mirai-station.spx-jev-prediction-nightly",
+            # the Claude forecast's two jobs (skills/spx-claude-forecast, installed 2026-10-09): the recorder that copies
+            # at-risk station data and mirrors the folder, and the nightly grade, library and backup
+            "com.mirai-station.spx-claude-forecast-recorder", "com.mirai-station.spx-claude-forecast-nightly")
 # The live and opening lanes' reads in market time (skills/spx-jev/spx_jev/lane.py: LIVE_READS less its 16:02
 # close-out, and TAPE.schedule) and how many minutes before its read time a read may be stamped (each lane's
 # read_grace_min: the live lane's diary row, the opening lane's bar); a unit test holds these to the lane's code. A
