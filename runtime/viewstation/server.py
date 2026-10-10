@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Mirai Viewstation — the read-only HTTP server behind the whole view.
 
-Serves the single-page app plus a JSON snapshot of live Mirai state, and an
-opt-in raw-data explorer over the on-disk state files. Pure Python stdlib — no
-third-party deps — but run it under the mirai-station venv so snapshot.py can
-import the skill modules.
+Serves the desktop page, the phone pages under /m, and the JSON routes behind
+them (the live spot, a replay day, the SNDK payload, pipeline replay and memory,
+the Day Visual LOB board) plus an opt-in raw-data explorer over the on-disk
+state files. Pure Python stdlib — no third-party deps — but run it under the
+mirai-station venv so snapshot.py can import the skill modules.
 
     python runtime/viewstation/server.py            # binds 0.0.0.0:8787
     MIRAI_VIEW_PORT=9000 python .../server.py        # custom port
@@ -57,11 +58,9 @@ HERE = Path(__file__).resolve().parent
 STATIC = HERE / "static"
 sys.path.insert(0, str(HERE))
 import snapshot as snap  # noqa: E402
-import pipeline as pipe  # noqa: E402
 
 PLUGIN_ROOT = snap.PLUGIN_ROOT
 STATE_DIR = snap.STATE_DIR
-CONFIG_DIR = PLUGIN_ROOT / "runtime" / "watch" / "config"
 PORT = int(os.environ.get("MIRAI_VIEW_PORT", "8787"))
 
 # The payload routes answer only when the request names this user (?user=will),
@@ -220,11 +219,9 @@ def _local_host(host: str) -> bool:
         ip = ip.ipv4_mapped
     return ip.is_private or ip.is_loopback or (ip.version == 4 and ip in _CGNAT)
 
-# directories the raw explorer is allowed to read from (read-only)
+# the one directory the raw explorer is allowed to read from (read-only)
 RAW_ROOTS = {
     "state": STATE_DIR,
-    "config": CONFIG_DIR,
-    "skill_logs": PLUGIN_ROOT / "skills" / "mirai-left-eye" / "logs",
 }
 
 
@@ -284,27 +281,6 @@ def _looks_hashed(stem: str) -> bool:
     worth having."""
     tail = stem.rsplit("-", 1)[-1] if "-" in stem else ""
     return len(tail) >= 12 and all(c in "0123456789abcdef" for c in tail)
-
-# --- snapshot memo (avoid rebuilding for every concurrent poll) ---------------
-_lock = threading.Lock()
-_cache: dict = {"ts": 0.0, "data": None}
-_CACHE_TTL = 5.0
-
-
-def _get_snapshot() -> dict:
-    with _lock:
-        now = time.monotonic()
-        if _cache["data"] is not None and now - _cache["ts"] < _CACHE_TTL:
-            return _cache["data"]
-        try:
-            data = snap.build_snapshot()
-        except Exception as exc:  # never 500 the page — return an error envelope
-            import traceback
-            data = {"error": f"{type(exc).__name__}: {exc}",
-                    "trace": traceback.format_exc()}
-        _cache.update(ts=now, data=data)
-        return data
-
 
 # --- raw explorer -------------------------------------------------------------
 def _safe_join(root: Path, rel: str) -> Path | None:
@@ -556,17 +532,6 @@ class Handler(BaseHTTPRequestHandler):
             if route in ("/", "/index.html"):
                 return self._send_file(STATIC / "index.html")
 
-            if route == "/api/snapshot":
-                return self._send_json(_get_snapshot())
-
-            if route == "/api/pipeline":
-                try:
-                    return self._send_json(pipe.build_pipeline())
-                except Exception as exc:  # never 500 the page
-                    import traceback
-                    return self._send_json({"error": f"{type(exc).__name__}: {exc}",
-                                            "trace": traceback.format_exc()})
-
             if route == "/api/spot":
                 # the streaming price for the map (cached ~2s in snapshot.live_spot).
                 # Fail-open by contract: a null spot means "keep showing the scan price".
@@ -684,31 +649,6 @@ class Handler(BaseHTTPRequestHandler):
                     import traceback
                     return self._send_json({"error": f"{type(exc).__name__}: {exc}",
                                             "trace": traceback.format_exc()})
-
-            if route in ("/api/sndk/thread", "/api/sndk/thread/days"):
-                # What the model SAID, as messages. Deliberately NOT behind the
-                # payload lock: the phone glance is unauthenticated and already
-                # reads these exact bytes through /api/raw/file, so locking this
-                # would gate the one surface it exists for while leaving the
-                # wider door open. If reading prose should be private, the raw
-                # explorer is where that decision belongs, not here.
-                try:
-                    if route.endswith("/days"):
-                        return self._send_json({"days": snap.sndk_thread_days()})
-                    day = (qs.get("day") or [""])[0]
-                    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day or ""):
-                        days = snap.sndk_thread_days()
-                        day = days[0] if days else ""
-                    if not day:
-                        return self._send_json({"error": "no recorded session",
-                                                "messages": []})
-                    since = (qs.get("since") or [""])[0]
-                    return self._send_json(snap.sndk_thread(day, since=since))
-                except Exception as exc:  # never 500 the page
-                    import traceback
-                    return self._send_json({"error": f"{type(exc).__name__}: {exc}",
-                                            "trace": traceback.format_exc(),
-                                            "messages": []})
 
             if route == "/api/sndk/payload":
                 # the exact scene the reader hands the model — locked to one user (the ?user= name,

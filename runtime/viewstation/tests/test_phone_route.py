@@ -86,11 +86,11 @@ class _Wire(server.Handler):
 
 
 def test_the_phone_page_exists_on_disk():
-    """Every file the two phone pages load — scripts, the typeface, the link
+    """Every file the phone pages load — scripts, the typeface, the links
     between them — is served by the real route table as a file that exists. A
     page that names a script the station 404s paints nothing and says nothing."""
     refs = set()
-    for html in (PHONE, THREAD):
+    for html in (p.read_text() for p in sorted(M.glob("*.html"))):
         refs.update(re.findall(r'(?:src|href)="(/m/[^"]*)"', html))
         refs.update(re.findall(r'url\("(/m/[^"]+)"\)', html))
     assert {"/m/glance.js", "/m/page.js", "/m/press.js"} <= refs, refs
@@ -131,7 +131,6 @@ PHONE = (M / "index.html").read_text()
 GLANCE = (M / "glance.js").read_text()
 PAGE = (M / "page.js").read_text()
 SHEET = (M / "sheet.js").read_text()
-THREAD = (M / "thread.html").read_text()
 ET = ZoneInfo("America/New_York")
 _NODE = shutil.which("node")
 _BUILT_AT = "2026-08-19T13:02:00-04:00"
@@ -911,7 +910,7 @@ def test_a_passed_wall_is_judged_against_the_price_on_screen():
 
 
 def test_the_banned_fields_reach_no_pixel(tmp_path, monkeypatch):
-    """§14.17-18 of docs/phone-glance-spec.md: dealer_positioning (the rename
+    """The fields the glance may never draw: dealer_positioning (the rename
     of dealer_flow), breadth, momentum, regime.charm with its
     drifts_toward_strike, reading.magnitude_sigma — and the prose the page must
     never parse, frozen_do_not_cite and the magnet lead's vs_own_history word.
@@ -1008,18 +1007,18 @@ def test_no_emoji_no_legend_no_greek():
     the chart where the chart is; a legend or a word of explanation beside the
     marks is still banned here and still belongs in a sheet.
 
-    AMENDED 2026-09-19: no Greek WORD either, anywhere on either page. The
+    AMENDED 2026-09-19: no Greek WORD either, anywhere on the page. The
     levels card's caption and its sheet said "gamma" in their explanations, so
     this held the letters only and the word was held sheet by sheet (the
     chart key's, the reads page's). They went on 2026-09-19 and nothing else
-    either page carries says it, so every word in both pages' markup, their
-    accessible labels and every word the glance paints is held to it. The
-    model's own reading is the reader's gates' to judge, not this test's."""
+    the page carries says it, so every word in its markup, its accessible
+    labels and every word the glance paints is held to it. The model's own
+    reading is the reader's gates' to judge, not this test's."""
     import html as _html
     for blob in (PHONE, PAGE, GLANCE):
         assert not re.search(r"[\U0001F300-\U0001FAFF]", blob)
         assert not re.search(r"[Ͱ-Ͽ]", blob), "a Greek letter is in the phone's source"
-    for name, src in (("index.html", PHONE), ("thread.html", THREAD)):
+    for name, src in (("index.html", PHONE),):
         said = _html.unescape(re.sub(r"<[^>]+>", " ", re.sub(
             r"(?s)<style>.*?</style>|<script\b.*?</script>|<!--.*?-->", " ", src)))
         said += " " + " ".join(re.findall(r'aria-label="([^"]*)"', src))
@@ -1690,9 +1689,10 @@ def test_the_font_ships_its_licence():
 
 
 def test_the_two_phone_pages_share_one_palette():
-    """The glance and the reads page each carry their own :root block, and 25
-    tokens are declared in both. Duplicated bytes are not the risk — DRIFT is:
-    somebody darkens --i-mute on one page and the other quietly disagrees.
+    """The glance and the SPX forecast page each carry their own :root block,
+    and 25 tokens are declared in both. Duplicated bytes are not the risk —
+    DRIFT is: somebody darkens --i-mute on one page and the other quietly
+    disagrees.
 
     A shared stylesheet would cost more than it saves. This server sends
     Cache-Control: no-cache to everything that is not a content-hashed woff2,
@@ -1705,12 +1705,14 @@ def test_the_two_phone_pages_share_one_palette():
     def tokens(css):
         m = re.search(r"(?ms)^:root\{(.*?)^\}", css)
         assert m, "no :root block"
-        return dict(re.findall(r"(--[a-z0-9-]+)\s*:\s*([^;]+);", m.group(1)))
+        # a value broken over lines, or spaced after its commas, is the same value: only its words count
+        return {k: re.sub(r"\s*,\s*", ",", re.sub(r"\s+", " ", v)).strip()
+                for k, v in re.findall(r"(--[a-z0-9-]+)\s*:\s*([^;]+);", m.group(1))}
 
-    a, b = tokens(PHONE), tokens(THREAD)
+    a, b = tokens(PHONE), tokens((M / "jev-spx.html").read_text())
     shared = set(a) & set(b)
     assert len(shared) >= 20, f"the pages have stopped sharing a palette ({len(shared)} tokens)"
-    drift = {k: (a[k].strip(), b[k].strip()) for k in shared if a[k].strip() != b[k].strip()}
+    drift = {k: (a[k], b[k]) for k in shared if a[k] != b[k]}
     assert not drift, f"the two phone pages disagree about {drift}"
 
 
@@ -1726,24 +1728,24 @@ def _css_rules(html):
 
 
 def test_the_two_phone_pages_draw_one_sheet():
-    """Both pages open an explainer sheet: the glance's on how to read the
-    chart, the reads page's on faster, steady and slower (2026-09-18). What a
-    sheet does is one script, sheet.js, and the open one is the one it has
-    unhidden, so a page could carry two without a second copy of anything;
-    the glance did, until its levels sheet went on 2026-09-19. What it looks
-    like is one set of rules held in two stylesheets, for the palette's reason
-    above: a shared stylesheet would be a render-blocking re-fetch in full on
-    every open of both pages.
+    """Both pages open sheets: the glance's on how to read the chart, the SPX
+    forecast page's on a call's result, on how to read the page, on Claude's
+    read and on the questions. What a sheet does is one script, sheet.js, and
+    the open one is the one it has unhidden, so a page can carry several
+    without a second copy of anything; the glance carried two, until its
+    levels sheet went on 2026-09-19. What it looks like is one set of rules
+    held in two stylesheets, for the palette's reason above: a shared
+    stylesheet would be a render-blocking re-fetch in full on every open of
+    both pages.
 
     So every sheet rule the two pages both carry must be the same rule, and
     the core of it must be on both — the sheet capped at 86% of the measured
     height and scrolling, not clipping, past it; not selectable; its head, its
     caveat and the one close button. Each page keeps what only it needs: the
     glance its key's rows and, since 2026-09-19, its chart full screen (a
-    sheet with its shape overridden, .sheet.full); the reads page its items
-    (the glance's went with the levels sheet), its figure and its sources
-    line."""
-    a, b = _css_rules(PHONE), _css_rules(THREAD)
+    sheet with its shape overridden, .sheet.full); the forecast page its
+    questions sheet (.sheet.qs) and the rows of a call's result."""
+    a, b = _css_rules(PHONE), _css_rules((M / "jev-spx.html").read_text())
     core = {".scrim", ".sheet", "body.sheet-open .scrim", '.sheet[aria-hidden="false"]', ".sh-grab",
             ".sh-h", ".sh-caveat", ".sh-caveat b", ".sh-close",
             ".sh-close:focus-visible", '.sheet,.sheet[aria-hidden="false"]'}
@@ -1753,13 +1755,11 @@ def test_the_two_phone_pages_draw_one_sheet():
     assert not drift, f"the two sheets are drawn differently: {drift}"
     assert "max-height:calc(var(--app-h)*.86);overflow-y:auto" in b[".sheet"]
     assert "user-select:none" in b[".sheet"]
-    # the JEV tab's call sheet (2026-09-26) is the same sheet, on the SNDK page and the SPX page alike:
-    # every core rule each carries is the reads page's
-    for page in ("jev.html", "jev-spx.html"):
-        j = _css_rules((M / page).read_text())
-        assert core <= set(j), (page, core - set(j))
-        drift = {s: (j[s], b[s]) for s in core if j[s] != b[s]}
-        assert not drift, f"{page}'s sheet is drawn differently: {drift}"
+    # the SNDK JEV card's call sheet (2026-09-26) is the same sheet: every core rule it carries is the SPX page's
+    j = _css_rules((M / "jev.html").read_text())
+    assert core <= set(j), core - set(j)
+    drift = {s: (j[s], b[s]) for s in core if j[s] != b[s]}
+    assert not drift, f"jev.html's sheet is drawn differently: {drift}"
 
 
 def test_the_sheet_text_cannot_start_a_selection():
@@ -1780,7 +1780,7 @@ def test_a_drag_inside_the_sheet_cannot_reload_the_page():
     the reader. The page tells the shell it is not at the top while the sheet
     is open, and keeps the answer true afterwards on every scroll. Since
     2026-09-18 that is sheet.js's, the one copy both pages' sheets run on
-    (test_phone_reads drives it on the reads page).
+    (test_phone_jev_spx drives it on the SPX forecast page).
 
     2026-09-19: the chart full screen is the reason this matters twice. It
     covers the page and it is a screen a reader drags a finger over, so the
@@ -5523,145 +5523,6 @@ def test_the_ladder_is_laid_out_on_the_cards_own_width():
     assert len(rows) == len(_page(_board(_BOARD_1511, width=311))["acAbove"]["kids"]) + 1
     assert _css_rule(".ac-rows.top") == "margin-top:18px"
     assert _css_rule(".ac-rows.top.lift") == "margin-top:0"
-
-
-# --- the reads page's explainer: what faster, steady and slower mean ---------
-# Static markup on thread.html, working one real strike. Every figure in it is
-# typed, so each is recomputed here by the code that prints the words it
-# explains, and every word goes through the station's gates.
-
-def _reads_sheet():
-    """The reads page's sheet as a reader sees it: the title, each item's
-    paragraphs and the value beside its term, the figure's words and its
-    label, the caveat, the sources line, the close button, and the label of
-    the button that opens it."""
-    import html as _html
-
-    def txt(s):
-        return re.sub(r"\s+", " ", _html.unescape(re.sub(r"<[^>]+>", " ", s))).strip()
-    block = THREAD.split('<div class="sheet" id="sheet"')[1].split("\n</div>\n")[0]
-    items = {}
-    for item in re.findall(r'(?s)<div class="sh-item">(.*?)\n  </div>', block):
-        term = re.search(r"<b>(.*?)</b>(?:<span>(.*?)</span>)?", item)
-        items[term.group(1)] = {"value": term.group(2),
-                                "paras": [txt(p) for p in re.findall(r"(?s)<p>(.*?)</p>", item)]}
-    fig = re.search(r'(?s)<div class="sh-fig".*?\n    </div>', block).group(0)
-    return {"title": txt(re.search(r'id="shTitle">(.*?)</div>', block).group(1)),
-            "items": items,
-            "figure": [txt(t) for _, t in re.findall(r"<([sb])>(.*?)</\1>", fig)],
-            "figure_label": re.search(r'aria-label="([^"]*)"', fig).group(1),
-            "caveat": txt(re.search(r'(?s)<div class="sh-caveat">(.*?)</div>', block).group(1)),
-            "src": txt(re.search(r'(?s)<p class="sh-src">(.*?)</p>', block).group(1)),
-            "close": txt(re.search(r'(?s)<button class="sh-close"[^>]*>(.*?)</button>', block).group(1)),
-            "button": txt(re.search(r'(?s)<button class="why".*?<s>(.*?)</s>', THREAD).group(1))}
-
-
-# 1,530 on 2026-09-16 at the two scans either side of the day's first pace
-# word, as the station built them: at 10:01 the day had had 7 tallies, and its
-# 8th came at 10:03.
-_FIRST_WORD_0916 = {
-    "10:01": ([411, 453, 236, 221, 263, 157],
-              ["09:34", "09:38", "09:43", "09:47", "09:51", "09:55", "09:59"]),
-    "10:03": ([411, 453, 236, 221, 263, 157, 128],
-              ["09:34", "09:38", "09:43", "09:47", "09:51", "09:55", "09:59", "10:03"]),
-}
-
-
-def test_the_reads_page_sheet_works_the_example_the_code_computes():
-    """The sheet on the reads page answers "faster at what?" on one real
-    strike, and every figure in it is typed into static markup. So each is
-    recomputed here, off the 2026-09-16 15:11 board, by the functions that
-    print the words it explains, and the markup has to say what they return.
-
-    1,530 traded 746 contracts in the 29 minutes to 14:51 and 609 in the 17
-    after: 25.7 a minute, then 35.8, 1.39 times, faster. It had traded 7,456
-    against the 1,543 standing at the last close: 4.8×. The earlier bar is
-    71.81% of the later. The sources line names the split and the thresholds
-    pace() uses. And the first marks that day came with its 8th tally, at
-    10:03, not at 10:04, which was the model's reading of that scan: at 10:01
-    no series was long enough for a word, and at 10:03 1,530's was."""
-    sheet = _reads_sheet()
-    rows = {r["strike"]: r for r in _BOARD_1511["strikes"]["rows"]}
-    got = _glance("""const t = g.turnover(D.row);
-      console.log(JSON.stringify({p: g.pace(D.row.vol_added_per_book, D.bt), x: g.gTimes(t.mult),
-                                  first: D.first.map(([s, b]) => g.pace(s, b))}));""",
-                  {"row": rows[1530], "bt": _BOARD_1511["frames"]["book_times"],
-                   "first": list(_FIRST_WORD_0916.values())})
-    p, x = got["p"], got["x"]
-    before, now = round(p["before"]), round(p["now"])
-    assert (before, now, p["word"], x) == (26, 36, "faster", "4.8×")        # what the ladder printed
-    assert sheet["items"]["Strike 1,530, 16 September"]["paras"] == [
-        f"Earlier that afternoon about {before} contracts a minute changed hands there. Over the last "
-        f"stretch, {now} — {p['now'] / p['before']:.1f} times as much, so it read {p['word']}."]
-    assert sheet["figure"] == ["earlier that afternoon", f"{before} a minute", "the last stretch", f"{now} a minute"]
-    assert f"{before} contracts a minute" in sheet["figure_label"] and f"{now} a minute" in sheet["figure_label"]
-    was = re.search(r"--was:([\d.]+)%", _css_rules(THREAD)[".sh-fig"]).group(1)
-    assert float(was) == pytest.approx(p["before"] / p["now"] * 100, abs=0.005)
-    assert sheet["items"]["The number beside it"]["value"] == x
-
-    recent, least, fast, slow = re.search(
-        r"const PACE_RECENT=(\d+), PACE_MIN=(\d+), PACE_FLOOR=\d+, PACE_FAST=([\d.]+), PACE_SLOW=([\d.]+);",
-        GLANCE).groups()
-    recent, least = int(recent), int(least)
-    stretches = len(_BOARD_1511["frames"]["book_times"]) - 1
-    assert (f"the last {recent} tallies against the {stretches - recent} before them, at least "
-            f"{['one', 'two', 'three', 'four'][least - 1]} each side. {fast} times up reads faster, "
-            f"{slow} and under slower.") in sheet["src"]
-    assert "Figures above: strike 1,530 at 15:11 on 16 September 2026." in sheet["src"]
-
-    (early, times), (_, first_times) = _FIRST_WORD_0916.values()
-    assert len(times) - 1 < recent + least <= len(first_times) - 1      # stretches: too few, then enough
-    assert got["first"][0] is None and got["first"][1]["word"]
-    assert (f"On 16 September the first marks appeared at {first_times[-1]}."
-            in sheet["items"]["When nothing is marked"]["paras"][0])
-
-
-def test_every_word_on_the_reads_page_sheet_passes_the_laws():
-    """The sheet explains a word that sits beside a strike price, which is
-    exactly where a reader takes speed for a claim about price. So every
-    string on it, and on the button that opens it, goes through the station's
-    own gates: the reader's _BANNED_RE (forecast, causal and judgement words
-    and their inflections — "which way the price will move" failed it on
-    "will", and the sheet says "moves"), its position gate, the sheets'
-    denylist, no dealer and nothing a dealer does, no Greek letter or Greek
-    word, nothing that reaches forward, and no frequency: "About one strike in
-    three." was cut because three counts of it gave 19%, 31% and 41%.
-
-    Not the half-hour card's options or rate gates: this sheet exists to teach
-    what a strike is, and its figures are rates."""
-    R = _reader()
-    s = _reads_sheet()
-    words = [s["title"], s["figure_label"], s["caveat"], s["src"], s["close"], s["button"], *s["figure"]]
-    for term, item in s["items"].items():
-        words += [term, *item["paras"]] + ([item["value"]] if item["value"] else [])
-    assert len(s["items"]) == 5 and s["caveat"].startswith("Busier, not going anywhere.")
-    often = re.compile(r"(?i)\b(?:one|two|three|four|\d+) (?:\w+ )?in (?:two|three|four|five|ten|\d+)\b"
-                       r"|%|\bout of\b|\bper ?cent\b")
-    for w in words:
-        assert not R._BANNED_RE.search(w), f"{w!r} trips the reader's word gate"
-        assert not R._POS_RE.search(w), f"{w!r} places price against a number"
-        assert not any(d in w.lower() for d in _SHEET_CLAIMS), f"{w!r} makes a claim the sheet may not"
-        assert not _DEALER.search(w), f"{w!r} speaks of dealers"
-        assert not _GREEK_WORD.search(w) and not _EMOJI_OR_GREEK.search(w), f"{w!r} puts Greek on the surface"
-        assert not _AHEAD.search(w), f"{w!r} reaches forward"
-        assert not often.search(w), f"{w!r} claims how often"
-
-
-def test_nothing_on_the_reads_page_sheet_is_drawn_in_the_price_colour():
-    """Blue is price on these screens and nothing else, and a reader arrives
-    at this sheet from a page where it is. A pace is not a price, so the sheet
-    and its figure carry emphasis by value, weight and position: the earlier
-    stretch in --rule-soft, the later in --i, the cut in the card itself. The
-    only blue that can appear is the keyboard focus ring every control on both
-    pages draws, which a finger never brings up."""
-    price = re.compile(r"(?i)--px-|#2F44B8|#5470E4|#E2E4F5")
-    sheet = {s: d for s, d in _css_rules(THREAD).items() if re.search(r"\.sheet|\.sh-|\.scrim", s)}
-    painted = {s: d for s, d in sheet.items() if ":focus-visible" not in s and price.search(d)}
-    assert not painted, f"the sheet is drawn in the price colour: {painted}"
-    assert "background:var(--rule-soft)" in sheet[".sh-fig .was i"]
-    assert "background:var(--i)" in sheet[".sh-fig .now::before,.sh-fig .now::after"]
-    block = THREAD.split('<div class="sheet" id="sheet"')[1].split("\n</div>\n")[0]
-    assert not price.search(block) and "style=" not in block and 'class="n"' not in block
 
 
 # --- THE LAST HALF HOUR, and apart from it the record ------------------------

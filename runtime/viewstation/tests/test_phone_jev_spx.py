@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import subprocess
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -750,12 +751,11 @@ def test_the_forecast_tab_is_drawn_alike_on_every_page():
     """Will, 2026-10-09: the third tab is Forecast, its icon the price so far and a dashed cone of where it may go, in
     place of JEV Beta and its scales; the same on every page that carries the bar, lit only on the two forecast pages."""
     icon = re.compile(r'(?s)<svg[^>]*><path d="M3 17l3.5-3.5 3 2L13 12"/>.*?</svg>\s*<s>FORECAST</s>')
-    for page in ("index.html", "thread.html", "reads.html", "jev.html", "jev-spx.html"):
+    for page in ("index.html", "reads.html", "jev.html", "jev-spx.html"):
         html = (M / page).read_text()
         nav = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', html).group(1)
         assert len(icon.findall(nav)) == 1 and "BETA" not in nav and "M12 4v16" not in nav, page
         assert ".tab s em.beta" not in html, page                     # the tab's beta chip rule went with it
-    assert 'href="/m/jev.html" aria-label="Forecast"' in (M / "thread.html").read_text()
 
 
 # ---- recovering from a failed fetch
@@ -2439,3 +2439,220 @@ def test_the_banner_fits_the_owners_360px_phone():
     for part in ("14 options questions blank ·", "call uses the other 65 ·", "provider issue, not ours"):
         assert _OD_W[part] <= inner, part
     assert "nowrap" not in _rule(".od") + _rule(".od-1") + _rule(".od-2")
+
+
+# ---- the sheets: sheet.js on this page's real markup
+
+# Everything after a sheet opens is sheet.js, one copy for every phone page. It was held on the SNDK reads page
+# until that page went (2026-10-10); this page is where it is held now, driven against the page's own markup: the
+# info sheet, opened by the page's own wiring of its button, and closed the one way whatever closed it.
+
+class _Body(HTMLParser):
+    """<body> as [tag, attrs, children], text as strings, scripts and styles left out: the page's own elements,
+    so a stand-in DOM can hold them where the markup puts them."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.root = ["body", {}, []]
+        self.open, self.skip = [self.root], 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("script", "style"):
+            self.skip += 1
+        elif not self.skip:
+            node = [tag, {k: v or "" for k, v in attrs}, []]
+            self.open[-1][2].append(node)
+            self.open.append(node)
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style"):
+            self.skip -= 1
+        elif not self.skip and len(self.open) > 1:
+            self.open.pop()
+
+    def handle_data(self, data):
+        if not self.skip and data.strip():
+            self.open[-1][2].append(data)
+
+
+def _body_tree():
+    p = _Body()
+    p.feed(re.split(r"(?m)^<body>$", SPX, maxsplit=1)[1].rsplit("</body>", 1)[0])
+    return p.root
+
+
+# the page's own wiring of the info button, lifted as the functions above are
+_INFO_BUTTON = re.search(r"\n  var infoBtn = document\.getElementById\('infoBtn'\);\n"
+                         r"  infoBtn\.addEventListener\('click', [^\n]*\);", SPX).group(0)
+
+_SHEET_HARNESS = r"""
+const fs = require('fs'), vm = require('vm');
+const IN = JSON.parse(fs.readFileSync(0, 'utf8'));
+let clock = 1e6, timers = [], nextId = 1;
+const RealDate = Date;
+function FakeDate(...a){ return a.length ? new RealDate(...a) : new RealDate(clock); }
+FakeDate.now = () => clock;
+FakeDate.parse = RealDate.parse;
+FakeDate.prototype = RealDate.prototype;
+function setTimeout_(fn, ms){ timers.push({id: nextId, at: clock + (ms || 0), fn}); return nextId++; }
+function advance(ms){
+  const end = clock + ms;
+  for(;;){
+    timers.sort((a, b) => a.at - b.at);
+    const t = timers[0];
+    if(!t || t.at > end) break;
+    timers.shift(); clock = t.at; t.fn();
+  }
+  clock = end;
+}
+
+// Each element knows its parent, so closest() can walk up from a tap's target as in a browser.
+function mk(tag, attrs){
+  const cl = new Set(String(attrs.class || '').split(/\s+/).filter(Boolean)), heard = {};
+  return {
+    tag, attrs: Object.assign({}, attrs), parent: null, children: [], _text: '',
+    dataset: {}, value: '', hidden: 'hidden' in attrs,
+    classList: {add: (...c) => c.forEach(x => cl.add(x)), remove: (...c) => c.forEach(x => cl.delete(x)),
+                contains: c => cl.has(c)},
+    get className(){ return [...cl].join(' '); },
+    set className(v){ cl.clear(); String(v).split(/\s+/).filter(Boolean).forEach(x => cl.add(x)); },
+    get textContent(){ return this._text + this.children.map(c => c.textContent).join(''); },
+    set textContent(v){ this.children.forEach(c => { c.parent = null; }); this.children = []; this._text = String(v); },
+    append(...cs){
+      for(const c of cs){
+        if(c.parent) c.parent.children = c.parent.children.filter(x => x !== c);
+        c.parent = this; this.children.push(c);
+      }
+    },
+    setAttribute(k, v){ this.attrs[k] = String(v); },
+    getAttribute(k){ return k in this.attrs ? this.attrs[k] : null; },
+    hasAttribute(k){ return k in this.attrs; },
+    addEventListener(t, f){ (heard[t] = heard[t] || []).push(f); },
+    fire(t, e){ (heard[t] || []).forEach(f => f(e)); },
+    focus(){ document.activeElement = this; },
+    matches(sel){
+      return sel.split(',').map(s => s.trim()).some(s =>
+        s[0] === '#' ? this.attrs.id === s.slice(1) : s[0] === '.' ? cl.has(s.slice(1))
+        : s[0] === '[' ? s.slice(1, -1) in this.attrs : this.tag === s);
+    },
+    closest(sel){ for(let x = this; x && x.matches; x = x.parent) if(x.matches(sel)) return x; return null; },
+    querySelector(sel){
+      for(const c of this.children){
+        if(c.matches && c.matches(sel)) return c;
+        const f = c.querySelector && c.querySelector(sel);
+        if(f) return f;
+      }
+      return null;
+    },
+  };
+}
+const text = t => ({parent: null, children: [], _text: String(t), get textContent(){ return this._text; }});
+function build([tag, attrs, kids]){
+  const n = mk(tag, attrs);
+  n.append(...kids.map(k => typeof k === 'string' ? text(k) : build(k)));
+  return n;
+}
+const body = build(IN.tree);
+function find(n, id){
+  if(n.attrs && n.attrs.id === id) return n;
+  for(const c of n.children){ const f = find(c, id); if(f) return f; }
+  return null;
+}
+const docL = {}, winL = {};
+const on = bag => (t, f) => { (bag[t] = bag[t] || []).push(f); };
+const document = {
+  body, activeElement: null, visibilityState: 'visible', addEventListener: on(docL),
+  getElementById: id => find(body, id), createElement: tag => mk(tag, {}), createTextNode: text,
+};
+// a click as a browser delivers it: the target and its ancestors, then the document
+function click(n){
+  const e = {type: 'click', target: n};
+  for(let x = n; x; x = x.parent) if(x.fire) x.fire('click', e);
+  (docL.click || []).forEach(f => f(e));
+}
+const key = k => (docL.keydown || []).forEach(f => f({key: k, target: document.activeElement}));
+const scroll = y => { ctx.scrollY = y; (winL.scroll || []).forEach(f => f({})); };
+const shell = [];
+let pushes = 0, backs = 0;
+const history = {
+  state: null,
+  pushState(s){ this.state = s; pushes++; },
+  back(){ backs++; setTimeout_(() => { history.state = null; (winL.popstate || []).forEach(f => f({})); }, 10); },
+};
+const ctx = {document, history, Date: FakeDate, setTimeout: setTimeout_, clearTimeout(){},
+             setInterval: () => 0, navigator: {}, scrollY: 0, scrollTo(x, y){ ctx.scrollY = y; },
+             MiraiShell: {atTop: v => shell.push(v)}};
+ctx.window = ctx;
+ctx.addEventListener = on(winL);
+vm.createContext(ctx);
+const run = code => vm.runInContext(code, ctx);
+run(fs.readFileSync(__SHEET__, 'utf8'));
+run(IN.wiring);
+
+const isOpen = () => body.classList.contains('sheet-open');
+const focused = () => document.activeElement && (document.activeElement.attrs.id || document.activeElement.attrs.class);
+console.log(JSON.stringify((() => { __STEPS__ })()));
+"""
+
+
+def _sheets(steps):
+    """Run sheet.js and the page's wiring of its info button in node against a DOM built from the page's real
+    markup, a fake clock, a fake history and a shell that records what it is told, and return what ``steps``
+    returns. In scope: body, document, run(code), advance(ms), click(node), key(name), scroll(y), isOpen(),
+    focused() (the id, or failing that the class, of the element with the focus), shell (every MiraiShell.atTop
+    answer), pushes and backs. Skips when node is not installed."""
+    if not _NODE:
+        pytest.skip("node is not installed")
+    script = (_SHEET_HARNESS.replace("__SHEET__", json.dumps(str(M / "sheet.js"))).replace("__STEPS__", steps))
+    out = subprocess.run([_NODE, "-e", script], input=json.dumps({"tree": _body_tree(), "wiring": _INFO_BUTTON}),
+                         capture_output=True, text=True, timeout=20)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
+
+
+def test_a_sheet_opens_on_a_tap_and_closes_the_one_way_whatever_closed_it():
+    """A tap on the info button opens its sheet, the one the button names in aria-controls, and a second tap while
+    it is open pushes no second history entry. Everything after that is sheet.js: a history entry, so the phone's
+    back gesture closes the sheet instead of leaving the page; one way to close whatever closed it — the backdrop,
+    Close, Escape, Back — and a double tap goes back once; a tap on the backdrop in the first half second is the
+    ghost of the tap that opened it and is ignored; the focus goes to the close button and comes back to the
+    button that opened it.
+
+    And the shell. The page scrolls the document, so it says nothing to the shell until a sheet first opens. From
+    then on it keeps the answer true on every scroll: not at the top while the sheet is open, so a drag in the
+    sheet is not a pull that reloads the page, and the page's real position once it closes."""
+    button = re.search(r'<button class="vq info" id="infoBtn"[^>]*>', SPX).group(0)
+    assert 'type="button"' in button and 'aria-controls="infoSheet"' in button
+    got = _sheets("""
+      const btn = document.getElementById('infoBtn'), sheet = document.getElementById('infoSheet');
+      const scrim = body.children.find(c => c.attrs && c.attrs.class === 'scrim');
+      scroll(40); scroll(0);
+      const silent = shell.length;
+      click(btn);
+      const opened = {open: isOpen(), hidden: sheet.getAttribute('aria-hidden'), focus: focused(), pushes, shell: shell.slice()};
+      click(btn);
+      const again = pushes;
+      click(scrim);
+      const ghost = isOpen();
+      advance(600);
+      click(scrim); click(scrim);
+      advance(50);
+      const closed = {open: isOpen(), hidden: sheet.getAttribute('aria-hidden'), focus: focused(), backs, shell: shell.slice()};
+      click(btn); advance(600); key('Escape'); key('Escape'); advance(50);
+      const escaped = {open: isOpen(), backs};
+      click(btn); advance(600); click(sheet.querySelector('.sh-close')); advance(50);
+      const closeButton = {open: isOpen(), backs};
+      click(btn); history.back(); advance(50);
+      const back = isOpen();
+      scroll(120); scroll(0);
+      return {silent, opened, again, ghost, closed, escaped, closeButton, back, after: shell.slice(-2)};""")
+    assert got["silent"] == 0, "the page speaks to the shell before any sheet has opened"
+    assert got["opened"] == {"open": True, "hidden": "false", "focus": "sh-close", "pushes": 1, "shell": [False]}
+    assert got["again"] == 1, "a tap on the button while its sheet is open pushed a second history entry"
+    assert got["ghost"] is True, "the ghost of the opening tap closed the sheet"
+    assert got["closed"] == {"open": False, "hidden": "true", "focus": "infoBtn", "backs": 1,
+                             "shell": [False, True]}, "a double tap went back twice, or the sheet stayed open"
+    assert got["escaped"] == {"open": False, "backs": 2}
+    assert got["closeButton"] == {"open": False, "backs": 3}
+    assert got["back"] is False, "the phone's back gesture left the sheet open"
+    assert got["after"] == [False, True], "the shell was told once and then left with a stale answer"

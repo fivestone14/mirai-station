@@ -40,7 +40,6 @@ import pytest
 
 M = Path(__file__).resolve().parents[1] / "static" / "m"
 PHONE = (M / "index.html").read_text()
-THREAD = (M / "thread.html").read_text()
 PAGE = (M / "page.js").read_text()
 
 
@@ -108,8 +107,6 @@ def test_the_reading_is_never_clamped():
     assert rd is not None
     assert "line-clamp" not in rd, "the reading is clamped again"
     assert "16px" in rd, "the reading is no longer at its measured size"
-    said = _rule(".said", THREAD)          # the history's copy of the same rule
-    assert said is not None and "line-clamp" not in said
 
 
 def test_the_svg_is_sized_by_attribute_not_by_percentage():
@@ -573,7 +570,7 @@ def _css_code(html):
 
 
 def test_no_phone_page_reads_a_viewport_unit():
-    for name, html in (("index.html", PHONE), ("thread.html", THREAD), ("jev.html", (M / "jev.html").read_text()),
+    for name, html in (("index.html", PHONE), ("jev.html", (M / "jev.html").read_text()),
                        ("jev-spx.html", (M / "jev-spx.html").read_text())):
         css = _css_code(html)
         found = _UNIT.findall(css)
@@ -595,13 +592,14 @@ def _measure_script(html):
 
 
 def test_both_pages_measure_the_height_before_anything_paints():
-    """The same script, as the first thing in <body>, on both pages — kept as
-    two copies for the same reason the palette is (a shared file is a full
-    re-fetch on every open over the tunnel), so the copies are pinned equal."""
-    a, b, j = _measure_script(PHONE), _measure_script(THREAD), _measure_script((M / "jev.html").read_text())
+    """The same script, as the first thing in <body>, on every page with a
+    height token — kept as copies for the same reason the palette is (a shared
+    file is a full re-fetch on every open over the tunnel), so the copies are
+    pinned equal."""
+    a, j = _measure_script(PHONE), _measure_script((M / "jev.html").read_text())
     x = _measure_script((M / "jev-spx.html").read_text())
-    assert a and b and j and x, "a page has lost the script at the top of <body>"
-    assert a == b == j == x, "the phone pages measure the height differently"
+    assert a and j and x, "a page has lost the script at the top of <body>"
+    assert a == j == x, "the phone pages measure the height differently"
     for need in ("window.innerHeight", "setProperty('--app-h'", "'resize'",
                  "'orientationchange'", "visualViewport"):
         assert need in a, need
@@ -617,47 +615,6 @@ def test_the_shell_gives_the_webview_a_real_height():
                      r"\s*ViewGroup\.LayoutParams\.MATCH_PARENT\)\)", code), \
         "the WebView is added without MATCH_PARENT params"
     assert "addView(web)" not in code
-
-
-# --- the reads page's explainer button (2026-09-18) --------------------------
-# Measured in WebKit off the shipped face on the real page: the label at
-# 13px/700 and the chevron at 17px/400. The balanced two-line label at 320 is
-# "What faster, steady" over "and slower mean", the longer 123.78.
-_WHY_W = {"What faster, steady and slower mean": 232.32, "›": 5.11, "balanced": 123.78}
-
-
-def _why_room(phone):
-    """The label's room on the button: the page less the margins, the padding,
-    the ring, the two gaps and the chevron."""
-    why = _rule(".why", THREAD).replace(" ", "")
-    assert "width:calc(100%-32px);margin:4px16px12px;padding:016px015px" in why, why
-    return (phone - 32 - 16 - 15 - _px(".why i", "width", THREAD) - 2 * _px(".why", "gap", THREAD)
-            - _WHY_W["›"])
-
-
-@pytest.mark.parametrize("phone", [343, 360, 375, 390, 412])
-def test_the_explainer_button_keeps_its_label_on_one_line(phone):
-    """The button under the reads page's header says what it opens on one
-    line from a 343px phone up, the owner's 360px Galaxy included: 232.32 of
-    text in 249.89 there, 264.89 at 375. A <button> shrinks to its content
-    whatever its display, so its width is set: the page less its 16px
-    margins. Measured in WebKit at 320, 360, 375 and 412: the button 48 tall,
-    nothing past the page's 16px gutter, nothing touching."""
-    assert "font:700 13px/1" in _rule(".why", THREAD) and "font:400 17px/1" in _rule(".why span", THREAD)
-    assert "height:var(--tap-min)" in _rule(".why", THREAD)
-    assert _WHY_W["What faster, steady and slower mean"] <= _why_room(phone)
-
-
-def test_a_narrower_phone_gives_the_explainer_label_two_even_lines():
-    """Under 343px the label wraps rather than running under the chevron, and
-    it wraps evenly: at 320 "What faster, steady" over "and slower mean", not
-    "mean" alone. Two lines at 1.25 are 32.5px, inside the button's 48."""
-    lab = _rule(".why s", THREAD).replace(" ", "")
-    assert _WHY_W["What faster, steady and slower mean"] > _why_room(342)
-    assert "min-width:0" in lab and "white-space" not in lab and "text-wrap:balance" in lab
-    assert _WHY_W["balanced"] <= _why_room(320)
-    line = float(re.search(r"line-height:([\d.]+)", lab).group(1)) * 13
-    assert 2 * line <= 48
 
 
 # --- the chart's key, behind a link under the chart (2026-09-18) --------------
@@ -1015,13 +972,11 @@ def test_what_the_script_hides_stays_hidden():
     … AGO" line stayed under the price after the price came back. So every
     element a page's script hides, whose own rule sets a display, carries a
     [hidden] rule that takes it back to none."""
-    thread_js = "\n".join(re.findall(r"(?s)<script>(.*?)</script>", THREAD))
     jev_html = (M / "jev.html").read_text()
     jev_js = "\n".join(re.findall(r"(?s)<script>(.*?)</script>", jev_html))
     spx_html = (M / "jev-spx.html").read_text()
     spx_js = "\n".join(re.findall(r"(?s)<script>(.*?)</script>", spx_html))
     for name, html, js, need in (("index.html", PHONE, PAGE, {"chg", "lastscan", "load", "hh"}),
-                                 ("thread.html", THREAD, thread_js, {"load"}),
                                  ("jev.html", jev_html, jev_js, {"load", "poll"}),
                                  ("jev-spx.html", spx_html, spx_js, {"load", "poll"})):
         hidden = _hidden_by_script(html, js)

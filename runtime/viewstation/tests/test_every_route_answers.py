@@ -24,7 +24,6 @@ from datetime import datetime, timedelta
 
 import pytest
 
-import pipeline
 import server
 import snapshot
 import gex_polarity_ab      # on sys.path once snapshot is imported
@@ -32,7 +31,6 @@ import lefteye_fetcher
 
 DAY = "2026-08-19"
 UNLOCK = "user=will"
-_ISO_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 # address -> the file under static/ it must serve
 PAGES = {"/": "index.html", "/index.html": "index.html",
@@ -40,8 +38,6 @@ PAGES = {"/": "index.html", "/index.html": "index.html",
 
 # route -> the query string it is called with
 OPEN_JSON = {
-    "/api/snapshot": "",
-    "/api/pipeline": "",
     "/api/spot": "ticker=SNDK",
     "/api/replay": f"day={DAY}",
     "/api/lob/days": "ticker=SNDK",
@@ -51,8 +47,6 @@ OPEN_JSON = {
     "/api/health": "",
     "/api/version": "",
     "/api/whoami": "",
-    "/api/sndk/thread": "",
-    "/api/sndk/thread/days": "",
 }
 LOCKED_JSON = {
     "/api/_access": "",
@@ -83,16 +77,14 @@ def state(tmp_path, monkeypatch):
     root = tmp_path / "state"
     root.mkdir()
     # The station has no single state root. Every SNDK reader (sndk_read,
-    # snapshot's own, the pipeline map and the raw explorer) takes
-    # MIRAI_STATE_DIR per call; snapshot's SPX session finder and spot tape, the
-    # SPX modules and book_flow derive theirs from where their file sits.
+    # snapshot's own and the raw explorer) takes MIRAI_STATE_DIR per call;
+    # snapshot's spot tape, the SPX modules and book_flow derive theirs from
+    # where their file sits.
     monkeypatch.setenv("MIRAI_STATE_DIR", str(root))
-    monkeypatch.setattr(snapshot, "REVERSION_DIR", root / "reversion")
     monkeypatch.setattr(snapshot, "_TAPE_DIR", root / "sndk_tape")
     skill_dir = tmp_path / "skills" / "mirai-left-eye"     # their state is SKILL_DIR.parent.parent / "state"
     monkeypatch.setattr(snapshot.rev, "SKILL_DIR", skill_dir)
     monkeypatch.setattr(gex_polarity_ab, "SKILL_DIR", skill_dir)
-    monkeypatch.setattr(snapshot.dash, "STATE_DIR", root)
     flow = server._book_flow()
     monkeypatch.setattr(flow, "STATE", root)
     monkeypatch.setattr(flow, "CACHE_DIR", root / "flow" / "boards")
@@ -103,7 +95,6 @@ def state(tmp_path, monkeypatch):
     # the broker is unreachable, which /api/spot answers with a null spot by contract
     monkeypatch.setattr(lefteye_fetcher, "live_spot", lambda ticker: None)
     monkeypatch.setattr(snapshot, "_SPOT_CACHE", {"ts": 0.0, "val": None, "src": None})
-    monkeypatch.setattr(server, "_cache", {"ts": 0.0, "data": None})
     monkeypatch.setattr(server, "_PAYLOAD_USER", "will")
     return root
 
@@ -158,17 +149,6 @@ def session(state):
     """DAY, recorded in the state dir every route is pointed at."""
     _record_session(state, DAY)
     return state
-
-
-def _map_files(state, day):
-    """A file named for `day` under each state folder the pipeline map searches."""
-    for rel in ("gex_fills/{day}.json", "reversion/polarity-{day}.json"):
-        path = state / rel.format(day=day)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("{}")
-    for rel in ("reversion/{day}.jsonl", "market_expectation/learning-{day}.jsonl",
-                "logs/watch-pushes-{day}.jsonl"):
-        _write_jsonl(state / rel.format(day=day), [{"ts": f"{day}T10:00:00-04:00"}])
 
 
 def _path(route, *queries):
@@ -243,7 +223,7 @@ def test_every_page_address_serves_html(station, route):
 
 @pytest.mark.parametrize("route", list(OPEN_JSON))
 def test_every_open_data_route_answers_cleanly_on_a_recorded_session(station, session, route):
-    """On a healthy recorded session every open data route, the phone's unlocked thread included, answers 200 JSON with no error and no trace."""
+    """On a healthy recorded session every open data route answers 200 JSON with no error and no trace."""
     _clean_json(*_get(station, _path(route, OPEN_JSON[route])), route)
 
 
@@ -266,56 +246,9 @@ def test_every_locked_route_answers_cleanly_once_unlocked(station, session, rout
 
 def test_every_day_picker_lists_the_recorded_session(station, session):
     """A recorded session is offered by every day picker that reads it, so the page can open it."""
-    for route, query in (("/api/sndk/pipeline/days", UNLOCK), ("/api/sndk/thread/days", ""),
-                         ("/api/lob/days", "ticker=SNDK")):
+    for route, query in (("/api/sndk/pipeline/days", UNLOCK), ("/api/lob/days", "ticker=SNDK")):
         doc = _clean_json(*_get(station, _path(route, query)), route)
         assert DAY in doc["days"], f"{route} does not offer the recorded session: {doc['days']}"
-
-
-def test_the_snapshot_is_really_built_not_its_fallbacks(station, session):
-    """/api/snapshot is build_snapshot's full document; no section is swapped for the fallback that keeps a broken one from sinking the page."""
-    snap = _clean_json(*_get(station, "/api/snapshot"), "/api/snapshot")
-    assert {"generated_at", "session_date", "is_stale", "market_phase", "telemetry_rows",
-            "today", "ult", "series", "official_markdown"} <= set(snap)
-    assert isinstance(snap["is_stale"], bool) and isinstance(snap["telemetry_rows"], int)
-    # each fallback is smaller than the section it stands in for:
-    # {} for today, {"ticker": tk} for a ticker, an empty summary for the paper record
-    assert {"scoreboard", "mood", "watchers"} <= set(snap["today"])
-    assert {"tickers", "paper", "dials"} <= set(snap["ult"])
-    tickers = snap["ult"]["tickers"]
-    assert tickers and set(snap["series"]) == set(tickers)
-    for tk, block in tickers.items():
-        assert {"dealer_map", "status", "gex", "reversion", "counts"} <= set(block), tk
-        assert isinstance(snap["series"][tk], list), tk
-    assert snap["ult"]["paper"]["summary"], "the paper record fell back to an empty summary"
-    assert set(snap["official_markdown"]) == {"today", "ult"}
-    for view, md in snap["official_markdown"].items():
-        assert isinstance(md, str) and md.strip(), f"the {view} markdown fell back to empty"
-
-
-def test_the_pipeline_map_is_really_built(station, session):
-    """/api/pipeline is build_pipeline's stage map: stages of modules, each pointing at data the raw explorer opens from the same state folder."""
-    _map_files(session, DAY)
-    stages = _clean_json(*_get(station, "/api/pipeline"), "/api/pipeline")["stages"]
-    assert isinstance(stages, list) and stages
-    ids = [s["id"] for s in stages]
-    assert len(ids) == len(set(ids)), ids
-    found = []
-    for stage in stages:
-        assert {"id", "title", "what", "modules"} <= set(stage), stage.get("id")
-        assert stage["modules"], stage["id"]
-        for module in stage["modules"]:
-            assert {"name", "title", "what", "data"} <= set(module), module.get("name")
-            assert isinstance(module["data"], list), module["name"]
-            for ref in module["data"]:
-                assert ref["kind"] in ("file", "info"), ref
-                if ref["kind"] == "file":
-                    assert ref["root"] in server.RAW_ROOTS and ref["path"], ref
-                    if ref["root"] == "state" and DAY in ref["path"]:
-                        found.append(ref["path"])
-    assert found, "the map points at none of the files in the state folder it was given"
-    for rel in found:
-        _clean_json(*_get(station, _path("/api/raw/file", f"root=state&path={rel}")), rel)
 
 
 def _sessions_shown(port, recorded):
@@ -329,30 +262,22 @@ def _sessions_shown(port, recorded):
         body = _get(port, _path("/api/raw/file", f"root=state&path=sndk_reversion/{day}.jsonl"))[2]
         return "error" not in json.loads(body)
 
-    refs = [r["path"] for s in doc("/api/pipeline")["stages"] for m in s["modules"]
-            for r in m["data"] if r["kind"] == "file" and r["root"] == "state"]
     return {
-        "/api/sndk/thread/days": doc("/api/sndk/thread/days")["days"],
-        "/api/sndk/thread": [doc("/api/sndk/thread")["day"]],
         "/api/sndk/pipeline/days": doc("/api/sndk/pipeline/days", UNLOCK)["days"],
         "/api/sndk/pipeline": [doc("/api/sndk/pipeline", UNLOCK)["day"]],
         "/api/sndk/memory": [d["date"] for d in doc("/api/sndk/memory", f"kind=overview&{UNLOCK}")["days"]],
         "/api/raw/index": sorted({i["rel"].split("/")[1].split(".")[0] for i in doc("/api/raw/index")["state"]
                                   if i["rel"].startswith("sndk_reversion/")}),
         "/api/raw/file": [day for day in sorted(recorded) if opens(day)],
-        "/api/pipeline": sorted({m.group() for p in refs if (m := _ISO_DAY.search(p))}),
     }
 
 
 def test_with_mirai_state_dir_set_every_sndk_reader_reads_only_that_folder(station, session, tmp_path, monkeypatch):
-    """MIRAI_STATE_DIR names the one state folder: every SNDK route, the pipeline map and the raw explorer read it, and a newer session in the install's own folder reaches none of them, so one page never shows two folders."""
+    """MIRAI_STATE_DIR names the one state folder: every SNDK route and the raw explorer read it, and a newer session in the install's own folder reaches none of them, so one page never shows two folders."""
     newer = (datetime.fromisoformat(DAY) + timedelta(days=7)).date().isoformat()
     install = tmp_path / "install-state"
     _record_session(install, newer)
-    _map_files(install, newer)
-    _map_files(session, DAY)
     monkeypatch.setattr(snapshot, "STATE_DIR", install)
-    monkeypatch.setattr(pipeline, "STATE_DIR", install)
     monkeypatch.setitem(server.RAW_ROOTS, "state", install)
 
     shown = _sessions_shown(station, recorded=(DAY, newer))
@@ -362,11 +287,9 @@ def test_with_mirai_state_dir_set_every_sndk_reader_reads_only_that_folder(stati
 
 
 def test_without_mirai_state_dir_the_viewstation_reads_the_install_state_folder(station, session, monkeypatch):
-    """Unset, as the live station runs, the viewstation's SNDK readers, the pipeline map and the raw explorer all read the install's own state folder."""
+    """Unset, as the live station runs, the viewstation's SNDK readers and the raw explorer all read the install's own state folder."""
     monkeypatch.delenv("MIRAI_STATE_DIR")
-    _map_files(session, DAY)
     monkeypatch.setattr(snapshot, "STATE_DIR", session)
-    monkeypatch.setattr(pipeline, "STATE_DIR", session)
     monkeypatch.setitem(server.RAW_ROOTS, "state", session)
 
     shown = _sessions_shown(station, recorded=(DAY,))

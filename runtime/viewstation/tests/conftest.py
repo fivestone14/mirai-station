@@ -1,7 +1,7 @@
 """Put the viewstation dir on sys.path so `import server` resolves the same way
-it does under launchd (server.py inserts its own dir for snapshot/pipeline),
-start every test from what the modules held at import, and say so loudly when
-the tests that run the page's JavaScript could not."""
+it does under launchd (server.py inserts its own dir for snapshot), start every
+test from what the modules held at import, and say so loudly when the tests
+that run the page's JavaScript could not."""
 import ast
 import copy
 import importlib
@@ -56,11 +56,11 @@ _MODULE_STATE = _as_imported()
 
 @pytest.fixture(autouse=True)
 def _reset_module_state(monkeypatch):
-    """server memoizes the last snapshot for five seconds and keeps a ring of
-    recent requests; snapshot caches the last spot quote and the tape's append
-    floor. A test run inside those windows would be answered from the previous
-    test's snapshot, quote or request. Each test starts from the values the
-    modules were imported with."""
+    """server keeps a ring of recent requests; snapshot caches the last spot
+    quote, the SNDK payload and the tape's append floor. A test run inside
+    those windows would be answered from the previous test's payload, quote or
+    request. Each test starts from the values the modules were imported
+    with."""
     for (module, name), value in _MODULE_STATE.items():
         monkeypatch.setattr(module, name, copy.deepcopy(value))
 

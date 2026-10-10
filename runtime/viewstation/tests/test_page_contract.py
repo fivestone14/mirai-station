@@ -545,7 +545,7 @@ def test_the_payload_tab_carries_the_diary_view():
 def test_sndk_pro_is_no_longer_labelled_beta():
     """09-02: the SNDK tab left beta. Nothing the page draws calls anything beta, in any
     wording or place: the one "beta" left in its code is the SPX hedge rail's spot-vol beta,
-    a measured quantity, and `snk-beta` survives only as a class name."""
+    a measured quantity."""
     code = _code_only(PAGE)
     labels = [code[max(0, m.start() - 20):m.end() + 8]
               for m in re.finditer(r"(?i)(?<![\w-])beta(?![\w-])", code)
