@@ -4,8 +4,8 @@ name: tests
 # the commit means what the README loop means — without anyone remembering to run
 # it on the mini.
 #
-# The eleven suite directories each ship their own conftest.py and collide if
-# pytest collects them together, so they run as eleven parallel jobs. Same split as
+# The twelve suite directories each ship their own conftest.py and collide if
+# pytest collects them together, so they run as twelve parallel jobs. Same split as
 # the README; the failing box is named in the job title. runtime/health runs its
 # always-on unit tests here; its live checks need MIRAI_LIVE=1 and the station.
 
@@ -34,6 +34,7 @@ jobs:
           - skills/sndk-pro/tests
           - skills/sndk-jev/tests
           - skills/spx-jev/tests
+          - skills/spx-claude-forecast/tests
     steps:
       - uses: actions/checkout@v4
 

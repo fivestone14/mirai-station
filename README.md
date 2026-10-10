@@ -433,7 +433,7 @@ Tests — **one suite directory at a time** (each box ships its own `conftest.py
 they collide if collected together):
 
 ```bash
-for t in skills/mirai-left-eye/tests skills/sndk-pro/tests skills/sndk-jev/tests skills/spx-jev/tests \
+for t in skills/mirai-left-eye/tests skills/sndk-pro/tests skills/sndk-jev/tests skills/spx-jev/tests skills/spx-claude-forecast/tests \
          skills/siege/tests skills/lob-flow/tests skills/iv-viability/tests skills/mirai-voice/tests \
          runtime/watch/tests runtime/viewstation/tests runtime/health; do
   $PY -m pytest "$t" -q

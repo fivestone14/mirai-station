@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spx-claude-forecast"
+version = "0.1.0"
+description = "Claude's own forecast beside the SPX voices: a frozen payload per read, matched against past moments, answered as up / flat / down percentages, stored with what actually happened. Never in the combined call."
+requires-python = ">=3.11"
+# The nightly library alone (library.py): every other module runs on the standard library, the station's
+# shared Schwab client (the recorder only) and the sibling spx_jev package.
+dependencies = ["duckdb>=1.5,<2", "pyarrow>=24,<25"]
+
+[tool.setuptools.packages.find]
+include = ["spx_claude_forecast*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

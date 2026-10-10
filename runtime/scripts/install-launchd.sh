@@ -55,6 +55,10 @@ PLISTS=(
   # The headline feed (Phase 3, 2026-10-07): four public RSS feeds polled every 3 minutes, each new item stamped with
   # the poll's own clock under state/spx_jev/headlines/, for the judgment questions. Stdlib only, no Schwab.
   "com.mirai-station.spx-jev-headlines.plist"
+  # The spx-claude-forecast recorder (2026-10-09): copies station data before it is overwritten or deleted (the
+  # dated options book, siege's SPY minutes, the raw tape, the $VIX1D close, SPX 5-minute bars) into
+  # state/spx_claude_forecast/recorder/ and mirrors that folder off-disk. 08:40 and 16:25 ET, plus Friday 17:30 ET.
+  "com.mirai-station.spx-claude-forecast-recorder.plist"
   "com.mirai-station.voice.plist"
 )
 
