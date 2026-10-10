@@ -27,22 +27,35 @@ where the station can actually get the data.
 
 ## What is here now
 
+**Status (2026-10-09 night): built and wired; the first live reads are Monday 2026-10-12 from 09:32 ET.**
+The SPX read (`skills/spx-jev/spx_jev/service.py`) starts the forecast for each read in its own process
+right after it archives the read's record. Nothing here is in the combined call.
+
 | Path | What it is |
 |---|---|
-| `spec/phases.md` | The implementation phases, 0 to 7, each with the check that proves it is done. |
-| `spec/build_plan.md` | The full build plan: pipeline, folder layout, the 18 payload blocks, data-access results, output contract, storage, grading, operations, open decisions, milestones with acceptance checks. |
-| `spec/record_formats.md` | Plain-English field names for the reads and outcomes files and Claude's reply, with examples and the full rename map. |
-| `spec/storage_design.md` | Where every payload, reply and result is kept, the nightly library, the fixed ~930-token history slice Claude sees, and what to start recording now. |
-| `spec/payload_mockup.json` | A complete example payload, filled with real values from the 10-09 14:30 read. |
-| `spec/rulebook_draft_cr-1.txt` | Draft of the cached rulebook (system prompt) Claude reads every call. |
-| `spec/prototype/` | The read-only scripts the design used to rebuild base rates, precedents and the mockup from the stores. They are kept for reference and still point at the design session's scratch folder, so they will not run as they are. |
+| `spec/phases.md` | The build order, phases 0 to 9, each with the check that proves it is done. |
+| `spec/build_plan.md` | The full plan: pipeline, payload, output contract, storage, grading, operations, decisions, milestones. |
+| `spec/record_formats.md` | The locked plain-English field names of the reads and outcomes files and of Claude's reply, with examples. |
+| `spec/storage_design.md` | What is stored where, the nightly library, and the fixed slice of history Claude sees. |
+| `spec/payload_mockup.json` | The design mockup of one payload (real values from the 10-09 14:30 read). |
 | `spx_claude_forecast/paths.py` | Every path the package writes, under `state/spx_claude_forecast/`, and `STORE_MAP.json`. |
-| `spx_claude_forecast/jsonl_store.py` | The only writers: append-only JSON lines under a file lock, atomic replacement, write-once blobs. Every writer refuses a path outside the forecast folder, symlinks resolved. |
-| `spx_claude_forecast/control.py` | The kill switch (`SPX_CLAUDE_FORECAST_DISABLE=1`), the pause switch and caps in `control.json`, the single-instance lock, the run log. |
+| `spx_claude_forecast/jsonl_store.py` | The only writers: append-only lines under a file lock, atomic replacement, write-once blobs; every writer refuses a path outside the forecast folder. |
+| `spx_claude_forecast/control.py` | The kill switch (`SPX_CLAUDE_FORECAST_DISABLE=1`), the pause switch and daily caps in `control.json`, the single-instance lock, the run log. |
 | `spx_claude_forecast/station_stores.py` | Where the station's own stores are (read-only) and how the sibling `spx_jev` code is imported. |
-| `spx_claude_forecast/recorder.py` | Phase 0: copies the dated options book, siege's SPY minutes, the raw options tape, the $VIX1D close and SPX 5-minute bars before they are overwritten or deleted, finished sessions only; mirrors the folder to iCloud Drive. |
-| `launchd/`, `runtime/launchd/com.mirai-station.spx-claude-forecast-recorder.plist`, `runtime/scripts/run-spx-claude-forecast-recorder.sh` | The recorder job: the template, the copy `install-launchd.sh` loads, and its runner. 08:40 and 16:25 ET every day (weekends are a second chance at Friday's book), plus Friday 17:30 ET. |
-| `tests/` | Offline tests over a temp state root; `cd skills/spx-claude-forecast && python -m pytest tests -q`. |
+| `spx_claude_forecast/recorder.py` | Copies station data before it is overwritten or deleted (the dated options book, siege's SPY minutes, the raw tape, the $VIX1D close, SPX 5-minute bars) and mirrors the folder to iCloud Drive. |
+| `spx_claude_forecast/payload/` | The payload: `frozen_inputs.py` loads one read's inputs cut at the read's time; `blocks/` holds one module per block; `build.py` assembles the scene, picks the history, runs the leak checks, hashes it and renders the two prompts. |
+| `spx_claude_forecast/precedents.py` | The base rate for the time of day and the eight nearest past moments, from the library. |
+| `spx_claude_forecast/library.py` | `library/rows.parquet`: one row per past read (seven everyday items, quality gates, sealed outcome), rebuilt nightly. |
+| `spx_claude_forecast/rulebook.py` + `rulebook_cr-1.txt` | The fixed instructions Claude gets on every call, hashed onto every payload. |
+| `spx_claude_forecast/claude_call.py` | One `claude -p` call on the subscription: refuses to run with an API key set, every tool denied, the bill kept. |
+| `spx_claude_forecast/answer_checks.py` | Code's checks on an answer: delete what fails, never rewrite, say what was done. |
+| `spx_claude_forecast/final_forecast.py` | The two answers averaged into the final forecast, with the gaps between them and from the base rate. |
+| `spx_claude_forecast/read_runner.py` | One read end to end; `hook.py` is the call the SPX read makes to start it. |
+| `spx_claude_forecast/grading.py` | What happened after a read, graded the way the station grades (its flat-zone rule), plus the to_close edge. |
+| `spx_claude_forecast/seed.py` | Past half-hours rebuilt from stored files as the starting history (`seed/`). |
+| `spx_claude_forecast/nightly.py`, `scoring.py`, `scorecard.py` | The 17:15 ET job: seal outcomes, rebuild the library, score every forecaster, write `scorecard.json`. |
+| `launchd/` | The recorder (08:40 and 16:25 ET, Friday 17:30 ET) and the nightly job (17:15 ET). |
+| `tests/` | Offline tests over a temp state root, plus real-store smoke tests that skip without the station: `cd skills/spx-claude-forecast && python -m pytest tests -q`. |
 
 ## Where things will live (per the plan)
 

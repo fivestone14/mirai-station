@@ -11,11 +11,11 @@ from __future__ import annotations
 import random
 from collections import defaultdict
 
-from . import jsonl_store
+from . import jsonl_store, scoring
 from .control import now_utc_iso
 from .library import HORIZONS
 from .paths import ForecastPaths
-from .scoring import CLAUDE
+from .scoring import CLAUDE_FINAL
 
 SCORECARD_TOO_EARLY_READS = 100
 RESAMPLE_ROUNDS = 400
@@ -56,7 +56,7 @@ def skill_range_by_day(pairs_by_day: dict[str, list[tuple[float, float]]], round
 def scorecard_from_rows(rows: list[dict], reads_lines_by_day: dict[str, list[dict]] | None = None) -> dict:
     live = [r for r in rows if r.get("read_source") in (None, "live")]
     card: dict = {"built_at": now_utc_iso(), "horizons": {}, "verdict": "Too early"}
-    graded_reads = {r["read_id"] for r in live if r["forecaster"] == CLAUDE}
+    graded_reads = {r["read_id"] for r in live if r["forecaster"] == CLAUDE_FINAL}
     card["graded_reads"] = len(graded_reads)
     if len(graded_reads) >= SCORECARD_TOO_EARLY_READS:
         card["verdict"] = "Scored"
@@ -65,25 +65,24 @@ def scorecard_from_rows(rows: list[dict], reads_lines_by_day: dict[str, list[dic
         for r in live:
             if r["horizon"] == horizon:
                 by_read[r["read_id"]][r["forecaster"]] = r
-        block: dict = {"reads": sum(1 for v in by_read.values() if CLAUDE in v),
-                       "reads_scored_as_base_rate": sum(1 for v in by_read.values() if v.get(CLAUDE, {}).get("scored_as_base_rate")),
+        block: dict = {"reads": sum(1 for v in by_read.values() if CLAUDE_FINAL in v),
+                       "reads_scored_as_base_rate": sum(1 for v in by_read.values() if v.get(CLAUDE_FINAL, {}).get("is_scored_as_base_rate")),
                        "claude_right_pct": None, "skill_vs": {}}
-        claude_rows = [v[CLAUDE] for v in by_read.values() if CLAUDE in v]
+        claude_rows = [v[CLAUDE_FINAL] for v in by_read.values() if CLAUDE_FINAL in v]
         if claude_rows:
-            block["claude_right_pct"] = round(100 * sum(1 for r in claude_rows if r["is_right"]) / len(claude_rows), 1)
+            block["claude_right_pct"] = round(100 * sum(1 for r in claude_rows if r["is_top_choice_correct"]) / len(claude_rows), 1)
             block["mean_log_loss"] = round(sum(r["log_loss"] for r in claude_rows) / len(claude_rows), 4)
         for reference in REFERENCES:
-            paired = [(v[CLAUDE]["log_loss"], v[reference]["log_loss"], v[CLAUDE]["trading_day"])
-                      for v in by_read.values() if CLAUDE in v and reference in v]
+            paired = [(v[CLAUDE_FINAL], v[reference]) for v in by_read.values() if CLAUDE_FINAL in v and reference in v]
             if not paired:
                 continue
             by_day: dict[str, list[tuple[float, float]]] = defaultdict(list)
-            for c, r, day in paired:
-                by_day[day].append((c, r))
-            block["skill_vs"][reference] = {"skill_pct": skill_pct([p[0] for p in paired], [p[1] for p in paired]),
-                                            "range_90_pct": skill_range_by_day(by_day), "reads": len(paired),
-                                            "reference_right_pct": round(100 * sum(1 for v in by_read.values()
-                                                                                   if reference in v and v[reference]["is_right"]) / len(paired), 1)}
+            for claude_row, reference_row in paired:
+                by_day[claude_row["trading_day"]].append((claude_row["log_loss"], reference_row["log_loss"]))
+            block["skill_vs"][reference] = {
+                "skill_pct": skill_pct([c["log_loss"] for c, _ in paired], [r["log_loss"] for _, r in paired]),
+                "range_90_pct": skill_range_by_day(by_day), "reads": len(paired),
+                "reference_right_pct": round(100 * sum(1 for _, r in paired if r["is_top_choice_correct"]) / len(paired), 1)}
         card["horizons"][horizon] = block
     card["watchdogs"] = watchdogs(reads_lines_by_day or {})
     card["daily_skill_vs_base_rate"] = daily_skill(live)
@@ -93,11 +92,11 @@ def scorecard_from_rows(rows: list[dict], reads_lines_by_day: dict[str, list[dic
 def daily_skill(rows: list[dict]) -> list[dict]:
     by_day: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     for r in rows:
-        if r["horizon"] == "next_30_minutes" and r["forecaster"] in (CLAUDE, "base_rate_shown_to_claude"):
+        if r["horizon"] == "next_30_minutes" and r["forecaster"] in (CLAUDE_FINAL, "base_rate_shown_to_claude"):
             by_day[r["trading_day"]][r["forecaster"]].append(r["log_loss"])
     out = []
     for day in sorted(by_day):
-        c, b = by_day[day][CLAUDE], by_day[day]["base_rate_shown_to_claude"]
+        c, b = by_day[day][CLAUDE_FINAL], by_day[day]["base_rate_shown_to_claude"]
         if c and b and len(c) == len(b):
             out.append({"day": day, "reads": len(c), "skill_pct": skill_pct(c, b)})
     return out
@@ -129,12 +128,7 @@ def watchdogs(reads_lines_by_day: dict[str, list[dict]]) -> dict:
             "cost_usd_total": round(cost, 2), "ungrounded_pct": round(100 * sum(1 for f in finals if not f.get("any_answer_has_valid_reason")) / counted, 1) if counted else None}
 
 
-def write_scorecard(paths: ForecastPaths, rows: list[dict]) -> dict:
-    reads_by_day: dict[str, list[dict]] = {}
-    reads_dir = paths.root / "reads"
-    if reads_dir.exists():
-        for file in sorted(reads_dir.glob("20??-??-??.jsonl")):
-            reads_by_day[file.name[:10]] = jsonl_store.read_json_lines(file)
-    card = scorecard_from_rows(rows, reads_by_day)
+def write_scorecard(paths: ForecastPaths, rows: list[dict], reads_by_day: dict[str, list[dict]] | None = None) -> dict:
+    card = scorecard_from_rows(rows, reads_by_day if reads_by_day is not None else scoring.load_reads_by_day(paths))
     jsonl_store.write_json_atomically(paths.scorecard_file, card)
     return card

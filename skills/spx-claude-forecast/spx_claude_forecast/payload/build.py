@@ -14,15 +14,13 @@ from __future__ import annotations
 
 import hashlib
 import importlib
-import json
 import random
 import re
 from dataclasses import dataclass, field
-from datetime import timedelta
-from pathlib import Path
+from datetime import datetime, timedelta
 
 from .. import grading, jsonl_store, library, precedents, rulebook, station_stores
-from ..control import now_utc_iso
+from ..control import ET
 from ..paths import PACKAGE_DIR, STATION_ROOT
 from .block_result import BlockResult
 from .frozen_inputs import FrozenInputs
@@ -32,9 +30,13 @@ CONTENT_BLOCKS = ("data_sources", "clock", "calendar", "scale", "tape", "open_si
                   "internals", "cross_asset", "overnight", "foreign", "news", "code")   # built from the inputs, in this order
 SCENE_CHAR_CAP = 9_500               # the scene body; over it, the leftover blocks are trimmed in TRIM_ORDER
 TRIM_ORDER = ("code", "news")        # what goes first when the scene is over the cap (the cards are cut by precedents.py)
-PRICE_LEVEL_FROM = 1000           # a number this big in the scene reads as an index level, unless its key is a count
+PRICE_LEVEL_FROM = 1000           # a number this big in the scene reads as an index level, unless it sits under a count key
+# Keys whose numbers, and whose nested numbers, are counts or durations that may pass 1,000 and never a price: issue
+# counts (internals), trade counts (open_signals, flow, data_sources), headline counts (news), session counts and the base
+# rate's outcome counts per direction (base_rate.<horizon>.counts), and a feed's age in seconds (data_sources).
 COUNT_KEYS = frozenset({"trades", "add_live_approx", "add_30m_change", "fill_base_n", "captured_60m", "sessions", "candidate_sessions",
-                        "big_prints_10m", "minutes_present", "stale_dropped", "index_mover_items_60m"})   # counts that may pass 1,000
+                        "big_prints_10m", "minutes_present", "stale_dropped", "index_mover_items_60m", "counts", "age_s"})
+BASIS_POINT_KEYS = frozenset({"bp", "dist_bp", "r12_bp", "rrod_bp"})   # basis points pass 1,000 on a big day; never a level
 LEAK_DATE_PATTERN = re.compile(r"20\d\d-\d\d-\d\d")
 LEAK_WORDS = ("JEV", "pool_v", "blend", "% sure", "read_id", "row_ts")
 BUILDER_SOURCES = ("payload", "grading.py", "library.py", "precedents.py", "rulebook.py")   # what builder_sha covers
@@ -85,19 +87,19 @@ def build_payload(inputs: FrozenInputs, library_rows: list[dict], *, origin: str
     scene["absent"] = absent
 
     ask, asked = _ask_for(inputs)
-    canonical = jsonl_store.canonical_json(_ordered_scene(scene))
-    claude_input_sha256 = "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+    claude_input_sha256 = jsonl_store.canonical_json_sha256(scene)
     prompts, prompt_sha, direction_order, precedent_order = _render_both_answers(scene, ask, claude_input_sha256)
     leaks = leak_checks(scene)
 
     base_rate_pct = {h: {k: history.base_rate[h][k] for k in ("up_pct", "flat_pct", "down_pct")}
                      for h in library.HORIZONS if history.base_rate and h in history.base_rate}
+    built_at = datetime.now(ET)
     line = {
         "line_type": "payload", "read_id": inputs.read_id, "claude_input_sha256": claude_input_sha256,
         "prompt_and_model_version": rulebook.PROMPT_AND_MODEL_VERSION, "schema": SCHEMA, "trading_day": inputs.day,
         "half_hour_slot_et": inputs.slot, "origin": origin, "status": "refused" if leaks else "built",
-        "why": "; ".join(leaks) if leaks else None, "cut_at": inputs.cut.isoformat(), "built_at": now_utc_iso(),
-        "built_lag_s": _built_lag_seconds(inputs), "scene": scene, "ask": ask, "asked_horizons": asked,
+        "why": "; ".join(leaks) if leaks else None, "cut_at": inputs.cut.isoformat(), "built_at": built_at.isoformat(timespec="seconds"),
+        "built_lag_s": int((built_at - inputs.cut).total_seconds()), "scene": scene, "ask": ask, "asked_horizons": asked,
         "prompt_sha256": prompt_sha, "direction_order_asked": direction_order, "precedent_order_shown": precedent_order,
         "rules_sha": rulebook.rulebook_sha(), **code_version(),
         "quality_flags": quality_flags(inputs, builder_errors),
@@ -151,12 +153,6 @@ def _trim_to_cap(scene: dict, absent: list[dict]) -> dict:
     return scene
 
 
-def _ordered_scene(scene: dict) -> dict:
-    """The scene with its blocks in a fixed order, so the rendering is the same from any builder."""
-    order = ("base_rate",) + CONTENT_BLOCKS + ("precedents", "absent")
-    return {k: scene[k] for k in order if k in scene}
-
-
 # --- the ask -------------------------------------------------------------------------------------------------------
 
 def _ask_for(inputs: FrozenInputs) -> tuple[dict, list[str]]:
@@ -178,6 +174,9 @@ def _ask_for(inputs: FrozenInputs) -> tuple[dict, list[str]]:
 
 
 def _render_both_answers(scene: dict, ask: dict, claude_input_sha256: str):
+    """Both prompt bodies from one scene: the cards shuffled by the scene's own hash for answer 1 and reversed for
+    answer 2, the direction order flipped with them. The canonical rendering sorts every key, so the scene's blocks
+    read in alphabetical order whatever order they were built in."""
     cards = scene["precedents"]["cards"]
     shuffled = list(cards)
     random.Random(int(claude_input_sha256[-12:], 16)).shuffle(shuffled)
@@ -188,7 +187,7 @@ def _render_both_answers(scene: dict, ask: dict, claude_input_sha256: str):
         shown = dict(scene)
         shown["precedents"] = {**scene["precedents"], "order": label, "cards": order}
         shown_ask = {**ask, "direction_order_asked": direction}
-        body = rulebook.render_prompt(jsonl_store.canonical_json(_ordered_scene(shown)), jsonl_store.canonical_json(shown_ask))
+        body = rulebook.render_prompt(jsonl_store.canonical_json(shown), jsonl_store.canonical_json(shown_ask))
         prompts[answer] = body
         shas[answer] = jsonl_store.text_sha256(body, 64)
         directions[answer] = direction
@@ -204,7 +203,7 @@ def leak_checks(scene: dict) -> list[str]:
     reasons = []
     if LEAK_DATE_PATTERN.search(text):
         reasons.append("a date is in the scene")
-    levels = [f"{key}={value}" for key, value in _big_numbers(scene, "scene") if key not in COUNT_KEYS]
+    levels = [f"{key}={value}" for key, value in _price_sized_numbers(scene, "scene")]
     if levels:
         reasons.append(f"a number that reads as a price level is in the scene: {levels[:3]}")
     for word in LEAK_WORDS:
@@ -213,26 +212,39 @@ def leak_checks(scene: dict) -> list[str]:
     return reasons
 
 
-def _big_numbers(node, key: str):
-    """Every (key, number) in the scene with the number at or past PRICE_LEVEL_FROM; a list's numbers carry its key."""
+def _price_sized_numbers(node, key: str, under_count_key: bool = False):
+    """Every (key, number) in the scene at or past PRICE_LEVEL_FROM that no count key covers: a list's numbers carry
+    the list's key, and a count key covers everything nested under it (a list of trade counts, the counts per direction)."""
+    under_count_key = under_count_key or key in COUNT_KEYS or key in BASIS_POINT_KEYS
     if isinstance(node, dict):
         for k, v in node.items():
-            yield from _big_numbers(v, k)
+            yield from _price_sized_numbers(v, k, under_count_key)
     elif isinstance(node, list):
         for v in node:
-            yield from _big_numbers(v, key)
-    elif isinstance(node, (int, float)) and not isinstance(node, bool) and abs(node) >= PRICE_LEVEL_FROM:
+            yield from _price_sized_numbers(v, key, under_count_key)
+    elif isinstance(node, (int, float)) and not isinstance(node, bool) and abs(node) >= PRICE_LEVEL_FROM and not under_count_key:
         yield key, node
 
 
 def quality_flags(inputs: FrozenInputs, builder_errors: list[str]) -> dict:
+    """What a reviewer or the library needs to weigh the read: where the ruler came from and how it sits against the
+    VIX, the options book, whether code's answers were live, whether the read was stale, and what could not be
+    loaded or built. A missing flag is one that could not be told."""
     anchor = inputs.anchor
     flags = {"anchor_src": getattr(anchor, "source", None), "anchor_vs_vix_x": _anchor_vs_vix(inputs),
              "options_book": inputs.options_book or "unknown",
              "code_source": "live" if inputs.code_answers else "none",
-             "is_stale_read": bool(getattr(inputs.scene, "bar_clock", False)) and False,
+             "is_stale_read": _is_stale_read(inputs),
              "load_notes": list(inputs.load_notes), "builder_errors": builder_errors}
     return {k: v for k, v in flags.items() if v not in (None, [], {})}
+
+
+def _is_stale_read(inputs: FrozenInputs) -> bool | None:
+    """The station's own stale-read rule (spx_jev.integral.stale_read, the guard its grades carry): the read's spot was
+    not traded by any bar of the last STALE_READ_MIN minutes before its row minute, so the diary row lagged the tape.
+    Judged on the bars finished by the cut; None when none of them is near the row minute."""
+    integral = station_stores.import_spx_jev("integral")
+    return integral.stale_read(inputs.scene.bars, inputs.horizon_start, inputs.spot)
 
 
 def _anchor_vs_vix(inputs: FrozenInputs) -> float | None:
@@ -250,14 +262,8 @@ def _anchor_vs_vix(inputs: FrozenInputs) -> float | None:
 
 def _logged_never_sent(inputs: FrozenInputs, history: precedents.HistoryForRead) -> dict:
     zones = inputs.flat_zones if isinstance(inputs.flat_zones, dict) else None
-    out = {"spot": inputs.spot, "sigma_points": round(inputs.sigma_points, 2), "flat_zones_points": zones,
-           "nearest_card_ids": [p["card_id"] for p in history.precedent_set[:3]], "row_ts": inputs.row_ts}
-    return out
-
-
-def _built_lag_seconds(inputs: FrozenInputs) -> int:
-    from datetime import datetime, timezone
-    return int((datetime.now(timezone.utc) - inputs.cut).total_seconds())
+    return {"spot": inputs.spot, "sigma_points": round(inputs.sigma_points, 2), "flat_zones_points": zones,
+            "nearest_card_ids": [p["card_id"] for p in history.precedent_set[:3]], "row_ts": inputs.row_ts}
 
 
 def code_version() -> dict:
@@ -286,4 +292,4 @@ def code_version() -> dict:
     return out
 
 
-__all__ = ["BuiltPayload", "build_payload", "leak_checks", "quality_flags", "code_version", "SCHEMA", "CONTENT_BLOCKS", "Path"]
+__all__ = ["BuiltPayload", "build_payload", "leak_checks", "quality_flags", "code_version", "SCHEMA", "CONTENT_BLOCKS"]

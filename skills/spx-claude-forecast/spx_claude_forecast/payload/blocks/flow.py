@@ -1,14 +1,15 @@
 """The flow block: what the near-price 0DTE options tape and SPY's own tape say in the minutes before the cut.
 
 Two records of the same tape. The lob-flow collector's record, ``state/lob_flow/agg/{day}.jsonl``, is one line
-a minute with the delta-weighted tilt of the last 15 minutes' trades, the share of that flow whose side could be
-told and the trade count (lob_flow.sensors.read_tape); it is kept forever, and it gates the block: no line by
-the cut is a missing tape, a newest line older than three minutes a stale one, and a count of zero or one far
-from its usual for the minute (the median of the prior sessions' counts at the same clock) a failed content
-check. The collector's raw tape, ``state/lob_flow/raw/{day}/tape.jsonl``, is one line per trade and is deleted
-after thirty days; it is read through the station's own reader (spx_jev.labels.options_flow.tape_minutes) for
-the fields the record cannot give: the signed lean of the last 30 minutes' premium, the large prints of the
-last 10 minutes and the premium pace. Those are absent, never guessed, once the raw tape is gone.
+a minute with the delta-weighted tilt of the last 15 minutes' trades (state_builder.OPTIONS_TAPE_WINDOW_MIN),
+the share of that flow whose side could be told and the trade count (lob_flow.sensors.read_tape); it is kept
+forever, and it gates the block: no line by the cut is a missing tape, a newest line older than the station's
+tape age limit (state_builder.OPTIONS_TAPE_MAX_AGE_MIN) a stale one, and a count of zero or one far from its
+usual for the minute (the median of the prior sessions' counts at the same clock) a failed content check. The
+collector's raw tape, ``state/lob_flow/raw/{day}/tape.jsonl``, is one line per trade and is deleted after
+thirty days; it is read through the station's own reader (spx_jev.labels.options_flow.tape_minutes) for the
+fields the record cannot give: the signed lean of the last 30 minutes' premium, the large prints of the last
+10 minutes and the premium pace. Those are absent, never guessed, once the raw tape is gone.
 
 SPY's volume is the per-minute volume the loader froze for today against the recorder's copies of the prior
 sessions, at the same minutes. Its quoted spread is the collector's SPY reading (the context job saves SPY's
@@ -18,21 +19,18 @@ and SPY ranks do: the ruler never touches these numbers.
 from __future__ import annotations
 
 import json
-import statistics
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
-from typing import Any, Callable
+from datetime import datetime, timedelta
+from typing import Any
 
-from .. import units
-from ... import jsonl_store, station_stores
+from ... import station_stores
 from ...control import ET
+from .. import units
 from ..block_result import BlockResult, whole_block_absent
-from ..frozen_inputs import FrozenInputs
+from ..frozen_inputs import FrozenInputs, TapeFold
 
 BLOCK = "flow"
 COLLECTOR_ENGINE = "lob_flow"
-TILT_WINDOW_MIN = 15              # the collector signs the last 15 minutes of trades (lob_flow.daemon.TAPE_WINDOW_MIN)
-TAPE_STALE_MIN = 3                # the collector writes a line a minute, so an older newest line means it stopped
 CONTENT_RATIO_LOW = 0.3           # a 15-minute trade count under 0.3x or over 3x its usual is a feed fault, not a market
 CONTENT_RATIO_HIGH = 3.0
 LEAN_WINDOW_MIN = 30
@@ -43,23 +41,9 @@ SPY_FEED_STALE_MIN = 5            # the siege box folds SPY's minutes about ever
 MIN_WINDOW_COVERAGE = 0.5         # a window with under half its minutes on file is a feed hole, not a quiet stretch
 TILT_DECIMALS = 3
 SHARE_DECIMALS = 2
-MULTIPLE_DECIMALS = 2
-
-
-@dataclass(frozen=True)
-class TapeReading:
-    """One line of the collector's record: when it was written, the 15-minute tilt (-1 puts bought and calls sold,
-    +1 calls bought and puts sold), the share of the flow whose side could be told, and the trades counted."""
-    ts: datetime
-    tilt: float | None
-    told_share: float | None
-    trades: int
 
 
 def build_flow_block(inputs: FrozenInputs) -> BlockResult:
-    state_dir = inputs.scene.state_dir
-    if state_dir is None:
-        return whole_block_absent(BLOCK, "no_state_dir")
     prior_days = list(inputs.scene.prior_bars)
     prior = _prior_readings(inputs, prior_days)
     reading, why = _gated_reading(inputs, prior)
@@ -82,30 +66,28 @@ def build_flow_block(inputs: FrozenInputs) -> BlockResult:
 
 # --- the collector's record and its gate ------------------------------------------------------------------
 
-def tape_readings(state_dir: Any, day: str) -> list[TapeReading]:
-    """The collector's lines for ``day``, oldest first; a line without a trade count is not a reading."""
-    out = []
-    for line in jsonl_store.iter_json_lines(station_stores.lob_flow_agg_file(state_dir, day)):
-        snap = line.get("snapshot") if line.get("engine") == COLLECTOR_ENGINE else None
-        if not isinstance(snap, dict) or not isinstance(line.get("ts"), str) or not _is_num(snap.get("tape_trades")):
-            continue
-        out.append(TapeReading(datetime.fromisoformat(line["ts"]), _num(snap.get("tilt")), _num(snap.get("determinate_share")),
-                               int(snap["tape_trades"])))
-    return sorted(out, key=lambda r: r.ts)
+def tape_readings(inputs: FrozenInputs, day: str) -> list[TapeFold]:
+    """The collector's folds for ``day`` that carry a trade count, oldest first, from the inputs (loaded once per read)."""
+    return [fold for fold in inputs.tape_folds.get(day, []) if fold.trades is not None]
 
 
-def reading_at(readings: list[TapeReading], t: datetime) -> TapeReading | None:
-    """The newest reading written at or before ``t`` and not more than TAPE_STALE_MIN before it."""
-    done = [r for r in readings if r.ts <= t]
-    if not done or t - done[-1].ts > timedelta(minutes=TAPE_STALE_MIN):
+def reading_at(readings: list[TapeFold], t: datetime) -> TapeFold | None:
+    """The newest reading written at or before ``t`` and not more than the station's tape age limit before it."""
+    done = [r for r in readings if r.at <= t]
+    if not done or t - done[-1].at > _tape_max_age():
         return None
     return done[-1]
 
 
-def _gated_reading(inputs: FrozenInputs, prior: list[TapeReading]) -> tuple[TapeReading | None, str | None]:
+def _tape_max_age() -> timedelta:
+    """How old the collector's newest line may be before it counts as stopped (the station's own limit)."""
+    return timedelta(minutes=station_stores.import_spx_jev("state_builder").OPTIONS_TAPE_MAX_AGE_MIN)
+
+
+def _gated_reading(inputs: FrozenInputs, prior: list[TapeFold]) -> tuple[TapeFold | None, str | None]:
     """The reading at the cut, or why the whole block is absent: no reading by the cut, a stale one, or a trade
     count that fails the content check against the same minute on the prior sessions (``prior``)."""
-    readings = [r for r in tape_readings(inputs.scene.state_dir, inputs.day) if r.ts <= inputs.cut]
+    readings = [r for r in tape_readings(inputs, inputs.day) if r.at <= inputs.cut]
     if not readings:
         return None, "tape_missing"
     reading = reading_at(readings, inputs.cut)
@@ -113,36 +95,31 @@ def _gated_reading(inputs: FrozenInputs, prior: list[TapeReading]) -> tuple[Tape
         return None, "tape_stale"
     if reading.trades <= 0:
         return None, "tape_content_failed"
-    usual = _usual([r.trades for r in prior if r.trades > 0])
+    usual = units.usual([r.trades for r in prior if r.trades > 0])
     if usual is not None and not CONTENT_RATIO_LOW * usual <= reading.trades <= CONTENT_RATIO_HIGH * usual:
         return None, "tape_content_failed"
     return reading, None
 
 
-def _prior_readings(inputs: FrozenInputs, prior_days: list[str]) -> list[TapeReading]:
+def _prior_readings(inputs: FrozenInputs, prior_days: list[str]) -> list[TapeFold]:
     """The prior sessions' readings at this minute, newest session first, where the collector had one."""
     out = []
     for day in prior_days:
-        reading = reading_at(tape_readings(inputs.scene.state_dir, day), same_clock(inputs.cut, day))
+        reading = reading_at(tape_readings(inputs, day), units.same_clock(inputs.cut, day))
         if reading is not None:
             out.append(reading)
     return out
 
 
-def same_clock(cut: datetime, day: str) -> datetime:
-    """The cut's clock minute on a prior session, market time."""
-    return datetime.combine(date.fromisoformat(day), cut.astimezone(ET).time(), tzinfo=ET)
-
-
-def _tilt(reading: TapeReading, prior: list[TapeReading], result: BlockResult) -> dict | None:
+def _tilt(reading: TapeFold, prior: list[TapeFold], result: BlockResult) -> dict | None:
     """The collector's 15-minute tilt, ranked against the same minute's on the prior sessions."""
     if reading.tilt is None:
         result.leave_out(f"{BLOCK}.tilt_15m", "not_in_record")
         return None
-    return units.ranked(round(reading.tilt, TILT_DECIMALS), [r.tilt for r in prior if r.tilt is not None])
+    return units.ranked(reading.tilt, [r.tilt for r in prior if r.tilt is not None], decimals=TILT_DECIMALS)
 
 
-def _told_share(reading: TapeReading, result: BlockResult) -> float | None:
+def _told_share(reading: TapeFold, result: BlockResult) -> float | None:
     if reading.told_share is None:
         result.leave_out(f"{BLOCK}.told_share", "not_in_record")
         return None
@@ -170,10 +147,10 @@ def _raw_tape(inputs: FrozenInputs, prior_days: list[str]) -> RawTape | None:
     end = measures.minute_of_day(now_et)
     opened = measures.minute_of_day(inputs.scene.session_open.astimezone(ET))
     clock = now_et.time()
-    today = options_flow.tape_minutes(inputs.scene.state_dir, inputs.day, end - LEAN_WINDOW_MIN, end, clock)
+    today = options_flow.tape_minutes(inputs.state_dir, inputs.day, end - LEAN_WINDOW_MIN, end, clock)
     if today is None:
         return None
-    prior = [m for d in prior_days if (m := options_flow.tape_minutes(inputs.scene.state_dir, d, end - LEAN_WINDOW_MIN, end, clock)) is not None]
+    prior = [m for d in prior_days if (m := options_flow.tape_minutes(inputs.state_dir, d, end - LEAN_WINDOW_MIN, end, clock)) is not None]
     return RawTape(today, prior, end, opened)
 
 
@@ -204,27 +181,6 @@ def _bullish_share(flow: Any) -> float | None:
     return flow.bullish / told if told > 0 else None
 
 
-def _usual(base: list[float]) -> float | None:
-    """The median of the prior sessions' values, newest first, over the station's rank window; None under its
-    smallest count for a same-clock median."""
-    cuts = station_stores.import_spx_jev("cuts")
-    recent = base[:cuts.NIGHT_RANK_COUNT]
-    return statistics.median(recent) if len(recent) >= cuts.MIN_RANK_SESSIONS else None
-
-
-def _against_usual(value: float, base: list[float], shown: Callable[[float], float], decimals: int) -> dict | None:
-    """``{"v": shown(usual), "r": ...}``: the value set against the prior sessions' median, with the rank of the
-    value itself among them; None when there are too few sessions for a median."""
-    usual = _usual(base)
-    if usual is None:
-        return None
-    out = {"v": round(shown(usual), decimals)}
-    rank = units.ranked(value, base)
-    if rank and "r" in rank:
-        out["r"] = rank["r"]
-    return out
-
-
 def _lean_vs_usual(tape: RawTape | None, result: BlockResult) -> dict | None:
     """The last 30 minutes' signed premium share less its usual level for this half hour, ranked against the prior
     sessions' leans at these minutes."""
@@ -238,31 +194,16 @@ def _lean_vs_usual(tape: RawTape | None, result: BlockResult) -> dict | None:
         result.leave_out(field, "no_side_told")
         return None
     base = [v for w in _prior_windows(tape, LEAN_WINDOW_MIN) if (v := _signed_share(w)) is not None]
-    out = _against_usual(lean, base, lambda usual: lean - usual, SHARE_DECIMALS)
+    out = units.against_usual(lean, base, lambda usual: lean - usual, SHARE_DECIMALS)
     if out is None:
         result.leave_out(field, "too_few_sessions")
     return out
 
 
-def _large_trade_lots(windows: list[Any], share: float) -> float | None:
-    """The size in lots that ``share`` of the single trades in ``windows``, pooled, stayed at or under: the smallest
-    large trade. None with no single trade."""
-    counts: dict[float, int] = {}
-    for w in windows:
-        for lots, flow in w.by_lots.items():
-            counts[lots] = counts.get(lots, 0) + flow.prints
-    need, seen = share * sum(counts.values()), 0
-    for lots in sorted(counts):
-        seen += counts[lots]
-        if seen >= need and seen > 0:
-            return lots
-    return None
-
-
 def _big_prints(tape: RawTape | None, result: BlockResult) -> dict:
     """The single trades of the last 10 minutes at or above the large-trade size of these minutes on the prior
-    sessions (the station's cut), and the bullish share of their told premium (calls bought or puts sold), ranked
-    against the same trades' share on those sessions."""
+    sessions (the station's cut, options_flow._big_print_lots), and the bullish share of their told premium (calls
+    bought or puts sold), ranked against the same trades' share on those sessions."""
     count_field, side_field = f"{BLOCK}.big_prints_10m", f"{BLOCK}.big_prints_bullish_pct"
     window, why = _window(tape, BIG_PRINT_WINDOW_MIN)
     if window is None:
@@ -270,8 +211,9 @@ def _big_prints(tape: RawTape | None, result: BlockResult) -> dict:
             result.leave_out(field, why)
         return {}
     cuts = station_stores.import_spx_jev("cuts")
+    options_flow = station_stores.import_spx_jev("labels.options_flow")
     windows = _prior_windows(tape, BIG_PRINT_WINDOW_MIN)[:cuts.NIGHT_RANK_COUNT]
-    lots = _large_trade_lots(windows, cuts.BIG_PRINT_PCT)
+    lots = options_flow._big_print_lots(windows)
     if len(windows) < cuts.SAME_CLOCK_MIN_SESSIONS or lots is None:
         for field in (count_field, side_field):
             result.leave_out(field, "too_few_sessions")
@@ -285,8 +227,8 @@ def _big_prints(tape: RawTape | None, result: BlockResult) -> dict:
     if share is None:
         result.leave_out(side_field, "no_side_told")
         return out
-    base = [v for w in windows if (b := w.from_lots(lots)).prints >= cuts.BIG_MIN_PRINTS and (v := _bullish_share(b)) is not None]
-    out["big_prints_bullish_pct"] = units.ranked(round(share * 100), [round(b * 100) for b in base])
+    base = [v * 100 for w in windows if (b := w.from_lots(lots)).prints >= cuts.BIG_MIN_PRINTS and (v := _bullish_share(b)) is not None]
+    out["big_prints_bullish_pct"] = units.ranked(share * 100, base, decimals=0)
     return out
 
 
@@ -301,7 +243,7 @@ def _premium_pace(tape: RawTape | None, result: BlockResult) -> dict | None:
         result.leave_out(field, "no_premium_traded")
         return None
     base = [w.premium for w in _prior_windows(tape, PACE_WINDOW_MIN) if w.premium > 0]
-    out = _against_usual(window.premium, base, lambda usual: window.premium / usual, MULTIPLE_DECIMALS)
+    out = units.against_usual(window.premium, base, lambda usual: window.premium / usual)
     if out is None:
         result.leave_out(field, "too_few_sessions")
     return out
@@ -321,7 +263,7 @@ def _minute_volumes(raw: Any) -> dict[int, float]:
         return {}
     out = {}
     for m, v in raw.items():
-        if _is_num(v) and str(m).isdigit():
+        if units.is_num(v) and str(m).isdigit():
             out[int(m)] = float(v)
     return out
 
@@ -356,7 +298,7 @@ def _spy_volume(inputs: FrozenInputs, prior_days: list[str], result: BlockResult
         result.leave_out(field, "spy_minutes_incomplete")
         return None
     base = [v for d in prior_days if (v := _window_volume(_recorded_volumes(inputs, d), end - SPY_WINDOW_MIN, end)) is not None and v > 0]
-    out = _against_usual(volume, base, lambda usual: volume / usual, MULTIPLE_DECIMALS)
+    out = units.against_usual(volume, base, lambda usual: volume / usual)
     if out is None:
         result.leave_out(field, "too_few_sessions")
     return out
@@ -367,21 +309,17 @@ def _spy_spread(inputs: FrozenInputs, result: BlockResult) -> int | None:
     no bid and ask)."""
     field = f"{BLOCK}.spy_spread_cents"
     options_flow = station_stores.import_spx_jev("labels.options_flow")
-    record = options_flow.collector_record(inputs.scene.state_dir, inputs.day)
+    record = options_flow.collector_record(inputs.state_dir, inputs.day)
     readings = [(ts, spread) for ts, spread, _size in (record.spy if record is not None else []) if ts <= inputs.cut]
     if not readings:
         result.leave_out(field, "not_recorded")
         return None
     ts, spread = readings[-1]
-    if inputs.cut - ts > timedelta(minutes=TAPE_STALE_MIN):
+    if inputs.cut - ts > _tape_max_age():
         result.leave_out(field, "spy_quote_stale")
         return None
     return round(spread * 100)
 
 
-def _is_num(v: Any) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
-
-
 def _num(v: Any) -> float | None:
-    return float(v) if _is_num(v) else None
+    return float(v) if units.is_num(v) else None

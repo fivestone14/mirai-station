@@ -11,6 +11,7 @@ from pathlib import Path
 from .jsonl_store import text_sha256
 
 PROMPT_AND_MODEL_VERSION = "cr-1"           # bumped, between sessions only, when the rulebook, the builder or the model changes
+TEST_VARIANT_NONE = "none"                  # the test_variant stamp of production lines: no experiment changed what Claude saw
 RULEBOOK_FILE = Path(__file__).resolve().parent / f"rulebook_{PROMPT_AND_MODEL_VERSION}.txt"
 HORIZON_NAMES = ("next_30_minutes", "next_60_minutes", "to_close")
 DIRECTION_KEYS = ("up_pct", "flat_pct", "down_pct")

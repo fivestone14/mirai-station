@@ -11,7 +11,6 @@ import pytest
 from conftest import write_json, write_jsonl
 from payload_fixtures import DAY, SIGMA, FakeMarket, at, fake_inputs, make_row, station_state_dir
 
-from spx_claude_forecast import station_stores
 from spx_claude_forecast.payload import units
 from spx_claude_forecast.payload.blocks.cross_asset import build_cross_asset_block
 from spx_claude_forecast.payload.blocks.foreign import build_foreign_block
@@ -65,9 +64,7 @@ def test_internals_30m_change_needs_a_value_half_an_hour_ago(tmp_path):
 
 # --- cross_asset ------------------------------------------------------------------------------------------
 
-def snapshot_context(tmp_path: Path, taken: datetime, quotes: dict) -> None:
-    """One context snapshot with Schwab's prior-close field, as the context job writes it."""
-    write_jsonl(station_stores.context_file(tmp_path / "state", DAY), [{"ts": taken.isoformat(), "quotes": quotes}])
+VIX3M_PRIOR_CLOSE = {"$VIX3M": 18.08}   # Schwab's own close field, as the loader reads it off the snapshots (no daily file for $VIX3M)
 
 
 def vol_closes(**over) -> dict:
@@ -83,8 +80,8 @@ def vol_market(taken: datetime, vix=14.87, vix3m=17.85, vix9d=11.18, tnx_pct=5.2
 
 def test_cross_asset_vix_curve_from_the_row_and_the_quotes(tmp_path):
     taken = at(14, 30, 5)
-    snapshot_context(tmp_path, taken, {"$VIX": {"last": 14.87, "close": 15.41}, "$VIX3M": {"last": 17.85, "close": 18.08}})
-    inputs = fake_inputs(tmp_path, cut=CUT, market=vol_market(taken), daily_closes=vol_closes(), row=make_row(CUT, vix_ts=0.833))
+    inputs = fake_inputs(tmp_path, cut=CUT, market=vol_market(taken), daily_closes=vol_closes(), row=make_row(CUT, vix_ts=0.833),
+                         snapshot_prior_closes=VIX3M_PRIOR_CLOSE)
     result = build_cross_asset_block(inputs)
     assert result.data == {"vix": 14.87, "vix_minus_prior_close": -0.54, "vix_vix3m": 0.833, "vix_vix3m_prior_close": 0.852,
                            "backwardated": False, "vix9d_vix": 0.752, "ten_year_bp_since_close": {"v": 1.9}}
@@ -93,18 +90,16 @@ def test_cross_asset_vix_curve_from_the_row_and_the_quotes(tmp_path):
 
 def test_cross_asset_backwardation_is_vix_over_vix3m_above_one(tmp_path):
     taken = at(14, 30, 5)
-    snapshot_context(tmp_path, taken, {"$VIX3M": {"last": 18.0, "close": 18.08}})
     inputs = fake_inputs(tmp_path, cut=CUT, market=vol_market(taken, vix=20.0, vix3m=18.0), daily_closes=vol_closes(),
-                         row=make_row(CUT, vix_ts=None))
+                         row=make_row(CUT, vix_ts=None), snapshot_prior_closes=VIX3M_PRIOR_CLOSE)
     result = build_cross_asset_block(inputs)
     assert result.data["vix_vix3m"] == 1.111 and result.data["backwardated"] is True
 
 
 def test_cross_asset_ratios_wait_for_the_quotes_to_leave_the_prior_close_at_the_open(tmp_path):
     taken = at(9, 30, 46)
-    snapshot_context(tmp_path, taken, {"$VIX3M": {"last": 18.08, "close": 18.08}})
     inputs = fake_inputs(tmp_path, cut=at(9, 30, 50), market=vol_market(taken, vix=15.19, vix3m=18.08, vix9d=12.21),
-                         daily_closes=vol_closes(), row=make_row(at(9, 30, 50), vix_ts=0.84))
+                         daily_closes=vol_closes(), row=make_row(at(9, 30, 50), vix_ts=0.84), snapshot_prior_closes=VIX3M_PRIOR_CLOSE)
     result = build_cross_asset_block(inputs)
     assert result.data["vix"] == 15.19 and "vix_vix3m" not in result.data and "backwardated" not in result.data
     assert absent(result, "cross_asset.vix_vix3m") == "stale_at_open"

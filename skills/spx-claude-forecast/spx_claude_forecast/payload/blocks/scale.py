@@ -6,9 +6,10 @@ Every distance in the payload is in sig, the day's expected move in points as th
 anchor, live or vix) and ``sigma_live_x`` how the live implied move compares with it. The at-the-money
 implied volatility and the 0DTE straddle (what it priced at the open, what it still prices, how much of it
 the day's range has used) come from the diary row and are the station's own numbers (``labels.rulers``,
-``range_ruler``); on a stand-in options book they are left out, since a proxy chain prices a different
-thing. $VIX1D is the newest quote known at the cut and its prior close the recorder's; neither exists
-before the station began quoting it.
+``range_ruler``); on a stand-in options book (``inputs.options_book``, from the raw diary row) they are left
+out, since a proxy chain prices a different thing, and a book that cannot be told counts as a stand-in.
+$VIX1D is the newest quote known at the cut and its prior close the recorder's; neither exists before the
+station began quoting it.
 
 ``realized_30m_vs_priced_x`` is the last 30 minutes' realized swing against the move the day's sigma
 prices for 30 minutes:
@@ -20,30 +21,21 @@ prices for 30 minutes:
     ratio           = realized_points / priced_points
 
 so 1.0 means the tape delivered exactly the half hour the options priced, below it quieter, above it wilder.
-
-Which book the row carries is its diary ``gex_source`` ("native" on SPX's own chain, a scaled SPY proxy
-otherwise). The scene's row is the labeller's cut of the diary row and drops that key, so when the row
-has none the block reads the read's own raw diary line (the same ``row_ts``, read-only) for it; a row
-whose book cannot be told is treated as a stand-in. This is the one place a block reaches past its inputs,
-and it goes once the frozen inputs carry the book themselves.
 """
 from __future__ import annotations
 
 import math
 from datetime import time
 
-from ... import jsonl_store, station_stores
+from ... import station_stores
 from .. import units
 from ..block_result import BlockResult
 from ..frozen_inputs import FrozenInputs
 
-NATIVE_BOOK = "native"            # the row's gex_source on the station's own chain; anything else is a proxy book
-BOOK_KEY = "gex_source"
-STAND_IN_BOOK = "stand_in_book"
+BOOK_FIELDS = ("atm_iv_pct", "straddle_open_sig", "straddle_left_sig", "straddle_used_x")   # priced off the options book
 FIRST_QUOTE_AT = time(9, 31)      # the 09:30 read's quotes are still the prior close (the build plan's first-read rule)
 STRADDLE_LEFT_DECIMALS = 3        # late in the day the straddle left is a few hundredths of a sig: two decimals lose it
 IV_DECIMALS = 2                   # the row's at-the-money vol is a fraction (0.0844); shown as 8.44 percent
-RATIO_DECIMALS = 2
 
 
 def build_scale_block(inputs: FrozenInputs) -> BlockResult:
@@ -51,28 +43,18 @@ def build_scale_block(inputs: FrozenInputs) -> BlockResult:
     vix1d_prior_close, realized_30m_vs_priced_x}``; each part declares its own absence."""
     result = BlockResult()
     data = {"sigma_src": _sigma_source(inputs, result), "sigma_live_x": _sigma_live_x(inputs, result)}
-    if _book_is_native(inputs):
+    book_absence = units.book_absence(inputs)
+    if book_absence is None:
         data["atm_iv_pct"] = _atm_iv_pct(inputs, result)
         data.update(_straddle(inputs, result))
     else:
-        for field in ("atm_iv_pct", "straddle_open_sig", "straddle_left_sig", "straddle_used_x"):
-            result.leave_out(f"scale.{field}", STAND_IN_BOOK)
+        for field in BOOK_FIELDS:
+            result.leave_out(f"scale.{field}", book_absence)
     data["vix1d"] = _vix1d(inputs, result)
     data["vix1d_prior_close"] = _vix1d_prior_close(inputs, result)
     data["realized_30m_vs_priced_x"] = _realized_vs_priced(inputs, result)
     result.data = units.clean(data)
     return result
-
-
-def _book_is_native(inputs: FrozenInputs) -> bool:
-    """The row's ``gex_source`` is the station's own chain; read off the row, else off the read's raw diary line
-    (the module note). Unknown counts as a stand-in."""
-    row = inputs.scene.row
-    if BOOK_KEY in row:
-        return row.get(BOOK_KEY) == NATIVE_BOOK
-    diary = station_stores.reversion_rows_file(inputs.state_dir, inputs.day)
-    return any(line.get(BOOK_KEY) == NATIVE_BOOK for line in jsonl_store.iter_json_lines(diary)
-               if line.get("ts") == inputs.row_ts)
 
 
 def _sigma_source(inputs: FrozenInputs, result: BlockResult) -> str | None:
@@ -93,11 +75,11 @@ def _sigma_live_x(inputs: FrozenInputs, result: BlockResult) -> float | None:
 
 
 def _atm_iv_pct(inputs: FrozenInputs, result: BlockResult) -> float | None:
-    iv = inputs.scene.row.get("atm_iv")
-    if not isinstance(iv, (int, float)) or iv <= 0:
+    iv = units.positive(inputs.scene.row.get("atm_iv"))
+    if iv is None:
         result.leave_out("scale.atm_iv_pct", "not_recorded")
         return None
-    return units.pct(float(iv) * 100.0, IV_DECIMALS)
+    return units.pct(iv * 100.0, IV_DECIMALS)
 
 
 def _straddle(inputs: FrozenInputs, result: BlockResult) -> dict:
@@ -106,8 +88,8 @@ def _straddle(inputs: FrozenInputs, result: BlockResult) -> dict:
     rulers = station_stores.import_spx_jev("labels.rulers")
     measures = station_stores.import_spx_jev("labels.measures")
     ruler = inputs.scene.row.get("range_ruler") or {}
-    em_open = ruler.get("em_open")
-    if not isinstance(em_open, (int, float)) or em_open <= 0:
+    em_open = units.positive(ruler.get("em_open"))
+    if em_open is None:
         for field in ("straddle_open_sig", "straddle_left_sig", "straddle_used_x"):
             result.leave_out(f"scale.{field}", "not_recorded")
         return {}
@@ -115,15 +97,15 @@ def _straddle(inputs: FrozenInputs, result: BlockResult) -> dict:
     if left is None:
         result.leave_out("scale.straddle_left_sig", "not_recorded")
     used = ruler.get("em_consumed")
-    if not isinstance(used, (int, float)) and inputs.scene.bars:
+    if not units.is_num(used) and inputs.scene.bars:
         high, low = measures.day_high_low(inputs.scene.bars, inputs.spot)
-        used = (high - low) / float(em_open)
-    if not isinstance(used, (int, float)):
+        used = (high - low) / em_open
+    if not units.is_num(used):
         result.leave_out("scale.straddle_used_x", "not_recorded")
         used = None
     return {"straddle_open_sig": units.sig(em_open, inputs.sigma_points),
             "straddle_left_sig": units.sig(left, inputs.sigma_points, STRADDLE_LEFT_DECIMALS),
-            "straddle_used_x": None if used is None else round(float(used), RATIO_DECIMALS)}
+            "straddle_used_x": None if used is None else round(float(used), units.MULTIPLE_DECIMALS)}
 
 
 def _vix1d(inputs: FrozenInputs, result: BlockResult) -> float | None:
@@ -155,4 +137,4 @@ def _realized_vs_priced(inputs: FrozenInputs, result: BlockResult) -> float | No
                          f"fewer_than_{vol.REALIZED_MIN_BARS}_finished_bars_in_{vol.REALIZED_WINDOW_MIN}m")
         return None
     priced_sig = math.sqrt(vol.REALIZED_WINDOW_MIN / vol.FULL_SESSION_MIN)
-    return round(realized_sig / priced_sig, RATIO_DECIMALS)
+    return round(realized_sig / priced_sig, units.MULTIPLE_DECIMALS)

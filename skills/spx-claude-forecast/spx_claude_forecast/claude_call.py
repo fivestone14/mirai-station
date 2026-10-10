@@ -17,7 +17,6 @@ import subprocess
 import tempfile
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 
 PINNED_MODEL = "claude-opus-5-5"            # an exact id, never an alias
 CALL_EFFORT = "medium"                      # always passed; see the module docstring
@@ -40,7 +39,6 @@ class CallResult:
     call_stats: dict = field(default_factory=dict)
     cli_version: str | None = None
     model_served: str | None = None
-    command_shape: list[str] = field(default_factory=list)
 
 
 def api_key_in_environment() -> str | None:
@@ -92,18 +90,20 @@ def first_json_object(text: str | None) -> dict | None:
 
 
 def call_stats_of(envelope: dict | None, response_seconds: float) -> dict:
-    """The bill and the shape of one call from the CLI's JSON envelope, in plain names; a count the envelope
-    did not carry is absent, not null."""
+    """The bill and the shape of one call from the CLI's JSON envelope, in the names spec/record_formats.md gives
+    them; a count the envelope did not carry is absent, not null."""
     stats: dict = {"response_seconds": round(response_seconds, 1)}
     if not isinstance(envelope, dict):
         return stats
     usage = envelope.get("usage") if isinstance(envelope.get("usage"), dict) else {}
     details = usage.get("output_tokens_details") if isinstance(usage.get("output_tokens_details"), dict) else {}
+    duration_ms = envelope.get("duration_ms")
     for name, value in (("cost_usd", envelope.get("total_cost_usd")), ("input_tokens", usage.get("input_tokens")),
                         ("cache_read_input_tokens", usage.get("cache_read_input_tokens")),
                         ("cache_creation_input_tokens", usage.get("cache_creation_input_tokens")),
                         ("output_tokens", usage.get("output_tokens")), ("thinking_tokens", details.get("thinking_tokens")),
-                        ("model_turn_count", envelope.get("num_turns")), ("duration_ms", envelope.get("duration_ms"))):
+                        ("model_turn_count", envelope.get("num_turns")),
+                        ("cli_duration_seconds", round(duration_ms / 1000, 1) if isinstance(duration_ms, (int, float)) else None)):
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             stats[name] = value
     return stats
@@ -119,17 +119,15 @@ def call_claude(prompt: str, rulebook: str, *, model: str = PINNED_MODEL, effort
     if not binary:
         return CallResult(None, None, "refused: no claude executable on PATH", 0.0)
     cmd = command_for(prompt, rulebook, model, effort, binary)
-    shape = [c if i < 2 or c.startswith("--") or cmd[i - 1] in ("--model", "--effort", "--output-format") else "<text>"
-             for i, c in enumerate(cmd[:16])]
     env = {k: v for k, v in os.environ.items() if k not in API_KEY_ENVS}
     started = time.time()
     with tempfile.TemporaryDirectory(prefix="spx-claude-forecast-call-") as empty_folder:
         try:
             completed = runner(cmd, capture_output=True, text=True, timeout=timeout_s, cwd=empty_folder, env=env)
         except subprocess.TimeoutExpired:
-            return CallResult(None, None, f"timeout after {timeout_s:.0f} s", round(time.time() - started, 1), command_shape=shape)
+            return CallResult(None, None, f"timeout after {timeout_s:.0f} s", round(time.time() - started, 1))
         except OSError as e:
-            return CallResult(None, None, f"spawn: {e}", round(time.time() - started, 1), command_shape=shape)
+            return CallResult(None, None, f"spawn: {e}", round(time.time() - started, 1))
     seconds = round(time.time() - started, 1)
     envelope = first_json_object(completed.stdout)
     stats = call_stats_of(envelope, seconds)
@@ -137,12 +135,11 @@ def call_claude(prompt: str, rulebook: str, *, model: str = PINNED_MODEL, effort
     if completed.returncode != 0:
         tail = (completed.stderr or completed.stdout or "")[-300:]
         return CallResult((completed.stdout or "")[:ANSWER_TEXT_KEPT_CHARS] or None, None,
-                          f"exit {completed.returncode}: {tail}", seconds, stats, model_served=model_served, command_shape=shape)
+                          f"exit {completed.returncode}: {tail}", seconds, stats, model_served=model_served)
     text = envelope.get("result") if isinstance(envelope, dict) and isinstance(envelope.get("result"), str) else completed.stdout
     if isinstance(envelope, dict) and envelope.get("is_error"):
         return CallResult((text or "")[:ANSWER_TEXT_KEPT_CHARS], None, f"the CLI reported an error: {(text or '')[:200]}",
-                          seconds, stats, model_served=model_served, command_shape=shape)
+                          seconds, stats, model_served=model_served)
     parsed = first_json_object(text)
     return CallResult((text or "")[:ANSWER_TEXT_KEPT_CHARS] or None, parsed,
-                      None if parsed is not None else "no JSON object in the reply", seconds, stats,
-                      model_served=model_served, command_shape=shape)
+                      None if parsed is not None else "no JSON object in the reply", seconds, stats, model_served=model_served)

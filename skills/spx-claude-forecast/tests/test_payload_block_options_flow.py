@@ -36,7 +36,7 @@ def native_views(**over) -> dict:
 
 
 def native_row(ts, **over) -> dict:
-    row = make_row(ts, gex_source="native", gex_views=native_views(), net_exposure={"prev_close_gamma": -23.3e9},
+    row = make_row(ts, gex_views=native_views(), net_exposure={"prev_close_gamma": -23.3e9},
                    call_wall_tenor=SPOT + 187.0, put_wall_tenor=SPOT - 313.0, atm_iv=0.0844)
     row.update(over)
     return row
@@ -48,12 +48,11 @@ def absent_paths(result) -> dict[str, str]:
 
 # --- options ---------------------------------------------------------------------------------------------
 
-def test_a_stand_in_book_drops_the_whole_options_block(tmp_path):
-    proxy = fake_inputs(tmp_path, row=make_row(CUT, gex_source="spy_proxy×10.0340", gex_views=native_views()))
-    result = build_options_block(proxy)
-    assert result.is_empty and result.absent == [{"path": "options", "why": "stand_in_book"}]
-    unmarked = fake_inputs(tmp_path, row=make_row(CUT, gex_views=native_views()))
-    assert build_options_block(unmarked).absent == [{"path": "options", "why": "stand_in_book"}]
+def test_a_stand_in_or_unknown_book_drops_the_whole_options_block(tmp_path):
+    proxy = build_options_block(fake_inputs(tmp_path, row=native_row(CUT), options_book="stand_in"))
+    assert proxy.is_empty and proxy.absent == [{"path": "options", "why": "stand_in_book"}]
+    unknown = build_options_block(fake_inputs(tmp_path, row=native_row(CUT), options_book=None))
+    assert unknown.absent == [{"path": "options", "why": "options_book_unknown"}]
 
 
 def test_a_native_row_gives_regimes_net_gamma_and_levels_as_distances(tmp_path):

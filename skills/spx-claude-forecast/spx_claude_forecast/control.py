@@ -23,6 +23,7 @@ from .paths import RUN_LOG_KEPT_DAYS, ForecastPaths
 
 DISABLE_ENV = "SPX_CLAUDE_FORECAST_DISABLE"
 UPSTREAM_DISABLE_ENV = "SPX_JEV_DISABLE"          # the SPX read's own switch; off means no reads to forecast
+PYTEST_ENV = "PYTEST_CURRENT_TEST"                # set by pytest for every test: no spawn and no real Claude call under it
 ET = ZoneInfo("America/New_York")
 JOB_NAME = "spx-claude-forecast"
 

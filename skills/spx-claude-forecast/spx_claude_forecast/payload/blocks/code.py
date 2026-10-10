@@ -1,5 +1,5 @@
 """The code block: up to twelve of the read's code-feature answers, in the catalog's own words, for the question
-groups whose facts no other block of the scene already carries.
+groups whose facts no other block of the scene already carries, spread across the catalog's areas.
 
 The station answers 79 code questions per read (spx_jev.mirai_prediction.code_features) and stores them under
 raw/code_features/; the loader hands them over as ``{qid: option or None}``. Most of them restate a number
@@ -7,10 +7,18 @@ another block gives exactly (the move since the open, the distance to the flip, 
 block keeps only the groups listed in CODE_GROUPS: the composites and residuals (a break held or failed, a
 leg's age, fear beyond what price explains, an extreme confirmed or not) that no block's numbers add up to.
 Every catalog group is in CODE_GROUPS or in COVERED_GROUPS, which names the block field that carries it; a
-test holds the two lists to the catalog so a new group is placed on purpose. The catalog carries no usual
-answer today; when one appears under USUAL_ANSWER_KEY, an answer that merely matches it yields its slot.
+test holds the two lists to the catalog so a new group is placed on purpose.
+
+The cap takes the answers in turns, so twelve never all come from the front of the catalog: an area is the
+part of a group's name before the slash (trend, shared, volatility, levels ...), the areas take turns in
+catalog order, each area's groups take turns in catalog order, and a group gives its questions in catalog
+order. The block is written in catalog order whatever the turns were. The catalog carries no usual answer
+today; when one appears under USUAL_ANSWER_KEY, an answer that merely matches it says nothing new and comes
+after every answer that does.
 """
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 from ... import station_stores
 from ..block_result import BlockResult, whole_block_absent
@@ -18,6 +26,7 @@ from ..frozen_inputs import FrozenInputs
 
 MAX_CODE_ANSWERS = 12          # the cap in build_plan.md row 16; the block is the second thing trimmed when the scene is over its size
 USUAL_ANSWER_KEY = "usual_answer"   # not in today's catalog: an answer equal to it says nothing new and yields its slot
+AREA_SEPARATOR = "/"           # a group is "area/name"; the area is the catalog's own section
 # The groups kept: composites and residuals no block of the scene carries as a number. Why each stays: a leg's age,
 # the day's follow-through, a break held or failed, the latest leg against the day, trend against chop and a burst
 # bar are shapes of the tape the tape block's sums do not say; vol, skew and VVIX beyond what price explains, the
@@ -63,8 +72,21 @@ COVERED_GROUPS = {
 }
 
 
+@dataclass(frozen=True)
+class Candidate:
+    """One answer the cap may take: where its question sits in the catalog, its area and group, and whether the
+    answer only matches the catalog's usual one."""
+    catalog_index: int
+    area: str
+    group: str
+    qid: str
+    answer: str
+    says_nothing_new: bool
+
+
 def build_code_block(inputs: FrozenInputs) -> BlockResult:
-    """The read's code answers for the uncovered groups, in catalog order, at most MAX_CODE_ANSWERS."""
+    """The read's code answers for the uncovered groups, at most MAX_CODE_ANSWERS taken in turns across the areas,
+    written in catalog order."""
     answers = {qid: answer for qid, answer in (inputs.code_answers or {}).items() if answer is not None}
     if not answers:
         return whole_block_absent("code", "no_code_answers")
@@ -72,20 +94,39 @@ def build_code_block(inputs: FrozenInputs) -> BlockResult:
     catalog = _code_features().load_catalog()
     for qid in sorted(set(answers) - {question["id"] for question in catalog}):
         result.leave_out(f"code.{qid}", "qid_not_in_catalog")
-    candidates: list[tuple[bool, int, str, str]] = []       # (says nothing new, catalog index, qid, answer)
+    candidates: list[Candidate] = []
     for index, question in enumerate(catalog):
-        qid, answer = question["id"], answers.get(question["id"])
-        if answer is None or question.get("group") not in CODE_GROUPS:
+        qid, group, answer = question["id"], question.get("group"), answers.get(question["id"])
+        if answer is None or group not in CODE_GROUPS:
             continue
         if answer not in (question.get("options") or ()):
             result.leave_out(f"code.{qid}", "answer_not_in_catalog_options")
             continue
-        candidates.append((answer == question.get(USUAL_ANSWER_KEY), index, qid, answer))
-    kept = sorted(sorted(candidates)[:MAX_CODE_ANSWERS], key=lambda c: c[1])
+        candidates.append(Candidate(index, group.partition(AREA_SEPARATOR)[0], group, qid, answer, answer == question.get(USUAL_ANSWER_KEY)))
+    saying_something_new = [c for c in candidates if not c.says_nothing_new]
+    saying_the_usual = [c for c in candidates if c.says_nothing_new]
+    kept = (_in_turns_across_areas(saying_something_new) + _in_turns_across_areas(saying_the_usual))[:MAX_CODE_ANSWERS]
     if not kept:
         result.leave_out("code", "no_uncovered_code_answers")
-    result.data = {qid: answer for _, _, qid, answer in kept}
+    result.data = {c.qid: c.answer for c in sorted(kept, key=lambda c: c.catalog_index)}
     return result
+
+
+def _in_turns_across_areas(candidates: list[Candidate]) -> list[Candidate]:
+    """The candidates (given in catalog order) in the order the cap takes them: one per area each round, the areas in
+    catalog order, each area's groups taking turns in catalog order, each group giving its questions in catalog order."""
+    groups_by_area: dict[str, dict[str, list[Candidate]]] = {}
+    for candidate in candidates:
+        groups_by_area.setdefault(candidate.area, {}).setdefault(candidate.group, []).append(candidate)
+    return _taking_turns([_taking_turns(list(groups.values())) for groups in groups_by_area.values()])
+
+
+def _taking_turns(queues: list[list[Candidate]]) -> list[Candidate]:
+    """One item from each queue in turn, round after round, until every queue is empty."""
+    taken: list[Candidate] = []
+    while any(queues):
+        taken.extend(queue.pop(0) for queue in queues if queue)
+    return taken
 
 
 def _code_features():

@@ -37,7 +37,7 @@ def absent_reasons(result) -> dict[str, str]:
 
 
 def native_row(cut, **over) -> dict:
-    fields = {"gex_source": "native", "range_ruler": dict(NATIVE_RULER), "sigma_live": 41.5394, "atm_iv": 0.0844, **over}
+    fields = {"range_ruler": dict(NATIVE_RULER), "sigma_live": 41.5394, "atm_iv": 0.0844, **over}
     return make_row(cut, **fields)
 
 
@@ -152,23 +152,14 @@ def test_scale_on_a_native_book(tmp_path):
     assert not result.absent
 
 
-def test_scale_drops_the_book_fields_on_a_stand_in_book(tmp_path):
+def test_scale_drops_the_book_fields_on_a_stand_in_or_unknown_book(tmp_path):
     cut = at(14, 30, 12)
-    result = build_scale_block(fake_inputs(tmp_path, cut=cut, row=native_row(cut, gex_source="spy_proxy×10.0346")))
-    reasons = absent_reasons(result)
-    assert {reasons[f"scale.{f}"] for f in ("atm_iv_pct", "straddle_open_sig", "straddle_left_sig", "straddle_used_x")} == {"stand_in_book"}
-    assert result.data["sigma_live_x"] == 0.55 and "atm_iv_pct" not in result.data
-
-
-def test_scale_reads_the_book_off_the_raw_diary_line_when_the_row_has_none(tmp_path):
-    cut = at(14, 30, 12)
-    row = native_row(cut)
-    del row["gex_source"]
-    assert "scale.atm_iv_pct" in absent_reasons(build_scale_block(fake_inputs(tmp_path, cut=cut, row=dict(row))))
-    diary = tmp_path / "state" / "reversion" / "2026-10-09.jsonl"
-    diary.parent.mkdir(parents=True)
-    diary.write_text(json.dumps({"ts": row["ts"], "gex_source": "native"}) + "\n", encoding="utf-8")
-    assert build_scale_block(fake_inputs(tmp_path, cut=cut, row=dict(row))).data["atm_iv_pct"] == 8.44
+    book_fields = ("atm_iv_pct", "straddle_open_sig", "straddle_left_sig", "straddle_used_x")
+    stand_in = build_scale_block(fake_inputs(tmp_path, cut=cut, row=native_row(cut), options_book="stand_in"))
+    assert {absent_reasons(stand_in)[f"scale.{f}"] for f in book_fields} == {"stand_in_book"}
+    assert stand_in.data["sigma_live_x"] == 0.55 and "atm_iv_pct" not in stand_in.data
+    unknown = build_scale_block(fake_inputs(tmp_path, cut=cut, row=native_row(cut), options_book=None))
+    assert {absent_reasons(unknown)[f"scale.{f}"] for f in book_fields} == {"options_book_unknown"}
 
 
 def test_scale_at_the_first_read_has_no_quote_and_too_few_bars(tmp_path):

@@ -2,11 +2,17 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from datetime import timedelta
 
 import pytest
 
+from payload_fixtures import at, flat_bars
+
 from spx_claude_forecast import grading, jsonl_store, library, precedents, paths as forecast_paths
+
+OUTCOME_LINE_FIELDS_IN_ORDER = ("line_type", "read_id", "claude_input_sha256", "horizon", "grading_rule_version",
+                                "finalize_attempt_number", "finalized_at", "trading_day", "half_hour_slot_et",
+                                "prompt_and_model_version", "read_source", "result")   # spec/record_formats.md's outcome line
 
 
 def test_direction_and_size_buckets_treat_exactly_one_edge_as_flat():
@@ -22,6 +28,86 @@ def test_flat_edges_follow_the_station_zones_and_scale_to_close_by_minutes_left(
     assert edges["next_60_minutes"] == pytest.approx((61 * 121 / (6 * 3600)) ** 0.5 * 4.89, abs=0.01)
     assert edges["to_close"] == pytest.approx(4.89 * (90 / 60) ** 0.5, abs=0.01)
     assert grading.flat_edges_for({"next_60": 0.5}, minutes_left=10)["to_close"] == grading.TO_CLOSE_FLOOR_POINTS
+
+
+STEP_POINTS = 0.2          # the synthetic session rises this much a minute from 09:30
+ZONES = {"next_30": 3.41, "next_60": 4.89, "average_30": 2.0}
+
+
+def _session(official_close: float | None = 7850.0) -> grading.SessionPrices:
+    """A whole synthetic session of rising bars (09:30 to 15:59) with no prior sessions on file."""
+    return grading.SessionPrices(day="2026-10-09", bars=flat_bars(until_hh=15, until_mm=59, price=7813.01, step=STEP_POINTS),
+                                 official_close=official_close, prior_bars={})
+
+
+def _price_at(hh: int, mm: int) -> float:
+    return 7813.01 + ((hh - 9) * 60 + mm - 30) * STEP_POINTS
+
+
+def test_grade_read_lays_the_outcome_line_out_as_the_spec_does_and_grades_each_horizon():
+    spot = _price_at(14, 30)
+    lines = grading.grade_read(_session(), "live:2026-10-09T14:30:12-04:00", "2026-10-09T14:30:12-04:00", spot, ZONES,
+                               slot="14:30", claude_input_sha256="sha256:abc", prompt_and_model_version="cr-1", now=at(17, 30))
+    by_h = {l["horizon"]: l for l in lines}
+    assert tuple(lines[0])[:len(OUTCOME_LINE_FIELDS_IN_ORDER)] == OUTCOME_LINE_FIELDS_IN_ORDER
+    assert lines[0]["claude_input_sha256"] == "sha256:abc" and lines[0]["prompt_and_model_version"] == "cr-1"
+    assert lines[0]["finalized_at"] == "2026-10-09T17:30:00-04:00"
+    h30 = by_h["next_30_minutes"]["result"]
+    assert h30["status"] == "final" and h30["graded_move_measured_to"] == "window_average_price" and h30["window_minutes"] == 30
+    assert h30["graded_move_points"] == pytest.approx(STEP_POINTS * 14.5, abs=0.01)     # the window's 30 bars start at the read's minute
+    assert h30["flat_edge_points"] == 2.0 and h30["direction"] == "up" and h30["size_bucket"] == "up_1_to_2_flat_edges"
+    assert h30["graded_move_flat_edges"] == pytest.approx(h30["graded_move_points"] / 2.0, abs=0.001)
+    tc = by_h["to_close"]["result"]
+    assert tc["status"] == "final" and tc["graded_move_measured_to"] == "official_close_price" and tc["window_minutes"] == 90
+    assert tc["graded_move_points"] == pytest.approx(7850.0 - spot, abs=0.01) and tc["direction"] == "down"
+
+
+def test_grade_read_at_the_close_marks_windows_past_it_not_asked_and_measures_to_the_last_bar_without_a_close():
+    lines = grading.grade_read(_session(official_close=None), "live:x", "2026-10-09T15:31:40-04:00", _price_at(15, 31), ZONES, slot="15:30")
+    by_h = {l["horizon"]: l["result"] for l in lines}
+    assert by_h["next_30_minutes"]["status"] == "final" and by_h["next_30_minutes"]["window_minutes"] == 29   # graded to the close
+    assert by_h["next_60_minutes"]["status"] == "not_asked"
+    assert by_h["to_close"]["status"] == "final" and by_h["to_close"]["graded_move_measured_to"] == "last_bar_close_price"
+    assert by_h["to_close"]["graded_move_points"] == pytest.approx(_price_at(15, 59) - _price_at(15, 31), abs=0.01)
+    after_close = grading.grade_read(_session(), "live:x", "2026-10-09T16:00:10-04:00", _price_at(16, 0), ZONES, slot="16:00")
+    assert {l["horizon"]: l["result"]["status"] for l in after_close} == {h: "not_asked" for h in (*grading.HORIZON_WINDOWS, "to_close")}
+    no_zones = grading.grade_read(_session(), "live:x", "2026-10-09T14:30:12-04:00", _price_at(14, 30), "no zones", slot="14:30")
+    assert all(l["result"]["status"] == "no_data" for l in no_zones)
+
+
+def _read_record(shown_source: str = "pool_v2", archived_seconds_after: int = 28) -> dict:
+    clock = {"probabilities": {"up": 0.1834, "down": 0.1627, "flat": 0.654}}
+    main = {"up": 0.2361, "flat": 0.616, "down": 0.1479}
+    return {"row_ts": "2026-10-09T14:30:12-04:00",
+            "archived_at": (at(14, 30, 12) + timedelta(seconds=archived_seconds_after)).isoformat(),
+            "hour": {"average": {"probabilities": main, "clock": clock, "shown_source": shown_source},
+                     "by": {"next_60": {"probabilities": main, "clock": clock, "shown_source": shown_source}}}}
+
+
+def test_comparison_forecasts_copy_the_station_odds_and_only_a_live_main_forecast():
+    found, missing = grading.comparison_forecasts_from_read_record(_read_record(), "next_30_minutes")
+    assert found["existing_system_time_of_day_odds_20_sessions"] == {"up_pct": 18.3, "flat_pct": 65.4, "down_pct": 16.3,
+                                                                     "forecasts_move_measured_to": "window_average_price"}
+    main = found["existing_system_main_forecast"]
+    assert main["is_written_live"] is True and main["written_after_read_seconds"] == 28 and main["written_at"].endswith("-04:00")
+    assert (main["up_pct"], main["flat_pct"], main["down_pct"]) == (23.6, 61.6, 14.8) and missing == {}
+    h60, _ = grading.comparison_forecasts_from_read_record(_read_record(), "next_60_minutes")
+    assert h60["existing_system_main_forecast"]["forecasts_move_measured_to"] == "window_end_price"
+    _, replay = grading.comparison_forecasts_from_read_record(_read_record(archived_seconds_after=3 * 86400), "next_30_minutes")
+    assert replay["existing_system_main_forecast"].startswith("a replay")
+    _, other = grading.comparison_forecasts_from_read_record(_read_record(shown_source="blend50"), "next_30_minutes")
+    assert "not pool_v2" in other["existing_system_main_forecast"]
+    _, none = grading.comparison_forecasts_from_read_record(None, "to_close")
+    assert set(none) == {"existing_system_time_of_day_odds_20_sessions", "existing_system_main_forecast"}
+
+
+def test_the_existing_system_result_check_takes_the_newest_rule_and_compares_directions():
+    grades = {("2026-10-09T14:30:12-04:00", "next_30"): {"label": "flat", "rule_version": 4, "edge": 2.06, "g": 0.82}}
+    check = grading.existing_system_result_check(grades, "2026-10-09T14:30:12-04:00", "next_30_minutes", "flat")
+    assert check == {"direction": "flat", "grading_rule_version": 4, "flat_edge_points": 2.06, "graded_move_points": 0.82,
+                     "is_same_direction": True}
+    assert grading.existing_system_result_check(grades, "2026-10-09T14:30:12-04:00", "next_30_minutes", "up")["is_same_direction"] is False
+    assert grading.existing_system_result_check(grades, "2026-10-09T14:30:12-04:00", "to_close", "flat") is None
 
 
 def _payload_line(day: str, slot: str, read_id: str, fingerprint: dict, status: str = "built", flags: dict | None = None) -> dict:
@@ -98,11 +184,15 @@ def test_the_library_rebuilds_from_the_record_and_a_live_row_beats_a_seed_row(st
     live_id = f"live:{days[-1]}T14:30:12-04:00"
     jsonl_store.append_json_line(paths.payloads_file(days[-1]), _payload_line(days[-1], "14:30", live_id, _fp(gap=9.9)), fsync=False)
     jsonl_store.append_json_line(paths.outcomes_file(days[-1]), _outcome(live_id, "next_30_minutes", 1.2), fsync=False)
+    extra_id = f"live:{days[-1]}T14:44:02-04:00"                                      # a second live read in the same slot is kept
+    jsonl_store.append_json_line(paths.payloads_file(days[-1]), _payload_line(days[-1], "14:30", extra_id, _fp(gap=8.8)), fsync=False)
     manifest = library.rebuild_library(paths)
     rows = library.read_library(paths)
-    assert manifest["rows"] == len(rows) == 20 * 3
-    live_rows = [r for r in rows if r["origin"] == "live"]
-    assert len(live_rows) == 1 and live_rows[0]["gap_sig"] == 9.9 and live_rows[0]["next_30_minutes_direction"] == "up"
+    assert manifest["rows"] == len(rows) == 20 * 3 + 1
+    live_rows = {r["read_id"]: r for r in rows if r["origin"] == "live"}
+    assert set(live_rows) == {live_id, extra_id} and live_rows[live_id]["gap_sig"] == 9.9
+    assert live_rows[live_id]["next_30_minutes_direction"] == "up" and live_rows[extra_id]["next_30_minutes_status"] == "missing"
+    assert not any(r["read_id"] == f"seed:{days[-1]}T14:30" for r in rows)            # the seed row on that slot gave way
     assert paths.library_manifest_file.exists() and manifest["sessions"] == 20
 
 

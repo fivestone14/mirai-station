@@ -1,132 +1,169 @@
 """Scores: every forecaster's chances for a read against what happened, one row per read x horizon x forecaster.
 
-Forecasters scored on the same outcome line: ``claude`` (the final forecast), ``claude_answer_1`` and
-``claude_answer_2``, ``base_rate_shown_to_claude``, ``existing_system_time_of_day_odds_20_sessions``,
-``existing_system_main_forecast`` and ``shown_precedents_outcomes``. Scores use the station's own rule
-(``spx_jev.scores``: each chance floored at 2 percent, log loss = -ln of the chance given to what happened)
-so Claude's number sits beside the station's on the same scale. A Claude horizon that was rejected, paused
-or missing scores AS the base rate (zero skill), and coverage is reported apart, so a hard read skipped
-can never flatter the score.
+Forecasters scored on the same outcome line, named as spec/record_formats.md names them: ``claude_final``
+(the graded forecast), ``claude_answer_1`` and ``claude_answer_2``, ``base_rate_shown_to_claude``,
+``existing_system_time_of_day_odds_20_sessions``, ``existing_system_main_forecast`` and
+``shown_precedents_outcomes``. The three-way scores come from the station's own scorer (``spx_jev.scores``:
+each chance floored at 2 percent, log loss = -ln of the chance given to what happened, split into its
+did-it-move and which-way parts) so Claude's number sits beside the station's on the same scale; the Brier
+score and the ranked probability score over the seven size buckets are computed here. A Claude horizon
+that was rejected, failed or never written scores AS the base rate (zero skill) and is flagged, so a hard
+read skipped can never flatter the score; coverage is reported apart on the scorecard.
 """
 from __future__ import annotations
 
-import io
-import math
-
-from . import jsonl_store, station_stores
-from .grading import DIRECTIONS
-from .library import HORIZONS
+from . import jsonl_store, library, station_stores
+from .final_forecast import answer_number_of
+from .grading import DIRECTIONS, SIZE_BUCKETS
 from .paths import ForecastPaths
+from .rulebook import TEST_VARIANT_NONE
 
-CLAUDE = "claude"
-FORECASTERS = (CLAUDE, "claude_answer_1", "claude_answer_2", "base_rate_shown_to_claude",
-               "existing_system_time_of_day_odds_20_sessions", "existing_system_main_forecast", "shown_precedents_outcomes")
-CHANCE_FLOOR = 0.02
+SCORING_CODE_VERSION = "1"            # bump when a score's formula changes; every row carries it
+CLAUDE_FINAL = "claude_final"
+CLAUDE_ANSWERS = ("claude_answer_1", "claude_answer_2")
+COMPARISON_FORECASTERS = ("base_rate_shown_to_claude", "existing_system_time_of_day_odds_20_sessions",
+                          "existing_system_main_forecast", "shown_precedents_outcomes")
+FORECASTERS = (CLAUDE_FINAL, *CLAUDE_ANSWERS, *COMPARISON_FORECASTERS)
 
 
-def floored(chances_pct: dict) -> dict[str, float] | None:
-    """up/flat/down as chances summing to 1, each at least CHANCE_FLOOR, from percentages; None if incomplete."""
+def chances_of(block: dict | None) -> dict[str, float] | None:
+    """up/flat/down as the station's floored chances (each at least 2 percent, summing to one) from a block's
+    up_pct / flat_pct / down_pct; None when the block does not carry all three."""
+    if not isinstance(block, dict):
+        return None
     try:
-        raw = {d: float(chances_pct[f"{d}_pct"]) / 100 for d in DIRECTIONS}
+        raw = {d: float(block[f"{d}_pct"]) / 100 for d in DIRECTIONS}
     except (KeyError, TypeError, ValueError):
         return None
-    lifted = {d: max(v, CHANCE_FLOOR) for d, v in raw.items()}
-    total = sum(lifted.values())
-    return {d: v / total for d, v in lifted.items()}
+    return station_stores.import_spx_jev("scores").floored(raw)
 
 
-def log_loss(chances: dict[str, float], happened: str) -> float:
-    return round(-math.log(chances[happened]), 4)
-
-
-def brier(chances: dict[str, float], happened: str) -> float:
+def brier_score(chances: dict[str, float], happened: str) -> float:
     return round(sum((chances[d] - (1.0 if d == happened else 0.0)) ** 2 for d in DIRECTIONS), 4)
+
+
+def size_ranked_probability_score(size_buckets_pct: dict | None, happened_bucket: str | None) -> float | None:
+    """The ranked probability score over the seven size buckets divided by six, so it runs from 0 (all the
+    chance on the bucket that happened) to 1; None without a full split or a bucket."""
+    if not isinstance(size_buckets_pct, dict) or happened_bucket not in SIZE_BUCKETS:
+        return None
+    try:
+        shares = [float(size_buckets_pct[b]) for b in SIZE_BUCKETS]
+    except (KeyError, TypeError, ValueError):
+        return None
+    total = sum(shares)
+    if total <= 0:
+        return None
+    forecast_so_far = happened_so_far = score = 0.0
+    for bucket, share in zip(SIZE_BUCKETS, shares):
+        forecast_so_far += share / total
+        happened_so_far += 1.0 if bucket == happened_bucket else 0.0
+        score += (forecast_so_far - happened_so_far) ** 2
+    return round(score / (len(SIZE_BUCKETS) - 1), 4)
 
 
 def score_rows_for_read(outcome_lines: list[dict], final_line: dict | None, answer_lines: list[dict]) -> list[dict]:
     """Score rows for one read from its sealed outcome lines, its final forecast line and its answer lines."""
     rows = []
+    answers_by_number = {answer_number_of(a): a for a in answer_lines}
     for outcome in outcome_lines:
         result = outcome.get("result") or {}
         if result.get("status") != "final" or result.get("direction") not in DIRECTIONS:
             continue
         horizon, happened = outcome["horizon"], result["direction"]
         comparisons = outcome.get("comparison_forecasts") or {}
-        base_pct = comparisons.get("base_rate_shown_to_claude")
-        candidates: dict[str, tuple[dict | None, str]] = {}
-        for name in FORECASTERS[3:]:
-            candidates[name] = (comparisons.get(name), "final" if comparisons.get(name) else "missing")
+        base_block = comparisons.get("base_rate_shown_to_claude")
+        base_chances = chances_of(base_block)
         claude_block = ((final_line or {}).get("forecast") or {}).get(horizon) or {}
-        candidates[CLAUDE] = (claude_block if claude_block.get("status") == "ok" else None, claude_block.get("status") or "missing")
-        for i, answer in enumerate(answer_lines[:2], start=1):
-            block = ((answer.get("checked_forecast") or {}).get(horizon)) or {}
-            candidates[f"claude_answer_{i}"] = (block if block.get("status") == "ok" else None, block.get("status") or "missing")
-        for name, (chances_pct, status) in candidates.items():
-            chances = floored(chances_pct) if chances_pct else None
+        candidates = [(CLAUDE_FINAL, claude_block, claude_block.get("status") or "missing")]
+        for name in CLAUDE_ANSWERS:
+            answer = answers_by_number.get(name.removeprefix("claude_")) or {}
+            block = (answer.get("checked_forecast") or {}).get(horizon) or {}
+            candidates.append((name, block, block.get("status") or "missing"))
+        for name in COMPARISON_FORECASTERS:
+            candidates.append((name, comparisons.get(name), "final" if comparisons.get(name) else "missing"))
+        for name, block, status in candidates:
+            chances = chances_of(block) if status in ("ok", "final") else None
             scored_as_base = False
-            if chances is None and name.startswith("claude") and base_pct:
-                chances, scored_as_base = floored(base_pct), True       # a missing Claude horizon scores as the base rate
+            if chances is None and name.startswith("claude"):
+                if base_chances is None:
+                    continue
+                chances, block, scored_as_base = base_chances, base_block, True
             if chances is None:
                 continue
-            rows.append({"read_id": outcome["read_id"], "trading_day": outcome.get("trading_day"),
-                         "half_hour_slot_et": outcome.get("half_hour_slot_et"), "read_source": outcome.get("read_source"),
-                         "horizon": horizon, "forecaster": name, "forecast_status": status, "scored_as_base_rate": scored_as_base,
-                         "happened": happened, "size_bucket": result.get("size_bucket"),
-                         "up_pct": round(chances["up"] * 100, 1), "flat_pct": round(chances["flat"] * 100, 1),
-                         "down_pct": round(chances["down"] * 100, 1), "log_loss": log_loss(chances, happened),
-                         "brier_score": brier(chances, happened), "is_right": max(chances, key=chances.get) == happened,
-                         "grading_rule_version": outcome.get("grading_rule_version")})
+            rows.append(_score_row(outcome, name, status, scored_as_base, chances, block, happened, result.get("size_bucket")))
     return rows
 
 
-def collect_score_rows(paths: ForecastPaths) -> list[dict]:
-    """Every score row for every live read with sealed outcomes."""
+def _score_row(outcome: dict, forecaster: str, status: str, scored_as_base: bool, chances: dict[str, float], block: dict,
+               happened: str, happened_bucket: str | None) -> dict:
+    scores = station_stores.import_spx_jev("scores")
+    move_part, direction_part = scores.losses(chances, happened)
+    top = max(chances, key=chances.get)
+    return {"read_id": outcome["read_id"], "trading_day": outcome.get("trading_day"), "half_hour_slot_et": outcome.get("half_hour_slot_et"),
+            "prompt_and_model_version": outcome.get("prompt_and_model_version"), "read_source": outcome.get("read_source"),
+            "grading_rule_version": outcome.get("grading_rule_version"), "claude_input_sha256": outcome.get("claude_input_sha256"),
+            "test_variant": TEST_VARIANT_NONE, "horizon": outcome["horizon"], "forecaster": forecaster, "forecast_status": status,
+            "is_scored_as_base_rate": scored_as_base, "result_direction": happened, "result_size_bucket": happened_bucket,
+            "up_pct": block.get("up_pct"), "flat_pct": block.get("flat_pct"), "down_pct": block.get("down_pct"),
+            "top_choice_pct": round(chances[top] * 100, 1), "log_loss": round(scores.log_loss(chances, happened), 4),
+            "log_loss_move_part": round(move_part, 4), "log_loss_direction_part": round(direction_part, 4),
+            "brier_score": brier_score(chances, happened),
+            "size_ranked_probability_score": None if scored_as_base else size_ranked_probability_score(block.get("size_buckets_pct"), happened_bucket),
+            "is_top_choice_correct": top == happened, "scoring_code_version": SCORING_CODE_VERSION}
+
+
+def load_reads_by_day(paths: ForecastPaths) -> dict[str, list[dict]]:
+    """Every reads line, by day: read once a night and shared by the scores and the scorecard."""
+    folder = paths.root / "reads"
+    if not folder.exists():
+        return {}
+    return {file.name[:10]: jsonl_store.read_json_lines(file) for file in sorted(folder.glob("20??-??-??.jsonl"))}
+
+
+def production_lines(reads_lines: list[dict]) -> tuple[dict[str, dict], dict[str, list[dict]]]:
+    """``(final line by read_id, answer lines by read_id)`` for the production lines of one day's reads file."""
+    finals: dict[str, dict] = {}
+    answers: dict[str, list[dict]] = {}
+    for line in reads_lines:
+        if line.get("test_variant") not in (None, TEST_VARIANT_NONE):
+            continue
+        if line.get("line_type") == "final_forecast":
+            finals[str(line.get("read_id"))] = line
+        elif line.get("line_type") == "claude_answer":
+            answers.setdefault(str(line.get("read_id")), []).append(line)
+    return finals, answers
+
+
+def collect_score_rows(paths: ForecastPaths, reads_by_day: dict[str, list[dict]] | None = None) -> list[dict]:
+    """Every score row for every read with sealed outcomes, the newest finalize attempt per horizon."""
     rows = []
     outcomes_dir = paths.root / "outcomes"
     if not outcomes_dir.exists():
         return rows
+    reads_by_day = reads_by_day if reads_by_day is not None else load_reads_by_day(paths)
     for outcome_file in sorted(outcomes_dir.glob("20??-??-??.jsonl")):
-        day = outcome_file.name[:10]
-        by_read: dict[str, list[dict]] = {}
+        newest_by_read: dict[str, dict[str, dict]] = {}
         for line in jsonl_store.iter_json_lines(outcome_file):
-            by_read.setdefault(str(line.get("read_id")), []).append(line)
-        finals: dict[str, dict] = {}
-        answers: dict[str, list[dict]] = {}
-        for line in jsonl_store.iter_json_lines(paths.reads_file(day)):
-            if line.get("test_variant") not in (None, "none"):
-                continue
-            if line.get("line_type") == "final_forecast":
-                finals[str(line.get("read_id"))] = line
-            elif line.get("line_type") == "claude_answer":
-                answers.setdefault(str(line.get("read_id")), []).append(line)
-        for read_id, outcome_lines in by_read.items():
-            newest = {}
-            for line in outcome_lines:
-                h = line.get("horizon")
-                if h not in newest or int(line.get("finalize_attempt_number", 1)) >= int(newest[h].get("finalize_attempt_number", 1)):
-                    newest[h] = line
-            rows.extend(score_rows_for_read(list(newest.values()), finals.get(read_id), answers.get(read_id, [])))
+            by_horizon = newest_by_read.setdefault(str(line.get("read_id")), {})
+            horizon = str(line.get("horizon"))
+            if horizon not in by_horizon or int(line.get("finalize_attempt_number", 1)) >= int(by_horizon[horizon].get("finalize_attempt_number", 1)):
+                by_horizon[horizon] = line
+        finals, answers = production_lines(reads_by_day.get(outcome_file.name[:10], []))
+        for read_id, by_horizon in newest_by_read.items():
+            rows.extend(score_rows_for_read(list(by_horizon.values()), finals.get(read_id), answers.get(read_id, [])))
     return rows
 
 
 def write_scores(paths: ForecastPaths, rows: list[dict]) -> int:
-    import pyarrow as pa
-    import pyarrow.parquet as pq
-
-    table = pa.Table.from_pylist(rows) if rows else pa.table({"read_id": pa.array([], pa.string())})
-    buffer = io.BytesIO()
-    pq.write_table(table, buffer, compression="zstd")
-    jsonl_store.write_bytes_atomically(paths.library_scores_file, buffer.getvalue())
+    library.write_parquet_rows(paths.library_scores_file, rows)
     return len(rows)
 
 
 def read_scores(paths: ForecastPaths) -> list[dict]:
-    if not paths.library_scores_file.exists():
-        return []
-    import pyarrow.parquet as pq
-
-    return pq.read_table(paths.library_scores_file).to_pylist()
+    return library.read_parquet_rows(paths.library_scores_file)
 
 
-__all__ = ["FORECASTERS", "CLAUDE", "HORIZONS", "floored", "log_loss", "brier", "score_rows_for_read", "collect_score_rows",
-           "write_scores", "read_scores", "station_stores"]
+__all__ = ["SCORING_CODE_VERSION", "FORECASTERS", "CLAUDE_FINAL", "CLAUDE_ANSWERS", "COMPARISON_FORECASTERS", "chances_of",
+           "brier_score", "size_ranked_probability_score", "score_rows_for_read", "load_reads_by_day", "production_lines",
+           "collect_score_rows", "write_scores", "read_scores"]

@@ -913,6 +913,17 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         with open(out_dir / "hour" / f"{day_name}.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps(hour_line(hour), ensure_ascii=False) + "\n")
     archive.append(lane.archive_folder(state_dir, out_dir), day_name, read_record(hour))
+    if do_send and lane.pool and day is None:
+        # Claude's own forecast of this read (skills/spx-claude-forecast, 2026-10-09): built from the record just archived,
+        # in its own process, never on the read's path, never in the combined call; its switch is SPX_CLAUDE_FORECAST_DISABLE
+        try:
+            claude_forecast_skill = Path(__file__).resolve().parents[2] / "spx-claude-forecast"
+            if str(claude_forecast_skill) not in sys.path:
+                sys.path.insert(0, str(claude_forecast_skill))
+            from spx_claude_forecast.hook import spawn_claude_forecast
+            spawn_claude_forecast(state_dir, archive.read_id(lane.name, scene.row["ts"]))
+        except Exception as e:  # the Claude forecast must never cost the read anything
+            log(f"the Claude forecast hook was skipped this run: {type(e).__name__}: {e}")
     if do_send and lane.pool and day is None and not forecast_now_done and not prediction_off:
         # the Mirai Prediction System's fallback: forecast this read in its own process (never on the read's path, never raises)
         try:

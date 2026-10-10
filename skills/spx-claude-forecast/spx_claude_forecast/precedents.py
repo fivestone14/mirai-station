@@ -23,8 +23,8 @@ import math
 import statistics
 from dataclasses import dataclass, field
 
-from .grading import DIRECTIONS, SIZE_BUCKETS
-from .library import FINGERPRINT_FIELDS, HORIZONS
+from .grading import DIRECTIONS, SIZE_BUCKETS, direction_of
+from .library import FINGERPRINT_FIELDS, HORIZONS, sessions_before
 
 BASE_RATE_POOL_MINUTES = 30          # the half-hours on either side of the slot are pooled in
 BASE_RATE_MIN_SESSIONS = 15          # under this the pool is too thin: exact slot only, flagged
@@ -94,10 +94,12 @@ def apportion(votes: list[float], total: int) -> list[int]:
 
 
 def three_way_pct(counts: list[int]) -> dict[str, float]:
-    """up / flat / down percentages from seven bucket counts, with one pretend read per bucket so no chance is zero."""
-    smoothed = [c + 1 for c in counts]
-    total = sum(smoothed)
-    down, flat, up = sum(smoothed[:3]), smoothed[3], sum(smoothed[4:])
+    """up / flat / down percentages from seven bucket counts, exactly as counted (the scorer floors a chance at
+    2 percent; smoothing here would pull the reference Claude is scored against toward even and flatter its skill)."""
+    total = sum(counts)
+    if total <= 0:
+        return {"up_pct": 0.0, "flat_pct": 0.0, "down_pct": 0.0}
+    down, flat, up = sum(counts[:3]), counts[3], sum(counts[4:])
     return {"up_pct": round(100 * up / total, 1), "flat_pct": round(100 * flat / total, 1), "down_pct": round(100 * down / total, 1)}
 
 
@@ -163,10 +165,11 @@ def _day_number(day: str) -> int:
     return int(day.replace("-", ""))
 
 
-def card_for(picked: dict, sessions_before: list[str]) -> dict:
-    """A card as Claude sees it: how long ago in sessions, the slot, the seven items, and what happened next."""
+def card_for(picked: dict, earlier_sessions: list[str]) -> dict:
+    """A card as Claude sees it: how long ago in sessions (counted over the library's sessions before the read's
+    day), the slot, the seven items, and what happened next."""
     r = picked["row"]
-    ago = sum(1 for d in sessions_before if d > r["trading_day"]) + 1
+    ago = sum(1 for d in earlier_sessions if d > r["trading_day"]) + 1
     card = {"ago_sessions": ago, "at": r.get("half_hour_slot_et"), "src": r.get("origin")}
     for name in FINGERPRINT_FIELDS:
         if isinstance(r.get(name), (int, float)):
@@ -184,7 +187,7 @@ def history_for_read(rows: list[dict], now_fingerprint: dict, slot_minute: int, 
     """Everything the payload builder needs from history for one read."""
     base = base_rate_for(rows, slot_minute, before_day)
     picked, record = pick_precedents(rows, now_fingerprint, slot_minute, before_day)
-    sessions = sorted({r["trading_day"] for r in rows if r.get("trading_day") and r["trading_day"] < before_day})
+    sessions = sessions_before(rows, before_day)
     history = HistoryForRead(base_rate=base, cards=[], picker=record)
     if base is None:
         history.absent.append({"path": "base_rate", "why": "no_sessions_before_the_day"})
@@ -212,7 +215,7 @@ def shown_precedents_outcomes(cards: list[dict], base_counts: list[int] | None, 
     for card in cards:
         edges = (card.get("outcome_flat_edges") or {}).get(horizon)
         if isinstance(edges, (int, float)):
-            tally["up" if edges > 1 else "down" if edges < -1 else "flat"] += 1
+            tally[direction_of(edges)] += 1
             shown += 1
     if not shown:
         return None

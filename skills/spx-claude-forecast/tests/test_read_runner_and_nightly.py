@@ -2,16 +2,20 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 
-from payload_fixtures import at, fake_inputs, station_state_dir
+from payload_fixtures import fake_inputs, station_state_dir
 
-from spx_claude_forecast import claude_call, grading, jsonl_store, nightly, read_runner, scorecard, scoring, paths as forecast_paths
+from spx_claude_forecast import claude_call, jsonl_store, nightly, read_runner, scorecard, scoring, paths as forecast_paths
 from spx_claude_forecast.control import ET
 from spx_claude_forecast.payload import build
+
+READ_ID = "live:2026-10-09T14:30:12.458122-04:00"
+STATION_FOLDERS = ("reversion", "spx_jev", "lob_flow", "siege", "dated_gex")
 
 
 def _answer_for(prompt: str) -> dict:
@@ -34,6 +38,15 @@ def fake_call(prompt: str, rulebook: str, **_) -> claude_call.CallResult:
                                   cli_version="test", model_served="claude-opus-5-5")
 
 
+def _state_over_the_station(tmp_path: Path) -> Path:
+    """A temp state root whose station stores are the real ones (read-only symlinks); the forecast folder is temp."""
+    state = tmp_path / "state"
+    state.mkdir()
+    for name in STATION_FOLDERS:
+        (state / name).symlink_to(station_state_dir() / name)
+    return state
+
+
 def test_build_payload_on_fake_inputs_gives_a_hashed_scene_an_ask_and_two_prompts(tmp_path):
     inputs = fake_inputs(tmp_path)
     built = build.build_payload(inputs, [], origin="live")
@@ -51,25 +64,41 @@ def test_leak_checks_catch_a_date_a_price_level_and_another_voice():
     assert build.leak_checks({"levels": [{"what": "flip", "sig": -0.5}], "spot_level": 7813}) and build.leak_checks({"x": [7813.0]})
 
 
+def test_the_real_caller_is_refused_under_pytest_and_a_stand_in_is_not(state_dir):
+    """pytest sets PYTEST_CURRENT_TEST; a runner started under a test run must never reach Claude."""
+    paths = forecast_paths.ForecastPaths(state_dir)
+    assert read_runner._why_not_to_call(paths, "2026-10-09", claude_call.call_claude) == "refused_under_pytest"
+    assert read_runner._why_not_to_call(paths, "2026-10-09", fake_call) is None
+
+
+def test_the_daily_caps_count_every_answer_line_of_the_day(state_dir):
+    paths = forecast_paths.ForecastPaths(state_dir)
+    jsonl_store.write_json_atomically(paths.control_file, {"max_calls_per_day": 2, "max_usd_per_day": 15.0})
+    for n in (1, 2):
+        jsonl_store.append_json_line(paths.reads_file("2026-10-09"), {"line_type": "claude_answer", "answer_id": f"r#answer_{n}",
+                                                                       "call_stats": {}, "error": "timeout after 120 s"}, fsync=False)
+    assert read_runner._why_not_to_call(paths, "2026-10-09", fake_call) == "capped"
+    assert read_runner._why_not_to_call(paths, "2026-10-08", fake_call) is None
+
+
 @pytest.mark.skipif(station_state_dir() is None, reason="needs the station's state")
-def test_a_real_read_runs_end_to_end_with_a_stand_in_claude(tmp_path, monkeypatch):
+def test_a_real_read_runs_end_to_end_with_a_stand_in_claude(tmp_path):
     """The real 10-09 14:30 read: payload line, two answer lines, a final line and latest.json, no leaks."""
-    real = station_state_dir()
-    state = tmp_path / "state"
-    state.mkdir()
-    for name in ("reversion", "spx_jev", "lob_flow", "siege", "dated_gex"):
-        (state / name).symlink_to(real / name)
-    read_id = "live:2026-10-09T14:30:12.458122-04:00"
-    summary = read_runner.run_read(state, read_id, call=fake_call)
+    state = _state_over_the_station(tmp_path)
+    summary = read_runner.run_read(state, READ_ID, call=fake_call)
     assert summary["status"] == "built", summary
     paths = forecast_paths.ForecastPaths(state)
     payloads = jsonl_store.read_json_lines(paths.payloads_file("2026-10-09"))
     reads = jsonl_store.read_json_lines(paths.reads_file("2026-10-09"))
     assert len(payloads) == 1 and payloads[0]["status"] == "built"
     assert [l["line_type"] for l in reads] == ["claude_answer", "claude_answer", "final_forecast"]
-    assert reads[-1]["usable_answer_count"] == 2 and reads[-1]["forecast"]["next_30_minutes"]["up_pct"] == 20
-    assert json.loads(paths.latest_file.read_text())["read_id"] == read_id
-    assert read_runner.run_read(state, read_id, call=fake_call)["skipped"] == "already written"
+    assert [l["answer_id"] for l in reads[:2]] == [f"{READ_ID}#answer_1", f"{READ_ID}#answer_2"]
+    final = reads[-1]
+    assert final["usable_answer_count"] == 2 and final["forecast"]["next_30_minutes"]["up_pct"] == 20
+    assert final["forecast"]["next_30_minutes"]["answer_2"]["up_pct"] == 20 and final["written_at"].endswith("-04:00")
+    assert "shown_precedents_outcomes" not in final and final["picked_precedents_among_code_nearest_3_count"] is None
+    assert json.loads(paths.latest_file.read_text())["read_id"] == READ_ID
+    assert read_runner.run_read(state, READ_ID, call=fake_call)["skipped"] == "already written"
     blocks = set(payloads[0]["scene"]) - {"absent", "precedents"}
     assert {"clock", "tape", "scale", "data_sources"} <= blocks, blocks
 
@@ -81,21 +110,44 @@ def _write_a_sealed_day(paths: forecast_paths.ForecastPaths, day: str, slots: tu
         jsonl_store.append_json_line(paths.payloads_file(day), {"line_type": "payload", "read_id": read_id, "trading_day": day,
                                                                 "half_hour_slot_et": slot, "status": "built", "origin": "live",
                                                                 "base_rate_shown_to_claude": base, "scene": {}}, fsync=False)
+        buckets = {b: (75 if b == "flat_within_1_flat_edge" else 5 if b.endswith("1_to_2_flat_edges") else 2.5) for b in scoring.SIZE_BUCKETS}
         final = {"line_type": "final_forecast", "read_id": read_id, "test_variant": "none", "status": "ok", "trading_day": day,
                  "any_answer_has_valid_reason": True,
-                 "forecast": {"next_30_minutes": {"status": "ok", "up_pct": 10, "flat_pct": 75, "down_pct": 15,
+                 "forecast": {"next_30_minutes": {"status": "ok", "up_pct": 10, "flat_pct": 75, "down_pct": 15, "size_buckets_pct": buckets,
                                                   "is_within_3_pct_points_of_base_rate": False,
                                                   "is_leaning_same_way_as_last_30_minutes_move_vs_base_rate": True,
                                                   "largest_gap_between_answers_pct_points": 4}}}
-        jsonl_store.append_json_line(paths.reads_file(day), {"line_type": "claude_answer", "read_id": read_id, "test_variant": "none",
-                                                             "call_stats": {"cost_usd": 0.1}}, fsync=False)
+        jsonl_store.append_json_line(paths.reads_file(day), {"line_type": "claude_answer", "answer_id": f"{read_id}#answer_1", "read_id": read_id,
+                                                             "test_variant": "none", "call_stats": {"cost_usd": 0.1}}, fsync=False)
         jsonl_store.append_json_line(paths.reads_file(day), final, fsync=False)
         jsonl_store.append_json_line(paths.outcomes_file(day), {
-            "line_type": "outcome", "read_id": read_id, "horizon": "next_30_minutes", "trading_day": day, "half_hour_slot_et": slot,
-            "read_source": "live", "finalize_attempt_number": 1,
+            "line_type": "outcome", "read_id": read_id, "claude_input_sha256": "sha256:0000000000000000", "horizon": "next_30_minutes",
+            "grading_rule_version": 1, "finalize_attempt_number": 1, "trading_day": day, "half_hour_slot_et": slot,
+            "prompt_and_model_version": "cr-1", "read_source": "live",
             "result": {"status": "final", "direction": "flat", "size_bucket": "flat_within_1_flat_edge", "graded_move_flat_edges": 0.2},
             "comparison_forecasts": {"base_rate_shown_to_claude": base["next_30_minutes"],
                                      "existing_system_main_forecast": {"up_pct": 23.6, "flat_pct": 61.6, "down_pct": 14.8}}}, fsync=False)
+
+
+def test_scores_carry_the_spec_columns_and_a_missing_claude_answer_scores_as_the_base_rate(state_dir):
+    paths = forecast_paths.ForecastPaths(state_dir)
+    _write_a_sealed_day(paths, "2026-10-08", ("14:30",))
+    rows = {r["forecaster"]: r for r in scoring.collect_score_rows(paths)}
+    assert set(rows) == {"claude_final", "claude_answer_1", "claude_answer_2", "base_rate_shown_to_claude", "existing_system_main_forecast"}
+    final = rows["claude_final"]
+    for column in ("trading_day", "half_hour_slot_et", "prompt_and_model_version", "read_source", "grading_rule_version",
+                   "claude_input_sha256", "test_variant", "horizon", "forecast_status", "result_direction", "result_size_bucket",
+                   "up_pct", "flat_pct", "down_pct", "top_choice_pct", "log_loss", "log_loss_move_part", "log_loss_direction_part",
+                   "brier_score", "size_ranked_probability_score", "is_top_choice_correct", "scoring_code_version"):
+        assert column in final, column
+    assert final["result_direction"] == "flat" and final["is_top_choice_correct"] and final["top_choice_pct"] == 75.0
+    assert final["log_loss"] == pytest.approx(-math.log(0.75), abs=0.001)
+    assert final["log_loss_move_part"] + final["log_loss_direction_part"] == pytest.approx(final["log_loss"], abs=0.001)
+    assert 0 < final["size_ranked_probability_score"] < 0.1 and final["is_scored_as_base_rate"] is False
+    for name in ("claude_answer_1", "claude_answer_2"):              # answer 1 has no checked block, answer 2 no line at all
+        assert rows[name]["is_scored_as_base_rate"] and rows[name]["forecast_status"] == "missing"
+        assert rows[name]["flat_pct"] == 59.6 and rows[name]["size_ranked_probability_score"] is None
+    assert rows["existing_system_main_forecast"]["forecast_status"] == "final" and rows["base_rate_shown_to_claude"]["flat_pct"] == 59.6
 
 
 def test_scores_and_the_scorecard_pair_claude_with_each_reference_on_the_same_reads(state_dir):
@@ -103,16 +155,15 @@ def test_scores_and_the_scorecard_pair_claude_with_each_reference_on_the_same_re
     for day in ("2026-10-06", "2026-10-07", "2026-10-08"):
         _write_a_sealed_day(paths, day, ("10:00", "14:30"))
     rows = scoring.collect_score_rows(paths)
-    claude = [r for r in rows if r["forecaster"] == "claude"]
-    assert len(claude) == 6 and all(r["happened"] == "flat" and r["is_right"] for r in claude)
-    assert {r["forecaster"] for r in rows} == {"claude", "claude_answer_1", "base_rate_shown_to_claude", "existing_system_main_forecast"}
-    assert all(r["scored_as_base_rate"] for r in rows if r["forecaster"] == "claude_answer_1")   # no checked answer: scored as the base rate
+    claude = [r for r in rows if r["forecaster"] == scoring.CLAUDE_FINAL]
+    assert len(claude) == 6 and all(r["result_direction"] == "flat" and r["is_top_choice_correct"] for r in claude)
     assert scoring.write_scores(paths, rows) == len(rows)
     card = scorecard.write_scorecard(paths, scoring.read_scores(paths))
     h30 = card["horizons"]["next_30_minutes"]
-    assert card["verdict"] == "Too early" and h30["reads"] == 6 and h30["claude_right_pct"] == 100.0
+    assert card["verdict"] == "Too early" and h30["reads"] == 6 and h30["claude_right_pct"] == 100.0 and h30["reads_scored_as_base_rate"] == 0
     assert h30["skill_vs"]["base_rate_shown_to_claude"]["skill_pct"] > 0           # 75% flat beats 59.6% flat when flat happens
     assert h30["skill_vs"]["existing_system_main_forecast"]["reads"] == 6
+    assert h30["skill_vs"]["existing_system_main_forecast"]["reference_right_pct"] == 100.0
     assert card["watchdogs"]["leaned_with_last_30_minutes_pct"] == 100.0 and card["watchdogs"]["cost_usd_total"] == pytest.approx(0.6)
     assert len(card["daily_skill_vs_base_rate"]) == 3
 
@@ -125,22 +176,38 @@ def test_sealing_is_refused_before_the_close_plus_75_minutes(state_dir):
 
 
 @pytest.mark.skipif(station_state_dir() is None, reason="needs the station's state")
-def test_the_night_seals_a_real_read_and_rebuilds_the_library(tmp_path):
-    real = station_state_dir()
-    state = tmp_path / "state"
-    state.mkdir()
-    for name in ("reversion", "spx_jev", "lob_flow", "siege", "dated_gex"):
-        (state / name).symlink_to(real / name)
-    read_id = "live:2026-10-09T14:30:12.458122-04:00"
-    read_runner.run_read(state, read_id, call=fake_call)
+def test_the_night_seals_a_real_read_once_per_horizon_and_rebuilds_the_library(tmp_path):
+    state = _state_over_the_station(tmp_path)
+    read_runner.run_read(state, READ_ID, call=fake_call)
     paths = forecast_paths.ForecastPaths(state)
     late = datetime(2026, 10, 9, 17, 30, tzinfo=ET)
-    sealed = nightly.seal_day(state, paths, "2026-10-09", now=late)
-    assert sealed["sealed"] == 1
+    assert nightly.seal_day(state, paths, "2026-10-09", now=late) == {"day": "2026-10-09", "sealed": 1, "outcome_lines": 3, "skipped": 0}
     outcomes = jsonl_store.read_json_lines(paths.outcomes_file("2026-10-09"))
     by_h = {o["horizon"]: o for o in outcomes}
-    assert by_h["next_30_minutes"]["result"]["direction"] == "flat" and by_h["next_30_minutes"]["result"]["flat_edge_points"] == 2.0
-    assert by_h["next_30_minutes"]["existing_system_result_check"]["is_same_direction"] is True
-    assert "existing_system_main_forecast" in by_h["next_30_minutes"]["comparison_forecasts"]
-    results = nightly.run_nightly(state, "2026-10-09", now=late)
-    assert results["library"]["rows"] >= 1 and results["scores"]["rows"] >= 3 and "error" not in results["scorecard"]
+    h30 = by_h["next_30_minutes"]
+    assert h30["result"]["direction"] == "flat" and h30["result"]["flat_edge_points"] == 2.0 and h30["finalized_at"] == "2026-10-09T17:30:00-04:00"
+    assert h30["claude_input_sha256"].startswith("sha256:") and h30["prompt_and_model_version"] == "cr-1"
+    assert h30["existing_system_result_check"]["is_same_direction"] is True
+    main = h30["comparison_forecasts"]["existing_system_main_forecast"]
+    assert main["is_written_live"] is True and main["written_after_read_seconds"] <= 600
+    assert set(h30["comparison_forecasts"]) == {"existing_system_time_of_day_odds_20_sessions", "existing_system_main_forecast"}
+    assert set(h30["missing_comparison_forecasts"]) == {"base_rate_shown_to_claude", "shown_precedents_outcomes"}   # no library yet
+    assert by_h["next_60_minutes"]["comparison_forecasts"]["existing_system_main_forecast"]["forecasts_move_measured_to"] == "window_end_price"
+    # sealing again writes nothing: every horizon is settled
+    assert nightly.seal_day(state, paths, "2026-10-09", now=late)["outcome_lines"] == 0
+    # a horizon left no_data earlier is tried again and, graded now, gets the next finalize_attempt_number
+    payload = jsonl_store.read_json_lines(paths.payloads_file("2026-10-09"))[0]
+    second = {**payload, "read_id": "live:2026-10-09T14:00:51.311512-04:00",
+              "logged_never_sent": {**payload["logged_never_sent"], "row_ts": "2026-10-09T14:00:51.311512-04:00"}}
+    jsonl_store.append_json_line(paths.payloads_file("2026-10-09"), second, fsync=False)
+    for horizon, status in (("next_30_minutes", "no_data"), ("next_60_minutes", "final"), ("to_close", "final")):
+        jsonl_store.append_json_line(paths.outcomes_file("2026-10-09"), {"line_type": "outcome", "read_id": second["read_id"],
+                                                                         "horizon": horizon, "finalize_attempt_number": 1,
+                                                                         "result": {"status": status}}, fsync=False)
+    assert nightly.seal_day(state, paths, "2026-10-09", now=late)["outcome_lines"] == 1
+    retried = [o for o in jsonl_store.read_json_lines(paths.outcomes_file("2026-10-09")) if o["read_id"] == second["read_id"]]
+    assert len(retried) == 4 and retried[-1]["horizon"] == "next_30_minutes" and retried[-1]["finalize_attempt_number"] == 2
+    assert retried[-1]["result"]["status"] == "final"
+    results = nightly.run_nightly(state, "2026-10-09", now=late, backup_dir=tmp_path / "backup")
+    assert results["library"]["rows"] >= 2 and results["scores"]["rows"] >= 3 and "error" not in results["scorecard"]
+    assert (tmp_path / "backup" / "outcomes" / "2026-10-09.jsonl").exists()

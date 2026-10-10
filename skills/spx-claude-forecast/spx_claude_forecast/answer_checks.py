@@ -4,19 +4,20 @@ The rules, from spec/record_formats.md:
 - up_pct + flat_pct + down_pct off 100 by at most 2 is rescaled to 100; off by more and the horizon is
   rejected (scored as the base rate).
 - a size split (up_by_size_pct / down_by_size_pct) off its total by 1 is fixed on its largest bucket; off
-  by more, the split is discarded and only up / flat / down kept.
+  by more, the split is discarded (size_buckets_pct is null) and only up / flat / down kept.
 - similar_precedents must name real card ids (never "now"), one to four, weights summing to 100; a bad
   entry is removed.
 - reasons must point at a path that exists in SCENE and is not listed in absent; a bad reason is removed.
   With no reason left the answer is still graded, flagged ungrounded.
+A horizon's checked status is ``ok``, ``rejected`` (the block was there and failed) or ``failed`` (no answer
+came back at all).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .rulebook import (DIRECTION_KEYS, DOWN_SIZE_KEYS, HORIZON_NAMES, PUSHES_TOWARD, REASON_HORIZONS, REASONS_MAX,
-                       REASONS_MIN, SIMILAR_PRECEDENTS_MAX, UP_SIZE_KEYS)
 from .grading import SIZE_BUCKETS
+from .rulebook import DIRECTION_KEYS, DOWN_SIZE_KEYS, PUSHES_TOWARD, REASON_HORIZONS, REASONS_MAX, SIMILAR_PRECEDENTS_MAX, UP_SIZE_KEYS
 
 SUM_RESCALE_TOLERANCE = 2        # up/flat/down may miss 100 by this much and be rescaled
 SIZE_SPLIT_FIX_TOLERANCE = 1     # a size split may miss its total by this much and be fixed on its largest bucket
@@ -62,8 +63,7 @@ def check_answer(answer: dict | None, scene: dict, asked_horizons: list[str], ca
     checked = CheckedAnswer()
     if not isinstance(answer, dict):
         for horizon in asked_horizons:
-            checked.checked_forecast[horizon] = {"status": "rejected", "why": "no answer"}
-            checked.answer_checks["horizons_rejected_sum_far_from_100"].append(horizon)
+            checked.checked_forecast[horizon] = {"status": "failed", "why": "no answer"}
         return checked
     absent_paths = {a.get("path") for a in scene.get("absent", []) if isinstance(a, dict)}
     _check_precedents(answer.get("similar_precedents"), card_ids, checked)
@@ -105,7 +105,7 @@ def _check_precedents(items, card_ids: dict[str, str], checked: CheckedAnswer) -
             checked.remove(f"similar_precedents.{extra['precedent_id']}", f"more than {SIMILAR_PRECEDENTS_MAX} precedents")
         kept = kept[:SIMILAR_PRECEDENTS_MAX]
     total = sum(k["weight_pct_of_picked_precedents"] for k in kept)
-    if kept and total and abs(total - 100) > SUM_RESCALE_TOLERANCE:
+    if kept and abs(total - 100) > SUM_RESCALE_TOLERANCE:
         checked.remove("similar_precedents", f"weights sum to {total}, not 100")
         kept = []
     checked.checked_similar_precedents = kept
@@ -140,8 +140,6 @@ def _check_reasons(items, scene: dict, absent_paths: set, checked: CheckedAnswer
         kept = kept[:REASONS_MAX]
     checked.checked_reasons = kept
     checked.answer_checks["valid_reason_count"] = len(kept)
-    if 0 < len(kept) < REASONS_MIN:
-        checked.answer_checks["fewer_reasons_than_asked"] = True
 
 
 def _whole(value) -> int | None:
@@ -152,11 +150,9 @@ def _whole(value) -> int | None:
 
 def _check_horizon(horizon: str, block, checked: CheckedAnswer) -> dict:
     if not isinstance(block, dict):
-        checked.answer_checks["horizons_rejected_sum_far_from_100"].append(horizon)
         return {"status": "rejected", "why": "missing"}
     shares = {k: _whole(block.get(k)) for k in DIRECTION_KEYS}
     if any(v is None or v < 0 for v in shares.values()):
-        checked.answer_checks["horizons_rejected_sum_far_from_100"].append(horizon)
         return {"status": "rejected", "why": "up_pct, flat_pct or down_pct missing"}
     total = sum(shares.values())
     if total == 0 or abs(total - 100) > SUM_RESCALE_TOLERANCE:
@@ -165,11 +161,7 @@ def _check_horizon(horizon: str, block, checked: CheckedAnswer) -> dict:
     if total != 100:
         shares = _rescale_to_100(shares)
         checked.answer_checks["horizons_rescaled_to_sum_100"].append(horizon)
-    out = {"status": "ok", **shares}
-    buckets = _size_buckets(horizon, block, shares, checked)
-    if buckets is not None:
-        out["size_buckets_pct"] = buckets
-    return out
+    return {"status": "ok", **shares, "size_buckets_pct": _size_buckets(horizon, block, shares, checked)}
 
 
 def _rescale_to_100(shares: dict[str, int]) -> dict[str, int]:
@@ -182,9 +174,11 @@ def _rescale_to_100(shares: dict[str, int]) -> dict[str, int]:
 
 
 def _size_buckets(horizon: str, block: dict, shares: dict[str, int], checked: CheckedAnswer) -> dict | None:
-    """The seven-bucket split, or None when a side's split was discarded."""
+    """The seven-bucket split, or None when either side's split was discarded. Both sides are checked before
+    anything is recorded, so a horizon is listed as fixed or discarded, never both."""
     sides = {"up_pct": ("up_by_size_pct", UP_SIZE_KEYS), "down_pct": ("down_by_size_pct", DOWN_SIZE_KEYS)}
     split: dict[str, int] = {}
+    fixed = False
     for share_key, (block_key, keys) in sides.items():
         raw = block.get(block_key)
         values = {k: _whole(raw.get(k)) if isinstance(raw, dict) else None for k in keys}
@@ -192,18 +186,17 @@ def _size_buckets(horizon: str, block: dict, shares: dict[str, int], checked: Ch
             checked.answer_checks["horizons_size_split_discarded"].append(horizon)
             return None
         gap = shares[share_key] - sum(values.values())
+        if abs(gap) > SIZE_SPLIT_FIX_TOLERANCE:
+            checked.answer_checks["horizons_size_split_discarded"].append(horizon)
+            return None
         if gap != 0:
-            if abs(gap) <= SIZE_SPLIT_FIX_TOLERANCE:
-                largest = max(keys, key=lambda k: values[k])
-                values[largest] += gap
-                if horizon not in checked.answer_checks["horizons_size_split_fixed_off_by_1"]:
-                    checked.answer_checks["horizons_size_split_fixed_off_by_1"].append(horizon)
-            else:
-                checked.answer_checks["horizons_size_split_discarded"].append(horizon)
-                return None
+            values[max(keys, key=lambda k: values[k])] += gap
+            fixed = True
         split.update(values)
+    if fixed:
+        checked.answer_checks["horizons_size_split_fixed_off_by_1"].append(horizon)
     split["flat_within_1_flat_edge"] = shares["flat_pct"]
     return {bucket: split[bucket] for bucket in SIZE_BUCKETS}
 
 
-__all__ = ["CheckedAnswer", "check_answer", "scene_has_path", "HORIZON_NAMES"]
+__all__ = ["CheckedAnswer", "check_answer", "scene_has_path"]

@@ -11,6 +11,7 @@ from payload_fixtures import SIGMA, SPOT, at, fake_inputs, flat_bars, make_row, 
 
 from spx_claude_forecast import station_stores
 from spx_claude_forecast.paths import ensure_folders
+from spx_claude_forecast.payload import units
 from spx_claude_forecast.payload.blocks.close_signals import build_close_signals_block
 from spx_claude_forecast.payload.blocks.open_signals import build_open_signals_block
 from spx_claude_forecast.payload.blocks.tape import build_tape_block
@@ -68,8 +69,13 @@ def test_without_prior_sessions_the_ranked_fields_carry_no_rank_and_the_session_
     gaps = absent(result)
     assert gaps["tape.five_session_pos"] == "needs_3_prior_sessions"
     assert gaps["tape.prior_high"] == "no_prior_session_bars"
-    assert gaps["tape.price_minus_vwap_sig"] == "no_vwap"
-    assert gaps["tape.rv30_vs_clock_x"] == "no_prior_sessions_at_clock"
+    assert gaps["tape.rv30_vs_clock_x"] == "too_few_sessions"
+
+
+def test_a_rank_scores_the_measured_value_not_the_rounded_one():
+    # a move of 0.274 sig is shown as 0.27 and still beats a prior session's 0.272; a signed move ranks by its size
+    assert units.ranked_sig(-0.274 * SIGMA, SIGMA, [0.272] * 10) == {"v": -0.27, "r": [10, 10]}
+    assert units.ranked(57.6, [57.2] * 10, decimals=0) == {"v": 58, "r": [10, 10]}
 
 
 def test_before_the_settled_open_the_open_fields_are_absent_with_their_clock(tmp_path):
@@ -103,6 +109,16 @@ def test_vwap_is_the_median_of_the_last_three_rows_and_the_touch_is_judged_again
     assert tape["price_minus_vwap_sig"] == {"v": pytest.approx(15 / SIGMA, abs=0.005)}
     # the ramp passed SPOT-15 in the 13:59 and 14:00 bars, when the 14:00 row's VWAP of SPOT-15 was the one known
     assert tape["vwap_last_touch_min_ago"] == 29
+    first_read = build_tape_block(fake_inputs(tmp_path, cut=cut, bars=ramp(), row=row, rows_today=[row])).data
+    assert first_read["price_minus_vwap_sig"] == {"v": pytest.approx(10 / SIGMA, abs=0.005)}     # one row: its own VWAP
+    no_vwap = build_tape_block(fake_inputs(tmp_path, cut=cut, bars=ramp(), row=make_row(cut, vwap=None)))
+    assert absent(no_vwap)["tape.price_minus_vwap_sig"] == "no_vwap"
+
+
+def test_the_half_hour_marks_are_left_out_whole_when_the_bars_start_late(tmp_path):
+    late_feed = [b for b in ramp() if b["ts"][11:16] >= "10:05"]
+    result = build_tape_block(fake_inputs(tmp_path, bars=late_feed))
+    assert absent(result)["tape.half_hours_vs_close_sig"] == "no_bar_by_10:00"
 
 
 def test_prior_high_counts_the_minutes_closed_above_it(tmp_path):
@@ -134,7 +150,7 @@ def test_the_gap_is_named_two_ways_and_its_fill_rate_comes_from_days_with_the_sa
     assert gap["print_pct"] == 0.3 and gap["settled_pct"] == 0.31
     assert gap["settled_sig"] == {"v": pytest.approx(23.73 / SIGMA, abs=0.005)}
     assert gap["x_straddle"] == pytest.approx(23.73 / 21.0, abs=0.05)
-    assert gap["filled"] is False and gap["kept_pct"] == 224
+    assert gap["filled"] is False and gap["kept_x"] == 2.24
     assert gap == {**gap, "fill_by_close_base_pct": 67, "fill_base_n": 3, "base_on": "print_gap_size"}
 
 
@@ -146,12 +162,19 @@ def test_the_gap_waits_for_the_settled_open_and_the_fill_rate_for_a_history(tmp_
     assert "fill_base_n" not in no_history.data["gap"] and no_history.data["gap"]["base_on"] == "print_gap_size"
 
 
+def test_kept_is_left_out_for_a_gap_inside_the_touch_tolerance(tmp_path):
+    cut = at(14, 30, 12)
+    hair = build_open_signals_block(fake_inputs(tmp_path, cut=cut, bars=flat_bars(price=7800.0), row=make_row(cut, spot=7810.0, prior_close=7799.5)))
+    assert absent(hair)["open_signals.gap.kept_x"] == "gap_within_touch_tolerance" and "kept_x" not in hair.data["gap"]
+    assert hair.data["gap"]["settled_sig"]["v"] == 0.01
+
+
 def test_the_noise_band_averages_the_prior_sessions_move_from_the_open_and_places_price_against_it(tmp_path):
     cut = at(14, 30, 12)
     prior = prior_sessions(price=7800.0, step=0.1)                 # by 14:30 each had moved 29.9 points off 7800: 0.383%
     inside = build_open_signals_block(fake_inputs(tmp_path, cut=cut, bars=flat_bars(price=7800.0),
                                                   row=make_row(cut, spot=7800.0), **prior)).data["noise_band"]
-    assert inside == {"sigma_pct": pytest.approx(0.383, abs=0.001), "side": "inside", "dist_bp": pytest.approx(-38.3, abs=0.1),
+    assert inside == {"band_pct": pytest.approx(0.383, abs=0.001), "side": "inside", "dist_bp": pytest.approx(-38.3, abs=0.1),
                       "open_basis": "0930_bar"}
     above = build_open_signals_block(fake_inputs(tmp_path, cut=cut, bars=flat_bars(price=7800.0, step=0.2),
                                                  row=make_row(cut, spot=7859.8), **prior)).data["noise_band"]

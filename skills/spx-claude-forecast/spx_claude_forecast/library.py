@@ -11,12 +11,10 @@ from __future__ import annotations
 
 import io
 import json
-from datetime import datetime
 from pathlib import Path
 
 from . import jsonl_store
 from .control import now_utc_iso
-from .grading import SIZE_BUCKETS
 from .paths import ForecastPaths
 
 HORIZONS = ("next_30_minutes", "next_60_minutes", "to_close")
@@ -57,7 +55,7 @@ def fingerprint_of(scene: dict) -> dict[str, float | None]:
 def unit_suspect_reason(payload_line: dict) -> str | None:
     """Why a read's ruler cannot be trusted, or None: a day on the manual list, or a morning anchor far below
     the VIX-implied move (quality_flags.anchor_vs_vix_x, written by the payload builder)."""
-    day = payload_line.get("trading_day") or payload_line.get("day")
+    day = payload_line.get("trading_day")
     if day in MANUAL_EXCLUDED_DAYS:
         return MANUAL_EXCLUDED_DAYS[day]
     flags = payload_line.get("quality_flags") or {}
@@ -74,10 +72,9 @@ def library_row(payload_line: dict, outcomes: list[dict]) -> dict:
     suspect = unit_suspect_reason(payload_line)
     stale = bool(flags.get("is_stale_read"))
     built = payload_line.get("status") == "built"
-    row = {"read_id": payload_line.get("read_id"), "origin": payload_line.get("origin") or payload_line.get("read_source"),
-           "trading_day": payload_line.get("trading_day") or payload_line.get("day"),
-           "half_hour_slot_et": payload_line.get("half_hour_slot_et") or payload_line.get("slot"),
-           "slot_minute_of_day": _minute_of_day(payload_line.get("half_hour_slot_et") or payload_line.get("slot")),
+    row = {"read_id": payload_line.get("read_id"), "origin": payload_line.get("origin"),
+           "trading_day": payload_line.get("trading_day"), "half_hour_slot_et": payload_line.get("half_hour_slot_et"),
+           "slot_minute_of_day": _minute_of_day(payload_line.get("half_hour_slot_et")),
            "cut_at": payload_line.get("cut_at"), "claude_input_sha256": payload_line.get("claude_input_sha256"),
            "options_book": flags.get("options_book"), "anchor_vs_vix_x": flags.get("anchor_vs_vix_x"),
            "is_unit_suspect": suspect is not None, "is_stale_read": stale, "exclude_reason": suspect,
@@ -111,11 +108,12 @@ def _minute_of_day(slot: str | None) -> int | None:
 # --- building and reading rows.parquet -----------------------------------------------------------------------
 
 def collect_rows(paths: ForecastPaths) -> list[dict]:
-    """Every library row from the record: live payloads with their outcomes, then the seed. On the same day and
-    slot a live row wins over a seed row."""
-    rows: dict[tuple[str, str], dict] = {}
-    for origin, payload_dir, outcome_dir in (("seed", paths.root / "seed" / "payloads", paths.root / "seed" / "outcomes"),
-                                             ("live", paths.root / "payloads", paths.root / "outcomes")):
+    """Every library row from the record, one per read_id: the seed, then the live payloads with their outcomes.
+    A seed row is dropped when a live row stands on the same day and slot (the live read is the real one)."""
+    rows: dict[str, dict] = {}
+    live_slots: set[tuple[str, str]] = set()
+    for origin, payload_dir, outcome_dir in (("live", paths.root / "payloads", paths.root / "outcomes"),
+                                             ("seed", paths.root / "seed" / "payloads", paths.root / "seed" / "outcomes")):
         if not payload_dir.exists():
             continue
         for payload_file in sorted(payload_dir.glob("20??-??-??.jsonl")):
@@ -126,24 +124,39 @@ def collect_rows(paths: ForecastPaths) -> list[dict]:
             for payload_line in jsonl_store.iter_json_lines(payload_file):
                 if payload_line.get("line_type") not in (None, "payload"):
                     continue
-                payload_line = {**payload_line, "origin": origin}
-                row = library_row(payload_line, outcomes_by_read.get(str(payload_line.get("read_id")), []))
-                key = (row["trading_day"] or day, row["half_hour_slot_et"] or "")
-                if key in rows and rows[key]["origin"] == "live" and origin == "seed":
+                row = library_row({**payload_line, "origin": origin}, outcomes_by_read.get(str(payload_line.get("read_id")), []))
+                slot_key = (row["trading_day"] or day, row["half_hour_slot_et"] or "")
+                if origin == "live":
+                    live_slots.add(slot_key)
+                elif slot_key in live_slots:
                     continue
-                rows[key] = row
-    return [rows[k] for k in sorted(rows)]
+                rows[str(row["read_id"])] = row
+    return sorted(rows.values(), key=lambda r: (r["trading_day"] or "", r["half_hour_slot_et"] or "", r["read_id"]))
 
 
-def write_library(paths: ForecastPaths, rows: list[dict]) -> dict:
-    """Write rows.parquet and the manifest atomically; returns the manifest."""
+def write_parquet_rows(path: Path, rows: list[dict]) -> None:
+    """Replace a parquet file atomically with these rows (an empty table keeps a read_id column so readers can open it)."""
     import pyarrow as pa
     import pyarrow.parquet as pq
 
     table = pa.Table.from_pylist(rows) if rows else pa.table({"read_id": pa.array([], pa.string())})
     buffer = io.BytesIO()
     pq.write_table(table, buffer, compression="zstd")
-    jsonl_store.write_bytes_atomically(paths.library_rows_file, buffer.getvalue())
+    jsonl_store.write_bytes_atomically(path, buffer.getvalue())
+
+
+def read_parquet_rows(path: Path) -> list[dict]:
+    """Every row of a parquet file as dicts, or an empty list when the file is not there."""
+    if not path.exists():
+        return []
+    import pyarrow.parquet as pq
+
+    return pq.read_table(path).to_pylist()
+
+
+def write_library(paths: ForecastPaths, rows: list[dict]) -> dict:
+    """Write rows.parquet and the manifest atomically; returns the manifest."""
+    write_parquet_rows(paths.library_rows_file, rows)
     manifest = {"built_at": now_utc_iso(), "rows": len(rows),
                 "source_max_day": max((r["trading_day"] for r in rows if r.get("trading_day")), default=None),
                 "sessions": len({r["trading_day"] for r in rows if r.get("trading_day")}),
@@ -160,11 +173,7 @@ def rebuild_library(paths: ForecastPaths) -> dict:
 
 def read_library(paths: ForecastPaths) -> list[dict]:
     """Every library row, or an empty list when the library has not been built."""
-    if not paths.library_rows_file.exists():
-        return []
-    import pyarrow.parquet as pq
-
-    return pq.read_table(paths.library_rows_file).to_pylist()
+    return read_parquet_rows(paths.library_rows_file)
 
 
 def read_manifest(paths: ForecastPaths) -> dict | None:
@@ -178,6 +187,6 @@ def sessions_before(rows: list[dict], day: str) -> list[str]:
     return sorted({r["trading_day"] for r in rows if r.get("trading_day") and r["trading_day"] < day})
 
 
-__all__ = ["HORIZONS", "FINGERPRINT_FIELDS", "SIZE_BUCKETS", "fingerprint_of", "library_row", "collect_rows",
-           "write_library", "rebuild_library", "read_library", "read_manifest", "sessions_before", "unit_suspect_reason",
-           "datetime"]
+__all__ = ["HORIZONS", "FINGERPRINT_FIELDS", "fingerprint_of", "library_row", "collect_rows", "write_parquet_rows",
+           "read_parquet_rows", "write_library", "rebuild_library", "read_library", "read_manifest", "sessions_before",
+           "unit_suspect_reason"]

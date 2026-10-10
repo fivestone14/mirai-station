@@ -6,8 +6,8 @@ is ranked against the prior sessions at this clock, through the station's own me
 is the 09:34 close (measures.settled_open), a move is close to close (measures.close_at), the realized
 swing is the station's 30-minute one (vol._realized_30), the open's crossings and path are the gap family's
 (gap_open), the VWAP touch is the price family's (price._last_at_average). The day's VWAP is the median of
-the last three diary rows' VWAP, so one bad scan cannot move it. Nothing here is a price level: a high or
-a low rides as its distance from price and the clock it was made at.
+the newest three diary rows' VWAP (fewer on the day's first reads), so one bad scan cannot move it. Nothing
+here is a price level: a high or a low rides as its distance from price and the clock it was made at.
 """
 from __future__ import annotations
 
@@ -26,8 +26,7 @@ HOUR_MIN = 60
 FIVE_MIN = 5
 FIVE_MINUTE_MOVES = 6                # the last half hour step by step: six 5-minute close-to-close moves
 FIVE_MINUTE_DECIMALS = 3             # a 5-minute move is a few hundredths of a sig; two decimals would flatten it
-VWAP_ROWS = 3                        # the day's VWAP is the median of the last three rows', so one bad scan cannot move it
-SETTLED_OPEN_REASON = "not_until_09:35"
+VWAP_ROWS = 3                        # the day's VWAP is the median of the newest three rows', so one bad scan cannot move it
 NO_BARS_REASON = "no_finished_bars"
 
 
@@ -35,10 +34,9 @@ def build_tape_block(inputs: FrozenInputs) -> BlockResult:
     result = BlockResult()
     measures = station_stores.import_spx_jev("labels.measures")
     scene = inputs.scene
-    bars = scene.bars
-    prior_close = _positive(scene.row.get("prior_close"))
-    settled_open = measures.settled_open(bars)
-    prior_rows = _prior_rows_at_clock(scene)
+    prior_close = units.positive(scene.row.get("prior_close"))
+    settled_open = measures.settled_open(scene.bars)
+    prior_rows = units.prior_books(scene)
     block: dict[str, Any] = {
         "price_minus_close_sig": _price_minus_close(inputs, prior_close, prior_rows, result),
         "price_minus_open_sig": _price_minus_open(inputs, settled_open, result),
@@ -67,14 +65,14 @@ def _price_minus_close(inputs: FrozenInputs, prior_close: float | None, prior_ro
     if prior_close is None:
         result.leave_out(f"{BLOCK}.price_minus_close_sig", "no_prior_close")
         return None
-    value = units.sig(inputs.spot - prior_close, inputs.sigma_points)
-    return _ranked_by_size(value, _row_distances(prior_rows, "prior_close"))
+    base = units.prior_row_distances(prior_rows, lambda row: units.positive(row.get("prior_close")))
+    return units.ranked_sig(inputs.spot - prior_close, inputs.sigma_points, base)
 
 
 def _price_minus_open(inputs: FrozenInputs, settled_open: float | None, result: BlockResult) -> dict | None:
     """Spot against the settled open, ranked against each prior session's distance from its own settled open at this minute."""
     if settled_open is None:
-        result.leave_out(f"{BLOCK}.price_minus_open_sig", SETTLED_OPEN_REASON)
+        result.leave_out(f"{BLOCK}.price_minus_open_sig", units.NOT_UNTIL_SETTLED_OPEN)
         return None
     measures = station_stores.import_spx_jev("labels.measures")
 
@@ -82,8 +80,7 @@ def _price_minus_open(inputs: FrozenInputs, settled_open: float | None, result: 
         opened, close = measures.settled_open(bars), measures.close_at(bars, then)
         return abs(close - opened) / sigma if sigma and opened is not None and close is not None else None
 
-    value = units.sig(inputs.spot - settled_open, inputs.sigma_points)
-    return _ranked_by_size(value, units.same_clock_values(inputs.scene, distance_from_open))
+    return units.ranked_sig(inputs.spot - settled_open, inputs.sigma_points, units.same_clock_values(inputs.scene, distance_from_open))
 
 
 def _move(inputs: FrozenInputs, minutes: int, result: BlockResult) -> dict | None:
@@ -94,9 +91,8 @@ def _move(inputs: FrozenInputs, minutes: int, result: BlockResult) -> dict | Non
     if ref is None or last is None:
         result.leave_out(f"{BLOCK}.m{minutes}_sig", f"needs_{minutes}_min_of_bars")
         return None
-    value = units.sig(last - ref, inputs.sigma_points)
     base = units.same_clock_values(inputs.scene, lambda b, then, sigma: measures.move_size(b, then, sigma, minutes))
-    return _ranked_by_size(value, base)
+    return units.ranked_sig(last - ref, inputs.sigma_points, base)
 
 
 # --- the day's range ----------------------------------------------------------------------------------------
@@ -112,7 +108,7 @@ def _range_fields(inputs: FrozenInputs, result: BlockResult) -> dict[str, Any]:
         return {}
     high, low = measures.day_high_low(bars, inputs.spot)
     base = units.same_clock_values(inputs.scene, lambda b, then, sigma: measures.stretch_range(b) / sigma if b and sigma else None)
-    fields: dict[str, Any] = {"range_sig": units.ranked(units.sig(high - low, inputs.sigma_points), base)}
+    fields: dict[str, Any] = {"range_sig": units.ranked_sig(high - low, inputs.sigma_points, base)}
     if high > low:
         fields["range_pos"] = round((inputs.spot - low) / (high - low), 2)
     else:
@@ -139,14 +135,14 @@ def _five_session_pos(inputs: FrozenInputs, result: BlockResult) -> float | None
 # --- VWAP -----------------------------------------------------------------------------------------------------
 
 def _price_minus_vwap(inputs: FrozenInputs, prior_rows: list, result: BlockResult) -> dict | None:
-    """Spot against the day's VWAP (the median of the last VWAP_ROWS rows'), its size ranked against the same
-    distance on the prior sessions' rows at this minute."""
-    vwaps = [v for r in inputs.scene.rows_today if (v := _positive(r.get("vwap"))) is not None][-VWAP_ROWS:]
-    if len(vwaps) < VWAP_ROWS:
+    """Spot against the day's VWAP (the median of the newest VWAP_ROWS rows' that carry one), its size ranked
+    against the same distance on the prior sessions' rows at this minute."""
+    vwaps = [v for r in inputs.scene.rows_today if (v := units.positive(r.get("vwap"))) is not None][-VWAP_ROWS:]
+    if not vwaps:
         result.leave_out(f"{BLOCK}.price_minus_vwap_sig", "no_vwap")
         return None
-    value = units.sig(inputs.spot - statistics.median(vwaps), inputs.sigma_points)
-    return _ranked_by_size(value, _row_distances(prior_rows, "vwap"))
+    base = units.prior_row_distances(prior_rows, lambda row: units.positive(row.get("vwap")))
+    return units.ranked_sig(inputs.spot - statistics.median(vwaps), inputs.sigma_points, base)
 
 
 def _vwap_last_touch(inputs: FrozenInputs, result: BlockResult) -> int | None:
@@ -202,7 +198,7 @@ def _prior_high(inputs: FrozenInputs, result: BlockResult) -> dict | None:
 def _path_efficiency_since_open(inputs: FrozenInputs, settled_open: float | None, result: BlockResult) -> float | None:
     """The net move from the settled open over the distance travelled close to close (measures.path_efficiency)."""
     if settled_open is None:
-        result.leave_out(f"{BLOCK}.path_eff_since_open", SETTLED_OPEN_REASON)
+        result.leave_out(f"{BLOCK}.path_eff_since_open", units.NOT_UNTIL_SETTLED_OPEN)
         return None
     measures = station_stores.import_spx_jev("labels.measures")
     gap_open = station_stores.import_spx_jev("labels.gap_open")
@@ -218,7 +214,7 @@ def _open_crosses(inputs: FrozenInputs, settled_open: float | None, result: Bloc
     """How many times the finished closes crossed the settled open (gap_open._crosses), ranked against the
     crossings to this minute on every prior session (a count no ruler scales, so none sits out)."""
     if settled_open is None:
-        result.leave_out(f"{BLOCK}.open_crosses", SETTLED_OPEN_REASON)
+        result.leave_out(f"{BLOCK}.open_crosses", units.NOT_UNTIL_SETTLED_OPEN)
         return None
     gap_open = station_stores.import_spx_jev("labels.gap_open")
     crosses = gap_open._crosses(gap_open._since_settled(inputs.scene), settled_open)
@@ -227,20 +223,19 @@ def _open_crosses(inputs: FrozenInputs, settled_open: float | None, result: Bloc
 
 
 def _realized_vs_clock(inputs: FrozenInputs, result: BlockResult) -> dict | None:
-    """The last 30 minutes' realized swing (vol._realized_30) as a multiple of the median of the same half hour on
-    the prior sessions, with its rank among them."""
+    """The last 30 minutes' realized swing (vol._realized_30) as a multiple of its usual for this half hour (the
+    median of the prior sessions', units.against_usual), with its rank among them."""
     vol = station_stores.import_spx_jev("labels.vol")
-    cuts = station_stores.import_spx_jev("cuts")
     realized = vol._realized_30(inputs.scene.bars, inputs.cut, inputs.sigma_points)
     if realized is None:
         result.leave_out(f"{BLOCK}.rv30_vs_clock_x", f"needs_{vol.REALIZED_MIN_BARS}_bars_in_{vol.REALIZED_WINDOW_MIN}m")
         return None
     base = units.same_clock_values(inputs.scene, vol._realized_30)
-    usual = statistics.median(base[:cuts.NIGHT_RANK_COUNT]) if base else 0.0
-    if usual <= 0:
-        result.leave_out(f"{BLOCK}.rv30_vs_clock_x", "no_prior_sessions_at_clock")
+    usual = units.usual(base)
+    if not usual:
+        result.leave_out(f"{BLOCK}.rv30_vs_clock_x", "too_few_sessions" if usual is None else "no_usual_swing")
         return None
-    return {**units.ranked(realized, base), "v": round(realized / usual, 2)}
+    return units.against_usual(realized, base, lambda median: realized / median)
 
 
 def _last_five_minute_moves(inputs: FrozenInputs, result: BlockResult) -> list[float] | None:
@@ -255,7 +250,8 @@ def _last_five_minute_moves(inputs: FrozenInputs, result: BlockResult) -> list[f
 
 
 def _half_hours_vs_close(inputs: FrozenInputs, prior_close: float | None, result: BlockResult) -> list[float] | None:
-    """Where price stood against yesterday's close at each half-hour mark from 10:00 to the cut, in order."""
+    """Where price stood against yesterday's close at each half-hour mark from 10:00 to the cut, in order; left out
+    whole when a mark has no finished bar by it, so the list never shifts a later mark into an earlier slot."""
     if prior_close is None:
         result.leave_out(f"{BLOCK}.half_hours_vs_close_sig", "no_prior_close")
         return None
@@ -264,42 +260,15 @@ def _half_hours_vs_close(inputs: FrozenInputs, prior_close: float | None, result
     while mark <= inputs.cut:
         marks.append(mark)
         mark += timedelta(minutes=HALF_HOUR_MIN)
-    closes = [c for mark in marks if (c := measures.close_at(inputs.scene.bars, mark)) is not None]
-    if not closes:
-        result.leave_out(f"{BLOCK}.half_hours_vs_close_sig", NO_BARS_REASON if marks else "not_until_10:00")
+    if not marks:
+        result.leave_out(f"{BLOCK}.half_hours_vs_close_sig", f"not_until_{mark:%H:%M}")
         return None
+    closes = [measures.close_at(inputs.scene.bars, mark) for mark in marks]
+    for mark, close in zip(marks, closes):
+        if close is None:
+            result.leave_out(f"{BLOCK}.half_hours_vs_close_sig", f"no_bar_by_{mark:%H:%M}")
+            return None
     return [units.sig(c - prior_close, inputs.sigma_points) for c in closes]
-
-
-# --- shared ---------------------------------------------------------------------------------------------------
-
-def _ranked_by_size(value: float | None, base: list[float]) -> dict | None:
-    """units.ranked on the size of a signed move: the base is unsigned, the value keeps its sign."""
-    if value is None:
-        return None
-    return {**units.ranked(abs(value), base), "v": value}
-
-
-def _prior_rows_at_clock(scene: Any) -> list:
-    """Each prior session's diary row at this minute with its ruler (gamma.prior_books): the base for the distances
-    the diary carries (yesterday's close, VWAP), each measured from that row's own spot."""
-    gamma = station_stores.import_spx_jev("labels.gamma")
-    return gamma.prior_books(scene) or []
-
-
-def _row_distances(prior_rows: list, key: str) -> list[float]:
-    """``|spot - row[key]|`` in each prior row's own ruler, newest first; a row without the level or a ruler is skipped."""
-    out = []
-    for book in prior_rows:
-        level, spot = _positive(book.row.get(key)), _positive(book.row.get("spot"))
-        if book.ruler is not None and level is not None and spot is not None:
-            out.append(abs(spot - level) / book.ruler.points)
-    return out
-
-
-def _positive(value: Any) -> float | None:
-    """A positive number as a float, else None: a price the row may lack or carry as zero."""
-    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0 else None
 
 
 __all__ = ["build_tape_block", "BLOCK"]

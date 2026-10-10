@@ -15,8 +15,8 @@ Units pinned here:
   ``iv.term_structure``), else the same ratio from the $VIX and $VIX3M quotes; ``backwardated`` is that
   ratio above BACKWARDATION_LINE;
 * the prior VIX close is the daily close on file for the previous trading day; the prior $VIX3M close has no
-  daily file, so it is Schwab's own ``close`` field on the context snapshot at the cut (which the
-  MarketContext does not carry), the same field the daily closes mirror for $VIX.
+  daily file, so it is Schwab's own ``close`` field as the newest context snapshot by the cut quoted it
+  (``inputs.snapshot_prior_closes``), the same field the daily closes mirror for $VIX.
 
 At the open the VIX family's quotes still read at the prior close until 09:31 or 09:32 (every open on file), so
 a quote equal to its prior close before OPEN_QUOTES_SETTLE is not a value yet and the ratios built from it are
@@ -30,7 +30,7 @@ import bisect
 from datetime import datetime, time
 from typing import Any
 
-from ... import jsonl_store, station_stores
+from ... import station_stores
 from .. import units
 from ..block_result import BlockResult, whole_block_absent
 from ..frozen_inputs import FrozenInputs, previous_session_day
@@ -78,7 +78,7 @@ def build_cross_asset_block(inputs: FrozenInputs) -> BlockResult:
             result.data["vix_minus_prior_close"] = round(vix - prior_vix, LEVEL_DECIMALS)
         _term_structure(inputs, market, vix, result)
         _front_ratio(inputs, market, vix, result)
-    prior_vix3m = _snapshot_prior_close(inputs, VIX3M)
+    prior_vix3m = inputs.snapshot_prior_closes.get(VIX3M)
     if prior_vix is None or prior_vix3m is None:
         result.leave_out(f"{BLOCK}.vix_vix3m_prior_close", "prior_close_missing")
     else:
@@ -93,7 +93,7 @@ def build_cross_asset_block(inputs: FrozenInputs) -> BlockResult:
 
 def _term_structure(inputs: FrozenInputs, market: Any, vix: float, result: BlockResult) -> None:
     """VIX over the three-month VIX: the diary row's own ratio once the $VIX3M quote has settled, else the quotes'."""
-    vix3m, why = _fresh_quote(market, VIX3M, inputs.cut, _snapshot_prior_close(inputs, VIX3M))
+    vix3m, why = _fresh_quote(market, VIX3M, inputs.cut, inputs.snapshot_prior_closes.get(VIX3M))
     if vix3m is None:
         result.leave_out(f"{BLOCK}.vix_vix3m", why)
         result.leave_out(f"{BLOCK}.backwardated", why)
@@ -178,20 +178,6 @@ def _daily_closes_by_day(inputs: FrozenInputs, symbol: str) -> dict[str, float]:
 def _prior_daily_close(inputs: FrozenInputs, symbol: str) -> float | None:
     """The daily close on file for the previous trading day, as served; None when the file lags."""
     return _daily_closes_by_day(inputs, symbol).get(previous_session_day(inputs.day))
-
-
-def _snapshot_prior_close(inputs: FrozenInputs, symbol: str) -> float | None:
-    """Schwab's ``close`` on the newest context snapshot at or before the cut that quotes ``symbol``: the prior
-    close as the feed states it, for a symbol with no daily close file."""
-    prior = None
-    for line in jsonl_store.iter_json_lines(station_stores.context_file(inputs.state_dir, inputs.day)):
-        taken = line.get("ts")
-        if not isinstance(taken, str) or datetime.fromisoformat(taken) > inputs.cut:
-            continue
-        close = ((line.get("quotes") or {}).get(symbol) or {}).get("close")
-        if isinstance(close, (int, float)) and close > 0:
-            prior = float(close)
-    return prior
 
 
 def _size_ranked(value: float, base: list[float]) -> dict:

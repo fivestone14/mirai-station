@@ -12,7 +12,7 @@ down_over_3_flat_edges, down_2_to_3_flat_edges, down_1_to_2_flat_edges, flat_wit
 up_1_to_2_flat_edges, up_2_to_3_flat_edges, up_over_3_flat_edges. Exactly one edge counts as flat.
 
 Nothing here writes: ``grade_read`` returns the lines, and the nightly job (sealing) appends them to
-``outcomes/{day}.jsonl`` with the comparison forecasts attached.
+``outcomes/{day}.jsonl`` with the comparison forecasts attached. Field names follow spec/record_formats.md.
 """
 from __future__ import annotations
 
@@ -32,6 +32,9 @@ CLOSE_GRACE_MIN = 2                  # the station grades a window ending within
 SIZE_BUCKETS = ("down_over_3_flat_edges", "down_2_to_3_flat_edges", "down_1_to_2_flat_edges", "flat_within_1_flat_edge",
                 "up_1_to_2_flat_edges", "up_2_to_3_flat_edges", "up_over_3_flat_edges")
 DIRECTIONS = ("up", "flat", "down")
+STATION_HORIZONS = {"next_30_minutes": "next_30", "next_60_minutes": "next_60"}   # the station's names for the same windows
+MAIN_FORECAST_SOURCE = "pool_v2"     # the station's headline forecast (Pool 2); any other shown source is not the main forecast
+MAIN_FORECAST_LIVE_WITHIN_SECONDS = 600   # a main forecast archived later than this after the read is a replay, never used
 
 
 @dataclass(frozen=True)
@@ -93,10 +96,12 @@ def flat_edges_for(zones: dict[str, float], minutes_left: int) -> dict[str, floa
     return edges
 
 
-def grade_read(prices: SessionPrices, read_id: str, row_ts: str, spot: float, zones: dict[str, float] | str,
-               *, read_source: str = "live", slot: str | None = None, now: datetime | None = None) -> list[dict]:
-    """The outcome lines (one per horizon) for the read at ``row_ts`` with price ``spot``. A horizon the station
-    would never grade (its window ends past the close) is ``not_asked``; one the bars cannot settle is ``no_data``."""
+def grade_read(prices: SessionPrices, read_id: str, row_ts: str, spot: float, zones: dict[str, float] | str, *,
+               read_source: str = "live", slot: str | None = None, claude_input_sha256: str | None = None,
+               prompt_and_model_version: str | None = None, now: datetime | None = None) -> list[dict]:
+    """The outcome lines (one per horizon) for the read at ``row_ts`` with price ``spot``, laid out as
+    spec/record_formats.md has them. A horizon the station would never grade (its window ends past the close)
+    is ``not_asked``; one the bars cannot settle is ``no_data``. The caller attaches the comparison forecasts."""
     grade = station_stores.import_spx_jev("grade")
     integral = station_stores.import_spx_jev("integral")
     sessions = station_stores.import_spx_jev("sessions")
@@ -104,28 +109,34 @@ def grade_read(prices: SessionPrices, read_id: str, row_ts: str, spot: float, zo
     close = sessions.session_close(t0)
     minutes_left = int((close - t0).total_seconds() // 60)
     finalized_at = (now or now_et()).isoformat(timespec="seconds")
-    base = {"line_type": "outcome", "read_id": read_id, "trading_day": prices.day, "half_hour_slot_et": slot,
-            "read_source": read_source, "grading_rule_version": GRADING_RULE_VERSION,
-            "station_rule_versions": {"integral": getattr(integral, "RULE_VERSION", None),
-                                      "flat_zone": getattr(station_stores.import_spx_jev("flat_zone"), "RULE_VERSION", None)},
-            "finalize_attempt_number": 1, "finalized_at": finalized_at}
+
+    def line(horizon: str, result: dict) -> dict:
+        return {"line_type": "outcome", "read_id": read_id, "claude_input_sha256": claude_input_sha256, "horizon": horizon,
+                "grading_rule_version": GRADING_RULE_VERSION, "finalize_attempt_number": 1, "finalized_at": finalized_at,
+                "trading_day": prices.day, "half_hour_slot_et": slot, "prompt_and_model_version": prompt_and_model_version,
+                "read_source": read_source, "result": result,
+                "station_rule_versions": {"integral": getattr(integral, "RULE_VERSION", None),
+                                          "flat_zone": getattr(station_stores.import_spx_jev("flat_zone"), "RULE_VERSION", None)}}
+
     if isinstance(zones, str):
-        return [{**base, "horizon": h, "result": {"status": "no_data", "why": f"no flat zones: {zones}"}}
-                for h in (*HORIZON_WINDOWS, "to_close")]
+        return [line(h, {"status": "no_data", "why": f"no flat zones: {zones}"}) for h in (*HORIZON_WINDOWS, "to_close")]
     edges = flat_edges_for(zones, minutes_left)
     lines = []
     for horizon, minutes in HORIZON_WINDOWS.items():
         if t0 + timedelta(minutes=minutes) > close + timedelta(minutes=CLOSE_GRACE_MIN):
-            lines.append({**base, "horizon": horizon, "result": {"status": "not_asked", "why": "window ends past the close"}})
+            lines.append(line(horizon, {"status": "not_asked", "why": "window ends past the close"}))
             continue
         window_minutes = min(minutes, minutes_left)
         edge = edges.get(horizon)
         if edge is None:
-            lines.append({**base, "horizon": horizon, "result": {"status": "no_data", "why": "no flat zone for the horizon"}})
+            lines.append(line(horizon, {"status": "no_data", "why": "no flat zone for the horizon"}))
             continue
         graded = integral.grade_window(prices.bars, prices.prior_bars, t0, window_minutes, spot, flat=edge, pick=None, edge=edge)
-        lines.append({**base, "horizon": horizon, "result": _average_price_result(graded, spot, edge, window_minutes, prices)})
-    lines.append({**base, "horizon": "to_close", "result": _to_close_result(prices, t0, spot, edges.get("to_close"), minutes_left)})
+        lines.append(line(horizon, _average_price_result(graded, spot, edge, window_minutes, prices)))
+    if minutes_left <= 0:
+        lines.append(line("to_close", {"status": "not_asked", "why": "read at or after the close"}))
+    else:
+        lines.append(line("to_close", _to_close_result(prices, t0, spot, edges.get("to_close"), minutes_left)))
     return lines
 
 
@@ -157,44 +168,49 @@ def _to_close_result(prices: SessionPrices, t0: datetime, spot: float, edge: flo
         return {"status": "no_data", "why": "no flat zone to size the to_close edge", "window_minutes": minutes_left}
     move_points = close_price - spot
     move_edges = round(move_points / edge, 3)
-    highs = [float(b["close"]) - spot for b in after] or [move_points]
+    moves_after_read = [float(b["close"]) - spot for b in after] or [move_points]
     return {"status": "final", "graded_move_measured_to": measured_to, "window_minutes": minutes_left, "price_at_read": spot,
             "flat_edge_points": edge, "flat_edge_rule": TO_CLOSE_RULE, "graded_move_points": round(move_points, 2),
             "graded_move_flat_edges": move_edges, "direction": direction_of(move_edges), "size_bucket": size_bucket_of(move_edges),
-            "highest_move_in_window_flat_edges": round(max(highs) / edge, 3),
-            "lowest_move_in_window_flat_edges": round(min(highs) / edge, 3), "price_bars_sha256": prices.price_bars_sha256}
+            "highest_move_in_window_flat_edges": round(max(moves_after_read) / edge, 3),
+            "lowest_move_in_window_flat_edges": round(min(moves_after_read) / edge, 3), "price_bars_sha256": prices.price_bars_sha256}
 
 
 # --- the station's own forecasts for the same read, copied at seal time -----------------------------------
 
 def comparison_forecasts_from_read_record(read_record: dict | None, horizon: str) -> tuple[dict, dict]:
     """``(comparison_forecasts, missing)`` for one horizon from the station's archived read record: its time-of-day
-    odds and its main (combined) forecast, each as up/flat/down percentages. 60-minute odds are end-price odds."""
+    odds and its main forecast (Pool 2, as it was shown live), each as up/flat/down percentages. The 60-minute
+    odds are end-price odds, and the line says so. A main forecast archived later than
+    MAIN_FORECAST_LIVE_WITHIN_SECONDS after the read is a replay and goes into ``missing``."""
     found: dict = {}
     missing: dict = {}
     hour = (read_record or {}).get("hour") or {}
     if horizon == "next_30_minutes":
-        block = hour.get("average") or {}
-        clock = (block.get("clock") or {}).get("probabilities")
-        main = block.get("probabilities")
-        measured = "window_average_price"
+        block, measured = hour.get("average") or {}, "window_average_price"
     elif horizon == "next_60_minutes":
-        block = ((hour.get("by") or {}).get("next_60")) or {}
-        clock = (block.get("clock") or {}).get("probabilities")
-        main = block.get("probabilities")
-        measured = "window_end_price"
+        block, measured = ((hour.get("by") or {}).get("next_60")) or {}, "window_end_price"
     else:
         return found, {"existing_system_time_of_day_odds_20_sessions": "no station odds to the close",
                        "existing_system_main_forecast": "no station forecast to the close"}
+    clock = (block.get("clock") or {}).get("probabilities")
     if isinstance(clock, dict):
         found["existing_system_time_of_day_odds_20_sessions"] = {**_pct(clock), "forecasts_move_measured_to": measured}
     else:
         missing["existing_system_time_of_day_odds_20_sessions"] = "not in the read record"
-    if isinstance(main, dict):
-        found["existing_system_main_forecast"] = {**_pct(main), "shown_source": block.get("shown_source"),
-                                                  "forecasts_move_measured_to": measured}
-    else:
+    main = block.get("probabilities")
+    written = _written_after_read(read_record or {})
+    if not isinstance(main, dict):
         missing["existing_system_main_forecast"] = "not in the read record"
+    elif block.get("shown_source") != MAIN_FORECAST_SOURCE:
+        missing["existing_system_main_forecast"] = f"the shown forecast was {block.get('shown_source')!r}, not {MAIN_FORECAST_SOURCE}"
+    elif written is None:
+        missing["existing_system_main_forecast"] = "the read record has no archived_at stamp"
+    elif written[1] > MAIN_FORECAST_LIVE_WITHIN_SECONDS:
+        missing["existing_system_main_forecast"] = f"a replay: archived {written[1]} s after the read"
+    else:
+        found["existing_system_main_forecast"] = {**_pct(main), "forecasts_move_measured_to": measured, "is_written_live": True,
+                                                  "written_at": written[0], "written_after_read_seconds": written[1]}
     return found, missing
 
 
@@ -202,22 +218,44 @@ def _pct(probabilities: dict) -> dict:
     return {f"{k}_pct": round(float(probabilities[k]) * 100, 1) for k in DIRECTIONS if k in probabilities}
 
 
-def existing_system_result_check(state_dir: Path | str, row_ts: str, horizon: str) -> dict | None:
-    """The station's own newest grade of the same window, for a cross-check (next_30/next_60 only)."""
-    station_horizon = {"next_30_minutes": "next_30", "next_60_minutes": "next_60"}.get(horizon)
-    if station_horizon is None:
+def _written_after_read(read_record: dict) -> tuple[str, int] | None:
+    """``(written_at in Eastern time, seconds after the read)`` from the record's ``archived_at`` stamp, or None."""
+    try:
+        archived = datetime.fromisoformat(str(read_record["archived_at"]))
+        row = datetime.fromisoformat(str(read_record["row_ts"]))
+    except (KeyError, TypeError, ValueError):
         return None
-    newest = None
+    if archived.tzinfo is None or row.tzinfo is None:
+        return None
+    return archived.astimezone(ET).isoformat(timespec="seconds"), int((archived - row).total_seconds())
+
+
+def load_existing_system_grades(state_dir: Path | str, day: str) -> dict[tuple[str, str], dict]:
+    """The station's own newest grade per ``(row_ts, horizon)`` for ``day``, read once from integral_grades.jsonl:
+    the highest rule version wins, and among equals the latest line."""
+    newest: dict[tuple[str, str], dict] = {}
     for line in jsonl_store.iter_json_lines(station_stores.integral_grades_file(state_dir)):
-        if line.get("row_ts") == row_ts and line.get("horizon") == station_horizon and line.get("graded"):
-            if newest is None or int(line.get("rule_version", 0)) >= int(newest.get("rule_version", 0)):
-                newest = line
-    if newest is None:
+        row_ts = str(line.get("row_ts", ""))
+        if not row_ts.startswith(day) or not line.get("graded"):
+            continue
+        key = (row_ts, str(line.get("horizon")))
+        if key not in newest or int(line.get("rule_version", 0)) >= int(newest[key].get("rule_version", 0)):
+            newest[key] = line
+    return newest
+
+
+def existing_system_result_check(station_grades: dict[tuple[str, str], dict], row_ts: str, horizon: str,
+                                 direction: str | None) -> dict | None:
+    """This result against the station's own grade of the same window (next_30/next_60 only); None without one."""
+    station_horizon = STATION_HORIZONS.get(horizon)
+    line = station_grades.get((row_ts, station_horizon)) if station_horizon else None
+    if line is None:
         return None
-    return {"direction": newest.get("label"), "grading_rule_version": newest.get("rule_version"),
-            "flat_edge_points": newest.get("edge"), "graded_move_points": newest.get("g")}
+    return {"direction": line.get("label"), "grading_rule_version": line.get("rule_version"),
+            "flat_edge_points": line.get("edge"), "graded_move_points": line.get("g"),
+            "is_same_direction": line.get("label") == direction}
 
 
 __all__ = ["GRADING_RULE_VERSION", "SIZE_BUCKETS", "DIRECTIONS", "SessionPrices", "load_session_prices", "grade_read",
            "direction_of", "size_bucket_of", "flat_edges_for", "comparison_forecasts_from_read_record",
-           "existing_system_result_check", "ET"]
+           "load_existing_system_grades", "existing_system_result_check"]

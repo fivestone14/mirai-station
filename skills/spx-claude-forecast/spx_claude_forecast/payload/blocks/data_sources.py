@@ -7,42 +7,29 @@ trade count against the prior sessions' usual at that clock, and a content verdi
 is older than the station's own tape age limit, empty when it counted no trades), the newest headline
 capture, and the dated options book the read could know. The Schwab login's days left are not on file: the
 station's auth-watch reads them out of the encrypted token through the vault, and this package reads files
-only, so the field is declared absent rather than guessed. The loader's own notes ride along as
-``load_notes`` so a reviewer sees what could not be loaded.
+only, so the field is declared absent rather than guessed. What the loader could not load is logged on the
+payload line (``quality_flags.load_notes``) for the reviewer and never put in the scene: a note is free text
+from an exception, which may carry a price, a day or a word the leak checks refuse.
 """
 from __future__ import annotations
 
-import re
 import statistics
-from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from pathlib import Path
 
-from ... import jsonl_store, station_stores
+from ... import station_stores
 from ...control import ET
 from .. import units
 from ..block_result import BlockResult
-from ..frozen_inputs import FrozenInputs
+from ..frozen_inputs import FrozenInputs, TapeFold
 from .news import feed_known_on, newest_capture_before
 
 # The station's auth-watch (runtime/watch/intraday/auth_check.py) reads the login's creation time out of the Schwab
 # token, a Fernet-encrypted blob whose key lives in the macOS Keychain (skills/iv-viability/vault.py), and writes no
 # status file. This package reads saved files and never a secret, so the days left are declared absent, not computed.
 SCHWAB_LOGIN_NOT_READABLE = "not_readable"
-STAND_IN_BOOK = "stand_in"             # any diary book source but the station's NATIVE_BOOK (a scaled SPY proxy)
 COMPLETE_COVERAGE_VIEWS = ("gex_views", "dex_views", "range_ruler")   # a row carrying all three is a complete read of the book
 COVERAGE_COMPLETE, COVERAGE_PARTIAL = "complete", "partial"
 TAPE_OK, TAPE_STALE, TAPE_EMPTY = "ok", "stale", "empty"
-LOB_FLOW_ENGINE = "lob_flow"           # the agg file's tape folds; its spy_depth lines are SPY's quote, not the tape
-NOTE_MAX_CHARS = 120                   # a load note is a short string for a reviewer, never a dump
-DATE_IN_NOTE = re.compile(r"\d{4}-\d{2}-\d{2}")   # a note may quote a file name; the payload never carries a date
-
-
-@dataclass(frozen=True)
-class TapeFold:
-    """One fold of the 0DTE tape as the collector wrote it: when, and the trades in its 15-minute window."""
-    at: datetime
-    trades: int | None
 
 
 def build_data_sources_block(inputs: FrozenInputs) -> BlockResult:
@@ -57,7 +44,6 @@ def build_data_sources_block(inputs: FrozenInputs) -> BlockResult:
         "tape": _tape(inputs, result),
         "headlines": _headlines(inputs, result),
         "dated_book": _dated_book(inputs, result),
-        "load_notes": [_short_note(note) for note in inputs.load_notes],
     })
     return result
 
@@ -73,40 +59,25 @@ def _spx_bars(inputs: FrozenInputs, result: BlockResult) -> dict | None:
 
 
 def _options_diary(inputs: FrozenInputs, result: BlockResult) -> dict:
-    """The diary row the read stands on: its age (0 for the read's own row), its book and its coverage."""
-    row = inputs.scene.row
+    """The diary row the read stands on: its age (0 for the read's own row), its book and its coverage, read off the
+    raw row (the scene's row is the labeller's cut of it) when the loader found it."""
+    row = inputs.raw_diary_row or inputs.scene.row
     row_at = _et(row["ts"])
-    book = None
-    source = row.get("gex_source") or _diary_book_source(inputs)
-    if source is None:
+    if inputs.options_book is None:
         result.leave_out("data_sources.options_diary.book", "no_gex_source")
-    else:
-        book = "native" if source == _code_features().NATIVE_BOOK else STAND_IN_BOOK
     complete = all(row.get(view) for view in COMPLETE_COVERAGE_VIEWS)
-    return units.clean({"row_at": _hhmmss(row_at), "age_s": _age_s(row_at, inputs.cut), "book": book,
+    return units.clean({"row_at": _hhmmss(row_at), "age_s": _age_s(row_at, inputs.cut), "book": inputs.options_book,
                         "coverage": COVERAGE_COMPLETE if complete else COVERAGE_PARTIAL})
 
 
-def _diary_book_source(inputs: FrozenInputs) -> str | None:
-    """The row's book source from the raw diary, which the station's scene drops on the way in (row_adapter):
-    the station's own line scan to the row's clock, kept only when it lands on the read's row."""
-    row_ts = _et(inputs.scene.row["ts"])
-    slim = _code_feature_inputs().diary_row_at(inputs.state_dir, inputs.day, row_ts.time().isoformat())
-    if slim is None or _et(slim["ts"]) != row_ts:
-        return None
-    return slim.get("gex_source")
-
-
 def _market_feed(inputs: FrozenInputs, result: BlockResult) -> dict | None:
-    """The newest market snapshot at or before the cut (a context line carrying quotes; the bar-only lines the job
-    writes for earlier minutes are not snapshots), and the calls that failed in it."""
-    snapshots = [(at, line) for line in jsonl_store.iter_json_lines(station_stores.context_file(inputs.state_dir, inputs.day))
-                 if "quotes" in line and (at := _stamp(line.get("ts"))) is not None and at <= inputs.cut]
-    if not snapshots:
+    """The newest market snapshot at or before the cut, and the calls that failed in it."""
+    snapshot = inputs.market_snapshot
+    at = _stamp(snapshot.get("ts")) if snapshot else None
+    if at is None:
         result.leave_out("data_sources.market_feed", "no_snapshot_before_cut")
         return None
-    at, line = max(snapshots, key=lambda pair: pair[0])
-    failed = [str(entry).partition(":")[0] for entry in (line.get("failed") or [])]
+    failed = [str(entry).partition(":")[0] for entry in (snapshot.get("failed") or [])]
     return {"snapshot_at": _hhmmss(at), "age_s": _age_s(at, inputs.cut), "failed": failed}
 
 
@@ -114,7 +85,7 @@ def _tape(inputs: FrozenInputs, result: BlockResult) -> dict | None:
     """The newest fold of the 0DTE tape at or before the cut: its age, its trade count against the usual, and whether
     its content can be read from (ok), is too old by the station's tape age limit (stale), or counted nothing (empty)."""
     max_age = timedelta(minutes=_state_builder().OPTIONS_TAPE_MAX_AGE_MIN)
-    fold = _newest_fold(_tape_folds(inputs.state_dir, inputs.day), inputs.cut)
+    fold = _newest_fold(inputs.tape_folds.get(inputs.day) or [], inputs.cut)
     if fold is None:
         result.leave_out("data_sources.tape", "no_fold_before_cut")
         return None
@@ -142,21 +113,10 @@ def _usual_trades(inputs: FrozenInputs, max_age: timedelta) -> float | None:
     counts = []
     for day in inputs.scene.prior_bars:
         then = datetime.combine(date.fromisoformat(day), clock)
-        fold = _newest_fold(_tape_folds(inputs.state_dir, day), then)
+        fold = _newest_fold(inputs.tape_folds.get(day) or [], then)
         if fold is not None and fold.trades and then - fold.at <= max_age:
             counts.append(fold.trades)
     return statistics.median(counts) if len(counts) >= _cuts().MIN_RANK_SESSIONS else None
-
-
-def _tape_folds(state_dir: Path, day: str) -> list[TapeFold]:
-    folds = []
-    for line in jsonl_store.iter_json_lines(station_stores.lob_flow_agg_file(state_dir, day)):
-        at = _stamp(line.get("ts"))
-        if line.get("engine") != LOB_FLOW_ENGINE or at is None:
-            continue
-        trades = (line.get("snapshot") or {}).get("tape_trades")
-        folds.append(TapeFold(at, int(trades) if isinstance(trades, (int, float)) and not isinstance(trades, bool) else None))
-    return sorted(folds, key=lambda fold: fold.at)
 
 
 def _newest_fold(folds: list[TapeFold], before: datetime) -> TapeFold | None:
@@ -183,11 +143,6 @@ def _dated_book(inputs: FrozenInputs, result: BlockResult) -> dict | None:
         result.leave_out("data_sources.dated_book", "as_of_unreadable")
         return None
     return {"as_of": units.hhmm(as_of), "age_h": round((inputs.cut - as_of).total_seconds() / 3600, 1)}
-
-
-def _short_note(note: str) -> str:
-    """A load note with any day it quotes masked, cut to NOTE_MAX_CHARS."""
-    return DATE_IN_NOTE.sub("a day", str(note))[:NOTE_MAX_CHARS]
 
 
 def _stamp(value: object) -> datetime | None:
@@ -218,11 +173,3 @@ def _state_builder():
 
 def _cuts():
     return station_stores.import_spx_jev("cuts")
-
-
-def _code_features():
-    return station_stores.import_spx_jev("mirai_prediction.code_features")
-
-
-def _code_feature_inputs():
-    return station_stores.import_spx_jev("mirai_prediction.code_feature_inputs")

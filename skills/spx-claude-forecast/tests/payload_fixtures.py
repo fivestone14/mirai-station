@@ -14,11 +14,45 @@ from types import SimpleNamespace
 
 from spx_claude_forecast.control import ET
 from spx_claude_forecast.paths import ForecastPaths
-from spx_claude_forecast.payload.frozen_inputs import FrozenInputs, slot_of
+from spx_claude_forecast.payload.frozen_inputs import FrozenInputs, TapeFold, slot_of
 
 DAY = "2026-10-09"
 SPOT = 7813.01
 SIGMA = 75.31
+
+class TapeFoldsOnDisk(dict):
+    """The fixture's stand-in for ``inputs.tape_folds``: reads the collector's files under the temp state on every
+    access, as the live loader would have, so a test may write the lines after building the inputs."""
+
+    def __init__(self, state_dir: Path, day: str, prior_days: list[str], cut: datetime) -> None:
+        super().__init__()
+        self._args = (state_dir, day, prior_days, cut)
+
+    def _load(self) -> dict:
+        from spx_claude_forecast.payload import frozen_inputs
+        return frozen_inputs.load_tape_folds(*self._args)
+
+    def get(self, key, default=None):
+        return self._load().get(key, default)
+
+    def __getitem__(self, key):
+        return self._load()[key]
+
+    def __contains__(self, key):
+        return key in self._load()
+
+    def keys(self):
+        return self._load().keys()
+
+    def items(self):
+        return self._load().items()
+
+    def __iter__(self):
+        return iter(self._load())
+
+    def __len__(self):
+        return len(self._load())
+
 
 
 def at(hh: int, mm: int, ss: int = 0, day: str = DAY) -> datetime:
@@ -79,9 +113,14 @@ class FakeMarket:
 def fake_inputs(tmp_path: Path, *, cut: datetime | None = None, bars: list[dict] | None = None, row: dict | None = None,
                 prior_bars: dict[str, list[dict]] | None = None, market: FakeMarket | None = None,
                 labels_state: dict | None = None, code_answers: dict | None = None, flat_zones=None,
-                options_book: str | None = "native", dated_book: dict | None = None, spy_minute_volumes: dict | None = None, vix1d_prior_close: float | None = 10.23,
+                raw_diary_row: dict | None = None, first_raw_diary_row: dict | None = None, options_book: str | None = "native",
+                market_snapshot: dict | None = None, snapshot_prior_closes: dict[str, float] | None = None,
+                tape_folds: dict[str, list[TapeFold]] | None = None,
+                dated_book: dict | None = None, spy_minute_volumes: dict | None = None, vix1d_prior_close: float | None = 10.23,
                 daily_closes: dict | None = None, events=None, hour_record: dict | None = None,
                 read_record: dict | None = None, **scene_over) -> FrozenInputs:
+    """A read at ``cut`` (14:30:12 by default) on flat bars and a native book; the loader-provided stores (the raw
+    diary rows, the market snapshot and its prior closes, the tape folds) are empty unless given."""
     cut = cut or at(14, 30, 12)
     bars = bars if bars is not None else flat_bars(until_hh=cut.hour, until_mm=max(cut.minute - 1, 0))
     row = row or make_row(cut)
@@ -103,7 +142,9 @@ def fake_inputs(tmp_path: Path, *, cut: datetime | None = None, bars: list[dict]
                         horizon_start=cut.replace(second=0, microsecond=0), scene=scene, labels=labels,
                         read_record=read_record, hour_record=hour_record, code_answers=code_answers or {},
                         flat_zones=flat_zones if flat_zones is not None else {"next_30": 3.41, "next_60": 4.89, "average_30": 2.0},
-                        anchor=anchor, options_book=options_book, dated_book=dated_book, spy_minute_volumes=spy_minute_volumes,
+                        anchor=anchor, raw_diary_row=raw_diary_row, first_raw_diary_row=first_raw_diary_row, options_book=options_book,
+                        market_snapshot=market_snapshot, snapshot_prior_closes=snapshot_prior_closes or {}, tape_folds=tape_folds if tape_folds is not None else TapeFoldsOnDisk(tmp_path / "state", cut.date().isoformat(), list(prior_bars), cut),
+                        dated_book=dated_book, spy_minute_volumes=spy_minute_volumes,
                         vix1d_prior_close=vix1d_prior_close, daily_closes=daily_closes or {}, events=events, load_notes=[])
 
 

@@ -2,8 +2,10 @@
 
 Two answers are asked per read (the cards shuffled one way, then reversed with the direction order
 flipped), so order bias cancels in the average. Per horizon the final line carries each answer's
-chances, the largest gap between them (the noise floor), the base rate Claude was shown, how far the
-final sits from it, and whether it merely leans the way the last thirty minutes went.
+chances under the answer's own number, the largest gap between them (the noise floor), the base rate
+Claude was shown, how far the final sits from it, and whether it merely leans the way the last thirty
+minutes went. A horizon with no usable answer is ``rejected`` when an answer came back and failed the
+checks, and ``failed`` when no answer came back at all (the statuses spec/record_formats.md lists).
 """
 from __future__ import annotations
 
@@ -11,6 +13,11 @@ from .grading import SIZE_BUCKETS
 from .rulebook import DIRECTION_KEYS
 
 NEAR_BASE_RATE_PCT_POINTS = 3     # within this of the base rate on every direction, the answer "sat on the base rate"
+
+
+def answer_number_of(answer_line: dict) -> str:
+    """``answer_1`` from an answer id ending ``#answer_1`` (the answer's own number, whatever order it landed in)."""
+    return str(answer_line.get("answer_id", "")).rsplit("#", 1)[-1]
 
 
 def final_forecast_for(answers: list[dict], asked_horizons: list[str], base_rate_pct: dict[str, dict] | None,
@@ -22,24 +29,24 @@ def final_forecast_for(answers: list[dict], asked_horizons: list[str], base_rate
            "forecast": {}}
     counted = set()
     for horizon in asked_horizons:
-        oks = [a for a in usable if (a["checked_forecast"].get(horizon) or {}).get("status") == "ok"]
+        blocks = {answer_number_of(a): a["checked_forecast"].get(horizon) or {} for a in usable}
+        oks = {name: b for name, b in blocks.items() if b.get("status") == "ok"}
         if not oks:
-            out["forecast"][horizon] = {"status": "no_usable_answer"}
+            rejected = any(b.get("status") == "rejected" for b in blocks.values())
+            out["forecast"][horizon] = {"status": "rejected" if rejected else "failed"}
             continue
-        counted.update(id(a) for a in oks)
+        counted.update(oks)
         block = {"status": "ok"}
         for key in DIRECTION_KEYS:
-            block[key] = round(sum(a["checked_forecast"][horizon][key] for a in oks) / len(oks), 1)
-        buckets = [a["checked_forecast"][horizon].get("size_buckets_pct") for a in oks]
-        buckets = [b for b in buckets if isinstance(b, dict)]
-        if buckets:
-            block["size_buckets_pct"] = {k: round(sum(b[k] for b in buckets) / len(buckets), 1) for k in SIZE_BUCKETS}
-        for i, a in enumerate(oks, start=1):
-            block[f"answer_{i}"] = {k: a["checked_forecast"][horizon][k] for k in DIRECTION_KEYS}
+            block[key] = round(sum(b[key] for b in oks.values()) / len(oks), 1)
+        buckets = [b["size_buckets_pct"] for b in oks.values() if isinstance(b.get("size_buckets_pct"), dict)]
+        block["size_buckets_pct"] = ({k: round(sum(b[k] for b in buckets) / len(buckets), 1) for k in SIZE_BUCKETS}
+                                     if buckets else None)
+        for name, b in oks.items():
+            block[name] = {k: b[k] for k in DIRECTION_KEYS}
         if len(oks) > 1:
             block["largest_gap_between_answers_pct_points"] = max(
-                abs(a["checked_forecast"][horizon][k] - b["checked_forecast"][horizon][k])
-                for k in DIRECTION_KEYS for a in oks for b in oks)
+                abs(a[k] - b[k]) for k in DIRECTION_KEYS for a in oks.values() for b in oks.values())
         base = (base_rate_pct or {}).get(horizon)
         if isinstance(base, dict) and all(k in base for k in DIRECTION_KEYS):
             block["base_rate_shown_to_claude"] = {k: base[k] for k in DIRECTION_KEYS}

@@ -4,16 +4,18 @@ A payload is built from SAVED files only, never from a live quote, so a read reb
 same files gives the same scene. ``load_frozen_inputs`` rebuilds the station's own Scene for the read
 (``spx_jev.state_builder.make_scene`` with ``at`` = the read's timestamp, which keeps the read's own
 diary row and the bars finished by then), runs the station's labeller over it, and gathers the read's
-archive record, code answers, flat zones, the dated options book known at the cut, SPY minute volumes,
-the prior $VIX1D close, daily closes before the day and the event calendar. Blocks read from this
-object and nothing else.
+archive record, code answers, flat zones, the read's own diary row and the day's first as the scanner
+wrote them, the newest market snapshot at the cut and the prior closes it quoted, the 0DTE tape's folds
+on the day and the prior sessions, the dated options book known at the cut, SPY minute volumes, the
+prior $VIX1D close, daily closes before the day and the event calendar. A store read by more than one
+block is loaded here once, so no block scans a raw file of its own.
 """
 from __future__ import annotations
 
 import functools
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +26,21 @@ from ..paths import ForecastPaths
 LIVE_LANE = "live"
 SLOT_MINUTES = 30                     # reads land near :00 and :30; the slot is the nearest mark
 DAILY_CLOSE_SYMBOLS = ("$SPX", "$VIX", "$VIX9D", "$TNX", "TLT")
+NATIVE_BOOK = "native"                # the diary row's gex_source on SPX's own chain; anything else is a scaled SPY proxy
+STAND_IN_BOOK = "stand_in"
+TAPE_FOLD_ENGINE = "lob_flow"         # the agg file's 0DTE tape folds; its spy_depth lines are SPY's quote, not the tape
+TAPE_FOLD_FILES_CACHED = 64           # a prior session's folds never change: parsed once per process (the seed reads 13 times a day)
+
+
+@dataclass(frozen=True)
+class TapeFold:
+    """One fold of the 0DTE options tape as the lob-flow collector wrote it: when, the 15-minute tilt (-1 puts
+    bought and calls sold, +1 calls bought and puts sold), the share of the flow whose side could be told, and
+    the trades counted; each None when the line did not carry it."""
+    at: datetime
+    tilt: float | None
+    told_share: float | None
+    trades: int | None
 
 
 @dataclass
@@ -46,7 +63,12 @@ class FrozenInputs:
     code_answers: dict[str, str | None]
     flat_zones: dict[str, float] | str   # {next_30, next_60, average_30} in points, or why there are none
     anchor: Any                       # spx_jev.labels.rulers.SigmaRuler | None: the morning ruler the read could know
-    options_book: str | None          # "native" (SPX's own book) or "stand_in" (the SPY proxy), from the raw diary row
+    raw_diary_row: dict | None        # the read's diary row with every field, as the scanner wrote it (the scene's row is the labeller's cut)
+    first_raw_diary_row: dict | None  # the day's first diary row as written: the book the day opened under
+    options_book: str | None          # NATIVE_BOOK or STAND_IN_BOOK from the raw diary row's gex_source; None without one
+    market_snapshot: dict | None      # the newest context snapshot (a line carrying quotes) at or before the cut, as the job wrote it
+    snapshot_prior_closes: dict[str, float]   # Schwab's prior close per symbol, from the newest snapshot by the cut that quotes it
+    tape_folds: dict[str, list[TapeFold]]     # the 0DTE tape's folds by day, oldest first: today's up to the cut, each prior session's whole
     dated_book: dict | None           # the newest dated options book with as_of <= cut
     spy_minute_volumes: dict[str, int] | None   # today's SPY per-minute volume so far, {minute_of_day: shares}
     vix1d_prior_close: float | None
@@ -126,7 +148,9 @@ def load_frozen_inputs_at(state_dir: Path | str, paths: ForecastPaths, cut: date
     code_answers = _load_code_answers(state_dir, day, read_id, notes) if read_id.startswith("live:") else {}
     flat_zones = _load_flat_zones(state_dir, day, hour_record, horizon_start, scene.bars, notes)
     anchor = _load_anchor(grade, scene, row_ts, notes)
-    options_book = _load_options_book(state_dir, day, row_ts, notes)
+    raw_diary_row, first_raw_diary_row = load_raw_diary_rows(state_dir, day, row_ts, notes)
+    market_snapshot, snapshot_prior_closes = load_market_snapshot(state_dir, day, cut, notes)
+    tape_folds = load_tape_folds(state_dir, day, list(scene.prior_bars), cut)
     dated_book = _load_dated_book(paths, state_dir, cut, notes)
     spy_minute_volumes = _load_spy_minute_volumes(paths, state_dir, day, notes)
     vix1d_prior_close = _load_vix1d_prior_close(paths, day, notes)
@@ -136,7 +160,9 @@ def load_frozen_inputs_at(state_dir: Path | str, paths: ForecastPaths, cut: date
     return FrozenInputs(state_dir=state_dir, paths=paths, read_id=read_id, lane=lane, day=day, row_ts=row_ts, cut=cut,
                         slot=slot_of(cut), horizon_start=horizon_start, scene=scene, labels=labels,
                         read_record=read_record, hour_record=hour_record, code_answers=code_answers,
-                        flat_zones=flat_zones, anchor=anchor, options_book=options_book, dated_book=dated_book,
+                        flat_zones=flat_zones, anchor=anchor, raw_diary_row=raw_diary_row, first_raw_diary_row=first_raw_diary_row,
+                        options_book=options_book_of(raw_diary_row), market_snapshot=market_snapshot,
+                        snapshot_prior_closes=snapshot_prior_closes, tape_folds=tape_folds, dated_book=dated_book,
                         spy_minute_volumes=spy_minute_volumes, vix1d_prior_close=vix1d_prior_close,
                         daily_closes=daily_closes, events=events, load_notes=notes)
 
@@ -215,15 +241,93 @@ def _load_anchor(grade, scene, row_ts: str, notes: list[str]):
         return None
 
 
-def _load_options_book(state_dir: Path, day: str, row_ts: str, notes: list[str]) -> str | None:
-    """Which options book the read's diary row was built on. The labeller row strips ``gex_source``, so this reads
-    the raw diary line for the exact row (the station's own code_features.book_is_native does the same)."""
+def load_raw_diary_rows(state_dir: Path, day: str, row_ts: str, notes: list[str]) -> tuple[dict | None, dict | None]:
+    """``(the read's row, the day's first row)`` as the scanner wrote them, every field kept: the labeller's row
+    (row_adapter) drops the book's source, its net gamma and more. The scanner writes in time order, so the file is
+    read a line at a time and left at the read's row."""
+    own = first = None
     for line in jsonl_store.iter_json_lines(station_stores.reversion_rows_file(state_dir, day)):
+        first = first or line
         if line.get("ts") == row_ts:
-            source = line.get("gex_source")
-            return "native" if source == "native" else "stand_in" if source else None
-    notes.append("options book: the read's raw diary row was not found")
-    return None
+            own = line
+            break
+    if own is None:
+        notes.append("diary row: the read's raw diary row was not found")
+    return own, first
+
+
+def options_book_of(raw_diary_row: dict | None) -> str | None:
+    """NATIVE_BOOK on SPX's own chain, STAND_IN_BOOK on any other source (the scaled SPY proxy), None without a row or a source
+    (the station's own code_features.book_is_native reads the same field)."""
+    source = (raw_diary_row or {}).get("gex_source")
+    return NATIVE_BOOK if source == NATIVE_BOOK else STAND_IN_BOOK if source else None
+
+
+def load_market_snapshot(state_dir: Path, day: str, cut: datetime, notes: list[str]) -> tuple[dict | None, dict[str, float]]:
+    """``(the newest snapshot, the prior closes)`` from the day's context file at the cut: the newest line carrying
+    quotes (the bar-only lines the job writes for earlier minutes are not snapshots), and per symbol Schwab's own
+    ``close`` field (the prior close as the feed states it, which the MarketContext does not carry) from the newest
+    snapshot by the cut that quotes the symbol with one, so a symbol that failed in the last snapshot keeps its
+    prior close from an earlier one."""
+    snapshots = [(at, line) for line in jsonl_store.iter_json_lines(station_stores.context_file(state_dir, day))
+                 if "quotes" in line and (at := _stamp(line.get("ts"))) is not None and at <= cut]
+    if not snapshots:
+        notes.append("market snapshot: none at or before the cut")
+        return None, {}
+    snapshots.sort(key=lambda pair: pair[0])
+    prior_closes: dict[str, float] = {}
+    for _, line in snapshots:
+        for symbol, quote in (line.get("quotes") or {}).items():
+            close = (quote or {}).get("close")
+            if isinstance(close, (int, float)) and not isinstance(close, bool) and close > 0:
+                prior_closes[symbol] = float(close)
+    return snapshots[-1][1], prior_closes
+
+
+def load_tape_folds(state_dir: Path, day: str, prior_days: list[str], cut: datetime) -> dict[str, list[TapeFold]]:
+    """The lob-flow collector's folds (``state/lob_flow/agg/{day}.jsonl``) by day: today's written at or before the
+    cut, each prior session's whole; oldest first. A day with no agg file has an empty list."""
+    folds = {day: [fold for fold in _tape_folds_of(state_dir, day) if fold.at <= cut]}
+    for prior in prior_days:
+        folds[prior] = list(_tape_folds_of(state_dir, prior))
+    return folds
+
+
+def _tape_folds_of(state_dir: Path, day: str) -> tuple[TapeFold, ...]:
+    path = station_stores.lob_flow_agg_file(state_dir, day)
+    if not path.exists():
+        return ()
+    stat = path.stat()
+    return _tape_folds_file(str(path), stat.st_mtime_ns, stat.st_size)
+
+
+@functools.lru_cache(maxsize=TAPE_FOLD_FILES_CACHED)
+def _tape_folds_file(path: str, mtime_ns: int, size: int) -> tuple[TapeFold, ...]:
+    """The file's tape folds, oldest first, parsed once per version of the file (the key carries its mtime and size)."""
+    folds = []
+    for line in jsonl_store.iter_json_lines(path):
+        snapshot = line.get("snapshot") if line.get("engine") == TAPE_FOLD_ENGINE else None
+        at = _stamp(line.get("ts"))
+        if not isinstance(snapshot, dict) or at is None:
+            continue
+        trades = snapshot.get("tape_trades")
+        folds.append(TapeFold(at, _number(snapshot.get("tilt")), _number(snapshot.get("determinate_share")),
+                              int(trades) if _number(trades) is not None else None))
+    return tuple(sorted(folds, key=lambda fold: fold.at))
+
+
+def _number(value: Any) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _stamp(value: Any) -> datetime | None:
+    """A saved line's ISO timestamp as an ET datetime, or None when it is not one."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value).astimezone(ET)
+    except ValueError:
+        return None
 
 
 def _load_dated_book(paths: ForecastPaths, state_dir: Path, cut: datetime, notes: list[str]) -> dict | None:
@@ -314,5 +418,6 @@ def previous_session_day(day: str) -> str:
     return sessions.previous_trading_day(datetime.fromisoformat(day).date()).isoformat()
 
 
-__all__ = ["FrozenInputs", "load_frozen_inputs", "load_frozen_inputs_at", "EmptyLabels", "slot_of", "parse_read_id", "minutes_between", "session_close_of",
-           "previous_session_day", "timedelta"]
+__all__ = ["FrozenInputs", "TapeFold", "load_frozen_inputs", "load_frozen_inputs_at", "load_raw_diary_rows", "options_book_of",
+           "load_market_snapshot", "load_tape_folds", "EmptyLabels", "slot_of", "parse_read_id", "minutes_between", "session_close_of",
+           "previous_session_day", "NATIVE_BOOK", "STAND_IN_BOOK"]
