@@ -94,8 +94,7 @@ def test_data_sources_ages_each_feed_from_the_loaded_stores(tmp_path):
         "headlines": {"last_capture": "14:26:25", "age_s": 227},
         "dated_book": {"as_of": "08:17", "age_h": 6.2},
     }
-    assert absent_reasons(block) == {"data_sources.schwab_login_days_left": "not_readable",
-                                     "data_sources.tape.trades_15m_vs_usual_x": "too_few_prior_sessions"}
+    assert absent_reasons(block) == {"data_sources.tape.trades_15m_vs_usual_x": "too_few_prior_sessions"}
 
 
 def test_tape_trades_are_set_against_the_prior_sessions_median_at_the_same_clock(tmp_path):
@@ -144,7 +143,6 @@ def test_missing_feeds_are_declared_not_guessed(tmp_path):
         "data_sources.spx_bars": "no_finished_bar", "data_sources.options_diary.book": "no_gex_source",
         "data_sources.market_feed": "no_snapshot_before_cut", "data_sources.tape": "no_fold_before_cut",
         "data_sources.headlines": "no_headline_feed", "data_sources.dated_book": "none_known_at_cut",
-        "data_sources.schwab_login_days_left": "not_readable",
     }
     write_jsonl(headlines_file(inputs.state_dir, DAY), [headline(at(14, 32, 0), "A later story")])
     inputs.dated_book = {"bands": []}
@@ -307,7 +305,6 @@ def test_the_real_1430_read_loads_its_stores_cut_at_the_read_ages_every_feed_cou
     assert isinstance(sources.data["tape"]["trades_15m_vs_usual_x"], float)
     assert set(sources.data["headlines"]) == {"last_capture", "age_s"}
     assert "load_notes" not in sources.data
-    assert absent_reasons(sources)["data_sources.schwab_login_days_left"] == "not_readable"
     assert news_block.data["titles"] == "withheld" and news_block.data["captured_60m"] > 0
     assert news_block.data["stale_dropped"] >= 0 and isinstance(news_block.data["kinds"], list)
     assert 0 < len(code_block.data) <= code.MAX_CODE_ANSWERS

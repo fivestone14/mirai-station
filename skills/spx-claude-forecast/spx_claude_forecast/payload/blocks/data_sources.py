@@ -5,9 +5,7 @@ row the read stands on (with which options book it carried and whether its views
 market snapshot (and the symbols that failed in it), the newest fold of the 0DTE options tape (its 15-minute
 trade count against the prior sessions' usual at that clock, and a content verdict: ok, stale when the fold
 is older than the station's own tape age limit, empty when it counted no trades), the newest headline
-capture, and the dated options book the read could know. The Schwab login's days left are not on file: the
-station's auth-watch reads them out of the encrypted token through the vault, and this package reads files
-only, so the field is declared absent rather than guessed. What the loader could not load is logged on the
+capture, and the dated options book the read could know. What the loader could not load is logged on the
 payload line (``quality_flags.load_notes``) for the reviewer and never put in the scene: a note is free text
 from an exception, which may carry a price, a day or a word the leak checks refuse.
 """
@@ -23,10 +21,6 @@ from ..block_result import BlockResult
 from ..frozen_inputs import FrozenInputs, TapeFold
 from .news import feed_known_on, newest_capture_before
 
-# The station's auth-watch (runtime/watch/intraday/auth_check.py) reads the login's creation time out of the Schwab
-# token, a Fernet-encrypted blob whose key lives in the macOS Keychain (skills/iv-viability/vault.py), and writes no
-# status file. This package reads saved files and never a secret, so the days left are declared absent, not computed.
-SCHWAB_LOGIN_NOT_READABLE = "not_readable"
 COMPLETE_COVERAGE_VIEWS = ("gex_views", "dex_views", "range_ruler")   # a row carrying all three is a complete read of the book
 COVERAGE_COMPLETE, COVERAGE_PARTIAL = "complete", "partial"
 TAPE_OK, TAPE_STALE, TAPE_EMPTY = "ok", "stale", "empty"
@@ -35,7 +29,6 @@ TAPE_OK, TAPE_STALE, TAPE_EMPTY = "ok", "stale", "empty"
 def build_data_sources_block(inputs: FrozenInputs) -> BlockResult:
     """The cut time and every feed's age at it, with what each could not say."""
     result = BlockResult()
-    result.leave_out("data_sources.schwab_login_days_left", SCHWAB_LOGIN_NOT_READABLE)
     result.data = units.clean({
         "cut_at": _hhmmss(inputs.cut),
         "spx_bars": _spx_bars(inputs, result),

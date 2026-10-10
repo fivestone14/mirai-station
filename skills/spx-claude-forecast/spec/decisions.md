@@ -131,5 +131,6 @@ flat-zone rule the day this was built, and the grader follows it rather than the
 ## Not built
 
 The other test variants the record formats name (no base rate shown, earlier results today shown, five
-answers averaged, own track record shown), a recorder for foreign quotes, the leveraged-ETF estimate, the
-Schwab login days-left, and situation-level score cells.
+answers averaged, own track record shown), a recorder for foreign quotes, the leveraged-ETF estimate, and
+situation-level score cells. The Schwab login days-left field was dropped from the payload on 10-10 (Will):
+it is a feed-health stamp, not a market fact, and belongs in the run log.
