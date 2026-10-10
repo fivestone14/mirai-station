@@ -404,20 +404,11 @@ def _load_events(notes: list[str]) -> dict | list | None:
         return None
 
 
-def minutes_between(earlier: datetime, later: datetime) -> int:
-    return int((later - earlier).total_seconds() // 60)
-
-
-def session_close_of(cut: datetime) -> datetime:
-    sessions = station_stores.import_spx_jev("sessions")
-    return sessions.session_close(cut)
-
-
 def previous_session_day(day: str) -> str:
     sessions = station_stores.import_spx_jev("sessions")
     return sessions.previous_trading_day(datetime.fromisoformat(day).date()).isoformat()
 
 
 __all__ = ["FrozenInputs", "TapeFold", "load_frozen_inputs", "load_frozen_inputs_at", "load_raw_diary_rows", "options_book_of",
-           "load_market_snapshot", "load_tape_folds", "EmptyLabels", "slot_of", "parse_read_id", "minutes_between", "session_close_of",
+           "load_market_snapshot", "load_tape_folds", "EmptyLabels", "slot_of", "parse_read_id",
            "previous_session_day", "NATIVE_BOOK", "STAND_IN_BOOK"]

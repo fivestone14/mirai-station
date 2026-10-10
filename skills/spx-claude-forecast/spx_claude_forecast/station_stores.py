@@ -32,16 +32,8 @@ def reversion_rows_file(state_dir: Path, day: str) -> Path:
     return state_dir / "reversion" / f"{day}.jsonl"
 
 
-def reversion_bars_file(state_dir: Path, day: str) -> Path:
-    return state_dir / "reversion" / "bars" / f"{day}-SPX.json"
-
-
 def spx_jev_dir(state_dir: Path) -> Path:
     return state_dir / "spx_jev"
-
-
-def live_bars_file(state_dir: Path, day: str) -> Path:
-    return spx_jev_dir(state_dir) / "bars" / f"{day}.jsonl"
 
 
 def context_file(state_dir: Path, day: str) -> Path:
@@ -57,16 +49,8 @@ def daily_closes_file(state_dir: Path, symbol: str) -> Path:
     return spx_jev_dir(state_dir) / "daily_closes" / f"{symbol}.jsonl"
 
 
-def archive_file(state_dir: Path, day: str) -> Path:
-    return spx_jev_dir(state_dir) / "archive" / f"{day}.jsonl"
-
-
 def integral_grades_file(state_dir: Path) -> Path:
     return spx_jev_dir(state_dir) / "integral_grades.jsonl"
-
-
-def code_features_file(state_dir: Path, day: str) -> Path:
-    return spx_jev_dir(state_dir) / "mirai_prediction" / "raw" / "code_features" / f"{day}.jsonl"
 
 
 def lob_flow_agg_file(state_dir: Path, day: str) -> Path:

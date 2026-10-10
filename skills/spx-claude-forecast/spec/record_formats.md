@@ -44,20 +44,7 @@ After the fixes, every GUESS or LOST name is renamed or explained in the rename 
 - flat_edge_points: its meaning was guessed right. The 'either way?' doubt is now answered by the _flat_edges unit and the flat_within_1_flat_edge bucket.
 - horizons_size_split_discarded: the old meaning was read right, and what replaces the split shows on the same line as null.
 
-Four changes go beyond renaming and need Will's yes:
-- KL in nats is replaced by largest_gap_from_base_rate_pct_points.
-- is_leaning_same_way_as_last_30_minutes_move_vs_base_rate moves inside each horizon.
-- base_rate_shown_to_claude is added per horizon on the reads lines.
-- session_idx is dropped, because it had no source.
-
-The examples now use real station values: clock odds 18.3/65.4/16.3 and the station's move, edge, high/low, grade and Pool 2.
-
-Still to do: no fresh blind reader has seen the new examples. A blind reader is Phase 1's done-check and should run before the names lock. The names most likely to still draw a GUESS are:
-- picked_precedents_among_code_nearest_3_count (nearest by what?);
-- shown_precedents_outcomes (the blend with the base rate);
-- the out-of-scope card field values (range_pos, m60, price_minus_flip).
-
-Nothing was edited on disk.
+The examples use real station values: clock odds 18.3/65.4/16.3 and the station's move, edge, high/low, grade and Pool 2.
 
 ## Example: one Claude answer (reads/, `line_type: claude_answer`) and the final forecast (`line_type: final_forecast`)
 
@@ -666,7 +653,7 @@ One file, `state/spx_claude_forecast/latest.json`, written by `read_runner` thro
 
 ```
 OUTPUT. Reply with one JSON object and nothing else.
-similar_precedents: list of {precedent_id, weight_pct_of_picked_precedents, similar_on: [field], differs_most_on: field}; one to four rows; weight_pct_of_picked_precedents values are whole numbers that sum to one hundred.
+similar_precedents: list of {precedent_id, weight_pct_of_picked_precedents, similar_on: [item], differs_most_on: item}; one to four cards; the weights are whole numbers that sum to one hundred.
 reasons: two to four {input_field_path, pushes_toward: up|down|bigger_move|smaller_move, horizon: next_30_minutes|next_60_minutes|to_close|all}; input_field_path is a dotted path that exists in SCENE and is not listed in absent.
 strongest_reason_against_lean: one {input_field_path, pushes_toward, horizon}: the strongest fact against your lean.
 forecast: one object per horizon in ask.horizons, keyed by that horizon's name, with up_pct, flat_pct and down_pct in the order ask.direction_order_asked gives, then up_by_size_pct: {up_1_to_2_flat_edges, up_2_to_3_flat_edges, up_over_3_flat_edges} and down_by_size_pct: {down_1_to_2_flat_edges, down_2_to_3_flat_edges, down_over_3_flat_edges}; whole numbers; up_pct, flat_pct and down_pct sum to one hundred; up_by_size_pct sums to up_pct; down_by_size_pct sums to down_pct.

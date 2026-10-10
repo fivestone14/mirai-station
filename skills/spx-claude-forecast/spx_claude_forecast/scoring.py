@@ -23,7 +23,6 @@ CLAUDE_FINAL = "claude_final"
 CLAUDE_ANSWERS = ("claude_answer_1", "claude_answer_2")
 COMPARISON_FORECASTERS = ("base_rate_shown_to_claude", "existing_system_time_of_day_odds_20_sessions",
                           "existing_system_main_forecast", "shown_precedents_outcomes")
-FORECASTERS = (CLAUDE_FINAL, *CLAUDE_ANSWERS, *COMPARISON_FORECASTERS)
 
 
 def chances_of(block: dict | None) -> dict[str, float] | None:
@@ -196,6 +195,6 @@ def read_scores(paths: ForecastPaths) -> list[dict]:
     return library.read_parquet_rows(paths.library_scores_file)
 
 
-__all__ = ["SCORING_CODE_VERSION", "FORECASTERS", "CLAUDE_FINAL", "CLAUDE_ANSWERS", "COMPARISON_FORECASTERS", "chances_of",
+__all__ = ["SCORING_CODE_VERSION", "CLAUDE_FINAL", "CLAUDE_ANSWERS", "COMPARISON_FORECASTERS", "chances_of",
            "brier_score", "size_ranked_probability_score", "score_rows_for_read", "load_reads_by_day", "load_arms_by_day",
            "production_lines", "test_variant_lines", "collect_score_rows", "write_scores", "read_scores"]

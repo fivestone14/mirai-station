@@ -24,6 +24,7 @@ off-disk backup folder it is told about. Every other station store it reads is l
         lob_raw/{day}/               gzip copies of state/lob_flow/raw/{day}/ before the collector deletes them
       rules/{sha}.txt                the rulebook text Claude was sent, once per distinct text
       run_logs/job_run_log.jsonl     one line per job run (pruned after 30 days)
+      run_logs/read_runner.out       the detached read runner's output, appended per read (never pruned)
       locks/                         single-instance lock files
       latest.json, scorecard.json    the phone tile and Will's view (replaced atomically)
 """
@@ -40,7 +41,7 @@ PACKAGE_DIR = Path(__file__).resolve().parent
 SKILL_DIR = PACKAGE_DIR.parent                       # skills/spx-claude-forecast
 STATION_ROOT = SKILL_DIR.parent.parent               # ~/.claude/plugins/mirai-station
 FORECAST_FOLDER_NAME = "spx_claude_forecast"         # under the station's state/ folder, beside state/spx_jev
-RUN_LOG_KEPT_DAYS = 30                               # run_logs/ is the only thing here that is ever pruned
+RUN_LOG_KEPT_DAYS = 30                               # run_logs/job_run_log.jsonl is the only thing here that is ever pruned
 
 
 def default_state_dir() -> Path:
@@ -154,21 +155,22 @@ class ForecastPaths:
 
 
 STORE_MAP = {
-    "payloads/{day}.jsonl": {"writer": "read hook (Phase 3)", "reader": "nightly job, Claude call", "retention": "forever", "edited": "never"},
-    "reads/{day}.jsonl": {"writer": "Claude call (Phase 5)", "reader": "nightly job, phone tile", "retention": "forever", "edited": "never"},
-    "outcomes/{day}.jsonl": {"writer": "nightly seal (Phase 7)", "reader": "library, scorecard", "retention": "forever", "edited": "never; a regrade appends a new rule version"},
-    "arms/{day}.jsonl": {"writer": "nightly test variants (test_variants.py)", "reader": "nightly scores and scorecard; the daily call cap", "retention": "forever", "edited": "never"},
+    "payloads/{day}.jsonl": {"writer": "read hook (Phase 3)", "reader": "nightly job (seal, test variants, library); the read runner's already-built check", "retention": "forever", "edited": "never"},
+    "reads/{day}.jsonl": {"writer": "Claude call (Phase 5)", "reader": "nightly job (test variants, scores, scorecard); the daily call cap", "retention": "forever", "edited": "never"},
+    "outcomes/{day}.jsonl": {"writer": "nightly seal (Phase 7)", "reader": "nightly job (seal, library, scores)", "retention": "forever", "edited": "never; a regrade appends a new rule version"},
+    "arms/{day}.jsonl": {"writer": "nightly test variants (test_variants.py)", "reader": "nightly job (test variants, scores); the daily call cap", "retention": "forever", "edited": "never"},
     "seed/": {"writer": "seed rebuild (Phase 4)", "reader": "library", "retention": "forever, one set per builder version", "edited": "never"},
-    "library/": {"writer": "nightly rebuild", "reader": "read hook (base rate, precedents), scorecard", "retention": "rebuildable from the files above", "edited": "replaced whole"},
+    "library/": {"writer": "nightly rebuild", "reader": "read runner (base rate, precedents); nightly job (test variants, scorecard)", "retention": "rebuildable from the files above", "edited": "replaced whole"},
     "recorder/dated_book/{as_of}.json": {"writer": "recorder", "reader": "payload builder", "retention": "forever", "edited": "never"},
     "recorder/siege_spy_minutes/{day}.json": {"writer": "recorder", "reader": "payload builder (SPY volume vs usual)", "retention": "forever", "edited": "never"},
-    "recorder/spx_5m/{day}.jsonl": {"writer": "recorder (Schwab, outside market hours)", "reader": "base rate (later)", "retention": "forever", "edited": "never"},
+    "recorder/spx_5m/{day}.jsonl": {"writer": "recorder (Schwab, outside market hours)", "reader": "none yet (kept as insurance)", "retention": "forever", "edited": "never"},
     "recorder/vix1d_close.jsonl": {"writer": "recorder", "reader": "payload builder", "retention": "forever", "edited": "never"},
-    "recorder/lob_raw/{day}/": {"writer": "recorder", "reader": "later flow research", "retention": "forever (insurance only; the flow block reads lob_flow/agg)", "edited": "never"},
-    "rules/{sha}.txt": {"writer": "Claude call", "reader": "anyone rebuilding a prompt", "retention": "forever", "edited": "never"},
-    "control.json": {"writer": "Will or the CLI", "reader": "every job", "retention": "current", "edited": "replaced atomically"},
-    "run_logs/job_run_log.jsonl": {"writer": "every job", "reader": "health checks", "retention": f"{RUN_LOG_KEPT_DAYS} days", "edited": "never"},
-    "latest.json, scorecard.json": {"writer": "read hook, nightly job", "reader": "the phone", "retention": "current", "edited": "replaced atomically"},
+    "recorder/lob_raw/{day}/": {"writer": "recorder", "reader": "none yet (the flow block reads the station's own lob_flow/agg and lob_flow/raw)", "retention": "forever (insurance only)", "edited": "never"},
+    "rules/{sha}.txt": {"writer": "Claude call", "reader": "none in code; kept so a sent prompt can be rebuilt by hand", "retention": "forever", "edited": "never"},
+    "control.json": {"writer": "Will or the CLI", "reader": "the call gate (read runner, nightly test variants)", "retention": "current", "edited": "replaced atomically"},
+    "run_logs/job_run_log.jsonl": {"writer": "every job", "reader": "none in code; the nightly and the recorder prune it", "retention": f"{RUN_LOG_KEPT_DAYS} days", "edited": "never"},
+    "run_logs/read_runner.out": {"writer": "read hook (the detached read runner's stdout and stderr)", "reader": "none in code; read by hand when a read goes wrong", "retention": "forever", "edited": "appended"},
+    "latest.json, scorecard.json": {"writer": "read hook, nightly job", "reader": "the phone's Claude card (latest.json); the read runner's card verdict and Will (scorecard.json)", "retention": "current", "edited": "replaced atomically"},
 }
 
 

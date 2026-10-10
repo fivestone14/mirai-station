@@ -11,10 +11,10 @@ percentages**, with sizes, for the next 30 minutes, the next 60 minutes and
 the close.
 
 The payload, Claude's answer and the actual result are stored together on one
-key (`read_id` + `payload_id`). The forecast is graded every night beside the
-base rate, the clock odds and Pool 2. It joins the list of graded reads as its
-own tile, and it is **never mixed into the combined call** (Pool 2) until Will
-decides it has earned a place.
+key (`read_id` + `claude_input_sha256`). The forecast is graded every night beside the
+base rate, the clock odds and Pool 2. It shows on the phone as its own card
+(`/m/jev-spx.html`, read from `latest.json`), and it is **never mixed into the
+combined call** (Pool 2) until Will decides it has earned a place.
 
 It runs live from day one. Stored history back to 07-20 seeds the library of
 past moments, so the first live read already has precedents to compare against.
@@ -59,7 +59,7 @@ right after it archives the read's record. Nothing here is in the combined call.
 
 The rule for `spec/`: it holds only the data contract, the roadmap and the decisions. How the system works lives in the code, its docstrings and this README; when the two disagree, the code is what runs, and the page is fixed.
 
-## Where things will live (per the plan)
+## Where things live
 
 - **Code:** `skills/spx-claude-forecast/spx_claude_forecast/`
 - **Data:** `state/spx_claude_forecast/`, holding `payloads/`, `reads/`, `outcomes/` and `arms/` (the test variants) per day, plus the library, the seed, `recorder/`, `latest.json` and `scorecard.json`. `STORE_MAP.json` there lists every path with its writer and retention.

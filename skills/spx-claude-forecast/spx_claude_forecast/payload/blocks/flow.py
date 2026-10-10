@@ -30,7 +30,6 @@ from ..block_result import BlockResult, whole_block_absent
 from ..frozen_inputs import FrozenInputs, TapeFold
 
 BLOCK = "flow"
-COLLECTOR_ENGINE = "lob_flow"
 CONTENT_RATIO_LOW = 0.3           # a 15-minute trade count under 0.3x or over 3x its usual is a feed fault, not a market
 CONTENT_RATIO_HIGH = 3.0
 LEAN_WINDOW_MIN = 30
@@ -319,7 +318,3 @@ def _spy_spread(inputs: FrozenInputs, result: BlockResult) -> int | None:
         result.leave_out(field, "spy_quote_stale")
         return None
     return round(spread * 100)
-
-
-def _num(v: Any) -> float | None:
-    return float(v) if units.is_num(v) else None
