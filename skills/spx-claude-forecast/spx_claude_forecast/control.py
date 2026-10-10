@@ -1,4 +1,4 @@
-"""The switches, the caps, the clock words and the run log every job in this package shares.
+"""The switches, the caps, the clock words, the single-instance lock and the run log every job in this package shares.
 
 Kill switch: ``SPX_CLAUDE_FORECAST_DISABLE=1`` stops every job dead (no row, no call). The package also
 stands down when ``SPX_JEV_DISABLE=1``, because without the SPX read there is nothing to forecast.
@@ -7,12 +7,15 @@ still lands (a gap in the record costs more than a gap in the answers). The dail
 """
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import sys
 import traceback
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Iterator
 from zoneinfo import ZoneInfo
 
 from . import jsonl_store
@@ -44,12 +47,8 @@ def now_et() -> datetime:
     return datetime.now(ET)
 
 
-def today_et() -> str:
-    return now_et().date().isoformat()
-
-
-def is_switched_off() -> str | None:
-    """The reason the package must not run, or None."""
+def switched_off_reason() -> str | None:
+    """The reason the package must not run, or None when it may."""
     if os.environ.get(DISABLE_ENV) == "1":
         return f"{DISABLE_ENV}=1"
     if os.environ.get(UPSTREAM_DISABLE_ENV) == "1":
@@ -87,9 +86,28 @@ def is_paused(paths: ForecastPaths) -> bool:
     return bool(load_control(paths).get("paused", False))
 
 
-def log_job_run(paths: ForecastPaths, job: str, started_at: str, ok: bool, error: str | None = None, **counts) -> None:
-    """One line per job run in run_logs/job_run_log.jsonl; never raises."""
-    record = {"job": job, "started_at": started_at, "finished_at": now_utc_iso(), "ok": bool(ok), **counts}
+@contextmanager
+def single_instance_lock(paths: ForecastPaths, job: str) -> Iterator[bool]:
+    """Hold ``locks/{job}.lock`` for the block; yields False, without waiting, when another process holds it.
+    launchd never runs a label twice at once, but a run by hand beside a launchd run would."""
+    lock_file = jsonl_store.assert_path_is_ours(paths.lock_file(job))
+    lock_file.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock_file, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+            return
+        yield True
+    finally:
+        os.close(fd)                                                     # closing the descriptor releases the lock
+
+
+def log_job_run(paths: ForecastPaths, job: str, started_at: str, ok: bool, error: str | None = None, **fields) -> None:
+    """One line per job run in run_logs/job_run_log.jsonl, with the run's scalar fields (counts, names,
+    reasons); never raises."""
+    record = {"job": job, "started_at": started_at, "finished_at": now_utc_iso(), "ok": bool(ok), **fields}
     if error:
         record["error"] = error
         record["trace"] = traceback.format_exc()[-1500:]
@@ -124,14 +142,13 @@ def main(argv: list[str] | None = None) -> int:
     group.add_argument("--pause", action="store_true")
     group.add_argument("--resume", action="store_true")
     args = parser.parse_args(argv)
-    paths = ensure_folders(Path(args.state_dir) if args.state_dir else default_state_dir())
-    jsonl_store.allow_writes_under(paths.root)
+    paths = ensure_folders(Path(args.state_dir).expanduser() if args.state_dir else default_state_dir())
     if args.pause or args.resume:
         control = set_paused(paths, args.pause)
     else:
         write_default_control(paths)
         control = load_control(paths)
-    print(json.dumps({"switched_off": is_switched_off(), **control}, indent=1))
+    print(json.dumps({"switched_off": switched_off_reason(), **control}, indent=1))
     return 0
 
 

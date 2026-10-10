@@ -34,6 +34,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import jsonl_store
+
 PACKAGE_DIR = Path(__file__).resolve().parent
 SKILL_DIR = PACKAGE_DIR.parent                       # skills/spx-claude-forecast
 STATION_ROOT = SKILL_DIR.parent.parent               # ~/.claude/plugins/mirai-station
@@ -98,7 +100,7 @@ class ForecastPaths:
     def recorder_dir(self) -> Path:
         return self.root / "recorder"
 
-    def dated_book_copy(self, as_of_stamp: str) -> Path:
+    def dated_book_copy_file(self, as_of_stamp: str) -> Path:
         return self.recorder_dir / "dated_book" / f"{as_of_stamp}.json"
 
     def siege_spy_minutes_file(self, day: str) -> Path:
@@ -170,15 +172,15 @@ STORE_MAP = {
 }
 
 
-def ensure_folders(state_dir: Path | str) -> ForecastPaths:
-    """Create every folder the package writes to and refresh STORE_MAP.json; returns the path set."""
+def ensure_folders(state_dir: Path | str, backup_dir: Path | str | None = None) -> ForecastPaths:
+    """Set this process up to write: create every folder the package writes to, declare the forecast root
+    (and the backup folder, when given) as the only writable places, and refresh STORE_MAP.json when its
+    text changed (an unchanged file keeps its mtime, so the backup does not recopy it); returns the path set."""
     paths = ForecastPaths(Path(state_dir).expanduser())
     for folder in paths.folders:
         folder.mkdir(parents=True, exist_ok=True)
-    store_map = {"root": str(paths.root), "stores": STORE_MAP}
-    text = json.dumps(store_map, indent=1, sort_keys=True)
+    jsonl_store.allow_writes_under(paths.root, *([backup_dir] if backup_dir else []))
+    text = json.dumps({"root": str(paths.root), "stores": STORE_MAP}, ensure_ascii=False, indent=1, sort_keys=True)
     if not paths.store_map_file.exists() or paths.store_map_file.read_text(encoding="utf-8") != text:
-        tmp = paths.store_map_file.with_name(f"STORE_MAP.json.{os.getpid()}.tmp")
-        tmp.write_text(text, encoding="utf-8")
-        os.replace(tmp, paths.store_map_file)
+        jsonl_store.write_bytes_atomically(paths.store_map_file, text.encode("utf-8"))
     return paths

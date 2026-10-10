@@ -6,8 +6,11 @@
 # what is missing. Reads every station store read-only; writes only under its own folder and the backup.
 # Installed by install-launchd.sh (com.mirai-station.spx-claude-forecast-recorder): 08:40 ET after the
 # dated-book fetch, 16:25 ET after the close, and Friday 17:30 ET after the Friday book refresh.
-# The Schwab task refuses to run inside market hours, so the live feeds keep the login to themselves.
-# Kill switches: SPX_CLAUDE_FORECAST_DISABLE=1 (this package) or SPX_JEV_DISABLE=1 => exit-0 no-op.
+# No weekday gate, on purpose: a weekend run is a second chance at Friday's book before Monday's fetch
+# overwrites it. The Schwab task skips weekends and refuses to run inside market hours itself, so the
+# live feeds keep the login to themselves. A second copy beside a running one stands down on the lock.
+# Kill switches: SPX_CLAUDE_FORECAST_DISABLE=1 (this package) or SPX_JEV_DISABLE=1 => exit-0 no-op
+# (checked here AND in python).
 set -u
 _SELF="${BASH_SOURCE[0]}"
 while [[ -L "$_SELF" ]]; do _SELF="$(readlink "$_SELF")"; done

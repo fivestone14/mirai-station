@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
-from pathlib import Path
 
 import pytest
 
@@ -15,6 +13,26 @@ def test_ensure_folders_creates_every_folder_and_the_store_map(tmp_path):
     assert all(folder.is_dir() for folder in paths.folders)
     store_map = json.loads(paths.store_map_file.read_text())
     assert "payloads/{day}.jsonl" in store_map["stores"] and store_map["root"].endswith("spx_claude_forecast")
+
+
+def test_the_state_root_comes_from_the_station_env_then_the_older_override_then_the_plugin_tree(monkeypatch, tmp_path):
+    monkeypatch.delenv("MIRAI_STATION_STATE", raising=False)
+    monkeypatch.delenv("MIRAI_STATE_DIR", raising=False)
+    assert forecast_paths.default_state_dir() == forecast_paths.STATION_ROOT / "state"
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path / "older"))
+    assert forecast_paths.default_state_dir() == tmp_path / "older"
+    monkeypatch.setenv("MIRAI_STATION_STATE", str(tmp_path / "station"))
+    assert forecast_paths.default_state_dir() == tmp_path / "station"
+
+
+def test_ensure_folders_is_idempotent_and_leaves_an_unchanged_store_map_untouched(tmp_path):
+    paths = forecast_paths.ensure_folders(tmp_path / "state")
+    before = paths.store_map_file.stat()
+    again = forecast_paths.ensure_folders(tmp_path / "state")
+    assert again == paths and all(folder.is_dir() for folder in paths.folders)
+    after = paths.store_map_file.stat()
+    assert (after.st_ino, after.st_mtime_ns) == (before.st_ino, before.st_mtime_ns)   # the backup sees no change
+    assert not list(paths.root.glob("*.tmp"))
 
 
 def test_append_json_line_writes_one_record_per_line_and_reads_it_back(state_dir):
@@ -43,6 +61,20 @@ def test_write_json_atomically_leaves_no_temp_file_and_sorts_keys(state_dir):
     assert not list(paths.root.glob("latest.json.*.tmp"))
 
 
+def test_a_replacement_that_fails_halfway_leaves_the_old_file_and_no_temp_file(state_dir):
+    paths = forecast_paths.ForecastPaths(state_dir)
+    jsonl_store.write_json_atomically(paths.latest_file, {"version": 1})
+
+    def half_written(tmp):
+        tmp.write_bytes(b"{")
+        raise OSError("disk full")
+
+    with pytest.raises(OSError):
+        jsonl_store.replace_file_atomically(paths.latest_file, half_written)
+    assert json.loads(paths.latest_file.read_text()) == {"version": 1}
+    assert not list(paths.root.glob("latest.json.*.tmp"))
+
+
 def test_write_bytes_once_writes_only_when_missing_or_short(state_dir):
     paths = forecast_paths.ForecastPaths(state_dir)
     target = paths.rules_file("abc")
@@ -61,6 +93,22 @@ def test_every_writer_refuses_a_path_outside_the_forecast_folder(state_dir, tmp_
     with pytest.raises(jsonl_store.WriteOutsideOwnFolder):
         jsonl_store.write_bytes_once(tmp_path / "elsewhere.txt", b"x")
     assert not pool_2_file.exists()
+
+
+def test_a_symlink_inside_the_folder_cannot_carry_a_write_outside_it(state_dir, tmp_path):
+    """A dangling link is the sharp case: the path does not exist, yet O_CREAT would follow it out of the folder."""
+    paths = forecast_paths.ForecastPaths(state_dir)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    paths.latest_file.symlink_to(outside / "latest.json")                      # dangling
+    with pytest.raises(jsonl_store.WriteOutsideOwnFolder):
+        jsonl_store.append_json_line(paths.latest_file, {"tile": "x"})
+    assert not (outside / "latest.json").exists()
+    (outside / "scorecard.json").write_text("{}")
+    paths.scorecard_file.symlink_to(outside / "scorecard.json")                 # pointing at a real file
+    with pytest.raises(jsonl_store.WriteOutsideOwnFolder):
+        jsonl_store.write_json_atomically(paths.scorecard_file, {"score": 1})
+    assert (outside / "scorecard.json").read_text() == "{}"
 
 
 def test_canonical_hash_ignores_key_order_and_spacing():
@@ -87,5 +135,6 @@ def test_two_appenders_never_interleave_lines(state_dir):
         p.start()
     for p in procs:
         p.join()
+    assert [p.exitcode for p in procs] == [0, 0]                 # a child that could not import or write says so here
     records = jsonl_store.read_json_lines(target)
     assert len(records) == 400 and target.read_text().count("\n") == 400

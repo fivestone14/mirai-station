@@ -15,10 +15,15 @@
   <!-- The spx-claude-forecast recorder: copies station data before it is overwritten or deleted, and
        mirrors the forecast folder off-disk. Fires at 08:40 ET (after the 08:17 ET dated-book fetch),
        16:25 ET (after the close: the day's $VIX1D close, the raw tape, SPX 5-minute bars from Schwab)
-       and Friday 17:30 ET (after the Friday 17:10 ET book refresh). Every task copies only what is
-       missing. Reads every station store read-only; writes only under state/spx_claude_forecast/.
+       and Friday 17:30 ET (after the Friday 17:10 ET book refresh). The daily entries fire on weekends
+       too, on purpose: a second chance at Friday's book before Monday's 08:17 ET fetch overwrites it
+       (the runner has no weekday gate; the Schwab task skips weekends itself). Every task copies only
+       what is missing, and only finished sessions. Reads every station store read-only; writes only
+       under state/spx_claude_forecast/ and the backup folder.
        NOTE: launchd's StartCalendarInterval uses SYSTEM-LOCAL time and ignores the TZ env var below.
-       This box runs on Pacific, so Hour=5 Minute=40 == 05:40 PT == 08:40 ET year-round. -->
+       This box runs on Pacific, so Hour=5 Minute=40 == 05:40 PT == 08:40 ET, Hour=13 Minute=25 ==
+       16:25 ET and Weekday=5 Hour=14 Minute=30 == Friday 17:30 ET, year-round (PT is ET minus 3h
+       through DST). -->
   <key>StartCalendarInterval</key>
   <array>
     <dict><key>Hour</key><integer>5</integer><key>Minute</key><integer>40</integer></dict>

@@ -5,7 +5,8 @@ answers) append to the same ``reads/{day}.jsonl`` at once, so a line is written 
 under an exclusive ``flock`` in a single ``os.write``, and a file that does not end in a newline gets
 one first so a torn line from a crash is fenced off rather than glued to the next record. Replaced
 files are fsynced and so is their folder. Every writer refuses a path outside the forecast root or
-the backup root, which is how "never writes into Pool 2's files" is enforced in code.
+the backup root, which is how "never writes into Pool 2's files" is enforced in code; the check runs
+on the fully resolved path, so a symlink inside the folder cannot point a write outside it.
 """
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 _WRITABLE_ROOTS: list[Path] = []     # set by allow_writes_under(); empty means "nothing is writable yet"
 
@@ -29,9 +30,11 @@ def allow_writes_under(*roots: Path | str) -> None:
 
 
 def assert_path_is_ours(path: Path | str) -> Path:
-    """The resolved path, or WriteOutsideOwnFolder if no declared root contains it."""
-    resolved = Path(path).expanduser()
-    resolved = resolved.resolve() if resolved.exists() else (resolved.parent.resolve() / resolved.name)
+    """The fully resolved path, or WriteOutsideOwnFolder if no declared root contains it.
+
+    ``resolve()`` follows every symlink, a dangling one included, and keeps the missing tail of a path
+    that does not exist yet, so a link planted inside the folder cannot carry a write outside it."""
+    resolved = Path(path).expanduser().resolve()
     for root in _WRITABLE_ROOTS:
         if root == resolved or root in resolved.parents:
             return resolved
@@ -65,11 +68,11 @@ def append_json_line(path: Path | str, record: dict, *, fsync: bool = True) -> N
     target = assert_path_is_ours(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     line = json.dumps(record, ensure_ascii=False, default=str) + "\n"
-    fd = os.open(target, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+    fd = os.open(target, os.O_RDWR | os.O_APPEND | os.O_CREAT, 0o644)   # RDWR so the fence check reads the same fd
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
         size = os.fstat(fd).st_size
-        if size and _last_byte(target, size) != b"\n":
+        if size and os.pread(fd, 1, size - 1) != b"\n":
             os.write(fd, b"\n")                                  # fence off a torn line from a crash
         os.write(fd, line.encode("utf-8"))
         if fsync:
@@ -77,12 +80,6 @@ def append_json_line(path: Path | str, record: dict, *, fsync: bool = True) -> N
     finally:
         fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
-
-
-def _last_byte(path: Path, size: int) -> bytes:
-    with open(path, "rb") as f:
-        f.seek(size - 1)
-        return f.read(1)
 
 
 def read_json_lines(path: Path | str) -> list[dict]:
@@ -113,14 +110,19 @@ def write_json_atomically(path: Path | str, data: Any, *, indent: int | None = 1
 
 
 def write_bytes_atomically(path: Path | str, data: bytes) -> None:
+    replace_file_atomically(path, lambda tmp: tmp.write_bytes(data))
+
+
+def replace_file_atomically(path: Path | str, fill_temp_file: Callable[[Path], None]) -> Path:
+    """Build the file under a temp name of this process's own (``fill_temp_file`` writes it), fsync it, swap it
+    into place with one rename, fsync the folder; returns the resolved target. A reader never sees half a file,
+    and a crash leaves at most a ``.tmp`` beside it."""
     target = assert_path_is_ours(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_name(f"{target.name}.{os.getpid()}.tmp")       # a name of this process's own
+    tmp = target.with_name(f"{target.name}.{os.getpid()}.tmp")
     try:
-        with open(tmp, "wb") as f:
-            f.write(data)
-            f.flush()
-            os.fsync(f.fileno())
+        fill_temp_file(tmp)
+        _fsync_file(tmp)
         os.replace(tmp, target)
         _fsync_folder(target.parent)
     finally:
@@ -128,10 +130,12 @@ def write_bytes_atomically(path: Path | str, data: bytes) -> None:
             tmp.unlink()
         except OSError:
             pass
+    return target
 
 
 def write_bytes_once(path: Path | str, data: bytes) -> bool:
-    """Write a content-addressed file if it is missing or short; True when something was written."""
+    """Write a content-addressed file if it is missing or not this size (a crash left it short); True when
+    something was written."""
     target = assert_path_is_ours(path)
     if target.exists() and target.stat().st_size == len(data):
         return False
@@ -139,9 +143,13 @@ def write_bytes_once(path: Path | str, data: bytes) -> bool:
     return True
 
 
-def _fsync_folder(folder: Path) -> None:
-    fd = os.open(folder, os.O_RDONLY)
+def _fsync_file(path: Path) -> None:
+    fd = os.open(path, os.O_RDONLY)
     try:
         os.fsync(fd)
     finally:
         os.close(fd)
+
+
+def _fsync_folder(folder: Path) -> None:
+    _fsync_file(folder)

@@ -37,11 +37,11 @@ where the station can actually get the data.
 | `spec/rulebook_draft_cr-1.txt` | Draft of the cached rulebook (system prompt) Claude reads every call. |
 | `spec/prototype/` | The read-only scripts the design used to rebuild base rates, precedents and the mockup from the stores. They are kept for reference and still point at the design session's scratch folder, so they will not run as they are. |
 | `spx_claude_forecast/paths.py` | Every path the package writes, under `state/spx_claude_forecast/`, and `STORE_MAP.json`. |
-| `spx_claude_forecast/jsonl_store.py` | The only writers: append-only JSON lines under a file lock, atomic replacement, write-once blobs. Every writer refuses a path outside the forecast folder. |
-| `spx_claude_forecast/control.py` | The kill switch (`SPX_CLAUDE_FORECAST_DISABLE=1`), the pause switch and caps in `control.json`, the run log. |
+| `spx_claude_forecast/jsonl_store.py` | The only writers: append-only JSON lines under a file lock, atomic replacement, write-once blobs. Every writer refuses a path outside the forecast folder, symlinks resolved. |
+| `spx_claude_forecast/control.py` | The kill switch (`SPX_CLAUDE_FORECAST_DISABLE=1`), the pause switch and caps in `control.json`, the single-instance lock, the run log. |
 | `spx_claude_forecast/station_stores.py` | Where the station's own stores are (read-only) and how the sibling `spx_jev` code is imported. |
-| `spx_claude_forecast/recorder.py` | Phase 0: copies the dated options book, siege's SPY minutes, the raw options tape, the $VIX1D close and SPX 5-minute bars before they are overwritten or deleted; mirrors the folder to iCloud Drive. |
-| `launchd/` | The recorder job: 08:40 and 16:25 ET, plus Friday 17:30 ET. |
+| `spx_claude_forecast/recorder.py` | Phase 0: copies the dated options book, siege's SPY minutes, the raw options tape, the $VIX1D close and SPX 5-minute bars before they are overwritten or deleted, finished sessions only; mirrors the folder to iCloud Drive. |
+| `launchd/`, `runtime/launchd/com.mirai-station.spx-claude-forecast-recorder.plist`, `runtime/scripts/run-spx-claude-forecast-recorder.sh` | The recorder job: the template, the copy `install-launchd.sh` loads, and its runner. 08:40 and 16:25 ET every day (weekends are a second chance at Friday's book), plus Friday 17:30 ET. |
 | `tests/` | Offline tests over a temp state root; `cd skills/spx-claude-forecast && python -m pytest tests -q`. |
 
 ## Where things will live (per the plan)
