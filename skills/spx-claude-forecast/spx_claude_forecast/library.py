@@ -29,7 +29,7 @@ FINGERPRINT_PATHS = {                 # where each item sits in the payload scen
     "price_minus_vwap_sig": ("tape", "price_minus_vwap_sig", "v"),
     "vix_term_ratio": ("cross_asset", "vix_vix3m"),
 }
-MANUAL_EXCLUDED_DAYS = {              # days the design review found graded on a wrong-sized ruler (see spec/storage_design.md)
+MANUAL_EXCLUDED_DAYS = {              # days the design review found graded on a wrong-sized ruler (see spec/decisions.md, grading)
     "2026-08-17": "stand-in options book sized the morning ruler",
     "2026-09-09": "stand-in options book sized the morning ruler",
     "2026-10-06": "options outage: SPY stand-in ruler",

@@ -24,7 +24,7 @@ from ... import station_stores
 from ..block_result import BlockResult, whole_block_absent
 from ..frozen_inputs import FrozenInputs
 
-MAX_CODE_ANSWERS = 12          # the cap in build_plan.md row 16; the block is the second thing trimmed when the scene is over its size
+MAX_CODE_ANSWERS = 12          # the cap the design set; the block is the second thing trimmed when the scene is over its size
 USUAL_ANSWER_KEY = "usual_answer"   # not in today's catalog: an answer equal to it says nothing new and yields its slot
 AREA_SEPARATOR = "/"           # a group is "area/name"; the area is the catalog's own section
 # The groups kept: composites and residuals no block of the scene carries as a number. Why each stays: a leg's age,

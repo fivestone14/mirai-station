@@ -642,7 +642,7 @@ Nothing was edited on disk.
 }
 ```
 
-## Rulebook OUTPUT section (new names; already applied to `rulebook_draft_cr-1.txt`)
+## Rulebook OUTPUT section (as `spx_claude_forecast/rulebook_cr-1.txt` carries it)
 
 ```
 OUTPUT. Reply with one JSON object and nothing else.

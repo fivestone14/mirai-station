@@ -34,10 +34,8 @@ right after it archives the read's record. Nothing here is in the combined call.
 | Path | What it is |
 |---|---|
 | `spec/phases.md` | The build order, phases 0 to 9, each with the check that proves it is done. |
-| `spec/build_plan.md` | The full plan: pipeline, payload, output contract, storage, grading, operations, decisions, milestones. |
+| `spec/decisions.md` | The choices this runs on and why, and where the build departed from the plan. |
 | `spec/record_formats.md` | The locked plain-English field names of the reads and outcomes files and of Claude's reply, with examples. |
-| `spec/storage_design.md` | What is stored where, the nightly library, and the fixed slice of history Claude sees. |
-| `spec/payload_mockup.json` | The design mockup of one payload (real values from the 10-09 14:30 read). |
 | `spx_claude_forecast/paths.py` | Every path the package writes, under `state/spx_claude_forecast/`, and `STORE_MAP.json`. |
 | `spx_claude_forecast/jsonl_store.py` | The only writers: append-only lines under a file lock, atomic replacement, write-once blobs; every writer refuses a path outside the forecast folder. |
 | `spx_claude_forecast/control.py` | The kill switch (`SPX_CLAUDE_FORECAST_DISABLE=1`), the pause switch and daily caps in `control.json`, the single-instance lock, the run log. |
@@ -56,6 +54,8 @@ right after it archives the read's record. Nothing here is in the combined call.
 | `spx_claude_forecast/nightly.py`, `scoring.py`, `scorecard.py` | The 17:15 ET job: seal outcomes, rebuild the library, score every forecaster, write `scorecard.json`. |
 | `launchd/` | The recorder (08:40 and 16:25 ET, Friday 17:30 ET) and the nightly job (17:15 ET). |
 | `tests/` | Offline tests over a temp state root, plus real-store smoke tests that skip without the station: `cd skills/spx-claude-forecast && python -m pytest tests -q`. |
+
+The rule for `spec/`: it holds only the data contract, the roadmap and the decisions. How the system works lives in the code, its docstrings and this README; when the two disagree, the code is what runs, and the page is fixed.
 
 ## Where things will live (per the plan)
 

@@ -8,7 +8,7 @@ session's market context (the prior close as that session saw it: Tokyo and Euro
 does, so the prior session's last quote is their prior close). ``europe_at`` is the clock the CAC 40's quote
 last changed, Europe's close once it has closed. The yen future is dollars per yen, so USD/JPY is its inverse:
 ``usdjpy_1d_pct`` is the prior /6J over the current one less one, and ``usdjpy_shock`` flags a move past
-USDJPY_SHOCK_PCT either way. Korea and Taiwan are declared for later (build_plan section 5).
+USDJPY_SHOCK_PCT either way. Korea and Taiwan are declared for later (the design review's data-access check).
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ TOKYO, PARIS, FRANKFURT, YEN_FUTURE = "$N225", "$FCHI", "$DAX", "/6J"
 # Each return field and the symbol it is built from; the yen is inverted into USD/JPY (see the module docstring).
 RETURNS = (("tokyo_ret_pct", TOKYO), ("europe_ret_pct", PARIS), ("dax_ret_pct", FRANKFURT), ("usdjpy_1d_pct", YEN_FUTURE))
 INVERTED = (YEN_FUTURE,)
-# A one-day USD/JPY move past this, either way, is a currency shock (build_plan section 5, "USD/JPY shock").
+# A one-day USD/JPY move past this, either way, is a currency shock (the design review's data-access check, "USD/JPY shock").
 USDJPY_SHOCK_PCT = 1.5
 # The prior session's last quote is read at its day's end, so a quote after the cash close still counts.
 END_OF_DAY = time(23, 59, 59)

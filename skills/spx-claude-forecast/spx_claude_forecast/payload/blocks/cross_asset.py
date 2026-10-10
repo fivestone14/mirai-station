@@ -22,7 +22,7 @@ At the open the VIX family's quotes still read at the prior close until 09:31 or
 a quote equal to its prior close before OPEN_QUOTES_SETTLE is not a value yet and the ratios built from it are
 absent. Ranks are of the size of the move against the same minute on the prior sessions with a market context:
 ``r`` of a signed ``v`` says how many sessions moved less, either way. The VIX futures curve is always absent:
-Schwab refuses the symbols (build_plan section 5).
+Schwab refuses the symbols (the design review's data-access check).
 """
 from __future__ import annotations
 
