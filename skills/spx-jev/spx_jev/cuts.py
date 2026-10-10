@@ -147,7 +147,6 @@ CROSS_LOOKBACK_MIN = 20  # round-level cross window
 ROUND_NEAR_SIGMA = 0.06  # near a round 50/100-point level
 ON_BREAK_SIGMA = 0.05  # beyond an overnight edge
 ON_NEAR_SIGMA = 0.15  # near an overnight edge
-SECTOR_COUNT = 11  # sector funds
 MEGA_COUNT = 8  # megacap basket size
 MEGA_ONE_NAME_SHARE = 0.33  # one name's share of the index move
 ONE_DAY = 1  # one trading day

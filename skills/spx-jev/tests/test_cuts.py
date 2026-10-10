@@ -83,5 +83,4 @@ def test_every_cut_is_read_by_the_code_or_named_in_a_question_doc():
     unread = {name for name in cuts.QUESTION_CONSTANTS
               if not re.search(rf"\b{name.upper()}\b", code) and f"{{{name}}}" not in docs
               and len(re.findall(rf"\b{name.upper()}\b", own)) < 2}
-    # still among the question set's constants, which the README counts
-    assert unread == {"sector_count"}
+    assert unread == set()

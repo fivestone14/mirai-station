@@ -3,7 +3,7 @@ the funds for bonds, credit, oil and gold.
 
     python3 -m spx_jev.market_context                        # one snapshot now (the launchd job's run)
     python3 -m spx_jev.market_context --backfill 2026-08-10  # every past session's minute bars since then
-    python3 -m spx_jev.market_context --backfill --symbols /ZN,KRE   # those symbols into every saved session lacking them
+    python3 -m spx_jev.market_context --backfill --symbols /ZN,SPXL  # those symbols into every saved session lacking them
 
 Schwab keeps about 34 sessions of 1-minute history, so anything wanted for longer has to be saved as
 it happens. Two files per day under ``state/spx_jev/context/``:
@@ -19,7 +19,7 @@ it happens. Two files per day under ``state/spx_jev/context/``:
     bars/{day}.jsonl   one line per minute of a past session, written by --backfill:
                        {"ts": the minute's end, "bars": {symbol: bar}}; a day already on disk is skipped, unless
                        --symbols names symbols it lacks, which are fetched and put into it (a symbol added to
-                       SYMBOLS later than the saved days: --backfill --symbols /ZN,KRE once, for the sessions
+                       SYMBOLS later than the saved days: --backfill --symbols /ZN,SPXL once, for the sessions
                        Schwab still serves).
 
 The labeller reads both through ``state_builder.load_market_context``, point in time: a bar counts once
@@ -50,9 +50,8 @@ SYMBOLS = {
     "volatility": ("$VIX", "$VIX9D", "$VVIX", "$VIX3M", "$VIX1D"),
     "futures": ("/ES", "/MBT", "/ZN"),             # /MBT, micro bitcoin, for the session bitcoin labels (labels/bitcoin.py);
                                                    # /ZN, the ten-year note, quoted since 2026-10-06 for the rates questions
-    "rates": ("$TNX", "$IRX"),
+    "rates": ("$TNX",),
     "sectors": ("XLK", "XLF", "XLE", "XLV", "XLY", "XLI", "XLC", "XLP", "XLU", "XLB", "XLRE"),   # the 11 the sector labels count: never more
-    "industry_funds": ("KRE", "XHB"),              # regional banks and homebuilders, since 2026-10-06
     "index_funds": ("SMH", "RSP", "QQQ", "IWM", "SPY"),
     "leveraged_funds": ("SPXL", "TQQQ", "SPXS", "SQQQ"),   # the 3x long and short index funds, since 2026-10-06
     "macro_funds": ("TLT", "HYG", "USO", "GLD"),   # the bond, oil and pooled-markets labels (labels/macro.py)

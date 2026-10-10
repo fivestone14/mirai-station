@@ -117,7 +117,7 @@
    }
   },
   "labels": 142,
-  "constants": 69,
+  "constants": 68,
   "label_availability": {
    "live": 76,
    "cheap_add": 57,
@@ -164,17 +164,6 @@
    "Last-hour base rate: 15:00-16:00 fell on 35 of 54 sessions; late-day expiry questions are graded against the time-of-day baseline, not 50/50."
   ]
  },
- "monday_prerequisites": [
-  "Install the context plist and run `python -m spx_jev.market_context --backfill 2026-08-10` before 09:30 Monday; state/spx_jev/ does not exist yet and every cheap_add Schwab label reads state/spx_jev/context/{day}.jsonl + context/bars/{day}.jsonl.",
-  "Add TSLA and GOOG to market_context.SYMBOLS (check Schwab returns them), backfill, and write state/spx_leaders/weights.json before heavyweight_gap_split, megacap_cohesion, leaders_vs_rest and single_name_shock count; add megacap earnings rows to calendar/events.json.",
-  "Add and probe TLT, HYG, USO, GLD, /6EZ26, /ZNZ26 and /MBT (none in SYMBOLS or probed) and backfill 20 sessions of betas before bond_catchup, oil_gap and macro_lean count; the $TNX fallback is gone after 15:00.",
-  "Live snapshots save only last/close/totalVolume for ETFs and stocks: fetch today's 1-minute bars per symbol at read time (as reversion_lens does for SPY) or add the symbols to the per-minute bar fetch, so live and backfill measure the same thing and IWM keeps its intraminute high/low.",
-  "Extend calendar/events.json with pre_open, data_10am and fed_speaker tiers (today tier 1 only); until then event.reaction, vol.ruler_event_load and release_in_lane work only on bursts and FOMC.",
-  "Run the $VOLSPD identity check on the backfill (minute changes vs SPX and vs $VOLD) and fix doc 08, which calls it Nasdaq, before member_vs_nyse_breadth and member_breadth_vs_price_day count.",
-  "Engine wording (spec/labels.json, not edited here): expiry.today_vs_week still says 'long gamma, where dealers' hedging damps moves' and iv.term_structure says 'the calm shape'; reword before Monday.",
-  "Add the new constants (defense_refill_share, vwap_touch_sigma) to cuts.py QUESTION_CONSTANTS: done, and vwap_touch_sigma retired once average_reach_30 counted an exact touch; the rest named here before (open_day_move_sigma, the 10-minute VIX lines, tick_follow_sigma, straddle_reprice_share, trin_low/high, close_push_sigma) were converted to same-clock ranks 2026-09-27 (owner rule) and are gone.",
-  "Schwab refresh token lapses Monday 09-28 about 17:58 ET: re-login Monday evening or every Schwab-fed label (bars, VIX, context) is gone Tuesday morning."
- ],
  "constants": {
   "gap_half_share": {
    "value": 0.5,
@@ -437,12 +426,6 @@
   "on_near_sigma": {
    "value": 0.15,
    "note": "near an overnight edge",
-   "cuts_json_name": null,
-   "in_cuts_py": false
-  },
-  "sector_count": {
-   "value": 11,
-   "note": "sector funds",
    "cuts_json_name": null,
    "in_cuts_py": false
   },
@@ -13135,7 +13118,7 @@
  "validation": {
   "errors": [],
   "warnings": [
-   "constants defined but unused in question text: overnight_rank_min_nights, min_rank_sessions, sector_count"
+   "constants defined but unused in question text: overnight_rank_min_nights, min_rank_sessions"
   ]
  }
 }

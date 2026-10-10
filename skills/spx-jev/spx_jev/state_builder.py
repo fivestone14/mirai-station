@@ -154,9 +154,9 @@ def previous_session(state_dir: Path, day: str, prior: dict[str, list[dict]]) ->
 # Schwab answers a futures quote under the front contract's own symbol ("/ES" comes back as "/ESZ26"):
 # the root, a month code and a two-digit year. Read under the root, so one symbol has one series.
 FRONT_CONTRACT = re.compile(r"^(/[A-Z0-9]+?)[FGHJKMNQUVXZ]\d{2}$")
-# Schwab quotes the Treasury yield indices at ten times the yield ($TNX 51.84 is 5.184%); kept as the
+# Schwab quotes the Treasury yield index at ten times the yield ($TNX 51.84 is 5.184%); kept as the
 # yield in percent, so a basis point is 0.01.
-YIELD_TIMES_TEN = ("$TNX", "$IRX")
+YIELD_TIMES_TEN = ("$TNX",)
 
 
 def context_symbol(key: str) -> str:

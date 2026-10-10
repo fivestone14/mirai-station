@@ -270,15 +270,6 @@ def test_a_questions_version_changes_with_any_word_jev_is_sent_and_with_its_opti
     assert pool.question_version(dict(choice)) == pool.question_version(choice)
 
 
-def test_a_state_saved_with_the_retired_phone_block_loads_without_it_and_is_never_written_with_it_again(tmp_path):
-    state = {**cold_state(), "phone": {"shows": "blend", "since": None, "promote": new_eprocess(), "harm_60": new_eprocess()}}
-    (tmp_path / "pool_30.json").write_text(json.dumps(state))
-    loaded = pool.load_state(tmp_path, 30)
-    assert "phone" not in loaded and loaded["constants_hash"] == pool.CONSTANTS_HASH
-    pool.save_state(tmp_path, 30, loaded)
-    assert "phone" not in json.loads((tmp_path / "pool_30.json").read_text())
-
-
 # ---- the update over the lane's files
 
 def _write_session(out, day, outcomes, with_pool=True, graded=True, event_at=None):

@@ -45,12 +45,6 @@ def test_the_options_labels_belong_to_the_options_flow_family_and_no_family_is_n
     assert not [f.name for f in FAMILIES if "tape" in f.name]
 
 
-def test_a_renamed_label_says_what_it_measures_and_its_old_path_maps_to_the_new():
-    owned = {p for f in FAMILIES for p in f.labels}
-    assert registry.RENAMED == {"breadth.upvol_share_30m": "breadth.net_volume_change_30m", "vol.vix_change_30": "vol.vix_change"}
-    assert set(registry.RENAMED.values()) <= owned and not set(registry.RENAMED) & owned
-
-
 def test_the_row_adapter_has_one_line_of_extra_fields_per_family():
     assert set(row_adapter.FAMILY_FIELDS) == {f.name for f in FAMILIES}
 

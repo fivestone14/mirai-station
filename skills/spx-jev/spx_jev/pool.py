@@ -48,8 +48,7 @@ The end-price sums kept beside the call show today's exact 50/50 blend (shown), 
 the phone: since 2026-10-06 the call is Pool 2's combined forecast (mirai_prediction.live_call), which mixes
 this loop's pool as one voice among its others (pool_v1). The promotion machinery that once decided whether
 the pool replaced the blend (the phone's e-processes, POOL_ON_PHONE, SIM_GATES_PASSED) was retired on
-2026-10-07; a state file written with its ``phone`` block is read without it and never written with it again
-(renamed), and its bars stay in CONSTANTS so no live state is learned again for the retirement.
+2026-10-07; its bars stay in CONSTANTS so no live state is learned again for the retirement.
 
 A lane graded from the settled open keeps its own loop state in its own folder, on its sums from the
 settled open. Every one of its reads forecasts the same window, the half hour after 09:34, so each
@@ -216,13 +215,10 @@ def load_state(out_dir: Path, minutes: int) -> dict:
 
 def renamed(state: dict, experts: dict[str, str] | None = None, hashes: tuple[str, str] | None = None) -> dict:
     """A saved state under the names it is read by now: its reference's version as ``reference_version`` (``baseline``
-    before), the retired promotion's ``phone`` block (until 2026-10-07) left out, and, learned under ``hashes[0]``, the
-    same constants under the old names, its experts renamed by ``experts`` and its constants_hash ``hashes[1]``, so the
-    loop carries on where it stood."""
+    before) and, learned under ``hashes[0]``, the same constants under the old names, its experts renamed by ``experts``
+    and its constants_hash ``hashes[1]``, so the loop carries on where it stood."""
     if "baseline" in state and "reference_version" not in state:
         state["reference_version"] = state.pop("baseline")
-    if "phone" in state:
-        del state["phone"]
     if hashes and state.get("constants_hash") == hashes[0]:
         for side in SIDES:
             state["top"][side] = {(experts or {}).get(n, n): v for n, v in state["top"][side].items()}
