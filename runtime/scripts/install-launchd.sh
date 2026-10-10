@@ -59,6 +59,9 @@ PLISTS=(
   # dated options book, siege's SPY minutes, the raw tape, the $VIX1D close, SPX 5-minute bars) into
   # state/spx_claude_forecast/recorder/ and mirrors that folder off-disk. 08:40 and 16:25 ET, plus Friday 17:30 ET.
   "com.mirai-station.spx-claude-forecast-recorder.plist"
+  # Its nightly job (17:15 ET weekdays): seals what happened after every read, rebuilds the library of past
+  # moments, scores every forecaster and writes the scorecard, all under state/spx_claude_forecast/.
+  "com.mirai-station.spx-claude-forecast-nightly.plist"
   "com.mirai-station.voice.plist"
 )
 

@@ -10,6 +10,7 @@ object and nothing else.
 """
 from __future__ import annotations
 
+import functools
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -45,6 +46,7 @@ class FrozenInputs:
     code_answers: dict[str, str | None]
     flat_zones: dict[str, float] | str   # {next_30, next_60, average_30} in points, or why there are none
     anchor: Any                       # spx_jev.labels.rulers.SigmaRuler | None: the morning ruler the read could know
+    options_book: str | None          # "native" (SPX's own book) or "stand_in" (the SPY proxy), from the raw diary row
     dated_book: dict | None           # the newest dated options book with as_of <= cut
     spy_minute_volumes: dict[str, int] | None   # today's SPY per-minute volume so far, {minute_of_day: shares}
     vix1d_prior_close: float | None
@@ -124,6 +126,7 @@ def load_frozen_inputs_at(state_dir: Path | str, paths: ForecastPaths, cut: date
     code_answers = _load_code_answers(state_dir, day, read_id, notes) if read_id.startswith("live:") else {}
     flat_zones = _load_flat_zones(state_dir, day, hour_record, horizon_start, scene.bars, notes)
     anchor = _load_anchor(grade, scene, row_ts, notes)
+    options_book = _load_options_book(state_dir, day, row_ts, notes)
     dated_book = _load_dated_book(paths, state_dir, cut, notes)
     spy_minute_volumes = _load_spy_minute_volumes(paths, state_dir, day, notes)
     vix1d_prior_close = _load_vix1d_prior_close(paths, day, notes)
@@ -133,7 +136,7 @@ def load_frozen_inputs_at(state_dir: Path | str, paths: ForecastPaths, cut: date
     return FrozenInputs(state_dir=state_dir, paths=paths, read_id=read_id, lane=lane, day=day, row_ts=row_ts, cut=cut,
                         slot=slot_of(cut), horizon_start=horizon_start, scene=scene, labels=labels,
                         read_record=read_record, hour_record=hour_record, code_answers=code_answers,
-                        flat_zones=flat_zones, anchor=anchor, dated_book=dated_book,
+                        flat_zones=flat_zones, anchor=anchor, options_book=options_book, dated_book=dated_book,
                         spy_minute_volumes=spy_minute_volumes, vix1d_prior_close=vix1d_prior_close,
                         daily_closes=daily_closes, events=events, load_notes=notes)
 
@@ -186,9 +189,8 @@ def _load_flat_zones(state_dir: Path, day: str, hour_record: dict | None, horizo
     """The flat zones the station grades this read against: the ones stamped on its sum record, else sized
     again from the same files (grade.zones_of), which is the same number."""
     try:
-        flat_zone = station_stores.import_spx_jev("flat_zone")
         grade = station_stores.import_spx_jev("grade")
-        model = flat_zone.Zones(state_dir, day)
+        model = _zones_model(str(state_dir), day)
         record = hour_record or {"row_ts": horizon_start.isoformat()}
         zones = grade.zones_of(record, model, bars)
     except Exception as e:
@@ -198,12 +200,30 @@ def _load_flat_zones(state_dir: Path, day: str, hour_record: dict | None, horizo
     return zones
 
 
+@functools.lru_cache(maxsize=4)
+def _zones_model(state_dir: str, day: str):
+    """The station's zone model for one day, built once per process: the seed sizes thirteen reads a day with it."""
+    flat_zone = station_stores.import_spx_jev("flat_zone")
+    return flat_zone.Zones(Path(state_dir), day)
+
+
 def _load_anchor(grade, scene, row_ts: str, notes: list[str]):
     try:
         return grade.read_anchor(scene.rows_today, scene.bars, scene.market, row_ts)
     except Exception as e:
         notes.append(f"anchor: {type(e).__name__}: {e}")
         return None
+
+
+def _load_options_book(state_dir: Path, day: str, row_ts: str, notes: list[str]) -> str | None:
+    """Which options book the read's diary row was built on. The labeller row strips ``gex_source``, so this reads
+    the raw diary line for the exact row (the station's own code_features.book_is_native does the same)."""
+    for line in jsonl_store.iter_json_lines(station_stores.reversion_rows_file(state_dir, day)):
+        if line.get("ts") == row_ts:
+            source = line.get("gex_source")
+            return "native" if source == "native" else "stand_in" if source else None
+    notes.append("options book: the read's raw diary row was not found")
+    return None
 
 
 def _load_dated_book(paths: ForecastPaths, state_dir: Path, cut: datetime, notes: list[str]) -> dict | None:

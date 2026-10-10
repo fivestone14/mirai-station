@@ -29,7 +29,7 @@ JOB_NAME = "spx-claude-forecast"
 DEFAULT_CONTROL = {
     "paused": False,                 # True silences the Claude call; records keep landing
     "max_calls_per_day": 45,         # 26 live calls plus the nightly test variants, with room; a backstop, not a budget
-    "max_usd_per_day": 8.0,          # list-price equivalent of the calls' own bills; notional on the subscription
+    "max_usd_per_day": 15.0,         # list-price equivalent of the calls' own bills (notional on the subscription); a cold cache costs ~$0.31 a call
     "note": "Edit by hand or with: python -m spx_claude_forecast.control --pause / --resume",
 }
 

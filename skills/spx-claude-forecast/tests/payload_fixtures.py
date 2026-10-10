@@ -79,7 +79,7 @@ class FakeMarket:
 def fake_inputs(tmp_path: Path, *, cut: datetime | None = None, bars: list[dict] | None = None, row: dict | None = None,
                 prior_bars: dict[str, list[dict]] | None = None, market: FakeMarket | None = None,
                 labels_state: dict | None = None, code_answers: dict | None = None, flat_zones=None,
-                dated_book: dict | None = None, spy_minute_volumes: dict | None = None, vix1d_prior_close: float | None = 10.23,
+                options_book: str | None = "native", dated_book: dict | None = None, spy_minute_volumes: dict | None = None, vix1d_prior_close: float | None = 10.23,
                 daily_closes: dict | None = None, events=None, hour_record: dict | None = None,
                 read_record: dict | None = None, **scene_over) -> FrozenInputs:
     cut = cut or at(14, 30, 12)
@@ -103,7 +103,7 @@ def fake_inputs(tmp_path: Path, *, cut: datetime | None = None, bars: list[dict]
                         horizon_start=cut.replace(second=0, microsecond=0), scene=scene, labels=labels,
                         read_record=read_record, hour_record=hour_record, code_answers=code_answers or {},
                         flat_zones=flat_zones if flat_zones is not None else {"next_30": 3.41, "next_60": 4.89, "average_30": 2.0},
-                        anchor=anchor, dated_book=dated_book, spy_minute_volumes=spy_minute_volumes,
+                        anchor=anchor, options_book=options_book, dated_book=dated_book, spy_minute_volumes=spy_minute_volumes,
                         vix1d_prior_close=vix1d_prior_close, daily_closes=daily_closes or {}, events=events, load_notes=[])
 
 
