@@ -5,12 +5,17 @@ import json
 
 import pytest
 
-from conftest import at, bars_from_closes, flat_bars, make_row
+from conftest import FixedZones, at, bars_from_closes, flat_bars, make_row
 from spx_jev import clock
 from spx_jev.clock import blend, day_counts, odds, phase_of, premarket_odds
 from spx_jev.lane import LIVE
 
 NOW = at(12, 2, day="2026-09-18")
+
+
+@pytest.fixture(autouse=True)
+def _zones(fixed_zones):
+    """Every read, grade and replay here runs on a fixture too short to size a flat zone: the zones are pinned (conftest.FixedZones)."""
 
 
 def _rows(day: str) -> list[dict]:
@@ -37,22 +42,23 @@ def test_phases_follow_the_read_clock():
 
 
 def test_a_flat_day_counts_every_graded_read_as_flat():
-    counts = day_counts(flat_bars(390, day="2026-09-10"), _rows("2026-09-10"), LIVE.horizons)
+    counts = day_counts(flat_bars(390, day="2026-09-10"), _rows("2026-09-10"), FixedZones(".", "2026-09-10"))
     assert sum(counts["next_30"]["lunch"].values()) == counts["next_30"]["lunch"]["flat"] > 0
     assert counts["next_30"]["morning"]["up"] == counts["next_30"]["morning"]["down"] == 0
 
 
-def test_the_replayed_reads_are_graded_in_the_morning_anchor_not_the_ratchet():
-    """Price climbs a steady 0.5 point a minute; from noon the row sigma ratchets to 1000 points. On
-    the morning anchor every afternoon read still climbs 15 points in 30 minutes, 0.2 sigma: up."""
+def test_the_replayed_reads_are_graded_in_their_zones_and_carry_the_morning_anchor_for_the_baseline():
+    """Price climbs a steady 0.5 point a minute; from noon the row sigma ratchets to 1000 points. Against its
+    5.25-point zone every afternoon read still climbs 15 points in 30 minutes: up; the anchor rides beside it."""
     from spx_jev.row_adapter import labeller_row
     day = "2026-09-10"
     bars = bars_from_closes([7700.0 + 0.5 * i for i in range(390)], day=day)
     rows = [labeller_row(make_row(t, 7700.0 + 0.5 * m, sigma=75.0 if t < at(12, 0, day=day) else 1000.0, sigma_anchor=75.0))
             for m in range(0, 390, 5) if (t := at(9 + (30 + m) // 60, (30 + m) % 60, day=day))]
-    counts = day_counts(bars, rows, LIVE.horizons)
+    model = FixedZones(".", day)
+    counts = day_counts(bars, rows, model)
     assert counts["next_30"]["lunch"]["up"] == sum(counts["next_30"]["lunch"].values()) > 0
-    assert {r["sigma"] for r in clock.replayed_reads(bars, rows, LIVE.horizons)} == {75.0}
+    assert {r["sigma"] for r in clock.replayed_reads(bars, rows, model)} == {75.0}
 
 
 def test_the_odds_need_ten_sessions_and_then_blend_half_and_half(tmp_path):
@@ -114,13 +120,14 @@ def test_the_settled_open_odds_need_ten_sessions_and_are_shrunk_toward_thirds(tm
     assert c["by"]["open_30"] == {"probabilities": {"up": 0.0303, "down": 0.0303, "flat": 0.9394}, "n": 10} == c["by"]["open_10"]
 
 
-def test_each_session_is_graded_from_its_settled_open_in_its_own_anchor(tmp_path):
-    """The same climb is 0.07 and 0.2 of a 75-point day, up at both marks, and nothing on a 1000-point day."""
+def test_each_session_is_graded_from_its_settled_open_against_its_zones(tmp_path):
+    """The same climb, 5 points by 09:44 and 15 by 10:04, is up at both marks against zones of 4 and 7 points, whatever
+    the session's own sigma was."""
     c = premarket_odds(tmp_path, _climbing(tmp_path, [75.0] * 6 + [1000.0] * 4), PREMARKET_NOW)
     assert c["sessions"] == 10
     for qid in ("open_10", "open_30"):
         p = c["by"][qid]["probabilities"]
-        assert (p["up"], p["flat"], p["down"]) == (round((6 + 1 / 3) / 11, 4), round((4 + 1 / 3) / 11, 4), round((1 / 3) / 11, 4))
+        assert (p["up"], p["flat"], p["down"]) == (round((10 + 1 / 3) / 11, 4), round((1 / 3) / 11, 4), round((1 / 3) / 11, 4))
 
 
 def test_a_session_without_its_settled_open_bar_and_today_are_not_counted(tmp_path):
@@ -145,8 +152,8 @@ def test_the_blend_lifts_the_primary_the_summary_names(tmp_path):
 def _spiking(tmp_path, n: int, jump: float = 10.0) -> dict:
     """``n`` sessions at 7700 but for the bar before every tenth minute (09:31, 09:41, ...), which closes ``jump`` points
     up and hands its close to the next bar's open, so it is a real move, not a bad tick. Every read (09:32, 09:42, ...)
-    ends its 30-minute window on one: up at the end price, 10 points against a flat band of 5.25 (0.07 of the 75-point
-    anchor), but flat on the average, three such minutes in thirty sitting 1 point up against an edge of 3.11."""
+    ends its 30-minute window on one: up at the end price, 10 points against a flat zone of 5.25, but flat on the average,
+    three such minutes in thirty sitting 1 point up against an edge of 3.11."""
     (tmp_path / "reversion").mkdir(exist_ok=True)
     days = {}
     for d in range(1, n + 1):

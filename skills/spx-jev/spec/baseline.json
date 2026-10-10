@@ -1,18 +1,18 @@
 {
  "name": "spx-jev price-only baseline, frozen",
  "version": 1,
- "fitted_on": "2026-09-28",
- "rule": "E_clock and E_state counted on the qualifying sessions' replayed reads, graded by the live grader in the morning anchor each read could know; the reference per horizon is E_state when its leave-one-day-out day-mean gain over E_clock is above zero, else E_clock",
+ "fitted_on": "2026-10-09",
+ "rule": "E_clock and E_state counted on the qualifying sessions' replayed reads, graded by the live grader against the flat zones each read could have sized; the reference per horizon is E_state when its leave-one-day-out day-mean gain over E_clock is above zero, else E_clock",
  "clock_rule": {
   "first": "09:32:00",
   "h": {
    "next_30": [
     30,
-    0.07
+    55
    ],
    "next_60": [
     60,
-    0.11
+    59
    ]
   },
   "p": [
@@ -44,7 +44,8 @@
   ],
   "row_age": 10,
   "step": 10,
-  "v": 2
+  "v": 2,
+  "zone": 1
  },
  "through": "2026-09-25",
  "sessions": [
@@ -152,62 +153,62 @@
   "2026-09-25"
  ],
  "tercile_cuts": [
-  0.232567,
-  0.527465
+  0.242859,
+  0.553625
  ],
  "clock": {
   "next_30": {
    "opening": {
-    "up": 37,
-    "down": 44,
-    "flat": 39
+    "up": 27,
+    "down": 34,
+    "flat": 50
    },
    "morning": {
-    "up": 88,
-    "down": 71,
-    "flat": 88
+    "up": 50,
+    "down": 57,
+    "flat": 121
    },
    "late_morning": {
-    "up": 66,
-    "down": 59,
-    "flat": 115
+    "up": 56,
+    "down": 54,
+    "flat": 113
    },
    "lunch": {
-    "up": 101,
-    "down": 78,
-    "flat": 311
+    "up": 107,
+    "down": 82,
+    "flat": 265
    },
    "afternoon": {
-    "up": 78,
-    "down": 71,
-    "flat": 261
+    "up": 79,
+    "down": 76,
+    "flat": 225
    }
   },
   "next_60": {
    "opening": {
-    "up": 27,
-    "down": 36,
-    "flat": 57
+    "up": 19,
+    "down": 26,
+    "flat": 66
    },
    "morning": {
-    "up": 78,
-    "down": 63,
-    "flat": 106
+    "up": 52,
+    "down": 45,
+    "flat": 131
    },
    "late_morning": {
-    "up": 73,
+    "up": 63,
     "down": 45,
-    "flat": 122
+    "flat": 115
    },
    "lunch": {
-    "up": 89,
-    "down": 66,
-    "flat": 335
+    "up": 96,
+    "down": 78,
+    "flat": 280
    },
    "afternoon": {
-    "up": 55,
-    "down": 37,
-    "flat": 195
+    "up": 56,
+    "down": 43,
+    "flat": 167
    }
   }
  },
@@ -215,174 +216,174 @@
   "next_30": {
    "opening": {
     "low": {
-     "up": 5,
-     "down": 5,
+     "up": 4,
+     "down": 3,
      "flat": 11
     },
     "middle": {
-     "up": 3,
-     "down": 7,
-     "flat": 8
+     "up": 2,
+     "down": 6,
+     "flat": 9
     },
     "high": {
-     "up": 29,
-     "down": 32,
-     "flat": 20
+     "up": 21,
+     "down": 25,
+     "flat": 30
     }
    },
    "morning": {
     "low": {
-     "up": 34,
-     "down": 12,
-     "flat": 33
+     "up": 19,
+     "down": 11,
+     "flat": 37
     },
     "middle": {
-     "up": 20,
-     "down": 27,
-     "flat": 22
+     "up": 10,
+     "down": 22,
+     "flat": 34
     },
     "high": {
-     "up": 34,
-     "down": 32,
-     "flat": 33
+     "up": 21,
+     "down": 24,
+     "flat": 50
     }
    },
    "late_morning": {
     "low": {
      "up": 17,
-     "down": 16,
-     "flat": 35
+     "down": 14,
+     "flat": 36
     },
     "middle": {
-     "up": 23,
+     "up": 18,
      "down": 21,
      "flat": 40
     },
     "high": {
-     "up": 26,
-     "down": 22,
-     "flat": 40
+     "up": 21,
+     "down": 19,
+     "flat": 37
     }
    },
    "lunch": {
     "low": {
-     "up": 32,
-     "down": 20,
-     "flat": 102
+     "up": 30,
+     "down": 33,
+     "flat": 94
     },
     "middle": {
-     "up": 25,
+     "up": 29,
      "down": 33,
-     "flat": 126
+     "flat": 95
     },
     "high": {
-     "up": 44,
-     "down": 25,
-     "flat": 83
+     "up": 48,
+     "down": 16,
+     "flat": 76
     }
    },
    "afternoon": {
     "low": {
-     "up": 27,
-     "down": 32,
-     "flat": 110
+     "up": 31,
+     "down": 34,
+     "flat": 84
     },
     "middle": {
-     "up": 32,
-     "down": 21,
-     "flat": 96
+     "up": 31,
+     "down": 28,
+     "flat": 85
     },
     "high": {
-     "up": 19,
-     "down": 18,
-     "flat": 55
+     "up": 17,
+     "down": 14,
+     "flat": 56
     }
    }
   },
   "next_60": {
    "opening": {
     "low": {
-     "up": 5,
-     "down": 4,
+     "up": 3,
+     "down": 3,
      "flat": 12
     },
     "middle": {
-     "up": 3,
-     "down": 6,
-     "flat": 9
+     "up": 2,
+     "down": 4,
+     "flat": 11
     },
     "high": {
-     "up": 19,
-     "down": 26,
-     "flat": 36
+     "up": 14,
+     "down": 19,
+     "flat": 43
     }
    },
    "morning": {
     "low": {
-     "up": 35,
-     "down": 13,
-     "flat": 31
+     "up": 22,
+     "down": 8,
+     "flat": 37
     },
     "middle": {
-     "up": 18,
-     "down": 22,
-     "flat": 29
+     "up": 13,
+     "down": 18,
+     "flat": 35
     },
     "high": {
-     "up": 25,
-     "down": 28,
-     "flat": 46
+     "up": 17,
+     "down": 19,
+     "flat": 59
     }
    },
    "late_morning": {
     "low": {
-     "up": 23,
+     "up": 18,
      "down": 10,
-     "flat": 35
+     "flat": 39
     },
     "middle": {
-     "up": 27,
-     "down": 13,
-     "flat": 44
+     "up": 22,
+     "down": 15,
+     "flat": 42
     },
     "high": {
      "up": 23,
-     "down": 22,
-     "flat": 43
+     "down": 20,
+     "flat": 34
     }
    },
    "lunch": {
     "low": {
-     "up": 26,
-     "down": 15,
-     "flat": 113
+     "up": 29,
+     "down": 28,
+     "flat": 100
     },
     "middle": {
-     "up": 23,
-     "down": 33,
-     "flat": 128
+     "up": 26,
+     "down": 37,
+     "flat": 94
     },
     "high": {
-     "up": 40,
-     "down": 18,
-     "flat": 94
+     "up": 41,
+     "down": 13,
+     "flat": 86
     }
    },
    "afternoon": {
     "low": {
-     "up": 18,
-     "down": 15,
-     "flat": 86
+     "up": 21,
+     "down": 17,
+     "flat": 66
     },
     "middle": {
-     "up": 21,
-     "down": 15,
-     "flat": 71
+     "up": 24,
+     "down": 19,
+     "flat": 61
     },
     "high": {
-     "up": 16,
+     "up": 11,
      "down": 7,
-     "flat": 38
+     "flat": 40
     }
    }
   }
@@ -396,270 +397,255 @@
    "qualifying": {
     "mean_day_loss": {
      "whole_day": {
-      "log_loss": 1.0112,
-      "move": 0.69159,
-      "direction": 0.31961
+      "log_loss": 0.99839,
+      "move": 0.68823,
+      "direction": 0.31016
      },
      "clock": {
-      "log_loss": 0.98796,
-      "move": 0.66439,
-      "direction": 0.32357
+      "log_loss": 1.00265,
+      "move": 0.68841,
+      "direction": 0.31424
      },
      "state": {
-      "log_loss": 0.99712,
-      "move": 0.66959,
-      "direction": 0.32753
+      "log_loss": 1.01402,
+      "move": 0.69626,
+      "direction": 0.31776
      }
     },
     "state_over_clock": {
-     "days": 41,
-     "mean_gain_nats": -0.00916,
-     "se": 0.005,
-     "days_ahead": 15,
-     "sign_flip_p": 0.9639
+     "days": 38,
+     "mean_gain_nats": -0.01137,
+     "se": 0.00417,
+     "days_ahead": 12,
+     "sign_flip_p": 0.9948
     },
     "clock_over_whole_day": {
-     "days": 41,
-     "mean_gain_nats": 0.02323,
-     "se": 0.00765,
-     "days_ahead": 30,
-     "sign_flip_p": 0.0031
+     "days": 38,
+     "mean_gain_nats": -0.00426,
+     "se": 0.00362,
+     "days_ahead": 18,
+     "sign_flip_p": 0.8759
     },
-    "reads": 1507
+    "reads": 1396
    },
    "every_session": {
     "mean_day_loss": {
      "whole_day": {
-      "log_loss": 1.0304,
-      "move": 0.69398,
-      "direction": 0.33641
+      "log_loss": 1.00039,
+      "move": 0.68858,
+      "direction": 0.3118
      },
      "clock": {
-      "log_loss": 1.00707,
-      "move": 0.66794,
-      "direction": 0.33912
+      "log_loss": 1.0058,
+      "move": 0.69076,
+      "direction": 0.31504
      },
      "state": {
-      "log_loss": 1.01912,
-      "move": 0.67267,
-      "direction": 0.34646
+      "log_loss": 1.02175,
+      "move": 0.69628,
+      "direction": 0.32547
      }
     },
     "state_over_clock": {
-     "days": 58,
-     "mean_gain_nats": -0.01206,
-     "se": 0.00477,
-     "days_ahead": 21,
-     "sign_flip_p": 0.9976
+     "days": 44,
+     "mean_gain_nats": -0.01595,
+     "se": 0.00392,
+     "days_ahead": 12,
+     "sign_flip_p": 0.9999
     },
-    "reads": 2004
+    "reads": 1517
    },
-   "flat_share": 0.5401,
+   "flat_share": 0.5544,
    "per_day": {
-    "2026-07-21": {
-     "whole_day": 0.84117,
-     "clock": 0.74817,
-     "state": 0.72866
-    },
-    "2026-07-22": {
-     "whole_day": 0.89557,
-     "clock": 0.8087,
-     "state": 0.75655
-    },
-    "2026-07-24": {
-     "whole_day": 1.06677,
-     "clock": 1.10363,
-     "state": 1.06616
-    },
     "2026-07-27": {
-     "whole_day": 1.25945,
-     "clock": 1.21717,
-     "state": 1.22895
+     "whole_day": 1.1118,
+     "clock": 1.07628,
+     "state": 1.08746
     },
     "2026-07-28": {
-     "whole_day": 0.88561,
-     "clock": 0.8469,
-     "state": 0.84035
+     "whole_day": 0.93324,
+     "clock": 0.94129,
+     "state": 0.96193
     },
     "2026-07-29": {
-     "whole_day": 1.14538,
-     "clock": 1.18199,
-     "state": 1.23729
+     "whole_day": 1.2947,
+     "clock": 1.29307,
+     "state": 1.28996
     },
     "2026-07-30": {
-     "whole_day": 1.08899,
-     "clock": 1.04748,
-     "state": 1.10195
+     "whole_day": 1.03093,
+     "clock": 1.01208,
+     "state": 1.04999
     },
     "2026-07-31": {
-     "whole_day": 1.1596,
-     "clock": 1.11128,
-     "state": 1.11489
+     "whole_day": 1.05573,
+     "clock": 1.02775,
+     "state": 1.08149
     },
     "2026-08-03": {
-     "whole_day": 0.92353,
-     "clock": 0.8823,
-     "state": 0.89028
+     "whole_day": 0.90837,
+     "clock": 0.90694,
+     "state": 0.88136
     },
     "2026-08-04": {
-     "whole_day": 1.20033,
-     "clock": 1.16758,
-     "state": 1.14456
+     "whole_day": 1.1648,
+     "clock": 1.1537,
+     "state": 1.1069
     },
     "2026-08-05": {
-     "whole_day": 0.93337,
-     "clock": 0.87444,
-     "state": 0.90196
+     "whole_day": 0.82092,
+     "clock": 0.8065,
+     "state": 0.81617
     },
     "2026-08-06": {
-     "whole_day": 0.96956,
-     "clock": 1.00161,
-     "state": 1.00622
+     "whole_day": 0.94141,
+     "clock": 0.94857,
+     "state": 0.96582
     },
     "2026-08-07": {
-     "whole_day": 0.90937,
-     "clock": 0.89698,
-     "state": 0.89729
+     "whole_day": 0.82335,
+     "clock": 0.85104,
+     "state": 0.84786
     },
     "2026-08-10": {
-     "whole_day": 0.91999,
-     "clock": 0.91555,
-     "state": 0.91876
+     "whole_day": 0.91203,
+     "clock": 0.93828,
+     "state": 0.9495
     },
     "2026-08-11": {
-     "whole_day": 0.93337,
-     "clock": 0.98581,
-     "state": 1.03848
+     "whole_day": 0.96708,
+     "clock": 0.9953,
+     "state": 0.99587
     },
     "2026-08-12": {
-     "whole_day": 0.79143,
-     "clock": 0.75988,
-     "state": 0.78211
+     "whole_day": 0.83848,
+     "clock": 0.85001,
+     "state": 0.87316
     },
     "2026-08-13": {
-     "whole_day": 1.1199,
-     "clock": 1.06833,
-     "state": 1.09104
+     "whole_day": 1.15767,
+     "clock": 1.16118,
+     "state": 1.19678
     },
     "2026-08-18": {
-     "whole_day": 0.85928,
-     "clock": 0.8568,
-     "state": 0.84168
+     "whole_day": 0.93906,
+     "clock": 0.96763,
+     "state": 0.94327
     },
     "2026-08-19": {
-     "whole_day": 1.0367,
-     "clock": 1.02851,
-     "state": 1.02194
+     "whole_day": 0.99027,
+     "clock": 1.01309,
+     "state": 0.98676
     },
     "2026-08-20": {
-     "whole_day": 1.05076,
-     "clock": 1.1163,
-     "state": 1.17819
+     "whole_day": 0.96998,
+     "clock": 1.03113,
+     "state": 1.03489
     },
     "2026-08-21": {
-     "whole_day": 1.03267,
-     "clock": 0.9888,
-     "state": 0.94879
+     "whole_day": 0.98589,
+     "clock": 1.01214,
+     "state": 0.99471
     },
     "2026-08-25": {
-     "whole_day": 1.05803,
-     "clock": 1.04082,
-     "state": 1.12889
+     "whole_day": 0.98425,
+     "clock": 0.98833,
+     "state": 1.01897
     },
     "2026-08-26": {
-     "whole_day": 1.09776,
-     "clock": 1.10193,
-     "state": 1.12917
+     "whole_day": 1.03243,
+     "clock": 1.03878,
+     "state": 1.05931
     },
     "2026-08-27": {
-     "whole_day": 1.06936,
-     "clock": 1.08735,
-     "state": 1.11326
+     "whole_day": 1.03243,
+     "clock": 1.07795,
+     "state": 1.076
     },
     "2026-08-28": {
-     "whole_day": 1.06677,
-     "clock": 1.0333,
-     "state": 1.01584
+     "whole_day": 1.06354,
+     "clock": 1.07411,
+     "state": 1.04894
     },
     "2026-08-31": {
-     "whole_day": 1.02558,
-     "clock": 1.07226,
-     "state": 1.10817
+     "whole_day": 0.98204,
+     "clock": 1.00376,
+     "state": 1.03825
     },
     "2026-09-03": {
-     "whole_day": 1.01979,
-     "clock": 0.96627,
-     "state": 0.97459
+     "whole_day": 0.95723,
+     "clock": 0.95035,
+     "state": 0.96635
     },
     "2026-09-04": {
-     "whole_day": 0.97886,
-     "clock": 0.92657,
-     "state": 0.91529
+     "whole_day": 1.09271,
+     "clock": 1.09244,
+     "state": 1.06909
     },
     "2026-09-08": {
-     "whole_day": 1.06511,
-     "clock": 0.93641,
-     "state": 0.98653
+     "whole_day": 0.94586,
+     "clock": 0.91163,
+     "state": 0.95457
     },
     "2026-09-09": {
-     "whole_day": 1.05414,
-     "clock": 1.05407,
-     "state": 1.03083
+     "whole_day": 0.91203,
+     "clock": 0.90172,
+     "state": 0.87425
     },
     "2026-09-10": {
-     "whole_day": 0.9654,
-     "clock": 0.92561,
-     "state": 0.94618
+     "whole_day": 1.03978,
+     "clock": 1.06302,
+     "state": 1.06885
     },
     "2026-09-11": {
-     "whole_day": 0.85107,
-     "clock": 0.77998,
-     "state": 0.79088
+     "whole_day": 0.96235,
+     "clock": 0.96582,
+     "state": 1.00749
     },
     "2026-09-14": {
-     "whole_day": 0.97932,
-     "clock": 0.9296,
-     "state": 0.95633
+     "whole_day": 1.03243,
+     "clock": 1.02406,
+     "state": 1.05388
     },
     "2026-09-16": {
-     "whole_day": 0.8793,
-     "clock": 0.94632,
-     "state": 0.90322
+     "whole_day": 1.01152,
+     "clock": 1.0552,
+     "state": 1.03704
     },
     "2026-09-17": {
-     "whole_day": 0.91269,
-     "clock": 0.82302,
-     "state": 0.85967
+     "whole_day": 0.95723,
+     "clock": 0.94591,
+     "state": 0.98374
     },
     "2026-09-18": {
-     "whole_day": 0.93701,
-     "clock": 0.895,
-     "state": 0.93553
+     "whole_day": 0.95723,
+     "clock": 0.96129,
+     "state": 0.97916
     },
     "2026-09-21": {
-     "whole_day": 1.20033,
-     "clock": 1.18476,
-     "state": 1.18757
+     "whole_day": 1.16262,
+     "clock": 1.15678,
+     "state": 1.19223
     },
     "2026-09-22": {
-     "whole_day": 0.95805,
-     "clock": 1.02721,
-     "state": 1.06069
+     "whole_day": 0.90876,
+     "clock": 0.90636,
+     "state": 0.9476
     },
     "2026-09-23": {
-     "whole_day": 1.19359,
-     "clock": 1.14433,
-     "state": 1.12601
+     "whole_day": 1.11661,
+     "clock": 1.09383,
+     "state": 1.11171
     },
     "2026-09-24": {
-     "whole_day": 1.07957,
-     "clock": 1.09875,
-     "state": 1.08651
+     "whole_day": 0.95907,
+     "clock": 0.9478,
+     "state": 0.99386
     },
     "2026-09-25": {
-     "whole_day": 1.04446,
-     "clock": 0.92474,
-     "state": 0.8908
+     "whole_day": 0.98296,
+     "clock": 0.95568,
+     "state": 0.98774
     }
    }
   },
@@ -667,273 +653,258 @@
    "qualifying": {
     "mean_day_loss": {
      "whole_day": {
-      "log_loss": 0.96637,
-      "move": 0.68054,
-      "direction": 0.28583
+      "log_loss": 0.96274,
+      "move": 0.6785,
+      "direction": 0.28424
      },
      "clock": {
-      "log_loss": 0.95387,
-      "move": 0.66184,
-      "direction": 0.29203
+      "log_loss": 0.97413,
+      "move": 0.68151,
+      "direction": 0.29262
      },
      "state": {
-      "log_loss": 0.97625,
-      "move": 0.67464,
-      "direction": 0.30161
+      "log_loss": 0.99666,
+      "move": 0.69485,
+      "direction": 0.30181
      }
     },
     "state_over_clock": {
-     "days": 41,
-     "mean_gain_nats": -0.02238,
+     "days": 38,
+     "mean_gain_nats": -0.02253,
      "se": 0.00719,
-     "days_ahead": 15,
-     "sign_flip_p": 0.998
+     "days_ahead": 10,
+     "sign_flip_p": 0.9986
     },
     "clock_over_whole_day": {
-     "days": 41,
-     "mean_gain_nats": 0.01251,
-     "se": 0.0105,
-     "days_ahead": 26,
-     "sign_flip_p": 0.1206
+     "days": 38,
+     "mean_gain_nats": -0.01139,
+     "se": 0.00434,
+     "days_ahead": 12,
+     "sign_flip_p": 0.9934
     },
-    "reads": 1384
+    "reads": 1282
    },
    "every_session": {
     "mean_day_loss": {
      "whole_day": {
-      "log_loss": 0.99129,
-      "move": 0.68685,
-      "direction": 0.30444
+      "log_loss": 0.96579,
+      "move": 0.67863,
+      "direction": 0.28716
      },
      "clock": {
-      "log_loss": 0.97275,
-      "move": 0.66671,
-      "direction": 0.30604
+      "log_loss": 0.97391,
+      "move": 0.68076,
+      "direction": 0.29315
      },
      "state": {
-      "log_loss": 0.99317,
-      "move": 0.67434,
-      "direction": 0.31883
+      "log_loss": 1.00184,
+      "move": 0.69168,
+      "direction": 0.31015
      }
     },
     "state_over_clock": {
-     "days": 58,
-     "mean_gain_nats": -0.02042,
-     "se": 0.00473,
-     "days_ahead": 18,
-     "sign_flip_p": 1.0
+     "days": 44,
+     "mean_gain_nats": -0.02792,
+     "se": 0.00771,
+     "days_ahead": 11,
+     "sign_flip_p": 0.9998
     },
-    "reads": 1840
+    "reads": 1392
    },
-   "flat_share": 0.5889,
+   "flat_share": 0.592,
    "per_day": {
-    "2026-07-21": {
-     "whole_day": 0.86354,
-     "clock": 0.75572,
-     "state": 0.72389
-    },
-    "2026-07-22": {
-     "whole_day": 0.74856,
-     "clock": 0.74304,
-     "state": 0.68394
-    },
-    "2026-07-24": {
-     "whole_day": 1.1017,
-     "clock": 1.14777,
-     "state": 1.09413
-    },
     "2026-07-27": {
-     "whole_day": 1.24035,
-     "clock": 1.24603,
-     "state": 1.27198
+     "whole_day": 1.0344,
+     "clock": 1.03945,
+     "state": 1.14367
     },
     "2026-07-28": {
-     "whole_day": 0.72714,
-     "clock": 0.64884,
-     "state": 0.66348
+     "whole_day": 0.79693,
+     "clock": 0.79109,
+     "state": 0.85886
     },
     "2026-07-29": {
-     "whole_day": 1.12946,
-     "clock": 1.23907,
-     "state": 1.33765
+     "whole_day": 1.18737,
+     "clock": 1.24991,
+     "state": 1.32674
     },
     "2026-07-30": {
-     "whole_day": 1.17991,
-     "clock": 1.15764,
-     "state": 1.20687
+     "whole_day": 1.0994,
+     "clock": 1.10577,
+     "state": 1.14272
     },
     "2026-07-31": {
-     "whole_day": 1.04569,
-     "clock": 1.03175,
-     "state": 1.08018
+     "whole_day": 0.93833,
+     "clock": 0.92087,
+     "state": 0.94661
     },
     "2026-08-03": {
-     "whole_day": 0.83572,
-     "clock": 0.8278,
-     "state": 0.86512
+     "whole_day": 0.78874,
+     "clock": 0.83299,
+     "state": 0.79728
     },
     "2026-08-04": {
-     "whole_day": 1.44591,
-     "clock": 1.44918,
-     "state": 1.51482
+     "whole_day": 1.25251,
+     "clock": 1.25289,
+     "state": 1.30699
     },
     "2026-08-05": {
-     "whole_day": 0.88904,
-     "clock": 0.78495,
-     "state": 0.86563
+     "whole_day": 0.84027,
+     "clock": 0.83001,
+     "state": 0.96665
     },
     "2026-08-06": {
-     "whole_day": 0.8694,
-     "clock": 0.81898,
-     "state": 0.81506
+     "whole_day": 0.75819,
+     "clock": 0.75753,
+     "state": 0.76364
     },
     "2026-08-07": {
-     "whole_day": 0.98322,
-     "clock": 1.0048,
-     "state": 1.06728
+     "whole_day": 0.89358,
+     "clock": 0.94001,
+     "state": 0.94825
     },
     "2026-08-10": {
-     "whole_day": 0.74856,
-     "clock": 0.73674,
-     "state": 0.707
+     "whole_day": 0.66551,
+     "clock": 0.67795,
+     "state": 0.68772
     },
     "2026-08-11": {
-     "whole_day": 1.06085,
-     "clock": 1.1014,
-     "state": 1.11716
+     "whole_day": 1.04461,
+     "clock": 1.07838,
+     "state": 1.08722
     },
     "2026-08-12": {
-     "whole_day": 0.73082,
-     "clock": 0.68149,
-     "state": 0.65312
+     "whole_day": 0.74637,
+     "clock": 0.74511,
+     "state": 0.746
     },
     "2026-08-13": {
-     "whole_day": 1.11319,
-     "clock": 1.09749,
-     "state": 1.16247
+     "whole_day": 1.11151,
+     "clock": 1.13318,
+     "state": 1.16547
     },
     "2026-08-18": {
-     "whole_day": 0.67158,
-     "clock": 0.6651,
-     "state": 0.68037
+     "whole_day": 0.66551,
+     "clock": 0.6733,
+     "state": 0.67292
     },
     "2026-08-19": {
-     "whole_day": 0.97512,
-     "clock": 1.00909,
-     "state": 0.99684
+     "whole_day": 0.91476,
+     "clock": 0.96199,
+     "state": 0.92669
     },
     "2026-08-20": {
-     "whole_day": 1.03488,
-     "clock": 1.13529,
-     "state": 1.1949
+     "whole_day": 0.91006,
+     "clock": 0.96064,
+     "state": 0.9349
     },
     "2026-08-21": {
-     "whole_day": 0.85487,
-     "clock": 0.785,
-     "state": 0.7255
+     "whole_day": 1.01746,
+     "clock": 1.04619,
+     "state": 1.00068
     },
     "2026-08-25": {
-     "whole_day": 0.97512,
-     "clock": 0.90589,
-     "state": 0.95379
+     "whole_day": 0.96486,
+     "clock": 0.9433,
+     "state": 0.95472
     },
     "2026-08-26": {
-     "whole_day": 1.17028,
-     "clock": 1.29536,
-     "state": 1.41255
+     "whole_day": 1.08159,
+     "clock": 1.12526,
+     "state": 1.21671
     },
     "2026-08-27": {
-     "whole_day": 1.07017,
-     "clock": 1.12545,
-     "state": 1.08794
+     "whole_day": 1.08159,
+     "clock": 1.11415,
+     "state": 1.08129
     },
     "2026-08-28": {
-     "whole_day": 1.01999,
-     "clock": 0.97063,
-     "state": 0.99764
+     "whole_day": 1.11244,
+     "clock": 1.12151,
+     "state": 1.12519
     },
     "2026-08-31": {
-     "whole_day": 0.85487,
-     "clock": 0.91494,
-     "state": 0.95172
+     "whole_day": 0.82985,
+     "clock": 0.86061,
+     "state": 0.91301
     },
     "2026-09-03": {
-     "whole_day": 0.93115,
-     "clock": 0.81264,
-     "state": 0.88576
+     "whole_day": 0.93833,
+     "clock": 0.92123,
+     "state": 0.91419
     },
     "2026-09-04": {
-     "whole_day": 1.05633,
-     "clock": 0.93372,
-     "state": 0.92018
+     "whole_day": 1.24359,
+     "clock": 1.22402,
+     "state": 1.18115
     },
     "2026-09-08": {
-     "whole_day": 1.04225,
-     "clock": 1.01799,
-     "state": 1.08842
+     "whole_day": 0.91626,
+     "clock": 0.92019,
+     "state": 0.94461
     },
     "2026-09-09": {
-     "whole_day": 0.93097,
-     "clock": 0.91297,
-     "state": 0.88885
+     "whole_day": 0.88711,
+     "clock": 0.90553,
+     "state": 0.90906
     },
     "2026-09-10": {
-     "whole_day": 0.81687,
-     "clock": 0.80712,
-     "state": 0.8358
+     "whole_day": 0.90826,
+     "clock": 0.9164,
+     "state": 0.93608
     },
     "2026-09-11": {
-     "whole_day": 0.70756,
-     "clock": 0.64269,
-     "state": 0.67427
+     "whole_day": 1.0126,
+     "clock": 1.02352,
+     "state": 1.01281
     },
     "2026-09-14": {
-     "whole_day": 0.95872,
-     "clock": 0.86064,
-     "state": 0.89332
+     "whole_day": 0.9936,
+     "clock": 0.967,
+     "state": 1.01585
     },
     "2026-09-16": {
-     "whole_day": 0.78313,
-     "clock": 0.92226,
-     "state": 1.01089
+     "whole_day": 1.11244,
+     "clock": 1.18603,
+     "state": 1.19107
     },
     "2026-09-17": {
-     "whole_day": 0.78723,
-     "clock": 0.74193,
-     "state": 0.71675
+     "whole_day": 0.82527,
+     "clock": 0.7947,
+     "state": 0.80095
     },
     "2026-09-18": {
-     "whole_day": 0.83533,
-     "clock": 0.87368,
-     "state": 0.86984
+     "whole_day": 0.98821,
+     "clock": 0.99992,
+     "state": 0.96413
     },
     "2026-09-21": {
-     "whole_day": 1.31619,
-     "clock": 1.27504,
-     "state": 1.35032
+     "whole_day": 1.31957,
+     "clock": 1.32207,
+     "state": 1.43281
     },
     "2026-09-22": {
-     "whole_day": 0.80119,
-     "clock": 0.80724,
-     "state": 0.84277
+     "whole_day": 0.79261,
+     "clock": 0.80619,
+     "state": 0.84623
     },
     "2026-09-23": {
-     "whole_day": 1.28133,
-     "clock": 1.35329,
-     "state": 1.31137
+     "whole_day": 1.12005,
+     "clock": 1.13381,
+     "state": 1.17027
     },
     "2026-09-24": {
-     "whole_day": 1.15749,
-     "clock": 1.11489,
-     "state": 1.15956
+     "whole_day": 0.9936,
+     "clock": 0.98312,
+     "state": 1.0517
     },
     "2026-09-25": {
-     "whole_day": 0.87549,
-     "clock": 0.75296,
-     "state": 0.74703
+     "whole_day": 0.79693,
+     "clock": 0.75106,
+     "state": 0.78835
     }
    }
   }
  },
- "rule_hash": "98fdbc3758c50790"
+ "rule_hash": "52e5d239e37e3e8a"
 }

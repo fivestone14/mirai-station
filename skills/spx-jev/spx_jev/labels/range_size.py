@@ -1,6 +1,6 @@
-"""The range family: how wide the day has been and where price sits in it (range.*), how far a typical
-half hour reaches now (ruler.*), the tape unit against the same minute of the prior sessions and, on the
-opening lane, the stretch since the lane's last read in tape units (tape.*).
+"""The range family: how wide the day has been and where price sits in it (range.*), the tape unit against
+the same minute of the prior sessions and, on the opening lane, the stretch since the lane's last read in tape
+units (tape.*).
 
 The final question set's labels are measured on the morning anchor (rulers.sigma_anchor); the ones built
 before it keep the row's sigma. Every size a question judges is ranked against the same minute on the
@@ -9,34 +9,34 @@ sentence, how it is computed and its source are in spec/question_set.json ``labe
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Callable
 
-from ..cuts import (IB_BREAK_SIGMA, MOVE_RULE_SIGMA, NEXT_30_FLAT_BAND_SIGMA, NEXT_60_FLAT_BAND_SIGMA, NIGHT_RANK_COUNT, RULER_FLOOR_SIGMA,
-                    SAME_CLOCK_MIN_SESSIONS, SHAPE_CUT_SIGMA, TAPE_BIG_UNITS, TAPE_FLAT_UNITS, WALL_NEAR_SIGMA, WINDOW_30_MIN, WINDOW_60_MIN)
+from ..cuts import (IB_BREAK_SIGMA, MOVE_RULE_SIGMA, NIGHT_RANK_COUNT, RULER_FLOOR_SIGMA, SAME_CLOCK_MIN_SESSIONS, SHAPE_CUT_SIGMA,
+                    TAPE_BIG_UNITS, TAPE_FLAT_UNITS, WALL_NEAR_SIGMA, WINDOW_60_MIN)
 from ..sessions import session_open
 from ..state_builder import Scene
 from .label_set import LabelSet
 from .measures import (ET, HOUR_MIN_BARS, ONE_MINUTE, bar_time, bars_between, bars_finished_between, close_at, day_high_low, high_low_close,
                        is_num, minute_of_day, move_bar, stretch, stretch_range, walls, yesterdays_bars)
 from .ranks import FIFTH_WORDS, SameClockRank, fifth_side, rank_at_slot, rank_days, rank_sessions, same_clock_values
-from .rulers import NO_ANCHOR, RULER_HOLD_UNTIL, SigmaRuler, ruled, ruler, sigma_anchor, typical_move, unit_rank, unit_sigma
-from .vol_sources import point_at, prior_diary
+from .rulers import NO_ANCHOR, RULER_HOLD_UNTIL, SigmaRuler, ruled, ruler, sigma_anchor, unit_rank, unit_sigma
 from .words import minutes_ago, plural, sig, units_of
 
 LABELS = ("range.box_status", "range.today_vs_normal", "range.prior_level_touches", "range.session_shape", "range.nearest_level",
           "tape.move_since_read", "tape.range_since_read",
           "range.first_hour", "range.hour_vs_clock", "range.pace_vs_priced", "ruler.flat_band_reach", "tape.unit_vs_normal")
 GATES: tuple[str, ...] = ()
-DARK: dict[str, str] = {}
+# the fixed flat band this label measured a typical move against is gone (flat_zone.py sizes each read's zone in points); its
+# question was retired at the cut-over
+DARK = {"ruler.flat_band_reach": "its fixed flat band is gone: each read's flat zone is sized in points (flat_zone.py)"}
 # Measured only on the bar clock (the opening lane): a live read neither writes nor omits them.
 BAR_CLOCK_ONLY = ("tape.move_since_read", "tape.range_since_read", "tape.unit_vs_normal")
 
 # The opening box is the first 30 minutes; a break is past the move bar (measures.move_bar).
 OPENING_BOX_MIN = 30
 # The set's labels measured on the morning anchor, omitted together when the day has none.
-ANCHORED = ("range.first_hour", "range.hour_vs_clock", "range.pace_vs_priced", "ruler.flat_band_reach")
+ANCHORED = ("range.first_hour", "range.hour_vs_clock", "range.pace_vs_priced")
 FULL_SESSION_MIN = 390          # sigma is a full session's expected move
 FIRST_HOUR_MIN = 60
 # The day's pace by its third against the same minute; the top fifth is far over it.
@@ -60,7 +60,6 @@ def build_range_size_labels(scene: Scene) -> LabelSet:
     _first_hour(scene, anchor, ls)
     _hour_vs_clock(scene, anchor, ls)
     _pace_vs_priced(scene, anchor, ls)
-    _flat_band_reach(scene, anchor, ls)
     return ls
 
 
@@ -399,49 +398,6 @@ def _pace_vs_priced(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
     ls.put("range.pace_vs_priced", ruled(anchor, f"today's range so far is {ratio:.2f} of a one-sigma move for the {int(minutes)} minutes "
                                                  f"since the open, larger than {rank.higher_than} of the last {rank.of} sessions at this time "
                                                  f"of day, {pace} the usual pace"))
-
-
-def _flat_band_reach(scene: Scene, anchor: SigmaRuler, ls: LabelSet) -> None:
-    """The flat band against a typical move now, for each horizon flat_band_reach is asked at: the next 30 and
-    60 minutes. The 30-minute share is ranked against the band's share of a typical move at this minute on the
-    last sessions (_prior_cover); the 60-minute share is only a figure, since on every session its typical move
-    is the 30-minute one grown by the same clock-set factor, so its rank would repeat the 30-minute one."""
-    clauses = []
-    for minutes, band in ((WINDOW_30_MIN, NEXT_30_FLAT_BAND_SIGMA), (WINDOW_60_MIN, NEXT_60_FLAT_BAND_SIGMA)):
-        reach, how = typical_move(scene, anchor, minutes)
-        if reach is None:
-            ls.omit("ruler.flat_band_reach", how)
-            return
-        typical = reach / anchor.points
-        cover = band / typical
-        # both horizons combine the same sources, so only the first says which
-        now = f"now ({how}) " if not clauses else ""
-        clause = (f"the next-{minutes}-minute flat band is {sig(band)}; a typical {minutes}-minute move {now}is {sig(typical)}, "
-                  f"so the band covers {cover:.2f} of it")
-        if minutes == WINDOW_30_MIN:
-            rank, why = rank_sessions(cover, same_clock_values(scene, _prior_cover(scene, band, minutes)),
-                                      f"a typical {minutes}-minute move at this minute")
-            if rank is None:
-                ls.omit("ruler.flat_band_reach", why)
-                return
-            clause += f", more than on {rank.higher_than} of the last {rank.of} sessions at this time of day, {rank.band}"
-        clauses.append(clause)
-    ls.put("ruler.flat_band_reach", ruled(anchor, "; ".join(clauses)))
-
-
-def _prior_cover(scene: Scene, band: float, minutes: int) -> Callable[[list[dict], datetime, float | None], float | None]:
-    """The band's share of a typical ``minutes`` move on a prior session at the same minute, for
-    same_clock_values: rulers.typical_move on that session as it stood then, its tape and the straddle left
-    on its diary row (vol_sources.prior_diary) in its own ruler. None without the diary or a typical move."""
-    def cover(bars: list[dict], then: datetime, sigma: float | None) -> float | None:
-        if not sigma or scene.state_dir is None:
-            return None
-        point = point_at(prior_diary(scene.state_dir, then.date().isoformat()), then)
-        row = {"range_ruler": {"em_points": point.em_points}} if point else {}
-        reach, _ = typical_move(replace(scene, row=row, bars=bars, now=then), SigmaRuler(sigma, "anchor"), minutes)
-        return band / (reach / sigma) if reach else None
-
-    return cover
 
 
 def _unit_vs_normal(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None:

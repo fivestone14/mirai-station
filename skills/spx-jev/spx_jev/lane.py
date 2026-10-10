@@ -1,16 +1,16 @@
 """A lane: one schedule, one sums doc, one folder under state/spx_jev/, one grader, and its share of the
 question doc (the questions whose ``lanes`` name its ``key``, loaded with ask.load_questions).
 
-LIVE reads at :02 and :32 all session: the 30- and 60-minute sums in sigma bands, the cadence and
+LIVE reads at :02 and :32 all session: the 30- and 60-minute sums, the cadence and
 the time-of-day blend, everything under state/spx_jev/. TAPE is the opening lane: every 5 minutes
-from 09:35 to 10:30, each read stamped at the newest finished bar, one 10-minute sum in tape units,
+from 09:35 to 10:30, each read stamped at the newest finished bar, one five-way 10-minute sum,
 every question its schedule asks asked afresh (a day constant is asked at 09:35 and held),
 everything under state/spx_jev/lanes/tape/. PREMARKET reads at six checkpoints before the open: every
 read saves the overnight futures and builds the night's labels from them (a scene without a diary row,
 premarket.py), and JEV is asked only at the reads its questions' schedules name (08:48 and 09:28). Its
 two sums are graded from the settled open, 10 and 30 minutes on, never from yesterday's close, and
-stand unblended: how that window ended on prior sessions (clock.premarket_odds, banded in each session's
-morning anchor) forecast it worse than even thirds. With no blend and no validated reference for the
+stand unblended: how that window ended on prior sessions (clock.premarket_odds) forecast it worse than
+even thirds. With no blend and no validated reference for the
 window, it keeps no learning loop and its weights are neutral. Everything under
 state/spx_jev/lanes/premarket/. Each lane's raw archive is the exception: every lane appends to the one shared
 state/spx_jev/archive/ (archive_folder), each record naming its lane. Every step takes a lane and defaults to LIVE.
@@ -20,8 +20,9 @@ with a ``schedule`` names its reads in market time; the launchd job fires at eac
 once more at ``close_out``, a run that asks JEV nothing and only grades the morning's last calls and
 refreshes the card (service.close_out). A test holds the plist template to these times.
 
-The sums' horizons and bands live here, from cuts.py, so the grader, the clock, the card and the
-question text all read one number. Beside its end-price sums every lane asks one more, ``average``: where
+The sums' horizons and flat targets live here, from cuts.py; each box's flat zone is sized at every read to its target
+(flat_zone.py), and the grader, the clock, the card and the question text all read that one number in points. Beside its
+end-price sums every lane asks one more, ``average``: where
 the average price over its primary's window sits against the read (the settled open on the premarket
 lane), up, flat or down, with no unsure. It is the phone's call and what the average-price grade grades
 (grade.integral_line); the end-price sums are kept beside it, asked, graded and learnt from as before. A lane's
@@ -34,11 +35,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .archive import ARCHIVE_SUBDIR
-from .cuts import NEXT_30_FLAT_BAND_SIGMA, NEXT_60_FLAT_BAND_SIGMA, OPEN_10_FLAT_BAND_SIGMA
+from .cuts import (AVERAGE_30_FLAT_PCT, MINIMUM_TAPE_ZONE_POINTS, MINIMUM_ZONE_POINTS, NEXT_30_FLAT_PCT, NEXT_60_FLAT_PCT, OPEN_FLAT_PCT,
+                   TAPE_FLAT_PCT)
 
 QUESTIONS_DIR = Path(__file__).resolve().parent.parent / "questions"
 LIVE_DIR = "spx_jev"        # the live lane's folder under the state dir; no other lane writes its records there, only the shared archive/
-RECORD = "record"           # a horizon whose band is the one stored on each record, in points from the tape unit
+RECORD = "record"           # a horizon banded five ways from the bands stored on each record, in points from its lane's call's zone
 QUESTIONS = QUESTIONS_DIR / "spx_questions.json"   # every question of every lane, generated from spec/question_set.json
 # The live job fires at :02 and :32 from 09:32 to 16:02 (launchd/com.mirai-station.spx-jev.plist.template).
 LIVE_READS = tuple(f"{(572 + 30 * k) // 60:02d}:{(572 + 30 * k) % 60:02d}" for k in range(14))
@@ -51,7 +53,7 @@ class Lane:
     out_dir: str | None                              # its folder under the state dir
     questions: Path                                  # the step-2 question doc it asks from
     hour_doc: Path                                   # the sums it asks over the answers
-    horizons: dict[str, tuple[int, float | str]]     # {qid: (minutes, flat band in sigma, or RECORD)}
+    horizons: dict[str, tuple[int, float | str]]     # {qid: (minutes, the share of its windows that should land flat, in percent, or RECORD)}
     primary: str                                     # the end-price box the weights and pools learn from; the card's call is ``average``
     cadence: bool                                    # thin its schedule by the learned cadence and hold in between, or ask what is due afresh
     tag: str | None                                  # written on the records, hour records and card; None for the live lane
@@ -69,6 +71,8 @@ class Lane:
                                                      # its own request beside the end-price sums: the phone's call, graded on the average
     integral_loop: bool = False                      # a lane that learns the loop learns it from the average-price grade too (integral_loop.py),
                                                      # beside the end price's; its gate is for trusting what it learns (README 6b)
+    average_flat_pct: float | None = None            # the average-price sum's own flat target; None narrows the primary's zone by integral.factor
+    zone_floor: float = MINIMUM_ZONE_POINTS          # the fewest points a zone of the lane is
 
     def read_times(self) -> tuple[str, ...]:
         """The lane's reads, "HH:MM" market time: its schedule, or the live job's :02 and :32."""
@@ -94,8 +98,8 @@ class Lane:
 
 
 LIVE = Lane(name="live", key="thirty_minute", out_dir=LIVE_DIR, questions=QUESTIONS, hour_doc=QUESTIONS_DIR / "spx_hour.json",
-            horizons={"next_30": (30, NEXT_30_FLAT_BAND_SIGMA), "next_60": (60, NEXT_60_FLAT_BAND_SIGMA)},
-            primary="next_30", cadence=True, tag=None, pool=True, average="average_30",
+            horizons={"next_30": (30, NEXT_30_FLAT_PCT), "next_60": (60, NEXT_60_FLAT_PCT)},
+            primary="next_30", cadence=True, tag=None, pool=True, average="average_30", average_flat_pct=AVERAGE_30_FLAT_PCT,
             # the newest diary row can be up to the service's 6-minute staleness line old when the job fires
             read_grace_min=6,
             # the loop learns from the end price, and a second loop from the average-price grade beside it (integral_loop.py);
@@ -109,6 +113,7 @@ TAPE_EVERY_MIN = 5
 TAPE = Lane(name="tape", key="opening_five_minute", out_dir=f"{LIVE_DIR}/lanes/tape", questions=QUESTIONS,
             hour_doc=QUESTIONS_DIR / "spx_lane_hour.json", horizons={"next_10": (10, RECORD)},
             primary="next_10", cadence=False, tag="tape", bar_clock=True, clock_blend=False, bar_gap_min=0, average="average_10",
+            average_flat_pct=TAPE_FLAT_PCT, zone_floor=MINIMUM_TAPE_ZONE_POINTS,
             # 09:35 to 10:30 every 5 minutes; the 10:30 call's mark is 10:40, so the close-out at 10:42
             # finds the bar it needs and grades the morning's last two calls the same day
             schedule=tuple(f"{(575 + TAPE_EVERY_MIN * k) // 60:02d}:{(575 + TAPE_EVERY_MIN * k) % 60:02d}" for k in range(12)),
@@ -118,8 +123,8 @@ TAPE = Lane(name="tape", key="opening_five_minute", out_dir=f"{LIVE_DIR}/lanes/t
 # morning, the 08:30 report window, 09:05, and the final read.
 PREMARKET = Lane(name="premarket", key="premarket", out_dir=f"{LIVE_DIR}/lanes/premarket", questions=QUESTIONS,
                  hour_doc=QUESTIONS_DIR / "spx_premarket_hour.json",
-                 horizons={"open_10": (10, OPEN_10_FLAT_BAND_SIGMA), "open_30": (30, NEXT_30_FLAT_BAND_SIGMA)},
-                 primary="open_30", cadence=False, tag="premarket", clock_blend=False, average="open_average_30",
+                 horizons={"open_10": (10, OPEN_FLAT_PCT), "open_30": (30, OPEN_FLAT_PCT)},
+                 primary="open_30", cadence=False, tag="premarket", clock_blend=False, average="open_average_30", average_flat_pct=OPEN_FLAT_PCT,
                  schedule=("02:35", "03:35", "08:05", "08:48", "09:05", "09:28"),
                  # the 30-minute mark is 10:05, the close of the 10:04 bar: the close-out at 10:06 finds it and grades the morning's calls
                  close_out="10:06", graded_from_settled_open=True)

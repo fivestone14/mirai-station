@@ -7,8 +7,8 @@ The rule, one for every cut: an SPX cut sits at the same percentile of the same 
 SPX history as SNDK JEV's cut sits on SNDK history. SNDK's cuts were chosen or measured for what
 they mean ("a real 30-minute move", "flat at 30 minutes", "a heavy strike within reach"); the
 share of SNDK observations under the cut is that meaning in numbers, and the SPX value at that
-share carries it across without borrowing SNDK's scale. Where SNDK's number was a base rate
-(the sums' "about one time in five"), the SPX base rate is counted directly with the SPX band.
+share carries it across without borrowing SNDK's scale. The sums' base rates ("about one time in
+five") are counted directly on SPX, each read against the flat zone it could have sized (base_rates).
 
 What is measured, on every session with at least MIN_BARS minute bars and MIN_ROWS diary rows:
     reads     every READ_STEP_MIN minutes from 09:35 to the last whole horizon before the close,
@@ -38,6 +38,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from spx_jev import cuts as CUTS  # noqa: E402  (the package beside spec/, for the declared values)
+from spx_jev.flat_zone import Zones  # noqa: E402
+from spx_jev.lane import LIVE, TAPE  # noqa: E402
 
 DEFAULT_STATE_DIR = Path.home() / ".claude" / "plugins" / "mirai-station" / "state"
 OUT = Path(__file__).resolve().parent / "cuts.json"
@@ -47,7 +49,7 @@ READ_STEP_MIN = 5
 ROW_MAX_AGE_MIN = 10
 ONE = timedelta(minutes=1)
 RULE = ("each SPX cut sits at the same percentile of the same measurement on SPX history as SNDK JEV's cut "
-        "sits on SNDK history; base rates are counted on SPX with the SPX band")
+        "sits on SNDK history; base rates are counted on SPX with the flat zone (flat_zone.py) sized as each read could have known it")
 
 # SNDK JEV's cuts as of 2026-09-26 (skills/sndk-jev: state_builder.py, questions/sndk_hour.json,
 # questions/sndk_lane_hour.json). Each is carried to SPX by its percentile, see the module note.
@@ -63,8 +65,6 @@ SNDK_CUTS = {
     "grip_spread_share": ("top_strike_share", 0.10),
     "grip_concentrated_share": ("top_strike_share", 0.20),
     "busiest_strike_share": ("busiest_strike_share", 0.20),
-    "next_30_flat_band_sigma": ("end30", 0.12),
-    "next_60_flat_band_sigma": ("end60", 0.17),
     "ruler_hold_sigma": ("unit_at_0945", 0.4),
     "ruler_floor_sigma": ("unit_opening", 0.08),
     "tape_flat_units": ("tape_move10", 0.35),
@@ -98,8 +98,16 @@ NOT_MEASURED = {
     "wall_touch_quiet_percentile": "a percentile by construction, as wall_touch_siege_percentile: the 30th percentile of normal by definition",
     "follow_on_min": "a clock fact: how long after a release its follow-on (the Fed's press conference, 30 minutes after the statement) "
                      "is still read with it, not a split of any measurement",
-    "open_10_flat_band_sigma": "the premarket lane's 10-minute sum band from the settled open, the live sum's 30-minute band scaled "
-                               "by the square root of 10 over 30 until the settled opens are measured",
+    "average_30_flat_pct": "a target: the share of the live lane's call's windows the flat zone (flat_zone.py) is sized to land flat on "
+                           "the prior sessions, set by the owner (2026-10-09); the end-price sums' targets are their flat base rates",
+    "open_flat_pct": "a target: the share of the premarket lane's windows from the settled open the flat zone is sized to land flat on "
+                     "the prior sessions, checked in sample only (2026-10-09)",
+    "minimum_zone_points": "a floor in index points under every flat zone but the opening lane's: a zone narrower than this would grade "
+                           "on index noise (flat_zone.py)",
+    "minimum_tape_zone_points": "a floor in index points under the opening lane's 10-minute zones, the shortest windows the station grades",
+    "vix_trust_minutes": "a count: how many minutes of tape the VIX's view of the 1-minute move counts as when today's minutes are averaged "
+                         "into the flat zone's level (flat_zone.level); 10 and a 15-minute half life scored best on the sessions to 2026-10-09",
+    "recency_half_life_min": "a clock: the minutes of age over which a finished minute's weight in the flat zone's level halves (flat_zone.level)",
     "integral_missing_bars_max": "a count: how many of a window's bars the average-price grade may be missing and still grade the window "
                                  "on its average, never the mark bar; a guard, not a split of any measurement",
     "bad_tick_pct": "a percentile by construction: a bad tick's jump and its jump back are ranked against the same window's 1-minute "
@@ -267,7 +275,7 @@ def measure(day_bars_rows: list[tuple[str, list[dict], list[dict]]], hold_sigma:
     the SPX side passes the SPX hold measured first). ``move_rule`` is the 30-minute move past which
     the momentum labels judge a move's shape; without it the shape is not measured."""
     obs: dict[str, list[float]] = {k: [] for k, _ in set(SNDK_CUTS.values())}
-    obs.update({"signed_end30": [], "signed_end60": [], "tape_signed_move10": [], "iv_change30_last_hour": []})
+    obs.update({"iv_change30_last_hour": []})
     obs.update({m: [] for ms in DECLARED_CUTS.values() for m in ms})
     for day, bars, rows in day_bars_rows:
         ends = [b["t"] + ONE for b in bars]
@@ -317,16 +325,6 @@ def measure(day_bars_rows: list[tuple[str, list[dict], list[dict]]], hold_sigma:
                     if earlier is not None and _num(row.get("atm_iv")) and _num(earlier.get("atm_iv")):
                         change = abs(float(row["atm_iv"]) - float(earlier["atm_iv"])) * 100.0
                         obs["iv_change30_last_hour" if close_t - t <= timedelta(minutes=60) else "iv_change30"].append(change)
-                for h in (30, 60):
-                    mark = t + timedelta(minutes=h)
-                    if mark > close_t:
-                        continue
-                    c1 = _close_at(bars, ends, mark)
-                    win = _window(bars, ends, t, mark)
-                    if c1 is None or not win or ends[bisect_right(ends, mark) - 1] < mark - timedelta(minutes=2):
-                        continue
-                    obs[f"end{h}"].append(abs(c1 - c0) / sigma)
-                    obs[f"signed_end{h}"].append((c1 - c0) / sigma)
             t += timedelta(minutes=READ_STEP_MIN)
         for r in rows:
             _row_shares(r, obs)
@@ -358,8 +356,41 @@ def measure(day_bars_rows: list[tuple[str, list[dict], list[dict]]], hold_sigma:
             c0, c1 = _close_at(bars, ends, t), _close_at(bars, ends, t + timedelta(minutes=10))
             if c0 is not None and c1 is not None and u > 0:
                 obs["tape_move10"].append(abs(c1 - c0) / u)
-                obs["tape_signed_move10"].append((c1 - c0) / u)
     return obs
+
+
+def base_rates(state_dir: Path, spx_sessions: list[tuple[str, list[dict], list[dict]]]) -> dict[str, dict]:
+    """How often each band of the sums happened on SPX, in percent of reads: the live lane's 30- and 60-minute reads every
+    READ_STEP_MIN minutes from 09:35, the opening lane's five-way 10-minute reads every 5 minutes from 09:35 to 10:30, each
+    read's move in points against the flat zones it could have sized then (flat_zone.Zones.at), as the grader bands it."""
+    moves: dict[str, list[tuple[float, dict]]] = {"next_30": [], "next_60": [], "next_10": []}
+    for day, bars, rows in spx_sessions:
+        ends = [b["t"] + ONE for b in bars]
+        open_t = bars[0]["t"].replace(hour=9, minute=30, second=0, microsecond=0)
+        close_t = open_t.replace(hour=16, minute=0)
+        for lane, step, last in ((LIVE, READ_STEP_MIN, close_t), (TAPE, 5, open_t + timedelta(minutes=60))):
+            model = Zones(state_dir, day, lane)
+            t = open_t + timedelta(minutes=5)
+            while t <= last:
+                zones, c0 = model.at(t, bars), _close_at(bars, ends, t)
+                if isinstance(zones, dict) and c0 is not None:
+                    for qid, (h, _) in lane.horizons.items():
+                        mark = t + timedelta(minutes=h)
+                        c1 = _close_at(bars, ends, mark) if mark <= close_t else None
+                        if c1 is not None and ends[bisect_right(ends, mark) - 1] >= mark - timedelta(minutes=2):
+                            moves[qid].append((c1 - c0, zones))
+                t += timedelta(minutes=step)
+    out = {}
+    for h in (30, 60):
+        v = moves[f"next_{h}"]
+        out[f"next_{h}"] = {"up_pct": pct_of(v, lambda m: m[0] > m[1][f"next_{h}"]), "down_pct": pct_of(v, lambda m: m[0] < -m[1][f"next_{h}"]),
+                            "flat_pct": pct_of(v, lambda m: abs(m[0]) <= m[1][f"next_{h}"]), "n": len(v)}
+    v = moves["next_10"]
+    flat, big = lambda m: m[1]["next_10"], lambda m: m[1]["big"]
+    out["next_10"] = {"down_big_pct": pct_of(v, lambda m: m[0] < -big(m)), "down_small_pct": pct_of(v, lambda m: -big(m) <= m[0] < -flat(m)),
+                      "flat_pct": pct_of(v, lambda m: abs(m[0]) <= flat(m)), "up_small_pct": pct_of(v, lambda m: flat(m) < m[0] <= big(m)),
+                      "up_big_pct": pct_of(v, lambda m: m[0] > big(m)), "n": len(v)}
+    return out
 
 
 def share_below(values: list[float], cut: float) -> float:
@@ -421,17 +452,6 @@ def main(argv: list[str] | None = None) -> int:
     first = carry(sndk, measure(spx_sessions), ["ruler_hold_sigma", "move_rule_sigma"])
     spx = measure(spx_sessions, hold_sigma=first["ruler_hold_sigma"]["value"], move_rule=first["move_rule_sigma"]["value"])
     cuts = carry(sndk, spx, list(SNDK_CUTS))
-    base_rates = {}
-    for h in (30, 60):
-        band = cuts[f"next_{h}_flat_band_sigma"]["value"]
-        v = spx[f"signed_end{h}"]
-        base_rates[f"next_{h}"] = {"up_pct": pct_of(v, lambda x: x > band), "down_pct": pct_of(v, lambda x: x < -band),
-                                   "flat_pct": pct_of(v, lambda x: abs(x) <= band), "n": len(v)}
-    flat_u, big_u = cuts["tape_flat_units"]["value"], cuts["tape_big_units"]["value"]
-    v = spx["tape_signed_move10"]
-    base_rates["next_10"] = {"down_big_pct": pct_of(v, lambda x: x < -big_u), "down_small_pct": pct_of(v, lambda x: -big_u <= x < -flat_u),
-                             "flat_pct": pct_of(v, lambda x: abs(x) <= flat_u), "up_small_pct": pct_of(v, lambda x: flat_u < x <= big_u),
-                             "up_big_pct": pct_of(v, lambda x: x > big_u), "n": len(v)}
     last_hour = spx["iv_change30_last_hour"]
     doc = {
         "name": "spx-jev cuts, measured",
@@ -440,7 +460,7 @@ def main(argv: list[str] | None = None) -> int:
         "spx_sessions": [d for d, _, _ in spx_sessions],
         "sndk_sessions": [d for d, _, _ in sndk_sessions],
         "cuts": cuts,
-        "base_rates": base_rates,
+        "base_rates": base_rates(state_dir, spx_sessions),
         "iv_change30_median_pts": {"before_the_last_hour": round(statistics.median(spx["iv_change30"]), 2),
                                    "in_the_last_hour": round(statistics.median(last_hour), 2) if last_hour else None},
         "declared_rule": ("declared cuts keep their declared values, whose meaning is their own words; each is measured "

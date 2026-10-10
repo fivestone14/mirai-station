@@ -138,7 +138,8 @@ def test_an_open_call_carries_its_average_so_far_against_its_whole_windows_edge(
     ts, later = t0.isoformat(), at(10, 35).isoformat()
     (tmp_path / "hour").mkdir()
     (tmp_path / "hour" / f"{DAY}.jsonl").write_text("".join(json.dumps(
-        {"row_ts": r, "spot": spot, "band": {"flat_points": f}, "pick": pick, "probabilities": {pick: 0.5}}) + "\n" for r in (ts, later)))
+        {"row_ts": r, "spot": spot, "zone": {"next_10": f, "average_10": 1.59, "big": 2.1 * f, "rule": 1}, "pick": pick,
+         "probabilities": {pick: 0.5}}) + "\n" for r in (ts, later)))
     scene = SimpleNamespace(bars=_bars(t0, spot, closes[:5]), rows_today=[], market=None)
     first, second = service.day_calls(tmp_path, DAY, TAPE, scene)
     x = [c - spot for c in closes[:5]]

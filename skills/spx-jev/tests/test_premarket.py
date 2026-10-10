@@ -70,6 +70,11 @@ def _sums(sums, averages):
     return send
 
 
+
+@pytest.fixture(autouse=True)
+def _zones(fixed_zones):
+    """Every read, grade and replay here runs on a fixture too short to size a flat zone: the zones are pinned (conftest.FixedZones)."""
+
 @pytest.fixture
 def jev(monkeypatch):
     """A fake JEV and grader, and a day with no report: what the lane sent and whom it graded."""

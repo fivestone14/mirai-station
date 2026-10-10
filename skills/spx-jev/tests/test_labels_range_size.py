@@ -1,6 +1,6 @@
 """The range family's final-set labels: the first hour's edges, the last hour against the clock, the day's
-range against its priced pace, the flat band's reach and the tape unit against the prior sessions, each size
-ranked against the same minute on the last sessions."""
+range against its priced pace and the tape unit against the prior sessions, each size ranked against the same
+minute on the last sessions."""
 from __future__ import annotations
 
 import json
@@ -15,7 +15,7 @@ from spx_jev.labels.rulers import NO_ANCHOR, SigmaRuler, tape_unit
 from spx_jev.state_builder import make_scene
 
 SIGMA = 75.0
-SET_LABELS = ("range.first_hour", "range.hour_vs_clock", "range.pace_vs_priced", "ruler.flat_band_reach", "tape.unit_vs_normal")
+SET_LABELS = ("range.first_hour", "range.hour_vs_clock", "range.pace_vs_priced", "tape.unit_vs_normal")
 
 
 def _scene(scene_factory, now, bars, **kw):
@@ -195,78 +195,6 @@ def test_the_top_fifth_counts_at_its_edge_and_the_pace_needs_ten_sessions(scene_
 def test_the_pace_needs_a_finished_bar(scene_factory):
     _, omitted = _labels(replace(_pace_scene(scene_factory, 30.0), bars=[]))
     assert omitted["range.pace_vs_priced"] == "no finished bars yet"
-
-
-# ---- ruler.flat_band_reach
-
-# The prior sessions' 5-minute slices each span twice their wick: a wider tape, a larger typical move, a smaller share for the band.
-REACH_WICKS = [1.0, 1.2, 1.3, 1.4, 1.6, 1.7, 1.8, 2.0, 2.2, 2.4]
-
-
-def _reach_days(state_dir, today: str, wicks: list[float], em_points: float = 16.4) -> dict[str, list[dict]]:
-    """Prior sessions before ``today``, newest first, of flat tape with their ``wicks``, each with a diary row every 5 minutes
-    carrying ``em_points`` of straddle left, written under ``state_dir``."""
-    (state_dir / "reversion").mkdir(parents=True, exist_ok=True)
-    first = date.fromisoformat(today)
-    prior = {}
-    for k, wick in enumerate(wicks):
-        day = (first - timedelta(days=k + 1)).isoformat()
-        prior[day] = flat_bars(390, day=day, wick=wick)
-        rows = [make_row(at(9, 31, day=day) + timedelta(minutes=5 * m), 7700.0, range_ruler={"em_points": em_points}) for m in range(78)]
-        (state_dir / "reversion" / f"{day}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
-    return prior
-
-
-def _reach_scene(scene_factory, wick, em_points=16.4, day="2026-09-18", now=None, state_dir=None, wicks=REACH_WICKS):
-    """A flat tape whose 5-minute slices each span twice ``wick``, with ``em_points`` of straddle left, ranked against prior
-    sessions written under ``state_dir`` (none without it)."""
-    now = now or at(12, 30, day=day, ss=10)
-    minutes = int((now - at(9, 30, day=day)).total_seconds() // 60)
-    bars = flat_bars(minutes, day=day, wick=wick)
-    first = make_row(at(9, 31, day=day), 7700.0)
-    prior = _reach_days(state_dir, day, wicks) if state_dir else {}
-    scene = scene_factory(now, bars, rows_before=[first], row_over={"range_ruler": {"em_points": em_points}}, prior_bars=prior)
-    return replace(scene, prior_rulers=_anchored(prior), state_dir=state_dir)
-
-
-def test_the_flat_band_against_a_typical_half_hour_ranked_against_the_same_minute_and_an_hour_as_a_figure(scene_factory, tmp_path):
-    # 30 minutes: tape 3 points x sqrt(6) = 7.35, straddle 16.4 / 0.68 x sqrt(30 / 209.8) = 9.12: a typical 8.19 points, 0.11 sigma
-    # 60 minutes: tape 3 points x sqrt(12) = 10.39, straddle 16.4 / 0.68 x sqrt(60 / 209.8) = 12.90: a typical 11.58 points, 0.15 sigma
-    # the prior sessions with a wider tape (wicks past 1.5) have a larger typical move, so the band covers less of theirs
-    state, _ = _labels(_reach_scene(scene_factory, 1.5, state_dir=tmp_path))
-    assert state["ruler.flat_band_reach"] == ("the next-30-minute flat band is 0.07 sigma; a typical 30-minute move now (tape and straddle "
-                                              "combined) is 0.11 sigma, so the band covers 0.64 of it, more than on 6 of the last 10 "
-                                              "sessions at this time of day, middle third; the next-60-minute flat band is 0.11 sigma; a "
-                                              "typical 60-minute move is 0.15 sigma, so the band covers 0.71 of it")
-    busy = _labels(_reach_scene(scene_factory, 4.0, state_dir=tmp_path))[0]["ruler.flat_band_reach"]
-    assert "so the band covers 0.39 of it, more than on 0 of the last 10 sessions at this time of day, bottom third; " in busy
-    dead = _labels(_reach_scene(scene_factory, 1.2, em_points=8.0, state_dir=tmp_path))[0]["ruler.flat_band_reach"]
-    assert "so the band covers 1.03 of it, more than on 10 of the last 10 sessions at this time of day, top third; " in dead
-
-
-def test_the_reach_needs_ten_prior_sessions_with_a_typical_move_then(scene_factory, tmp_path):
-    _, omitted = _labels(_reach_scene(scene_factory, 1.5))
-    assert omitted["ruler.flat_band_reach"] == "its rank needs 10 prior sessions with a typical 30-minute move at this minute, have 0"
-    _, omitted = _labels(_reach_scene(scene_factory, 1.5, state_dir=tmp_path, wicks=REACH_WICKS[:9]))
-    assert omitted["ruler.flat_band_reach"] == "its rank needs 10 prior sessions with a typical 30-minute move at this minute, have 9"
-
-
-def test_with_a_scheduled_event_still_ahead_the_tape_stands_alone(scene_factory, tmp_path):
-    # 2026-09-16 carries the Fed's decision at 14:00 and its press conference at 14:30 (calendar/events.json)
-    before = _labels(_reach_scene(scene_factory, 1.5, day="2026-09-16", state_dir=tmp_path))[0]["ruler.flat_band_reach"]
-    assert before.startswith("the next-30-minute flat band is 0.07 sigma; a typical 30-minute move now (the tape alone, with a scheduled "
-                             "event still ahead today) is 0.10 sigma, so the band covers 0.71 of it")
-    after = _labels(_reach_scene(scene_factory, 1.5, day="2026-09-16", now=at(14, 45, day="2026-09-16", ss=10),
-                                 state_dir=tmp_path))[0]["ruler.flat_band_reach"]
-    assert "(tape and straddle combined)" in after
-
-
-def test_the_reach_is_omitted_without_a_straddle_or_a_running_tape(scene_factory, tmp_path):
-    scene = _reach_scene(scene_factory, 1.5, state_dir=tmp_path)
-    no_em = replace(scene, row={**scene.row, "range_ruler": {"em_open": 22.0}})
-    assert _labels(no_em)[1]["ruler.flat_band_reach"] == "row carries no straddle left (range_ruler.em_points)"
-    stopped = replace(scene, bars=[b for b in scene.bars if b["ts"] < at(12, 0).isoformat()])
-    assert _labels(stopped)[1]["ruler.flat_band_reach"] == "no tape unit this read: the bars have stopped"
 
 
 # ---- tape.unit_vs_normal

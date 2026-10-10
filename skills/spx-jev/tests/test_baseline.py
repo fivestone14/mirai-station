@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from conftest import at, bars_from_closes, make_row
+from conftest import FixedZones, at, bars_from_closes, make_row
 from spx_jev import baseline, scores
 from spx_jev.baseline import BASELINE_FILE, Baseline, clock_odds, fit, leave_one_day_out, move_so_far, state_odds, with_move
 from spx_jev.clock import SHRINK, replayed_reads
@@ -19,7 +19,7 @@ H = list(LIVE.horizons)
 def _day(day: str, closes: list[float]) -> list[dict]:
     rows = [labeller_row(make_row(at(9 + (30 + m) // 60, (30 + m) % 60, day=day), closes[m])) for m in range(0, 390, 5)]
     bars = bars_from_closes(closes, day=day)
-    return with_move(replayed_reads(bars, rows, LIVE.horizons), float(bars[0]["open"]))
+    return with_move(replayed_reads(bars, rows, FixedZones(".", day)), float(bars[0]["open"]))
 
 
 def test_the_move_so_far_is_scaled_to_the_share_of_the_session_gone():

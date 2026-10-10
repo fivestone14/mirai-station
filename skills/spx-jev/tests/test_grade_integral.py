@@ -12,14 +12,19 @@ from pathlib import Path
 
 import pytest
 
-from conftest import DAY, at, bars_from_closes, make_row, write_state
+from conftest import DAY, FixedZones, at, bars_from_closes, make_row, write_state
 from spx_jev import archive, grade, integral, integral_loop, pool
 from spx_jev.grade import INTEGRAL_LOCK, INTEGRAL_NAME, grade_one, integral_line, integral_report, integral_run, main, run
-from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.lane import PREMARKET, TAPE
 
 SIGMA = 75.0
+ZONES = FixedZones.POINTS["live"]
 ALLOWED = {"q1": {"rising", "falling"}}
+
+
+@pytest.fixture(autouse=True)
+def _zones(fixed_zones):
+    """Every read, grade and replay here runs on a fixture too short to size a flat zone: the zones are pinned (conftest.FixedZones)."""
 
 
 def _frozen(day: str, hh: int = 12):
@@ -82,7 +87,7 @@ def test_every_graded_horizon_gets_one_integral_line_and_a_second_run_writes_non
     assert [(g["row_ts"], g["horizon"]) for g in lines] == graded and len(graded) == 4
     assert all(g["rule_version"] == integral.RULE_VERSION and g["graded"] is True for g in lines)
     climb = lines[0]                                               # 11:00, up: the climb's first half hour
-    assert (climb["minutes"], climb["f"], climb["factor"]) == (30, round(0.07 * SIGMA, 4), 0.5918)
+    assert (climb["minutes"], climb["f"], climb["factor"]) == (30, 5.25, 0.5918)
     assert climb["label"] == climb["end_label"] == "up" and climb["verdict"] == "right" and climb["stale_read"] is False
     assert climb["g"] == round(sum(30.0 * (i + 1) / 60 for i in range(30)) / 30, 2)
     passed = next(g for g in lines if g["row_ts"] == at(12, 30).isoformat() and g["horizon"] == "next_30")
@@ -142,30 +147,32 @@ def test_the_backfill_fills_past_days_from_their_bars_and_touches_nothing_else(t
 
 
 def test_a_record_horizon_carries_the_five_band_size_beside_the_direction():
-    """The opening lane: its flat band is the record's, and the old five-band grade at the end price is the size line."""
+    """The opening lane: its flat line is its call's zone widened back, and the old five-band grade at the end price is the size line."""
     t0 = at(10, 30)
     closes = [7703.59, 7702.66, 7700.86, 7701.56, 7700.65, 7700.67, 7699.33, 7700.32, 7697.34, 7693.9, 7693.44]   # S9, from the bar before
     bars = bars_from_closes([7703.59] * 59 + closes + [7693.44] * 320)
     by = {"next_10": {"pick": "down_small", "probabilities": {"down_small": 0.5, "flat": 0.3, "down_big": 0.2}}}
     rec = {"row_ts": t0.isoformat(), "spot": 7703.59, "sigma": SIGMA, "lane": "tape", "by": by, "used": {}, "fresh": {},
            "ruler": {"unit_points": 6.1}, "band": {"flat_points": 2.56, "big_points": 5.42}}
-    g = grade_one(rec, bars, lane=TAPE)
-    line = integral_line(g, "next_10", rec, bars, {}, TAPE)
+    zones = {"next_10": 2.56, "average_10": 1.59, "big": 5.42}
+    g = grade_one(rec, bars, lane=TAPE, zones=zones)
+    line = integral_line(g, "next_10", rec, bars, {}, TAPE, zones)
     assert (line["g"], line["edge"], line["label"], line["verdict"]) == (-4.52, 1.59, "down", "right")
     assert line["end_label"] == "down" and line["size"] == {"band": "down_big", "size": "big", "call": "small", "right": False}
 
 
 def test_the_verdict_is_the_averages_never_the_end_prices():
-    """The owner's S1 on the 30-minute box: a flat call, the end price back to flat (+3.18 against a 5.39 band), the
+    """The owner's S1 on the 30-minute box: a flat call, the end price back to flat (+3.18 against a 5.39 zone), the
     average up (+4.45 against 3.19) after the run to +19. The line keeps the end price's flat beside it, and the call is
     wrong on the average."""
     from test_integral import SCENARIOS
     _, spot, f, pick, closes = SCENARIOS["S1"]
     bars = bars_from_closes([spot] * 211 + closes + [closes[-1]] * (390 - 211 - len(closes)))     # 13:01 is 211 minutes on
     rec = _rec(13, 1, pick30=pick, spot=spot)
-    g = grade_one(rec, bars, anchor=SigmaRuler(f / 0.07, "anchor"))
+    zones = {"next_30": f, "next_60": 8.25, "average_30": 3.19}
+    g = grade_one(rec, bars, zones=zones)
     assert g["next_30"]["band"] == "flat" and g["next_30"]["hit"] is True
-    line = integral_line(g, "next_30", rec, bars, {})
+    line = integral_line(g, "next_30", rec, bars, {}, zones=zones)
     assert (line["g"], line["edge"], line["label"]) == (4.45, 3.19, "up")
     assert line["end_label"] == "flat" and line["verdict"] == "wrong"
 
@@ -192,7 +199,7 @@ def test_a_call_whose_end_price_sums_got_no_answer_is_graded_on_its_own_window(t
     for ts in (failed["row_ts"], half["row_ts"]):
         g = lines[(ts, "next_30")]
         assert (g["sum"], g["graded"], g["pick"], g["label"], g["verdict"], g["edge"], g["edge_told"]) == ("average_30", True, "up", "up", "right", 3.11, 3.11)
-        assert g["end_price"] == grade.ALONE and "end_label" not in g and g["scores"]["brier"] == 0.26 and g["f"] == round(0.07 * SIGMA, 4)
+        assert g["end_price"] == grade.ALONE and "end_label" not in g and g["scores"]["brier"] == 0.26 and g["f"] == 5.25
     assert lines[(half["row_ts"], "next_60")]["sum"] == "next_60"
     assert (lines[(late["row_ts"], "next_30")]["graded"], lines[(late["row_ts"], "next_30")]["reason"]) == (False, "not graded: ends past the close")
     before = (out / INTEGRAL_NAME).read_bytes()
@@ -215,34 +222,36 @@ def test_a_call_graded_alone_waits_today_for_its_bars_like_any_other(tmp_path, c
     assert (g["graded"], g["reason"], g["sum"]) == (False, integral.NOT_GRADED, "average_30")
 
 
-def test_a_premarket_horizon_runs_from_the_settled_open_in_the_stamped_ruler():
+def test_a_premarket_horizon_runs_from_the_settled_open_against_its_zones():
     bars = bars_from_closes([7700.0] * 5 + [7700.0 + k for k in range(1, 386)])
     by = {"open_10": {"pick": "up", "probabilities": {"up": 0.6, "flat": 0.3, "down": 0.1}},
           "open_30": {"pick": "flat", "probabilities": {"up": 0.3, "flat": 0.5, "down": 0.2}}}
     rec = {"row_ts": at(9, 28).isoformat(), "spot": 7600.0, "sigma": 100.0, "lane": "premarket", "ruler": {"kind": "pre_open", "points": 100.0},
            "by": by, "used": {}, "fresh": {}}
-    g = grade_one(rec, bars, lane=PREMARKET, anchor=SigmaRuler(100.0, "pre_open"))
-    ten = integral_line(g, "open_10", rec, bars, {}, PREMARKET)
+    zones = {"open_10": 4.0, "open_30": 7.0, "open_average_30": 4.14}
+    g = grade_one(rec, bars, lane=PREMARKET, zones=zones)
+    ten = integral_line(g, "open_10", rec, bars, {}, PREMARKET, zones)
     assert (ten["from"], ten["minutes"], ten["f"], ten["g"]) == (7700.0, 10, 4.0, 5.5) and ten["stale_read"] is False
     assert ten["edge"] == round(4.0 * integral.factor(10), 2) and ten["label"] == "up" and ten["verdict"] == "right" and "size" not in ten
 
 
 def test_the_premarket_0945_check_grades_the_call_the_card_shows_not_the_ten_minute_end_price_pick():
     """The card shows the average-price call; its 09:45 check is that same pick over the first ten minutes, against the
-    ten-minute band narrowed for them, never the told 30-minute edge and never the 30-minute odds' scores."""
+    ten-minute zone narrowed for them, never the told 30-minute edge and never the 30-minute odds' scores."""
     bars = bars_from_closes([7700.0] * 5 + [7700.0 + k for k in range(1, 386)])
     call = {"pick": "down", "probabilities": {"up": 0.2, "flat": 0.2, "down": 0.6}, "edge_points": 3.55, "primary": "open_average_30"}
     rec = {"row_ts": at(9, 28).isoformat(), "spot": 7600.0, "sigma": 100.0, "lane": "premarket", "ruler": {"kind": "pre_open", "points": 100.0},
            "by": {"open_10": {"pick": "up", "probabilities": {"up": 0.6, "flat": 0.3, "down": 0.1}},
                   "open_30": {"pick": "flat", "probabilities": {"up": 0.3, "flat": 0.5, "down": 0.2}}},
            "average": call, "used": {}, "fresh": {}}
-    g = grade_one(rec, bars, lane=PREMARKET, anchor=SigmaRuler(100.0, "pre_open"))
-    ten, thirty = (integral_line(g, h, rec, bars, {}, PREMARKET) for h in ("open_10", "open_30"))
+    zones = {"open_10": 4.0, "open_30": 7.0, "open_average_30": 3.55}
+    g = grade_one(rec, bars, lane=PREMARKET, zones=zones)
+    ten, thirty = (integral_line(g, h, rec, bars, {}, PREMARKET, zones) for h in ("open_10", "open_30"))
     assert (ten["sum"], ten["pick"], ten["verdict"]) == ("open_average_30", "down", "wrong") and ten["end_label"] == "up"
     assert ten["edge"] == round(4.0 * integral.factor(10), 2) and "scores" not in ten and "edge_told" not in ten
     assert (thirty["sum"], thirty["pick"], thirty["edge"], thirty["edge_told"]) == ("open_average_30", "down", 3.55, 3.55) and "scores" in thirty
     # a read whose average-price sum got no answer checks each box on its own end-price pick, as before
-    alone = integral_line(g, "open_10", {**rec, "average": {"error": "HTTP 529", "primary": "open_average_30"}}, bars, {}, PREMARKET)
+    alone = integral_line(g, "open_10", {**rec, "average": {"error": "HTTP 529", "primary": "open_average_30"}}, bars, {}, PREMARKET, zones)
     assert (alone["sum"], alone["pick"]) == ("open_10", "up")
 
 
@@ -262,14 +271,6 @@ def test_the_report_gives_each_box_its_flat_share_on_both_grades(tmp_path, capsy
     assert said[1] == "live next_60: no window graded on the average price yet; 0 not graded"
     assert [s.split(":")[0] for s in said[2:]] == ["tape next_10", "premarket open_10", "premarket open_30"]
 
-
-
-def test_a_line_graded_before_the_morning_anchor_is_measured_in_the_records_sigma():
-    rec = {**_rec(11, 0), "sigma": 80.0}
-    g = grade_one(rec, _climb(), anchor=SigmaRuler(SIGMA, "anchor"))
-    assert integral_line(g, "next_30", rec, _climb(), {})["f"] == round(0.07 * SIGMA, 4)
-    del g["anchor"]
-    assert integral_line(g, "next_30", rec, _climb(), {})["f"] == round(0.07 * 80.0, 4)
 
 
 def test_the_side_file_only_ever_grows(tmp_path, clock):

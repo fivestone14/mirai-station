@@ -50,7 +50,7 @@ import traceback
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
-from . import archive, events, grade, overnight, rolls, service, story
+from . import archive, events, flat_zone, grade, overnight, rolls, service, story
 from .ask import build_requests, get_path, load_questions, send, send_all
 from .cuts import MIN_RANK_SESSIONS
 from .expiry import calendar_of
@@ -259,23 +259,30 @@ def save_the_night(state_dir: Path, now: datetime) -> dict:
 
 # ---- the read ------------------------------------------------------------------------------------
 
-def average_window_of(ruler: dict, spot: float | None = None) -> dict | str:
-    """The window the average-price sum forecasts, the primary's from the settled open (hour.average_window), its flat
-    band in the pre-open ruler stamped on the record as the grader reads it (grade.stamped_ruler), with the read's
-    spot on S&P futures; why there is none when the read has no ruler."""
-    minutes, flat = PREMARKET.horizons[PREMARKET.primary]
-    points = ruler.get("points")
-    if not isinstance(points, (int, float)) or points <= 0:
-        return "no pre-open ruler to price its edge in points this read"
-    return average_window(minutes, flat * float(points), spot)
+def read_zones(state_dir: Path, day: date) -> dict[str, float] | str:
+    """Every sum's flat zone in points for a read before the open (flat_zone.Zones.at at the settled open, from the prior
+    close and the prior session's closing VIX): what JEV is told, the record stamps and the grader reads; why there is
+    none when the day cannot be sized. A failure sizing it must never cost the read its questions: the reason stands in
+    for the zones and no sum is asked."""
+    try:
+        return flat_zone.Zones(state_dir, day.isoformat(), PREMARKET).at(grade.settled_open_at(day), [])
+    except Exception as e:
+        service.log(f"the flat zone failed this read: {type(e).__name__}: {e}")
+        return f"the flat zone failed this read: {type(e).__name__}: {e}"
 
 
-def sum_the_read(doc: dict, fresh: dict[str, dict], missing: list[str], out_dir: Path,
-                 deadline: float | None = None, window: dict | str | None = None) -> tuple[dict, dict | None, dict | None, dict | None]:
+def average_window_of(zones: dict[str, float], spot: float | None = None) -> dict:
+    """The window the average-price sum forecasts, the primary's from the settled open (hour.average_window), the box's
+    zone and the sum's own, with the read's spot on S&P futures."""
+    return average_window(PREMARKET.horizons[PREMARKET.primary][0], zones[PREMARKET.primary], zones[PREMARKET.average], spot)
+
+
+def sum_the_read(doc: dict, fresh: dict[str, dict], missing: list[str], out_dir: Path, zones: dict[str, float],
+                 deadline: float | None = None, window: dict | None = None) -> tuple[dict, dict | None, dict | None, dict | None]:
     """Steps 3 and 4 before the open: the read's answers as sentences, the two end-price sums over them from the
-    settled open (SUM_CONTEXT says so in the request) and the average-price sum over ``window`` in its own
-    (AVERAGE_CONTEXT), both sent at once and retried until ``deadline`` (ask.send). Returns what
-    service.sum_the_hour returns: the hour record, JEV's summary, and its two replies untouched."""
+    settled open (SUM_CONTEXT says so in the request), each against its zone in ``zones``, and the average-price sum
+    over ``window`` in its own (AVERAGE_CONTEXT), both sent at once and retried until ``deadline`` (ask.send). Returns
+    what service.sum_the_hour returns: the hour record, JEV's summary, and its two replies untouched."""
     sentences, left_out = answer_sentences(doc, fresh, QuestionWeights.load(out_dir))
     by_id = {qid: q for g in doc["groups"] for qid, q in g["questions"].items()}
     base = {"used": {qid: fresh[qid]["pick"] for qid in sentences},
@@ -284,7 +291,7 @@ def sum_the_read(doc: dict, fresh: dict[str, dict], missing: list[str], out_dir:
     if not sentences:
         return {**base, "request": None}, None, None, None
     hour_doc = load_hour_doc(lane=PREMARKET)
-    req = hour_request(sentences, hour_doc, context=SUM_CONTEXT, lane=PREMARKET)
+    req = hour_request(sentences, zones, hour_doc, context=SUM_CONTEXT, lane=PREMARKET)
     avg_req = average_request(sentences, window, hour_doc, context=AVERAGE_CONTEXT, lane=PREMARKET) if isinstance(window, dict) else None
     replies = service.send_sums([req, avg_req], send, deadline)
     reply, avg_reply = replies[req["id"]], replies.get("average")
@@ -322,6 +329,7 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
     except Exception as e:  # a broken calendar must never cost the read
         service.log(f"the event calendar could not be read this run: {type(e).__name__}: {e}")
         event = None
+    zones = read_zones(state_dir, now.date())
     try:
         scene = make_premarket_scene(state_dir, now)
         ruler = pre_open_ruler(scene)
@@ -348,10 +356,15 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
         # live questions due now whose label the builder could not measure
         missing = [qid for g in skipped.values() for qid, why in g.items()
                    if by_id.get(qid, {}).get("status") == "live" and str(why).startswith("missing")]
-        hour_rec, hour, hour_reply, average_reply = sum_the_read(doc, fresh, missing, out_dir, sums_by, average_window_of(ruler, scene.spot if scene else None))
+        if isinstance(zones, dict):
+            hour_rec, hour, hour_reply, average_reply = sum_the_read(doc, fresh, missing, out_dir, zones, sums_by, average_window_of(zones, scene.spot))
+        else:
+            service.log(f"no flat zone this read, so no sum was asked: {zones}")
+            hour_rec = {"request": None, "no_sum": f"no flat zone this read: {zones}"}
         send_seconds = round(_clock.monotonic() - t0, 3)
         if hour is not None:
-            hour = {**hour, "used": len(hour_rec["used"]), "left_out": len(hour_rec["left_out"]), "missing": len(missing)}
+            hour = service.with_flat_points({**hour, "used": len(hour_rec["used"]), "left_out": len(hour_rec["left_out"]), "missing": len(missing)},
+                                            zones, PREMARKET)
             if hour.get("error"):
                 service.log(f"the end-price sums got no answer: {hour['error']}")
             if (hour.get("average") or {}).get("error"):
@@ -375,7 +388,8 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
         (out_dir / "hour").mkdir(parents=True, exist_ok=True)
         with open(out_dir / "hour" / f"{day}.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps({"row_ts": row_ts, "spot": record["spot"], "sigma": record["sigma"], "event": event, **learn,
-                                "lane": PREMARKET.tag, "ruler": ruler, **(hour or {}), **hour_rec}, ensure_ascii=False) + "\n")
+                                "lane": PREMARKET.tag, "ruler": ruler, "zone": flat_zone.stamp(zones), **(hour or {}), **hour_rec},
+                               ensure_ascii=False) + "\n")
     archive.append(PREMARKET.archive_folder(state_dir, out_dir), day, archive.ReadRecord(
         read_id=archive.read_id(PREMARKET.name, row_ts), lane=PREMARKET.name, row_ts=row_ts, sent=sent, spot=record["spot"],
         sigma=record["sigma"], labels=labels.state, omitted=labels.omitted, requests=requests, skipped=skipped, responses=answers,

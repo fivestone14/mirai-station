@@ -11,17 +11,19 @@ The question weights (weights.QuestionWeights, written by the grader) decide whi
 worth a sentence: a question whose weight is under weights.MIN_WEIGHT is left out, with the reason
 kept. The weights are neutral for now, so nothing is left out on their account.
 
-A lane (lane.py) brings its own sums doc and horizons; the tape lane's one sum is five-way
-(down_big, down_small, flat, up_small, up_big, unsure) in tape units, so its request carries a
-context line that prices the unit and the bands for the read, and its summary is read three ways
+Every sum's flat zone is sized for the read in index points (flat_zone.py) and filled into its text (PER_READ:
+"within {zone_points} points"), with one context line naming every box's zone (zone_line), so JEV reads the number
+the grader will use. A lane (lane.py) brings its own sums doc and horizons; the tape lane's one sum is five-way
+(down_big, down_small, flat, up_small, up_big, unsure), its big line filled in beside its flat zone, its request
+carrying the tape unit in points too (unit_line, for the stretch labels in units), and its summary is read three ways
 for grading: raw, direction and size. Everything defaults to LIVE.
 
 The average-price sum (the lane's ``average``) rides on the same sentences in a request of its own,
 so the end-price sums' request is exactly what it was: where the average price over the primary's
 window sits against the read, up, flat or down, with no unsure. Its context line says what the
-average is and gives the flat edge in index points for the read (average_window: the end price's
-flat band narrowed by integral.factor, the edge the average-price grade sets it against). Its
-summary (average_summary) rides on the hour summary under ``average``: the phone's call.
+average is and gives its flat zone in index points for the read (average_window: the edge the
+average-price grade sets it against). Its summary (average_summary) rides on the hour summary
+under ``average``: the phone's call.
 
 From the cut-over (cuts.CUT_OVER_DAY) the live lane's sentences are no longer the live questions' answers, which are
 retired that day (ask.retired): cut_over_sentences writes, in order, the judgment questions' answers given afresh on
@@ -37,16 +39,15 @@ import math
 from datetime import datetime
 from pathlib import Path
 
-from . import integral
 from .ask import fill_question, jev_only
-from .cuts import TAPE_BIG_UNITS, TAPE_FLAT_UNITS
 from .judgment import GATES
 from .lane import LIVE, RECORD, Lane
 from .mirai_prediction.code_features import column_name, load_catalog
 from .weights import MIN_WEIGHT, QuestionWeights
 
 FIVE = ("down_big", "down_small", "flat", "up_small", "up_big")   # a RECORD horizon's outcomes, in order
-PER_READ = ("window_minutes",)     # the names in the average-price sum's text the code fills at each read, from its window
+# the names in a sum's text the code fills at each read: its window's minutes, its flat zone in points, a five-way sum's big line
+PER_READ = ("window_minutes", "zone_points", "big_points")
 AVERAGE_OUTCOMES = ("up", "flat", "down")
 UNITS = ("sigma is today's expected move for the S&P 500 index. Each answer below was given by JEV about this moment, "
          "except those marked held, which were given at the time shown and carried forward unchanged")
@@ -68,7 +69,7 @@ def load_hour_doc(path: Path | str | None = None, lane: Lane = LIVE) -> dict:
         raise ValueError(f"{path}: primary is {d.get('primary')!r} but the code sums for {lane.primary!r}")
     if d.get("average", lane.average) != lane.average:
         raise ValueError(f"{path}: average is {d.get('average')!r} but the code asks {lane.average!r}")
-    d["questions"] = {qid: fill_question(q, f"{Path(path).name} {qid}", PER_READ if qid == lane.average else ()) for qid, q in qs.items()}
+    d["questions"] = {qid: fill_question(q, f"{Path(path).name} {qid}", PER_READ) for qid, q in qs.items()}
     return d
 
 
@@ -178,55 +179,72 @@ def cut_over_sentences(doc: dict, fresh: dict[str, dict], code_answers: dict[str
     return sentences, left_out
 
 
-def band_of(ruler: dict) -> dict:
-    """A RECORD horizon's bands for this read, in index points: the cuts' fractions of a tape unit times
-    the unit measured on the tape (labels.rulers.tape_unit). Stored on the hour record, so the grader reads
-    the same bands JEV was told."""
-    unit = float(ruler["unit_points"])
-    return {"flat_points": round(TAPE_FLAT_UNITS * unit, 2), "big_points": round(TAPE_BIG_UNITS * unit, 2),
-            "flat_units": TAPE_FLAT_UNITS, "big_units": TAPE_BIG_UNITS}
+def points(x: float) -> str:
+    """A zone as the sums' text and context carry it, to the cent the record stamps."""
+    return f"{float(x):.2f}"
 
 
-def unit_line(ruler: dict, band: dict) -> str:
-    """The context line that turns the unit into points, since JEV cannot multiply a unit by a fraction."""
-    unit, flat, big = (f"{float(x):.1f}" for x in (ruler["unit_points"], band["flat_points"], band["big_points"]))
+def zone_line(zones: dict[str, float], lane: Lane = LIVE) -> str:
+    """The context line naming every end-price box's flat zone in index points for this read: the same numbers the
+    questions' text carries, the grader reads and the record stamps (flat_zone.py). A five-way box names its three bands."""
+    if lane.graded_from_settled_open:
+        return "flat is " + ", and ".join(f"within {points(zones[qid])} points of the settled open either way {m} minutes after it"
+                                          for qid, (m, _) in lane.horizons.items())
+    clauses = []
+    for qid, (m, flat) in lane.horizons.items():
+        if flat == RECORD:
+            clauses.append(f"over the next {m} minutes flat is within {points(zones[qid])} points of the price now either way; small is "
+                           f"{points(zones[qid])} to {points(zones['big'])} points; big is more than {points(zones['big'])} points")
+        else:
+            clauses.append(f"over the next {m} minutes flat is within {points(zones[qid])} points of the price now either way")
+    return "; ".join(clauses)
+
+
+def unit_line(ruler: dict) -> str:
+    """The context line that prices the tape unit, which the stretch labels measure in."""
     rank = ruler.get("rank")      # the unit against the same minute on the prior sessions (labels.rulers.unit_rank), when there is one
     placed = f", in the {rank['band']} for this minute, wider than {rank['higher_than']} of {rank['of']} prior sessions" if rank else ""
-    return (f"one tape unit is {unit} points{placed}; flat is within {flat} points either way ({band['flat_units']:g} of a unit); "
-            f"small is {flat} to {big} points; big is more than {big} points ({band['big_units']:g} of a unit)")
+    return f"one tape unit is {float(ruler['unit_points']):.1f} points{placed}"
 
 
-def hour_request(sentences: dict[str, str], hour_doc: dict | None = None, context: dict | None = None,
+def per_read(value, fills: dict):
+    """A sum's text with its per-read names (PER_READ) filled from ``fills``."""
+    if isinstance(value, str):
+        for name, v in fills.items():
+            value = value.replace("{" + name + "}", str(v))
+        return value
+    if isinstance(value, dict):
+        return {k: per_read(v, fills) for k, v in value.items()}
+    if isinstance(value, list):
+        return [per_read(v, fills) for v in value]
+    return value
+
+
+def hour_request(sentences: dict[str, str], zones: dict[str, float], hour_doc: dict | None = None, context: dict | None = None,
                  lane: Lane = LIVE, ruler: dict | None = None) -> dict:
     """Step 4's request: the sentences are the state, the lane's end-price sums ride on top in one call (the
-    average-price sum goes in its own, average_request). With a ``ruler`` (a lane on the tape) the context
-    also prices the unit and the bands for this read."""
+    average-price sum goes in its own, average_request), each with its flat zone for this read filled into its text
+    (``zones``, flat_zone.Zones.at) and the context naming every box's (zone_line). With a ``ruler`` (a lane on the
+    tape) the context also prices the unit."""
     hour_doc = hour_doc or load_hour_doc(lane=lane)
-    ctx = {"symbol": "SPX", "horizon": ", and ".join(f"the next {m} minutes" for m, _ in lane.horizons.values()), "units": UNITS}
+    ctx = {"symbol": "SPX", "horizon": ", and ".join(f"the next {m} minutes" for m, _ in lane.horizons.values()), "units": UNITS,
+           "flat_zone": zone_line(zones, lane)}
     if ruler:
-        ctx["unit"] = unit_line(ruler, band_of(ruler))
+        ctx["unit"] = unit_line(ruler)
     ctx.update(context or {})
-    return {"id": "hour", "state": {"context": ctx, "answers": sentences},
-            "questions": {qid: jev_only(q) for qid, q in hour_doc["questions"].items() if qid in lane.horizons}}
+    questions = {}
+    for qid, (minutes, flat) in lane.horizons.items():
+        fills = {"window_minutes": minutes, "zone_points": points(zones[qid]), **({"big_points": points(zones["big"])} if flat == RECORD else {})}
+        questions[qid] = per_read(jev_only(hour_doc["questions"][qid]), fills)
+    return {"id": "hour", "state": {"context": ctx, "answers": sentences}, "questions": questions}
 
 
-def average_window(minutes: int, flat_points: float, price: float | None = None) -> dict:
-    """The window the average-price sum forecasts: its minutes, the end price's flat band for it in points, the edge
-    the average is set against, that band narrowed by integral.factor and rounded to the cent JEV is told (the grade
-    sets the average against this same edge, grade.integral_line), and the read's price when there is one."""
-    out = {"minutes": minutes, "flat_points": round(flat_points, 2), "edge_points": round(integral.factor(minutes) * flat_points, 2)}
+def average_window(minutes: int, flat_points: float, edge_points: float, price: float | None = None) -> dict:
+    """The window the average-price sum forecasts: its minutes, the end-price box's flat zone in points, the edge the
+    average is set against (the sum's own zone, flat_zone.py, to the cent JEV is told; the grade sets the average against
+    this same edge, grade.integral_line), and the read's price when there is one."""
+    out = {"minutes": minutes, "flat_points": round(flat_points, 2), "edge_points": round(edge_points, 2)}
     return {**out, "price": round(float(price), 2)} if isinstance(price, (int, float)) else out
-
-
-def per_read(value, window: dict):
-    """The average-price sum's text with its per-read names (PER_READ) filled from ``window``."""
-    if isinstance(value, str):
-        return value.replace("{window_minutes}", str(window["minutes"]))
-    if isinstance(value, dict):
-        return {k: per_read(v, window) for k, v in value.items()}
-    if isinstance(value, list):
-        return [per_read(v, window) for v in value]
-    return value
 
 
 def average_line(window: dict, lane: Lane = LIVE) -> str:
@@ -235,7 +253,7 @@ def average_line(window: dict, lane: Lane = LIVE) -> str:
     from it, the settled open (not yet known at a read before the open, whose price is the futures' guide to it).
     The same request's answers can speak of the day's volume-weighted average, so the line says this average is the
     window's minute closes and not that one."""
-    edge, price = f"{float(window['edge_points']):.2f}", window.get("price")
+    edge, price = points(window["edge_points"]), window.get("price")
     if lane.graded_from_settled_open:
         span, ref = f"the {window['minutes']} minutes after the settled open", "the settled open"
         where = (f"before the open the index stands near {price:.2f} on S&P futures; the settled open it is measured from is the close "
@@ -252,14 +270,15 @@ def average_line(window: dict, lane: Lane = LIVE) -> str:
 def average_request(sentences: dict[str, str], window: dict, hour_doc: dict | None = None, context: dict | None = None,
                     lane: Lane = LIVE) -> dict:
     """The average-price sum's request: the same sentences as the end-price sums', its one question with the window's
-    minutes filled in (per_read), and a context that names its window and gives the read's price and the flat edge
-    (average_line). It carries no tape unit line, whose flat band is the end price's."""
+    minutes and its flat zone filled in (per_read), and a context that names its window and gives the read's price and
+    the flat edge (average_line). It carries no tape unit line."""
     hour_doc = hour_doc or load_hour_doc(lane=lane)
     ctx = {"symbol": "SPX", "horizon": f"the next {window['minutes']} minutes", "units": UNITS}
     ctx.update(context or {})
     ctx["average"] = average_line(window, lane)
+    fills = {"window_minutes": window["minutes"], "zone_points": points(window["edge_points"])}
     return {"id": "average", "state": {"context": ctx, "answers": sentences},
-            "questions": {lane.average: per_read(jev_only(hour_doc["questions"][lane.average]), window)}}
+            "questions": {lane.average: per_read(jev_only(hour_doc["questions"][lane.average]), fills)}}
 
 
 def views_of(probs: dict) -> dict:

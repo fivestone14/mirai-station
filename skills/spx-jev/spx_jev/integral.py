@@ -7,9 +7,9 @@ start to its mark, the last one being the mark bar):
     slices   x_k = close_k - P0, k = 1..T
     grade    G = (x_1 + ... + x_T) / T         the average price over the window against the read; the same as
                                               the minutes' moves d_j = x_j - x_(j-1) weighted d_j * (T - j + 1) / T
-    edge     factor(T) * f, factor(T) = sqrt((T + 1)(2T + 1) / (6 T^2)), 0.5918 at T = 30 and 0.6205 at T = 10:
-             f is the flat band the end-price grade reads for the record, shrunk by how much less the average
-             of a random walk spreads than its end
+    edge     the call's flat zone in points (flat_zone.py), the one JEV was told; on a box without a call of its own,
+             factor(T) * f, factor(T) = sqrt((T + 1)(2T + 1) / (6 T^2)), 0.5918 at T = 30 and 0.6205 at T = 10:
+             f is the box's end-price zone, shrunk by how much less the average of a random walk spreads than its end
     label    up if G > edge, down if G < -edge, else flat (strict, as the end-price band)
 
 Direction decides. A call is right when its side is the label (up_small and up_big are up), wrong when it is
@@ -48,18 +48,19 @@ from .labels.measures import ET, ONE_MINUTE, bar_time
 from .labels.ranks import percentile, rank_sessions
 from .labels.words import third
 
-# bump when the grade's rule changes: a line is keyed by its read, its horizon and this. 3: the average-price sum's call is set
-# against the edge JEV was told (grade.told_edge); 2: the box a lane's average-price sum forecasts is graded on that sum's call
-# when it answered, with its scores (grade.integral_line); 1 graded the end-price sum's
-RULE_VERSION = 3
-READABLE_VERSIONS = (1, 2, 3)   # the rules whose lines still read, a read's newest standing: 1's grade the end-price sum's call,
-                                # as 2's and 3's do where there is no other
+# bump when the grade's rule changes: a line is keyed by its read, its horizon and this. 4: the edge is the flat zone sized at
+# the read (flat_zone.py), not a share of the morning sigma anchor; 3: the average-price sum's call is set against the edge
+# JEV was told; 2: the box a lane's average-price sum forecasts is graded on that sum's call when it answered, with its
+# scores (grade.integral_line); 1 graded the end-price sum's
+RULE_VERSION = 4
+READABLE_VERSIONS = (1, 2, 3, 4)   # the rules whose lines still read, a read's newest standing: 1's grade the end-price sum's call,
+                                   # as the later ones do where there is no other
 NOT_GRADED = "not graded: bars missing"
 TIERS = {"top": "Strong right", "middle": "Right", "bottom": "Weak right"}   # a right call's headroom by its third
 
 
 def factor(minutes: int) -> float:
-    """How much narrower the average of a ``minutes``-step random walk spreads than its end: the flat band's share."""
+    """How much narrower the average of a ``minutes``-step random walk spreads than its end: the flat zone's share."""
     return math.sqrt((minutes + 1) * (2 * minutes + 1) / (6 * minutes ** 2))
 
 
@@ -213,9 +214,9 @@ def sharp_move(closes: list[float], first_from: float, base: list[list[float]]) 
 
 def grade_window(bars: list[dict], prior: dict[str, list[dict]], t0: datetime, minutes: int, spot: float, flat: float,
                  pick, probs: dict | None = None, edge: float | None = None) -> dict:
-    """The average-price grade of a call at ``spot`` over the ``minutes`` bars from ``t0``, against the flat band ``flat``
-    in points narrowed by factor, or against ``edge`` itself when the call was told one (the edge in its question,
-    rounded as it was told), with ``prior`` the recent sessions' bars (newest first) the ranks read. A ``graded:
+    """The average-price grade of a call at ``spot`` over the ``minutes`` bars from ``t0``, against the box's flat zone ``flat``
+    in points narrowed by factor, or against ``edge`` itself when the call was told one (its own zone, rounded as it was
+    told), with ``prior`` the recent sessions' bars (newest first) the ranks read. A ``graded:
     False`` result names the minutes missing; its guard fields are filled all the same."""
     slots, before = window(bars, t0, minutes), window(bars, t0 - ONE_MINUTE, 1)[0]
     base = same_window_moves(prior, t0, minutes)

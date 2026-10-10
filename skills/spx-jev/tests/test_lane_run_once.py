@@ -10,7 +10,6 @@ import pytest
 
 from conftest import DAY, PRIOR_DAYS, at, bars_from_closes, make_row, write_prior_rows, write_state
 from spx_jev import grade, service
-from spx_jev.cuts import TAPE_BIG_UNITS, TAPE_FLAT_UNITS
 from spx_jev.lane import TAPE
 from spx_jev.service import run_once
 
@@ -21,6 +20,11 @@ DOC = {"version": "test", "groups": [
                              "criteria": {"rising": "r", "falling": "f", "going_nowhere": "n", "unsure": "u"}}}}]}
 FIVE = {"down_big": 0.05, "down_small": 0.1, "flat": 0.6, "up_small": 0.15, "up_big": 0.05, "unsure": 0.05}
 ET = ZoneInfo("America/New_York")
+
+
+@pytest.fixture(autouse=True)
+def _zones(fixed_zones):
+    """Every read, grade and replay here runs on a fixture too short to size a flat zone: the zones are pinned (conftest.FixedZones)."""
 
 
 def _state(tmp_path, rows, n_bars):
@@ -75,8 +79,7 @@ def test_a_tape_read_writes_its_own_folder_and_is_graded_on_the_exact_bar_ten_mi
     assert c["lane"] == "tape" and c["row_ts"] == at(10, 40).isoformat()
     assert c["ruler"] == {"unit_points": 6.0, "unit_sigma": 0.08, "slices_used": 3, "source": "tape",
                           "rank": {"band": "top third", "higher_than": 10, "of": 10}}      # the prior sessions' minutes span a point
-    assert c["band"] == {"flat_points": round(TAPE_FLAT_UNITS * 6, 2), "big_points": round(TAPE_BIG_UNITS * 6, 2),
-                         "flat_units": TAPE_FLAT_UNITS, "big_units": TAPE_BIG_UNITS}
+    assert c["band"] == {"flat_points": 2.52, "big_points": 5.34}                    # the five-way sum's bands, from the call's zone
     assert c["hour"]["primary"] == "next_10" and "blend" not in c["hour"] and c["hour"]["views"]["size"]["pick"] == "small"
     assert seen[0]["state"]["context"]["unit"].startswith("one tape unit is 6.0 points, in the top third for this minute")
     assert c["schedule"]["reads"][0] == at(9, 35).isoformat() and c["schedule"]["close_out"] == at(10, 42).isoformat()

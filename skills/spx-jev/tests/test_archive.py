@@ -38,7 +38,7 @@ def _typed(line: dict, record_type) -> bool:
     return set(line) == {f.name for f in fields(record_type)}
 
 
-def test_a_read_and_its_later_grade_land_in_the_archive_under_one_read_id(tmp_path, monkeypatch):
+def test_a_read_and_its_later_grade_land_in_the_archive_under_one_read_id(tmp_path, monkeypatch, fixed_zones):
     monkeypatch.setenv("TYPESAFE_API_KEY", CANARY)
     monkeypatch.setattr(service, "send_all", _send_all)
     monkeypatch.setattr(service, "send", _send)

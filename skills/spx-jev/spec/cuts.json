@@ -1,7 +1,7 @@
 {
  "name": "spx-jev cuts, measured",
  "measured_on": "2026-09-26",
- "rule": "each SPX cut sits at the same percentile of the same measurement on SPX history as SNDK JEV's cut sits on SNDK history; base rates are counted on SPX with the SPX band",
+ "rule": "each SPX cut sits at the same percentile of the same measurement on SPX history as SNDK JEV's cut sits on SNDK history; base rates are counted on SPX with the flat zone (flat_zone.py) sized as each read could have known it",
  "spx_sessions": [
   "2026-07-10",
   "2026-07-20",
@@ -163,22 +163,6 @@
    "percentile": 93.1,
    "n_sndk": 3742,
    "n_spx": 10555
-  },
-  "next_30_flat_band_sigma": {
-   "value": 0.07,
-   "measure": "end30",
-   "sndk_cut": 0.12,
-   "percentile": 56.8,
-   "n_sndk": 1473,
-   "n_spx": 3321
-  },
-  "next_60_flat_band_sigma": {
-   "value": 0.11,
-   "measure": "end60",
-   "sndk_cut": 0.17,
-   "percentile": 57.4,
-   "n_sndk": 1347,
-   "n_spx": 3045
   },
   "ruler_hold_sigma": {
    "value": 0.12,
@@ -483,11 +467,16 @@
   "wall_touch_siege_percentile": "a percentile by construction: the siege box ranks each touch's SPY volume against its own baseline for the clock window, so the cut sits at the 70th percentile of normal by definition",
   "wall_touch_quiet_percentile": "a percentile by construction, as wall_touch_siege_percentile: the 30th percentile of normal by definition",
   "follow_on_min": "a clock fact: how long after a release its follow-on (the Fed's press conference, 30 minutes after the statement) is still read with it, not a split of any measurement",
-  "open_10_flat_band_sigma": "the premarket lane's 10-minute sum band from the settled open, the live sum's 30-minute band scaled by the square root of 10 over 30 until the settled opens are measured",
   "integral_missing_bars_max": "a count: how many of a window's bars the average-price grade may be missing and still grade the window on its average, never the mark bar; a guard, not a split of any measurement",
   "bad_tick_pct": "a percentile by construction: a bad tick's jump and its jump back are ranked against the same window's 1-minute moves on the recent sessions, so the cut sits at their 99.9th percentile by definition",
   "stale_read_min": "a clock fact: how long before its row minute a read's spot may have last traded before the read is stale, not a split of any measurement",
   "tier_min_right_calls": "a minimum count: how many right calls the box's last 20 sessions must hold before a right call's strength is ranked among them, a lookback's floor, not a split of any measurement",
-  "sharp_move_top": "a rank by construction: a window's biggest minute is sharp when it is in the top 2 of itself and the same window's biggest minute on the last 20 sessions"
+  "sharp_move_top": "a rank by construction: a window's biggest minute is sharp when it is in the top 2 of itself and the same window's biggest minute on the last 20 sessions",
+  "average_30_flat_pct": "a target: the share of the live lane's call's windows the flat zone (flat_zone.py) is sized to land flat on the prior sessions, set by the owner (2026-10-09); the end-price sums' targets are their flat base rates",
+  "open_flat_pct": "a target: the share of the premarket lane's windows from the settled open the flat zone is sized to land flat on the prior sessions, checked in sample only (2026-10-09)",
+  "minimum_zone_points": "a floor in index points under every flat zone but the opening lane's: a zone narrower than this would grade on index noise (flat_zone.py)",
+  "minimum_tape_zone_points": "a floor in index points under the opening lane's 10-minute zones, the shortest windows the station grades",
+  "vix_trust_minutes": "a count: how many minutes of tape the VIX's view of the 1-minute move counts as when today's minutes are averaged into the flat zone's level (flat_zone.level); 10 and a 15-minute half life scored best on the sessions to 2026-10-09",
+  "recency_half_life_min": "a clock: the minutes of age over which a finished minute's weight in the flat zone's level halves (flat_zone.level)"
  }
 }

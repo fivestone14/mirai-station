@@ -6,7 +6,8 @@ import math
 
 from conftest import DAY, at, bars_from_closes, flat_bars, make_row, write_state
 from spx_jev.ask import load_questions
-from spx_jev.cuts import NEXT_30_FLAT_BAND_SIGMA, NEXT_60_FLAT_BAND_SIGMA
+from conftest import FixedZones
+from spx_jev.cuts import NEXT_30_FLAT_PCT, NEXT_60_FLAT_PCT
 from spx_jev.grade import grade_one as grade_in, graded_horizons, live_options, mark_at, read_anchor, realized_band, run, weights_from
 from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.lane import LIVE, TAPE
@@ -15,6 +16,7 @@ from spx_jev.state_builder import MarketContext
 
 SIGMA = 75.0
 ANCHOR = SigmaRuler(SIGMA, "anchor")
+ZONES = FixedZones.POINTS["live"]
 ALLOWED = {"q1": {"rising", "falling", "going_nowhere", "unsure"}}
 
 
@@ -23,7 +25,7 @@ def _rec(hh, mm, spot, by, fresh=None):
 
 
 def grade_one(rec, bars, done=frozenset(), final=False):
-    return grade_in(rec, bars, done, final, anchor=ANCHOR)
+    return grade_in(rec, bars, done, final, zones=ZONES)
 
 
 def _rows(sigma_after_noon=SIGMA):
@@ -49,17 +51,18 @@ def _climb():
     return bars_from_closes([7700.0] * 90 + [7700.0 + 30.0 * (i + 1) / 60 for i in range(60)] + [7730.0] * 240)
 
 
-def test_the_horizons_are_the_measured_spx_bands():
-    assert LIVE.horizons == {"next_30": (30, NEXT_30_FLAT_BAND_SIGMA), "next_60": (60, NEXT_60_FLAT_BAND_SIGMA)}
-    assert realized_band(0.08, 0.07) == "up" and realized_band(-0.08, 0.07) == "down" and realized_band(0.07, 0.07) == "flat"
+def test_the_horizons_are_sized_to_the_measured_spx_base_rates():
+    assert LIVE.horizons == {"next_30": (30, NEXT_30_FLAT_PCT), "next_60": (60, NEXT_60_FLAT_PCT)}
+    assert realized_band(5.3, 5.25) == "up" and realized_band(-5.3, 5.25) == "down" and realized_band(5.25, 5.25) == "flat"
 
 
 def test_grade_one_reads_both_horizons_and_lifts_the_primary():
     rec = _rec(11, 0, 7700.0, _by({"up": 0.6, "flat": 0.3, "down": 0.1}, "up", {"up": 0.2, "flat": 0.7, "down": 0.1}, "flat"), {"q1": "rising"})
     g = grade_one(rec, _climb())
-    assert g["next_30"]["band"] == "up" and g["next_30"]["realized_sigma"] == 0.2 and g["next_30"]["hit"] is True
-    assert g["next_60"]["band"] == "up" and g["next_60"]["realized_sigma"] == 0.4 and g["next_60"]["hit"] is False
+    assert g["next_30"]["band"] == "up" and g["next_30"]["realized_points"] == 15.0 and g["next_30"]["hit"] is True
+    assert g["next_60"]["band"] == "up" and g["next_60"]["realized_points"] == 30.0 and g["next_60"]["hit"] is False
     assert g["band"] == "up" and g["brier"] == round(0.4 ** 2 + 0.3 ** 2 + 0.1 ** 2, 4) and g["fresh"] == {"q1": "rising"}
+    assert g["zone"] == {"next_30": 5.25, "next_60": 8.25}                                      # the zones it was graded in
 
 
 def test_each_horizon_is_graded_at_its_own_mark_and_one_past_the_close_is_skipped():
@@ -128,7 +131,7 @@ def test_every_weight_is_one_and_an_event_read_never_reaches_them():
     assert w["sums"]["next_30"]["n"] == 2 and w["sums"]["next_30"]["event_reads"]["n"] == 1
 
 
-def test_run_appends_grades_writes_weights_and_logs_once(tmp_path):
+def test_run_appends_grades_writes_weights_and_logs_once(tmp_path, fixed_zones):
     state = write_state(tmp_path, DAY, _rows(), _climb())
     out = state / "spx_jev"
     (out / "hour").mkdir(parents=True)
@@ -143,7 +146,7 @@ def test_run_appends_grades_writes_weights_and_logs_once(tmp_path):
     assert len(log) == 1 and log[0]["changes"] == [{"question": "q1", "before": None, "after": 1.0, "n": 1, "in_step_3": True}]
 
 
-def test_a_past_day_with_no_bars_is_closed_out(tmp_path):
+def test_a_past_day_with_no_bars_is_closed_out(tmp_path, fixed_zones):
     out = tmp_path / "spx_jev"
     (out / "hour").mkdir(parents=True)
     (out / "hour" / f"{DAY}.jsonl").write_text(json.dumps(_rec(11, 0, 7700.0, _by({"flat": 1.0}, "flat"))) + "\n")
@@ -166,24 +169,22 @@ def test_a_score_answer_reaches_the_weights_like_a_choice():
     assert w["price_move_5way"]["n"] == 1 and w["leg_vs_day_side"]["n"] == 1
 
 
-def test_the_morning_anchor_grades_and_a_mid_day_ratchet_changes_nothing(tmp_path):
-    """A noon read on a day whose row sigma ratcheted from 75 to 150 at noon: the record carries the
-    ratcheted sigma, the grade the morning anchor's, the same as on a day that never ratcheted. On the
-    record's sigma the 15-point climb would have read 0.1 sigma, flat."""
+def test_a_record_is_graded_in_the_zones_it_stamped_and_one_with_none_is_sized_or_closed(tmp_path):
+    """A noon read on a day whose row sigma ratcheted from 75 to 150: the record's stamped zones grade it, 5.25 points
+    for the next 30 minutes, so the 15-point climb is up whatever its sigma. A record from before the zone's rule has
+    its zones sized again from the sessions on file; with too few of them it is closed for good."""
     climb = bars_from_closes([7700.0] * 150 + [7700.0 + 15.0 * (i + 1) / 30 for i in range(30)] + [7715.0] * 210)
-    rec = {**_rec(12, 0, 7700.0, _by({"up": 0.6, "flat": 0.3, "down": 0.1}, "up", {"up": 0.5, "flat": 0.4, "down": 0.1}, "up")), "sigma": 150.0}
-    lines = []
-    for name, rows in (("calm", _rows()), ("spike", _rows(sigma_after_noon=150.0))):
-        state = write_state(tmp_path / name, DAY, rows, climb)
-        out = state / "spx_jev"
-        (out / "hour").mkdir(parents=True)
-        (out / "hour" / f"{DAY}.jsonl").write_text(json.dumps(rec) + "\n")
-        run(state, out, ALLOWED)
-        lines.append(json.loads((out / "grades.jsonl").read_text().splitlines()[0]))
-    calm, spike = lines
-    assert spike["next_30"] == calm["next_30"] and spike["next_60"] == calm["next_60"]
-    assert spike["next_30"]["realized_sigma"] == 0.2 and spike["band"] == "up"         # 15 points in 75, past the flat band
-    assert spike["anchor"] == {"points": SIGMA, "source": "anchor"}
+    by = _by({"up": 0.6, "flat": 0.3, "down": 0.1}, "up", {"up": 0.5, "flat": 0.4, "down": 0.1}, "up")
+    stamped = {**_rec(12, 0, 7700.0, by), "sigma": 150.0, "zone": {"next_30": 5.25, "next_60": 8.25, "average_30": 3.11, "rule": 1}}
+    unstamped = {**_rec(12, 30, 7700.0, by), "sigma": 150.0}
+    state = write_state(tmp_path, DAY, _rows(sigma_after_noon=150.0), climb)
+    out = state / "spx_jev"
+    (out / "hour").mkdir(parents=True)
+    (out / "hour" / f"{DAY}.jsonl").write_text(json.dumps(stamped) + "\n" + json.dumps(unstamped) + "\n")
+    run(state, out, ALLOWED)
+    first, second = [json.loads(line) for line in (out / "grades.jsonl").read_text().splitlines()]
+    assert first["next_30"]["realized_points"] == 15.0 and first["band"] == "up" and first["zone"] == {"next_30": 5.25, "next_60": 8.25}
+    assert second["horizons"] == [] and second["skipped"]["next_30"].startswith("no flat zone: fewer than 10 prior full sessions")
 
 
 def test_the_anchor_is_what_the_read_could_know():
@@ -192,8 +193,8 @@ def test_the_anchor_is_what_the_read_could_know():
     late = [labeller_row(make_row(at(9, 45), 7700.0, sigma=80.0, sigma_anchor=90.0, sigma_live=77.0))]
     assert read_anchor(late, flat_bars(390), None, at(12, 0).isoformat()) == SigmaRuler(77.0, "live")   # the guard: 09:40
     assert read_anchor(rows, flat_bars(390), None, at(9, 30).isoformat()) is None                         # no row yet
-    g = grade_in(_rec(11, 0, 7700.0, _by({"flat": 1.0}, "flat")), flat_bars(390))
-    assert g["horizons"] == [] and g["skipped"]["next_30"].startswith("no morning anchor")              # closed for good
+    g = grade_in(_rec(11, 0, 7700.0, _by({"flat": 1.0}, "flat")), flat_bars(390), zones="the session has closed")
+    assert g["horizons"] == [] and g["skipped"]["next_30"] == "no flat zone: the session has closed"      # closed for good
 
 
 def test_the_vix_anchor_waits_for_the_settled_open():

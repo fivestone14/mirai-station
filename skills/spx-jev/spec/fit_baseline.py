@@ -5,8 +5,9 @@
 
 Every SPX session with a saved day of bars, through the last one before the trial (``--through``: the
 loop scores every later session against the file, so none of them may be in it), is replayed as the
-clock replays it and graded by the live grader, in the morning anchor each read could know with the
-day's market context (clock.replayed_reads, grade.read_anchor). The qualifying sessions (baseline.py)
+clock replays it and graded by the live grader, against the flat zones each read could have sized
+(clock.replayed_reads, flat_zone.Zones), the morning anchor it could know scaling its move so far
+(baseline.with_move). The qualifying sessions (baseline.py)
 are the ones fitted and validated: each is scored by tables fitted on all the others (leave one day
 out), and the day-mean gain of E_state over E_clock decides the reference per horizon (E_state when
 the mean gain is above zero, else E_clock). The same validation on every session, qualifying or not,
@@ -29,6 +30,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from spx_jev.baseline import BASELINE_FILE, MIN_ROWS, fit, leave_one_day_out, rule_hash, with_move  # noqa: E402
 from spx_jev.clock import _rule_key, replayed_reads  # noqa: E402
+from spx_jev.flat_zone import Zones  # noqa: E402
 from spx_jev.lane import LIVE  # noqa: E402
 from spx_jev.row_adapter import labeller_row  # noqa: E402
 from spx_jev.state_builder import (DEFAULT_STATE_DIR, MIN_BARS_FOR_A_SESSION, ROWS_SUBDIR, bar_days, load_bars,  # noqa: E402
@@ -89,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         if s is None or not s[1]:
             continue
         bars, rows, raw = s
-        every[day] = with_move(replayed_reads(bars, rows, LIVE.horizons, load_market_context(state_dir, day)), float(bars[0]["open"]))
+        every[day] = with_move(replayed_reads(bars, rows, Zones(state_dir, day, LIVE), load_market_context(state_dir, day)), float(bars[0]["open"]))
         if qualifies(rows, raw):
             qualifying[day] = every[day]
     lodo = leave_one_day_out(qualifying, horizons)
@@ -104,8 +106,8 @@ def main(argv: list[str] | None = None) -> int:
                   for h in horizons}
     reference = {h: "state" if validation[h]["qualifying"]["state_over_clock"].get("mean_gain_nats", 0) > 0 else "clock" for h in horizons}
     doc = {"name": "spx-jev price-only baseline, frozen", "version": VERSION, "fitted_on": datetime.now().astimezone().date().isoformat(),
-           "rule": "E_clock and E_state counted on the qualifying sessions' replayed reads, graded by the live grader in the morning "
-                   "anchor each read could know; the reference per horizon is E_state when its leave-one-day-out day-mean gain over "
+           "rule": "E_clock and E_state counted on the qualifying sessions' replayed reads, graded by the live grader against the flat "
+                   "zones each read could have sized; the reference per horizon is E_state when its leave-one-day-out day-mean gain over "
                    "E_clock is above zero, else E_clock",
            "clock_rule": json.loads(_rule_key(LIVE.horizons)), "through": args.through, "sessions": sorted(qualifying), "sessions_on_disk": sorted(every), **fit(qualifying, horizons),
            "reference": reference, "validation": validation}

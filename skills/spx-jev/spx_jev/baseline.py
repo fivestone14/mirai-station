@@ -41,9 +41,9 @@ TERCILES = ("low", "middle", "high")
 
 def move_so_far(spot: float, day_open: float, sigma: float, now: datetime) -> float | None:
     """How far price stands from the day's open, in sigma scaled to the share of the session gone, so a
-    quarter-sigma at 10:00 and a half-sigma at 13:00 read alike. None before the open."""
+    quarter-sigma at 10:00 and a half-sigma at 13:00 read alike. None before the open, or without a sigma."""
     gone = (now - session_open(now)).total_seconds() / 60.0 / session_minutes(now)
-    if gone <= 0 or sigma <= 0:
+    if gone <= 0 or not sigma or sigma <= 0:
         return None
     return abs(spot - day_open) / (sigma * math.sqrt(min(gone, 1.0)))
 

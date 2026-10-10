@@ -149,11 +149,24 @@ archive there too, under `archive/`.
 - **Every cut from SPX.** Each measured cut sits at the same percentile of
   the same measurement on SPX history as SNDK's cut sits on SNDK's history, so
   it keeps SNDK's meaning without SNDK's scale; SPX's intraday moves are small
-  against its sigma, so most land near half of SNDK's (the 30-minute flat band
-  is 0.07 sigma). The sums' base rates are counted on SPX. `python3
-  spec/measure_cuts.py` re-measures, read only. These cuts grade the sums and
-  word the facts only the phone shows; nothing JEV is asked sizes a market
-  measure on one (the owner's rule, 2026-09-27).
+  against its sigma, so most land near half of SNDK's. The sums' base rates
+  are counted on SPX. `python3 spec/measure_cuts.py` re-measures, read only.
+  These cuts word the facts only the phone shows; nothing JEV is asked sizes a
+  market measure on one (the owner's rule, 2026-09-27).
+- **The flat zone, sized at every read (`flat_zone.py`).** How many index
+  points either way count as flat for a box is not a share of the morning
+  sigma anchor (that ruler mixed clocks, came from one unchecked 09:30
+  reading and made 31% of opening half hours flat against 71% at 15:00): it
+  is sized at each read from the day's own tape and the VIX alone, never the
+  options reading. A box's zone is a multiplier times its random-walk spread
+  (shrunk for an average-price box) times today's typical 1-minute move,
+  which blends the VIX's view with the minutes finished so far, each divided
+  by the clock shape at its minute, over the clock shape of the coming window;
+  the multiplier is refit each day from the prior 20 sessions so the box
+  lands flat at its target (the end-price sums' base rates, the call's 52.5%),
+  never below a floor of 2 points (1.25 on the opening lane). The read is told
+  the number, stamps it on its sum record, and is graded against exactly it;
+  a read from before the rule is sized again from what was on file at it.
 - **Thresholds in the words, from one number.** The question docs name their
   thresholds in braces ("{same_clock_min_sessions}"); a name the code does not define
   stops the load, and a test fails on any number typed into a doc.
@@ -234,14 +247,15 @@ archive there too, under `archive/`.
 4. The sums, JEV (`questions/spx_hour.json`), two requests sent at once on
    the same sentences. The call: where the average price over the next 30
    minutes sits against the price now, every minute counting equally, up,
-   down or flat within an edge JEV is given in points (the 30-minute flat
-   band narrowed by `integral.factor`, rounded as told, and graded against
-   that same edge), with the read's price and the window's real length (28
-   minutes on the 15:32 read); no unsure. A reply that cannot be read is the
-   call's error and never costs the read. Beside it, the end-price sums,
-   asked exactly as before: where price is in 30 minutes (flat within 0.07 sigma, 55% of
-   reads on SPX) and in 60 (flat within 0.11 sigma, 59%), up, down, flat or
-   unsure.
+   down or flat within an edge JEV is given in points (the call's own flat
+   zone, `flat_zone.py`, rounded as told, and graded against that same
+   edge), with the read's price and the window's real length (28 minutes on
+   the 15:32 read); no unsure. A reply that cannot be read is the call's
+   error and never costs the read. Beside it, the end-price sums, asked
+   exactly as before: where price is in 30 minutes and in 60, up, down, flat
+   or unsure, each flat within its own zone in points for the read (filled
+   into its text and named in the context), sized so that on the prior
+   sessions it lands flat at its base rate (55% and 59% of reads on SPX).
 4b. The blend, code (`clock.py`): each end-price sum mixed half and half with
    how often the same horizon ended up, down or flat at this time of day over
    the last 20 SPX sessions, and the call with how often the average over its
@@ -253,7 +267,7 @@ archive there too, under `archive/`.
    same outcome. The grades go to the question weights' `learn`: on the live
    lane the learning loop (`pool.py`) applies every newly sealed session.
    Beside it (`integral.py`), each graded window is graded again on the
-   average price over it against the flat band narrowed to fit an average,
+   average price over it against the call's zone, or the box's narrowed to fit an average,
    its direction deciding: the call's pick where the average-price sum
    answered, with the Brier and log loss of its odds, else the end-price
    sum's, an unsure one passed. That grade is the phone's verdict, and the

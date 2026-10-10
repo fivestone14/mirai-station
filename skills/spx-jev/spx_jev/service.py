@@ -64,7 +64,7 @@ from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import archive, ask, integral, judgment, pool
+from . import archive, ask, flat_zone, integral, judgment, pool
 from .ask import build_requests, confidence, load_questions, pick, plain_error, retired, send, send_all
 from .baseline import Baseline
 from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, lost_today, mark_asleep,
@@ -73,12 +73,11 @@ from .clock import blend as clock_blend, integral_odds as clock_integral_odds, o
 from .cuts import CUT_OVER_DAY
 from .events import learn_exclude, tag as event_tag
 from .expiry import calendar_of
-from .grade import (INTEGRAL_NAME, average_alone, average_call, horizon_start, live_options, mark_at, read_anchor, run as grade_run,
-                    told_edge)
-from .hour import (CUT_OVER_UNITS, answer_sentences, average_request, average_summary, average_window, band_of, cut_over_sentences, hour_request,
+from .grade import INTEGRAL_NAME, average_alone, average_call, horizon_start, live_options, mark_at, run as grade_run
+from .hour import (CUT_OVER_UNITS, answer_sentences, average_request, average_summary, average_window, cut_over_sentences, hour_request,
                    hour_summary, load_hour_doc, named_levels)
 from .labels.registry import build_labels
-from .lane import LANES, LANES_BY_KEY, LIVE, RECORD, Lane
+from .lane import LANES, LANES_BY_KEY, LIVE, Lane
 from .mirai_prediction.code_features import COLUMN_PREFIX
 from .schedule import not_due, read_slot
 from .sessions import session_close, session_open
@@ -242,17 +241,17 @@ def prediction_switched_off() -> bool:
     return os.environ.get(PREDICTION_DISABLE_ENV) == "1"
 
 
-def sum_the_hour(doc: dict, hour_doc: dict, answered: dict[str, dict], weights: QuestionWeights,
+def sum_the_hour(doc: dict, hour_doc: dict, answered: dict[str, dict], weights: QuestionWeights, zones: dict[str, float],
                  fresh: dict[str, dict] | None = None, missing: list[str] | None = None,
                  lane: Lane = LIVE, unit: dict | None = None, deadline: float | None = None,
                  window: dict | str | None = None, day: str | None = None,
                  code_answers: dict[str, str | None] | None = None) -> tuple[dict, dict | None, dict | None, dict | None]:
-    """Steps 3 and 4: sentences from the answers, the lane's end-price sums over them in one request and its
-    average-price sum in another over ``window`` (box_window; a reason instead, and it is not asked), both sent at
-    once and retried until ``deadline`` (ask.send). Returns the hour record (what was used, what was fresh, what
-    was left out or missing, both requests), JEV's summary with the average-price sum's under ``average``, and its
-    two replies untouched, for the archive. A lane on the tape needs its ``unit`` to price the bands: without one
-    there is no sum to ask. On a lane that learns the loop (the live lane) from the cut-over (``day`` on or after
+    """Steps 3 and 4: sentences from the answers, the lane's end-price sums over them in one request, each against its
+    flat zone in ``zones`` (read_zones), and its average-price sum in another over ``window`` (box_window; a reason
+    instead, and it is not asked), both sent at once and retried until ``deadline`` (ask.send). Returns the hour record
+    (what was used, what was fresh, what was left out or missing, both requests), JEV's summary with the average-price
+    sum's under ``average``, and its two replies untouched, for the archive. A lane on the tape needs its ``unit``, the
+    stretch labels' ruler: without one the bars have stopped and there is no sum to ask. On a lane that learns the loop (the live lane) from the cut-over (``day`` on or after
     CUT_OVER_DAY) the sentences are the judgment questions' fresh answers and the read's ``code_answers`` instead
     (hour.cut_over_sentences), the units line says so, and the sums are asked even over no sentence at all."""
     cut_over = lane.pool and day is not None and day >= CUT_OVER_DAY
@@ -269,9 +268,9 @@ def sum_the_hour(doc: dict, hour_doc: dict, answered: dict[str, dict], weights: 
     if not sentences and not cut_over:
         return {**base, "request": None}, None, None, None
     if lane.bar_clock and not unit:
-        return {**base, "request": None, "no_sum": "no tape unit this read: the bars have stopped, so the bands cannot be priced"}, None, None, None
+        return {**base, "request": None, "no_sum": "no tape unit this read: the bars have stopped"}, None, None, None
     context = {"units": CUT_OVER_UNITS} if cut_over else None
-    req = hour_request(sentences, hour_doc, context, lane=lane, ruler=unit)
+    req = hour_request(sentences, zones, hour_doc, context, lane=lane, ruler=unit)
     avg_req = average_request(sentences, window, hour_doc, context, lane=lane) if lane.average and isinstance(window, dict) else None
     replies = send_sums([req, avg_req], send, deadline)
     reply, avg_reply = replies[req["id"]], replies.get("average")
@@ -380,62 +379,47 @@ def day_integral(out_dir: Path, day: str, lane: Lane = LIVE, horizon: str | None
     return out
 
 
-def horizon_flat_points(row_ts: str, band: dict | None, scene: Scene, lane: Lane, horizon: str) -> float | None:
-    """The flat band in points the grader sets the lane's box ``horizon`` against for the read at ``row_ts``: the read's
-    own ``band`` on a RECORD box, else the morning anchor the read could know (grade.read_anchor) times the box's band;
-    None without one."""
-    flat = lane.horizons[horizon][1]
-    if flat == RECORD:
-        return (band or {}).get("flat_points")
-    anchor = read_anchor(scene.rows_today, scene.bars, scene.market, row_ts)
-    return flat * anchor.points if anchor else None
+def read_zones(state_dir: Path, scene: Scene, lane: Lane = LIVE) -> dict[str, float] | str:
+    """Every sum's flat zone in points for this read (flat_zone.Zones.at), from the bars finished by it: what JEV is told,
+    the record stamps and the grader reads; why there is none when the read cannot be sized. A failure sizing it must
+    never cost the read its questions: the reason stands in for the zones and no sum is asked."""
+    try:
+        return flat_zone.Zones(state_dir, scene.day, lane).at(horizon_start(scene.row["ts"], lane), scene.bars)
+    except Exception as e:
+        log(f"the flat zone failed this read: {type(e).__name__}: {e}")
+        return f"the flat zone failed this read: {type(e).__name__}: {e}"
 
 
-def box_flat_points(row_ts: str, band: dict | None, scene: Scene, lane: Lane = LIVE) -> float | None:
-    """The flat band in points the grader sets the lane's primary box against (horizon_flat_points)."""
-    return horizon_flat_points(row_ts, band, scene, lane, lane.primary)
-
-
-def with_flat_points(hour: dict, row_ts: str, band: dict | None, scene: Scene, lane: Lane = LIVE) -> dict:
-    """The hour with each end-price sum's flat band in points beside it (``by[h].flat_points``, horizon_flat_points), the
-    phone's ± at the end price; a sum without one is left as it was. A lane graded from the settled open measures its
-    boxes in another ruler, so its sums are left as they were."""
+def with_flat_points(hour: dict, zones: dict[str, float], lane: Lane = LIVE) -> dict:
+    """The hour with each end-price sum's flat zone in points beside it (``by[h].flat_points``), the phone's ± at the end
+    price; a sum that is not a box is left as it was."""
     by = hour.get("by")
-    if lane.graded_from_settled_open or not isinstance(by, dict):
+    if not isinstance(by, dict):
         return hour
-    out = {}
-    for horizon, sum_doc in by.items():
-        points = horizon_flat_points(row_ts, band, scene, lane, horizon) if horizon in lane.horizons and isinstance(sum_doc, dict) else None
-        out[horizon] = {**sum_doc, "flat_points": round(float(points), 2)} if points else sum_doc
+    out = {h: {**s, "flat_points": zones[h]} if h in zones and isinstance(s, dict) else s for h, s in by.items()}
     return {**hour, "by": out}
 
 
-def box_window(row_ts: str, band: dict | None, scene: Scene, lane: Lane = LIVE) -> dict | str:
+def box_window(row_ts: str, zones: dict[str, float], price, lane: Lane = LIVE) -> dict | str:
     """The window the average-price sum of the read at ``row_ts`` forecasts (hour.average_window): the primary's, from
-    the read's minute to its mark (grade.mark_at, the closing bar for a read that ends just past the close), against
-    the flat band the grader will use (box_flat_points), with the read's price. Why there is none when it cannot be
-    graded or priced."""
+    the read's minute to its mark (grade.mark_at, the closing bar for a read that ends just past the close), the box's
+    zone and the sum's own, with the read's ``price``. Why there is none when it can never be graded."""
     t0, t1 = horizon_start(row_ts, lane), mark_at(row_ts, lane.horizons[lane.primary][0], lane)
     if t1 is None:
         return "its window ends past the close, so it can never be graded"
-    points = box_flat_points(row_ts, band, scene, lane)
-    if not points:
-        return "no flat band to price its edge in points this read"
-    return average_window(int((t1 - t0).total_seconds() // 60), float(points), scene.row.get("spot"))
+    return average_window(int((t1 - t0).total_seconds() // 60), zones[lane.primary], zones[lane.average], price)
 
 
 def open_grade(rec: dict, scene: Scene, lane: Lane = LIVE) -> dict | None:
     """The average so far (integral.so_far) of an open call of the lane's primary sum, from the bars the card is
-    built on, against the flat band the grader will use (box_flat_points), or the edge its average-price call was told
-    (grade.told_edge), as its grade will be. None before its first minute has finished,
-    and on a lane graded from the settled open, whose window the card's bars never reach."""
-    if lane.graded_from_settled_open:
+    built on, against the zones its record stamped (flat_zone.stamped: the box's, and the edge its average-price call
+    was told), as its grade will be. None before its first minute has finished, without a stamp, and on a lane graded
+    from the settled open, whose window the card's bars never reach."""
+    zones = flat_zone.stamped(rec)
+    if lane.graded_from_settled_open or zones is None or not isinstance(rec.get("spot"), (int, float)):
         return None
-    points = box_flat_points(rec["row_ts"], rec.get("band"), scene, lane)
-    if not points or not isinstance(rec.get("spot"), (int, float)):
-        return None
-    return integral.so_far(scene.bars, horizon_start(rec["row_ts"], lane), lane.horizons[lane.primary][0], float(rec["spot"]), float(points),
-                           told_edge(average_call(rec, lane.primary, lane)))
+    return integral.so_far(scene.bars, horizon_start(rec["row_ts"], lane), lane.horizons[lane.primary][0], float(rec["spot"]),
+                           float(zones[lane.primary]), float(zones[lane.average]))
 
 
 def end_price_verdict(end_price: dict, pick) -> str:
@@ -585,8 +569,8 @@ def tally_words(tally: dict) -> str:
 
 def _stamp(lane: Lane, unit: dict | None, band: dict | None = None) -> dict:
     """What a tagged lane writes on its record, its hour record and its card: the lane, the unit and,
-    when the unit priced the sum's bands (hour.band_of), those bands in points, so the grader, the
-    phone and the reader all see the ones JEV was told. The live lane writes nothing new."""
+    on the lane with a five-way sum, its bands in points (flat_zone.band), so the grader, the phone and
+    the reader all see the ones JEV was told. The live lane writes nothing new."""
     if not lane.tag:
         return {}
     return {"lane": lane.tag, "ruler": unit, **({"band": band} if band else {})}
@@ -717,8 +701,10 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         # the stretch labels measure from the lane's previous read today, stamped on its own records
         scene.last_read = last_read_of(out_dir, scene.row["ts"][:10], scene.now)
     unit = scene.unit
-    # the sum's bands for this read, in points from the unit: stamped on everything the lane writes
-    band = band_of(unit) if unit else None
+    # every sum's flat zone for this read, in points: what JEV is told and the sum record stamps for the grader
+    zones = read_zones(state_dir, scene, lane)
+    # the five-way sum's bands for this read: stamped on everything the lane writes
+    band = flat_zone.band(zones, lane) if lane.bar_clock and isinstance(zones, dict) else None
     if day is None and do_send and scene.row["ts"][:10] != today_et():
         # the scanner has no row for today yet: sending on yesterday's last row would hold every
         # answer against a stale clock and file the read under the wrong day. Say so and stop.
@@ -820,9 +806,13 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         missing = [qid for g in skipped.values() for qid, why in g.items()
                    if qid in live_ids and str(why).startswith("missing") and qid not in held]
         hour_doc = load_hour_doc(lane=lane)
-        window = box_window(scene.row["ts"], band, scene, lane) if lane.average else None
-        hour_rec, hour, hour_reply, average_reply = sum_the_hour(doc, hour_doc, answered, QuestionWeights.load(out_dir), fresh, missing, lane,
-                                                                 unit, t0 + SEND_READ_S, window, day_name, code_answers)
+        if isinstance(zones, dict):
+            window = box_window(scene.row["ts"], zones, scene.row.get("spot"), lane) if lane.average else None
+            hour_rec, hour, hour_reply, average_reply = sum_the_hour(doc, hour_doc, answered, QuestionWeights.load(out_dir), zones, fresh, missing,
+                                                                     lane, unit, t0 + SEND_READ_S, window, day_name, code_answers)
+        else:
+            log(f"no flat zone this read, so no sum was asked: {zones}")
+            hour_rec = {"request": None, "no_sum": f"no flat zone this read: {zones}"}
         send_seconds = round(_clock.monotonic() - t0, 3)      # JEV's round trips only; the blend below is code
         if hour is not None and lane.clock_blend:
             # the end-price sums the grader scores are JEV's sum blended half and half with
@@ -865,10 +855,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
             if (hour.get("average") or {}).get("error"):
                 log(f"the average-price sum got no answer: {hour['average']['error']}")
             hour = plain_errors(hour)
-            try:
-                hour = with_flat_points(hour, scene.row["ts"], band, scene, lane)
-            except Exception as e:  # the phone's ± must never cost the read its sums
-                log(f"the end-price flat bands were left off this run: {type(e).__name__}: {e}")
+            hour = with_flat_points(hour, zones, lane)
         for qid, ans in fresh.items():
             # how far this answer moved from the last fresh one on the same day: past CHANGE_CUT the
             # question is in motion. Yesterday's closing answer is not a move, it is a new day.
@@ -889,10 +876,11 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
             market_context=scene.market.at(now) if scene.market else None, event=event, ruler=unit, band=band)
 
     def hour_line(hour_doc_now: dict | None) -> dict:
-        # the sum record step 6 grades: spot and sigma are needed to read the bars against it; a lane on the tape
-        # stores the bands JEV was told, in points, so the grader reads the same ones
+        # the sum record step 6 grades: spot and sigma are needed to read the bars against it, and the zones JEV was
+        # told, in points, so the grader reads the same ones
         return {"row_ts": scene.row["ts"], "spot": scene.row.get("spot"), "sigma": scene.sigma, "event": event, **learn,
-                **_stamp(lane, unit, band), **(hour_doc_now or {}), **hour_rec}
+                **_stamp(lane, unit, band), **({"zone": flat_zone.stamp(zones)} if isinstance(zones, dict) else {}),
+                **(hour_doc_now or {}), **hour_rec}
 
     forecast_now_done = False
     prediction_off = prediction_switched_off()                       # the kill switch: the call stays on its blend

@@ -10,38 +10,38 @@ The odds
     For each of up to 20 prior SPX sessions, a read is replayed every 10 minutes from 09:32 (the same
     minutes past the hour the service reads at, and every 10 minutes between) on the newest diary
     row at that minute, and each read is handed to the grader's own ``grade_one``: the same spot,
-    morning anchor (grade.read_anchor), flat bands (lane.LIVE.horizons, from cuts.py), close, grace
-    and bar-gap rules, so the odds and the graded sums can never be scored two ways. The outcomes are
+    flat zones (flat_zone.py, sized as the read could have known them), close, grace and bar-gap
+    rules, so the odds and the graded sums can never be scored two ways. The outcomes are
     counted per phase of the day and shrunk toward the whole day's shares, so a thin phase cannot
     swing. A session counts only when at least MIN_SCORED_READS of its replayed reads were graded at
     30 minutes; a day the scanner barely covered is left out rather than counted as a full session.
 
     Point in time: prior sessions only, never today. A past session's counts are kept in
     ``state/spx_jev/clock_days.json`` with the number of bars and the size and time of the diary and
-    market-context files they were counted from, and are counted again only if any of them changes,
-    or if the rule itself (bands, phases, grid, version) changes. Fewer than MIN_SESSIONS counted sessions, or a read on an
+    market-context files they were counted from and the names of the sessions before it whose bars size its
+    zones, and are counted again only if any of them changes, or if the rule itself (the zone's rule, the
+    targets, phases, grid, version) changes. Fewer than MIN_SESSIONS counted sessions, or a read on an
     NYSE half day (the odds come from full sessions), and the blend is left out, and the card says why.
 
 The settled-open odds (the premarket lane)
     Every premarket sum forecasts the same window, from the settled open to 10 and 30 minutes on
     (grade.horizon_start), so its clock has one phase: on each of up to 20 prior sessions, one read
-    at the settled open is handed to the grader's own ``grade_one`` on the premarket lane, measured
-    in that session's own morning anchor as its grading could know it (grade.read_anchor at the last
-    mark). A session with no anchor, or no bar at the settled open or a mark, has no outcome; a half
-    day's morning is a morning like any other. The shares are shrunk toward even thirds by
+    at the settled open is handed to the grader's own ``grade_one`` on the premarket lane, against the
+    zones that session's own premarket read could have sized. A session with no zone, or no bar at
+    the settled open or a mark, has no outcome; a half day's morning is a morning like any other. The
+    shares are shrunk toward even thirds by
     PRIOR_SESSIONS, so no outcome is ever given nothing. Fewer than MIN_SESSIONS sessions with an
     outcome and they are left out. The premarket lane does not blend them (lane.PREMARKET.clock_blend):
     replayed on the 47 saved sessions of July to September 2026 with 10 counted before them, they
     forecast the window worse than even thirds out of sample (mean log loss 1.22 against 1.10 at 10
-    minutes, 1.14 against 1.10 at 30), the outcomes falling about a third each way. Both the odds and
-    that comparison are banded in each session's morning anchor, while the premarket calls are graded
-    in the pre-open ruler their read stamped (grade.stamped_ruler); before the odds are ever blended,
-    band each session in the pre-open ruler its read would have stamped and measure them again.
+    minutes, 1.14 against 1.10 at 30), the outcomes falling about a third each way; that comparison was
+    made in each session's morning anchor, before the flat zone: before the odds are ever blended,
+    measure them again.
 
 The average-price odds (the live lane's call)
     The average-price sum (lane.LIVE.average) forecasts the 30-minute box on the average price over its
     window, so its odds are counted on that label alone, never on the end price's: the same prior
-    sessions, the same replayed reads (the grid above) and the same anchor, each read graded by the
+    sessions, the same replayed reads (the grid above) and the same zones, each read graded by the
     grader's own grade_one and then integral_line, the average-price grade's own path, bad-tick guard
     included. A read the average cannot grade (bars missing) and a stale read are not counted. The
     counts are shrunk per phase as the end-price ones are, need the same MIN_SCORED_READS per session
@@ -64,13 +64,12 @@ import tempfile
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
-from . import integral
+from . import flat_zone, integral
 from .cuts import BAD_TICK_PCT, INTEGRAL_MISSING_BARS_MAX, NIGHT_RANK_COUNT, SAME_CLOCK_MIN_SESSIONS, STALE_READ_MIN
-from .grade import grade_one, integral_line, mark_at, read_anchor, settled_open_at
+from .grade import grade_one, horizon_start, integral_line, mark_at, read_anchor, settled_open_at
 from .lane import LIVE, PREMARKET, Lane
 from .sessions import SESSION_CLOSE, session_close
-from .state_builder import (CONTEXT_SUBDIR, MAX_BASELINE_SESSIONS, ROWS_SUBDIR, MarketContext, bar_days, load_market_context, load_rows,
-                            parse_ts, prior_bar_days)
+from .state_builder import CONTEXT_SUBDIR, ROWS_SUBDIR, MarketContext, bar_days, load_market_context, load_rows, parse_ts, prior_bar_days
 
 JEV_SHARE = 0.5          # declared, not fitted
 MIN_SESSIONS = 10        # fewer counted prior sessions than this and the odds are too thin to blend
@@ -87,6 +86,7 @@ RULE_VERSION = 2         # bump when the counting changes, so every stored day i
 INTEGRAL_CACHE_NAME = "clock_integral_days.json"
 INTEGRAL_RULE_VERSION = 1   # the average-price counts' own: bump when they change; the end-price counts never move with it
 PRIOR_SESSIONS = 1.0     # the settled-open odds' pull toward even thirds, in sessions
+ZONE_SESSIONS_BACK = 2 * NIGHT_RANK_COUNT   # a day's zones read the sessions before it, each sized from the sessions before it
 
 # Phases of the day, by the read's clock (minute of day, from and before).
 PHASES = (
@@ -111,10 +111,11 @@ def phase_words(name: str) -> str:
 
 
 def _rule_key(hz: dict[str, tuple[int, float]]) -> str:
-    """The counts depend on the bands, the phases, the read grid and the counting code: a change to
+    """The counts depend on the zones' rule and targets, the phases, the read grid and the counting code: a change to
     any of them invalidates the stored days rather than mixing two rules."""
-    return json.dumps({"v": RULE_VERSION, "h": {q: list(v) for q, v in sorted(hz.items())}, "p": [p[:3] for p in PHASES],
-                       "step": STEP_MIN, "first": FIRST_READ.isoformat(), "row_age": ROW_MAX_AGE_MIN}, sort_keys=True)
+    return json.dumps({"v": RULE_VERSION, "zone": flat_zone.RULE_VERSION, "h": {q: list(v) for q, v in sorted(hz.items())},
+                       "p": [p[:3] for p in PHASES], "step": STEP_MIN, "first": FIRST_READ.isoformat(), "row_age": ROW_MAX_AGE_MIN},
+                      sort_keys=True)
 
 
 def _grid(bars: list[dict], rows: list[dict]):
@@ -140,49 +141,51 @@ def _spot_rows(rows: list[dict]) -> list[dict]:
     return [r for r in rows if isinstance(r.get("spot"), (int, float))]
 
 
-def replayed_reads(bars: list[dict], rows: list[dict], hz: dict[str, tuple[int, float]],
-                   market: MarketContext | None = None) -> list[dict]:
+def replayed_reads(bars: list[dict], rows: list[dict], model: flat_zone.Zones, market: MarketContext | None = None) -> list[dict]:
     """Every replayed read of one finished session, oldest first: ``{"row_ts", "phase", "spot", "sigma",
     "bands": {qid: outcome}}``, each graded by the grader's own ``grade_one`` on the newest diary row
-    at that minute, in the morning anchor that read could know (``sigma``); a horizon the grader could
-    not grade has no band, and a read with no anchor is no read."""
-    rows, out = _spot_rows(rows), []
+    at that minute, against the zones that read could have sized (``model``, the session's); a horizon
+    the grader could not grade has no band, and a read with no zone is no read. ``sigma`` is the morning
+    anchor the read could know, the scale the baseline's move so far is in (baseline.with_move)."""
+    hz, rows, out = model.lane.horizons, _spot_rows(rows), []
     for row, stamp in _grid(bars, rows):
-        anchor = read_anchor(rows, bars, market, row["ts"])
-        if anchor is not None:
+        zones = model.at(horizon_start(row["ts"]), bars)
+        if isinstance(zones, dict):
             rec = {"row_ts": row["ts"], "spot": row["spot"], "by": {q: {"pick": "flat", "probabilities": {}} for q in hz}}
-            g = grade_one(rec, bars, anchor=anchor) or {}
+            g = grade_one(rec, bars, zones=zones) or {}
             bands = {q: (g.get(q) or {}).get("band") for q in hz}
+            anchor = read_anchor(rows, bars, market, row["ts"])
             out.append({"row_ts": row["ts"], "phase": phase_of(stamp), "spot": float(row["spot"]),
-                        "sigma": anchor.points, "bands": {q: b for q, b in bands.items() if b in OUTCOMES}})
+                        "sigma": anchor.points if anchor else None, "bands": {q: b for q, b in bands.items() if b in OUTCOMES}})
     return out
 
 
-def integral_reads(bars: list[dict], rows: list[dict], prior: dict[str, list[dict]], market: MarketContext | None = None,
-                   lane: Lane = LIVE) -> list[dict]:
+def integral_reads(bars: list[dict], rows: list[dict], prior: dict[str, list[dict]], model: flat_zone.Zones) -> list[dict]:
     """Every replayed read of one finished session graded on the average price over the lane's primary box, oldest
     first: ``{"row_ts", "phase", "label"}``, each read handed to grade_one and then to integral_line, as the grader
-    grades a call, with ``prior`` the sessions before it (newest first) that rank its ticks. A read the average could
-    not grade, or whose spot is stale, is no read."""
-    box, rows, out = lane.primary, _spot_rows(rows), []
+    grades a call, against the zones the read could have sized (``model``), with ``prior`` the sessions before it
+    (newest first) that rank its ticks. A read the average could not grade, or whose spot is stale, is no read."""
+    lane, rows, out = model.lane, _spot_rows(rows), []
+    box = lane.primary
     for row, stamp in _grid(bars, rows):
-        anchor = read_anchor(rows, bars, market, row["ts"])
-        if anchor is None:
+        zones = model.at(horizon_start(row["ts"], lane), bars)
+        if not isinstance(zones, dict):
             continue
         rec = {"row_ts": row["ts"], "spot": row["spot"], "by": {box: {"pick": "flat", "probabilities": {}}}}
-        g = grade_one(rec, bars, anchor=anchor, lane=lane) or {}
+        g = grade_one(rec, bars, zones=zones, lane=lane) or {}
         if box not in (g.get("horizons") or []):
             continue
-        line = integral_line(g, box, rec, bars, prior, lane)
+        line = integral_line(g, box, rec, bars, prior, lane, zones)
         if line.get("graded") and not line.get("stale_read"):
             out.append({"row_ts": row["ts"], "phase": phase_of(stamp), "label": line["label"]})
     return out
 
 
-def day_counts(bars: list[dict], rows: list[dict], hz: dict[str, tuple[int, float]], market: MarketContext | None = None) -> dict:
+def day_counts(bars: list[dict], rows: list[dict], model: flat_zone.Zones, market: MarketContext | None = None) -> dict:
     """``{qid: {phase: {up, down, flat}}}`` for one finished session: every replayed read's outcome."""
+    hz = model.lane.horizons
     out = {qid: {p[0]: {o: 0 for o in OUTCOMES} for p in PHASES} for qid in hz}
-    for r in replayed_reads(bars, rows, hz, market):
+    for r in replayed_reads(bars, rows, model, market):
         for q, band in r["bands"].items():
             out[q][r["phase"]][band] += 1
     return out
@@ -255,17 +258,20 @@ def odds(state_dir: Path, out_dir: Path, prior_bars: dict[str, list[dict]], now:
     key = _rule_key(hz)
     cache_path = out_dir / CACHE_NAME
     cache = _load_cache(cache_path, key)
+    context = Path(state_dir) / CONTEXT_SUBDIR
+    on_file = bar_days(state_dir)
     changed = False
     for d in days:
-        # a stored day is trusted only while its bars, its diary file and its market-context files (the
-        # VIX an estimated anchor falls back on) are the ones it was counted from
-        context = Path(state_dir) / CONTEXT_SUBDIR
+        # a stored day is trusted only while its bars, its diary file, its market-context files (the VIX) and the
+        # sessions before it that size its zones are the ones it was counted from
         seen = {"n_bars": len(prior_bars[d]), "rows_file": _file_print(Path(state_dir) / ROWS_SUBDIR / f"{d}.jsonl"),
-                "context_files": [_file_print(context / f"{d}.jsonl"), _file_print(context / "bars" / f"{d}.jsonl")]}
+                "context_files": [_file_print(context / f"{d}.jsonl"), _file_print(context / "bars" / f"{d}.jsonl")],
+                "before": [x for x in on_file if x < d][-ZONE_SESSIONS_BACK:]}
         entry = cache.get(d)
         if entry is not None and all(entry.get(k) == v for k, v in seen.items()) and "counts" in entry:
             continue
-        cache[d] = {**seen, "counts": day_counts(prior_bars[d], load_rows(state_dir, d), hz, load_market_context(state_dir, d))}
+        model = flat_zone.Zones(state_dir, d, LIVE)
+        cache[d] = {**seen, "counts": day_counts(prior_bars[d], load_rows(state_dir, d), model, load_market_context(state_dir, d))}
         changed = True
     if changed:
         _save_cache(cache_path, key, cache)
@@ -283,9 +289,10 @@ def odds(state_dir: Path, out_dir: Path, prior_bars: dict[str, list[dict]], now:
 
 
 def _integral_rule_key(lane: Lane) -> str:
-    """The average-price counts depend on their own counting, the grade's rule and guards, the box's band, the phases
-    and the read grid: a change to any of them counts every stored day again."""
-    return json.dumps({"v": INTEGRAL_RULE_VERSION, "grade": integral.RULE_VERSION, "box": [lane.primary, *lane.horizons[lane.primary]],
+    """The average-price counts depend on their own counting, the grade's rule and guards, the box and its call's target,
+    the phases and the read grid: a change to any of them counts every stored day again."""
+    return json.dumps({"v": INTEGRAL_RULE_VERSION, "grade": integral.RULE_VERSION, "zone": flat_zone.RULE_VERSION,
+                       "box": [lane.primary, *lane.horizons[lane.primary], lane.average, lane.average_flat_pct],
                        "guards": [INTEGRAL_MISSING_BARS_MAX, BAD_TICK_PCT, STALE_READ_MIN, NIGHT_RANK_COUNT, SAME_CLOCK_MIN_SESSIONS],
                        "p": [p[:3] for p in PHASES], "step": STEP_MIN, "first": FIRST_READ.isoformat(), "row_age": ROW_MAX_AGE_MIN},
                       sort_keys=True)
@@ -309,12 +316,12 @@ def integral_odds(state_dir: Path, out_dir: Path, prior_bars: dict[str, list[dic
     for d in days:
         seen = {"n_bars": len(prior_bars[d]), "rows_file": _file_print(Path(state_dir) / ROWS_SUBDIR / f"{d}.jsonl"),
                 "context_files": [_file_print(context / f"{d}.jsonl"), _file_print(context / "bars" / f"{d}.jsonl")],
-                "before": [x for x in on_file if x < d][-MAX_BASELINE_SESSIONS:]}
+                "before": [x for x in on_file if x < d][-ZONE_SESSIONS_BACK:]}
         entry = cache.get(d)
         if entry is not None and all(entry.get(k) == v for k, v in seen.items()) and "counts" in entry:
             continue
         counts = {p[0]: {o: 0 for o in OUTCOMES} for p in PHASES}
-        for r in integral_reads(prior_bars[d], load_rows(state_dir, d), prior_bar_days(state_dir, d), load_market_context(state_dir, d), lane):
+        for r in integral_reads(prior_bars[d], load_rows(state_dir, d), prior_bar_days(state_dir, d), flat_zone.Zones(state_dir, d, lane)):
             counts[r["phase"]][r["label"]] += 1
         cache[d] = {**seen, "counts": counts}
         changed = True
@@ -356,16 +363,14 @@ def premarket_odds(state_dir: Path, prior_bars: dict[str, list[dict]], now: date
     reason}``. ``prior_bars`` is the scene's, which holds only sessions before today."""
     days = sorted((d for d in prior_bars if d < now.date().isoformat()), reverse=True)[:MAX_SESSIONS]
     hz = PREMARKET.horizons
-    last = max(hz, key=lambda q: hz[q][0])
     counts = {qid: {o: 0 for o in OUTCOMES} for qid in hz}
     for d in days:
-        at = settled_open_at(date.fromisoformat(d)).isoformat()
-        mark = mark_at(at, hz[last][0], PREMARKET)
-        anchor = read_anchor(load_rows(state_dir, d), prior_bars[d], load_market_context(state_dir, d), mark.isoformat())
-        if anchor is None:
+        at = settled_open_at(date.fromisoformat(d))
+        zones = flat_zone.Zones(state_dir, d, PREMARKET).at(at, [])
+        if not isinstance(zones, dict):
             continue
-        rec = {"row_ts": at, "by": {q: {"pick": "flat", "probabilities": {}} for q in hz}}
-        g = grade_one(rec, prior_bars[d], final=True, lane=PREMARKET, anchor=anchor) or {}
+        rec = {"row_ts": at.isoformat(), "by": {q: {"pick": "flat", "probabilities": {}} for q in hz}}
+        g = grade_one(rec, prior_bars[d], final=True, lane=PREMARKET, zones=zones) or {}
         for q in hz:
             band = (g.get(q) or {}).get("band")
             if band in OUTCOMES:

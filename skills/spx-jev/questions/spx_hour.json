@@ -1,8 +1,8 @@
 {
  "name": "SPX, the sums: the average price over the next 30 minutes, and the end price 30 and 60 minutes ahead beside it",
- "version": "0.2.0",
- "date": "2026-09-28",
- "how_to_use": "Step 4 of the pipeline. The state is not the labels: it is the live answers from step 2, each rewritten by code as one sentence with how sure JEV was. Three questions ride on the same sentences in two requests sent at the same time. average_30, in a request of its own whose context line gives the flat edge in index points for this read, is the phone's call: where the average price over the next 30 minutes sits against the price now, every minute counting equally, graded on that average (spx_jev/integral.py) and blended half and half in code with how often the average over the same window ended up, down or flat at this time of day on the last 20 SPX sessions (spx_jev/clock.py, counted on the average price only). next_30 and next_60, the end-price sums, are asked in the other request exactly as before and are kept beside the call: next_30, blended with the end-price odds, is still the sum the question weights learn from, and next_60 is graded beside it so the two horizons can be compared. All are forecasts, graded by the bars, never acted on. The bands and base rates are measured on SPX (spx_jev/cuts.py, spec/cuts.json) and filled in when the doc is loaded; the average's flat edge is the 30-minute flat band narrowed by integral.factor, priced in points at each read.",
+ "version": "0.3.0",
+ "date": "2026-10-09",
+ "how_to_use": "Step 4 of the pipeline. The state is not the labels: it is the live answers from step 2, each rewritten by code as one sentence with how sure JEV was. Three questions ride on the same sentences in two requests sent at the same time. average_30, in a request of its own whose context line gives its flat zone in index points for this read, is the phone's call: where the average price over the next 30 minutes sits against the price now, every minute counting equally, graded on that average (spx_jev/integral.py) and blended half and half in code with how often the average over the same window ended up, down or flat at this time of day on the last 20 SPX sessions (spx_jev/clock.py, counted on the average price only). next_30 and next_60, the end-price sums, are asked in the other request exactly as before and are kept beside the call: next_30, blended with the end-price odds, is still the sum the question weights learn from, and next_60 is graded beside it so the two horizons can be compared. All are forecasts, graded by the bars, never acted on. Every flat zone is sized at each read from the day's own tape and the VIX, in index points (spx_jev/flat_zone.py), so that on the prior sessions the box lands flat at its base rate (spx_jev/cuts.py, spec/cuts.json); the number is filled into each question's text ({zone_points}) and named in the context, and the grader sets the box against the same number.",
  "primary": "next_30",
  "average": "average_30",
  "questions": {
@@ -10,11 +10,11 @@
    "type": "choice",
    "ask": "Where is price at the end of the next 30 minutes?",
    "why": "The end-price box the question weights and the learning loop learn from, kept beside the call; the sum, not another part.",
-   "instructions": "Read `answers`, one sentence per question JEV has already answered about this moment, each ending with how sure it was. Taken together, where is price at the end of the next 30 minutes? Answer up, down, flat or unsure.",
+   "instructions": "Read `context.flat_zone` for how many index points either way count as flat over each horizon this read, then `answers`, one sentence per question JEV has already answered about this moment, each ending with how sure it was. Taken together, where is price at the end of the next 30 minutes? Answer up, down, flat or unsure.",
    "criteria": {
-    "up": "price ends more than {next_30_flat_band_sigma} sigma above where it is now; on this index that happens about {next_30_up_pct}% of the time",
-    "down": "price ends more than {next_30_flat_band_sigma} sigma below where it is now; on this index that happens about {next_30_down_pct}% of the time",
-    "flat": "price ends within {next_30_flat_band_sigma} sigma of where it is now; on this index that is the common case, about {next_30_flat_pct}% of the time",
+    "up": "price ends more than {zone_points} points above where it is now; on this index that happens about {next_30_up_pct}% of the time",
+    "down": "price ends more than {zone_points} points below where it is now; on this index that happens about {next_30_down_pct}% of the time",
+    "flat": "price ends within {zone_points} points of where it is now, either way; on this index that is the common case, about {next_30_flat_pct}% of the time",
     "unsure": "the answers pull hard both ways, so neither the common case nor a direction can be backed"
    }
   },
@@ -22,11 +22,11 @@
    "type": "choice",
    "ask": "Where is price at the end of the next 60 minutes?",
    "why": "The same sum at twice the horizon, graded beside the 30-minute one so the two can be compared; it never reaches the phone's headline.",
-   "instructions": "Read `answers`, one sentence per question JEV has already answered about this moment, each ending with how sure it was. Taken together, where is price at the end of the next 60 minutes? Answer up, down, flat or unsure.",
+   "instructions": "Read `context.flat_zone` for how many index points either way count as flat over each horizon this read, then `answers`, one sentence per question JEV has already answered about this moment, each ending with how sure it was. Taken together, where is price at the end of the next 60 minutes? Answer up, down, flat or unsure.",
    "criteria": {
-    "up": "price ends more than {next_60_flat_band_sigma} sigma above where it is now; on this index that happens about {next_60_up_pct}% of the time",
-    "down": "price ends more than {next_60_flat_band_sigma} sigma below where it is now; on this index that happens about {next_60_down_pct}% of the time",
-    "flat": "price ends within {next_60_flat_band_sigma} sigma of where it is now; on this index that is the common case, about {next_60_flat_pct}% of the time",
+    "up": "price ends more than {zone_points} points above where it is now; on this index that happens about {next_60_up_pct}% of the time",
+    "down": "price ends more than {zone_points} points below where it is now; on this index that happens about {next_60_down_pct}% of the time",
+    "flat": "price ends within {zone_points} points of where it is now, either way; on this index that is the common case, about {next_60_flat_pct}% of the time",
     "unsure": "the answers pull hard both ways, so neither the common case nor a direction can be backed"
    }
   },
@@ -36,9 +36,9 @@
    "why": "What the call is graded on: the average of every minute's price over the window, so the phone's call and its grade are about the same thing. Three options, no unsure.",
    "instructions": "Read `context.average` for the price at this read, what the average over the window is and how many index points either way count as flat for this read, then `answers`, one sentence per question JEV has already answered about this moment, each ending with how sure it was. Taken together, where will the average price over the next {window_minutes} minutes sit against the price now? Answer up, down or flat.",
    "criteria": {
-    "up": "the average price over the next {window_minutes} minutes sits above the price now by more than the flat edge the context gives in points",
-    "down": "the average price over the next {window_minutes} minutes sits below the price now by more than the flat edge the context gives in points",
-    "flat": "the average price over the next {window_minutes} minutes sits no further from the price now than the flat edge the context gives in points, either way"
+    "up": "the average price over the next {window_minutes} minutes sits more than {zone_points} points above the price now",
+    "down": "the average price over the next {window_minutes} minutes sits more than {zone_points} points below the price now",
+    "flat": "the average price over the next {window_minutes} minutes sits within {zone_points} points of the price now, either way"
    }
   }
  }

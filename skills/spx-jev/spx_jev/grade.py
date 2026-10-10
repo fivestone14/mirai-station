@@ -8,13 +8,13 @@
     python3 -m spx_jev.grade --integral-report  # per box, the flat share on the average price against the end price
     python3 -m spx_jev.grade --integral-loop-dry-run   # what the loop would learn from the average-price grade, built in a scratch folder
 
-Two horizons are graded from the same record, each against its own band (lane.LIVE.horizons, from cuts.py):
-    next_30   30 minutes, flat within NEXT_30_FLAT_BAND_SIGMA   (the primary: the end-price box the weights and pools learn from)
-    next_60   60 minutes, flat within NEXT_60_FLAT_BAND_SIGMA   (graded beside it, for the comparison)
+Two horizons are graded from the same record, each against its own flat zone (lane.LIVE.horizons):
+    next_30   30 minutes   (the primary: the end-price box the weights and pools learn from)
+    next_60   60 minutes   (graded beside it, for the comparison)
 
 How a horizon is graded
-    realized = (close h minutes after the row - spot at the row) / sigma_anchor
-    band     = up if realized > flat band, down if realized < -flat band, else flat
+    realized = close h minutes after the row - spot at the row, in index points
+    band     = up if realized > the flat zone, down if realized < -the flat zone, else flat
     hit      = the shown sum's pick (the blend) == band; jev_hit the same for JEV's own pick
     brier    = sum over {up, flat, down} of (p - 1[band]) ** 2      (0 is perfect, 2 is worst)
     Each horizon is graded as soon as its own mark has a bar, so the primary never waits for the
@@ -24,12 +24,12 @@ How a horizon is graded
     record none of whose horizons can ever be graded is written as not graded, so it is never
     retried. A horizon graded once is never graded twice.
 
-The ruler
-    sigma_anchor is the day's morning anchor (labels.rulers.morning_ruler) as the read could know it:
-    from the day's diary rows up to the read and the bars finished by then (read_anchor). Never the
-    record's ``sigma``, which ratchets up with the live sigma through the day, so a mid-day spike
-    cannot move a flat band or turn an outcome. The line keeps the ruler it was graded in
-    (``anchor``: points and source); a read with no anchor at all is skipped for good.
+The flat zone
+    Each box's zone is sized for the read in index points from the day's own tape and the VIX (flat_zone.py),
+    the number JEV was told: the sum record stamps it (``zone``) and the grader reads the stamp (zones_of); a
+    record from before the rule, or stamped under another, is sized again from what was on file at the read,
+    which is the same number. The line keeps the zones it was graded in (``zone``); a read no zone can be
+    sized for is skipped for good.
 
 What is graded
     The end-price sum a record carries is the one the card kept beside the call: JEV's sum blended
@@ -56,16 +56,16 @@ The question weights
     reaches the phone (the promotion was retired on 2026-10-07): the call and the end-price sums keep their exact
     blend (shown_source = pool.SHOWN_BLEND).
 
-A lane (lane.py) grades by its own settings. The tape lane's one horizon is banded from the record
-itself: the tape unit measured at the read prices a flat and a big band in index points, and the
+A lane (lane.py) grades by its own settings. The tape lane's one horizon is banded five ways from its call's
+zone (flat_zone.band: a flat and a big line in index points, stamped on the record as ``band``): the
 realized move lands in one of five bands (down_big, down_small, flat, up_small, up_big), read also
 as a direction and a size (big or small), each scored against the matching view of the sum. Its
 mark needs the exact bar (bar_gap_min 0), and a finished day's bars that stop close its records out.
 
 The premarket lane (graded_from_settled_open) reads before the open, so its read's own spot already
 knows the gap: its horizons run from the settled open instead, the close of the 09:34 bar, finished
-at 09:35, to the closes at 09:45 and 10:05 (the 09:44 and 10:04 bars), in the pre-open ruler stamped
-on the record (``ruler.points``). The line says where it was measured from (``from``), and its event
+at 09:35, to the closes at 09:45 and 10:05 (the 09:44 and 10:04 bars), in zones sized before the open
+from the prior close and the prior session's closing VIX. The line says where it was measured from (``from``), and its event
 tag is taken at the settled open, over the window it is graded on, not at the read. It waits
 while the settled open or a mark has no bar, and a finished day without them closes it out. On
 every other lane a record stamped before its session's open is never graded from its spot: it is
@@ -73,8 +73,8 @@ written as not graded.
 
 The average-price grade
     After every run, each horizon graded above is graded once more on the average price over its window
-    (integral.py), from the same spot or settled open to the same mark, against the same flat band narrowed
-    by integral.factor. On the box a lane's average-price sum forecasts (lane.average, the primary's) it
+    (integral.py), from the same spot or settled open to the same mark, against the call's own zone, or the
+    box's zone narrowed by integral.factor. On the box a lane's average-price sum forecasts (lane.average, the primary's) it
     grades that sum's call where JEV answered it, and scores its odds against the average-price label
     (integral_scores); elsewhere, and on a read from before the sum, it grades the end-price sum's own
     call. Each line names the sum it graded (``sum``). A call whose end-price sums got no answer
@@ -107,7 +107,7 @@ Outputs, all under the lane's folder (state/spx_jev/ for the live lane)
                        ``horizon`` and ``rule_version``): the sum graded (``sum``), integral.grade_window's fields,
                        the end-price label (``end_label``), on a RECORD horizon the five-band size line (``size``),
                        and for the average-price sum's call its ``scores`` and the edge JEV was told
-                       (``edge_told``); beside it integral_grades.jsonl.lock, held while it is read and appended
+                       (``edge_told``, its zone); beside it integral_grades.jsonl.lock, held while it is read and appended
 """
 from __future__ import annotations
 
@@ -121,7 +121,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import archive, events, integral, scores
+from . import archive, events, flat_zone, integral, scores
 from .ask import load_questions, retired
 from .hour import FIVE, average_probabilities
 from .labels.measures import SETTLED_OPEN_BAR, close_at, settled_open
@@ -129,8 +129,7 @@ from .labels.rulers import SigmaRuler, morning_ruler, vix_at_settled_open
 from .lane import LANES, LIVE, RECORD, Lane
 from .pool import PoolWeights
 from .sessions import session_close, session_open
-from .state_builder import (DEFAULT_STATE_DIR, MarketContext, load_bars, load_jsonl, load_market_context, load_rows, parse_ts,
-                            prior_bar_days)
+from .state_builder import DEFAULT_STATE_DIR, MarketContext, load_bars, load_jsonl, parse_ts, prior_bar_days
 from .weights import WEIGHTS_NAME, QuestionWeights
 
 ET = ZoneInfo("America/New_York")
@@ -177,17 +176,23 @@ def mark_at(row_ts: str, minutes: int, lane: Lane = LIVE) -> datetime | None:
 
 def read_anchor(rows: list[dict], bars: list[dict], market: MarketContext | None, row_ts: str) -> SigmaRuler | None:
     """The morning anchor the read at ``row_ts`` could know: the day's diary rows stamped by then and the
-    bars finished by then, through the anchor guard and its fallbacks."""
+    bars finished by then, through the anchor guard and its fallbacks. The scale the baseline's move so far is
+    in (baseline.move_so_far); nothing here grades in it."""
     t = parse_ts(row_ts)
     known = [b for b in bars if parse_ts(b["ts"]) + timedelta(minutes=1) <= t]
     return morning_ruler([r for r in rows if parse_ts(r["ts"]) <= t], vix_at_settled_open(market, row_ts[:10]), settled_open(known))
 
 
-def stamped_ruler(rec: dict) -> SigmaRuler | None:
-    """The pre-open ruler a premarket read stamped on its record (``ruler.points``), which its sums were
-    asked in; None when the read could not form one."""
-    points = (rec.get("ruler") or {}).get("points")
-    return SigmaRuler(float(points), "pre_open") if isinstance(points, (int, float)) and points > 0 else None
+def zones_of(rec: dict, model: flat_zone.Zones | None, bars: list[dict], lane: Lane = LIVE) -> dict[str, float] | str:
+    """The zones the read at ``rec`` is graded against: the ones its sum record stamped under this rule (flat_zone.stamped,
+    the numbers JEV was told), else sized again by ``model`` from the bars finished by the read (flat_zone.Zones.at),
+    which is the same number; why there is none when there is none."""
+    stamped = flat_zone.stamped(rec)
+    if stamped is not None:
+        return stamped
+    if model is None:
+        return "no flat zone stamped on the record"
+    return model.at(horizon_start(rec["row_ts"], lane), bars)
 
 
 def realized_band(x: float, flat: float) -> str:
@@ -233,15 +238,10 @@ def _picks(rec: dict) -> tuple[dict, dict]:
             {q: (v.get("probabilities") or {}) for q, v in by.items() if isinstance(v, dict)})
 
 
-def _has_band(rec: dict) -> bool:
-    b = rec.get("band")
-    return isinstance(b, dict) and all(isinstance(b.get(k), (int, float)) for k in ("flat_points", "big_points"))
-
-
-def _grade_units(rec: dict, qid: str, realized: float, pick, p: dict) -> dict:
-    """A RECORD horizon: the move in points against the bands stored on the record, and the sum's
-    direction and size views (hour.views_of) each scored against the outcome they forecast."""
-    band, direction, size = realized_bands(realized, float(rec["band"]["flat_points"]), float(rec["band"]["big_points"]))
+def _grade_units(rec: dict, qid: str, realized: float, pick, p: dict, flat: float, big: float) -> dict:
+    """A RECORD horizon: the move in points against its flat and big lines, and the sum's direction and size views
+    (hour.views_of) each scored against the outcome they forecast."""
+    band, direction, size = realized_bands(realized, flat, big)
     unit = (rec.get("ruler") or {}).get("unit_points")
     out = {"realized_points": round(realized, 2), "realized_units": round(realized / float(unit), 3) if isinstance(unit, (int, float)) and unit else None,
            "band": band, "direction": direction, "size": size, "pick": pick, "hit": pick == band,
@@ -256,16 +256,16 @@ def _grade_units(rec: dict, qid: str, realized: float, pick, p: dict) -> dict:
 
 
 # the primary's fields lifted flat on top of its line, in this order; a line carries only those its horizon has
-TOP_KEYS = ("realized_sigma", "realized_points", "realized_units", "band", "direction", "size", "pick", "hit", "brier", "p_band",
+TOP_KEYS = ("realized_points", "realized_units", "band", "direction", "size", "pick", "hit", "brier", "p_band",
             "jev_pick", "jev_hit", "jev_brier", "clock_brier",
             "direction_pick", "direction_hit", "direction_brier", "size_pick", "size_hit", "size_brier")
 
 
 def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = frozenset(), final: bool = False,
-              lane: Lane = LIVE, anchor: SigmaRuler | None = None) -> dict | None:
-    """One record against the bars of its day: every horizon not in ``done`` whose mark has a bar, a
-    sigma band measured in ``anchor`` (read_anchor, or stamped_ruler on a lane graded from the
-    settled open), a RECORD band in the record's own points.
+              lane: Lane = LIVE, zones: dict[str, float] | str | None = None) -> dict | None:
+    """One record against the bars of its day: every horizon not in ``done`` whose mark has a bar, against its
+    flat zone in ``zones`` (zones_of; a reason instead, and no zone can be sized), a RECORD horizon against its
+    flat and big lines there.
 
     Returns the line to append, None when nothing new can be graded yet (a mark still ahead, or
     bars missing), or a ``graded: False`` line when no horizon of the record can ever be graded.
@@ -296,12 +296,8 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
         if picks.get(qid) is None:
             skipped[qid] = "no answer for this sum"    # JEV did not answer it on this read
             continue
-        if flat == RECORD and not _has_band(rec):
-            skipped[qid] = "no band on the record"     # no tape unit was measured at the read: nothing to grade against
-            continue
-        if flat != RECORD and anchor is None:
-            skipped[qid] = ("no pre-open ruler on the record" if lane.graded_from_settled_open
-                            else "no morning anchor: no diary row, live sigma or VIX to measure the move in")
+        if not isinstance(zones, dict) or qid not in zones:
+            skipped[qid] = f"no flat zone: {zones if isinstance(zones, str) else 'the read could not be sized'}"
             continue
         if spot is None:                              # the settled open's bar is not on file
             if final:
@@ -328,11 +324,11 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
             continue
         p = probs.get(qid) or {}
         if flat == RECORD:
-            graded[qid] = _grade_units(rec, qid, c1 - spot, picks.get(qid), p)
+            graded[qid] = _grade_units(rec, qid, c1 - spot, picks.get(qid), p, float(zones[qid]), float(zones["big"]))
             continue
-        realized = (c1 - spot) / anchor.points
-        band = realized_band(realized, flat)
-        graded[qid] = {"realized_sigma": round(realized, 3), "band": band, "pick": picks.get(qid),
+        realized = c1 - spot
+        band = realized_band(realized, float(zones[qid]))
+        graded[qid] = {"realized_points": round(realized, 2), "band": band, "pick": picks.get(qid),
                        "hit": picks.get(qid) == band, "brier": _brier(p, band), "p_band": p.get(band)}
         part = parts.get(qid) or {}
         if "jev" in part:
@@ -343,7 +339,7 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
     if not graded:
         if pending:
             return None                               # a mark is still ahead
-        closed = {q: v for q, v in skipped.items() if str(v).startswith(("halted window", "no band", "no morning anchor", "no pre-open ruler"))}
+        closed = {q: v for q, v in skipped.items() if str(v).startswith(("halted window", "no flat zone"))}
         if closed:
             # closed out for good; when the other horizon was graded on an earlier run this line carries
             # only the halted one, so the read is never retried
@@ -356,8 +352,7 @@ def grade_one(rec: dict, bars: list[dict], done: set[str] | frozenset[str] = fro
            "horizons": list(graded), "pending": pending, "skipped": skipped, **graded}
     if lane.graded_from_settled_open:
         out["from"] = {"settled_open": spot, "at": t0.isoformat()}
-    if any("realized_sigma" in g for g in graded.values()):
-        out["anchor"] = {"points": anchor.points, "source": anchor.source}
+    out["zone"] = {q: round(float(v), 2) for q, v in zones.items() if q in graded or q == "big"}
     # a read before the open is tagged from its own clock, so the window it is graded over is tagged here
     ev = events.tag(t0) if lane.graded_from_settled_open else rec.get("event") if isinstance(rec.get("event"), dict) else None
     if ev:
@@ -546,15 +541,12 @@ def run(state_dir: Path, out_dir: Path, allowed: dict[str, set[str]], day: str |
                     new.append({"row_ts": r["row_ts"], "graded": False, "reason": "no bars for the day"})
                     done[r["row_ts"]] |= every
             continue
-        # a lane banded in sigma measures every read in the day's morning anchor, or in the pre-open ruler
-        # its read stamped when it is graded from the settled open
-        in_anchor = any(flat != RECORD for _, flat in lane.horizons.values()) and not lane.graded_from_settled_open
-        rows, market = (load_rows(state_dir, d), load_market_context(state_dir, d)) if in_anchor else ([], None)
+        model = flat_zone.Zones(state_dir, d, lane)     # sizes a read from before the zone's rule as it could have known it
         for r in recs:
             if done.get(r["row_ts"], set()) == every:
                 continue                              # the same row written twice (a run by hand): graded once
-            anchor = stamped_ruler(r) if lane.graded_from_settled_open else read_anchor(rows, bars, market, r["row_ts"]) if in_anchor else None
-            g = grade_one(r, bars, done.get(r["row_ts"], set()), final=d < datetime.now(ET).date().isoformat(), lane=lane, anchor=anchor)
+            g = grade_one(r, bars, done.get(r["row_ts"], set()), final=d < datetime.now(ET).date().isoformat(), lane=lane,
+                          zones=zones_of(r, model, bars, lane))
             if g:
                 new.append(g)
                 done[g["row_ts"]] |= every if g.get("graded") is False else set(g["horizons"]) | set(g["skipped"])
@@ -625,13 +617,6 @@ def checked_call(rec: dict | None, qid: str, lane: Lane = LIVE) -> dict | None:
     return average_call(rec, lane.primary if lane.graded_from_settled_open and qid in lane.horizons else qid, lane)
 
 
-def told_edge(avg: dict | None) -> float | None:
-    """The flat edge in points the average-price sum was told (hour.average_window), which its grade is set against, so
-    the two can never part at the edge; None without one."""
-    e = (avg or {}).get("edge_points")
-    return float(e) if isinstance(e, (int, float)) and not isinstance(e, bool) and e > 0 else None
-
-
 def bad_average(rec: dict | None, qid: str, lane: Lane = LIVE) -> bool:
     """Whether the record holds an answer to the average-price sum for box ``qid`` (no ``error`` on it) that cannot be
     graded: its odds or its pick are not the sum's (average_call). Such a read is written as not graded."""
@@ -656,26 +641,26 @@ def integral_scores(avg: dict, label: str) -> dict:
     return out
 
 
-def integral_line(line: dict, qid: str, rec: dict | None, bars: list[dict], prior: dict[str, list[dict]], lane: Lane = LIVE) -> dict:
+def integral_line(line: dict, qid: str, rec: dict | None, bars: list[dict], prior: dict[str, list[dict]], lane: Lane = LIVE,
+                  zones: dict[str, float] | str | None = None) -> dict:
     """The average-price grade of horizon ``qid`` of a grades.jsonl ``line``, over the window the line was graded on
-    (horizon_start to mark_at) and against its flat band: the line's anchor times the horizon's sigma band, or the
-    record's ``band.flat_points``. Measured from the read's spot, or the settled open the line was measured from. The
-    call graded is the average-price sum's where it answered (average_call), against the edge JEV was told (told_edge,
-    kept as ``edge_told``) and with its scores (integral_scores), else the end-price sum's own; ``sum`` names the one
-    graded. On a lane graded from the settled open a shorter check grades the same call (checked_call) against its own
-    window's narrowed band, unscored, since the call's odds and edge are for the box's window. A record whose
-    average-price answer cannot be graded (bad_average) is written as not graded."""
+    (horizon_start to mark_at) and against the box's flat zone in ``zones`` (zones_of). Measured from the read's spot, or
+    the settled open the line was measured from. The call graded is the average-price sum's where it answered
+    (average_call), against the edge JEV was told (its own zone, kept as ``edge_told``) and with its scores
+    (integral_scores), else the end-price sum's own against the box's zone narrowed by integral.factor; ``sum`` names
+    the one graded. On a lane graded from the settled open a shorter check grades the same call (checked_call) against
+    its own window's narrowed zone, unscored, since the call's odds and edge are for the box's window. A record whose
+    average-price answer cannot be graded (bad_average) is written as not graded, as is one no zone can be sized for."""
     head = {"row_ts": line["row_ts"], "horizon": qid, "rule_version": integral.RULE_VERSION}
     if rec is None:
         return {**head, "graded": False, "reason": "not graded: the read's sum record is not on file"}
     if bad_average(rec, qid, lane):
         return {**head, "sum": lane.average, "graded": False, "reason": BAD_PROBABILITIES}
+    if not isinstance(zones, dict) or qid not in zones:
+        return {**head, "graded": False, "reason": f"not graded: no flat zone: {zones if isinstance(zones, str) else 'the read could not be sized'}"}
     minutes, flat = lane.horizons[qid]
     t0, t1 = horizon_start(line["row_ts"], lane), mark_at(line["row_ts"], minutes, lane)
     spot = float(line["from"]["settled_open"]) if lane.graded_from_settled_open else float(rec["spot"])
-    # a line graded before the morning anchor was measured in the record's sigma
-    ruler = (line.get("anchor") or {}).get("points") or rec.get("sigma")
-    points = float(rec["band"]["flat_points"]) if flat == RECORD else flat * float(ruler)
     old = line.get(qid) or {}                               # none for a call whose end-price sums got no answer (alone_line)
     avg = checked_call(rec, qid, lane)
     own = avg is not None and qid == lane.primary          # the call's own box: its edge and odds are this window's
@@ -684,15 +669,15 @@ def integral_line(line: dict, qid: str, rec: dict | None, bars: list[dict], prio
     else:
         pick, probs = old.get("pick"), ((rec.get("by") or {}).get(qid) or {}).get("probabilities") or {}
     out = {**head, "sum": lane.average if avg else qid,
-           **integral.grade_window(bars, prior, t0, int((t1 - t0).total_seconds() // 60), spot, points, pick, probs,
-                                   told_edge(avg) if own else None)}
+           **integral.grade_window(bars, prior, t0, int((t1 - t0).total_seconds() // 60), spot, float(zones[qid]), pick, probs,
+                                   float(zones[lane.average]) if own else None)}
     if out["graded"]:
         if old:
             out["end_label"] = old["direction"] if flat == RECORD else old["band"]
             if flat == RECORD:
                 out["size"] = _size_line(old)
         if own:
-            out.update({"scores": integral_scores(avg, out["label"]), "edge_told": avg.get("edge_points")})
+            out.update({"scores": integral_scores(avg, out["label"]), "edge_told": float(zones[lane.average])})
     return out
 
 
@@ -706,24 +691,20 @@ def average_alone(rec: dict, lane: Lane = LIVE) -> bool:
 ALONE = "no end-price answer: the end-price sums got none, so the call is graded on its own window"
 
 
-def alone_line(rec: dict, bars: list[dict], prior: dict[str, list[dict]], lane: Lane = LIVE, anchor: SigmaRuler | None = None,
+def alone_line(rec: dict, bars: list[dict], prior: dict[str, list[dict]], lane: Lane = LIVE, zones: dict[str, float] | str | None = None,
                qid: str | None = None) -> dict:
     """The average-price grade of a call standing on its average-price sum alone (average_alone) in box ``qid`` (the
     primary unless named), over the window grade_one would have graded that box on: from the read's spot, or the
-    settled open, to the box's mark, in ``anchor`` (read_anchor, or stamped_ruler on a lane graded from the settled
-    open) or the record's band, as integral_line grades any other; on a lane graded from the settled open a shorter
-    box is the call's check at its own mark (checked_call). It says it had no end-price answer (``end_price``) and
-    carries no end-price label. A read that can never be graded says why, as grade_one would; one whose settled open
-    is not on file carries integral.NOT_GRADED, so today it waits for the bar."""
+    settled open, to the box's mark, against its zone in ``zones`` (zones_of), as integral_line grades any other; on a
+    lane graded from the settled open a shorter box is the call's check at its own mark (checked_call). It says it had
+    no end-price answer (``end_price``) and carries no end-price label. A read that can never be graded says why, as
+    grade_one would; one whose settled open is not on file carries integral.NOT_GRADED, so today it waits for the bar."""
     qid = qid or lane.primary
     head = {"row_ts": rec["row_ts"], "horizon": qid, "rule_version": integral.RULE_VERSION, "sum": lane.average, "end_price": ALONE}
-    minutes, flat = lane.horizons[qid]
+    minutes, _ = lane.horizons[qid]
     t0 = horizon_start(rec["row_ts"], lane)
     why = ("stamped before the open: a read before the open is never graded from its spot" if t0 < session_open(t0) else
-           "ends past the close" if mark_at(rec["row_ts"], minutes, lane) is None else
-           "no band on the record" if flat == RECORD and not _has_band(rec) else
-           ("no pre-open ruler on the record" if lane.graded_from_settled_open else
-            "no morning anchor: no diary row, live sigma or VIX to measure the move in") if flat != RECORD and anchor is None else None)
+           "ends past the close" if mark_at(rec["row_ts"], minutes, lane) is None else None)
     if why:
         return {**head, "graded": False, "reason": f"not graded: {why}"}
     line: dict = {"row_ts": rec["row_ts"]}
@@ -731,9 +712,7 @@ def alone_line(rec: dict, bars: list[dict], prior: dict[str, list[dict]], lane: 
         if (spot := settled_open(bars)) is None:
             return {**head, "graded": False, "reason": integral.NOT_GRADED}
         line["from"] = {"settled_open": spot}
-    if anchor is not None:
-        line["anchor"] = {"points": anchor.points}
-    return {**integral_line(line, qid, rec, bars, prior, lane), "end_price": ALONE}
+    return {**integral_line(line, qid, rec, bars, prior, lane, zones), "end_price": ALONE}
 
 
 def integral_run(state_dir: Path, out_dir: Path, lane: Lane = LIVE, day: str | None = None) -> list[dict]:
@@ -774,21 +753,17 @@ def integral_run(state_dir: Path, out_dir: Path, lane: Lane = LIVE, day: str | N
                 if isinstance(r.get("by"), dict) or average_alone(r, lane):
                     recs.setdefault(r.get("row_ts"), r)   # the first of a row written twice is the one graded
             bars, prior = load_bars(state_dir, d), prior_bar_days(state_dir, d)
-            items = [(g, qid, None) for g, qid in todo.get(d, [])]
-            if alone.get(d):
-                # graded in the anchor the read could know, as grade.run measures it, or in its own stamped ruler
-                in_anchor = any(flat != RECORD for _, flat in lane.horizons.values()) and not lane.graded_from_settled_open
-                rows, market = (load_rows(state_dir, d), load_market_context(state_dir, d)) if in_anchor else ([], None)
-                for ts, qid in alone[d]:
-                    anchor = stamped_ruler(recs[ts]) if lane.graded_from_settled_open else read_anchor(rows, bars, market, ts) if in_anchor else None
-                    items.append(({"row_ts": ts}, qid, anchor))
-            for g, qid, anchor in items:
+            model = flat_zone.Zones(state_dir, d, lane)
+            items = [(g, qid) for g, qid in todo.get(d, [])] + [({"row_ts": ts}, qid) for ts, qid in alone.get(d, [])]
+            for g, qid in items:
                 key = (g["row_ts"], qid, integral.RULE_VERSION)
                 if key in have:
                     continue
                 try:
-                    line = (integral_line(g, qid, recs.get(g["row_ts"]), bars, prior, lane) if "horizons" in g else
-                            alone_line(recs[g["row_ts"]], bars, prior, lane, anchor, qid))
+                    rec = recs.get(g["row_ts"])
+                    zones = zones_of(rec, model, bars, lane) if rec is not None else None
+                    line = (integral_line(g, qid, rec, bars, prior, lane, zones) if "horizons" in g else
+                            alone_line(rec, bars, prior, lane, zones, qid))
                 except Exception as e:  # one read that cannot be graded must never hold back the rest of the batch
                     print(f"average-price grade of {g['row_ts']} {qid} failed: {type(e).__name__}: {e}", file=sys.stderr)
                     continue                              # nothing written: a later run tries it again

@@ -121,6 +121,30 @@ def market_at(now: datetime):
     return MarketContext(known)
 
 
+class FixedZones:
+    """A stand-in for flat_zone.Zones: every read of a lane gets the same zones, in points, so a test's bars decide the
+    grade. The live lane's are what a 75-point day gave under the old 0.07 sigma band (5.25 and 8.25 points, the call's
+    3.11 edge), the opening lane's what a 6-point tape unit gave, the premarket lane's a 100-point ruler's."""
+    POINTS = {"live": {"next_30": 5.25, "next_60": 8.25, "average_30": 3.11},
+              "tape": {"next_10": 2.52, "average_10": 1.56, "big": 5.34},
+              "premarket": {"open_10": 4.0, "open_30": 7.0, "open_average_30": 4.14}}
+
+    def __init__(self, state_dir, day, lane=None):
+        from spx_jev.lane import LIVE
+        self.state_dir, self.day, self.lane = Path(state_dir), day, lane or LIVE
+
+    def at(self, t0, bars):
+        return dict(self.POINTS[self.lane.name])
+
+
+@pytest.fixture
+def fixed_zones(monkeypatch):
+    """Every lane's zones pinned (FixedZones) for a read, a grade or a replay built on a fixture too short to size them."""
+    from spx_jev import flat_zone
+    monkeypatch.setattr(flat_zone, "Zones", FixedZones)
+    return FixedZones.POINTS
+
+
 @pytest.fixture
 def breadth_served_right(monkeypatch):
     """Today's NYSE breadth read as a series Schwab served right. The live read never reads it (labels/plausible

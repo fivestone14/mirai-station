@@ -358,6 +358,8 @@ GRADES = Table("grades", _read_cols(
     checks=(_is("lane", LANE_NAMES), _outcome, _within("p_band", 0.0, 1.0), _within("brier", 0.0, 2.0), _within("jev_brier", 0.0, 2.0),
             _within("clock_brier", 0.0, 2.0), _within("direction_brier", 0.0, 2.0), _within("size_brier", 0.0, 2.0),
             _not_after("row_ts", "mark", "marked before its read"), _not_after("mark", "archived_at", "graded before its mark")),
+    # a read graded again (the flat zone's arrival, 2026-10-09) stands on its newest grade; the older is counted as superseded
+    rank=lambda r: (-r["archived_at"].timestamp(),),
     of_read=True)
 
 AVERAGE_GRADES = Table("average_grades", _read_cols(

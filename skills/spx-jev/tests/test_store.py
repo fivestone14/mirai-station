@@ -439,16 +439,19 @@ def test_a_daily_close_fetched_before_its_session_closed_is_quarantined(tmp_path
     assert why["$VIX"].startswith(f"fetched at {DAY}T12:00:00-04:00, before its session closed")
 
 
-def test_a_second_grade_of_the_same_sum_that_disagrees_is_quarantined_not_kept_over_the_first(tmp_path, monkeypatch):
+def test_a_second_grade_of_the_same_sum_stands_over_the_first_when_it_is_newer(tmp_path, monkeypatch):
+    """A read graded again (the flat zone's arrival regraded every read) stands on its newest grade, whatever order the
+    archive holds them in; an exact copy is a duplicate."""
     rows = _day_archive()
-    rows.append({**rows[3], "archived_at": "2026-09-18T15:30:00+00:00",
-                 "grade": {**rows[3]["grade"], "next_30": {**rows[3]["grade"]["next_30"], "band": "down"}}})
+    newer = {**rows[3], "archived_at": "2026-09-18T15:30:00+00:00",
+             "grade": {**rows[3]["grade"], "next_30": {**rows[3]["grade"]["next_30"], "band": "down"}}}
     rows.append(rows[4])                                                                          # an exact copy
-    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path, rows))
-    log = store.build_day(tmp_path, D, at(16, 45))
-    assert {g["read_id"]: g["outcome"] for g in _table(tmp_path, "grades")}[f"live:{READ}"] == "up"
-    assert (log["grades"]["duplicates"], log["grades"]["quarantined"]) == (1, 1)
-    assert _table(tmp_path, "quarantine")[0]["reason"].startswith("differs from the row kept for the same read_id, horizon")
+    for k, order in enumerate(((rows + [newer]), ([newer] + rows))):
+        root = tmp_path / str(k)
+        monkeypatch.setattr(store, "CALENDAR", _state(root, order))
+        log = store.build_day(root, D, at(16, 45))
+        assert {g["read_id"]: g["outcome"] for g in _table(root, "grades")}[f"live:{READ}"] == "down"
+        assert (log["grades"]["duplicates"], log["grades"]["superseded"], log["grades"]["quarantined"]) == (1, 1, 0)
 
 
 def test_two_equally_good_sources_that_disagree_are_quarantined_not_one_kept_by_order():

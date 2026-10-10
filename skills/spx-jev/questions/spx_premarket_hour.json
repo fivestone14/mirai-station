@@ -1,8 +1,8 @@
 {
  "name": "SPX, the premarket lane's sums: the average price over the 30 minutes after the settled open, and the end price 10 and 30 minutes on",
- "version": "0.2.0",
- "date": "2026-09-28",
- "how_to_use": "Step 4 of the premarket lane. The state is the lane's answers from step 2, each rewritten by code as one sentence with how sure JEV was. Three questions ride on the same sentences in two requests sent at the same time. open_average_30, in a request of its own whose context line gives the flat edge in index points for this read, is the lane's call: where the average price over the 30 minutes after the settled open (the close of the 09:34 bar) sits against the settled open, every minute counting equally, graded on that average (spx_jev/integral.py). open_30 and open_10, the end-price sums, are asked in the other request exactly as before and are kept beside the call: open_30, where price is 30 minutes after the settled open, and open_10 graded beside it. All are measured from the settled open, never from yesterday's close, because a read before the open already knows the gap. Sigma is the pre-open ruler: the median morning anchor of the last sessions, stamped on every record; the average's flat edge is the 30-minute flat band in that ruler narrowed by integral.factor, in points. Forecasts, graded by the bars, never acted on; the bands come from spx_jev/cuts.py.",
+ "version": "0.3.0",
+ "date": "2026-10-09",
+ "how_to_use": "Step 4 of the premarket lane. The state is the lane's answers from step 2, each rewritten by code as one sentence with how sure JEV was. Three questions ride on the same sentences in two requests sent at the same time. open_average_30, in a request of its own whose context line gives its flat zone in index points for this read, is the lane's call: where the average price over the 30 minutes after the settled open (the close of the 09:34 bar) sits against the settled open, every minute counting equally, graded on that average (spx_jev/integral.py). open_30 and open_10, the end-price sums, are asked in the other request exactly as before and are kept beside the call: open_30, where price is 30 minutes after the settled open, and open_10 graded beside it. All are measured from the settled open, never from yesterday's close, because a read before the open already knows the gap. Each flat zone is sized before the open from the prior close and the prior session's closing VIX, in index points (spx_jev/flat_zone.py), so that on the prior sessions the box lands flat at its target (spx_jev/cuts.py); the number is filled into each question's text ({zone_points}) and named in the context, and the grader sets the box against the same number. Sigma, the pre-open ruler, rules the labels alone. Forecasts, graded by the bars, never acted on.",
  "primary": "open_30",
  "average": "open_average_30",
  "questions": {
@@ -10,11 +10,11 @@
    "type": "choice",
    "ask": "Where is price 10 minutes after the settled open?",
    "why": "The first check on the night's read: what the first minutes after the open do with it, graded beside the 30-minute sum.",
-   "instructions": "Read `answers`, one sentence per question JEV has already answered about the night before the open, each ending with how sure it was. Taken together, where is price 10 minutes after the settled open (the close of the 09:34 bar), against the settled open itself? Answer up, down, flat or unsure.",
+   "instructions": "Read `context.flat_zone` for how many index points either way count as flat 10 minutes after the settled open this read, then `answers`, one sentence per question JEV has already answered about the night before the open, each ending with how sure it was. Taken together, where is price 10 minutes after the settled open (the close of the 09:34 bar), against the settled open itself? Answer up, down, flat or unsure.",
    "criteria": {
-    "up": "price ends more than {open_10_flat_band_sigma} sigma above the settled open",
-    "down": "price ends more than {open_10_flat_band_sigma} sigma below the settled open",
-    "flat": "price ends within {open_10_flat_band_sigma} sigma of the settled open",
+    "up": "price ends more than {zone_points} points above the settled open",
+    "down": "price ends more than {zone_points} points below the settled open",
+    "flat": "price ends within {zone_points} points of the settled open, either way",
     "unsure": "the answers pull hard both ways, so neither the common case nor a direction can be backed"
    }
   },
@@ -22,11 +22,11 @@
    "type": "choice",
    "ask": "Where is price 30 minutes after the settled open?",
    "why": "The lane's end-price box, kept beside the call: where price stands 30 minutes after the settled open, the box the lane's grades are keyed to.",
-   "instructions": "Read `answers`, one sentence per question JEV has already answered about the night before the open, each ending with how sure it was. Taken together, where is price 30 minutes after the settled open (the close of the 09:34 bar), against the settled open itself? Answer up, down, flat or unsure.",
+   "instructions": "Read `context.flat_zone` for how many index points either way count as flat 30 minutes after the settled open this read, then `answers`, one sentence per question JEV has already answered about the night before the open, each ending with how sure it was. Taken together, where is price 30 minutes after the settled open (the close of the 09:34 bar), against the settled open itself? Answer up, down, flat or unsure.",
    "criteria": {
-    "up": "price ends more than {next_30_flat_band_sigma} sigma above the settled open",
-    "down": "price ends more than {next_30_flat_band_sigma} sigma below the settled open",
-    "flat": "price ends within {next_30_flat_band_sigma} sigma of the settled open",
+    "up": "price ends more than {zone_points} points above the settled open",
+    "down": "price ends more than {zone_points} points below the settled open",
+    "flat": "price ends within {zone_points} points of the settled open, either way",
     "unsure": "the answers pull hard both ways, so neither the common case nor a direction can be backed"
    }
   },
@@ -36,9 +36,9 @@
    "why": "The lane's call as it is graded: the average price over the first half hour from the settled open, its direction deciding. Three options, no unsure.",
    "instructions": "Read `context.average` for the price at this read, what the average over the window is and how many index points either way count as flat for this read, then `answers`, one sentence per question JEV has already answered about the night before the open, each ending with how sure it was. Taken together, where will the average price over the {window_minutes} minutes after the settled open (the close of the 09:34 bar) sit against the settled open itself? Answer up, down or flat.",
    "criteria": {
-    "up": "the average price over the {window_minutes} minutes after the settled open sits above the settled open by more than the flat edge the context gives in points",
-    "down": "the average price over the {window_minutes} minutes after the settled open sits below the settled open by more than the flat edge the context gives in points",
-    "flat": "the average price over the {window_minutes} minutes after the settled open sits no further from the settled open than the flat edge the context gives in points, either way"
+    "up": "the average price over the {window_minutes} minutes after the settled open sits more than {zone_points} points above the settled open",
+    "down": "the average price over the {window_minutes} minutes after the settled open sits more than {zone_points} points below the settled open",
+    "flat": "the average price over the {window_minutes} minutes after the settled open sits within {zone_points} points of the settled open, either way"
    }
   }
  }

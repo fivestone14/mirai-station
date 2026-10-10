@@ -1,18 +1,22 @@
 """Steps 3 and 4: answers become sentences, the weights decide who speaks, the sums ride on top."""
 from __future__ import annotations
 
+import json
 import re
 
 from spx_jev.ask import PATH_RE, load_questions
-from spx_jev.cuts import NEXT_30_FLAT_BAND_SIGMA, NEXT_30_FLAT_PCT, NEXT_60_FLAT_BAND_SIGMA, TAPE_BIG_UNITS, TAPE_FLAT_UNITS
-from spx_jev.hour import (answer_sentences, band_of, hour_request, hour_summary, load_hour_doc, named_levels, one_sentence, unit_line,
-                          views_of)
-from spx_jev.lane import LIVE, TAPE
+from spx_jev.cuts import NEXT_30_FLAT_PCT
+from spx_jev.flat_zone import band
+from spx_jev.hour import (answer_sentences, hour_request, hour_summary, load_hour_doc, named_levels, one_sentence, unit_line, views_of,
+                          zone_line)
+from spx_jev.lane import LIVE, PREMARKET, TAPE
 from spx_jev.weights import QuestionWeights
 
 DOC = load_questions(LIVE.questions, LIVE.key)
 BY_ID = {qid: q for g in DOC["groups"] for qid, q in g["questions"].items()}
 UNIT = {"unit_points": 6.0, "unit_sigma": 0.08, "slices_used": 3, "source": "tape"}
+ZONES = {"next_30": 5.25, "next_60": 8.25, "average_30": 3.11}
+TAPE_ZONES = {"next_10": 2.52, "average_10": 1.56, "big": 5.34}
 
 
 def test_one_sentence_carries_the_ask_the_pick_and_how_sure():
@@ -66,28 +70,40 @@ def test_shadow_and_low_weight_answers_are_left_out_with_a_reason():
     assert list(answer_sentences(DOC, answered)[0]) == ["leg_vs_day_side", "tick_lean_vs_usual"]   # neutral: nobody is weighed out
 
 
-def test_the_sums_carry_the_spx_bands_and_base_rates():
-    req = hour_request({"leg_vs_day_side": "leg with day, JEV was 98% sure"})
+def test_the_sums_carry_their_flat_zones_in_points_and_the_base_rates():
+    """Each end-price sum's text names its zone for this read in points, the context names every box's, and the base
+    rates ride beside them; nothing names a sigma band."""
+    req = hour_request({"leg_vs_day_side": "leg with day, JEV was 98% sure"}, ZONES)
     assert req["id"] == "hour" and req["state"]["context"]["symbol"] == "SPX"
     assert req["state"]["context"]["horizon"] == "the next 30 minutes, and the next 60 minutes"
     assert list(req["questions"]) == ["next_30", "next_60"]
-    assert f"within {NEXT_30_FLAT_BAND_SIGMA} sigma" in req["questions"]["next_30"]["criteria"]["flat"]
+    assert "within 5.25 points of where it is now" in req["questions"]["next_30"]["criteria"]["flat"]
     assert f"about {NEXT_30_FLAT_PCT}% of the time" in req["questions"]["next_30"]["criteria"]["flat"]
-    assert f"within {NEXT_60_FLAT_BAND_SIGMA} sigma" in req["questions"]["next_60"]["criteria"]["flat"]
+    assert "more than 8.25 points above" in req["questions"]["next_60"]["criteria"]["up"]
+    assert req["state"]["context"]["flat_zone"] == zone_line(ZONES) == (
+        "over the next 30 minutes flat is within 5.25 points of the price now either way; over the next 60 minutes flat is within "
+        "8.25 points of the price now either way")
+    assert "sigma" not in json.dumps(req["questions"]) and "{zone_points}" not in json.dumps(req["questions"])
     assert all(set(q) == {"type", "instructions", "criteria"} for q in req["questions"].values())
+    pre = zone_line({"open_10": 4.0, "open_30": 7.0}, PREMARKET)
+    assert pre == "flat is within 4.00 points of the settled open either way 10 minutes after it, and within 7.00 points of the settled open either way 30 minutes after it"
 
 
-def test_the_lanes_sum_is_priced_in_points_from_the_unit():
-    band = band_of(UNIT)
-    assert band == {"flat_points": round(TAPE_FLAT_UNITS * 6, 2), "big_points": round(TAPE_BIG_UNITS * 6, 2),
-                    "flat_units": TAPE_FLAT_UNITS, "big_units": TAPE_BIG_UNITS}
-    line = unit_line(UNIT, band)
-    assert line.startswith(f"one tape unit is 6.0 points; flat is within {TAPE_FLAT_UNITS * 6:.1f} points either way ({TAPE_FLAT_UNITS:g} of a unit)")
-    ranked = unit_line({**UNIT, "rank": {"band": "top third", "higher_than": 15, "of": 20}}, band)
-    assert ", in the top third for this minute, wider than 15 of 20 prior sessions;" in ranked
-    req = hour_request({"q": "a sentence"}, lane=TAPE, ruler=UNIT)
+def test_the_lanes_sum_names_its_three_bands_in_points_and_the_unit_beside_them():
+    assert band(TAPE_ZONES, TAPE) == {"flat_points": 2.52, "big_points": 5.34}
+    line = unit_line(UNIT)
+    assert line == "one tape unit is 6.0 points"
+    ranked = unit_line({**UNIT, "rank": {"band": "top third", "higher_than": 15, "of": 20}})
+    assert ranked == "one tape unit is 6.0 points, in the top third for this minute, wider than 15 of 20 prior sessions"
+    req = hour_request({"q": "a sentence"}, TAPE_ZONES, lane=TAPE, ruler=UNIT)
     assert req["state"]["context"]["unit"] == line and list(req["questions"]) == ["next_10"]
-    assert list(load_hour_doc(lane=TAPE)["questions"]["next_10"]["criteria"]) == ["down_big", "down_small", "flat", "up_small", "up_big", "unsure"]
+    assert req["state"]["context"]["flat_zone"] == ("over the next 10 minutes flat is within 2.52 points of the price now either way; "
+                                                    "small is 2.52 to 5.34 points; big is more than 5.34 points")
+    c = req["questions"]["next_10"]["criteria"]
+    assert list(c) == ["down_big", "down_small", "flat", "up_small", "up_big", "unsure"]
+    assert c["flat"].startswith("price ends within 2.52 points of where it is now, either way")
+    assert c["up_small"].startswith("price ends above where it is now by more than 2.52 points and no more than 5.34 points")
+    assert c["down_big"].startswith("price ends more than 5.34 points below where it is now")
 
 
 def test_the_summary_keeps_the_primary_on_top_and_reads_a_five_way_sum_three_ways():

@@ -119,9 +119,9 @@
   "labels": 142,
   "constants": 69,
   "label_availability": {
-   "live": 77,
+   "live": 76,
    "cheap_add": 57,
-   "dark": 8
+   "dark": 9
   }
  },
  "conventions": {
@@ -10660,9 +10660,9 @@
   {
    "name": "ruler.flat_band_reach",
    "example": "the next-30-minute flat band is 0.07 sigma; a typical 30-minute move now (tape and straddle combined) is 0.08 sigma, so the band covers 0.84 of it, more than on 14 of the last 16 sessions at this time of day, top third; the next-60-minute flat band is 0.11 sigma; a typical 60-minute move is 0.12 sigma, so the band covers 0.93 of it",
-   "computed_how": "band_pts / R_h, R_h = sqrt(T_h x E_h), T_h = tape unit x sqrt(h/5), E_h = em_points/0.68 x sqrt(h/minutes left); R_h = T_h while a tier-1 event is ahead; the 30-minute share ranked against the same share (rulers.typical_move on that session as it stood then, its em_points from its diary row within 10 minutes of the clock) at this clock on up to the last {night_rank_count} prior sessions (ranks.rank_sessions), each in its own morning anchor with 'ruler estimated' sessions left out, at least {same_clock_min_sessions} of them, else the label is omitted with the reason; said as 'more than on N of the last M sessions at this time of day' and its third; the 60-minute share is given as a figure, unranked, since on every session its typical move is the 30-minute one grown by the same clock-set factor and its rank would repeat the 30-minute one",
+   "computed_how": "retired 2026-10-09: the fixed flat band it set against a typical move is gone, each read's flat zone is sized in index points from the day's tape and the VIX (flat_zone.py), and its question was retired at the cut-over; was: band_pts / R_h, R_h = sqrt(T_h x E_h), T_h = tape unit x sqrt(h/5), E_h = em_points/0.68 x sqrt(h/minutes left); R_h = T_h while a tier-1 event is ahead; the 30-minute share ranked against the same share (rulers.typical_move on that session as it stood then, its em_points from its diary row within 10 minutes of the clock) at this clock on up to the last {night_rank_count} prior sessions (ranks.rank_sessions), each in its own morning anchor with 'ruler estimated' sessions left out, at least {same_clock_min_sessions} of them, else the label is omitted with the reason; said as 'more than on N of the last M sessions at this time of day' and its third; the 60-minute share is given as a figure, unranked, since on every session its typical move is the 30-minute one grown by the same clock-set factor and its rank would repeat the 30-minute one",
    "source": "SPX 1-min bars (live Schwab $SPX; replay state/reversion/bars/{day}-SPX.json); state/reversion/{day}.jsonl",
-   "availability": "live",
+   "availability": "dark",
    "needs_engine_edit": false
   },
   {

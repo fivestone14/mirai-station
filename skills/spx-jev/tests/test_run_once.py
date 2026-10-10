@@ -25,6 +25,11 @@ ISO = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d(\.\d+)?)?[+-]\d\d:\d\d$")
 BARE_CLOCK = re.compile(r"^\d\d:\d\d$")
 
 
+@pytest.fixture(autouse=True)
+def _zones(fixed_zones):
+    """Every read, grade and replay here runs on a fixture too short to size a flat zone: the zones are pinned (conftest.FixedZones)."""
+
+
 def _state(tmp_path, rows, n_bars):
     """The day's rows and bars over ten flat prior sessions, each with a trusted morning ruler, so the moves the
     questions read are ranked against the same minute."""
@@ -680,25 +685,24 @@ def _live_pool_2_read(tmp_path, monkeypatch, voice_list=None):
     return run_once(state, state / "spx_jev", DOC, True, None)
 
 
-def test_a_live_read_carries_the_voices_of_the_combined_forecast_and_each_end_price_sums_flat_band(tmp_path, monkeypatch):
+def test_a_live_read_carries_the_voices_of_the_combined_forecast_and_each_end_price_sums_flat_zone(tmp_path, monkeypatch):
     """The phone's "what went into it" and its end-price ±: the voices Pool 2 mixed ride on the call and on the 60-minute
-    sum, most say first, and each end-price sum carries the flat band in points the grader sets it against."""
-    from spx_jev.cuts import NEXT_30_FLAT_BAND_SIGMA, NEXT_60_FLAT_BAND_SIGMA
+    sum, most say first, and each end-price sum carries the flat zone in points the grader sets it against, the sum record
+    stamping every zone the read was told."""
     h = _live_pool_2_read(tmp_path, monkeypatch)["hour"]
     assert h["average"]["shown_source"] == "pool_v2" and h["average"]["pick"] == "down"
     assert [v["name"] for v in h["average"]["voices"]] == ["historical_odds", "matcher"]
     assert [v["name"] for v in h["by"]["next_60"]["voices"]] == ["historical_odds", "matcher"] and "voices" not in h["by"]["next_30"]
-    f30, f60 = h["by"]["next_30"]["flat_points"], h["by"]["next_60"]["flat_points"]
-    assert f30 == h["average"]["flat_points"]                       # the same band the average-price call's edge is priced from
-    assert abs(f60 - f30 * NEXT_60_FLAT_BAND_SIGMA / NEXT_30_FLAT_BAND_SIGMA) < 0.02
+    assert (h["by"]["next_30"]["flat_points"], h["by"]["next_60"]["flat_points"]) == (5.25, 8.25)
+    assert (h["average"]["flat_points"], h["average"]["edge_points"]) == (5.25, 3.11)   # the box's zone and the call's own
+    rec = json.loads((tmp_path / "spx_jev" / "hour" / f"{DAY}.jsonl").read_text().splitlines()[0])
+    assert rec["zone"] == {"next_30": 5.25, "next_60": 8.25, "average_30": 3.11, "rule": 1}
 
 
-def test_a_failure_listing_the_voices_or_the_flat_bands_never_costs_the_read_its_combined_call(tmp_path, monkeypatch, capsys):
+def test_a_failure_listing_the_voices_never_costs_the_read_its_combined_call(tmp_path, monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("the voices broke")
-    monkeypatch.setattr(service, "with_flat_points", boom)
     c = _live_pool_2_read(tmp_path, monkeypatch, voice_list=boom)
     h = c["hour"]
     assert h["average"]["shown_source"] == "pool_v2" and h["average"]["pick"] == "down" and h["by"]["next_60"]["pick"] == "flat"
-    assert "voices" not in h["average"] and "voices" not in h["by"]["next_60"] and "flat_points" not in h["by"]["next_30"]
-    assert "the end-price flat bands were left off this run: RuntimeError" in capsys.readouterr().err
+    assert "voices" not in h["average"] and "voices" not in h["by"]["next_60"]

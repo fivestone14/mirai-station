@@ -43,10 +43,9 @@ GRIP_CONCENTRATED_SHARE = 0.159
 # One strike holding more than this share of today's option volume is the busiest strike.
 BUSIEST_STRIKE_SHARE = 0.11
 
-# The sums (questions/spx_hour.json): flat within the band at the mark.
-NEXT_30_FLAT_BAND_SIGMA = 0.07
-NEXT_60_FLAT_BAND_SIGMA = 0.11
-# How often each band happened on SPX, in percent of reads (spec/cuts.json base_rates).
+# How often each band of the sums (questions/spx_hour.json) happened on SPX, in percent of reads (spec/cuts.json base_rates).
+# Each flat share is also its box's target: the flat zone (flat_zone.py) is sized at every read so that, on the prior
+# sessions, that share of the box's windows lands flat.
 NEXT_30_UP_PCT, NEXT_30_DOWN_PCT, NEXT_30_FLAT_PCT = 24, 21, 55
 NEXT_60_UP_PCT, NEXT_60_DOWN_PCT, NEXT_60_FLAT_PCT = 22, 19, 59
 
@@ -54,7 +53,8 @@ NEXT_60_UP_PCT, NEXT_60_DOWN_PCT, NEXT_60_FLAT_PCT = 22, 19, 59
 # floored at this share after (the SPX floor is the smallest unit measured; SNDK's never bound).
 RULER_HOLD_SIGMA = 0.12
 RULER_FLOOR_SIGMA = 0.03
-# The 10-minute sum's bands in tape units: flat within the first, big beyond the second.
+# The stretch since the opening lane's last read, in tape units (tape.move_since_read): held within the first, big beyond
+# the second.
 TAPE_FLAT_UNITS = 0.42
 TAPE_BIG_UNITS = 0.89
 TAPE_DOWN_BIG_PCT, TAPE_DOWN_SMALL_PCT, TAPE_FLAT_PCT, TAPE_UP_SMALL_PCT, TAPE_UP_BIG_PCT = 18, 17, 36, 14, 15
@@ -80,10 +80,17 @@ WALL_TOUCH_SIEGE_PERCENTILE, WALL_TOUCH_QUIET_PERCENTILE = 70, 30
 ZERO_DTE_LAST_HOUR_MIN = 60
 # A follow-on (the Fed's press conference) is read with the release it follows when due within this many minutes of it.
 FOLLOW_ON_MIN = 45
-# The premarket lane's sums (questions/spx_premarket_hour.json) are graded from the settled open: flat within
-# this band 10 minutes on, and within NEXT_30_FLAT_BAND_SIGMA 30 minutes on. Not measured yet: the live
-# sum's 30-minute band scaled by the square root of 10 over 30.
-OPEN_10_FLAT_BAND_SIGMA = 0.04
+# The flat zone's own targets (flat_zone.py; the end-price sums' are their flat base rates above): the share of the live
+# lane's call's windows, and of the premarket lane's boxes' windows from the settled open, that should land flat.
+AVERAGE_30_FLAT_PCT = 52.5
+OPEN_FLAT_PCT = 55
+# A zone is never narrower than this many points; the opening lane's 10-minute boxes have a floor of their own.
+MINIMUM_ZONE_POINTS = 2.0
+MINIMUM_TAPE_ZONE_POINTS = 1.25
+# Today's typical 1-minute move (flat_zone.level): the VIX's view counts as this many minutes of tape, and each finished
+# minute weighs half per this many minutes of age.
+VIX_TRUST_MINUTES = 10
+RECENCY_HALF_LIFE_MIN = 15
 # The average-price grade's guards (integral.py), each a count, a clock or a rank against the same window on the recent sessions.
 INTEGRAL_MISSING_BARS_MAX = 1   # bars a window may miss and still be graded on its average, never the mark bar
 BAD_TICK_PCT = 0.999            # share of the same window's 1-minute moves a bad tick's jump, and its jump back, are at or above

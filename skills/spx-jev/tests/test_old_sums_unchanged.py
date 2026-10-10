@@ -16,8 +16,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from conftest import DAY, PRIOR_DAYS, at, bars_from_closes, flat_bars, make_row, write_prior_rows, write_state
-from spx_jev import grade, pool, premarket, service, story
+from conftest import DAY, PRIOR_DAYS, FixedZones, at, bars_from_closes, flat_bars, make_row, write_prior_rows, write_state
+from spx_jev import flat_zone, grade, pool, premarket, service, story
 from spx_jev.ask import send_all as real_send_all
 from spx_jev.lane import LIVE, PREMARKET, TAPE
 from spx_jev.service import run_once
@@ -105,6 +105,7 @@ def run_fixture(tmp_path, monkeypatch, average_reply=None) -> dict[str, dict[str
     opening lane's 10:40 read; and the premarket lane's 09:28 read in a station of its own. Each is graded once the
     day's bars are in. ``average_reply`` is what the average-price request gets back instead of an answer."""
     _today(monkeypatch)
+    monkeypatch.setattr(flat_zone, "Zones", FixedZones)
     monkeypatch.setattr(service, "send_all", _answers)
     monkeypatch.setattr(service, "send", _sums(average_reply))
     prior = {d: flat_bars(390, day=d) for d in PRIOR_DAYS}
