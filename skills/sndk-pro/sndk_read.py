@@ -418,7 +418,6 @@ INTERRUPT_DAILY_CAP = 8       # interrupts alone may spend this much of the day.
 #     table's rule fires about 2.7 a day and adds about 1.2, the rest
 #     pre-empting a price or vol wake. Every wall crossing recorded so far
 #     crossed a listed strike, so this is the visible twin of those wakes.
-VISIBLE_WAKES = frozenset({"volume leader changed", "listed strike crossed"})
 
 MOVE_MINUTES_HARD = 2 * MOVE_MINUTES  # travel that interrupts the floor, in
                               # typical minutes. Double the ordinary trigger:
@@ -1632,7 +1631,8 @@ def _wake_trigger(row: dict, prev_row: Optional[dict], prev: Optional[dict],
             return "flip moved"
 
     # 8-9. strikes-5: WHAT THE MODEL CAN SEE, checked last so every wake above
-    # keeps its reason and its interrupt standing (see VISIBLE_WAKES)
+    # keeps its reason and its interrupt standing (the note under
+    # INTERRUPT_DAILY_CAP says why these two exist)
     if spot is not None and spoke_spot is not None and sig and prev.get("strikes_sent"):
         spoke_sig = value_at_last_read(prev, "sigma") or sig
         for k in prev["strikes_sent"]:

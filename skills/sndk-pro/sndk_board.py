@@ -1709,22 +1709,6 @@ def _gap_crossings(bars_gap: list, k: float, start_side: int, clear: float) -> i
     return n
 
 
-def _crossed_from_frame(frame: Optional[dict]) -> list:
-    out = []
-    for c in ((frame or {}).get("crossed_since_then") or []):
-        if isinstance(c, dict):
-            for key in ("level", "strike", "price"):
-                v = SR._fin(c.get(key))
-                if v is not None:
-                    out.append(v)
-                    break
-        else:
-            v = SR._fin(c)
-            if v is not None:
-                out.append(v)
-    return out
-
-
 def _said_then(call_row: Optional[dict]) -> tuple:
     """(the sentence a call row left on screen, "HH:MM" it was written), or
     (None, None) when the row is missing or its reading has no prose."""
