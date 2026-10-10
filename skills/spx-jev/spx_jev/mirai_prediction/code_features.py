@@ -190,11 +190,14 @@ def third(s: str, nth: int = 0) -> str | None:
 
 
 def fifth(s: str, nth: int = 0) -> str | None:
-    m = re.findall(r"(in the bottom fifth|between the top and bottom fifths|between the bottom and top fifths|in the top fifth)", s)
+    """The fifth a sentence names, bottom / middle / top; a record ("more than every one of the last N sessions", the
+    wording vol.realized_vs_clock uses when nothing in the rank is above it) is the top, not a blank (issue SPX30-3)."""
+    m = re.findall(r"(in the bottom fifth|between the top and bottom fifths|between the bottom and top fifths|in the top fifth"
+                   r"|more than every one of the last)", s)
     if len(m) <= nth:
         return None
     return {"in the bottom fifth": "bottom", "between the top and bottom fifths": "middle", "between the bottom and top fifths": "middle",
-            "in the top fifth": "top"}[m[nth]]
+            "in the top fifth": "top", "more than every one of the last": "top"}[m[nth]]
 
 
 def rank_of(s: str, nth: int = 0) -> float | None:
