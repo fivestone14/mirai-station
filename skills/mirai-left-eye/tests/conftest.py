@@ -15,6 +15,17 @@ import lefteye_fill_ledger
 
 
 @pytest.fixture(autouse=True)
+def _isolate_state_dir(tmp_path, monkeypatch):
+    """lefteye_rag and dated_gex_feed resolve state/ through MIRAI_STATE_DIR
+    and write there as a side effect of a judged scan — before this guard the
+    watchtower suite left its synthetic 2026-07-06 slices in the real
+    state/spx_rag, where the next rollup would have summarized them as a
+    session. Point the env at a throwaway dir for every test; a test that
+    needs its own layout sets the same variable again on top."""
+    monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path / "state"))
+
+
+@pytest.fixture(autouse=True)
 def _isolate_fill_ledger(tmp_path, monkeypatch):
     """The FILL LEDGER persists to the real state/ dir by default, and GexBox /
     native read() annotate as a side effect — so ANY test that exercises those

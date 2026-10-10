@@ -158,7 +158,6 @@ def wired_scan(monkeypatch):
     monkeypatch.setattr(H.reversion, "live_allowed",
                         lambda: (False, "shadow record unproven"))
     monkeypatch.setattr(H, "load_state", fake_load_state)
-    monkeypatch.setattr(H, "load_config", lambda: {"push_to_phone": False})
     monkeypatch.setattr(H, "_persist_scan", lambda hb, st, now: None)
     return captured
 

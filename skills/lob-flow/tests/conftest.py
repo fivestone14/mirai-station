@@ -1,8 +1,7 @@
 """Shared fixtures: everything on tmp_path, zero network anywhere."""
 import os
 import sys
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import timedelta
 
 import pytest
 
@@ -11,8 +10,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lob_flow.baselines import BaselineStore, key_of, session_block, tod_bin, vix_band  # noqa: E402
 from lob_flow.contracts import LobConfig, QuoteRow, TradeEvent  # noqa: E402
 from lob_flow.io_state import StateDir  # noqa: E402
-
-ET = ZoneInfo("America/New_York")
 
 
 @pytest.fixture
@@ -23,12 +20,6 @@ def cfg():
 @pytest.fixture
 def sd(tmp_path):
     return StateDir(tmp_path / "lob")
-
-
-@pytest.fixture
-def now_et():
-    """A mid-session weekday moment (Tue 2026-07-07 10:30 ET, no events)."""
-    return datetime(2026, 7, 7, 10, 30, tzinfo=ET)
 
 
 def make_quote(strike=6300.0, right="call", bid=10.0, ask=10.2,

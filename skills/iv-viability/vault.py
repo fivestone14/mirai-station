@@ -218,24 +218,6 @@ def get_cassandra_token() -> str:
     return tok
 
 
-def set_cassandra_token(token: str) -> None:
-    keyring = _import_keyring()
-    if not token:
-        raise VaultError("set_cassandra_token: empty token")
-    try:
-        keyring.set_password(CASS_SERVICE, CASS_ACCOUNT, token)
-    except Exception as e:
-        raise VaultError(f"Keychain write failed for cassandra token: {type(e).__name__}") from e
-
-
-def has_cassandra_token() -> bool:
-    keyring = _import_keyring()
-    try:
-        return keyring.get_password(CASS_SERVICE, CASS_ACCOUNT) is not None
-    except Exception:
-        return False
-
-
 def clear_cassandra_token() -> None:
     """Drop the legacy static bearer. Called by the OAuth enrolment so a dead
     long-lived token cannot linger and be picked up by the fallback path."""

@@ -61,23 +61,3 @@ def cfg():
 @pytest.fixture
 def store(tmp_path):
     return SiegeStore(tmp_path / "siege")
-
-
-@pytest.fixture
-def bars_factory():
-    return make_bars
-
-
-@pytest.fixture
-def baseline_seeder():
-    return seed_baseline
-
-
-@pytest.fixture
-def scanner():
-    return run
-
-
-@pytest.fixture
-def clock():
-    return at

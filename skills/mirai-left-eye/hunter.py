@@ -8,22 +8,25 @@
 # ./hunter.py gets system python and scans quiet for the wrong reason.
 """
 hunter.py — the SHIFT MANAGER: /mirai-left-eye scan orchestrator (gex-only).
-(The every-5-minutes worker: wakes up, runs the Scan on each index, records the
-diary row, refreshes the notes, rings the bell on fresh paper fires, sleeps.)
+(The every-minute worker: wakes up, runs the Scan on each index, records the
+diary row, refreshes the notes, flags a fresh paper fire for the alert bell,
+sleeps.)
 
-Pipeline per 5-min tick (post gex-module restructure, 2026-07-03):
+Pipeline per tick (post gex-module restructure, 2026-07-03):
     1. Universe = the Fade Lens tickers (SPX). No voters, no discovery.
        (QQQ was a voter-universe ticker and retired with the voters.)
     2. Per ticker: reversion.evaluate() — the SCAN: flow sensor → gravity
        engine → fade-lens gates — then record() the diary row.
     3. Refresh the human-facing notes (Today dashboard + ULT learning view).
-    4. Flag a FRESH paper fire for the phone (armed-gate dedup — a still-lit
-       trigger never re-alerts; it must reset or flip first).
+    4. Flag a FRESH paper fire in the heartbeat (armed-gate dedup — a still-lit
+       trigger never re-alerts; it must reset or flip first). The alert bell
+       (watch.cli gex-alerts, run by the launchd wrapper right after this
+       script) reads the heartbeat log and pushes the fire to the phone;
+       nothing here pushes.
 
 HISTORY: the nine-voter/confluence/pick_builder/outcomes system was retired in
 the 2026-07-03 gex-module restructure — the Fade Lens is the brain now, and it
-stays paper/shadow until the nightly report cards prove it. Backup of the old
-system: ~/.claude/plugins/mirai-station.backup-pre-gexmodule-20260703.
+stays paper/shadow until the nightly report cards prove it.
 
 CLI:
     python3 hunter.py                       # one tick, compact output
@@ -47,26 +50,12 @@ PT = ZoneInfo("America/Los_Angeles")
 SKILL_DIR = Path(__file__).resolve().parent
 LOGS_DIR = SKILL_DIR / "logs"
 STATE_PATH = SKILL_DIR / "state.json"
-CONFIG_PATH = SKILL_DIR / "config.json"
 
 if str(SKILL_DIR) not in sys.path:
     sys.path.insert(0, str(SKILL_DIR))
 
 import dashboard as dash  # noqa: E402
 import reversion_lens as reversion  # noqa: E402
-
-
-def load_config() -> dict[str, Any]:
-    """Read config.json; on any failure return safe defaults (push OFF)."""
-    defaults = {"push_to_phone": False}
-    if not CONFIG_PATH.exists():
-        return defaults
-    try:
-        with open(CONFIG_PATH) as f:
-            cfg = json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return defaults
-    return {**defaults, **cfg}
 
 
 # ===========================================================================
@@ -335,7 +324,7 @@ def scan(
     if not dry_run:
         _persist_scan(heartbeat, state, now)
 
-    # Compact human line + optional phone flag (labels paper vs live honestly).
+    # Compact human line (labels paper vs live honestly).
     fires = heartbeat["fires"]
     if fires:
         for f in fires:
@@ -344,10 +333,6 @@ def scan(
             print(f"mirai-left-eye :: 🎯 {mode} fade {f['side']} {f['ticker']}"
                   f" → {lbl} {f['magnet']}  (stretch {f['gap_stretch']}σ,"
                   f" runway {f['runway_sigma']}σ)")
-        if load_config().get("push_to_phone") and not dry_run:
-            tag = "paper" if all(f.get("paper", True) for f in fires) else "LIVE"
-            line = " · ".join(f"{f['ticker']} fade {f['side']} → {f['magnet']}" for f in fires)
-            print(f"[PUSH] 🌑 {tag}: {line}")
     else:
         parts = []
         for e in heartbeat["evaluated"]:

@@ -1553,39 +1553,6 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
         except Exception:
             pass
 
-        # SHADOW (GAMMA ROLL): cross-expiry wall attribution from the UW mark's
-        # v2 buckets (today / this week / next six weeks) — speaks only when
-        # the 0DTE wall and the 8-45DTE wall point at different levels (the pin
-        # may jump once today's options bleed off). Read-only peek at the
-        # existing mark; one feed one vote (source tag "uw_periscope").
-        # Fail-open.
-        try:
-            import lefteye_gamma_roll as _groll
-            _gr_rec = _groll.read(_groll.load_mark(), spot, now)
-            if _gr_rec is not None:
-                # N12 (2026-07-12): the roll lens picks its walls by UNSIGNED |gamma|
-                # argmax, so it can name a net-SHORT-gamma strike — breakout fuel — as
-                # "the pin the book defends" (live 07-10: both "pins" were net short).
-                # Cross-check the 0DTE wall against OUR OWN signed net field and label
-                # the KIND: 'defended' (net long γ — a real pin) vs 'accelerant' (net
-                # short γ — fuel). Wording downstream must key off the kind. The label
-                # inherits the assumed-sign caveat and says so.
-                if _gr_rec.get("divergence") and _gr_rec.get("zero_dte_wall") is not None:
-                    try:
-                        _nbs = ((telemetry.get("gex_views") or {}).get("net_by_strike")) or []
-                        _zw = float(_gr_rec["zero_dte_wall"])
-                        _near = [v for k, v in _nbs if abs(float(k) - _zw) <= 2.6]
-                        if _near:
-                            _net = _near[0]
-                            _gr_rec["zero_dte_wall_net"] = _net
-                            _gr_rec["zero_dte_wall_kind"] = ("defended" if _net > 0
-                                                             else "accelerant")
-                    except Exception:
-                        pass
-                telemetry["gamma_roll"] = _gr_rec
-        except Exception:
-            pass
-
         # SHADOW (DATED BOOK): far-dated structural OI walls — the next two SPX
         # monthlies + the quarter-end — from the nightly sidecar's stored book
         # (dated_gex_feed, own launchd job). Cache-ONLY file read, never a fetch
