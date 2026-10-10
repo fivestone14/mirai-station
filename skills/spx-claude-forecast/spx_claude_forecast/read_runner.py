@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
-from . import answer_checks, claude_call, control, final_forecast, jsonl_store, library, rulebook
+from . import answer_checks, claude_call, control, final_forecast, jsonl_store, latest_card, library, rulebook, scorecard
 from .control import ET, PYTEST_ENV, log, log_job_run, now_et, now_utc_iso
 from .paths import ForecastPaths, default_state_dir, ensure_folders
 from .payload.build import build_payload
@@ -69,7 +69,7 @@ def run_read(state_dir: Path | str, read_id: str, *, call=claude_call.call_claud
     if hold:
         final = _final_line(read_id, built, [], hold, inputs)
         jsonl_store.append_json_line(paths.reads_file(day), final)
-        _write_latest(paths, built, final, inputs)
+        _write_latest(paths, built, final, [])
         log_job_run(paths, f"read:{hold}", started, True, read_id=read_id)
         summary["status"] = hold
         return summary
@@ -86,7 +86,7 @@ def run_read(state_dir: Path | str, read_id: str, *, call=claude_call.call_claud
             answers.append(line)
     final = _final_line(read_id, built, answers, "ok", inputs)
     jsonl_store.append_json_line(paths.reads_file(day), final)
-    _write_latest(paths, built, final, inputs)
+    _write_latest(paths, built, final, answers)
     errors = [a["error"] for a in answers if a.get("error")]
     log_job_run(paths, "read", started, not errors, error="; ".join(errors) or None, read_id=read_id,
                 usable_answers=final["usable_answer_count"],
@@ -160,10 +160,9 @@ def _final_line(read_id: str, built, answers: list[dict], status: str, inputs) -
             "forecast": final["forecast"], "written_at": _now_et_iso()}
 
 
-def _write_latest(paths: ForecastPaths, built, final: dict, inputs) -> None:
-    latest = {"read_id": final["read_id"], "trading_day": inputs.day, "half_hour_slot_et": inputs.slot, "status": final["status"],
-              "forecast": final["forecast"], "usable_answer_count": final["usable_answer_count"],
-              "claude_input_sha256": built.claude_input_sha256, "written_at": final["written_at"]}
+def _write_latest(paths: ForecastPaths, built, final: dict, answers: list[dict]) -> None:
+    """The phone's card (latest_card): the final forecast, the reasons in words and the scorecard's verdict."""
+    latest = latest_card.latest_card_for(built, final, answers, scorecard.read_scorecard(paths))
     jsonl_store.write_json_atomically(paths.latest_file, latest)
 
 

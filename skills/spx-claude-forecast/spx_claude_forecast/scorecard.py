@@ -8,6 +8,7 @@ far its two answers disagreed. Under SCORECARD_TOO_EARLY_READS reads the verdict
 """
 from __future__ import annotations
 
+import json
 import random
 from collections import defaultdict
 
@@ -132,3 +133,12 @@ def write_scorecard(paths: ForecastPaths, rows: list[dict], reads_by_day: dict[s
     card = scorecard_from_rows(rows, reads_by_day if reads_by_day is not None else scoring.load_reads_by_day(paths))
     jsonl_store.write_json_atomically(paths.scorecard_file, card)
     return card
+
+
+def read_scorecard(paths: ForecastPaths) -> dict | None:
+    """The scorecard the nightly last wrote, or None before the first nightly or on an unreadable file."""
+    try:
+        card = json.loads(paths.scorecard_file.read_text())
+    except (OSError, ValueError):
+        return None
+    return card if isinstance(card, dict) else None

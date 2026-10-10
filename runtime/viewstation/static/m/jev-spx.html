@@ -213,6 +213,48 @@ button.tile .tile-k::after,.inplay-h.tap::after{content:"";flex:none;margin-left
 .tb-k{font:600 12.5px/1.2 var(--sans);color:var(--i-body);white-space:nowrap}
 .tb.on .tb-k{font-weight:700;color:var(--i)}
 .tb-v{font:700 12.5px/1.2 var(--sans);color:var(--i);white-space:nowrap;text-align:right}
+/* Claude's own read (2026-10-10): the pick, then one row per horizon — its three chances as one bar, the numbers beside
+   it with the pick in bold, and under the bar how often this time of day stayed flat on earlier sessions; the Why
+   control opens the against-the-usual sheet. Every text here is 11px or more, the page's floor. */
+.cl-lead{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;margin-top:8px}
+.cl-lead b{font:700 22px/1.15 var(--sans);letter-spacing:-.01em;color:var(--i)}
+.cl-lead span{font:400 12.5px/1.3 var(--sans);color:var(--i-mute)}
+.cl-grid{display:grid;grid-template-columns:48px minmax(0,1fr) 96px;gap:2px 10px;align-items:center;margin-top:10px}
+.cl-h{grid-column:3;font:700 11px/1.2 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--i-faint);text-align:right;white-space:nowrap}
+.cl-h i,.cl-n i,.cl-vs-n i{font-style:normal;color:var(--o-fl);padding:0 3px}
+.cl-k{grid-column:1;font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint);white-space:nowrap}
+.cl-bar{grid-column:2;display:flex;gap:2px;height:14px;border-radius:4px;overflow:hidden}
+.cl-bar i{display:block;flex:0 0 auto;min-width:0}
+.cl-bar .dn{background:var(--o-dn)}.cl-bar .fl{background:var(--o-fl)}.cl-bar .up{background:var(--o-up)}
+.cl-bar.usual{height:8px}
+.cl-bar.usual .dn{background:var(--o-dn-soft)}.cl-bar.usual .fl{background:var(--o-un)}.cl-bar.usual .up{background:var(--o-up-soft)}
+.cl-bar.none{background:var(--s2)}
+.cl-n{grid-column:3;font:600 13px/1.2 var(--sans);color:var(--i-mute);white-space:nowrap;text-align:right}
+.cl-n b,.cl-vs-n b{font-weight:800;color:var(--i)}
+.cl-usual{grid-column:2;margin-bottom:7px;font:400 11px/1.2 var(--sans);color:var(--i-mute);white-space:nowrap}
+.cl-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:2px;padding-top:9px;border-top:1px solid var(--s2);
+         font:400 11.5px/1.3 var(--sans);color:var(--i-mute)}
+.cl-why{position:relative;display:inline-flex;align-items:center;gap:6px;padding:0;border:0;background:none;font:700 12.5px/1.2 var(--sans);
+        color:var(--i);cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.cl-why::before{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:max(100%,var(--tap-min));height:var(--tap-min)}
+.cl-why::after{content:"";width:6px;height:6px;border-right:1.5px solid var(--i-mute);border-top:1.5px solid var(--i-mute);transform:rotate(45deg)}
+.cl-why:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
+/* the against-the-usual sheet: per horizon Claude's bar over the usual's, the two sets of numbers, then the reasons */
+.cl-vs{margin-top:14px}
+.cl-vs-k{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font:700 11px/1.2 var(--sans);letter-spacing:.1em;
+         text-transform:uppercase;color:var(--i-faint);white-space:nowrap}
+.cl-vs-k b{min-width:0;font:700 13px/1.2 var(--sans);letter-spacing:0;text-transform:none;color:var(--i);text-align:right;white-space:normal}
+.cl-vs .cl-bar{margin-top:6px}
+.cl-vs .cl-bar.usual{margin-top:3px}
+.cl-vs-n{display:grid;grid-template-columns:52px minmax(0,1fr);gap:2px 10px;margin-top:6px;font:600 13px/1.2 var(--sans);color:var(--i-body)}
+.cl-vs-n em,.cl-why-l em{font-style:normal;font-weight:400;color:var(--i-mute)}
+.cl-vs-n .cl-h{grid-column:2;text-align:left}
+.cl-why-h{margin:16px 0 6px;font:700 11px/1.2 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--i-faint)}
+.cl-why-l{margin:0;padding:0;list-style:none;font:400 13.5px/1.45 var(--sans);color:var(--i-body)}
+.cl-why-l li{padding:6px 0;border-top:1px solid var(--s2)}
+.cl-why-l li:first-child{border-top:0;padding-top:0}
+.cl-rec{margin-top:14px;font:400 12.5px/1.45 var(--sans);color:var(--i-mute)}
+.cl-rec b{color:var(--i)}
 .tb-n{grid-column:2 / -1;font:400 11.5px/1.3 var(--sans);color:var(--i-mute)}
 .td-h{margin:16px 0 6px;font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint)}
 .td{display:grid;grid-template-columns:52px minmax(0,1fr) 92px;gap:8px;align-items:center;padding:3px 0;font:400 12.5px/1.3 var(--sans);color:var(--i-body)}
@@ -479,6 +521,18 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   if(window.ResizeObserver) new ResizeObserver(set).observe(hd); else window.addEventListener('resize', set);
 })();
 </script>
+<!-- Claude's own read (skills/spx-claude-forecast, 2026-10-10): after every half-hour read Claude answers, apart from the
+     call above and never mixed into it, with its up / flat / down chances per horizon. Read from
+     state/spx_claude_forecast/latest.json; the card stays hidden until the file exists. Each bar is Claude's three
+     chances; the line under it is how often this time of day stayed flat on earlier sessions (the base rate Claude was
+     shown); the Why control opens the sheet that sets the two side by side, with Claude's reasons in words. -->
+<section class="card" id="claude" hidden aria-labelledby="claudeLab">
+  <div class="lab" id="claudeLab">Claude&rsquo;s read<span class="r" id="claudeR"></span></div>
+  <div class="cl-lead"><b id="claudePick"></b><span id="claudeLine"></span></div>
+  <div class="cl-grid" id="claudeRows"></div>
+  <div class="cl-foot"><span>% chance the window ends each way</span>
+    <button class="cl-why" id="claudeWhy" type="button" aria-controls="claudeSheet">Why</button></div>
+</section>
 <!-- the Mirai Prediction System's scoreboard: after N graded reads, how right each voice is and how it compares with the
      historical odds. Read from state/spx_jev/mirai_prediction/scoreboard.json; the card stays hidden until the file exists.
      the Combined forecast (pool_v2) is the call shown above, its right rate set beside the usual-odds guess (the
@@ -515,6 +569,12 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   <div class="pt-r"><span class="k">5-min call</span><span>The opening hour&rsquo;s call, made every 5 minutes on the average price over the next 10. Last 5 min = how far price moved since the previous read, and whether that was quiet, normal or busy for the time of day.</span></div>
   <div class="pt-r"><span class="k">Calls in play</span><span>Tap a call bar for its result.</span></div>
   <p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are shadow questions, asked and logged, never graded and never weighted. A call is a forecast, not a trade signal, graded on the average price over its window: where each minute closed against the price at the read, averaged, in index points, and set against a flat band (the &plusmn; figure) narrower than an end price would get, because an average swings less than any one price. Its direction decides right or wrong; its size at the end price, where price stood highest and lowest (&ldquo;min 3&rdquo; is the window&rsquo;s third minute) and any sharp move are said beside it, and an unsure call is passed, never counted as a miss. For now each call also shows the old grade, on the end price alone, and a call the average could not grade stands on that, said so. The call is JEV&rsquo;s answer to that question itself: where the average will sit, up, flat or down within the &plusmn; figure, with no unsure; the old question on the end price is still asked and graded beside it, and shown muted as &ldquo;End price&rdquo;. Through the first hour the opening lane reads every 5 minutes and its call, on the average price over the next 10 minutes, leads the page until its last call closes; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock. Before the open, the pre-market lane reads S&amp;P futures, 10-year bond futures, bitcoin futures and the morning&rsquo;s reports through the night and makes one call about the first half hour: the average price over the 30 minutes after the first settled price, four minutes after the open. It is a forecast too, graded by the bars. Every time here is in this phone's own time zone.</p>
+  <button class="sh-close" type="button" data-sheet-close>Close</button>
+</div>
+<div class="sheet" id="claudeSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="claudeTitle">
+  <div class="sh-grab"></div>
+  <div class="sh-h" id="claudeTitle">Claude&rsquo;s read &middot; against the usual</div>
+  <div id="claudeBody"></div>
   <button class="sh-close" type="button" data-sheet-close>Close</button>
 </div>
 <div class="sheet qs" id="qSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="qsName">
@@ -2277,6 +2337,141 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   var infoBtn = document.getElementById('infoBtn');
   infoBtn.addEventListener('click', function(){ if(!MiraiSheet.isOpen()) MiraiSheet.open(infoBtn); });
   document.addEventListener('visibilitychange', function(){ if(!document.hidden) pollLearn(); });
+})();
+</script>
+<script>
+/* Claude's own read: the card and its against-the-usual sheet, from state/spx_claude_forecast/latest.json. Its own
+   poll on the page's cadence, so a missing file (no read yet, the switch off) costs the call above nothing: the
+   section just stays hidden. Chances are whole percents (up_pct, flat_pct, down_pct), the base rate beside each
+   horizon as base_rate_shown_to_claude; the reasons come with their words (reason_words.py), so nothing here
+   translates a path. A horizon the read did not ask (the close too near) has no row. */
+(function(){
+  var URL_ = '/api/raw/file?root=state&path=spx_claude_forecast/latest.json', POLL_MS = 20000, NEAR = 3;
+  var HORIZONS = [['next_30_minutes', '30 min', 'Next 30 min'], ['next_60_minutes', '60 min', 'Next 60 min'], ['to_close', 'Close', 'To the close']];
+  var DIRS = [['down_pct', 'dn', 'Down'], ['flat_pct', 'fl', 'Flat'], ['up_pct', 'up', 'Up']];
+  var sec = document.getElementById('claude'), why = document.getElementById('claudeWhy'), last = null;
+  function el(tag, cls, text){ var e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
+  function n(x){ return Math.round(x); }
+  function sentence(s){ s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); }
+  function ok(h){ return !!h && h.status === 'ok' && typeof h.up_pct === 'number'; }
+  function base(h){ var b = h && h.base_rate_shown_to_claude; return b && typeof b.flat_pct === 'number' ? b : null; }
+  // the pick: the largest of the three; a tie goes to flat, which is no call
+  function pick(h){ var best = 'flat_pct'; DIRS.forEach(function(d){ if(h[d[0]] > h[best] + 1e-9) best = d[0]; }); return best; }
+  function dirWords(k){ return k === 'up_pct' ? 'Up' : k === 'down_pct' ? 'Down' : 'Flat'; }
+  function header(){ var h = el('div', 'cl-h'); DIRS.forEach(function(d, i){ if(i) h.appendChild(el('i', null, '·')); h.appendChild(document.createTextNode(d[2])); }); return h; }
+  function bar(h, usual){
+    var b = el('div', 'cl-bar' + (usual ? ' usual' : ''));
+    if(!h){ b.classList.add('none'); return b; }
+    DIRS.forEach(function(d){ var i = el('i', d[1]); i.style.flexBasis = Math.max(0, h[d[0]]) + '%'; b.appendChild(i); });
+    return b;
+  }
+  // the three numbers in the header's order, the pick in bold: 33 · 37 · 30
+  function numbers(h, bold){
+    var s = el('span'), p = bold ? pick(h) : null;
+    DIRS.forEach(function(d, i){ if(i) s.appendChild(el('i', null, '·')); s.appendChild(el(d[0] === p ? 'b' : 'span', null, String(n(h[d[0]])))); });
+    return s;
+  }
+  // how Claude sits against the usual: toward a move or toward flat, and a lean up or down, each when 3 points or more
+  function moveVsUsual(h, b){ return n(b.flat_pct - h.flat_pct); }
+  function tiltVsUsual(h, b){ return n((h.up_pct - b.up_pct) - (h.down_pct - b.down_pct)); }
+  function against(h, b){
+    var move = moveVsUsual(h, b), tilt = tiltVsUsual(h, b), parts = [];
+    if(Math.abs(move) >= NEAR) parts.push('+' + Math.abs(move) + (move > 0 ? ' toward a move' : ' toward flat'));
+    if(Math.abs(tilt) >= NEAR) parts.push('+' + Math.abs(tilt) + ' toward ' + (tilt > 0 ? 'up' : 'down'));
+    return parts.length ? parts.join(' · ') : 'about the usual';
+  }
+  function leadLine(h, b){
+    if(!b) return 'no usual odds for this time yet';
+    var move = moveVsUsual(h, b), tilt = tiltVsUsual(h, b);
+    if(move >= NEAR) return 'a move is more likely than usual';
+    if(move <= -NEAR) return 'flat is more likely than usual';
+    if(Math.abs(tilt) >= NEAR) return 'leans ' + (tilt > 0 ? 'up' : 'down') + ' more than usual';
+    return 'about the usual odds';
+  }
+  function todayEt(){ try { return new Date().toLocaleDateString('en-CA', {timeZone: 'America/New_York'}); } catch(e){ return null; } }
+  // the label's right side: the read's slot, with its weekday when the read is not today's
+  function whenWords(c){
+    var slot = c.half_hour_slot_et || '', day = c.trading_day || '';
+    if(day && day !== todayEt()){ try { slot = new Date(day + 'T12:00:00Z').toLocaleDateString('en-US', {weekday: 'short', timeZone: 'UTC'}) + ' ' + slot; } catch(e){} }
+    return slot;
+  }
+  function paint(c){
+    var f = c.forecast || {}, lead = null;
+    HORIZONS.forEach(function(x){ if(!lead && ok(f[x[0]])) lead = x; });
+    var answers = c.usable_answer_count || 0;
+    document.getElementById('claudeR').textContent = whenWords(c) + (answers ? ' · ' + answers + (answers === 1 ? ' answer' : ' answers') : '');
+    var pickEl = document.getElementById('claudePick'), lineEl = document.getElementById('claudeLine');
+    if(lead){ var h = f[lead[0]]; pickEl.textContent = dirWords(pick(h)) + ' ' + n(h[pick(h)]) + '%'; lineEl.textContent = lead[2] + ' · ' + leadLine(h, base(h)); }
+    else { pickEl.textContent = 'No answer'; lineEl.textContent = c.status === 'ok' ? 'every horizon failed the checks' : String(c.status || '').replace(/_/g, ' '); }
+    var rows = document.getElementById('claudeRows'); rows.textContent = '';
+    rows.appendChild(header());
+    HORIZONS.forEach(function(x){
+      var hz = f[x[0]]; if(!hz) return;
+      rows.appendChild(el('div', 'cl-k', x[1]));
+      rows.appendChild(bar(ok(hz) ? hz : null));
+      var num = el('div', 'cl-n');
+      if(ok(hz)) num.appendChild(numbers(hz, true)); else num.textContent = hz.status === 'rejected' ? 'rejected' : 'no answer';
+      rows.appendChild(num);
+      var b = base(hz);
+      rows.appendChild(el('div', 'cl-usual', b ? 'usually flat ' + n(b.flat_pct) + '%' : 'no usual odds yet'));
+    });
+    sec.hidden = false;
+  }
+  function reasonItem(r){
+    var li = el('li', null, sentence(r.input_field_path_in_words) + ' ' + r.pushes_toward_in_words);
+    li.appendChild(el('em', null, ' · ' + r.horizon_in_words));
+    return li;
+  }
+  // the record: too early until 100 graded reads, then how often the pick was right and the skill against the usual odds
+  function recordLine(r){
+    var d = el('div', 'cl-rec');
+    if(!r || r.verdict !== 'Scored'){
+      d.appendChild(el('b', null, 'Record: too early'));
+      d.appendChild(document.createTextNode(' · ' + ((r && r.graded_reads) || 0) + ' graded reads, scored from 100. Not part of the call above.'));
+      return d;
+    }
+    var h = (r.horizons || {}).next_30_minutes || {}, skill = h.skill_vs_base_rate_pct;
+    d.appendChild(el('b', null, 'Record: right ' + n(h.claude_right_pct || 0) + '% of ' + (h.reads || 0) + ' reads'));
+    d.appendChild(document.createTextNode(' (next 30 min)' + (skill != null ? ' · ' + (skill >= 0 ? '+' : '−') + n(Math.abs(skill)) + '% vs the usual odds' : '') + '. Not part of the call above.'));
+    return d;
+  }
+  function openSheet(c){
+    var body = document.getElementById('claudeBody'), f = c.forecast || {}; body.textContent = '';
+    var head = el('div', 'cl-vs-n'); head.appendChild(el('em')); head.appendChild(header()); body.appendChild(head);
+    HORIZONS.forEach(function(x){
+      var hz = f[x[0]]; if(!hz) return;
+      var blk = el('div', 'cl-vs'), k = el('div', 'cl-vs-k', x[2]), b = base(hz);
+      k.appendChild(el('b', null, !ok(hz) ? (hz.status === 'rejected' ? 'rejected by the checks' : 'no answer') : b ? against(hz, b) : 'no usual odds yet'));
+      blk.appendChild(k);
+      blk.appendChild(bar(ok(hz) ? hz : null));
+      blk.appendChild(bar(b, true));
+      var nn = el('div', 'cl-vs-n');
+      nn.appendChild(el('em', null, 'Claude')); nn.appendChild(ok(hz) ? numbers(hz, true) : el('span', null, '—'));
+      nn.appendChild(el('em', null, 'Usual')); nn.appendChild(b ? numbers(b, false) : el('span', null, '—'));
+      blk.appendChild(nn);
+      if(ok(hz) && hz.largest_gap_between_answers_pct_points >= 10)
+        blk.appendChild(el('div', 'cl-rec', 'Claude’s two answers differed by ' + n(hz.largest_gap_between_answers_pct_points) + ' points here'));
+      body.appendChild(blk);
+    });
+    var reasons = c.reasons || [], ul = el('ul', 'cl-why-l');
+    body.appendChild(el('div', 'cl-why-h', 'Why'));
+    if(!reasons.length) ul.appendChild(el('li', null, 'No reason survived the checks'));
+    reasons.forEach(function(r){ ul.appendChild(reasonItem(r)); });
+    body.appendChild(ul);
+    var ag = c.strongest_reason_against_lean;
+    if(ag){ body.appendChild(el('div', 'cl-why-h', 'Against')); var al = el('ul', 'cl-why-l'); al.appendChild(reasonItem(ag)); body.appendChild(al); }
+    body.appendChild(recordLine(c.record));
+    MiraiSheet.open(why);
+  }
+  function poll(){
+    fetch(URL_, {cache:'no-store'}).then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){ var c = j && j.kind === 'json' ? j.data : j; if(!(c && c.forecast)) return; last = c; try { paint(c); } catch(e){ sec.hidden = true; } })   // /api/raw/file wraps the file as {kind, data}
+      .catch(function(){});
+  }
+  why.addEventListener('click', function(){ if(last && !MiraiSheet.isOpen()) openSheet(last); });
+  poll();
+  setInterval(function(){ if(!document.hidden) poll(); }, POLL_MS);
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden) poll(); });
 })();
 </script>
 </body>

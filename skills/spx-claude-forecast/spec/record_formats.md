@@ -469,6 +469,17 @@ Nothing was edited on disk.
 }
 ```
 
+## latest.json (the phone's card, rewritten after every read)
+
+One file, `state/spx_claude_forecast/latest.json`, written by `read_runner` through `latest_card.py` once the final line has landed, so the phone (the "Claude's read" card on `m/jev-spx.html`) never opens a daily file. The join keys are the final line's (`read_id`, `claude_input_sha256`, `trading_day`, `half_hour_slot_et`, `status`, `usable_answer_count`, `prompt_and_model_version`, `written_at`), and `forecast` is the final line's block per horizon as it stands (the chances, the size buckets, each answer's chances, `base_rate_shown_to_claude` and the gaps). What the file adds:
+
+| Field | Meaning |
+| --- | --- |
+| `read_at` | When the scene was cut: the read's own time, Eastern. |
+| `reasons[]` | Each distinct reason across the answers, in the order first given, at most 4. Beside the reason's three codes ride its words: `input_field_path_in_words`, `pushes_toward_in_words` and `horizon_in_words` (`reason_words.py`), so a reader never meets a dotted path. |
+| `strongest_reason_against_lean` | The first surviving reason against the lean, with the same words; null when none survived. |
+| `record` | The nightly scorecard as one line: `verdict` (Too early or Scored), `graded_reads`, `scorecard_built_at`, and per horizon `claude_right_pct`, `skill_vs_base_rate_pct` and `reads` (null until scored). |
+
 ## Example: one outcome line (outcomes/, one per read and horizon)
 
 ```json
