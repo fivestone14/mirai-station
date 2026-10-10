@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from payload_fixtures import station_state_dir
+from payload_fixtures import state_over_the_station, station_state_dir
 
 from spx_claude_forecast import control, hook, jsonl_store, seed, paths as forecast_paths
 from spx_claude_forecast.control import ET
@@ -74,15 +74,13 @@ def test_the_seed_takes_the_row_a_live_read_would_have_taken():
 
 
 @pytest.mark.skipif(station_state_dir() is None, reason="needs the station's state")
-def test_seeding_one_real_day_writes_a_payload_and_an_outcome_per_slot(tmp_path):
-    real = station_state_dir()
-    state = tmp_path / "state"
-    state.mkdir()
-    for name in ("reversion", "spx_jev", "lob_flow", "siege", "dated_gex"):
-        (state / name).symlink_to(real / name)
+def test_seeding_a_real_day_writes_a_payload_and_an_outcome_per_slot_at_the_diary_row_and_skips_them_the_second_time(tmp_path, monkeypatch):
+    slots = ("09:30", "12:30", "15:30")         # the session's first, a midday and its last slot; all 13 cost ten seconds each
+    monkeypatch.setattr(seed, "SEED_SLOTS", slots)
+    state = state_over_the_station(tmp_path)
     paths = forecast_paths.ensure_folders(state)
     counts = seed.seed_day(state, paths, "2026-10-01")
-    assert counts["built"] + counts["blind"] == 13 and counts["errors"] == 0, counts
+    assert counts["built"] + counts["blind"] == len(slots) and counts["errors"] == 0, counts
     payloads = jsonl_store.read_json_lines(paths.seed_payloads_file("2026-10-01"))
     outcomes = jsonl_store.read_json_lines(paths.seed_outcomes_file("2026-10-01"))
     built = [p for p in payloads if p["status"] == "built"]
@@ -95,4 +93,4 @@ def test_seeding_one_real_day_writes_a_payload_and_an_outcome_per_slot(tmp_path)
     final = [o for o in outcomes if o["result"]["status"] == "final"]
     assert final and all(o["read_source"] == "seed" and o["claude_input_sha256"].startswith("sha256:") for o in final)
     assert set(final[0]["missing_comparison_forecasts"]) == set(seed.SEED_MISSING_COMPARISONS)
-    assert seed.seed_day(state, paths, "2026-10-01")["skipped"] == 13          # idempotent
+    assert seed.seed_day(state, paths, "2026-10-01")["skipped"] == len(slots)      # idempotent

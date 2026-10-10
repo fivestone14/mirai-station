@@ -149,6 +149,22 @@ def test_a_manual_exclusion_day_or_a_wrong_sized_anchor_makes_a_row_ineligible()
     assert row["is_unit_suspect"] is True and row["is_eligible_precedent"] is False and "0.50" in row["exclude_reason"]
 
 
+def test_a_read_whose_spot_no_recent_bar_traded_is_marked_stale_by_the_grader_and_kept_out_of_the_library():
+    """Staleness is the grader's call, not the payload's (the bar of the read's own minute has not finished at the
+    cut): the outcome line carries it, and the library reads it from there to keep the read out of the precedents
+    and the base rate."""
+    stale = grading.grade_read(_session(), "live:x", "2026-10-09T14:30:12-04:00", _price_at(14, 30) + 50.0, ZONES, slot="14:30")
+    fresh = grading.grade_read(_session(), "live:x", "2026-10-09T14:30:12-04:00", _price_at(14, 30), ZONES, slot="14:30")
+    assert {l["horizon"]: l["result"]["is_stale_read"] for l in stale if l["horizon"] != "to_close"} == {"next_30_minutes": True,
+                                                                                                     "next_60_minutes": True}
+    assert all(l["result"]["is_stale_read"] is False for l in fresh if l["horizon"] != "to_close")
+    read_id = "seed:2026-10-01T14:30"
+    outcome = _outcome(read_id, "next_30_minutes", 0.4)
+    outcome["result"]["is_stale_read"] = True
+    row = library.library_row({**_payload_line("2026-10-01", "14:30", read_id, _fp()), "origin": "seed"}, [outcome])
+    assert row["is_stale_read"] is True and row["is_eligible_precedent"] is False and row["is_eligible_base_rate"] is False
+
+
 def _write_history(paths: forecast_paths.ForecastPaths, days: list[str], slots=("14:00", "14:30", "15:00")) -> None:
     for i, day in enumerate(days):
         payloads, outcomes = [], []

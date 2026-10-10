@@ -2,21 +2,12 @@
 declared with its reason, and no price level or date reaches the block."""
 from __future__ import annotations
 
-import json
-import re
-
 import pytest
-from payload_fixtures import FakeMarket, at, fake_inputs, flat_bars, make_row, station_state_dir
+from payload_fixtures import FakeMarket, absent_reasons, assert_no_leak, at, fake_inputs, flat_bars, leaks, make_row
 
-from spx_claude_forecast.paths import ensure_folders
 from spx_claude_forecast.payload.blocks.calendar import build_calendar_block
 from spx_claude_forecast.payload.blocks.clock import build_clock_block
 from spx_claude_forecast.payload.blocks.scale import build_scale_block
-from spx_claude_forecast.payload.frozen_inputs import load_frozen_inputs
-
-READ_ID = "live:2026-10-09T14:30:12.458122-04:00"
-PRICE_LEVEL = re.compile(r"(?<![\d.])[1-9]\d{3}(?![\d.])")     # a whole number of 1000 or more, as a price or strike would read
-DATE = re.compile(r"20\d\d-\d\d-\d\d")
 
 EVENTS = {
     "covers_from": "2026-09-01", "covers_through": "2026-12-31",
@@ -32,11 +23,8 @@ EVENTS = {
 NATIVE_RULER = {"em_open": 21.21, "em_points": 5.72, "em_consumed": 1.3187}
 
 
-def absent_reasons(result) -> dict[str, str]:
-    return {a["path"]: a["why"] for a in result.absent}
-
-
-def native_row(cut, **over) -> dict:
+def scale_row(cut, **over) -> dict:
+    """A diary row with the native book's ruler, live sigma and ATM IV the scale block reads."""
     fields = {"range_ruler": dict(NATIVE_RULER), "sigma_live": 41.5394, "atm_iv": 0.0844, **over}
     return make_row(cut, **fields)
 
@@ -76,7 +64,7 @@ def test_calendar_reads_the_day_and_the_cycles_without_a_date(tmp_path):
     assert result.data["month"] == {"trading_day": 7, "days_left": 15, "turn_window": "none"}
     assert result.data["expiry"] == {"today": "daily", "monthly_sessions_ahead": 5}
     assert absent_reasons(result) == {"calendar.month.pension_stock_minus_bond_mtd_pts": "no_daily_closes"}
-    assert not DATE.search(json.dumps(result.data))
+    assert leaks("calendar", result.data) == []
 
 
 def test_calendar_shows_events_ahead_and_under_way_on_a_decision_day(tmp_path):
@@ -89,7 +77,7 @@ def test_calendar_shows_events_ahead_and_under_way_on_a_decision_day(tmp_path):
     assert during["today"][1] == {"kind": "FOMC_PRESSER", "at": "14:30", "tier": "high", "min_ago": 15, "under_way": True}
 
 
-def test_fomc_phase_around_the_decision(tmp_path):
+def test_fomc_phase_is_day_before_then_day_after_around_the_decision_with_no_next_on_the_calendar(tmp_path):
     day_before = build_calendar_block(fake_inputs(tmp_path, cut=at(14, 30, day="2026-10-27"), events=EVENTS))
     assert day_before.data["fomc"] == {"phase": "day_before", "sessions_to_next": 1}
     day_after = build_calendar_block(fake_inputs(tmp_path, cut=at(14, 30, day="2026-10-29"), events=EVENTS))
@@ -105,7 +93,7 @@ def test_a_day_with_no_rows_is_quiet_only_when_the_calendar_covers_it(tmp_path):
     assert {reasons[f"calendar.{f}"] for f in ("day_class", "today", "next_high_tier", "fomc")} == {"calendar_not_covered"}
     assert set(uncovered.data) == {"month", "expiry"}
     missing = build_calendar_block(fake_inputs(tmp_path, cut=at(14, 30), events=None))
-    assert {reasons for reasons in absent_reasons(missing).values()} >= {"no_event_calendar"}
+    assert set(absent_reasons(missing).values()) >= {"no_event_calendar"}
 
 
 @pytest.mark.parametrize("day, window", [("2026-10-26", "none"), ("2026-10-27", "T-3"), ("2026-10-29", "T-1"), ("2026-10-30", "T"),
@@ -141,9 +129,9 @@ def test_pension_gap_is_absent_on_the_months_first_session(tmp_path):
 
 # --- scale -----------------------------------------------------------------------------------------------------
 
-def test_scale_on_a_native_book(tmp_path):
+def test_scale_on_a_native_book_gives_every_field_from_the_row_the_bars_and_the_vix1d_quote(tmp_path):
     cut = at(14, 30, 12)
-    inputs = fake_inputs(tmp_path, cut=cut, row=native_row(cut), bars=flat_bars(step=1.0),
+    inputs = fake_inputs(tmp_path, cut=cut, row=scale_row(cut), bars=flat_bars(step=1.0),
                          market=FakeMarket({"$VIX1D": [(at(14, 30, 5), 8.72)]}))
     result = build_scale_block(inputs)
     assert result.data == {"sigma_src": "anchor", "sigma_live_x": 0.55, "atm_iv_pct": 8.44, "straddle_open_sig": 0.28,
@@ -152,20 +140,18 @@ def test_scale_on_a_native_book(tmp_path):
     assert not result.absent
 
 
-def test_scale_drops_the_book_fields_on_a_stand_in_or_unknown_book(tmp_path):
+def test_scale_drops_the_fields_priced_off_the_book_on_a_stand_in_book_and_keeps_the_rest(tmp_path):
     cut = at(14, 30, 12)
+    stand_in = build_scale_block(fake_inputs(tmp_path, cut=cut, row=scale_row(cut), options_book="stand_in"))
     book_fields = ("atm_iv_pct", "straddle_open_sig", "straddle_left_sig", "straddle_used_x")
-    stand_in = build_scale_block(fake_inputs(tmp_path, cut=cut, row=native_row(cut), options_book="stand_in"))
     assert {absent_reasons(stand_in)[f"scale.{f}"] for f in book_fields} == {"stand_in_book"}
-    assert stand_in.data["sigma_live_x"] == 0.55 and "atm_iv_pct" not in stand_in.data
-    unknown = build_scale_block(fake_inputs(tmp_path, cut=cut, row=native_row(cut), options_book=None))
-    assert {absent_reasons(unknown)[f"scale.{f}"] for f in book_fields} == {"options_book_unknown"}
+    assert stand_in.data["sigma_live_x"] == 0.55 and not any(f in stand_in.data for f in book_fields)
 
 
 def test_scale_at_the_first_read_has_no_quote_and_too_few_bars(tmp_path):
     cut = at(9, 30, 40)
     ruler = {"em_open": 21.21, "em_points": 21.21}
-    result = build_scale_block(fake_inputs(tmp_path, cut=cut, row=native_row(cut, range_ruler=ruler), bars=[],
+    result = build_scale_block(fake_inputs(tmp_path, cut=cut, row=scale_row(cut, range_ruler=ruler), bars=[],
                                            market=FakeMarket({"$VIX1D": [(at(9, 30, 5), 10.23)]})))
     reasons = absent_reasons(result)
     assert reasons["scale.vix1d"] == "not_until_09:31"
@@ -175,24 +161,21 @@ def test_scale_at_the_first_read_has_no_quote_and_too_few_bars(tmp_path):
 
 def test_straddle_used_falls_back_to_the_days_range_over_the_open_straddle(tmp_path):
     cut = at(14, 30, 12)
-    result = build_scale_block(fake_inputs(tmp_path, cut=cut, row=native_row(cut, range_ruler={"em_open": 20.0, "em_points": 5.0})))
+    result = build_scale_block(fake_inputs(tmp_path, cut=cut, row=scale_row(cut, range_ruler={"em_open": 20.0, "em_points": 5.0})))
     assert result.data["straddle_used_x"] == 0.05      # flat bars span one point, over a 20-point open straddle
 
 
 def test_scale_declares_a_missing_quote_and_prior_close(tmp_path):
     cut = at(14, 30, 12)
-    result = build_scale_block(fake_inputs(tmp_path, cut=cut, row=native_row(cut), market=None, vix1d_prior_close=None))
+    result = build_scale_block(fake_inputs(tmp_path, cut=cut, row=scale_row(cut), market=None, vix1d_prior_close=None))
     reasons = absent_reasons(result)
     assert reasons["scale.vix1d"] == "no_vix1d_quote" and reasons["scale.vix1d_prior_close"] == "not_recorded"
 
 
 # --- the real store --------------------------------------------------------------------------------------------
 
-@pytest.mark.skipif(station_state_dir() is None, reason="needs the station's state")
-def test_the_three_blocks_build_for_the_1430_read_with_no_level_or_date():
-    state_dir = station_state_dir()
-    inputs = load_frozen_inputs(state_dir, ensure_folders(state_dir), READ_ID)
-    clock, calendar, scale = (build(inputs) for build in (build_clock_block, build_calendar_block, build_scale_block))
+def test_the_real_1430_read_gives_the_clock_the_calendar_and_the_scale_whole_with_no_price_level_or_date(real_inputs):
+    clock, calendar, scale = (build(real_inputs) for build in (build_clock_block, build_calendar_block, build_scale_block))
     assert clock.data == {"min_after_open": 300, "min_to_close": 90, "phase": "afternoon"}
     assert set(calendar.data) == {"day_class", "today", "next_high_tier", "fomc", "month", "expiry"}
     assert calendar.data["month"]["trading_day"] == 7 and "r" in calendar.data["month"]["pension_stock_minus_bond_mtd_pts"]
@@ -200,5 +183,5 @@ def test_the_three_blocks_build_for_the_1430_read_with_no_level_or_date():
     assert set(scale.data) == {"sigma_src", "sigma_live_x", "atm_iv_pct", "straddle_open_sig", "straddle_left_sig",
                                "straddle_used_x", "vix1d", "vix1d_prior_close", "realized_30m_vs_priced_x"}
     assert scale.data["sigma_src"] == "anchor" and 0 < scale.data["sigma_live_x"] < 1
-    text = json.dumps([r.data for r in (clock, calendar, scale)] + [r.absent for r in (clock, calendar, scale)])
-    assert not PRICE_LEVEL.search(text) and not DATE.search(text)
+    for name, result in (("clock", clock), ("calendar", calendar), ("scale", scale)):
+        assert_no_leak(name, result)

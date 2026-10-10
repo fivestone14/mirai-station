@@ -1,24 +1,156 @@
-"""A small, offline stand-in for FrozenInputs so every payload block can be tested without the station's files.
+"""The one home for every shared test helper: file writers, a synthetic read's inputs, the station's line shapes, the
+absence and leak readers, and the real station state for the smoke tests.
 
 The scene is a duck-typed stand-in for ``spx_jev.state_builder.Scene`` with the attributes the blocks read
 (``row``, ``rows_today``, ``bars``, ``prior_bars``, ``market``, ``now``, ``sigma``, ``day``, ``spot``,
 ``minutes_since_open``, ``minutes_to_close``, ``options_tape``, ``state_dir``). ``labels`` carries
 ``state`` (sentences by group) and ``figures``. Build one with ``fake_inputs(...)`` and override what a
-test needs. Real-store smoke tests sit beside these and skip when the station's state is absent.
+test needs. The real-store smoke tests take the ``real_inputs`` fixture from conftest.py, which loads the
+10-09 14:30 read once per session over ``state_over_the_station`` and skips without the station's state.
 """
 from __future__ import annotations
 
+import json
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
+from spx_claude_forecast import station_stores
 from spx_claude_forecast.control import ET
 from spx_claude_forecast.paths import ForecastPaths
-from spx_claude_forecast.payload.frozen_inputs import FrozenInputs, TapeFold, slot_of
+from spx_claude_forecast.payload.frozen_inputs import FrozenInputs, TapeFold, previous_session_day, slot_of
 
 DAY = "2026-10-09"
 SPOT = 7813.01
 SIGMA = 75.31
+REAL_READ_ID = "live:2026-10-09T14:30:12.458122-04:00"     # the real read every smoke test rebuilds
+STATION_FOLDERS = ("reversion", "spx_jev", "lob_flow", "siege", "dated_gex")   # the station stores a read is built from
+RECORDER_COPIES = ("dated_book", "siege_spy_minutes", "spx_5m", "vix1d_close.jsonl")   # the recorder's copies the loader reads
+
+# A leaf of a block that may pass 1,000 without being a price level: issue counts, trade counts, headline counts,
+# a feed's age in seconds, and basis points on a big day.
+COUNT_FIELDS = frozenset({"add_live_approx", "add_30m_change", "trades", "fill_base_n", "captured_60m", "big_prints_10m",
+                          "age_s", "bp", "dist_bp", "r12_bp", "rrod_bp"})
+DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+# --- files ------------------------------------------------------------------------------------------------------
+
+def write_json(path: Path, data) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
+def write_jsonl(path: Path, records: list[dict]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+    return path
+
+
+# --- the clock and the bars -------------------------------------------------------------------------------------
+
+def at(hh: int, mm: int, ss: int = 0, day: str = DAY) -> datetime:
+    y, m, d = (int(x) for x in day.split("-"))
+    return datetime(y, m, d, hh, mm, ss, tzinfo=ET)
+
+
+def prior_days(n: int, before: str = DAY) -> list[str]:
+    """The ``n`` session days before ``before``, newest first, as ``Scene.prior_bars`` orders them."""
+    days, day = [], before
+    while len(days) < n:
+        day = previous_session_day(day)
+        days.append(day)
+    return days
+
+
+def flat_bars(day: str = DAY, until_hh: int = 14, until_mm: int = 29, price: float = SPOT, step: float = 0.0) -> list[dict]:
+    """One-minute bars from 09:30 to ``until`` inclusive, each close ``step`` above the last."""
+    bars, t, p = [], at(9, 30, day=day), price
+    end = at(until_hh, until_mm, day=day)
+    while t <= end:
+        bars.append({"ts": t.isoformat(), "open": p, "high": p + 0.5, "low": p - 0.5, "close": p, "volume": 1000})
+        t, p = t + timedelta(minutes=1), p + step
+    return bars
+
+
+def make_row(ts: datetime, spot: float = SPOT, sigma: float = SIGMA, **over) -> dict:
+    row = {"ts": ts.isoformat(), "spot": spot, "sigma": sigma, "sigma_anchor": sigma, "sigma_live": sigma * 0.55,
+           "vwap": spot - 15.0, "prior_close": spot - 47.0, "atm_iv": 8.44, "vix_ts": 0.833,
+           "range_ruler": {"em_points": 21.0}, "gex_views": {"regime": "long_gamma", "flip": spot - 41.0},
+           "dated_gex": None, "siege": None}
+    row.update(over)
+    return row
+
+
+# --- the station's own line shapes ------------------------------------------------------------------------------
+
+def tape_fold_line(ts: datetime, *, tilt: float = 0.054, told: float = 0.54, trades: int | None = 1500,
+                   engine: str = "lob_flow") -> dict:
+    """One line of the collector's record (``lob_flow/agg/<day>.jsonl``) with its 15-minute trade count; a line
+    without a count is one the collector wrote before it counted."""
+    snapshot = {"tilt": tilt, "determinate_share": told}
+    if trades is not None:
+        snapshot["tape_trades"] = trades
+    return {"ts": ts.isoformat(), "engine": engine, "snapshot": snapshot, "baseline_rows": []}
+
+
+def write_tape_folds(state_dir: Path, day: str, lines: list[dict]) -> Path:
+    return write_jsonl(station_stores.lob_flow_agg_file(state_dir, day), lines)
+
+
+def context_line(ts: datetime | str, quotes: dict | None = None, *, failed: list[str] | None = None,
+                 bars: dict | None = None) -> dict:
+    """One line of the station's context record as its poll writes it: a quotes snapshot with what failed, or a
+    bars-only line, which is not a snapshot."""
+    line = {"ts": ts if isinstance(ts, str) else ts.isoformat()}
+    if quotes is not None:
+        line["quotes"] = quotes
+        line["failed"] = failed or []
+    if bars is not None:
+        line["bars"] = bars
+    return line
+
+
+# --- reading a block's result -----------------------------------------------------------------------------------
+
+def absent_reasons(result) -> dict[str, str]:
+    """``{path: why}`` for everything a block declared absent."""
+    return {a["path"]: a["why"] for a in result.absent}
+
+
+def leaks(block: str, data) -> list[str]:
+    """Every leaf of a block's data or absences that could reach Claude as a price level (a number of 1,000 or
+    more outside the count fields) or a date; a list's items carry the list's key."""
+    found: list[str] = []
+
+    def walk(path: str, key: str, value) -> None:
+        if isinstance(value, dict):
+            for k, v in value.items():
+                walk(f"{path}.{k}", k, v)
+        elif isinstance(value, list):
+            for v in value:
+                walk(path, key, v)
+        elif isinstance(value, bool):
+            return
+        elif isinstance(value, (int, float)) and abs(value) >= 1000 and key not in COUNT_FIELDS:
+            found.append(f"{path}={value}")
+        elif isinstance(value, str) and DATE_PATTERN.search(value):
+            found.append(f"{path}={value!r}")
+
+    walk(block, block, json.loads(json.dumps(data)))
+    return found
+
+
+def assert_no_leak(block: str, result) -> None:
+    """A block's data and its absences carry no price level and no date, and the data is JSON."""
+    assert leaks(block, result.data) == [], block
+    assert leaks(block, result.absent) == [], block
+    json.dumps(result.data)
+
+
+# --- a read's inputs, offline -----------------------------------------------------------------------------------
 
 class TapeFoldsOnDisk(dict):
     """The fixture's stand-in for ``inputs.tape_folds``: reads the collector's files under the temp state on every
@@ -52,31 +184,6 @@ class TapeFoldsOnDisk(dict):
 
     def __len__(self):
         return len(self._load())
-
-
-
-def at(hh: int, mm: int, ss: int = 0, day: str = DAY) -> datetime:
-    y, m, d = (int(x) for x in day.split("-"))
-    return datetime(y, m, d, hh, mm, ss, tzinfo=ET)
-
-
-def flat_bars(day: str = DAY, until_hh: int = 14, until_mm: int = 29, price: float = SPOT, step: float = 0.0) -> list[dict]:
-    """One-minute bars from 09:30 to ``until`` inclusive, each close ``step`` above the last."""
-    bars, t, p = [], at(9, 30, day=day), price
-    end = at(until_hh, until_mm, day=day)
-    while t <= end:
-        bars.append({"ts": t.isoformat(), "open": p, "high": p + 0.5, "low": p - 0.5, "close": p, "volume": 1000})
-        t, p = t + timedelta(minutes=1), p + step
-    return bars
-
-
-def make_row(ts: datetime, spot: float = SPOT, sigma: float = SIGMA, **over) -> dict:
-    row = {"ts": ts.isoformat(), "spot": spot, "sigma": sigma, "sigma_anchor": sigma, "sigma_live": sigma * 0.55,
-           "vwap": spot - 15.0, "prior_close": spot - 47.0, "atm_iv": 8.44, "vix_ts": 0.833,
-           "range_ruler": {"em_points": 21.0}, "gex_views": {"regime": "long_gamma", "flip": spot - 41.0},
-           "dated_gex": None, "siege": None}
-    row.update(over)
-    return row
 
 
 class FakeMarket:
@@ -148,7 +255,27 @@ def fake_inputs(tmp_path: Path, *, cut: datetime | None = None, bars: list[dict]
                         vix1d_prior_close=vix1d_prior_close, daily_closes=daily_closes or {}, events=events, load_notes=[])
 
 
+# --- the real station state -------------------------------------------------------------------------------------
+
 def station_state_dir() -> Path | None:
     """The real station state, for smoke tests that skip without it."""
     root = Path.home() / ".claude" / "plugins" / "mirai-station" / "state"
     return root if (root / "reversion").exists() else None
+
+
+def state_over_the_station(root: Path, *, recorder_copies: bool = True) -> Path:
+    """A temp state root whose station stores are the real ones (read-only symlinks), with the recorder's copies
+    linked under a temp forecast folder; everything the package writes lands in the temp folder. The nightly's
+    backup never descends a linked folder (rglob does not follow a symlinked directory)."""
+    real = station_state_dir()
+    state = root / "state"
+    state.mkdir()
+    for name in STATION_FOLDERS:
+        (state / name).symlink_to(real / name)
+    if recorder_copies:
+        recorder = ForecastPaths(state).recorder_dir
+        recorder.mkdir(parents=True)
+        for name in RECORDER_COPIES:
+            if (ForecastPaths(real).recorder_dir / name).exists():
+                (recorder / name).symlink_to(ForecastPaths(real).recorder_dir / name)
+    return state

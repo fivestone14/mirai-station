@@ -6,7 +6,7 @@ import gzip
 import json
 from datetime import datetime
 
-from conftest import write_json, write_jsonl
+from payload_fixtures import context_line, write_json, write_jsonl
 
 from spx_claude_forecast import control, jsonl_store, recorder, station_stores, paths as forecast_paths
 from spx_claude_forecast.control import ET
@@ -61,12 +61,12 @@ def test_siege_days_are_copied_one_file_per_finished_day_and_only_when_missing(s
 def test_vix1d_close_is_the_last_quote_of_a_finished_session_only(state_dir):
     paths = forecast_paths.ForecastPaths(state_dir)
     write_jsonl(station_stores.context_file(state_dir, "2026-10-08"), [
-        {"ts": "2026-10-08T15:58:00-04:00", "quotes": {"$VIX1D": {"last": 10.1, "close": 9.3}}},
-        {"ts": "2026-10-08T15:59:59-04:00", "quotes": {"$VIX1D": {"last": 10.23, "close": 9.3}}},
-        {"ts": "2026-10-08T16:00:30-04:00", "bars": {}},
+        context_line("2026-10-08T15:58:00-04:00", {"$VIX1D": {"last": 10.1, "close": 9.3}}),
+        context_line("2026-10-08T15:59:59-04:00", {"$VIX1D": {"last": 10.23, "close": 9.3}}),
+        context_line("2026-10-08T16:00:30-04:00", bars={}),
     ])
     write_jsonl(station_stores.context_file(state_dir, "2026-10-09"), [
-        {"ts": "2026-10-09T10:00:00-04:00", "quotes": {"$VIX1D": {"last": 9.5, "close": 10.24}}},
+        context_line("2026-10-09T10:00:00-04:00", {"$VIX1D": {"last": 9.5, "close": 10.24}}),
     ])
     assert recorder.record_vix1d_close(paths, state_dir, now=MIDDAY)["days"] == ["2026-10-08"]
     assert recorder.record_vix1d_close(paths, state_dir, now=AFTER_CLOSE)["days"] == ["2026-10-09"]
@@ -171,7 +171,7 @@ def test_run_over_every_task_offline_ends_with_the_copies_in_the_backup(state_di
     write_json(station_stores.dated_book_file(state_dir), {"ok": True, "as_of": "2026-10-09T17:10:04-04:00", "bands": []})
     write_json(station_stores.siege_baseline_file(state_dir), {"days": {"2026-10-08": {"570": 80}}})
     write_jsonl(station_stores.context_file(state_dir, "2026-10-08"),
-                [{"ts": "2026-10-08T15:59:59-04:00", "quotes": {"$VIX1D": {"last": 10.23, "close": 9.3}}}])
+                [context_line("2026-10-08T15:59:59-04:00", {"$VIX1D": {"last": 10.23, "close": 9.3}})])
     monkeypatch.setattr(recorder, "fetch_spx_five_minute_bars", lambda start, end: [{"ts": "2026-10-08T09:30:00-04:00", "close": 1.0}])
     monkeypatch.setattr(recorder, "now_et", lambda: AFTER_CLOSE)
     results = recorder.run(state_dir, backup_dir=tmp_path / "backup")

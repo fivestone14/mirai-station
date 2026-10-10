@@ -2,29 +2,20 @@
 real store."""
 from __future__ import annotations
 
-import json
-import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import pytest
-from conftest import write_json, write_jsonl
-from payload_fixtures import DAY, SIGMA, FakeMarket, at, fake_inputs, make_row, station_state_dir
+from payload_fixtures import DAY, SIGMA, FakeMarket, absent_reasons, assert_no_leak, at, fake_inputs, make_row, prior_days, write_json, write_jsonl
 
 from spx_claude_forecast.payload import units
 from spx_claude_forecast.payload.blocks.cross_asset import build_cross_asset_block
 from spx_claude_forecast.payload.blocks.foreign import build_foreign_block
 from spx_claude_forecast.payload.blocks.internals import build_internals_block
 from spx_claude_forecast.payload.blocks.overnight import build_overnight_block
-from spx_claude_forecast.payload.frozen_inputs import previous_session_day
 
 PRIOR_DAY = "2026-10-08"
 CUT = at(14, 30, 12)
 LAST_BAR = at(14, 30)                 # the 14:29 breadth bar is known when its minute finishes
-
-
-def absent(result, path: str) -> str | None:
-    return next((a["why"] for a in result.absent if a["path"] == path), None)
 
 
 # --- internals --------------------------------------------------------------------------------------------
@@ -39,27 +30,27 @@ def breadth_market(now_adv=1586.0, now_dec=1150.0, earlier_adv=1500.0, earlier_d
 def test_internals_add_is_advancers_less_decliners_at_the_cut(tmp_path):
     result = build_internals_block(fake_inputs(tmp_path, cut=CUT, market=breadth_market()))
     assert result.data == {"add_live_approx": 436, "add_30m_change": -54, "adv_share_pct": 58}
-    assert absent(result, "internals.tick_vold") == "same_day_wrong"
+    assert absent_reasons(result)["internals.tick_vold"] == "same_day_wrong"
     assert all(isinstance(v, int) for v in result.data.values())
 
 
 def test_internals_absent_when_the_counts_are_not_quoted(tmp_path):
     result = build_internals_block(fake_inputs(tmp_path, cut=CUT, market=FakeMarket({"$TICK": [(LAST_BAR, 151.0)]})))
-    assert result.is_empty and absent(result, "internals") == "not_quoted"
-    assert absent(result, "internals.tick_vold") == "same_day_wrong"
+    assert result.is_empty and absent_reasons(result)["internals"] == "not_quoted"
+    assert absent_reasons(result)["internals.tick_vold"] == "same_day_wrong"
 
 
 def test_internals_absent_when_the_breadth_feed_stopped(tmp_path):
     stale = FakeMarket({"$ADVN": [(at(11, 0), 1500.0)], "$DECN": [(at(11, 0), 1000.0)]})
     result = build_internals_block(fake_inputs(tmp_path, cut=CUT, market=stale))
-    assert result.is_empty and absent(result, "internals") == "stale"
+    assert result.is_empty and absent_reasons(result)["internals"] == "stale"
 
 
 def test_internals_30m_change_needs_a_value_half_an_hour_ago(tmp_path):
     recent = FakeMarket({"$ADVN": [(LAST_BAR, 1586.0)], "$DECN": [(LAST_BAR, 1150.0)]})
     result = build_internals_block(fake_inputs(tmp_path, cut=CUT, market=recent))
     assert result.data == {"add_live_approx": 436, "adv_share_pct": 58}
-    assert absent(result, "internals.add_30m_change") == "no_value_30m_ago"
+    assert absent_reasons(result)["internals.add_30m_change"] == "no_value_30m_ago"
 
 
 # --- cross_asset ------------------------------------------------------------------------------------------
@@ -78,14 +69,14 @@ def vol_market(taken: datetime, vix=14.87, vix3m=17.85, vix9d=11.18, tnx_pct=5.2
     return FakeMarket({"$VIX": [(taken, vix)], "$VIX3M": [(taken, vix3m)], "$VIX9D": [(taken, vix9d)], "$TNX": [(taken, tnx_pct)]})
 
 
-def test_cross_asset_vix_curve_from_the_row_and_the_quotes(tmp_path):
+def test_cross_asset_reads_the_vix_curve_from_the_quotes_and_the_row_against_the_prior_closes(tmp_path):
     taken = at(14, 30, 5)
     inputs = fake_inputs(tmp_path, cut=CUT, market=vol_market(taken), daily_closes=vol_closes(), row=make_row(CUT, vix_ts=0.833),
                          snapshot_prior_closes=VIX3M_PRIOR_CLOSE)
     result = build_cross_asset_block(inputs)
     assert result.data == {"vix": 14.87, "vix_minus_prior_close": -0.54, "vix_vix3m": 0.833, "vix_vix3m_prior_close": 0.852,
                            "backwardated": False, "vix9d_vix": 0.752, "ten_year_bp_since_close": {"v": 1.9}}
-    assert absent(result, "cross_asset.vx_futures") == "schwab_refuses_symbol"
+    assert absent_reasons(result)["cross_asset.vx_futures"] == "schwab_refuses_symbol"
 
 
 def test_cross_asset_backwardation_is_vix_over_vix3m_above_one(tmp_path):
@@ -102,8 +93,8 @@ def test_cross_asset_ratios_wait_for_the_quotes_to_leave_the_prior_close_at_the_
                          daily_closes=vol_closes(), row=make_row(at(9, 30, 50), vix_ts=0.84), snapshot_prior_closes=VIX3M_PRIOR_CLOSE)
     result = build_cross_asset_block(inputs)
     assert result.data["vix"] == 15.19 and "vix_vix3m" not in result.data and "backwardated" not in result.data
-    assert absent(result, "cross_asset.vix_vix3m") == "stale_at_open"
-    assert absent(result, "cross_asset.vix9d_vix") == "stale_at_open"
+    assert absent_reasons(result)["cross_asset.vix_vix3m"] == "stale_at_open"
+    assert absent_reasons(result)["cross_asset.vix9d_vix"] == "stale_at_open"
 
 
 def test_cross_asset_ten_year_is_judged_at_the_treasury_close_and_pinned_in_bp(tmp_path):
@@ -113,13 +104,11 @@ def test_cross_asset_ten_year_is_judged_at_the_treasury_close_and_pinned_in_bp(t
     assert result.data["ten_year_bp_since_close"] == {"v": 1.3}
     stopped = FakeMarket({"$TNX": [(at(14, 0), 5.244)]})
     result = build_cross_asset_block(fake_inputs(tmp_path, cut=cut, market=stopped, daily_closes=vol_closes()))
-    assert absent(result, "cross_asset.ten_year_bp_since_close") == "stale"
+    assert absent_reasons(result)["cross_asset.ten_year_bp_since_close"] == "stale"
 
 
 def test_cross_asset_ten_year_rank_is_of_the_move_size_at_the_same_clock(tmp_path):
-    days = [DAY]
-    while len(days) < 12:
-        days.append(previous_session_day(days[-1]))
+    days = [DAY, *prior_days(11)]
     closes = [{"day": d, "close": 52.0 + k * 0.1} for k, d in enumerate(days[1:])]     # each prior day's close, newest first
     prior_markets = {}
     for k, d in enumerate(days[1:11]):
@@ -170,7 +159,7 @@ def write_night(tmp_path: Path, day: str = DAY, extra_rows: list[dict] | None = 
     return write_jsonl(tmp_path / "state" / "spx_jev" / "overnight" / f"{day}.jsonl", rows)
 
 
-def test_overnight_reads_the_night_from_the_store_in_sig(tmp_path):
+def test_overnight_reads_the_nights_move_range_legs_and_gap_origin_from_the_store_in_sig(tmp_path):
     write_night(tmp_path)
     result = build_overnight_block(fake_inputs(tmp_path, cut=CUT))
     assert result.absent == []
@@ -199,12 +188,12 @@ def test_overnight_gap_origin_is_the_largest_leg_in_the_direction_of_the_night(t
     write_jsonl(tmp_path / "state" / "spx_jev" / "overnight" / f"{DAY}.jsonl", rows)
     result = build_overnight_block(fake_inputs(tmp_path, cut=CUT))
     assert result.data["gap_origin"] == "europe_open"
-    assert absent(result, "overnight.zn_pct") == "no_zn_bars"
+    assert absent_reasons(result)["overnight.zn_pct"] == "no_zn_bars"
 
 
 def test_overnight_absent_without_the_nights_file(tmp_path):
     result = build_overnight_block(fake_inputs(tmp_path, cut=CUT))
-    assert result.is_empty and absent(result, "overnight") == "no_overnight_file"
+    assert result.is_empty and absent_reasons(result)["overnight"] == "no_overnight_file"
 
 
 def test_overnight_leaves_out_a_move_across_a_contract_roll(tmp_path):
@@ -213,10 +202,11 @@ def test_overnight_leaves_out_a_move_across_a_contract_roll(tmp_path):
                {"schema_version": 1, "current": {"/ES": "/ESZ26"}, "rejected": [], "windows_without_roll": {},
                 "rolls": [{"symbol": "/ES", "day": DAY, "at": at(1, 0).isoformat(), "from": "/ESU26", "to": "/ESZ26"}]})
     result = build_overnight_block(fake_inputs(tmp_path, cut=CUT))
-    assert absent(result, "overnight.es_vs_close_sig") == "contract_roll"
-    assert absent(result, "overnight.range_sig") == "contract_roll"
-    assert absent(result, "overnight.legs_sig.asia") == "contract_roll"
-    assert absent(result, "overnight.gap_origin") == "leg_missing"
+    reasons = absent_reasons(result)
+    assert reasons["overnight.es_vs_close_sig"] == "contract_roll"
+    assert reasons["overnight.range_sig"] == "contract_roll"
+    assert reasons["overnight.legs_sig.asia"] == "contract_roll"
+    assert reasons["overnight.gap_origin"] == "leg_missing"
     assert "asia" not in result.data["legs_sig"] and result.data["legs_sig"]["after_close"] == 0.0
     assert result.data["zn_pct"] == -0.19
 
@@ -225,7 +215,7 @@ def test_overnight_leaves_out_a_move_across_a_contract_roll(tmp_path):
 
 def test_foreign_absent_when_no_foreign_symbol_is_quoted(tmp_path):
     result = build_foreign_block(fake_inputs(tmp_path, cut=CUT, market=vol_market(at(14, 30, 5))))
-    assert result.is_empty and absent(result, "foreign") == "not_recorded"
+    assert result.is_empty and absent_reasons(result)["foreign"] == "not_recorded"
 
 
 def test_foreign_returns_against_the_prior_sessions_last_quote(tmp_path):
@@ -236,67 +226,35 @@ def test_foreign_returns_against_the_prior_sessions_last_quote(tmp_path):
                         "/6J": [(at(14, 30, 5), 0.0068 / 1.02)]})
     result = build_foreign_block(fake_inputs(tmp_path, cut=CUT, market=today, prior_markets={PRIOR_DAY: prior}))
     assert result.data == {"tokyo_ret_pct": -0.02, "europe_ret_pct": 0.95, "europe_at": "11:31", "usdjpy_1d_pct": 2.0, "usdjpy_shock": True}
-    assert absent(result, "foreign.dax_ret_pct") == "not_recorded"
-    assert absent(result, "foreign.korea_taiwan") == "include_later"
+    assert absent_reasons(result)["foreign.dax_ret_pct"] == "not_recorded"
+    assert absent_reasons(result)["foreign.korea_taiwan"] == "include_later"
 
 
 def test_foreign_needs_the_prior_session_for_a_return(tmp_path):
     today = FakeMarket({"$DAX": [(at(14, 30, 5), 24000.0)]})
     result = build_foreign_block(fake_inputs(tmp_path, cut=CUT, market=today))
-    assert result.data == {} and absent(result, "foreign.dax_ret_pct") == "no_prior_session_quote"
+    assert result.data == {} and absent_reasons(result)["foreign.dax_ret_pct"] == "no_prior_session_quote"
 
 
 # --- the real store ---------------------------------------------------------------------------------------
 
-READ_ID = "live:2026-10-09T14:30:12.458122-04:00"
-DATE_STRING = re.compile(r"\d{4}-\d{2}-\d{2}")
-# Issue counts, not price levels: advancers less decliners can pass a thousand on a broad day.
-COUNT_FIELDS = ("add_live_approx", "add_30m_change")
-
-
-def leaks(block: str, data) -> list[str]:
-    found = []
-
-    def walk(node, path):
-        if isinstance(node, dict):
-            for k, v in node.items():
-                walk(v, f"{path}.{k}")
-        elif isinstance(node, list):
-            for i, v in enumerate(node):
-                walk(v, f"{path}[{i}]")
-        elif isinstance(node, bool):
-            return
-        elif isinstance(node, (int, float)) and abs(node) >= 1000 and float(node).is_integer() and path.split(".")[-1] not in COUNT_FIELDS:
-            found.append(f"{path}={node}")
-        elif isinstance(node, str) and DATE_STRING.search(node):
-            found.append(f"{path}={node!r}")
-    walk(json.loads(json.dumps(data)), block)
-    return found
-
-
-@pytest.mark.skipif(station_state_dir() is None, reason="needs the station's state")
-def test_real_read_builds_all_four_blocks_without_a_price_or_a_date():
-    from spx_claude_forecast.paths import ensure_folders
-    from spx_claude_forecast.payload.frozen_inputs import load_frozen_inputs
-    state_dir = station_state_dir()
-    inputs = load_frozen_inputs(state_dir, ensure_folders(state_dir), READ_ID)
-    internals = build_internals_block(inputs)
+def test_the_real_1430_read_gives_breadth_the_vix_curve_the_night_and_no_foreign_quote_with_no_price_level_or_date(real_inputs):
+    internals = build_internals_block(real_inputs)
     assert set(internals.data) == {"add_live_approx", "add_30m_change", "adv_share_pct"}
     assert all(isinstance(v, int) for v in internals.data.values()) and 0 <= internals.data["adv_share_pct"] <= 100
-    assert absent(internals, "internals.tick_vold") == "same_day_wrong"
-    cross = build_cross_asset_block(inputs)
+    assert absent_reasons(internals)["internals.tick_vold"] == "same_day_wrong"
+    cross = build_cross_asset_block(real_inputs)
     assert set(cross.data) == {"vix", "vix_minus_prior_close", "vix_vix3m", "vix_vix3m_prior_close", "backwardated", "vix9d_vix",
                                "ten_year_bp_since_close"}
     assert cross.data["backwardated"] == (cross.data["vix_vix3m"] > 1.0)
     assert len(cross.data["ten_year_bp_since_close"]["r"]) == 2 and cross.data["ten_year_bp_since_close"]["r"][1] >= 10
-    assert absent(cross, "cross_asset.vx_futures") == "schwab_refuses_symbol"
-    overnight = build_overnight_block(inputs)
+    assert absent_reasons(cross)["cross_asset.vx_futures"] == "schwab_refuses_symbol"
+    overnight = build_overnight_block(real_inputs)
     assert set(overnight.data) == {"es_vs_close_sig", "range_sig", "gap_origin", "zn_pct", "legs_sig"}
     assert set(overnight.data["legs_sig"]) == {"after_close", "asia", "europe_open", "europe_morning", "pre_report", "report_window", "last_stretch"}
     assert overnight.data["gap_origin"] in overnight.data["legs_sig"]
     assert overnight.data["es_vs_close_sig"]["r"][1] >= 10 and overnight.data["range_sig"]["v"] >= 0
-    foreign = build_foreign_block(inputs)
-    assert foreign.is_empty and absent(foreign, "foreign") == "not_recorded"
-    for block, result in (("internals", internals), ("cross_asset", cross), ("overnight", overnight), ("foreign", foreign)):
-        assert leaks(block, result.data) == []
-        assert leaks(block, result.absent) == []
+    foreign = build_foreign_block(real_inputs)
+    assert foreign.is_empty and absent_reasons(foreign)["foreign"] == "not_recorded"
+    for name, result in (("internals", internals), ("cross_asset", cross), ("overnight", overnight), ("foreign", foreign)):
+        assert_no_leak(name, result)

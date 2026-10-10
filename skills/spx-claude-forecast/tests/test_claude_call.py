@@ -47,6 +47,7 @@ def test_the_command_pins_model_and_effort_and_denies_every_tool_last(monkeypatc
     assert result.call_stats["cost_usd"] == 0.0702 and result.call_stats["cache_read_input_tokens"] == 28129
     assert result.call_stats["model_turn_count"] == 1 and result.model_served == "claude-opus-5-5"
     assert result.call_stats["cli_duration_seconds"] == 4.2 and "duration_ms" not in result.call_stats
+    assert isinstance(result.call_stats["response_seconds"], float)                 # the spec's own name for the latency
 
 
 def test_a_failed_exit_and_a_reply_without_json_come_back_as_errors(monkeypatch):

@@ -1,4 +1,5 @@
-"""One read end to end with a stand-in Claude, then the night: sealing, the library, the scores, the scorecard."""
+"""The payload line's checks and stamps, one read end to end with a stand-in Claude, then the night: sealing, the
+library, the scores, the scorecard."""
 from __future__ import annotations
 
 import json
@@ -8,15 +9,51 @@ from pathlib import Path
 
 import pytest
 
-from payload_fixtures import fake_inputs, station_state_dir
+from payload_fixtures import REAL_READ_ID, fake_inputs
 
 from spx_claude_forecast import claude_call, jsonl_store, nightly, read_runner, scorecard, scoring, paths as forecast_paths
 from spx_claude_forecast.control import ET
 from spx_claude_forecast.payload import build
+from spx_claude_forecast.payload.blocks.data_sources import build_data_sources_block
 
-READ_ID = "live:2026-10-09T14:30:12.458122-04:00"
-STATION_FOLDERS = ("reversion", "spx_jev", "lob_flow", "siege", "dated_gex")
 
+# --- the payload line ------------------------------------------------------------------------------------------
+
+def test_build_payload_on_fake_inputs_gives_a_hashed_scene_an_ask_and_two_prompts(tmp_path):
+    inputs = fake_inputs(tmp_path)
+    built = build.build_payload(inputs, [], origin="live")
+    assert built.claude_input_sha256.startswith("sha256:") and built.line["status"] in ("built", "refused")
+    assert set(built.prompts) == {"answer_1", "answer_2"} and built.direction_order["answer_2"] == ["down_pct", "flat_pct", "up_pct"]
+    assert "next_30_minutes" in built.asked_horizons and "to_close" in built.asked_horizons
+    assert built.ask["horizons"]["next_30_minutes"]["flat_edge_sig"] == pytest.approx(2.0 / 75.31, abs=0.001)
+    assert built.line["builder_sha"] and built.line["rules_sha"] and built.line["prompt_sha256"]["answer_1"] != built.line["prompt_sha256"]["answer_2"]
+    assert "absent" in built.scene and {"path": "precedents", "why": "fewer_than_5_qualifying_past_reads"} in built.scene["absent"]
+
+
+def test_the_leak_check_refuses_a_date_a_price_level_or_another_voice_and_lets_counts_and_ages_through():
+    assert build.leak_checks({"a": "2026-10-09"}) and build.leak_checks({"spot": 7813.01}) and build.leak_checks({"x": "JEV said up"})
+    assert build.leak_checks({"levels": [{"what": "flip", "sig": -0.5}], "spot_level": 7813}) and build.leak_checks({"x": [7813.0]})
+    assert build.leak_checks({"tape": {"high": {"minus_price_sig": 1260}}}) == ["a number that reads as a price level is in the scene: ['minus_price_sig=1260']"]
+    assert build.leak_checks({"tape": {"m30_sig": {"v": 0.03}}, "sessions": 50, "pct": 99.9, "trades": 16641, "add_live_approx": 1203,
+                              "data_sources": {"headlines": {"age_s": 1260}}, "base_rate": {"next_30_minutes": {"counts": {"up": 1200}}},
+                              "open_signals": {"opt_imbalance_10m": {"trades": 16641}}}) == []
+
+
+def test_load_notes_stay_on_the_payload_line_and_out_of_the_scene(tmp_path):
+    inputs = fake_inputs(tmp_path)
+    inputs.load_notes.append("archive read: no line for this read_id")
+    assert "load_notes" not in build_data_sources_block(inputs).data
+    assert build.quality_flags(inputs, [])["load_notes"] == ["archive read: no line for this read_id"]
+    assert build.leak_checks({"data_sources": build_data_sources_block(inputs).data}) == []
+
+
+def test_built_at_and_the_lag_are_one_instant(tmp_path):
+    inputs = fake_inputs(tmp_path)
+    line = build.build_payload(inputs, [], origin="live").line
+    assert abs((datetime.fromisoformat(line["built_at"]) - inputs.cut).total_seconds() - line["built_lag_s"]) < 1.0
+
+
+# --- the read runner -------------------------------------------------------------------------------------------
 
 def _answer_for(prompt: str) -> dict:
     """A plausible reply that follows the rulebook, built from the ask inside the prompt."""
@@ -38,32 +75,6 @@ def fake_call(prompt: str, rulebook: str, **_) -> claude_call.CallResult:
                                   cli_version="test", model_served="claude-opus-5-5")
 
 
-def _state_over_the_station(tmp_path: Path) -> Path:
-    """A temp state root whose station stores are the real ones (read-only symlinks); the forecast folder is temp."""
-    state = tmp_path / "state"
-    state.mkdir()
-    for name in STATION_FOLDERS:
-        (state / name).symlink_to(station_state_dir() / name)
-    return state
-
-
-def test_build_payload_on_fake_inputs_gives_a_hashed_scene_an_ask_and_two_prompts(tmp_path):
-    inputs = fake_inputs(tmp_path)
-    built = build.build_payload(inputs, [], origin="live")
-    assert built.claude_input_sha256.startswith("sha256:") and built.line["status"] in ("built", "refused")
-    assert set(built.prompts) == {"answer_1", "answer_2"} and built.direction_order["answer_2"] == ["down_pct", "flat_pct", "up_pct"]
-    assert "next_30_minutes" in built.asked_horizons and "to_close" in built.asked_horizons
-    assert built.ask["horizons"]["next_30_minutes"]["flat_edge_sig"] == pytest.approx(2.0 / 75.31, abs=0.001)
-    assert built.line["builder_sha"] and built.line["rules_sha"] and built.line["prompt_sha256"]["answer_1"] != built.line["prompt_sha256"]["answer_2"]
-    assert "absent" in built.scene and {"path": "precedents", "why": "fewer_than_5_qualifying_past_reads"} in built.scene["absent"]
-
-
-def test_leak_checks_catch_a_date_a_price_level_and_another_voice():
-    assert build.leak_checks({"a": "2026-10-09"}) and build.leak_checks({"spot": 7813.01}) and build.leak_checks({"x": "JEV said up"})
-    assert build.leak_checks({"tape": {"m30_sig": {"v": 0.03}}, "sessions": 50, "pct": 99.9, "trades": 16641, "add_live_approx": 1203}) == []
-    assert build.leak_checks({"levels": [{"what": "flip", "sig": -0.5}], "spot_level": 7813}) and build.leak_checks({"x": [7813.0]})
-
-
 def test_the_real_caller_is_refused_under_pytest_and_a_stand_in_is_not(state_dir):
     """pytest sets PYTEST_CURRENT_TEST; a runner started under a test run must never reach Claude."""
     paths = forecast_paths.ForecastPaths(state_dir)
@@ -81,27 +92,33 @@ def test_the_daily_caps_count_every_answer_line_of_the_day(state_dir):
     assert read_runner._why_not_to_call(paths, "2026-10-08", fake_call) is None
 
 
-@pytest.mark.skipif(station_state_dir() is None, reason="needs the station's state")
-def test_a_real_read_runs_end_to_end_with_a_stand_in_claude(tmp_path):
+@pytest.fixture(scope="module")
+def real_run(station_state: Path) -> dict:
+    """The real 10-09 14:30 read, run once end to end with the stand-in Claude into the session's temp forecast folder;
+    the read test reads its lines and the nightly test seals them."""
+    return read_runner.run_read(station_state, REAL_READ_ID, call=fake_call)
+
+
+def test_a_real_read_runs_end_to_end_with_a_stand_in_claude(station_state, real_run):
     """The real 10-09 14:30 read: payload line, two answer lines, a final line and latest.json, no leaks."""
-    state = _state_over_the_station(tmp_path)
-    summary = read_runner.run_read(state, READ_ID, call=fake_call)
-    assert summary["status"] == "built", summary
-    paths = forecast_paths.ForecastPaths(state)
-    payloads = jsonl_store.read_json_lines(paths.payloads_file("2026-10-09"))
+    assert real_run["status"] == "built", real_run
+    paths = forecast_paths.ForecastPaths(station_state)
+    payloads = [l for l in jsonl_store.read_json_lines(paths.payloads_file("2026-10-09")) if l["read_id"] == REAL_READ_ID]
     reads = jsonl_store.read_json_lines(paths.reads_file("2026-10-09"))
     assert len(payloads) == 1 and payloads[0]["status"] == "built"
     assert [l["line_type"] for l in reads] == ["claude_answer", "claude_answer", "final_forecast"]
-    assert [l["answer_id"] for l in reads[:2]] == [f"{READ_ID}#answer_1", f"{READ_ID}#answer_2"]
+    assert [l["answer_id"] for l in reads[:2]] == [f"{REAL_READ_ID}#answer_1", f"{REAL_READ_ID}#answer_2"]
     final = reads[-1]
     assert final["usable_answer_count"] == 2 and final["forecast"]["next_30_minutes"]["up_pct"] == 20
     assert final["forecast"]["next_30_minutes"]["answer_2"]["up_pct"] == 20 and final["written_at"].endswith("-04:00")
     assert "shown_precedents_outcomes" not in final and final["picked_precedents_among_code_nearest_3_count"] is None
-    assert json.loads(paths.latest_file.read_text())["read_id"] == READ_ID
-    assert read_runner.run_read(state, READ_ID, call=fake_call)["skipped"] == "already written"
+    assert json.loads(paths.latest_file.read_text())["read_id"] == REAL_READ_ID
+    assert read_runner.run_read(station_state, REAL_READ_ID, call=fake_call)["skipped"] == "already written"
     blocks = set(payloads[0]["scene"]) - {"absent", "precedents"}
     assert {"clock", "tape", "scale", "data_sources"} <= blocks, blocks
 
+
+# --- the night -------------------------------------------------------------------------------------------------
 
 def _write_a_sealed_day(paths: forecast_paths.ForecastPaths, day: str, slots: tuple[str, ...]) -> None:
     for slot in slots:
@@ -175,13 +192,11 @@ def test_sealing_is_refused_before_the_close_plus_75_minutes(state_dir):
     assert "refused" in nightly.seal_day(state_dir, paths, "2026-10-09", now=early)["why"]
 
 
-@pytest.mark.skipif(station_state_dir() is None, reason="needs the station's state")
-def test_the_night_seals_a_real_read_once_per_horizon_and_rebuilds_the_library(tmp_path):
-    state = _state_over_the_station(tmp_path)
-    read_runner.run_read(state, READ_ID, call=fake_call)
-    paths = forecast_paths.ForecastPaths(state)
+def test_the_night_seals_a_real_read_once_per_horizon_and_rebuilds_the_library(station_state, real_run, tmp_path):
+    assert real_run["status"] == "built", real_run
+    paths = forecast_paths.ensure_folders(station_state)        # arms the write guard for this root, as run_nightly does before sealing
     late = datetime(2026, 10, 9, 17, 30, tzinfo=ET)
-    assert nightly.seal_day(state, paths, "2026-10-09", now=late) == {"day": "2026-10-09", "sealed": 1, "outcome_lines": 3, "skipped": 0}
+    assert nightly.seal_day(station_state, paths, "2026-10-09", now=late) == {"day": "2026-10-09", "sealed": 1, "outcome_lines": 3, "skipped": 0}
     outcomes = jsonl_store.read_json_lines(paths.outcomes_file("2026-10-09"))
     by_h = {o["horizon"]: o for o in outcomes}
     h30 = by_h["next_30_minutes"]
@@ -194,9 +209,9 @@ def test_the_night_seals_a_real_read_once_per_horizon_and_rebuilds_the_library(t
     assert set(h30["missing_comparison_forecasts"]) == {"base_rate_shown_to_claude", "shown_precedents_outcomes"}   # no library yet
     assert by_h["next_60_minutes"]["comparison_forecasts"]["existing_system_main_forecast"]["forecasts_move_measured_to"] == "window_end_price"
     # sealing again writes nothing: every horizon is settled
-    assert nightly.seal_day(state, paths, "2026-10-09", now=late)["outcome_lines"] == 0
+    assert nightly.seal_day(station_state, paths, "2026-10-09", now=late)["outcome_lines"] == 0
     # a horizon left no_data earlier is tried again and, graded now, gets the next finalize_attempt_number
-    payload = jsonl_store.read_json_lines(paths.payloads_file("2026-10-09"))[0]
+    payload = next(l for l in jsonl_store.read_json_lines(paths.payloads_file("2026-10-09")) if l["read_id"] == REAL_READ_ID)
     second = {**payload, "read_id": "live:2026-10-09T14:00:51.311512-04:00",
               "logged_never_sent": {**payload["logged_never_sent"], "row_ts": "2026-10-09T14:00:51.311512-04:00"}}
     jsonl_store.append_json_line(paths.payloads_file("2026-10-09"), second, fsync=False)
@@ -204,10 +219,10 @@ def test_the_night_seals_a_real_read_once_per_horizon_and_rebuilds_the_library(t
         jsonl_store.append_json_line(paths.outcomes_file("2026-10-09"), {"line_type": "outcome", "read_id": second["read_id"],
                                                                          "horizon": horizon, "finalize_attempt_number": 1,
                                                                          "result": {"status": status}}, fsync=False)
-    assert nightly.seal_day(state, paths, "2026-10-09", now=late)["outcome_lines"] == 1
+    assert nightly.seal_day(station_state, paths, "2026-10-09", now=late)["outcome_lines"] == 1
     retried = [o for o in jsonl_store.read_json_lines(paths.outcomes_file("2026-10-09")) if o["read_id"] == second["read_id"]]
     assert len(retried) == 4 and retried[-1]["horizon"] == "next_30_minutes" and retried[-1]["finalize_attempt_number"] == 2
     assert retried[-1]["result"]["status"] == "final"
-    results = nightly.run_nightly(state, "2026-10-09", now=late, backup_dir=tmp_path / "backup")
+    results = nightly.run_nightly(station_state, "2026-10-09", now=late, backup_dir=tmp_path / "backup")
     assert results["library"]["rows"] >= 2 and results["scores"]["rows"] >= 3 and "error" not in results["scorecard"]
     assert (tmp_path / "backup" / "outcomes" / "2026-10-09.jsonl").exists()
