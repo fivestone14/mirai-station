@@ -157,7 +157,7 @@ STORE_MAP = {
     "payloads/{day}.jsonl": {"writer": "read hook (Phase 3)", "reader": "nightly job, Claude call", "retention": "forever", "edited": "never"},
     "reads/{day}.jsonl": {"writer": "Claude call (Phase 5)", "reader": "nightly job, phone tile", "retention": "forever", "edited": "never"},
     "outcomes/{day}.jsonl": {"writer": "nightly seal (Phase 7)", "reader": "library, scorecard", "retention": "forever", "edited": "never; a regrade appends a new rule version"},
-    "arms/{day}.jsonl": {"writer": "nightly test variants (Phase 8)", "reader": "scorecard", "retention": "forever", "edited": "never"},
+    "arms/{day}.jsonl": {"writer": "nightly test variants (test_variants.py)", "reader": "nightly scores and scorecard; the daily call cap", "retention": "forever", "edited": "never"},
     "seed/": {"writer": "seed rebuild (Phase 4)", "reader": "library", "retention": "forever, one set per builder version", "edited": "never"},
     "library/": {"writer": "nightly rebuild", "reader": "read hook (base rate, precedents), scorecard", "retention": "rebuildable from the files above", "edited": "replaced whole"},
     "recorder/dated_book/{as_of}.json": {"writer": "recorder", "reader": "payload builder", "retention": "forever", "edited": "never"},

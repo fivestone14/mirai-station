@@ -1,11 +1,11 @@
 # spx-claude-forecast — Claude's own forecast beside the SPX voices
 
-**Status: Phase 0 (the recorder) is live since 2026-10-09; the forecast itself is not built yet, and nothing in the station calls it.**
+**Status: live since 2026-10-09 (first live reads Mon 2026-10-12 09:32 ET); the phone card and the nightly test variants were built 2026-10-10. The SPX read starts a forecast after every half-hour read; nothing else in the station reads its output.**
 
 A parallel branch beside `skills/spx-jev/`. At every half-hour SPX read, code
 builds one frozen scene of the market (the payload), built only from files the
 station has already saved and cut at the read's own time. Claude reads that
-scene next to the 10 nearest past moments, each with what actually happened
+scene next to the eight nearest past moments, each with what actually happened
 afterwards, and does the matching itself. It then sets **up / flat / down
 percentages**, with sizes, for the next 30 minutes, the next 60 minutes and
 the close.
@@ -49,6 +49,8 @@ right after it archives the read's record. Nothing here is in the combined call.
 | `spx_claude_forecast/answer_checks.py` | Code's checks on an answer: delete what fails, never rewrite, say what was done. |
 | `spx_claude_forecast/final_forecast.py` | The two answers averaged into the final forecast, with the gaps between them and from the base rate. |
 | `spx_claude_forecast/read_runner.py` | One read end to end; `hook.py` is the call the SPX read makes to start it. |
+| `spx_claude_forecast/latest_card.py`, `reason_words.py` | `latest.json`, the one record the phone's card reads: the final forecast beside the base rate, the reasons in plain words, the scorecard's verdict. |
+| `spx_claude_forecast/test_variants.py` | The nightly test variants (Phase 8): three of the day's reads asked again with the cards removed, their outcomes shuffled, and random cards, into `arms/`, scored beside production so the cards' worth can be told. |
 | `spx_claude_forecast/grading.py` | What happened after a read, graded the way the station grades (its flat-zone rule), plus the to_close edge. |
 | `spx_claude_forecast/seed.py` | Past half-hours rebuilt from stored files as the starting history (`seed/`). |
 | `spx_claude_forecast/nightly.py`, `scoring.py`, `scorecard.py` | The 17:15 ET job: seal outcomes, rebuild the library, score every forecaster, write `scorecard.json`. |
@@ -60,7 +62,7 @@ The rule for `spec/`: it holds only the data contract, the roadmap and the decis
 ## Where things will live (per the plan)
 
 - **Code:** `skills/spx-claude-forecast/spx_claude_forecast/`
-- **Data:** `state/spx_claude_forecast/`, holding `payloads/`, `reads/` and `outcomes/` per day, plus the library, the seed, `recorder/`, `latest.json` and `scorecard.json`. `STORE_MAP.json` there lists every path with its writer and retention.
+- **Data:** `state/spx_claude_forecast/`, holding `payloads/`, `reads/`, `outcomes/` and `arms/` (the test variants) per day, plus the library, the seed, `recorder/`, `latest.json` and `scorecard.json`. `STORE_MAP.json` there lists every path with its writer and retention.
 - **Backup:** the folder is mirrored to `~/Library/Mobile Documents/com~apple~CloudDocs/mirai-station-backups/spx_claude_forecast/` by the recorder (nothing else in `state/` is backed up today).
 - **The one change outside this folder:** a single guarded call to `spawn_claude_forecast` right after `archive.append` in `skills/spx-jev/spx_jev/service.py`.
 - **Kill switch:** `SPX_CLAUDE_FORECAST_DISABLE=1`.

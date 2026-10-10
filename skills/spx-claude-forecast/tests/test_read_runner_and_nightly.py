@@ -11,7 +11,7 @@ import pytest
 
 from payload_fixtures import REAL_READ_ID, fake_inputs
 
-from spx_claude_forecast import claude_call, jsonl_store, nightly, read_runner, scorecard, scoring, paths as forecast_paths
+from spx_claude_forecast import claude_call, control, jsonl_store, nightly, read_runner, scorecard, scoring, paths as forecast_paths
 from spx_claude_forecast.control import ET
 from spx_claude_forecast.payload import build
 from spx_claude_forecast.payload.blocks.data_sources import build_data_sources_block
@@ -78,8 +78,8 @@ def fake_call(prompt: str, rulebook: str, **_) -> claude_call.CallResult:
 def test_the_real_caller_is_refused_under_pytest_and_a_stand_in_is_not(state_dir):
     """pytest sets PYTEST_CURRENT_TEST; a runner started under a test run must never reach Claude."""
     paths = forecast_paths.ForecastPaths(state_dir)
-    assert read_runner._why_not_to_call(paths, "2026-10-09", claude_call.call_claude) == "refused_under_pytest"
-    assert read_runner._why_not_to_call(paths, "2026-10-09", fake_call) is None
+    assert control.why_not_to_call(paths, "2026-10-09", is_real_caller=True) == "refused_under_pytest"
+    assert control.why_not_to_call(paths, "2026-10-09", is_real_caller=False) is None
 
 
 def test_the_daily_caps_count_every_answer_line_of_the_day(state_dir):
@@ -88,8 +88,11 @@ def test_the_daily_caps_count_every_answer_line_of_the_day(state_dir):
     for n in (1, 2):
         jsonl_store.append_json_line(paths.reads_file("2026-10-09"), {"line_type": "claude_answer", "answer_id": f"r#answer_{n}",
                                                                        "call_stats": {}, "error": "timeout after 120 s"}, fsync=False)
-    assert read_runner._why_not_to_call(paths, "2026-10-09", fake_call) == "capped"
-    assert read_runner._why_not_to_call(paths, "2026-10-08", fake_call) is None
+    assert control.why_not_to_call(paths, "2026-10-09", is_real_caller=False) == "capped"
+    assert control.why_not_to_call(paths, "2026-10-08", is_real_caller=False) is None
+    jsonl_store.append_json_line(paths.arms_file("2026-10-08"), {"line_type": "claude_answer", "answer_id": "r#test:no_precedents_shown:answer_1",
+                                                                  "call_stats": {"cost_usd": 20.0}}, fsync=False)
+    assert control.why_not_to_call(paths, "2026-10-08", is_real_caller=False) == "capped"     # the arms file counts too
 
 
 @pytest.fixture(scope="module")
@@ -224,5 +227,6 @@ def test_the_night_seals_a_real_read_once_per_horizon_and_rebuilds_the_library(s
     assert len(retried) == 4 and retried[-1]["horizon"] == "next_30_minutes" and retried[-1]["finalize_attempt_number"] == 2
     assert retried[-1]["result"]["status"] == "final"
     results = nightly.run_nightly(station_state, "2026-10-09", now=late, backup_dir=tmp_path / "backup")
+    assert results["test_variants"]["asked"] == 0 and set(results["test_variants"]["skipped"].values()) == {"refused_under_pytest"}
     assert results["library"]["rows"] >= 2 and results["scores"]["rows"] >= 3 and "error" not in results["scorecard"]
     assert (tmp_path / "backup" / "outcomes" / "2026-10-09.jsonl").exists()

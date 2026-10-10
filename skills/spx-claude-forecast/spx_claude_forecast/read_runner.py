@@ -14,14 +14,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
 from . import answer_checks, claude_call, control, final_forecast, jsonl_store, latest_card, library, rulebook, scorecard
-from .control import ET, PYTEST_ENV, log, log_job_run, now_et, now_utc_iso
+from .control import ET, log, log_job_run, now_et, now_utc_iso
 from .paths import ForecastPaths, default_state_dir, ensure_folders
 from .payload.build import build_payload
 from .payload.frozen_inputs import load_frozen_inputs, parse_read_id, slot_of
@@ -65,9 +64,9 @@ def run_read(state_dir: Path | str, read_id: str, *, call=claude_call.call_claud
         log_job_run(paths, "read:refused", started, False, error="; ".join(built.refused_because), read_id=read_id)
         return summary
 
-    hold = _why_not_to_call(paths, day, call)
+    hold = control.why_not_to_call(paths, day, call is claude_call.call_claude)
     if hold:
-        final = _final_line(read_id, built, [], hold, inputs)
+        final = final_line(read_id, built, [], hold, inputs.day, inputs.slot)
         jsonl_store.append_json_line(paths.reads_file(day), final)
         _write_latest(paths, built, final, [])
         log_job_run(paths, f"read:{hold}", started, True, read_id=read_id)
@@ -81,10 +80,10 @@ def run_read(state_dir: Path | str, read_id: str, *, call=claude_call.call_claud
         futures = {name: pool.submit(call, built.prompts[name], rules) for name in ANSWERS_PER_READ}
         answers = []
         for name in ANSWERS_PER_READ:                           # landed in order, from this thread only
-            line = _answer_line(read_id, name, built, futures[name].result(), version)
+            line = answer_line(read_id, name, built, futures[name].result(), version)
             jsonl_store.append_json_line(paths.reads_file(day), line)
             answers.append(line)
-    final = _final_line(read_id, built, answers, "ok", inputs)
+    final = final_line(read_id, built, answers, "ok", inputs.day, inputs.slot)
     jsonl_store.append_json_line(paths.reads_file(day), final)
     _write_latest(paths, built, final, answers)
     errors = [a["error"] for a in answers if a.get("error")]
@@ -102,25 +101,6 @@ def _already_written(paths: ForecastPaths, day: str, read_id: str) -> bool:
     return any(line.get("read_id") == read_id for line in jsonl_store.iter_json_lines(paths.payloads_file(day)))
 
 
-def _why_not_to_call(paths: ForecastPaths, day: str, call) -> str | None:
-    """Why the call must not be made, or None: ``refused_under_pytest`` (the real caller under a test run, which
-    must never reach Claude), ``paused``, or ``capped`` when the day's answer lines already reach a cap. Every
-    answer line counts as a call, whatever it cost: the cap is a backstop, not a budget."""
-    if call is claude_call.call_claude and os.environ.get(PYTEST_ENV):
-        return "refused_under_pytest"
-    if control.is_paused(paths):
-        return "paused"
-    limits = control.load_control(paths)
-    calls = spent = 0
-    for line in jsonl_store.iter_json_lines(paths.reads_file(day)):
-        if line.get("line_type") == "claude_answer":
-            calls += 1
-            spent += float((line.get("call_stats") or {}).get("cost_usd") or 0)
-    if calls >= int(limits.get("max_calls_per_day") or 0) or spent >= float(limits.get("max_usd_per_day") or 0):
-        return "capped"
-    return None
-
-
 # --- the lines -------------------------------------------------------------------------------------------------------
 
 def blind_payload_line(read_id: str, day: str, slot: str, origin: str, cut: datetime, why: str) -> dict:
@@ -134,11 +114,16 @@ def _now_et_iso() -> str:
     return now_et().isoformat(timespec="seconds")
 
 
-def _answer_line(read_id: str, name: str, built, result: claude_call.CallResult, cli_version: str | None) -> dict:
+def answer_line(read_id: str, name: str, built, result: claude_call.CallResult, cli_version: str | None,
+                test_variant: dict | None = None) -> dict:
+    """One answer as the reads file records it. ``built`` is the BuiltPayload (or a test variant's VariantPayload);
+    ``test_variant`` is the variant's stamp (test_variant, test_variant_version, test_variant_claude_input_sha256),
+    None on a production answer. A variant's answer id is ``<read_id>#test:<variant>:<name>``."""
     checked = answer_checks.check_answer(result.answer_parsed, built.scene, built.asked_horizons, built.card_ids)
-    return {"line_type": "claude_answer", "answer_id": f"{read_id}#{name}", "read_id": read_id,
+    answer_id = f"{read_id}#test:{test_variant['test_variant']}:{name}" if test_variant else f"{read_id}#{name}"
+    return {"line_type": "claude_answer", "answer_id": answer_id, "read_id": read_id,
             "claude_input_sha256": built.claude_input_sha256, "prompt_and_model_version": rulebook.PROMPT_AND_MODEL_VERSION,
-            "test_variant": TEST_VARIANT_NONE, "direction_order_asked": built.direction_order[name],
+            **(test_variant or {"test_variant": TEST_VARIANT_NONE}), "direction_order_asked": built.direction_order[name],
             "precedent_order_shown": built.precedent_order[name], "prompt_sha256": built.prompt_sha256[name],
             "answer_text": result.answer_text, "answer_parsed": result.answer_parsed,
             "answer_checks": checked.answer_checks, "checked_forecast": checked.checked_forecast,
@@ -148,12 +133,16 @@ def _answer_line(read_id: str, name: str, built, result: claude_call.CallResult,
             "error": result.error, "written_at": _now_et_iso()}
 
 
-def _final_line(read_id: str, built, answers: list[dict], status: str, inputs) -> dict:
+def final_line(read_id: str, built, answers: list[dict], status: str, day: str, slot: str,
+               test_variant: dict | None = None) -> dict:
+    """The read's graded forecast (``final_forecast``), or with a variant's stamp the variant's own
+    (``test_variant_forecast``, the same shape, never graded as the read)."""
     last_30_minutes_sig = library.fingerprint_of(built.scene)["last_30_minutes_sig"]
     final = final_forecast.final_forecast_for(answers, built.asked_horizons, built.base_rate_pct, last_30_minutes_sig)
-    return {"line_type": "final_forecast", "read_id": read_id, "claude_input_sha256": built.claude_input_sha256,
-            "prompt_and_model_version": rulebook.PROMPT_AND_MODEL_VERSION, "test_variant": TEST_VARIANT_NONE,
-            "status": status, "trading_day": inputs.day, "half_hour_slot_et": inputs.slot,
+    return {"line_type": "test_variant_forecast" if test_variant else "final_forecast", "read_id": read_id,
+            "claude_input_sha256": built.claude_input_sha256, "prompt_and_model_version": rulebook.PROMPT_AND_MODEL_VERSION,
+            **(test_variant or {"test_variant": TEST_VARIANT_NONE}),
+            "status": status, "trading_day": day, "half_hour_slot_et": slot,
             "answer_ids": final["answer_ids"], "usable_answer_count": final["usable_answer_count"],
             "any_answer_has_valid_reason": final["any_answer_has_valid_reason"],
             "picked_precedents_among_code_nearest_3_count": final_forecast.picked_precedents_among_code_nearest(answers, built.nearest_card_ids),

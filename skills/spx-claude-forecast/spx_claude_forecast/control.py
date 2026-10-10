@@ -31,6 +31,7 @@ DEFAULT_CONTROL = {
     "paused": False,                 # True silences the Claude call; records keep landing
     "max_calls_per_day": 45,         # 26 live calls plus the nightly test variants, with room; a backstop, not a budget
     "max_usd_per_day": 15.0,         # list-price equivalent of the calls' own bills (notional on the subscription); a cold cache costs ~$0.31 a call
+    "max_test_variant_calls_per_night": 9,   # the nightly test variants' own cap: three variants on three reads (test_variants.py)
     "note": "Edit by hand or with: python -m spx_claude_forecast.control --pause / --resume",
 }
 
@@ -85,6 +86,27 @@ def set_paused(paths: ForecastPaths, paused: bool) -> dict:
 
 def is_paused(paths: ForecastPaths) -> bool:
     return bool(load_control(paths).get("paused", False))
+
+
+def why_not_to_call(paths: ForecastPaths, day: str, is_real_caller: bool) -> str | None:
+    """Why no Claude call may be made for ``day``, or None: ``refused_under_pytest`` (the real caller under a test
+    run, which must never reach Claude), ``paused``, or ``capped`` when the day's answer lines, in the reads file and
+    the arms file together, already reach a daily cap. Every answer line counts as a call, whatever it cost: the caps
+    are a backstop, not a budget. Shared by the live read (read_runner) and the nightly test variants."""
+    if is_real_caller and os.environ.get(PYTEST_ENV):
+        return "refused_under_pytest"
+    if is_paused(paths):
+        return "paused"
+    limits = load_control(paths)
+    calls = spent = 0
+    for file in (paths.reads_file(day), paths.arms_file(day)):
+        for line in jsonl_store.iter_json_lines(file):
+            if line.get("line_type") == "claude_answer":
+                calls += 1
+                spent += float((line.get("call_stats") or {}).get("cost_usd") or 0)
+    if calls >= int(limits.get("max_calls_per_day") or 0) or spent >= float(limits.get("max_usd_per_day") or 0):
+        return "capped"
+    return None
 
 
 @contextmanager

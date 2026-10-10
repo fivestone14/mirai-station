@@ -16,8 +16,9 @@ NEAR_BASE_RATE_PCT_POINTS = 3     # within this of the base rate on every direct
 
 
 def answer_number_of(answer_line: dict) -> str:
-    """``answer_1`` from an answer id ending ``#answer_1`` (the answer's own number, whatever order it landed in)."""
-    return str(answer_line.get("answer_id", "")).rsplit("#", 1)[-1]
+    """``answer_1`` from an answer id ending ``#answer_1`` (the answer's own number, whatever order it landed in), or
+    ``#test:<variant>:answer_1`` on a test variant's answer."""
+    return str(answer_line.get("answer_id", "")).rsplit("#", 1)[-1].rsplit(":", 1)[-1]
 
 
 def final_forecast_for(answers: list[dict], asked_horizons: list[str], base_rate_pct: dict[str, dict] | None,

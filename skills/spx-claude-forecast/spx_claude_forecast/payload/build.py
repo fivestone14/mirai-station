@@ -88,7 +88,7 @@ def build_payload(inputs: FrozenInputs, library_rows: list[dict], *, origin: str
 
     ask, asked = _ask_for(inputs)
     claude_input_sha256 = jsonl_store.canonical_json_sha256(scene)
-    prompts, prompt_sha, direction_order, precedent_order = _render_both_answers(scene, ask, claude_input_sha256)
+    prompts, prompt_sha, direction_order, precedent_order = render_both_answers(scene, ask, claude_input_sha256)
     leaks = leak_checks(scene)
 
     base_rate_pct = {h: {k: history.base_rate[h][k] for k in ("up_pct", "flat_pct", "down_pct")}
@@ -173,10 +173,11 @@ def _ask_for(inputs: FrozenInputs) -> tuple[dict, list[str]]:
     return ask, list(horizons)
 
 
-def _render_both_answers(scene: dict, ask: dict, claude_input_sha256: str):
+def render_both_answers(scene: dict, ask: dict, claude_input_sha256: str):
     """Both prompt bodies from one scene: the cards shuffled by the scene's own hash for answer 1 and reversed for
     answer 2, the direction order flipped with them. The canonical rendering sorts every key, so the scene's blocks
-    read in alphabetical order whatever order they were built in."""
+    read in alphabetical order whatever order they were built in. The nightly test variants render their changed
+    scene through this too, so a variant's prompt differs from production's only where its scene does."""
     cards = scene["precedents"]["cards"]
     shuffled = list(cards)
     random.Random(int(claude_input_sha256[-12:], 16)).shuffle(shuffled)

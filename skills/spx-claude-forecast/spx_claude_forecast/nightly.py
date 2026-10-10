@@ -9,6 +9,8 @@ Steps, each logged and each failing softly so the rest still run:
              SEAL_AFTER_CLOSE_MINUTES. A horizon already final or not_asked is never written again; one that
              was no_data is tried again and, if it now grades, gets the next finalize_attempt_number.
   catch_up   the same for the last CATCH_UP_DAYS days, so a missed night is never a hole
+  test_variants  three of the day's reads asked again with the cards removed, their outcomes shuffled and
+             random cards (test_variants.py), into arms/; under the live call's gates and a cap of their own
   library    library/rows.parquet rebuilt whole from the record
   scores     library/scores.parquet rebuilt whole
   scorecard  scorecard.json for the phone and for Will
@@ -22,7 +24,7 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import grading, jsonl_store, library, precedents, recorder, scorecard, scoring, station_stores
+from . import grading, jsonl_store, library, precedents, recorder, scorecard, scoring, station_stores, test_variants
 from .control import ET, log, log_job_run, now_et, now_utc_iso, prune_run_log, single_instance_lock, switched_off_reason
 from .paths import ForecastPaths, default_state_dir, ensure_folders
 
@@ -137,6 +139,7 @@ def run_nightly(state_dir: Path, day: str | None = None, now: datetime | None = 
         steps = [
             ("seal", lambda: seal_day(state_dir, paths, day, now)),
             ("catch_up", lambda: [seal_day(state_dir, paths, d, now) for d in _recent_days_with_payloads(paths, day)]),
+            ("test_variants", lambda: test_variants.run_test_variants(paths, day, library.read_library(paths))),
             ("library", lambda: library.rebuild_library(paths)),
             ("scores", score_step),
             ("scorecard", scorecard_step),

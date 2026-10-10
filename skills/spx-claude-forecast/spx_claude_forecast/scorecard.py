@@ -16,9 +16,11 @@ from . import jsonl_store, scoring
 from .control import now_utc_iso
 from .library import HORIZONS
 from .paths import ForecastPaths
+from .rulebook import TEST_VARIANT_NONE
 from .scoring import CLAUDE_FINAL
 
 SCORECARD_TOO_EARLY_READS = 100
+CHECKPOINT_READS = (150, 300, 600)    # Will's review points (spec/phases.md, Phase 8)
 RESAMPLE_ROUNDS = 400
 REFERENCES = ("base_rate_shown_to_claude", "existing_system_time_of_day_odds_20_sessions", "existing_system_main_forecast")
 
@@ -55,12 +57,14 @@ def skill_range_by_day(pairs_by_day: dict[str, list[tuple[float, float]]], round
 
 
 def scorecard_from_rows(rows: list[dict], reads_lines_by_day: dict[str, list[dict]] | None = None) -> dict:
-    live = [r for r in rows if r.get("read_source") in (None, "live")]
+    live_all = [r for r in rows if r.get("read_source") in (None, "live")]
+    live = [r for r in live_all if r.get("test_variant") in (None, TEST_VARIANT_NONE)]      # production: the graded record
     card: dict = {"built_at": now_utc_iso(), "horizons": {}, "verdict": "Too early"}
     graded_reads = {r["read_id"] for r in live if r["forecaster"] == CLAUDE_FINAL}
     card["graded_reads"] = len(graded_reads)
     if len(graded_reads) >= SCORECARD_TOO_EARLY_READS:
         card["verdict"] = "Scored"
+    card["checkpoints"] = checkpoints_for(len(graded_reads))
     for horizon in HORIZONS:
         by_read: dict[str, dict[str, dict]] = defaultdict(dict)
         for r in live:
@@ -87,7 +91,41 @@ def scorecard_from_rows(rows: list[dict], reads_lines_by_day: dict[str, list[dic
         card["horizons"][horizon] = block
     card["watchdogs"] = watchdogs(reads_lines_by_day or {})
     card["daily_skill_vs_base_rate"] = daily_skill(live)
+    card["test_variants"] = test_variants_summary(live_all)
     return card
+
+
+def checkpoints_for(graded_reads: int) -> dict:
+    """Will's review points: which are reached and which comes next."""
+    reached = [n for n in CHECKPOINT_READS if graded_reads >= n]
+    return {"at_graded_reads": list(CHECKPOINT_READS), "reached": reached,
+            "next": next((n for n in CHECKPOINT_READS if graded_reads < n), None)}
+
+
+def test_variants_summary(rows: list[dict]) -> dict:
+    """Per test variant and horizon, the production forecast against the variant's on the same reads: how many
+    reads were paired, how often each was right, and production's skill over the variant (positive means the
+    history as shown was worth something; near zero means Claude was not using the cards)."""
+    production = {(r["read_id"], r["horizon"]): r for r in rows
+                  if r["forecaster"] == CLAUDE_FINAL and r.get("test_variant") in (None, TEST_VARIANT_NONE)}
+    paired: dict[str, dict[str, list[tuple[dict, dict]]]] = defaultdict(lambda: defaultdict(list))
+    for r in rows:
+        variant = r.get("test_variant")
+        if r["forecaster"] != CLAUDE_FINAL or variant in (None, TEST_VARIANT_NONE):
+            continue
+        base = production.get((r["read_id"], r["horizon"]))
+        if base:
+            paired[str(variant)][r["horizon"]].append((base, r))
+    out: dict = {}
+    for variant, by_horizon in paired.items():
+        out[variant] = {}
+        for horizon, pairs in by_horizon.items():
+            out[variant][horizon] = {
+                "reads": len(pairs),
+                "production_right_pct": round(100 * sum(1 for p, _ in pairs if p["is_top_choice_correct"]) / len(pairs), 1),
+                "variant_right_pct": round(100 * sum(1 for _, v in pairs if v["is_top_choice_correct"]) / len(pairs), 1),
+                "production_skill_vs_variant_pct": skill_pct([p["log_loss"] for p, _ in pairs], [v["log_loss"] for _, v in pairs])}
+    return out
 
 
 def daily_skill(rows: list[dict]) -> list[dict]:

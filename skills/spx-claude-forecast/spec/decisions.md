@@ -103,6 +103,25 @@ is in the scene and not under `absent`. With no reason left the answer is still 
   close is saved. The hook is one guarded call in `spx_jev/service.py`, right after the read archives its
   record.
 
+## The test variants (Phase 8)
+
+- **Proof, not forecasting power.** The live reads are untouched. Each night three of the day's usable reads
+  (the first, the middle, the last) are asked again, one answer each, with the history deliberately broken:
+  the cards removed (`no_precedents_shown`), the same cards with their outcomes dealt to other cards
+  (`precedent_outcomes_shuffled`), and eight cards drawn at random from the same time-of-day pool
+  (`random_precedents_shown`). Everything else in the scene is the production read's, byte for byte.
+- **Scored beside production on the same outcome.** The scorecard's `test_variants` block pairs each
+  variant with the production forecast read by read: production's skill over a variant near zero means
+  Claude was not using the cards; well above zero means the history as shown was worth something. That is
+  what decides whether the cards stay, change, or go, before Claude is trusted with any weight.
+- **Never mixed in.** The replies live in `arms/`, stamped with the variant and the fingerprint of the
+  changed scene; they are never graded as the read, never in the library, never on the phone.
+- **Same gates, own cap.** The variants run under the live call's gates (pytest, pause, the daily cap) and a
+  cap of nine answers a night; every shuffle and draw is seeded by the production scene's hash, so a night can
+  be replayed.
+- **Checkpoints.** The scorecard says which of Will's review points (150, 300, 600 graded reads) are
+  reached and which comes next; the review itself is Will's.
+
 ## Where the build departed from the plan
 
 Eight cards, not ten. No event matching. No freeze-only phase: live from day one, seeded from 07-20. The
@@ -111,5 +130,6 @@ flat-zone rule the day this was built, and the grader follows it rather than the
 
 ## Not built
 
-The nightly test variants (no cards, shuffled outcomes, random cards), the phone tile, a recorder for
-foreign quotes, the leveraged-ETF estimate, the Schwab login days-left, and situation-level score cells.
+The other test variants the record formats name (no base rate shown, earlier results today shown, five
+answers averaged, own track record shown), a recorder for foreign quotes, the leveraged-ETF estimate, the
+Schwab login days-left, and situation-level score cells.

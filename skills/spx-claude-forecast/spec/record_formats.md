@@ -546,6 +546,15 @@ One file, `state/spx_claude_forecast/latest.json`, written by `read_runner` thro
 }
 ```
 
+## arms/ (the nightly test variants, built 10-10)
+
+`arms/{day}.jsonl` holds the test variants' lines, written by the nightly (`test_variants.py`), never by a live read. Three of the variants named in the rename map are built: `no_precedents_shown`, `precedent_outcomes_shuffled` and `random_precedents_shown`; each asks one answer on up to three of the day's usable reads.
+
+- The answer line is a production `claude_answer` line with `test_variant`, `test_variant_version` and `test_variant_claude_input_sha256` in place of `test_variant: "none"`, its `answer_id` as `<read_id>#test:<variant>:answer_1`, and one field more: `test_variant_precedents`, the precedents block exactly as the variant sent it, so a reviewer never has to replay the shuffle or the draw.
+- The forecast line is the `test_variant_forecast` line shown above (`arm_line`): the final forecast's shape under the variant's stamp; `claude_input_sha256` stays production's, the join key.
+- In `scores.parquet` a variant's rows carry its name in `test_variant` with `forecaster` `claude_final` (and `claude_answer_1`); the comparison forecasters are scored once, on production's rows.
+- On `scorecard.json`, `test_variants.<variant>.<horizon>` gives `reads` (paired with production on the same read and horizon), `production_right_pct`, `variant_right_pct` and `production_skill_vs_variant_pct`; `checkpoints` gives Will's review points (150, 300, 600 graded reads), which are reached and which is next.
+
 ## Example: the reply Claude returns
 
 ```json
