@@ -36,10 +36,25 @@ def test_the_pools_are_never_mixed_as_voices():
 def test_mix_follows_pool_v1s_rule():
     state = pool_v2.new_pool_v2("average_30", list(F))
     mine = pool_v2.mix_pool_v2(state, F)
-    logs = {"M": state["voice_log_weights"]["move"], "D": state["voice_log_weights"]["direction"]}
-    theirs = floored(pool_v1.mixed({v: floored(p) for v, p in F.items()}, logs))
+    mixed = [v for v in F if v not in pool_v2.BENCHED_VOICES]
+    logs = {"M": {v: state["voice_log_weights"]["move"][v] for v in mixed},
+            "D": {v: state["voice_log_weights"]["direction"][v] for v in mixed}}
+    theirs = floored(pool_v1.mixed({v: floored(F[v]) for v in mixed}, logs))
     for k in mine:
         assert mine[k] == pytest.approx(theirs[k], abs=1e-9)
+
+
+def test_the_voices_carrying_jevs_opinion_are_benched_but_still_learn():
+    # issue SPX30-1: JEV's own call, the 50/50 blend and the JEV mixes sit out of the mix whatever their weight ...
+    state = pool_v2.new_pool_v2("average_30", list(F))
+    assert {"jev_own", "blend_50_50"} <= set(pool_v2.BENCHED_VOICES)
+    assert "jev_mix_0_percent" not in pool_v2.BENCHED_VOICES                 # the 0% mix is the calibrated odds, no JEV in it
+    loud = {**F, "jev_own": {"up": 0.98, "flat": 0.01, "down": 0.01}, "blend_50_50": {"up": 0.98, "flat": 0.01, "down": 0.01}}
+    assert pool_v2.mix_pool_v2(state, loud) == pytest.approx(pool_v2.mix_pool_v2(state, F), abs=1e-12)
+    assert set(pool_v2.mixable_voices(state, F)) == set(F) - {"jev_own", "blend_50_50"}
+    # ... but they are still scored and learned, so their weight keeps their track record
+    state, line = pool_v2.update_pool_v2_after_day(state, "2026-10-01", [(F, "flat")] * 5)
+    assert line["applied"] and {"jev_own", "blend_50_50"} <= set(line["steps"])
 
 
 def test_an_absent_voice_is_asleep_for_the_read():

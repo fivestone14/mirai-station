@@ -29,6 +29,12 @@ from .paths import append_json_line, backup_before_change, now_utc_iso, pool_v2_
 
 NEW_VOICE_START_WEIGHT = 0.03
 NEVER_MIXED = ("pool_v1", "pool_v2")        # the pools are scored beside the voices, never mixed as voices
+# Issue SPX30-1 (2026-10-09): the voices that carry JEV's own opinion sit out of the mix. Over the 95 graded 30-minute reads
+# of 09-29..10-08 the 50/50 blend (half JEV) held most of the "will it move" weight it started with, because its move score
+# ties the odds', and its up/down picks went 5 right of 21; benched, the replay goes 51 -> 56 right (next_60 55 -> 56) and
+# the mix's penalty matches the odds'. A benched voice is still forecast, scored and learned every night (its weight keeps
+# its track record); it is only left out of the mix and the phone's "what went into it".
+BENCHED_VOICES = ("blend_50_50", "jev_own", *(f"jev_mix_{p}_percent" for p in (20, 40, 60, 80, 100)))
 STATE_VERSION = 1
 FREEZE_WINDOW_DAYS = pool_v1.CAP_BIND_WINDOW     # 20 learned days
 FREEZE_CLIP_LIMIT = pool_v1.CAP_BIND_LIMIT       # 5% of the existing voices' voice-days
@@ -110,9 +116,16 @@ def weight_shares(state: dict, stage: str, voices: list[str] | None = None) -> d
     return {v: x / s for v, x in e.items()}
 
 
+def mixable_voices(state: dict, forecasts: dict[str, dict[str, float]]) -> list[str]:
+    """The voices that go into the mix for one read: present, known to the pool, neither a pool nor benched."""
+    return [v for v in forecasts
+            if v in state["voice_log_weights"]["move"] and v not in NEVER_MIXED and v not in BENCHED_VOICES]
+
+
 def mix_pool_v2(state: dict, forecasts: dict[str, dict[str, float]]) -> dict[str, float] | None:
-    """The pooled forecast over the voices present (awake) for this read: pool_v1's mixed() rule with pool_v2's weights."""
-    present = [v for v in forecasts if v in state["voice_log_weights"]["move"]]
+    """The pooled forecast over the voices present (awake) for this read, the benched ones left out: pool_v1's mixed() rule
+    with pool_v2's weights."""
+    present = mixable_voices(state, forecasts)
     if not present:
         return None
     logs = {"M": {v: state["voice_log_weights"]["move"][v] for v in present},

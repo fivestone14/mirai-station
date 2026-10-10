@@ -250,12 +250,12 @@ def test_no_forecast_means_no_voices_and_a_voice_list_that_cannot_be_read_never_
     assert "voices" not in live_call.take_over(_pool_2_hour(), pool_2, LIVE)["average"]
 
 
-def test_the_voices_mixed_are_the_ones_pool_2_weighs_never_the_pools_with_shares_summing_to_one():
+def test_the_voices_mixed_are_the_ones_pool_2_weighs_never_the_pools_or_the_benched_with_shares_summing_to_one():
     from spx_jev.mirai_prediction.pool_v2 import new_pool_v2
     state = new_pool_v2("average_30", ["historical_odds", "matcher", "jev_own"])
     forecasts = {v: PROBS for v in ("historical_odds", "matcher", "jev_own", "pool_v1", "not_in_the_pool")}
     got = read_hook.mixed_voices(state, forecasts)
-    assert set(got["probabilities"]) == set(got["shares"]) == {"historical_odds", "matcher", "jev_own"}
+    assert set(got["probabilities"]) == set(got["shares"]) == {"historical_odds", "matcher"}   # jev_own benched (SPX30-1)
     assert abs(sum(got["shares"].values()) - 1.0) < 1e-9
     assert read_hook.mixed_voices(state, {"pool_v1": PROBS}) == {"probabilities": {}, "shares": {}}
 
@@ -270,12 +270,12 @@ def test_the_live_forecast_returns_each_sums_mixed_voices_beside_its_mix_and_the
     monkeypatch.setattr(read_hook, "day_fits_for", lambda *a: voice_fits.DayFits(fits={}, matrix=empty, fit_day=None))
     row = SimpleNamespace(read_id="live:2026-10-01T10:00:00-04:00", row_ts="2026-10-01T10:00:00-04:00", learn_exclude=False)
     monkeypatch.setattr(read_hook, "todays_rows", lambda *a: {"average_30": row})
-    forecasts = {"historical_odds": PROBS, "jev_own": {"up": 0.6, "flat": 0.2, "down": 0.2}, "pool_v1": PROBS}
+    forecasts = {"historical_odds": PROBS, "matcher": {"up": 0.6, "flat": 0.2, "down": 0.2}, "pool_v1": PROBS}
     monkeypatch.setattr(read_hook, "all_voice_forecasts", lambda *a: (forecasts, {}))
     rec = {"read_id": row.read_id}
     mixed, voices = live_call.forecast_now_with_voices(tmp_path, "live", "2026-10-01", rec, {"row_ts": row.row_ts})
     assert set(mixed) == set(voices) == {"average_30"}
-    assert set(voices["average_30"]["probabilities"]) == set(voices["average_30"]["shares"]) == {"historical_odds", "jev_own"}
+    assert set(voices["average_30"]["probabilities"]) == set(voices["average_30"]["shares"]) == {"historical_odds", "matcher"}
     assert live_call.forecast_now_with_voices(tmp_path, "live", "2026-10-02", rec, {"row_ts": row.row_ts})[0] == mixed
     monkeypatch.setattr(read_hook, "load_archive_read", lambda *a: rec)
     read_hook.after_read(tmp_path, "live", row.read_id, "2026-10-03")

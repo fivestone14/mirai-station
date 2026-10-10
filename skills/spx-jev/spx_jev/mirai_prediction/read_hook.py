@@ -25,7 +25,7 @@ from .code_features import MarketHistory
 from .live_records import load_archive_read, load_pool_v1_snapshots
 from .name_map import SUMS_BY_LANE
 from .paths import (append_json_lines, data_root, ensure_folders, log_job_run, now_utc_iso, raw_forecasts_file, read_json_lines, today_et)
-from .pool_v2 import NEVER_MIXED, add_missing_voices, load_pool_v2, mix_pool_v2, new_pool_v2, save_pool_v2, weight_shares
+from .pool_v2 import add_missing_voices, load_pool_v2, mix_pool_v2, mixable_voices, new_pool_v2, save_pool_v2, weight_shares
 from .voice_fits import DayFits, load_voice_fits
 from .voices import all_voice_forecasts
 
@@ -59,9 +59,10 @@ def code_features_for_read(root: Path, state_dir: Path | str, lane: str, day: st
 
 
 def mixed_voices(state: dict, forecasts: dict[str, dict[str, float]]) -> dict:
-    """The voices Pool 2 mixed for one read and sum (the pools never among them): ``{"probabilities": {voice: probs},
-    "shares": {voice: its share of the "move" weights over them}}``, the say each had in the mix."""
-    present = [v for v in forecasts if v in state["voice_log_weights"]["move"] and v not in NEVER_MIXED]
+    """The voices Pool 2 mixed for one read and sum (the pools and the benched voices never among them):
+    ``{"probabilities": {voice: probs}, "shares": {voice: its share of the "move" weights over them}}``, the say each had
+    in the mix."""
+    present = mixable_voices(state, forecasts)
     return {"probabilities": {v: forecasts[v] for v in present}, "shares": weight_shares(state, "move", present) if present else {}}
 
 
@@ -110,7 +111,7 @@ def forecast_read(state_dir: Path | str, lane: str, day: str, read_id: str | Non
                  for voice, probs in forecasts.items()]
         if mixed is not None:
             lines.append({**line, "voice_name": "pool_v2", "voice_probs": mixed,
-                          "voices_mixed": sorted(v for v in forecasts if v in state["voice_log_weights"]["move"])})
+                          "voices_mixed": sorted(mixable_voices(state, forecasts))})
             pool_v2_by_sum[sum_id] = mixed
             try:
                 voices_by_sum[sum_id] = mixed_voices(state, forecasts)
