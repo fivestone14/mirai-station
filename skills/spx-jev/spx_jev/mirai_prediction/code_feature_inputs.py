@@ -206,7 +206,7 @@ def load_context_quotes_as_bars(state_dir: Path | str, day: str) -> dict[str, li
 
 def load_context_bars_by_day(state_dir: Path | str, before_day: str, sessions: int = HISTORY_SESSIONS) -> dict[str, dict[str, list[dict]]]:
     """The trailing ``sessions`` saved sessions' minute bars per symbol before ``before_day`` (the context/bars files hold
-    every symbol the market feed carries, the new ones backfilled; the store's context_bars does not carry them)."""
+    every symbol the market feed carries, the new ones backfilled)."""
     out: dict[str, dict[str, list[dict]]] = {}
     for day in [d for d in _file_days(spx_jev_dir(state_dir) / CONTEXT_SUBDIR / "bars") if d < before_day][-sessions:]:
         bars = load_context_bars(state_dir, day)

@@ -297,8 +297,9 @@ def discover_expiries(now: Optional[datetime] = None) -> list:
     days = [d.isoformat() for d in probe_days(today)]
     try:
         res = _nf._run(_PROBE_CODE % {"sym": TICKER, "days": days})
-    except Exception:
+    except Exception as e:
         LAST_DISCOVERY = "degraded"
+        print(f"sndk :: expiry probe failed: {type(e).__name__}: {e}", file=sys.stderr)
         return []
     found = sorted((res or {}).get("found") or [])
     errors = sorted(set((res or {}).get("errors") or []))

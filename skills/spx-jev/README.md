@@ -57,7 +57,7 @@ returns a probability for each answer option. A call is a forecast, not a trade 
 | `spx_jev/weights.py` | The Weights | One interface, `QuestionWeights`, for how much each question counts in the sums. Every live question weighs 1.0: the neutral method on the tape lane, the learning loop on the live lane. |
 | `spx_jev/pool.py` | The Learning Loop | 06-learning-loop-design: at each live read, the forecasts it will score (the fixed mixes of JEV's sum with the price-only reference, today's blend, that frozen reference alone (`baseline`), the question block "no change" competes in, the pool); once a session is sealed, one day's evidence moves the move and the direction weights apart, the tables and calibration decay, and day-level e-processes decide the "earning" labels (e-BH). This is the end-price loop; the average-price loop (`integral_loop.py`, 6b) learns beside it on the average-price grade. Neither pool reaches the phone: since 2026-10-06 the phone shows Pool 2's combined forecast (`mirai_prediction/live_call.py`), and this loop's pool (`pool_v1`) is one of its voice sources only. The promotion machinery that once decided whether the pool replaced the blend (`POOL_ON_PHONE`, `SIM_GATES_PASSED`, the phone e-processes) was retired on 2026-10-07. |
 | `spx_jev/archive.py` | The Archive | The raw record for machine learning: every read, grade and close-out of every lane, append only, one typed record per line. |
-| `spx_jev/store.py` | The Learning Store | Each market day's raw files (the archive, the sum records, every lane's average-price grades, both learning loops' logs, the bars, the market feed, the overnight store, the roll table, the calendar) as typed Parquet under `state/spx_jev/store/`, every row checked and a refused one quarantined with its reason, with DuckDB views over it. Rebuilt nightly; the raw files are only read. |
+| `spx_jev/store.py` | The Learning Store | Each market day's raw files (the archive, the sum records, every lane's `integral_grades.jsonl`, the bars and the overnight store) as typed Parquet under `state/spx_jev/store/`, every row checked and a refused one quarantined with its reason. Rebuilt nightly; the raw files are only read. |
 | `spx_jev/service.py` | The Service | One run per read: build, ask (when a key exists), sum, grade, write the record, the archive and the phone's card. |
 | `spx_jev/lane.py` | The Lanes | The settings one run takes. `LIVE` reads at :02 and :32, its call the average price over the next 30 minutes (`average_30`) with the 30- and 60-minute end-price sums beside it, and its 16:02 fire (13:02 on a half day) is a close-out that grades the day's last calls; `TAPE` is the opening lane: every 5 minutes 09:35 to 10:30, each read stamped at the newest finished bar and sized in tape units, its call the average price over the next 10 minutes (`average_10`) with one five-way 10-minute end-price sum priced in index points beside it, every question its schedule asks asked afresh (its day constants at 09:35, then held), no blend, the exact bar at the mark, and a close-out at 10:42 that asks JEV nothing and grades the morning's last calls. Its records, card, grades and weights are under `state/spx_jev/lanes/tape/`. `PREMARKET` reads at the six checkpoints before the open, its call the average price over the first 30 minutes (`open_average_30`) with the end-price sums `open_10` and `open_30` beside it, all graded from the settled open, unblended, with no learning loop and neutral weights, under `state/spx_jev/lanes/premarket/`. Every lane archives into the one shared `state/spx_jev/archive/`, each record naming its lane. |
 | `spx_jev/premarket.py` | The Premarket Lane | Six checkpoints before the open (02:35; 03:35, or 04:35 in the week Frankfurt is on winter time and New York is not; 08:05, 08:48, 09:05, 09:28 ET). Each saves the night's futures and builds a scene without a diary row: SPX's prior close carried by /ES on one contract, sized in the pre-open ruler (the median morning anchor of the last sessions, stamped on every record). Every label is rebuilt from the bars at every read; JEV's earlier answers are never fed back. JEV is asked only where a question is due (08:48, 09:28). It writes its records, sums, the archive and the before-the-open card, refuses a fire 5 minutes or more late or from the open on, and closes out at 10:06, once the bar its 10:04 check ends on is on file (up to 68 s, `service.BAR_WAIT_S`), grading from the settled open. |
@@ -308,16 +308,15 @@ archive there too, under `archive/`.
   `clock_integral_days.json`: the cadence and the clock's stored counts, on
   the end price and on the average price, never mixed. `grades.jsonl`,
   `weights.json` (the sums' tallies, `method` and the per-question weights,
-  the end-price loop's `pool` and the average-price loop's `pool_integral`),
-  `weights_log.jsonl`. `integral_grades.jsonl`, the average-price grade, one line
+  the end-price loop's `pool` and the average-price loop's `pool_integral`).
+  `integral_grades.jsonl`, the average-price grade, one line
   per graded horizon (append only, keyed by the read, the horizon and
   `rule_version`), in every lane's folder: from `rule_version` 2 each line
   names the sum it graded (`sum`) and, for the call, carries its `scores`
   and the edge JEV was told (`edge_told`), from 3 the call is set against
   that edge; older lines still read, and a read graded under more than one
   version stands on its newest.
-- `pool_30.json`, `pool_60.json`, `pool_log.jsonl`: the end-price loop's state
-  per horizon and one log line per horizon per session applied or refused.
+- `pool_30.json`, `pool_60.json`: the end-price loop's state per horizon.
 - `pool_30_integral.json`, `pool_integral_log.jsonl`: the same loop learnt
   from the average-price grade, written while its switch is on (6b, on).
 - `archive/{day}.jsonl`: the raw archive for later machine learning, one line
@@ -347,15 +346,14 @@ archive there too, under `archive/`.
 - `lanes/tape/`: the opening lane's own records, card, grades and weights.
 - `lanes/premarket/`: `{day}.jsonl`, one read per checkpoint; `hour/{day}.jsonl`, its sums;
   `latest.json`, the before-the-open card; `grades.jsonl` (each line with `from.settled_open`
-  and `anchor.source` `"pre_open"`), `weights.json`, `weights_log.jsonl`.
+  and `anchor.source` `"pre_open"`), `weights.json`.
 - `overnight/{day}.jsonl`, the overnight futures, one bar per line (`schema_version`,
   `day`, `ts`, `symbol`, `contract`, `contract_from`, `bar_minutes`, the prices and volume,
   `session`, `source`, `saved_at`, `flags`); `overnight/manifest.jsonl`, one line per save
   that changed a night, with its checks; `overnight/rolls.json`, the roll table;
   `overnight/.save.lock`, held while a save merges and writes.
 - `store/`, the learning store built from the archive, the sum records, every lane's
-  `integral_grades.jsonl`, both learning loops' logs, the bars, the market feed, the
-  overnight store and the calendar (below).
+  `integral_grades.jsonl`, the bars and the overnight store (below).
 
 The card carries: `symbol`, `generated_at`, `row_ts`, `freshness`, `sigma`,
 `situation` (four facts with a verdict word and the figure to draw),
@@ -460,7 +458,12 @@ DuckDB views file, `spx_jev.duckdb`, was written beside the tables until
     duckdb.sql(f"""SELECT c.row_ts, c.sum_id, c.shown_pick, c.shown_probs[c.shown_pick] AS p, a.outcome, a.verdict
                    FROM {table('calls')} c JOIN {table('average_grades')} a ON a.read_id = c.read_id AND a.sum_id = c.sum_id
                    WHERE c.is_call AND c.lane = 'live'""").show()           # the phone's calls and their grades
-    duckdb.sql(f"SELECT day, table_name, reason, source FROM {table('quarantine')}").show()
+    duckdb.sql(f"SELECT day, table_name, quarantined, reasons FROM {table('validation')} WHERE quarantined > 0").show()
+
+`validation` is written for every built day; `quarantine` has a day folder only
+when a row was refused, so read it (`table('quarantine')`, the refused rows with
+their `reason` and `source`) only once the query above names a day, or
+`read_parquet` stops on the empty glob.
 
 `.show()`, `.df()` and `.arrow()` read any column. `.fetchall()` and
 `.fetchone()` hand back a timestamp as a Python datetime, which DuckDB builds

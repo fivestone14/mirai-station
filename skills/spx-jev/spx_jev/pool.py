@@ -713,7 +713,7 @@ def archive_state(path: Path, state: dict) -> Path:
 def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline: "Baseline | None" = None) -> dict[str, str]:
     """Apply every sealed session after the watermark, oldest first, both horizons (the longer first). A session is sealed once it is over and every
     read has a terminal grade at every horizon. An unsealed session, or one some of whose reads carry no
-    snapshot, stops the run and is logged (fail closed); one none of whose reads carries a snapshot is
+    snapshot, stops the run, said in the returned verdict (fail closed); one none of whose reads carries a snapshot is
     from before the loop and is passed over. A session already applied is never applied again.
     A state made under other constants (its constants_hash) is kept in archive/ and learned again from the
     records: from cold, every session it had applied replayed under these constants (snapshots formed again,

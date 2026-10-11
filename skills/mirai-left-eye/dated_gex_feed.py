@@ -495,8 +495,9 @@ def pull(now: Optional[datetime] = None) -> dict:
 
     try:
         res = _run_code(_DATED_CHAIN_CODE % {"jobs": jobs})
-    except Exception:
+    except Exception as e:
         res = None
+        print(f"dated_gex :: chain fetch failed: {type(e).__name__}: {e}", file=sys.stderr)
     if not res or not res.get("spot") or not res.get("contracts"):
         # never overwrite good with bad: previous book stays untouched
         return {"ok": False, "kept_previous": bool(prev)}

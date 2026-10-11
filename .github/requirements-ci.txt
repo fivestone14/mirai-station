@@ -14,7 +14,7 @@ websockets                                   # voice_server's transport
 
 # The spx-jev learning store (skills/spx-jev/spx_jev/store.py), pinned in that box's pyproject.toml too. Its
 # tests skip where these are missing, so CI installs them to run the tests rather than skip them.
-duckdb>=1.5,<2                               # the views over the store
+duckdb>=1.5,<2                               # the prediction system's readers of the store's Parquet (mirai_prediction/)
 pyarrow>=24,<25                              # the Parquet files
 
 # Deliberately absent: torch, sounddevice and the agent SDK. Each is imported
