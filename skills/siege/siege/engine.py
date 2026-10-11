@@ -1,7 +1,7 @@
 """
 engine.py — the SIEGE turn of the crank: one call per host scan folds the
 tower watch, touch windows, effort verdicts, and outcome grades forward and
-writes every store surface (latest / cards / health / baseline).
+writes every store surface (latest / cards / baseline).
 
 =========================== THE REVERSED SIGN =============================
 Backtest sweep 2026-07 (n=168 touches, 11 of 13 days): HIGH volume effort
@@ -19,7 +19,7 @@ dict the bridge writes into the diary row. Since the host's wt-7 era
 FEED-LOST union guard: {no bars, last bar stale > 3 min in RTH, >= 3
 consecutive zero-volume RTH bars, flat-OHLC-with-volume} — on any of them
 the scan keeps last state (no touches, no verdicts, no grades, no baseline
-fold), stamps health, and never fabricates.
+fold), stamps the feed's health on latest.json, and never fabricates.
 """
 from __future__ import annotations
 
@@ -259,8 +259,6 @@ def scan(store: SiegeStore, *, now: datetime, spot: Optional[float], sigma,
     tower_rows = _tower_rows(st, towers, spot, sigma, cfg)
 
     store.write_session(st)
-    store.write_health({"ts": now.isoformat(), "session": session,
-                        "feed": feed, "reason": reason})
     store.write_latest({
         "as_of": now.isoformat(), "session": session, "spot": spot,
         "spx_spy_ratio": round(ratio, 6) if ratio else None,

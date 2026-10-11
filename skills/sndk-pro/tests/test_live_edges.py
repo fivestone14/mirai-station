@@ -247,9 +247,9 @@ def test_each_live_tick_appends_one_row_anchored_on_the_live_quote(broker, chain
 
 
 @pytest.mark.parametrize("failure", ["http", "raise", "no_client", "only_prior_close"])
-def test_no_live_quote_means_no_book_and_no_row(broker, chain, market, failure):
+def test_no_live_quote_means_no_book_and_no_row(broker, chain, market, failure, capsys):
     """No live quote → no book, no row: the tick neither crashes nor pulls a
-    chain, and the skip is logged. Yesterday's close is never a live spot."""
+    chain, and the skip is said in the job's log. Yesterday's close is never a live spot."""
     now = market.at(_at(market.session_day(), time(11, 0)))
     if failure == "only_prior_close":
         broker.quote = {"lastPrice": None, "mark": None, "closePrice": QUOTE["closePrice"]}
@@ -259,8 +259,7 @@ def test_no_live_quote_means_no_book_and_no_row(broker, chain, market, failure):
     assert sndk_hunter.tick(now) == 0
     assert _diary(now) == []
     assert chain == []
-    log = sndk_feed._state_dir() / "fetch_log.jsonl"
-    assert any(json.loads(ln).get("skip") for ln in log.read_text().splitlines())
+    assert "no live Schwab quote" in capsys.readouterr().out
 
 
 def test_a_failed_minute_bar_fetch_never_costs_the_diary_row(broker, chain, market):

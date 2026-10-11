@@ -101,7 +101,6 @@ Outputs, all under the lane's folder (state/spx_jev/ for the live lane)
                         on the live lane "pool" (the end-price loop's) and, its switch on, "pool_integral" (the
                         average-price loop's method, questions and pool, or {"failed": why}),
                         "new_this_run", "new_by_horizon", "closed_out"}
-    weights_log.jsonl  one line per grading run that graded something: the tally and every weight that moved
     and every new line, once more, in the raw archive (archive.GradeRecord, keyed to its read)
     integral_grades.jsonl  one line per graded horizon, the average-price grade (append only, keyed by row_ts,
                        ``horizon`` and ``rule_version``): the sum graded (``sum``), integral.grade_window's fields,
@@ -117,7 +116,7 @@ import json
 import os
 import sys
 from collections import Counter, defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -137,7 +136,6 @@ ET = ZoneInfo("America/New_York")
 CLOSE_GRACE_MIN = 2                 # a horizon ending this far past the close is graded at the closing bar
 BANDS = ("up", "flat", "down")      # "unsure" is a pick, never an outcome: its probability counts against the Brier
 SIZES = ("big", "small")
-WEIGHTS_LOG = "weights_log.jsonl"
 INTEGRAL_NAME = "integral_grades.jsonl"
 INTEGRAL_LOCK = f"{INTEGRAL_NAME}.lock"     # held while a run or a backfill reads, dedupes and appends the side file
 BAD_PROBABILITIES = "not graded: bad probabilities"
@@ -506,20 +504,6 @@ def average_tally(lines: list[dict], grades: list[dict], lane: Lane = LIVE) -> d
     return out
 
 
-def log_weights(path: Path, before: dict, weights: dict, new: int) -> dict:
-    """One line per grading run that graded something: the tallies, and every weight that moved."""
-    changes = []
-    for qid, w in sorted(weights["questions"].items()):
-        old = before.get(qid, {}).get("weight")
-        if old is None or abs(float(old) - float(w["weight"])) >= 0.0005:
-            changes.append({"question": qid, "before": old, "after": w["weight"], "n": w["n"], "in_step_3": w["in_step_3"]})
-    line = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "graded_runs": weights["graded_runs"],
-            "new": new, **weights["sums"][weights["primary"]], "sums": weights["sums"], "changes": changes}
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(line, ensure_ascii=False) + "\n")
-    return line
-
-
 def run(state_dir: Path, out_dir: Path, allowed: dict[str, set[str]], day: str | None = None, lane: Lane = LIVE) -> dict:
     """Grade every mark that has passed and rewrite the weights. ``allowed`` (``live_options()``) keeps
     retired questions and dropped options out of the weights."""
@@ -575,15 +559,6 @@ def run(state_dir: Path, out_dir: Path, allowed: dict[str, set[str]], day: str |
             print(f"the call's record failed: {type(e).__name__}: {e}", file=sys.stderr)
             weights["sums"][lane.average] = {"failed": f"{type(e).__name__}: {e}"}
     weights_path = out_dir / WEIGHTS_NAME
-    before = {}
-    if weights_path.is_file():
-        try:
-            before = (json.loads(weights_path.read_text(encoding="utf-8")) or {}).get("questions", {})
-        except json.JSONDecodeError:
-            before = {}
-    if new:
-        out_dir.mkdir(parents=True, exist_ok=True)
-        log_weights(out_dir / WEIGHTS_LOG, before, weights, sum(1 for g in new if g.get("band")))
     tmp = weights_path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(weights, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, weights_path)                    # step 3 never sees a half file

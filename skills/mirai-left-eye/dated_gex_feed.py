@@ -186,13 +186,6 @@ def _book_path() -> Path:
     return _state_dir() / "book.json"
 
 
-def _log(row: dict) -> None:
-    try:
-        atomic_io.append_jsonl(_state_dir() / "fetch_log.jsonl", row)
-    except Exception:
-        pass
-
-
 # --- server-side fetch (runs inside ONE cass_market_run; native _chunk clone) ---
 
 _DATED_CHAIN_CODE = """
@@ -480,7 +473,6 @@ def pull(now: Optional[datetime] = None) -> dict:
     if os.environ.get("DATED_BOOK_DISABLE") == "1":
         return {"ok": False, "skipped": "disabled"}
     if today.weekday() >= 5 or today in _holidays(today.year):
-        _log({"ts": now.isoformat(), "skipped": "market_closed"})
         return {"ok": False, "skipped": "market_closed"}
 
     prev = atomic_io.read_json_or(_book_path(), {})
@@ -503,12 +495,10 @@ def pull(now: Optional[datetime] = None) -> dict:
 
     try:
         res = _run_code(_DATED_CHAIN_CODE % {"jobs": jobs})
-    except Exception as e:
+    except Exception:
         res = None
-        _log({"ts": now.isoformat(), "ok": False, "error": f"{type(e).__name__}: {e}"})
     if not res or not res.get("spot") or not res.get("contracts"):
         # never overwrite good with bad: previous book stays untouched
-        _log({"ts": now.isoformat(), "ok": False, "kept_previous": bool(prev)})
         return {"ok": False, "kept_previous": bool(prev)}
 
     # Post-fetch processing + store, inside the same never-raises contract as the
@@ -612,16 +602,10 @@ def pull(now: Optional[datetime] = None) -> dict:
         # pull that raced a newer one can't clobber it (TOCTOU window → ms)
         prev2 = atomic_io.read_json_or(_book_path(), {})
         if prev2.get("ok") and str(prev2.get("as_of", "")) > book["as_of"]:
-            _log({"ts": now.isoformat(), "ok": False, "regress_blocked": True})
             return {"ok": False, "regress_blocked": True}
         atomic_io.write_json_atomic(_book_path(), book)
-        _log({"ts": now.isoformat(), "ok": True, "calls": res.get("calls"),
-              "bands": [b["band"] + ":" + b["expiry"] for b in bands],
-              "missing_rounds": book["meta"]["round_strike_check"]["missing"]})
         return {"ok": True, "bands": len(bands), "calls": res.get("calls")}
     except Exception as e:
-        _log({"ts": now.isoformat(), "ok": False, "kept_previous": bool(prev),
-              "error": f"{type(e).__name__}: {e}"})
         return {"ok": False, "kept_previous": bool(prev),
                 "error": f"{type(e).__name__}: {e}"}
 

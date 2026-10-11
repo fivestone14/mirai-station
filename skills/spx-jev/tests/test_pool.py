@@ -9,9 +9,11 @@ import pytest
 
 from conftest import at
 from spx_jev import pool
+from spx_jev.lane import LIVE
 from spx_jev.pool import (NO_CHANGE, REFERENCE, W0, apply_session, bet, cold_state, coverage, membership, new_eprocess,
                           snapshot, statuses, update)
 from spx_jev.scores import floored
+from spx_jev.state_builder import load_jsonl
 
 CLOCK = {"up": 0.2, "flat": 0.6, "down": 0.2}
 
@@ -354,9 +356,7 @@ def test_an_unsealed_session_stops_the_update_and_one_before_the_loop_is_passed_
     said = update(tmp_path, today="2026-09-16")
     assert said["next_30"] == "2026-09-14: unsealed; stopped"
     state = json.loads((tmp_path / "pool_30.json").read_text())
-    assert state["last_session_applied"] == "2026-09-11" and state["evidence"] == {}
-    log = [json.loads(l) for l in (tmp_path / pool.LOG_NAME).read_text().splitlines()]
-    assert [l.get("why") for l in log] == ["no read carries a snapshot: before the loop"] * 2 + ["unsealed: a read still has a horizon to grade"]
+    assert state["last_session_applied"] == "2026-09-11" and state["evidence"] == {}       # 09-11 passed over, 09-14 not applied
 
 
 def test_a_state_made_under_other_constants_is_kept_and_learned_again_from_the_records(tmp_path):
@@ -387,11 +387,6 @@ def test_a_state_made_under_other_constants_is_kept_and_learned_again_from_the_r
     assert old["constants_hash"] == pool.CONSTANTS_HASH and old["last_session_applied"] == "2026-09-15"
     assert old["tables"] == fresh["tables"] and old["top"] == fresh["top"] and old["block"] == fresh["block"]
     assert old["evidence"]["q_a"]["days"] == 1 < fresh["evidence"]["q_a"]["days"] == 2      # the replayed day bet nothing
-    log = [json.loads(l) for l in (tmp_path / "old" / pool.LOG_NAME).read_text().splitlines()]
-    at_rebuild = next(i for i, l in enumerate(log) if "rebuild" in l)
-    assert log[at_rebuild]["rebuild"]["replay_until"] == "2026-09-14" and log[at_rebuild]["rebuild"]["to"] == pool.CONSTANTS_HASH
-    replayed = [l for l in log[at_rebuild:] if l.get("session") == "2026-09-14"]
-    assert len(replayed) == 2 and all(l["replay"] and "evidence" not in l for l in replayed)
 
 
 def test_a_rebuild_stopped_part_way_still_bets_nothing_on_the_days_it_replays_when_it_goes_on(tmp_path):
@@ -461,11 +456,12 @@ def test_a_snapshot_formed_under_other_forming_settings_stops_a_rebuild(tmp_path
 
 def test_a_session_with_a_read_missing_its_snapshot_fails_closed_and_an_event_read_is_left_out(tmp_path):
     _write_session(tmp_path, "2026-09-14", [("up", "up"), ("flat", "flat")], event_at=1)
-    update(tmp_path, today="2026-09-15")
-    log = [json.loads(l) for l in (tmp_path / pool.LOG_NAME).read_text().splitlines()]
-    by_h = {l["horizon"]: l for l in log}
-    assert list(by_h["next_30"]["manifest"]["excluded"].values()) == ["a scheduled event inside the 30-minute window"]
-    assert len(by_h["next_60"]["manifest"]["excluded"]) == 1
+    assert update(tmp_path, today="2026-09-15")["next_30"] == "2026-09-14: applied, 1 reads"
+    recs = [json.loads(l) for l in (tmp_path / "hour" / "2026-09-14.jsonl").read_text().splitlines()]
+    outcomes = pool.graded_outcomes(load_jsonl(tmp_path / "grades.jsonl"), LIVE.horizons)
+    for h, minutes in (("next_30", 30), ("next_60", 60)):
+        reads, excluded = pool._session_reads(recs, outcomes, h, minutes)
+        assert len(reads) == 1 and list(excluded.values()) == [f"a scheduled event inside the {minutes}-minute window"]
     hour = tmp_path / "hour" / "2026-09-15.jsonl"
     _write_session(tmp_path, "2026-09-15", [("up", "up"), ("up", "up")])
     recs = [json.loads(l) for l in hour.read_text().splitlines()]
@@ -513,9 +509,10 @@ def test_the_premarket_loop_keeps_its_own_files_and_learns_nothing_from_reads_wi
     (out / "grades.jsonl").write_text("".join(json.dumps({"row_ts": r["row_ts"], "horizons": ["open_10", "open_30"], "pending": [], "skipped": {},
                                                            "open_10": {"band": "up"}, "open_30": {"band": "up"}}) + "\n" for r in recs))
     assert update(out, today="2026-09-21", lane=PREMARKET) == {"open_30": "2026-09-18: applied, 0 reads", "open_10": "2026-09-18: applied, 0 reads"}
-    assert sorted(p.name for p in out.glob("pool_*")) == ["pool_10.json", "pool_30.json", "pool_log.jsonl"]
+    assert sorted(p.name for p in out.glob("pool_*")) == ["pool_10.json", "pool_30.json"]
     assert not list(tmp_path.glob("spx_jev/pool_*"))
-    log = [json.loads(l) for l in (out / pool.LOG_NAME).read_text().splitlines()]
-    assert {l["applied"] for l in log} == {False} and set(log[0]["manifest"]["excluded"].values()) == {f"no snapshot: {left_out['left_out']}"}
+    outcomes = pool.graded_outcomes(load_jsonl(out / "grades.jsonl"), PREMARKET.horizons)
+    reads, excluded = pool._session_reads(recs, outcomes, "open_30", 30)
+    assert reads == [] and set(excluded.values()) == {f"no snapshot: {left_out['left_out']}"}
     w = pool.PoolWeights.learn([], {"q1": {"up"}}, out, PREMARKET)
     assert w.pool["last_session_applied"] == "2026-09-18" and w.pool["applied"] == {"open_30": "nothing new to apply", "open_10": "nothing new to apply"}

@@ -1,11 +1,9 @@
 """The learning store: a day's raw files as typed Parquet, every refused row quarantined with its reason, the raw
-files untouched, a rebuild the same, and DuckDB views over it all. Offline; skipped where duckdb or pyarrow is absent."""
+files untouched, a rebuild the same. Offline; skipped where duckdb or pyarrow is absent."""
 from __future__ import annotations
 
 import json
 import plistlib
-import subprocess
-import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -98,8 +96,8 @@ def _day_archive() -> list[dict]:
     return [early, read, tape, grade_live, grade_tape, close_out]
 
 
-def _state(tmp_path, archive: list | None = None, extra_lines: list[str] = ()) -> object:
-    """A station state dir holding one day of every raw file the store reads, and its own calendar."""
+def _state(tmp_path, archive: list | None = None, extra_lines: list[str] = ()) -> None:
+    """A station state dir holding one day of every raw file the store reads."""
     lines = [json.dumps(r) for r in (_day_archive() if archive is None else archive)] + list(extra_lines)
     folder = tmp_path / "spx_jev"
     (folder / "archive").mkdir(parents=True)
@@ -110,14 +108,6 @@ def _state(tmp_path, archive: list | None = None, extra_lines: list[str] = ()) -
     (folder / "bars" / f"{DAY}.jsonl").write_text("".join(json.dumps(b) + "\n" for b in flat_bars(390)))
     (tmp_path / "reversion" / "bars").mkdir(parents=True)
     (tmp_path / "reversion" / "bars" / f"{DAY}-SPX.json").write_text(json.dumps(flat_bars(390)))
-    bar = {"ts": "2026-09-18T10:00:00-04:00", "open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5, "volume": 10.0}
-    vold = {"ts": "2026-09-18T10:00:00-04:00", "open": 5000.0, "close": 6000.0, "volume": 0.0, "derived": "($UVOL - $DVOL) * 1000"}
-    (folder / "context" / "bars").mkdir(parents=True)
-    (folder / "context" / "bars" / f"{DAY}.jsonl").write_text(json.dumps(
-        {"ts": "2026-09-18T10:01:00-04:00", "bars": {"XLK": bar, "$VOLD": {**bar, "close": 1.2}, "/ESZ26": bar, "$TNX": bar}}) + "\n")
-    (folder / "context" / f"{DAY}.jsonl").write_text(json.dumps(
-        {"ts": "2026-09-18T10:01:30-04:00", "bars": {"XLK": bar, "$VOLD": vold},
-         "quotes": {"$VIX": {"last": 16.2, "close": 15.9, "volume": 0, "quote_time": None}}, "failed": []}) + "\n")
     (folder / "overnight").mkdir()
     night = [{"schema_version": 1, "day": DAY, "ts": "2026-09-18T08:00:00-04:00", "symbol": "/ES", "contract": "/ESZ26",
               "contract_from": "roll_table", "bar_minutes": 1, "open": 6600.0, "high": 6601.0, "low": 6599.0, "close": 6600.5,
@@ -125,25 +115,11 @@ def _state(tmp_path, archive: list | None = None, extra_lines: list[str] = ()) -
               "flags": []}]
     night.insert(0, {**night[0], "ts": "2026-09-17T15:55:00-04:00", "session": "regular"})     # Thursday's last minutes
     (folder / "overnight" / f"{DAY}.jsonl").write_text("".join(json.dumps(b) + "\n" for b in night))
-    (folder / "daily_closes").mkdir()
-    for symbol, close in (("$SPX", 6600.0), ("$TNX", 41.2)):
-        (folder / "daily_closes" / f"{symbol}.jsonl").write_text("".join(json.dumps(
-            {"day": d, "open": close, "high": close + 1, "low": close - 1, "close": close, "volume": 0.0, "fetched_at": f"{d}T16:20:00-04:00"}) + "\n"
-            for d in ("2026-09-17", DAY)))
-    (folder / "overnight" / "rolls.json").write_text(json.dumps({"schema_version": 1, "current": {"/ES": "/ESZ26"}, "rolls": [
-        {"symbol": "/ES", "day": DAY, "at": "2026-09-17T18:00:00-04:00", "from": "/ESU26", "to": "/ESZ26", "basis_step": 0.7,
-         "basis_unit": "percent", "step_vs_typical": 20.0, "reference": "$SPX", "jump": 60.0}]}))
-    calendar = tmp_path / "events.json"
-    calendar.write_text(json.dumps({"built": "2026-09-01", "events": [
-        {"date": DAY, "time_et": "10:00", "end_et": "10:30", "kind": "FED_SPEAKER", "tier": 2, "scope": "market",
-         "in_session": True, "verified": True, "source": "x"},
-        {"date": "2026-09-21", "time_et": "10:00", "kind": "OTHER_DAY", "tier": 2}]}))
-    return calendar
 
 
 @pytest.fixture
-def built(tmp_path, monkeypatch):
-    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path))
+def built(tmp_path):
+    _state(tmp_path)
     log = store.build_day(tmp_path, D, at(16, 45))
     return tmp_path, log
 
@@ -154,13 +130,14 @@ def _table(root, name: str) -> list[dict]:
 
 def test_every_table_is_written_for_the_day_with_its_types_and_schema_version(built):
     root, log = built
-    for name in store.BY_NAME:
-        schema = pq.ParquetFile(store.partition(store.store_dir(root), name, D)).schema_arrow
+    for table in store.TABLES + (store.VALIDATION,):
+        schema = pq.ParquetFile(store.partition(store.store_dir(root), table.name, D)).schema_arrow
         assert schema.metadata[b"spx_jev_store_schema"] == str(store.SCHEMA_VERSION).encode()
-        assert schema.equals(store.BY_NAME[name].schema, check_metadata=False) and "day" not in schema.names
+        assert schema.equals(table.schema, check_metadata=False) and "day" not in schema.names
     reads = pq.ParquetFile(store.partition(store.store_dir(root), "reads", D)).schema_arrow
     assert str(reads.field("row_ts").type) == "timestamp[us, tz=America/New_York]"
     assert set(log) == {t.name for t in store.TABLES}
+    assert not store.partition(store.store_dir(root), "quarantine", D).exists()      # nothing refused: no file of refusals
 
 
 def test_a_read_is_one_row_with_its_times_ruler_counts_and_reasons(built):
@@ -192,13 +169,13 @@ def test_each_question_of_a_read_has_its_status_its_options_and_the_question_it_
         {"shock_state": "asleep", "breadth_lean": "missing", "moc_side": "dark"}
 
 
-def test_a_lost_ask_the_lane_held_its_last_answer_for_is_stored_as_held_with_that_answer(tmp_path, monkeypatch):
+def test_a_lost_ask_the_lane_held_its_last_answer_for_is_stored_as_held_with_that_answer(tmp_path):
     rows = _day_archive()
     early, read = rows[0], rows[1]
     early["requests"].append({"id": "hour_shape", "state": {}, "questions": {"one_way_hour": Q_HOUR}})
     early["responses"]["hour_shape"] = {"model": "jev-1.13.0", "answers": {"one_way_hour": {"type": "noul", "noul": 0.7}}}
     read["cadence"]["held"]["one_way_hour"] = EARLY                  # the group timed out; the sum read the 10:02 answer
-    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path, rows))
+    _state(tmp_path, rows)
     store.build_day(tmp_path, D, at(16, 45))
     a = {(r["read_id"], r["question_id"]): r for r in _table(tmp_path, "answers")}[(f"live:{READ}", "one_way_hour")]
     assert (a["status"], a["held_from"], a["held_found"], a["pick"]) == ("held", datetime.fromisoformat(EARLY), True, "true")
@@ -260,8 +237,8 @@ def _integral(row_ts: str, rule: int = 3, **over) -> dict:
     return line
 
 
-def test_the_call_the_phone_showed_is_the_average_price_sums_with_its_odds_edge_and_window(tmp_path, monkeypatch):
-    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path, _with_average(_day_archive())))
+def test_the_call_the_phone_showed_is_the_average_price_sums_with_its_odds_edge_and_window(tmp_path):
+    _state(tmp_path, _with_average(_day_archive()))
     store.build_day(tmp_path, D, at(16, 45))
     calls = {(c["read_id"], c["sum_id"]): c for c in _table(tmp_path, "calls")}
     c = calls[(f"live:{READ}", "average_30")]
@@ -277,10 +254,10 @@ def test_the_call_the_phone_showed_is_the_average_price_sums_with_its_odds_edge_
     assert (r["questions"], r["answered"], r["average_error"]) == (6, 1, None)     # the call's own question is not the doc's
 
 
-def test_a_read_whose_end_price_sums_failed_still_has_its_average_price_call(tmp_path, monkeypatch):
+def test_a_read_whose_end_price_sums_failed_still_has_its_average_price_call(tmp_path):
     rows = _with_average(_day_archive(), hour={"error": "JEV unreachable for group hour: TimeoutError", "average": AVG})
     rows[1]["hour_response"] = {"error": "JEV unreachable for group hour: TimeoutError"}
-    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path, rows))
+    _state(tmp_path, rows)
     store.build_day(tmp_path, D, at(16, 45))
     calls = [c for c in _table(tmp_path, "calls") if c["read_id"] == f"live:{READ}"]
     assert [(c["sum_id"], c["is_call"], c["shown_pick"]) for c in calls] == [("average_30", True, "down")]
@@ -288,11 +265,11 @@ def test_a_read_whose_end_price_sums_failed_still_has_its_average_price_call(tmp
     assert r["sum_error"].startswith("JEV unreachable") and r["average_error"] is None
 
 
-def test_a_read_whose_average_price_sum_failed_calls_its_end_price_and_says_why(tmp_path, monkeypatch):
+def test_a_read_whose_average_price_sum_failed_calls_its_end_price_and_says_why(tmp_path):
     rows = _with_average(_day_archive(), hour={**_day_archive()[1]["hour"], "average": {"error": "no average_30 answer",
                                                                                           "primary": "average_30", "box": "next_30"}})
     rows[1]["average_response"] = {"error": "JEV unreachable for group average: TimeoutError"}
-    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path, rows))
+    _state(tmp_path, rows)
     store.build_day(tmp_path, D, at(16, 45))
     calls = {c["sum_id"]: c for c in _table(tmp_path, "calls") if c["read_id"] == f"live:{READ}"}
     assert set(calls) == {"next_30", "next_60"} and calls["next_30"]["is_call"] is True
@@ -301,8 +278,8 @@ def test_a_read_whose_average_price_sum_failed_calls_its_end_price_and_says_why(
     assert (ans["status"], ans["reason"]) == ("lost", "JEV unreachable for group average: TimeoutError")
 
 
-def test_the_average_price_grade_is_stored_from_each_lanes_file_its_newest_rule_standing(tmp_path, monkeypatch):
-    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path, _with_average(_day_archive())))
+def test_the_average_price_grade_is_stored_from_each_lanes_file_its_newest_rule_standing(tmp_path):
+    _state(tmp_path, _with_average(_day_archive()))
     folder = tmp_path / "spx_jev"
     (folder / "integral_grades.jsonl").write_text("".join(json.dumps(g) + "\n" for g in (
         _integral(READ, rule=2, label="flat", verdict="wrong"), _integral(READ),
@@ -330,67 +307,21 @@ def test_the_average_price_grade_is_stored_from_each_lanes_file_its_newest_rule_
     assert len(grades) == 3                                                        # the other day's line is that day's
 
 
-def test_both_learning_loops_logs_are_stored_under_the_session_they_learnt_old_and_new_names_alike(tmp_path, monkeypatch):
-    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path))
-    folder = tmp_path / "spx_jev"
-    end = {"at": "2026-09-21T13:32:32+00:00", "session": DAY, "code": "c1", "horizon": "next_30", "applied": True, "reads": 11,
-           "manifest": {"included": ["a", "b"], "excluded": ["c"]}, "baseline_changed": {"from": "v1:old", "to": "v1:new"},
-           "pool_vs_blend": {"pool": 1.03, "blend50_exact": 1.1}}
-    (folder / "pool_log.jsonl").write_text("".join(json.dumps(x) + "\n" for x in (
-        end, {**end, "horizon": "next_60", "at": "2026-09-18T15:00:00-04:00"},             # before the session closed
-        {**end, "session": "2026-09-17"})))
-    (folder / "pool_integral_log.jsonl").write_text("".join(json.dumps(x) + "\n" for x in (
-        {"at": "2026-09-21T13:32:32+00:00", "session": DAY, "code": "c2", "horizon": "next_30", "applied": True, "reads": 9,
-         "manifest": {"included": ["a"], "excluded": []}, "reference_changed": {"from": "integral_clock:a", "to": "integral_clock:b"}},
-        {"at": "2026-09-18T20:40:00+00:00", "code": "c2", "applied": False, "why": "constants changed: stopped, fail closed"})))
-    log = store.build_day(tmp_path, D, at(16, 45))
-    rows = {(r["loop"], r["horizon"]): r for r in _table(tmp_path, "pool_log")}
-    assert set(rows) == {("end_price", "next_30"), ("average_price", "next_30"), ("average_price", None)}
-    assert (rows[("end_price", "next_30")]["reference_to"], rows[("end_price", "next_30")]["included"],
-            rows[("end_price", "next_30")]["pool_loss"]) == ("v1:new", 2, 1.03)
-    assert rows[("average_price", "next_30")]["reference_from"] == "integral_clock:a"
-    assert rows[("average_price", None)]["session"] is None and json.loads(rows[("average_price", None)]["line_json"])["code"] == "c2"
-    assert log["pool_log"]["quarantined"] == 1
-    assert _table(tmp_path, "quarantine")[0]["reason"].startswith("learnt at 2026-09-18T15:00:00-04:00, before its session closed")
-
-
-def test_a_calls_frozen_reference_is_read_under_its_new_name_and_its_old_one(tmp_path, monkeypatch):
+def test_a_calls_frozen_reference_is_read_under_its_new_name_and_its_old_one(tmp_path):
     rows = _day_archive()
     rows[1]["pool"]["next_30"]["reference_version"] = rows[1]["pool"]["next_30"].pop("baseline")
-    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path, rows))
+    _state(tmp_path, rows)
     store.build_day(tmp_path, D, at(16, 45))
     assert {c["sum_id"]: c["pool_reference_version"] for c in _table(tmp_path, "calls") if c["lane"] == "live" and c["read_id"] == f"live:{READ}"}["next_30"] == "v1:x"
-
-
-def test_a_grade_has_its_mark_outcome_and_an_unsure_pick_abstains_rather_than_counting_wrong(built):
-    root, _ = built
-    grades = {g["read_id"]: g for g in _table(root, "grades")}
-    live = grades[f"live:{READ}"]
-    assert (live["mark"], live["outcome"], live["correct"], live["abstained"], live["jev_hit"]) == (at(11, 2), "up", False, False, True)
-    tape = grades[f"tape:{TAPE_READ}"]
-    assert (tape["outcome"], tape["abstained"], tape["correct"], tape["hit"]) == ("down_small", True, None, False)
 
 
 def test_the_bars_keep_one_row_a_minute_the_better_source_winning_and_every_copy_counted(built):
     root, log = built
     spx = _table(root, "spx_bars")
     assert len(spx) == 390 and {b["source"] for b in spx} == {"session_file"} and log["spx_bars"]["duplicates"] == 390
-    ctx = {(b["symbol"], b["source"]): b for b in _table(root, "context_bars")}
-    assert ("XLK", "saved_day") in ctx and ("XLK", "live") not in ctx          # the same minute from the live snapshot
-    vold = ctx[("$VOLD", "saved_day")]
-    assert vold["derived"] is False and vold["close"] == 1.2                   # Schwab's own over the derived one
-    assert ("/ES", "saved_day") in ctx and ctx[("/ES", "saved_day")]["served_as"] == "/ESZ26"
-    assert ctx[("$TNX", "saved_day")]["close"] == 0.15                         # the yield in percent, as the labels read it
-    assert (log["context_bars"]["duplicates"], log["context_bars"]["superseded"]) == (1, 1)
-    assert _table(root, "context_quotes")[0]["prior_close"] == 15.9
     night = _table(root, "overnight_bars")
     assert [(b["ts"], b["prior_session"]) for b in night] == [(at(15, 55, day="2026-09-17"), True), (at(8, 0), False)]
     assert night[1]["contract"] == "/ESZ26" and night[1]["overnight_schema"] == 1      # the overnight file's version
-    assert [r["to_contract"] for r in _table(root, "rolls")] == ["/ESZ26"]
-    closes = {r["symbol"]: r for r in _table(root, "daily_closes")}
-    assert closes["$SPX"]["close"] == 6600.0 and closes["$SPX"]["fetched_at"] == at(16, 20)       # the day's own session only
-    assert closes["$TNX"]["close"] == 4.12                                     # the yield in percent, as the labels read it
-    assert [(e["kind"], e["ends_at"]) for e in _table(root, "events")] == [("FED_SPEAKER", at(10, 30))]
 
 
 def _bad_archive() -> list[dict]:
@@ -398,77 +329,37 @@ def _bad_archive() -> list[dict]:
     early, read = rows[0], rows[1]
     read["responses"]["price_move"]["answers"]["move_shape"]["probabilities"] = {"clean": 1.4, "burst": 0.1}
     early["spot"] = -1.0                                                                          # its children follow it out
-    rows[3]["archived_at"] = "2026-09-18T14:50:00+00:00"                                          # graded before its 11:02 mark
-    rows.append({**rows[3], "archived_at": "2026-09-18T15:04:00+00:00",                           # a regrade after it
-                 "grade": {**rows[3]["grade"], "next_30": {**rows[3]["grade"]["next_30"], "band": "down"}}})
-    rows.append({"read_id": "live:2026-09-18T11:02:00-04:00", "lane": "live", "row_ts": "2026-09-18T11:02:00-04:00",
-                 "kind": "grade", "archived_at": "2026-09-18T16:00:00+00:00",
-                 "grade": {"horizons": ["next_30"], "next_30": {"band": "flat", "pick": "flat", "hit": True}}})
     rows.append({"kind": "mystery"})
     return rows
 
 
-def test_every_refused_row_is_quarantined_with_its_reason_and_none_is_dropped(tmp_path, monkeypatch):
-    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path, _bad_archive(), extra_lines=['{"kind": "read", "torn']))
+def test_every_refused_row_is_quarantined_with_its_reason_and_none_is_dropped(tmp_path):
+    _state(tmp_path, _bad_archive(), extra_lines=['{"kind": "read", "torn'])
     log = store.build_day(tmp_path, D, at(16, 45))
     bad = _table(tmp_path, "quarantine")
     why = {(q["table_name"], q["key"]): q["reason"] for q in bad}
     assert "outside 0 to 1" in why[("answers", f"live:{READ}|move_shape")]
     assert why[("reads", f"live:{EARLY}")] == "spot -1.0 is not above zero"
     assert why[("answers", f"live:{EARLY}|day_character")] == f"its read live:{EARLY} is not among the day's kept reads"
-    assert why[("grades", f"live:{READ}|next_30")].startswith("graded before its mark")
-    assert "is not among the day's kept reads" in why[("grades", "live:2026-09-18T11:02:00-04:00|next_30")]
     assert sum(q["table_name"] == "raw_line" for q in bad) == 2                                        # the torn line and the unknown kind
-    assert [g["outcome"] for g in _table(tmp_path, "grades") if g["lane"] == "live"] == ["down"]   # the regrade stands
     held = next(a for a in _table(tmp_path, "answers") if a["question_id"] == "day_character")
     assert held["status"] == "held"                                   # a held answer stays, though its source read was refused
     rows_in = {t: c["rows_in"] for t, c in log.items()}
     assert all(c["rows_in"] == c["kept"] + c["duplicates"] + c["superseded"] + c["quarantined"] for c in log.values()), log
     assert sum(c["quarantined"] for c in log.values()) == len(bad) and rows_in["raw_line"] == 2
     validation = {v["table_name"]: v for v in _table(tmp_path, "validation")}
-    assert validation["grades"]["quarantined"] == 2 and validation["grades"]["store_schema"] == store.SCHEMA_VERSION
-
-
-def test_a_daily_close_fetched_before_its_session_closed_is_quarantined(tmp_path, monkeypatch):
-    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path))
-    early = {"day": DAY, "open": 16.0, "high": 17.0, "low": 15.0, "close": 16.5, "volume": 0.0, "fetched_at": f"{DAY}T12:00:00-04:00"}
-    (tmp_path / "spx_jev" / "daily_closes" / "$VIX.jsonl").write_text(json.dumps(early) + "\n")
-    log = store.build_day(tmp_path, D, at(16, 45))
-    assert log["daily_closes"]["quarantined"] == 1 and log["daily_closes"]["kept"] == 2
-    why = {q["key"]: q["reason"] for q in _table(tmp_path, "quarantine") if q["table_name"] == "daily_closes"}
-    assert why["$VIX"].startswith(f"fetched at {DAY}T12:00:00-04:00, before its session closed")
-
-
-def test_a_second_grade_of_the_same_sum_stands_over_the_first_when_it_is_newer(tmp_path, monkeypatch):
-    """A read graded again (the flat zone's arrival regraded every read) stands on its newest grade, whatever order the
-    archive holds them in; an exact copy is a duplicate."""
-    rows = _day_archive()
-    newer = {**rows[3], "archived_at": "2026-09-18T15:30:00+00:00",
-             "grade": {**rows[3]["grade"], "next_30": {**rows[3]["grade"]["next_30"], "band": "down"}}}
-    rows.append(rows[4])                                                                          # an exact copy
-    for k, order in enumerate(((rows + [newer]), ([newer] + rows))):
-        root = tmp_path / str(k)
-        monkeypatch.setattr(store, "CALENDAR", _state(root, order))
-        log = store.build_day(root, D, at(16, 45))
-        assert {g["read_id"]: g["outcome"] for g in _table(root, "grades")}[f"live:{READ}"] == "down"
-        assert (log["grades"]["duplicates"], log["grades"]["superseded"], log["grades"]["quarantined"]) == (1, 1, 0)
+    assert validation["answers"]["quarantined"] == 2 and validation["answers"]["store_schema"] == store.SCHEMA_VERSION
 
 
 def test_two_equally_good_sources_that_disagree_are_quarantined_not_one_kept_by_order():
-    bar = {"day": D, "symbol": "XLK", "served_as": "XLK", "ts": "2026-09-18T10:00:00-04:00", "open": 1.0, "close": 1.5,
-           "derived": False, "source": "live", "known_at": "2026-09-18T10:01:00-04:00", "written_at": "2026-09-18T10:01:30-04:00"}
-    later = {**bar, "close": 1.9, "written_at": "2026-09-18T10:02:30-04:00", "_source": "context/2026-09-18.jsonl:2"}
-    kept, bad, counts = store.validate(store.CONTEXT_BARS, [bar, later])
+    bar = {"day": D, "ts": "2026-09-18T10:00:00-04:00", "open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5, "volume": 10.0,
+           "source": "live_file"}
+    later = {**bar, "close": 1.9, "_source": "spx_jev/bars/2026-09-18.jsonl:2"}
+    kept, bad, counts = store.validate(store.SPX_BARS, [bar, later])
     assert [k["close"] for k in kept] == [1.5] and (counts["superseded"], len(bad)) == (0, 1)
-    assert bad[0]["reason"].startswith("differs from the row kept for the same symbol, ts")
-    kept, bad, counts = store.validate(store.CONTEXT_BARS, [later, {**bar, "source": "saved_day"}])
-    assert [k["close"] for k in kept] == [1.5] and (counts["superseded"], bad) == (1, [])     # the saved day wins
-
-
-def test_an_outcome_is_held_to_its_lanes_bands():
-    row = {"lane": "live", "horizon": "next_30", "outcome": "down_small"}
-    assert "is not one of up, flat, down" in store._outcome(row)
-    assert store._outcome({**row, "lane": "tape", "horizon": "next_10"}) is None
+    assert bad[0]["reason"].startswith("differs from the row kept for the same ts")
+    kept, bad, counts = store.validate(store.SPX_BARS, [later, {**bar, "source": "session_file"}])
+    assert [k["close"] for k in kept] == [1.5] and (counts["superseded"], bad) == (1, [])     # the saved session file wins
 
 
 def test_every_column_selects_in_plain_sql_none_a_duckdb_reserved_word():
@@ -479,34 +370,11 @@ def test_every_column_selects_in_plain_sql_none_a_duckdb_reserved_word():
 def test_a_rebuild_leaves_the_raw_files_untouched_and_writes_the_same_rows(built):
     root, _ = built
     raw = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in root.rglob("*") if p.is_file() and "store" not in p.parts}
-    first = {name: _table(root, name) for name in store.BY_NAME if name != "validation"}
+    first = {t.name: _table(root, t.name) for t in store.TABLES}
     store.build_day(root, D, at(17, 0))
     assert {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in raw} == raw
     assert {name: _table(root, name) for name in first} == first
     assert [p.name for p in store.partition(store.store_dir(root), "reads", D).parent.iterdir()] == [store.PART]
-
-
-def test_the_duckdb_file_has_a_view_per_table_and_is_left_alone_once_current(built):
-    root, _ = built
-    s = store.store_dir(root)
-    assert store.write_views(s) is True
-    with duckdb.connect(str(s / store.DB_NAME), read_only=True) as con:
-        assert con.execute("SELECT count(*) FROM answers WHERE status = 'held'").fetchone() == (1,)
-        assert con.execute("SELECT probabilities['mixed'] FROM answers WHERE status = 'held'").fetchone() == (0.8,)
-        assert con.execute("SELECT count(*) FROM grades g JOIN reads r USING (read_id)").fetchone() == (2,)
-        assert store.write_views(s) is False                    # a reader holding the file open does not stop a run
-
-
-def test_a_view_over_a_table_the_store_no_longer_keeps_is_dropped(built):
-    root, _ = built
-    s = store.store_dir(root)
-    store.write_views(s)
-    with duckdb.connect(str(s / store.DB_NAME)) as con:
-        con.execute("CREATE VIEW facts AS SELECT 1 AS n")       # the facts table, kept until 2026-10-07
-    assert store.write_views(s) is True
-    with duckdb.connect(str(s / store.DB_NAME), read_only=True) as con:
-        views = {r[0] for r in con.execute("SELECT view_name FROM duckdb_views() WHERE NOT internal").fetchall()}
-    assert views == set(store.BY_NAME)
 
 
 def test_today_is_built_once_its_saves_have_run_and_only_market_days(tmp_path):
@@ -530,67 +398,42 @@ def test_the_nightly_job_fires_once_the_command_counts_today_as_finished():
     assert store.last_finished(ny) == D and store.last_finished(ny - timedelta(minutes=15)) < D
 
 
-def test_the_command_builds_the_day_names_its_counts_and_writes_the_views(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path))
+def test_the_command_builds_the_day_and_names_its_counts(tmp_path, capsys):
+    _state(tmp_path)
     assert store.main(["--state-dir", str(tmp_path), "--day", DAY]) == 0
     out = capsys.readouterr().out
-    assert f"{DAY} reads 3, answers " in out and "grades 2 rows (0 quarantined)" in out and "views written" in out
-    assert (store.store_dir(tmp_path) / store.DB_NAME).exists()
+    assert f"{DAY} reads 3, answers " in out and "calls 3 rows (0 quarantined)" in out and "views" not in out
 
 
-def test_a_backfill_names_the_raw_files_it_leaves_out_for_not_being_market_days(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path))
+def test_a_backfill_names_the_raw_files_it_leaves_out_for_not_being_market_days(tmp_path, capsys):
+    _state(tmp_path)
     (tmp_path / "spx_jev" / "overnight" / "2026-09-07.jsonl").write_text("")                    # Labor Day's futures
     assert store.main(["--state-dir", str(tmp_path), "--backfill"]) == 0
     out = capsys.readouterr().out
     assert "not market days, so not stored: the raw files of 2026-09-07" in out and f"{DAY} reads 3" in out
 
 
-def test_a_relative_state_dir_still_gives_views_that_read_from_anywhere(tmp_path, monkeypatch):
-    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path))
-    monkeypatch.chdir(tmp_path.parent)
-    assert store.main(["--state-dir", tmp_path.name, "--day", DAY]) == 0
-    monkeypatch.chdir(SKILL)
-    with duckdb.connect(str(store.store_dir(tmp_path) / store.DB_NAME), read_only=True) as con:
-        assert con.execute("SELECT count(*) FROM reads").fetchone() == (3,)
-
-
-def test_a_notebook_holding_the_duckdb_file_open_for_writing_leaves_the_views_but_does_not_fail_the_run(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path))
-    assert store.main(["--state-dir", str(tmp_path), "--day", DAY]) == 0
-    db = store.store_dir(tmp_path) / store.DB_NAME
-    holder = subprocess.Popen([sys.executable, "-c", f"import duckdb, sys; c = duckdb.connect({str(db)!r}); print('open', flush=True); "
-                               "sys.stdin.read()"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
-    try:
-        assert holder.stdout.readline().strip() == "open"
-        capsys.readouterr()
-        assert store.main(["--state-dir", str(tmp_path), "--day", DAY]) == 0
-        assert "views left as they were: another process has" in capsys.readouterr().err
-    finally:
-        holder.communicate("")
-    assert store.partition(store.store_dir(tmp_path), "reads", D).exists()
-
-
-def test_a_record_whose_parts_are_malformed_is_quarantined_and_the_rest_of_the_day_is_built(tmp_path, monkeypatch):
+def test_a_record_whose_parts_are_malformed_is_quarantined_and_the_rest_of_the_day_is_built(tmp_path):
     rows = _day_archive()
     rows[2]["requests"] = ["not a request"]
-    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path, rows))
+    _state(tmp_path, rows)
     log = store.build_day(tmp_path, D, at(16, 45))
     assert [r["lane"] for r in _table(tmp_path, "reads")] == ["live", "live"]
     reasons = [q["reason"] for q in _table(tmp_path, "quarantine")]
     assert any(r.startswith("a malformed read record: AttributeError") for r in reasons), reasons
-    assert log["grades"]["kept"] == 1                                    # the tape read's grade follows it out
+    assert log["calls"]["kept"] == 2                                     # the tape read's call follows it out
 
 
-def test_a_raw_line_in_the_wrong_shape_or_not_utf8_is_quarantined_and_the_rest_of_the_day_is_built(tmp_path, monkeypatch):
-    monkeypatch.setattr(store, "CALENDAR", _state(tmp_path))
+def test_a_raw_line_in_the_wrong_shape_or_not_utf8_is_quarantined_and_the_rest_of_the_day_is_built(tmp_path):
+    _state(tmp_path)
     folder = tmp_path / "spx_jev"
-    with open(folder / "context" / f"{DAY}.jsonl", "ab") as f:
-        f.write(json.dumps({"ts": "2026-09-18T10:02:30-04:00", "bars": ["x"]}).encode() + b"\n" + b'{"ts": "\xff"}\n')
+    with open(folder / "bars" / f"{DAY}.jsonl", "ab") as f:
+        f.write(b'{"ts": "\xff"}\n')
     with open(folder / "hour" / f"{DAY}.jsonl", "a") as f:
         f.write(json.dumps({"row_ts": {"not": "text"}}) + "\n")
+    (folder / "integral_grades.jsonl").write_text(json.dumps({"row_ts": READ, "horizon": ["next_30"]}) + "\n")
     log = store.build_day(tmp_path, D, at(16, 45))
     reasons = sorted(q["reason"] for q in _table(tmp_path, "quarantine"))
-    assert reasons[0].startswith("a malformed market-feed line: AttributeError") and reasons[1:] == [
+    assert reasons[0].startswith("a malformed average-price grade: TypeError") and reasons[1:] == [
         "an hour record whose row_ts is not text", "not a JSON object"], reasons
-    assert log["raw_line"]["quarantined"] == 3 and log["context_bars"]["kept"] == 4 and log["calls"]["kept"] == 3
+    assert log["raw_line"]["quarantined"] == 3 and log["spx_bars"]["kept"] == 390 and log["calls"]["kept"] == 3

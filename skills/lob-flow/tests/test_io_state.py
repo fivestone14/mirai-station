@@ -89,12 +89,6 @@ def test_rotate_hard_cap_drops_oldest_first(sd):
     assert not (sd.root / "raw" / d1).exists()
 
 
-def test_health_writes_disk_usage(sd):
-    sd.write_health(NOW, stream_up=True)
-    h = read_json(sd.health)
-    assert h["stream_up"] is True and "disk_mb" in h
-
-
 def test_lock_pid_written(sd):
     h = sd.acquire_lock()
     h.flush()

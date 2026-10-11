@@ -80,7 +80,6 @@ class _Mem:
     stream_up: bool = False
     purge_until: Optional[datetime] = None                # sticky mass-cancel veto
     fed_until: Optional[str] = None                       # newest bin already folded
-    dead_loops: set = field(default_factory=set)
 
 
 def main(cfg: LobConfig, adapters: Adapters) -> int:
@@ -166,14 +165,12 @@ async def _run_all(cfg: LobConfig, adapters: Adapters, mem: _Mem) -> None:
 
 
 async def _guard(name: str, coro, mem: _Mem) -> None:
-    """A loop that dies must be VISIBLE: recorded in mem (the fold publishes
-    it in health.json) and printed to the launchd stderr log."""
+    """A loop that dies must be VISIBLE: printed to the launchd stderr log."""
     try:
         await coro
     except asyncio.CancelledError:
         raise
     except Exception:
-        mem.dead_loops.add(name)
         traceback.print_exc()
 
 
@@ -435,12 +432,6 @@ def fold_once(cfg: LobConfig, a: Adapters, mem: _Mem,
             "ts": now.isoformat(), "engine": eng,
             "snapshot": result[eng],
             "baseline_rows": result["baseline_rows"][eng]})
-    a.state.write_health(now, stream_up=mem.stream_up,
-                         sweep_bins=len(mem.sweep_bins),
-                         trades_window=len(mem.trades),
-                         spy_samples=len(mem.spy_samples),
-                         spot=mem.spot, tier=_tier(mem),
-                         dead_loops=sorted(mem.dead_loops))
     return result
 
 

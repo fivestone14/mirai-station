@@ -20,7 +20,7 @@ from pathlib import Path
 
 from .name_map import SUM_WINDOW_MINUTES, SUMS_BY_LANE
 from .paths import RAW, NEW_VOICE_FORECASTS, data_root, ensure_folders, log_job_run, now_utc_iso, prune_archive, prune_voice_fits, today_et
-from .pool_v2 import add_missing_voices, load_pool_v2, log_update, new_pool_v2, save_pool_v2, update_pool_v2_after_day
+from .pool_v2 import add_missing_voices, load_pool_v2, new_pool_v2, save_pool_v2, update_pool_v2_after_day
 from .scoreboard import write_scoreboard
 from .table_builder import build_new_voice_forecasts_table, build_voice_scores_table, day_forecasts_by_read, load_day_outcomes
 from .voice_fits import fit_voices_for_day, next_market_day
@@ -47,7 +47,6 @@ def update_pool_v2_for_day(root: Path, state_dir: Path | str, lane: str, day: st
         state = add_missing_voices(state, voice_names)
         state, line = update_pool_v2_after_day(state, day, reads, read_times, SUM_WINDOW_MINUTES.get(sum_id))
         save_pool_v2(root, state)
-        log_update(root, state, line)
         result[sum_id] = {"applied": line.get("applied"), "reads": line.get("reads"), "counted_reads": line.get("counted_reads"),
                           "why": line.get("why"), **({"frozen": line["frozen"]} if line.get("frozen") else {})}
     return result

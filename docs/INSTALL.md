@@ -173,8 +173,8 @@ sends and publish fakes into it. Treat it like a password.
 > 2026-08-04.)
 
 Fresh paper fires, wall-breach mood re-dives, and EOD direction scoring push
-through it; every push intent is also logged to
-`state/logs/watch-pushes-YYYY-MM-DD.jsonl`. Quiet tape → no push, by design.
+through it. Quiet tape → no push, by design. (A log of every push intent,
+`state/logs/watch-pushes-YYYY-MM-DD.jsonl`, was kept until 2026-10-11; nothing read it.)
 
 ## 7. Install LaunchAgents
 
@@ -208,9 +208,8 @@ launchctl list | grep mirai-station
 # Run a single tick immediately (bypasses the launchd schedule; quiet tape → no output is correct)
 ~/.claude/plugins/mirai-station/runtime/scripts/run-watch-left-eye.sh
 
-# Tail today's diary, and the log of every push the station meant to send
+# Tail today's diary
 tail -f ~/.claude/plugins/mirai-station/state/reversion/$(date +%Y-%m-%d).jsonl
-tail -f ~/.claude/plugins/mirai-station/state/logs/watch-pushes-$(date +%Y-%m-%d).jsonl
 ```
 
 If a signal clears the alert threshold, an ntfy push lands on your phone. If the tape is quiet, no push — that's correct.

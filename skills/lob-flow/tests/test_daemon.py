@@ -100,7 +100,7 @@ def test_past_close(cfg):
     assert _past_close(NOW.replace(hour=16, minute=6), cfg)
 
 
-def test_fold_once_writes_latest_agg_health(sd, tmp_path, cfg, trade_factory):
+def test_fold_once_writes_latest_and_agg(sd, tmp_path, cfg, trade_factory):
     a = _adapters(sd, tmp_path, gex={"magnet": 6300.0, "sigma": 40.0})
     mem = _Mem()
     mem.spot = 6301.0

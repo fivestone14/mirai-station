@@ -1,4 +1,4 @@
-"""The learning store: each market day's raw files as typed Parquet, every row checked, with DuckDB views over them.
+"""The learning store: each market day's raw files as typed Parquet, every row checked.
 
     python3 -m spx_jev.store                        # the launchd job's run (16:40 ET): the last week's market days
     python3 -m spx_jev.store --day 2026-09-28       # rebuild one day
@@ -8,10 +8,13 @@ The raw files stay the record (the archive's own note: a cleaner store is a late
 only reads them, and writes only under ``state/spx_jev/store/``:
 
     <table>/day=YYYY-MM-DD/part-0.parquet   one file per table per built day, zero rows included, replaced whole;
-                                             ``day`` is the folder's, not a column in the file (hive partitioning)
-    spx_jev.duckdb                           one view per table over its files, ``day`` first, and ``meta``
+                                             ``day`` is the folder's, not a column in the file (hive partitioning).
+                                             ``quarantine`` alone has a file only for a day a row was refused on.
 
-The tables, each defined in TABLES with its columns, its key and its checks:
+The tables, each defined in TABLES with its columns, its key and its checks. They are the ones the Mirai Prediction
+System reads (mirai_prediction/name_map.py, code_feature_inputs.py); the end-price grades, both learning loops' logs,
+the market feed's bars and quotes, the futures rolls, the daily closes and the calendar's events were stored too
+until 2026-10-11, when nothing read them, and the DuckDB views file (spx_jev.duckdb) went the same day:
 
     reads           one row per read of any lane (archive ``read`` records): its lane and times, its ruler, how
                     many questions were asked, answered, lost, held, not due, asleep, missing and dark, and why
@@ -21,38 +24,29 @@ The tables, each defined in TABLES with its columns, its key and its checks:
                     exactly as JEV was sent it
     calls           one row per sum per read, the end-price sums and the average-price sum, which of them is the call
                     the phone showed, and for each JEV alone, the time-of-day odds, the blend and the learning loop's mix
-    grades          one row per graded end-price sum: the mark, the outcome, right, wrong or abstained, and the scores
     average_grades  one row per graded window on the average price (each lane's integral_grades.jsonl): the sum whose
                     call it graded, the label, right, wrong or passed, the margin, the path and the scores
-    pool_log        one row per line of each learning loop's log, the end price's (pool_log.jsonl) and the average
-                    price's (pool_integral_log.jsonl), under the session it learnt
     spx_bars        SPX's minute bars (the saved session file, else the bars feed's)
-    context_bars    the market feed's minute bars, a derived $VOLD marked, a saved day's bar kept over a live one
-    context_quotes  the market feed's quotes, each as of its snapshot
     overnight_bars  the overnight futures store's bars with their contract; a night starts in the prior session's
                     last minutes, which that session's own night also holds, so those are marked ``prior_session``
-    rolls           the futures rolls found in the roll table, by the day they took effect
-    daily_closes    the day's session of each daily-closes symbol (daily_closes.py's per-symbol files), its fetch time
-    events          the calendar's scheduled events on the day
     quarantine      every row a check refused, with the check's reason and the raw row
     validation      per table per day: rows read, kept, exact duplicates, rows a better source replaced, quarantined
 
 A row is typed column by column first (a value that is not its column's type, or a required one that is
 empty, sends it to quarantine), then held to its table's checks (ranges, a probability map that sums to one,
-a bar whose high is under its low, and point in time: no fact known after its read, no grade written before
-its mark, no bar saved or served before it finished), then to its read when it has one (a fact, answer, call
-or grade whose read is not among the day's kept reads is quarantined). Rows sharing a key are one row: a
-copy that agrees but for where it came from is counted as a duplicate; where a table ranks its sources (a saved
-day's bar over a live snapshot's, Schwab's own $VOLD over a derived one) the better one is kept and a copy from
+a bar whose high is under its low, and point in time: nothing archived, held or marked before its read, no bar
+saved before it finished), then to its read when it has one (an answer, call or grade whose read is not among
+the day's kept reads is quarantined). Rows sharing a key are one row: a copy that agrees but for where it came
+from is counted as a duplicate; where a table ranks its sources (the saved session file's bar over the bars feed's,
+a read's average-price grade under the newest rule over an older rule's) the better one is kept and a copy from
 a worse source that disagrees is counted as superseded; any other disagreement, two equally good sources
 included, is quarantined. Nothing is dropped without a count in ``validation`` or a row in ``quarantine``. A line of a raw
 file that is not a JSON object, or whose parts are not the shapes its writer writes, is quarantined under
-the table_name ``raw_line``, and the rest of the day is built. The archive's ``close_out``
-records restate what calls, grades and average_grades hold, read from the same sum records, grades.jsonl and
-integral_grades.jsonl, so they are read past.
+the table_name ``raw_line``, and the rest of the day is built. The archive's ``grade`` and ``close_out``
+records restate what calls and average_grades hold, read from the same sum records and integral_grades.jsonl
+(the end-price grade they also carry is not stored), so they are read past.
 
-Timestamps are stored as instants in New York time; the Treasury yields are in percent and a futures bar is
-under its root (``/ES``), as the labels read them (state_builder.context_value, context_symbol).
+Timestamps are stored as instants in New York time.
 """
 from __future__ import annotations
 
@@ -64,31 +58,28 @@ import os
 import sys
 from collections import Counter
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
-import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from . import grade, integral_loop, pool
+from . import grade, pool
 from .archive import ARCHIVE_SUBDIR
 from .ask import GATED as GATE_REASON_PREFIX, confidence as answer_confidence, pick as answer_pick
-from .daily_closes import DAILY_CLOSES_SUBDIR
-from .events import CALENDAR, ET
+from .events import ET
 from .hour import FIVE
-from .lane import LANES, RECORD
+from .lane import LANES
 from .overnight import OVERNIGHT_SUBDIR
-from .rolls import table_path as rolls_path
 from .sessions import is_trading_day, previous_trading_day, session_close, session_open
-from .state_builder import (CONTEXT_SUBDIR, DEFAULT_STATE_DIR, LIVE_BARS_SUBDIR, SESSION_BARS_SUBDIR, SYMBOL, context_symbol,
-                            context_value)
+from .state_builder import DEFAULT_STATE_DIR, LIVE_BARS_SUBDIR, SESSION_BARS_SUBDIR, SYMBOL
 
 STORE_SUBDIR = Path("spx_jev") / "store"
-DB_NAME = "spx_jev.duckdb"
 PART = "part-0.parquet"
-SCHEMA_VERSION = 4              # 4: no facts table (2026-10-07); 3: the average-price call, its answer and grade, both loops' logs
+# 4: no facts table (2026-10-07); 3: the average-price call, its answer and grade, both loops' logs. The seven tables
+# dropped on 2026-10-11 changed no kept table's columns, so the version stands.
+SCHEMA_VERSION = 4
 CATCH_UP_DAYS = 7              # a run rebuilds every market day this many calendar days back, so a late save is picked up
 BUILD_AFTER_CLOSE_MIN = 30     # today counts from its close plus this (16:30, 13:30 on a half day); the 16:40 job runs after the 16:20 saves either way
 PROB_SUM_TOLERANCE = 0.05      # JEV rounds each option to two places, so six options can sum to 0.97
@@ -260,36 +251,9 @@ def _answered(r: dict) -> str | None:
     return None
 
 
-def _outcome(r: dict) -> str | None:
-    bands = FIVE if LANES[r["lane"]].horizons.get(r["horizon"], (0, None))[1] == RECORD else grade.BANDS
-    return None if r["outcome"] in bands else f"outcome {r['outcome']!r} is not one of {', '.join(bands)}"
-
-
-def _roll_changes(r: dict) -> str | None:
-    return None if r["from_contract"] != r["to_contract"] else f"a roll from {r['from_contract']} to itself"
-
-
-def _learnt_after_close(r: dict) -> str | None:
-    """Point in time: a loop learns a session only once it has closed (a line naming no session passes)."""
-    if r["session"] is None:
-        return None
-    close = session_close(datetime.combine(r["session"], datetime.min.time(), tzinfo=ET))
-    return None if r["logged_at"] >= close else f"learnt at {r['logged_at'].isoformat()}, before its session closed at {close.isoformat()}"
-
-
-def _ends_after_start(r: dict) -> str | None:
-    return None if r["ends_at"] is None or r["ends_at"] > r["starts_at"] else "ends_at is not after starts_at"
-
-
 def _saved_after_finish(r: dict) -> str | None:
     done = r["ts"] + timedelta(minutes=r["bar_minutes"])
     return None if r["saved_at"] + TIME_TOLERANCE >= done else f"saved at {r['saved_at'].isoformat()}, before the bar finished at {done.isoformat()}"
-
-
-def _fetched_after_close(r: dict) -> str | None:
-    """Point in time: a session's daily bar is fetched once it has closed."""
-    close = session_close(datetime.combine(r["day"], datetime.min.time(), tzinfo=ET))
-    return None if r["fetched_at"] >= close else f"fetched at {r['fetched_at'].isoformat()}, before its session closed at {close.isoformat()}"
 
 
 def _night_ends_by_close(r: dict) -> str | None:
@@ -299,7 +263,6 @@ def _night_ends_by_close(r: dict) -> str | None:
 
 LANE_NAMES = tuple(LANES)
 AVERAGE_OUTCOMES = ("up", "flat", "down")
-LOOPS = {"end_price": pool.LOG_NAME, "average_price": integral_loop.LOG_NAME}   # each learning loop and the log it keeps
 ANSWER_STATUSES = ("answered", "lost", "unsent", "held", "not_due", "asleep", "missing", "dark", "unread", "other")
 
 READS = Table("reads", _read_cols(
@@ -346,22 +309,6 @@ CALLS = Table("calls", _read_cols(
             _not_after("row_ts", "mark", "marked before its read")),
     of_read=True)
 
-GRADES = Table("grades", _read_cols(
-    ("horizon", STR, True), ("minutes", INT, True), ("mark", TS, True), ("archived_at", TS, True), ("outcome", STR, True),
-    ("direction", STR, False), ("size", STR, False), ("realized_sigma", NUM, False), ("realized_points", NUM, False),
-    ("realized_units", NUM, False), ("pick", STR, False), ("abstained", BOOL, True), ("correct", BOOL, False),
-    ("hit", BOOL, False), ("brier", NUM, False), ("p_band", NUM, False), ("jev_pick", STR, False), ("jev_hit", BOOL, False),
-    ("jev_brier", NUM, False), ("clock_brier", NUM, False), ("direction_pick", STR, False), ("direction_hit", BOOL, False),
-    ("direction_brier", NUM, False), ("size_pick", STR, False), ("size_hit", BOOL, False), ("size_brier", NUM, False),
-    ("anchor_points", NUM, False), ("anchor_source", STR, False), ("from_settled_open", NUM, False), ("from_at", TS, False)),
-    key=("read_id", "horizon"),
-    checks=(_is("lane", LANE_NAMES), _outcome, _within("p_band", 0.0, 1.0), _within("brier", 0.0, 2.0), _within("jev_brier", 0.0, 2.0),
-            _within("clock_brier", 0.0, 2.0), _within("direction_brier", 0.0, 2.0), _within("size_brier", 0.0, 2.0),
-            _not_after("row_ts", "mark", "marked before its read"), _not_after("mark", "archived_at", "graded before its mark")),
-    # a read graded again (the flat zone's arrival, 2026-10-09) stands on its newest grade; the older is counted as superseded
-    rank=lambda r: (-r["archived_at"].timestamp(),),
-    of_read=True)
-
 AVERAGE_GRADES = Table("average_grades", _read_cols(
     ("horizon", STR, True), ("sum_id", STR, True), ("rule_version", INT, True), ("graded", BOOL, True), ("reason", STR, False),
     ("minutes", INT, False), ("mark", TS, False), ("from_price", NUM, False), ("flat_points", NUM, False), ("factor", NUM, False),
@@ -382,35 +329,12 @@ AVERAGE_GRADES = Table("average_grades", _read_cols(
     rank=lambda r: (-r["rule_version"],),
     of_read=True)
 
-POOL_LOG = Table("pool_log", (("day", DAY, True), ("loop", STR, True), ("lane", STR, True), ("horizon", STR, False),
-                              ("session", DAY, False), ("logged_at", TS, True), ("code", STR, False), ("applied", BOOL, True),
-                              ("why", STR, False), ("reads", INT, False), ("included", INT, False), ("excluded", INT, False),
-                              ("reference_from", STR, False), ("reference_to", STR, False), ("phone", STR, False),
-                              ("pool_loss", NUM, False), ("blend_loss", NUM, False), ("line_json", STR, True)),
-                 key=("loop", "lane", "horizon", "logged_at"),
-                 checks=(_is("loop", LOOPS), _is("lane", LANE_NAMES), _learnt_after_close))
-
 _BAR = (("open", NUM, True), ("high", NUM, False), ("low", NUM, False), ("close", NUM, True), ("volume", NUM, False))
 
 SPX_BARS = Table("spx_bars", (("day", DAY, True), ("ts", TS, True)) + _BAR + (("source", STR, True),),
                  key=("ts",),
                  checks=(_on_day("ts"), _in_session, _positive("open", "high", "low", "close"), _not_negative("volume"), _bar_shape),
                  rank=lambda r: (r["source"] != "session_file",), provenance=("source",))
-
-CONTEXT_BARS = Table("context_bars", (("day", DAY, True), ("symbol", STR, True), ("served_as", STR, True), ("ts", TS, True))
-                     + _BAR + (("derived", BOOL, True), ("derived_from", STR, False), ("source", STR, True),
-                               ("known_at", TS, True), ("written_at", TS, True)),
-                     key=("symbol", "ts"),
-                     checks=(_on_day("ts"), _not_negative("volume"), _bar_shape,
-                             _not_after("known_at", "written_at", "written before the bar finished")),
-                     rank=lambda r: (r["derived"], r["source"] != "saved_day"), provenance=("source", "written_at"))
-
-CONTEXT_QUOTES = Table("context_quotes", (("day", DAY, True), ("symbol", STR, True), ("served_as", STR, True),
-                                          ("taken_at", TS, True), ("last", NUM, True), ("prior_close", NUM, False),
-                                          ("volume", NUM, False), ("quote_time", INT, False)),
-                       key=("symbol", "taken_at"),
-                       checks=(_on_day("taken_at"), _not_negative("volume"),
-                               lambda r: "a quote of zero is an empty shell, not a price" if r["last"] == 0 else None))
 
 OVERNIGHT_BARS = Table("overnight_bars", (("day", DAY, True), ("ts", TS, True), ("symbol", STR, True), ("contract", STR, False),
                                           ("contract_from", STR, False), ("bar_minutes", INT, True), ("prior_session", BOOL, True)) + _BAR
@@ -420,23 +344,6 @@ OVERNIGHT_BARS = Table("overnight_bars", (("day", DAY, True), ("ts", TS, True), 
                        checks=(_is("bar_minutes", (1, 5)), _positive("open", "high", "low", "close"), _not_negative("volume"),
                                _bar_shape, _night_ends_by_close, _saved_after_finish))
 
-ROLLS = Table("rolls", (("day", DAY, True), ("symbol", STR, True), ("rolled_at", TS, False), ("from_contract", STR, True),
-                        ("to_contract", STR, True), ("basis_step", NUM, False), ("basis_unit", STR, False),
-                        ("step_vs_typical", NUM, False), ("reference", STR, False), ("jump", NUM, False)),
-              key=("symbol", "day"),
-              checks=(_roll_changes, lambda r: None if r["rolled_at"] is None or r["rolled_at"].astimezone(ET).date() <= r["day"]
-                      else f"rolled_at {r['rolled_at'].isoformat()} is after its day {r['day']}"))
-
-DAILY_CLOSES = Table("daily_closes", (("day", DAY, True), ("symbol", STR, True)) + _BAR + (("fetched_at", TS, True),),
-                     key=("symbol",),
-                     checks=(_positive("open", "high", "low", "close"), _not_negative("volume"), _bar_shape, _fetched_after_close))
-
-EVENTS = Table("events", (("day", DAY, True), ("starts_at", TS, True), ("ends_at", TS, False), ("kind", STR, True),
-                          ("tier", STR, True), ("scope", STR, False), ("in_session", BOOL, False), ("verified", BOOL, False),
-                          ("q_and_a", BOOL, False), ("note", STR, False), ("source", STR, False), ("calendar_built", STR, False)),
-               key=("kind", "starts_at"),
-               checks=(_on_day("starts_at"), _ends_after_start))
-
 QUARANTINE = Table("quarantine", (("day", DAY, True), ("table_name", STR, True), ("key", STR, False), ("reason", STR, True),
                                   ("source", STR, True), ("row_json", STR, True)), key=())
 
@@ -445,8 +352,7 @@ VALIDATION = Table("validation", (("day", DAY, True), ("table_name", STR, True),
                                   ("reasons", COUNTS, True), ("sources", WORDS, True), ("store_schema", INT, True),
                                   ("built_at", TS, True)), key=())
 
-TABLES = (READS, ANSWERS, CALLS, GRADES, AVERAGE_GRADES, POOL_LOG, SPX_BARS, CONTEXT_BARS, CONTEXT_QUOTES, OVERNIGHT_BARS, ROLLS,
-          DAILY_CLOSES, EVENTS)
+TABLES = (READS, ANSWERS, CALLS, AVERAGE_GRADES, SPX_BARS, OVERNIGHT_BARS)
 BY_NAME = {t.name: t for t in TABLES + (QUARANTINE, VALIDATION)}
 
 
@@ -486,11 +392,6 @@ def _clock(ts: Any) -> tuple[int | None, int | None]:
     if t is None:
         return None, None
     return t.hour * 60 + t.minute, math.floor((t - session_open(t)).total_seconds() / 60)
-
-
-def _label_unit(symbol: str, v: Any) -> Any:
-    """A market-feed number in the unit the labels read (state_builder.context_value); anything else as it is."""
-    return context_value(symbol, v) if isinstance(v, (int, float)) and not isinstance(v, bool) else v
 
 
 def _json(v: Any) -> str | None:
@@ -733,32 +634,6 @@ def _call_rows(base: dict, rec: dict, hour: dict, pool_snap: dict, hour_rec: dic
     return out
 
 
-def _grade_rows(day: date, src: str, rec: dict) -> list[dict]:
-    g = rec.get("grade") if isinstance(rec.get("grade"), dict) else {}
-    lane = LANES.get(rec.get("lane"))
-    anchor = g.get("anchor") if isinstance(g.get("anchor"), dict) else {}
-    start = g.get("from") if isinstance(g.get("from"), dict) else {}
-    out = []
-    for h in g.get("horizons") or []:
-        d = g.get(h) if isinstance(g.get(h), dict) else {}
-        minutes = lane.horizons[h][0] if lane and h in lane.horizons else None
-        try:
-            mark = grade.mark_at(rec.get("row_ts"), minutes, lane) if minutes is not None else None
-        except (TypeError, ValueError):
-            mark = None
-        abstained = d.get("pick") == "unsure"
-        out.append({"day": day, "read_id": rec.get("read_id"), "lane": rec.get("lane"), "row_ts": rec.get("row_ts"), "_source": src,
-                    "horizon": h, "minutes": minutes, "mark": mark, "archived_at": rec.get("archived_at"), "outcome": d.get("band"),
-                    **{k: d.get(k) for k in ("direction", "size", "realized_sigma", "realized_points", "realized_units", "pick",
-                                             "hit", "brier", "p_band", "jev_pick", "jev_hit", "jev_brier", "clock_brier",
-                                             "direction_pick", "direction_hit", "direction_brier", "size_pick", "size_hit",
-                                             "size_brier")},
-                    "abstained": abstained, "correct": None if abstained else d.get("hit"),
-                    "anchor_points": anchor.get("points"), "anchor_source": anchor.get("source"),
-                    "from_settled_open": start.get("settled_open"), "from_at": start.get("at")})
-    return out
-
-
 def _average_grade_row(day: date, src: str, lane_name: str, g: dict) -> dict:
     """One line of a lane's integral_grades.jsonl: the grade on the average price over a window. ``sum`` names the
     sum whose call it graded (a rule-1 line graded the end-price sum's, so it is the horizon's)."""
@@ -791,52 +666,8 @@ def _average_grade_row(day: date, src: str, lane_name: str, g: dict) -> dict:
             **{k: part["scores"].get(k) for k in ("brier", "log_loss", "jev_brier", "jev_log_loss", "clock_brier", "clock_log_loss")}}
 
 
-def _pool_log_row(day: date, src: str, loop: str, lane_name: str, line: dict) -> dict:
-    """One learning-loop log line: the session it learnt or refused, and why; the whole line kept in ``line_json``."""
-    manifest = line.get("manifest") if isinstance(line.get("manifest"), dict) else {}
-    # the reference's change, under the name the loops wrote it by: ``baseline_changed`` before they named it by its source
-    changed = next((line[k] for k in ("reference_changed", "baseline_changed") if isinstance(line.get(k), dict)), {})
-    losses = line.get("pool_vs_blend") if isinstance(line.get("pool_vs_blend"), dict) else {}
-    return {"day": day, "loop": loop, "lane": lane_name, "horizon": line.get("horizon"), "session": line.get("session"),
-            "logged_at": line.get("at"), "code": line.get("code"), "applied": line.get("applied"), "why": line.get("why"),
-            "reads": line.get("reads"),
-            **{k: len(manifest[k]) if isinstance(manifest.get(k), (list, dict)) else None for k in ("included", "excluded")},
-            "reference_from": changed.get("from"), "reference_to": changed.get("to"), "phone": line.get("phone"),
-            "pool_loss": losses.get("pool"), "blend_loss": losses.get("blend50_exact"), "line_json": _json(line), "_source": src}
-
-
-def _log_day(line: dict) -> str | None:
-    """The day a loop's log line is stored under: the session it learnt, else the New York day it was written."""
-    if isinstance(line.get("session"), str):
-        return line["session"]
-    t = _parse(line.get("at"))
-    return t.date().isoformat() if t else None
-
-
 def _bar_row(day: date, bar: dict, **more: Any) -> dict:
     return {"day": day, "ts": bar.get("ts"), **{k: bar.get(k) for k in ("open", "high", "low", "close", "volume")}, **more}
-
-
-def _context_rows(day: date, where: str, line: dict, source: str) -> dict[str, list[dict]]:
-    """One market-feed line as its context_bars and context_quotes rows."""
-    out: dict[str, list[dict]] = {"context_bars": [], "context_quotes": []}
-    for key, bar in (line.get("bars") or {}).items():
-        bar = bar if isinstance(bar, dict) else {}
-        symbol = context_symbol(key)
-        prices = {k: _label_unit(symbol, bar.get(k)) for k in ("open", "high", "low", "close")}
-        done = _parse(bar.get("ts"))
-        out["context_bars"].append({**_bar_row(day, {**bar, **prices}), "symbol": symbol, "served_as": key,
-                                    "derived": bool(bar.get("derived")), "derived_from": bar.get("derived") or None,
-                                    "source": source, "known_at": done + timedelta(minutes=1) if done else None,
-                                    "written_at": line.get("ts"), "_source": where})
-    for key, q in (line.get("quotes") or {}).items():
-        q = q if isinstance(q, dict) else {}
-        symbol = context_symbol(key)
-        out["context_quotes"].append({"day": day, "symbol": symbol, "served_as": key, "taken_at": line.get("ts"),
-                                      "last": _label_unit(symbol, q.get("last")),
-                                      "prior_close": _label_unit(symbol, q.get("close")), "volume": q.get("volume"),
-                                      "quote_time": q.get("quote_time"), "_source": where})
-    return out
 
 
 def read_raw(state_dir: Path, day: date) -> Raw:
@@ -871,7 +702,7 @@ def read_raw(state_dir: Path, day: date) -> Raw:
         for table, more in got.items():
             rows[table].extend(more)
 
-    archive = list(lines(state_dir / ARCHIVE_SUBDIR / f"{iso}.jsonl", "reads", "answers", "calls", "grades"))
+    archive = list(lines(state_dir / ARCHIVE_SUBDIR / f"{iso}.jsonl", "reads", "answers", "calls"))
     reads = [(w, r) for w, r in archive if r.get("kind") == "read"]
     for w, r in archive:
         if r.get("kind") not in ("read", "grade", "close_out"):
@@ -884,19 +715,13 @@ def read_raw(state_dir: Path, day: date) -> Raw:
             else:
                 unreadable.append(_unreadable(day, w, h, "an hour record whose row_ts is not text"))
     asked_by = _asked_index(reads)
-    for w, r in archive:
-        take(w, r, f"{r.get('kind')} record", lambda: _read_rows(day, w, r, asked_by, hours) if r.get("kind") == "read" else
-             {"grades": _grade_rows(day, w, r)} if r.get("kind") == "grade" else {})
+    for w, r in reads:
+        take(w, r, "read record", lambda: _read_rows(day, w, r, asked_by, hours))
     for name, lane in LANES.items():
-        folder = lane.folder(state_dir)
-        # these files hold every day: a line is the day's by its read, or by the session its loop learnt
-        for w, g in lines(folder / grade.INTEGRAL_NAME, "average_grades"):
+        # this file holds every day: a line is the day's by its read
+        for w, g in lines(lane.folder(state_dir) / grade.INTEGRAL_NAME, "average_grades"):
             if str(g.get("row_ts", ""))[:10] == iso:
                 take(w, g, "average-price grade", lambda: {"average_grades": [_average_grade_row(day, w, name, g)]})
-        for loop, log_name in LOOPS.items():
-            for w, line in lines(folder / log_name, "pool_log"):
-                if _log_day(line) == iso:
-                    take(w, line, "learning-loop log line", lambda: {"pool_log": [_pool_log_row(day, w, loop, name, line)]})
 
     session = state_dir / SESSION_BARS_SUBDIR / f"{iso}-{SYMBOL}.json"
     saved, readable = _json_file(session)
@@ -914,11 +739,6 @@ def read_raw(state_dir: Path, day: date) -> Raw:
     for w, bar in lines(state_dir / LIVE_BARS_SUBDIR / f"{iso}.jsonl", "spx_bars"):
         rows["spx_bars"].append({**_bar_row(day, bar, source="live_file"), "_source": w})
 
-    folder = state_dir / CONTEXT_SUBDIR
-    for path, source in ((folder / "bars" / f"{iso}.jsonl", "saved_day"), (folder / f"{iso}.jsonl", "live")):
-        for w, line in lines(path, "context_bars", *(("context_quotes",) if source == "live" else ())):
-            take(w, line, "market-feed line", lambda: _context_rows(day, w, line, source))
-
     prior_close = session_close(datetime.combine(previous_trading_day(day), datetime.min.time(), tzinfo=ET))
     for w, bar in lines(state_dir / OVERNIGHT_SUBDIR / f"{iso}.jsonl", "overnight_bars"):
         ts = _parse(bar.get("ts"))
@@ -926,55 +746,7 @@ def read_raw(state_dir: Path, day: date) -> Raw:
                                        **{k: bar.get(k) for k in ("symbol", "contract", "contract_from", "bar_minutes",
                                                                   "session", "source", "saved_at", "flags")},
                                        "overnight_schema": bar.get("schema_version"), "_source": w})
-
-    table = rolls_path(state_dir / OVERNIGHT_SUBDIR)
-    doc, readable = _json_file(table)
-    if table.exists():
-        sources["rolls"].append(rel(table))
-    if not readable or (doc is not None and not isinstance(doc, dict)):
-        unreadable.append(_unreadable(day, rel(table), None, "not a JSON object"))
-    elif doc:
-        for i, r in enumerate(doc.get("rolls") or []):
-            if isinstance(r, dict) and r.get("day") == iso:
-                rows["rolls"].append({"day": day, "symbol": r.get("symbol"), "rolled_at": r.get("at"), "from_contract": r.get("from"),
-                                      "to_contract": r.get("to"), **{k: r.get(k) for k in ("basis_step", "basis_unit",
-                                                                                          "step_vs_typical", "reference", "jump")},
-                                      "_source": f"{rel(table)}#rolls[{i}]"})
-
-    # one file per symbol holding every session: the day's line is its row, the yield in percent as the labels read it
-    for path in sorted((state_dir / DAILY_CLOSES_SUBDIR).glob("*.jsonl")):
-        for w, line in lines(path, "daily_closes"):
-            if line.get("day") == iso:
-                symbol = path.stem
-                prices = {k: _label_unit(symbol, line.get(k)) for k in ("open", "high", "low", "close")}
-                rows["daily_closes"].append({"day": day, "symbol": symbol, **prices, "volume": line.get("volume"),
-                                             "fetched_at": line.get("fetched_at"), "_source": w})
-
-    calendar, _ = _json_file(CALENDAR)
-    sources["events"].append(CALENDAR.name)
-    if not isinstance(calendar, dict):
-        unreadable.append(_unreadable(day, str(CALENDAR), None, "the calendar is not a JSON object"))
-    else:
-        for i, e in enumerate(calendar.get("events") or []):
-            if not isinstance(e, dict) or e.get("date") != iso:
-                continue
-            start = f"{iso}T{e.get('time_et')}" if isinstance(e.get("time_et"), str) else None
-            end = f"{iso}T{e.get('end_et')}" if isinstance(e.get("end_et"), str) else None
-            rows["events"].append({"day": day, "starts_at": _local(start), "ends_at": _local(end),
-                                   **{k: e.get(k) for k in ("kind", "scope", "in_session", "verified", "note", "source")},
-                                   "tier": None if e.get("tier") is None else str(e.get("tier")), "q_and_a": e.get("q_and_a") is True,
-                                   "calendar_built": calendar.get("built"), "_source": f"{CALENDAR.name}#events[{i}]"})
     return Raw(rows, unreadable, sources)
-
-
-def _local(s: str | None) -> Any:
-    """A calendar's ``date``T``time_et`` in New York time, or the text as written when it is not a time."""
-    if s is None:
-        return None
-    try:
-        return datetime.fromisoformat(s).replace(tzinfo=ET)
-    except ValueError:
-        return s
 
 
 # ----------------------------------------------------------------------------- the checks
@@ -1080,49 +852,23 @@ def build_day(state_dir: Path | str, day: date, now: datetime | None = None) -> 
                            "quarantined": len(raw.unreadable), "reasons": dict(Counter(b["reason"] for b in raw.unreadable))}
     for table in TABLES:
         _write(store, table, day, kept[table.name])
-    _write(store, QUARANTINE, day, quarantined)
+    if quarantined:
+        _write(store, QUARANTINE, day, quarantined)
+    else:
+        _remove_partition(store, QUARANTINE, day)    # a day built again with nothing refused keeps no stale file of refusals
     _write(store, VALIDATION, day, [{"day": day, "table_name": name, **counts, "sources": raw.sources.get(name, []),
                                      "store_schema": SCHEMA_VERSION, "built_at": now} for name, counts in log.items()])
     return log
 
 
-def _views_current(db: Path, store: Path) -> bool:
-    """The DuckDB file already has a view per table over this store at this schema. Opened read only, so a
-    notebook holding the file open for reading never blocks the nightly run."""
-    if not db.exists():
-        return False
+def _remove_partition(store: Path, table: Table, day: date) -> None:
+    """The day's partition of ``table`` gone, its day folder with it when nothing else is in there."""
+    path = partition(store, table.name, day)
     try:
-        with duckdb.connect(str(db), read_only=True) as con:
-            views = {r[0] for r in con.execute("SELECT view_name FROM duckdb_views() WHERE NOT internal").fetchall()}
-            meta = con.execute("SELECT schema_version, store FROM meta").fetchone()
-    except duckdb.Error:
-        return False
-    return views == set(BY_NAME) and meta == (SCHEMA_VERSION, str(store))
-
-
-def _held_open(e: duckdb.Error) -> bool:
-    """Another process has the DuckDB file open for writing (DuckDB has no exception of its own for this)."""
-    return isinstance(e, duckdb.IOException) and "Could not set lock" in str(e)
-
-
-def write_views(store: Path) -> bool:
-    """A view per table over its day files, and ``meta`` (the schema version and the store it reads), in
-    ``spx_jev.duckdb``, a view over a table no longer kept dropped; nothing is written when they are already there.
-    True when the file was written."""
-    db = store / DB_NAME
-    if _views_current(db, store):
-        return False
-    with duckdb.connect(str(db)) as con:
-        stale = {r[0] for r in con.execute("SELECT view_name FROM duckdb_views() WHERE NOT internal").fetchall()} - set(BY_NAME)
-        for name in sorted(stale):                       # a table the store no longer keeps (facts, until 2026-10-07)
-            con.execute(f"DROP VIEW {name}")
-        for name in BY_NAME:
-            files = (store / name).as_posix().replace("'", "''") + "/day=*/*.parquet"
-            con.execute(f"CREATE OR REPLACE VIEW {name} AS SELECT day, * EXCLUDE (day) FROM read_parquet('{files}', "
-                        f"hive_partitioning = true, hive_types = {{'day': DATE}}, union_by_name = true)")
-        con.execute("CREATE OR REPLACE TABLE meta AS SELECT ? AS schema_version, ? AS store, ? AS written_at",
-                    [SCHEMA_VERSION, str(store), datetime.now(timezone.utc)])
-    return True
+        path.unlink()
+        path.parent.rmdir()
+    except OSError:                                      # no partition, or something else in its folder
+        pass
 
 
 # ----------------------------------------------------------------------------- which days
@@ -1146,7 +892,7 @@ def days_to_build(now: datetime, catch_up: int = CATCH_UP_DAYS) -> list[date]:
 def _days_named(state_dir: Path | str, until: date) -> set[date]:
     """Every day up to ``until`` that any raw file the store reads is named for."""
     state_dir = Path(state_dir)
-    names = [p.stem for folder in (ARCHIVE_SUBDIR, LIVE_BARS_SUBDIR, CONTEXT_SUBDIR, CONTEXT_SUBDIR / "bars", OVERNIGHT_SUBDIR)
+    names = [p.stem for folder in (ARCHIVE_SUBDIR, LIVE_BARS_SUBDIR, OVERNIGHT_SUBDIR)
              for p in (state_dir / folder).glob("????-??-??.jsonl")]
     names += [p.name[:10] for p in (state_dir / SESSION_BARS_SUBDIR).glob(f"????-??-??-{SYMBOL}.json")]
     out = set()
@@ -1173,13 +919,13 @@ def off_days_on_disk(state_dir: Path | str, until: date) -> list[date]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Build the learning store under state/spx_jev/store/: each market day's raw "
-                                             "files as checked Parquet, with DuckDB views over them.")
+                                             "files as checked Parquet.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
     which = ap.add_mutually_exclusive_group()
     which.add_argument("--day", help="YYYY-MM-DD, rebuild one day")
     which.add_argument("--backfill", action="store_true", help="rebuild every market day with a raw file on disk")
     args = ap.parse_args(argv)
-    state_dir, now = Path(args.state_dir).resolve(), datetime.now(ET)     # the views name their files by this path
+    state_dir, now = Path(args.state_dir), datetime.now(ET)
     if args.day:
         days = [date.fromisoformat(args.day)]
     elif args.backfill:
@@ -1204,21 +950,9 @@ def main(argv: list[str] | None = None) -> int:
         bad = {t: c["quarantined"] for t, c in log.items() if c["quarantined"]}
         print(f"spx-jev-store :: {d} " + ", ".join(f"{t} {c['kept']}" for t, c in log.items() if t in BY_NAME)
               + (f"; quarantined {', '.join(f'{t} {n}' for t, n in bad.items())}" if bad else ""))
-    store = store_dir(state_dir)
-    try:
-        wrote = write_views(store)
-    except duckdb.Error as e:
-        if not _held_open(e):
-            print(f"spx-jev-store :: views not written to {store / DB_NAME}: {type(e).__name__}: {e}", file=sys.stderr)
-            return 1
-        # the Parquet is built; the views are the only thing waiting, and the next run writes them if they need it
-        print(f"spx-jev-store :: views left as they were: another process has {store / DB_NAME} open for writing",
-              file=sys.stderr)
-        wrote = False
-    print(f"spx-jev-store :: {len(days) - failed} of {len(days)} days built under {store}; "
+    print(f"spx-jev-store :: {len(days) - failed} of {len(days)} days built under {store_dir(state_dir)}; "
           + ", ".join(f"{t.name} {kept[t.name]} rows ({quarantined[t.name]} quarantined)" for t in TABLES)
-          + (f"; raw_line {quarantined['raw_line']} quarantined" if quarantined["raw_line"] else "")
-          + ("; views written" if wrote else ""))
+          + (f"; raw_line {quarantined['raw_line']} quarantined" if quarantined["raw_line"] else ""))
     return 1 if failed else 0
 
 

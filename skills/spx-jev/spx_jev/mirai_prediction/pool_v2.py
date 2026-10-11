@@ -25,7 +25,7 @@ from .. import pool as pool_v1
 from ..scores import OUTCOMES, floored, losses
 from ..events import ET
 from .name_map import LEARNER_NAMES, REFERENCE_VOICE, STAGES, rename_voice
-from .paths import append_json_line, backup_before_change, now_utc_iso, pool_v2_updates_file, pool_v2_weights_file, write_json_atomically
+from .paths import backup_before_change, now_utc_iso, pool_v2_weights_file, write_json_atomically
 
 NEW_VOICE_START_WEIGHT = 0.03
 NEVER_MIXED = ("pool_v1", "pool_v2")        # the pools are scored beside the voices, never mixed as voices
@@ -223,7 +223,3 @@ def update_pool_v2_after_day(state: dict, day: str, reads: list[tuple[dict[str, 
                            f"{FREEZE_WINDOW_DAYS} days ({hit} of {seen}): the weights are frozen for review")
         line["frozen"] = state["frozen"]
     return state, line
-
-
-def log_update(root: Path, state: dict, line: dict) -> None:
-    append_json_line(pool_v2_updates_file(root, state["sum_id"]), line)

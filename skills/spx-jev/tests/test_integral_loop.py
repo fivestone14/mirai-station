@@ -27,7 +27,7 @@ ALLOWED = {"q_a": {"yes", "no"}}
 MEMBERS = {"q_a": "v1"}
 DAYS = ("2026-09-14", "2026-09-15", "2026-09-16")
 TODAY = "2026-09-17"
-END_PRICE_FILES = ("pool_30.json", "pool_60.json", pool.LOG_NAME)
+END_PRICE_FILES = ("pool_30.json", "pool_60.json")
 INTEGRAL_FILES = ("pool_30_integral.json", integral_loop.LOG_NAME)
 # the average-price odds as the phone showed them, JEV's own and the time-of-day odds on the average price they blend
 JEV_AVG = {"up": 0.6, "flat": 0.3, "down": 0.1}

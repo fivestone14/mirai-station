@@ -6,8 +6,7 @@ missing/short/torn file. One writer per file by convention (the engine, one
 scan at a time).
 
 Layout under one injected root (state/siege in the mirai wiring):
-    latest.json         # the viewstation contract — field names are FROZEN
-    health.json         # feed verdict per scan
+    latest.json         # the viewstation contract — field names are FROZEN; carries the feed verdict per scan
     baseline.json       # minute-volume normalcy memory, folded day by day
     session.json        # the intraday episode state machine
     cards/{date}.jsonl  # one row per resolved episode
@@ -68,8 +67,6 @@ class SiegeStore:
     @property
     def latest(self) -> Path: return self.root / "latest.json"
     @property
-    def health(self) -> Path: return self.root / "health.json"
-    @property
     def baseline(self) -> Path: return self.root / "baseline.json"
     @property
     def session(self) -> Path: return self.root / "session.json"
@@ -92,9 +89,6 @@ class SiegeStore:
 
     def write_latest(self, obj: dict) -> None:
         write_json_atomic(self.latest, obj)
-
-    def write_health(self, obj: dict) -> None:
-        write_json_atomic(self.health, obj)
 
     def append_card(self, day: str, row: dict) -> None:
         append_jsonl(self.cards(day), row)

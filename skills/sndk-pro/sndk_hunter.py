@@ -145,7 +145,6 @@ def tick(now: Optional[datetime] = None, force: bool = False) -> int:
         # M3: the chain's own spot is ~15% stale for SNDK — with no live Schwab
         # quote there is no honest anchor, so the tick is skipped entirely (no
         # row) rather than written off the known-wrong chain spot
-        sndk_feed._log({"ts": now.isoformat(), "skip": "no_live_quote"})
         print("sndk :: no live Schwab quote — skipping tick (no row)")
         return 0
     chain = sndk_feed.sndk_chain(now, live_spot=live)

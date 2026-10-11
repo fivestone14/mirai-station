@@ -13,8 +13,9 @@ that settles which engine's pin is real when the two disagree.
 
 Read-only vs the live loop: reads state/reversion/{day}.jsonl + 1-min bars; places
 no orders itself, but its promotion_gate() is THE earn-trust check consumed by
-reversion_lens.live_allowed(). Persists its verdicts (state/reversion/polarity-{day}.json
-+ the polarity_history.jsonl ledger) so the record accumulates instead of scrolling away.
+reversion_lens.live_allowed(). Persists its verdicts to the state/reversion/polarity_history.jsonl
+ledger, one row per day, so the record accumulates instead of scrolling away (a per-day
+polarity-{day}.json holding the same row was written beside it until 2026-10-11).
 Scheduled after close via com.mirai-station.gex-polarity; manual:
     python3 gex_polarity_ab.py [YYYY-MM-DD] [--no-write]
 """
@@ -1000,13 +1001,11 @@ def _grade_watchtower_sweep(rows: list[dict], bars_lookup) -> dict | None:
 
 
 def persist(res: dict) -> Path:
-    """FILING CABINET — saves the report cards so the record accumulates instead
-    of scrolling away: writes the day report + upserts the one-line-per-day
-    history ledger."""
+    """FILING CABINET — saves the report card so the record accumulates instead
+    of scrolling away: upserts the day's row into the one-line-per-day history
+    ledger, and returns the ledger's path."""
     d = SKILL_DIR.parent.parent / "state" / "reversion"
     d.mkdir(parents=True, exist_ok=True)
-    day_file = d / f"polarity-{res['day']}.json"
-    day_file.write_text(json.dumps(res, indent=2) + "\n")
     hist = d / "polarity_history.jsonl"
     lines: list[str] = []
     if hist.exists():
@@ -1025,7 +1024,7 @@ def persist(res: dict) -> Path:
     tmp = hist.with_suffix(".jsonl.tmp")
     tmp.write_text("\n".join(lines) + "\n")
     os.replace(tmp, hist)
-    return day_file
+    return hist
 
 
 if __name__ == "__main__":

@@ -4,12 +4,13 @@ The plan explicitly leaves the concrete push mechanism unspecified. This module
 exposes a single `send(msg)` entrypoint and a `set_channel(callable)` hook so
 the channel can be wired in a later step without touching node code.
 
-Until a channel is configured, `send()` logs to stdout and the daily JSONL log
-so dry-runs and tests can verify the push *intent* without dispatching anywhere.
+Until a channel is configured, `send()` only returns the record (and mirrors it
+to stdout when interactive), so dry-runs and tests can verify the push *intent*
+without dispatching anywhere. A daily JSONL log of every page
+(state/logs/watch-pushes-<day>.jsonl) was kept until 2026-10-11; nothing read it.
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 from datetime import datetime
@@ -21,18 +22,13 @@ try:                                    # same guard market_status uses: a missi
 except Exception:                       # pragma: no cover - tzdata absent
     _ET = None
 
-from . import paths
-
 _channel: Optional[Callable[[str], None]] = None
-
-_LOG_DIR = str(paths.LOG_DIR)
 
 
 def _now() -> datetime:
-    """The pager's clock, in market time. The daily log is named for the ET day
-    and the record is stamped from the same instant, so an evening page files
-    under the session it belongs to: before this, utcnow() put every page after
-    20:00 ET into the NEXT day's file, under a stamp that read as tomorrow."""
+    """The pager's clock, in market time. A page is about the session it was
+    sent in, so its record is stamped in ET with its offset: before this,
+    utcnow() stamped every page after 20:00 ET with a time that read as tomorrow."""
     return datetime.now(_ET) if _ET is not None else datetime.now().astimezone()
 
 
@@ -43,7 +39,7 @@ def set_channel(fn: Callable[[str], None]) -> None:
 
 
 def send(msg: str, *, tag: str = "push") -> dict:
-    """Dispatch a push notification. Always logs; dispatches only if channel configured.
+    """Dispatch a push notification; dispatches only if a channel is configured.
 
     Returns the record dict for inclusion in graph state / logs.
     """
@@ -58,18 +54,6 @@ def send(msg: str, *, tag: str = "push") -> dict:
             record["channel"] = getattr(_channel, "__name__", "channel")
         except Exception as e:
             record["error"] = str(e)
-
-    # Always log (so dry-runs leave a trail). The trail is a by-product: a log
-    # that cannot be written costs the record, never the notification — and the
-    # page has already gone out by here. makedirs is inside the guard too, since
-    # an unusable path raises there (ValueError) before open() is ever reached.
-    log_path = os.path.join(_LOG_DIR, f"watch-pushes-{now.strftime('%Y-%m-%d')}.jsonl")
-    try:
-        os.makedirs(_LOG_DIR, exist_ok=True)
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record) + "\n")
-    except (OSError, ValueError):
-        pass
 
     # Mirror to stdout when interactive (TTY).
     if sys.stdout.isatty() or os.environ.get("MIRAI_WATCH_VERBOSE"):

@@ -8,7 +8,7 @@ Layout under one injected state_dir (nothing else in the package knows paths):
     latest.json                  # the ONLY file the host's tick reads
     gex_context.json             # written by the host, read by the daemon
     calendar.json                # scheduled-event dates (seeded if missing)
-    cursor.json / health.json / collector.lock
+    cursor.json / collector.lock
     baselines/{name}.json
     raw/{date}/{stream}.jsonl    # per-day append-only journals
     agg/{date}.jsonl             # per-fold aggregate rows (kept forever)
@@ -62,8 +62,6 @@ class StateDir:
     def calendar(self) -> Path: return self.root / "calendar.json"
     @property
     def cursor(self) -> Path: return self.root / "cursor.json"
-    @property
-    def health(self) -> Path: return self.root / "health.json"
     @property
     def lock(self) -> Path: return self.root / "collector.lock"
 
@@ -153,11 +151,7 @@ class StateDir:
         fh.flush()
         return fh
 
-    # -- health / rotation ------------------------------------------------------
-    def write_health(self, now: datetime, **fields) -> None:
-        atomic_write_json(self.health, {"ts": now.isoformat(), **fields,
-                                        "disk_mb": round(self.disk_usage_mb(), 1)})
-
+    # -- rotation ---------------------------------------------------------------
     def disk_usage_mb(self) -> float:
         total = 0
         for p in self.root.rglob("*"):

@@ -8,7 +8,6 @@
         tables/voice_scores/day=.../                each voice's penalty per graded read
         tables/_checks/refused_rows/{day}.jsonl     rows a check refused, with the reason
         pools/pool_v2/weights_{sum_id}.json         pool_v2's state: voice weights, which voices are asleep, days learned
-        pools/pool_v2/weight_updates_{sum_id}.jsonl one line per day learned
         catalogs/voice_fits/{day}_{sum_id}.json     the fitted learners for that day (fit on days before it) with the answer
                                                     matrix they were fitted on; only the newest FIT_FILES_KEPT_DAYS days are kept
         scoreboard.json                             the phone card's file
@@ -86,10 +85,6 @@ def refused_rows_file(root: Path, day: str) -> Path:
 
 def pool_v2_weights_file(root: Path, sum_id: str) -> Path:
     return root / POOLS / POOL_V2 / f"weights_{sum_id}.json"
-
-
-def pool_v2_updates_file(root: Path, sum_id: str) -> Path:
-    return root / POOLS / POOL_V2 / f"weight_updates_{sum_id}.jsonl"
 
 
 def voice_fits_file(root: Path, day: str, sum_id: str) -> Path:

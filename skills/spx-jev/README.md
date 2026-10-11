@@ -407,79 +407,67 @@ machine learning. The raw files stay the record: the store only reads them, and
 any day can be rebuilt from them whole.
 
     state/spx_jev/store/<table>/day=YYYY-MM-DD/part-0.parquet   one file per table per built day, zero rows included
-    state/spx_jev/store/spx_jev.duckdb                          a view per table over those files, and `meta`
+                                                                (`quarantine` has a file only for a day a row was refused on)
 
 | Table | One row per | What it holds |
 |---|---|---|
 | `reads` | read, any lane | `read_id` (lane and row time), `lane`, `row_ts`, `archived_at`, `minute_et` and `minutes_from_open`, `checkpoint`, `sent`, `model`, `spot`, `sigma`, the ruler (`ruler_source`, `ruler_points`, `ruler_unit_sigma`, `ruler_sessions`, `ruler_omitted`) and the opening lane's bands, the event tag, how many questions were `answered`, `lost`, `unsent`, `held`, `not_due`, `asleep`, `missing`, `dark`, `unread` or `other`, how many were `reasked`, the labels written, omitted and asleep, the end-price sums' `sum_used`, `sum_left_out`, `sum_missing` and `sum_error`, the average-price sum's `average_error` (why the read has no call on the average price), and `skip_reasons` (question to why) |
 | `answers` | question per read | `status` as counted on the read and its `reason`, `type`, `pick`, `confidence`, `probabilities` (option to probability; a yes/no as `true` and `false`), `score` and `noul` as JEV sent them, `question_hash` (the question exactly as JEV was sent it), `pool_version` (the learning loop's version of it), `held_from` and `held_found` for a held answer (its values are copied from the read that asked it; a lost ask whose last answer the sum read instead is `held`, its `reason` starting `lost`), `reasked` (empty for a read archived before the lane recorded its re-asks), `reasked_from`, `reask_why`. The average-price sum's own question is a row too (`group_id` `average`, from archive version 5), left out of the read's question counts |
 | `calls` | sum per read | `sum_id` (`next_30`, `average_30` and the like), `horizon` (the box whose window it forecasts), `is_call` (the call the phone showed: the average-price sum's where it answered, else the end-price primary's), `minutes` (the call's window as it was told, 28 on the 15:32 read), `mark`, `is_primary` (the end-price box the weights and pools learn from), the time of day, the sum's final odds (`shown_source`, `shown_pick`, `shown_probs`: the blend, or Pool 2's mix since 2026-10-06), the call's `price`, `flat_points` and `edge_points`, JEV alone (`jev_pick`, `jev_probs`), the time-of-day odds (`clock_probs`, `clock_n`), the blend (`blended`, `blend_jev_share`, `blend_phase`), the end-price loop's mix (`pool_probs`, `pool_p_move`, `pool_p_up_given_move`, `pool_reference_version`, or why it was left out in `pool_left_out`), the opening lane's `direction_*` and `size_*` views, and `learn_exclude` |
-| `grades` | graded end-price sum | `mark`, `outcome`, the realized move, `pick`, `abstained` (an unsure pick), `correct` (empty when abstained), `hit`, `brier`, `p_band`, JEV's and the clock's scores, the opening lane's direction and size scores, and the ruler it was graded in |
 | `average_grades` | window graded on the average price, per lane | `horizon`, `sum_id` (the sum whose call it graded: the average-price sum's, else the end-price sum's), `rule_version` (a read graded under more than one stands on its newest; the older counts as `superseded`), `graded` and why not (`reason`, `minutes_missing`), `mark`, `from_price`, `flat_points`, `edge`, `edge_told`, `average_move` (the average against the read, in points), `outcome` and the end price's `end_outcome`, `pick`, `verdict` (`right`, `wrong` or `passed`), `abstained`, `correct` (empty when passed), `margin`, a passed call's `lean`, the `running` labels, the best, worst and sharpest minute, `minutes_filled`, `bad_ticks`, `stale_read`, the opening lane's size (`size_outcome`, the end-price five-way pick's `size_pick` and `size_right`), and the scores (`brier`, `log_loss`, and JEV's and the clock's when blended) |
-| `pool_log` | learning-loop log line | `loop` (`end_price` from `pool_log.jsonl`, `average_price` from `pool_integral_log.jsonl`), `lane`, `horizon`, `session` (the day it learnt; the day is the line's own when it names none), `logged_at`, `applied` and `why` not, `reads`, `included` and `excluded`, the reference's change (`reference_from`, `reference_to`), `phone` (what the retired promotion logged, until 2026-10-07), `pool_loss` and `blend_loss`, and the whole line in `line_json` |
 | `spx_bars` | SPX minute | open, high, low, close, volume, and `source` (the saved session file kept over the bars feed's) |
-| `context_bars` | symbol and minute | the market feed's bars in the labels' units (a future under its root, `served_as` the contract; the yields in percent), `derived` and `derived_from` for a `$VOLD` built from `$UVOL` and `$DVOL`, `source` (the saved day kept over a live snapshot, Schwab's own `$VOLD` over a derived one), `known_at` and `written_at` |
-| `context_quotes` | symbol and snapshot | `last`, `prior_close`, `volume`, `taken_at` |
 | `overnight_bars` | futures bar of the night leading into `day` | `symbol`, `contract`, `contract_from`, `bar_minutes`, the prices and volume, `session`, `saved_at`, `flags`, `overnight_schema` (the overnight file's own version), and `prior_session` for the prior session's last minutes a night starts with, which the prior day's night also holds: `WHERE NOT prior_session` gives each bar once |
-| `rolls` | roll, on the day it took effect | `symbol`, `from_contract`, `to_contract`, `rolled_at`, the basis step and its reference |
-| `events` | calendar row on the day | `starts_at`, `ends_at`, `kind`, `tier`, `in_session`, `verified`, `q_and_a`, `calendar_built` |
 | `quarantine` | refused row | `table_name` (`raw_line` for a line that is not a JSON object, or a raw record in the wrong shape), `key`, `reason`, `source` (file and line), `row_json` |
 | `validation` | table per day | `table_name`, `rows_in`, `kept`, `duplicates`, `superseded`, `quarantined`, `reasons` (reason to count), `sources`, `store_schema`, `built_at` |
 
 Every table has `day`, from its folder. Times are instants shown in New York
 time. The column names and types are fixed by `store.TABLES` at schema version
-`store.SCHEMA_VERSION` (3), written into every file's metadata and into `meta`.
+`store.SCHEMA_VERSION` (4), written into every file's metadata. Seven more
+tables were kept until 2026-10-11, when nothing read them: the end-price
+`grades`, both loops' `pool_log`, the market feed's `context_bars` and
+`context_quotes`, the futures `rolls`, the `daily_closes` and the calendar's
+`events`; their old day files stay on disk until they are archived.
 
 Each row is typed column by column, then held to its table's checks: ranges,
 probabilities that sum to one, a bar's high above its low, and point in time
-(no fact known after its read, no grade written before its mark, no bar saved
-before it finished, no session learnt before it closed). A fact, answer, call
-or grade must belong to one of the day's kept reads. A refused row goes to `quarantine` with its reason, never
+(nothing archived, held or marked before its read, no bar saved before it
+finished). An answer, call or grade must belong to one of the day's kept reads.
+A refused row goes to `quarantine` with its reason, never
 dropped. Copies of a row that agree but for where they came from count as
 `duplicates`; where a table ranks its sources the better copy is kept and a
 disagreeing one from a worse source counts as `superseded`; any other
 disagreement, between two equally good sources included, is quarantined.
 
 The nightly job (`com.mirai-station.spx-jev-store`, 16:40 ET) rebuilds the last
-week's market days. It writes the DuckDB file only when its views are missing
-or out of date, so a notebook holding it open read only never stops a run; one
-holding it open for writing leaves the views to the next run, with a line in
-the job's log, while the day's Parquet is still built.
+week's market days.
 `python3 -m spx_jev.store --backfill` builds every market day with a raw file on
 disk, and names the days it leaves out for not being market days (Labor Day's
 futures, say).
 
-From Python, in the station's venv:
+From Python, in the station's venv, each table is read over its folder (a
+DuckDB views file, `spx_jev.duckdb`, was written beside the tables until
+2026-10-11; nothing opened it):
 
     from pathlib import Path
     import duckdb
     STORE = Path.home() / ".claude/plugins/mirai-station/state/spx_jev/store"
-    con = duckdb.connect(str(STORE / "spx_jev.duckdb"), read_only=True)
-    con.sql("SET TimeZone = 'America/New_York'")              # show times in market time
-    con.sql("SELECT day, lane, count(*) AS reads FROM reads GROUP BY ALL ORDER BY ALL").show()
-    con.sql("""SELECT question_id, avg(confidence) AS sure, count(*) AS n
-               FROM answers WHERE status = 'answered' GROUP BY question_id ORDER BY n DESC""").show()
-    con.sql("""SELECT c.row_ts, c.sum_id, c.shown_pick, c.shown_probs[c.shown_pick] AS p, a.outcome, a.verdict
-               FROM calls c JOIN average_grades a ON a.read_id = c.read_id AND a.sum_id = c.sum_id
-               WHERE c.is_call AND c.lane = 'live'""").show()               # the phone's calls and their grades
-    con.sql("""SELECT c.row_ts, c.shown_pick, c.jev_probs['up'] AS jev_up, g.outcome, g.correct
-               FROM calls c JOIN grades g ON g.read_id = c.read_id AND g.horizon = c.sum_id
-               WHERE c.sum_id = 'next_30'""").show()                        # the end-price sum at its mark
-    con.sql("SELECT day, table_name, reason, source FROM quarantine").show()
-
-The views name the store's files by their full path, so a copied store is
-read over its Parquet directly, or given views of its own with
-`store.write_views(<copy>)`. Without the DuckDB file, over the Parquet directly:
-
-    duckdb.sql(f"""SELECT symbol, count(*) FROM read_parquet('{STORE}/context_bars/*/*.parquet', hive_partitioning = true)
-                   GROUP BY symbol""").show()
+    def table(name):
+        return f"read_parquet('{STORE}/{name}/day=*/*.parquet', hive_partitioning = true, hive_types = {{'day': DATE}}, union_by_name = true)"
+    duckdb.sql("SET TimeZone = 'America/New_York'")              # show times in market time
+    duckdb.sql(f"SELECT day, lane, count(*) AS reads FROM {table('reads')} GROUP BY ALL ORDER BY ALL").show()
+    duckdb.sql(f"""SELECT question_id, avg(confidence) AS sure, count(*) AS n
+                   FROM {table('answers')} WHERE status = 'answered' GROUP BY question_id ORDER BY n DESC""").show()
+    duckdb.sql(f"""SELECT c.row_ts, c.sum_id, c.shown_pick, c.shown_probs[c.shown_pick] AS p, a.outcome, a.verdict
+                   FROM {table('calls')} c JOIN {table('average_grades')} a ON a.read_id = c.read_id AND a.sum_id = c.sum_id
+                   WHERE c.is_call AND c.lane = 'live'""").show()           # the phone's calls and their grades
+    duckdb.sql(f"SELECT day, table_name, reason, source FROM {table('quarantine')}").show()
 
 `.show()`, `.df()` and `.arrow()` read any column. `.fetchall()` and
 `.fetchone()` hand back a timestamp as a Python datetime, which DuckDB builds
 with pytz: `venv-bootstrap.sh` installs it, and a venv without it raises
 "Required module 'pytz' failed to import" on any time column.
 
-Into pandas: `con.sql("SELECT * FROM answers").df()` (a map column such as
+Into pandas: `duckdb.sql(f"SELECT * FROM {table('answers')}").df()` (a map column such as
 `probabilities` arrives as a dict per row), or one table's folder with pandas
 alone, the day read as a date:
 

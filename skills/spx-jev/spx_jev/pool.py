@@ -60,7 +60,6 @@ blend50 needs, and no price-only reference for the window from the settled open 
 Files, beside the lane's records:
     pool_30.json, pool_60.json   the state per horizon: weights, tables, e-processes, statuses, the watermark
                                  (pool_10.json and pool_30.json for sums of 10 and 30 minutes)
-    pool_log.jsonl               one line per horizon per session applied or refused, with its manifest
 """
 from __future__ import annotations
 
@@ -69,7 +68,7 @@ import json
 import math
 import os
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -117,7 +116,6 @@ SUPPRESS_E, LIFT_E = 20.0, 5.0
 # CAP_BIND_WINDOW sessions (named for the day-step cap the clip replaced: renaming them would change CONSTANTS and the state)
 CAP_BIND_WINDOW, CAP_BIND_LIMIT = 20, 0.05
 ROUND = 12
-LOG_NAME = "pool_log.jsonl"
 # what a sum record's shown_source says: the blend, always, since the promotion was retired (2026-10-07)
 SHOWN_BLEND = "blend50_exact"
 SIDES = ("M", "D")              # the move weights and the direction weights
@@ -132,7 +130,6 @@ CONSTANTS = {"eps": EPS, "eta": ETA, "alpha": ALPHA, "gap_clip": GAP_CLIP, "bloc
              "suppress_e": SUPPRESS_E, "lift_e": LIFT_E, "w0": W0, "no_change_prior": NO_CHANGE_PRIOR, "jev_shares": JEV_SHARES,
              "cap_bind_window": CAP_BIND_WINDOW, "cap_bind_limit": CAP_BIND_LIMIT}
 CONSTANTS_HASH = hashlib.sha256(json.dumps(CONSTANTS, sort_keys=True).encode()).hexdigest()[:16]
-CODE_HASH = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:16]
 # the same constants under the names this loop's experts had before they were named by their source
 LEGACY_NAMES = {"clock": "baseline", "clock_cal": "baseline_cal", "raw_clock": "raw_baseline"}
 LEGACY_CONSTANTS_HASH = hashlib.sha256(json.dumps({**CONSTANTS, "w0": w0("clock")}, sort_keys=True).encode()).hexdigest()[:16]
@@ -734,13 +731,11 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline:
     said = {h: "nothing new to apply" for h in order}
     changed = [h for h in order if states[h].get("constants_hash") != CONSTANTS_HASH]
     if changed:
+        # constants changed since these states began: the old state goes to archive/, and the loop learns again from the records
         replay_until = max((s["last_session_applied"] or "") for s in states.values())
-        kept = {h: str(archive_state(state_path(out_dir, lane.horizons[h][0]), states[h]))
-                for h in order if state_path(out_dir, lane.horizons[h][0]).exists()}
-        _log(out_dir, {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "code": CODE_HASH, "applied": False,
-                       "rebuild": {"from": {h: states[h].get("constants_hash") for h in order}, "to": CONSTANTS_HASH,
-                                   "kept": kept, "replay_until": replay_until or None},
-                       "why": f"constants changed since {', '.join(changed)} began: learned again from the records"})
+        for h in order:
+            if state_path(out_dir, lane.horizons[h][0]).exists():
+                archive_state(state_path(out_dir, lane.horizons[h][0]), states[h])
         states = {h: {**cold_state(), "replay_until": replay_until or None} for h in order}
     watermark = min((s["last_session_applied"] or "") for s in states.values())
     stopped = False
@@ -753,16 +748,13 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline:
             if isinstance(r.get("by"), dict) and r.get("row_ts") not in seen:
                 seen.add(r["row_ts"])
                 recs.append(r)
-        head = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "session": day, "code": CODE_HASH}
         if recs and not any("pool" in r for r in recs):
             why = "no read carries a snapshot: before the loop"
-        elif not all("pool" in r for r in recs):
-            _log(out_dir, {**head, "applied": False, "why": "some reads carry no snapshot: stopped, fail closed"})
+        elif not all("pool" in r for r in recs):                 # stopped, fail closed
             said = {h: f"{day}: some reads carry no snapshot; stopped" for h in order}
             break
         elif any(outcomes.get(r["row_ts"], {}).get("done", set()) != set(lane.horizons) for r in recs):
-            _log(out_dir, {**head, "applied": False, "why": "unsealed: a read still has a horizon to grade"})
-            said = {h: f"{day}: unsealed; stopped" for h in order}
+            said = {h: f"{day}: unsealed; stopped" for h in order}      # a read still has a horizon to grade
             break
         else:
             why = None
@@ -770,9 +762,8 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline:
             state, minutes = states[h], lane.horizons[h][0]
             if (state["last_session_applied"] or "") >= day:
                 continue
-            if why or not recs:
+            if why or not recs:                                   # a session before the loop, or with no reads: passed over
                 state["last_session_applied"] = day
-                _log(out_dir, {**head, "horizon": h, "applied": False, "why": why or "no reads"})
                 continue
             reads, excluded = _session_reads(recs, outcomes, h, minutes)
             # a snapshot written under other constants is formed again from the state a read would have seen today
@@ -785,31 +776,22 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline:
                           or (not r["snapshot"].get("long_run") and state["tables"]
                               and state["reference_version"] in (None, r["snapshot"].get("reference_version"))
                               and r["snapshot"].get("reference_version") != baseline.version)]
-            if unfaithful:
-                _log(out_dir, {**head, "horizon": h, "applied": False,
-                               "why": "a snapshot to form again was made under another reference or other forming settings "
-                                      "than today's: stopped, fail closed"})
+            if unfaithful:                                        # made under another reference or other forming settings: fail closed
                 said[h] = f"{day}: a snapshot cannot be formed again; stopped"
                 stopped = True
                 break
             reads = [r if r["snapshot"].get("constants_hash") == CONSTANTS_HASH
                      else {**r, "snapshot": reformed(r["snapshot"], state, baseline.whole_day(h))} for r in reads]
             primary = h == lane.primary
-            body = learn_session(state, day, reads, excluded, minutes, primary, lane.graded_from_settled_open)
+            learn_session(state, day, reads, excluded, minutes, primary, lane.graded_from_settled_open)
             # rounded after every session, as saved, so one night at a time and a rebuild agree to the bit
             states[h] = json.loads(_canonical(state))
-            _log(out_dir, {**head, "horizon": h, "applied": bool(reads), **_rounded(body)})
             said[h] = f"{day}: applied, {len(reads)} reads"
         if stopped:
             break
     for h in order:
         save_state(out_dir, lane.horizons[h][0], states[h])
     return said
-
-
-def _log(out_dir: Path, line: dict) -> None:
-    with open(Path(out_dir) / LOG_NAME, "a", encoding="utf-8") as f:
-        f.write(json.dumps(line, ensure_ascii=False, sort_keys=True) + "\n")
 
 
 # ----------------------------------------------------------------------------- the seam

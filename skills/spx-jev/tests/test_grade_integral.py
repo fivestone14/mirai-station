@@ -108,7 +108,7 @@ def test_grades_weights_and_the_loops_state_are_byte_for_byte_what_the_grader_wr
     run(without, without / "spx_jev", ALLOWED)
     assert _lines(with_it / "spx_jev" / INTEGRAL_NAME) and not (without / "spx_jev" / INTEGRAL_NAME).exists()
     after = _tree(with_it)
-    assert {"spx_jev/grades.jsonl", "spx_jev/weights.json", "spx_jev/weights_log.jsonl", "spx_jev/pool_30.json", "spx_jev/pool_60.json"} <= set(after)
+    assert {"spx_jev/grades.jsonl", "spx_jev/weights.json", "spx_jev/pool_30.json", "spx_jev/pool_60.json"} <= set(after)
     assert after == _tree(without)
 
 

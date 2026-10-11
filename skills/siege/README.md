@@ -67,7 +67,7 @@ Host-side (in the host's tree, not this package): `siege_bridge.py` — the
 
 Any of {no bars · last bar stale > 3 min in RTH · ≥ 3 consecutive zero-volume
 RTH bars · flat-OHLC-with-volume point bars} ⇒ keep last state, stamp the
-health file, and **never fabricate**: no touches, no verdicts, no grades, no
+`health` field of `latest.json`, and **never fabricate**: no touches, no verdicts, no grades, no
 baseline fold on that scan. Episodes that lived through a feed hole carry
 `degraded: true` on their card.
 
@@ -83,9 +83,10 @@ Under the injected root (`state/siege/` in the mirai wiring):
   tower_kind, level_frozen, spy_level, ratio_used, window_vol, baseline_med,
   effort_basis, effort_pct, verdict, outcome, move_after_30m_pts,
   coverage_share, near_spot, degraded}`
-* `health.json`, `baseline.json` (minute-volume normalcy memory, accrued day
+* `baseline.json` (minute-volume normalcy memory, accrued day
   by day — labels `cold` < 5 accrued days ≤ `warming` < 21 ≤ `robust`),
-  `session.json` (intraday episode state).
+  `session.json` (intraday episode state). A `health.json` with the same
+  verdict as `latest.json`'s `health` field was written until 2026-10-11.
 
 ## What it may never do
 

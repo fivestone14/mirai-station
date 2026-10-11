@@ -12,8 +12,9 @@ One JSON line per NEW item under ``state/spx_jev/headlines/``:
                      "source": the outlet (Google News' <source> tag, else the feed), "title", "url", "guid"}
     seen.json       what has been captured, sha1(url) and sha1(lower(title)), each with when, pruned to SEEN_HOURS; so an
                     item every feed carries, or one a feed re-dates, is written once
-    errors.jsonl    one line per feed that failed on a poll, with the error; the other feeds are still read
     .lock           held while a poll runs, so two polls never interleave
+
+A feed that fails on a poll is named with its error on stderr (the job's log); the other feeds are still read.
 
 Stdlib only (urllib, xml.etree). The feeds are read with a 10-second timeout each and a plain user agent. The poll gates
 itself to CAPTURE_FROM-CAPTURE_TO ET on weekdays; ``--now`` runs regardless.
@@ -132,10 +133,6 @@ def _append(path: Path, lines: list[dict]) -> None:
         f.write("".join(json.dumps(line, ensure_ascii=False) + "\n" for line in lines))
 
 
-def record_error(state_dir: Path | str, now: datetime, feed: str, error: str) -> None:
-    _append(folder(state_dir) / "errors.jsonl", [{"at": now.isoformat(timespec="seconds"), "feed": feed, "error": error}])
-
-
 class PollRunning(RuntimeError):
     """Another poll holds the lock."""
 
@@ -159,8 +156,8 @@ def take_lock(state_dir: Path | str, now: datetime) -> Path:
 
 
 def poll(state_dir: Path | str, now: datetime, fetcher=None) -> dict[str, int | str]:
-    """One poll of every feed: each new item written to the day's file, stamped ``now``; a feed that fails is logged
-    under errors.jsonl and costs only its own items. Returns the new items per feed, a failed feed as its error."""
+    """One poll of every feed: each new item written to the day's file, stamped ``now``; a feed that fails is named
+    with its error on stderr and costs only its own items. Returns the new items per feed, a failed feed as its error."""
     fetcher = fetcher or fetch
     seen = prune_seen(load_seen(state_dir), now)
     counts: dict[str, int | str] = {}
@@ -170,7 +167,6 @@ def poll(state_dir: Path | str, now: datetime, fetcher=None) -> dict[str, int | 
             items = parse_items(fetcher(url), feed)
         except Exception as e:  # one feed down must not cost the others
             counts[feed] = f"{type(e).__name__}: {str(e)[:200]}"
-            record_error(state_dir, now, feed, counts[feed])
             log(JOB, f"{feed} failed: {counts[feed]}", err=True)
             continue
         n = 0

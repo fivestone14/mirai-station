@@ -158,13 +158,6 @@ def _state_dir() -> Path:
     return base / "sndk_gex"
 
 
-def _log(row: dict) -> None:
-    try:
-        atomic_io.append_jsonl(_state_dir() / "fetch_log.jsonl", row)
-    except Exception:
-        pass
-
-
 # --- server-side code (runs inside ONE cass_market_run per trip) -------------
 
 _PROBE_CODE = """
@@ -304,9 +297,8 @@ def discover_expiries(now: Optional[datetime] = None) -> list:
     days = [d.isoformat() for d in probe_days(today)]
     try:
         res = _nf._run(_PROBE_CODE % {"sym": TICKER, "days": days})
-    except Exception as e:
+    except Exception:
         LAST_DISCOVERY = "degraded"
-        _log({"ts": now.isoformat(), "probe_error": f"{type(e).__name__}: {e}"})
         return []
     found = sorted((res or {}).get("found") or [])
     errors = sorted(set((res or {}).get("errors") or []))
@@ -322,8 +314,6 @@ def discover_expiries(now: Optional[datetime] = None) -> list:
                 "probed_days": days, "ts": now.isoformat()})
         except Exception:
             pass
-    _log({"ts": now.isoformat(), "probed": len(days), "found": found,
-          "errors": errors or None, "discovery": LAST_DISCOVERY})
     return found
 
 
@@ -597,7 +587,6 @@ def sndk_chain(now: Optional[datetime] = None,
     anchor = _num(live_spot)
     if not anchor or anchor <= 0:
         LAST_REJECT = {"ts": now.isoformat(), "reason": "no_live_quote"}
-        _log({"ts": now.isoformat(), "skip": "no_live_quote"})
         return None
     with _CHAIN_LOCK:
         cached = _read_book_cache(now)

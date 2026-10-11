@@ -66,14 +66,13 @@ def test_seen_is_pruned_to_48_hours_so_an_old_item_may_come_back():
     assert prune_seen(seen, now) == {"young": seen["young"]}
 
 
-def test_a_failing_feed_is_logged_apart_and_costs_only_its_own_items(tmp_path, capsys):
+def test_a_failing_feed_is_named_on_stderr_and_costs_only_its_own_items(tmp_path, capsys):
     now = at(10, 3)
     counts = poll(tmp_path, now, fetcher=_fetcher({"cnbc_top": TimeoutError("timed out"), "fed_press": ValueError("not xml")}))
     assert counts["cnbc_top"] == "TimeoutError: timed out" and counts["fed_press"] == "ValueError: not xml" and counts["google_news"] == 2
-    errors = [json.loads(l) for l in (folder(tmp_path) / "errors.jsonl").read_text().splitlines()]
-    assert [(e["feed"], e["error"]) for e in errors] == [("cnbc_top", "TimeoutError: timed out"), ("fed_press", "ValueError: not xml")]
-    assert all(e["at"] == now.isoformat(timespec="seconds") for e in errors)
-    assert "cnbc_top failed" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "cnbc_top failed: TimeoutError: timed out" in err and "fed_press failed: ValueError: not xml" in err
+    assert not (folder(tmp_path) / "errors.jsonl").exists()
 
 
 def test_the_lock_refuses_a_second_poll_and_a_stale_one_is_taken_over(tmp_path, monkeypatch):

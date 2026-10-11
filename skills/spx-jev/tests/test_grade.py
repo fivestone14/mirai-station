@@ -131,7 +131,7 @@ def test_every_weight_is_one_and_an_event_read_never_reaches_them():
     assert w["sums"]["next_30"]["n"] == 2 and w["sums"]["next_30"]["event_reads"]["n"] == 1
 
 
-def test_run_appends_grades_writes_weights_and_logs_once(tmp_path, fixed_zones):
+def test_run_appends_grades_and_writes_weights_once(tmp_path, fixed_zones):
     state = write_state(tmp_path, DAY, _rows(), _climb())
     out = state / "spx_jev"
     (out / "hour").mkdir(parents=True)
@@ -142,8 +142,7 @@ def test_run_appends_grades_writes_weights_and_logs_once(tmp_path, fixed_zones):
     assert w["graded_runs"] == 1 and w["new_this_run"] == 1 and w["closed_out"] == 1
     assert json.loads((out / "weights.json").read_text())["questions"]["q1"] == w["questions"]["q1"]
     assert run(state, out, ALLOWED)["new_this_run"] == 0
-    log = [json.loads(l) for l in (out / "weights_log.jsonl").read_text().splitlines() if l.strip()]
-    assert len(log) == 1 and log[0]["changes"] == [{"question": "q1", "before": None, "after": 1.0, "n": 1, "in_step_3": True}]
+    assert not (out / "weights_log.jsonl").exists()                   # the weight history went on 2026-10-11: nothing read it
 
 
 def test_a_past_day_with_no_bars_is_closed_out(tmp_path, fixed_zones):

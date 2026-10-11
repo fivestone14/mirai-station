@@ -124,15 +124,16 @@ def test_meta_distinguishes_no_rows_from_no_bars():
     assert res["engines"] == {}          # rows but no bars → nothing gradeable
 
 
-def test_persist_writes_report_and_upserts_history(tmp_path, monkeypatch):
+def test_persist_upserts_history_and_writes_no_file_per_day(tmp_path, monkeypatch):
     monkeypatch.setattr(pab, "SKILL_DIR", tmp_path / "skills" / "mirai-left-eye")
     res = {"day": "2026-07-01", "tickers": {}, "overall": {}, "engines": {}}
     out = pab.persist(res)
-    assert out.exists() and out.name == "polarity-2026-07-01.json"
-    pab.persist(res)   # second run same day → history still has ONE line for it
     hist = tmp_path / "state" / "reversion" / "polarity_history.jsonl"
+    assert out == hist and hist.exists()
+    pab.persist(res)   # second run same day → history still has ONE line for it
     lines = [ln for ln in hist.read_text().splitlines() if ln.strip()]
-    assert len(lines) == 1
+    assert len(lines) == 1 and json.loads(lines[0])["day"] == "2026-07-01"
+    assert sorted(p.name for p in hist.parent.iterdir()) == ["polarity_history.jsonl"]
 
 
 def _lens_row(minutes, direction="call", fired=True):

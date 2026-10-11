@@ -11,9 +11,9 @@ sums with the time-of-day odds (clock.py), grades them, and writes only under ``
     state/spx_jev/cadence.json       how often each question is asked, recounted daily
     state/spx_jev/clock_days.json    the time-of-day counts per past session (see clock.py)
     state/spx_jev/clock_integral_days.json   the same on the average price, for the phone's call (clock.integral_odds)
-    state/spx_jev/grades.jsonl, weights.json, weights_log.jsonl   step 6 (see grade.py, weights.py)
+    state/spx_jev/grades.jsonl, weights.json   step 6 (see grade.py, weights.py)
     state/spx_jev/archive/{day}.jsonl   the raw archive: every read, grade and close-out of every lane (archive.py)
-    state/spx_jev/pool_30.json, pool_60.json, pool_log.jsonl   the end-price learning loop (pool.py)
+    state/spx_jev/pool_30.json, pool_60.json   the end-price learning loop (pool.py)
     state/spx_jev/integral_grades.jsonl   the average-price grade of every call (grade.integral_run)
     state/spx_jev/pool_30_integral.json, pool_integral_log.jsonl   the average-price learning loop (integral_loop.py)
 

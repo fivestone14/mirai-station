@@ -25,7 +25,6 @@ graded result -> scored per voice -> pool_v2 weights -> refit each morning -> ph
 | `tables/voice_scores/day=…/` | each voice's penalty and right/wrong per graded read |
 | `tables/_checks/refused_rows/{day}.jsonl` | rows a check refused, with the reason |
 | `pools/pool_v2/weights_{sum_id}.json` | pool_v2's voice weights (move and direction), days learned |
-| `pools/pool_v2/weight_updates_{sum_id}.jsonl` | one line per day learned |
 | `catalogs/voice_fits/{day}_{sum_id}.json` | the three learners fitted for that day (on days before it) and the answer matrix they were fitted on; the newest 10 days are kept, older files are pruned (every one can be rebuilt) |
 | `scoreboard.json` | the phone card's file |
 | `run_logs/job_run_log.jsonl` | every job and hook run |
@@ -173,7 +172,7 @@ the last hour; the outlet from its `<source>` tag), MarketWatch Top Stories (`fe
 and the Fed's press feed (`federalreserve.gov/feeds/press_all.xml`). One JSON line per NEW item to `state/spx_jev/headlines/{day}.jsonl`
 (ET day): `captured_at` (the poll's own clock, ISO ET: **the truth**), `pub_claimed` (the raw pubDate, untrusted), `feed`, `source`,
 `title`, `url`, `guid`. `seen.json` dedupes across polls (sha1 of the url and of the lower-cased title, pruned to 48 h, written
-atomically); a feed that fails goes to `errors.jsonl` and costs only its own items; `.lock` keeps two polls apart. **The
+atomically); a feed that fails is named with its error on stderr and costs only its own items; `.lock` keeps two polls apart. **The
 capture-time rule:** a question reads only what the station captured by its cut: `headlines_before(state_dir, row_ts, minutes)`
 returns the lines captured in the `headline_window_min` (60) minutes ending `headline_cut_min` (2) minutes before the read, newest
 first, never one captured later, whatever its feed claimed.

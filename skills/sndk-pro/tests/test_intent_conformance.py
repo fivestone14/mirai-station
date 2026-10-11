@@ -739,12 +739,11 @@ def test_every_state_folder_the_code_joins_is_on_both_pipeline_diagrams_and_in_t
 _WATCHED = datetime(2026, 8, 27, 11, 4, tzinfo=ET)     # a Thursday session; the real market clock agrees
 
 
-def _dead_man(monkeypatch, logs):
-    """sndk_deadman, with its pager's log and channel kept off the station."""
+def _dead_man(monkeypatch):
+    """sndk_deadman, with its pager's channel kept off the station."""
     monkeypatch.syspath_prepend(str(ROOT / "runtime"))
     from watch import push
     from watch.intraday import sndk_deadman
-    monkeypatch.setattr(push, "_LOG_DIR", str(logs))
     monkeypatch.setattr(push, "_channel", None)
     return sndk_deadman
 
@@ -783,7 +782,7 @@ def test_the_dead_man_watches_the_reader_on_the_readme_ceilings(tmp_path, monkey
     job's plist, the dead-man's constants and the reader's own timeouts; the
     reader's ceiling is then measured both sides, and a silent scanner is paged
     once, under its own name."""
-    deadman = _dead_man(monkeypatch, tmp_path / "pushes")
+    deadman = _dead_man(monkeypatch)
     bullet = README[README.index("`com.mirai-station.sndk-deadman`"):]
     bullet = re.sub(r"\s+", " ", bullet[:bullet.index("\n* ")])
     every = int(re.search(r"every (\d+) min", bullet).group(1))
@@ -841,7 +840,7 @@ def test_the_store_table_says_what_the_status_files_hold_and_who_reads_them(tmp_
     rel = health.relative_to(tmp_path).as_posix()
     assert kept - named(rel) == set(), f"{rel} holds keys its store row does not name"
 
-    deadman = _dead_man(monkeypatch, tmp_path / "pushes")
+    deadman = _dead_man(monkeypatch)
     ledger, read = set(), set()
     for outage, files in (("no_first_row", {}), ("silent", {"scanner_quiet_min": 15}),
                           ("reader_silent", {"scanner_quiet_min": 1, "read_min_ago": 30})):

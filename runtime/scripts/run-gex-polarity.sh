@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # launchd-fired wrapper: after-close GEX polarity + magnet A/B grader (shadow).
 # Grades today's gex_views (native-primary GexBox) and gex_theta (native) reads against the
-# day's 1-min bars and persists the verdicts to state/reversion/polarity-{day}.json
-# + the polarity_history.jsonl ledger. Read-only vs the live loop.
+# day's 1-min bars and persists the verdicts to the state/reversion/polarity_history.jsonl
+# ledger, one row per day. Read-only vs the live loop.
 set -u
 _SELF="${BASH_SOURCE[0]}"
 while [[ -L "$_SELF" ]]; do _SELF="$(readlink "$_SELF")"; done
