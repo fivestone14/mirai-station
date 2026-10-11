@@ -791,7 +791,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 <script>
 (function(){
   'use strict';
-  var URL_ = '/api/raw/file?root=state&path=spx_jev/latest.json';
+  var URL_ = '/api/store/file?name=JEV_LIVE_CARD';
   var STALE_MIN = 35, GONE_MIN = 60;           // reads land every 30 minutes: a row is stale only once the next read is overdue
   // The day's last read is 28 minutes before the close (the card's session.last_read, a full stamp), and its row
   // lands a few minutes before it: a row at or after ROW_LEAD_MIN before the last read is the day's last, not a
@@ -1712,7 +1712,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   }
 
   // ---- the opening lane: its own card, written every 5 minutes from 09:35 and once more at its close-out
-  var TAPE_URL = '/api/raw/file?root=state&path=spx_jev/lanes/tape/latest.json';
+  var TAPE_URL = '/api/store/file?name=JEV_OPENING_CARD';
   var LANE_HOURS = ['09:33', '16:05'];      // fetched in market hours: it leads the morning, then leaves the day's score
   var LANE_MARKS = ['09:33', '10:46'];      // and a few seconds after each 5-minute mark while it reads and closes out
   var TAPE_STEP_MIN = 5;
@@ -1827,7 +1827,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // night's checkpoints from 02:35 market time. It leads the page alone from the day's first pre-market read until
   // the opening lane's first read takes over (the card's handover, 09:35); then its call folds to one line, which
   // gives each check's result once the 10:06 close-out has graded it. A card of another day is never drawn.
-  var PRE_URL = '/api/raw/file?root=state&path=spx_jev/lanes/premarket/latest.json';
+  var PRE_URL = '/api/store/file?name=JEV_PREMARKET_CARD';
   var PRE_HOURS = ['02:35', '16:05'];       // fetched through the night and after the hand-over until the close-out lands;
                                             // the folded call is kept through the session, as the opening's score is
   var PRE_LATE_MIN = 6;                     // the lane reads nothing 5 minutes or more after a checkpoint (premarket.LATE_FIRE_MIN),
@@ -2212,9 +2212,9 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // are fetched on every new card and, while the sheet is open, on the same terms as the book. The day is the
   // card's market day: after the close and before the next day's card the chart is the last session's, as the card
   // is. The live dot is the page's own quote (spot), never a second poll.
-  var BARS_URL = '/api/raw/file?root=state&path=spx_jev/bars/', BARS_MS = 60000, BARS_HOURS = ['09:30', '16:05'];
-  var BOOK_URL = '/api/raw/file?root=state&path=reversion/', BOOK_MS = 60000;
-  var GRADES_URL = '/api/raw/file?root=state&path=spx_jev/integral_grades.jsonl&limit=400';
+  var BARS_URL = '/api/store/file?name=SPX_PRICE_BARS_BY_MINUTE&day=', BARS_MS = 60000, BARS_HOURS = ['09:30', '16:05'];
+  var BOOK_URL = '/api/store/file?name=SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN&day=', BOOK_MS = 60000;
+  var GRADES_URL = '/api/store/file?name=JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON&lane=live&limit=400';
   var bars = null, barsDay = null, barsAt = 0, barsInflight = false;
   var book = null, bookDay = null, bookAt = 0, bookInflight = false;
   var grades = null, gradesAt = 0, gradesInflight = false;
@@ -2258,7 +2258,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     if(day !== barsDay){ bars = null; barsDay = day; barsAt = 0; paintSpark(); }
     if(Date.now() - barsAt < BARS_MS) return;
     barsInflight = true; barsAt = Date.now();
-    rawRows(BARS_URL + day + '.jsonl&limit=420').then(function(rows){ if(rows){ bars = rows; paintSpark(); if(chartVisible()) paintChart(); } })
+    rawRows(BARS_URL + day + '&limit=420').then(function(rows){ if(rows){ bars = rows; paintSpark(); if(chartVisible()) paintChart(); } })
       .catch(function(){}).finally(function(){ barsInflight = false; });
   }
   function pollBook(){
@@ -2266,7 +2266,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     if(day !== bookDay){ book = null; bookDay = day; bookAt = 0; }
     if(Date.now() - bookAt < BOOK_MS) return;
     bookInflight = true; bookAt = Date.now();
-    rawRows(BOOK_URL + day + '.jsonl&limit=3').then(function(rows){ if(rows){ book = bookRow(rows); paintChart(); } })
+    rawRows(BOOK_URL + day + '&limit=3').then(function(rows){ if(rows){ book = bookRow(rows); paintChart(); } })
       .catch(function(){}).finally(function(){ bookInflight = false; });
   }
   function pollGrades(){
@@ -2599,7 +2599,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // in-session tick. Once the options provider's book has been down 15 minutes straight its questions are blank, and the
   // banner under the price box says so. A file of another market day, or older than OPTIONS_FRESH_MS, means the alert
   // pass is not running, which says nothing about the book: no banner.
-  var OPTIONS_URL = '/api/raw/file?root=state&path=spx_jev/mirai_prediction/options_data.json';
+  var OPTIONS_URL = '/api/store/file?name=OPTIONS_FEED_STATUS_CARD';
   var OPTIONS_FRESH_MS = 10 * 60000;
   var options = null;
   function optionsDown(o, now, today){
@@ -2618,7 +2618,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   }
   function pollOptions(){
     fetch(OPTIONS_URL, {cache:'no-store'}).then(function(r){ return r.ok ? r.json() : null; })
-      .then(function(j){ options = j && j.kind === 'json' ? j.data : null; })   // /api/raw/file wraps the file as {kind, data}
+      .then(function(j){ options = j && j.kind === 'json' ? j.data : null; })   // /api/store/file wraps the file as {kind, data}
       .catch(function(){})                        // a failed fetch keeps the last file, which ages out on its own
       .finally(function(){ var box = $('od'); if(box) optionsBanner(box, options); });
   }
@@ -2628,7 +2628,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // combined forecast (pool_v2, the call shown above) was right against the usual-odds guess (the historical odds) it is
   // scored against, and the verdict in words; the row stays hidden until the file exists. A tap opens the learning loop:
   // the two right rates as bars, the score, the days' skill as a line, and every voice, the old 50/50 blend among them.
-  var LEARN_URL = '/api/raw/file?root=state&path=spx_jev/mirai_prediction/scoreboard.json', LEARN_SUM = 'average_30', LEARN_MS = 60000;
+  var LEARN_URL = '/api/store/file?name=FORECASTER_SCOREBOARD_CARD', LEARN_SUM = 'average_30', LEARN_MS = 60000;
   var BASE = 'historical_odds', BASE_WORDS = 'Usual-odds guess', DECIDE_AT = 300;
   var board = null;
   function learnSum(b){ var s = b && b.sums && b.sums[LEARN_SUM]; return s && s.graded_reads_count && s.pool_v2 ? s : null; }
@@ -2716,7 +2716,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   }
   function pollLearn(){
     fetch(LEARN_URL, {cache:'no-store'}).then(function(r){ return r.ok ? r.json() : null; })
-      .then(function(j){ board = j && j.kind === 'json' ? j.data : null; paintRecord(); })   // /api/raw/file wraps the file as {kind, data}
+      .then(function(j){ board = j && j.kind === 'json' ? j.data : null; paintRecord(); })   // /api/store/file wraps the file as {kind, data}
       .catch(function(){});
   }
 
@@ -2727,7 +2727,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // are whole percents (up_pct, flat_pct, down_pct), the usual odds beside each horizon as base_rate_shown_to_claude; the
   // reasons come with their words (reason_words.py), so nothing here translates a path. A horizon the read did not ask
   // (the close too near) has no row.
-  var CLAUDE_URL = '/api/raw/file?root=state&path=spx_claude_forecast/latest.json', NEAR = 3;
+  var CLAUDE_URL = '/api/store/file?name=CLAUDE_FORECAST_CARD', NEAR = 3;
   var HORIZONS = [['next_30_minutes', '30 min', 'next 30 minutes'], ['next_60_minutes', '60 min', 'next 60 minutes'], ['to_close', 'Close', 'to the close']];
   var DIRS = [['down_pct', 'dn', 'Down'], ['flat_pct', 'fl', 'Flat'], ['up_pct', 'up', 'Up']];
   var claude = null;
@@ -2852,7 +2852,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   function pollClaude(){
     fetch(CLAUDE_URL, {cache:'no-store'}).then(function(r){ return r.ok ? r.json() : null; })
       .then(function(j){
-        var c = j && j.kind === 'json' ? j.data : j;   // /api/raw/file wraps the file as {kind, data}
+        var c = j && j.kind === 'json' ? j.data : j;   // /api/store/file wraps the file as {kind, data}
         if(!(c && c.forecast)) return;
         claude = /^sample:/.test(c.read_id || '') ? null : c;
         if(!claude) $('claude').hidden = true; else drawClaude();

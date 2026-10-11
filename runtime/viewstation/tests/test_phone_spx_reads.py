@@ -193,8 +193,8 @@ def test_an_open_day_draws_its_price_with_a_dot_at_each_call_and_the_wrong_ones_
     assert "dayLine(d, rows, head.clientWidth || LINE_W)" in _fn("dayCard") and re.search(r"\n\.dh\{[^}]*;margin:-12px 0 0;padding:12px 0 0;border:0;", READS)
     bare = _run("var b = dayCard(D.d, true); setImmediate(function(){ console.log(JSON.stringify(b.kids.length)); });", {"d": d, "bars": None})
     assert bare == 3
-    assert _var("BARS_URL").strip() == "var BARS_URL = '/api/raw/file?root=state&path=spx_jev/bars/';"
-    assert "fetch(BARS_URL + day + '.jsonl&limit=420'" in _fn("barsOf")
+    assert _var("BARS_URL").strip() == "var BARS_URL = '/api/store/file?name=SPX_PRICE_BARS_BY_MINUTE&day=';"
+    assert "fetch(BARS_URL + day + '&limit=420'" in _fn("barsOf")
     assert ".price{display:block;width:100%;height:auto;margin-top:8px;font-family:var(--sans)}" in READS and ".price text{font-size:11px;" in READS
 
 
@@ -247,7 +247,7 @@ def test_the_pinned_summary_counts_the_last_five_days_beside_one_control_for_eve
 
 
 def test_the_page_reads_the_grades_through_the_raw_route_and_keeps_an_opened_call_open():
-    assert _var("GRADES_URL").strip() == "var GRADES_URL = '/api/raw/file?root=state&path=spx_jev/integral_grades.jsonl&limit=400';"
+    assert _var("GRADES_URL").strip() == "var GRADES_URL = '/api/store/file?name=JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON&lane=live&limit=400';"
     assert _var("DAYS_SUMMED").strip() == "var DAYS_SUMMED = 5, SCALE_PTS = 32, POLL_MS = 60000;"
     assert "if(key === drawn && !failed) return;" in _fn("poll")                       # the same list leaves the page alone
     assert "if(!(d.day in opened)) opened[d.day] = i === 0;" in _fn("draw")           # the newest day opens, a hand choice stays

@@ -3,8 +3,9 @@
 
 Serves the desktop page, the phone pages under /m, and the JSON routes behind
 them (the live spot, a replay day, the SNDK payload, pipeline replay and memory,
-the Day Visual LOB board) plus an opt-in raw-data explorer over the on-disk
-state files. Pure Python stdlib — no third-party deps — but run it under the
+the Day Visual LOB board), the pages' data files served by store NAME through
+runtime/station_paths.py (/api/store/file, /api/store/index), plus an opt-in
+raw-data explorer over the on-disk state files. Pure Python stdlib — no third-party deps — but run it under the
 mirai-station venv so snapshot.py can import the skill modules.
 
     python runtime/viewstation/server.py            # binds 0.0.0.0:8787
@@ -58,6 +59,7 @@ HERE = Path(__file__).resolve().parent
 STATIC = HERE / "static"
 sys.path.insert(0, str(HERE))
 import snapshot as snap  # noqa: E402
+import station_paths  # noqa: E402  (snapshot put runtime/ on sys.path)
 
 PLUGIN_ROOT = snap.PLUGIN_ROOT
 STATE_DIR = snap.STATE_DIR
@@ -342,7 +344,87 @@ def _raw_file(root_label: str, rel: str, limit: int) -> dict:
     root = _raw_roots().get(root_label)
     if root is None:
         return {"error": "unknown root"}
-    path = _safe_join(root, rel)
+    return _read_raw(root, _safe_join(root, rel), limit)
+
+
+# --- stores by name --------------------------------------------------------------
+# The pages ask for a store by its NAME in runtime/station_paths.py (JEV_LIVE_CARD,
+# SPX_PRICE_BARS_BY_MINUTE&day=...), so a folder move changes that one file and
+# nothing a page holds. Same door as the raw explorer: the state root only, the
+# same readable types, the same denied subtrees, the same escape check.
+_STORE_KEY_VALUE = re.compile(r"[A-Za-z0-9_$.-]{1,40}")
+
+
+def _store_keys(st, qs: dict) -> dict | None:
+    """The store's keys from the query, each checked for shape; None when one is missing or malformed."""
+    keys = {}
+    for key in st.key_names():
+        value = qs.get(key, [""])[0]
+        if key == "day":
+            if not station_paths.DAY_PATTERN.fullmatch(value):
+                return None
+        elif not _STORE_KEY_VALUE.fullmatch(value):
+            return None
+        keys[key] = value
+    return keys
+
+
+def _store_path(root: Path, name: str, qs: dict) -> Path | None:
+    """The file a named store resolves to under the state root, or None when the name, its keys or the
+    resolved place is not something the explorer serves."""
+    try:
+        st = station_paths.store(name)
+    except KeyError:
+        return None
+    if st.base != "state":
+        return None
+    keys = _store_keys(st, qs)
+    if keys is None:
+        return None
+    try:
+        path = st.path(root, **keys)
+        rel = path.relative_to(root)
+    except (KeyError, ValueError):
+        return None
+    return _safe_join(root, str(rel))
+
+
+def _store_file(name: str, qs: dict, limit: int) -> dict:
+    root = _raw_roots()["state"]
+    return _read_raw(root, _store_path(root, name, qs), limit)
+
+
+def _store_index(name: str, qs: dict) -> dict:
+    """The days a day-keyed store has on disk, newest last: like /api/raw/index for one store, so a page that
+    used to filter the whole listing by folder asks by name instead."""
+    root = _raw_roots()["state"]
+    try:
+        st = station_paths.store(name)
+    except KeyError:
+        return {"error": "not found"}
+    if st.base != "state" or "day" not in st.key_names() or "{day}" not in st.relative.rpartition("/")[2]:
+        return {"error": "not indexed by day"}
+    others = _store_keys(st, {**qs, "day": ["2000-01-01"]})
+    if others is None:
+        return {"error": "not found"}
+    others.pop("day")
+    folder = st.folder(root, **others)
+    pattern = re.compile(re.escape(st.file_name(day="\0", **others)).replace("\x00", r"(\d{4}-\d{2}-\d{2})"))
+    items = []
+    if folder.is_dir() and _safe_join(root, str(folder.relative_to(root))) is not None and not _raw_denied(root, folder.resolve()):
+        for p in sorted(folder.iterdir()):
+            m = pattern.fullmatch(p.name)
+            if not m or not p.is_file() or p.suffix not in _RAW_SUFFIXES:
+                continue
+            try:
+                stat = p.stat()
+            except OSError:
+                continue
+            items.append({"day": m.group(1), "rel": str(p.relative_to(root)), "size": stat.st_size, "mtime": stat.st_mtime})
+    return {"name": name, "items": items}
+
+
+def _read_raw(root: Path, path: Path | None, limit: int) -> dict:
     if path is None or not path.is_file():
         return {"error": "not found"}
     if path.suffix not in _RAW_SUFFIXES or _raw_denied(root, path):
@@ -594,6 +676,17 @@ class Handler(BaseHTTPRequestHandler):
                 # wait here, off the GIL, and the door stays instant.
                 with _RAW_FILE_GATE:
                     return self._send_json(_raw_file(root, rel, int(limit)))
+
+            if route == "/api/store/file":
+                name = qs.get("name", [""])[0]
+                limit = qs.get("limit", ["500"])[0]
+                if not re.fullmatch(r"\d{1,6}", limit):
+                    return self._send_json({"error": "bad limit"}, 400)
+                with _RAW_FILE_GATE:
+                    return self._send_json(_store_file(name, qs, int(limit)))
+
+            if route == "/api/store/index":
+                return self._send_json(_store_index(qs.get("name", [""])[0], qs))
 
             if route == "/api/health":
                 return self._send_json({"ok": True, "port": PORT})

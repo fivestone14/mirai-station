@@ -31,7 +31,13 @@ except Exception:  # pragma: no cover - zoneinfo always present on 3.9+
 # --- locate the plugin + make the skill modules importable -------------------
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]          # .../mirai-station
 SKILL_DIR = PLUGIN_ROOT / "skills" / "mirai-left-eye"
-STATE_DIR = PLUGIN_ROOT / "state"
+
+_RUNTIME = str(PLUGIN_ROOT / "runtime")                     # station_paths names every store this server reads
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
+
+STATE_DIR = station_paths.state_root()
 
 if str(SKILL_DIR) not in sys.path:
     sys.path.insert(0, str(SKILL_DIR))
@@ -83,7 +89,7 @@ _SPOT_FETCH_LOCK = __import__("threading").Lock()   # single-flight for the upst
 # not add load to earn its gate), so the file is exactly "what a watcher
 # already paid for". Unwatched stretches keep the hunter's 2-min diary spots.
 _TAPE_TICKERS = ("SNDK",)
-_TAPE_DIR = STATE_DIR / "sndk_tape"
+_TAPE_DIR = station_paths.SNDK_LAST_PRICES_BY_QUOTE.folder(STATE_DIR)
 _TAPE_MIN_GAP_S = 4.0      # append floor: a burst of pollers still writes ≤1 row/4s
 _TAPE_LAST: dict = {"ts": 0.0}
 
@@ -101,7 +107,7 @@ def _tape_append(ticker: str, px: float, mono_ts: float) -> None:
         if not (9 * 60 + 30 <= hm <= 16 * 60):
             return
         import atomic_io               # SKILL_DIR is on sys.path (module header)
-        atomic_io.append_jsonl(_TAPE_DIR / f"{now.date().isoformat()}.jsonl",
+        atomic_io.append_jsonl(_TAPE_DIR / station_paths.SNDK_LAST_PRICES_BY_QUOTE.file_name(day=now.date().isoformat()),
                                {"ts": now.isoformat(), "spot": round(float(px), 4),
                                 "src": "schwab_quote"})
         _TAPE_LAST["ts"] = mono_ts
@@ -267,14 +273,15 @@ def _payload_key() -> tuple:
     """What the payload depends on: the newest diary file and, for that day, the
     readings and the bars (the side packet is built from the bars). Sizes and mtimes, no contents read."""
     state = _state_dir()
-    diary = state / "sndk_reversion"
+    diary = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(state)
     files = sorted(diary.glob("[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl")) if diary.is_dir() else []
     if not files:
         return ("no diary",)
     newest = files[-1]
     day = newest.stem
     key = [str(state), day]
-    for path in (newest, state / "sndk_reads" / f"{day}.jsonl", state / "sndk_bars" / f"{day}.jsonl"):
+    for path in (newest, station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN.path(state, day=day),
+                 station_paths.SNDK_PRICE_BARS_BY_MINUTE.path(state, day=day)):
         try:
             st = path.stat()
             key.append((path.name, st.st_size, st.st_mtime_ns))
@@ -516,8 +523,8 @@ def _jsonl_rows(path: Path) -> list:
 def pipeline_days(limit: int = 30) -> list:
     """Days that have a diary and minute bars, newest first."""
     state = _state_dir()
-    have_bars = {p.stem for p in (state / "sndk_bars").glob("[0-9]*-[0-9]*-[0-9]*.jsonl")}
-    days = sorted((p.stem for p in (state / "sndk_reversion").glob("[0-9]*-[0-9]*-[0-9]*.jsonl")
+    have_bars = {p.stem for p in station_paths.SNDK_PRICE_BARS_BY_MINUTE.folder(state).glob("[0-9]*-[0-9]*-[0-9]*.jsonl")}
+    days = sorted((p.stem for p in station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(state).glob("[0-9]*-[0-9]*-[0-9]*.jsonl")
                    if p.stem in have_bars), reverse=True)
     return days[:limit]
 
@@ -526,7 +533,7 @@ def pipeline_events(day: str) -> dict:
     state = _state_dir()
     absent: list = []
     scans, books, seen = [], [], None
-    for r in _jsonl_rows(state / "sndk_reversion" / f"{day}.jsonl"):
+    for r in _jsonl_rows(station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(state, day=day)):
         if r.get("ticker") != "SNDK" or (r.get("meta") or {}).get("forced"):
             continue
         m = _minutes_since_open(r.get("ts") or "")
@@ -540,12 +547,12 @@ def pipeline_events(day: str) -> dict:
             books.append(_minutes_since_open(ba) if ba else m)
     if not scans:
         absent.append("no diary rows for the day")
-    bars = [m for b in _jsonl_rows(state / "sndk_bars" / f"{day}.jsonl")
+    bars = [m for b in _jsonl_rows(station_paths.SNDK_PRICE_BARS_BY_MINUTE.path(state, day=day))
             if (m := _minutes_since_open(b.get("ts") or "")) is not None]
     if not bars:
         absent.append("no minute bars on disk for the day")
     reads = []
-    for r in _jsonl_rows(state / "sndk_reads" / f"{day}.jsonl"):
+    for r in _jsonl_rows(station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN.path(state, day=day)):
         m = _minutes_since_open(r.get("ts") or "")
         if m is None:
             continue
@@ -563,15 +570,18 @@ def pipeline_events(day: str) -> dict:
 
 
 # --- SNDK memory overview (08-21) — what the model's history tool can reach -----
-# Read-only inventory of state/sndk_rag (the SNDK RAG store): the per-read
+# Read-only inventory of the SNDK reader's memory store (sndk_rag today): the per-read
 # slices (Face A metadata + the model's own sentence), the rolled-up day
 # summaries, and the standing terrain. Counts and dates only — the records
 # themselves come back through the real CLI (server._memory_query), so the
 # Memory view shows exactly what the model would be handed.
 def sndk_memory_overview() -> dict:
-    rag = _state_dir() / "sndk_rag"     # where that CLI finds it, per call
+    state = _state_dir()                 # where that CLI finds it, per call
+    sl_dir = station_paths.SNDK_OPTIONS_READER_NOTES_BY_READ.folder(state)
+    sp = station_paths.SNDK_OPTIONS_READER_SESSION_SUMMARIES_BY_DAY.path(state)
+    tp = station_paths.SNDK_OPTIONS_READER_TERRAIN_STATE.path(state)
+    rag = sp.parent                      # the store the Memory view names
     days = []
-    sl_dir = rag / "slices"
     if sl_dir.exists():
         for p in sorted(sl_dir.glob("[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl")):
             rows = []
@@ -608,7 +618,6 @@ def sndk_memory_overview() -> dict:
                          "vectors": vec,
                          "last_line": (rows[-1].get("narrative") or "")[:160]})
     summaries = {"n": 0, "last": None, "first": None, "rag_v": None}
-    sp = rag / "summaries.jsonl"
     if sp.exists():
         try:
             dates = []
@@ -628,7 +637,6 @@ def sndk_memory_overview() -> dict:
         except OSError:
             pass
     terrain = None
-    tp = rag / "terrain.json"
     if tp.exists():
         try:
             t = json.loads(tp.read_text())

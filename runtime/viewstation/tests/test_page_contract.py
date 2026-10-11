@@ -585,7 +585,7 @@ def test_the_shading_baseline_is_the_opening_minute_not_the_first_scan():
     off the bar sidecar, and the word "open" is spent only when the reading really
     sits on bar 0."""
     assert "async pullDay()" in PAGE
-    assert "path=sndk_side/${day}.jsonl&limit=1" in PAGE
+    assert "name=SNDK_PRICE_BAR_FACTS_BY_READ&day=${day}&limit=1" in PAGE
     assert "pick('px.session_open')" in PAGE
     assert "SNDK.pullDay();" in PAGE                        # pollPath drives it
     assert "_op.bar===0" in PAGE                            # ...and only bar 0 earns the word
@@ -714,8 +714,8 @@ def test_the_minute_price_log_has_a_stale_alarm_and_its_poller():
     writes health.json "so a watcher can see it breathing" and nothing watched.
     Pinned as strings, like every contract in this file."""
     assert "async pollBars(){" in PAGE
-    assert "path=sndk_bars/health.json" in PAGE                 # the error text
-    assert "path=sndk_bars/${day}.jsonl&limit=1" in PAGE        # the record the board reads
+    assert "name=SNDK_PRICE_BARS_HEALTH_LATEST" in PAGE          # the error text
+    assert "name=SNDK_PRICE_BARS_BY_MINUTE&day=${day}&limit=1" in PAGE   # the record the board reads
     assert "SNDK.pollRead(); SNDK.pollTape(); SNDK.pollBars();" in PAGE   # resume starts it
     assert "clearTimeout(SNDK.timers.bars);" in PAGE            # hide stops it
     assert "MINUTE LOG STALE" in PAGE

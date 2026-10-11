@@ -49,6 +49,8 @@ OPEN_JSON = {
     "/api/lob/board": f"day={DAY}&ticker=SNDK",
     "/api/raw/index": "",
     "/api/raw/file": f"root=state&path=sndk_reversion/{DAY}.jsonl",
+    "/api/store/file": f"name=SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN&day={DAY}",
+    "/api/store/index": "name=SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN",
     "/api/health": "",
     "/api/version": "",
     "/api/whoami": "",

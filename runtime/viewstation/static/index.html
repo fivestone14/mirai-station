@@ -3225,12 +3225,12 @@ function rowToScan(r){
     wt: normWt(r.watchtower) };
 }
 async function fetchRecent(){
-  const idx = await fetch('/api/raw/index',{cache:'no-store'});
+  const idx = await fetch('/api/store/index?name=SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN',{cache:'no-store'});
   const j = await idx.json();
-  const files = (j.state||[]).filter(e=>/^reversion\/\d{4}-\d{2}-\d{2}\.jsonl$/.test(e.rel||''));
+  const files = (j.items||[]);
   if(!files.length) return null;
   files.sort((a,b)=>(b.mtime||0)-(a.mtime||0));
-  const res = await fetch(`/api/raw/file?root=state&path=${files[0].rel}&limit=60`,{cache:'no-store'});
+  const res = await fetch(`/api/store/file?name=SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN&day=${files[0].day}&limit=60`,{cache:'no-store'});
   const d = await res.json();
   /* 20-agent sweep 08-11: the server tags a torn tail line {_unparsed:...} (a
      40KB row mid-append is NOT atomic) — it must never become newestRaw and
@@ -3245,11 +3245,11 @@ async function fetchRecent(){
 // load every past reversion/<date>.jsonl so the diary book has a page per day (today stays live via LIVEROWS)
 async function loadDiaryHistory(){
   try{
-    const idx=await fetch('/api/raw/index',{cache:'no-store'}); const j=await idx.json();
-    const files=(j.state||[]).filter(e=>/^reversion\/\d{4}-\d{2}-\d{2}\.jsonl$/.test(e.rel||''));
+    const idx=await fetch('/api/store/index?name=SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN',{cache:'no-store'}); const j=await idx.json();
+    const files=(j.items||[]);
     files.sort((a,b)=>(b.mtime||0)-(a.mtime||0));
     const chunks=await Promise.all(files.slice(0,45).map(async fm=>{
-      try{ const res=await fetch(`/api/raw/file?root=state&path=${fm.rel}&limit=500`,{cache:'no-store'});
+      try{ const res=await fetch(`/api/store/file?name=SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN&day=${fm.day}&limit=500`,{cache:'no-store'});
         const d=await res.json();
         // per-row guard (same as fetchRecent): one malformed row must drop itself, not the day
         return (d&&d.rows)?d.rows.filter(r=>r&&typeof r==='object'&&!r._unparsed&&r.ts).map(r=>{ try{ return rowToScan(r); }catch(e){ return null; } }).filter(Boolean):[]; }catch(e){ return []; }   // torn {_unparsed} tails never become book pages (sweep 08-11)
@@ -3265,11 +3265,11 @@ async function loadDiaryHistory(){
 // and the LIVEROWS merge in gxSpotPath keeps the live edge current between refreshes.
 async function fetchPathSeries(){
   try{
-    const idx=await fetch('/api/raw/index',{cache:'no-store'}); const j=await idx.json();
-    const files=(j.state||[]).filter(e=>/^reversion\/\d{4}-\d{2}-\d{2}\.jsonl$/.test(e.rel||''));
+    const idx=await fetch('/api/store/index?name=SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN',{cache:'no-store'}); const j=await idx.json();
+    const files=(j.items||[]);
     if(!files.length) return;
     files.sort((a,b)=>(b.mtime||0)-(a.mtime||0));
-    const res=await fetch(`/api/raw/file?root=state&path=${files[0].rel}&limit=500`,{cache:'no-store'});
+    const res=await fetch(`/api/store/file?name=SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN&day=${files[0].day}&limit=500`,{cache:'no-store'});
     const d=await res.json();
     const raw=(d&&d.rows)?d.rows:[];
     const pts=[]; let day=null;
@@ -4553,7 +4553,7 @@ function gxPaint(){
 let DBOOK={book:null, at:0};
 async function fetchDatedBook(){
   try{
-    const r=await fetch('/api/raw/file?root=state&path=dated_gex/book.json',{cache:'no-store'});
+    const r=await fetch('/api/store/file?name=SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_LATEST',{cache:'no-store'});
     const d=await r.json();
     const b=(d&&d.kind==='json')?d.data:null;
     if(b&&b.ok&&Array.isArray(b.bands)){
@@ -7545,12 +7545,12 @@ async function loadSiege(){
   if(_siegeLoading) return; _siegeLoading=true;
   const out={latest:null, cards:[]};
   try{
-    const r=await fetch('/api/raw/file?root=state&path=siege/latest.json',{cache:'no-store'});
+    const r=await fetch('/api/store/file?name=SPX_DEALER_WALLS_LATEST',{cache:'no-store'});
     const d=await r.json(); if(d && d.kind==='json') out.latest=d.data;   // {"error":"not found"} → stays cold
   }catch(e){}
   try{
     const day=(out.latest&&out.latest.session)||new Date().toISOString().slice(0,10);
-    const r=await fetch(`/api/raw/file?root=state&path=siege/cards/${encodeURIComponent(day)}.jsonl&limit=500`,{cache:'no-store'});
+    const r=await fetch(`/api/store/file?name=SPX_DEALER_WALL_TOUCHES_BY_EVENT&day=${encodeURIComponent(day)}&limit=500`,{cache:'no-store'});
     const d=await r.json(); if(d && d.rows) out.cards=d.rows;
   }catch(e){}
   SIEGE=out; _siegeLoading=false;
@@ -7677,13 +7677,13 @@ let _planesLoading=false;
 async function loadPlaneLedgers(){
   if(_planesLoading) return; _planesLoading=true;
   const touched=[];
-  const jf=async(p,limit)=>{ const r=await fetch(`/api/raw/file?root=state&path=${p}${limit!=null?'&limit='+limit:''}`,{cache:'no-store'}); return r.json(); };
+  const jf=async(q,limit)=>{ const r=await fetch(`/api/store/file?${q}${limit!=null?'&limit='+limit:''}`,{cache:'no-store'}); return r.json(); };
   // store-sourced strings (verdicts) end up in innerHTML — escape them, same
   // local-helper pattern as siegeReadiness
   const esc=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   // 1 · GRAVITY + FADE LENS — the whole polarity history (one nightly row per graded day)
   try{
-    const d=await jf('reversion/polarity_history.jsonl',0);   // limit=0 → every row
+    const d=await jf('name=SPX_OPTIONS_SCANNER_GRADES_BY_DAY',0);   // limit=0 → every row
     const rows=((d&&d.rows)||[]).filter(r=>r&&r.day&&!r._unparsed);
     if(rows.length){
       // gravity: cumulative A/B across every graded day + the newest nightly verdict.
@@ -7740,14 +7740,13 @@ async function loadPlaneLedgers(){
   }catch(e){}
   // 2 · LOB — baseline clock (baselines/lob_flow.json) + per-day defense cards
   try{
-    const b=await jf('lob_flow/baselines/lob_flow.json');
+    const b=await jf('name=SPX_OPTIONS_DEPTH_BASELINES_STATE');
     const days=(b&&b.kind==='json'&&b.data&&Array.isArray(b.data.days))?b.data.days.length:null;
-    const idx=await fetch('/api/raw/index',{cache:'no-store'}); const j=await idx.json();
-    const files=(j.state||[]).filter(e=>/^lob_flow\/cards\/\d{4}-\d{2}-\d{2}\.json$/.test(e.rel||''))
-      .sort((a,c)=>String(a.rel).localeCompare(String(c.rel)));
+    const idx=await fetch('/api/store/index?name=SPX_ORDER_FLOW_GRADES_BY_DAY',{cache:'no-store'}); const j=await idx.json();
+    const files=(j.items||[]).sort((a,c)=>String(a.day).localeCompare(String(c.day)));
     const cards=(await Promise.all(files.slice(-45).map(async fm=>{
-      try{ const d=await jf(fm.rel);
-        return (d&&d.kind==='json'&&d.data)?{day:(fm.rel.match(/(\d{4}-\d{2}-\d{2})/)||[])[1], data:d.data}:null;
+      try{ const d=await jf('name=SPX_ORDER_FLOW_GRADES_BY_DAY&day='+fm.day);
+        return (d&&d.kind==='json'&&d.data)?{day:fm.day, data:d.data}:null;
       }catch(e){ return null; } }))).filter(Boolean);
     if(days!=null||cards.length){
       const r=LY.find(l=>l.id==='lob').rd;
@@ -8381,7 +8380,7 @@ let LEDGERS=null, _ledgersLoading=false;
 async function loadLedgers(){
   if(_ledgersLoading) return; _ledgersLoading=true;
   try{
-    const res=await fetch('/api/raw/file?root=state&path=reversion/polarity_history.jsonl&limit=14',{cache:'no-store'});
+    const res=await fetch('/api/store/file?name=SPX_OPTIONS_SCANNER_GRADES_BY_DAY&limit=14',{cache:'no-store'});
     const d=await res.json(); const rows=(d&&d.rows)||[];
     /* 20-agent sweep 08-11: pick the newest by DAY, not by file position — the
        grader's upsert rewrites a re-graded PAST day at the file tail, and the
@@ -10150,7 +10149,7 @@ function renderDict(){
    SNDK-PRO — the weekly-tenor GEX terminal tab. SELF-CONTAINED:
    every identifier is SNDK./snk-prefixed; the SPX Map/FEED/SPOT loops are
    never touched. Reads the parallel producer's diary via the SAME generic
-   endpoints (/api/raw/index + /api/raw/file → state/sndk_reversion/*.jsonl),
+   endpoints (/api/store/index + /api/store/file by store name → the scanner's rows),
    the sr-1 LIVE READ from the second producer (→ state/sndk_reads/*.jsonl —
    the magnet band, the frozen list and the model's observation; own file,
    own poll, absent until it lands), and
@@ -11244,9 +11243,9 @@ async function openSnkHistModal(){
   shell(`<div class="snkh-note">loading state/sndk_reads…</div>`);
   let rows=[];
   try{
-    const rel=SNDK.readFile||((SNDK.read&&SNDK.read.ts)?`sndk_reads/${String(SNDK.read.ts).slice(0,10)}.jsonl`:null);
-    if(!rel) throw new Error('no reads file recorded yet');
-    const r=await fetch(`/api/raw/file?root=state&path=${rel}&limit=0`,{cache:'no-store'});
+    const day=SNDK.readDay||((SNDK.read&&SNDK.read.ts)?String(SNDK.read.ts).slice(0,10):null);
+    if(!day) throw new Error('no reads file recorded yet');
+    const r=await fetch(`/api/store/file?name=SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN&day=${day}&limit=0`,{cache:'no-store'});
     const d=await r.json();
     rows=((d&&d.rows)||[]).filter(x=>x&&typeof x==='object'&&x.ts&&x.spot!=null&&isFinite(+x.spot));
     /* fidelity audit 08-10: the store is ERA-STAMPED so a later read can never
@@ -12308,7 +12307,7 @@ const SNDK = {
   // THE LIVE READ (sr-1) — the newest state/sndk_reads row: the magnet band, the frozen
   // list and the model's observation. Its own file, its own producer, its own poll; null
   // until one lands and every new surface hides while it is.
-  readFile:null, read:null, readTs:null, readFails:0,
+  readFile:null, readDay:null, read:null, readTs:null, readFails:0,
   // THE MINUTE PRICE LOG (09-14) — state/sndk_bars: {day, lastTs, health}. The board's day
   // high and low, its price ranges and every breakout are read off this log, and a stalled
   // log used to be silent everywhere. barsInfo() turns it into the MINUTE LOG STALE pill.
@@ -12475,12 +12474,12 @@ const SNDK = {
     SNDK.timers.diary=null;
     if(!SNDK.on||document.hidden) return;    // visibilitychange/show() restarts us
     try{
-      const idx=await fetch('/api/raw/index',{cache:'no-store'}); const j=await idx.json();
-      const files=(j.state||[]).filter(e=>/^sndk_reversion\/\d{4}-\d{2}-\d{2}\.jsonl$/.test(e.rel||''));
+      const idx=await fetch('/api/store/index?name=SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN',{cache:'no-store'}); const j=await idx.json();
+      const files=(j.items||[]);
       if(!files.length){ SNDK.fails=0; SNDK.file=null; if(!SNDK.model) SNDK.render(); }
       else{
         files.sort((a,b)=>(b.mtime||0)-(a.mtime||0));
-        const res=await fetch(`/api/raw/file?root=state&path=${files[0].rel}&limit=60`,{cache:'no-store'});
+        const res=await fetch(`/api/store/file?name=SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN&day=${files[0].day}&limit=60`,{cache:'no-store'});
         const d=await res.json();
         const raw=(d&&d.rows)?d.rows.filter(x=>x&&typeof x==='object'):[];
         SNDK.fails=0; SNDK.file=files[0].rel;
@@ -12507,8 +12506,8 @@ const SNDK = {
     try{
       const day=new Date().toLocaleDateString('en-CA',{timeZone:'America/New_York'});
       const [fr,hr]=await Promise.all([
-        fetch(`/api/raw/file?root=state&path=sndk_bars/${day}.jsonl&limit=1`,{cache:'no-store'}).then(r=>r.json()),
-        fetch('/api/raw/file?root=state&path=sndk_bars/health.json',{cache:'no-store'}).then(r=>r.json())]);
+        fetch(`/api/store/file?name=SNDK_PRICE_BARS_BY_MINUTE&day=${day}&limit=1`,{cache:'no-store'}).then(r=>r.json()),
+        fetch('/api/store/file?name=SNDK_PRICE_BARS_HEALTH_LATEST',{cache:'no-store'}).then(r=>r.json())]);
       const last=(fr&&fr.kind==='jsonl'&&Array.isArray(fr.rows)&&fr.rows.length)?fr.rows[fr.rows.length-1]:null;
       SNDK.bars={day, lastTs:(last&&last.ts)||null, health:(hr&&hr.kind==='json')?hr.data:null};
       SNDK.barsFails=0;
@@ -12525,18 +12524,18 @@ const SNDK = {
     SNDK.timers.read=null;
     if(!SNDK.on||document.hidden) return;    // visibilitychange/show() restarts us
     try{
-      const idx=await fetch('/api/raw/index',{cache:'no-store'}); const j=await idx.json();
-      const files=(j.state||[]).filter(e=>/^sndk_reads\/\d{4}-\d{2}-\d{2}\.jsonl$/.test(e.rel||''));
-      if(!files.length){ SNDK.readFails=0; SNDK.readFile=null; }
+      const idx=await fetch('/api/store/index?name=SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN',{cache:'no-store'}); const j=await idx.json();
+      const files=(j.items||[]);
+      if(!files.length){ SNDK.readFails=0; SNDK.readFile=null; SNDK.readDay=null; }
       else{
         files.sort((a,b)=>(b.mtime||0)-(a.mtime||0));
-        const res=await fetch(`/api/raw/file?root=state&path=${files[0].rel}&limit=60`,{cache:'no-store'});
+        const res=await fetch(`/api/store/file?name=SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN&day=${files[0].day}&limit=60`,{cache:'no-store'});
         const d=await res.json();
         // a `magnet_band` object is the row's minimum shape — written on every row of every
         // era (the old gate was `arrow`, which obs-3 rows no longer carry: it silently
         // rejected every new row) — so a torn or half-written tail line still can't land
         const raw=(d&&d.rows)?d.rows.filter(x=>x&&typeof x==='object'&&x.magnet_band&&typeof x.magnet_band==='object'):[];
-        SNDK.readFails=0; SNDK.readFile=files[0].rel;
+        SNDK.readFails=0; SNDK.readFile=files[0].rel; SNDK.readDay=files[0].day;
         const nr=raw.length?raw[raw.length-1]:null;
         // repaint on a NEW row only: the band and the frozen washes
         // all live in the chart, and rebuilding the whole SVG every 8s would fight the
@@ -12601,11 +12600,11 @@ const SNDK = {
     SNDK.timers.path=null;
     if(!SNDK.on||document.hidden) return;    // visibilitychange/show() restarts us
     try{
-      const idx=await fetch('/api/raw/index',{cache:'no-store'}); const j=await idx.json();
-      const files=(j.state||[]).filter(e=>/^sndk_reversion\/\d{4}-\d{2}-\d{2}\.jsonl$/.test(e.rel||''));
+      const idx=await fetch('/api/store/index?name=SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN',{cache:'no-store'}); const j=await idx.json();
+      const files=(j.items||[]);
       if(files.length){
         files.sort((a,b)=>(b.mtime||0)-(a.mtime||0));
-        const res=await fetch(`/api/raw/file?root=state&path=${files[0].rel}&limit=400`,{cache:'no-store'});
+        const res=await fetch(`/api/store/file?name=SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN&day=${files[0].day}&limit=400`,{cache:'no-store'});
         const d=await res.json();
         const raw=(d&&d.rows)?d.rows:[];
         const pts=[];
@@ -12630,7 +12629,7 @@ const SNDK = {
     const day=new Date().toLocaleDateString('en-CA',{timeZone:ET});
     if(SNDK.dayPx&&SNDK.dayPx.day===day&&SNDK.dayPx.settled) return;
     try{
-      const res=await fetch(`/api/raw/file?root=state&path=sndk_side/${day}.jsonl&limit=1`,{cache:'no-store'});
+      const res=await fetch(`/api/store/file?name=SNDK_PRICE_BAR_FACTS_BY_READ&day=${day}&limit=1`,{cache:'no-store'});
       if(!res.ok) return;
       const d=await res.json(); const row=(d&&d.rows&&d.rows[0])||null;
       const rds=(row&&Array.isArray(row.readings))?row.readings:[];
@@ -12664,7 +12663,7 @@ const SNDK = {
     if(!SNDK.on||document.hidden) return;    // visibilitychange/show() restarts us
     try{
       const day=new Date().toLocaleDateString('en-CA',{timeZone:ET});
-      const res=await fetch(`/api/raw/file?root=state&path=sndk_tape/${day}.jsonl&limit=4800`,{cache:'no-store'});
+      const res=await fetch(`/api/store/file?name=SNDK_LAST_PRICES_BY_QUOTE&day=${day}&limit=4800`,{cache:'no-store'});
       const d=await res.json();
       const raw=(d&&d.rows)?d.rows:[];
       const pts=[];
@@ -14757,15 +14756,14 @@ const PAYLOAD = {
     if(PAYLOAD.diaryBusy) return; PAYLOAD.diaryBusy=true;
     const head=document.getElementById('dia-head');
     try{
-      const idx=await (await fetch('/api/raw/index',{cache:'no-store'})).json();
-      const st=idx.state||[];
-      const files=st.filter(e=>/^sndk_reversion\/\d{4}-\d{2}-\d{2}\.jsonl$/.test(e.rel||'')).sort((a,b)=>(b.mtime||0)-(a.mtime||0));
+      const index=async name=>((await (await fetch(`/api/store/index?name=${name}`,{cache:'no-store'})).json()).items||[]);
+      const files=(await index('SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN')).sort((a,b)=>(b.mtime||0)-(a.mtime||0));
       if(!files.length){ if(head) head.textContent='No diary file yet.'; PAYLOAD.diaryBusy=false; return; }
-      const day=files[0].rel.slice(15,25);
-      const d=await (await fetch(`/api/raw/file?root=state&path=${files[0].rel}&limit=1`,{cache:'no-store'})).json();
+      const day=files[0].day;
+      const d=await (await fetch(`/api/store/file?name=SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN&day=${day}&limit=1`,{cache:'no-store'})).json();
       const row=(d.rows||[])[0]||null; PAYLOAD.diaryRow=row;
-      const sib=name=>st.find(e=>e.rel===name);
-      PAYLOAD.paintDiary(day, d.total||0, row, {bars:sib(`sndk_bars/${day}.jsonl`), reads:sib(`sndk_reads/${day}.jsonl`), rag:sib(`sndk_rag/slices/${day}.jsonl`)});
+      const sib=async name=>(await index(name)).find(e=>e.day===day);
+      PAYLOAD.paintDiary(day, d.total||0, row, {bars:await sib('SNDK_PRICE_BARS_BY_MINUTE'), reads:await sib('SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN'), rag:await sib('SNDK_OPTIONS_READER_NOTES_BY_READ')});
     }catch(e){ if(head) head.textContent='The diary could not be read: '+e; }
     PAYLOAD.diaryBusy=false;
   },

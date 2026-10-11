@@ -104,8 +104,8 @@ MORNING = [call("09:50", "10:00", "flat", 0.42), call("09:45", "09:55", "up_smal
 
 
 def test_the_page_reads_the_spx_cards_and_keeps_the_sndk_pages_modes():
-    assert "var URL_ = '/api/raw/file?root=state&path=spx_jev/latest.json';" in JS
-    assert "var TAPE_URL = '/api/raw/file?root=state&path=spx_jev/lanes/tape/latest.json';" in JS
+    assert "var URL_ = '/api/store/file?name=JEV_LIVE_CARD';" in JS
+    assert "var TAPE_URL = '/api/store/file?name=JEV_OPENING_CARD';" in JS
     assert "fetch(URL_, {cache:'no-store'})" in JS and "fetch(TAPE_URL, {cache:'no-store'})" in JS
     assert "shownLeads = laneLeads(tape, Date.now(), marketDay());" in _fn("paint")
     assert "main.appendChild(laneCard(tape, tapeOk));" in _fn("paint") and "main.appendChild(foldLive(c));" in _fn("paint")
@@ -1092,7 +1092,7 @@ def _card_parts(got):
 
 
 def test_the_page_reads_the_premarket_card_and_it_leads_before_the_open():
-    assert "var PRE_URL = '/api/raw/file?root=state&path=spx_jev/lanes/premarket/latest.json';" in JS
+    assert "var PRE_URL = '/api/store/file?name=JEV_PREMARKET_CARD';" in JS
     assert "fetch(PRE_URL, {cache:'no-store'})" in JS and "within(PRE_HOURS)" in _fn("pollPre")
     assert "PRE_HOURS = ['02:35', '16:05']" in JS
     # after the hand-over the card is fetched until today's close-out lands, then left as it is
@@ -2025,13 +2025,13 @@ var document = {hidden: false, getElementById: function(id){ return ids[id] || b
 var MQ = {matches: false, addEventListener: function(ev, fn){ MQ.change = fn; }};
 var window = {addEventListener: function(){}, matchMedia: function(){ return MQ; }}, localStorage = {getItem: function(){ return null; }, setItem: function(){}};
 var MiraiSheet = {open: function(){}, isOpen: function(){ return false; }, closed: 0, close: function(){ MiraiSheet.closed++; }};
-var CARDS = {'spx_jev/latest.json': D.live, 'spx_jev/lanes/tape/latest.json': D.tape, 'spx_jev/lanes/premarket/latest.json': D.premarket,
-             'spx_jev/mirai_prediction/options_data.json': D.options, 'spx_jev/mirai_prediction/scoreboard.json': D.board,
-             'spx_claude_forecast/latest.json': D.claude};
+var CARDS = {'JEV_LIVE_CARD': D.live, 'JEV_OPENING_CARD': D.tape, 'JEV_PREMARKET_CARD': D.premarket,
+             'OPTIONS_FEED_STATUS_CARD': D.options, 'FORECASTER_SCOREBOARD_CARD': D.board,
+             'CLAUDE_FORECAST_CARD': D.claude};
 var grades = null;
 function fetch(url){
-  var path = decodeURIComponent(url.split('path=')[1]), c = CARDS[path];
-  if(path.indexOf('integral_grades.jsonl') >= 0) return Promise.resolve({ok: !!D.grades, json: function(){ return Promise.resolve({kind: 'jsonl', rows: D.grades}); }});
+  var m = /name=([^&]*)/.exec(url), name = m ? decodeURIComponent(m[1]) : '', c = CARDS[name];   // the spot poll names no store
+  if(name === 'JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON') return Promise.resolve({ok: !!D.grades, json: function(){ return Promise.resolve({kind: 'jsonl', rows: D.grades}); }});
   return Promise.resolve({ok: true, json: function(){ return Promise.resolve(c ? {kind: 'json', data: c} : {error: 'no such file'}); }});
 }
 var setTimeout = function(){ return 0; }, clearTimeout = function(){}, setInterval = function(){ return 0; };
@@ -2351,7 +2351,7 @@ def test_the_record_row_gives_the_scoreboards_numbers_in_the_learning_loops_word
     judged = {"sums": {"average_30": {**BOARD["sums"]["average_30"], "graded_reads_count": 312, "pool_v2": {**BOARD["sums"]["average_30"]["pool_v2"], "reads_count": 312, "right_pct": 60.0, "skill_vs_historical_odds_pct": 12.5}}}}
     assert _record(judged)["parts"][1:] == [["rec-l", "187 of 312 right \u00B7 usual odds 58 \u00B7 better"], ["rec-n", "Judged at 300 reads"]]
     assert "paintRecord(); drawClaude(); }" in _fn("draw") and "paintRecord(); })" in _fn("pollLearn")
-    assert "var LEARN_URL = '/api/raw/file?root=state&path=spx_jev/mirai_prediction/scoreboard.json', LEARN_SUM = 'average_30', LEARN_MS = 60000;" in JS
+    assert "var LEARN_URL = '/api/store/file?name=FORECASTER_SCOREBOARD_CARD', LEARN_SUM = 'average_30', LEARN_MS = 60000;" in JS
     assert "setInterval(function(){ if(!document.hidden) pollLearn(); }, LEARN_MS);" in JS and ".rec[hidden]{display:none}" in SPX
     assert 'id="learn"' not in SPX and "<section" not in SPX.split("<body>", 1)[1].replace('<section class="claude"', "")   # the learning loop card is gone
 
@@ -2534,7 +2534,7 @@ def test_a_sample_read_is_never_shown_as_a_real_one():
     assert _claude_poll(CLAUDE) == {"kept": "live:2026-10-09T14:30:12-04:00", "hidden": False, "drawn": 1}
     assert _claude_poll({**CLAUDE, "read_id": "sample:2026-10-09T14:30"}) == {"kept": None, "hidden": True, "drawn": 0}
     assert _claude_poll({"error": "not found"}) == {"kept": None, "hidden": True, "drawn": 0}
-    assert "var CLAUDE_URL = '/api/raw/file?root=state&path=spx_claude_forecast/latest.json', NEAR = 3;" in JS
+    assert "var CLAUDE_URL = '/api/store/file?name=CLAUDE_FORECAST_CARD', NEAR = 3;" in JS
     assert "drawClaude();" in _fn("draw"), "a new card draws the strip again, so the line against the call is the card's"
     assert "pollOptions(); pollLearn(); pollClaude();" in JS
 
@@ -2669,8 +2669,8 @@ OUTAGE = {"down": True, "since": "2026-10-08T09:30:10.048035-04:00", "back_at": 
 
 
 def test_the_banner_reads_the_alert_passs_file_and_sits_under_the_price_box():
-    assert "var OPTIONS_URL = '/api/raw/file?root=state&path=spx_jev/mirai_prediction/options_data.json';" in JS
-    assert "options = j && j.kind === 'json' ? j.data : null;" in _fn("pollOptions")    # /api/raw/file wraps it as {kind, data}
+    assert "var OPTIONS_URL = '/api/store/file?name=OPTIONS_FEED_STATUS_CARD';" in JS
+    assert "options = j && j.kind === 'json' ? j.data : null;" in _fn("pollOptions")    # /api/store/file wraps it as {kind, data}
     body = SPX[SPX.index("<body>"):]
     assert body.index('<button class="px" id="px" type="button" aria-controls="chartSheet" hidden>') < body.index('<div class="od" id="od" role="status" hidden></div>') \
         < body.index('<div id="state"></div>')
@@ -3027,7 +3027,7 @@ def test_the_book_is_the_newest_native_row_of_the_days_last_rows():
     got = _run(js, {"a": [SPY_ROW, NATIVE_ROW, UNPARSED_ROW], "b": [NATIVE_ROW, SPY_ROW, SPY_ROW], "c": [SPY_ROW, UNPARSED_ROW, SPY_ROW],
                     "d": [{**NATIVE_ROW, "ts": "2026-10-09T15:57:35-04:00"}, NATIVE_ROW, SPY_ROW]})
     assert got == [NATIVE_ROW["ts"], NATIVE_ROW["ts"], None, NATIVE_ROW["ts"]]
-    assert "'/api/raw/file?root=state&path=reversion/'" in _var("BOOK_URL") and "day + '.jsonl&limit=3'" in _fn("pollBook")
+    assert "'/api/store/file?name=SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN&day='" in _var("BOOK_URL") and "day + '&limit=3'" in _fn("pollBook")
 
 
 def test_the_window_and_the_strike_bars_are_shaped_from_the_books_sides():
@@ -3210,7 +3210,7 @@ def test_the_book_is_fetched_only_while_the_sheet_is_open_and_each_file_at_most_
     assert "if(cardDay() !== barsDay) pollBars();" in _fn("arrived") and "pollBars();" in _fn("wake") and "pollBook" not in _fn("wake")
     js = ("var calls = [], OPEN = 'true', WIDE = {matches: false}, painted = 0, sparked = 0; function $(id){ return {getAttribute: function(){ return OPEN; }}; }"
           "function paintChart(){ painted++; } function paintSpark(){ sparked++; } function paintCalls(){}"
-          "function fetch(url){ calls.push(url.split('path=')[1]); return Promise.resolve({ok: true, json: function(){ return Promise.resolve({kind: 'jsonl', rows: [D.row]}); }}); }"
+          "function fetch(url){ calls.push(url.split('?')[1]); return Promise.resolve({ok: true, json: function(){ return Promise.resolve({kind: 'jsonl', rows: [D.row]}); }}); }"
           "var last = {row_ts: '2026-10-09T10:02:00-04:00'};"
           + "".join(_var(v) for v in ("BARS_URL", "BOOK_URL", "GRADES_URL", "bars", "book", "grades"))
           + "".join(_fn(f) for f in ("cardDay", "chartDocked", "chartVisible", "rawRows", "bookRow", "pollBars", "pollBook", "pollGrades"))
@@ -3229,11 +3229,11 @@ def test_the_book_is_fetched_only_while_the_sheet_is_open_and_each_file_at_most_
           " console.log(JSON.stringify(out)); })();")
     got = _run(js, {"now": "2026-10-09T10:05:00-04:00", "row": NATIVE_ROW})
     assert got["closed"] == 1                                               # the grades, never the book, with the sheet shut
-    assert got["opened"] == ["spx_jev/integral_grades.jsonl&limit=400", "reversion/2026-10-09.jsonl&limit=3"] and got["book"] == NATIVE_ROW["ts"] and got["painted"] == 1
+    assert got["opened"] == ["name=JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON&lane=live&limit=400", "name=SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN&day=2026-10-09&limit=3"] and got["book"] == NATIVE_ROW["ts"] and got["painted"] == 1
     assert got["again"] == 2 and got["at59"] == 2 and got["at61"] == 4
-    assert got["bars"] == ["spx_jev/bars/2026-10-09.jsonl&limit=420"] and got["day"] == "2026-10-09" and got["sparked"] == 2   # dropped, then drawn
+    assert got["bars"] == ["name=SPX_PRICE_BARS_BY_MINUTE&day=2026-10-09&limit=420"] and got["day"] == "2026-10-09" and got["sparked"] == 2   # dropped, then drawn
     assert got["barsAgain"] == 1 and got["barsLater"] == 2
-    assert got["dropped"] is True and got["newDay"] == "spx_jev/bars/2026-10-12.jsonl&limit=420" and got["kept"] is True
+    assert got["dropped"] is True and got["newDay"] == "name=SPX_PRICE_BARS_BY_MINUTE&day=2026-10-12&limit=420" and got["kept"] is True
 
 
 def test_the_gutter_and_the_strike_column_fit_the_sheet_at_320_and_360():
@@ -3392,7 +3392,7 @@ def test_the_book_is_fetched_while_the_chart_is_visible_as_a_sheet_or_as_a_panel
     """chartVisible is the one gate on the 10 MB book: on a phone the sheet open, from 1024px up the panel laid out
     (the query's matches), and neither means no fetch; a card's arrival asks through the same gate."""
     js = ("var calls = [], OPEN = 'true', WIDE = {matches: false}; function $(id){ return {getAttribute: function(){ return OPEN; }}; }"
-          "function paintChart(){} function fetch(url){ calls.push(url.split('path=')[1].split('/')[0]); return Promise.resolve({ok: true, json: function(){ return Promise.resolve({kind: 'jsonl', rows: [D.row]}); }}); }"
+          "function paintChart(){} function fetch(url){ calls.push(url.split('name=')[1].split('&')[0]); return Promise.resolve({ok: true, json: function(){ return Promise.resolve({kind: 'jsonl', rows: [D.row]}); }}); }"
           "var last = {row_ts: '2026-10-09T10:02:00-04:00'};"
           + "".join(_var(v) for v in ("BOOK_URL", "book")) + "".join(_fn(f) for f in ("cardDay", "chartDocked", "chartVisible", "rawRows", "bookRow", "pollBook"))
           + "function tick(){ return new Promise(function(r){ setImmediate(r); }); }"
@@ -3401,7 +3401,7 @@ def test_the_book_is_fetched_while_the_chart_is_visible_as_a_sheet_or_as_a_panel
           " WIDE.matches = true; pollBook(); await tick(); await tick(); out.panel = [chartVisible(), calls.slice()];"
           " WIDE.matches = false; bookAt = 0; OPEN = 'false'; pollBook(); await tick(); await tick(); out.sheet = [chartVisible(), calls.length];"
           " console.log(JSON.stringify(out)); })();")
-    assert _run(js, {"now": "2026-10-09T10:05:00-04:00", "row": NATIVE_ROW}) == {"phoneShut": [False, 0], "panel": [True, ["reversion"]], "sheet": [True, 2]}
+    assert _run(js, {"now": "2026-10-09T10:05:00-04:00", "row": NATIVE_ROW}) == {"phoneShut": [False, 0], "panel": [True, ["SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN"]], "sheet": [True, 2]}
     assert "pollBook();" in _fn("arrived") and "if(!day || !chartVisible() || bookInflight) return;" in _fn("pollBook")
 
 
@@ -3468,7 +3468,7 @@ def test_a_resize_across_the_breakpoint_closes_an_open_sheet_and_asks_for_the_bo
     if not _NODE:
         pytest.skip("node is not installed")
     script = ("const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + FIXED_NOW + WHOLE_DOM
-              + "var FETCHED = []; var fetched = fetch; fetch = function(url){ FETCHED.push(url.indexOf('path=') < 0 ? 'spot' : url.split('path=')[1].split('/')[0]); return fetched(url); };" + MAIN_JS
+              + "var FETCHED = []; var fetched = fetch; fetch = function(url){ FETCHED.push(url.indexOf('name=') < 0 ? 'spot' : url.split('name=')[1].split('&')[0]); return fetched(url); };" + MAIN_JS
               + "function aria(){ return [ids.chartSheet.attrs['aria-hidden'], ids.chartSheet.attrs['aria-modal'], ids.chartSheet.attrs['role']]; }"
               "setImmediate(function(){ var out = {loaded: FETCHED.slice(), query: !!MQ.change, phone: aria()};"
               " ids.chartSheet.attrs['aria-hidden'] = 'false'; MQ.matches = true; MQ.change();"
@@ -3479,8 +3479,8 @@ def test_a_resize_across_the_breakpoint_closes_an_open_sheet_and_asks_for_the_bo
                    capture_output=True, text=True, timeout=20, env={**os.environ, "TZ": LA})
     assert out.returncode == 0, out.stderr
     got = json.loads(out.stdout)
-    assert got["query"] is True and "reversion" not in got["loaded"] and got["phone"] == ["true", "true", "dialog"]   # a phone with the sheet shut never asks
-    assert got["widened"] == {"closed": 1, "book": ["reversion"], "chart": 1, "aria": ["false", None, "region"]}
+    assert got["query"] is True and "SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN" not in got["loaded"] and got["phone"] == ["true", "true", "dialog"]   # a phone with the sheet shut never asks
+    assert got["widened"] == {"closed": 1, "book": ["SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN"], "chart": 1, "aria": ["false", None, "region"]}
     assert got["narrowed"] == {"closed": 1, "more": 0, "aria": ["true", "true", "dialog"]}
     assert 'id="chartSheet" role="dialog" aria-modal="true" aria-hidden="true"' in SPX     # the markup is the phone's: dockChart rewrites all three
     assert "-webkit-user-select:auto;user-select:auto}" in _wide_css()[1]     # docked, its words select as the page's do

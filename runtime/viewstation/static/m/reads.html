@@ -197,8 +197,8 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
 <script>
 (function(){
   'use strict';
-  var GRADES_URL = '/api/raw/file?root=state&path=spx_jev/integral_grades.jsonl&limit=400';
-  var BARS_URL = '/api/raw/file?root=state&path=spx_jev/bars/';
+  var GRADES_URL = '/api/store/file?name=JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON&lane=live&limit=400';
+  var BARS_URL = '/api/store/file?name=SPX_PRICE_BARS_BY_MINUTE&day=';
   var DAYS_SUMMED = 5, SCALE_PTS = 32, POLL_MS = 60000;
   var STRIP_W = 104, STRIP_H = 18;
   var LINE_W = 300, LINE_H = 56, LINE_TOP = 8, LINE_AXIS = 42;   // LINE_W: the line's width for a card not laid out yet
@@ -287,7 +287,7 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
   function barsOf(d){
     var day = d.day, done = Date.now() >= marketAt(d.calls[0].row_ts, '16:05');
     if(done && barsByDay[day]) return barsByDay[day];
-    var bars = fetch(BARS_URL + day + '.jsonl&limit=420', {cache: 'no-store'})
+    var bars = fetch(BARS_URL + day + '&limit=420', {cache: 'no-store'})
       .then(function(r){ return r.ok ? r.json() : null; }).then(function(j){ return j && j.kind === 'jsonl' && Array.isArray(j.rows) ? j.rows : null; })
       .catch(function(){ return null; })
       .then(function(rows){ if(!rows) delete barsByDay[day]; return rows; });
