@@ -872,6 +872,7 @@
       "thirty_minute": "60min"
      },
      "retired_from": {
+      "opening_five_minute": "2026-10-12",
       "thirty_minute": "2026-10-08"
      },
      "cadence": "once at the 09:35 read; answer held as a day constant through the lane and the 30-minute reads to 11:32",

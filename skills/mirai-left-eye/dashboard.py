@@ -11,11 +11,10 @@ It is rebuilt from live state every time hunter.py scans. Gex-only since the
 Lens is the brain, and everything stays paper until the report cards prove it):
 
     * One-breath summary  <- the whole day in a sentence
-    * Right now           <- what the lens sees, and the day's mood
+    * Right now           <- what the lens sees
     * Practice corner     <- the SPX "fade-the-bounce" paper guesses
                              (reuses reversion_lens' OWN resolved numbers, so the
                              Today view and the Learning note can never disagree)
-    * What it's thinking  <- the morning macro mood-read, in plain words
     * What it learned today <- one plain takeaway from the practice guesses
     * How the day unfolded <- a light, data-derived timeline
     * Watcher list        <- (collapsed) what the gex system watches for
@@ -43,7 +42,7 @@ ET = ZoneInfo("America/New_York")
 SKILL_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = SKILL_DIR / "config.json"
 
-# State dir (where the macro-mood + reversion telemetry live). Mirrors paths.py:
+# State dir (where the reversion telemetry lives). Mirrors paths.py:
 # env override first, else $PLUGIN_ROOT/state ( = skills/mirai-left-eye/../../state ).
 STATE_DIR = Path(
     os.environ.get("MIRAI_STATION_STATE") or (SKILL_DIR.parent.parent / "state")
@@ -75,8 +74,6 @@ GEX_WATCHERS: list[dict[str, str]] = [
      "what": "How far price has been yanked from fair value (the day's average traded price)."},
     {"code": "Runway check",
      "what": "Whether there's enough room to the magnet for a snap-back to be worth it."},
-    {"code": "Morning mood",
-     "what": "The pre-open news read — upbeat or downbeat, and how sure."},
     {"code": "Wall alarm",
      "what": "Rings when price breaks concretely through a dealer wall — the map may be redrawn."},
 ]
@@ -100,53 +97,10 @@ def _vault_file() -> Path:
     return Path(DEFAULT_VAULT_FILE).expanduser()
 
 
-# ---------------------------------------------------------------------------
-# Plain-English word maps
-# ---------------------------------------------------------------------------
-_SECTOR_PLAIN = {
-    "semis": "chip makers", "tech": "tech companies", "energy": "energy",
-    "rates": "interest-rate-sensitive stocks", "financials": "banks",
-    "health": "health care",
-}
-
-
-def _sector_plain(key: str) -> str:
-    return _SECTOR_PLAIN.get(key, key.replace("_", " "))
-
-
-def _mood_words(d: float) -> str:
-    if d >= 0.6:
-        return "feeling upbeat (expecting the market up)"
-    if d >= 0.2:
-        return "mildly hopeful (leaning up)"
-    if d > -0.2:
-        return "undecided (roughly flat)"
-    if d > -0.6:
-        return "a little cautious (leaning down)"
-    return "downbeat (expecting the market down)"
-
-
-def _conf_words(c: float) -> str:
-    if c >= 0.66:
-        return "and quite sure"
-    if c >= 0.4:
-        return "but only moderately sure"
-    return "though not very sure"
-
 
 # ---------------------------------------------------------------------------
 # Live-state readers (each is best-effort; returns None / [] on any failure)
 # ---------------------------------------------------------------------------
-def _macro_mood(now: datetime) -> Optional[dict]:
-    """Today's morning macro mood-read, or None if it hasn't run today."""
-    try:
-        data = json.loads(
-            (STATE_DIR / "market_expectation" / "latest.json").read_text())
-    except (OSError, json.JSONDecodeError):
-        return None
-    return data if data.get("date") == now.date().isoformat() else None
-
-
 def _reversion_summary(now: datetime) -> Optional[dict]:
     """Today's SPX shadow-lens scorecard, computed by reversion_lens itself
     (single source of truth — the Today view and the Learning note share it)."""
@@ -190,20 +144,14 @@ def _one_breath(rev: Optional[dict]) -> str:
     return ("> [!info] The whole day in one breath\n> " + ", ".join(parts) + ".")
 
 
-def _right_now_section(rev: Optional[dict], mood: Optional[dict]) -> str:
+def _right_now_section(rev: Optional[dict]) -> str:
     if rev:
         lens = f"- **The lens right now:** SPX is **{rev['spx_status']}**."
     else:
         lens = "- **The lens right now:** no readings yet today."
     real = ("- **Real trades:** none — everything is paper until the nightly "
             "report cards prove the new engine (then it earns a live seat).")
-    if mood:
-        o = mood.get("overall", {})
-        mood_line = (f"- **Its mood:** {_mood_words(float(o.get('direction', 0) or 0))}, "
-                     f"{_conf_words(float(o.get('confidence', 0) or 0))}.")
-    else:
-        mood_line = "- **Its mood:** no morning read yet today."
-    return "## 🚦 Right now\n\n" + "\n".join([lens, real, mood_line])
+    return "## 🚦 Right now\n\n" + "\n".join([lens, real])
 
 
 def _practice_corner_section(rev: Optional[dict]) -> str:
@@ -233,28 +181,6 @@ def _practice_corner_section(rev: Optional[dict]) -> str:
     return "\n".join(lines)
 
 
-def _thinking_section(mood: Optional[dict]) -> str:
-    head = "## 🧠 What it's thinking"
-    if not mood:
-        return f"{head}\n\n_No morning mood-read yet today._"
-    o = mood.get("overall", {})
-    d = float(o.get("direction", 0) or 0)
-    lines = [head, "",
-             f"- This morning's read: **{_mood_words(d)}**, "
-             f"{_conf_words(float(o.get('confidence', 0) or 0))} — so it's watching, not betting."]
-    sectors = mood.get("sectors", {}) or {}
-    if sectors:
-        top = max(sectors.items(), key=lambda kv: kv[1].get("direction", 0) or 0)
-        bot = min(sectors.items(), key=lambda kv: kv[1].get("direction", 0) or 0)
-        if (top[1].get("direction", 0) or 0) > 0:
-            tail = (f" and most downbeat on **{_sector_plain(bot[0])}**"
-                    if (bot[1].get("direction", 0) or 0) < 0 else "")
-            lines.append(f"- It's most hopeful about **{_sector_plain(top[0])}**{tail}.")
-    lines.append("- This morning mood-reader is **new and hasn't earned trust yet**, "
-                 "so it can only watch — it isn't allowed to place real trades.")
-    return "\n".join(lines)
-
-
 def _learned_section(rev: Optional[dict]) -> str:
     head = "## 🎓 What it learned today"
     if not rev or rev["scans"] == 0:
@@ -271,13 +197,9 @@ def _learned_section(rev: Optional[dict]) -> str:
     return head + "\n\n" + "\n".join(body)
 
 
-def _timeline_section(mood: Optional[dict], rev: Optional[dict],
-                      now: datetime) -> str:
+def _timeline_section(rev: Optional[dict], now: datetime) -> str:
     head = "## ⏱️ How the day unfolded"
     items: list[str] = []
-    if mood:
-        d = float(mood.get("overall", {}).get("direction", 0) or 0)
-        items.append(f"- **Morning:** read the overnight news and felt **{_mood_words(d)}**.")
     if rev and rev["resolved"]:
         glyph = {"win": "✅ it was right", "loss": "❌ it was wrong",
                  "scratch": "➖ no clear result"}
@@ -385,7 +307,6 @@ def render(now: datetime, date_iso: str | None = None) -> str:
         else:
             date_iso = _latest_session_date(now) or now.date().isoformat()
 
-    mood = _macro_mood(now)
     rev = _reversion_summary(now)
 
     if phase == "open":
@@ -398,12 +319,11 @@ def render(now: datetime, date_iso: str | None = None) -> str:
         context,
         _one_breath(rev),
         "---",
-        _right_now_section(rev, mood),
+        _right_now_section(rev),
         "---",
         _practice_corner_section(rev),
-        _thinking_section(mood),
         _learned_section(rev),
-        _timeline_section(mood, rev, now),
+        _timeline_section(rev, now),
         "---",
         _watcher_list_section(),
         "---",

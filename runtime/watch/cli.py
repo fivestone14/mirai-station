@@ -1,10 +1,11 @@
 """Mirai Watch CLI entrypoint (gex-only chassis, post 2026-07-03 restructure).
 
 Usage:
-    python -m watch.cli macro-brief    # morning Macro-Mood brief (launchd ~09:00 ET)
-    python -m watch.cli gex-alerts     # per-tick alert bell: paper-fire pushes +
-                                       #  wall-breach mood re-dive + EOD mood scoring
+    python -m watch.cli gex-alerts     # per-tick alert bell: paper-fire pushes,
+                                       #  the wall-breach bell and the feed sirens
     python -m watch.cli doctor         # self-diagnosis
+
+The morning macro brief (`macro-brief`, 09:00 ET) retired on 2026-10-11.
 
 The bet-watching graph (`tick`), entry-signal learner (`learn`) and checkpoint
 disposal (`gc`) were retired with the nine-voter system — the Fade Lens in
@@ -24,34 +25,14 @@ from . import paths
 ET = ZoneInfo("America/New_York")
 
 
-def _run_macro_brief() -> int:
-    """The morning Macro-Mood brief: sweep cross-sector news/sentiment and write the
-    day's market_expectation (direction/magnitude + sectors + reasoning + embedding)
-    that the gex tick reads as a light context tilt. BETA shadow layer."""
-    from .intraday import macro_mood
-
-    now = datetime.now(tz=ET)
-    exp = macro_mood.run_brief(paths.STATE_DIR, now, reason="morning")
-    if exp is None:
-        print(f"[{now.strftime('%H:%M:%S')}] macro-brief: analyzer returned nothing "
-              f"(no expectation written)", flush=True)
-        return 1
-    ov = exp.get("overall") or {}
-    print(f"[{now.strftime('%H:%M:%S')}] macro-brief: dir={ov.get('direction')} "
-          f"mag={ov.get('magnitude')} conf={ov.get('confidence')} "
-          f"(embedded={exp.get('embedding') is not None})", flush=True)
-    return 0
-
-
 def _run_gex_alerts() -> int:
-    """One alert pass after the scan: push fresh Fade-Lens paper fires, fire the
-    wall-breach mood re-dive, score the mood at EOD. Best-effort by design."""
+    """One alert pass after the scan: push fresh Fade-Lens paper fires, ring the
+    wall-breach bell, page the feed sirens. Best-effort by design."""
     from .intraday import gex_alerts
 
     out = gex_alerts.run()
     print(f"[{datetime.now(tz=ET).strftime('%H:%M:%S')}] gex-alerts: "
           f"pushed={out['pushed']} breaches={out['breaches']} "
-          f"redives={out['redives']} eod_scored={out['eod_scored']} "
           f"feed_sirens={out.get('feed_sirens', 0)}", flush=True)
     return 0
 
@@ -93,15 +74,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="mirai-watch")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("macro-brief", help="Run the morning Macro-Mood brief (writes the "
-                                       "day's market_expectation; launchd ~09:00 ET).")
-    sub.add_parser("gex-alerts", help="Per-tick alert bell: paper-fire pushes + "
-                                      "wall-breach mood re-dive + EOD mood scoring.")
+    sub.add_parser("gex-alerts", help="Per-tick alert bell: paper-fire pushes, "
+                                      "the wall-breach bell and the feed sirens.")
     sub.add_parser("doctor", help="Self-diagnose: paths, deps, claude CLI")
 
     args = parser.parse_args(argv)
-    if args.cmd == "macro-brief":
-        return _run_macro_brief()
     if args.cmd == "gex-alerts":
         return _run_gex_alerts()
     if args.cmd == "doctor":

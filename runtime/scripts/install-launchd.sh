@@ -12,7 +12,6 @@ PLISTS=(
   "com.mirai-station.left-eye.plist"
   "com.mirai-station.caffeinate.plist"
   "com.mirai-station.auth-watch.plist"
-  "com.mirai-station.macro-brief.plist"
   "com.mirai-station.gex-polarity.plist"
   "com.mirai-station.viewstation.plist"
   "com.mirai-station.lob-collector.plist"

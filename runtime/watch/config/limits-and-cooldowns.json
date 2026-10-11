@@ -15,20 +15,16 @@
   },
   "models": {
     "_about": "Which Claude model each kind of call uses (claude -p --model). Match the model to the difficulty of the job: haiku gathers, sonnet drafts and argues, opus decides. Opus is reserved for calls whose output directly moves a thesis or a bet's stance; everything that merely collects, trims, drafts, or argues a side runs cheaper. claude_cli.call(task=...) resolves through this map; an explicit model= override always wins.",
-    "macro_brief": "opus",
-    "macro_redive": "opus",
     "default": "sonnet",
     "_default_note": "Unknown task names resolve here - middle tier, never silently opus.",
     "watchtower": "claude-sonnet-5",
     "_watchtower_note": "HEAD B, the reasoning head - PINNED exact id (never an alias): a silently re-pointed alias would change the judge mid-record. Model bump = record reset, same as a prompt bump."
   },
-  "macro_mood": {
-    "_about": "BETA Morning Macro-Mood layer (intraday/macro_mood.py). Each morning the analyst writes a market-wide direction/magnitude expectation (state/market_expectation/); the tick loop reads it as a light reasoning-context tilt (never gates/sizes) and re-dives the analyst when price breaches a gamma wall. Shadow: it learns its own reliability, which scales the tilt. Inert until an analyzer provider is wired.",
-    "wall_buffer_frac": 0.1,
-    "_wall_buffer_note": "A re-dive fires only when spot pushes past a gamma wall by this fraction of the implied daily move - filters ordinary in-wall pullbacks.",
-    "redive_daily_cap": 4,
-    "_redive_cap_note": "Max analyst re-dives per day (opus budget guard).",
-    "redive_cooldown_min": 20,
-    "_redive_cooldown_note": "Min minutes between re-dives for the same ticker+wall, so a price riding a level can't spam calls."
+  "wall_breach": {
+    "_about": "The wall-breach bell (intraday/gex_alerts.py): one phone page when SPX pushes concretely through a dealer wall. The engine records the crossing on the diary row; the bell's own fallback check below is for rows without one. (The morning macro brief these knobs once served, and its re-dive of the analyst on a breach, retired 2026-10-11.)",
+    "buffer_frac": 0.1,
+    "_buffer_note": "The fallback check rings only when spot pushes past a gamma wall by this fraction of the implied daily move - filters ordinary in-wall pullbacks.",
+    "cooldown_min": 20,
+    "_cooldown_note": "Min minutes between two pages for the same ticker+wall, so a price riding a level can't spam the phone."
   }
 }

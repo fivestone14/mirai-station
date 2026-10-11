@@ -87,7 +87,7 @@ scheduled_event · wall_breach_event · containment_road · order_flow ·
 gravity_motion · terrain_asymmetry · break_lens_head_c ·
 siege_effort_at_walls · dated_structure · tape (stretches, range vs EM,
 √time reach decay, variance ratio, VIX TS, tape_speed) · day_context
-(macro_mood, session, my_recent_verdicts, lifetime_scorecards) ·
+(session, my_recent_verdicts, lifetime_scorecards) ·
 gates_verdict_head_a (reveal pass only).
 
 ## On the diary row but NOT in the payload (and why)

@@ -522,8 +522,8 @@ def test_prompt_carries_the_wt8_corrections():
     assert "BINDING STRENGTH IS A CONVICTION SCALER" in p
     # Fix 7: accelerant side needs objective confirmation already in the payload
     assert "OBJECTIVE confirmed move" in p and "never your own read of 'confirmed'" in p
-    # Fix 8: macro_mood is named so the overnight read is consulted
-    assert "day_context.macro_mood" in p
+    # Fix 8 named day_context.macro_mood; the morning brief retired 2026-10-11 and the line went with it
+    assert "macro_mood" not in p
 
 
 def test_breach_and_road_reach_the_payload():

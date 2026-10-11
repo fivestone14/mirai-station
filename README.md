@@ -297,7 +297,6 @@ reads it, and it is the single gate between paper and live. **Nothing has cleare
 |---|---|---|
 | **ThetaData** (via Cassandra's Edge MCP) | the **native SPX option chain** — the primary GEX source — the SNDK chain, and a Schwab-independent 1-min price path | AuthKit OAuth since 2026-09-09: a Keychain **refresh** token (`iv-viability-cassandra`) spent per scan for a 300-second access token. Enrol with `native_gex_feed.py --login` |
 | **Schwab** (`schwab-py`) | daily/1-min bars, live quotes, the SPY chain (the ×10 proxy) | Keychain OAuth (7-day token, kept alive by `auth-watch`) |
-| **Cassandra's Edge MCP** (twitter / reddit / fetch) | the morning Macro-Mood news read | per-server bearer |
 | **Claude** (subscription) | the Watchtower vote and the SNDK reading via one-shot `claude -p`; the voice conversation via a held-open `claude-agent-sdk` day session (a CLI spawn costs 7–100 s — far too slow to speak) | Claude Code CLI login — **no API key** |
 
 The whole option-book foundation lives immutable in `state/gex_fills/`
@@ -329,12 +328,12 @@ mirai-station/
 │   ├── siege/                  effort-at-the-wall sensor (shadow, self-contained)
 │   ├── lob-flow/               Layer-2 order-book FLOW sensor (shadow, self-contained)
 │   ├── iv-viability/           per-contract IV gate + the Schwab credential/data vault
-│   └── mirai-right-eye/        embedder only (RAG retired 2026-07-10) → feeds macro-mood
+│   └── mirai-right-eye/        embedder only (RAG retired 2026-07-10) → the two memories' semantic rankers
 ├── runtime/
 │   ├── watch/                  the tick chassis: cli · hunter wrapper ·
-│   │   └── intraday/           market_status · gex_alerts · push_ntfy · macro_mood · auth
+│   │   └── intraday/           market_status · gex_alerts · push_ntfy · auth · the dead-man's switches
 │   ├── viewstation/            read-only HTTP on :8787: the desktop page + the phone pages (static/m/)
-│   ├── launchd/                28 LaunchAgent plists (the fleet, below)
+│   ├── launchd/                25 LaunchAgent plists (the fleet, below)
 │   └── scripts/                install/venv/run wrappers + env.sh (Keychain reader)
 ├── state/                      runtime-mutable — never copied between machines
 │   ├── reversion/              the SPX diary + nightly grades
@@ -342,14 +341,15 @@ mirai-station/
 │   ├── spx_jev/ spx_claude_forecast/ jev/               the JEV services and the Claude forecast
 │   ├── sndk_reversion/ sndk_reads/ sndk_gex/ sndk_rag/   the SNDK station
 │   ├── gex_fills/ dated_gex/                             the book and its baselines
-│   ├── siege/ lob_flow/ market_expectation/ tape_prev/   the shadow sensors
+│   ├── siege/ lob_flow/ tape_prev/                      the shadow sensors
+│   ├── market_expectation/     the retired macro brief's records (2026-10-11); only gex_alerts' alerts_state.json is still written there
 │   └── voice/ logs/            conversation log + session continuity
 └── docs/                       INSTALL · OPERATIONS · gex-glossary · gw-vocab ·
                                 wt8-doctrine · spx-payload-inventory ·
                                 sndk-payload-inventory · salvage-notes
 ```
 
-### The launchd fleet (26 agents)
+### The launchd fleet (25 agents)
 
 `runtime/scripts/install-launchd.sh` names every agent it loads (`PLISTS`); that list is
 the fleet.
@@ -367,7 +367,6 @@ the fleet.
 | `caffeinate` | continuous | keeps the mini awake |
 | `auth-watch` | 08:00 ET | Schwab token keep-alive + dead-bearer ping |
 | `dated-book` | 08:17 ET daily, + Fri 17:10 ET | the far-dated structural-wall sidecar |
-| `macro-brief` | 09:00 ET | morning Macro-Mood brief |
 | `gex-polarity` | 16:15 ET | after-close A/B grader + LOB nightly fold |
 | `spx-jev` | :02 and :32 ET, 09:32 to 16:02 (gated to RTH; the 16:02 fire only grades) | the SPX JEV decision service beside the SPX diary: labels, asks JEV, sums and grades, writes `state/spx_jev/` — its own job, never on the scan path (`skills/spx-jev/README.md`) |
 | `spx-jev-tape` | every 5 min 09:35 to 10:30 ET, and 10:42 (gated to RTH) | SPX JEV's opening lane |

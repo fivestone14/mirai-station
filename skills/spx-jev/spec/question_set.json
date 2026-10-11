@@ -119,9 +119,9 @@
   "labels": 142,
   "constants": 68,
   "label_availability": {
-   "live": 76,
+   "live": 75,
    "cheap_add": 57,
-   "dark": 9
+   "dark": 10
   }
  },
  "conventions": {
@@ -1753,6 +1753,7 @@
       "thirty_minute": "60min"
      },
      "retired_from": {
+      "opening_five_minute": "2026-10-12",
       "thirty_minute": "2026-10-08"
      },
      "lanes": [
@@ -1791,9 +1792,9 @@
       {
        "name": "news.morning_brief",
        "example": "the 09:00 morning brief leans up 0.3 on a -1 to +1 scale, past the 0.2 direction floor, with confidence 0.45, past the 0.3 confidence floor; this morning's gap was 0.30 sigma up, larger than 10 of the last 19 days' gaps, middle third, a real gap, so the brief leans the way the gap went",
-       "computed_how": "kind=brief reason=morning entry from learning-{day}.jsonl (never the day file, which a midday redive can overwrite); the gap is gap.size's, |09:34 close - prior_close| in sigma_anchor ranked by gap_open.gap_rank against up to the last {night_rank_count} sessions' gaps (needing same_clock_min_sessions, else omitted with the reason); a real gap is one above the bottom third; code writes the sentence with the direction and confidence floor verdicts",
-       "source": "state/market_expectation/learning-{day}.jsonl",
-       "availability": "live",
+       "computed_how": "the morning macro brief (watch.cli macro-brief, 09:00 ET) retired 2026-10-11: nothing writes state/market_expectation/learning-{day}.jsonl any more; until then: kind=brief reason=morning entry from learning-{day}.jsonl (never the day file, which a midday redive can overwrite); the gap is gap.size's, |09:34 close - prior_close| in sigma_anchor ranked by gap_open.gap_rank against up to the last {night_rank_count} sessions' gaps (needing same_clock_min_sessions, else omitted with the reason); a real gap is one above the bottom third; code writes the sentence with the direction and confidence floor verdicts",
+       "source": "none",
+       "availability": "dark",
        "needs_engine_edit": false
       }
      ],
@@ -10355,9 +10356,9 @@
   {
    "name": "news.morning_brief",
    "example": "the 09:00 morning brief leans up 0.3 on a -1 to +1 scale, past the 0.2 direction floor, with confidence 0.45, past the 0.3 confidence floor; this morning's gap was 0.30 sigma up, larger than 10 of the last 19 days' gaps, middle third, a real gap, so the brief leans the way the gap went",
-   "computed_how": "kind=brief reason=morning entry from learning-{day}.jsonl (never the day file, which a midday redive can overwrite); the gap is gap.size's, |09:34 close - prior_close| in sigma_anchor ranked by gap_open.gap_rank against up to the last {night_rank_count} sessions' gaps (needing same_clock_min_sessions, else omitted with the reason); a real gap is one above the bottom third; code writes the sentence with the direction and confidence floor verdicts",
-   "source": "state/market_expectation/learning-{day}.jsonl",
-   "availability": "live",
+   "computed_how": "the morning macro brief (watch.cli macro-brief, 09:00 ET) retired 2026-10-11: nothing writes state/market_expectation/learning-{day}.jsonl any more; until then: kind=brief reason=morning entry from learning-{day}.jsonl (never the day file, which a midday redive can overwrite); the gap is gap.size's, |09:34 close - prior_close| in sigma_anchor ranked by gap_open.gap_rank against up to the last {night_rank_count} sessions' gaps (needing same_clock_min_sessions, else omitted with the reason); a real gap is one above the bottom third; code writes the sentence with the direction and confidence floor verdicts",
+   "source": "none",
+   "availability": "dark",
    "needs_engine_edit": false
   },
   {

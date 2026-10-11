@@ -167,9 +167,10 @@ PROMPT_VERSION = "wt-11"    # bump on ANY prompt change — a bump resets the re
 # and surfaces its magnitude on its OWN uncalibrated scale; the naive above/below split is
 # DEMOTED to standing-inventory geography, not deleted. (7) the shove "confirmed-move"
 # side-door now requires an OBJECTIVE payload confirmation (a FIRED break / wall breach), not
-# an LLM-defined "confirmed", and the accelerant wording is non-directional. (8) macro_mood is
-# named in one prompt-head line so the overnight read is actually consulted (subordinate to
-# live structure). Record-only stance unchanged; no field gates a trade.
+# an LLM-defined "confirmed", and the accelerant wording is non-directional. (8) macro_mood
+# was named in one prompt-head line so the overnight read was consulted (subordinate to
+# live structure); the morning brief behind it retired 2026-10-11 and the line went with it.
+# Record-only stance unchanged; no field gates a trade.
 # wt-8 (2026-07-25): REGIME AS PERMISSION — the 07-22/23 forensic verdict. Every 07-22
 # loss was the same potential-energy put-lean (shove asymmetry + soft_side + magnet,
 # no live force) fired under LONG gamma; the identical play won big under SHORT gamma
@@ -2235,10 +2236,6 @@ def _prompt_parts(payload: dict, blind_verdict: dict | None = None) -> tuple[str
         "what dealers re-balance TODAY), the structural_*_wall band walls second (multi-day "
         "terrain), dated_structure last (far monthly/quarter-end OI shelves — react to them only "
         "when spot is near one; they are not targets and their sign is unknown).\n"
-        "- MACRO MOOD IS OVERNIGHT CONTEXT, NOT A TRIGGER (wt-8). day_context.macro_mood is the "
-        "morning brief's overnight sentiment read (direction + confidence). Let it break a tie "
-        "and set a mild prior; it is SUBORDINATE to live structure and the gamma sign, a "
-        "scheduled_event outranks it, and it is never a reason to fire on its own.\n"
         "- direction: \"call\" = you expect price UP over the horizon, \"put\" = DOWN. Set "
         "fired=false (direction null) when you have no directional edge — but ALWAYS still "
         "answer stance (a two-sided scene that will stay pinned is settle, not no_read).\n"
@@ -2668,16 +2665,6 @@ def _scorecards() -> dict:
     return out
 
 
-def _macro_mood() -> dict | None:
-    """The morning brief's one-line mood, if present (shadow tilt context)."""
-    try:
-        m = json.loads((STATE_DIR / "market_expectation" / "latest.json").read_text())
-        ov = m.get("overall") or {}   # writer nests the read under "overall" (macro_mood.build_expectation)
-        return {"direction": ov.get("direction"), "confidence": ov.get("confidence")}
-    except (OSError, json.JSONDecodeError):
-        return None
-
-
 # ==============================================================================
 # The one entry point the scan calls
 # ==============================================================================
@@ -2743,8 +2730,7 @@ def observe(telemetry: dict, now: datetime | None = None) -> dict | None:
         # reused by the reveal pass so both passes describe the same tape
         rows_today = _today_rows(now)
         payload = build_payload(telemetry, reveal_gates=False, rows=rows_today)
-        payload["day_context"] = {"macro_mood": _macro_mood(),
-                                  "session": _session_path(now, telemetry),
+        payload["day_context"] = {"session": _session_path(now, telemetry),
                                   "my_recent_verdicts": recent,
                                   "lifetime_scorecards": _scorecards()}
 

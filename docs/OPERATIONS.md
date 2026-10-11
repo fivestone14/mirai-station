@@ -129,7 +129,6 @@ python3 skills/mirai-left-eye/native_gex_feed.py --status          # confirm
 | `--login` cannot reach the browser (headless/SSH) | nothing can connect to 127.0.0.1:8765 | `--login --manual` and paste the redirected URL back |
 | `--login` refused at registration (422) | the provider changed what it accepts | the error quotes the field it disliked; fix `_register`'s body in `cassandra_oauth.py` |
 | No ntfy push on a fire | topic unset or phone not subscribed | check the `ntfy` block in `limits-and-cooldowns.json`; re-subscribe the app |
-| MCP tool calls fail (macro brief) | MCP server config missing on mini | copy the `mcpServers` block into the mini's `~/.claude.json` (see INSTALL §5) |
 | Mac mini sleeping | caffeinate plist not loaded | re-run `install-launchd.sh` |
 
 ## What the mini knows vs. doesn't
@@ -137,7 +136,6 @@ python3 skills/mirai-left-eye/native_gex_feed.py --status          # confirm
 The mini operates with:
 - The gex-only brain in `skills/mirai-left-eye/` (Gravity Engine + three heads)
 - Schwab live chain + the ThetaData native SPX chain via the Python venv
-- Cassandra's Edge MCP sources (twitter / reddit / fetch) for the morning macro brief
 
 The mini does NOT have:
 - The interactive investment vault (intentional — stays on the main machine)
@@ -173,7 +171,7 @@ launchctl bootout gui/$UID/com.mirai-station.left-eye
 
 # The whole station: every job install-launchd.sh loads (its PLISTS list is the fleet).
 # Drop caffeinate from the list to keep the mini awake and reachable while paused.
-JOBS="left-eye caffeinate auth-watch macro-brief gex-polarity viewstation lob-collector dated-book
+JOBS="left-eye caffeinate auth-watch gex-polarity viewstation lob-collector dated-book
       sndk sndk-read sndk-deadman sndk-bars
       spx-jev spx-jev-tape spx-jev-premarket spx-premarket-deadman spx-jev-bars spx-jev-context
       spx-jev-save-day spx-jev-overnight spx-jev-store spx-jev-prediction-nightly spx-jev-headlines

@@ -601,5 +601,8 @@ def test_the_shipped_doc_retires_every_pre_merge_question_from_the_live_lane_on_
     assert CUT_OVER_DAY == "2026-10-08"
     assert {qid: q.get("retired_from") for qid, q in live.items() if qid not in GATES} == {qid: CUT_OVER_DAY for qid in live if qid not in GATES}
     assert set(GATES) <= set(live) and not any("retired_from" in live[qid] for qid in GATES)
-    for lane in (TAPE, PREMARKET):
-        assert not any("retired_from" in q for g in load_questions(lane.questions, lane.key)["groups"] for q in g["questions"].values())
+    # the opening lane carries one retirement of its own, dated: brief_vs_tape, from the Monday after the morning
+    # macro brief it read retired (2026-10-11); the pre-market lane none
+    tape = {qid: q for g in load_questions(TAPE.questions, TAPE.key)["groups"] for qid, q in g["questions"].items()}
+    assert {qid: q["retired_from"] for qid, q in tape.items() if "retired_from" in q} == {"brief_vs_tape": "2026-10-12"}
+    assert not any("retired_from" in q for g in load_questions(PREMARKET.questions, PREMARKET.key)["groups"] for q in g["questions"].values())

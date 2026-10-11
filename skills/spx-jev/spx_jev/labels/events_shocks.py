@@ -1,5 +1,5 @@
 """The events and shocks family: the scheduled event clock and what releases did (context.event_clock,
-event.*), the morning brief and headlines (news.*), and unscheduled bursts seen through the tape (shock.*).
+event.*), the news labels (news.*, both dark), and unscheduled bursts seen through the tape (shock.*).
 
 * The calendar labels read calendar/events.json (events.py) for today: its releases before the open,
   in the session and the Fed's speakers. Past the calendar's last kept day they are omitted, since an
@@ -20,7 +20,7 @@ event.*), the morning brief and headlines (news.*), and unscheduled bursts seen 
   today from the snapshot that quoted them both.
 
 Each label's sentence, how it is computed and its source are in spec/question_set.json ``labels``; the
-headline feed is DARK.
+headline feed is DARK, and so is the morning brief since the macro brief retired (2026-10-11).
 """
 from __future__ import annotations
 
@@ -29,20 +29,17 @@ import math
 import statistics
 from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
-from pathlib import Path
 
 from .. import events
-from ..cuts import (BRIEF_CONF_MIN, BRIEF_DIR_MIN, EVENT_DIGEST_MIN, EVENT_DUE_MIN, FOLLOW_ON_MIN, GAP_HALF_SHARE, MIN_RANK_SESSIONS,
+from ..cuts import (EVENT_DIGEST_MIN, EVENT_DUE_MIN, FOLLOW_ON_MIN, GAP_HALF_SHARE, MIN_RANK_SESSIONS,
                     NIGHT_RANK_COUNT, ONE_NAME_SHARE, REACTION_EXTEND_SIGMA, SAME_CLOCK_MIN_SESSIONS, SHOCK_FRESH_MIN,
                     SHOCK_LOOKBACK_MIN, SPEAKER_WINDOW_MIN, TICK_BURST_PCT, WINDOW_10_MIN)
 from ..events import Event
 from ..market_context import SYMBOLS
-from ..state_builder import Scene, load_jsonl
-from .gap_open import gap_rank
+from ..state_builder import Scene
 from .label_set import LabelSet
 from .leadership import _largest_names
-from .measures import (ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, is_num, minute_of_day, move_size, session_extremes,
-                       settled_open)
+from .measures import ET, ONE_MINUTE, bar_time, bars_finished_between, close_at, minute_of_day, move_size, session_extremes
 from .plausible import left_out
 from .ranks import SameClockRank, fifth_side, rank_days, rank_sessions, same_clock_values, tick_bands_by_minute, tick_bursts
 from .rulers import NO_ANCHOR, SigmaRuler, estimated_note, normal_day_sigma, ruled, sigma_anchor
@@ -52,7 +49,8 @@ from .words import hm, pct, plural, sig
 LABELS = ("context.event_clock", "event.reaction", "event.release_clock_10m", "event.statement_and_presser",
           "news.morning_brief", "news.intraday_headline", "shock.burst", "shock.cross_asset", "shock.vs_day_range")
 GATES = ("event_clock", "release_in_lane", "shock_state", "move_reaction_path", "news_headline")
-DARK = {"news.intraday_headline": "no headline feed writes into state (a right-eye or Nexus writer is not built)"}
+DARK = {"news.intraday_headline": "no headline feed writes into state (a right-eye or Nexus writer is not built)",
+        "news.morning_brief": "the morning macro brief retired 2026-10-11; nothing writes market_expectation/learning-{day}.jsonl"}
 
 CALENDAR_LABELS = ("context.event_clock", "event.release_clock_10m", "event.reaction", "event.statement_and_presser")
 CALENDAR_GATES = ("event_clock", "release_in_lane", "move_reaction_path")
@@ -65,7 +63,6 @@ BASELINE_MIN = 60           # the hour before a burst, over which a market's lin
 FEED_MAX_AGE_MIN = 2        # a market value older than this at a burst's edge is a feed that had stopped
 LINK_MIN_MINUTES = 30       # fewest minutes in the hour before a burst to fit a market's link to the index
 DEFENSIVES = ("XLP", "XLU", "XLV")
-BRIEF_SUBDIR = Path("market_expectation")
 NOON = 12                   # the opening lane's speaker clause speaks of the morning
 
 
@@ -90,7 +87,6 @@ def build_events_shocks_labels(scene: Scene) -> LabelSet:
         _release_clock_10m(scene, day_events, ls)
         _reaction(scene, day_events, bursts, ls)
         _statement_and_presser(scene, day_events, ls)
-    _morning_brief(scene, anchor, ls)
     _shocks(scene, anchor, windows, bursts, day_events, ls)
     ls.sleep("news_headline", DARK["news.intraday_headline"])
     return ls
@@ -366,65 +362,6 @@ def _statement_and_presser(scene: Scene, day_events: list[Event], ls: LabelSet) 
     went = "has not moved" if since == 0 else f"has {'risen' if since > 0 else 'fallen'} {_nds_words(since)}{way}"
     ls.put(path, f"in the {REACTION_MIN} minutes after the Fed's {hm(statement.start)} statement price {said}, {_larger(said_rank)}; "
                  f"since the chair's press conference began at {hm(presser.start)} price {went}, {_larger(went_rank)}")
-
-
-# ----------------------------------------------------------------------------- the morning brief
-
-def _morning_brief(scene: Scene, anchor: SigmaRuler | None, ls: LabelSet) -> None:
-    """The morning news brief's lean against this morning's gap: the first brief of the day written for the
-    morning, from the learning log, which a midday redive never overwrites."""
-    path = "news.morning_brief"
-    if scene.state_dir is None:
-        ls.omit(path, "no state folder to read the morning brief from")
-        return
-    name = BRIEF_SUBDIR / f"learning-{scene.day}.jsonl"
-    briefs = sorted((b for b in load_jsonl(Path(scene.state_dir) / name)
-                     if b.get("kind") == "brief" and b.get("reason") == "morning" and isinstance(b.get("ts"), str)),
-                    key=lambda b: b["ts"])
-    if not briefs:
-        ls.omit(path, f"no morning brief in {name}")
-        return
-    brief, written = briefs[0], datetime.fromisoformat(briefs[0]["ts"])
-    if written > scene.now:
-        ls.omit(path, f"the morning brief was written at {hm(written)}, after this read")
-        return
-    overall = brief.get("overall") if isinstance(brief.get("overall"), dict) else {}
-    lean, confidence = overall.get("direction"), overall.get("confidence")
-    if not is_num(lean) or not is_num(confidence):
-        ls.omit(path, "the morning brief carries no direction and confidence")
-        return
-    opened, prior = settled_open(scene.bars), scene.row.get("prior_close")
-    if anchor is None:
-        ls.omit(path, NO_ANCHOR)
-        return
-    if opened is None:
-        ls.omit(path, "the settled open (the close of the 09:34 bar) has not finished yet")
-        return
-    if not is_num(prior):
-        ls.omit(path, "row carries no prior close")
-        return
-    gap = (opened - float(prior)) / anchor.points
-    rank, no_rank = gap_rank(scene, gap)
-    if rank is None:
-        ls.omit(path, no_rank)
-        return
-    leans = f"leans {'up' if lean > 0 else 'down'} {abs(lean):g}" if lean else "takes no side, 0"
-    no_view = abs(lean) < BRIEF_DIR_MIN or confidence < BRIEF_CONF_MIN
-    gap_past = rank.band != "bottom third"
-    if no_view:
-        verdict = "so the brief counts as no view"
-    elif not gap_past:
-        verdict = "so the brief takes a side the gap did not"
-    elif (lean > 0) == (gap > 0):
-        verdict = "so the brief leans the way the gap went"
-    else:
-        verdict = "so the brief leans against the way the gap went"
-    ls.put(path, f"the {hm(written)} morning brief {leans} on a -1 to +1 scale, "
-                 f"{'under' if abs(lean) < BRIEF_DIR_MIN else 'past'} the {BRIEF_DIR_MIN:g} direction floor, with confidence "
-                 f"{confidence:g}, {'under' if confidence < BRIEF_CONF_MIN else 'past'} the {BRIEF_CONF_MIN:g} confidence floor; "
-                 f"this morning's gap was {sig(abs(gap))} {'up' if gap >= 0 else 'down'}{estimated_note(anchor)}, "
-                 f"larger than {rank.higher_than} of the last {rank.of} days' gaps, {rank.band}, "
-                 f"{'a real gap' if gap_past else 'no real gap'}, {verdict}")
 
 
 # ----------------------------------------------------------------------------- bursts

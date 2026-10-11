@@ -1,20 +1,25 @@
 """gex_alerts.py — the ALERT BELL for the gex-only system.
 
-Ported from the retired tick_graph macro_mood_node + alert_push nodes
-(2026-07-03 gex-module restructure). Runs once per tick AFTER the left-eye
-scan (run-watch-left-eye.sh → `python -m watch.cli gex-alerts`). Three jobs:
+Ported from the retired tick_graph alert_push node (2026-07-03 gex-module
+restructure). Runs once per tick AFTER the left-eye scan
+(run-watch-left-eye.sh → `python -m watch.cli gex-alerts`). Three jobs:
 
   1. FRESH PAPER FIRES → phone. Reads today's hunter heartbeats
      (skills/mirai-left-eye/logs/{date}.jsonl) and pushes any Fade-Lens fire
      not already pushed (sent-ledger dedup — one push per fire, ever).
-  2. WALL-BREACH RE-DIVE. When spot pushes CONCRETELY beyond a dealer wall
-     (buffer = frac × the lens's σ yardstick), re-fire the Morning-Mood
-     analyst — daily budget + per-level cooldown capped, one S&P slot —
-     and log the breach to the mood learning ledger. Walls, spot
-     and σ come from the LENS DIARY (state/reversion/{date}.jsonl): the
-     gravity engine's own numbers, no separate market feed.
-  3. EOD. After 16:00 ET, score the mood's direction call once (score_eod),
-     using the day's first/last diary spots as the realized move.
+  2. THE WALL-BREACH BELL. When spot pushes CONCRETELY beyond a dealer wall
+     (the engine's recorded crossing, or the fallback check: buffer = frac ×
+     the lens's σ yardstick), page the phone once per wall per cooldown.
+     Walls, spot and σ come from the LENS DIARY (state/reversion/{date}.jsonl):
+     the gravity engine's own numbers, no separate market feed.
+  3. THE FEED SIRENS. A fresh diary row carrying a degraded-feed fact pages
+     once per outage, with an all-clear when it heals; a live market with no
+     row for too long pages the scanner silent.
+
+Until 2026-10-11 a breach also re-dived the morning macro brief's analyst and
+a pass after the close scored the brief's direction call; the brief retired
+and both went with it. Nothing writes state/market_expectation/ now but the
+alerts state below.
 
 All best-effort: any failure costs a log line, never a tick. Idempotent
 state: state/market_expectation/alerts_state.json (resets per day). The
@@ -31,13 +36,13 @@ from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 from .. import paths, push
-from . import macro_mood, market_status, push_ntfy, settings
+from . import market_status, push_ntfy, settings
 
 ET = ZoneInfo("America/New_York")
 # SPX only, and deliberately so. This module's passes are index-shaped — the
-# wall-breach re-dive spends a Morning-Mood analyst call, and the EOD pass
-# scores the mood's direction — so adding "SNDK" here would not give the stock
-# a watchdog, it would give it a second opinion machine nobody asked for.
+# wall-breach bell reads the SPX diary's walls and the sirens its feed flags —
+# so adding "SNDK" here would not give the stock a watchdog, it would give it
+# a second bell nobody asked for.
 #
 # SNDK's scanner IS watched, by its own process: runtime/watch/intraday/
 # sndk_deadman.py on com.mirai-station.sndk-deadman (2026-08-30). It lives
@@ -46,7 +51,6 @@ ET = ZoneInfo("America/New_York")
 # SNDK sessions died unpaged in August (08-07, 08-14, 08-17, 08-24) while this
 # tuple sat here looking like coverage.
 LENS_TICKERS = ("SPX",)
-_EOD_MINUTES = 16 * 60
 
 # Feed-health siren (2026-07-13): a diary row younger than this means the scanner
 # is in-session RIGHT NOW — rows are only written when the market-status gate said
@@ -124,6 +128,33 @@ def _book_back_text(minutes_out: float) -> str:
             f"Down {_duration_text(minutes_out)}.")
 
 
+def wall_breach(spot: Optional[float], call_wall: Optional[float],
+                put_wall: Optional[float], implied_move: Optional[float],
+                buffer_frac: float) -> Optional[Dict[str, Any]]:
+    """Has price pushed CONCRETELY BEYOND a dealer gamma wall? (the bell's fallback check,
+    for a row the engine recorded no crossing on).
+
+    A breach fires only when spot is past the wall by a buffer — `buffer_frac` of the
+    implied daily move (falling back to 0.05% of spot when implied_move is unknown).
+    An ordinary pullback that merely *touches* or sits inside the walls does NOT fire;
+    the point is a structural level giving way, not intraday noise.
+
+    Returns {"wall": "call"|"put", "direction": +1|-1, "level": float,
+             "beyond": float} or None. Direction is the breakout side: a call-wall
+    breach is bullish (+1), a put-wall breach bearish (-1)."""
+    if spot is None:
+        return None
+    buf = (abs(implied_move) * buffer_frac if implied_move is not None
+           else abs(spot) * 0.0005)
+    if call_wall is not None and spot > call_wall + buf:
+        return {"wall": "call", "direction": 1, "level": float(call_wall),
+                "beyond": round(spot - call_wall, 4)}
+    if put_wall is not None and spot < put_wall - buf:
+        return {"wall": "put", "direction": -1, "level": float(put_wall),
+                "beyond": round(put_wall - spot, 4)}
+    return None
+
+
 def _options_data_path(state_dir: Path) -> Path:
     return Path(state_dir) / "spx_jev" / "mirai_prediction" / "options_data.json"
 
@@ -145,8 +176,7 @@ def _alerts_state_path(state_dir: Path) -> Path:
 
 
 def _load_alerts_state(state_dir: Path, date_iso: str) -> Dict[str, Any]:
-    fresh = {"date": date_iso, "pushed": [], "redives": 0, "wallTimers": {},
-             "refOpen": None, "refLast": None}
+    fresh = {"date": date_iso, "pushed": [], "wallTimers": {}}
     try:
         st = json.loads(_alerts_state_path(state_dir).read_text())
         # isinstance: valid-JSON-non-dict (null, list) must reset, not crash the run
@@ -247,8 +277,8 @@ def _hunter_fires(date_iso: str) -> List[dict]:
 
 
 def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
-        redive_provider=None, channel=None) -> Dict[str, Any]:
-    """One alert pass. Providers injectable for tests; defaults are live."""
+        channel=None) -> Dict[str, Any]:
+    """One alert pass. The push channel is injectable for tests; the default is live."""
     now = now or datetime.now(tz=ET)
     now_et = now.astimezone(ET) if now.tzinfo else now.replace(tzinfo=ET)
     date_iso = now_et.date().isoformat()
@@ -257,10 +287,9 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
     push.set_channel(channel or push_ntfy.make_channel())
 
     st = _load_alerts_state(state_dir, date_iso)
-    out: Dict[str, Any] = {"pushed": 0, "breaches": 0, "redives": 0,
-                           "eod_scored": False, "feed_sirens": 0,
+    out: Dict[str, Any] = {"pushed": 0, "breaches": 0, "feed_sirens": 0,
                            "feed_recoveries": 0}
-    rows = _lens_rows(state_dir, date_iso)   # today's diary — passes 2 and 4 read it
+    rows = _lens_rows(state_dir, date_iso)   # today's diary — passes 2 and 3 read it
 
     # --- 1) fresh paper fires → phone (one push per fire, ever) --------------
     try:
@@ -282,33 +311,16 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
     except Exception as e:
         print(f"gex-alerts :: fire push degraded: {e}", flush=True)
 
-    # --- 2) wall-breach re-dive (ported budget/cooldown semantics) ------------
+    # --- 2) the wall-breach bell (one page per wall per cooldown) --------------
     try:
-        exp = macro_mood.read_expectation(state_dir, date_iso)
-        if exp is None:
-            latest = macro_mood.read_latest(state_dir)
-            if latest and str(latest.get("date") or "")[:10] >= date_iso:
-                exp = latest
         latest_by_tk = {}
         for r in rows:
             if r.get("ticker") in LENS_TICKERS:
                 latest_by_tk[r["ticker"]] = r
 
-        # reference-index anchors for EOD scoring (SPX preferred)
-        spx_rows = [r for r in rows if r.get("ticker") == "SPX" and r.get("spot")]
-        if spx_rows:
-            if st.get("refOpen") is None:
-                st["refOpen"] = float(spx_rows[0]["spot"])
-            st["refLast"] = float(spx_rows[-1]["spot"])
-
-        used = int(st.get("redives") or 0)
         cooldowns = dict(st.get("wallTimers") or {})
-        redive = redive_provider or macro_mood.make_redive_provider(state_dir)
-        buffer_frac = settings.macro_wall_buffer_frac()
-        daily_cap = settings.macro_redive_daily_cap()
-        cd_min = settings.macro_redive_cooldown_min()
-        exp_dir = float((exp.get("overall") or {}).get("direction") or 0.0) if exp else 0.0
-        redived_roots: set = set()
+        buffer_frac = settings.wall_breach_buffer_frac()
+        cd_min = settings.wall_breach_cooldown_min()
 
         # N1 (2026-07-12): the engine now records the breach EVENT on the row
         # (reversion_lens.detect_breach — this scan's spot vs the PREVIOUS row's
@@ -327,9 +339,8 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
                     "direction": 1 if wb.get("side") == "call" else -1,
                     "beyond": round(float(wb.get("spot") or 0) - float(wb["wall"]), 1)}))
         for tk, r in latest_by_tk.items():
-            br = macro_mood.wall_breach(r.get("spot"), r.get("call_wall"),
-                                        r.get("put_wall"), r.get("sigma"),
-                                        buffer_frac)
+            br = wall_breach(r.get("spot"), r.get("call_wall"), r.get("put_wall"),
+                             r.get("sigma"), buffer_frac)
             if br:
                 breach_cands.append((tk, r, br))
         for tk, r, br in breach_cands:
@@ -338,49 +349,18 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
             last = cooldowns.get(key)
             if last is not None and (minutes - float(last)) < cd_min:
                 continue
-            against = exp_dir != 0.0 and (br["direction"] > 0) != (exp_dir > 0)
-            fired = False
-            root = "SPY" if tk == "SPX" else tk            # S&P shares one slot
-            if redive is not None and used < daily_cap and root not in redived_roots:
-                try:
-                    redive(exp, {"ticker": tk, "wall": br["wall"],
-                                 "direction": br["direction"], "now": now_et})
-                    used += 1
-                    fired = True
-                    redived_roots.add(root)
-                except Exception:
-                    fired = False
-            # N1: the BELL is not the re-dive — it rings on every (cooldown-fresh)
-            # breach even when the re-dive budget is spent. The breach is the fact;
-            # the re-dive is a reaction to it.
+            # N1: the bell rings on every cooldown-fresh breach. The breach is the
+            # fact; what was done about it (until 2026-10-11, a re-dive of the morning
+            # macro brief's analyst) was never the bell's business.
             push.send(f"🧱 {tk} broke its {br['wall']} wall "
-                      f"({br['beyond']:+.1f} beyond)"
-                      + (" — mood re-dive fired" if fired else ""),
+                      f"({br['beyond']:+.1f} beyond)",
                       tag="gex-wall")
             cooldowns[key] = minutes
-            macro_mood.log_learning(state_dir, {
-                "kind": "wall_breach", "ticker": tk, "wall": br["wall"],
-                "direction": br["direction"], "beyond": br["beyond"],
-                "minutes_et": minutes, "against_expectation": against,
-                "redived": fired}, date_iso)
-        st["redives"] = used
         st["wallTimers"] = cooldowns
-        out["redives"] = used
     except Exception as e:
         print(f"gex-alerts :: wall-breach pass degraded: {e}", flush=True)
 
-    # --- 3) EOD mood scoring (idempotent inside score_eod) ---------------------
-    try:
-        if minutes >= _EOD_MINUTES and st.get("refOpen") is not None \
-                and st.get("refLast") is not None:
-            exp_for_score = macro_mood.read_expectation(state_dir, date_iso)
-            realized = float(st["refLast"]) - float(st["refOpen"])
-            won = macro_mood.score_eod(state_dir, exp_for_score, realized, date_iso)
-            out["eod_scored"] = won is not None
-    except Exception as e:
-        print(f"gex-alerts :: EOD scoring degraded: {e}", flush=True)
-
-    # --- 4) feed-health siren (2026-07-13) -------------------------------------
+    # --- 3) feed-health siren (2026-07-13) -------------------------------------
     # The 0DTE-discovery outage wrote `no_zero_dte` honestly on every live row and
     # paged no one — a diary flag is not an alarm. A fresh row means the scanner is
     # in-session right now; each degraded-feed fact on it pushes once per OUTAGE

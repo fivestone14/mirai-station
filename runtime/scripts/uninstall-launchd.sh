@@ -10,7 +10,6 @@ PLISTS=(
   "com.mirai-station.left-eye"
   "com.mirai-station.caffeinate"
   "com.mirai-station.auth-watch"
-  "com.mirai-station.macro-brief"
   "com.mirai-station.gex-polarity"
   "com.mirai-station.viewstation"
   "com.mirai-station.lob-collector"

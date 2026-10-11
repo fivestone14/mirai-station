@@ -1,5 +1,5 @@
-"""Tests for the gex-only ALERT BELL (intraday/gex_alerts.py) — the ported
-wall-breach re-dive + paper-fire pushes + EOD mood scoring."""
+"""Tests for the gex-only ALERT BELL (intraday/gex_alerts.py) — the paper-fire
+pushes, the wall-breach bell and the feed sirens."""
 from __future__ import annotations
 
 import json
@@ -9,7 +9,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from zoneinfo import ZoneInfo
 
-from watch.intraday import gex_alerts, macro_mood
+from watch.intraday import gex_alerts
 
 ET = ZoneInfo("America/New_York")
 NOW = datetime(2026, 7, 6, 13, 0, tzinfo=ET)          # a Monday, mid-session
@@ -46,14 +46,6 @@ def _options_data(state_dir):
     return json.loads(gex_alerts._options_data_path(Path(state_dir)).read_text())
 
 
-def _write_expectation(state_dir: Path, direction=0.5):
-    d = state_dir / "market_expectation"
-    d.mkdir(parents=True, exist_ok=True)
-    exp = {"date": DAY, "overall": {"direction": direction, "magnitude": 0.5,
-                                    "confidence": 0.8}, "sectors": {}, "reasoning": "test"}
-    (d / f"{DAY}.json").write_text(json.dumps(exp))
-
-
 def _write_fires(skill_dir: Path, fires):
     d = skill_dir / "logs"
     d.mkdir(parents=True, exist_ok=True)
@@ -62,82 +54,62 @@ def _write_fires(skill_dir: Path, fires):
 
 
 class TestGexAlerts(unittest.TestCase):
-    def _run(self, state_dir, skill_dir=None, now=NOW, redive="unset"):
+    def _run(self, state_dir, skill_dir=None, now=NOW):
         import watch.paths as paths
-        sent, dives = [], []
+        sent = []
         old_skill = paths.LEFT_EYE_SKILL
         if skill_dir is not None:
             paths.LEFT_EYE_SKILL = Path(skill_dir)
         try:
-            provider = (lambda exp, ctx: dives.append(ctx)) if redive == "unset" else redive
-            out = gex_alerts.run(now, state_dir=Path(state_dir),
-                                 redive_provider=provider,
-                                 channel=sent.append)
+            out = gex_alerts.run(now, state_dir=Path(state_dir), channel=sent.append)
         finally:
             paths.LEFT_EYE_SKILL = old_skill
-        return out, sent, dives
+        return out, sent
 
     def test_fire_pushed_once_ever(self):
         with TemporaryDirectory() as td, TemporaryDirectory() as sk:
             _write_fires(Path(sk), [{"ts": f"{DAY}T10:00:00", "ticker": "SPX",
                                      "direction": "call", "side": "LONG",
                                      "magnet": 7500.0, "gap_stretch": -1.2}])
-            out1, sent1, _ = self._run(td, sk)
-            out2, sent2, _ = self._run(td, sk)
+            out1, sent1 = self._run(td, sk)
+            out2, sent2 = self._run(td, sk)
             self.assertEqual(out1["pushed"], 1)
             self.assertEqual(sum("paper" in s for s in sent1), 1)
             self.assertEqual(out2["pushed"], 0)          # dedup across runs
 
-    def test_breach_fires_redive_and_cooldown_suppresses(self):
+    def test_breach_rings_the_bell_once_and_cooldown_suppresses(self):
         with TemporaryDirectory() as td:
-            _write_expectation(Path(td))
             # The engine records the crossing on the row and has already re-placed
             # the call wall outward past spot, so the event is the only breach.
             r = _row(spot=7580.0, cw=7620.0)
             r["wall_breach"] = {"side": "call", "wall": 7520.0, "spot": 7580.0,
                                 "overshoot_sigma": 1.2}
             _write_lens_rows(Path(td), [r])
-            out1, sent1, dives1 = self._run(td)
+            out1, sent1 = self._run(td)
             self.assertEqual(out1["breaches"], 1)
-            self.assertEqual([(d["wall"], d["direction"]) for d in dives1], [(7520, 1)])
-            self.assertTrue(any("SPX broke its 7520 wall" in s for s in sent1))
-            out2, sent2, dives2 = self._run(td)          # same tick minutes → cooldown
-            self.assertEqual(len(dives2), 0)
+            self.assertEqual([s for s in sent1 if "wall" in s], ["🧱 SPX broke its 7520 wall (+60.0 beyond)"])
+            out2, sent2 = self._run(td)          # same tick minutes → cooldown
+            self.assertEqual(out2["breaches"], 1)
             self.assertFalse(any("wall" in s for s in sent2))
 
     def test_no_breach_inside_walls(self):
         with TemporaryDirectory() as td:
-            _write_expectation(Path(td))
             _write_lens_rows(Path(td), [_row(spot=7500.0)])
-            out, _, dives = self._run(td)
+            out, sent = self._run(td)
             self.assertEqual(out["breaches"], 0)
-            self.assertEqual(len(dives), 0)
-
-    def test_eod_scores_reliability_once(self):
-        with TemporaryDirectory() as td:
-            _write_expectation(Path(td), direction=0.5)   # bullish call
-            _write_lens_rows(Path(td), [_row(spot=7450.0),
-                                        _row(spot=7530.0)])  # day closed up
-            out1, _, _ = self._run(td, now=NOW_EOD)
-            self.assertTrue(out1["eod_scored"])
-            p = macro_mood.read_reliability(Path(td))
-            self.assertEqual((p.hits, p.misses), (1.0, 0.0))   # bullish call, up day: a hit
-            out2, _, _ = self._run(td, now=NOW_EOD)
-            self.assertFalse(out2["eod_scored"])          # idempotent per day
+            self.assertFalse(any("wall" in s for s in sent))
 
 
 
 class TestFeedHealthSiren(unittest.TestCase):
-    """Pass 4 (2026-07-13) — the 0DTE-discovery outage logged `no_zero_dte`
+    """The feed-health pass (2026-07-13) — the 0DTE-discovery outage logged `no_zero_dte`
     honestly on every live row and paged no one. A FRESH diary row (the scanner
     is in-session right now) carrying a degraded-feed fact must push, once per
     condition per day; stale rows (after hours) must stay silent."""
 
     def _run(self, state_dir, now=NOW):
         sent = []
-        out = gex_alerts.run(now, state_dir=Path(state_dir),
-                             redive_provider=lambda exp, ctx: None,
-                             channel=sent.append)
+        out = gex_alerts.run(now, state_dir=Path(state_dir), channel=sent.append)
         return out, sent
 
     @staticmethod
@@ -384,9 +356,7 @@ class TestFeedHealthSiren(unittest.TestCase):
 
         with TemporaryDirectory() as td:
             _write_lens_rows(Path(td), _stand_in_rows(NOW - timedelta(minutes=20), NOW))
-            out1 = gex_alerts.run(NOW, state_dir=Path(td),
-                                  redive_provider=lambda exp, ctx: None,
-                                  channel=_dead)
+            out1 = gex_alerts.run(NOW, state_dir=Path(td), channel=_dead)
             self.assertEqual(out1["feed_sirens"], 0)
             self.assertTrue(out1.get("undelivered"))
             out2, sent2 = self._run(td)            # channel back → it tries again

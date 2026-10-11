@@ -117,7 +117,7 @@ Verify the hunter can import its deps:
 
 ## 5. MCP servers (Cassandra's Edge)
 
-mirai's MCP feeds are the **Cassandra's Edge** remote servers — HTTP MCP endpoints at `https://*.cassandrasedge.com/mcp`, authenticated per-server with a bearer token. The `market-research` endpoint also fronts the **ThetaData** native SPX chain (the primary GEX source). The morning Macro-Mood brief (`macro_mood.py`) uses **twitter, reddit, fetch**. (Other servers exist on the Edge but the routine does not use them.)
+mirai's MCP feeds are the **Cassandra's Edge** remote servers — HTTP MCP endpoints at `https://*.cassandrasedge.com/mcp`, authenticated per-server with a bearer token. The `market-research` endpoint also fronts the **ThetaData** native SPX chain (the primary GEX source). The twitter, reddit and fetch servers fed the morning macro brief, which retired 2026-10-11; nothing in the routine uses them now. (Other servers exist on the Edge but the routine does not use them.)
 
 The source of truth is the main machine's user-scope config: the top-level `mcpServers` block in `~/.claude.json` (NOT `~/.config/claude/`). To set up the mini, copy that block into the mini's `~/.claude.json` (user scope = available to every `claude -p` regardless of cwd), e.g.:
 
@@ -190,7 +190,6 @@ This symlinks the plists into `~/Library/LaunchAgents/` and bootstraps them via 
 | `com.mirai-station.caffeinate`    | always running            | keeps the mini awake |
 | `com.mirai-station.lob-collector` | every 60 s                | Layer-2 LOB flow collector (shadow) |
 | `com.mirai-station.viewstation`   | always running            | the viewstation HTTP server on :8787 (the desktop page and the phone pages) |
-| `com.mirai-station.macro-brief`   | daily 09:00 ET            | morning Macro-Mood brief (`run-macro-brief.sh`) |
 | `com.mirai-station.gex-polarity`  | daily 16:15 ET            | after-close A/B report cards + LOB nightly fold (`run-gex-polarity.sh`) |
 | `com.mirai-station.auth-watch`    | daily 08:00 ET            | Schwab token keep-alive + dead-bearer ping (`run-auth-check.sh`) |
 
@@ -284,8 +283,6 @@ cd ~/.claude/plugins/mirai-station
 `iv_fetcher.py --setup`, Cassandra's Edge through `native_gex_feed.py --login`. The
 Cassandra enrolment does **not** transfer: the refresh token rotates on every use, so
 two stations sharing one would lock each other out. Enrol the new station on its own.
-Also copy the `mcpServers` block into the target's `~/.claude.json` (§5) so the morning
-macro brief can reach the Cassandra's Edge MCP servers.
 
 ### 4. The iCloud mirror
 

@@ -29,14 +29,11 @@ _DEFAULTS: Dict[str, Dict[str, Any]] = {
     },
     "limits-and-cooldowns": {
         "models": {
-            "macro_brief": "opus",
-            "macro_redive": "opus",
             "default": "sonnet",
         },
-        "macro_mood": {
-            "wall_buffer_frac": 0.10,
-            "redive_daily_cap": 4,
-            "redive_cooldown_min": 20,
+        "wall_breach": {
+            "buffer_frac": 0.10,
+            "cooldown_min": 20,
         },
     },
 }
@@ -121,23 +118,18 @@ def ntfy_server() -> str:
     return str(_get("limits-and-cooldowns", "ntfy", "server", default="https://ntfy.sh"))
 
 
-# ---------- Morning Macro-Mood layer (BETA shadow; intraday/macro_mood.py) ----------
+# ---------- The wall-breach bell (intraday/gex_alerts.py) ----------
 
 
-def macro_wall_buffer_frac() -> float:
-    """A re-dive fires only when spot pushes past a gamma wall by this fraction of
-    the implied daily move — filters ordinary in-wall pullbacks."""
-    return float(_get("limits-and-cooldowns", "macro_mood", "wall_buffer_frac", default=0.10))
+def wall_breach_buffer_frac() -> float:
+    """The bell's fallback check rings only when spot pushes past a gamma wall by this
+    fraction of the implied daily move — filters ordinary in-wall pullbacks."""
+    return float(_get("limits-and-cooldowns", "wall_breach", "buffer_frac", default=0.10))
 
 
-def macro_redive_daily_cap() -> int:
-    """Max analyst re-dives per day (opus budget guard)."""
-    return int(_get("limits-and-cooldowns", "macro_mood", "redive_daily_cap", default=4))
-
-
-def macro_redive_cooldown_min() -> float:
-    """Min minutes between re-dives for the same ticker+wall."""
-    return float(_get("limits-and-cooldowns", "macro_mood", "redive_cooldown_min", default=20))
+def wall_breach_cooldown_min() -> float:
+    """Min minutes between two pages for the same ticker+wall."""
+    return float(_get("limits-and-cooldowns", "wall_breach", "cooldown_min", default=20))
 
 
 # ---------- Model tiering (haiku gathers, sonnet drafts, opus decides) ----------
