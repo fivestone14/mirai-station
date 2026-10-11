@@ -19,8 +19,6 @@ PLISTS=(
   "com.mirai-station.sndk-read"
   "com.mirai-station.sndk-deadman"
   "com.mirai-station.sndk-bars"
-  "com.mirai-station.sndk-jev"
-  "com.mirai-station.sndk-jev-tape"
   "com.mirai-station.spx-jev"
   "com.mirai-station.spx-jev-tape"
   "com.mirai-station.spx-jev-premarket"

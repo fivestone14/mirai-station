@@ -25,7 +25,6 @@ launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.mirai-station.left-eye.p
 | Per-scan stdout/stderr | `/tmp/mirai-station.*.{out,err}` (nothing rotates them: launchd appends, and they grow until deleted by hand) |
 | Runtime/env messages   | `~/.claude/plugins/mirai-station/state/logs/runtime-YYYY-MM-DD.log` |
 | Hunter's own jsonl     | `~/.claude/plugins/mirai-station/skills/mirai-left-eye/logs/YYYY-MM-DD.jsonl` |
-| JEV decision service (`sndk-jev`: labels the newest SNDK row at :02 and :32, asks JEV, sums and grades, writes `state/jev/`) | `/tmp/mirai-station.sndk-jev.{out,err}`; its records under `~/.claude/plugins/mirai-station/state/jev/` |
 | SPX JEV decision service, eleven jobs (`spx-jev`: the same beside the SPX diary at :02 and :32; `spx-jev-tape`, the opening lane; its feeds `spx-jev-bars`, `spx-jev-context`, `spx-jev-save-day`, `spx-jev-overnight` and `spx-jev-headlines`; `spx-jev-premarket`, the lane before the open; `spx-jev-store`, `spx-jev-prediction-nightly` and `spx-premarket-deadman`, below). `launchctl list \| grep -E 'spx-jev\|spx-premarket'` shows all eleven | `/tmp/mirai-station.spx-jev*.{out,err}` and `/tmp/mirai-station.spx-premarket-deadman.{out,err}`; its records under `~/.claude/plugins/mirai-station/state/spx_jev/` |
 | SPX JEV overnight futures (`spx-jev-overnight`: /ES, /ZN, /BTC and /MBT bars from the prior close, saved at 09:26 and 16:20 ET on market days, with a manifest line of checks for each save that changed a night, and the roll table) | `/tmp/mirai-station.spx-jev-overnight.{out,err}`; `state/spx_jev/overnight/{date}.jsonl`, `manifest.jsonl`, `rolls.json` |
 | SPX JEV premarket lane (`spx-jev-premarket`: the night's labels at 02:35, 03:35 (04:35 in Frankfurt's winter-time week), 08:05, 08:48, 09:05 and 09:28 ET, JEV asked at 08:48 and 09:28, the close-out at 10:06 grading from the settled open) | `/tmp/mirai-station.spx-jev-premarket.{out,err}`; `state/spx_jev/lanes/premarket/` |
@@ -44,13 +43,6 @@ tail -20 /tmp/mirai-station.left-eye.err
 ```
 
 This bypasses launchd entirely; useful for debugging. `mirai-watch tick` runs the same script, and its `--dry-run` flag is accepted and ignored: that is a real tick too, phone pushes included.
-
-One JEV run by hand, the way the job runs it (drop `--send` for an unsent card; `--day YYYY-MM-DD` replays a past day; the key is read from the git-ignored `skills/sndk-jev/.env`):
-
-```bash
-cd ~/.claude/plugins/mirai-station/skills/sndk-jev
-~/.local/share/mirai-station/venv/bin/python -m sndk_jev.service --state-dir ~/.claude/plugins/mirai-station/state --send
-```
 
 The overnight futures by hand, the way the job saves them (`--day YYYY-MM-DD` saves one night, named for the day it leads into; `--backfill` takes every night Schwab still serves and re-detects the rolls; a rerun adds only what is not on disk). A save that changed a night writes its checks as a line in `state/spx_jev/overnight/manifest.jsonl`, so the newest line for a day is the last save that added to it (a rerun that added nothing writes none):
 
@@ -128,7 +120,7 @@ python3 skills/mirai-left-eye/native_gex_feed.py --status          # confirm
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `launchctl list` shows `Status: 78` for an agent | exit code != 0; check stderr | `tail /tmp/mirai-station.<label>.err` |
-| `/tmp/mirai-station.<label>.err` has a line ending its market check with `FAILED (rc=N)` and the job exits 1 | the market-hours gate itself failed (venv, import). The gate exits 0 when the market is open and 3 when it is closed, and only 3 skips quietly. The gates of spx-jev and spx-jev-bars also exit 4 in the 13 minutes after the close, which runs the job once more: the day's last bars, and the live read's grade-only close-out | re-run `venv-bootstrap.sh`. Gated this way, by runner (`run-<name>.sh`): sndk, sndk-read, sndk-bars, lob-collector, book-collector (no job installs it), sndk-jev, spx-jev (the spx-jev and spx-jev-tape jobs), spx-jev-bars, spx-jev-context, watch-left-eye (the left-eye job, which still runs its alert pass before exiting 1) |
+| `/tmp/mirai-station.<label>.err` has a line ending its market check with `FAILED (rc=N)` and the job exits 1 | the market-hours gate itself failed (venv, import). The gate exits 0 when the market is open and 3 when it is closed, and only 3 skips quietly. The gates of spx-jev and spx-jev-bars also exit 4 in the 13 minutes after the close, which runs the job once more: the day's last bars, and the live read's grade-only close-out | re-run `venv-bootstrap.sh`. Gated this way, by runner (`run-<name>.sh`): sndk, sndk-read, sndk-bars, lob-collector, book-collector (no job installs it), spx-jev (the spx-jev and spx-jev-tape jobs), spx-jev-bars, spx-jev-context, watch-left-eye (the left-eye job, which still runs its alert pass before exiting 1) |
 | Phone: "SNDK reader silent" | the reader stopped writing read rows while the scanner still writes; a silent scanner is paged under its own name instead | `tail /tmp/mirai-station.sndk-read.err`; check `SNDK_READ_DISABLE`. "SNDK reader back" follows once a read row lands |
 | "schwab module not found" | venv not provisioned or wrong python | re-run `venv-bootstrap.sh`; confirm shebang resolves |
 | GEX read falls back to SPY-proxy every scan | expired Cassandra/ThetaData login | `native_gex_feed.py --login` (see above); auth-watch pings on this |
@@ -171,9 +163,8 @@ The launchd jobs pick up script changes on next fire (no restart needed). plist 
 ## Disabling temporarily
 
 `launchctl disable` keeps a job off past a reboot or a login; `bootout` stops it now. A job
-can also be left loaded and switched off in its environment (`SNDK_JEV_DISABLE=1`,
-`SPX_JEV_DISABLE=1` and the others in the README's kill-switch table), which makes its
-runner exit 0.
+can also be left loaded and switched off in its environment (`SPX_JEV_DISABLE=1` and
+the others in the README's kill-switch table), which makes its runner exit 0.
 
 ```bash
 # One job
@@ -183,7 +174,7 @@ launchctl bootout gui/$UID/com.mirai-station.left-eye
 # The whole station: every job install-launchd.sh loads (its PLISTS list is the fleet).
 # Drop caffeinate from the list to keep the mini awake and reachable while paused.
 JOBS="left-eye caffeinate auth-watch macro-brief gex-polarity viewstation lob-collector dated-book
-      sndk sndk-read sndk-deadman sndk-bars sndk-jev sndk-jev-tape
+      sndk sndk-read sndk-deadman sndk-bars
       spx-jev spx-jev-tape spx-jev-premarket spx-premarket-deadman spx-jev-bars spx-jev-context
       spx-jev-save-day spx-jev-overnight spx-jev-store spx-jev-prediction-nightly spx-jev-headlines
       spx-claude-forecast-recorder spx-claude-forecast-nightly voice"

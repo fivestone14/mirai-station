@@ -116,14 +116,14 @@ def test_the_five_way_sum_is_read_three_ways_and_unsure_is_never_spread():
 
 def test_the_tape_plist_fires_at_the_lanes_reads_and_its_close_out():
     """The job's calendar is the lane's schedule plus the close-out, in the box's Pacific time (market time
-    minus 3 hours), in the plist that is installed and in its template alike."""
+    minus 3 hours), in the plist template kept here. The installed copy under runtime/launchd went when the
+    service retired (2026-10-11); nothing loads this template any more."""
     import plistlib
     from pathlib import Path
     root = Path(__file__).resolve().parents[3]
     want = [(int(t[:2]) - 3, int(t[3:])) for t in TAPE.schedule + (TAPE.close_out,)]
     assert len(TAPE.schedule) == 12 and TAPE.schedule[0] == "09:35" and TAPE.schedule[-1] == "10:30" and TAPE.close_out == "10:42"
-    for path in (root / "runtime/launchd/com.mirai-station.sndk-jev-tape.plist",
-                 root / "skills/sndk-jev/launchd/com.mirai-station.sndk-jev-tape.plist.template"):
-        fires = [(e["Hour"], e["Minute"]) for e in plistlib.loads(path.read_bytes())["StartCalendarInterval"]]
-        assert fires == want, path.name
+    path = root / "skills/sndk-jev/launchd/com.mirai-station.sndk-jev-tape.plist.template"
+    fires = [(e["Hour"], e["Minute"]) for e in plistlib.loads(path.read_bytes())["StartCalendarInterval"]]
+    assert fires == want, path.name
     assert LIVE.schedule == () and LIVE.close_out is None

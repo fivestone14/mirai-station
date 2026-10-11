@@ -27,12 +27,6 @@ PLISTS=(
   # price record survives a stuck scanner. Named here for the same reason the
   # deadman is — an unlisted plist is a job that was built and never hired.
   "com.mirai-station.sndk-bars.plist"
-  # The JEV decision service (09-22): its own job, 20 s behind the scanner, reads the
-  # station's files and writes only state/jev/. Named here so a reinstall keeps it.
-  "com.mirai-station.sndk-jev.plist"
-  # The JEV opening lane (09-26): the same runner with `--lane tape`, every 5 minutes
-  # 09:35 to 10:30 ET, writing only state/jev/lanes/tape/.
-  "com.mirai-station.sndk-jev-tape.plist"
   # The SPX JEV decision service: the same shape beside the left-eye scanner, writing
   # only state/spx_jev/. The live read at :02 and :32, the opening lane, the premarket lane's
   # checkpoints before the open, the four feeds it reads (SPX minute bars, the market around

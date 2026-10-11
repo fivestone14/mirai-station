@@ -319,7 +319,8 @@ mirai-station/
 │   │                           siege_bridge · lob_bridge · dashboard · price lenses
 │   ├── sndk-pro/               the isolated SNDK station: feed · views · hunter ·
 │   │                           read (model reading) · rag (on-demand memory)
-│   ├── sndk-jev/               the SNDK JEV decision service (TypeSafe)
+│   ├── sndk-jev/               the SNDK JEV decision service (TypeSafe), retired 2026-10-11:
+│   │                           no job runs it; the folder goes next
 │   ├── spx-jev/                the SPX JEV decision service, its feeds, the headlines
 │   │                           feed and the Mirai Prediction System
 │   ├── spx-claude-forecast/    the Claude read over a frozen payload: recorder · nightly
@@ -348,7 +349,7 @@ mirai-station/
                                 sndk-payload-inventory · salvage-notes
 ```
 
-### The launchd fleet (28 agents)
+### The launchd fleet (26 agents)
 
 `runtime/scripts/install-launchd.sh` names every agent it loads (`PLISTS`); that list is
 the fleet.
@@ -360,8 +361,6 @@ the fleet.
 | `sndk-read` | every 120 s (gated to RTH) | the SNDK reading — **its own job on purpose**, so a hung model call can never eat a diary row |
 | `sndk-bars` | every 60 s (gated to RTH, plus 12 min after the close) | SNDK's finished minute bars — its own job, so the price record survives a stuck scanner |
 | `sndk-deadman` | every 5 min | pages the phone when the SNDK scanner or its reader stops writing |
-| `sndk-jev` | :02 and :32 ET (gated to RTH) | the JEV decision service: labels the newest SNDK row, asks JEV, sums and grades, writes `state/jev/` — its own job, never on the scan path |
-| `sndk-jev-tape` | every 5 min 09:35 to 10:30 ET, and 10:42 (gated to RTH) | SNDK JEV's opening lane, writing only `state/jev/lanes/tape/` |
 | `lob-collector` | every 60 s | Layer-2 LOB flow collector (shadow) |
 | `viewstation` | continuous | the viewstation HTTP server on :8787 (desktop + phone) |
 | `voice` | continuous | the voice WebSocket sidecar on :8788 |
@@ -395,7 +394,6 @@ can be missed.
 | `WATCHTOWER_DISABLE=1` | the LLM second opinion |
 | `SNDK_PRO_DISABLE=1` | the SNDK scanner (**and**, implicitly, its reading — with no fresh rows, reading on would only re-narrate a frozen book) |
 | `SNDK_READ_DISABLE=1` | the SNDK reading only |
-| `SNDK_JEV_DISABLE=1` | the JEV decision service (checked in its runner, `run-sndk-jev.sh`, which exits 0) |
 | `SPX_JEV_DISABLE=1` | SPX JEV and all eleven of its jobs (checked in each `run-spx-jev*.sh` runner and the pre-market dead-man's, which exit 0); the two Claude forecast jobs stand down with it, since there is nothing to forecast |
 | `SPX_JEV_PREDICTION_DISABLE=1` | the Mirai Prediction System's nightly job only |
 | `SPX_CLAUDE_FORECAST_DISABLE=1` | the Claude forecast's recorder and nightly jobs (checked in their runners and again in Python) |

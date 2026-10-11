@@ -2,7 +2,7 @@
 # launchd-fired wrapper for the SPX JEV decision service (record-only: nothing here trades).
 # One tick = read the newest SPX diary row (state/reversion/, the left-eye scanner's) and what sits
 # beside it, build the labels, ask JEV when a key is present, write state/spx_jev/{day}.jsonl and
-# state/spx_jev/latest.json for the phone. Same gates as run-sndk-jev.sh, so it is quiet outside
+# state/spx_jev/latest.json for the phone. Same gates as run-sndk.sh, so it is quiet outside
 # market hours; a separate job from the scanner, never imported by it.
 # Installed by install-launchd.sh (com.mirai-station.spx-jev, :02 and :32). The opening lane's job
 # (com.mirai-station.spx-jev-tape, every 5 minutes 09:35 to 10:30 ET) runs the same script with
