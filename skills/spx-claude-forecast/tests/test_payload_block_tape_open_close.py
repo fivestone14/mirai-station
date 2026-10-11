@@ -201,7 +201,7 @@ def test_a_1529_read_has_no_r12_or_rrod_and_the_1530_read_has_both(tmp_path):
     before = build_close_signals_block(fake_inputs(tmp_path, cut=at(15, 29, 17), bars=ramp(until=(15, 28))))
     gaps = absent_reasons(before)
     assert gaps["close_signals.r12_bp"] == "not_until_15:30" and gaps["close_signals.rrod_bp"] == "not_until_15:30"
-    assert "r1" in before.data and gaps["close_signals.letf"] == "include_later"
+    assert "r1" in before.data and gaps["close_signals.leveraged_fund_rebalance"] == "no_fund_sizes_recorded"
     bars, cut = ramp(until=(15, 29)), at(15, 30, 12)
     row = make_row(cut, spot=bars[-1]["close"])
     late = build_close_signals_block(fake_inputs(tmp_path, cut=cut, bars=bars, row=row)).data

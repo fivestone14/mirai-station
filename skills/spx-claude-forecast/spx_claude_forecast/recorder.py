@@ -5,9 +5,10 @@ run by hand mid-session never freezes half a day) and reads the station's stores
 land under ``state/spx_claude_forecast/recorder/``. Run by the ``spx-claude-forecast-recorder`` launchd job
 at 08:40 and 16:25 ET (after the 08:17 ET dated-book fetch and after the close), plus Friday 17:30 ET after
 the Friday book refresh; it fires on weekends too, as a second chance at Friday's book before Monday's
-fetch overwrites it. The Schwab task runs only outside market hours and never on a weekend.
+fetch overwrites it. The two Schwab tasks (spx_5m, leveraged_funds) stay out of market hours, where the login
+is left to the live feeds; spx_5m also skips weekends, which bring no new session.
 
-    python -m spx_claude_forecast.recorder --state-dir <state> [--task all|dated_book|siege|vix1d|spx_5m|lob_raw|backup]
+    python -m spx_claude_forecast.recorder --state-dir <state> [--task all|dated_book|siege|vix1d|spx_5m|lob_raw|leveraged_funds|backup]
 
 Tasks:
   dated_book   state/dated_gex/book.json is overwritten on every fetch (08:17 ET daily, 17:10 ET Fridays): keep
@@ -20,6 +21,9 @@ Tasks:
   spx_5m       Schwab keeps SPX 5-minute bars far further back than 1-minute bars but loses a session a day:
                recorder/spx_5m/{day}.jsonl, one file per session, fetched outside market hours
   lob_raw      state/lob_flow/raw/{day}/ is deleted after 30 days: gzip copies under recorder/lob_raw/{day}/
+  leveraged_funds  the leveraged index funds' assets and leverage as Schwab's instrument data states them now, one line
+               per run in recorder/leveraged_fund_sizes.jsonl, so a read can estimate the day's closing rebalance
+               from sizes it could have known (the close-signals block)
   backup       mirror this whole folder (except locks and run logs) to the off-disk backup folder
 """
 from __future__ import annotations
@@ -27,13 +31,14 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
+import os
 import shutil
 import sys
 from datetime import datetime, time, timedelta
 from pathlib import Path
 
 from . import jsonl_store, station_stores
-from .control import ET, log, log_job_run, now_et, now_utc_iso, prune_run_log, single_instance_lock, switched_off_reason
+from .control import ET, PYTEST_ENV, log, log_job_run, now_et, now_utc_iso, prune_run_log, single_instance_lock, switched_off_reason
 from .paths import RUN_LOG_KEPT_DAYS, ForecastPaths, default_state_dir, ensure_folders
 
 SESSION_CLOSE_SETTLED_AT = time(16, 5)    # a day's last quote and its stores are final once the close has printed
@@ -134,8 +139,15 @@ def is_market_hours(now: datetime) -> bool:
 
 def fetch_spx_five_minute_bars(start: datetime, end: datetime) -> list[dict]:
     """The station's Schwab wrapper, imported only here so nothing else needs the login."""
+    _refuse_schwab_under_pytest()
     schwab = station_stores.import_spx_jev("schwab")
     return schwab.five_minute_bars("$SPX", start, end)
+
+
+def _refuse_schwab_under_pytest() -> None:
+    """A test run never reaches Schwab: every task that fetches takes a stand-in, and this is the backstop."""
+    if os.environ.get(PYTEST_ENV):
+        raise RuntimeError("refused: a Schwab fetch under pytest; pass a stand-in fetch")
 
 
 def save_spx_5m_bars(paths: ForecastPaths, now: datetime | None = None, fetch=None) -> dict:
@@ -225,7 +237,59 @@ def backup_forecast_folder(paths: ForecastPaths, backup_dir: Path) -> dict:
 
 # --- the job --------------------------------------------------------------------------------------------------
 
-TASKS = ("dated_book", "siege", "vix1d", "spx_5m", "lob_raw", "backup")
+# The leveraged index funds whose closing rebalance the close-signals block estimates, each with the symbol whose move
+# drives it (the fund's own index, as the context job quotes it). Chosen 2026-10-10 by size: these carry nearly all
+# the dollars (TQQQ alone over a third); the VIX products and the small inverse funds are left out as too small.
+LEVERAGED_FUNDS = {
+    "UPRO": "$SPX", "SPXL": "$SPX", "SSO": "$SPX", "SPXU": "$SPX", "SPXS": "$SPX", "SDS": "$SPX", "SH": "$SPX",
+    "TQQQ": "QQQ", "QLD": "QQQ", "SQQQ": "QQQ", "SOXL": "SMH", "SOXS": "SMH", "TNA": "IWM", "NVDL": "NVDA", "TSLL": "TSLA",
+}
+LEVERAGE_FACTOR_PER_1X = 100.0    # Schwab states 3x as 300 and -3x as -300
+LEVERAGE_RANGE = (1.0, 5.0)       # a stated leverage outside this, as 1x, is not one: the scale or the field has changed
+
+
+def fetch_leveraged_fund_sizes(symbols: tuple[str, ...]) -> dict[str, dict]:
+    """``{symbol: {"assets_usd", "leverage"}}`` from Schwab's instrument data (its fundamental projection: market cap
+    is the fund's assets, fundLeverageFactor its leverage x100) through the station's own client. A fund Schwab
+    does not answer for, answers without both numbers, or states a leverage outside LEVERAGE_RANGE is left out."""
+    _refuse_schwab_under_pytest()
+    from schwab.client import Client as SchwabClient        # the client library, only here
+    client = station_stores.import_spx_jev("schwab")._fetcher()._client()
+    response = client.get_instruments(list(symbols), SchwabClient.Instrument.Projection.FUNDAMENTAL)
+    response.raise_for_status()
+    data = response.json()
+    items = data.get("instruments", []) if isinstance(data, dict) else data
+    sizes: dict[str, dict] = {}
+    for item in items or []:
+        fundamental = item.get("fundamental") or {}
+        symbol, cap, factor = item.get("symbol"), fundamental.get("marketCap"), fundamental.get("fundLeverageFactor")
+        if symbol not in symbols or not isinstance(cap, (int, float)) or not isinstance(factor, (int, float)) or cap <= 0:
+            continue
+        leverage = factor / LEVERAGE_FACTOR_PER_1X
+        if LEVERAGE_RANGE[0] <= abs(leverage) <= LEVERAGE_RANGE[1]:
+            sizes[symbol] = {"assets_usd": float(cap), "leverage": leverage}
+    return sizes
+
+
+def record_leveraged_fund_sizes(paths: ForecastPaths, now: datetime | None = None, fetch=None) -> dict:
+    """One line per run outside market hours: every fund's assets and leverage as Schwab states them now, with the
+    index each follows, so a read estimates the day's closing rebalance from sizes it could have known
+    (frozen_inputs takes the newest line at or before its cut). Funds Schwab did not answer for are named on the
+    line, never guessed."""
+    now = now or now_et()
+    if is_market_hours(now):
+        return {"written": 0, "why": "market hours: the Schwab login is left to the live feeds"}
+    sizes = (fetch or fetch_leveraged_fund_sizes)(tuple(LEVERAGED_FUNDS))
+    funds = {symbol: {**sizes[symbol], "index": index} for symbol, index in LEVERAGED_FUNDS.items() if symbol in sizes}
+    if not funds:
+        return {"written": 0, "why": "Schwab answered for no fund"}
+    line = {"recorded_at": now.isoformat(timespec="seconds"), "funds": funds,
+            "missing": [symbol for symbol in LEVERAGED_FUNDS if symbol not in sizes]}
+    jsonl_store.append_json_line(paths.leveraged_fund_sizes_file, line)
+    return {"written": 1, "funds": len(funds), "missing": len(line["missing"])}
+
+
+TASKS = ("dated_book", "siege", "vix1d", "spx_5m", "lob_raw", "leveraged_funds", "backup")
 
 
 def run(state_dir: Path, tasks: tuple[str, ...] = TASKS, backup_dir: Path | None = None) -> dict:
@@ -239,6 +303,7 @@ def run(state_dir: Path, tasks: tuple[str, ...] = TASKS, backup_dir: Path | None
         "vix1d": lambda: record_vix1d_close(paths, state_dir),
         "spx_5m": lambda: save_spx_5m_bars(paths),
         "lob_raw": lambda: copy_lob_raw(paths, state_dir),
+        "leveraged_funds": lambda: record_leveraged_fund_sizes(paths),
         "backup": lambda: backup_forecast_folder(paths, backup_dir),
     }
     results: dict[str, dict] = {}

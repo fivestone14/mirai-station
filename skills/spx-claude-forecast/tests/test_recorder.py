@@ -173,6 +173,7 @@ def test_run_over_every_task_offline_ends_with_the_copies_in_the_backup(state_di
     write_jsonl(station_stores.context_file(state_dir, "2026-10-08"),
                 [context_line("2026-10-08T15:59:59-04:00", {"$VIX1D": {"last": 10.23, "close": 9.3}})])
     monkeypatch.setattr(recorder, "fetch_spx_five_minute_bars", lambda start, end: [{"ts": "2026-10-08T09:30:00-04:00", "close": 1.0}])
+    monkeypatch.setattr(recorder, "fetch_leveraged_fund_sizes", lambda symbols: {"TQQQ": {"assets_usd": 38.7e9, "leverage": 3.0}})
     monkeypatch.setattr(recorder, "now_et", lambda: AFTER_CLOSE)
     results = recorder.run(state_dir, backup_dir=tmp_path / "backup")
     assert list(results) == list(recorder.TASKS) and not any("error" in r for r in results.values())

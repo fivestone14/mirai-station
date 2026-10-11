@@ -2,7 +2,7 @@
 prior close.
 
 Every quote is read from the market context at the cut (the newest snapshot at or before it) and must be no
-older than QUOTE_MAX_AGE_MIN, else the feed had stopped. The ten-year yield is judged at min(cut, TREASURY_CASH_CLOSE):
+older than units.QUOTE_MAX_AGE_MIN, else the feed had stopped. The ten-year yield is judged at min(cut, TREASURY_CASH_CLOSE):
 Schwab's $TNX quote stops moving at 15:00 ET, so an afternoon read takes the 15:00 value and is not called stale for it.
 
 Units pinned here:
@@ -26,7 +26,6 @@ Schwab refuses the symbols (the design review's data-access check).
 """
 from __future__ import annotations
 
-import bisect
 from datetime import datetime, time
 from typing import Any
 
@@ -37,9 +36,6 @@ from ..frozen_inputs import FrozenInputs, previous_session_day
 
 BLOCK = "cross_asset"
 VIX, VIX3M, VIX9D, TEN_YEAR = "$VIX", "$VIX3M", "$VIX9D", "$TNX"
-# The context job snapshots about every 70 s; a quote older than this at the cut is a feed that stopped
-# (spx_jev.labels.vol.QUOTE_MAX_AGE_MIN).
-QUOTE_MAX_AGE_MIN = 5
 # Schwab's $TNX quote stops moving at the Treasury cash close, so freshness is judged there in the afternoon.
 TREASURY_CASH_CLOSE = time(15, 0)
 # The VIX family's quotes read at the prior close until 09:31-09:32 on every open on file (build_plan, special reads);
@@ -65,7 +61,7 @@ def build_cross_asset_block(inputs: FrozenInputs) -> BlockResult:
         result.leave_out(f"{BLOCK}.vx_futures", "schwab_refuses_symbol")
         return result
     result = BlockResult()
-    prior_vix = _prior_daily_close(inputs, VIX)
+    prior_vix = units.prior_daily_close(inputs, VIX)
     vix, why = _fresh_quote(market, VIX, inputs.cut, prior_vix)
     if vix is None:
         for field in ("vix", "vix_minus_prior_close", "vix_vix3m", "backwardated", "vix9d_vix"):
@@ -105,7 +101,7 @@ def _term_structure(inputs: FrozenInputs, market: Any, vix: float, result: Block
 
 
 def _front_ratio(inputs: FrozenInputs, market: Any, vix: float, result: BlockResult) -> None:
-    vix9d, why = _fresh_quote(market, VIX9D, inputs.cut, _prior_daily_close(inputs, VIX9D))
+    vix9d, why = _fresh_quote(market, VIX9D, inputs.cut, units.prior_daily_close(inputs, VIX9D))
     if vix9d is None:
         result.leave_out(f"{BLOCK}.vix9d_vix", why)
     else:
@@ -118,30 +114,30 @@ def _ten_year(inputs: FrozenInputs, market: Any, result: BlockResult) -> None:
     """The yield's move since the prior close in basis points, its size ranked against the same move at this clock
     on the prior sessions."""
     field = f"{BLOCK}.ten_year_bp_since_close"
-    prior_close = _prior_daily_close(inputs, TEN_YEAR)
+    prior_close = units.prior_daily_close(inputs, TEN_YEAR)
     if prior_close is None:
         result.leave_out(field, "prior_close_missing")
         return
     change = _ten_year_change(market, inputs.cut, prior_close)
     if change is None:
-        result.leave_out(field, "not_quoted" if _newest(market, TEN_YEAR, inputs.cut) is None else "stale")
+        result.leave_out(field, "not_quoted" if units.newest_quote(market, TEN_YEAR, inputs.cut) is None else "stale")
         return
-    closes = _daily_closes_by_day(inputs, TEN_YEAR)
+    closes = units.daily_closes_by_day(inputs, TEN_YEAR)
 
     def same_clock(prior_market: Any, then: datetime) -> float | None:
         before = closes.get(previous_session_day(then.date().isoformat()))
         return None if before is None else _ten_year_change(prior_market, then, before)
 
     ranks = station_stores.import_spx_jev("labels.ranks")
-    result.data["ten_year_bp_since_close"] = _size_ranked(round(change, BP_DECIMALS),
-                                                          ranks.same_clock_market(inputs.scene, same_clock))
+    result.data["ten_year_bp_since_close"] = units.size_ranked(change, ranks.same_clock_market(inputs.scene, same_clock),
+                                                               decimals=BP_DECIMALS)
 
 
 def _ten_year_change(market: Any, at: datetime, prior_close_index: float) -> float | None:
     """Basis points from the prior close (Schwab's ten-times index) to the fresh yield in percent at ``at``, judged
     at the Treasury cash close once ``at`` is past it."""
     judged_at = min(at, at.replace(hour=TREASURY_CASH_CLOSE.hour, minute=TREASURY_CASH_CLOSE.minute, second=0, microsecond=0))
-    yield_pct = market.last(TEN_YEAR, judged_at, max_age_min=QUOTE_MAX_AGE_MIN)
+    yield_pct = market.last(TEN_YEAR, judged_at, max_age_min=units.QUOTE_MAX_AGE_MIN)
     if yield_pct is None:
         return None
     return (float(yield_pct) - prior_close_index / DAILY_CLOSE_TNX_PER_PERCENT) * BP_PER_PERCENT
@@ -149,42 +145,18 @@ def _ten_year_change(market: Any, at: datetime, prior_close_index: float) -> flo
 
 # --- shared reads -----------------------------------------------------------------------------------------
 
-def _newest(market: Any, symbol: str, at: datetime) -> tuple[datetime, float] | None:
-    """The newest ``(known at, value)`` of ``symbol`` at or before ``at``."""
-    points = market.known.get(symbol) or []
-    k = bisect.bisect_right([t for t, _ in points], at)
-    return points[k - 1] if k else None
-
-
 def _fresh_quote(market: Any, symbol: str, cut: datetime, prior_close: float | None) -> tuple[float | None, str]:
     """``(value, "")`` for a quote at the cut that is fresh and has moved off its prior close since the open; else
     ``(None, why)``: not_quoted, stale, or stale_at_open."""
-    newest = _newest(market, symbol, cut)
+    newest = units.newest_quote(market, symbol, cut)
     if newest is None:
         return None, "not_quoted"
     known_at, value = newest
-    if (cut - known_at).total_seconds() > QUOTE_MAX_AGE_MIN * 60:
+    if (cut - known_at).total_seconds() > units.QUOTE_MAX_AGE_MIN * 60:
         return None, "stale"
     if prior_close is not None and value == prior_close and known_at.time() < OPEN_QUOTES_SETTLE:
         return None, "stale_at_open"
-    return float(value), ""
-
-
-def _daily_closes_by_day(inputs: FrozenInputs, symbol: str) -> dict[str, float]:
-    return {str(r["day"]): float(r["close"]) for r in inputs.daily_closes.get(symbol) or []
-            if isinstance(r.get("close"), (int, float)) and r.get("day")}
-
-
-def _prior_daily_close(inputs: FrozenInputs, symbol: str) -> float | None:
-    """The daily close on file for the previous trading day, as served; None when the file lags."""
-    return _daily_closes_by_day(inputs, symbol).get(previous_session_day(inputs.day))
-
-
-def _size_ranked(value: float, base: list[float]) -> dict:
-    """``{"v": value, "r": [...]}`` with the rank of the move's size against the sizes in ``base``."""
-    ranked = units.ranked(abs(value), [abs(b) for b in base])
-    ranked["v"] = value
-    return ranked
+    return value, ""
 
 
 __all__ = ["build_cross_asset_block"]

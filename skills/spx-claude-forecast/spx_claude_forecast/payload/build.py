@@ -27,7 +27,7 @@ from .frozen_inputs import FrozenInputs
 
 SCHEMA = "spx_claude_payload/1.0.0"
 CONTENT_BLOCKS = ("data_sources", "clock", "calendar", "scale", "tape", "open_signals", "close_signals", "options", "flow",
-                  "internals", "cross_asset", "overnight", "foreign", "news", "code")   # built from the inputs, in this order
+                  "internals", "cross_asset", "sentiment", "overnight", "foreign", "news", "code")   # built from the inputs, in this order
 SCENE_CHAR_CAP = 9_500               # the scene body; over it, the leftover blocks are trimmed in TRIM_ORDER
 TRIM_ORDER = ("code", "news")        # what goes first when the scene is over the cap (the cards are cut by precedents.py)
 PRICE_LEVEL_FROM = 1000           # a number this big in the scene reads as an index level, unless it sits under a count key

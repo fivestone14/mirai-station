@@ -21,6 +21,7 @@ off-disk backup folder it is told about. Every other station store it reads is l
         siege_spy_minutes/{day}.json one day of SPY per-minute volume from state/siege/baseline.json
         spx_5m/{day}.jsonl           SPX 5-minute bars from Schwab, one file per session
         vix1d_close.jsonl            one line per day: the last $VIX1D quote of the session
+        leveraged_fund_sizes.jsonl   one line per recorder run: the leveraged index funds' assets and leverage from Schwab
         lob_raw/{day}/               gzip copies of state/lob_flow/raw/{day}/ before the collector deletes them
       rules/{sha}.txt                the rulebook text Claude was sent, once per distinct text
       run_logs/job_run_log.jsonl     one line per job run (pruned after 30 days)
@@ -114,6 +115,10 @@ class ForecastPaths:
     def vix1d_close_file(self) -> Path:
         return self.recorder_dir / "vix1d_close.jsonl"
 
+    @property
+    def leveraged_fund_sizes_file(self) -> Path:
+        return self.recorder_dir / "leveraged_fund_sizes.jsonl"
+
     def lob_raw_copy_dir(self, day: str) -> Path:
         return self.recorder_dir / "lob_raw" / day
 
@@ -165,6 +170,7 @@ STORE_MAP = {
     "recorder/siege_spy_minutes/{day}.json": {"writer": "recorder", "reader": "payload builder (SPY volume vs usual)", "retention": "forever", "edited": "never"},
     "recorder/spx_5m/{day}.jsonl": {"writer": "recorder (Schwab, outside market hours)", "reader": "none yet (kept as insurance)", "retention": "forever", "edited": "never"},
     "recorder/vix1d_close.jsonl": {"writer": "recorder", "reader": "payload builder", "retention": "forever", "edited": "never"},
+    "recorder/leveraged_fund_sizes.jsonl": {"writer": "recorder (Schwab instrument data, every run)", "reader": "payload builder (the close-signals rebalance estimate)", "retention": "forever", "edited": "never"},
     "recorder/lob_raw/{day}/": {"writer": "recorder", "reader": "none yet (the flow block reads the station's own lob_flow/agg and lob_flow/raw)", "retention": "forever (insurance only)", "edited": "never"},
     "rules/{sha}.txt": {"writer": "Claude call", "reader": "none in code; kept so a sent prompt can be rebuilt by hand", "retention": "forever", "edited": "never"},
     "control.json": {"writer": "Will or the CLI", "reader": "the call gate (read runner, nightly test variants)", "retention": "current", "edited": "replaced atomically"},

@@ -11,16 +11,20 @@ prior sessions, ``against_usual``) needs the station's smallest count for a medi
 The words every block says the same way live here too: which options book a read stands on and why a book
 field is left out, the settled open's clock, and the scanner's regime words. A raw diary row (the station's scene
 carries the labeller's cut of a row, which drops the book's source, its net gamma and its net exposure) comes
-from the inputs, loaded once per read (``inputs.raw_diary_row``, ``inputs.first_raw_diary_row``).
+from the inputs, loaded once per read (``inputs.raw_diary_row``, ``inputs.first_raw_diary_row``). So do the reads
+of the market context every block makes the same way: the newest quote at the cut and the line past which it is
+stale (QUOTE_MAX_AGE_MIN), a prior session's last quote, and the daily closes on file.
 """
 from __future__ import annotations
 
+import bisect
 import statistics
 from datetime import date, datetime
 from typing import Any, Callable, Sequence
 
 from .. import station_stores
 from ..control import ET
+from .frozen_inputs import previous_session_day
 
 SIG_DECIMALS = 2
 PCT_DECIMALS = 1
@@ -30,6 +34,9 @@ STAND_IN_BOOK = "stand_in_book"   # why a field priced off the options book is l
 NOT_UNTIL_SETTLED_OPEN = "not_until_09:35"   # the settled open is the 09:34 bar's close (measures.SETTLED_OPEN_BAR)
 BILLION = 1e9                     # the scanner's net dealer gamma is dollars per 1% move; Claude reads $bn
 REGIME_WORDS = {"long_gamma": "long", "short_gamma": "short", "uncertain": "uncertain"}   # the scanner's words, as the payload says them
+# The context job snapshots about every 70 s; a quote older than this at the cut is a feed that stopped
+# (spx_jev.labels.vol.QUOTE_MAX_AGE_MIN).
+QUOTE_MAX_AGE_MIN = 5
 
 
 def sig(points: float | None, sigma_points: float, decimals: int | None = SIG_DECIMALS) -> float | None:
@@ -68,6 +75,14 @@ def ranked_sig(points: float | None, sigma_points: float, base: Sequence[float],
         return None
     out = ranked(abs(value), base, what)
     out["v"] = round(value, SIG_DECIMALS)
+    return out
+
+
+def size_ranked(value: float, base: Sequence[float], decimals: int | None = None) -> dict:
+    """``{"v": value, "r": [...]}``: a signed move with the rank of its size against the sizes in ``base``, so ``r``
+    says how many sessions moved less, either way; ``decimals`` rounds the shown value, never the ranked one."""
+    out = ranked(abs(value), [abs(b) for b in base])
+    out["v"] = _shown(value, decimals)
     return out
 
 
@@ -176,3 +191,30 @@ def prior_row_distances(prior: list, level_of: Callable[[dict], float | None]) -
         if level is not None and spot is not None and book.ruler is not None and book.ruler.points:
             out.append(abs(spot - level) / float(book.ruler.points))
     return out
+
+
+# --- the market context and the daily closes -----------------------------------------------------------------
+
+def newest_quote(market: Any, symbol: str, at: datetime) -> tuple[datetime, float] | None:
+    """The newest ``(known at, value)`` of ``symbol`` at or before ``at``, fresh or not; None when it was never quoted."""
+    points = market.known.get(symbol) or []
+    k = bisect.bisect_right([t for t, _ in points], at)
+    return (points[k - 1][0], float(points[k - 1][1])) if k else None
+
+
+def prior_session_last_quote(prior_market: Any, symbol: str) -> float | None:
+    """The symbol's last quote on a prior session's market context, whenever in that day it was taken (a quote
+    after the cash close still counts: Tokyo and Europe close before New York does)."""
+    points = (prior_market.known.get(symbol) or []) if prior_market is not None else []
+    return float(points[-1][1]) if points else None
+
+
+def prior_daily_close(inputs: Any, symbol: str) -> float | None:
+    """The station's daily close on file for the previous trading day, as served; None when the file lags."""
+    return daily_closes_by_day(inputs, symbol).get(previous_session_day(inputs.day))
+
+
+def daily_closes_by_day(inputs: Any, symbol: str) -> dict[str, float]:
+    """``{day: close}`` from the station's daily closes on file for ``symbol`` (days strictly before the read's)."""
+    return {str(r["day"]): float(r["close"]) for r in inputs.daily_closes.get(symbol) or []
+            if is_num(r.get("close")) and r.get("day")}

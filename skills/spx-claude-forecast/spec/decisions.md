@@ -15,7 +15,7 @@ and graded every night. It is never mixed into the combined call; it earns a pla
 ## The payload
 
 - **Built from saved files only, cut at the read's own time.** Never a live quote: a read rebuilt next
-  month from the same files gives the same scene. Fifteen blocks, one module each.
+  month from the same files gives the same scene. Sixteen blocks, one module each (the sentiment block since 10-11).
 - **Units Claude cannot recall.** Every move and distance is in `sig` (the day's expected move) or in flat
   edges; never an index level, a strike, a date, a weekday, a headline title, or another voice's answer
   (JEV, Pool 2, the clock odds). The leak check refuses the whole payload if any of these appear.
@@ -122,6 +122,27 @@ is in the scene and not under `absent`. With no reason left the answer is still 
 - **Checkpoints.** The scorecard says which of Will's review points (150, 300, 600 graded reads) are
   reached and which comes next; the review itself is Will's.
 
+## Two more inputs (built 10-11, Will's go)
+
+- **The leveraged funds' closing rebalance** (`close_signals.leveraged_fund_rebalance`). The funds that promise
+  two or three times their index's daily move must trade into the close to keep it, and the need is known from
+  the day's move and their size: assets × L × (L − 1) × the index's move, summed by index family in $bn, with
+  the dollars a further 1% would add (`more_usd_bn_per_1pct`). Sizes come from Schwab's instrument data (market cap
+  and leverage factor), recorded by the recorder on every run outside market hours; a read uses the newest line it
+  could have known and none older than two weeks; no issuer page is scraped (the repo forbids scrapers). Fifteen funds,
+  chosen by size on 10-10: the Nasdaq and chip funds carry most of the dollars and reach the S&P through its
+  biggest names, so each fund is measured against its own index's move (QQQ, SMH, IWM, NVDA, TSLA from the
+  market context; the S&P from the read's spot). Not ranked yet: a rank needs ten sessions of recorded sizes.
+- **The sentiment block** (`sentiment`). Seven mood checks from around the S&P, quoted every minute by the
+  context job since 10-12: the Nikkei futures (they trade through this session; the Tokyo index does not), the
+  price of crash protection (`skew_index`), the dollar fund (UUP; Schwab serves no /DX), the two-year note (its
+  price, in basis points, so the field says price), copper, Nasdaq volatility (`vxn`, also set against the VIX)
+  and ARKK (also set against SPY, so the S&P's own move is taken out). Each is a move since the prior close with
+  its size ranked at the same clock; the first ranks appear after ten sessions. Hong Kong joined the foreign block.
+- Both are payload fields only: Claude weighs them beside the rest, the call stays Claude's, and the nightly
+  scores and test variants say whether they helped. The prompt and model version stays cr-1: the rulebook and
+  the model are unchanged, and the payload line's `builder_sha` records the builder change.
+
 ## Where the build departed from the plan
 
 Eight cards, not ten. No event matching. No freeze-only phase: live from day one, seeded from 07-20. The
@@ -131,6 +152,6 @@ flat-zone rule the day this was built, and the grader follows it rather than the
 ## Not built
 
 The other test variants the record formats name (no base rate shown, earlier results today shown, five
-answers averaged, own track record shown), a recorder for foreign quotes, the leveraged-ETF estimate, and
-situation-level score cells. The Schwab login days-left field was dropped from the payload on 10-10 (Will):
+answers averaged, own track record shown), ranks for the leveraged funds' rebalance (after ten sessions of
+recorded sizes), and situation-level score cells. The Schwab login days-left field was dropped from the payload on 10-10 (Will):
 it is a feed-health stamp, not a market fact, and belongs in the run log.

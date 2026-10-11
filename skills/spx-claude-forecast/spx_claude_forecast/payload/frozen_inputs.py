@@ -7,8 +7,9 @@ diary row and the bars finished by then), runs the station's labeller over it, a
 archive record, code answers, flat zones, the read's own diary row and the day's first as the scanner
 wrote them, the newest market snapshot at the cut and the prior closes it quoted, the 0DTE tape's folds
 on the day and the prior sessions, the dated options book known at the cut, SPY minute volumes, the
-prior $VIX1D close, daily closes before the day and the event calendar. A store read by more than one
-block is loaded here once, so no block scans a raw file of its own.
+prior $VIX1D close, daily closes before the day, the event calendar and the leveraged funds' sizes the
+recorder knew by the cut. A store read by more than one block is loaded here once, so no block scans a raw
+file of its own.
 """
 from __future__ import annotations
 
@@ -74,6 +75,7 @@ class FrozenInputs:
     vix1d_prior_close: float | None
     daily_closes: dict[str, list[dict]] = field(default_factory=dict)   # per symbol, days strictly before ``day``
     events: dict | list | None = None
+    leveraged_fund_sizes: dict | None = None   # the recorder's newest line of fund assets and leverage at or before the cut
     load_notes: list[str] = field(default_factory=list)                 # what could not be loaded, and why
 
     @property
@@ -156,6 +158,7 @@ def load_frozen_inputs_at(state_dir: Path | str, paths: ForecastPaths, cut: date
     vix1d_prior_close = _load_vix1d_prior_close(paths, day, notes)
     daily_closes = _load_daily_closes(state_dir, day, notes)
     events = _load_events(notes)
+    leveraged_fund_sizes = load_leveraged_fund_sizes(paths, cut, notes)
 
     return FrozenInputs(state_dir=state_dir, paths=paths, read_id=read_id, lane=lane, day=day, row_ts=row_ts, cut=cut,
                         slot=slot_of(cut), horizon_start=horizon_start, scene=scene, labels=labels,
@@ -164,7 +167,7 @@ def load_frozen_inputs_at(state_dir: Path | str, paths: ForecastPaths, cut: date
                         options_book=options_book_of(raw_diary_row), market_snapshot=market_snapshot,
                         snapshot_prior_closes=snapshot_prior_closes, tape_folds=tape_folds, dated_book=dated_book,
                         spy_minute_volumes=spy_minute_volumes, vix1d_prior_close=vix1d_prior_close,
-                        daily_closes=daily_closes, events=events, load_notes=notes)
+                        daily_closes=daily_closes, events=events, leveraged_fund_sizes=leveraged_fund_sizes, load_notes=notes)
 
 
 class EmptyLabels:
@@ -373,6 +376,19 @@ def _load_spy_minute_volumes(paths: ForecastPaths, state_dir: Path, day: str, no
     return None
 
 
+def load_leveraged_fund_sizes(paths: ForecastPaths, cut: datetime, notes: list[str]) -> dict | None:
+    """The recorder's newest line of leveraged fund sizes recorded at or before the cut (recorder.record_leveraged_fund_sizes),
+    so a read uses only sizes it could have known; None before the first line."""
+    newest = None
+    for line in jsonl_store.iter_json_lines(paths.leveraged_fund_sizes_file):
+        recorded_at = _stamp(line.get("recorded_at"))
+        if recorded_at is not None and recorded_at <= cut and line.get("funds"):
+            newest = line
+    if newest is None:
+        notes.append("leveraged fund sizes: none recorded before the cut")
+    return newest
+
+
 def _load_vix1d_prior_close(paths: ForecastPaths, day: str, notes: list[str]) -> float | None:
     prior = [line for line in jsonl_store.iter_json_lines(paths.vix1d_close_file) if str(line.get("day", "")) < day]
     if not prior:
@@ -410,5 +426,5 @@ def previous_session_day(day: str) -> str:
 
 
 __all__ = ["FrozenInputs", "TapeFold", "load_frozen_inputs", "load_frozen_inputs_at", "load_raw_diary_rows", "options_book_of",
-           "load_market_snapshot", "load_tape_folds", "EmptyLabels", "slot_of", "parse_read_id",
+           "load_market_snapshot", "load_tape_folds", "load_leveraged_fund_sizes", "EmptyLabels", "slot_of", "parse_read_id",
            "previous_session_day", "NATIVE_BOOK", "STAND_IN_BOOK"]

@@ -18,8 +18,8 @@ HORIZON_WORDS = {"next_30_minutes": "next 30 min", "next_60_minutes": "next 60 m
 BLOCK_WORDS = {"data_sources": "the feeds", "clock": "the clock", "calendar": "the calendar", "scale": "the day's scale",
                "tape": "the tape", "open_signals": "the open", "close_signals": "the close", "options": "the options",
                "flow": "the options flow", "internals": "market breadth", "cross_asset": "other markets",
-               "overnight": "overnight", "news": "the headlines", "code": "the station's questions",
-               "precedents": "the past moments"}
+               "sentiment": "market mood", "overnight": "overnight", "foreign": "overseas markets",
+               "news": "the headlines", "code": "the station's questions", "precedents": "the past moments"}
 
 FIELD_WORDS = {
     # data_sources: how old each feed was at the cut
@@ -119,6 +119,18 @@ FIELD_WORDS = {
     "close_signals.gamma_open.net_gex_usd_bn_per_1pct.0_7dte": "net dealer gamma at the open, options within a week",
     "close_signals.gamma_open.price_minus_flip_sig": "price against the gamma flip level at the open",
     "close_signals.rrod_gate": "the end-of-day reversal gate",
+    "close_signals.leveraged_fund_rebalance": "the leveraged funds' trade due into the close",
+    "close_signals.leveraged_fund_rebalance.into_close_usd_bn": "the dollars the leveraged funds must trade into the close (plus buying, minus selling)",
+    "close_signals.leveraged_fund_rebalance.more_usd_bn_per_1pct": "how many more dollars the leveraged funds must trade per further 1% move",
+    "close_signals.leveraged_fund_rebalance.by_index_usd_bn": "the leveraged funds' closing trade, by index",
+    "close_signals.leveraged_fund_rebalance.by_index_usd_bn.spx": "the S&P 500 leveraged funds' closing trade",
+    "close_signals.leveraged_fund_rebalance.by_index_usd_bn.nasdaq_100": "the Nasdaq 100 leveraged funds' closing trade",
+    "close_signals.leveraged_fund_rebalance.by_index_usd_bn.semiconductors": "the chip-index leveraged funds' closing trade",
+    "close_signals.leveraged_fund_rebalance.by_index_usd_bn.small_caps": "the small-cap leveraged funds' closing trade",
+    "close_signals.leveraged_fund_rebalance.by_index_usd_bn.single_stocks": "the single-stock leveraged funds' closing trade",
+    "close_signals.leveraged_fund_rebalance.funds_counted": "how many leveraged funds were counted",
+    "close_signals.leveraged_fund_rebalance.sizes_age_h": "how old the leveraged funds' sizes are",
+    "close_signals.leveraged_fund_rebalance.funds_left_out": "the leveraged funds left out of the estimate",
     # options
     "options.book": "which options book this read stands on",
     "options.regime.0dte_oi": "the gamma regime by same-day open interest",
@@ -155,6 +167,25 @@ FIELD_WORDS = {
     "cross_asset.vix9d_vix": "the nine-day VIX against the VIX",
     "cross_asset.vix_vix3m_prior_close": "the VIX term ratio at yesterday's close",
     "cross_asset.ten_year_bp_since_close": "the ten-year yield since yesterday's close",
+    # sentiment: moods from the markets around the S&P, each since the prior close
+    "sentiment.nikkei_futures_pct_since_close": "Japan's market (the Nikkei futures) since the prior close",
+    "sentiment.dollar_pct_since_close": "the dollar since the prior close",
+    "sentiment.two_year_note_price_bp_since_close": "the two-year note's price since the prior close",
+    "sentiment.copper_pct_since_close": "copper since the prior close",
+    "sentiment.arkk_pct_since_close": "the speculative-growth fund (ARKK) since the prior close",
+    "sentiment.arkk_minus_spy_pct_since_close": "speculative appetite: ARKK against SPY since the prior close",
+    "sentiment.skew_index": "the price of crash protection (the SKEW index)",
+    "sentiment.skew_index_minus_prior_close": "the price of crash protection against its prior close",
+    "sentiment.vxn": "Nasdaq fear (the VXN index)",
+    "sentiment.vxn_minus_vix": "Nasdaq fear over broad fear (VXN less VIX)",
+    # foreign: overseas markets against their own prior closes
+    "foreign.tokyo_ret_pct": "Tokyo since its prior close",
+    "foreign.hong_kong_ret_pct": "Hong Kong since its prior close",
+    "foreign.europe_ret_pct": "Paris since its prior close",
+    "foreign.dax_ret_pct": "Frankfurt since its prior close",
+    "foreign.europe_at": "when Europe's quote last changed",
+    "foreign.usdjpy_1d_pct": "the yen since yesterday",
+    "foreign.usdjpy_shock": "whether the yen moved more than 1.5% either way",
     # overnight
     "overnight.es_vs_close_sig": "the futures overnight against yesterday's close",
     "overnight.range_sig": "the overnight range",

@@ -1,8 +1,8 @@
-"""The foreign block, background only: Tokyo, Paris and Frankfurt against their prior closes, and the yen.
+"""The foreign block, background only: Tokyo, Hong Kong, Paris and Frankfurt against their prior closes, and the yen.
 
 Built only from symbols the station's market context actually carries at the cut: the Nikkei ($N225), the
-CAC 40 ($FCHI), the DAX ($DAX) and the yen future (/6J), quoted every minute by the context job since
-2026-10-12 (market_context.SYMBOLS["foreign"]); a session with no prior session's quote on file (the first
+CAC 40 ($FCHI), the DAX ($DAX), the yen future (/6J) and the Hang Seng ($HSI), quoted every minute by the context
+job since 2026-10-12 (market_context.SYMBOLS["foreign"]); a session with no prior session's quote on file (the first
 day, a day after an outage) leaves the field absent as ``not_recorded``, and the block with it when all are.
 Once a symbol is quoted, its one-day return is its newest quote at the cut against its last quote on the prior
 session's market context (the prior close as that session saw it: Tokyo and Europe have closed before New York
@@ -14,7 +14,7 @@ USDJPY_SHOCK_PCT either way. Korea and Taiwan are declared for later (the design
 from __future__ import annotations
 
 import bisect
-from datetime import datetime, time
+from datetime import datetime
 from typing import Any
 
 from .. import units
@@ -22,23 +22,22 @@ from ..block_result import BlockResult, whole_block_absent
 from ..frozen_inputs import FrozenInputs, previous_session_day
 
 BLOCK = "foreign"
-TOKYO, PARIS, FRANKFURT, YEN_FUTURE = "$N225", "$FCHI", "$DAX", "/6J"
+TOKYO, HONG_KONG, PARIS, FRANKFURT, YEN_FUTURE = "$N225", "$HSI", "$FCHI", "$DAX", "/6J"
 # Each return field and the symbol it is built from; the yen is inverted into USD/JPY (see the module docstring).
-RETURNS = (("tokyo_ret_pct", TOKYO), ("europe_ret_pct", PARIS), ("dax_ret_pct", FRANKFURT), ("usdjpy_1d_pct", YEN_FUTURE))
+RETURNS = (("tokyo_ret_pct", TOKYO), ("hong_kong_ret_pct", HONG_KONG), ("europe_ret_pct", PARIS), ("dax_ret_pct", FRANKFURT),
+           ("usdjpy_1d_pct", YEN_FUTURE))
 INVERTED = (YEN_FUTURE,)
 # A one-day USD/JPY move past this, either way, is a currency shock (the design review's data-access check, "USD/JPY shock").
 USDJPY_SHOCK_PCT = 1.5
-# The prior session's last quote is read at its day's end, so a quote after the cash close still counts.
-END_OF_DAY = time(23, 59, 59)
 PCT_DECIMALS = 2
 LATER_FIELD = "korea_taiwan"
 
 
 def build_foreign_block(inputs: FrozenInputs) -> BlockResult:
-    """``{tokyo_ret_pct, europe_ret_pct, dax_ret_pct, europe_at, usdjpy_1d_pct, usdjpy_shock}`` from the symbols
-    quoted at the cut, each missing one absent as not_recorded; the whole block when none is."""
+    """``{tokyo_ret_pct, hong_kong_ret_pct, europe_ret_pct, dax_ret_pct, europe_at, usdjpy_1d_pct, usdjpy_shock}`` from
+    the symbols quoted at the cut, each missing one absent as not_recorded; the whole block when none is."""
     market = inputs.scene.market
-    quoted = {symbol: _newest(market, symbol, inputs.cut) for _, symbol in RETURNS} if market is not None else {}
+    quoted = {symbol: units.newest_quote(market, symbol, inputs.cut) for _, symbol in RETURNS} if market is not None else {}
     if not any(quoted.values()):
         return whole_block_absent(BLOCK, "not_recorded")
     prior_market = inputs.scene.prior_markets.get(previous_session_day(inputs.day))
@@ -48,7 +47,7 @@ def build_foreign_block(inputs: FrozenInputs) -> BlockResult:
         if newest is None:
             result.leave_out(f"{BLOCK}.{field}", "not_recorded")
             continue
-        prior = _prior_session_last(prior_market, symbol)
+        prior = units.prior_session_last_quote(prior_market, symbol)
         if prior is None or prior <= 0 or newest[1] <= 0:
             result.leave_out(f"{BLOCK}.{field}", "no_prior_session_quote")
             continue
@@ -61,24 +60,6 @@ def build_foreign_block(inputs: FrozenInputs) -> BlockResult:
     result.leave_out(f"{BLOCK}.{LATER_FIELD}", "include_later")
     result.data = units.clean(result.data)
     return result
-
-
-def _newest(market: Any, symbol: str, at: datetime) -> tuple[datetime, float] | None:
-    points = market.known.get(symbol) or []
-    k = bisect.bisect_right([t for t, _ in points], at)
-    return (points[k - 1][0], float(points[k - 1][1])) if k else None
-
-
-def _prior_session_last(prior_market: Any, symbol: str) -> float | None:
-    """The symbol's last quote on the prior session's market context, read at that day's end."""
-    if prior_market is None:
-        return None
-    points = prior_market.known.get(symbol) or []
-    if not points:
-        return None
-    day_end = datetime.combine(points[-1][0].date(), END_OF_DAY, tzinfo=points[-1][0].tzinfo)
-    value = prior_market.last(symbol, day_end)
-    return None if value is None else float(value)
 
 
 def _last_changed(market: Any, symbol: str, at: datetime) -> datetime:

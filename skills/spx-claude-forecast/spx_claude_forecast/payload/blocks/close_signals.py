@@ -8,7 +8,18 @@ day's FIRST diary row's book, as the loader read it (inputs.first_raw_diary_row:
 cut-down row drops the net gamma and the book's source): the regime, the net dealer gamma in $bn per 1% move
 for the 0DTE and the 0-to-7-day books, and the flip as its distance from that row's spot. On a stand-in book
 (gex_source other than native) the opening gamma and the rROD gate are both left out, since the gate is the
-regime. The leveraged-ETF rebalance estimate waits for its recorder.
+regime.
+
+The leveraged-fund rebalance (since 2026-10-11): the funds that promise two or three times their index's daily move
+(and the inverse ones) must trade into the close to keep that promise, and the need is known from the day's move
+and their size: for each fund, assets x L x (L - 1) x its index's move since the prior close, the standard
+end-of-day rebalance formula, which has the same sign as the move for long and inverse funds alike (an up day
+makes every fund a buyer into the close). Sizes are the recorder's newest line at or before the cut
+(inputs.leveraged_fund_sizes); each fund's index move is the S&P's own spot against its prior daily close, or the
+fund's index symbol as the market context quotes it at the cut against Schwab's prior close for it. The estimate is
+summed by index family in $bn, with the dollars a further 1% move would add and how many funds were counted; it is
+left out when no sizes are on file, when the newest are older than SIZES_MAX_AGE_H (a recorder that stopped), or
+when no index has a fresh move. Most of it is Nasdaq and chip funds, which reach the S&P through its biggest names.
 """
 from __future__ import annotations
 
@@ -27,7 +38,14 @@ LATE_MARK = time(15, 30)             # r12 and rROD end here, so the 15:30 read 
 BP_PER_RETURN = 10_000.0             # a return of 1.0 is 10,000 basis points
 BP_DECIMALS = 1
 RROD_GATES = {"short": "open_short_gamma", "long": "closed_long_gamma"}   # the rROD effect holds only under short gamma
-LETF_REASON = "include_later"        # no leveraged-ETF recorder yet
+REBALANCE_FIELD = "leveraged_fund_rebalance"
+# Each fund's index symbol (recorder.LEVERAGED_FUNDS) as the family it is summed under
+INDEX_FAMILIES = {"$SPX": "spx", "QQQ": "nasdaq_100", "SMH": "semiconductors", "IWM": "small_caps", "NVDA": "single_stocks", "TSLA": "single_stocks"}
+SPX = "$SPX"
+SIZES_MAX_AGE_H = 14 * 24            # fund sizes drift slowly, but past this the recorder has stopped and the age itself would read as a level
+USD_PER_BN = 1e9
+BN_DECIMALS = 2
+HOURS_DECIMALS = 1
 
 
 def build_close_signals_block(inputs: FrozenInputs) -> BlockResult:
@@ -35,9 +53,71 @@ def build_close_signals_block(inputs: FrozenInputs) -> BlockResult:
     block: dict[str, Any] = {"r1": _first_half_hour(inputs, result)}
     block.update(_late_returns(inputs, result))
     block.update(_opening_gamma(inputs, result))
-    result.leave_out(f"{BLOCK}.letf", LETF_REASON)
+    block[REBALANCE_FIELD] = _leveraged_fund_rebalance(inputs, result)
     result.data = units.clean(block)
     return result
+
+
+# --- the leveraged funds' closing rebalance ----------------------------------------------------------------------
+
+def _leveraged_fund_rebalance(inputs: FrozenInputs, result: BlockResult) -> dict | None:
+    """``{into_close_usd_bn, more_usd_bn_per_1pct, by_index_usd_bn, funds_counted, sizes_age_h, funds_left_out}``:
+    the dollars the funds must trade into the close (plus buying, minus selling), from each fund's size and its
+    index's move since the prior close, and the dollars a further 1% move would add; see the module docstring for
+    the formula."""
+    field = f"{BLOCK}.{REBALANCE_FIELD}"
+    sizes = inputs.leveraged_fund_sizes
+    if not sizes or not isinstance(sizes.get("funds"), dict):
+        result.leave_out(field, "no_fund_sizes_recorded")
+        return None
+    sizes_age_h = (inputs.cut - datetime.fromisoformat(str(sizes.get("recorded_at")))).total_seconds() / 3600
+    if sizes_age_h > SIZES_MAX_AGE_H:
+        result.leave_out(field, "fund_sizes_stale")
+        return None
+    moves = _index_moves(inputs, {fund.get("index") for fund in sizes["funds"].values()})
+    by_family: dict[str, float] = {}
+    per_1pct = 0.0
+    counted, left_out = 0, []
+    for symbol, fund in sizes["funds"].items():
+        index, leverage, assets = fund.get("index"), fund.get("leverage"), fund.get("assets_usd")
+        if index not in moves or not units.is_num(leverage) or units.positive(assets) is None:
+            left_out.append(symbol)
+            continue
+        need_per_unit_move = assets * leverage * (leverage - 1)
+        family = INDEX_FAMILIES.get(index, index)
+        by_family[family] = by_family.get(family, 0.0) + need_per_unit_move * moves[index]
+        per_1pct += need_per_unit_move / 100.0
+        counted += 1
+    if not counted:
+        result.leave_out(field, "no_index_move_at_cut")
+        return None
+    return units.clean({
+        "into_close_usd_bn": round(sum(by_family.values()) / USD_PER_BN, BN_DECIMALS),
+        "more_usd_bn_per_1pct": round(per_1pct / USD_PER_BN, BN_DECIMALS),
+        "by_index_usd_bn": {family: round(dollars / USD_PER_BN, BN_DECIMALS) for family, dollars in by_family.items()},
+        "funds_counted": counted,
+        "sizes_age_h": round(sizes_age_h, HOURS_DECIMALS),
+        "funds_left_out": left_out or None,
+    })
+
+
+def _index_moves(inputs: FrozenInputs, indexes: set) -> dict[str, float]:
+    """Each index's move since its prior close as a fraction: the S&P from the read's spot against its prior daily
+    close, every other symbol from its fresh quote at the cut against Schwab's prior close for it."""
+    moves: dict[str, float] = {}
+    if SPX in indexes:
+        prior = units.prior_daily_close(inputs, SPX)
+        if prior:
+            moves[SPX] = inputs.spot / prior - 1.0
+    market = inputs.scene.market
+    for symbol in indexes:
+        if symbol == SPX or not isinstance(symbol, str) or market is None:
+            continue
+        prior = inputs.snapshot_prior_closes.get(symbol)
+        quote = market.last(symbol, inputs.cut, max_age_min=units.QUOTE_MAX_AGE_MIN)
+        if prior and quote is not None and quote > 0:
+            moves[symbol] = float(quote) / prior - 1.0
+    return moves
 
 
 # --- the returns ----------------------------------------------------------------------------------------------
