@@ -48,8 +48,12 @@ from zoneinfo import ZoneInfo
 ET = ZoneInfo("America/New_York")
 PT = ZoneInfo("America/Los_Angeles")
 SKILL_DIR = Path(__file__).resolve().parent
-LOGS_DIR = SKILL_DIR / "logs"
-STATE_PATH = SKILL_DIR / "state.json"
+_RUNTIME = str(SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
+LOGS_DIR = station_paths.SPX_OPTIONS_SCANNER_SIGNAL_CHECKS_BY_SCAN.folder()
+STATE_PATH = station_paths.SPX_OPTIONS_SCANNER_SIGNALS_SENT_STATE.path()
 
 if str(SKILL_DIR) not in sys.path:
     sys.path.insert(0, str(SKILL_DIR))
@@ -349,7 +353,7 @@ def _persist_scan(heartbeat: dict[str, Any], state: dict[str, Any], now: datetim
     """Append the heartbeat to today's log, save dedup state, refresh notes."""
     try:
         LOGS_DIR.mkdir(exist_ok=True)
-        with open(LOGS_DIR / f"{now.date().isoformat()}.jsonl", "a") as f:
+        with open(LOGS_DIR / station_paths.SPX_OPTIONS_SCANNER_SIGNAL_CHECKS_BY_SCAN.file_name(day=now.date().isoformat()), "a") as f:
             f.write(json.dumps(heartbeat, default=str) + "\n")
     except OSError as e:
         print(f"[hunter] log write failed: {e}", file=sys.stderr)

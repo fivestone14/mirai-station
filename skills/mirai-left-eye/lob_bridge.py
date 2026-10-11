@@ -32,8 +32,13 @@ _IV = str(SKILL_DIR.parent / "iv-viability")
 if _IV not in sys.path:
     sys.path.insert(0, _IV)
 
+_RUNTIME = str(SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
+
 ET = ZoneInfo("America/New_York")
-STATE_DIR = SKILL_DIR.parent.parent / "state" / "lob_flow"
+STATE_DIR = station_paths.state_root()          # the data root; StateDir finds the collector's files under it
 GEX_CONTEXT_MAX_AGE_S = 1800          # six missed 5-min ticks = the map is stale
 LOB_LIVE = False                      # P5 switch — dormant by design
 
@@ -112,7 +117,7 @@ def promotion_gate() -> tuple[bool, str]:
     built on flat point-bars are estimates, not evidence."""
     try:
         lob = _lob()
-        hist = SKILL_DIR.parent.parent / "state" / "reversion" / "polarity_history.jsonl"
+        hist = station_paths.SPX_OPTIONS_SCANNER_GRADES_BY_DAY.path()
         rows = []
         for ln in hist.read_text().splitlines():
             if not ln.strip():
@@ -251,7 +256,7 @@ def nightly(day: Optional[str] = None) -> None:
     day = day or datetime.now(tz=ET).date().isoformat()
     cfg = LobConfig()
     sd = _state()
-    diary = SKILL_DIR.parent.parent / "state" / "reversion" / f"{day}.jsonl"
+    diary = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(day=day)
     rows = []
     if diary.exists():
         for ln in diary.read_text().splitlines():

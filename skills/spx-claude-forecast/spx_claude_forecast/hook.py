@@ -26,8 +26,8 @@ def spawn_claude_forecast(state_dir: Path | str, read_id: str) -> bool:
         if switched_off_reason() or os.environ.get(PYTEST_ENV):
             return False
         paths = ForecastPaths(Path(state_dir).expanduser())
-        paths.run_log_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(paths.run_log_file.parent / "read_runner.out", "ab") as out:
+        paths.read_runner_log_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(paths.read_runner_log_file, "ab") as out:
             cmd = [sys.executable, "-m", "spx_claude_forecast.read_runner", "--state-dir", str(state_dir), "--read-id", read_id]
             subprocess.Popen(cmd, stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True,
                              cwd=str(SKILL_DIR), close_fds=True)

@@ -39,7 +39,7 @@ SEED_MISSING_COMPARISONS = {           # a seed read has no Claude call and no s
 
 def session_days(state_dir: Path, start: str, end: str) -> list[str]:
     """Trading days with a saved full session of bars between ``start`` and ``end`` inclusive."""
-    folder = state_dir / "reversion" / "bars"
+    folder = station_stores.session_bars_dir(state_dir)
     return sorted(p.name[:10] for p in folder.glob("20??-??-??-SPX.json") if start <= p.name[:10] <= end)
 
 

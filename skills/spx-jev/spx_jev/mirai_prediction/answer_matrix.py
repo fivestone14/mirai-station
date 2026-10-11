@@ -47,7 +47,7 @@ from ..lane import QUESTIONS
 from ..scores import OUTCOMES
 from .code_features import column_name, load_catalog
 from .name_map import CUT_OVER_DAY, JUDGMENT_GROUP, store_path
-from .paths import CODE_FEATURES, RAW, data_root, read_json_lines
+from .paths import data_root, raw_code_features_dir, read_json_lines
 
 
 @dataclass
@@ -206,7 +206,7 @@ def load_jev_answers(state_dir: Path | str, lane: str, before_day: str) -> tuple
 def load_code_features(state_dir: Path | str, lane: str, before_day: str) -> dict[str, dict[str, str | None]]:
     """read_id -> {question_id: answer} from this system's raw/code_features files for days before ``before_day``
     (the last line for a read wins), for layers 1-2."""
-    folder = data_root(state_dir) / RAW / CODE_FEATURES
+    folder = raw_code_features_dir(data_root(state_dir))
     out: dict[str, dict[str, str | None]] = {}
     for path in sorted(folder.glob("????-??-??.jsonl")) if folder.exists() else []:
         if path.stem >= before_day:

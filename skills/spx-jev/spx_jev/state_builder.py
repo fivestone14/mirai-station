@@ -27,12 +27,16 @@ from .labels.rulers import SigmaRuler, morning_ruler, tape_unit, vix_at_settled_
 from .row_adapter import SYMBOL, labeller_row
 from .sessions import previous_trading_day, session_close, session_minutes, session_open
 
-DEFAULT_STATE_DIR = Path.home() / ".claude" / "plugins" / "mirai-station" / "state"
-ROWS_SUBDIR = Path("reversion")                    # the left-eye scanner's SPX diary
-SESSION_BARS_SUBDIR = Path("reversion") / "bars"   # a finished session's bars, saved after the close
-LIVE_BARS_SUBDIR = Path("spx_jev") / "bars"        # today's bars as they finish (bars.py)
-CONTEXT_SUBDIR = Path("spx_jev") / "context"       # the market around SPX (market_context.py)
-OPTIONS_TAPE_SUBDIR = Path("lob_flow") / "agg"     # the lob-flow collector's per-minute record (skills/lob-flow)
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+
+# Every folder below is the store's, relative to the data root, as runtime/station_paths.py names it; the day files in them
+# are ``{day}.jsonl`` (the map's own rule), so a folder constant and a day name still make a file.
+DEFAULT_STATE_DIR = station_paths.state_root()                                              # the data root when no --state-dir is given
+ROWS_SUBDIR = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.relative_folder            # the left-eye scanner's SPX diary
+SESSION_BARS_SUBDIR = ROWS_SUBDIR / "bars"         # a finished session's bars, saved after the close beside the diary (the map drops it)
+LIVE_BARS_SUBDIR = station_paths.SPX_PRICE_BARS_BY_MINUTE.relative_folder                  # today's bars as they finish (bars.py)
+CONTEXT_SUBDIR = station_paths.WATCHLIST_QUOTES_BY_MINUTE.relative_folder                  # the market around SPX (market_context.py)
+OPTIONS_TAPE_SUBDIR = station_paths.SPX_ORDER_FLOW_READINGS_BY_MINUTE.relative_folder      # the lob-flow collector's per-minute record
 
 HORIZON = "the next 30 minutes"
 
@@ -225,7 +229,7 @@ def load_market_context(state_dir: Path, day: str) -> MarketContext | None:
     put right after the session (market_context.refresh_breadth), where the live snapshot kept what it served
     during it."""
     folder = Path(state_dir) / CONTEXT_SUBDIR
-    snapshots, backfill = load_jsonl(folder / f"{day}.jsonl"), load_jsonl(folder / "bars" / f"{day}.jsonl")
+    snapshots, backfill = load_jsonl(folder / f"{day}.jsonl"), load_jsonl(station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.path(state_dir, day=day))
     if not snapshots and not backfill:
         return None
     known: dict[str, dict[datetime, float]] = {}

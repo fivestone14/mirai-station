@@ -26,7 +26,9 @@ from zoneinfo import ZoneInfo
 from . import schwab
 from .feed_log import failure, log
 from .sessions import SESSION_CLOSE, SESSION_OPEN
-from .state_builder import DEFAULT_STATE_DIR, LIVE_BARS_SUBDIR, load_jsonl
+from .state_builder import DEFAULT_STATE_DIR, load_jsonl
+
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
 
 ET = ZoneInfo("America/New_York")
 SYMBOL = "SPX"
@@ -34,7 +36,7 @@ JOB = "spx-jev-bars"
 
 
 def bars_path(state_dir: Path, day: str) -> Path:
-    return Path(state_dir) / LIVE_BARS_SUBDIR / f"{day}.jsonl"
+    return station_paths.SPX_PRICE_BARS_BY_MINUTE.path(state_dir, day=day)
 
 
 def finished(bars: list[dict], now: datetime) -> list[dict]:

@@ -47,6 +47,8 @@ from .rulers import estimated_note, sigma_anchor
 from .vol_sources import TAPE_LINE_START, TAPE_RAW_SUBDIR, tape_path
 from .words import pct, plural, sig, signed
 
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+
 LABELS = ("options.turnover", "options.call_put_split", "options.aggressor_side", "options.new_activity",
           "options.big_prints_10", "options.call_put_shift_10m", "options.flow_lean_30", "options.premium_burst_5m",
           "options.premium_pace_30", "options.quote_liquidity", "options.strike_defense", "volume.spy_last30_share",
@@ -69,7 +71,7 @@ ROW_LINE_START = '{"ts": "'
 # depth swings by half from one minute to the next.
 QUOTE_WINDOW_MIN = 5
 QUOTE_BUCKET = "d25_40"                  # the collector's 25-40 delta bucket, the same-day quotes near price that trade
-SPY_VOLUMES = Path("siege") / "baseline.json"   # the siege box's SPY volume by minute of day, folded on every diary scan
+SPY_VOLUMES = Path(station_paths.SPY_VOLUME_BY_MINUTE_ROLLING_BASELINE_STATE.relative)   # the siege box's SPY volume by minute of day, folded on every diary scan
 # The siege box folds SPY's minutes on each diary scan, about every two minutes: a newest minute older than this means it stopped.
 SPY_VOLUME_MAX_AGE_MIN = 5
 # A window with under half its minutes on file is a feed hole, not a quiet stretch (the siege box's own rule).
@@ -747,8 +749,8 @@ class QuoteSweeps:
 
 
 def quote_sweeps(state_dir: Path, day: str) -> QuoteSweeps | None:
-    folder = Path(state_dir) / TAPE_RAW_SUBDIR / day
-    path = next((p for p in (folder / "sweeps.jsonl", folder / "sweeps.jsonl.gz") if p.exists()), None)
+    base = station_paths.SPX_SAME_DAY_OPTIONS_DEPTH_BY_MINUTE.path(state_dir, day=day)
+    path = next((p for p in (base, base.with_name(base.name + ".gz")) if p.exists()), None)
     return None if path is None else _read_sweeps(str(path), path.stat().st_mtime_ns)
 
 

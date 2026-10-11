@@ -32,6 +32,8 @@ from .usual_link import (SPX, AgainstIndex, OwnMoves, Session, UsualLink, agains
                          needs_move, same_clock_sessions)
 from .words import listed, pct, sig, signed
 
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+
 LABELS = ("leaders.equal_weight_vs_cap_30m", "leaders.heavyweight_gap", "leaders.megacap_cohesion_30m", "leaders.pull_vs_rest_30m",
           "leaders.rotation_30m", "leaders.semis_vs_index_30m", "leaders.single_name_10m", "leaders.size_spread_day",
           "sectors.agreement_30m", "tells.sector_lead_10m")
@@ -39,7 +41,7 @@ GATE_OF = {"leaders.heavyweight_gap": "heavyweight_gap_split", "leaders.single_n
 GATES = tuple(GATE_OF.values())
 DARK: dict[str, str] = {}
 
-WEIGHTS_FILE = "spx_leaders/weights.json"
+WEIGHTS_FILE = station_paths.SPX_LARGEST_STOCK_WEIGHTS_BY_UPDATE.relative
 APPROXIMATE_NOTE = " (approximate weights)"     # on the share-of-the-index sentence while the weights on file are hand-kept
 # Alphabet's two share classes count as one name, priced by the class the market feed carries.
 SHARE_CLASSES = {"GOOG": "GOOGL"}

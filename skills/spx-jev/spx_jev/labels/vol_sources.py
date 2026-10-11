@@ -30,9 +30,11 @@ from ..sessions import session_close
 from ..state_builder import load_rows
 from .measures import is_num
 
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+
 # The scanner writes a row every one to two minutes; a row further than this from a moment does not stand for it.
 ROW_MAX_GAP = timedelta(minutes=10)
-TAPE_RAW_SUBDIR = Path("lob_flow") / "raw"
+TAPE_RAW_SUBDIR = station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.relative_folder
 TAPE_LINE_START = '{"ts_ms": '          # a trade line; the collector also writes gap markers
 SECONDS_PER_YEAR = 365 * 24 * 3600
 # A quote wider than this share of its mid is a stale or one-sided book (a 2.40 bid under a 17.90 ask), not a price.
@@ -93,8 +95,8 @@ Contract = tuple[float, str]          # (strike, "call" | "put")
 def tape_path(state_dir: Path, day: str) -> Path | None:
     """The day's raw 0DTE tape, live or archived; None when the collector wrote none. The trade-flow labels
     (options_flow) read the same file."""
-    folder = Path(state_dir) / TAPE_RAW_SUBDIR / day
-    return next((p for p in (folder / "tape.jsonl", folder / "tape.jsonl.gz") if p.exists()), None)
+    base = station_paths.SPX_SAME_DAY_OPTIONS_TRADES_BY_TRADE.path(state_dir, day=day)
+    return next((p for p in (base, base.with_name(base.name + ".gz")) if p.exists()), None)
 
 
 def quotes_by_minute(state_dir: Path, day: str, minute_ends: tuple[datetime, ...],

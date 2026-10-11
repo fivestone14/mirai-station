@@ -39,12 +39,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+
 SCHEMA_VERSION = 5          # 2: a read carries the learning loop's forecasts (pool); 3: a premarket read carries its checkpoint and the night it saw;
                             # 4: a close_out's calls and tally are graded on the average price (see close_out above);
                             # 5: a read carries the average-price sum's request and reply, and a close_out's calls are its calls (see close_out);
                             #    every version 5 read's cadence carries ``reasked`` and every close_out's tally ``closed`` (calls closed for good),
                             #    which late version 3 lines may carry too, added without a bump
-ARCHIVE_SUBDIR = Path("spx_jev") / "archive"
+ARCHIVE_SUBDIR = station_paths.JEV_READS_AND_GRADES_BY_EVENT.relative_folder
 
 
 def read_id(lane: str, row_ts: str) -> str:

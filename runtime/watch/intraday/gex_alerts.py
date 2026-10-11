@@ -38,6 +38,8 @@ from zoneinfo import ZoneInfo
 from .. import paths, push
 from . import market_status, push_ntfy, settings
 
+import station_paths                       # on sys.path through watch.paths
+
 ET = ZoneInfo("America/New_York")
 # SPX only, and deliberately so. This module's passes are index-shaped — the
 # wall-breach bell reads the SPX diary's walls and the sirens its feed flags —
@@ -156,7 +158,7 @@ def wall_breach(spot: Optional[float], call_wall: Optional[float],
 
 
 def _options_data_path(state_dir: Path) -> Path:
-    return Path(state_dir) / "spx_jev" / "mirai_prediction" / "options_data.json"
+    return station_paths.OPTIONS_FEED_STATUS_CARD.path(state_dir)
 
 
 def _save_options_data(state_dir: Path, doc: Dict[str, Any]) -> None:
@@ -172,7 +174,7 @@ def _save_options_data(state_dir: Path, doc: Dict[str, Any]) -> None:
 
 
 def _alerts_state_path(state_dir: Path) -> Path:
-    return Path(state_dir) / "market_expectation" / "alerts_state.json"
+    return station_paths.PHONE_PUSHES_WALL_TIMERS_FEED_OUTAGES_STATE.path(state_dir)
 
 
 def _load_alerts_state(state_dir: Path, date_iso: str) -> Dict[str, Any]:
@@ -196,7 +198,7 @@ def _save_alerts_state(state_dir: Path, st: Dict[str, Any]) -> None:
 
 def _lens_rows(state_dir: Path, date_iso: str) -> List[dict]:
     """All of today's diary rows (the gravity engine's own numbers)."""
-    path = Path(state_dir) / "reversion" / f"{date_iso}.jsonl"
+    path = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(state_dir, day=date_iso)
     rows: List[dict] = []
     try:
         # errors="replace": one mangled byte must cost one row, never the whole run
@@ -260,7 +262,7 @@ def _stand_in_since(rows: List[dict]) -> Optional[str]:
 
 def _hunter_fires(date_iso: str) -> List[dict]:
     """Every Fade-Lens fire in today's hunter heartbeats."""
-    path = paths.LEFT_EYE_SKILL / "logs" / f"{date_iso}.jsonl"
+    path = station_paths.SPX_OPTIONS_SCANNER_SIGNAL_CHECKS_BY_SCAN.path(paths.PLUGIN_ROOT, day=date_iso)
     fires: List[dict] = []
     try:
         for ln in path.read_text().splitlines():

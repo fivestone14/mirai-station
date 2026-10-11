@@ -193,7 +193,7 @@ def _load_archive_read(state_dir: Path, lane: str, day: str, read_id: str, notes
 
 
 def _load_hour_record(state_dir: Path, day: str, row_ts: str, notes: list[str]) -> dict | None:
-    path = station_stores.spx_jev_dir(state_dir) / "hour" / f"{day}.jsonl"
+    path = station_stores.live_hour_file(state_dir, day)
     for line in jsonl_store.iter_json_lines(path):
         if line.get("row_ts") == row_ts:
             return line
@@ -336,7 +336,7 @@ def _stamp(value: Any) -> datetime | None:
 def _load_dated_book(paths: ForecastPaths, state_dir: Path, cut: datetime, notes: list[str]) -> dict | None:
     """The newest recorder copy whose as_of is at or before the cut; the live book only if it is older than the cut."""
     candidates: list[tuple[str, Path]] = []
-    folder = paths.recorder_dir / "dated_book"
+    folder = paths.dated_book_copies_dir
     if folder.exists():
         for copy in folder.glob("*.json"):
             candidates.append((copy.stem, copy))

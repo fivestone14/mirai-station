@@ -37,6 +37,10 @@ os.environ.pop("ANTHROPIC_API_KEY", None)
 
 _SKILL_DIR = Path(__file__).resolve().parent
 _ROOT = _SKILL_DIR.parent.parent
+_RUNTIME = str(_ROOT / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
 _SNDK_PRO = str(_SKILL_DIR.parent / "sndk-pro")
 if _SNDK_PRO not in sys.path:
     sys.path.insert(0, _SNDK_PRO)
@@ -66,9 +70,8 @@ _RATE_LIMIT_RE = re.compile(
     r"(rate.?limit|429|too\s+many\s+requests|usage\s+limit|quota|please\s+wait)",
     re.IGNORECASE)
 
-_STATE_DIR = Path(os.environ.get("MIRAI_STATE_DIR",
-                                 _ROOT / "state")) / "voice"
-_SESSION_FILE = _STATE_DIR / "session.json"
+_SESSION_FILE = station_paths.VOICE_DESK_SESSION_STATE.path()
+_STATE_DIR = _SESSION_FILE.parent                          # the desk's own folder (voice/ today)
 
 SPOKEN_TIMEOUT = "That one timed out on me. Ask again."
 SPOKEN_RATELIMIT = "I've hit the usage limit. Give me a few minutes."
@@ -450,6 +453,6 @@ class VoiceSession:
     def _log(self, rec: dict) -> None:
         try:
             day = datetime.now(_sr._ET).date().isoformat()
-            atomic_io.append_jsonl(_STATE_DIR / f"convo-{day}.jsonl", rec)
+            atomic_io.append_jsonl(_STATE_DIR / station_paths.VOICE_DESK_TRANSCRIPTS_BY_DAY.file_name(day=day), rec)
         except Exception:
             pass

@@ -15,7 +15,13 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
+
+_RUNTIME = str(Path(__file__).resolve().parents[3] / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
 
 
 def write_json_atomic(path, obj):
@@ -59,20 +65,20 @@ def append_jsonl(path, obj):
 
 
 class SiegeStore:
-    """One object, all paths — nothing else in the package knows the layout."""
+    """One object, all paths — each named in runtime/station_paths.py; ``root`` is the station's data root."""
 
     def __init__(self, root):
         self.root = Path(root)
 
     @property
-    def latest(self) -> Path: return self.root / "latest.json"
+    def latest(self) -> Path: return station_paths.SPX_DEALER_WALLS_LATEST.path(self.root)
     @property
-    def baseline(self) -> Path: return self.root / "baseline.json"
+    def baseline(self) -> Path: return station_paths.SPY_VOLUME_BY_MINUTE_ROLLING_BASELINE_STATE.path(self.root)
     @property
-    def session(self) -> Path: return self.root / "session.json"
+    def session(self) -> Path: return station_paths.SPX_DEALER_WALL_TOUCHES_TODAY_STATE.path(self.root)
 
     def cards(self, day: str) -> Path:
-        return self.root / "cards" / f"{day}.jsonl"
+        return station_paths.SPX_DEALER_WALL_TOUCHES_BY_EVENT.path(self.root, day=day)
 
     # -- typed accessors (readers tolerate absence, writers are atomic) ------
     def read_session(self) -> dict:

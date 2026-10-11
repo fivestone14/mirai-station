@@ -31,7 +31,12 @@ _SIEGE = str(SKILL_DIR.parent / "siege")
 if _SIEGE not in sys.path:
     sys.path.insert(0, _SIEGE)
 
-STATE_DIR = SKILL_DIR.parent.parent / "state" / "siege"
+_RUNTIME = str(SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
+
+STATE_DIR = station_paths.state_root()          # the data root; SiegeStore finds the sensor's files under it
 
 
 def _siege():
@@ -70,7 +75,7 @@ def attach_telemetry(telemetry: dict, ticker: str, now: datetime, *,
 if __name__ == "__main__":
     import json
     box = _siege()
-    latest = box.SiegeStore(STATE_DIR).root / "latest.json"
+    latest = box.SiegeStore(STATE_DIR).latest
     try:
         print(json.dumps(json.loads(latest.read_text()), indent=2))
     except OSError:

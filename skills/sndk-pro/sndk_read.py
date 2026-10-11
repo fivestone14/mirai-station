@@ -69,6 +69,10 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 _SKILL_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+_RUNTIME = str(_SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
 _LEFT_EYE = str(_SKILL_DIR.parent / "mirai-left-eye")
 if _LEFT_EYE not in sys.path:
     sys.path.insert(0, _LEFT_EYE)
@@ -665,8 +669,7 @@ _NO_TOOLS = ("Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Glob",
 
 
 def _state_dir() -> Path:
-    env = os.environ.get("MIRAI_STATE_DIR")
-    return Path(env) if env else (_SKILL_DIR.parent.parent / "state")
+    return station_paths.state_root()
 
 
 # One session's file, found by the shape of its name. Never "2026-*": a year in
@@ -675,15 +678,23 @@ _DAY_FILE_GLOB = "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl"
 
 
 def _diary_dir() -> Path:
-    return _state_dir() / "sndk_reversion"
+    return station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder()
+
+
+def _diary_path(day: str) -> Path:
+    return station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(day=day)
 
 
 def _reads_dir() -> Path:
-    return _state_dir() / "sndk_reads"
+    return station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN.folder()
+
+
+def _reads_path(day: str) -> Path:
+    return station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN.path(day=day)
 
 
 def _control_path() -> Path:
-    return _reads_dir() / "control.json"
+    return station_paths.SNDK_OPTIONS_READER_REASONING_SWITCH.path()
 
 
 def reasoning_on() -> bool:
@@ -2740,7 +2751,7 @@ def _prior_sessions(today: str) -> dict:
     days = sorted(p for p in _diary_dir().glob(_DAY_FILE_GLOB)
                   if p.stem < today)[-PCTL_MAX_SESSIONS:]
     key = [p.stem for p in days]
-    cache = _reads_dir() / "pctl_prior.json"
+    cache = station_paths.SNDK_OPTIONS_READER_PERCENTILE_HISTORY_STATE.path()
     try:
         blob = json.loads(cache.read_text())
         if blob.get("sessions") == key and blob.get("pctl_v") == PCTL_CACHE_V:
@@ -4199,7 +4210,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
     # the day: they are not live tape, and on 07-28 a single 00:05 warmup row
     # overstated session_high by ~0.7σ all day and inflated every frozen age
     # (adversarial audit 08-02). The diary keeps them; the reader ignores them.
-    rows = [r for r in _read_jsonl(_diary_dir() / f"{day}.jsonl")
+    rows = [r for r in _read_jsonl(_diary_path(day))
             if r.get("ticker") == "SNDK"
             and not (r.get("meta") or {}).get("forced")]
     if not rows:
@@ -4210,7 +4221,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
 
     # era-scoped: a row written under an older rule set may never seed today's
     # dwell clock or its run counter (the store is stamped for exactly this)
-    reads_all = _read_jsonl(_reads_dir() / f"{day}.jsonl")
+    reads_all = _read_jsonl(_reads_path(day))
     reads = [r for r in reads_all if r.get("era") == active_era()]
     # strikes-1: the call cap and the minimum gap span both eras, so flipping the
     # payload switch mid-day can neither restart the 30-call budget nor allow a
@@ -4416,7 +4427,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         rts = _parse_ts(out["reading_ts"])
         out["reading_age_min"] = (int((now - rts).total_seconds() // 60)
                                   if rts else None)
-        atomic_io.append_jsonl(_reads_dir() / f"{day}.jsonl", out)
+        atomic_io.append_jsonl(_reads_path(day), out)
         print("sndk-read :: quiet (reading carried forward)")
         return 0
 
@@ -4427,7 +4438,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
     if not reasoning_on():
         out["paused"] = True
         out["reading"] = None
-        atomic_io.append_jsonl(_reads_dir() / f"{day}.jsonl", out)
+        atomic_io.append_jsonl(_reads_path(day), out)
         print(f"sndk-read :: PAUSED | {wake} | row recorded, no model call")
         return 0
 
@@ -4503,7 +4514,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         out["dropped_observations"] = reading.get("dropped_observations")
         out["reading_ts"] = now.isoformat()   # stamped once, carried forward after
         out["reading_age_min"] = 0
-    atomic_io.append_jsonl(_reads_dir() / f"{day}.jsonl", out)
+    atomic_io.append_jsonl(_reads_path(day), out)
     if out["reading"] and not out.get("error"):
         # one RAG slice per COMPLETED read — an errored call carries the last
         # sentence forward for the screen, and filing that carry as a new
@@ -4526,7 +4537,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
 def replay(day: str) -> int:
     """Re-run the gate over a recorded day. Writes nothing — this is how the
     wake rate was measured before shipping."""
-    rows = [r for r in _read_jsonl(_diary_dir() / f"{day}.jsonl")
+    rows = [r for r in _read_jsonl(_diary_path(day))
             if r.get("ticker") == "SNDK"
             and not (r.get("meta") or {}).get("forced")]   # same rule as live
     if not rows:

@@ -11,7 +11,13 @@ import market_context and overnight, so importing them here put each feed in sys
 ahead of its own run, which runpy warned about on every run.
 """
 
+import sys
 from importlib import import_module
+from pathlib import Path
+
+_RUNTIME = str(Path(__file__).resolve().parents[3] / "runtime")     # runtime/station_paths.py names every store this package touches
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
 
 _HOMES = {"Scene": ".state_builder", "make_scene": ".state_builder", "build_labels": ".labels.registry",
           "build_requests": ".ask", "load_questions": ".ask", "send": ".ask"}

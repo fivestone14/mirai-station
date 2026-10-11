@@ -48,6 +48,10 @@ import atomic_io
 
 _ET = ZoneInfo("America/New_York")
 _SKILL_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+_RUNTIME = str(_SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
 
 # Strike windows per band (fractions of spot). Monthlies: ±12% core with the put
 # side reaching −20% (6000P-class crash strata sit ~−20% and are top-5 OI on every
@@ -177,13 +181,12 @@ def near_wall(pairs, spot, side: str):
 
 
 def _state_dir() -> Path:
-    env = os.environ.get("MIRAI_STATE_DIR")
-    base = Path(env) if env else (_SKILL_DIR.parent.parent / "state")
-    return base / "dated_gex"
+    """The book's own folder (dated_gex/ today)."""
+    return _book_path().parent
 
 
 def _book_path() -> Path:
-    return _state_dir() / "book.json"
+    return station_paths.SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_LATEST.path()
 
 
 # --- server-side fetch (runs inside ONE cass_market_run; native _chunk clone) ---

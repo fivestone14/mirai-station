@@ -70,12 +70,20 @@ from .archive import ARCHIVE_SUBDIR
 from .ask import GATED as GATE_REASON_PREFIX, confidence as answer_confidence, pick as answer_pick
 from .events import ET
 from .hour import FIVE
-from .lane import LANES
+from .lane import HOUR_SUBDIR, LANES
 from .overnight import OVERNIGHT_SUBDIR
 from .sessions import is_trading_day, previous_trading_day, session_close, session_open
 from .state_builder import DEFAULT_STATE_DIR, LIVE_BARS_SUBDIR, SESSION_BARS_SUBDIR, SYMBOL
 
-STORE_SUBDIR = Path("spx_jev") / "store"
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+
+STORE_SUBDIR = Path(station_paths.JEV_TABLES_FOLDER.relative)
+
+
+def _table_name(store) -> str:
+    """A table's folder under the store, from its name in station_paths."""
+    return str(store.relative_within(station_paths.JEV_TABLES_FOLDER))
+
 PART = "part-0.parquet"
 # 4: no facts table (2026-10-07); 3: the average-price call, its answer and grade, both loops' logs. The seven tables
 # dropped on 2026-10-11 changed no kept table's columns, so the version stands.
@@ -265,7 +273,7 @@ LANE_NAMES = tuple(LANES)
 AVERAGE_OUTCOMES = ("up", "flat", "down")
 ANSWER_STATUSES = ("answered", "lost", "unsent", "held", "not_due", "asleep", "missing", "dark", "unread", "other")
 
-READS = Table("reads", _read_cols(
+READS = Table(_table_name(station_paths.JEV_READ_SUMMARIES_BY_READ_TABLE), _read_cols(
     ("archived_at", TS, True), ("minute_et", INT, False), ("minutes_from_open", INT, False), ("checkpoint", STR, False),
     ("sent", BOOL, True), ("model", STR, False), ("spot", NUM, False), ("sigma", NUM, False),
     ("ruler_source", STR, False), ("ruler_points", NUM, False), ("ruler_unit_sigma", NUM, False), ("ruler_sessions", INT, False),
@@ -280,7 +288,7 @@ READS = Table("reads", _read_cols(
     checks=(_is("lane", LANE_NAMES), _read_id_matches, _on_day("row_ts"), _positive("spot", "sigma", "ruler_points"),
             _not_after("row_ts", "archived_at", "archived before its read")))
 
-ANSWERS = Table("answers", _read_cols(
+ANSWERS = Table(_table_name(station_paths.JEV_ANSWERS_BY_READ_AND_QUESTION_TABLE), _read_cols(
     ("group_id", STR, False), ("question_id", STR, True), ("status", STR, True), ("reason", STR, False),
     ("type", STR, False), ("pick", STR, False), ("confidence", NUM, False), ("probabilities", PROBS, False),
     ("score", NUM, False), ("noul", NUM, False), ("model", STR, False), ("question_hash", STR, False),
@@ -292,7 +300,7 @@ ANSWERS = Table("answers", _read_cols(
             _not_after("reasked_from", "row_ts", "asked again for a later read")),
     of_read=True)
 
-CALLS = Table("calls", _read_cols(
+CALLS = Table(_table_name(station_paths.JEV_AND_POOL_FORECASTS_BY_READ_AND_HORIZON_TABLE), _read_cols(
     ("sum_id", STR, True), ("horizon", STR, True), ("is_call", BOOL, True), ("minutes", INT, True), ("mark", TS, False),
     ("minute_et", INT, False), ("minutes_from_open", INT, False), ("is_primary", BOOL, True), ("shown_source", STR, True),
     ("shown_pick", STR, False), ("shown_probs", PROBS, True), ("shown_confidence", NUM, False), ("price", NUM, False),
@@ -309,7 +317,7 @@ CALLS = Table("calls", _read_cols(
             _not_after("row_ts", "mark", "marked before its read")),
     of_read=True)
 
-AVERAGE_GRADES = Table("average_grades", _read_cols(
+AVERAGE_GRADES = Table(_table_name(station_paths.JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON_TABLE), _read_cols(
     ("horizon", STR, True), ("sum_id", STR, True), ("rule_version", INT, True), ("graded", BOOL, True), ("reason", STR, False),
     ("minutes", INT, False), ("mark", TS, False), ("from_price", NUM, False), ("flat_points", NUM, False), ("factor", NUM, False),
     ("edge", NUM, False), ("edge_told", NUM, False), ("average_move", NUM, False), ("outcome", STR, False),
@@ -331,12 +339,12 @@ AVERAGE_GRADES = Table("average_grades", _read_cols(
 
 _BAR = (("open", NUM, True), ("high", NUM, False), ("low", NUM, False), ("close", NUM, True), ("volume", NUM, False))
 
-SPX_BARS = Table("spx_bars", (("day", DAY, True), ("ts", TS, True)) + _BAR + (("source", STR, True),),
+SPX_BARS = Table(_table_name(station_paths.SPX_PRICE_BARS_BY_MINUTE_TABLE), (("day", DAY, True), ("ts", TS, True)) + _BAR + (("source", STR, True),),
                  key=("ts",),
                  checks=(_on_day("ts"), _in_session, _positive("open", "high", "low", "close"), _not_negative("volume"), _bar_shape),
                  rank=lambda r: (r["source"] != "session_file",), provenance=("source",))
 
-OVERNIGHT_BARS = Table("overnight_bars", (("day", DAY, True), ("ts", TS, True), ("symbol", STR, True), ("contract", STR, False),
+OVERNIGHT_BARS = Table(_table_name(station_paths.FUTURES_PRICE_BARS_BY_MINUTE_TABLE), (("day", DAY, True), ("ts", TS, True), ("symbol", STR, True), ("contract", STR, False),
                                           ("contract_from", STR, False), ("bar_minutes", INT, True), ("prior_session", BOOL, True)) + _BAR
                        + (("session", STR, False), ("source", STR, False), ("saved_at", TS, True), ("flags", WORDS, False),
                           ("overnight_schema", INT, False)),
@@ -344,10 +352,10 @@ OVERNIGHT_BARS = Table("overnight_bars", (("day", DAY, True), ("ts", TS, True), 
                        checks=(_is("bar_minutes", (1, 5)), _positive("open", "high", "low", "close"), _not_negative("volume"),
                                _bar_shape, _night_ends_by_close, _saved_after_finish))
 
-QUARANTINE = Table("quarantine", (("day", DAY, True), ("table_name", STR, True), ("key", STR, False), ("reason", STR, True),
+QUARANTINE = Table(_table_name(station_paths.TABLE_BUILD_REFUSED_ROWS_BY_EVENT), (("day", DAY, True), ("table_name", STR, True), ("key", STR, False), ("reason", STR, True),
                                   ("source", STR, True), ("row_json", STR, True)), key=())
 
-VALIDATION = Table("validation", (("day", DAY, True), ("table_name", STR, True), ("rows_in", INT, True), ("kept", INT, True),
+VALIDATION = Table(_table_name(station_paths.TABLE_BUILD_COUNTS_BY_TABLE_AND_DAY), (("day", DAY, True), ("table_name", STR, True), ("rows_in", INT, True), ("kept", INT, True),
                                   ("duplicates", INT, True), ("superseded", INT, True), ("quarantined", INT, True),
                                   ("reasons", COUNTS, True), ("sources", WORDS, True), ("store_schema", INT, True),
                                   ("built_at", TS, True)), key=())
@@ -709,7 +717,7 @@ def read_raw(state_dir: Path, day: date) -> Raw:
             unreadable.append(_unreadable(day, w, r, f"an archive record of unknown kind {r.get('kind')!r}"))
     hours = {}
     for name, lane in LANES.items():
-        for w, h in lines(lane.folder(state_dir) / "hour" / f"{iso}.jsonl", "calls"):
+        for w, h in lines(lane.folder(state_dir) / HOUR_SUBDIR / f"{iso}.jsonl", "calls"):
             if isinstance(h.get("row_ts"), str):
                 hours[(name, h["row_ts"])] = h
             else:

@@ -118,12 +118,12 @@ def _score_row(outcome: dict, forecaster: str, status: str, scored_as_base: bool
 
 def load_reads_by_day(paths: ForecastPaths) -> dict[str, list[dict]]:
     """Every reads line, by day: read once a night and shared by the scores and the scorecard."""
-    return _lines_by_day(paths.root / "reads")
+    return _lines_by_day(paths.reads_dir)
 
 
 def load_arms_by_day(paths: ForecastPaths) -> dict[str, list[dict]]:
     """Every arms line (the nightly test variants' answers and forecasts), by day."""
-    return _lines_by_day(paths.root / "arms")
+    return _lines_by_day(paths.arms_dir)
 
 
 def _lines_by_day(folder) -> dict[str, list[dict]]:
@@ -162,7 +162,7 @@ def production_lines(reads_lines: list[dict]) -> tuple[dict[str, dict], dict[str
 def collect_score_rows(paths: ForecastPaths, reads_by_day: dict[str, list[dict]] | None = None) -> list[dict]:
     """Every score row for every read with sealed outcomes, the newest finalize attempt per horizon."""
     rows = []
-    outcomes_dir = paths.root / "outcomes"
+    outcomes_dir = paths.outcomes_dir
     if not outcomes_dir.exists():
         return rows
     reads_by_day = reads_by_day if reads_by_day is not None else load_reads_by_day(paths)

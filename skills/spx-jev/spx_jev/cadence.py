@@ -68,8 +68,10 @@ from .lane import LIVE
 from .schedule import every_min, holds_for_the_day
 from .state_builder import DEFAULT_STATE_DIR, load_jsonl, parse_ts
 
-CADENCE_NAME = "cadence.json"
-LAST_NAME = "last_asked.json"
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+
+CADENCE_NAME = station_paths.JEV_QUESTION_ASK_SCHEDULE_STATE.file_name()
+LAST_NAME = station_paths.JEV_LAST_ANSWERS_STATE.file_name()
 STEPS = (30, 60, 120)
 MIN_READS = 6
 GRACE_MIN = 5                 # a read up to five minutes early still counts as on time (the :02 and :32 ticks drift)
@@ -412,7 +414,7 @@ def ensure_cadence(out_dir: Path, doc: dict, today: str) -> dict:
     src = previous_day_with_records(out_dir, today)
     if src is None or cad.get("recounted_from") == src:
         return cad
-    new = recount(load_jsonl(Path(out_dir) / f"{src}.jsonl"), doc, cad, src)
+    new = recount(load_jsonl(station_paths.JEV_ANSWERS_BY_READ.in_lane_folder(out_dir, day=src)), doc, cad, src)
     path = Path(out_dir) / CADENCE_NAME
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(new, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -434,7 +436,7 @@ def main(argv: list[str] | None = None) -> int:
         print("no day with records", file=sys.stderr)
         return 1
     # a question retired from the lane by that day has no cadence (ask.retired), as the service's own recount
-    new = recount(load_jsonl(out_dir / f"{day}.jsonl"), retired(doc, day), load_cadence(out_dir), day)
+    new = recount(load_jsonl(station_paths.JEV_ANSWERS_BY_READ.in_lane_folder(out_dir, day=day)), retired(doc, day), load_cadence(out_dir), day)
     for qid, v in sorted(new["questions"].items(), key=lambda kv: (kv[1]["minutes"], kv[0])):
         print(f"{v['minutes']:4d} min  {qid:30s} {v['why']}")
     if args.write:

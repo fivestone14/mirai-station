@@ -71,6 +71,8 @@ from .lane import LIVE, PREMARKET, Lane
 from .sessions import SESSION_CLOSE, session_close
 from .state_builder import CONTEXT_SUBDIR, ROWS_SUBDIR, MarketContext, bar_days, load_market_context, load_rows, parse_ts, prior_bar_days
 
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+
 JEV_SHARE = 0.5          # declared, not fitted
 MIN_SESSIONS = 10        # fewer counted prior sessions than this and the odds are too thin to blend
 MAX_SESSIONS = 20
@@ -81,9 +83,9 @@ STEP_MIN = 10            # replayed reads every 10 minutes
 FIRST_READ = time(9, 32)
 ROW_MAX_AGE_MIN = 10     # a replayed read needs a diary row this fresh, as a live read does
 OUTCOMES = ("up", "down", "flat")
-CACHE_NAME = "clock_days.json"
+CACHE_NAME = station_paths.HISTORICAL_ODDS_END_PRICE_DAYS_STATE.file_name()
 RULE_VERSION = 2         # bump when the counting changes, so every stored day is counted again
-INTEGRAL_CACHE_NAME = "clock_integral_days.json"
+INTEGRAL_CACHE_NAME = station_paths.HISTORICAL_ODDS_AVERAGE_PRICE_DAYS_STATE.file_name()
 INTEGRAL_RULE_VERSION = 1   # the average-price counts' own: bump when they change; the end-price counts never move with it
 PRIOR_SESSIONS = 1.0     # the settled-open odds' pull toward even thirds, in sessions
 ZONE_SESSIONS_BACK = 2 * NIGHT_RANK_COUNT   # a day's zones read the sessions before it, each sized from the sessions before it
@@ -265,7 +267,7 @@ def odds(state_dir: Path, out_dir: Path, prior_bars: dict[str, list[dict]], now:
         # a stored day is trusted only while its bars, its diary file, its market-context files (the VIX) and the
         # sessions before it that size its zones are the ones it was counted from
         seen = {"n_bars": len(prior_bars[d]), "rows_file": _file_print(Path(state_dir) / ROWS_SUBDIR / f"{d}.jsonl"),
-                "context_files": [_file_print(context / f"{d}.jsonl"), _file_print(context / "bars" / f"{d}.jsonl")],
+                "context_files": [_file_print(context / f"{d}.jsonl"), _file_print(station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.path(state_dir, day=d))],
                 "before": [x for x in on_file if x < d][-ZONE_SESSIONS_BACK:]}
         entry = cache.get(d)
         if entry is not None and all(entry.get(k) == v for k, v in seen.items()) and "counts" in entry:
@@ -315,7 +317,7 @@ def integral_odds(state_dir: Path, out_dir: Path, prior_bars: dict[str, list[dic
     changed = False
     for d in days:
         seen = {"n_bars": len(prior_bars[d]), "rows_file": _file_print(Path(state_dir) / ROWS_SUBDIR / f"{d}.jsonl"),
-                "context_files": [_file_print(context / f"{d}.jsonl"), _file_print(context / "bars" / f"{d}.jsonl")],
+                "context_files": [_file_print(context / f"{d}.jsonl"), _file_print(station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.path(state_dir, day=d))],
                 "before": [x for x in on_file if x < d][-ZONE_SESSIONS_BACK:]}
         entry = cache.get(d)
         if entry is not None and all(entry.get(k) == v for k, v in seen.items()) and "counts" in entry:

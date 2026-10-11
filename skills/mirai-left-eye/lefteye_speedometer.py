@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 import math
 from datetime import datetime
+import sys
 from pathlib import Path
 from statistics import median
 from typing import Optional
@@ -43,6 +44,10 @@ from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 SKILL_DIR = Path(__file__).resolve().parent
+_RUNTIME = str(SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
 
 # --- session grid ---------------------------------------------------------
 # 78 five-minute buckets cover the 09:30-16:00 cash session; a bar's bucket is
@@ -259,7 +264,7 @@ def diurnal_table(baseline: Optional[dict]) -> Optional[dict]:
 def _bars_dir() -> Path:
     """Saved real-range bars store — mirrors gex_polarity_ab._bars_dir (the
     writer); monkeypatch point for tests."""
-    return SKILL_DIR.parent.parent / "state" / "reversion" / "bars"
+    return station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder() / "bars"
 
 
 def _read_json(path: Path):

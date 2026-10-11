@@ -11,7 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .paths import RUN_LOGS, data_root
+from .paths import data_root, read_hook_log_file
 
 DISABLE_ENV = "SPX_JEV_PREDICTION_DISABLE"
 
@@ -21,9 +21,9 @@ def spawn_after_read(state_dir: Path | str, lane: str, read_id: str) -> bool:
     try:
         if os.environ.get(DISABLE_ENV) == "1":
             return False
-        root = data_root(state_dir)
-        (root / RUN_LOGS).mkdir(parents=True, exist_ok=True)
-        out = open(root / RUN_LOGS / "read_hook.out", "ab")
+        log_file = read_hook_log_file(data_root(state_dir))
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        out = open(log_file, "ab")
         cmd = [sys.executable, "-m", "spx_jev.mirai_prediction.read_hook", "--state-dir", str(state_dir), "--lane", lane, "--read-id", read_id]
         subprocess.Popen(cmd, stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True,
                          cwd=str(Path(__file__).resolve().parents[2]), close_fds=True)

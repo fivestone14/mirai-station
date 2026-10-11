@@ -26,11 +26,16 @@ import math
 import os
 import statistics
 from datetime import datetime, time as _time, timedelta
+import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 SKILL_DIR = Path(__file__).resolve().parent
+_RUNTIME = str(SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
 TICKERS = ("SPX",)
 ENGINES = ("gex_views", "gex_theta",   # SPY-proxy GexBox · native ThetaData
            "lob_flow", "spy_depth")    # Layer-2 LOB sensor · its SPY control
@@ -46,7 +51,7 @@ MAGNET_TAG_SIGMA = 0.05    # "tagged" = closest approach within this σ — an e
 
 
 def _read_rows(day: str) -> list[dict]:
-    path = SKILL_DIR.parent.parent / "state" / "reversion" / f"{day}.jsonl"
+    path = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(day=day)
     if not path.exists():
         return []
     # TORN-LINE TOLERANCE: one interrupted append must never kill the whole
@@ -123,7 +128,8 @@ def _verdict(n: int, current_hits: int) -> dict:
 
 
 def _bars_dir() -> Path:
-    return SKILL_DIR.parent.parent / "state" / "reversion" / "bars"
+    """The saved real-range bars, beside the scanner's rows (a duplicate of the bars feed; the map drops it)."""
+    return station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder() / "bars"
 
 
 def _bars_have_ranges(bars: list) -> bool:
@@ -226,7 +232,7 @@ def promotion_gate(min_outcomes: int = 12, promote_at: float = 0.58,
     ride). Each brain must earn its privileges on its OWN ledger.
     Consumed by reversion_lens.live_allowed(). Returns (allowed, reason)."""
     if hist is None:
-        hist = SKILL_DIR.parent.parent / "state" / "reversion" / "polarity_history.jsonl"
+        hist = station_paths.SPX_OPTIONS_SCANNER_GRADES_BY_DAY.path()
     # One (hit?, prompt_version) per decided day. The watchtower's record is only
     # comparable WITHIN a prompt era (wt-2 and wt-3 are different forecasters), so
     # its gate counts only days from the newest era on the ledger — a version bump
@@ -552,7 +558,7 @@ def _pin_profile_stats(tk_rows: list[dict], engine: str,
     out = {"eod_pin_total": round(totals[-1], 4),
            "top_share_med": round(sorted(shares)[len(shares) // 2], 4) if shares else None}
     # strength baseline from prior report cards (10 most recent other days)
-    hist = SKILL_DIR.parent.parent / "state" / "reversion" / "polarity_history.jsonl"
+    hist = station_paths.SPX_OPTIONS_SCANNER_GRADES_BY_DAY.path()
     prior: list[float] = []
     try:
         for ln in hist.read_text().splitlines():
@@ -1004,9 +1010,8 @@ def persist(res: dict) -> Path:
     """FILING CABINET — saves the report card so the record accumulates instead
     of scrolling away: upserts the day's row into the one-line-per-day history
     ledger, and returns the ledger's path."""
-    d = SKILL_DIR.parent.parent / "state" / "reversion"
-    d.mkdir(parents=True, exist_ok=True)
-    hist = d / "polarity_history.jsonl"
+    hist = station_paths.SPX_OPTIONS_SCANNER_GRADES_BY_DAY.path()
+    hist.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = []
     if hist.exists():
         for ln in hist.read_text().splitlines():

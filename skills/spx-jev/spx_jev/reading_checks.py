@@ -27,7 +27,9 @@ from pathlib import Path
 from .ask import get_path, paths_in, pick
 from .state_builder import DEFAULT_STATE_DIR
 
-ARCHIVE = Path("spx_jev") / "archive"
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+
+ARCHIVE = station_paths.JEV_READS_AND_GRADES_BY_EVENT.relative_folder
 MIN_PHRASE_CHARS = 12          # a shorter lead of a description ("up", "flat") names nothing on its own
 
 

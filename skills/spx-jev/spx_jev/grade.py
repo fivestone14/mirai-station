@@ -125,19 +125,22 @@ from .ask import load_questions, retired
 from .hour import FIVE, average_probabilities
 from .labels.measures import SETTLED_OPEN_BAR, close_at, settled_open
 from .labels.rulers import SigmaRuler, morning_ruler, vix_at_settled_open
-from .lane import LANES, LIVE, RECORD, Lane
+from .lane import HOUR_SUBDIR, LANES, LIVE, RECORD, Lane
 from .pool import PoolWeights
 from .sessions import session_close, session_open
 from .state_builder import DEFAULT_STATE_DIR, MarketContext, load_bars, load_jsonl, parse_ts, prior_bar_days
 from .weights import WEIGHTS_NAME, QuestionWeights
+
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
 
 ET = ZoneInfo("America/New_York")
 
 CLOSE_GRACE_MIN = 2                 # a horizon ending this far past the close is graded at the closing bar
 BANDS = ("up", "flat", "down")      # "unsure" is a pick, never an outcome: its probability counts against the Brier
 SIZES = ("big", "small")
-INTEGRAL_NAME = "integral_grades.jsonl"
-INTEGRAL_LOCK = f"{INTEGRAL_NAME}.lock"     # held while a run or a backfill reads, dedupes and appends the side file
+GRADES_NAME = station_paths.JEV_END_PRICE_GRADES_BY_READ.file_name()
+INTEGRAL_NAME = station_paths.JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON.file_name()
+INTEGRAL_LOCK = station_paths.JEV_AVERAGE_PRICE_GRADES_LOCK.file_name()     # held while a run or a backfill reads, dedupes and appends the side file
 BAD_PROBABILITIES = "not graded: bad probabilities"
 
 
@@ -507,8 +510,8 @@ def average_tally(lines: list[dict], grades: list[dict], lane: Lane = LIVE) -> d
 def run(state_dir: Path, out_dir: Path, allowed: dict[str, set[str]], day: str | None = None, lane: Lane = LIVE) -> dict:
     """Grade every mark that has passed and rewrite the weights. ``allowed`` (``live_options()``) keeps
     retired questions and dropped options out of the weights."""
-    hour_dir = out_dir / "hour"
-    grades_path = out_dir / "grades.jsonl"
+    hour_dir = out_dir / HOUR_SUBDIR
+    grades_path = out_dir / GRADES_NAME
     done = graded_horizons(load_jsonl(grades_path), lane)
     every = set(lane.horizons)
     new = []
@@ -699,8 +702,8 @@ def integral_run(state_dir: Path, out_dir: Path, lane: Lane = LIVE, day: str | N
     others. A call standing on its average-price sum alone (average_alone), which grades.jsonl never grades, is graded
     from its own window (alone_line) under the same rules, and on a lane graded from the settled open at every box's
     mark, so its 09:45 check is graded as any call's is. Returns the new lines."""
-    hour_dir = out_dir / "hour"
-    if not (out_dir / "grades.jsonl").exists() and not hour_dir.exists():
+    hour_dir = out_dir / HOUR_SUBDIR
+    if not (out_dir / GRADES_NAME).exists() and not hour_dir.exists():
         return []
     # a backfill by hand and a job's run can overlap: each reads what the other appended before it adds its own
     with open(out_dir / INTEGRAL_LOCK, "w") as held:
@@ -708,7 +711,7 @@ def integral_run(state_dir: Path, out_dir: Path, lane: Lane = LIVE, day: str | N
         path = out_dir / INTEGRAL_NAME
         have = {(g.get("row_ts"), g.get("horizon"), g.get("rule_version")) for g in load_jsonl(path)}
         todo: dict[str, list[tuple[dict, str]]] = defaultdict(list)
-        for g in load_jsonl(out_dir / "grades.jsonl"):
+        for g in load_jsonl(out_dir / GRADES_NAME):
             for qid in g.get("horizons") or []:
                 if (g["row_ts"], qid, integral.RULE_VERSION) not in have and (day is None or g["row_ts"][:10] == day):
                     todo[g["row_ts"][:10]].append((g, qid))

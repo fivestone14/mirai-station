@@ -60,6 +60,10 @@ from zoneinfo import ZoneInfo
 _SKILL_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
 if str(_SKILL_DIR) not in sys.path:
     sys.path.insert(0, str(_SKILL_DIR))
+_RUNTIME = str(_SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
 _LEFT_EYE = str(_SKILL_DIR.parent / "mirai-left-eye")
 if _LEFT_EYE not in sys.path:
     sys.path.insert(0, _LEFT_EYE)
@@ -702,13 +706,11 @@ def _integrity(out: dict, bars: list[dict], rsi: dict) -> list[dict]:
 # the reader re-parse a file six times larger on every two-minute scan. The
 # diary keeps its one-scan-one-row shape; this keeps its own.
 def side_dir() -> Path:
-    env = os.environ.get("MIRAI_STATE_DIR")
-    base = Path(env) if env else (_SKILL_DIR.parent.parent / "state")
-    return base / "sndk_side"
+    return station_paths.SNDK_PRICE_BAR_FACTS_BY_READ.folder()
 
 
 def side_path(day: str) -> Path:
-    return side_dir() / f"{day}.jsonl"
+    return station_paths.SNDK_PRICE_BAR_FACTS_BY_READ.path(day=day)
 
 
 def append(day: str, packet: dict) -> bool:

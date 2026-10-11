@@ -38,6 +38,10 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 _SKILL_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+_RUNTIME = str(_SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
 _LEFT_EYE = str(_SKILL_DIR.parent / "mirai-left-eye")
 if _LEFT_EYE not in sys.path:
     sys.path.insert(0, _LEFT_EYE)
@@ -50,9 +54,11 @@ _ET = ZoneInfo("America/New_York")
 
 
 def _diary_dir() -> Path:
-    env = os.environ.get("MIRAI_STATE_DIR")
-    base = Path(env) if env else (_SKILL_DIR.parent.parent / "state")
-    return base / "sndk_reversion"
+    return station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder()
+
+
+def _diary_path(day: str) -> Path:
+    return station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(day=day)
 
 
 def _market_live() -> bool:
@@ -89,7 +95,7 @@ def _quote() -> dict:
 
 
 def _rows_today(now: datetime) -> list:
-    path = _diary_dir() / f"{now.date().isoformat()}.jsonl"
+    path = _diary_path(now.date().isoformat())
     rows = []
     try:
         for line in path.read_text().splitlines():
@@ -108,7 +114,7 @@ def _prev_close_totals(now: datetime) -> Optional[dict]:
     """Yesterday's last whole-book totals (reversion_lens._prev_close_totals
     pattern, against the SNDK diary): walks back ≤6 calendar days."""
     for back in range(1, 7):
-        path = _diary_dir() / f"{(now - timedelta(days=back)).date().isoformat()}.jsonl"
+        path = _diary_path((now - timedelta(days=back)).date().isoformat())
         try:
             lines = path.read_text().splitlines()
         except OSError:
@@ -171,7 +177,7 @@ def tick(now: Optional[datetime] = None, force: bool = False) -> int:
         intraday_bars=bars,
         prev_close_totals=_prev_close_totals(now),
         forced=(force and not live_mkt))       # m9: off-hours --force rows say so
-    atomic_io.append_jsonl(_diary_dir() / f"{now.date().isoformat()}.jsonl", row)
+    atomic_io.append_jsonl(_diary_path(now.date().isoformat()), row)
 
     gv = row["gex_views"]
     nbs = gv.get("net_by_strike") or []

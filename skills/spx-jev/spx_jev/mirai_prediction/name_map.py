@@ -10,15 +10,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..cuts import CUT_OVER_DAY  # noqa: F401  (the cut-over day is cuts.py's; this system reads it from here)
-from .paths import spx_jev_dir
+from .paths import station_paths
 
-# diagram name -> the live store's folder under state/spx_jev/store/ (hive-partitioned Parquet, one folder per day)
-STORE_NAMES = {
-    "jev_reads": "reads",                      # one row per read of any lane
-    "jev_answers": "answers",                  # JEV's answer per question per read (layer 3)
-    "forecasts_at_read_time": "calls",         # one row per sum per read: historical odds, JEV's call, the shown call, pool_v1's mix
-    "graded_results": "average_grades",        # the average-price grade per sum per read (the older end-price grade is not used)
+# diagram name -> the live store's table (hive-partitioned Parquet, one folder per day), named in station_paths
+STORES = {
+    "jev_reads": station_paths.JEV_READ_SUMMARIES_BY_READ_TABLE,                       # one row per read of any lane
+    "jev_answers": station_paths.JEV_ANSWERS_BY_READ_AND_QUESTION_TABLE,                # JEV's answer per question per read (layer 3)
+    "forecasts_at_read_time": station_paths.JEV_AND_POOL_FORECASTS_BY_READ_AND_HORIZON_TABLE,   # one row per sum per read: historical odds, JEV's call, the shown call, pool_v1's mix
+    "graded_results": station_paths.JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON_TABLE,   # the average-price grade per sum per read (the older end-price grade is not used)
 }
+STORE_NAMES = {name: str(store.relative_within(station_paths.JEV_TABLES_FOLDER)) for name, store in STORES.items()}   # diagram name -> table folder
 
 # pool_v1's expert names (spx_jev.pool) -> voice names
 VOICE_NAMES = {
@@ -61,10 +62,10 @@ SUM_WINDOW_MINUTES = {"average_30": 30, "next_30": 30, "next_60": 60, "average_1
 def store_path(state_dir: Path | str, new_name: str) -> Path:
     """The folder of a store table by its diagram name, e.g. store_path(S, "graded_results") -> .../store/average_grades."""
     try:
-        old = STORE_NAMES[new_name]
+        store = STORES[new_name]
     except KeyError as e:
-        raise KeyError(f"no store is named {new_name!r}; known: {sorted(STORE_NAMES)}") from e
-    return spx_jev_dir(state_dir) / "store" / old
+        raise KeyError(f"no store is named {new_name!r}; known: {sorted(STORES)}") from e
+    return store.path(state_dir)
 
 
 def rename_voice(old: str) -> str:

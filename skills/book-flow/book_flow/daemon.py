@@ -33,7 +33,13 @@ from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 PLUGIN_ROOT = Path(__file__).resolve().parents[3]
-STATE = PLUGIN_ROOT / "state" / "flow"
+_RUNTIME = str(PLUGIN_ROOT / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
+
+STATE = station_paths.EQUITY_BOOK_COLLECTOR_FOLDER.path(station_paths.state_root())     # the collector's own folder; `root` below
+_FOLDER = station_paths.EQUITY_BOOK_COLLECTOR_FOLDER
 
 ENABLED = False                 # see the module docstring before flipping this
 FLUSH_ROWS = 2000               # rows buffered before a write; ~30s at 1 Hz
@@ -67,9 +73,9 @@ class _Journal:
         if self._fh is not None:
             self.flush()
             self._fh.close()
-        path = self.root / sym / day
-        path.mkdir(parents=True, exist_ok=True)
-        self._fh = (path / "book.jsonl").open("a")
+        path = station_paths.EQUITY_BOOK_DEPTH_SNAPSHOTS_BY_SLICE.within(_FOLDER, self.root, ticker=sym, day=day)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._fh = path.open("a")
         self._sym, self._day = sym, day
 
     def add(self, row: dict, now: datetime) -> None:
@@ -100,9 +106,9 @@ def mark_gap(root: Path, sym: str, now: datetime, why: str) -> None:
     consecutive observations, so a silent hole would surface later as one
     enormous fake add at whatever price reappeared first."""
     try:
-        p = root / sym / now.date().isoformat()
-        p.mkdir(parents=True, exist_ok=True)
-        with (p / "gaps.jsonl").open("a") as fh:
+        p = station_paths.EQUITY_BOOK_GAPS_BY_EVENT.within(_FOLDER, root, ticker=sym, day=now.date().isoformat())
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with p.open("a") as fh:
             fh.write(json.dumps({"ts": now.isoformat(), "why": why}) + "\n")
     except Exception:
         pass
@@ -169,7 +175,7 @@ def _write_health(root: Path, now: datetime, seen: int, written: int,
                   specs, done: bool = False) -> None:
     try:
         root.mkdir(parents=True, exist_ok=True)
-        (root / "health.json").write_text(json.dumps({
+        station_paths.EQUITY_BOOK_COLLECTOR_HEALTH_LATEST.within(_FOLDER, root).write_text(json.dumps({
             "ts": now.isoformat(), "rows_seen": seen, "rows_written": written,
             "symbols": [s.symbol for s in specs], "running": not done}))
     except Exception:
@@ -182,7 +188,7 @@ def main(client_factory: Callable[[], object], root: Path = STATE) -> int:
               "the Schwab connection from the lob-flow collector", file=sys.stderr)
         return 0
     root.mkdir(parents=True, exist_ok=True)
-    lock = (root / "collector.lock").open("w")
+    lock = station_paths.EQUITY_BOOK_COLLECTOR_LOCK.within(_FOLDER, root).open("w")
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:

@@ -38,8 +38,12 @@ from .archive import ARCHIVE_SUBDIR
 from .cuts import (AVERAGE_30_FLAT_PCT, MINIMUM_TAPE_ZONE_POINTS, MINIMUM_ZONE_POINTS, NEXT_30_FLAT_PCT, NEXT_60_FLAT_PCT, OPEN_FLAT_PCT,
                    TAPE_FLAT_PCT)
 
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+
 QUESTIONS_DIR = Path(__file__).resolve().parent.parent / "questions"
-LIVE_DIR = "spx_jev"        # the live lane's folder under the state dir; no other lane writes its records there, only the shared archive/
+LIVE_DIR = station_paths.JEV_LANE_FOLDERS["live"]   # the live lane's folder under the state dir; no other lane writes its records there, only the shared archive/
+# the sums' folder inside a lane folder (hour/ today), from the store's own template
+HOUR_SUBDIR = station_paths.JEV_AND_POOL_FORECASTS_BY_READ.relative_within(station_paths.JEV_LANE_FOLDER).parent
 RECORD = "record"           # a horizon banded five ways from the bands stored on each record, in points from its lane's call's zone
 QUESTIONS = QUESTIONS_DIR / "spx_questions.json"   # every question of every lane, generated from spec/question_set.json
 # The live job fires at :02 and :32 from 09:32 to 16:02 (launchd/com.mirai-station.spx-jev.plist.template).
@@ -110,7 +114,7 @@ LIVE = Lane(name="live", key="thirty_minute", out_dir=LIVE_DIR, questions=QUESTI
             close_out_after_close=True)
 
 TAPE_EVERY_MIN = 5
-TAPE = Lane(name="tape", key="opening_five_minute", out_dir=f"{LIVE_DIR}/lanes/tape", questions=QUESTIONS,
+TAPE = Lane(name="tape", key="opening_five_minute", out_dir=station_paths.JEV_LANE_FOLDERS["tape"], questions=QUESTIONS,
             hour_doc=QUESTIONS_DIR / "spx_lane_hour.json", horizons={"next_10": (10, RECORD)},
             primary="next_10", cadence=False, tag="tape", bar_clock=True, clock_blend=False, bar_gap_min=0, average="average_10",
             average_flat_pct=TAPE_FLAT_PCT, zone_floor=MINIMUM_TAPE_ZONE_POINTS,
@@ -121,7 +125,7 @@ TAPE = Lane(name="tape", key="opening_five_minute", out_dir=f"{LIVE_DIR}/lanes/t
 
 # The checkpoints before the open, market time: Tokyo has closed, Europe's first half hour, the Europe
 # morning, the 08:30 report window, 09:05, and the final read.
-PREMARKET = Lane(name="premarket", key="premarket", out_dir=f"{LIVE_DIR}/lanes/premarket", questions=QUESTIONS,
+PREMARKET = Lane(name="premarket", key="premarket", out_dir=station_paths.JEV_LANE_FOLDERS["premarket"], questions=QUESTIONS,
                  hour_doc=QUESTIONS_DIR / "spx_premarket_hour.json",
                  horizons={"open_10": (10, OPEN_FLAT_PCT), "open_30": (30, OPEN_FLAT_PCT)},
                  primary="open_30", cadence=False, tag="premarket", clock_blend=False, average="open_average_30", average_flat_pct=OPEN_FLAT_PCT,

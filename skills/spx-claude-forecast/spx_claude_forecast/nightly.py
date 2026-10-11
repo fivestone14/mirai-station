@@ -158,7 +158,7 @@ def run_nightly(state_dir: Path, day: str | None = None, now: datetime | None = 
 
 
 def _recent_days_with_payloads(paths: ForecastPaths, day: str) -> list[str]:
-    folder = paths.root / "payloads"
+    folder = paths.payloads_dir
     if not folder.exists():
         return []
     days = sorted(p.name[:10] for p in folder.glob("20??-??-??.jsonl") if p.name[:10] < day)

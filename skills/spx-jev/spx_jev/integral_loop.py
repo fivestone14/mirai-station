@@ -58,14 +58,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import clock, integral, pool
-from .grade import INTEGRAL_NAME, average_alone, average_call
-from .lane import LIVE, Lane
+from .grade import GRADES_NAME, INTEGRAL_NAME, average_alone, average_call
+from .lane import HOUR_SUBDIR, LIVE, Lane
 from .sessions import SESSION_CLOSE, session_close
 from .state_builder import ET, load_jsonl, parse_ts
 
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+
 LOOP_VERSION = 1                # bump when this loop's learning changes: a state from before is learned again (update)
 GATE_SESSIONS = 10              # SPX sessions of average-price grades before Will decides whether to trust what it learns
-LOG_NAME = "pool_integral_log.jsonl"
+LOG_NAME = station_paths.BASE_POOL_UPDATES_BY_DAY_AND_HORIZON.file_name(horizon="average_of_next_30_minutes")
 SOURCE = "clock"                # this loop's reference is the live time-of-day odds, so its experts are clock and clock_cal
 CONSTANTS = {**pool.CONSTANTS, "w0": pool.w0(SOURCE), "outcome": "integral.label", "integral_rule": integral.RULE_VERSION,
              "reference_rule": clock.INTEGRAL_RULE_VERSION, "loop_version": LOOP_VERSION}
@@ -85,7 +87,7 @@ def cold_state() -> dict:
 
 
 def state_path(out_dir: Path, lane: Lane = LIVE) -> Path:
-    return Path(out_dir) / f"pool_{lane.horizons[lane.primary][0]}_integral.json"
+    return station_paths.BASE_POOL_AVERAGE_PRICE_STATE.in_lane_folder(out_dir, minutes=lane.horizons[lane.primary][0])
 
 
 def load_state(out_dir: Path, lane: Lane = LIVE) -> dict:
@@ -213,10 +215,10 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Pat
         # the replay's last day is kept in the state, so a rebuild stopped part way still bets nothing on those days
         state = {**cold_state(), "replay_until": replay_until or None}
     said = {h: "nothing new to apply"}
-    outcomes = pool.graded_outcomes(load_jsonl(out_dir / "grades.jsonl"), lane.horizons)
+    outcomes = pool.graded_outcomes(load_jsonl(out_dir / GRADES_NAME), lane.horizons)
     lines = average_lines(out_dir, lane)
     cache, version = references(out_dir, lane)
-    hour_dir = out_dir / "hour"
+    hour_dir = out_dir / HOUR_SUBDIR
     for day in sorted(p.stem for p in hour_dir.glob("*.jsonl")) if hour_dir.exists() else []:
         if day <= (state["last_session_applied"] or "") or day >= today:
             continue
@@ -273,7 +275,7 @@ def learned_fresh(out_dir: Path) -> list[dict]:
                 by_day.setdefault(ts[:10], set()).add(ts)
     out, seen = [], set()
     for day, stamps in sorted(by_day.items()):
-        for r in load_jsonl(Path(out_dir) / "hour" / f"{day}.jsonl"):
+        for r in load_jsonl(Path(out_dir) / HOUR_SUBDIR / f"{day}.jsonl"):
             if r.get("row_ts") in stamps and r["row_ts"] not in seen:
                 seen.add(r["row_ts"])
                 out.append(r.get("fresh") or {})

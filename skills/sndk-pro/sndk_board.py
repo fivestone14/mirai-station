@@ -808,7 +808,7 @@ def _closed_day_rows(day: str) -> list:
     """A closed session's diary rows, read once per process and per version of
     the file on disk: the carried-volume check, the open-interest change and the
     volume baseline all open the same files."""
-    p = SR._diary_dir() / f"{day}.jsonl"
+    p = SR._diary_path(day)
     try:
         key = (str(p), p.stat().st_mtime_ns)
     except OSError:
@@ -878,7 +878,7 @@ def prior_volume_series(today: str) -> dict:
     is left out, judged with the whole closed day in hand."""
     days = sorted(p.stem for p in SR._diary_dir().glob("[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl")
                   if p.stem < today)
-    cache = SR._reads_dir() / "prior_volume.json"
+    cache = SR.station_paths.SNDK_PAST_VOLUME_CURVES_STATE.path()
     try:
         blob = json.loads(cache.read_text())
         have = blob.get("days") if isinstance(blob, dict) and blob.get("v") == PRIOR_VOLUME_CACHE_V else {}
@@ -2811,7 +2811,7 @@ def check_reading_v2(obj: dict, scene: dict, regions: Optional[dict] = None) -> 
 # replay over a recorded day
 # ---------------------------------------------------------------------------
 def _day_rows(day: str) -> list:
-    return [r for r in SR._read_jsonl(SR._diary_dir() / f"{day}.jsonl")
+    return [r for r in SR._read_jsonl(SR._diary_path(day))
             if r.get("ticker") == "SNDK" and not (r.get("meta") or {}).get("forced")]
 
 

@@ -1,5 +1,8 @@
 """Where the Mirai Prediction System keeps its data: one folder, sorted by what kind of data it is.
 
+Every file is named in runtime/station_paths.py (the learner pool's stores); this module hands them out relative to
+this system's root, which is where the stores sit today:
+
     <state_dir>/spx_jev/mirai_prediction/
         raw/new_voice_forecasts/{day}.jsonl        written live by the read hook; append-only; the record
         raw/code_features/{day}.jsonl              the code feature builder's answers per read (layers 1-2), written live
@@ -21,24 +24,16 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-SYSTEM_FOLDER = "mirai_prediction"
-RAW = "raw"
-TABLES = "tables"
-POOLS = "pools"
-CATALOGS = "catalogs"
-RUN_LOGS = "run_logs"
-ARCHIVE = "archive"
-NEW_VOICE_FORECASTS = "new_voice_forecasts"
-CODE_FEATURES = "code_features"
-VOICE_SCORES = "voice_scores"
-REFUSED_ROWS = "_checks/refused_rows"
-POOL_V2 = "pool_v2"
-VOICE_FITS = "voice_fits"
-SCOREBOARD_FILE = "scoreboard.json"
-JOB_RUN_LOG = "job_run_log.jsonl"
+_RUNTIME = str(Path(__file__).resolve().parents[4] / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
+
+FOLDER = station_paths.LEARNER_POOL_FOLDER   # this system's folder under the data root; every store below sits in it today
 FIT_FILES_KEPT_DAYS = 10         # older fit files are deleted by the nightly job (every one can be rebuilt from the store)
 ARCHIVE_BACKUPS_KEPT = 10        # archive/ keeps the newest backups per file name; the nightly job deletes the rest
 REPLAY_BACKUPS_KEPT_DAYS = 7     # and a forced replay's backup folder (replay_force_<stamp>) once it is this old
@@ -47,53 +42,79 @@ STAMP = "%Y%m%dT%H%M%SZ"         # the UTC stamp every backup is named by
 
 def spx_jev_dir(state_dir: Path | str) -> Path:
     """The live service's own folder: <state_dir>/spx_jev (read-only for this system)."""
-    return Path(state_dir) / "spx_jev"
+    return station_paths.JEV_LANE_FOLDER.path(state_dir, lane="live")
 
 
 def data_root(state_dir: Path | str) -> Path:
     """This system's folder: <state_dir>/spx_jev/mirai_prediction."""
-    return spx_jev_dir(state_dir) / SYSTEM_FOLDER
+    return FOLDER.path(state_dir)
 
 
 def ensure_folders(root: Path) -> Path:
     """Create every folder of the layout; returns the root."""
-    for sub in (f"{RAW}/{NEW_VOICE_FORECASTS}", f"{RAW}/{CODE_FEATURES}", f"{TABLES}/{NEW_VOICE_FORECASTS}", f"{TABLES}/{VOICE_SCORES}",
-                f"{TABLES}/{REFUSED_ROWS}", f"{POOLS}/{POOL_V2}", f"{CATALOGS}/{VOICE_FITS}", RUN_LOGS, ARCHIVE):
-        (root / sub).mkdir(parents=True, exist_ok=True)
+    root = Path(root)
+    for folder in (raw_forecasts_dir(root), raw_code_features_dir(root), forecasts_table_dir(root), voice_scores_table_dir(root),
+                   refused_rows_file(root, "x").parent, pool_v2_dir(root), voice_fits_dir(root), job_run_log_file(root).parent,
+                   archive_dir(root)):
+        folder.mkdir(parents=True, exist_ok=True)
     return root
 
 
 def raw_forecasts_file(root: Path, day: str) -> Path:
-    return root / RAW / NEW_VOICE_FORECASTS / f"{day}.jsonl"
+    return station_paths.FORECASTS_BY_FORECASTER_READ_AND_HORIZON.within(FOLDER, root, day=day)
+
+
+def raw_forecasts_dir(root: Path) -> Path:
+    return station_paths.FORECASTS_BY_FORECASTER_READ_AND_HORIZON.folder_within(FOLDER, root)
 
 
 def raw_code_features_file(root: Path, day: str) -> Path:
-    return root / RAW / CODE_FEATURES / f"{day}.jsonl"
+    return station_paths.CODE_QUESTION_ANSWERS_BY_READ.within(FOLDER, root, day=day)
+
+
+def raw_code_features_dir(root: Path) -> Path:
+    return station_paths.CODE_QUESTION_ANSWERS_BY_READ.folder_within(FOLDER, root)
 
 
 def forecasts_table_dir(root: Path) -> Path:
-    return root / TABLES / NEW_VOICE_FORECASTS
+    return station_paths.FORECASTS_BY_FORECASTER_READ_AND_HORIZON_TABLE.within(FOLDER, root)
 
 
 def voice_scores_table_dir(root: Path) -> Path:
-    return root / TABLES / VOICE_SCORES
+    return station_paths.GRADES_BY_FORECASTER_READ_AND_HORIZON_TABLE.within(FOLDER, root)
 
 
 def refused_rows_file(root: Path, day: str) -> Path:
-    return root / TABLES / REFUSED_ROWS / f"{day}.jsonl"
+    return station_paths.FORECASTER_TABLE_REFUSED_ROWS_BY_EVENT.within(FOLDER, root, day=day)
 
 
 def pool_v2_weights_file(root: Path, sum_id: str) -> Path:
-    return root / POOLS / POOL_V2 / f"weights_{sum_id}.json"
+    return station_paths.LEARNER_POOL_STATE.within(FOLDER, root, sum_id=sum_id)
+
+
+def pool_v2_dir(root: Path) -> Path:
+    return station_paths.LEARNER_POOL_STATE.folder_within(FOLDER, root)
 
 
 def voice_fits_file(root: Path, day: str, sum_id: str) -> Path:
-    return root / CATALOGS / VOICE_FITS / f"{day}_{sum_id}.json"
+    return station_paths.LEARNER_POOL_TRAINED_FORECASTERS_BY_DAY.within(FOLDER, root, day=day, sum_id=sum_id)
+
+
+def voice_fits_dir(root: Path) -> Path:
+    return station_paths.LEARNER_POOL_TRAINED_FORECASTERS_BY_DAY.folder_within(FOLDER, root)
+
+
+def archive_dir(root: Path) -> Path:
+    return station_paths.LEARNER_POOL_ROLLBACK_COPIES.within(FOLDER, root)
+
+
+def read_hook_log_file(root: Path) -> Path:
+    return station_paths.FORECASTER_FORECASTS_JOB_LOG.within(FOLDER, root)
 
 
 def prune_voice_fits(root: Path, keep_days: int = FIT_FILES_KEPT_DAYS) -> list[str]:
     """Delete fit files older than the newest ``keep_days`` fit days; returns the names deleted."""
-    folder = root / CATALOGS / VOICE_FITS
+    folder = voice_fits_dir(root)
     files = sorted(folder.glob("*.json")) if folder.exists() else []
     days = sorted({f.name[:10] for f in files})
     keep_from = days[-keep_days] if len(days) > keep_days else None
@@ -106,11 +127,11 @@ def prune_voice_fits(root: Path, keep_days: int = FIT_FILES_KEPT_DAYS) -> list[s
 
 
 def scoreboard_file(root: Path) -> Path:
-    return root / SCOREBOARD_FILE
+    return station_paths.FORECASTER_SCOREBOARD_CARD.within(FOLDER, root)
 
 
 def job_run_log_file(root: Path) -> Path:
-    return root / RUN_LOGS / JOB_RUN_LOG
+    return station_paths.PREDICTION_JOB_RUNS_LOG.within(FOLDER, root)
 
 
 def now_utc_iso() -> str:
@@ -174,7 +195,7 @@ def backup_before_change(root: Path, path: Path) -> Path | None:
     if not path.exists():
         return None
     stamp = datetime.now(timezone.utc).strftime(STAMP)
-    copy = root / ARCHIVE / f"{path.name}.{stamp}"
+    copy = archive_dir(root) / f"{path.name}.{stamp}"
     copy.parent.mkdir(parents=True, exist_ok=True)
     copy.write_bytes(path.read_bytes())
     return copy
@@ -184,7 +205,7 @@ def prune_archive(root: Path, now: datetime | None = None, keep: int = ARCHIVE_B
                   replay_days: int = REPLAY_BACKUPS_KEPT_DAYS) -> list[str]:
     """Delete all but the newest ``keep`` backups of each file name in archive/, and a forced replay's backup folder
     older than ``replay_days`` days; returns the names deleted. A name without the backup stamp is left alone."""
-    folder = root / ARCHIVE
+    folder = archive_dir(root)
     if not folder.exists():
         return []
     now = now or datetime.now(timezone.utc)

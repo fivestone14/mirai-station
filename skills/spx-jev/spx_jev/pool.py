@@ -72,11 +72,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .lane import LIVE, Lane
+from .lane import HOUR_SUBDIR, LIVE, Lane
 from .scores import EPS, OUTCOMES, direction_of, floored, from_move_direction, log_loss, losses, move_of
 from .sessions import SESSION_CLOSE, session_close
 from .state_builder import ET, load_jsonl, parse_ts
 from .weights import QuestionWeights
+
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
 
 if TYPE_CHECKING:
     from .baseline import Baseline
@@ -199,7 +201,7 @@ def cold_state(source: str = SOURCE) -> dict:
 
 
 def state_path(out_dir: Path, minutes: int) -> Path:
-    return Path(out_dir) / f"pool_{minutes}.json"
+    return station_paths.BASE_POOL_STATE.in_lane_folder(out_dir, minutes=minutes)
 
 
 def load_state(out_dir: Path, minutes: int) -> dict:
@@ -698,7 +700,7 @@ def learn_session(state: dict, day: str, reads: list[dict], excluded: dict[str, 
 def archive_state(path: Path, state: dict) -> Path:
     """Keep a state learned under other constants in the folder's archive/, named by the constants it was learned
     under and today's date, before a rebuild replaces it. Returns where it went."""
-    folder = path.parent / "archive"
+    folder = station_paths.BASE_POOL_STATE_ROLLBACK_COPIES.in_lane_folder(path.parent)
     folder.mkdir(exist_ok=True)
     stamp = datetime.now(ET).date().isoformat()
     base = f"{path.name}.pre-{state.get('constants_hash') or 'unknown'}-{stamp}"
@@ -725,7 +727,7 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline:
     Returns ``{h: what happened}``."""
     out_dir = Path(out_dir)
     today = today or datetime.now(ET).date().isoformat()
-    outcomes = graded_outcomes(load_jsonl(out_dir / "grades.jsonl"), lane.horizons)
+    outcomes = graded_outcomes(load_jsonl(station_paths.JEV_END_PRICE_GRADES_BY_READ.in_lane_folder(out_dir)), lane.horizons)
     order = sorted(lane.horizons, key=lambda h: -lane.horizons[h][0])
     states = {h: load_state(out_dir, lane.horizons[h][0]) for h in order}
     said = {h: "nothing new to apply" for h in order}
@@ -739,7 +741,7 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline:
         states = {h: {**cold_state(), "replay_until": replay_until or None} for h in order}
     watermark = min((s["last_session_applied"] or "") for s in states.values())
     stopped = False
-    hour_dir = out_dir / "hour"
+    hour_dir = out_dir / HOUR_SUBDIR
     for day in sorted(p.stem for p in hour_dir.glob("*.jsonl")) if hour_dir.exists() else []:
         if day <= watermark or day >= today:
             continue

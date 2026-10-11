@@ -43,6 +43,8 @@ from .labels.measures import is_num
 from .sessions import SESSION_CLOSE, SESSION_OPEN, is_trading_day
 from .state_builder import CONTEXT_SUBDIR, DEFAULT_STATE_DIR, INDEX_QUOTE, load_jsonl
 
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+
 ET = ZoneInfo("America/New_York")
 JOB = "spx-jev-context"
 SYMBOLS = {
@@ -212,7 +214,7 @@ def backfill_day(state_dir: Path, day: date) -> Path | None:
     disk is left alone, and a day with no bars at all writes nothing (backfill asks trading days only); on any other
     day each symbol Schwab served no bars for is logged as an error. A minute with no $VOLD or $ADD takes it
     from the symbols it is made of (fill_derived)."""
-    path = Path(state_dir) / CONTEXT_SUBDIR / "bars" / f"{day.isoformat()}.jsonl"
+    path = station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.path(state_dir, day=day.isoformat())
     if path.exists():
         return None
     by_minute, empty = _session_bars(tuple(s for s in ALL_SYMBOLS if s not in NO_HISTORY), day)
@@ -230,7 +232,7 @@ def add_symbols(state_dir: Path, day: date, symbols: tuple[str, ...]) -> Path | 
     as saved; a day not on disk is backfill_day's, and one that already holds every symbol asked costs no call. A
     symbol Schwab serves no bars for (a session older than it keeps) is logged, and the file is rewritten only when
     something came back. Returns the file when it was written."""
-    path = Path(state_dir) / CONTEXT_SUBDIR / "bars" / f"{day.isoformat()}.jsonl"
+    path = station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.path(state_dir, day=day.isoformat())
     if not path.exists():
         return backfill_day(state_dir, day)
     by_minute = {line["ts"]: dict(line["bars"]) for line in load_jsonl(path)
@@ -256,7 +258,7 @@ def refresh_breadth(state_dir: Path, day: date) -> Path | None:
     day, before Schwab put its breadth right (labels/plausible.SAME_DAY_WRONG); the other symbols' bars are kept as
     saved. A refetch that still reads wrong (breadth_wrong) leaves the file alone, so the next run asks again.
     Returns the file when it was rewritten."""
-    path = Path(state_dir) / CONTEXT_SUBDIR / "bars" / f"{day.isoformat()}.jsonl"
+    path = station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.path(state_dir, day=day.isoformat())
     if not path.exists() or datetime.fromtimestamp(path.stat().st_mtime, ET).date() > day:
         return None
     fresh, _ = _session_bars(SYMBOLS["breadth"], day)
@@ -345,7 +347,7 @@ def main(argv: list[str] | None = None) -> int:
         if unknown:
             ap.error(f"not in SYMBOLS: {', '.join(unknown)}")
         written = backfill(state_dir, date.fromisoformat(args.backfill), now.date() - timedelta(days=1), symbols)
-        log(JOB, f"backfilled {len(written)} sessions under {state_dir / CONTEXT_SUBDIR / 'bars'}"
+        log(JOB, f"backfilled {len(written)} sessions under {station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.folder(state_dir)}"
                  f"{' for ' + ', '.join(symbols) if symbols else ''}")
         return 0
     line = snapshot(now, saved_bars(state_dir, now.date()))

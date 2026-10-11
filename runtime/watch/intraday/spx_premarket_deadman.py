@@ -42,6 +42,8 @@ from zoneinfo import ZoneInfo
 from .. import paths, push
 from . import market_status, push_ntfy
 
+import station_paths                       # on sys.path through watch.paths
+
 ET = ZoneInfo("America/New_York")
 
 # The lane's first checkpoint and its close-out (skills/spx-jev/spx_jev/lane.py,
@@ -60,11 +62,11 @@ OWED_AFTER_MIN = LATE_FIRE_MIN + RUN_MIN
 # job's reads (service.retry_close_outs).
 NEVER_READ_LATER = " The job fires on its own calendar times; a checkpoint missed is never read later."
 
-_LANE_SUBDIR = Path("spx_jev") / "lanes" / "premarket"
+LANE = "premarket"
 
 
 def _state_path(state_dir: Path) -> Path:
-    return Path(state_dir) / _LANE_SUBDIR / "deadman_state.json"
+    return station_paths.JEV_PREMARKET_OUTAGE_ALERT_STATE.path(state_dir)
 
 
 def _load_state(state_dir: Path, date_iso: str) -> Dict[str, Any]:
@@ -86,7 +88,7 @@ def _save_state(state_dir: Path, st: Dict[str, Any]) -> None:
 
 def _card(lane_dir: Path) -> Optional[Dict[str, Any]]:
     try:
-        card = json.loads((lane_dir / "latest.json").read_text())
+        card = json.loads(station_paths.JEV_PREMARKET_CARD.in_lane_folder(lane_dir).read_text())
     except (OSError, ValueError):
         return None
     return card if isinstance(card, dict) else None
@@ -132,12 +134,13 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
     now_et = now.astimezone(ET) if now.tzinfo else now.replace(tzinfo=ET)
     date_iso = now_et.date().isoformat()
     state_dir = Path(state_dir or paths.STATE_DIR)
-    lane_dir = state_dir / _LANE_SUBDIR
+    lane_dir = station_paths.JEV_LANE_FOLDER.path(state_dir, lane=LANE)
     push.set_channel(channel or push_ntfy.make_channel())
 
     if test_fire:
         rec = push.send("🐕 SPX pre-market dead-man's switch: TEST FIRE — the pager works. "
-                        f"Watching {_LANE_SUBDIR}/latest.json and {_LANE_SUBDIR}/{date_iso}.jsonl, "
+                        f"Watching {station_paths.JEV_PREMARKET_CARD.path(state_dir).relative_to(state_dir)} and "
+                        f"{station_paths.JEV_ANSWERS_BY_READ.path(state_dir, lane=LANE, day=date_iso).relative_to(state_dir)}, "
                         f"a read owed {OWED_AFTER_MIN} min after its checkpoint.", tag="spx-premarket-deadman")
         ok = bool(rec.get("dispatched"))
         return {"test_fire": True, "delivered": ok, "paged": 1 if ok else 0,
@@ -163,7 +166,7 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
         # the card is still the last market day's: not even the first checkpoint was read
         misses = [(FIRST_CHECKPOINT, "no pre-market read today")]
     else:
-        read = _read_checkpoints(lane_dir / f"{date_iso}.jsonl")
+        read = _read_checkpoints(station_paths.JEV_ANSWERS_BY_READ.in_lane_folder(lane_dir, day=date_iso))
         misses = []
         for stamp in (card.get("schedule") or {}).get("reads") or []:
             try:

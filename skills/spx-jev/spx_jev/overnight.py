@@ -59,9 +59,11 @@ from .sessions import (SESSION_OPEN, half_days, is_trading_day, market_holidays,
                        session_close)
 from .state_builder import DEFAULT_STATE_DIR, load_jsonl
 
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+
 ET = ZoneInfo("America/New_York")
-OVERNIGHT_SUBDIR = Path("spx_jev") / "overnight"
-SAVE_LOCK = ".save.lock"               # held while nights merge and write: the 09:26 job and the 09:28 read can save at once
+OVERNIGHT_SUBDIR = station_paths.FUTURES_PRICE_BARS_BY_MINUTE.relative_folder
+SAVE_LOCK = station_paths.FUTURES_PRICE_BARS_SAVE_LOCK.file_name()    # held while nights merge and write: the 09:26 job and the 09:28 read can save at once
 SCHEMA_VERSION = 1
 SOURCE = "schwab_price_history"
 SYMBOLS = ("/ES", "/ZN", "/BTC", "/MBT")
@@ -133,7 +135,7 @@ def night_path(state_dir: Path, day: str) -> Path:
 
 
 def manifest_path(state_dir: Path) -> Path:
-    return Path(state_dir) / OVERNIGHT_SUBDIR / "manifest.jsonl"
+    return station_paths.FUTURES_PRICE_BAR_CHANGE_COUNTS_BY_SAVE.path(state_dir)
 
 
 def _key(row: dict) -> tuple:

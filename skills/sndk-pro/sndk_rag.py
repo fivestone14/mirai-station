@@ -64,6 +64,10 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 _SKILL_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+_RUNTIME = str(_SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
 _LEFT_EYE = str(_SKILL_DIR.parent / "mirai-left-eye")
 if _LEFT_EYE not in sys.path:
     sys.path.insert(0, _LEFT_EYE)
@@ -87,29 +91,27 @@ STORY_BIT_CHARS = 200        # cap per stitched slice sentence in a day summary
 
 
 def _state_dir() -> Path:
-    env = os.environ.get("MIRAI_STATE_DIR")
-    base = Path(env) if env else (_SKILL_DIR.parent.parent / "state")
-    return base
+    return station_paths.state_root()
 
 
 def _rag_dir() -> Path:
-    return _state_dir() / "sndk_rag"
+    return _summaries_path().parent
 
 
 def _slices_path(day: str) -> Path:
-    return _rag_dir() / "slices" / f"{day}.jsonl"
+    return station_paths.SNDK_OPTIONS_READER_NOTES_BY_READ.path(day=day)
 
 
 def _summaries_path() -> Path:
-    return _rag_dir() / "summaries.jsonl"
+    return station_paths.SNDK_OPTIONS_READER_SESSION_SUMMARIES_BY_DAY.path()
 
 
 def _terrain_path() -> Path:
-    return _rag_dir() / "terrain.json"
+    return station_paths.SNDK_OPTIONS_READER_TERRAIN_STATE.path()
 
 
 def _diary_dir() -> Path:
-    return _state_dir() / "sndk_reversion"
+    return station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder()
 
 
 def _read_jsonl(path: Path) -> list[dict]:
@@ -427,7 +429,7 @@ def rollup(day: Optional[str] = None, force: bool = False) -> list[str]:
         days = [day] if day < today else []
     else:
         days = sorted({p.stem for p in _diary_dir().glob("*.jsonl")}
-                      | {p.stem for p in (_rag_dir() / "slices").glob("*.jsonl")})
+                      | {p.stem for p in station_paths.SNDK_OPTIONS_READER_NOTES_BY_READ.folder().glob("*.jsonl")})
     days = [d for d in days if d < today]
     done = []
     rows = _summaries()

@@ -64,7 +64,11 @@ from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 SKILL_DIR = Path(__file__).resolve().parent
-STATE_DIR = SKILL_DIR.parent.parent / "state"
+_RUNTIME = str(SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
+STATE_DIR = station_paths.state_root()
 CONFIG = SKILL_DIR.parent.parent / "runtime" / "watch" / "config" / "limits-and-cooldowns.json"
 
 # --- knobs -------------------------------------------------------------------
@@ -2502,7 +2506,7 @@ def _ask_claude(prompt: str, model: str, timeout: float = CALL_TIMEOUT_S,
 def _today_rows(now: datetime) -> list[dict]:
     """Today's diary parsed once into row dicts (unparseable lines skipped) —
     the single reader shared by the payload context and the trigger last-look."""
-    f = STATE_DIR / "reversion" / f"{now.date().isoformat()}.jsonl"
+    f = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(STATE_DIR, day=now.date().isoformat())
     rows: list[dict] = []
     try:
         for ln in f.read_text().splitlines():
@@ -2527,7 +2531,7 @@ def _soft_side_stuck(now: datetime | None, current) -> bool:
         return False
     reads: list[str] = []
     for back in range(6):                   # today + up to 5 prior days (spans a weekend)
-        f = STATE_DIR / "reversion" / f"{(now - timedelta(days=back)).date().isoformat()}.jsonl"
+        f = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(STATE_DIR, day=(now - timedelta(days=back)).date().isoformat())
         try:
             lines = f.read_text().splitlines()
         except OSError:
@@ -2634,7 +2638,7 @@ def _scorecards() -> dict:
     """Tiny lifetime summary of both heads from the history ledger — the tower
     knows its own and the checklist's track record (empty early on; fine)."""
     out = {}
-    hist = STATE_DIR / "reversion" / "polarity_history.jsonl"
+    hist = station_paths.SPX_OPTIONS_SCANNER_GRADES_BY_DAY.path(STATE_DIR)
     try:
         tallies = {"gates_head_a": [0, 0], "watchtower_head_b": [0, 0]}
         for ln in hist.read_text().splitlines():
@@ -2862,7 +2866,7 @@ def observe(telemetry: dict, now: datetime | None = None) -> dict | None:
 # Replay — the offline golden-set runner (reads a past diary day, no state writes)
 # ==============================================================================
 def _replay(day: str, live: bool) -> None:
-    f = STATE_DIR / "reversion" / f"{day}.jsonl"
+    f = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(STATE_DIR, day=day)
     rows = [json.loads(ln) for ln in f.read_text().splitlines() if ln.strip()]
     print(f"replay {day}: {len(rows)} rows — payloads for the interesting scans\n")
     for i, r in enumerate(rows):

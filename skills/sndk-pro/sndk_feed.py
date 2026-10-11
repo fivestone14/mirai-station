@@ -54,6 +54,10 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 _SKILL_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+_RUNTIME = str(_SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
 # transport + engine helpers live in the sibling left-eye skill (same pattern
 # native_gex_feed uses to borrow iv-viability's vault)
 _LEFT_EYE = str(_SKILL_DIR.parent / "mirai-left-eye")
@@ -153,9 +157,8 @@ def probe_days(today: date, window_days: int = _DISCOVERY_WINDOW_DAYS) -> list:
 # --- store -------------------------------------------------------------------
 
 def _state_dir() -> Path:
-    env = os.environ.get("MIRAI_STATE_DIR")
-    base = Path(env) if env else (_SKILL_DIR.parent.parent / "state")
-    return base / "sndk_gex"
+    """The feed's own folder (sndk_gex/ today): the chain, the expiries and the volatility hint sit there."""
+    return station_paths.SNDK_OPTIONS_CHAIN_STATE.folder()
 
 
 # --- server-side code (runs inside ONE cass_market_run per trip) -------------
@@ -285,7 +288,7 @@ def discover_expiries(now: Optional[datetime] = None) -> list:
     global LAST_DISCOVERY
     now = now or datetime.now(_ET)
     today = now.astimezone(_ET).date() if now.tzinfo else now.date()
-    path = _state_dir() / "discovery.json"
+    path = station_paths.SNDK_OPTIONS_EXPIRIES_STATE.path()
     try:
         cached = atomic_io.read_json_or(path, None)
         if (isinstance(cached, dict) and cached.get("date") == today.isoformat()
@@ -515,7 +518,7 @@ def _coverage(sides: Optional[list], expiries: list, today_iso: str) -> dict:
 def reset_chain_cache() -> None:
     """Drop the persisted raw book so the next call re-pulls (tests / manual)."""
     try:
-        (_state_dir() / "chain_cache.json").unlink(missing_ok=True)
+        station_paths.SNDK_OPTIONS_CHAIN_STATE.path().unlink(missing_ok=True)
     except Exception:
         pass
 
@@ -528,7 +531,7 @@ def _window_frac() -> float:
     tick persisted off its rebuilt front-book ATM IV; the first-ever tick has
     no hint and takes the 8% floor (self-corrects on tick two)."""
     try:
-        hint = atomic_io.read_json_or(_state_dir() / "vol_hint.json", None)
+        hint = atomic_io.read_json_or(station_paths.SNDK_IMPLIED_VOLATILITY_STATE.path(), None)
         sdf = _num((hint or {}).get("sigma_daily_frac"))
     except Exception:
         sdf = None
@@ -546,7 +549,7 @@ def _save_vol_hint(contracts: list, anchor: float, now: datetime) -> None:
         front = [c for c in contracts if c.get("dte") == dtes[0]] if dtes else contracts
         iv = _atm_iv(front or contracts, anchor)
         if iv and iv > 0:
-            atomic_io.write_json_atomic(_state_dir() / "vol_hint.json", {
+            atomic_io.write_json_atomic(station_paths.SNDK_IMPLIED_VOLATILITY_STATE.path(), {
                 "sigma_daily_frac": round(float(iv) / math.sqrt(_TRADING_DAYS), 5),
                 "atm_iv": round(float(iv), 4), "ts": now.isoformat()})
     except Exception:
@@ -560,7 +563,7 @@ def _read_book_cache(now: datetime) -> Optional[dict]:
     re-prices the cached quotes at the fresh live anchor instead of re-pulling.
     Corrupt or stale → None (caller pulls)."""
     try:
-        c = atomic_io.read_json_or(_state_dir() / "chain_cache.json", None)
+        c = atomic_io.read_json_or(station_paths.SNDK_OPTIONS_CHAIN_STATE.path(), None)
         ts = datetime.fromisoformat(c["ts"])
         age = (now - ts).total_seconds()
         if 0 <= age < _CHAIN_TTL_S and c.get("contracts") and c.get("expiries"):
@@ -632,7 +635,7 @@ def sndk_chain(now: Optional[datetime] = None,
             # persist the RAW book (pre-rebuild, post-coverage — a dead book
             # must not be served for the next _CHAIN_TTL_S) for the off-tick reprice
             try:
-                atomic_io.write_json_atomic(_state_dir() / "chain_cache.json", {
+                atomic_io.write_json_atomic(station_paths.SNDK_OPTIONS_CHAIN_STATE.path(), {
                     "ts": now.isoformat(), "date": today.isoformat(),
                     "expiries": list(expiries), "spot": chain_spot,
                     "sides": sides, "chunks": chunks, "window": window,

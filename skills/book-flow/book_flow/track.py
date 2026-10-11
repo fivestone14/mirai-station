@@ -30,19 +30,26 @@ level is a real thing to draw, an invented range is not.
 from __future__ import annotations
 
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[3]
+_RUNTIME = str(PLUGIN_ROOT / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
 
 # The diary is PER SYMBOL and the directory name is not derivable from the
 # ticker: SPX writes state/reversion, SNDK writes state/sndk_reversion. Reading
 # the wrong one is silent — the file parses, the rows carry a `ticker` that the
 # filter then rejects, and `spot_track` returns None as if the day had no diary
 # at all. A board would simply draw no price line and give no reason.
-DIARY_DIR = {"SPX": "reversion", "SNDK": "sndk_reversion"}
-DIARY = PLUGIN_ROOT / "state" / "{dir}" / "{day}.jsonl"
+DIARY_STORE = {"SPX": station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN, "SNDK": station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN}
+DIARY_DIR = {ticker: str(store.relative_folder) for ticker, store in DIARY_STORE.items()}
+# one template for both diaries (they share the day-file shape), so a test can point it anywhere
+DIARY = station_paths.state_root() / "{dir}" / station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.file_name(day="{day}")
 
 
 def _parse(ts: str) -> Optional[datetime]:

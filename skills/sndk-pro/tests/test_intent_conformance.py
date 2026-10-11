@@ -35,6 +35,9 @@ from synth import _REAL_CALL_THE_MODEL, _REAL_CALL_THE_MODEL_V2
 
 ET = ZoneInfo("America/New_York")
 ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT / "runtime") not in sys.path:
+    sys.path.append(str(ROOT / "runtime"))
+import station_paths  # noqa: E402  — every store the code names comes from here
 README = (ROOT / "skills" / "sndk-pro" / "README.md").read_text()
 INVENTORY = (ROOT / "docs" / "sndk-payload-inventory.md").read_text()
 PIPELINE = (ROOT / "runtime" / "viewstation" / "static" / "pipeline.html").read_text()
@@ -672,6 +675,13 @@ def _run_every_writer(state, monkeypatch):
     return _files_written(events, state.resolve())
 
 
+def _folders_named(text):
+    """The top state folders of every store a source file names through station_paths (the code joins no
+    folder literal of its own any more; the store's template says where it is today)."""
+    names = set(re.findall(r"station_paths\.([A-Z][A-Z0-9_]+)", text))
+    return {station_paths.STORES[n].relative.split("/")[0] for n in names if n in station_paths.STORES}
+
+
 def _written_by(stack, module, function):
     for name in stack:
         where, _, fn = name.rpartition(".")
@@ -710,7 +720,7 @@ def test_every_file_sndk_pro_writes_is_in_the_where_it_is_saved_table(tmp_path, 
             source = next((ROOT / "runtime").rglob(f"{s['module']}.py"))
             text = source.read_text()
             assert re.search(r"^def %s\(" % re.escape(s["function"]), text, re.M), s["writer"]
-            assert s["file"].split("/")[0] in text, f"{source} never names {s['file']}"
+            assert s["file"].split("/")[0] in _folders_named(text), f"{source} never names {s['file']}"
 
 
 def test_every_state_folder_the_code_joins_is_on_both_pipeline_diagrams_and_in_the_readme():
@@ -722,7 +732,7 @@ def test_every_state_folder_the_code_joins_is_on_both_pipeline_diagrams_and_in_t
     sources = [*(ROOT / "skills" / "sndk-pro").glob("sndk_*.py"),
                *(ROOT / "runtime" / "viewstation").glob("*.py"),
                *(ROOT / "runtime" / "watch" / "intraday").glob("sndk_*.py")]
-    joined = set().union(*(set(re.findall(r'/\s*"(sndk_[a-z_]+)"', p.read_text())) for p in sources))
+    joined = {f for f in set().union(*(_folders_named(p.read_text()) for p in sources)) if f.startswith("sndk_")}
     stores = _stores()
     table = {s["file"].split("/")[0] for s in stores if s["file"].startswith("sndk_") and not s["dead"]}
     dead = {s["file"].split("/")[0] for s in stores if s["dead"]}

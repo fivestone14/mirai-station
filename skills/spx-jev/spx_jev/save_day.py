@@ -40,6 +40,8 @@ from . import bars, daily_closes, market_context
 from .sessions import is_trading_day, session_close, session_minutes
 from .state_builder import CONTEXT_SUBDIR, DEFAULT_STATE_DIR, load_jsonl
 
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+
 ET = ZoneInfo("America/New_York")
 CATCH_UP_DAYS = 7              # a run also saves any market day this many calendar days back that is not on disk
 SAVE_AFTER_CLOSE_MIN = 5       # the session's last bar (15:59) has finished and Schwab has served it
@@ -113,7 +115,7 @@ def main(argv: list[str] | None = None) -> int:
         context = f"market bars -> {r['context']}" if r["context"] else "market bars already on disk or none served"
         breadth = "; breadth fetched again, put right" if r["breadth"] else ""
         print(f"spx-jev-save-day :: {d} {context}{breadth}; SPX +{r['spx_bars_added']} bars")
-    print(f"spx-jev-save-day :: {len(days) - failed} of {len(days)} days saved under {state_dir / CONTEXT_SUBDIR / 'bars'}")
+    print(f"spx-jev-save-day :: {len(days) - failed} of {len(days)} days saved under {station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.folder(state_dir)}")
     closes = save_daily_closes(state_dir, now)
     return 1 if failed or closes["failed"] else 0
 

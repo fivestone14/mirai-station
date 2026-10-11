@@ -29,7 +29,9 @@ from pathlib import Path
 
 from .state_builder import DEFAULT_STATE_DIR
 
-WEIGHTS_FILE = Path("spx_leaders") / "weights.json"
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+
+WEIGHTS_FILE = Path(station_paths.SPX_LARGEST_STOCK_WEIGHTS_BY_UPDATE.relative)
 
 
 def entries(doc) -> list[dict]:

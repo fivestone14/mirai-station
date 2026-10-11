@@ -46,24 +46,26 @@ def _options_data(state_dir):
     return json.loads(gex_alerts._options_data_path(Path(state_dir)).read_text())
 
 
-def _write_fires(skill_dir: Path, fires):
-    d = skill_dir / "logs"
-    d.mkdir(parents=True, exist_ok=True)
+def _write_fires(plugin_root: Path, fires):
+    """The hunter's heartbeat log for DAY, where station_paths puts it under a plugin root."""
+    import station_paths
+    path = station_paths.SPX_OPTIONS_SCANNER_SIGNAL_CHECKS_BY_SCAN.path(plugin_root, day=DAY)
+    path.parent.mkdir(parents=True, exist_ok=True)
     hb = {"ts": f"{DAY}T10:00:00-04:00", "fires": fires}
-    (d / f"{DAY}.jsonl").write_text(json.dumps(hb) + "\n")
+    path.write_text(json.dumps(hb) + "\n")
 
 
 class TestGexAlerts(unittest.TestCase):
-    def _run(self, state_dir, skill_dir=None, now=NOW):
+    def _run(self, state_dir, plugin_root=None, now=NOW):
         import watch.paths as paths
         sent = []
-        old_skill = paths.LEFT_EYE_SKILL
-        if skill_dir is not None:
-            paths.LEFT_EYE_SKILL = Path(skill_dir)
+        old_root = paths.PLUGIN_ROOT
+        if plugin_root is not None:
+            paths.PLUGIN_ROOT = Path(plugin_root)      # the hunter's log is a repo-held store, found under the plugin root
         try:
             out = gex_alerts.run(now, state_dir=Path(state_dir), channel=sent.append)
         finally:
-            paths.LEFT_EYE_SKILL = old_skill
+            paths.PLUGIN_ROOT = old_root
         return out, sent
 
     def test_fire_pushed_once_ever(self):

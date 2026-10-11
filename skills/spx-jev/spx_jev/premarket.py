@@ -58,12 +58,14 @@ from .hour import answer_sentences, average_request, average_window, hour_reques
 from .labels.label_set import LabelSet
 from .labels.registry import build_labels
 from .labels.rulers import normal_day_sigma
-from .lane import PREMARKET, TAPE
+from .lane import HOUR_SUBDIR, PREMARKET, TAPE
 from .night_ranks import READ_STALE_MIN, price_by
 from .schedule import EARLY_FIRE, asks_at, not_due
 from .sessions import is_trading_day, session_close, session_open
 from .state_builder import DEFAULT_STATE_DIR, Scene, load_jsonl, load_market_context, parse_ts, prior_sessions
 from .weights import QuestionWeights
+
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
 
 ET = overnight.ET
 LATE_FIRE_MIN = 5                          # a fire this many minutes or more after its checkpoint reads nothing
@@ -379,14 +381,14 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
               "sigma": scene.sigma if scene else None, "ruler": ruler, "event": event, "state": labels.state, "omitted": labels.omitted,
               "figures": labels.figures, "requests": requests, "skipped": skipped, "answers": answers, "sent": sent,
               "send_seconds": send_seconds, "hour": hour, "night": night}
-    with open(out_dir / f"{day}.jsonl", "a", encoding="utf-8") as f:
+    with open(station_paths.JEV_ANSWERS_BY_READ.in_lane_folder(out_dir, day=day), "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
     if hour_rec and hour_rec.get("request"):
         # the sum record is what the grader grades, from the settled open in the stamped ruler; the learning
         # loop's event hold-out is judged over the windows the sums forecast, which start at the settled open
         learn = {"learn_exclude": events.learn_exclude(grade.settled_open_at(now.date()), tuple(m for m, _ in PREMARKET.horizons.values()))}
-        (out_dir / "hour").mkdir(parents=True, exist_ok=True)
-        with open(out_dir / "hour" / f"{day}.jsonl", "a", encoding="utf-8") as f:
+        (out_dir / HOUR_SUBDIR).mkdir(parents=True, exist_ok=True)
+        with open(out_dir / HOUR_SUBDIR / f"{day}.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps({"row_ts": row_ts, "spot": record["spot"], "sigma": record["sigma"], "event": event, **learn,
                                 "lane": PREMARKET.tag, "ruler": ruler, "zone": flat_zone.stamp(zones), **(hour or {}), **hour_rec},
                                ensure_ascii=False) + "\n")
@@ -413,7 +415,7 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
 def newest_call(out_dir: Path, day: str) -> dict | None:
     """The day's newest sum that made a call, as the card shows it, with ``read_at`` the read it came from: one whose
     end-price sums answered, or whose average-price sum answered alone (grade.average_alone)."""
-    for rec in reversed(load_jsonl(out_dir / "hour" / f"{day}.jsonl")):
+    for rec in reversed(load_jsonl(out_dir / HOUR_SUBDIR / f"{day}.jsonl")):
         if (rec.get("pick") and isinstance(rec.get("by"), dict)) or grade.average_alone(rec, PREMARKET):
             return {**{k: rec[k] for k in CALL_KEYS if k in rec}, "read_at": rec["row_ts"]}
     return None
@@ -426,8 +428,8 @@ def story_so_far(out_dir: Path, day: str) -> list[dict]:
     call when it made one (service.call_of: the average-price sum's when JEV answered it). For the phone only: no
     label ever reads it."""
     calls = {r["row_ts"]: {k: v for k, v in service.call_of(r, PREMARKET).items() if k != "sum"}
-             for r in load_jsonl(out_dir / "hour" / f"{day}.jsonl") if r.get("pick") or grade.average_alone(r, PREMARKET)}
-    reads = sorted({rec.get("checkpoint"): rec for rec in load_jsonl(out_dir / f"{day}.jsonl")}.values(), key=lambda r: r["row_ts"])
+             for r in load_jsonl(out_dir / HOUR_SUBDIR / f"{day}.jsonl") if r.get("pick") or grade.average_alone(r, PREMARKET)}
+    reads = sorted({rec.get("checkpoint"): rec for rec in load_jsonl(station_paths.JEV_ANSWERS_BY_READ.in_lane_folder(out_dir, day=day))}.values(), key=lambda r: r["row_ts"])
     released = story.releases(date.fromisoformat(day))
     first_after = next((rec["row_ts"] for rec in reads if released and parse_ts(rec["row_ts"]) >= released[0].start), None)
     out = []
@@ -541,7 +543,7 @@ def card(scene: Scene | None, record: dict, doc: dict, out_dir: Path, unsent_rea
 
 def already_read(out_dir: Path, day: str, checkpoint: str) -> bool:
     """Whether the lane's day file holds a read at ``checkpoint``: a second fire there would ask JEV twice."""
-    return any(r.get("checkpoint") == checkpoint for r in load_jsonl(out_dir / f"{day}.jsonl"))
+    return any(r.get("checkpoint") == checkpoint for r in load_jsonl(station_paths.JEV_ANSWERS_BY_READ.in_lane_folder(out_dir, day=day)))
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -26,12 +26,17 @@ from __future__ import annotations
 import math
 import statistics
 from datetime import datetime
+import sys
 from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 SKILL_DIR = Path(__file__).resolve().parent
+_RUNTIME = str(SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
 
 # --- BETA gate -------------------------------------------------------------
 REVERSION_LIVE = False           # False = shadow (record only, no confluence vote)
@@ -52,7 +57,7 @@ _TAPE_PREV: dict[str, dict] = {}
 
 
 def _tape_prev_path(ticker: str) -> Path:
-    return SKILL_DIR.parent.parent / "state" / "tape_prev" / f"{ticker}.json"
+    return station_paths.OPTIONS_VOLUME_LAST_SCAN_STATE_BY_TICKER.path(ticker=ticker)
 
 
 def _load_tape_prev(ticker: str, now: datetime) -> Optional[dict]:
@@ -115,8 +120,7 @@ def _prev_close_totals(ticker: str, now: datetime) -> Optional[dict]:
     try:
         import json
         for back in range(1, 7):
-            path = (SKILL_DIR.parent.parent / "state" / "reversion"
-                    / f"{(now - timedelta(days=back)).date().isoformat()}.jsonl")
+            path = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(day=(now - timedelta(days=back)).date().isoformat())
             try:
                 lines = path.read_text().splitlines()
             except OSError:
@@ -1776,9 +1780,9 @@ def record(telemetry: dict, now: datetime | None = None) -> None:
     now = now or datetime.now(tz=ET)
     try:
         import json
-        d = SKILL_DIR.parent.parent / "state" / "reversion"
-        d.mkdir(parents=True, exist_ok=True)
-        with open(d / f"{now.date().isoformat()}.jsonl", "a") as f:
+        path = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(day=now.date().isoformat())
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a") as f:
             f.write(json.dumps(telemetry, default=str) + "\n")
     except Exception:
         pass
@@ -1884,7 +1888,7 @@ _WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 def _read_today_telemetry(now: datetime) -> list[dict]:
     import json
-    path = SKILL_DIR.parent.parent / "state" / "reversion" / f"{now.date().isoformat()}.jsonl"
+    path = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(day=now.date().isoformat())
     rows: list[dict] = []
     try:
         for line in path.read_text().splitlines():

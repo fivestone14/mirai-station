@@ -20,7 +20,9 @@ import json
 from collections import Counter
 from pathlib import Path
 
-WEIGHTS_NAME = "weights.json"
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+
+WEIGHTS_NAME = station_paths.JEV_QUESTION_WEIGHTS_STATE.file_name()
 MIN_WEIGHT = 0.5        # a question below this is left out of step 3
 
 

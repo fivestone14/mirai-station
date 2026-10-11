@@ -40,6 +40,8 @@ from .labels.ranks import SameClockRank, rank_sessions
 from .state_builder import CONTEXT_SUBDIR, Scene, load_jsonl, parse_ts
 
 from .ask import GATED            # a gate's reason starts with this; ask.build_requests keeps it as the skipped reason
+
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
 TNX = "$TNX"
 NOT_MEASURED = "not measured this read"
 FAR_GAP = ("far up", "far down")                 # MACRO-02's top fifth: the macro_gap gate
@@ -309,7 +311,7 @@ def _tnx_at_minute(state_dir: Path | str, day: str, hhmm: str) -> float | None:
     """A saved session's $TNX close at the last bar finished by ``hhmm`` (context/bars/{day}.jsonl: a bar starting before
     it), as served."""
     last = None
-    for line in load_jsonl(Path(state_dir) / CONTEXT_SUBDIR / "bars" / f"{day}.jsonl"):
+    for line in load_jsonl(station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.path(state_dir, day=day)):
         bar = (line.get("bars") or {}).get(TNX)
         if (isinstance(bar, dict) and isinstance(bar.get("ts"), str) and _et_hhmm(bar["ts"]) < hhmm
                 and isinstance(bar.get("close"), (int, float))):

@@ -31,16 +31,13 @@ from ..labels.options_flow import SPY_VOLUMES, CollectorRecord, _read_spy_volume
 from ..state_builder import LIVE_BARS_SUBDIR, OPTIONS_TAPE_SUBDIR, load_jsonl
 from .code_features import GAP_HISTORY_SESSIONS, HISTORY_SESSIONS, MarketHistory, answer_code_features, bars_up_to
 from .live_records import _json_lines
-from .paths import append_json_line, now_utc_iso, raw_code_features_file, read_json_lines, spx_jev_dir
+from .paths import append_json_line, now_utc_iso, raw_code_features_file, read_json_lines, station_paths
 
-OVERNIGHT_SUBDIR = "overnight"
-CONTEXT_SUBDIR = "context"                           # context/{day}.jsonl quotes a minute apart; context/bars/{day}.jsonl full days
-DIARY_SUBDIR = "reversion"                           # the SPX diary (walls, magnet, at-the-money vol) a minute apart
-SWEEPS_SUBDIR = Path("lob_flow") / "raw"             # the lob-flow collector's quote sweeps, {day}/sweeps.jsonl(.gz)
+SWEEPS_SUBDIR = station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.relative_folder   # the lob-flow collector's raw days, {day}/sweeps.jsonl(.gz)
 SWEEP_BUCKETS = ("d25_40", "d10_25", "d00_10")      # the sweep's delta buckets OPTIONS-08 reads, nearest the money first: the
                                                      # 25-40 bucket empties after ~13:10 ET, so the next one out stands in
-STORE_SPX_BARS = "spx_bars"
-STORE_OVERNIGHT_BARS = "overnight_bars"
+STORE_SPX_BARS = str(station_paths.SPX_PRICE_BARS_BY_MINUTE_TABLE.relative_within(station_paths.JEV_TABLES_FOLDER))
+STORE_OVERNIGHT_BARS = str(station_paths.FUTURES_PRICE_BARS_BY_MINUTE_TABLE.relative_within(station_paths.JEV_TABLES_FOLDER))
 ES = "/ES"
 SPY = "SPY"
 QUOTE_BAR_SYMBOLS = ("SPY", "QQQ", "IWM")           # FLOW-07 reads the read's day's quotes for these, saved bars or not
@@ -63,7 +60,7 @@ def _bar(ts, open_, high, low, close, volume=0.0) -> dict | None:
 
 
 def _store_glob(state_dir: Path | str, table: str) -> str | None:
-    folder = spx_jev_dir(state_dir) / "store" / table
+    folder = station_paths.JEV_TABLES_FOLDER.path(state_dir) / table
     if not folder.exists() or not any(folder.glob("day=*/*.parquet")):
         return None
     return str(folder / "*" / "*.parquet")
@@ -110,7 +107,7 @@ def load_spx_bars_by_day(state_dir: Path | str, before_day: str, sessions: int =
 def load_night_bars(state_dir: Path | str, day: str, symbol: str = ES) -> list[dict]:
     """The symbol's 1-minute bars outside the regular session for the night into ``day`` from overnight/{day}.jsonl, in
     time order (the file also holds 5-minute bars of the same stretch, left out)."""
-    rows = load_jsonl(Path(state_dir) / "spx_jev" / OVERNIGHT_SUBDIR / f"{day}.jsonl")
+    rows = load_jsonl(station_paths.FUTURES_PRICE_BARS_BY_MINUTE.path(state_dir, day=day))
     bars = [_bar(b.get("ts"), b.get("open"), b.get("high"), b.get("low"), b.get("close"), b.get("volume"))
             for b in rows if b.get("symbol") == symbol and b.get("session") != "regular" and b.get("bar_minutes") == 1
             and isinstance(b.get("ts"), str)]
@@ -128,7 +125,7 @@ def load_night_bars_by_day(state_dir: Path | str, day: str, symbol: str = ES, se
     if glob is not None:
         store_days = [r[0] for r in _rows(f"SELECT DISTINCT CAST(day AS VARCHAR) FROM read_parquet('{glob}', hive_partitioning=1) "
                                           f"WHERE symbol = '{symbol}' AND CAST(day AS VARCHAR) < '{day}' ORDER BY 1")]
-    file_days = [d for d in _file_days(Path(state_dir) / "spx_jev" / OVERNIGHT_SUBDIR) if d < day]
+    file_days = [d for d in _file_days(station_paths.FUTURES_PRICE_BARS_BY_MINUTE.folder(state_dir)) if d < day]
     prior = sorted(set(store_days) | set(file_days))[-sessions:]
     from_store = [d for d in prior if d in store_days]
     if from_store:
@@ -148,7 +145,7 @@ def load_night_bars_by_day(state_dir: Path | str, day: str, symbol: str = ES, se
 # ---------------------------------------------------------------- the Phase 1 feeds
 
 def _context_bars_file(state_dir: Path | str, day: str) -> Path:
-    return spx_jev_dir(state_dir) / CONTEXT_SUBDIR / "bars" / f"{day}.jsonl"
+    return station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.path(state_dir, day=day)
 
 
 def load_context_bars(state_dir: Path | str, day: str) -> dict[str, list[dict]]:
@@ -178,7 +175,7 @@ def load_context_quotes_as_bars(state_dir: Path | str, day: str) -> dict[str, li
     saved bars', so SPY's is replaced by the siege box's minute volumes (with_siege_spy_volume)."""
     out: dict[str, list[dict]] = {}
     cumulative: dict[str, float] = {}
-    for line in load_jsonl(spx_jev_dir(state_dir) / CONTEXT_SUBDIR / f"{day}.jsonl"):
+    for line in load_jsonl(station_paths.WATCHLIST_QUOTES_BY_MINUTE.path(state_dir, day=day)):
         ts = line.get("ts")
         if not isinstance(ts, str):
             continue
@@ -208,7 +205,7 @@ def load_context_bars_by_day(state_dir: Path | str, before_day: str, sessions: i
     """The trailing ``sessions`` saved sessions' minute bars per symbol before ``before_day`` (the context/bars files hold
     every symbol the market feed carries, the new ones backfilled)."""
     out: dict[str, dict[str, list[dict]]] = {}
-    for day in [d for d in _file_days(spx_jev_dir(state_dir) / CONTEXT_SUBDIR / "bars") if d < before_day][-sessions:]:
+    for day in [d for d in _file_days(station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.folder(state_dir)) if d < before_day][-sessions:]:
         bars = load_context_bars(state_dir, day)
         if bars:
             out[day] = bars
@@ -278,7 +275,7 @@ def slim_diary_row(row: dict) -> dict | None:
 
 def load_diary_rows(state_dir: Path | str, day: str) -> list[dict]:
     """The day's SPX diary rows (reversion/{day}.jsonl), slim (slim_diary_row), in time order, a malformed row skipped."""
-    out = [slim for row in load_jsonl(Path(state_dir) / DIARY_SUBDIR / f"{day}.jsonl") if (slim := slim_diary_row(row)) is not None]
+    out = [slim for row in load_jsonl(station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(state_dir, day=day)) if (slim := slim_diary_row(row)) is not None]
     return sorted(out, key=lambda r: r["ts"])
 
 
@@ -286,7 +283,7 @@ def diary_row_at(state_dir: Path | str, day: str, clock: str) -> dict | None:
     """A prior session's slim diary row at ``clock`` (HH:MM:SS, ET): the newest written by then and not more than the
     labeller's ROW_SLACK_MIN before it (labels/gamma.py's rule). A day's diary is about 10 MB, so it is read a line at a
     time up to the clock and only the chosen row is parsed; the scanner writes its rows in time order."""
-    path = Path(state_dir) / DIARY_SUBDIR / f"{day}.jsonl"
+    path = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(state_dir, day=day)
     if not path.exists():
         return None
     then = datetime.fromisoformat(f"{day}T{clock}").replace(tzinfo=ET)
@@ -319,8 +316,8 @@ def load_collector_records(state_dir: Path | str, before_day: str, sessions: int
 def load_quote_sweeps(state_dir: Path | str, day: str) -> list[tuple[str, float, str]]:
     """The day's lob-flow quote sweeps as (ts, the quoted spread of the nearest-the-money bucket that held one, rounded to
     the cent, that bucket; SWEEP_BUCKETS)."""
-    folder = Path(state_dir) / SWEEPS_SUBDIR / day
-    path = next((p for p in (folder / "sweeps.jsonl", folder / "sweeps.jsonl.gz") if p.exists()), None)
+    base = station_paths.SPX_SAME_DAY_OPTIONS_DEPTH_BY_MINUTE.path(state_dir, day=day)
+    path = next((p for p in (base, base.with_name(base.name + ".gz")) if p.exists()), None)
     if path is None:
         return []
     out = []
@@ -344,7 +341,7 @@ def load_quote_sweeps(state_dir: Path | str, day: str) -> list[tuple[str, float,
 
 
 def load_quote_sweeps_by_day(state_dir: Path | str, before_day: str, sessions: int = HISTORY_SESSIONS) -> dict[str, list[tuple[str, float, str]]]:
-    folder = Path(state_dir) / SWEEPS_SUBDIR
+    folder = station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.folder(state_dir)
     days = sorted(p.name for p in folder.glob("????-??-??") if p.name < before_day) if folder.exists() else []
     out = {}
     for day in days[-sessions:]:

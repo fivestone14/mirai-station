@@ -4,7 +4,8 @@ through here. Atomic writes (tmp+rename, never a torn read), the latest.json
 handshake the host tick reads, append-only raw journals with cursors for
 crash-replay, and the rotation that enforces the disk budget.
 
-Layout under one injected state_dir (nothing else in the package knows paths):
+Every file is named in runtime/station_paths.py; StateDir is handed the station's data root and asks it. Today
+they all sit in the collector's own folder there (lob_flow/):
     latest.json                  # the ONLY file the host's tick reads
     gex_context.json             # written by the host, read by the daemon
     calendar.json                # scheduled-event dates (seeded if missing)
@@ -20,9 +21,15 @@ import fcntl
 import json
 import os
 import shutil
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterator, Optional
+
+_RUNTIME = str(Path(__file__).resolve().parents[3] / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Atomic primitives
@@ -51,31 +58,33 @@ def read_json(path: Path) -> Optional[dict]:
 
 class StateDir:
     def __init__(self, root: Path):
-        self.root = Path(root)
+        self.state_root = Path(root)                              # the station's data root (state/ today)
+        # the collector's own folder under it: the lock, the raw rotation and the disk budget live here
+        self.root = station_paths.SPX_OPTIONS_TAPE_COLLECTOR_FOLDER.path(self.state_root)
 
     # -- named files ---------------------------------------------------------
     @property
-    def latest(self) -> Path: return self.root / "latest.json"
+    def latest(self) -> Path: return station_paths.SPX_ORDER_FLOW_READINGS_LATEST.path(self.state_root)
     @property
-    def gex_context(self) -> Path: return self.root / "gex_context.json"
+    def gex_context(self) -> Path: return station_paths.SPX_DEALER_GAMMA_LEVELS_LATEST.path(self.state_root)
     @property
-    def calendar(self) -> Path: return self.root / "calendar.json"
+    def calendar(self) -> Path: return station_paths.MARKET_EVENT_CALENDAR_BY_EVENT.path(self.state_root)
     @property
-    def cursor(self) -> Path: return self.root / "cursor.json"
+    def cursor(self) -> Path: return station_paths.SPX_OPTIONS_TRADES_RESUME_POINT_STATE.path(self.state_root)
     @property
-    def lock(self) -> Path: return self.root / "collector.lock"
+    def lock(self) -> Path: return station_paths.SPX_OPTIONS_TAPE_COLLECTOR_LOCK.path(self.state_root)
 
     def baseline(self, name: str) -> Path:
-        return self.root / "baselines" / f"{name}.json"
+        return station_paths.DEPTH_BASELINES_STATE_BY_ENGINE[name].path(self.state_root)
 
     def raw(self, day: str, stream: str) -> Path:
-        return self.root / "raw" / day / f"{stream}.jsonl"
+        return station_paths.SPX_SAME_DAY_OPTIONS_RAW_STREAM.path(self.state_root, day=day, stream=stream)
 
     def agg(self, day: str) -> Path:
-        return self.root / "agg" / f"{day}.jsonl"
+        return station_paths.SPX_ORDER_FLOW_READINGS_BY_MINUTE.path(self.state_root, day=day)
 
     def card(self, day: str) -> Path:
-        return self.root / "cards" / f"{day}.json"
+        return station_paths.SPX_ORDER_FLOW_GRADES_BY_DAY.path(self.state_root, day=day)
 
     # -- latest.json handshake -----------------------------------------------
     def write_latest(self, obj: dict, now: datetime) -> None:
@@ -167,7 +176,7 @@ class StateDir:
         days past retention, and enforce the hard disk cap oldest-first.
         Aggregates, baselines, and cards are never deleted by the cap."""
         report = {"gzipped": 0, "dropped_days": 0, "cap_dropped": 0}
-        raw_root = self.root / "raw"
+        raw_root = station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.folder(self.state_root)
         if not raw_root.exists():
             return report
         today = now.date().isoformat()

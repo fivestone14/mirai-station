@@ -44,9 +44,11 @@ from .cuts import HEADLINE_CUT_MIN
 from .feed_log import log
 from .state_builder import DEFAULT_STATE_DIR, load_jsonl, parse_ts
 
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+
 ET = ZoneInfo("America/New_York")
 JOB = "spx-jev-headlines"
-HEADLINES_SUBDIR = Path("spx_jev") / "headlines"
+HEADLINES_SUBDIR = station_paths.NEWS_HEADLINES_BY_ARTICLE.relative_folder
 FEEDS = (
     ("cnbc_top", "https://www.cnbc.com/id/100003114/device/rss/rss.html"),
     ("google_news", "https://news.google.com/rss/search?q=%22S%26P+500%22+OR+Nvidia+OR+Fed+OR+tariff+OR+%22Treasury+yields%22"
@@ -106,7 +108,7 @@ def keys_of(item: dict) -> list[str]:
 
 
 def load_seen(state_dir: Path | str) -> dict[str, str]:
-    path = folder(state_dir) / "seen.json"
+    path = station_paths.NEWS_HEADLINES_SEEN_STATE.path(state_dir)
     try:
         seen = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -120,7 +122,7 @@ def prune_seen(seen: dict[str, str], now: datetime, hours: int = SEEN_HOURS) -> 
 
 
 def save_seen(state_dir: Path | str, seen: dict[str, str]) -> None:
-    path = folder(state_dir) / "seen.json"
+    path = station_paths.NEWS_HEADLINES_SEEN_STATE.path(state_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(seen, sort_keys=True), encoding="utf-8")
@@ -139,7 +141,7 @@ class PollRunning(RuntimeError):
 
 def take_lock(state_dir: Path | str, now: datetime) -> Path:
     """The lock file, created exclusively; one left by a poll that died (older than LOCK_STALE_S) is taken over."""
-    path = folder(state_dir) / ".lock"
+    path = station_paths.NEWS_HEADLINES_POLL_LOCK.path(state_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         if time.time() - path.stat().st_mtime > LOCK_STALE_S:

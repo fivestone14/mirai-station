@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -25,15 +26,20 @@ from .sources import book_snapshot_board, spx_tape_board
 from .track import spot_track
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[3]
-STATE = PLUGIN_ROOT / "state"
-CACHE_DIR = STATE / "flow" / "boards"
+_RUNTIME = str(PLUGIN_ROOT / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
+
+STATE = station_paths.state_root()
+CACHE_DIR = station_paths.SPX_OPTIONS_TRADES_3D_VIEW_CARD.folder(STATE)
 DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 # Where each ticker's raw session lives, and how to read it. SPX rides the
 # lob-flow recorder that has been running since 2026-08-05; every other ticker
 # comes from the book collector's own flattened snapshots.
-SPX_TAPE = STATE / "lob_flow" / "raw" / "{day}" / "tape.jsonl"
-BOOK_SNAP = STATE / "flow" / "{ticker}" / "{day}" / "book.jsonl"
+SPX_TAPE = station_paths.SPX_SAME_DAY_OPTIONS_TRADES_BY_TRADE.path(STATE, day="{day}")
+BOOK_SNAP = station_paths.EQUITY_BOOK_DEPTH_SNAPSHOTS_BY_SLICE.path(STATE, ticker="{ticker}", day="{day}")
 
 # Bumped whenever the WIRE SHAPE changes. It rides the cache key, so an old
 # board rebuilds instead of being served without a field the tab expects.
@@ -58,8 +64,9 @@ def _src(day: str, ticker: str) -> tuple[Optional[Path], str]:
 def available_days(ticker: str = "SPX") -> list[str]:
     """Days with a recorded session, newest first. Drives the tab's day picker,
     so it must never invent a day the renderer would then fail to load."""
-    root = (STATE / "lob_flow" / "raw") if ticker == "SPX" else (STATE / "flow" / ticker)
-    name = "tape.jsonl" if ticker == "SPX" else "book.jsonl"
+    root = (station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.folder(STATE) if ticker == "SPX"
+            else station_paths.EQUITY_BOOK_TICKER_FOLDER.path(STATE, ticker=ticker))
+    name = (station_paths.SPX_SAME_DAY_OPTIONS_TRADES_BY_TRADE if ticker == "SPX" else station_paths.EQUITY_BOOK_DEPTH_SNAPSHOTS_BY_SLICE).file_name()
     if not root.is_dir():
         return []
     return sorted((p.name for p in root.glob("[0-9]" * 4 + "-*-*")
@@ -84,7 +91,7 @@ def board_for_day(day: str, ticker: str = "SPX", *, slice_s: int = 60,
     # entirely plausible, because a board at the wrong bin width is still a board.
     stamp = (f"v{DOC_V}-{int(st.st_mtime)}-{st.st_size}"
              f"-{slice_s}-{max_bins}-{bin_w}")
-    cache = CACHE_DIR / f"{ticker}-{day}.json"
+    cache = CACHE_DIR / station_paths.SPX_OPTIONS_TRADES_3D_VIEW_CARD.file_name(ticker=ticker, day=day)
     if cache.is_file():
         try:
             doc = json.loads(cache.read_text())

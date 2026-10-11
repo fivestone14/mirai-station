@@ -1,6 +1,7 @@
 """Where everything this package writes lives, and nothing else.
 
-The package writes only under one folder, ``state/spx_claude_forecast/`` (``forecast_root``), plus an
+Every file is named in runtime/station_paths.py; this module hands them out from one state root. The package
+writes only under one folder there, ``state/spx_claude_forecast/`` today (``forecast_root``), plus an
 off-disk backup folder it is told about. Every other station store it reads is listed in
 ``station_stores.py`` and is never opened for writing: a write anywhere else is a bug the writers in
 ``jsonl_store.py`` refuse (see ``assert_path_is_ours``).
@@ -32,7 +33,7 @@ off-disk backup folder it is told about. Every other station store it reads is l
 from __future__ import annotations
 
 import json
-import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -41,122 +42,161 @@ from . import jsonl_store
 PACKAGE_DIR = Path(__file__).resolve().parent
 SKILL_DIR = PACKAGE_DIR.parent                       # skills/spx-claude-forecast
 STATION_ROOT = SKILL_DIR.parent.parent               # ~/.claude/plugins/mirai-station
-FORECAST_FOLDER_NAME = "spx_claude_forecast"         # under the station's state/ folder, beside state/spx_jev
+
+_RUNTIME = str(STATION_ROOT / "runtime")             # runtime/station_paths.py names every store, this package's included
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
+
+FORECAST_FOLDER_NAME = station_paths.CLAUDE_FORECAST_FOLDER.relative   # under the station's data root, beside spx_jev (today)
 RUN_LOG_KEPT_DAYS = 30                               # run_logs/job_run_log.jsonl is the only thing here that is ever pruned
 
 
 def default_state_dir() -> Path:
-    """The station's state root: ``MIRAI_STATION_STATE`` (set by runtime/scripts/env.sh), else
-    ``MIRAI_STATE_DIR`` (the older skills' override), else ``<station>/state``."""
-    for name in ("MIRAI_STATION_STATE", "MIRAI_STATE_DIR"):
-        value = os.environ.get(name)
-        if value:
-            return Path(value).expanduser()
-    return STATION_ROOT / "state"
+    """The station's state root, as runtime/station_paths.py decides it: ``MIRAI_STATE_DIR`` (the per-test override),
+    else ``MIRAI_STATION_STATE`` (set by runtime/scripts/env.sh), else ``<station>/state``."""
+    return station_paths.state_root()
 
 
 @dataclass(frozen=True)
 class ForecastPaths:
-    """Every path the package writes, derived from one state root so tests can point it at a temp folder."""
+    """Every path the package writes, each named in station_paths and derived from one state root so tests can point
+    it at a temp folder."""
 
     state_dir: Path
 
+    def _at(self, store, **keys) -> Path:
+        return store.path(self.state_dir, **keys)
+
     @property
     def root(self) -> Path:
-        return self.state_dir / FORECAST_FOLDER_NAME
+        return self._at(station_paths.CLAUDE_FORECAST_FOLDER)
 
     # --- the record: one file per market day, append-only -----------------------------------------
     def payloads_file(self, day: str) -> Path:
-        return self.root / "payloads" / f"{day}.jsonl"
+        return self._at(station_paths.CLAUDE_FORECAST_INPUTS_BY_READ, day=day)
+
+    @property
+    def payloads_dir(self) -> Path:
+        return station_paths.CLAUDE_FORECAST_INPUTS_BY_READ.folder(self.state_dir)
 
     def reads_file(self, day: str) -> Path:
-        return self.root / "reads" / f"{day}.jsonl"
+        return self._at(station_paths.CLAUDE_FORECAST_ANSWERS_BY_READ, day=day)
+
+    @property
+    def reads_dir(self) -> Path:
+        return station_paths.CLAUDE_FORECAST_ANSWERS_BY_READ.folder(self.state_dir)
 
     def outcomes_file(self, day: str) -> Path:
-        return self.root / "outcomes" / f"{day}.jsonl"
+        return self._at(station_paths.CLAUDE_FORECAST_OUTCOMES_BY_READ, day=day)
+
+    @property
+    def outcomes_dir(self) -> Path:
+        return station_paths.CLAUDE_FORECAST_OUTCOMES_BY_READ.folder(self.state_dir)
 
     def arms_file(self, day: str) -> Path:
-        return self.root / "arms" / f"{day}.jsonl"
+        return self._at(station_paths.CLAUDE_FORECAST_TEST_ANSWERS_BY_VARIANT_AND_READ, day=day)
+
+    @property
+    def arms_dir(self) -> Path:
+        return station_paths.CLAUDE_FORECAST_TEST_ANSWERS_BY_VARIANT_AND_READ.folder(self.state_dir)
 
     def seed_payloads_file(self, day: str) -> Path:
-        return self.root / "seed" / "payloads" / f"{day}.jsonl"
+        return self._at(station_paths.CLAUDE_FORECAST_REBUILT_INPUTS_BY_READ, day=day)
+
+    @property
+    def seed_payloads_dir(self) -> Path:
+        return station_paths.CLAUDE_FORECAST_REBUILT_INPUTS_BY_READ.folder(self.state_dir)
 
     def seed_outcomes_file(self, day: str) -> Path:
-        return self.root / "seed" / "outcomes" / f"{day}.jsonl"
+        return self._at(station_paths.CLAUDE_FORECAST_REBUILT_OUTCOMES_BY_READ, day=day)
+
+    @property
+    def seed_outcomes_dir(self) -> Path:
+        return station_paths.CLAUDE_FORECAST_REBUILT_OUTCOMES_BY_READ.folder(self.state_dir)
 
     # --- the nightly library ---------------------------------------------------------------------
     @property
     def library_rows_file(self) -> Path:
-        return self.root / "library" / "rows.parquet"
+        return self._at(station_paths.CLAUDE_FORECAST_FINGERPRINTS_AND_OUTCOMES_BY_READ_TABLE)
 
     @property
     def library_scores_file(self) -> Path:
-        return self.root / "library" / "scores.parquet"
+        return self._at(station_paths.CLAUDE_FORECAST_GRADES_BY_FORECASTER_READ_AND_HORIZON_TABLE)
 
     @property
     def library_manifest_file(self) -> Path:
-        return self.root / "library" / "manifest.json"
+        return self._at(station_paths.CLAUDE_FORECAST_FINGERPRINTS_AND_OUTCOMES_BUILD_LATEST)
 
     # --- the recorder: copies of at-risk station data -------------------------------------------
     @property
     def recorder_dir(self) -> Path:
-        return self.root / "recorder"
+        return self._at(station_paths.CLAUDE_FORECAST_RECORDER_FOLDER)
 
     def dated_book_copy_file(self, as_of_stamp: str) -> Path:
-        return self.recorder_dir / "dated_book" / f"{as_of_stamp}.json"
+        return self._at(station_paths.SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_BY_DAY, stamp=as_of_stamp)
+
+    @property
+    def dated_book_copies_dir(self) -> Path:
+        return station_paths.SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_BY_DAY.folder(self.state_dir)
 
     def siege_spy_minutes_file(self, day: str) -> Path:
-        return self.recorder_dir / "siege_spy_minutes" / f"{day}.json"
+        return self._at(station_paths.SPY_VOLUME_BY_MINUTE, day=day)
 
     def spx_5m_bars_file(self, day: str) -> Path:
-        return self.recorder_dir / "spx_5m" / f"{day}.jsonl"
+        return self._at(station_paths.SPX_PRICE_BARS_BY_5_MINUTES, day=day)
 
     @property
     def vix1d_close_file(self) -> Path:
-        return self.recorder_dir / "vix1d_close.jsonl"
+        return self._at(station_paths.VIX_ONE_DAY_CLOSES_BY_DAY)
 
     @property
     def leveraged_fund_sizes_file(self) -> Path:
-        return self.recorder_dir / "leveraged_fund_sizes.jsonl"
+        return self._at(station_paths.LEVERAGED_FUND_ASSETS_BY_RUN)
 
     def lob_raw_copy_dir(self, day: str) -> Path:
-        return self.recorder_dir / "lob_raw" / day
+        return self._at(station_paths.SPX_SAME_DAY_OPTIONS_TRADES_BY_TRADE_RECORDER_COPY, day=day)
 
     # --- everything else -------------------------------------------------------------------------
     @property
     def control_file(self) -> Path:
-        return self.root / "control.json"
+        return self._at(station_paths.CLAUDE_FORECAST_PAUSE_AND_LIMITS)
 
     @property
     def store_map_file(self) -> Path:
-        return self.root / "STORE_MAP.json"
+        return self.root / "STORE_MAP.json"            # retired by the map (nothing reads it); still written until its writer goes
 
     def rules_file(self, rules_sha: str) -> Path:
-        return self.root / "rules" / f"{rules_sha}.txt"
+        return self._at(station_paths.CLAUDE_FORECAST_RULEBOOKS_BY_VERSION, sha=rules_sha)
 
     @property
     def run_log_file(self) -> Path:
-        return self.root / "run_logs" / "job_run_log.jsonl"
+        return self._at(station_paths.CLAUDE_FORECAST_JOB_RUNS_LOG)
+
+    @property
+    def read_runner_log_file(self) -> Path:
+        return self._at(station_paths.CLAUDE_FORECAST_READ_JOB_LOG)
 
     def lock_file(self, name: str) -> Path:
-        return self.root / "locks" / f"{name}.lock"
+        return self._at(station_paths.CLAUDE_FORECAST_JOB_LOCK_BY_JOB[name])
 
     @property
     def latest_file(self) -> Path:
-        return self.root / "latest.json"
+        return self._at(station_paths.CLAUDE_FORECAST_CARD)
 
     @property
     def scorecard_file(self) -> Path:
-        return self.root / "scorecard.json"
+        return self._at(station_paths.CLAUDE_FORECAST_SCOREBOARD_LATEST)
 
     @property
     def folders(self) -> tuple[Path, ...]:
         """Every folder ensure_folders creates; the list is also what STORE_MAP.json describes."""
-        r = self.root
-        return (r, r / "payloads", r / "reads", r / "outcomes", r / "arms", r / "seed" / "payloads",
-                r / "seed" / "outcomes", r / "library", r / "rules", r / "run_logs", r / "locks",
-                self.recorder_dir / "dated_book", self.recorder_dir / "siege_spy_minutes",
-                self.recorder_dir / "spx_5m", self.recorder_dir / "lob_raw")
+        return (self.root, self.payloads_dir, self.reads_dir, self.outcomes_dir, self.arms_dir, self.seed_payloads_dir,
+                self.seed_outcomes_dir, self.library_rows_file.parent, station_paths.CLAUDE_FORECAST_RULEBOOKS_BY_VERSION.folder(self.state_dir),
+                self.run_log_file.parent, station_paths.CLAUDE_FORECAST_NIGHTLY_JOB_LOCK.folder(self.state_dir),
+                self.dated_book_copies_dir, station_paths.SPY_VOLUME_BY_MINUTE.folder(self.state_dir),
+                station_paths.SPX_PRICE_BARS_BY_5_MINUTES.folder(self.state_dir),
+                station_paths.SPX_SAME_DAY_OPTIONS_TRADES_BY_TRADE_RECORDER_COPY.folder(self.state_dir))
 
 
 STORE_MAP = {

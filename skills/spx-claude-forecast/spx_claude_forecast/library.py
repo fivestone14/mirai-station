@@ -113,8 +113,8 @@ def collect_rows(paths: ForecastPaths) -> list[dict]:
     A seed row is dropped when a live row stands on the same day and slot (the live read is the real one)."""
     rows: dict[str, dict] = {}
     live_slots: set[tuple[str, str]] = set()
-    for origin, payload_dir, outcome_dir in (("live", paths.root / "payloads", paths.root / "outcomes"),
-                                             ("seed", paths.root / "seed" / "payloads", paths.root / "seed" / "outcomes")):
+    for origin, payload_dir, outcome_dir in (("live", paths.payloads_dir, paths.outcomes_dir),
+                                             ("seed", paths.seed_payloads_dir, paths.seed_outcomes_dir)):
         if not payload_dir.exists():
             continue
         for payload_file in sorted(payload_dir.glob("20??-??-??.jsonl")):

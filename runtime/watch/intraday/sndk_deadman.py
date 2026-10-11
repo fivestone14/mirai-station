@@ -55,6 +55,8 @@ from zoneinfo import ZoneInfo
 from .. import paths, push
 from . import market_status, push_ntfy
 
+import station_paths                       # on sys.path through watch.paths
+
 ET = ZoneInfo("America/New_York")
 
 # The scanner writes every ~2 min; the reader refuses a book older than 6 min
@@ -75,8 +77,15 @@ FIRST_ROW_BY_MIN = 9 * 60 + 35
 READ_MAX_RUN_S = 220.0
 READER_SILENT_MIN = SNDK_SILENT_MIN + READ_MAX_RUN_S / 60.0
 
-_DIARY_SUBDIR = "sndk_reversion"
-_READS_SUBDIR = "sndk_reads"
+def _diary(state_dir: Path, date_iso: str) -> Path:
+    """The scanner's rows for the day: one per scan."""
+    return station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(state_dir, day=date_iso)
+
+
+def _reads(state_dir: Path, date_iso: str) -> Path:
+    """The reader's rows for the day: one per run."""
+    return station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN.path(state_dir, day=date_iso)
+
 
 # The two ways a session can be dead. Both are cleared by a delivered recovery
 # page, which is what re-arms the switch for a SECOND outage the same day — the
@@ -90,7 +99,7 @@ _READER_KEYS = frozenset(("reader_silent",))
 
 
 def _state_path(state_dir: Path) -> Path:
-    return Path(state_dir) / _READS_SUBDIR / "deadman_state.json"
+    return station_paths.SNDK_OUTAGE_ALERT_STATE.path(state_dir)
 
 
 def _load_state(state_dir: Path, date_iso: str) -> Dict[str, Any]:
@@ -185,8 +194,8 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
         # whether or not the message left the machine tests nothing, which is
         # the failure this whole module exists to end.
         rec = push.send("🐕 SNDK dead-man's switch: TEST FIRE — the pager works. "
-                        f"Watching {_DIARY_SUBDIR}/{date_iso}.jsonl and "
-                        f"{_READS_SUBDIR}/{date_iso}.jsonl, silence ceilings "
+                        f"Watching {_diary(state_dir, date_iso).relative_to(state_dir)} and "
+                        f"{_reads(state_dir, date_iso).relative_to(state_dir)}, silence ceilings "
                         f"{SNDK_SILENT_MIN:g}m and {READER_SILENT_MIN:.1f}m.",
                         tag="sndk-deadman")
         ok = bool(rec.get("dispatched"))
@@ -201,7 +210,7 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
 
     st = _load_state(state_dir, date_iso)
     paged = set(st.get("paged") or [])
-    path = Path(state_dir) / _DIARY_SUBDIR / f"{date_iso}.jsonl"
+    path = _diary(state_dir, date_iso)
     newest = _newest_row_ts(path)
     out["checked"] = True
 
@@ -273,7 +282,7 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
     # one page for the root cause, never a second one for its echo.
     if out["alive"]:
         began = _run_began(path)
-        read = _newest_row_ts(Path(state_dir) / _READS_SUBDIR / f"{date_iso}.jsonl", _is_read)
+        read = _newest_row_ts(_reads(state_dir, date_iso), _is_read)
         since = max(read, began) if read else began
         age = (now_et - since).total_seconds() / 60.0
         out["reader"] = {"alive": age <= READER_SILENT_MIN, "age_min": round(age, 1)}

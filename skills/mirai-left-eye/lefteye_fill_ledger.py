@@ -29,13 +29,18 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+import sys
 from pathlib import Path
 from typing import Optional
 
 HALFLIFE_MIN = 45.0        # dial: fill relevance half-life (grade via magnet A/B)
 _PRUNE_BELOW = 0.5         # drop decayed keys lighter than half a contract
 _SKILL_DIR = Path(__file__).resolve().parent
-_DEFAULT_DIR = _SKILL_DIR.parent.parent / "state" / "gex_fills"
+_RUNTIME = str(_SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
+_DEFAULT_DIR = station_paths.OPTIONS_STRIKE_VOLUME_WEIGHTS_STATE_BY_LEDGER.folder()
 
 
 def _key(c: dict) -> Optional[str]:
@@ -58,7 +63,7 @@ def annotate(ledger_id: str, contracts: list[dict], now: datetime,
             return False
         d = Path(state_dir) if state_dir else _DEFAULT_DIR
         d.mkdir(parents=True, exist_ok=True)
-        path = d / f"{ledger_id}.json"
+        path = d / station_paths.OPTIONS_STRIKE_VOLUME_WEIGHTS_STATE_BY_LEDGER.file_name(ledger_id=ledger_id)
 
         prev: dict = {}
         try:

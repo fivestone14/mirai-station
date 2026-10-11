@@ -19,7 +19,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from .name_map import SUM_WINDOW_MINUTES, SUMS_BY_LANE
-from .paths import RAW, NEW_VOICE_FORECASTS, data_root, ensure_folders, log_job_run, now_utc_iso, prune_archive, prune_voice_fits, today_et
+from .paths import data_root, ensure_folders, log_job_run, now_utc_iso, prune_archive, prune_voice_fits, raw_forecasts_dir, today_et
 from .pool_v2 import add_missing_voices, load_pool_v2, new_pool_v2, save_pool_v2, update_pool_v2_after_day
 from .scoreboard import write_scoreboard
 from .table_builder import build_new_voice_forecasts_table, build_voice_scores_table, day_forecasts_by_read, load_day_outcomes
@@ -101,7 +101,7 @@ def days_to_catch_up(root: Path, lane: str, today: str) -> list[str]:
         state = load_pool_v2(root, sum_id)
         days = set(state["days_learned"]) if state else set()
         learned = days if learned is None else learned & days
-    raw_days = sorted(p.name[:10] for p in (root / RAW / NEW_VOICE_FORECASTS).glob("*.jsonl"))
+    raw_days = sorted(p.name[:10] for p in raw_forecasts_dir(root).glob("*.jsonl"))
     return [d for d in raw_days if earliest <= d < today and d not in (learned or set())]
 
 

@@ -38,6 +38,8 @@ import statistics
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+
 SCHEMA_VERSION = 1
 REFERENCES = {"/ES": "$SPX", "/ZN": "$TNX", "/BTC": "IBIT", "/MBT": "IBIT"}
 YIELD_REFERENCES = ("$TNX",)          # quoted as a yield, so the basis is a fitted difference, not a ratio
@@ -214,7 +216,7 @@ def name(rolls: list[dict], symbol: str, current: str) -> list[dict]:
 # ---- the table -----------------------------------------------------------------------------------
 
 def table_path(folder: Path) -> Path:
-    return Path(folder) / "rolls.json"
+    return Path(folder) / station_paths.FUTURES_CONTRACTS_AND_PAST_ROLLS_LATEST.file_name()
 
 
 def load(folder: Path) -> dict:

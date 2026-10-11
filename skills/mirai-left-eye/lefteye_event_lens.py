@@ -40,11 +40,16 @@ Behavior notes (deliberate, v1):
 """
 import json
 from datetime import date, datetime, time, timedelta
+import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 SKILL_DIR = Path(__file__).resolve().parent
+_RUNTIME = str(SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
 
 # Macro-print allowlist + impact rank (multi-event day: max rank wins the read).
 # REQUIRED as an allowlist: the calendar also carries OPEX/VIXEXP/QTR_ROLL and
@@ -68,7 +73,7 @@ CRUSH_RATIO = 0.85
 
 # Single WRITER of this file stays lob-flow's FileCalendar — soft, read-only
 # data coupling; this module must never create or repair it.
-CALENDAR_PATH = SKILL_DIR.parent.parent / "state" / "lob_flow" / "calendar.json"
+CALENDAR_PATH = station_paths.MARKET_EVENT_CALENDAR_BY_EVENT.path()
 
 # Deterministic quality-flag order (telemetry diffs stay stable across scans).
 _FLAG_ORDER = ("sigma_fallback", "em_post_print", "no_pre_event_em", "multi_event")

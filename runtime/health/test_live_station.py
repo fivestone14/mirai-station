@@ -34,6 +34,7 @@ _RUNTIME = Path(__file__).resolve().parents[1]
 if str(_RUNTIME) not in sys.path:
     sys.path.insert(0, str(_RUNTIME))
 
+import station_paths  # noqa: E402  (runtime/ is on sys.path, above)
 from watch.intraday import market_status  # noqa: E402
 
 ET = ZoneInfo("America/New_York")
@@ -245,13 +246,13 @@ def bars_fresh(bars_dir: Path, now: datetime, limit_min: float) -> tuple[bool | 
     bars_dir = Path(bars_dir)
     problems = []
     try:
-        health = json.loads((bars_dir / "health.json").read_text())
+        health = json.loads((bars_dir / station_paths.SNDK_PRICE_BARS_HEALTH_LATEST.file_name()).read_text())
     except (OSError, ValueError):
         health = {}
     if isinstance(health, dict) and health.get("error"):
         problems.append(f"the minute-bar sidecar's last run ({_hhmm(health.get('ts'))}) "
                         f"failed with {health['error']}")
-    stamps = [t for b in _rows(bars_dir / f"{now.date().isoformat()}.jsonl")
+    stamps = [t for b in _rows(bars_dir / station_paths.SNDK_PRICE_BARS_BY_MINUTE.file_name(day=now.date().isoformat()))
               if (t := _parse_ts(b.get("ts"))) is not None]
     last = max(stamps, default=None)
     behind = (now - max(last or _open_at(now), _open_at(now))).total_seconds() / 60.0
@@ -364,7 +365,7 @@ def premarket_fired(lane_dir: Path, now: datetime, first: str, close_out: str,
     def at(hhmm: str) -> datetime:
         return datetime.combine(day, time.fromisoformat(hhmm), tzinfo=ET)
     try:
-        card = json.loads((Path(lane_dir) / "latest.json").read_text())
+        card = json.loads(station_paths.JEV_PREMARKET_CARD.in_lane_folder(lane_dir).read_text())
     except (OSError, ValueError):
         card = None
     if not isinstance(card, dict) or card.get("day") != day.isoformat():
@@ -372,7 +373,7 @@ def premarket_fired(lane_dir: Path, now: datetime, first: str, close_out: str,
             return None, f"skipped, the first pre-market read is due at {first} ET"
         return False, (f"no pre-market read today: the card is not today's, though the {first} ET "
                        f"checkpoint's read was due by {at(first) + owed_after:%H:%M} ET")
-    read = {r.get("checkpoint") for r in _rows(Path(lane_dir) / f"{day.isoformat()}.jsonl")}
+    read = {r.get("checkpoint") for r in _rows(station_paths.JEV_ANSWERS_BY_READ.in_lane_folder(lane_dir, day=day.isoformat()))}
     owed = [t.astimezone(ET) for t in map(_parse_ts, (card.get("schedule") or {}).get("reads") or [])
             if t is not None and t + owed_after <= now]
     problems = [f"no read at the {t:%H:%M} ET checkpoint" for t in owed if f"{t:%H:%M}" not in read]
@@ -412,7 +413,7 @@ def lane_read(lane_dir: Path, now: datetime, reads: tuple[str, ...], grace_min: 
         return None, f"skipped, the {what} lane's first read is owed at {at(reads[0]) + timedelta(minutes=owed_min):%H:%M} ET"
     # a record stands for the latest read time at or before its stamp plus the grace, as the service's read_slot has it
     done = set()
-    for r in _rows(Path(lane_dir) / f"{day.isoformat()}.jsonl"):
+    for r in _rows(station_paths.JEV_ANSWERS_BY_READ.in_lane_folder(lane_dir, day=day.isoformat())):
         if (t := _parse_ts(r.get("row_ts"))) is not None:
             slot = max((at(x) for x in reads if at(x) <= t.astimezone(ET) + timedelta(minutes=grace_min)), default=None)
             if slot is not None and t <= slot + timedelta(minutes=owed_min):
@@ -435,7 +436,7 @@ def store_built(store_dir: Path, now: datetime, fires: str, run_min: float) -> t
         day -= timedelta(days=1)
         while not _market_day(day):
             day -= timedelta(days=1)
-    logs = Path(store_dir) / "validation"
+    logs = station_paths.TABLE_BUILD_COUNTS_BY_TABLE_AND_DAY.within(station_paths.JEV_TABLES_FOLDER, store_dir)
     if (logs / f"day={day.isoformat()}" / "part-0.parquet").is_file():
         return True, f"the SPX learning store holds {day}, the last market day its nightly job has built"
     built = sorted(p.name.removeprefix("day=") for p in logs.glob("day=*"))
@@ -1150,7 +1151,7 @@ def station():
     root = Path(plists[0]).resolve().parents[2]
     now = datetime.now(ET)
     return type("Station", (), {"listing": listing, "prints": prints, "root": root,
-                                "state": root / "state", "now": now,
+                                "state": root / station_paths.STATE_FOLDER_NAME, "now": now,
                                 "day": now.date().isoformat()})
 
 
@@ -1189,7 +1190,7 @@ def test_live_spx_lane_and_feed_jobs_are_loaded(station):
 @pytest.mark.parametrize("lane", sorted(SPX_LANE_READS))
 def test_live_spx_lane_read_at_every_read_owed(station, lane):
     reads, grace = SPX_LANE_READS[lane]
-    folder = station.state / "spx_jev" / ("lanes/tape" if lane == "tape" else "")
+    folder = station_paths.JEV_LANE_FOLDER.path(station.state, lane=lane)
     job = "com.mirai-station.spx-jev" + ("-tape" if lane == "tape" else "")
     _hold(lane_read(folder, station.now, reads, grace, LANE_READ_OWED_MIN, lane),
           f"cut -c1-60 {folder}/{station.day}.jsonl; grep -E 'skipping|failed' /tmp/{job.removeprefix('com.')}.err | tail -n 5")
@@ -1202,7 +1203,7 @@ def test_live_spx_store_job_is_loaded(station):
 
 @live
 def test_live_spx_store_holds_the_last_market_day(station):
-    store = station.state / "spx_jev" / "store"
+    store = station_paths.JEV_TABLES_FOLDER.path(station.state)
     _hold(store_built(store, station.now, STORE_FIRES_ET, STORE_RUN_MIN),
           f"ls {store}/validation | tail -n 3; tail -n 5 /tmp/mirai-station.spx-jev-store.err")
 
@@ -1210,7 +1211,7 @@ def test_live_spx_store_holds_the_last_market_day(station):
 @live
 def test_live_spx_premarket_read_at_every_checkpoint(station):
     limits = premarket_limits(station.root)
-    lane = station.state / "spx_jev" / "lanes" / "premarket"
+    lane = station_paths.JEV_LANE_FOLDER.path(station.state, lane="premarket")
     _hold(premarket_fired(lane, station.now, limits["first_checkpoint"], limits["close_out"], limits["late_min"]),
           f"cut -c1-80 {lane}/{station.day}.jsonl; tail -n 5 {_log(station, SPX_PREMARKET_JOB, 'stderr')}")
 
@@ -1276,21 +1277,21 @@ def test_the_phone_server_runs_the_current_schwab_login_code(station):
 
 @live
 def test_live_scanner_is_fresh(station, limits):
-    diary = station.state / "sndk_reversion" / f"{station.day}.jsonl"
+    diary = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(station.state, day=station.day)
     _hold(scanner_fresh(diary, station.now, limits["silent_min"], limits["first_row_by_min"]),
           f"tail -n 1 {diary} | cut -c1-60; tail -n 5 {_log(station, 'com.mirai-station.sndk', 'stdout')}")
 
 
 @live
 def test_live_options_book_is_fresh(station, limits):
-    diary = station.state / "sndk_reversion" / f"{station.day}.jsonl"
+    diary = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(station.state, day=station.day)
     _hold(book_fresh(diary, station.now, limits["book_age_min"]),
           f"tail -n 1 {diary} | grep -o '\"book_asof\": \"[^\"]*\"'")
 
 
 @live
 def test_live_minute_bars_are_fresh_with_no_error(station, limits):
-    bars = station.state / "sndk_bars"
+    bars = station_paths.SNDK_PRICE_BARS_BY_MINUTE.folder(station.state)
     _hold(bars_fresh(bars, station.now, limits["bar_record_min"]),
           f"cat {bars}/health.json; tail -n 1 {bars}/{station.day}.jsonl; "
           f"tail -n 5 {_log(station, 'com.mirai-station.sndk-bars', 'stdout')}")
@@ -1298,8 +1299,8 @@ def test_live_minute_bars_are_fresh_with_no_error(station, limits):
 
 @live
 def test_live_reader_keeps_up_with_the_scanner(station, limits):
-    reads = station.state / "sndk_reads" / f"{station.day}.jsonl"
-    diary = station.state / "sndk_reversion" / f"{station.day}.jsonl"
+    reads = station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN.path(station.state, day=station.day)
+    diary = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(station.state, day=station.day)
     _hold(reader_fresh(reads, diary, station.now, limits["reader_silent_min"], limits["silent_min"]),
           f"tail -n 1 {reads} | cut -c1-60; tail -n 5 {_log(station, 'com.mirai-station.sndk-read', 'stdout')}")
 
@@ -1307,13 +1308,13 @@ def test_live_reader_keeps_up_with_the_scanner(station, limits):
 @live
 def test_live_reader_rows_today_have_no_error(station):
     _skip_when_closed(station.now)
-    reads = station.state / "sndk_reads" / f"{station.day}.jsonl"
+    reads = station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN.path(station.state, day=station.day)
     _hold(reader_clean(reads), f"grep -v '\"error\": null' {reads} | cut -c1-200")
 
 
 @live
 def test_live_deadman_holds_no_open_outage(station):
     _skip_when_closed(station.now)
-    state = station.state / "sndk_reads" / "deadman_state.json"
+    state = station_paths.SNDK_OUTAGE_ALERT_STATE.path(station.state)
     _hold(deadman_quiet(state, station.day),
           f"cat {state}; tail -n 5 {_log(station, 'com.mirai-station.sndk-deadman', 'stdout')}")

@@ -73,16 +73,18 @@ from .clock import blend as clock_blend, integral_odds as clock_integral_odds, o
 from .cuts import CUT_OVER_DAY
 from .events import learn_exclude, tag as event_tag
 from .expiry import calendar_of
-from .grade import INTEGRAL_NAME, average_alone, average_call, horizon_start, live_options, mark_at, run as grade_run
+from .grade import GRADES_NAME, INTEGRAL_NAME, average_alone, average_call, horizon_start, live_options, mark_at, run as grade_run
 from .hour import (CUT_OVER_UNITS, answer_sentences, average_request, average_summary, average_window, cut_over_sentences, hour_request,
                    hour_summary, load_hour_doc, named_levels)
 from .labels.registry import build_labels
-from .lane import LANES, LANES_BY_KEY, LIVE, Lane
+from .lane import HOUR_SUBDIR, LANES, LANES_BY_KEY, LIVE, Lane
 from .mirai_prediction.code_features import COLUMN_PREFIX
 from .schedule import not_due, read_slot
 from .sessions import session_close, session_open
 from .state_builder import DEFAULT_STATE_DIR, NoBarYet, Scene, load_bars, load_jsonl, load_rows, make_scene, parse_ts
 from .weights import QuestionWeights
+
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
 
 # the situation the phone draws: four facts, each with a short title, the builder's verdict in a word, its
 # figure (number, cut, kind) to draw and its full sentence behind a tap
@@ -321,7 +323,7 @@ def last_read_of(out_dir: Path, day: str, now: datetime) -> datetime | None:
     the day's first read, or on a replay of a day the lane never read; the stretch labels then measure
     from the open and the move since the last read is omitted."""
     stamps = []
-    for rec in load_jsonl(out_dir / f"{day}.jsonl"):
+    for rec in load_jsonl(station_paths.JEV_ANSWERS_BY_READ.in_lane_folder(out_dir, day=day)):
         try:
             t = parse_ts(rec["row_ts"])
         except (KeyError, TypeError, ValueError):
@@ -467,7 +469,7 @@ def day_calls(out_dir: Path, day: str, lane: Lane = LIVE, scene: Scene | None = 
     check_integral = {h: day_integral(out_dir, day, lane, h) for h in lane.horizons} if lane.graded_from_settled_open else {}
     grades: dict[str, dict] = {}
     checks: dict[str, dict] = {}
-    for g in load_jsonl(out_dir / "grades.jsonl"):
+    for g in load_jsonl(out_dir / GRADES_NAME):
         ts = str(g.get("row_ts", ""))
         if not ts.startswith(day):
             continue
@@ -486,7 +488,7 @@ def day_calls(out_dir: Path, day: str, lane: Lane = LIVE, scene: Scene | None = 
         elif ts not in grades and g.get("graded") is False:
             grades[ts] = {"closed": str(g.get("reason") or "not graded")}
     calls, seen = [], set()
-    for r in load_jsonl(out_dir / "hour" / f"{day}.jsonl"):
+    for r in load_jsonl(out_dir / HOUR_SUBDIR / f"{day}.jsonl"):
         ts, p = r.get("row_ts"), r.get("probabilities")
         alone = average_alone(r, lane)
         if not ts or ts in seen or not (alone or (r.get("pick") and isinstance(p, dict))):
@@ -709,7 +711,8 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         # the scanner has no row for today yet: sending on yesterday's last row would hold every
         # answer against a stale clock and file the read under the wrong day. Say so and stop.
         raise NoRowYet(f"no diary row for today yet: the newest row is {scene.row['ts'][:16]}; nothing sent, card unchanged")
-    if day is None and do_send and any(r.get("row_ts") == scene.row["ts"] for r in load_jsonl(out_dir / f"{scene.row['ts'][:10]}.jsonl")):
+    if day is None and do_send and any(r.get("row_ts") == scene.row["ts"]
+                                       for r in load_jsonl(station_paths.JEV_ANSWERS_BY_READ.in_lane_folder(out_dir, day=scene.row["ts"][:10]))):
         # the same row again (a run by hand, or the tape lane's newest bar not yet moved on): a second
         # read of one moment would put a second sum on the card beside the first, which is the one graded
         raise NoRowYet(f"the row at {scene.row['ts'][11:19]} was already read; nothing new to read, card unchanged")
@@ -906,11 +909,11 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
               **_stamp(lane, unit, band), "state": state, "omitted": omitted, "requests": requests, "skipped": skipped,
               "held": {qid: h["held_from"] for qid, h in held.items()}, "cadence_from": cad.get("recounted_from"),
               "answers": answers, "sent": do_send, "send_seconds": send_seconds, "hour": hour}
-    with open(out_dir / f"{day_name}.jsonl", "a", encoding="utf-8") as f:
+    with open(station_paths.JEV_ANSWERS_BY_READ.in_lane_folder(out_dir, day=day_name), "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
     if hour_rec and hour_rec.get("request"):
-        (out_dir / "hour").mkdir(parents=True, exist_ok=True)
-        with open(out_dir / "hour" / f"{day_name}.jsonl", "a", encoding="utf-8") as f:
+        (out_dir / HOUR_SUBDIR).mkdir(parents=True, exist_ok=True)
+        with open(out_dir / HOUR_SUBDIR / f"{day_name}.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps(hour_line(hour), ensure_ascii=False) + "\n")
     archive.append(lane.archive_folder(state_dir, out_dir), day_name, read_record(hour))
     if do_send and lane.pool and day is None:
@@ -1001,9 +1004,10 @@ def first_window_row(now: datetime) -> datetime | None:
 
 def write_card(out_dir: Path, c: dict) -> None:
     """Replace latest.json in one step, so the phone never reads half a card."""
-    tmp = out_dir / "latest.json.tmp"
+    card = station_paths.JEV_LIVE_CARD.in_lane_folder(out_dir)          # every lane's card is named alike inside its folder
+    tmp = card.with_name(card.name + ".tmp")
     tmp.write_text(json.dumps(c, ensure_ascii=False, indent=1), encoding="utf-8")
-    os.replace(tmp, out_dir / "latest.json")
+    os.replace(tmp, card)
 
 
 def close_out(state_dir: Path, out_dir: Path, doc: dict, lane: Lane, day: str | None = None, retry: bool = False) -> dict | None:
@@ -1022,7 +1026,7 @@ def close_out(state_dir: Path, out_dir: Path, doc: dict, lane: Lane, day: str | 
     except Exception as e:  # grading must never stop the close-out's card
         log(f"grading skipped this close-out: {type(e).__name__}: {e}\n{traceback.format_exc()}")
     try:
-        c = json.loads((out_dir / "latest.json").read_text(encoding="utf-8"))
+        c = json.loads(station_paths.JEV_LIVE_CARD.in_lane_folder(out_dir).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     if str(c.get("row_ts", ""))[:10] != (day or today_et()):
@@ -1061,7 +1065,7 @@ def retry_close_outs(state_dir: Path, now: datetime) -> None:
             continue
         out_dir = lane.folder(state_dir)
         try:
-            card = json.loads((out_dir / "latest.json").read_text(encoding="utf-8"))
+            card = json.loads(station_paths.JEV_LIVE_CARD.in_lane_folder(out_dir).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
         if str(card.get("row_ts", ""))[:10] != now.date().isoformat() or card.get("closed_out_at"):

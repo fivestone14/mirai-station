@@ -48,7 +48,8 @@ def load_archive_read(state_dir: Path | str, lane: str, day: str, read_id: str |
 
 def load_hour_records(state_dir: Path | str, lane: str, day: str) -> dict[str, dict]:
     """{row_ts: sum record} for one day from the lane's hour/{day}.jsonl."""
-    path = lane_folder(state_dir, lane) / "hour" / f"{day}.jsonl"
+    from .paths import station_paths
+    path = station_paths.JEV_AND_POOL_FORECASTS_BY_READ.in_lane_folder(lane_folder(state_dir, lane), day=day)
     return {rec["row_ts"]: rec for rec in _json_lines(path) if rec.get("row_ts")}
 
 

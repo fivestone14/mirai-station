@@ -34,16 +34,18 @@ from .feed_log import failure, log
 from .sessions import is_trading_day
 from .state_builder import DEFAULT_STATE_DIR, load_jsonl
 
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+
 ET = ZoneInfo("America/New_York")
 JOB = "spx-jev-daily-closes"
-DAILY_CLOSES_SUBDIR = Path("spx_jev") / "daily_closes"
+DAILY_CLOSES_SUBDIR = station_paths.SPX_VIX_RATES_PRICE_BARS_BY_DAY.relative_folder
 SYMBOLS = ("$SPX", "TLT", "$TNX", "$VIX", "$VIX9D")
 HISTORY_YEARS = 10             # how far back each call asks; Schwab serves what it keeps
 FIELDS = ("open", "high", "low", "close", "volume")
 
 
 def closes_path(state_dir: Path, symbol: str) -> Path:
-    return Path(state_dir) / DAILY_CLOSES_SUBDIR / f"{symbol}.jsonl"
+    return station_paths.SPX_VIX_RATES_PRICE_BARS_BY_DAY.path(state_dir, symbol=symbol)
 
 
 def session_rows(bars: list[dict], through: date, fetched_at: datetime) -> tuple[list[dict], list[str]]:

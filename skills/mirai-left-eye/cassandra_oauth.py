@@ -131,7 +131,11 @@ REDIRECT_PORT = 8765
 REDIRECT_PATH = "/callback"
 
 _HTTP_TIMEOUT = httpx.Timeout(connect=5.0, read=20.0, write=10.0, pool=5.0)
-_LOCK_PATH = Path(__file__).resolve().parent.parent.parent / "state" / ".cassandra_oauth.lock"
+_RUNTIME = str(Path(__file__).resolve().parents[2] / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
+_LOCK_PATH = station_paths.SCHWAB_SIGN_IN_LOCK.path()
 _HARDENED = False
 
 

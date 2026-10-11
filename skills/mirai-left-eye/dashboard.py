@@ -42,11 +42,13 @@ ET = ZoneInfo("America/New_York")
 SKILL_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = SKILL_DIR / "config.json"
 
-# State dir (where the reversion telemetry lives). Mirrors paths.py:
-# env override first, else $PLUGIN_ROOT/state ( = skills/mirai-left-eye/../../state ).
-STATE_DIR = Path(
-    os.environ.get("MIRAI_STATION_STATE") or (SKILL_DIR.parent.parent / "state")
-).expanduser()
+_RUNTIME = str(SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
+
+# State dir (where the reversion telemetry lives): the station's one resolver.
+STATE_DIR = station_paths.state_root()
 
 # Default render target — the user's Obsidian vault root. Overridable via
 # $MIRAI_STATION_DASHBOARD, else config.json -> {"dashboard_path": "/abs/path/to/file.md"}.
@@ -285,7 +287,7 @@ def _latest_session_date(now: datetime) -> str | None:
     """Most recent date (≤ today) with a lens diary — so the closed view
     persists the LAST real session until the next premarket reset."""
     today = now.date().isoformat()
-    dates = [p.stem for p in (STATE_DIR / "reversion").glob(
+    dates = [p.stem for p in station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(STATE_DIR).glob(
         "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl") if p.stem <= today]
     return max(dates) if dates else None
 

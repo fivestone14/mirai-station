@@ -41,6 +41,10 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 _SKILL_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+_RUNTIME = str(_SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
 _LEFT_EYE = str(_SKILL_DIR.parent / "mirai-left-eye")
 if _LEFT_EYE not in sys.path:
     sys.path.insert(0, _LEFT_EYE)
@@ -57,20 +61,19 @@ COMPLETE_SESSION_MIN_BARS = 300  # a prior day's file this full is trusted for
 
 
 def _state_dir() -> Path:
-    env = os.environ.get("MIRAI_STATE_DIR")
-    return Path(env) if env else (_SKILL_DIR.parent.parent / "state")
+    return station_paths.state_root()
 
 
 def bars_dir() -> Path:
-    return _state_dir() / "sndk_bars"
+    return station_paths.SNDK_PRICE_BARS_BY_MINUTE.folder()
 
 
 def bars_path(day: str) -> Path:
-    return bars_dir() / f"{day}.jsonl"
+    return station_paths.SNDK_PRICE_BARS_BY_MINUTE.path(day=day)
 
 
 def health_path() -> Path:
-    return bars_dir() / "health.json"
+    return station_paths.SNDK_PRICE_BARS_HEALTH_LATEST.path()
 
 
 def _parse_ts(s) -> Optional[datetime]:
