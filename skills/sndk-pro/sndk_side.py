@@ -695,9 +695,10 @@ def _integrity(out: dict, bars: list[dict], rsi: dict) -> list[dict]:
 # ------------------------------------------------------------------ store ---
 # ITS OWN FILE, not the read row — the same call sndk_bars made, for the same
 # reason. Measured on 09-03: the packet is ~6.4 KB against a 1.2 KB read row,
-# and the phone polls the last forty rows of that file every sixty seconds
-# (static/m/page.js) to read two fields it does not contain. Riding the row
-# would have sent six times the bytes over a mobile radio for nothing, and made
+# and the phone's glance of the day (static/m/page.js, retired 2026-10-10)
+# polled the last forty rows of that file every sixty seconds to read two
+# fields it does not contain. Riding the row would have sent six times the
+# bytes over a mobile radio for nothing, and made
 # the reader re-parse a file six times larger on every two-minute scan. The
 # diary keeps its one-scan-one-row shape; this keeps its own.
 def side_dir() -> Path:

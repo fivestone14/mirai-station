@@ -258,7 +258,9 @@ apart without a red test.
 
 The service is the microservice boundary. It reads what Mirai station already
 stores (diary rows, minute bars, side packets, the chain cache) and writes only
-into `state/jev/`:
+into `state/jev/`. Since the phone's redesign (2026-10-10) no phone page reads
+`latest.json`: the shell opens the SPX forecast. The card keeps the shape below;
+what becomes of it is not decided.
 
 - `{day}.jsonl`, one record per run: `row_ts`, `book_asof`, `sigma`, `state`,
   `omitted`, `requests`, `skipped`, `held` (question to the time its answer was

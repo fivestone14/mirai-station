@@ -14,9 +14,7 @@ imported skill modules find their own dependencies).
 from __future__ import annotations
 
 import json
-import math
 import os
-import statistics
 import sys
 import threading
 import time
@@ -223,9 +221,9 @@ def replay_day(day: str) -> dict:
 # Pinning the cutover to the book's own ceiling closes it: while the book would
 # survive the gate we build live and nothing is dropped; the moment it would
 # not, we switch to the as-of build and show the whole scene with data_sources
-# saying how old it is. The tab never renders a gutted scene, which matters
-# because the phone reads neither `freshness_rules` nor `data_sources` and would
-# otherwise print "NO WALL MEASURED" about walls that were measured and deleted.
+# saying how old it is. The tab never renders a gutted scene: a reader of the
+# scene alone, without `freshness_rules` or `data_sources`, would take a block
+# the gate deleted for a wall that was never measured.
 _SNDK_PRO_DIR = PLUGIN_ROOT / "skills" / "sndk-pro"
 
 
@@ -247,12 +245,12 @@ def _side_packet(R, row: dict, build_now: datetime,
 
 
 # ---- the payload cache -------------------------------------------------------
-# Building the payload is the slowest thing the phone waits for (about two seconds:
-# the scene is rebuilt from the whole day's diary through the reader's own code).
-# It only changes when a diary row, a reading, a bar or a side packet lands, so it
-# is built once and served from memory, and a refresher thread rebuilds it in the
-# background when one of those files changes or a minute has passed (the scene
-# carries a clock, so it must never be older than the phone's own poll). A request
+# Building the payload is the slowest thing the Payload tab waits for (about two
+# seconds: the scene is rebuilt from the whole day's diary through the reader's own
+# code). It only changes when a diary row, a reading, a bar or a side packet lands,
+# so it is built once and served from memory, and a refresher thread rebuilds it in
+# the background when one of those files changes or a minute has passed (the scene
+# carries a clock, so it must never be older than the tab's own poll). A request
 # is served whatever is cached, even a copy a few seconds behind a row that just
 # landed, and waits for a build only when nothing has been built yet. Callers that
 # pass their own `now` (tests, replays) always build fresh and never touch the cache.
@@ -332,7 +330,7 @@ def start_payload_refresher() -> None:
 
 
 def sndk_payload(now: Optional[datetime] = None) -> dict:
-    """The phone's payload. With `now` given: built fresh, for tests and replays. Without:
+    """The SNDK payload the Payload tab shows. With `now` given: built fresh, for tests and replays. Without:
     served from the cache the refresher keeps warm, built on the spot only when empty."""
     if now is not None:
         return _build_payload(now)
@@ -436,15 +434,6 @@ def _build_payload(now: datetime) -> dict:
         "legacy": legacy,
         "gate_payload": gate_payload,
         "session": day,
-        # sr-8 deleted scene.instrument — the string "SNDK" on every scan of a
-        # reader that watches nothing else, which the model does not need told
-        # ~190 times a day. The phone masthead DID need it, so it moves here,
-        # to the display wrapper, off the diary row that already carries it.
-        # This is not a hardcoded ticker in the view (the phone spec forbids
-        # that outright: absent means show nothing, never a literal "SNDK"),
-        # it is the same value from the same source, on the side of the fence
-        # that pays no model tokens for it.
-        "instrument": row.get("ticker"),
         "row_ts": row.get("ts"),
         "built_at": build_now.isoformat(),
         "as_of": "live" if live else "last scan",
@@ -459,15 +448,6 @@ def _build_payload(now: datetime) -> dict:
         # scene and never a child: user_prompt and scene_chars below are pinned
         # to the scene alone, and this document is not sent to the model at all.
         "side": _side_packet(R, row, build_now, day),
-        # the phone's last-half-hour card: what the half hour after each earlier
-        # half hour did, counted over every session before this one. Display
-        # side, like `instrument` above: it reaches no model.
-        "earlier_half_hours": _earlier_half_hours(day),
-        # the chart's paler bar ends: each listed strike's calls and puts in the
-        # book the latest reading was written from. Display side too, and only
-        # beside a Strikes Payload, the one scene with strike rows to draw.
-        "since_read": (_since_read(R, board, rows, all_reads, scene, build_now)
-                       if legacy is not None else None),
         "user_prompt": "Read this scene cold and reply with the JSON object only.\n\nSCENE:\n" + text,
         # what must be true before this scene is worth a model call. Read off the
         # reader's OWN constants rather than retyped into the page: a tab that
@@ -531,260 +511,6 @@ def _jsonl_rows(path: Path) -> list:
             if isinstance(r, dict):
                 out.append(r)
     return out
-
-
-
-# ---------------------------------------------------------------------------
-# The record under the phone's LAST HALF HOUR card.
-#
-# The card sets the half hour on screen against this stock's own earlier half
-# hours: how many were as big, and what the half hour after each of them did.
-# That is every earlier session's diary — the store held 6,315 rows, 66 MB, at
-# the close on 2026-09-17 — which the phone cannot fetch and has no business
-# re-reading on every poll.
-# So the counts are made here, from the stored files alone, and ride the
-# payload on the display side of the fence beside `levels`.
-#
-# Non-overlapping half hours on the :00/:30 clock grid, 09:30 to 16:00: twelve
-# back-to-back pairs a session at most. A sliding 30-minute window would give
-# 5,606 over the same sessions, each sharing fourteen fifteenths of its scans
-# with the next — a sample inflated fifteenfold.
-_HH_EDGES_MIN = tuple(range(9 * 60 + 30, 16 * 60 + 1, 30))
-_HH_SNAP_S = 150          # an edge takes the nearest scan within this, or no price
-_HH_MIN_SCANS = 60        # fewer usable scans than this and a session is left out
-_HH_CACHE: dict = {"key": None, "val": None}
-
-
-def _usable_scans(path: Path) -> list:
-    """[(time in New York, spot, sigma)] for one session's diary, oldest first:
-    the rows sndk_payload itself reads (SNDK, not an off-hours forced scan)
-    that carry a clock, a price and a ruler."""
-    out = []
-    for r in _jsonl_rows(path):
-        if r.get("ticker") != "SNDK" or (r.get("meta") or {}).get("forced"):
-            continue
-        try:
-            t = datetime.fromisoformat(r["ts"]).astimezone(ET)
-        except (KeyError, TypeError, ValueError):
-            continue
-        spot, sig = r.get("spot"), r.get("sigma")
-        if (isinstance(spot, (int, float)) and not isinstance(spot, bool)
-                and isinstance(sig, (int, float)) and not isinstance(sig, bool)
-                and math.isfinite(spot) and math.isfinite(sig) and sig > 0):
-            out.append((t, float(spot), float(sig)))
-    return sorted(out, key=lambda s: s[0])
-
-
-def _session_half_hours(scans: list) -> tuple:
-    """(moves, pairs) for one session: each grid half hour's move in the
-    session's median sigma, and each back-to-back pair of those moves. An edge
-    with no scan inside _HH_SNAP_S has no price, so the half hours either side
-    of it are not measured — never interpolated."""
-    sig = statistics.median(s for _, _, s in scans)
-    pts = []
-    for m in _HH_EDGES_MIN:
-        edge = scans[0][0].replace(hour=m // 60, minute=m % 60, second=0, microsecond=0)
-        near = [(abs((t - edge).total_seconds()), p) for t, p, _ in scans]
-        near = [n for n in near if n[0] <= _HH_SNAP_S]
-        pts.append(min(near, key=lambda n: n[0])[1] if near else None)
-    moves = [(b - a) / sig if a is not None and b is not None else None
-             for a, b in zip(pts, pts[1:])]
-    pairs = [(a, b) for a, b in zip(moves, moves[1:]) if a is not None and b is not None]
-    return [m for m in moves if m is not None], pairs
-
-
-def _earlier_half_hours(day: str) -> Optional[dict]:
-    """The record, over every session with at least _HH_MIN_SCANS usable scans
-    that closed BEFORE `day`, the session on screen. The card must never score
-    today's half hour against a record that contains it.
-
-      usual_sigma   the median |half-hour move|, in each session's median
-                    sigma. The phone puts it on today's ruler for "A usual half
-                    hour on this stock is $6", and splits the live move on it —
-                    so it ships unrounded: a rounded cut could put a half hour
-                    on the other side of the one the counts were split on.
-      bigger        the pairs whose first half hour was at least usual,
-      no_bigger     and the rest: `n`, and of those how many were followed by a
-                    half hour of the opposite sign (other_way) or the same sign
-                    (same_way). Counts only. A rate is what a reader carries
-                    into the next half hour as a probability, and this one
-                    fails the station's own day-counted gate.
-
-    None, not an empty record, when no earlier session qualifies or none holds
-    a back-to-back pair: there is nothing to count.
-
-    It changes at most once a day, so it is kept against the session on screen
-    and the size and clock of every earlier file. A 60-second poll re-reads
-    nothing; the morning a new session is on screen, yesterday's file is in the
-    list and the record is rebuilt; and a late write to an earlier file rebuilds
-    it too, rather than serving the counts from before it."""
-    d = _state_dir() / "sndk_reversion"
-    files = []
-    for p in (sorted(d.glob("[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl"))
-              if d.is_dir() else []):
-        if p.stem >= day:
-            continue
-        try:
-            st = p.stat()
-        except OSError:
-            continue
-        files.append((p, st.st_size, st.st_mtime_ns))
-    key = (str(d), day, tuple((p.name, size, mtime) for p, size, mtime in files))
-    if _HH_CACHE["key"] == key:
-        return _HH_CACHE["val"]
-
-    sessions, moves, pairs = [], [], []
-    for p, _, _ in files:
-        scans = _usable_scans(p)
-        if len(scans) < _HH_MIN_SCANS:
-            continue
-        mv, pr = _session_half_hours(scans)
-        sessions.append(p.stem)
-        moves += mv
-        pairs += pr
-    val = None
-    if pairs:
-        usual = statistics.median(abs(m) for m in moves)
-
-        def split(sel):
-            # a next half hour of exactly zero would file as same_way; none of
-            # the 380 pairs on disk on 2026-09-17 has one
-            other = sum(1 for a, b in sel if a * b < 0)
-            return {"n": len(sel), "other_way": other, "same_way": len(sel) - other}
-
-        val = {"sessions": len(sessions), "first": sessions[0], "last": sessions[-1],
-               "half_hours": len(moves), "pairs": len(pairs), "usual_sigma": usual,
-               "bigger": split([pr for pr in pairs if abs(pr[0]) >= usual]),
-               "no_bigger": split([pr for pr in pairs if abs(pr[0]) < usual])}
-    _HH_CACHE.update(key=key, val=val)
-    return val
-
-
-# ---------------------------------------------------------------------------
-# Each strike's calls and puts when the LATEST READING was written.
-#
-# The phone's chart pales the outer end of each strike's calls and puts for
-# what traded there since the reading on its "What it means" card. Now minus
-# then needs "then": the two counts in the book that reading was written from.
-#
-# The model's own change cell (sndk_board) is not that number. Of the 514
-# phone boards of 2026-09-15..17 it was wrong for the card on 16
-# (CPB-SPEC.md 1.3):
-#   - it counts from the last book before the read row was STAMPED, so a book
-#     landing while the model writes moves its start. The 14:18 reading of
-#     09-16 was written from the 14:14:40 book; from 14:22 to 14:41 the cell
-#     counted from the 14:18:46 book: 1,500 puts +16 against a true +44;
-#   - it counts from the last call, and on 09-15 at 13:23 the card showed an
-#     older reading than that (the field names the newest reading, and the
-#     phone draws nothing when its card shows another);
-#   - it trusts a book the vendor served stale at some strikes only. On 09-17
-#     from 11:38 to 11:46 it gave 1,600 +2,912 calls since the 11:37 reading,
-#     off the 11:34:30 book's stale 2,859; the count was 5,230 at 11:18.
-# carried_books judges a whole book, so the second needs its own guard: a
-# strike whose count at the reading, or now, is below its count in any of the
-# _SINCE_READ_BOOKS distinct books before is left out. A running maximum over
-# the whole day would blank a strike the vendor revised down for the rest of
-# the session (473 rows over those three days); five books, about twenty
-# minutes, catch the 09-17 bounce and let a revision recover.
-_SINCE_READ_BOOKS = 5
-
-
-def _since_read(R, board, rows: list, reads: list, scene: dict, now: datetime) -> dict:
-    """{"read_at", "book_at", "rows": [[strike, calls, puts], ...]}: the reading
-    the phone's card shows, the book it was written from, and each listed
-    strike's calls and puts in that book. With nothing honest to draw,
-    {"unavailable": why}, beside read_at and book_at once there is a reading.
-
-    The reading is chosen as the phone's modelRead chooses it: the newest
-    reading_ts among today's read rows that carry a reading, whatever their
-    era. Its book is the one its own call row read (`book_asof`).
-
-      no_reading_yet                       no read row today carries a reading
-      no_count_at_the_reading              no call row, no diary book or no
-                                           volume behind the reading
-      a_book_carried_prior_session_volume  the reading's book or the current
-                                           one is withheld (carried_books)
-      no_new_book_since_the_reading        the current book is the reading's:
-                                           nothing was measured since
-
-    Only the strikes the table lists, with both volume columns, are sent: the
-    ones the chart draws. `rows` are today's diary rows as sndk_payload reads
-    them, `reads` today's read rows, `scene` the Strikes Payload."""
-    best = None
-    for r in reads:
-        rd = r.get("reading")
-        if not isinstance(rd, dict) or not (rd.get("quiet") is True
-                                            or isinstance(rd.get("points"), list) or rd.get("read")):
-            continue
-        t = R._parse_ts(r.get("reading_ts"))
-        # a stamp with no zone cannot be put in order with the rest, so that row
-        # alone is passed over, as a torn line is
-        if t is not None and t.tzinfo is not None and (best is None or t > best[0]):
-            best = (t, r["reading_ts"])
-    if best is None:
-        return {"unavailable": "no_reading_yet"}
-    read_at = best[1]
-    call = next((r for r in reads if r.get("ts") == read_at), None)
-    book_at = (call or {}).get("book_asof")
-    out = {"read_at": read_at, "book_at": book_at}
-
-    def book(r):
-        # a diary row's book is its stamp, and a stamp is a string: anything
-        # else is no book, so one bad row cannot take the payload down
-        b = (r.get("meta") or {}).get("book_asof")
-        return b if isinstance(b, str) else None
-
-    def counted(b):
-        # every strike any scan of the book kept: scans that share a book each
-        # keep the strikes near their own price (on 40 to 56 books a day of
-        # 09-15..17), and agree on every strike they share
-        got = {}
-        for r in rows:
-            if book(r) == b:
-                for s, v in board.surfaces(r)["vol_side"].items():
-                    got.setdefault(s, v)
-        return got
-    books = list(dict.fromkeys(book(r) for r in rows))
-    current = book(rows[-1])
-    then = counted(book_at) if book_at and book_at in books else {}
-    if not then:
-        return {**out, "unavailable": "no_count_at_the_reading"}
-    carried = board.carried_books(rows, now)
-    if book_at in carried or current in carried:
-        return {**out, "unavailable": "a_book_carried_prior_session_volume"}
-    if current == book_at:
-        return {**out, "unavailable": "no_new_book_since_the_reading"}
-
-    # The day's opening run of withheld books holds the prior session's counts,
-    # so the look back starts after it. A book withheld later in the session is
-    # counted as it was served: carried_books withholds it because a later book
-    # counted less, which is the step backwards this guard looks for. On 09-17
-    # it withheld 10:28 to 11:22, the 11:18 book's 5,230 at 1,600 among them.
-    first = next((i for i, k in enumerate(books) if k not in carried), len(books))
-
-    def most_before(i):
-        # per strike, the most calls and the most puts in the books just before
-        # books[i]
-        hi = {}
-        for b in books[max(first, i - _SINCE_READ_BOOKS):i]:
-            for s, (c, p) in counted(b).items():
-                hc, hp = hi.get(s, (0.0, 0.0))
-                hi[s] = (max(hc, c or 0.0), max(hp, p or 0.0))
-        return hi
-    hi_then, hi_now = most_before(books.index(book_at)), most_before(books.index(current))
-    kept = []
-    for r in ((scene.get("strikes") or {}).get("rows") or []):
-        k, vc, vp = r.get("strike"), r.get("vol_calls"), r.get("vol_puts")
-        if k is None or vc is None or vp is None:
-            continue
-        c, p = then.get(float(k), (None, None))
-        if c is None or p is None:
-            continue
-        up_to_then, up_to_now = hi_then.get(float(k), (0.0, 0.0)), hi_now.get(float(k), (0.0, 0.0))
-        if c < up_to_then[0] or p < up_to_then[1] or vc < up_to_now[0] or vp < up_to_now[1]:
-            continue
-        kept.append([k, int(c), int(p)])
-    return {**out, "rows": kept}
 
 
 def pipeline_days(limit: int = 30) -> list:

@@ -5,9 +5,10 @@
   <key>Label</key>
   <string>com.mirai-station.viewstation</string>
 
-  <!-- Long-running read-only HTTP server for the tablet view. Unlike the tick
-       jobs (StartInterval), this stays up: RunAtLoad + KeepAlive so it restarts
-       on crash and at login. The server itself is idle until the tablet polls. -->
+  <!-- Long-running read-only HTTP server for the view station: the desktop
+       dashboard and the phone pages. Unlike the tick jobs (StartInterval), this
+       stays up: RunAtLoad + KeepAlive so it restarts on crash and at login. The
+       server itself is idle until a page polls. -->
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>

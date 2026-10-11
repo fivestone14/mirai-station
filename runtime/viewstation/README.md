@@ -72,12 +72,16 @@ forecast.
 |---|---|
 | **Forecast** — `/m` (`static/m/jev-spx.html` with `press.js`, `sheet.js`) | The SPX forecast: the combined call with its voices and JEV's own, the opening lane and the pre-market call, the record of the 30-minute calls (the learning loop behind a tap), Claude's read against the usual, today's calls as squares, the situation and the questions behind the card — from the `state/spx_jev/` cards and grades, `mirai_prediction/scoreboard.json` and `state/spx_claude_forecast/latest.json` through the raw explorer, with the live price from `/api/spot`. The price box opens the price-today chart (the day's bars from `state/spx_jev/bars/<day>.jsonl`, the options book from `state/reversion/<day>.jsonl` while the chart is visible); from 1024px up (the owner's MacBook Air) the page is the board Final-Desktop: the tabs in the header's row, a 544px column, and the chart standing beside it as a panel with the situation under it. |
 | **Reads** — `/m/reads.html` | The SPX reads: every graded 30-minute call, a day at a time, from `state/spx_jev/integral_grades.jsonl` through the raw explorer, with an open day's price line from `state/spx_jev/bars/<day>.jsonl`. |
-| the SNDK glance — `/m/index.html` (`page.js`, `glance.js`) | The old Now page, reachable by name until phase 5 of the redesign (2026-10-10) retires it: the latest SNDK reading, a chart of the session and the last half hour against the stock's own record. `/m/jev.html`, the SNDK forecast, is now a redirect to `/m/`. |
+
+`/m/jev.html`, the SNDK forecast's old address, is a redirect to `/m/` so an
+old bookmark still lands on the forecast. The SNDK glance (`/m/index.html`,
+the old Now page) was retired in phase 5 of the redesign (2026-10-10) and 404s;
+nothing on the phone reads SNDK now.
 
 `sheet.js` is the one copy of how a phone sheet opens and closes, loaded by
-every page that has one. The pages keep their own copies of the palette and
-the sheet's CSS on purpose (a shared stylesheet would be a render-blocking
-re-fetch on every open over the tunnel); the tests hold the copies equal.
+the page that has them (the forecast). The pages keep their own copies of the
+palette on purpose (a shared stylesheet would be a render-blocking re-fetch on
+every open over the tunnel); the tests hold the copies equal.
 
 ## Architecture
 
@@ -89,8 +93,7 @@ runtime/viewstation/
   static/               index.html (the desktop, one self-contained page) · pipeline.html · voice.js
                         · lob3d.js + three.module.min.js + addons/ · manifest · icon
   static/m/             the phone: jev-spx.html (the forecast, /m) · reads.html · press.js · sheet.js
-                        · index.html + page.js + glance.js (the SNDK glance, until phase 5) · jev.html (a redirect)
-                        · the typeface · the Android APK
+                        · jev.html (a redirect) · the typeface · the Android APK
   tests/                pytest; the tests that run the pages' JavaScript need node
 ```
 
@@ -99,7 +102,7 @@ Every route `server.py` serves:
 **Pages and files**
 - `GET /` and `/index.html` — the desktop page.
 - `GET /m` and `/m/` — the phone's Forecast page, `static/m/jev-spx.html` (the Android shell opens `/m`).
-- Anything else under `static/` by its path — `/m/reads.html`, `/m/index.html` (the SNDK glance), `/m/jev.html` (a redirect to `/m/`), `/pipeline.html`, the scripts, the font, the APK. A content-hashed `.woff2` is sent `immutable` for a year; everything else `no-cache`.
+- Anything else under `static/` by its path — `/m/reads.html`, `/m/jev.html` (a redirect to `/m/`), `/pipeline.html`, the scripts, the font, the APK. A content-hashed `.woff2` is sent `immutable` for a year; everything else `no-cache`.
 
 **Open JSON**
 - `GET /api/spot?ticker=SPX` — the streaming price: one Schwab quote behind a 2 s cache, single-flight. A null spot means "keep showing the scan price". SNDK quotes during market hours also land on the spot tape under `state/sndk_tape/`.
@@ -111,7 +114,7 @@ Every route `server.py` serves:
 - `GET /api/whoami` — who the front door says you are, and whether that is the permitted user.
 
 **Named-user JSON** — `?user=will`, or the front door's forwarded user (`X-Forwarded-User` and its kin); otherwise 403 `locked`. A route-level name check, never auth: the payload is derivable from the raw explorer anyway.
-- `GET /api/sndk/payload` — the SNDK Payload tab and the phone's Now page: the Strikes Payload JSON `sndk_board.build_scene_v2` hands the model, rebuilt through the reader's own code and served from a cache a refresher thread keeps warm (a rebuild when a diary row, a reading or a bar lands, or a minute passes). Beside `scene`: `legacy` (the Scene Payload v5, labelled deprecated), `gate_payload` (the old magnet and walls), `side` (the bar-anchored packet, a sibling of the scene and never sent to a model), `gates` read off the reader's own constants, and for the phone `earlier_half_hours` and `since_read`. `user_prompt` and `scene_chars` are pinned to the scene alone.
+- `GET /api/sndk/payload` — the SNDK Payload tab: the Strikes Payload JSON `sndk_board.build_scene_v2` hands the model, rebuilt through the reader's own code and served from a cache a refresher thread keeps warm (a rebuild when a diary row, a reading or a bar lands, or a minute passes). Beside `scene`: `legacy` (the Scene Payload v5, labelled deprecated), `gate_payload` (the old magnet and walls), `side` (the bar-anchored packet, a sibling of the scene and never sent to a model) and `gates` read off the reader's own constants. `user_prompt` and `scene_chars` are pinned to the scene alone.
 - `GET /api/sndk/pipeline?day=YYYY-MM-DD` and `GET /api/sndk/pipeline/days` — the Pipeline Architecture replay for `static/pipeline.html`: a recorded session's scans, distinct books, minute bars and read rows as minutes since the open, derived from the rows' own clocks.
 - `GET /api/sndk/memory?kind=overview|query|series&…` — the Memory view: an inventory of `state/sndk_rag`, or the same `sndk_rag.py` CLI the model runs, in a subprocess under this server's interpreter.
 - `GET /api/_access` — the last 300 requests (time, path, Host, client, UA, status), for telling which device is polling. In memory only.

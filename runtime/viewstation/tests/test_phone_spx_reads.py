@@ -261,9 +261,8 @@ def test_the_tab_bar_lights_reads_and_every_page_links_it():
     assert re.findall(r'<a class="tab" href="([^"]+)"', nav) == ["/m/"]
     assert nav.count('<span class="tab on" data-press>') == 1 and "<s>READS</s>" in nav and "<s>FORECAST</s>" in nav
     assert "NOW" not in nav and "jev.html" not in nav
-    for page in ("index.html", "jev-spx.html"):
-        tabs = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', (M / page).read_text()).group(1)
-        assert 'href="/m/reads.html"' in tabs and "thread.html" not in tabs, page
+    tabs = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', (M / "jev-spx.html").read_text()).group(1)
+    assert 'href="/m/reads.html"' in tabs and "thread.html" not in tabs
 
 
 def test_the_page_fits_the_owners_360px_phone_and_keeps_the_house_rules():

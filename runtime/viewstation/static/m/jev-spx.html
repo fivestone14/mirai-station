@@ -100,7 +100,7 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 .hd-2.err{white-space:normal;overflow:visible;text-overflow:clip}
 .hd-2.fresh{color:var(--i);transition:color .6s}   /* a new row just arrived: the line brightens for a moment */
 
-/* the card and its label row, the glance's own */
+/* the card and its label row */
 .card{background:var(--s);border-radius:18px;padding:16px;box-shadow:var(--sh1)}
 .card.dashed{border:1px dashed var(--rule-soft);box-shadow:none;padding-top:12px;padding-bottom:14px}
 .lab{display:flex;align-items:center;gap:8px;font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint)}
@@ -555,7 +555,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 .vq.info{display:flex;align-items:center;justify-content:center;gap:8px}
 .vq.info i{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;border:1.5px solid currentColor;font:700 11px/1 var(--sans);font-style:normal}
 
-/* the first-load cover, the glance's own: opaque from the first frame, held for a floor so a
+/* the first-load cover: opaque from the first frame, held for a floor so a
    fast load never stutters, and only between the header and the tab bar so both stay usable */
 .load{position:fixed;left:0;right:0;top:0;bottom:var(--tab-h);z-index:4;
       display:flex;align-items:center;justify-content:center;gap:11px;background:var(--g);
@@ -575,7 +575,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 @media (prefers-reduced-motion:reduce){.qs-track,.qs-card{transition:none}}
 @keyframes pulse-dim{0%,100%{opacity:.35}50%{opacity:1}}
 
-/* the tab bar, the same on every phone page, with this page lit; a press tints the tab as press.js asks (the glance's rules) */
+/* the tab bar, the same on every phone page, with this page lit; a press tints the tab as press.js asks */
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;justify-content:space-evenly;align-items:flex-start;
       padding:11px 0 calc(env(safe-area-inset-bottom) + 12px);background:var(--s);border-radius:22px 22px 0 0;
       box-shadow:0 -6px 22px -10px rgba(58,48,32,.16)}
@@ -2298,7 +2298,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     if(!(a && a !== c.hour && typeof a.price === 'number' && typeof a.edge_points === 'number' && m && now < Date.parse(m))) return null;
     return {read: startOf(c.row_ts), mark: Date.parse(m), price: a.price, edge: a.edge_points};
   }
-  // the day off its bars (the glance's barPoints, with each bar's high and low): the points in time order, the lowest
+  // the day off its bars, with each bar's high and low: the points in time order, the lowest
   // low and the highest high with their bars, the average close and the newest bar
   function dayFacts(rows){
     var pts = (rows || []).filter(function(b){ return b && typeof b.close === 'number' && !isNaN(Date.parse(b.ts)); })
@@ -2351,7 +2351,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     return {lo: lo, hi: hi, step: step};
   }
   // the gutter's bars: each strike in the window with the calls and puts traded there today, the busiest strike (both
-  // sides together) marked, and the longest single side, the one scale both sides are drawn to (the glance's tradedBars)
+  // sides together) marked, and the longest single side, the one scale both sides are drawn to
   function strikeBars(book, w){
     var by = (book && book.gex_views && book.gex_views.vol_side_by_strike) || [], out = [], most = 0, lead = null;
     by.forEach(function(s){
@@ -2375,8 +2375,8 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   var CH_SIDE = 39, CH_GAP = 1, CH_LAB = 42, CH_COL = 76, CH_CAP = 9, CH_W = 320;
   // The drawing's words are placed by their width, so a word drawn is whole and a word that fits is drawn: each
   // letter's advance at 11px in the shipped face, measured in Chrome (2026-10-10) for the three faces the drawing
-  // uses, the regular labels, the feet and the day's average at 500 (the glance's axisW table, with the letters
-  // those add), and the level names at 800; a letter not listed is charged a whole em, so a guess can only be wide.
+  // uses, the regular labels, the feet and the day's average at 500, and the level names at 800; a letter not
+  // listed is charged a whole em, so a guess can only be wide.
   // A tabular figure is 6.6 at every weight. Tracking is the word's own: .04em on the feet, .06em on the names.
   var CH_ADV_400 = {'0': 6.6, '1': 6.6, '2': 6.6, '3': 6.6, '4': 6.6, '5': 6.6, '6': 6.6, '7': 6.6, '8': 6.6, '9': 6.6, ',': 2.97, '.': 3.15, ':': 3.15, '-': 5.48, ' ': 1.87, '·': 3.15, a: 6.29, b: 7.34, c: 6.6, d: 7.34, e: 6.77, f: 4.22, g: 7.28, h: 6.3, i: 2.52, k: 6.03, l: 2.52, m: 9.99, n: 6.3, o: 7.21, p: 7.34, r: 3.72, s: 5.6, t: 4.27, u: 6.3, v: 5.69, w: 8.77, x: 5.36, y: 5.9};
   var CH_ADV_500 = {'0': 6.6, '1': 6.6, '2': 6.6, '3': 6.6, '4': 6.6, '5': 6.6, '6': 6.6, '7': 6.6, '8': 6.6, '9': 6.6, ',': 3.29, '.': 3.48, ':': 3.48, ' ': 1.9, A: 7.39, C: 8.57, D: 8.15, E: 6.67, F: 6.41, H: 8.09, I: 2.9, L: 5.89, M: 9.4, N: 8.11, O: 9.66, P: 7.09, R: 7.12, S: 7.11, T: 5.74, a: 6.32, d: 7.35, g: 7.24, v: 5.87, y: 6.08};

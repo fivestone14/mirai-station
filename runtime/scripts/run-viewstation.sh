@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mirai Viewstation — start the read-only tablet view server.
+# Mirai Viewstation — start the read-only server for the view station: the desktop dashboard and the phone pages.
 # Runs under the mirai-station venv so snapshot.py can import the skill modules.
 #
 #   ./run-viewstation.sh                 # foreground, port 8787

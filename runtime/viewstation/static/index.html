@@ -11655,14 +11655,14 @@ const _PL_NODES=[
    'Chart, drawers, the reading card, the Payload tab and its Side view. The Payload tab REBUILDS the packet through the reader’s own code rather than reading Sent messages, so it shows what would be sent now — which is why its arrows come off the records as well as the read row. The Side view rebuilds the side packet too, and the chart takes the day’s open, high and low from the newest saved one; the Memory view reads memory, and the chart’s fine line is the price tape.'],
   ['ot',  'Delivery','sink','Price tape',            'state/sndk_tape/<day>.jsonl',
    'A price at most every 4 seconds, written by the dashboard server itself whenever a page asks for the live price, so a day nobody watched has no tape. Only the chart reads it.'],
-  ['op',  'Delivery','sink','Phone · voice · pager','static/m/ · mirai-voice · sndk_deadman.py',
-   'The glance page shows the latest reading and a chart drawn from the minute bars, which rules the nearest call and put walls and the strike with the most contracts, from the diary row through the payload route; the live quote every 5 seconds greys out any wall price has already passed. After the reading, the last half hour: the scene’s own half-hour move against a usual half hour, and apart from it what the next half hour did after every earlier half hour on the same side of usual, as counts. The payload route makes that record from every earlier session’s diary, never today’s, rebuilds it once a day and never sends it to a model. For the chart’s bars of calls and puts traded today it adds since_read, each listed strike’s calls and puts in the book the latest reading was written from, so the chart can show what traded since that reading; that too reaches no model. The voice desk quotes the reading as an observation, and the dead-man pages the phone when the scanner goes quiet, or when the reader stops writing rows while the scanner still runs, keeping what it has paged in state/sndk_reads/deadman_state.json.',
+  ['op',  'Delivery','sink','Voice · pager',        'mirai-voice · sndk_deadman.py',
+   'The voice desk quotes the reading as an observation, and the dead-man pages the phone when the scanner goes quiet, or when the reader stops writing rows while the scanner still runs, keeping what it has paged in state/sndk_reads/deadman_state.json. The phone’s SNDK glance, which drew the reading and the session’s chart off the diary row, the bars and the live quote through the payload route, was retired on 2026-10-10 with the phone’s redesign: the shell opens the SPX forecast, and nothing on the phone reads SNDK.',
    'launchd com.mirai-station.sndk-deadman · every 5 min'],
 ];
-// from, to, and 'back' for a return path. Checked against the code 09-04, and
-// the phone's two reads of the bars and the live quote added 09-10: an
-// edge that is not in the code is worse than a missing one, because it is
-// drawn as fact.
+// from, to, and 'back' for a return path. Checked against the code 09-04; the
+// phone glance’s reads of the bars and the live quote (added 09-10) went with
+// it on 2026-10-10: an edge that is not in the code is worse than a missing
+// one, because it is drawn as fact.
 const _PL_EDGES=[
   ['q','js'],['bk','js'],['bf','jb'],
   ['js','sd'],['js','sc'],['sc','js','back'],['jb','sb'],
@@ -11670,7 +11670,7 @@ const _PL_EDGES=[
   ['r2l','r1'],['r2l','r2'],['r1','r2'],['r2','r3'],['r3','r4'],
   ['r4','od'],['r4','om'],['r2l','om'],['r2l','og'],['r2b','os'],
   ['sd','ow'],['sb','ow'],['od','ow'],
-  ['od','op'],['sd','op'],['sb','op'],['q','op'],
+  ['od','op'],['sd','op'],
   ['od','r1'],['od','r2'],['ctl','r2'],['ctl','r3'],['sd','pp'],['pp','r2l'],
   ['r3','ok'],['os','ow'],['om','ow'],['om','op'],['q','ot'],['ot','ow'],
   ['sb','r1'],['od','r2l'],['pp','ow'],['sd','pv'],['pv','r2'],['pv','ow'],
@@ -11683,6 +11683,8 @@ const _PL_STAGE_DOC={
   'Delivery':"Where a reading and its evidence land. Nothing here is pruned or rotated.",
 };
 const _PL_LEFTOUT=[
+  ['The phone glance','retired 2026-10-10',
+   'The Now page at /m/index.html drew the latest reading, the session’s chart and the last half hour against the stock’s own record off the payload route. The phone’s redesign made the SPX forecast its home with no SNDK tab, so the page went with its two scripts and the two payload fields only it read, the half-hour record and since_read; the reader, its stores and this dashboard are unchanged.'],
   ['Day grades','written until 08-27, deleted 2026-09-16',
    'Nothing wrote or read state/sndk_grade after 08-27, so its 20 days of grades from eras sr-1 to sr-6 were deleted. The same sweep removed state/gex_learn — 14 MB of learned baselines, last written 08-04, referenced by nothing.'],
   ['The direction call','removed obs-1 · arrow removed obs-3',
@@ -15016,7 +15018,7 @@ const PAYLOAD = {
       ['Record',             'Every 120 seconds during market hours the snapshot is written to the diary; a sidecar job keeps the day\u2019s completed one-minute bars beside it, from Schwab, every 60 seconds.', 'state/sndk_reversion \u00b7 state/sndk_bars'],
       ['Assemble the payload','Every scan: the newest snapshot, today\u2019s earlier rows, the minute bars, the prior sessions and what changed since the model\u2019s last look become this JSON \u2014 the ranked strike table with twelve books of history behind each strike, whatever the rule says has GONE (its live region list has not been sent since 2026-09-05), and what happened between frames. The old scene is still built beside it for the wake gate.', 'sndk_board \u00b7 build_scene_v2'],
       ['Ask the model',      'Only when something changed: Claude reads the standing rulebook plus this JSON and says, in plain words, what stands out, the piles it draws as clusters, the heavy strike on each side, and which price levels are worth watching. Never a direction \u2014 that call measured worthless and was removed. Then every number and level is checked against this JSON, a cluster naming an unlisted strike is dropped, and forecast language is deleted before anyone sees it.','claude -p \u00b7 DOCTRINE_V2 \u00b7 guards'],
-      ['Use the observation','What it noticed lands on the chart card, the phone glance, the voice desk and \u2014 when the model actually spoke \u2014 the memory store.', 'reading'],
+      ['Use the observation','What it noticed lands on the chart card, the voice desk and \u2014 when the model actually spoke \u2014 the memory store.', 'reading'],
     ];
     const open=PAYLOAD.pipeOpen;
     el.className='pl-pipe'+(open?'':' collapsed');

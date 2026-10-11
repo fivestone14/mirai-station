@@ -673,8 +673,8 @@ class Handler(BaseHTTPRequestHandler):
             # and 404s. "/m" is what gets typed on a phone and what the
             # Android shell is configured with, so it has to be the address
             # that works, not the one that nearly does. "/m/index.html", the
-            # SNDK glance, is a file and still falls through to the static
-            # fallback by name.
+            # SNDK glance retired in phase 5 of the redesign, is no file now
+            # and 404s through that fallback like any other missing name.
             if route in ("/m", "/m/"):
                 return self._send_file(STATIC / "m" / "jev-spx.html")
 
@@ -722,7 +722,7 @@ class _Station(ThreadingHTTPServer):
 
 def main():
     httpd = _Station(("0.0.0.0", PORT), Handler)
-    # the phone's payload is served from memory; this thread keeps it warm (a rebuild when a
+    # the SNDK payload (the Payload tab's) is served from memory; this thread keeps it warm (a rebuild when a
     # file changes or a minute passes). Started here, never from a request, so a test that
     # runs the station in-process leaves no thread behind.
     snap.start_payload_refresher()

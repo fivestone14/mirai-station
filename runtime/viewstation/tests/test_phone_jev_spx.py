@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from node_run import run_node
+from test_phone_route import _Stub
 
 
 M = Path(__file__).resolve().parents[1] / "static" / "m"
@@ -647,12 +648,25 @@ def test_the_switch_is_gone_and_the_old_sndk_forecast_address_forwards_to_the_fo
     assert "<style>" not in sndk and "fetch(" not in sndk and "jev-spx" not in sndk
 
 
+def test_the_sndk_glance_is_gone_and_its_address_answers_404():
+    """Phase 5 of the redesign (2026-10-10) retired the SNDK glance, /m/index.html with page.js and glance.js: no
+    tab, no link and no reader were left. Its address 404s through the static fallback like any other missing name,
+    and nothing under static/m names it but jev.html's own note of where the phone went."""
+    h = _Stub("/m/index.html")
+    h.do_GET()
+    assert h.sent_file is None and h.sent_json == ({"error": "not found", "route": "/m/index.html"}, 404)
+    for name in ("index.html", "page.js", "glance.js"):
+        assert not (M / name).exists(), name
+    for p in sorted(M.iterdir()):
+        if p.suffix in (".html", ".js", ".txt") and p.name != "jev.html":
+            assert not re.search(r"index\.html|page\.js|glance\.js|the glance", p.read_text()), p.name
+
+
 def test_the_two_tabs_are_forecast_and_reads_on_every_page_that_carries_them():
     """Final-Home: two tabs, Forecast (the page at /m/) and Reads, the Now tab gone; each page lights its own and links
-    the other, both answer a press through press.js with the glance's own rules, and the label is the board's 11px.
+    the other, both answer a press through press.js, and the label is the board's 11px.
     The bar is inside the header on both pages, fixed at the phone's foot and in the header's row from 1024px up
-    (Final-Desktop), so a screen reader meets the two tabs with the page's name. The glance keeps its bar until phase 5,
-    with its Forecast tab now pointing at /m/."""
+    (Final-Desktop), so a screen reader meets the two tabs with the page's name."""
     for page, lit, link in (("jev-spx.html", "FORECAST", "/m/reads.html"), ("reads.html", "READS", "/m/")):
         html = (M / page).read_text()
         nav = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', html).group(1)
@@ -665,16 +679,13 @@ def test_the_two_tabs_are_forecast_and_reads_on_every_page_that_carries_them():
         assert ".tab.is-pressed{" in html and ".tab.is-pressed::before{" in html, page
         assert ".tab s{font:500 11px/1 var(--sans);letter-spacing:.1em;text-decoration:none}" in html, page
         assert re.search(r"\n\.tabs\{position:fixed;left:0;right:0;bottom:0;z-index:6;", html), page
-    glance = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', (M / "index.html").read_text()).group(1)
-    assert re.findall(r'<a class="tab" href="([^"]+)"', glance) == ["/m/reads.html", "/m/"]
-    assert glance.count('<span class="tab on" data-press>') == 1 and "<s>NOW</s>" in glance
 
 
 def test_the_forecast_tab_is_drawn_alike_on_every_page():
     """Will, 2026-10-09: the Forecast tab's icon is the price so far and a dashed cone of where it may go, in place of
     JEV Beta and its scales; the same on every page that carries the bar, lit only on the forecast page."""
     icon = re.compile(r'(?s)<svg[^>]*><path d="M3 17l3.5-3.5 3 2L13 12"/>.*?</svg>\s*<s>FORECAST</s>')
-    for page in ("index.html", "reads.html", "jev-spx.html"):
+    for page in ("reads.html", "jev-spx.html"):
         html = (M / page).read_text()
         nav = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', html).group(1)
         assert len(icon.findall(nav)) == 1 and "BETA" not in nav and "M12 4v16" not in nav, page
@@ -3473,6 +3484,6 @@ def test_a_resize_across_the_breakpoint_closes_an_open_sheet_and_asks_for_the_bo
     assert got["narrowed"] == {"closed": 1, "more": 0, "aria": ["true", "true", "dialog"]}
     assert 'id="chartSheet" role="dialog" aria-modal="true" aria-hidden="true"' in SPX     # the markup is the phone's: dockChart rewrites all three
     assert "-webkit-user-select:auto;user-select:auto}" in _wide_css()[1]     # docked, its words select as the page's do
-    assert "return {open, isOpen, pin, close: dismiss};" in (M / "sheet.js").read_text()
+    assert "return {open, isOpen, close: dismiss};" in (M / "sheet.js").read_text()
     assert "window.addEventListener('popstate', dockChart);" in JS and "window.addEventListener('popstate', shut);" in (M / "sheet.js").read_text()
     assert SPX.index('<script src="/m/sheet.js"></script>') < SPX.index(MAIN_JS)     # sheet.js's popstate runs first, so the page's docks last

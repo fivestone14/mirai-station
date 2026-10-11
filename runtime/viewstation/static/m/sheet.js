@@ -1,14 +1,12 @@
 /* sheet.js — the explainer sheets: how one opens, and every way it closes.
  *
- * Both phone pages carry one. The glance's says how to read the chart; the
- * reads page's says what faster, steady and slower mean. Each page owns its
+ * The forecast page carries several: a call's result, how to read the page,
+ * Claude's read, the questions, the price-today chart. The page owns each
  * sheet's markup, its copy of the sheet's CSS (a shared stylesheet would be a
- * render-blocking re-fetch on every open;
- * test_the_two_phone_pages_draw_one_sheet holds the two copies equal) and the
- * control that OPENS it: a plain tap on the link under the glance's chart and
- * on the reads page's button, because those are controls. Each control names
- * its sheet in aria-controls, and a sheet already open is not opened again,
- * which would push a second history entry for it.
+ * render-blocking re-fetch on every open) and the control that OPENS it: a
+ * plain tap on a tile or a button, because those are controls. Each control
+ * names its sheet in aria-controls, and a sheet already open is not opened
+ * again, which would push a second history entry for it.
  * Everything after the opening is here, once, because every part of it was
  * learned on a phone and a second copy would have to learn it again.
  *
@@ -22,23 +20,21 @@
  *
  * PULL-TO-REFRESH. The shell arms its refresh gesture from the WebView's own
  * "can the page scroll up?" unless the page has said otherwise through
- * MiraiShell.atTop(). Both pages scroll the document, so neither needs to speak
+ * MiraiShell.atTop(). The page scrolls the document, so it need not speak
  * — until a sheet is open: opened with the page at the top, a downward drag
  * inside it read as a pull and reloaded the page out from under the reader. So
  * the page speaks while the sheet is open, and once it has spoken it keeps the
  * answer true on every scroll, because the shell has no way back to "silent".
- * pin() says the same thing for a finger working the glance's chart, which
- * since 2026-09-19 answers a hold and a sideways drag. It is here so that the
- * answer stays one expression in one file: page.js never tells the shell
- * anything about where the page is scrolled to.
+ * The answer is one expression in this one file: the page never tells the
+ * shell anything about where it is scrolled to.
  *
  * THE LATE TAP. A close this soon after opening is ignored. It was learned on
- * the glance's levels sheet (gone 2026-09-19), which opened from a touchend:
- * Chrome hit-tests that touch's synthetic tap AFTER the handlers have run — on
- * the backdrop that has just appeared, which closed the sheet the instant it
- * opened. Both sheets open on a click, which is past that point, but the
- * second tap of a double tap on the control can land on that backdrop in the
- * same way, and the guard keeps it from closing what the first tap opened.
+ * a sheet (gone 2026-09-19) that opened from a touchend: Chrome hit-tests that
+ * touch's synthetic tap AFTER the handlers have run — on the backdrop that has
+ * just appeared, which closed the sheet the instant it opened. The sheets open
+ * on a click, which is past that point, but the second tap of a double tap on
+ * the control can land on that backdrop in the same way, and the guard keeps
+ * it from closing what the first tap opened.
  *
  * NOT SELECTABLE. A long press on the sheet's text opened Android's text
  * selection, and while a selection is live a drag moves its handles instead of
@@ -46,14 +42,14 @@
  */
 const MiraiSheet = (function(){
   const GHOST_MS = 500;
-  let opener = null, sheet = null, openedAt = 0, closing = false, spoke = false, pinned = false;
+  let opener = null, sheet = null, openedAt = 0, closing = false, spoke = false;
 
   function isOpen(){ return document.body.classList.contains('sheet-open'); }
 
   function tellShell(){
     try {
       if(!window.MiraiShell || typeof MiraiShell.atTop !== 'function') return;
-      MiraiShell.atTop(!pinned && !isOpen() && window.scrollY <= 0);
+      MiraiShell.atTop(!isOpen() && window.scrollY <= 0);
       spoke = true;
     } catch(e){ /* a shell without the bridge falls back to its own answer */ }
   }
@@ -100,15 +96,7 @@ const MiraiSheet = (function(){
     if(e.target.closest && e.target.closest('.sheet')) e.preventDefault();
   });
 
-  // A FINGER ON THE CHART PINS IT TOO (2026-09-19). The chart answers a hold
-  // and a sideways drag now, and it sits near the top of the page, so the same
-  // refresh gesture would take a drag on it and reload the page mid-gesture.
-  // page.js pins while a finger is down and unpins on the lift; it asks here
-  // rather than calling the shell itself, so the page still speaks to the
-  // shell with one voice and in one place.
-  function pin(on){ pinned = !!on; tellShell(); }
-
   // close is dismiss by name: a page that lays an open sheet out some other way (the forecast's chart, a panel from
   // 1024px up) closes it the one way everything else does
-  return {open, isOpen, pin, close: dismiss};
+  return {open, isOpen, close: dismiss};
 })();

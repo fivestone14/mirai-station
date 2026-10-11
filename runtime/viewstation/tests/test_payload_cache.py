@@ -1,4 +1,4 @@
-"""The phone's payload is built once and served from memory until a file changes or a minute passes."""
+"""The SNDK payload is built once and served from memory until a file changes or a minute passes."""
 from __future__ import annotations
 
 import time

@@ -36,9 +36,10 @@ UNLOCK = "user=will"
 # forecast since the redesign of 2026-10-10)...
 PAGES = {"/": "index.html", "/index.html": "index.html",
          "/m": "m/jev-spx.html", "/m/": "m/jev-spx.html"}
-# ...and the phone pages reached by their path through the static fallback: the reads, the SNDK glance by
-# name until phase 5 of the redesign, and the retired SNDK forecast as its redirect
-FILES = {"/m/reads.html": "m/reads.html", "/m/index.html": "m/index.html", "/m/jev.html": "m/jev.html"}
+# ...and the phone pages reached by their path through the static fallback: the reads, and the retired SNDK
+# forecast as its redirect. The SNDK glance, /m/index.html, left this table with phase 5 of the redesign: its
+# file is gone, so the fallback 404s it (test_phone_jev_spx pins that) like any other missing name
+FILES = {"/m/reads.html": "m/reads.html", "/m/jev.html": "m/jev.html"}
 
 # route -> the query string it is called with
 OPEN_JSON = {

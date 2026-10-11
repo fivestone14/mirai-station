@@ -4472,10 +4472,11 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
     # no gate, so nothing about it is worth failing a read for.
     # ...into ITS OWN FILE, and only on the rows that SPEND A CALL. Two
     # measurements decided both halves. The packet is ~6.4 KB against a 1.2 KB
-    # read row, and the phone polls the last forty rows of the reads file every
-    # sixty seconds (static/m/page.js) to read two fields the packet does not
-    # contain — so riding the row would send six times the bytes over a mobile
-    # radio for nothing. And it is a pure function of the minute bars and the
+    # read row, and the phone's glance of the day (static/m/page.js, retired
+    # 2026-10-10) polled the last forty rows of the reads file every sixty
+    # seconds to read two fields the packet does not contain — so riding the
+    # row would have sent six times the bytes over a mobile radio for nothing.
+    # And it is a pure function of the minute bars and the
     # diary row, both already on disk, so the quiet rows rebuild exactly through
     # sndk_side.side_for_day. What a kept copy buys is the one thing a rebuild
     # cannot: what the packet said under the rules of the day, before anyone
