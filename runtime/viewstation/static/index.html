@@ -11638,21 +11638,19 @@ const _PL_NODES=[
    'A standing rulebook, held in the model’s cache so it is not re-billed on every call, plus the packet. Back come three things: whether to stay quiet, the reading itself, and the prices worth a look. From the 2026-09-16 open (era strikes-7) the rulebook asks for a different reading: it leads with what CHANGED on the board — a lead taken, an earlier claim that no longer holds, a strike joined or gone, all of which the day summary states — instead of reciting the price move the card already shows; the standing board is paid once, in the sides field the screen draws its own list from, and never re-listed in prose; four numbers is the aim; and a board where nothing moved gets one line. Replayed over ten recorded moments it went from 59 words and 15 numbers to 34 and 8.5, and all ten opened on the price recap before. Never a direction — that call measured worthless and was removed.'],
   ['r4',  'Reader','step',  '4 · Guards',            'sndk_board.py · check_reading_v2()',
    'Every reading is checked before anyone sees a word: banned words and their inflections, plus the words this scene forbids (magnet, momentum, stronger); every number must exist in the packet; a named level must be a price on the board; an above-or-under claim must agree with the live price; a cluster must name listed, adjacent strikes and its change word is set from the change cells the model was shown; a pile it says has gone must be one the message listed as gone; and a small second model deletes a forecast hiding in plain words. A deletion is recorded, never silent.'],
+  ['og',  'Reader','step',  '2c · Gate Payload',     'sndk_board.py · legacy()',
+   'The old magnet, walls, bands, breadth and dealer numbers, computed from the legacy scene on every read in strikes mode. The guards take its regions rule to check the model’s change words, and the Payload tab shows it under Gate, rebuilt the same way. Never sent to the model and written nowhere: the copy each spent call filed under sndk_legacy stopped on 2026-10-11, since nothing read it back.'],
   ['r2b', 'Reader','step',  '2b · Side packet',      'sndk_side.build_side()',
    'A second document, anchored to the minute bars rather than the option book, built beside the scene and never sent to a model. It takes its price lines from the same diary row the scene uses. Every time in it is derived from a bar index, so every value can be checked against the bar it came from.'],
 
   ['od',  'Delivery','sink','Read row',              'state/sndk_reads/<day>.jsonl',
-   'One row per reader tick: the reading or the last one carried forward, why it woke, which payload fed the model, the frozen gate the next wake measures against, what the guards dropped, what each spent call was billed, the strike list it showed the model, so the next read can say exactly what joined and what left, and whether the Gate Payload and the exact message were kept (legacy_kept, payload_kept). About 180 rows a day. The next read takes its gate snapshot and strike list from the last row that spent a call, the sentence still on screen from the last row that has one, and the day’s readings, whose claims the day summary grades.'],
-  ['og',  'Delivery','sink','Gate Payload',          'state/sndk_legacy/<day>.jsonl',
-   'One line for each read that spends a call, 3 to 21 a day since 09-08. The old magnet, walls, bands, breadth and dealer numbers, computed from the legacy scene. Nothing reads the file back: the wake gate works from the legacy scene and the last call’s row, and replay rebuilds these numbers. Never sent to the model.'],
-  ['ok',  'Delivery','sink','Sent messages',         'state/sndk_payloads/<day>.jsonl',
-   'The exact message each call sends, kept just before it leaves, so a call that times out still leaves what it was shown: the Strikes Payload as sent, the model and effort, the commit and a hash of the builder’s source, and a checksum proving the copy rebuilds the sent text. The rulebook is kept once per version under rules/. About 12 KB a call, from the 2026-09-15 open; nothing reads it yet but sndk_read.read_payloads.'],
+   'One row per reader tick: the reading or the last one carried forward, why it woke, which payload fed the model, the frozen gate the next wake measures against, what the guards dropped, what each spent call was billed, the strike list it showed the model, so the next read can say exactly what joined and what left. About 180 rows a day. The next read takes its gate snapshot and strike list from the last row that spent a call, the sentence still on screen from the last row that has one, and the day’s readings, whose claims the day summary grades.'],
   ['os',  'Delivery','sink','Side packets',          'state/sndk_side/<day>.jsonl',
    'One line for each scan judged worth a model call, including one the pause switch held back. Written when the wake fires rather than when the model answers, so it also lands on a call that failed or was emptied by the guards; a capped scan keeps nothing, because the cap clears the wake. The dashboard’s chart reads the newest one back for the day’s open, high and low; the Side view rebuilds its own. Quiet scans keep nothing and rebuild from the bars and the diary row.'],
   ['om',  'Delivery','sink','Memory',                'sndk_rag.py → state/sndk_rag/',
    'One slice per completed reading: the sentence plus the numbers true that minute. Searchable by the voice desk and the Memory view, which also rebuild the day summaries and standing terrain beside it when asked; the reading model has no tools and cannot reach it, and nothing is ever injected into a reading.'],
   ['ow',  'Delivery','sink','Dashboard',             'runtime/viewstation/',
-   'Chart, drawers, the reading card, the Payload tab and its Side view. The Payload tab REBUILDS the packet through the reader’s own code rather than reading Sent messages, so it shows what would be sent now — which is why its arrows come off the records as well as the read row. The Side view rebuilds the side packet too, and the chart takes the day’s open, high and low from the newest saved one; the Memory view reads memory, and the chart’s fine line is the price tape.'],
+   'Chart, drawers, the reading card, the Payload tab and its Side view. The Payload tab REBUILDS the packet through the reader’s own code rather than reading a kept copy, so it shows what would be sent now — which is why its arrows come off the records as well as the read row. The Side view rebuilds the side packet too, and the chart takes the day’s open, high and low from the newest saved one; the Memory view reads memory, and the chart’s fine line is the price tape.'],
   ['ot',  'Delivery','sink','Price tape',            'state/sndk_tape/<day>.jsonl',
    'A price at most every 4 seconds, written by the dashboard server itself whenever a page asks for the live price, so a day nobody watched has no tape. Only the chart reads it.'],
   ['op',  'Delivery','sink','Voice · pager',        'mirai-voice · sndk_deadman.py',
@@ -11668,11 +11666,11 @@ const _PL_EDGES=[
   ['js','sd'],['js','sc'],['sc','js','back'],['jb','sb'],
   ['sd','r1'],['sd','r2l'],['sb','r2l'],['sd','r2'],['sb','r2'],['sb','r2b'],['sd','r2b'],
   ['r2l','r1'],['r2l','r2'],['r1','r2'],['r2','r3'],['r3','r4'],
-  ['r4','od'],['r4','om'],['r2l','om'],['r2l','og'],['r2b','os'],
+  ['r4','od'],['r4','om'],['r2l','om'],['r2l','og'],['og','r4'],['r2b','os'],
   ['sd','ow'],['sb','ow'],['od','ow'],
   ['od','op'],['sd','op'],
   ['od','r1'],['od','r2'],['ctl','r2'],['ctl','r3'],['sd','pp'],['pp','r2l'],
-  ['r3','ok'],['os','ow'],['om','ow'],['om','op'],['q','ot'],['ot','ow'],
+  ['os','ow'],['om','ow'],['om','op'],['q','ot'],['ot','ow'],
   ['sb','r1'],['od','r2l'],['pp','ow'],['sd','pv'],['pv','r2'],['pv','ow'],
 ];
 const _PL_STAGE_DOC={
@@ -11683,6 +11681,8 @@ const _PL_STAGE_DOC={
   'Delivery':"Where a reading and its evidence land. Nothing here is pruned or rotated.",
 };
 const _PL_LEFTOUT=[
+  ['The payload copies','stopped 2026-10-11',
+   'Each read that spent a call filed two copies nothing read back: the Gate Payload to state/sndk_legacy/<day>.jsonl, and the exact message it sent — the Strikes Payload as sent, the model and effort, the commit and a hash of the builder’s source, the rulebook once per version under rules/ — to state/sndk_payloads/<day>.jsonl. The dashboard rebuilds both through the reader’s own code, so the writes stopped; the files already on disk stay until the data sweep.'],
   ['The phone glance','retired 2026-10-10',
    'The Now page at /m/index.html drew the latest reading, the session’s chart and the last half hour against the stock’s own record off the payload route. The phone’s redesign made the SPX forecast its home with no SNDK tab, so the page went with its two scripts and the two payload fields only it read, the half-hour record and since_read; the reader, its stores and this dashboard are unchanged.'],
   ['Day grades','written until 08-27, deleted 2026-09-16',
@@ -11696,7 +11696,7 @@ const _PL_LEFTOUT=[
   ['A combination rule','measured 09-03, in the shadow log',
    'A strict three-condition rule fires too rarely to score on the sessions available, and no combination beat its own best single leg. The side packet ships the parts and joins none of them.'],
   ['The magnet as an input','replaced 2026-09-05',
-   'A passed strike was returned to less often than a plain strike at the same distance, so a field asserting pull was measured false. The strike table carries three unblended ranks and the cluster is the model’s answer; the old magnet lives on in the legacy scene, which the wake gate reads; a copy is filed in the Gate Payload, which nothing reads.'],
+   'A passed strike was returned to less often than a plain strike at the same distance, so a field asserting pull was measured false. The strike table carries three unblended ranks and the cluster is the model’s answer; the old magnet lives on in the legacy scene, which the wake gate reads, and in the Gate Payload, which the model never sees.'],
 ];
 
 const _PL_LINES_MIN_WIDTH=1000;   // below this the grid collapses and every edge shares an x
@@ -14829,7 +14829,7 @@ const PAYLOAD = {
     if(d.error||!d.scene){ say(d.error||'no scene yet — the scanner has not written a row'); PAYLOAD.paintPipe(); return; }
     // strikes-1: the dropdown picks the document. `scene` is what the reader hands the model
     // (the Strikes Payload when the reader runs it, the Scene Payload when reverted); `legacy`
-    // is the Scene Payload kept beside it; `gate_payload` is the old magnet and walls, filed on each call and never read back.
+    // is the Scene Payload kept beside it; `gate_payload` is the old magnet and walls, built every read and never sent.
     const which=PAYLOAD.which;
     let doc=d.scene, label=d.payload_label||'Scene Payload v5', tag='LIVE payload';
     if(which==='scene'){
@@ -14837,7 +14837,7 @@ const PAYLOAD = {
       else if(d.payload==='scene'){ label='Scene Payload v5 · the reader is running this one'; }
       else { say('no legacy document: the reader is not building the Scene Payload beside the Strikes Payload'); PAYLOAD.paintPipe(); return; }
     } else if(which==='gate'){
-      if(d.gate_payload){ doc=d.gate_payload; label='Gate Payload'; tag='STORE · the old magnet, walls and the blocks the model stopped seeing · written to state/sndk_legacy on each call · nothing reads it back · never sent'; }
+      if(d.gate_payload){ doc=d.gate_payload; label='Gate Payload'; tag='the old magnet, walls and the blocks the model stopped seeing · built every read, its regions rule checks the reply · never sent'; }
       else { say('no Gate Payload: the reader is running the Scene Payload, so none is built'); PAYLOAD.paintPipe(); return; }
     } else if(d.payload!=='strikes'){ label='Scene Payload v5 · the reader is running the Scene Payload (the Strikes Payload is switched off)'; }
     empty.hidden=true; pre.hidden=false;

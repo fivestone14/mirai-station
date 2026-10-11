@@ -39,10 +39,11 @@
 > is the sentence still on screen from the model's last reading, word for word, with `said_at`,
 > when it was written; the number gate's harvest skips it, so a figure the model
 > once said is sayable again only while the board still carries it. And every
-> call's exact message is now kept, before it is sent, in
+> call's exact message was kept, before it was sent, in
 > `state/sndk_payloads/<day>.jsonl`: the scene as an object, the rulebook once per
 > distinct text under `rules/<sha>.txt`, and `prompt_sha256`, which
-> `sndk_read.sent_prompt` checks when it rebuilds the prompt.
+> `sndk_read.sent_prompt` checked when it rebuilt the prompt. (Stopped
+> 2026-10-11: nothing read the copies. The files already written stay.)
 
 > **strikes-1 (2026-09-05).** The model now reads the **Strikes Payload**
 > (`sndk_board.build_scene_v2`), not the scene this inventory maps. The scene

@@ -388,9 +388,11 @@ momentum, stronger), a strike placed on the wrong side of the live price, and
 `PAYLOAD_DEFAULT`. The era follows it (`sndk_read.ERA` / `LEGACY_ERA`, bumped whenever what the
 model is shown changes), so rows written after a revert never pool. The live scene is still built every scan: the wake
 gate, the frame, the memory slice and the row's `gate` state read it, and its
-old magnet and walls are written as the **Gate Payload** to
-`state/sndk_legacy/<day>.jsonl` on every read that spends a call
-(`sndk_board.legacy`). The dashboard shows all three documents.
+old magnet and walls are built as the **Gate Payload** (`sndk_board.legacy`),
+whose regions rule checks the reply. The dashboard shows all three documents.
+(Until 2026-10-11 each spent call also copied the Gate Payload to
+`state/sndk_legacy/` and the exact message it sent to `state/sndk_payloads/`;
+nothing read either copy, and both writes stopped.)
 
 **Measured before it shipped** (28 sessions, 5,038 scans): a magnet price had
 already passed was returned to within the hour less often than a plain strike
@@ -452,8 +454,6 @@ sidecar's own clock. Absence falls back to the scans and never fabricates.
   hand-edited `control.json`, `pctl_prior.json` and the dead-man's
   `deadman_state.json`), `state/sndk_bars/` (the minute bars + `health.json`),
   `state/sndk_gex/` (discovery cache + raw-book cache + vol hint + fetch log),
-  `state/sndk_payloads/` (each call's exact message, kept before it is sent),
-  `state/sndk_legacy/` (the Gate Payload, one line per spent call),
   `state/sndk_side/` (the side packet, one line per wake),
   `state/sndk_rag/` (slice records + day summaries + terrain — the
   on-demand memory), and `state/sndk_tape/` (the live price the viewstation
