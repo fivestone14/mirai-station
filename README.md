@@ -329,12 +329,13 @@ mirai-station/
 │   ├── iv-viability/           per-contract IV gate + the Schwab credential/data vault
 │   └── mirai-right-eye/        embedder only (RAG retired 2026-07-10) → the two memories' semantic rankers
 ├── runtime/
+│   ├── station_paths.py        every data store named once (its final name → where it is today); jobs, server and pages ask it
 │   ├── watch/                  the tick chassis: cli · hunter wrapper ·
 │   │   └── intraday/           market_status · gex_alerts · push_ntfy · auth · the dead-man's switches
 │   ├── viewstation/            read-only HTTP on :8787: the desktop page + the phone pages (static/m/)
 │   ├── launchd/                25 LaunchAgent plists (the fleet, below)
 │   └── scripts/                install/venv/run wrappers + env.sh (Keychain reader)
-├── state/                      runtime-mutable — never copied between machines
+├── state/                      runtime-mutable — never copied between machines (the layout below is today's; runtime/station_paths.py is the one place that knows it)
 │   ├── reversion/              the SPX diary + nightly grades
 │   ├── spx_rag/                the Watchtower's memory (slices · summaries · terrain)
 │   ├── spx_jev/ spx_claude_forecast/ jev/               the JEV services and the Claude forecast
