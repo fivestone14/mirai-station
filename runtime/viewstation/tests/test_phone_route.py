@@ -1105,12 +1105,13 @@ def test_the_chart_may_be_opened_and_the_glance_is_still_not_a_control():
     for bad in ("cursor:pointer", "onclick", "title="):
         assert bad not in PHONE, bad
     links = re.findall(r"<a\s[^>]*>", PHONE)
-    # 2026-09-22: a second link, the JEV beta tab. The JEV card is a separate
+    # 2026-09-22: a second link, the Forecast tab. The forecast is a separate
     # page because every JEV answer is a forecast and the glance carries none.
-    assert len(links) == 2, f"two links are allowed on the glance, the reads tab and the JEV tab, found {len(links)}: {links}"
-    # 2026-10-09: the reads tab opens the SPX reads (reads.html, Will's design D)
+    assert len(links) == 2, f"two links are allowed on the glance, the reads tab and the forecast tab, found {len(links)}: {links}"
+    # 2026-10-09: the reads tab opens the SPX reads (reads.html, Will's design D);
+    # 2026-10-10: the forecast tab opens the SPX forecast, the phone's home at /m/
     assert 'href="/m/reads.html"' in links[0], links[0]
-    assert 'href="/m/jev.html"' in links[1], links[1]
+    assert 'href="/m/"' in links[1], links[1]
 
     assert "data-hold" not in PHONE + _code_only(PAGE), "a press-and-hold is back on the glance"
     dialogs = re.findall(r'<div class="sheet[^"]*" id="(\w+)" role="dialog"', PHONE)
@@ -1755,11 +1756,6 @@ def test_the_two_phone_pages_draw_one_sheet():
     assert not drift, f"the two sheets are drawn differently: {drift}"
     assert "max-height:calc(var(--app-h)*.86);overflow-y:auto" in b[".sheet"]
     assert "user-select:none" in b[".sheet"]
-    # the SNDK JEV card's call sheet (2026-09-26) is the same sheet: every core rule it carries is the SPX page's
-    j = _css_rules((M / "jev.html").read_text())
-    assert core <= set(j), core - set(j)
-    drift = {s: (j[s], b[s]) for s in core if j[s] != b[s]}
-    assert not drift, f"jev.html's sheet is drawn differently: {drift}"
 
 
 def test_the_sheet_text_cannot_start_a_selection():

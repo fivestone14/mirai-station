@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from test_phone_jev_calls import FAKE_DOM, _flat_text
+from test_phone_jev_spx import FAKE_DOM, _flat_text
 
 M = Path(__file__).resolve().parents[1] / "static" / "m"
 READS = (M / "reads.html").read_text()
@@ -146,10 +146,12 @@ def test_the_page_reads_the_grades_through_the_raw_route_and_keeps_an_opened_cal
 
 
 def test_the_tab_bar_lights_reads_and_every_page_links_it():
+    """Two tabs since the redesign (2026-10-10): Forecast, the page at /m/, and Reads, lit here."""
     nav = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', READS).group(1)
-    assert re.findall(r'<a class="tab" href="([^"]+)"', nav) == ["/m/", "/m/jev.html"]
-    assert nav.count('<span class="tab on">') == 1 and "<s>READS</s>" in nav and "<s>FORECAST</s>" in nav
-    for page in ("index.html", "jev.html", "jev-spx.html"):
+    assert re.findall(r'<a class="tab" href="([^"]+)"', nav) == ["/m/"]
+    assert nav.count('<span class="tab on" data-press>') == 1 and "<s>READS</s>" in nav and "<s>FORECAST</s>" in nav
+    assert "NOW" not in nav and "jev.html" not in nav
+    for page in ("index.html", "jev-spx.html"):
         tabs = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', (M / page).read_text()).group(1)
         assert 'href="/m/reads.html"' in tabs and "thread.html" not in tabs, page
 

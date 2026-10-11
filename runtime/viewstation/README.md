@@ -64,15 +64,15 @@ functions, so what the tab shows is what the model would actually be sent.
 ### The phone (`/m`)
 
 A second, far smaller set of pages for a glance on the way somewhere, not the
-viewstation reflowed. One bottom tab bar on every page: **Now**, **Reads**,
-**Forecast**. The Android shell (`mirai-mobile`, the APK under `static/m/`)
-opens `/m`.
+viewstation reflowed. One bottom tab bar on every page: **Forecast**, **Reads**.
+The Android shell (`mirai-mobile`, the APK under `static/m/`) opens `/m`, the
+forecast.
 
 | Page | What it shows |
 |---|---|
-| **Now** — `/m` (`static/m/index.html` with `page.js`, `glance.js`, `press.js`) | The SNDK glance: the latest reading, a chart of the session from the minute bars with the walls and the strike with the most contracts, and the last half hour against the stock's own record. Reads `/api/sndk/payload`, `/api/spot` and the raw explorer. |
+| **Forecast** — `/m` (`static/m/jev-spx.html` with `press.js`, `sheet.js`) | The SPX forecast: the combined call and JEV's own, the opening lane and the pre-market call, the calls in play with their results, the learning loop, Claude's read against the usual, and the questions behind the card — from the `state/spx_jev/` cards, `mirai_prediction/scoreboard.json` and `state/spx_claude_forecast/latest.json` through the raw explorer, with the live price from `/api/spot`. |
 | **Reads** — `/m/reads.html` | The SPX reads: every graded 30-minute call, a day at a time, from `state/spx_jev/integral_grades.jsonl` through the raw explorer. |
-| **Forecast** — `/m/jev-spx.html` | The SPX forecast: the combined call and JEV's own, the opening lane and the pre-market call, the calls in play with their results, the learning loop, Claude's read against the usual, and the questions behind the card — from the `state/spx_jev/` cards, `mirai_prediction/scoreboard.json` and `state/spx_claude_forecast/latest.json` through the raw explorer, with the live price from `/api/spot`. `/m/jev.html` is the SNDK JEV card; the tab bar's Forecast link still goes through it, and it forwards a phone that chose SPX to this page. |
+| the SNDK glance — `/m/index.html` (`page.js`, `glance.js`) | The old Now page, reachable by name until phase 5 of the redesign (2026-10-10) retires it: the latest SNDK reading, a chart of the session and the last half hour against the stock's own record. `/m/jev.html`, the SNDK forecast, is now a redirect to `/m/`. |
 
 `sheet.js` is the one copy of how a phone sheet opens and closes, loaded by
 every page that has one. The pages keep their own copies of the palette and
@@ -88,8 +88,9 @@ runtime/viewstation/
                         and its refresher, the pipeline replay, the memory overview
   static/               index.html (the desktop, one self-contained page) · pipeline.html · voice.js
                         · lob3d.js + three.module.min.js + addons/ · manifest · icon
-  static/m/             the phone: index.html + page.js + glance.js + press.js (Now) · reads.html
-                        · jev-spx.html · jev.html · sheet.js · the typeface · the Android APK
+  static/m/             the phone: jev-spx.html (the forecast, /m) · reads.html · press.js · sheet.js
+                        · index.html + page.js + glance.js (the SNDK glance, until phase 5) · jev.html (a redirect)
+                        · the typeface · the Android APK
   tests/                pytest; the tests that run the pages' JavaScript need node
 ```
 
@@ -97,8 +98,8 @@ Every route `server.py` serves:
 
 **Pages and files**
 - `GET /` and `/index.html` — the desktop page.
-- `GET /m`, `/m/` and `/m/index.html` — the phone's Now page (the Android shell opens `/m`).
-- Anything else under `static/` by its path — `/m/jev-spx.html`, `/m/reads.html`, `/m/jev.html`, `/pipeline.html`, the scripts, the font, the APK. A content-hashed `.woff2` is sent `immutable` for a year; everything else `no-cache`.
+- `GET /m` and `/m/` — the phone's Forecast page, `static/m/jev-spx.html` (the Android shell opens `/m`).
+- Anything else under `static/` by its path — `/m/reads.html`, `/m/index.html` (the SNDK glance), `/m/jev.html` (a redirect to `/m/`), `/pipeline.html`, the scripts, the font, the APK. A content-hashed `.woff2` is sent `immutable` for a year; everything else `no-cache`.
 
 **Open JSON**
 - `GET /api/spot?ticker=SPX` — the streaming price: one Schwab quote behind a 2 s cache, single-flight. A null spot means "keep showing the scan price". SNDK quotes during market hours also land on the spot tape under `state/sndk_tape/`.

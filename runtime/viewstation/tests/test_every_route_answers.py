@@ -32,9 +32,13 @@ import lefteye_fetcher
 DAY = "2026-08-19"
 UNLOCK = "user=will"
 
-# address -> the file under static/ it must serve
+# address -> the file under static/ it must serve: the pages do_GET names (the phone opens on the SPX
+# forecast since the redesign of 2026-10-10)...
 PAGES = {"/": "index.html", "/index.html": "index.html",
-         "/m": "m/index.html", "/m/": "m/index.html", "/m/index.html": "m/index.html"}
+         "/m": "m/jev-spx.html", "/m/": "m/jev-spx.html"}
+# ...and the phone pages reached by their path through the static fallback: the reads, the SNDK glance by
+# name until phase 5 of the redesign, and the retired SNDK forecast as its redirect
+FILES = {"/m/reads.html": "m/reads.html", "/m/index.html": "m/index.html", "/m/jev.html": "m/jev.html"}
 
 # route -> the query string it is called with
 OPEN_JSON = {
@@ -213,12 +217,27 @@ def test_every_route_do_get_answers_is_covered_here():
     assert covered - found == set(), f"this table fetches routes do_GET no longer answers: {sorted(covered - found)}"
 
 
-@pytest.mark.parametrize("route", list(PAGES))
+@pytest.mark.parametrize("route", list(PAGES) + list(FILES))
 def test_every_page_address_serves_html(station, route):
-    """Every address the desktop page and the phone shell are opened at serves its own page: the desktop at "/", the phone view at every spelling of "/m", never the other."""
+    """Every address the desktop page and the phone shell are opened at serves its own page: the desktop at "/", the forecast at both spellings of "/m", the other phone pages by name, never another."""
     status, ctype, body = _get(station, route)
     _page(status, ctype, body, route)
-    assert body == (server.STATIC / PAGES[route]).read_bytes(), f"{route} does not serve static/{PAGES[route]}"
+    page = {**PAGES, **FILES}[route]
+    assert body == (server.STATIC / page).read_bytes(), f"{route} does not serve static/{page}"
+
+
+def test_the_phone_shell_lands_on_the_forecast_and_the_old_sndk_address_forwards_to_it(station):
+    """The Android shell opens /m?user=will: that is the SPX forecast (jev-spx.html), the query left to the page,
+    which ignores it. /m/jev.html, the retired SNDK forecast, is a page whose only script forwards to /m/ with the
+    query kept, and which says in words where it went for a browser without scripts."""
+    status, ctype, body = _get(station, "/m?user=will")
+    _page(status, ctype, body, "/m?user=will")
+    assert body == (server.STATIC / "m" / "jev-spx.html").read_bytes()
+    assert b"<title>SPX \xc2\xb7 Forecast</title>" in body
+    status, ctype, body = _get(station, "/m/jev.html")
+    _page(status, ctype, body, "/m/jev.html")
+    assert re.findall(rb"(?s)<script>(.*?)</script>", body) == [b"location.replace('/m/' + location.search);"]
+    assert b"This page moved to" in body and b'href="/m/"' in body
 
 
 @pytest.mark.parametrize("route", list(OPEN_JSON))

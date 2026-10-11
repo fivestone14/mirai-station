@@ -1,12 +1,12 @@
 # mirai-mobile
 
-An Android shell for the SNDK glance at `/m` on the view station.
+An Android shell for the SPX forecast at `/m` on the view station.
 
 It is a browser window with the station's password saved in it and no address
 bar — about 2 MB, and it draws nothing itself. The screen lives on the Mac mini
-and is fetched fresh each time the app opens, so **changing the glance is a file
-edit on the mini, not a rebuild here**. The shell only changes when the shell
-changes, which is rare.
+and is fetched fresh each time the app opens, so **changing the forecast is a
+file edit on the mini, not a rebuild here**. The shell only changes when the
+shell changes, which is rare.
 
     phone ──https──▶ Cloudflare tunnel ──▶ Caddy :8790 ──▶ station :8787 ──▶ /m
 

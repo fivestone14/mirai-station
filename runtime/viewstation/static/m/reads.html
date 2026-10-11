@@ -37,7 +37,7 @@
   --on-body:#E4E6DF; --rule-soft:#7E8779;
   --o-dn:#A8492F; --o-fl:#B9B2A4; --o-flat-zone:#C9C2B5; --o-up:#2F44B8; --o-un:#9C9586;
   --sh1:0 1px 1px -.5px rgba(58,48,32,.05),0 3px 6px -1px rgba(58,48,32,.06),0 10px 22px -6px rgba(58,48,32,.07);
-  --tap-min:48px; --state-press:.12; --press-in:80ms; --press-out:200ms; --ease-out:cubic-bezier(.2,0,0,1);
+  --tap-min:48px; --state-press:.12; --press-in:80ms; --press-out:200ms; --ease-in:cubic-bezier(0,0,0,1); --ease-out:cubic-bezier(.2,0,0,1);
   --sans:"Jakarta",system-ui,Roboto,"Segoe UI",sans-serif;
   --tab-h:74px;
 }
@@ -99,21 +99,26 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
 .nums b{font-weight:700;color:var(--i)}
 .dh.is-pressed,.call.is-pressed,.all.is-pressed{background:rgba(22,26,23,var(--state-press));transition:background var(--press-in)}
 
-/* the tab bar, the glance's own, with this page lit */
+/* the tab bar, the same on every phone page, with this page lit; a press tints the tab as press.js asks (the glance's rules) */
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;justify-content:space-evenly;align-items:flex-start;
       padding:11px 0 calc(env(safe-area-inset-bottom) + 12px);background:var(--s);border-radius:22px 22px 0 0;
       box-shadow:0 -6px 22px -10px rgba(58,48,32,.16)}
 .tab{position:relative;isolation:isolate;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:var(--tap-min);
      padding:4px 12px 2px;border-radius:14px;color:var(--i-faint);text-decoration:none;touch-action:manipulation;
-     -webkit-user-select:none;user-select:none}
+     -webkit-user-select:none;user-select:none;transition:color var(--press-out) var(--ease-out)}
 .tab::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:max(100%,var(--tap-min));height:var(--tap-min)}
+.tab::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;background:var(--i);opacity:0;
+             transition:opacity var(--press-out) var(--ease-out)}
 .tab.on{color:var(--i)}
+.tab.is-pressed{color:var(--i);transition-duration:var(--press-in);transition-timing-function:var(--ease-in)}
+.tab.is-pressed::before{opacity:var(--state-press);transition-duration:var(--press-in);transition-timing-function:var(--ease-in)}
 .tab:focus-visible{outline:2px solid var(--o-up);outline-offset:2px}
 .tab svg{display:block;width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.tab s{font:500 10px/1 var(--sans);letter-spacing:.1em;text-decoration:none}
+.tab s{font:500 11px/1 var(--sans);letter-spacing:.1em;text-decoration:none}
 .tab i{width:4px;height:4px;border-radius:50%;background:transparent;margin-top:1px}
 .tab.on i{background:var(--i)}
-@media (prefers-reduced-motion:reduce){.chev{transition:none}}
+@media (prefers-reduced-motion:reduce){.chev{transition:none}.tab.is-pressed::before{opacity:.20}}
+@media (forced-colors:active){.tab::before{display:none}.tab.is-pressed,.tab.on{color:Highlight}}
 </style>
 </head>
 <body>
@@ -124,18 +129,14 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
 </header>
 <main id="main"></main>
 <nav class="tabs">
-  <a class="tab" href="/m/" aria-label="Now" data-press data-haptic>
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/></svg>
-    <s>NOW</s><i></i>
-  </a>
-  <span class="tab on">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-    <s>READS</s><i></i>
-  </span>
-  <a class="tab" href="/m/jev.html" aria-label="Forecast" data-press data-haptic>
+  <a class="tab" href="/m/" aria-label="Forecast" data-press data-haptic>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l3.5-3.5 3 2L13 12"/><path d="M13 12 21 6.5" stroke-dasharray="1.5 2.6"/><path d="M13 12l8 2.5" stroke-dasharray="1.5 2.6"/><circle cx="13" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>
     <s>FORECAST</s><i></i>
   </a>
+  <span class="tab on" data-press>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+    <s>READS</s><i></i>
+  </span>
 </nav>
 <script src="/m/press.js"></script>
 <script>

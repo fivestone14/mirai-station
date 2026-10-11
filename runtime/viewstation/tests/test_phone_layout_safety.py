@@ -570,16 +570,17 @@ def _css_code(html):
 
 
 def test_no_phone_page_reads_a_viewport_unit():
-    for name, html in (("index.html", PHONE), ("jev.html", (M / "jev.html").read_text()),
-                       ("jev-spx.html", (M / "jev-spx.html").read_text())):
+    for name, html in (("index.html", PHONE), ("jev-spx.html", (M / "jev-spx.html").read_text())):
         css = _css_code(html)
         found = _UNIT.findall(css)
         # the ONE permitted use is the fallback value of the token itself
         assert found == ["100dvh"], f"{name} reads a viewport unit: {found}"
         assert re.search(r"--app-h:100dvh;", css), f"{name} lost the token"
         assert "var(--app-h)" in css, f"{name} declares the token and never reads it"
-    # the SPX reads (2026-10-09) has no sheet, so no height token: it reads no viewport unit at all
-    assert _UNIT.findall(_css_code((M / "reads.html").read_text())) == []
+    # the SPX reads (2026-10-09) has no sheet, so no height token, and the retired SNDK forecast (2026-10-10) is a
+    # redirect with no stylesheet: neither reads a viewport unit at all
+    for name in ("reads.html", "jev.html"):
+        assert _UNIT.findall(_css_code((M / name).read_text())) == [], name
     for name, js in (("page.js", PAGE),):
         code = "\n".join(l.split("//")[0] for l in js.splitlines()
                          if not l.strip().startswith(("//", "*", "/*")))
@@ -593,13 +594,12 @@ def _measure_script(html):
 
 def test_both_pages_measure_the_height_before_anything_paints():
     """The same script, as the first thing in <body>, on every page with a
-    height token — kept as copies for the same reason the palette is (a shared
-    file is a full re-fetch on every open over the tunnel), so the copies are
-    pinned equal."""
-    a, j = _measure_script(PHONE), _measure_script((M / "jev.html").read_text())
-    x = _measure_script((M / "jev-spx.html").read_text())
-    assert a and j and x, "a page has lost the script at the top of <body>"
-    assert a == j == x, "the phone pages measure the height differently"
+    height token (the glance and the forecast) — kept as copies for the same
+    reason the palette is (a shared file is a full re-fetch on every open over
+    the tunnel), so the copies are pinned equal."""
+    a, x = _measure_script(PHONE), _measure_script((M / "jev-spx.html").read_text())
+    assert a and x, "a page has lost the script at the top of <body>"
+    assert a == x, "the phone pages measure the height differently"
     for need in ("window.innerHeight", "setProperty('--app-h'", "'resize'",
                  "'orientationchange'", "visualViewport"):
         assert need in a, need
@@ -972,12 +972,9 @@ def test_what_the_script_hides_stays_hidden():
     … AGO" line stayed under the price after the price came back. So every
     element a page's script hides, whose own rule sets a display, carries a
     [hidden] rule that takes it back to none."""
-    jev_html = (M / "jev.html").read_text()
-    jev_js = "\n".join(re.findall(r"(?s)<script>(.*?)</script>", jev_html))
     spx_html = (M / "jev-spx.html").read_text()
     spx_js = "\n".join(re.findall(r"(?s)<script>(.*?)</script>", spx_html))
     for name, html, js, need in (("index.html", PHONE, PAGE, {"chg", "lastscan", "load", "hh"}),
-                                 ("jev.html", jev_html, jev_js, {"load", "poll"}),
                                  ("jev-spx.html", spx_html, spx_js, {"load", "poll"})):
         hidden = _hidden_by_script(html, js)
         assert need <= set(hidden), f"{name}: the hides are no longer where this test reads them"

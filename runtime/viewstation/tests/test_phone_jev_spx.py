@@ -1,9 +1,9 @@
-"""The SPX JEV page (jev-spx.html): the SNDK JEV page's two modes and calls in play over the SPX service's
-cards (skills/spx-jev), with every time drawn in the viewer's own zone. The SPX card writes every time as a
-full stamp with its offset, so the page draws each one through one formatter, viewerTime, in whatever zone
-the phone is in; the schedule (which mode leads, when to poll, what "today" is) stays on the New York
-market clock. As in test_phone_jev_calls.py, the rules are functions in the page, lifted out by name and
-run in node against a stand-in DOM, here under a TZ that is not New York's."""
+"""The SPX forecast page (jev-spx.html, the phone's home at /m): its two modes and calls in play over the SPX
+service's cards (skills/spx-jev), with every time drawn in the viewer's own zone. The SPX card writes every
+time as a full stamp with its offset, so the page draws each one through one formatter, viewerTime, in
+whatever zone the phone is in; the schedule (which mode leads, when to poll, what "today" is) stays on the
+New York market clock. The rules are functions in the page, lifted out by name and run in node against the
+stand-in DOM below, here under a TZ that is not New York's."""
 from __future__ import annotations
 
 import json
@@ -16,13 +16,35 @@ from pathlib import Path
 
 import pytest
 
-from test_phone_jev_calls import FAKE_DOM, _flat_text
 
 M = Path(__file__).resolve().parents[1] / "static" / "m"
 SPX = (M / "jev-spx.html").read_text()
 JS = "\n".join(re.findall(r"(?s)<script>(.*?)</script>", SPX))
 _NODE = shutil.which("node")
 LA, TOKYO, NY = "America/Los_Angeles", "Asia/Tokyo", "America/New_York"
+
+
+# The stand-in DOM the page's functions run against in node (shared with the Reads tests, which import it from
+# here): enough of createElement, appendChild, textContent and setAttribute for the card builders, and dump() to
+# read a built tree back as plain data.
+FAKE_DOM = """
+function Node(tag){ this.tag = tag; this.attrs = {}; this.kids = []; this._t = ''; this.style = {}; }
+Node.prototype.insertBefore = function(n, ref){ var i = this.kids.indexOf(ref); this.kids.splice(i < 0 ? 0 : i, 0, n); return n; };
+Object.defineProperty(Node.prototype, 'firstChild', {get: function(){ return this.kids[0] || null; }});
+Node.prototype.setAttribute = function(k, v){ this.attrs[k] = String(v); };
+Node.prototype.appendChild = function(n){ this.kids.push(n); return n; };
+Node.prototype.addEventListener = function(){};
+Object.defineProperty(Node.prototype, 'textContent', {get: function(){ return this._t + this.kids.map(function(k){ return k.textContent; }).join(''); },
+                                                      set: function(v){ this._t = String(v); this.kids = []; }});
+var document = {createElementNS: function(ns, tag){ return new Node(tag); }, createElement: function(tag){ return new Node(tag); }};
+function el(tag, cls, text){ var e = document.createElement(tag); if(cls) e.attrs['class'] = cls; if(text != null) e.textContent = text; return e; }
+function dump(n){ return {tag: n.tag, attrs: n.attrs, text: n._t, kids: n.kids.map(dump)}; }
+"""
+
+
+def _flat_text(n):
+    """A dumped node's text with its children's, in order, as the page would show it."""
+    return n["text"] + "".join(_flat_text(k) for k in n["kids"])
 
 
 def _fn(name):
@@ -106,9 +128,10 @@ def test_the_page_reads_the_spx_cards_and_keeps_the_sndk_pages_modes():
     assert "LANE_HOURS = ['09:33', '16:05']" in JS and "within(LANE_HOURS)" in _fn("pollTape")
     # the questions left the page for their own sheet (09-29), so no fold is remembered on the phone any more
     assert "jev.spx.folded" not in JS and "'jev.folded'" not in JS and "el('details'" not in JS
-    assert "<title>SPX · JEV</title>" in SPX and '<span id="h1">SPX &middot; JEV</span>' in SPX
+    assert "<title>SPX · Forecast</title>" in SPX and '<span id="h1">SPX &middot; Forecast</span>' in SPX
+    assert "' \\u00B7 Forecast'" in _fn("paint") and "' \\u00B7 Forecast'" in _fn("paintPre"), "the script writes the header's name too"
     assert "innerHTML" not in JS
-    # the same call sheet as the SNDK page, opened by sheet.js loaded first
+    # the call sheet, opened by sheet.js loaded first
     assert 'id="jevSheet" role="dialog" aria-modal="true" aria-hidden="true"' in SPX
     assert SPX.index('<script src="/m/sheet.js"></script>') < SPX.index("'use strict'")
 
@@ -401,6 +424,27 @@ def test_the_next_read_is_found_on_the_market_clock_and_drawn_in_the_viewers_zon
     assert _run(js, {"now": "2026-09-28T08:40:00-04:00", "last": "2026-09-28T15:32:00-04:00"}, LA) is None   # 09:02 is before it
 
 
+def test_the_header_names_the_cards_market_day_and_the_next_read_in_the_viewers_zone():
+    """The redesign's header (Final-Home, 2026-10-10): "SPX · Forecast" on the left; on the right the market day the
+    card belongs to, its stamp's own date and never the viewer's, and the next read while one is still ahead, in the
+    viewer's zone. After the day's last read, or on a card of another day, the day stands alone. The pre-market card
+    names its day and the night's next checkpoint the same way, and both move with the clock."""
+    js = ("var READ_MINUTES = [2, 32], LAST_READ_DEFAULT = '15:32', nodes = {hdR: el('span')}; function $(id){ return nodes[id]; }"
+          + _fn("nextRead") + _fn("dayName") + _fn("headLine") + _fn("setHead") + _fn("preNextRead") +
+          "setHead(D.c); console.log(JSON.stringify([nodes.hdR.textContent, D.pre ? headLine(D.pre.day, preNextRead(D.pre, Date.now())) : null]));")
+    card = {"row_ts": "2026-10-09T11:31:56-04:00", "session": {"last_read": "2026-10-09T15:32:00-04:00", "close": "2026-10-09T16:00:00-04:00"}}
+    assert _run(js, {"now": "2026-10-09T11:40:00-04:00", "c": card}, LA)[0] == "Fri 10-09 · next read 09:02"
+    assert _run(js, {"now": "2026-10-09T11:40:00-04:00", "c": card}, TOKYO)[0] == "Fri 10-09 · next read 01:02"   # Saturday in Tokyo, Friday's card
+    assert _run(js, {"now": "2026-10-09T15:40:00-04:00", "c": card}, LA)[0] == "Fri 10-09"                         # after the day's last read
+    assert _run(js, {"now": "2026-10-10T11:40:00-04:00", "c": card}, LA)[0] == "Fri 10-09"                         # the weekend: no read ahead
+    pre = {"day": "2026-10-12", "schedule": {"reads": ["2026-10-12T02:35:00-04:00", "2026-10-12T06:35:00-04:00", "2026-10-12T08:50:00-04:00"]}}
+    assert _run(js, {"now": "2026-10-12T05:00:00-04:00", "c": card, "pre": pre}, LA)[1] == "Mon 10-12 · next read 03:35"
+    assert _run(js, {"now": "2026-10-12T09:00:00-04:00", "c": card, "pre": pre}, LA)[1] == "Mon 10-12"
+    assert "setHead(c);" in _fn("paint") and "setHead(c);" in _fn("ages"), "the next read moves with the clock"
+    assert "if(head) head.textContent = headLine(p.day, preNextRead(p, now));" in _fn("paintPre")
+    assert '<span class="hd-r" id="hdR"></span>' in SPX and "BETA" not in SPX.split("<body>", 1)[1].split("<main", 1)[0]
+
+
 def test_the_header_line_names_the_row_in_the_viewers_time_and_knows_the_close():
     js = ("var READ_MINUTES = [2, 32], GONE_MIN = 60, STALE_MIN = 35, ROW_LEAD_MIN = 4, LAST_READ_DEFAULT = '15:32';"
           + _fn("nextRead") + _fn("ageWord") + _fn("cardCount") + _fn("subLine") + "console.log(JSON.stringify(subLine(D.c, D.m)));")
@@ -530,8 +574,11 @@ def test_every_line_the_page_writes_starts_with_a_capital():
 # ---- the owner's 360px phone
 
 # Widths measured in Chrome with the shipped face at 360 (Plus Jakarta Sans): each variable line at the
-# widest form it takes. A zone name is widest as an offset ("GMT+5:30"); a countdown under 10 hours.
-_W = {"SNDK · JEV": 75.06, "SPX · JEV": 63.72, "BETA": 40.73, "switch": 104.39,
+# widest form it takes. The header's two sides (11px capitals, spaced .16em and .12em) were measured in headless
+# Chromium on 2026-10-10 with the redesign; the right side is widest on a Monday, "MON" being the widest weekday in
+# capitals, and its digits are tabular, so no time is wider than another. A zone name is widest as an offset
+# ("GMT+5:30"); a countdown under 10 hours.
+_W = {"SPX · FORECAST": 113.09, "MON 10-09 · NEXT READ 12:01": 198.44, "FRI 10-09 · NEXT READ 12:01": 187.59,
       "Today’s 0DTE settles 13:00 GMT+5:30": 223.75, "6 hr 30 min left": 88.44,
       "Next expiry settles Mon 16:00 GMT+5:30": 237.14, "Quarterly OpEx": 129.09,
       "NORMAL · A CALL EVERY 30 MIN": 216.06, "Read 06:50 GMT+5:30 … Graded 07:00": 203.0}
@@ -551,20 +598,28 @@ def _px(sel, prop, html=SPX):
 
 
 def test_the_page_fits_the_owners_360px_phone():
-    """At 360, the Galaxy S20+, nothing runs past the page or is cut: the header row carries the name, the
-    beta chip, the refresh spinner and the switch; the expiry line wraps between its parts, and each part
-    fits the column alone; the calls in play and the odds are drawn in a 300-wide box scaled to the card.
-    Checked in Chrome at 360x800 in both modes, in Los Angeles, Tokyo and New York, with no element past
-    the page and none clipped; this pins the widths that check found."""
+    """At 360, the Galaxy S20+, nothing runs past the page or is cut: the header line carries the name on the left
+    and the market day with the next read on the right, on one line on every weekday (at 320 the right side wraps
+    under the name, whole), and the refresh spinner, out of the line's flow just after the name, ends before the
+    right side begins on the widest day; the expiry line wraps between its parts, and each part fits the column
+    alone; the calls in play and the odds are drawn in a 300-wide box scaled to the card. Checked in Chrome at
+    360x800 in both modes, in Los Angeles, Tokyo and New York, with no element past the page and none clipped;
+    this pins the widths that check found."""
     side = 16
     column = 360 - 2 * side
     card = column - 2 * _px(".card", "padding")
-    gap = _px(".hd-1", "gap")
-    poll = _px(".poll", "width") + _px(".poll", "margin-left")
-    assert "margin-left:auto" in _rule(".sw") and "flex:none" in _rule(".sw")
-    for name in ("SNDK · JEV", "SPX · JEV"):
-        row = _W[name] + gap + _W["BETA"] + gap + poll + gap + _W["switch"]
-        assert row <= column, f"the header row with {name} is {row:.1f} of {column}"
+    gap = re.search(r"gap:[\d.]+px([\d.]+)px", _rule(".hd-1"))       # the row gap, then the gap between the two sides
+    assert gap, ".hd-1 lost its gaps"
+    assert "flex-wrap:wrap" in _rule(".hd-1") and "text-transform:uppercase" in _rule(".hd-1")
+    assert "margin-left:auto" in _rule(".hd-r") and "white-space:nowrap" in _rule(".hd-r") and "white-space:nowrap" in _rule(".hd-l")
+    # the widths above are of tabular digits, which the font shorthand on .hd-1 resets: with proportional digits the
+    # widest line would be another string, and the time would shift the line every half hour
+    assert "font-variant-numeric:tabular-nums" in _rule(".hd-r")
+    row = _W["SPX · FORECAST"] + float(gap.group(1)) + _W["MON 10-09 · NEXT READ 12:01"]
+    assert row <= column, f"the header line is {row:.1f} of {column}"
+    assert "position:absolute" in _rule(".poll") and "left:100%" in _rule(".poll") and "position:relative" in _rule(".hd-l")
+    spinner = _W["SPX · FORECAST"] + _px(".poll", "margin-left") + _px(".poll", "width")
+    assert spinner <= column - _W["MON 10-09 · NEXT READ 12:01"], f"the spinner ends at {spinner:.1f}, under the right side"
     assert "flex-wrap:wrap" in _rule(".exp")
     pad = re.search(r"padding:0([\d.]+)px", _rule(".exp"))
     assert pad, ".exp lost its side padding"
@@ -715,43 +770,46 @@ def test_an_odds_word_is_drawn_exactly_where_it_fits_whole_on_the_owners_phone(t
     assert [k["text"] for k in wide["kids"][1]["kids"]] == ["Down 25%", "Flat 45%", "Up 25%", ""]   # 72px of room: they fit
 
 
-# ---- the SNDK | SPX switch
+# ---- the tab bar, and the old SNDK address
 
 
-def _switch_script(html):
-    m = re.search(r"(?s)(<script>\n/\* the SNDK \| SPX switch.*?</script>)", html)
-    return m.group(1) if m else None
-
-
-def test_both_jev_pages_carry_one_switch_that_remembers_the_choice():
-    """Will's choice, 2026-09-26: SPX lives inside the JEV tab, a segmented switch at the top of both pages,
-    not a fourth tab. Each page lights its own side and links the other; the side last tapped is kept on the
-    phone, and the JEV tab (which links the SNDK page) opens on it. The script is one copy on both pages,
-    in <head> so a phone that chose SPX is sent there before the SNDK page paints."""
+def test_the_switch_is_gone_and_the_old_sndk_forecast_address_forwards_to_the_forecast():
+    """The redesign (2026-10-10): SPX only. The SNDK | SPX switch and the choice it kept on the phone are gone from
+    the page, with the beta chip; jev.html, the SNDK forecast, keeps its name as a redirect, so an old bookmark or a
+    phone that kept the address lands on /m/ with its query, and a browser without scripts reads where it went."""
+    for gone in ('class="sw"', "jev.symbol", "data-sym", 'class="beta"', "SNDK", "/m/jev.html"):
+        assert gone not in SPX, gone
     sndk = (M / "jev.html").read_text()
-    a, b = _switch_script(sndk), _switch_script(SPX)
-    assert a and a == b, "the two pages keep the choice differently"
-    assert sndk.index(a) < sndk.index("<body>") and SPX.index(b) < SPX.index("<body>")
-    assert "try { if(localStorage.getItem('jev.symbol') === 'spx' && location.pathname === '/m/jev.html') location.replace('/m/jev-spx.html'); } catch(e){}" in a
-    assert "try { localStorage.setItem('jev.symbol', a.getAttribute('data-sym')); } catch(x){}" in a
-    assert ('<nav class="sw" aria-label="Symbol"><span class="on" aria-current="page">SNDK</span>'
-            '<a href="/m/jev-spx.html" data-sym="spx">SPX</a></nav>') in sndk
-    assert ('<nav class="sw" aria-label="Symbol"><a href="/m/jev.html" data-sym="sndk">SNDK</a>'
-            '<span class="on" aria-current="page">SPX</span></nav>') in SPX
-    # drawn alike on both pages, and the tab bar untouched: three tabs, JEV lit, the others linked
-    for sel in (".sw", ".sw a,.sw span", ".sw a::after", ".sw .on"):
-        assert _rule(sel, sndk) == _rule(sel, SPX), sel
-    for html in (sndk, SPX):
+    assert re.findall(r"(?s)<script>(.*?)</script>", sndk) == ["location.replace('/m/' + location.search);"]
+    assert sndk.index("<script>") < sndk.index("<body>"), "the forward runs before anything paints"
+    assert "This page moved to" in sndk and 'href="/m/"' in sndk
+    assert "<style>" not in sndk and "fetch(" not in sndk and "jev-spx" not in sndk
+
+
+def test_the_two_tabs_are_forecast_and_reads_on_every_page_that_carries_them():
+    """Final-Home: two tabs, Forecast (the page at /m/) and Reads, the Now tab gone; each page lights its own and links
+    the other, both answer a press through press.js with the glance's own rules, and the label is the board's 11px.
+    The glance keeps its bar until phase 5, with its Forecast tab now pointing at /m/."""
+    for page, lit, link in (("jev-spx.html", "FORECAST", "/m/reads.html"), ("reads.html", "READS", "/m/")):
+        html = (M / page).read_text()
         nav = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', html).group(1)
-        assert re.findall(r'<a class="tab" href="([^"]+)"', nav) == ["/m/", "/m/reads.html"]
-        assert nav.count('<span class="tab on">') == 1 and "<s>FORECAST</s>" in nav
+        assert re.findall(r'<a class="tab" href="([^"]+)"', nav) == [link], page
+        assert nav.count('<span class="tab on" data-press>') == 1 and f"<s>{lit}</s>" in nav, page
+        assert "NOW" not in nav and 'href="/m/jev.html"' not in nav, page
+        assert re.search(r'<a class="tab" href="[^"]+" aria-label="\w+" data-press data-haptic>', nav), page
+        assert html.index('<script src="/m/press.js"></script>') > html.index("</nav>"), page
+        assert ".tab.is-pressed{" in html and ".tab.is-pressed::before{" in html, page
+        assert ".tab s{font:500 11px/1 var(--sans);letter-spacing:.1em;text-decoration:none}" in html, page
+    glance = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', (M / "index.html").read_text()).group(1)
+    assert re.findall(r'<a class="tab" href="([^"]+)"', glance) == ["/m/reads.html", "/m/"]
+    assert glance.count('<span class="tab on" data-press>') == 1 and "<s>NOW</s>" in glance
 
 
 def test_the_forecast_tab_is_drawn_alike_on_every_page():
-    """Will, 2026-10-09: the third tab is Forecast, its icon the price so far and a dashed cone of where it may go, in
-    place of JEV Beta and its scales; the same on every page that carries the bar, lit only on the two forecast pages."""
+    """Will, 2026-10-09: the Forecast tab's icon is the price so far and a dashed cone of where it may go, in place of
+    JEV Beta and its scales; the same on every page that carries the bar, lit only on the forecast page."""
     icon = re.compile(r'(?s)<svg[^>]*><path d="M3 17l3.5-3.5 3 2L13 12"/>.*?</svg>\s*<s>FORECAST</s>')
-    for page in ("index.html", "reads.html", "jev.html", "jev-spx.html"):
+    for page in ("index.html", "reads.html", "jev-spx.html"):
         html = (M / page).read_text()
         nav = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', html).group(1)
         assert len(icon.findall(nav)) == 1 and "BETA" not in nav and "M12 4v16" not in nav, page

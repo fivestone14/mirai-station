@@ -662,18 +662,21 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send_json({"error": f"{type(exc).__name__}: {exc}",
                                             "trace": traceback.format_exc()})
 
-            # The phone view (2026-08-23) — a second, far smaller page for a
-            # glance on the way somewhere, NOT the viewstation reflowed. It
-            # reads the same /api/sndk/payload the desktop tab does and adds
-            # no route of its own.
+            # The phone view (2026-08-23) — a second, far smaller set of pages
+            # for a glance on the way somewhere, NOT the viewstation reflowed.
+            # Since the redesign of 2026-10-10 the phone opens on the SPX
+            # forecast (jev-spx.html); the pages read the raw explorer and the
+            # existing data routes and add no route of their own.
             #
             # This line exists because _send_file needs a FILE: the static
             # fallback below resolves "/m" to a directory, misses is_file(),
             # and 404s. "/m" is what gets typed on a phone and what the
             # Android shell is configured with, so it has to be the address
-            # that works, not the one that nearly does.
-            if route in ("/m", "/m/", "/m/index.html"):
-                return self._send_file(STATIC / "m" / "index.html")
+            # that works, not the one that nearly does. "/m/index.html", the
+            # SNDK glance, is a file and still falls through to the static
+            # fallback by name.
+            if route in ("/m", "/m/"):
+                return self._send_file(STATIC / "m" / "jev-spx.html")
 
             # static assets
             rel = route.lstrip("/")
