@@ -31,6 +31,12 @@
   to one line, fetched until its 10:06 close-out lands, with each check's
   result as it is graded.
 
+  The price box opens the price-today sheet (2026-10-10): the day's SPX line by
+  the minute from state/spx_jev/bars/<day>.jsonl, which also draws the box's
+  sparkline, with today's options book from state/reversion/<day>.jsonl in the
+  chart's gutter and the day's graded calls from spx_jev/integral_grades.jsonl
+  under its clock, all through the same raw-file route.
+
   Times are the viewer's. Every time the SPX card carries is a full timestamp
   with its offset, so every time on this page is drawn in the phone's own zone
   through one formatter, viewerTime; the call clock and the expiry line name
@@ -121,16 +127,26 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 .card>.mode{width:fit-content;margin-bottom:12px}
 .answered{align-self:flex-start}
 .card>.answered{display:table;margin-top:12px}
-/* the live price: the SPX print on the station's quote, its change since the last close */
+/* the live price: the SPX print on the station's quote, its change since the last close, and since 2026-10-10 the day's
+   closes as a sparkline between them. The box is the control that opens the price-today sheet, a tap target of the
+   page's minimum, and the chevron on its label says so */
 /* the live price stays in view under the sticky header (Will, 2026-10-06); --hd-h is the header's measured height, and the
    band of page colour above the box hides the cards scrolling under it */
-.px{position:sticky;top:var(--hd-h,44px);z-index:5;display:flex;align-items:flex-end;gap:10px;padding:8px 14px;border-radius:14px;
-    background:var(--s);box-shadow:var(--sh1),0 -12px 0 0 var(--g),0 8px 0 0 var(--g)}
+.px{position:sticky;top:var(--hd-h,44px);z-index:5;display:flex;align-items:flex-end;gap:10px;width:100%;min-height:var(--tap-min);
+    padding:8px 14px;border:0;border-radius:14px;background:var(--s);box-shadow:var(--sh1),0 -12px 0 0 var(--g),0 8px 0 0 var(--g);
+    text-align:left;font:inherit;color:inherit;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .px[hidden]{display:none}
-.px-k{font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint)}
-.px-k i{display:inline-block;width:7px;height:7px;margin-right:6px;border-radius:50%;background:var(--o-up);vertical-align:1px}
+.px:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
+.px-k{display:flex;align-items:center;font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint);white-space:nowrap}
+.px-k i{display:inline-block;width:7px;height:7px;margin-right:6px;border-radius:50%;background:var(--o-up)}
 .px-k i[hidden]{display:none}
-.px-v{margin-top:3px;font:700 24px/1.1 var(--sans);color:var(--i);letter-spacing:-.01em}
+.px-k::after{content:"";flex:none;width:6px;height:6px;margin-left:8px;border-right:1.5px solid var(--i-mute);border-top:1.5px solid var(--i-mute);transform:rotate(45deg)}
+.px-v{margin-top:3px;font:700 24px/1.1 var(--sans);color:var(--i);letter-spacing:-.01em;white-space:nowrap}
+/* the sparkline gives way first when the row is short of room, and takes no room at all with no bars yet */
+.px-spark{flex:0 1 64px;min-width:32px;height:26px;margin-bottom:1px;overflow:visible}
+.px-spark:empty{display:none}
+.px-spark polyline{fill:none;stroke:var(--i-mute);stroke-width:1.4;stroke-linejoin:round;stroke-linecap:round}
+.px-spark circle{fill:var(--o-up)}
 .px-r{margin-left:auto;text-align:right}
 .px-c{font:700 13px/1.3 var(--sans);color:var(--i-body);white-space:nowrap}
 .px-c.dn{color:var(--o-dn)}
@@ -304,6 +320,51 @@ button.tile .tile-k::after,.inplay-h.tap::after{content:"";flex:none;margin-left
 .pt-r+.pt-r{border-top:1px solid var(--s2)}
 .pt-r .k{font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
 .pt-r+.foot{margin-top:12px}
+/* the price-today sheet (2026-10-10): the title row with the market day, the price line as the price box says it, the
+   drawing, its legend lines, the two tiles and the caption. Every text on the drawing is 11px, the page's floor, and
+   the drawing is laid out at the sheet's measured width (paintChart) so no width scales it under that */
+.ch-h{display:flex;align-items:center;gap:8px;margin-bottom:0}
+.ch-h .r{margin-left:auto;letter-spacing:.12em;color:var(--i-mute);white-space:nowrap}
+.ch-px{display:flex;align-items:baseline;gap:8px;margin-top:8px;white-space:nowrap}
+.ch-px i{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--o-up);align-self:center}
+.ch-px i[hidden]{display:none}
+.ch-px b{font:700 24px/1.1 var(--sans);letter-spacing:-.01em;color:var(--i)}
+.ch-px .k{margin-left:auto;font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint)}
+.chart{display:block;width:100%;height:auto;margin-top:10px;font-family:var(--sans)}
+.chart text{font-size:11px;fill:var(--i-mute)}
+.chart .t-head{font-weight:700;letter-spacing:.06em;fill:var(--i-faint)}
+.chart .t-head.puts{fill:var(--o-dn)} .chart .t-head.calls{fill:var(--o-up)}
+.chart .t-axis{font-weight:500;letter-spacing:.04em}
+.chart .t-lvl{font-weight:800;letter-spacing:.06em;fill:var(--i)}
+.chart .t-now{font-weight:700;fill:var(--i)}
+.chart .t-avg{font-weight:500}
+.chart .t-lead{font-weight:800;fill:var(--i)}
+.chart .halo{paint-order:stroke;stroke:var(--s);stroke-width:3px;stroke-linejoin:round}
+.chart .grid{stroke:var(--s2);stroke-width:1}
+.chart .avg{stroke:var(--rule-soft);stroke-width:1;stroke-dasharray:2 3}
+.chart .wall{stroke:var(--i);stroke-width:2}
+.chart .mag{stroke:var(--i);stroke-width:2.2;stroke-dasharray:6 3}
+.chart .pwall{stroke:var(--i);stroke-width:1.6;stroke-dasharray:3 3}
+/* the open call's band, the box the Reads strip draws, dashed here as every forecast on the page is */
+.chart .box{fill:var(--o-fl);fill-opacity:.45;stroke:var(--i);stroke-width:1;stroke-dasharray:3 2}
+.chart .at{stroke:var(--i);stroke-width:2}
+.chart .casing{fill:none;stroke:var(--s);stroke-width:3.5;stroke-linejoin:round;stroke-linecap:round}
+.chart .path{fill:none;stroke:var(--i);stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round}
+.chart .mark{fill:var(--i)}
+.chart .now{stroke:var(--i);stroke-width:1.2;stroke-dasharray:3 3}
+.chart .dot{fill:var(--o-up);stroke:var(--s);stroke-width:1.5}
+.chart .axis{stroke:var(--rule-soft);stroke-width:1}
+.chart .put{fill:var(--o-dn)} .chart .call{fill:var(--o-up)}
+.chart .put.lead,.chart .call.lead{stroke:var(--i);stroke-width:1}
+.chart .sq{fill:var(--fill)}
+.chart .sq.wrong{fill:none;stroke:var(--rule-soft);stroke-width:1.2}
+.chart .sq.open{fill:none;stroke:var(--o-up);stroke-width:1.2;stroke-dasharray:2 1.5}
+.ch-key{display:flex;flex-direction:column;gap:2px;margin-top:8px;font:400 11.5px/1.35 var(--sans);color:var(--i-mute)}
+.ch-key b{font-weight:600;color:var(--i)}
+.ch-tiles{margin-top:12px}
+.ch-tiles .tile-v{margin-bottom:0;white-space:nowrap}
+.tile-s{margin-top:3px;font:400 11.5px/1.2 var(--sans);color:var(--i-mute);white-space:nowrap}
+#chartSheet .tag{margin-top:10px}
 /* before the open: the pre-market card's label row, its call in words, the story so far as chips in each
    read's lean, and its facts as the situation's rows with the builder's sentence under each */
 .pre>.lab{margin-bottom:12px}
@@ -497,10 +558,11 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   </div>
 </header>
 <div class="load" id="load"><i></i>Reading the card</div>
-<div class="px" id="px" hidden>
+<button class="px" id="px" type="button" aria-controls="chartSheet" hidden>
   <div><div class="px-k"><i id="pxLive" hidden></i><span id="pxK">SPX</span></div><div class="px-v" id="pxV"></div></div>
+  <svg class="px-spark" id="pxSpark" viewBox="0 0 64 26" aria-hidden="true"></svg>
   <div class="px-r"><div class="px-c" id="pxC"></div><div class="px-s" id="pxS"></div></div>
-</div>
+</button>
 <div class="od" id="od" role="status" hidden></div>
 <div id="state"></div>
 <main id="main" style="display:flex;flex-direction:column;gap:12px"></main>
@@ -561,6 +623,15 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   <div class="pt-r"><span class="k">5-min call</span><span>The opening hour&rsquo;s call, made every 5 minutes on the average price over the next 10. Last 5 min = how far price moved since the previous read, and whether that was quiet, normal or busy for the time of day.</span></div>
   <div class="pt-r"><span class="k">Calls in play</span><span>Tap a call bar for its result.</span></div>
   <p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are shadow questions, asked and logged, never graded and never weighted. A call is a forecast, not a trade signal, graded on the average price over its window: where each minute closed against the price at the read, averaged, in index points, and set against a flat band (the &plusmn; figure) narrower than an end price would get, because an average swings less than any one price. Its direction decides right or wrong; its size at the end price, where price stood highest and lowest (&ldquo;min 3&rdquo; is the window&rsquo;s third minute) and any sharp move are said beside it, and an unsure call is passed, never counted as a miss. For now each call also shows the old grade, on the end price alone, and a call the average could not grade stands on that, said so. The call is JEV&rsquo;s answer to that question itself: where the average will sit, up, flat or down within the &plusmn; figure, with no unsure; the old question on the end price is still asked and graded beside it, and shown muted as &ldquo;End price&rdquo;. Through the first hour the opening lane reads every 5 minutes and its call, on the average price over the next 10 minutes, leads the page until its last call closes; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: the calls in play show that on one clock. Before the open, the pre-market lane reads S&amp;P futures, 10-year bond futures, bitcoin futures and the morning&rsquo;s reports through the night and makes one call about the first half hour: the average price over the 30 minutes after the first settled price, four minutes after the open. It is a forecast too, graded by the bars. Every time here is in this phone's own time zone.</p>
+  <button class="sh-close" type="button" data-sheet-close>Close</button>
+</div>
+<!-- the price-today sheet (2026-10-10), opened by the price box: the day's SPX line by the minute with the options book
+     in its gutter; its body is drawn by paintChart from the day's bars, the book and the day's graded calls -->
+<div class="sheet" id="chartSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="chTitle">
+  <div class="sh-grab"></div>
+  <div class="sh-h ch-h"><span id="chTitle">Price today &middot; SPX</span><span class="r" id="chDay"></span></div>
+  <div class="ch-px"><i id="chLive" hidden></i><b id="chV"></b><span class="px-c" id="chC"></span><span class="k" id="chK"></span></div>
+  <div id="chBody"></div>
   <button class="sh-close" type="button" data-sheet-close>Close</button>
 </div>
 <div class="sheet" id="claudeSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="claudeTitle">
@@ -1218,6 +1289,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   function arrived(c){
     var same = last && last.generated_at === c.generated_at && last.row_ts === c.row_ts;
     last = c;
+    if(cardDay() !== barsDay) pollBars();         // the card names the day whose bars the price box and the chart draw
     if(same && lastOk && !$('sub').classList.contains('err')){ ages(c); tick(); return; }
     draw(c, true);
     if(same) return;
@@ -2151,27 +2223,36 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // session and while the quote is younger than SPOT_LIVE_MS; its change is measured from the card's prior_close, the last
   // minute bar of the session before, and said only on today's card. A failed or empty quote keeps the last price,
   // said to be as of when it came, never dressed up as live; with no price yet the strip stays hidden. A card that
-  // lands after the quote draws the strip again (draw), so its change never waits for the next quote.
+  // lands after the quote draws the strip again (draw), so its change never waits for the next quote. The same
+  // words go on the price-today sheet's own price line, and while that sheet is open each quote moves its dot.
   var SPOT_URL = '/api/spot?ticker=SPX', SPOT_MS = 5000, SESSION_HOURS = ['09:30', '16:00'];
   var SPOT_LIVE_MS = 15000;                     // a quote older than this is never drawn live
   var spot = null, spotInflight = 0;
   function money(x){ return (+x).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
-  function todaysCard(){ return !!(last && String(last.row_ts || '').slice(0, 10) === marketDay()); }
+  // the card's market day: its stamp's own date, written in New York's offset
+  function cardDay(){ return last ? String(last.row_ts || '').slice(0, 10) : null; }
+  function todaysCard(){ return !!last && cardDay() === marketDay(); }
   function paintPx(){
     nowBars = nowBars.filter(function(b){ return b.track.isConnected !== false; });   // a redrawn card's old bars drop out
     nowBars.forEach(placeNow);
     var box = $('px'); if(!box || !spot) return;
     var open = todaysCard() && within(SESSION_HOURS), live = open && spot.fresh && Date.now() - spot.at < SPOT_LIVE_MS;
-    box.hidden = false; $('pxLive').hidden = !live;
-    $('pxK').textContent = live ? 'SPX live' : open ? 'SPX \u00B7 ' + viewerTime(spot.at) : 'SPX \u00B7 last close';
-    $('pxV').textContent = money(spot.price);
-    var pc = last && last.prior_close, cEl = $('pxC'), sEl = $('pxS');
+    var state = live ? 'live' : open ? viewerTime(spot.at) : 'last close';
+    box.hidden = false; $('pxLive').hidden = !live; $('chLive').hidden = !live;
+    $('pxK').textContent = 'SPX ' + (live ? state : '\u00B7 ' + state);
+    $('chK').textContent = state;
+    $('pxV').textContent = money(spot.price); $('chV').textContent = money(spot.price);
+    var pc = last && last.prior_close, cEl = $('pxC'), sEl = $('pxS'), said = '';
     if(pc && pc.price > 0 && todaysCard() && pc.day < marketDay()){
       var d = spot.price - pc.price, r = d / pc.price * 100;
       cEl.textContent = (d < 0 ? '\u2212' : '+') + money(Math.abs(d)) + ' (' + (r < 0 ? '\u2212' : '+') + Math.abs(r).toFixed(2) + '%)';
       cEl.className = 'px-c' + (d < 0 ? ' dn' : d > 0 ? ' up' : '');
       sEl.textContent = 'since the last close';
-    } else { cEl.textContent = ''; sEl.textContent = ''; }
+      said = d === 0 ? ', unchanged today' : (d < 0 ? ', down ' : ', up ') + money(Math.abs(d)) + ' today';
+    } else { cEl.textContent = ''; cEl.className = 'px-c'; sEl.textContent = ''; }
+    $('chC').textContent = cEl.textContent; $('chC').className = cEl.className;
+    box.setAttribute('aria-label', $('pxK').textContent + ' ' + money(spot.price) + said + '. Open the price chart');
+    if(chartOpen()) paintChart();
   }
   function pollSpot(){
     if(spotInflight && Date.now() - spotInflight < SPOT_LIVE_MS) return;   // one at a time, a hung one given up on
@@ -2183,6 +2264,332 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     }).catch(function(){ if(spot) spot.fresh = false; paintPx(); }).finally(function(){ spotInflight = 0; });
   }
   setInterval(function(){ if(!document.hidden && todaysCard() && within(SESSION_HOURS)) pollSpot(); }, SPOT_MS);
+
+  // ---- the price-today chart (2026-10-10, Will's board Final-Chart): a tap on the price box opens the day's SPX line
+  // by the minute, with today's options book drawn into the chart's right gutter. Three files, all through the raw-file
+  // route. The day's one-minute bars (state/spx_jev/bars/<day>.jsonl, the SPX service's bars job) also draw the
+  // sparkline in the price box, so they are fetched once a card names the day and then at most every BARS_MS through
+  // BARS_HOURS, the session and the minutes after it in which the close's last bar lands. The options book
+  // (state/reversion/<day>.jsonl, the station's reversion pass) is some 10 MB that the server reads whole on every
+  // call, so it is fetched only while the sheet is open and at most every BOOK_MS, and the day's graded calls
+  // (integral_grades.jsonl, as the reads page reads it) on the same terms. The day is the
+  // card's market day: after the close and before the next day's card the chart is the last session's, as the card
+  // is. The live dot is the page's own quote (spot), never a second poll.
+  var BARS_URL = '/api/raw/file?root=state&path=spx_jev/bars/', BARS_MS = 60000, BARS_HOURS = ['09:30', '16:05'];
+  var BOOK_URL = '/api/raw/file?root=state&path=reversion/', BOOK_MS = 60000;
+  var GRADES_URL = '/api/raw/file?root=state&path=spx_jev/integral_grades.jsonl&limit=400';
+  var bars = null, barsDay = null, barsAt = 0, barsInflight = false;
+  var book = null, bookDay = null, bookAt = 0, bookInflight = false;
+  var grades = null, gradesAt = 0, gradesInflight = false;
+  function chartOpen(){ return $('chartSheet').getAttribute('aria-hidden') === 'false'; }
+  // a jsonl file's rows as the route wraps them ({kind, rows}), null for anything else
+  function rawRows(url){
+    return fetch(url, {cache:'no-store'}).then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){ return j && j.kind === 'jsonl' && Array.isArray(j.rows) ? j.rows : null; });
+  }
+  // a new day drops the last day's bars before its own are asked for, so a failed fetch leaves no sparkline rather
+  // than yesterday's line under today's price; the throttle counts from the asking, so a failed fetch waits its turn too
+  function pollBars(){
+    var day = cardDay(); if(!day || barsInflight) return;
+    if(day !== barsDay){ bars = null; barsDay = day; barsAt = 0; paintSpark(); }
+    if(Date.now() - barsAt < BARS_MS) return;
+    barsInflight = true; barsAt = Date.now();
+    rawRows(BARS_URL + day + '.jsonl&limit=420').then(function(rows){ if(rows){ bars = rows; paintSpark(); if(chartOpen()) paintChart(); } })
+      .catch(function(){}).finally(function(){ barsInflight = false; });
+  }
+  function pollBook(){
+    var day = cardDay(); if(!day || !chartOpen() || bookInflight) return;
+    if(day !== bookDay){ book = null; bookDay = day; bookAt = 0; }
+    if(Date.now() - bookAt < BOOK_MS) return;
+    bookInflight = true; bookAt = Date.now();
+    rawRows(BOOK_URL + day + '.jsonl&limit=3').then(function(rows){ if(rows){ book = bookRow(rows); paintChart(); } })
+      .catch(function(){}).finally(function(){ bookInflight = false; });
+  }
+  function pollGrades(){
+    if(!chartOpen() || gradesInflight || Date.now() - gradesAt < BOOK_MS) return;
+    gradesInflight = true; gradesAt = Date.now();
+    rawRows(GRADES_URL).then(function(rows){ if(rows){ grades = rows; paintChart(); } })
+      .catch(function(){}).finally(function(){ gradesInflight = false; });
+  }
+  setInterval(function(){ if(!document.hidden && todaysCard() && within(BARS_HOURS)) pollBars(); }, BARS_MS);
+  setInterval(function(){ if(!document.hidden && chartOpen()){ pollBook(); pollGrades(); } }, BOOK_MS);
+  // the row the book is drawn from: the newest of the file's last rows whose book is SPX's own (gex_source native). A
+  // row the station could not parse and one built from SPY's book (gex_source spy_proxy...) are passed over, and
+  // with none native the chart draws no book and says so
+  function bookRow(rows){
+    for(var i = rows.length - 1; i >= 0; i--){ var r = rows[i]; if(r && r.gex_source === 'native' && r.gex_views) return r; }
+    return null;
+  }
+  // the day's graded 30-minute calls, earliest first, as the reads page lists them (its callDays): horizon next_30,
+  // a read graded twice keeping its last row
+  function dayCalls(rows, day){
+    var byRead = {};
+    (rows || []).forEach(function(r){ if(r && r.horizon === 'next_30' && r.graded && String(r.row_ts || '').slice(0, 10) === day) byRead[r.row_ts] = r; });
+    return Object.keys(byRead).sort().map(function(ts){ return {read: startOf(ts), right: byRead[ts].verdict === 'right'}; });
+  }
+  // the card's open 30-minute call, for the shaded window: its read, its mark, the price it was called at and its flat
+  // edge (what calledAt draws); null once the mark has passed, or on a read with no average-price call
+  function liveCall(c, now){
+    var a = c && callSum(c.hour), m = c && c.marks && c.marks.next_30;
+    if(!(a && a !== c.hour && typeof a.price === 'number' && typeof a.edge_points === 'number' && m && now < Date.parse(m))) return null;
+    return {read: startOf(c.row_ts), mark: Date.parse(m), price: a.price, edge: a.edge_points};
+  }
+  // the day off its bars (the glance's barPoints, with each bar's high and low): the points in time order, the lowest
+  // low and the highest high with their bars, the average close and the newest bar
+  function dayFacts(rows){
+    var pts = (rows || []).filter(function(b){ return b && typeof b.close === 'number' && !isNaN(Date.parse(b.ts)); })
+      .map(function(b){ return {t: Date.parse(b.ts), c: b.close, h: typeof b.high === 'number' ? b.high : b.close, l: typeof b.low === 'number' ? b.low : b.close}; })
+      .sort(function(a, b){ return a.t - b.t; });
+    if(!pts.length) return null;
+    var low = pts[0], high = pts[0], sum = 0;
+    pts.forEach(function(p){ sum += p.c; if(p.l < low.l) low = p; if(p.h > high.h) high = p; });
+    return {pts: pts, low: low, high: high, avg: sum / pts.length, newest: pts[pts.length - 1]};
+  }
+  // the sparkline in the price box: the day's closes across its width, the newest as the dot; nothing with under two
+  function paintSpark(){
+    var svg = $('pxSpark'), d = dayFacts(bars); svg.textContent = '';
+    if(!d || d.pts.length < 2) return;
+    var lo = Math.min.apply(null, d.pts.map(function(p){ return p.c; })), hi = Math.max.apply(null, d.pts.map(function(p){ return p.c; }));
+    var x = function(i){ return 1 + i / (d.pts.length - 1) * 62; }, y = function(c){ return hi > lo ? 2 + (hi - c) / (hi - lo) * 22 : 13; };
+    svg.appendChild(svgEl('polyline', {points: d.pts.map(function(p, i){ return x(i).toFixed(1) + ',' + y(p.c).toFixed(1); }).join(' ')}));
+    svg.appendChild(svgEl('circle', {cx: 63, cy: y(d.newest.c).toFixed(1), r: 2.2}));
+  }
+  // The chart's window: the strikes it rules, from the day's low to its high with the walls, the magnet and the open
+  // call's band inside, on the book's strike pitch (5 points on SPX). A strike just past that with at least
+  // WINDOW_SHARE of the busiest side's trading is taken in too, since that is where a wall stands (10-09's book gives
+  // the board's 7,775 to 7,830), up to WINDOW_MAX strikes so the rows stay readable; a quiet day is held to
+  // WINDOW_MIN so the line is not drawn tall over a few points.
+  var WINDOW_SHARE = 0.3, WINDOW_MIN = 6, WINDOW_MAX = 14;
+  function strikePitch(by){
+    var v = by.map(function(s){ return s[0]; }).sort(function(a, b){ return a - b; }), p = Infinity;
+    for(var i = 1; i < v.length; i++) if(v[i] > v[i - 1]) p = Math.min(p, v[i] - v[i - 1]);
+    return isFinite(p) ? p : 5;
+  }
+  function chartWindow(d, book, call){
+    var gv = (book && book.gex_views) || {}, by = gv.vol_side_by_strike || [], step = by.length > 1 ? strikePitch(by) : 5;
+    var vals = [d.low.l, d.high.h];
+    [gv.call_wall_gamma, gv.put_wall_gamma, gv.magnet].forEach(function(v){ if(typeof v === 'number' && isFinite(v)) vals.push(v); });
+    if(call) vals.push(call.price - call.edge, call.price + call.edge);
+    var lo = Math.floor(Math.min.apply(null, vals) / step) * step, hi = Math.ceil(Math.max.apply(null, vals) / step) * step;
+    if(hi === lo) hi += step;
+    var side = {}; by.forEach(function(s){ side[s[0]] = Math.max(s[1] || 0, s[2] || 0); });
+    function n(){ return Math.round((hi - lo) / step) + 1; }
+    function most(){ var m = 0; for(var v = lo; v <= hi; v += step) m = Math.max(m, side[v] || 0); return m; }
+    while(n() < WINDOW_MAX){
+      var up = side[hi + step] || 0, down = side[lo - step] || 0, m = WINDOW_SHARE * most();
+      if(m > 0 && (up >= m || down >= m)){ if(up >= down) hi += step; else lo -= step; }
+      else if(n() < WINDOW_MIN){ if(n() % 2) hi += step; else lo -= step; }
+      else break;
+    }
+    return {lo: lo, hi: hi, step: step};
+  }
+  // the gutter's bars: each strike in the window with the calls and puts traded there today, the busiest strike (both
+  // sides together) marked, and the longest single side, the one scale both sides are drawn to (the glance's tradedBars)
+  function strikeBars(book, w){
+    var by = (book && book.gex_views && book.gex_views.vol_side_by_strike) || [], out = [], most = 0, lead = null;
+    by.forEach(function(s){
+      var v = s[0], c = s[1], p = s[2];
+      if(!(v >= w.lo && v <= w.hi) || typeof c !== 'number' || typeof p !== 'number') return;
+      var b = {v: v, calls: c, puts: p}; out.push(b);
+      most = Math.max(most, c, p);
+      if(!lead || c + p > lead.calls + lead.puts) lead = b;
+    });
+    if(lead) lead.busiest = true;
+    return {bars: out, most: most, lead: lead};
+  }
+  function kShort(n){ return n >= 1000 ? Math.round(n / 1000) + 'k' : String(n); }
+  // the drawing's rows, the board's: the headers' baseline, the top and bottom strikes, the clock's axis and its feet,
+  // the calls' squares; and its gutter, a side's longest bar, the gap at the zero, the strike column
+  var CH_H = 248, CH_TOP = 20, CH_BOT = 200, CH_AXIS = 212, CH_FOOT = 226, CH_SQ = 236;
+  var CH_SIDE = 39, CH_GAP = 1, CH_LAB = 42, CH_COL = 76, CH_CAP = 9;
+  // The drawing's words are placed by their width, so a word drawn is whole and a word that fits is drawn: each
+  // letter's advance at 11px in the shipped face, measured in Chrome (2026-10-10) for the three faces the drawing
+  // uses, the regular labels, the feet and the day's average at 500 (the glance's axisW table, with the letters
+  // those add), and the level names at 800; a letter not listed is charged a whole em, so a guess can only be wide.
+  // A tabular figure is 6.6 at every weight. Tracking is the word's own: .04em on the feet, .06em on the names.
+  var CH_ADV_400 = {'0': 6.6, '1': 6.6, '2': 6.6, '3': 6.6, '4': 6.6, '5': 6.6, '6': 6.6, '7': 6.6, '8': 6.6, '9': 6.6, ',': 2.97, '.': 3.15, ':': 3.15, '-': 5.48, ' ': 1.87, '·': 3.15, a: 6.29, b: 7.34, c: 6.6, d: 7.34, e: 6.77, f: 4.22, g: 7.28, h: 6.3, i: 2.52, k: 6.03, l: 2.52, m: 9.99, n: 6.3, o: 7.21, p: 7.34, r: 3.72, s: 5.6, t: 4.27, u: 6.3, v: 5.69, w: 8.77, x: 5.36, y: 5.9};
+  var CH_ADV_500 = {'0': 6.6, '1': 6.6, '2': 6.6, '3': 6.6, '4': 6.6, '5': 6.6, '6': 6.6, '7': 6.6, '8': 6.6, '9': 6.6, ',': 3.29, '.': 3.48, ':': 3.48, ' ': 1.9, A: 7.39, C: 8.57, D: 8.15, E: 6.67, F: 6.41, H: 8.09, I: 2.9, L: 5.89, M: 9.4, N: 8.11, O: 9.66, P: 7.09, R: 7.12, S: 7.11, T: 5.74, a: 6.32, d: 7.35, g: 7.24, v: 5.87, y: 6.08};
+  var CH_ADV_800 = {' ': 1.98, '·': 4.49, A: 8.05, B: 7.59, C: 8.49, D: 8.13, E: 6.48, F: 6.46, G: 8.85, H: 8.05, I: 3.16, K: 7.56, L: 6.02, M: 10.03, N: 8.16, O: 9.66, P: 7.14, R: 7.34, S: 7.12, T: 6.07, U: 7.96, W: 11.35};
+  var CH_ADV = {400: CH_ADV_400, 500: CH_ADV_500, 800: CH_ADV_800}, CH_EM = 11;
+  function chWidth(text, weight, track){
+    var adv = CH_ADV[weight], t = String(text), w = 0;
+    for(var i = 0; i < t.length; i++) w += adv[t.charAt(i)] != null ? adv[t.charAt(i)] : CH_EM;
+    return w + Math.max(0, t.length - 1) * (track || 0);
+  }
+  // Every word on the plot keeps off the price line and off the words placed before it: a word's box is its span
+  // across and the row from its cap height to its baseline, and a spot is clear when no point of the line and no
+  // earlier word falls in it. wordSpot tries each baseline asked for at the plot's ends and middle in the order
+  // given, takes the first clear spot, or failing every one the first asked for, and records it in ``placed``.
+  function wordClear(x0, x1, base, pts, placed){
+    return !pts.some(function(p){ return p.x >= x0 - 2 && p.x <= x1 + 2 && p.y >= base - CH_CAP - 2 && p.y <= base + 3; })
+        && !placed.some(function(b){ return b.x1 >= x0 - 4 && b.x0 <= x1 + 4 && Math.abs(b.base - base) < 11; });
+  }
+  function wordSpot(words, weight, track, bases, order, pts, placed, pw){
+    var w = chWidth(words, weight, track), xs = {start: 2, middle: pw / 2, end: pw - 2}, pick = null;
+    var spans = {start: [2, 2 + w], middle: [(pw - w) / 2, (pw + w) / 2], end: [pw - 2 - w, pw - 2]};
+    bases.forEach(function(base){ order.forEach(function(a){ if(!pick && wordClear(spans[a][0], spans[a][1], base, pts, placed)) pick = {a: a, base: base}; }); });
+    if(!pick) pick = {a: order[0], base: bases[0]};
+    placed.push({x0: spans[pick.a][0], x1: spans[pick.a][1], base: pick.base});
+    return {x: xs[pick.a], a: pick.a, base: pick.base};
+  }
+  // the drawing at width W: the day's closes as the line from the open to the newest bar, its low and high marked, the
+  // day's average dashed, the walls and the magnet ruled across it with their names, the open call's band as a dashed
+  // box with the called price through it, the now-line at the newest bar with its time, the dot at ``price`` (the
+  // quote on the day's own card) or the newest close; the gutter's strike column with the puts left and the calls
+  // right of one zero; and the day's calls as squares under the clock
+  function chartSvg(W, c, d, book, calls, call, price, w, sb, inSession){
+    var gv = (book && book.gex_views) || {};
+    var ZERO = W - CH_SIDE - CH_GAP, PW = ZERO - CH_COL, LAB = ZERO - CH_LAB;
+    var s = c.session || {}, close = s.close ? Date.parse(s.close) : marketAt(c.row_ts, '16:00'), open = marketAt(s.close || c.row_ts, '09:30');
+    var x = function(t){ return Math.max(0, Math.min(PW, (t - open) / (close - open) * PW)); };
+    var y = function(v){ return CH_TOP + (w.hi - v) / (w.hi - w.lo) * (CH_BOT - CH_TOP); };
+    var pts = d.pts.map(function(p){ return {x: x(p.t), y: y(p.c)}; });
+    var highWord = inSession ? 'high so far' : 'high';
+    var dotPrice = price != null ? price : d.newest.c, nx = x(d.newest.t);
+    var right = calls.filter(function(k){ return k.right; }).length;
+    var levels = [[gv.call_wall_gamma, 'wall', 'CALL WALL · TODAY'], [gv.magnet, 'mag', 'MAGNET'], [gv.put_wall_gamma, 'pwall', 'PUT WALL']]
+      .filter(function(l){ return book && typeof l[0] === 'number' && isFinite(l[0]); });
+    var svg = svgEl('svg', {viewBox: '0 0 ' + W + ' ' + CH_H, 'class': 'chart', role: 'img',
+                            'aria-label': 'SPX today by the minute from the ' + viewerTime(open) + ' open to ' + viewerTime(d.newest.t) + ', low ' + money(d.low.l) + ' at ' + viewerTime(d.low.t)
+                              + ', ' + highWord + ' ' + money(d.high.h) + ' at ' + viewerTime(d.high.t) + ', now ' + money(dotPrice)
+                              + (book ? '; ' + levels.map(function(l){ return 'the ' + l[2].toLowerCase().replace(' · today', '') + ' at ' + indexLevel(l[0]); }).join(', ')
+                                        + ' drawn as lines into today’s options traded at each strike, puts left, calls right' + (sb.lead ? ', busiest ' + indexLevel(sb.lead.v) : '')
+                                      : '; no options book')
+                              + (call ? '; the open ' + viewerTime(call.read) + ' call drawn as a dashed box, flat within ' + call.edge.toFixed(1) + ' points to ' + viewerTime(call.mark) : '')
+                              + '; the day’s 30-minute calls as squares under the clock, ' + (calls.length ? right + ' of ' + calls.length + ' right' : 'none graded yet') + (call ? ', one open' : '')});
+    svg.appendChild(svgEl('text', {x: LAB, y: 10, 'text-anchor': 'end', 'class': 't-head'}, 'STRIKE'));
+    svg.appendChild(svgEl('text', {x: ZERO - 3, y: 10, 'text-anchor': 'end', 'class': 't-head puts'}, 'PUTS'));
+    svg.appendChild(svgEl('text', {x: W, y: 10, 'text-anchor': 'end', 'class': 't-head calls'}, 'CALLS'));
+    // the rows: a light rule at every round ten the levels leave, the strike column's prices, the busiest in bold
+    // a price every strike while they sit a label's height apart, every second, third... as the window widens; the
+    // busiest strike is always priced, and a regular price that would land within a label's height of it is left out
+    var ruled = levels.map(function(l){ return l[0]; }), pitch = (CH_BOT - CH_TOP) / Math.max(1, (w.hi - w.lo) / w.step), every = Math.max(1, Math.ceil(12 / pitch));
+    var leadV = sb.lead ? sb.lead.v : null;
+    for(var v = w.lo, i = 0; v <= w.hi; v += w.step, i++){
+      if(v % 10 === 0 && ruled.indexOf(v) < 0) svg.appendChild(svgEl('line', {x1: 0, y1: y(v).toFixed(1), x2: PW, y2: y(v).toFixed(1), 'class': 'grid'}));
+      var lead = leadV === v, nearLead = leadV != null && !lead && Math.abs(y(v) - y(leadV)) < 12;
+      if(lead || (i % every === 0 && !nearLead)) svg.appendChild(svgEl('text', {x: LAB, y: (y(v) + 4).toFixed(1), 'text-anchor': 'end', 'class': lead ? 't-lead halo' : null}, indexLevel(v)));
+    }
+    var ay = y(d.avg), avgWords = 'day avg ' + indexLevel(d.avg), placed = [];
+    svg.appendChild(svgEl('line', {x1: 0, y1: ay.toFixed(1), x2: PW, y2: ay.toFixed(1), 'class': 'avg'}));
+    // the levels: one line per price, the call wall solid and the others dashed; each name above its line from the
+    // left, a second name on a shared line under it, wherever its row is clear
+    var drawn = [];
+    levels.forEach(function(l){
+      var ly = y(l[0]), shared = drawn.indexOf(l[0]) >= 0;
+      if(!shared){ drawn.push(l[0]); svg.appendChild(svgEl('line', {x1: 0, y1: ly.toFixed(1), x2: PW, y2: ly.toFixed(1), 'class': l[1]})); }
+      var at = wordSpot(l[2], 800, 0.66, shared ? [ly + 12.5, ly - 4] : [ly - 4, ly + 12.5], ['start', 'middle', 'end'], pts, placed, PW);
+      svg.appendChild(svgEl('text', {x: at.x.toFixed(1), y: at.base.toFixed(1), 'text-anchor': at.a, 'class': 't-lvl halo'}, l[2]));
+    });
+    if(call){
+      var bx = x(call.read), bw = Math.max(1, x(call.mark) - bx), by = y(call.price + call.edge);
+      svg.appendChild(svgEl('rect', {x: bx.toFixed(1), y: by.toFixed(1), width: bw.toFixed(1), height: (y(call.price - call.edge) - by).toFixed(1), 'class': 'box'}));
+      svg.appendChild(svgEl('line', {x1: bx.toFixed(1), y1: y(call.price).toFixed(1), x2: (bx + bw).toFixed(1), y2: y(call.price).toFixed(1), 'class': 'at'}));
+    }
+    var line = pts.map(function(p){ return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ');
+    svg.appendChild(svgEl('polyline', {points: line, 'class': 'casing'}));
+    svg.appendChild(svgEl('polyline', {points: line, 'class': 'path'}));
+    // the low under its dot and the high over its dot, each on the side of the dot with room for its words: the low
+    // goes over its dot when the row under it is taken or past the axis, the high up a row at a time off the names;
+    // then the day's average, from the right end, where its row is clear of all of them
+    var lx = x(d.low.t), ly2 = y(d.low.l), hx = x(d.high.t), hy = y(d.high.h);
+    var lowWords = 'low ' + money(d.low.l) + ' · ' + viewerTime(d.low.t), highWords = highWord + ' ' + money(d.high.h) + ' · ' + viewerTime(d.high.t);
+    svg.appendChild(svgEl('circle', {cx: lx.toFixed(1), cy: ly2.toFixed(1), r: 2, 'class': 'mark'}));
+    var lw = chWidth(lowWords, 400), lowRight = lx + 5 + lw <= PW, lx0 = lowRight ? lx + 4.6 : lx - 4.6 - lw;
+    var lowY = ly2 + 13 <= CH_AXIS - 4 && wordClear(lx0, lx0 + lw, ly2 + 13, pts, placed) ? ly2 + 13 : ly2 - 6;
+    placed.push({x0: lx0, x1: lx0 + lw, base: lowY});
+    svg.appendChild(svgEl('text', {x: (lowRight ? lx + 4.6 : lx - 4.6).toFixed(1), y: lowY.toFixed(1), 'text-anchor': lowRight ? 'start' : 'end', 'class': 'halo'}, lowWords));
+    svg.appendChild(svgEl('circle', {cx: hx.toFixed(1), cy: hy.toFixed(1), r: 2, 'class': 'mark'}));
+    var hw = chWidth(highWords, 400), highLeft = hx - 5 - hw >= 0, hx0 = highLeft ? hx - 5.4 - hw : hx + 5.4, highY = hy - 9;
+    while(highY - 12 > CH_TOP && !wordClear(hx0, hx0 + hw, highY, pts, placed)) highY -= 12;
+    highY = Math.max(CH_TOP + 2, highY);
+    placed.push({x0: hx0, x1: hx0 + hw, base: highY});
+    svg.appendChild(svgEl('text', {x: (highLeft ? hx - 5.4 : hx + 5.4).toFixed(1), y: highY.toFixed(1), 'text-anchor': highLeft ? 'end' : 'start', 'class': 'halo'}, highWords));
+    svg.appendChild(svgEl('line', {x1: nx.toFixed(1), y1: 14, x2: nx.toFixed(1), y2: CH_AXIS - 4, 'class': 'now'}));
+    var avgAt = wordSpot(avgWords, 500, 0, [ay - 3.5, ay + 12.5], ['end', 'middle', 'start'], pts, placed, PW);
+    svg.appendChild(svgEl('text', {x: avgAt.x.toFixed(1), y: avgAt.base.toFixed(1), 'text-anchor': avgAt.a, 'class': 't-avg halo'}, avgWords));
+    // the time over the now-line, kept whole inside the plot and clear of the STRIKE header, which overhangs the plot's edge
+    var nowWords = viewerTime(d.newest.t), half = chWidth(nowWords, 500) / 2;
+    svg.appendChild(svgEl('text', {x: Math.max(half + 2, Math.min(LAB - chWidth('STRIKE', 800, 0.66) - 4 - half, nx)).toFixed(1), y: 10, 'text-anchor': 'middle', 'class': 't-now'}, nowWords));
+    svg.appendChild(svgEl('circle', {cx: nx.toFixed(1), cy: y(dotPrice).toFixed(1), r: 4.2, 'class': 'dot'}));
+    svg.appendChild(svgEl('line', {x1: 0, y1: CH_AXIS, x2: PW, y2: CH_AXIS, 'class': 'axis'}));
+    // the close foot names the zone only where both feet fit the plot: on a 320px phone the plot is 164px and
+    // "OPEN 06:30" with "CLOSE 13:00 PDT" is 167, and in Tokyo the zone's name is longer
+    var openFoot = 'OPEN ' + viewerTime(open), closeFoot = 'CLOSE ' + viewerTime(close, {zone: true});
+    if(chWidth(openFoot, 500, 0.44) + chWidth(closeFoot, 500, 0.44) + 8 > PW) closeFoot = 'CLOSE ' + viewerTime(close);
+    svg.appendChild(svgEl('text', {x: 0, y: CH_FOOT, 'text-anchor': 'start', 'class': 't-axis'}, openFoot));
+    svg.appendChild(svgEl('text', {x: PW, y: CH_FOOT, 'text-anchor': 'end', 'class': 't-axis'}, closeFoot));
+    // the gutter: the zero, and at each strike its puts to the left and calls to the right on one scale, the busiest
+    // strike's bars outlined, the scale's ends and zero under them
+    svg.appendChild(svgEl('line', {x1: ZERO, y1: 14, x2: ZERO, y2: CH_AXIS, 'class': 'axis'}));
+    var bh = Math.min(9, 0.6 * pitch), k = sb.most > 0 ? CH_SIDE / sb.most : 0;
+    sb.bars.forEach(function(b){
+      var top = (y(b.v) - bh / 2).toFixed(1), lead = b.busiest ? ' lead' : '';
+      if(b.puts * k >= 0.5) svg.appendChild(svgEl('rect', {x: (ZERO - CH_GAP - b.puts * k).toFixed(1), y: top, width: (b.puts * k).toFixed(1), height: bh.toFixed(1), rx: 1.5, 'class': 'put' + lead}));
+      if(b.calls * k >= 0.5) svg.appendChild(svgEl('rect', {x: ZERO + CH_GAP, y: top, width: (b.calls * k).toFixed(1), height: bh.toFixed(1), rx: 1.5, 'class': 'call' + lead}));
+    });
+    if(sb.most > 0){
+      svg.appendChild(svgEl('text', {x: ZERO - CH_SIDE + 7, y: CH_FOOT, 'text-anchor': 'start'}, kShort(sb.most)));
+      svg.appendChild(svgEl('text', {x: ZERO, y: CH_FOOT, 'text-anchor': 'middle'}, '0'));
+      svg.appendChild(svgEl('text', {x: W, y: CH_FOOT, 'text-anchor': 'end'}, kShort(sb.most)));
+    }
+    // the day's calls: a filled square where the call was right, an outlined one where it was wrong, the open one
+    // dashed, each at its read's minute; their count at the right, with its name when the room past the last square holds it
+    var squares = calls.map(function(k){ return {x: x(k.read), cls: k.right ? 'sq' : 'sq wrong'}; });
+    if(call) squares.push({x: x(call.read), cls: 'sq open'});
+    squares.forEach(function(q){
+      var out = q.cls !== 'sq';
+      svg.appendChild(svgEl('rect', {x: (q.x - (out ? 3.4 : 4)).toFixed(1), y: out ? CH_SQ + 0.6 : CH_SQ, width: out ? 6.8 : 8, height: out ? 6.8 : 8, rx: out ? 1.6 : 2, 'class': q.cls}));
+    });
+    var score = calls.length ? right + ' of ' + calls.length + ' right' : 'none graded yet', lastX = squares.length ? Math.max.apply(null, squares.map(function(q){ return q.x; })) + 4 : 0;
+    svg.appendChild(svgEl('text', {x: W, y: CH_SQ + 8, 'text-anchor': 'end'}, (chWidth('30-min calls · ' + score, 400) + 6 <= W - lastX ? '30-min calls · ' : '') + score));
+    return svg;
+  }
+  function chTile(key, value, sub){
+    var t = el('div', 'tile'); t.appendChild(el('div', 'tile-k', key)); t.appendChild(el('div', 'tile-v', value));
+    if(sub) t.appendChild(el('div', 'tile-s', sub));
+    return t;
+  }
+  function keyLine(box, key, words){ var l = el('div'); l.appendChild(el('b', null, key)); l.appendChild(el('span', null, ' · ' + words)); box.appendChild(l); }
+  // the sheet's body: the drawing at the body's measured width, the legend lines, the two tiles (the range against
+  // the card's sigma, a normal day's move in points; the magnet with its contracts and its distance from the dot),
+  // and the caption with the book's time; without bars yet it says so, without a book the words say that instead
+  function paintChart(){
+    var body = $('chBody'), c = last, day = cardDay(), d = dayFacts(bars); body.textContent = '';
+    $('chDay').textContent = day ? dayName(day) : '';
+    if(!c || !d){ body.appendChild(skipLine(day ? 'no price bars yet for ' + dayName(day) : 'no card yet, so no day to draw')); return; }
+    var now = Date.now(), call = liveCall(c, now), calls = dayCalls(grades, day), gv = (book && book.gex_views) || {};
+    var price = spot && day === marketDay() ? spot.price : null, dotPrice = price != null ? price : d.newest.c;
+    var W = body.clientWidth || 320, inSession = day === marketDay() && within(SESSION_HOURS);
+    var w = chartWindow(d, book, call), sb = strikeBars(book, w);
+    body.appendChild(chartSvg(W, c, d, book, calls, call, price, w, sb, inSession));
+    var key = el('div', 'ch-key');
+    if(call) keyLine(key, 'Dashed box', 'the ' + viewerTime(call.read) + ' call, flat ± ' + call.edge.toFixed(1) + ' pts to ' + viewerTime(call.mark));
+    if(book){
+      keyLine(key, 'Walls', 'the most calls (' + indexLevel(gv.call_wall_gamma) + '), the most puts (' + indexLevel(gv.put_wall_gamma) + ')');
+      keyLine(key, 'Bars', 'today’s options per strike, puts left, calls right');
+    }
+    if(key.firstChild) body.appendChild(key);
+    var tiles = el('div', 'tod ch-tiles'), range = d.high.h - d.low.l;
+    tiles.appendChild(chTile(inSession ? 'Range so far' : 'Range', Math.round(range) + ' pts', typeof c.sigma === 'number' && c.sigma > 0 ? (range / c.sigma).toFixed(2) + ' of a normal day' : null));
+    var at = sb.bars.filter(function(b){ return b.v === gv.magnet; })[0], gap = typeof gv.magnet === 'number' ? dotPrice - gv.magnet : null;
+    tiles.appendChild(chTile('Magnet · busiest', book && gap != null ? indexLevel(gv.magnet) : 'No book',
+                             book && gap != null ? (at ? kShort(at.calls + at.puts) + ' · ' : '') + (Math.abs(gap) < 0.05 ? 'at the price' : Math.abs(gap).toFixed(1) + ' pts ' + (gap > 0 ? 'below' : 'above'))
+                                                 : 'options book unavailable'));
+    body.appendChild(tiles);
+    var lean = {positive: 'dealers lean against moves', negative: 'dealers lean with moves'}[book && book.gamma_sign];
+    body.appendChild(tag((lean ? lean + ' · ' : '') + (book ? 'options book ' + viewerTime(book.ts) : 'options book unavailable') + ' · not advice'));
+  }
+  // drawn with what is on hand before it slides up, then the book and the grades are asked for, which only an open
+  // sheet may do
+  function openChart(from){
+    if(MiraiSheet.isOpen()) return;
+    paintChart();
+    MiraiSheet.open(from);
+    pollBars(); pollBook(); pollGrades();
+  }
+  var pxBtn = $('px');
+  pxBtn.addEventListener('click', function(){ openChart(pxBtn); });
 
   // ---- options data: the station's alert pass (runtime/watch/intraday/gex_alerts.py) writes options_data.json on every
   // in-session tick. Once the options provider's book has been down 15 minutes straight its questions are blank, and the
@@ -2228,7 +2635,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var ms = msToNextMark(); if(ms == null) return;
     markTimer = setTimeout(function(){ if(!document.hidden) poll(); armMark(); }, Math.max(1000, ms));
   }
-  function wake(){ if(!document.hidden){ poll(); pollTape(); pollSpot(); armMark(); armTapeMark(); tick(); } }
+  function wake(){ if(!document.hidden){ poll(); pollTape(); pollSpot(); pollBars(); armMark(); armTapeMark(); tick(); } }
   poll(); pollTape(); pollSpot(); armMark(); armTapeMark();
   setInterval(function(){ if(!document.hidden){ poll(); pollTape(); tick(); } }, POLL_MS);
   document.addEventListener('visibilitychange', wake);

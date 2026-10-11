@@ -826,7 +826,7 @@ def test_a_good_fetch_after_a_failed_one_clears_the_failure_though_the_card_is_t
           "contains: function(k){ return !!SUB.cls[k]; }, add: function(k){ SUB.cls[k] = true; }, remove: function(k){ delete SUB.cls[k]; }}};"
           "function $(id){ return SUB; } function ages(){ drawn.push('ages'); } function tick(){}"
           "function draw(c, ok){ lastOk = ok; drawn.push(ok); if(ok) SUB.classList.remove('err'); }"
-          "function setTimeout(){}" + _fn("arrived") +
+          "function setTimeout(){} var barsDay = null; function cardDay(){ return null; } function pollBars(){}" + _fn("arrived") +
           "var c = {generated_at: 'g1', row_ts: 'r1'};"
           "arrived(c); arrived(c); draw(last, false); arrived(c); arrived(c);"
           "SUB.classList.add('err'); arrived(c);"
@@ -991,14 +991,30 @@ def test_a_tap_on_another_part_lists_that_part_day_by_day():
     assert got["list"][1:4] == [["td", "Sep 284 of 4", "100%"], ["td", "Sep 153 of 4", "75%"], ["td out", "Sep 1left out", None]]
 
 
-def _price_strip(data, tz=LA):
-    js = ("var IDS = {}; ['px', 'pxLive', 'pxK', 'pxV', 'pxC', 'pxS'].forEach(function(k){ IDS[k] = el('div'); IDS[k].hidden = true; });"
-          "function $(id){ return IDS[id]; } var last = D.last, spot = D.spot && {price: D.spot, at: Date.parse(D.at), fresh: D.fresh};"
-          + _var("SPOT_URL") + _var("SPOT_LIVE_MS") + _var("AVG_REACH") + _fn("placeNow") + _fn("within") + _fn("money") + _fn("todaysCard")
-          + _fn("paintPx")
-          + "paintPx(); console.log(JSON.stringify({shown: !IDS.px.hidden, live: !IDS.pxLive.hidden, k: IDS.pxK.textContent,"
-          " v: IDS.pxV.textContent, c: IDS.pxC.textContent, cls: IDS.pxC.className, s: IDS.pxS.textContent}));")
+_PX_IDS = "['px', 'pxLive', 'pxK', 'pxV', 'pxC', 'pxS', 'chLive', 'chV', 'chC', 'chK']"
+
+
+def _price_run(data, out, tz=LA):
+    """paintPx over a quote and a card, the price box's and the sheet's price line's elements hidden to start with
+    (the sheet's openness is not this harness's: chartOpen says closed); ``out`` is the JS object printed back."""
+    js = ("var IDS = {}; " + _PX_IDS + ".forEach(function(k){ IDS[k] = el('div'); IDS[k].hidden = true; });"
+          "function $(id){ return IDS[id]; } function chartOpen(){ return false; }"
+          "var last = D.last, spot = D.spot && {price: D.spot, at: Date.parse(D.at), fresh: D.fresh};"
+          + _var("SPOT_URL") + _var("SPOT_LIVE_MS") + _var("AVG_REACH") + _fn("placeNow") + _fn("within") + _fn("money") + _fn("cardDay")
+          + _fn("todaysCard") + _fn("paintPx")
+          + "paintPx(); console.log(JSON.stringify(" + out + "));")
     return _run(js, data, tz)
+
+
+def _price_strip(data, tz=LA):
+    return _price_run(data, "{shown: !IDS.px.hidden, live: !IDS.pxLive.hidden, k: IDS.pxK.textContent,"
+                            " v: IDS.pxV.textContent, c: IDS.pxC.textContent, cls: IDS.pxC.className, s: IDS.pxS.textContent}", tz)
+
+
+def _price_sheet(data, tz=LA):
+    """What the same paint puts on the price box's control (its aria-label) and on the price-today sheet's price line."""
+    return _price_run(data, "{label: IDS.px.attrs['aria-label'], live: !IDS.chLive.hidden, v: IDS.chV.textContent,"
+                            " c: IDS.chC.textContent, cls: IDS.chC.className, k: IDS.chK.textContent}", tz)
 
 
 def test_the_live_price_says_its_change_since_the_last_close_only_on_todays_card():
@@ -1023,18 +1039,18 @@ def test_the_live_price_says_its_change_since_the_last_close_only_on_todays_card
     before = _price_strip({"now": "2026-09-30T08:10:00-04:00", "at": "2026-09-30T08:10:00-04:00", "spot": 7690.1, "fresh": True, "last": last})
     assert before["live"] is False and before["c"] == "" and before["s"] == "" and before["v"] == "7,690.10" and before["k"] == "SPX · last close"
     assert _price_strip({"now": "2026-09-29T13:04:00-04:00", "at": "2026-09-29T13:04:00-04:00", "spot": None, "fresh": False, "last": last})["shown"] is False
-    assert '<div class="px" id="px" hidden>' in SPX and ".px[hidden]{display:none}" in SPX
+    assert '<button class="px" id="px" type="button" aria-controls="chartSheet" hidden>' in SPX and ".px[hidden]{display:none}" in SPX
     assert _fn("draw").rstrip().endswith("paintPx(); }")          # a card that lands after the quote draws the strip again
 
 
 def _needle(price, card_day="2026-10-08", now="2026-10-08T14:35:00-04:00", later=None):
     """The called-at bar of the owner's 14:31 call on 2026-10-08 (7,756.79, flat edge 2.24), drawn with a quote of
     ``price`` (None: no quote yet), then, with ``later``, moved by the next quote through paintPx."""
-    js = ("var IDS = {}; ['px', 'pxLive', 'pxK', 'pxV', 'pxC', 'pxS'].forEach(function(k){ IDS[k] = el('div'); });"
-          "function $(id){ return IDS[id]; } var last = {row_ts: D.card + 'T14:31:03-04:00'};"
+    js = ("var IDS = {}; " + _PX_IDS + ".forEach(function(k){ IDS[k] = el('div'); });"
+          "function $(id){ return IDS[id]; } function chartOpen(){ return false; } var last = {row_ts: D.card + 'T14:31:03-04:00'};"
           "var spot = D.price == null ? null : {price: D.price, at: Date.now(), fresh: true};"
           + _var("SPOT_URL") + _var("SPOT_LIVE_MS") + _var("AVG_REACH") + "".join(_fn(f) for f in ("tag", "averageWords", "indexLevel", "money", "within",
-                                                                                 "todaysCard", "placeNow", "calledAt", "paintPx"))
+                                                                                 "cardDay", "todaysCard", "placeNow", "calledAt", "paintPx"))
           + "var bar = calledAt({price: 7756.79, edge_points: 2.24}, 30).kids[1], n = bar.kids[2];"
           "if(D.later != null){ spot = {price: D.later, at: Date.now(), fresh: true}; paintPx(); }"
           "console.log(JSON.stringify({kids: bar.kids.map(function(k){ return k.attrs['class']; }), hidden: !!n.hidden,"
@@ -2081,7 +2097,7 @@ Object.defineProperty(Node.prototype, 'classList', {get: function(){ var n = thi
           remove: function(k){ put(has().filter(function(x){ return x !== k; })); },
           toggle: function(k, on){ put(has().filter(function(x){ return x !== k; }).concat(on ? [k] : [])); }}; }});
 var ids = {};
-['h1', 'sub', 'state', 'main', 'dock', 'load', 'poll', 'csTitle', 'csBody', 'od'].forEach(function(id){ ids[id] = new Node('div'); });
+['h1', 'sub', 'state', 'main', 'dock', 'load', 'poll', 'csTitle', 'csBody', 'od', 'px', 'pxSpark'].forEach(function(id){ ids[id] = new Node('div'); });
 var document = {hidden: false, getElementById: function(id){ return ids[id] || null; }, createElement: function(t){ return new Node(t); },
                 createElementNS: function(ns, t){ return new Node(t); }, querySelectorAll: function(){ return []; }, addEventListener: function(){}};
 var window = {addEventListener: function(){}}, localStorage = {getItem: function(){ return null; }, setItem: function(){}}, MiraiSheet = {open: function(){}};
@@ -2444,7 +2460,7 @@ def test_the_banner_reads_the_alert_passs_file_and_sits_under_the_price_box():
     assert "var OPTIONS_URL = '/api/raw/file?root=state&path=spx_jev/mirai_prediction/options_data.json';" in JS
     assert "options = j && j.kind === 'json' ? j.data : null;" in _fn("pollOptions")    # /api/raw/file wraps it as {kind, data}
     body = SPX[SPX.index("<body>"):]
-    assert body.index('<div class="px" id="px" hidden>') < body.index('<div class="od" id="od" role="status" hidden></div>') \
+    assert body.index('<button class="px" id="px" type="button" aria-controls="chartSheet" hidden>') < body.index('<div class="od" id="od" role="status" hidden></div>') \
         < body.index('<div id="state"></div>')
     assert "setInterval(function(){ if(!document.hidden) pollOptions(); }, POLL_MS);" in JS
     assert "innerHTML" not in JS
@@ -2653,16 +2669,16 @@ console.log(JSON.stringify((() => { __STEPS__ })()));
 """
 
 
-def _sheets(steps):
-    """Run sheet.js and the page's wiring of its info button in node against a DOM built from the page's real
-    markup, a fake clock, a fake history and a shell that records what it is told, and return what ``steps``
-    returns. In scope: body, document, run(code), advance(ms), click(node), key(name), scroll(y), isOpen(),
-    focused() (the id, or failing that the class, of the element with the focus), shell (every MiraiShell.atTop
-    answer), pushes and backs. Skips when node is not installed."""
+def _sheets(steps, wiring=_INFO_BUTTON):
+    """Run sheet.js and the page's ``wiring`` of a control (its info button unless told otherwise) in node against
+    a DOM built from the page's real markup, a fake clock, a fake history and a shell that records what it is
+    told, and return what ``steps`` returns. In scope: body, document, run(code), advance(ms), click(node),
+    key(name), scroll(y), isOpen(), focused() (the id, or failing that the class, of the element with the
+    focus), shell (every MiraiShell.atTop answer), pushes and backs. Skips when node is not installed."""
     if not _NODE:
         pytest.skip("node is not installed")
     script = (_SHEET_HARNESS.replace("__SHEET__", json.dumps(str(M / "sheet.js"))).replace("__STEPS__", steps))
-    out = subprocess.run([_NODE, "-e", script], input=json.dumps({"tree": _body_tree(), "wiring": _INFO_BUTTON}),
+    out = subprocess.run([_NODE, "-e", script], input=json.dumps({"tree": _body_tree(), "wiring": wiring}),
                          capture_output=True, text=True, timeout=20)
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout)
@@ -2714,3 +2730,324 @@ def test_a_sheet_opens_on_a_tap_and_closes_the_one_way_whatever_closed_it():
     assert got["closeButton"] == {"open": False, "backs": 3}
     assert got["back"] is False, "the phone's back gesture left the sheet open"
     assert got["after"] == [False, True], "the shell was told once and then left with a stale answer"
+
+
+# ---- the price-today chart (2026-10-10, Will's board Final-Chart)
+
+# Two rows of state/reversion/2026-10-09.jsonl trimmed to the fields the chart reads, the strikes 7,765 to 7,840 kept:
+# the day's last native row (15:58:59) and the last row built from SPY's book (15:47:08, gex_source spy_proxy×10.0346),
+# which the file interleaves with native ones. A {_unparsed} row is what the route hands back for a line it could not
+# parse.
+NATIVE_ROW = {"ts": "2026-10-09T15:58:59.915437-04:00", "gex_source": "native", "gamma_sign": "positive", "spot": 7811.27,
+              "gex_views": {"call_wall_gamma": 7815.0, "put_wall_gamma": 7810.0, "magnet": 7810.0,
+                            "vol_side_by_strike": [[7765.0, 2975, 47387], [7770.0, 7243, 55417], [7775.0, 9678, 55041], [7780.0, 18144, 74040],
+                                                   [7785.0, 27102, 77852], [7790.0, 59306, 93829], [7795.0, 70007, 90878], [7800.0, 131611, 131623],
+                                                   [7805.0, 131781, 120797], [7810.0, 201427, 171090], [7815.0, 214495, 103649], [7820.0, 200763, 33470],
+                                                   [7825.0, 113181, 7922], [7830.0, 76144, 4681], [7835.0, 57287, 1189], [7840.0, 38974, 1062]]}}
+SPY_ROW = {"ts": "2026-10-09T15:47:08.078882-04:00", "gex_source": "spy_proxy×10.0346", "gamma_sign": "unknown", "spot": 7813.03,
+           "gex_views": {"call_wall_gamma": 7816.943489038157, "put_wall_gamma": 7806.908901760829, "magnet": 7806.9089,
+                         "vol_side_by_strike": [[7766.77, 36692, 250332], [7776.81, 120065, 363454], [7786.84, 293513, 463284], [7796.87, 656495, 680566],
+                                                [7806.91, 864072, 672491], [7816.94, 831163, 343463], [7826.98, 731273, 85439], [7837.01, 142559, 23869]]}}
+UNPARSED_ROW = {"_unparsed": "{\"ts\": \"2026-10-09T15:59"}
+
+
+def bar(hhmm, o, h, lo, c, day="2026-10-09"):
+    """A one-minute SPX bar as the bars job writes it (state/spx_jev/bars/<day>.jsonl)."""
+    return {"ts": f"{day}T{hhmm}:00-04:00", "open": o, "high": h, "low": lo, "close": c, "volume": 0.0}
+
+
+# the board's day at 14:43 ET as five of its bars: the open, the low's bar (09:48, low 7,779.34), midday, the high's
+# bar (14:27, high 7,814.33) and the newest (14:42); the closes average 7,799.23
+BOARD_BARS = [bar("09:30", 7786.36, 7790.34, 7786.36, 7789.23), bar("09:48", 7783.88, 7784.12, 7779.34, 7781.73),
+              bar("12:00", 7800.5, 7801.0, 7799.9, 7800.27), bar("14:27", 7813.9, 7814.33, 7812.8, 7813.5), bar("14:42", 7811.5, 7812.0, 7811.0, 7811.42)]
+# the board's card: the 14:30 read's call at 7,813.01, flat within 3.1, graded at 15:00
+BOARD_CARD = {"row_ts": "2026-10-09T14:30:40-04:00", "sigma": 75.3127, "prior_close": {"day": "2026-10-08", "price": 7765.7},
+              "session": {"close": "2026-10-09T16:00:00-04:00", "last_read": "2026-10-09T15:32:00-04:00"},
+              "marks": {"next_30": "2026-10-09T15:00:00-04:00", "next_60": "2026-10-09T15:30:00-04:00"},
+              "hour": {"probabilities": {"flat": 0.5, "up": 0.3, "down": 0.2},
+                       "average": {"price": 7813.01, "edge_points": 3.1, "probabilities": {"flat": 0.62, "up": 0.24, "down": 0.15}, "pick": "flat"}}}
+
+
+def grade(hhmm, verdict, horizon="next_30", day="2026-10-09"):
+    return {"row_ts": f"{day}T{hhmm}:40-04:00", "horizon": horizon, "graded": True, "verdict": verdict, "pick": "flat", "label": "flat"}
+
+
+BOARD_GRADES = [grade("10:02", "right"), grade("10:32", "wrong"), grade("11:02", "right"), grade("11:02", "right", horizon="next_60"),
+                grade("10:02", "right", day="2026-10-08")]
+
+_CHART_FNS = ("cardDay", "todaysCard", "within", "money", "indexLevel", "dayName", "skipLine", "tag", "bookRow", "dayCalls", "liveCall",
+              "dayFacts", "paintSpark", "strikePitch", "chartWindow", "strikeBars", "kShort", "chWidth", "wordClear", "wordSpot", "chartSvg", "chTile", "keyLine",
+              "paintChart")
+_CHART_VARS = ("SPOT_URL", "WINDOW_SHARE", "CH_H", "CH_SIDE", "CH_ADV_400", "CH_ADV_500", "CH_ADV_800", "CH_ADV")
+
+
+def _chart(data, tz=LA):
+    """paintChart over a card, bars, a book and grades, at the sheet body's width D.W (320, a 360 phone's, unless
+    told): the market day on the title row and the body as dumped nodes."""
+    js = ("var IDS = {}; ['chBody', 'chDay', 'pxSpark'].forEach(function(k){ IDS[k] = el('div'); }); function $(id){ return IDS[id]; }"
+          "if(D.W) IDS.chBody.clientWidth = D.W;"
+          "var last = D.card, bars = D.bars, book = D.book, grades = D.grades || null, spot = D.spot ? {price: D.spot, at: Date.now(), fresh: true} : null;"
+          + "".join(_var(v) for v in _CHART_VARS) + "".join(_fn(f) for f in _CHART_FNS)
+          + "paintChart(); paintSpark(); console.log(JSON.stringify({day: IDS.chDay.textContent, body: dump(IDS.chBody), spark: dump(IDS.pxSpark)}));")
+    return _run(js, data, tz)
+
+
+def _find(n, cls=None, tag=None, out=None):
+    """The dumped nodes under ``n`` with every word of ``cls`` in their class, or of ``tag``, in drawing order."""
+    out = [] if out is None else out
+    for k in n["kids"]:
+        if (cls is None or set(cls.split()) <= set(k["attrs"].get("class", "").split())) and (tag is None or k["tag"] == tag):
+            out.append(k)
+        _find(k, cls, tag, out)
+    return out
+
+
+def _board(**more):
+    return _chart({"now": "2026-10-09T14:43:00-04:00", "card": BOARD_CARD, "bars": BOARD_BARS, "book": NATIVE_ROW, "grades": BOARD_GRADES,
+                   "spot": 7811.47, **more})
+
+
+def test_the_book_is_the_newest_native_row_of_the_days_last_rows():
+    """The reversion file interleaves rows built from SPY's book (gex_source spy_proxy...) with SPX's own (native), and
+    the route hands back {_unparsed} for a torn line. The chart draws the newest native one of the three it fetched,
+    not the newest row, and with none native it has no book."""
+    js = _fn("bookRow") + "console.log(JSON.stringify([bookRow(D.a), bookRow(D.b), bookRow(D.c), bookRow(D.d)].map(function(r){ return r && r.ts; })));"
+    got = _run(js, {"a": [SPY_ROW, NATIVE_ROW, UNPARSED_ROW], "b": [NATIVE_ROW, SPY_ROW, SPY_ROW], "c": [SPY_ROW, UNPARSED_ROW, SPY_ROW],
+                    "d": [{**NATIVE_ROW, "ts": "2026-10-09T15:57:35-04:00"}, NATIVE_ROW, SPY_ROW]})
+    assert got == [NATIVE_ROW["ts"], NATIVE_ROW["ts"], None, NATIVE_ROW["ts"]]
+    assert "'/api/raw/file?root=state&path=reversion/'" in _var("BOOK_URL") and "day + '.jsonl&limit=3'" in _fn("pollBook")
+
+
+def test_the_window_and_the_strike_bars_are_shaped_from_the_books_sides():
+    """The window runs from the day's low to its high with the walls, the magnet and the open call's band inside, on the
+    book's 5-point pitch, and takes in a strike past that with at least 30% of the busiest side's trading: on 10-09's
+    book that is the board's 7,775 to 7,830. Each strike in it gets its calls and puts, the busiest (both sides
+    together) is marked, and the longest single side is the scale both are drawn to."""
+    js = ("".join(_fn(f) for f in ("dayFacts", "strikePitch", "chartWindow", "strikeBars")) + _var("WINDOW_SHARE")
+          + "var d = dayFacts(D.bars), w = chartWindow(d, D.book, D.call), sb = strikeBars(D.book, w);"
+          "console.log(JSON.stringify({w: w, n: sb.bars.length, most: sb.most, lead: sb.lead, first: sb.bars[0], last: sb.bars[sb.bars.length - 1],"
+          " bare: chartWindow(d, null, null), quiet: chartWindow(dayFacts(D.quiet), null, null), spy: strikeBars(null, w).bars.length}));")
+    got = _run(js, {"bars": BOARD_BARS, "book": NATIVE_ROW, "call": {"price": 7813.01, "edge": 3.1},
+                    "quiet": [bar("09:30", 7801.2, 7801.9, 7800.4, 7801.5), bar("09:31", 7801.5, 7802.1, 7801.0, 7801.8)]})
+    assert got["w"] == {"lo": 7775, "hi": 7830, "step": 5} and got["n"] == 12
+    assert got["most"] == 214495 and got["lead"] == {"v": 7810, "calls": 201427, "puts": 171090, "busiest": True}
+    assert got["first"] == {"v": 7775, "calls": 9678, "puts": 55041} and got["last"]["v"] == 7830
+    assert got["bare"] == {"lo": 7775, "hi": 7815, "step": 5}             # no book: the day's range alone, on 5s
+    assert got["quiet"] == {"lo": 7790, "hi": 7815, "step": 5}            # a few points of range are held to six strikes
+    assert got["spy"] == 0
+
+
+def test_the_chart_is_drawn_to_the_boards_scales():
+    """At the sheet's 320px on a 360 phone: the price axis from 7,830 at y 20 to 7,775 at y 200 with the walls ruled
+    inside it (the call wall solid at 7,815, the magnet dashed at 7,810, named above their lines and the put wall's name
+    under the shared line); the open call's box at the called price ± its edge over the read-to-mark minutes with the
+    called price through it; the now-line at the newest bar with its time in the viewer's zone; the dot at the live
+    price; the low and high marked with their times; the day's average dashed and named; the open and close as the feet,
+    the close with the zone; the gutter's puts left and calls right of one zero on one scale with its ends named; the
+    day's calls as squares, the open one dashed, counted at the right."""
+    got = _board()
+    assert got["day"] == "Fri 10-09"
+    svg = got["body"]["kids"][0]
+    assert svg["tag"] == "svg" and svg["attrs"]["viewBox"] == "0 0 320 248" and svg["attrs"]["role"] == "img"
+    texts = {t["text"]: t["attrs"] for t in _find(svg, tag="text")}
+    strikes = [t for t in _find(svg, tag="text") if re.fullmatch(r"7,\d{3}", t["text"])]
+    assert [t["text"] for t in strikes] == ["7,775", "7,780", "7,785", "7,790", "7,795", "7,800", "7,805", "7,810", "7,815", "7,820", "7,825", "7,830"]
+    assert texts["7,830"]["y"] == "24.0" and texts["7,775"]["y"] == "204.0" and texts["7,810"]["class"] == "t-lead halo"
+    assert all(t["attrs"]["x"] == "238" and t["attrs"]["text-anchor"] == "end" for t in strikes)
+    wall, mag = _find(svg, "wall")[0], _find(svg, "mag")[0]
+    assert (wall["attrs"]["y1"], wall["attrs"]["x2"]) == ("69.1", "204") and mag["attrs"]["y1"] == "85.5" and not _find(svg, "pwall")
+    names = {t["text"]: t["attrs"] for t in _find(svg, "t-lvl")}
+    assert names["CALL WALL · TODAY"] == {"x": "2.0", "y": "65.1", "text-anchor": "start", "class": "t-lvl halo"}
+    assert names["MAGNET"]["y"] == "81.5" and names["PUT WALL"]["y"] == "98.0"                     # one line, the second name under it
+    box, at = _find(svg, "box")[0]["attrs"], _find(svg, "at")[0]["attrs"]
+    assert (box["x"], box["y"], box["width"], box["height"]) == ("156.9", "65.5", "15.7", "20.3")  # 14:30 to 15:00, 7,816.11 down to 7,809.91
+    assert (at["x1"], at["y1"], at["x2"]) == ("156.9", "75.6", "172.6")
+    now = _find(svg, "now")[0]["attrs"]
+    assert (now["x1"], now["y1"], now["y2"]) == ("163.2", "14", "208") and texts["11:42"] == {"x": "163.2", "y": "10", "text-anchor": "middle", "class": "t-now"}
+    assert _find(svg, "dot")[0]["attrs"]["cy"] == "80.6" and _find(svg, "dot")[0]["attrs"]["cx"] == "163.2"
+    marks = [m["attrs"] for m in _find(svg, "mark")]
+    assert [(m["cx"], m["cy"]) for m in marks] == [("9.4", "185.8"), ("155.4", "71.3")]
+    assert texts["low 7,779.34 · 06:48"]["x"] == "14.0" and texts["low 7,779.34 · 06:48"]["y"] == "198.8"
+    assert texts["high so far 7,814.33 · 11:27"]["text-anchor"] == "end" and texts["high so far 7,814.33 · 11:27"]["y"] == "50.3"
+    assert _find(svg, "avg")[0]["attrs"]["y1"] == "120.7" and texts["day avg 7,799"] == {"x": "202.0", "y": "117.2", "text-anchor": "end", "class": "t-avg halo"}
+    assert texts["OPEN 06:30"]["x"] == "0" and texts["CLOSE 13:00 PDT"] == {"x": "204", "y": "226", "text-anchor": "end", "class": "t-axis"}
+    line = _find(svg, "path")[0]["attrs"]["points"].split(" ")
+    assert len(line) == 5 and line[0] == "0.0,153.4" and line[-1] == "163.2,80.8"
+    puts, calls = _find(svg, "put"), _find(svg, "call")
+    assert len(puts) == 12 and len(calls) == 12 and _find(svg, "put lead")[0]["attrs"]["x"] == "247.9"
+    assert calls[8]["attrs"] == {"x": "281", "y": "64.6", "width": "39.0", "height": "9.0", "rx": "1.5", "class": "call"}   # 7,815's 214,495, the scale
+    assert [(t["text"], t["attrs"]["x"]) for t in _find(svg, tag="text") if t["text"] in ("214k", "0")] == [("214k", "248"), ("0", "280"), ("214k", "320")]
+    squares = [(s["attrs"]["class"], s["attrs"]["x"]) for s in _find(svg, "sq")]
+    assert squares == [("sq", "12.7"), ("sq wrong", "29.0"), ("sq", "44.1"), ("sq open", "153.5")]
+    assert texts["30-min calls · 2 of 3 right"]["x"] == "320"
+    assert svg["attrs"]["aria-label"].startswith("SPX today by the minute from the 06:30 open to 11:42, low 7,779.34 at 06:48, high so far 7,814.33 at 11:27, now 7,811.47; "
+                                                 "the call wall at 7,815, the magnet at 7,810, the put wall at 7,810 drawn as lines")
+    assert svg["attrs"]["aria-label"].endswith("busiest 7,810; the open 11:30 call drawn as a dashed box, flat within 3.1 points to 12:00; "
+                                               "the day’s 30-minute calls as squares under the clock, 2 of 3 right, one open")
+    # under the drawing: the legend lines, the two tiles and the caption, the board's words with the day's numbers
+    key, tiles, cap = got["body"]["kids"][1], got["body"]["kids"][2], got["body"]["kids"][3]
+    assert [_flat_text(k) for k in key["kids"]] == ["Dashed box · the 11:30 call, flat ± 3.1 pts to 12:00", "Walls · the most calls (7,815), the most puts (7,810)",
+                                                   "Bars · today’s options per strike, puts left, calls right"]
+    assert [[_flat_text(k) for k in t["kids"]] for t in tiles["kids"]] == [["Range so far", "35 pts", "0.46 of a normal day"], ["Magnet · busiest", "7,810", "373k · 1.5 pts below"]]
+    assert tiles["attrs"]["class"] == "tod ch-tiles" and cap == {"tag": "div", "attrs": {"class": "tag"}, "text": "Dealers lean against moves · options book 12:58 · not advice", "kids": []}
+    assert _flat_text(got["body"]["kids"][-1]) == cap["text"] and len(got["body"]["kids"]) == 4
+
+
+def test_the_chart_in_tokyo_and_after_the_close():
+    """Every time on the drawing is the viewer's; after the close the high is the day's, not so far, the dot is the
+    newest close and the tile says Range."""
+    got = _chart({"now": "2026-10-10T19:00:00+09:00", "card": BOARD_CARD, "bars": BOARD_BARS, "book": NATIVE_ROW, "grades": BOARD_GRADES, "spot": 7811.47}, tz=TOKYO)
+    svg = got["body"]["kids"][0]
+    texts = [t["text"] for t in _find(svg, tag="text")]
+    assert "OPEN 22:30" in texts and "CLOSE 05:00 GMT+9" in texts and "low 7,779.34 · 22:48" in texts and "high 7,814.33 · 03:27" in texts and "03:42" in texts
+    assert _find(svg, "dot")[0]["attrs"]["cy"] == "80.8"                 # the newest close, 7,811.42: the quote is not this day's
+    assert not _find(svg, "box") and not _find(svg, "sq open")           # the 14:30 call's mark has passed
+    assert [_flat_text(k) for k in got["body"]["kids"][2]["kids"][0]["kids"]] == ["Range", "35 pts", "0.46 of a normal day"]
+    assert [_flat_text(k) for k in got["body"]["kids"][1]["kids"]][0].startswith("Walls")
+
+
+def test_the_chart_says_so_without_bars_and_without_a_book():
+    """Without bars for the day the sheet says so in place of the drawing, and the price box draws no sparkline but
+    stays a control; without a native book the chart draws no walls and no bars, the tile and the caption say the
+    book is unavailable, and the legend keeps only what is drawn."""
+    none = _chart({"now": "2026-10-09T09:31:00-04:00", "card": BOARD_CARD, "bars": None, "book": None})
+    assert none["day"] == "Fri 10-09" and none["body"]["kids"] == [{"tag": "div", "attrs": {"class": "skip"}, "text": "No price bars yet for Fri 10-09", "kids": []}]
+    assert none["spark"]["kids"] == [] and ".px-spark:empty{display:none}" in SPX
+    nocard = _chart({"now": "2026-10-09T09:31:00-04:00", "card": None, "bars": None, "book": None})
+    assert nocard["day"] == "" and _flat_text(nocard["body"]["kids"][0]) == "No card yet, so no day to draw"
+    got = _board(book=None)
+    svg = got["body"]["kids"][0]
+    assert not _find(svg, "wall") and not _find(svg, "mag") and not _find(svg, "t-lvl") and not _find(svg, "put") and not _find(svg, "call")
+    assert [t["text"] for t in _find(svg, tag="text") if re.fullmatch(r"7,\d{3}", t["text"])] == ["7,775", "7,780", "7,785", "7,790", "7,795", "7,800", "7,805", "7,810", "7,815", "7,820"]
+    assert "; no options book; " in svg["attrs"]["aria-label"]
+    key, tiles, cap = got["body"]["kids"][1], got["body"]["kids"][2], got["body"]["kids"][3]
+    assert [_flat_text(k) for k in key["kids"]] == ["Dashed box · the 11:30 call, flat ± 3.1 pts to 12:00"]
+    assert [_flat_text(k) for k in tiles["kids"][1]["kids"]] == ["Magnet · busiest", "No book", "options book unavailable"]
+    assert cap["text"] == "Options book unavailable · not advice"
+    # the sparkline: the closes across the box, the newest as the dot
+    spark = got["spark"]["kids"]
+    assert [k["tag"] for k in spark] == ["polyline", "circle"] and spark[0]["attrs"]["points"].split(" ")[0] == "1.0,18.8" and spark[1]["attrs"] == {"cx": "63", "cy": "3.4", "r": "2.2"}
+
+
+def test_the_price_box_is_the_control_that_opens_the_chart():
+    """The price box is a button of the page's minimum height that names the sheet it opens, says what it opens in its
+    label with the price and the day's change, and keeps the sparkline between the price and the change; the sheet's
+    price line says the same price, change and state as the box."""
+    assert re.search(r'<button class="px" id="px" type="button" aria-controls="chartSheet" hidden>\n.*\n  <svg class="px-spark" id="pxSpark" viewBox="0 0 64 26" aria-hidden="true"></svg>\n  <div class="px-r">', SPX)
+    px = re.search(r"\n\.px\{[^}]*\}", SPX).group(0)
+    assert "min-height:var(--tap-min)" in px and "width:100%" in px and "position:sticky" in px and "touch-action:manipulation" in px
+    assert ".px:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}" in SPX
+    assert re.search(r"\.px-k::after\{content:\"\";[^}]*border-right:1\.5px solid var\(--i-mute\);border-top:1\.5px solid var\(--i-mute\);transform:rotate\(45deg\)\}", SPX)
+    assert "\n  var pxBtn = $('px');\n  pxBtn.addEventListener('click', function(){ openChart(pxBtn); });" in JS
+    assert _fn("openChart").index("MiraiSheet.open(from);") < _fn("openChart").index("pollBook(); pollGrades();")   # only an open sheet may fetch the book
+    last = {"row_ts": "2026-09-29T13:01:56-04:00", "prior_close": {"day": "2026-09-28", "at": "2026-09-28T15:59:00-04:00", "price": 7684.5}}
+    live = _price_sheet({"now": "2026-09-29T13:04:00-04:00", "at": "2026-09-29T13:04:00-04:00", "spot": 7656.39, "fresh": True, "last": last})
+    assert live == {"label": "SPX live 7,656.39, down 28.11 today. Open the price chart", "live": True, "v": "7,656.39", "c": "−28.11 (−0.37%)", "cls": "px-c dn", "k": "live"}
+    shut = _price_sheet({"now": "2026-09-29T16:20:00-04:00", "at": "2026-09-29T16:20:00-04:00", "spot": 7700, "fresh": True, "last": last})
+    assert shut["label"] == "SPX · last close 7,700.00, up 15.50 today. Open the price chart" and shut["k"] == "last close" and shut["live"] is False
+    before = _price_sheet({"now": "2026-09-30T08:10:00-04:00", "at": "2026-09-30T08:10:00-04:00", "spot": 7690.1, "fresh": True, "last": last})
+    assert before == {"label": "SPX · last close 7,690.10. Open the price chart", "live": False, "v": "7,690.10", "c": "", "cls": "px-c", "k": "last close"}
+
+
+# the page's own wiring of the price box, lifted as the info button's is, with the chart's painting and fetching stubbed:
+# the sheet's opening and closing are what is under test
+_PX_BUTTON = ("function $(id){ return document.getElementById(id); } function paintChart(){} function pollBars(){} function pollBook(){} function pollGrades(){}"
+              + _fn("openChart") + re.search(r"\n  var pxBtn = \$\('px'\);\n  pxBtn\.addEventListener\('click', [^\n]*\);", SPX).group(0))
+
+
+def test_the_price_today_sheet_is_one_more_sheet_that_opens_and_closes_as_the_others_do():
+    """One more of the page's sheets, with the one close button, opened by the price box through sheet.js: a tap
+    opens it and puts the focus on Close, a second tap while open pushes nothing, Escape and Close close it and the
+    focus comes back to the box."""
+    sheet = re.search(r'(?s)<div class="sheet" id="chartSheet".*?\n</div>', SPX).group(0)
+    assert 'role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="chTitle"' in sheet
+    assert sheet.count("<button") == 1 and '<button class="sh-close" type="button" data-sheet-close>Close</button>' in sheet
+    assert '<div class="sh-h ch-h"><span id="chTitle">Price today &middot; SPX</span><span class="r" id="chDay"></span></div>' in sheet
+    assert '<div class="ch-px"><i id="chLive" hidden></i><b id="chV"></b><span class="px-c" id="chC"></span><span class="k" id="chK"></span></div>' in sheet
+    assert ".ch-px i[hidden]{display:none}" in SPX
+    assert len(re.findall(r'<div class="sheet[^"]*" id="\w+" role="dialog"', SPX)) == 5
+    got = _sheets("""
+      const btn = document.getElementById('px'), sheet = document.getElementById('chartSheet');
+      click(btn);
+      const opened = {open: isOpen(), hidden: sheet.getAttribute('aria-hidden'), focus: focused(), pushes};
+      click(btn);
+      const again = pushes;
+      advance(600); key('Escape'); advance(50);
+      const closed = {open: isOpen(), hidden: sheet.getAttribute('aria-hidden'), focus: focused(), backs};
+      click(btn); advance(600); click(sheet.querySelector('.sh-close')); advance(50);
+      return {opened, again, closed, closeButton: {open: isOpen(), backs}};""", wiring=_PX_BUTTON)
+    assert got["opened"] == {"open": True, "hidden": "false", "focus": "sh-close", "pushes": 1}
+    assert got["again"] == 1
+    assert got["closed"] == {"open": False, "hidden": "true", "focus": "px", "backs": 1}
+    assert got["closeButton"] == {"open": False, "backs": 2}
+
+
+def test_the_book_is_fetched_only_while_the_sheet_is_open_and_each_file_at_most_once_a_minute():
+    """The reversion file is 10 MB the server reads whole on every call: it is asked for only while the sheet is open,
+    and at most every 60 seconds, as are the grades; the bars at most every 60 seconds through the session and the
+    minutes after it in which the close's last bar lands, from the card's day, and only a card naming a new day asks
+    for them outside that, dropping the last day's bars before asking for its own."""
+    assert _var("BARS_URL").endswith("BARS_MS = 60000, BARS_HOURS = ['09:30', '16:05'];") and _var("BOOK_URL").endswith("BOOK_MS = 60000;")
+    assert "setInterval(function(){ if(!document.hidden && todaysCard() && within(BARS_HOURS)) pollBars(); }, BARS_MS);" in JS
+    assert "setInterval(function(){ if(!document.hidden && chartOpen()){ pollBook(); pollGrades(); } }, BOOK_MS);" in JS
+    assert "if(cardDay() !== barsDay) pollBars();" in _fn("arrived") and "pollBars();" in _fn("wake") and "pollBook" not in _fn("wake")
+    js = ("var calls = [], OPEN = 'true', painted = 0, sparked = 0; function $(id){ return {getAttribute: function(){ return OPEN; }}; }"
+          "function paintChart(){ painted++; } function paintSpark(){ sparked++; }"
+          "function fetch(url){ calls.push(url.split('path=')[1]); return Promise.resolve({ok: true, json: function(){ return Promise.resolve({kind: 'jsonl', rows: [D.row]}); }}); }"
+          "var last = {row_ts: '2026-10-09T10:02:00-04:00'};"
+          + "".join(_var(v) for v in ("BARS_URL", "BOOK_URL", "GRADES_URL", "bars", "book", "grades"))
+          + "".join(_fn(f) for f in ("cardDay", "chartOpen", "rawRows", "bookRow", "pollBars", "pollBook", "pollGrades"))
+          + "function tick(){ return new Promise(function(r){ setImmediate(r); }); }"
+          "(async function(){ var out = {};"
+          " pollBook(); pollGrades(); pollBook(); await tick(); await tick(); out.closed = calls.length;"
+          " OPEN = 'false'; pollBook(); pollGrades(); await tick(); await tick(); out.opened = calls.slice(); out.book = book && book.ts; out.painted = painted;"
+          " pollBook(); pollGrades(); await tick(); await tick(); out.again = calls.length;"
+          " NOW += 59000; pollBook(); pollGrades(); await tick(); await tick(); out.at59 = calls.length;"
+          " NOW += 2000; pollBook(); pollGrades(); await tick(); await tick(); out.at61 = calls.length;"
+          " calls = []; pollBars(); await tick(); await tick(); out.bars = calls.slice(); out.day = barsDay; out.sparked = sparked;"
+          " pollBars(); await tick(); await tick(); out.barsAgain = calls.length;"
+          " NOW += 61000; pollBars(); await tick(); await tick(); out.barsLater = calls.length;"
+          " var had = bars; last = {row_ts: '2026-10-12T09:32:00-04:00'}; pollBars(); out.dropped = bars === null && had !== null;"
+          " await tick(); await tick(); out.newDay = calls[calls.length - 1]; out.kept = bars !== null;"
+          " console.log(JSON.stringify(out)); })();")
+    got = _run(js, {"now": "2026-10-09T10:05:00-04:00", "row": NATIVE_ROW})
+    assert got["closed"] == 0
+    assert got["opened"] == ["reversion/2026-10-09.jsonl&limit=3", "spx_jev/integral_grades.jsonl&limit=400"] and got["book"] == NATIVE_ROW["ts"] and got["painted"] == 2
+    assert got["again"] == 2 and got["at59"] == 2 and got["at61"] == 4
+    assert got["bars"] == ["spx_jev/bars/2026-10-09.jsonl&limit=420"] and got["day"] == "2026-10-09" and got["sparked"] == 2   # dropped, then drawn
+    assert got["barsAgain"] == 1 and got["barsLater"] == 2
+    assert got["dropped"] is True and got["newDay"] == "spx_jev/bars/2026-10-12.jsonl&limit=420" and got["kept"] is True
+
+
+def test_the_gutter_and_the_strike_column_fit_the_sheet_at_320_and_360():
+    """The drawing is laid out at the sheet's measured width, 320 on the owner's 360 phone and 280 on a 320 one, so
+    its 11px text never scales under the page's floor; the strike column ends two pixels clear of the longest put bar,
+    the calls end at the right edge, nothing is drawn past either edge, and where both feet would not fit the plot the
+    close foot gives up its zone's name rather than run into the open's."""
+    for W, pw, lab, zone in ((320, 204, 238, "CLOSE 13:00 PDT"), (280, 164, 198, "CLOSE 13:00")):
+        svg = _board(W=W)["body"]["kids"][0]
+        assert svg["attrs"]["viewBox"] == f"0 0 {W} 248"
+        rects = [r["attrs"] for r in _find(svg, tag="rect")]
+        assert rects and all(0 <= float(r["x"]) and float(r["x"]) + float(r["width"]) <= W + 0.05 for r in rects)
+        assert max(float(r["x"]) + float(r["width"]) for r in rects if "call" in r["class"]) == W
+        assert min(float(r["x"]) for r in rects if "put" in r["class"]) >= lab + 2
+        strikes = [t for t in _find(svg, tag="text") if re.fullmatch(r"7,\d{3}", t["text"])]
+        assert all(t["attrs"]["x"] == str(lab) for t in strikes) and lab - 34 >= pw      # the column's 11px figures start past the plot
+        texts = {t["text"]: t["attrs"] for t in _find(svg, tag="text")}
+        assert texts["OPEN 06:30"]["x"] == "0" and texts[zone]["x"] == str(pw) and texts["CALLS"]["x"] == str(W)
+        assert float(_find(svg, "now")[0]["attrs"]["x1"]) <= pw and float(texts["30-min calls · 2 of 3 right"]["x"]) == W
+    assert ".chart{display:block;width:100%;height:auto;" in SPX and ".chart text{font-size:11px;" in SPX
+    assert "var W = body.clientWidth || 320" in _fn("paintChart")
+
+
+def test_a_wide_day_keeps_the_strike_prices_a_labels_height_apart():
+    """On a day whose window runs past thirty strikes (a 160-point range) the strike column prices every second,
+    third... strike so neighbours stay at least a label's height apart, instead of halving them once and overlapping
+    at a few pixels' pitch; the busiest strike is always priced."""
+    wide = [bar("09:30", 7700.0, 7702.0, 7698.0, 7700.5), bar("11:00", 7855.0, 7860.0, 7850.0, 7858.0), bar("14:42", 7811.5, 7812.0, 7811.0, 7811.42)]
+    got = _board(bars=wide)
+    prices = [k for k in _find(got["body"], tag="text") if re.fullmatch(r"\d,\d{3}", k["text"]) and k["attrs"].get("text-anchor") == "end"]
+    ys = sorted(float(k["attrs"]["y"]) for k in prices)
+    assert len(ys) >= 6 and min(b - a for a, b in zip(ys, ys[1:])) >= 11.5
+    assert any(k["text"] == "7,810" and "t-lead" in k["attrs"].get("class", "") for k in prices)
+
