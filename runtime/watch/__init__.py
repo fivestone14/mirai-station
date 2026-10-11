@@ -1,4 +1,4 @@
-"""Mirai Watch — runtime package for the mirai-station intraday loop (gex-only: hunter scan, macro-mood, alerts, auth watch)."""
+"""Mirai Watch — runtime package for the mirai-station intraday loop (gex-only: hunter scan, alerts, auth watch)."""
 # Cosmetic warning suppression. Must run before any submodule imports urllib3,
 # whose OpenSSL/LibreSSL notice fires on first import.
 import warnings

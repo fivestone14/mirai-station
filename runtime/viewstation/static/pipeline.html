@@ -255,6 +255,10 @@ html.embedded .stores{order:3}
       <!-- the rule's answer is kept in the Gate Payload and checks the reply; it never enters the prompt -->
       <path id="e_memo_shadow" class="edge thin" d="M870 384 L870 278" marker-end="url(#arrThin)"/>
       <text class="elabel acc" x="752" y="296">rides inside</text>
+      <!-- the Gate Payload's regions rule checks the reply's change words (check_reading_v2), beside the code gates -->
+      <path id="e_shadow_reviewer" class="edge thin" d="M920 245 L1020 245" marker-end="url(#arrThin)"/>
+      <text class="elabel" x="926" y="238">regions rule</text>
+      <text class="elabel" x="926" y="258">checks the reply</text>
 
       <path id="e_gate_obs" class="edge" d="M970 159 L1020 159" marker-end="url(#arr)"/>
       <!-- the side packet's own file, which the Side view reads back -->
@@ -446,7 +450,7 @@ html.embedded .stores{order:3}
     </svg>
     <ol class="anat-list">
       <li><b>1</b> scan writes the diary row, payload built, gate decides <span>0 to about 1 s, code only</span></li>
-      <li><b>2</b> observer, Sonnet 5, reads the payload <span>about 5 s on the Scene Payload in its last eras; 27 to 50 s daily median on the Strikes Payload, from 68 live calls 09-08 to 09-14; its exact message is kept just before it leaves; 180 s timeout</span></li>
+      <li><b>2</b> observer, Sonnet 5, reads the payload <span>about 5 s on the Scene Payload in its last eras; 27 to 50 s daily median on the Strikes Payload, from 68 live calls 09-08 to 09-14; 180 s timeout</span></li>
       <li><b>3</b> reviewer, Haiku 4.5, deletes any forecast sentence <span>a few seconds, 40 s cap</span></li>
       <li><b>4</b> read row written <span>the sentence that stands until the next call</span></li>
       <li><b>5</b> dashboard sees it <span>the page polls every 8 s; a background tab pauses until it is shown again</span></li>
@@ -740,7 +744,7 @@ html.embedded .stores{order:3}
     wake:  [[1900,'p','e_gate_obs',420,'',5], [1900,'p','r_bars_side',460], [2340,'f','side',420], [2340,'p','e_side_file',260,'grey',2.6], [2760,'p','e_side_dash',900,'',3.6], [3660,'f','dash',400,'faint']],
     wakeProto: [[1900,'p','e_board_gate',380,'acc',3.4], [1900,'f','shadow',360,'faint']],
     // steps after the observer finishes; delays are added to the observer's end
-    reply: [[0,'p','e_obs_rev',260], [260,'f','reviewer',520], [780,'p','e_rev_read',380], [1160,'f','readrow',420],
+    reply: [[0,'p','e_obs_rev',260], [0,'p','e_shadow_reviewer',260,'grey',2.6], [260,'f','reviewer',520], [780,'p','e_rev_read',380], [1160,'f','readrow',420],
             [1500,'p','e_read_dash',380], [1880,'f','dash',400], [1200,'p','e_feedback',900,'grey',3.0], [1500,'p','e_feedback_board',600,'grey',3.0], [1200,'p','e_read_rag',300,'grey',2.6]],
     failed: [[0,'p','e_quiet',700,'err',3.4], [700,'f','readrow',400,'err']],
     study: [[0,'p','r_bars_study',600,'grey',3.0]],

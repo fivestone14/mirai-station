@@ -14,9 +14,6 @@
     "_server_note": "Public relay by default; point at a self-hosted ntfy server if you run one."
   },
   "models": {
-    "_about": "Which Claude model each kind of call uses (claude -p --model). Match the model to the difficulty of the job: haiku gathers, sonnet drafts and argues, opus decides. Opus is reserved for calls whose output directly moves a thesis or a bet's stance; everything that merely collects, trims, drafts, or argues a side runs cheaper. claude_cli.call(task=...) resolves through this map; an explicit model= override always wins.",
-    "default": "sonnet",
-    "_default_note": "Unknown task names resolve here - middle tier, never silently opus.",
     "watchtower": "claude-sonnet-5",
     "_watchtower_note": "HEAD B, the reasoning head - PINNED exact id (never an alias): a silently re-pointed alias would change the judge mid-record. Model bump = record reset, same as a prompt bump."
   },

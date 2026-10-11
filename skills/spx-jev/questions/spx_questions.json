@@ -875,6 +875,9 @@
       "opening_five_minute": "2026-10-12",
       "thirty_minute": "2026-10-08"
      },
+     "retired_reason": {
+      "opening_five_minute": "retired with the morning macro brief it read, which stopped 2026-10-11"
+     },
      "cadence": "once at the 09:35 read; answer held as a day constant through the lane and the 30-minute reads to 11:32",
      "code_answer": true,
      "ask": "What does the morning news brief add to this morning's gap?",

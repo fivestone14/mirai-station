@@ -61,7 +61,7 @@ _NO_TOOLS = ("Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Glob",
              "Grep", "WebFetch", "Task", "Agent", "TodoWrite", "ExitPlanMode",
              "BashOutput", "KillShell", "SlashCommand", "Skill")
 
-# transient-failure detector, kept in sync with runtime/watch/claude_cli.py:27
+# transient-failure detector (the pattern runtime/watch/claude_cli.py carried until it retired 2026-10-11)
 _RATE_LIMIT_RE = re.compile(
     r"(rate.?limit|429|too\s+many\s+requests|usage\s+limit|quota|please\s+wait)",
     re.IGNORECASE)

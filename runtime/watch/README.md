@@ -17,12 +17,11 @@ What actually runs now, every trading day:
 
 Package layout:
 
-- `intraday/` — `gex_alerts.py` (fire pushes, the wall-breach bell, the feed sirens), `bayes.py` (shrink-to-neutral posterior; its one reader, the macro brief, retired 2026-10-11), `settings.py` (config accessors), `market_status.py` (RTH gate), `auth_check.py`/`token_watcher.py`/`reauth.py` (token keep-alive: the daily runner, the day-6 detector, the one-tap re-login link), `sndk_deadman.py` and `spx_premarket_deadman.py` (the two watchdogs above)
+- `intraday/` — `gex_alerts.py` (fire pushes, the wall-breach bell, the feed sirens), `settings.py` (config accessors), `market_status.py` (RTH gate), `auth_check.py`/`token_watcher.py`/`reauth.py` (token keep-alive: the daily runner, the day-6 detector, the one-tap re-login link), `sndk_deadman.py` and `spx_premarket_deadman.py` (the two watchdogs above)
 - `cli.py` — thin dispatcher for the launchd jobs (`gex-alerts`, `doctor`)
-- `claude_cli.py` — the `claude -p` subprocess wrapper (timeout, one retry, JSON extraction); its one caller, the macro brief, retired 2026-10-11 (the Watchtower makes its own call)
 - `push.py` / `intraday/push_ntfy.py` — phone pushes via ntfy
 - `paths.py` — state-dir resolution
-- `config/` — `limits-and-cooldowns.json` (auth, ntfy, models, the wall-breach bell) + `learning-settings.json` (bayes prior)
+- `config/` — `limits-and-cooldowns.json` (auth, ntfy, the Watchtower's model pin, the wall-breach bell)
 
 Everything is shadow/paper: fires are marked live only when `reversion_lens.live_allowed()`
 clears both the hand switch and the Wilson promotion gate.

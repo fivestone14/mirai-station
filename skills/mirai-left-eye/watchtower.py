@@ -69,6 +69,8 @@ CONFIG = SKILL_DIR.parent.parent / "runtime" / "watch" / "config" / "limits-and-
 
 # --- knobs -------------------------------------------------------------------
 PROMPT_VERSION = "wt-11"    # bump on ANY prompt change — a bump resets the record
+# not bumped 2026-10-11 when the MACRO MOOD line left the prompt head: day_context.macro_mood was
+# always null (no market_expectation/latest.json was ever written), so the judge read no change
 # wt-11 (2026-08-10): THE SNDK sr-2→sr-5 PORT — the honesty upgrades the SNDK reader
 # proved on its own tape, re-measured on THIS one before shipping (every threshold below
 # is from SPX's own recorded rows, never copied):
@@ -2454,10 +2456,10 @@ def _extract_json(text: str):
 
 def _ask_claude(prompt: str, model: str, timeout: float = CALL_TIMEOUT_S,
                 system: str | None = None):
-    """ONE `claude -p` subprocess call — deliberately NOT the watch package's
-    claude_cli wrapper: that one retries with backoff (3 attempts), which is
-    right for a nightly brief and wrong inside a 5-minute scan tick. Here a
-    slow call fails ONCE and the tick moves on (fail-open).
+    """ONE `claude -p` subprocess call — deliberately its own, not a shared wrapper
+    (the watch package's claude_cli, retired 2026-10-11 with the macro brief, retried
+    with backoff, 3 attempts: right for a nightly brief and wrong inside a 5-minute
+    scan tick). Here a slow call fails ONCE and the tick moves on (fail-open).
 
     EXACTLY TWO TOOLS (wt-11, the sr-2 grant): the lefteye_rag history CLI as
     one allow-listed Bash prefix, and WebSearch for the abnormal-tape catalyst

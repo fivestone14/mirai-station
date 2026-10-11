@@ -143,7 +143,7 @@
   "needs_engine_edit": "needs_engine_edit marks engine labels (spec/labels.json) this set rewords. availability says whether the data is on the row; whether a label is built is the code's to say: a label no family writes is omitted as not built (labels/registry.py), and a question reading it is skipped as missing it.",
   "score_criteria": "type score: criteria is an ordered list, index = level, in the same order as options (spec 01).",
   "tags": "tags marks a kind of question across groups. SEQUENTIAL_READ: the label states two or more steps in time order and the answer depends on that order; a question's steps are rebuilt from bars at every read, never from JEV's earlier answers. Untagged questions carry no tags field.",
-  "retired_from": "retired_from = the day a question stops being asked on a lane, a YYYY-MM-DD day per lane key like schedule and horizon. From that day the lane reads the question as dark with the reason 'retired at the cut-over' (ask.retired): never asked, never counted, never summed, weighed, held or pooled; before it nothing changes. The question stays in the set, dated, and is never deleted: its answers before the day are on record and the matrix keeps them until a fit for a day after the cut-over drops its column. The cut-over (Phase 4, cuts.CUT_OVER_DAY = 2026-10-08) retires every pre-merge question from the thirty_minute lane: from that day the live lane asks only the judgment group, and the sums ride on those answers and the code feature builder's answers in words. The opening and pre-market lanes keep asking their questions, shared ones included: no code feature builder answers their reads, so their sums have nothing else to ride on."
+  "retired_from": "retired_from = the day a question stops being asked on a lane, a YYYY-MM-DD day per lane key like schedule and horizon. From that day the lane reads the question as dark with the reason 'retired at the cut-over' (ask.retired): never asked, never counted, never summed, weighed, held or pooled; before it nothing changes. The question stays in the set, dated, and is never deleted: its answers before the day are on record and the matrix keeps them until a fit for a day after the cut-over drops its column. The cut-over (Phase 4, cuts.CUT_OVER_DAY = 2026-10-08) retires every pre-merge question from the thirty_minute lane: from that day the live lane asks only the judgment group, and the sums ride on those answers and the code feature builder's answers in words. The opening and pre-market lanes keep asking their questions, shared ones included: no code feature builder answers their reads, so their sums have nothing else to ride on. A retirement that was not the cut-over carries its own reason in retired_reason, a sentence per lane key like retired_from, which ask.retired uses in place of 'retired at the cut-over' (brief_vs_tape on the opening lane: retired with the morning macro brief it read, which stopped 2026-10-11)."
  },
  "daily_expiry_handling": {
   "summary": "SPX lists an SPXW expiry every trading day. The question set treats today's 0DTE book as the dealer book of record, but corrects for what a daily expiry does.",
@@ -1755,6 +1755,9 @@
      "retired_from": {
       "opening_five_minute": "2026-10-12",
       "thirty_minute": "2026-10-08"
+     },
+     "retired_reason": {
+      "opening_five_minute": "retired with the morning macro brief it read, which stopped 2026-10-11"
      },
      "lanes": [
       "opening_five_minute",

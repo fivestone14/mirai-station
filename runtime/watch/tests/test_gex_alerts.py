@@ -99,6 +99,16 @@ class TestGexAlerts(unittest.TestCase):
             self.assertEqual(out["breaches"], 0)
             self.assertFalse(any("wall" in s for s in sent))
 
+    def test_wall_breach_beyond_buffer_only(self):
+        # the bell's fallback check (moved here with wall_breach from the retired macro_mood)
+        # buffer = 0.10 * implied_move(40) = 4.0
+        self.assertIsNone(gex_alerts.wall_breach(5002, 5000, 4950, 40, 0.10))  # inside buffer
+        call = gex_alerts.wall_breach(5030, 5000, 4950, 40, 0.10)
+        self.assertEqual((call["wall"], call["direction"]), ("call", 1))
+        put = gex_alerts.wall_breach(4940, 5000, 4950, 40, 0.10)
+        self.assertEqual((put["wall"], put["direction"]), ("put", -1))
+        self.assertIsNone(gex_alerts.wall_breach(None, 5000, 4950, 40, 0.10))
+
 
 
 class TestFeedHealthSiren(unittest.TestCase):

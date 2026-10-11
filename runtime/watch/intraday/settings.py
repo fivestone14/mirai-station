@@ -22,15 +22,11 @@ _CONFIG_DIR = Path(__file__).resolve().parents[1] / "config"
 # if a config file is ever missing on a fresh machine.
 # Trimmed 2026-07-04: the voter/bet-era knobs (watchlist, alert_throttle, tick,
 # right_eye_gate, tilt, lifecycle, peaks, decay, retired model task names) had no
-# remaining callers — the gex-only system reads exactly these.
+# remaining callers — the gex-only system reads exactly these. Trimmed again
+# 2026-10-11: the bayes prior and the model tiers went with the macro brief (the
+# Watchtower reads its own model pin straight from limits-and-cooldowns.json).
 _DEFAULTS: Dict[str, Dict[str, Any]] = {
-    "learning-settings": {
-        "bayes": {"prior_win_rate": 0.50, "pseudocount": 10},
-    },
     "limits-and-cooldowns": {
-        "models": {
-            "default": "sonnet",
-        },
         "wall_breach": {
             "buffer_frac": 0.10,
             "cooldown_min": 20,
@@ -50,7 +46,7 @@ def _strip_doc_keys(value: Any) -> Any:
 
 @lru_cache(maxsize=None)
 def _load_file(name: str) -> Dict[str, Any]:
-    """Read one config file by stem (e.g. 'learning-settings'); cached after first read."""
+    """Read one config file by stem (e.g. 'limits-and-cooldowns'); cached after first read."""
     path = _CONFIG_DIR / f"{name}.json"
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -83,15 +79,6 @@ def _get(name: str, *path: str, default: Any = None) -> Any:
 
 
 # ---------- Typed accessors (the rest of the routine calls these) ----------
-
-
-def bayes_prior() -> float:
-    return float(_get("learning-settings", "bayes", "prior_win_rate", default=0.50))
-
-
-def bayes_pseudocount() -> float:
-    return float(_get("learning-settings", "bayes", "pseudocount", default=10))
-
 
 # ---------- Auth keep-alive (Schwab 7-day token) ----------
 
@@ -130,19 +117,3 @@ def wall_breach_buffer_frac() -> float:
 def wall_breach_cooldown_min() -> float:
     """Min minutes between two pages for the same ticker+wall."""
     return float(_get("limits-and-cooldowns", "wall_breach", "cooldown_min", default=20))
-
-
-# ---------- Model tiering (haiku gathers, sonnet drafts, opus decides) ----------
-
-def model_for(task: str) -> str:
-    """Which Claude model a given kind of call should use.
-
-    Plain English: match the model to the difficulty of the job. Gathering and
-    trimming run on haiku, drafting and arguing on sonnet, and only the calls
-    whose output directly moves a thesis or a bet's stance get opus. An unknown
-    task name resolves to the 'default' entry (sonnet) — never silently opus.
-    """
-    found = _get("limits-and-cooldowns", "models", task, default=None)
-    if found:
-        return str(found)
-    return str(_get("limits-and-cooldowns", "models", "default", default="sonnet"))

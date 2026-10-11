@@ -172,7 +172,7 @@ sends and publish fakes into it. Treat it like a password.
 > hypothetical: the original topic was committed that way and had to be rotated on
 > 2026-08-04.)
 
-Fresh paper fires, wall-breach mood re-dives, and EOD direction scoring push
+Fresh paper fires, the wall-breach bell and the feed sirens push
 through it. Quiet tape → no push, by design. (A log of every push intent,
 `state/logs/watch-pushes-YYYY-MM-DD.jsonl`, was kept until 2026-10-11; nothing read it.)
 
@@ -182,7 +182,7 @@ through it. Quiet tape → no push, by design. (A log of every push intent,
 ~/.claude/plugins/mirai-station/runtime/scripts/install-launchd.sh
 ```
 
-This symlinks the plists into `~/Library/LaunchAgents/` and bootstraps them via `launchctl`: 28 agents, every one named in the installer's `PLISTS` list. The station `README.md`'s fleet table describes them, SPX JEV's eleven jobs and the Claude forecast's two among them, and its kill-switch table gives `SPX_JEV_DISABLE=1` for those eleven (the forecast pair stands down with it, and has `SPX_CLAUDE_FORECAST_DISABLE=1` of its own). The core seven:
+This symlinks the plists into `~/Library/LaunchAgents/` and bootstraps them via `launchctl`: 25 agents, every one named in the installer's `PLISTS` list. The station `README.md`'s fleet table describes them, SPX JEV's eleven jobs and the Claude forecast's two among them, and its kill-switch table gives `SPX_JEV_DISABLE=1` for those eleven (the forecast pair stands down with it, and has `SPX_CLAUDE_FORECAST_DISABLE=1` of its own). The core seven:
 
 | Label | Cadence | What |
 |---|---|---|
@@ -297,7 +297,7 @@ retired with its mirror still in place leaves its forecast history behind on pur
 
 ```bash
 ./runtime/scripts/run-watch-left-eye.sh      # one tick by hand; quiet tape → no output is correct
-launchctl list | grep mirai-station          # all 28 agents
+launchctl list | grep mirai-station          # all 25 agents
 tail -f state/reversion/$(date +%Y-%m-%d).jsonl
 ```
 

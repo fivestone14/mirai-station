@@ -7,10 +7,9 @@
 #   index — flow sensor → gravity engine → lens gates — records the diary row,
 #   refreshes the Obsidian notes. Gated on the authoritative market-status so
 #   after-hours ticks never pollute the learning stream with stale data.
-# Phase 2 (alerts): the ALERT BELL — pushes fresh paper fires to the phone,
-#   fires the wall-breach mood re-dive (budget+cooldown capped), and scores the
-#   Morning-Mood direction call once after the close. Runs after-hours too so
-#   the EOD scoring window is never missed.
+# Phase 2 (alerts): the ALERT BELL — fire pushes, the wall-breach bell, the feed
+#   sirens; runs after hours too, so a fire from the day's last scan is pushed and
+#   a silent scanner in a live market is paged whatever the scan phase did.
 set -u
 _SELF="${BASH_SOURCE[0]}"
 while [[ -L "$_SELF" ]]; do _SELF="$(readlink "$_SELF")"; done
@@ -37,7 +36,7 @@ else
   echo "mirai-left-eye :: market-hours check FAILED (rc=${GATE_RC}) — check venv/imports; no scan" >&2
 fi
 
-# Phase 2 — alert bell (always; EOD scoring + any not-yet-pushed fires).
+# Phase 2 — alert bell (always: any not-yet-pushed fires, the wall-breach bell, the feed sirens).
 if [[ $GATE_RC -ne 0 && $GATE_RC -ne 3 ]]; then
   "${MIRAI_STATION_VENV}/bin/python" -m watch.cli gex-alerts || true
   exit 1

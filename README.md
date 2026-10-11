@@ -123,9 +123,8 @@ two phases:
    - the **three heads** each evaluate that map;
    - `record()` appends one row to today's **diary** (`state/reversion/<date>.jsonl`);
    - the Obsidian "Today" note and the viewstation refresh.
-2. **Alerts** — `watch.cli gex-alerts` runs *always* (even after hours, so the EOD
-   scoring window is never missed): fresh paper fires, wall-breach mood re-dives,
-   and end-of-day direction scoring push to the phone via **ntfy**.
+2. **Alerts** — `watch.cli gex-alerts` runs *always* (after hours too): fresh paper
+   fires, the wall-breach bell and the feed sirens push to the phone via **ntfy**.
 
 Report cards are **not** part of the tick — they run as a separate nightly job after
 the close.
@@ -342,7 +341,7 @@ mirai-station/
 │   ├── sndk_reversion/ sndk_reads/ sndk_gex/ sndk_rag/   the SNDK station
 │   ├── gex_fills/ dated_gex/                             the book and its baselines
 │   ├── siege/ lob_flow/ tape_prev/                      the shadow sensors
-│   ├── market_expectation/     the retired macro brief's records (2026-10-11); only gex_alerts' alerts_state.json is still written there
+│   ├── market_expectation/     gex_alerts' alerts_state.json only (the retired macro brief's records went 2026-10-11)
 │   └── voice/ logs/            conversation log + session continuity
 └── docs/                       INSTALL · OPERATIONS · gex-glossary · gw-vocab ·
                                 wt8-doctrine · spx-payload-inventory ·
@@ -410,7 +409,7 @@ The SNDK reasoning **pause** is deliberately *not* a kill switch — see §2.
 ```bash
 cd ~/.claude/plugins/mirai-station
 ./runtime/scripts/venv-bootstrap.sh      # provision ~/.local/share/mirai-station/venv
-./runtime/scripts/install-launchd.sh     # symlink + bootstrap the 28 agents
+./runtime/scripts/install-launchd.sh     # symlink + bootstrap the 25 agents
 ```
 
 Then:

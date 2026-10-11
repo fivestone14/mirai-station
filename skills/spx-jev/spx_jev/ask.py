@@ -74,19 +74,21 @@ def fill_question(question: dict, where: str, keep: tuple[str, ...] = ()) -> dic
 
 
 def for_lane(question: dict, lane_key: str) -> dict:
-    """A question as one lane asks it: that lane's schedule entry, horizon and retirement day in place of the per-lane
-    maps (a question retired from no lane, or not from this one, has no ``retired_from``)."""
+    """A question as one lane asks it: that lane's schedule entry, horizon, retirement day and retirement reason in
+    place of the per-lane maps (a question retired from no lane, or not from this one, has no ``retired_from``; one
+    retired at the cut-over has no ``retired_reason``)."""
     out = dict(question)
     if isinstance(question.get("schedule"), dict):
         out["schedule"] = question["schedule"].get(lane_key)
     if isinstance(question.get("horizon"), dict):
         out["horizon"] = question["horizon"].get(lane_key)
-    if isinstance(question.get("retired_from"), dict):
-        day = question["retired_from"].get(lane_key)
-        if day is None:
-            del out["retired_from"]
-        else:
-            out["retired_from"] = day
+    for key in ("retired_from", "retired_reason"):
+        if isinstance(question.get(key), dict):
+            value = question[key].get(lane_key)
+            if value is None:
+                del out[key]
+            else:
+                out[key] = value
     return out
 
 
@@ -95,16 +97,18 @@ RETIRED = "retired at the cut-over"
 
 def retired(doc: dict, day: str) -> dict:
     """``doc`` as the read on ``day`` asks from it: a question whose ``retired_from`` (its lane's day, YYYY-MM-DD) is on
-    or before ``day`` is dark, with RETIRED as its reason, so nothing downstream (the requests, the cadence, the sums, the
-    weights, the pool's members, the card) asks or counts it; its ``retired_from`` stays on it, so a reader can tell a
-    retired question from a dark one. Before its day the question is as it was. The doc is not changed in place."""
+    or before ``day`` is dark, with its lane's ``retired_reason`` (a retirement that was not the cut-over, such as
+    brief_vs_tape's with the morning macro brief) or RETIRED as its reason, so nothing downstream (the requests, the
+    cadence, the sums, the weights, the pool's members, the card) asks or counts it; its ``retired_from`` stays on it, so
+    a reader can tell a retired question from a dark one. Before its day the question is as it was. The doc is not
+    changed in place."""
     groups = []
     for group in doc["groups"]:
         questions = {}
         for qid, q in group.get("questions", {}).items():
             when = q.get("retired_from")
             if isinstance(when, str) and when <= day and q.get("status") != "dark":
-                q = {**q, "status": "dark", "dark_reason": RETIRED}
+                q = {**q, "status": "dark", "dark_reason": q.get("retired_reason") or RETIRED}
             questions[qid] = q
         groups.append({**group, "questions": questions})
     return {**doc, "groups": groups}
