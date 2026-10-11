@@ -302,7 +302,8 @@ _RAW_SUFFIXES = (".json", ".jsonl", ".txt", ".md")
 # Subtrees the explorer never exposes even though they sit under a readable
 # root. The voice logs are verbatim recordings of the operator talking, and a
 # live agent session id — a different category of private than a diary row.
-_RAW_DENY = ("voice",)
+# The archive holds retired data, voice logs included, kept only for restore.
+_RAW_DENY = ("voice", "archive")
 
 
 def _raw_denied(root: Path, path: Path) -> bool:
