@@ -221,7 +221,7 @@ sudo shutdown -r now
 
 Log back in, then:
 ```bash
-launchctl list | grep mirai-station   # all 28 should be listed
+launchctl list | grep mirai-station   # all 25 should be listed
 ps -ef | grep caffeinate              # caffeinate should be running
 ```
 
@@ -229,7 +229,7 @@ ps -ef | grep caffeinate              # caffeinate should be running
 
 ## Operating outside market hours
 
-The market-hours gate (`runtime/watch/intraday/market_status.py`) is a self-contained NYSE date-math calendar (holidays + half-days, no network call). Outside market hours the scan phase exits instantly; launchd still wakes left-eye every 60 s, that's fine and cheap (the alert phase still runs, which is how EOD scoring lands after the close).
+The market-hours gate (`runtime/watch/intraday/market_status.py`) is a self-contained NYSE date-math calendar (holidays + half-days, no network call). Outside market hours the scan phase exits instantly; launchd still wakes left-eye every 60 s, that's fine and cheap (the alert phase still runs, so the feed sirens and the wall-breach bell keep their state across the day).
 
 The left-eye plist carries `StartInterval` only. Its earlier `StartCalendarInterval` array was removed on purpose (the plist comment says why: entries with a weekday but no hour fired every hour), so fewer wake-ups means a longer interval, not a calendar.
 

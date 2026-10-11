@@ -100,7 +100,7 @@ locked label. This (context → outcome) table is what the model learns from.
 
 ## Step 2 — THE CONTEXTS (kept FEW — the anti-overslice rule)
 Start with the highest-signal handful, learned NOT as a giant cross-product grid
-(Mirai's bayes module already refuses that — it would "starve every cell"):
+(it would "starve every cell"):
   1. time-of-day / minutes-to-close   (theta — user's prime instinct)
   2. volatility band                   (VIX level)
   3. regime strength                   (pin vote count / confidence)
