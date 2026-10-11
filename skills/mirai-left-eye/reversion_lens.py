@@ -57,7 +57,7 @@ _TAPE_PREV: dict[str, dict] = {}
 
 
 def _tape_prev_path(ticker: str) -> Path:
-    return station_paths.OPTIONS_VOLUME_LAST_SCAN_STATE_BY_TICKER.path(ticker=ticker)
+    return station_paths.OPTIONS_VOLUME_LAST_SCAN_STATE_BY_TICKER[ticker].path()
 
 
 def _load_tape_prev(ticker: str, now: datetime) -> Optional[dict]:

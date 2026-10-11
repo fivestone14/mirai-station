@@ -78,7 +78,7 @@ class StateDir:
         return station_paths.DEPTH_BASELINES_STATE_BY_ENGINE[name].path(self.state_root)
 
     def raw(self, day: str, stream: str) -> Path:
-        return station_paths.SPX_SAME_DAY_OPTIONS_RAW_STREAM.path(self.state_root, day=day, stream=stream)
+        return station_paths.SPX_SAME_DAY_OPTIONS_AND_SPY_DEPTH_RAW_STREAM.path(self.state_root, day=day, stream=stream)
 
     def agg(self, day: str) -> Path:
         return station_paths.SPX_ORDER_FLOW_READINGS_BY_MINUTE.path(self.state_root, day=day)

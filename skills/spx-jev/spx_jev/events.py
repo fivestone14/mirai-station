@@ -29,7 +29,9 @@ from zoneinfo import ZoneInfo
 from .expiry import expiry_kinds, quarter_end_expiry
 from .sessions import session_close
 
-CALENDAR = Path(__file__).resolve().parent.parent / "calendar" / "events.json"
+import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+
+CALENDAR = station_paths.MARKET_EVENT_CALENDAR_BY_EVENT_SPX_JEV_COPY.path()   # the package's own copy of the event calendar, in the repo
 ET = ZoneInfo("America/New_York")
 TIER = "1"
 PRE_OPEN, DATA_10AM, DATA_2PM, FED_SPEAKER, AUCTION = "pre_open", "data_10am", "data_2pm", "fed_speaker", "auction"

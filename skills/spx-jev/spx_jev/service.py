@@ -945,7 +945,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
     # the phone's alone, never in the day's records: the time-of-day sheet's counts, and the last close the live price
     # is measured against
     c = {**c, **({"time_of_day": tod} if tod else {}), **prior_close_of(scene)}
-    write_card(out_dir, c)
+    write_card(lane.card_path(state_dir, out_dir), c)
     return c
 
 
@@ -1002,9 +1002,8 @@ def first_window_row(now: datetime) -> datetime | None:
     return None
 
 
-def write_card(out_dir: Path, c: dict) -> None:
-    """Replace latest.json in one step, so the phone never reads half a card."""
-    card = station_paths.JEV_LIVE_CARD.in_lane_folder(out_dir)          # every lane's card is named alike inside its folder
+def write_card(card: Path, c: dict) -> None:
+    """Replace the lane's card (lane.card_path) in one step, so the phone never reads half a card."""
     tmp = card.with_name(card.name + ".tmp")
     tmp.write_text(json.dumps(c, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, card)
@@ -1025,8 +1024,9 @@ def close_out(state_dir: Path, out_dir: Path, doc: dict, lane: Lane, day: str | 
         grade_run(state_dir, out_dir, live_options(retired(doc, day or today_et())), lane=lane)
     except Exception as e:  # grading must never stop the close-out's card
         log(f"grading skipped this close-out: {type(e).__name__}: {e}\n{traceback.format_exc()}")
+    card = lane.card_path(state_dir, out_dir)
     try:
-        c = json.loads(station_paths.JEV_LIVE_CARD.in_lane_folder(out_dir).read_text(encoding="utf-8"))
+        c = json.loads(card.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     if str(c.get("row_ts", ""))[:10] != (day or today_et()):
@@ -1040,7 +1040,7 @@ def close_out(state_dir: Path, out_dir: Path, doc: dict, lane: Lane, day: str | 
         c.pop("closed_out_at", None)
     else:
         c["closed_out_at"] = c["graded_at"]
-    write_card(out_dir, c)
+    write_card(card, c)
     if not retry or c["tally"] != before:
         archive.append(lane.archive_folder(state_dir, out_dir), day, archive.CloseOutRecord(lane=lane.name, day=day, calls=calls, tally=c["tally"]))
     return c
@@ -1065,7 +1065,7 @@ def retry_close_outs(state_dir: Path, now: datetime) -> None:
             continue
         out_dir = lane.folder(state_dir)
         try:
-            card = json.loads(station_paths.JEV_LIVE_CARD.in_lane_folder(out_dir).read_text(encoding="utf-8"))
+            card = json.loads(lane.card_path(state_dir).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
         if str(card.get("row_ts", ""))[:10] != now.date().isoformat() or card.get("closed_out_at"):
@@ -1142,7 +1142,7 @@ def main(argv: list[str] | None = None) -> int:
                 n_ans = sum(1 for q in c["questions"] if q.get("answer"))
                 said = ("sent" if c["asked"] or c["hour"] is not None else "nothing due, nothing sent") if c["sent"] else "not sent"
                 log(f"row {c['row_ts'][11:19]} labels {c['labels_count']} answered {n_ans}/{len(c['questions'])} "
-                    f"{said}{' STALE ROW' if c['freshness']['stale'] else ''} -> {out_dir / 'latest.json'}")
+                    f"{said}{' STALE ROW' if c['freshness']['stale'] else ''} -> {lane.card_path(state_dir, out_dir)}")
                 last_row = c["row_ts"]
         except NoRowYet as e:   # a quiet skip, not a failure: the next tick will find the row
             log(f"skipping this tick: {e}")

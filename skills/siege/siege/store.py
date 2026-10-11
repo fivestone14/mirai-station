@@ -73,7 +73,7 @@ class SiegeStore:
     @property
     def latest(self) -> Path: return station_paths.SPX_DEALER_WALLS_LATEST.path(self.root)
     @property
-    def baseline(self) -> Path: return station_paths.SPY_VOLUME_BY_MINUTE_ROLLING_BASELINE_STATE.path(self.root)
+    def baseline(self) -> Path: return station_paths.SPY_VOLUME_BASELINES_STATE.path(self.root)
     @property
     def session(self) -> Path: return station_paths.SPX_DEALER_WALL_TOUCHES_TODAY_STATE.path(self.root)
 

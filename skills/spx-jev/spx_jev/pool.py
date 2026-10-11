@@ -201,7 +201,8 @@ def cold_state(source: str = SOURCE) -> dict:
 
 
 def state_path(out_dir: Path, minutes: int) -> Path:
-    return station_paths.BASE_POOL_STATE.in_lane_folder(out_dir, minutes=minutes)
+    """The end-price pool's state for the horizon ``minutes`` long (station_paths names the horizons the pool learns)."""
+    return station_paths.BASE_POOL_STATE.in_lane_folder(out_dir, horizon=f"next_{minutes}_minutes")
 
 
 def load_state(out_dir: Path, minutes: int) -> dict:

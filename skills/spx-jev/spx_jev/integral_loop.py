@@ -87,7 +87,8 @@ def cold_state() -> dict:
 
 
 def state_path(out_dir: Path, lane: Lane = LIVE) -> Path:
-    return station_paths.BASE_POOL_AVERAGE_PRICE_STATE.in_lane_folder(out_dir, minutes=lane.horizons[lane.primary][0])
+    """This loop's state: the base pool's file for the average price over the lane's primary window."""
+    return station_paths.BASE_POOL_STATE.in_lane_folder(out_dir, horizon=f"average_of_next_{lane.horizons[lane.primary][0]}_minutes")
 
 
 def load_state(out_dir: Path, lane: Lane = LIVE) -> dict:

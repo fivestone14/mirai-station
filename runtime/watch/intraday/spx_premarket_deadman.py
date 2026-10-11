@@ -86,9 +86,9 @@ def _save_state(state_dir: Path, st: Dict[str, Any]) -> None:
         pass          # a watchdog that cannot write its ledger still pages
 
 
-def _card(lane_dir: Path) -> Optional[Dict[str, Any]]:
+def _card(state_dir: Path) -> Optional[Dict[str, Any]]:
     try:
-        card = json.loads(station_paths.JEV_PREMARKET_CARD.in_lane_folder(lane_dir).read_text())
+        card = json.loads(station_paths.JEV_CARD_BY_LANE[LANE].path(state_dir).read_text())
     except (OSError, ValueError):
         return None
     return card if isinstance(card, dict) else None
@@ -161,7 +161,7 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
     out["checked"] = True
     st = _load_state(state_dir, date_iso)
     paged = set(st.get("paged") or [])
-    card = _card(lane_dir)
+    card = _card(state_dir)
     if card is None or card.get("day") != date_iso:
         # the card is still the last market day's: not even the first checkpoint was read
         misses = [(FIRST_CHECKPOINT, "no pre-market read today")]

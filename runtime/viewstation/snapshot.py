@@ -388,7 +388,7 @@ def _build_payload(now: datetime) -> dict:
     # None, and the tab announced `first_read_of_session: true` at 15:58 on a
     # day with 26 recorded readings. Prefer the current era; fall back to the
     # whole day rather than to nothing.
-    all_reads = R._read_jsonl(R._reads_dir() / f"{day}.jsonl")
+    all_reads = R._read_jsonl(R._reads_path(day))
     reads = [r for r in all_reads if r.get("era") == R.active_era()] or all_reads
     last_call = next((r for r in reversed(reads)
                       if r.get("wall_s") is not None), None)

@@ -155,7 +155,7 @@ class ForecastPaths:
         return self._at(station_paths.LEVERAGED_FUND_ASSETS_BY_RUN)
 
     def lob_raw_copy_dir(self, day: str) -> Path:
-        return self._at(station_paths.SPX_SAME_DAY_OPTIONS_TRADES_BY_TRADE_RECORDER_COPY, day=day)
+        return self._at(station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDERS_RECORDER_COPY, day=day)
 
     # --- everything else -------------------------------------------------------------------------
     @property
@@ -196,7 +196,7 @@ class ForecastPaths:
                 self.run_log_file.parent, station_paths.CLAUDE_FORECAST_NIGHTLY_JOB_LOCK.folder(self.state_dir),
                 self.dated_book_copies_dir, station_paths.SPY_VOLUME_BY_MINUTE.folder(self.state_dir),
                 station_paths.SPX_PRICE_BARS_BY_5_MINUTES.folder(self.state_dir),
-                station_paths.SPX_SAME_DAY_OPTIONS_TRADES_BY_TRADE_RECORDER_COPY.folder(self.state_dir))
+                station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDERS_RECORDER_COPY.folder(self.state_dir))
 
 
 STORE_MAP = {

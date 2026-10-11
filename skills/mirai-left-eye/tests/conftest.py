@@ -46,25 +46,25 @@ def _isolate_bars_store(tmp_path, monkeypatch):
 @pytest.fixture(autouse=True)
 def _isolate_lob_state(tmp_path, monkeypatch):
     """lob_bridge writes gex_context.json (and reads latest.json) under the
-    real state/lob_flow by default; any test driving evaluate() end-to-end
+    real data root by default; any test driving evaluate() end-to-end
     would stamp production state. Redirect every test's lob IO to a
-    throwaway dir (import guarded: the box may be absent in a bare checkout)."""
+    throwaway data root (import guarded: the box may be absent in a bare checkout)."""
     try:
         import lob_bridge
-        monkeypatch.setattr(lob_bridge, "STATE_DIR", tmp_path / "lob_flow")
+        monkeypatch.setattr(lob_bridge, "STATE_DIR", tmp_path / "state")
     except Exception:
         pass
 
 
 @pytest.fixture(autouse=True)
 def _isolate_siege_state(tmp_path, monkeypatch):
-    """siege_bridge writes latest/cards/baseline under the real state/siege by
+    """siege_bridge writes latest/cards/baseline under the real data root by
     default; any test driving evaluate() end-to-end would stamp production
     state (and fold fake bars into the live volume baseline). Redirect every
-    test's siege IO to a throwaway dir (import guarded like the lob twin)."""
+    test's siege IO to a throwaway data root (import guarded like the lob twin)."""
     try:
         import siege_bridge
-        monkeypatch.setattr(siege_bridge, "STATE_DIR", tmp_path / "siege")
+        monkeypatch.setattr(siege_bridge, "STATE_DIR", tmp_path / "state")
     except Exception:
         pass
 

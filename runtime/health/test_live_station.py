@@ -351,7 +351,7 @@ def _premarket_still_to_grade(card: dict) -> int:
         return 0
 
 
-def premarket_fired(lane_dir: Path, now: datetime, first: str, close_out: str,
+def premarket_fired(state_dir: Path, now: datetime, first: str, close_out: str,
                     late_min: float) -> tuple[bool | None, str]:
     """On a market day the SPX pre-market job read at every checkpoint today's card names once it is
     past the lane's late line and a read's run, and past the same after the close-out, that landed too and
@@ -364,8 +364,9 @@ def premarket_fired(lane_dir: Path, now: datetime, first: str, close_out: str,
 
     def at(hhmm: str) -> datetime:
         return datetime.combine(day, time.fromisoformat(hhmm), tzinfo=ET)
+    lane_dir = station_paths.JEV_LANE_FOLDER.path(state_dir, lane="premarket")
     try:
-        card = json.loads(station_paths.JEV_PREMARKET_CARD.in_lane_folder(lane_dir).read_text())
+        card = json.loads(station_paths.JEV_CARD_BY_LANE["premarket"].path(state_dir).read_text())
     except (OSError, ValueError):
         card = None
     if not isinstance(card, dict) or card.get("day") != day.isoformat():
@@ -961,13 +962,16 @@ PRE_READS = ("02:35", "03:35", "08:05", "08:48", "09:05", "09:28")
 
 
 def _premarket(tmp_path: Path, read=PRE_READS, reads=PRE_READS, closed=True, day=PRE_DAY, tally=None) -> Path:
-    """A pre-market lane folder: today's card naming the day's checkpoints, and a read on file at each of ``read``."""
-    lane = tmp_path / "premarket"
-    _write(lane / "latest.json", {"day": day, "lane": "premarket", "closed_out_at": "2026-09-28T14:06:04+00:00" if closed else None,
-                                  "schedule": {"reads": [f"{day}T{c}:00-04:00" for c in reads], "close_out": f"{day}T10:06:00-04:00"},
-                                  **({"tally": tally} if tally else {})})
-    _write(lane / f"{day}.jsonl", *[{"row_ts": f"{day}T{c}:04-04:00", "checkpoint": c} for c in read])
-    return lane
+    """A data root with the pre-market lane's files: today's card naming the day's checkpoints, and a read on file at
+    each of ``read``."""
+    state = tmp_path / "state"
+    _write(station_paths.JEV_CARD_BY_LANE["premarket"].path(state),
+           {"day": day, "lane": "premarket", "closed_out_at": "2026-09-28T14:06:04+00:00" if closed else None,
+            "schedule": {"reads": [f"{day}T{c}:00-04:00" for c in reads], "close_out": f"{day}T10:06:00-04:00"},
+            **({"tally": tally} if tally else {})})
+    _write(station_paths.JEV_ANSWERS_BY_READ.path(state, lane="premarket", day=day),
+           *[{"row_ts": f"{day}T{c}:04-04:00", "checkpoint": c} for c in read])
+    return state
 
 
 def _pre_at(hhmm: str, day: str = PRE_DAY) -> datetime:
@@ -1212,7 +1216,7 @@ def test_live_spx_store_holds_the_last_market_day(station):
 def test_live_spx_premarket_read_at_every_checkpoint(station):
     limits = premarket_limits(station.root)
     lane = station_paths.JEV_LANE_FOLDER.path(station.state, lane="premarket")
-    _hold(premarket_fired(lane, station.now, limits["first_checkpoint"], limits["close_out"], limits["late_min"]),
+    _hold(premarket_fired(station.state, station.now, limits["first_checkpoint"], limits["close_out"], limits["late_min"]),
           f"cut -c1-80 {lane}/{station.day}.jsonl; tail -n 5 {_log(station, SPX_PREMARKET_JOB, 'stderr')}")
 
 

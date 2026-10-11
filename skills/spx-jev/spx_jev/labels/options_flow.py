@@ -71,7 +71,7 @@ ROW_LINE_START = '{"ts": "'
 # depth swings by half from one minute to the next.
 QUOTE_WINDOW_MIN = 5
 QUOTE_BUCKET = "d25_40"                  # the collector's 25-40 delta bucket, the same-day quotes near price that trade
-SPY_VOLUMES = Path(station_paths.SPY_VOLUME_BY_MINUTE_ROLLING_BASELINE_STATE.relative)   # the siege box's SPY volume by minute of day, folded on every diary scan
+SPY_VOLUMES = Path(station_paths.SPY_VOLUME_BASELINES_STATE.relative)   # the siege box's SPY volume by minute of day, folded on every diary scan
 # The siege box folds SPY's minutes on each diary scan, about every two minutes: a newest minute older than this means it stopped.
 SPY_VOLUME_MAX_AGE_MIN = 5
 # A window with under half its minutes on file is a feed hole, not a quiet stretch (the siege box's own rule).

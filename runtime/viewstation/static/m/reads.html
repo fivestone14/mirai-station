@@ -15,12 +15,12 @@
   average went and what was called, a picture of the window against the call, and Right or Wrong. A tap on a call
   opens its numbers.
 
-  Reads state/spx_jev/integral_grades.jsonl through the viewstation's read-only raw-file route, one row per
-  graded window (skills/spx-jev grade.py, the average-price grade): horizon next_30 only, the last row of a
-  read kept. ``from`` is the price the call was made at, ``edge`` its flat band either side, ``g`` the 30-minute
-  average's move from it, ``worst`` and ``best`` the window's low and high, ``label`` where the average went,
-  ``pick`` the call and ``verdict`` the grade. An open day's line is the day's one-minute bars
-  (state/spx_jev/bars/<day>.jsonl, the SPX service's bars job, as the forecast page's chart reads them), fetched
+  Reads the live lane's average-price grades (JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON in runtime/station_paths.py)
+  through the viewstation's by-name store route, one row per graded window (skills/spx-jev grade.py, the average-price
+  grade): horizon next_30 only, the last row of a read kept. ``from`` is the price the call was made at, ``edge`` its
+  flat band either side, ``g`` the 30-minute average's move from it, ``worst`` and ``best`` the window's low and high,
+  ``label`` where the average went, ``pick`` the call and ``verdict`` the grade. An open day's line is the day's
+  one-minute bars (SPX_PRICE_BARS_BY_MINUTE, the SPX service's bars job, as the forecast page's chart reads them), fetched
   when the reader opens the day: once and kept for a done day, again on each draw while the day runs, since a page
   left open all session (the MacBook's tab) would otherwise draw the line only to the minute it was first asked for.
   Nothing in server.py changes for it.

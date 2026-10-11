@@ -40,7 +40,7 @@ _RUNTIME = str(_SKILL_DIR.parent.parent / "runtime")             # runtime/stati
 if _RUNTIME not in sys.path:
     sys.path.append(_RUNTIME)
 import station_paths  # noqa: E402
-_DEFAULT_DIR = station_paths.OPTIONS_STRIKE_VOLUME_WEIGHTS_STATE_BY_LEDGER.folder()
+_DEFAULT_DIR = station_paths.SPX_OPTIONS_STRIKE_VOLUME_WEIGHTS_STATE.folder()    # both ledgers' files sit in one folder
 
 
 def _key(c: dict) -> Optional[str]:
@@ -63,7 +63,8 @@ def annotate(ledger_id: str, contracts: list[dict], now: datetime,
             return False
         d = Path(state_dir) if state_dir else _DEFAULT_DIR
         d.mkdir(parents=True, exist_ok=True)
-        path = d / station_paths.OPTIONS_STRIKE_VOLUME_WEIGHTS_STATE_BY_LEDGER.file_name(ledger_id=ledger_id)
+        # the two ledgers the station keeps (native_SPX, proxy_SPY); an id outside them has no file and keeps the legacy pin
+        path = d / station_paths.OPTIONS_STRIKE_VOLUME_WEIGHTS_STATE_BY_LEDGER[ledger_id].file_name()
 
         prev: dict = {}
         try:

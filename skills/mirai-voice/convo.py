@@ -453,6 +453,6 @@ class VoiceSession:
     def _log(self, rec: dict) -> None:
         try:
             day = datetime.now(_sr._ET).date().isoformat()
-            atomic_io.append_jsonl(_STATE_DIR / station_paths.VOICE_DESK_TRANSCRIPTS_BY_DAY.file_name(day=day), rec)
+            atomic_io.append_jsonl(station_paths.VOICE_DESK_TRANSCRIPTS_BY_EXCHANGE.path(day=day), rec)
         except Exception:
             pass

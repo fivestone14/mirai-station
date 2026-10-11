@@ -676,10 +676,11 @@ def _run_every_writer(state, monkeypatch):
 
 
 def _folders_named(text):
-    """The top state folders of every store a source file names through station_paths (the code joins no
-    folder literal of its own any more; the store's template says where it is today)."""
+    """The top state folders a source file reaches: every store it names through station_paths (the store's
+    template says where it is today), and any folder literal it still joins onto the state root itself."""
     names = set(re.findall(r"station_paths\.([A-Z][A-Z0-9_]+)", text))
-    return {station_paths.STORES[n].relative.split("/")[0] for n in names if n in station_paths.STORES}
+    return ({station_paths.STORES[n].relative.split("/")[0] for n in names if n in station_paths.STORES}
+            | set(re.findall(r'/\s*"(sndk_[a-z_]+)"', text)))
 
 
 def _written_by(stack, module, function):

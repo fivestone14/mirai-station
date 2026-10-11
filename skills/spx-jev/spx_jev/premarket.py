@@ -406,7 +406,7 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
         except Exception as e:  # grading must never stop the card
             service.log(f"grading skipped this run: {type(e).__name__}: {e}\n{traceback.format_exc()}")
     c = card(scene, record, doc, out_dir, unsent_reason)
-    service.write_card(out_dir, c)
+    service.write_card(PREMARKET.card_path(state_dir, out_dir), c)
     return c
 
 
@@ -593,7 +593,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     answered = sum(1 for q in c["questions"] if q.get("answer"))
     service.log(f"premarket {checkpoint}: labels {c['labels_count']} answered {answered}/{len(c['questions'])} "
-                f"{'sent' if c['sent'] else 'not sent'} -> {out_dir / 'latest.json'}")
+                f"{'sent' if c['sent'] else 'not sent'} -> {PREMARKET.card_path(state_dir, out_dir)}")
     return 0
 
 

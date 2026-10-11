@@ -73,7 +73,7 @@ def lob_flow_raw_dir(state_dir: Path) -> Path:
 
 
 def siege_baseline_file(state_dir: Path) -> Path:
-    return station_paths.SPY_VOLUME_BY_MINUTE_ROLLING_BASELINE_STATE.path(state_dir)
+    return station_paths.SPY_VOLUME_BASELINES_STATE.path(state_dir)
 
 
 def dated_book_file(state_dir: Path) -> Path:
