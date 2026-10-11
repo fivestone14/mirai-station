@@ -108,5 +108,7 @@ const MiraiSheet = (function(){
   // shell with one voice and in one place.
   function pin(on){ pinned = !!on; tellShell(); }
 
-  return {open, isOpen, pin};
+  // close is dismiss by name: a page that lays an open sheet out some other way (the forecast's chart, a panel from
+  // 1024px up) closes it the one way everything else does
+  return {open, isOpen, pin, close: dismiss};
 })();

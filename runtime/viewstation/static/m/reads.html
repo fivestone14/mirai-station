@@ -6,18 +6,24 @@
 <meta name="color-scheme" content="light">
 <title>SPX reads · Mirai</title>
 <!--
-  The SPX reads: every graded 30-minute call, a day at a time (Will's design D of 2026-10-09). The last five
-  days' score stays pinned at the top with the header, beside a Collapse all / Open all control. Under it the
-  days, newest first, a sliver apart: the newest open, the others folded to their score and one square per
-  call, filled when the call was right, oldest on the left. An open day lists its calls earliest to latest in
-  the viewer's zone: the time, where the 30-minute average went and what was called, a picture of the window
-  against the call, and Right or Wrong. A tap on a call opens its numbers.
+  The SPX reads: every graded 30-minute call, a day at a time (Will's design D of 2026-10-09, drawn to his board
+  Final-Reads of 2026-10-10). The last five days' score stays pinned at the top with the header, with its share
+  right, the five days under it as bars, and a Collapse all / Open all control. Under it the days, newest first, a
+  sliver apart: the newest open, the others folded to their score and one square per call, filled when the call was
+  right, oldest on the left. An open day draws its price from the open to the close with a dot at each call, the
+  wrong ones ringed, and lists its calls earliest to latest in the viewer's zone: the time, where the 30-minute
+  average went and what was called, a picture of the window against the call, and Right or Wrong. A tap on a call
+  opens its numbers.
 
   Reads state/spx_jev/integral_grades.jsonl through the viewstation's read-only raw-file route, one row per
   graded window (skills/spx-jev grade.py, the average-price grade): horizon next_30 only, the last row of a
   read kept. ``from`` is the price the call was made at, ``edge`` its flat band either side, ``g`` the 30-minute
   average's move from it, ``worst`` and ``best`` the window's low and high, ``label`` where the average went,
-  ``pick`` the call and ``verdict`` the grade. Nothing in server.py changes for it.
+  ``pick`` the call and ``verdict`` the grade. An open day's line is the day's one-minute bars
+  (state/spx_jev/bars/<day>.jsonl, the SPX service's bars job, as the forecast page's chart reads them), fetched
+  when the reader opens the day: once and kept for a done day, again on each draw while the day runs, since a page
+  left open all session (the MacBook's tab) would otherwise draw the line only to the minute it was first asked for.
+  Nothing in server.py changes for it.
 
   The picture: the call's price is the ink tick in the middle, its flat band the shaded box, the window's low to
   high the line, and the average, the number that is graded, the dot, coloured by where it went (up the page's
@@ -25,8 +31,9 @@
 
   Times are the viewer's, through viewerTime as on the forecast page; which day a call belongs to is its
   market day (the stamp's own date, written in New York's offset). Same paper as the forecast page: its tokens,
-  its card, its label row, its tab bar. Text goes in with textContent only; a failed fetch keeps the last list
-  on screen and says so. Nothing here reads a viewport unit.
+  its card, its label row, its header line, its tab bar, and from 1024px up its header row with the tabs in it,
+  the days staying a centred column. Text goes in with textContent only; a failed fetch keeps the last list on
+  screen and says so. Nothing here reads a viewport unit.
 -->
 <link rel="preload" href="/m/pjs-153fc85b7029.woff2" as="font" type="font/woff2" crossorigin>
 <style>
@@ -35,7 +42,7 @@
   --g:#E4E0D8; --s:#F4F1EB; --s2:#DCD7CD; --fill:#1F2622;
   --i:#161A17; --i-body:#333B35; --i-mute:#535B52; --i-faint:#5C6459;
   --on-body:#E4E6DF; --rule-soft:#7E8779;
-  --o-dn:#A8492F; --o-fl:#B9B2A4; --o-flat-zone:#C9C2B5; --o-up:#2F44B8; --o-un:#9C9586;
+  --o-dn:#A8492F; --o-fl:#B9B2A4; --o-up:#2F44B8; --o-un:#9C9586;
   --sh1:0 1px 1px -.5px rgba(58,48,32,.05),0 3px 6px -1px rgba(58,48,32,.06),0 10px 22px -6px rgba(58,48,32,.07);
   --tap-min:48px; --state-press:.12; --press-in:80ms; --press-out:200ms; --ease-in:cubic-bezier(0,0,0,1); --ease-out:cubic-bezier(.2,0,0,1);
   --sans:"Jakarta",system-ui,Roboto,"Segoe UI",sans-serif;
@@ -47,27 +54,40 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
      -webkit-font-smoothing:antialiased;padding:0 16px calc(var(--tab-h) + 16px);display:flex;flex-direction:column;gap:10px;
      max-width:560px;margin:0 auto}
 
-/* header, as the forecast page draws it */
+/* header, as the forecast page draws it: the page's name on the left and on the right the newest day's market day,
+   said done once its close has passed; the two share one line at 360 and the right side wraps under the name at 320 */
 .hd{position:sticky;top:0;z-index:5;margin:0 -16px;padding:calc(env(safe-area-inset-top) + 12px) 16px 10px;background:var(--g);
     box-shadow:0 8px 12px -10px rgba(58,48,32,.35)}       /* the days scroll under it, the pinned summary with it */
-.hd-1{font:700 11px/1.2 var(--sans);letter-spacing:.16em;color:var(--i-faint);text-transform:uppercase}
+.hd-1{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;font:700 11px/1.2 var(--sans);letter-spacing:.16em;color:var(--i-faint);
+      text-transform:uppercase}
+.hd-l{white-space:nowrap}
+/* tabular digits (the font shorthand above resets them), so the day keeps one width whatever it says */
+.hd-r{margin-left:auto;letter-spacing:.12em;color:var(--i-mute);white-space:nowrap;font-variant-numeric:tabular-nums}
 .hd-2{margin-top:3px;font:400 13px/1.3 var(--sans);color:var(--i-mute)}
 .hd-2.err{color:var(--o-dn)}
 
 .card{background:var(--s);border-radius:18px;padding:12px 14px;box-shadow:var(--sh1)}
 main{display:flex;flex-direction:column;gap:6px}         /* a sliver between days */
-/* the last five days, pinned in the header: the score, and the one control for every day */
-.sum{display:flex;align-items:center;gap:10px;margin-top:8px}
+/* the last five days, pinned in the header: the score with its share, the one control for every day, and under them
+   the days themselves, oldest on the left, each its right calls as a bar and its score, the newest in ink */
+.sum{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:8px}
 .sum[hidden]{display:none}
 .sum-l{flex:1 1 auto;min-width:0}
 .sum-v{margin-top:2px;font:700 16px/1.2 var(--sans);color:var(--i)}
-.all{position:relative;flex:none;min-height:34px;padding:0 12px;border:1px solid var(--rule-soft);border-radius:10px;background:var(--s);
+.sum-v span{font:400 12.5px/1.2 var(--sans);color:var(--i-mute)}
+.all{flex:none;min-height:var(--tap-min);padding:0 12px;border:1px solid var(--rule-soft);border-radius:10px;background:var(--s);
      font:700 11px/1 var(--sans);letter-spacing:.06em;color:var(--i);touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-.all::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:max(100%,var(--tap-min));height:var(--tap-min)}
 .all:focus-visible{outline:2px solid var(--o-up);outline-offset:2px}
+.byday{display:flex;gap:6px;flex:1 1 100%}
+.byday div{flex:1 1 0;min-width:0}
+.byday b{display:block;font:700 11px/1.2 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--i-faint)}
+.byday .bar{display:block;height:5px;margin-top:4px;border-radius:3px;background:var(--s2)}
+.byday .bar i{display:block;height:5px;border-radius:3px;background:var(--fill)}
+.byday span{display:block;margin-top:3px;font:400 11px/1.2 var(--sans);color:var(--i-mute);white-space:nowrap}
+.byday .now b,.byday .now span{color:var(--i)}
+.byday .now span{font-weight:700}
 .lab{display:flex;align-items:center;gap:8px;font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint)}
 .lab .r{margin-left:auto;font-size:12.5px;letter-spacing:0;text-transform:none;color:var(--i);white-space:nowrap}
-.cap{margin-top:3px;font:400 11.5px/1.35 var(--sans);color:var(--i-mute)}
 
 /* a day: its header a button that opens and folds it, its calls as squares, filled when right, oldest on the left */
 .dh{display:flex;align-items:center;gap:8px;width:100%;min-height:var(--tap-min);margin:-12px 0 0;padding:12px 0 0;border:0;
@@ -80,18 +100,34 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
 .sq{display:flex;flex-wrap:wrap;gap:3px;margin-top:6px}
 .sq i{display:block;width:10px;height:10px;border-radius:2px;border:1.2px solid var(--o-un)}
 .sq i.ok{background:var(--fill);border-color:var(--fill)}
+/* an open day's price from the open to the close, a dot at each call, a wrong one ringed and named; laid out at the
+   card's measured width, as the forecast page's chart is, so no width scales its words under 11px, the page's floor */
+.price{display:block;width:100%;height:auto;margin-top:8px;font-family:var(--sans)}
+.price .ax{stroke:var(--s2);stroke-width:1}
+.price polyline{fill:none;stroke:var(--i);stroke-width:1.3;stroke-linejoin:round;stroke-linecap:round}
+.price .dot{fill:var(--fill)}
+.price .dot.wrong{fill:var(--s);stroke:var(--i);stroke-width:1.5}
+.price text{font-size:11px;font-weight:600;fill:var(--i-mute)}
+.price .foot{font-weight:700;letter-spacing:.06em;fill:var(--i-faint)}
 
 /* a call: time, where the average went over what was called, the picture, the grade; a tap opens its numbers */
-.calls{margin-top:8px}
+.calls{margin-top:4px}
 .calls[hidden]{display:none}
-.call{display:grid;grid-template-columns:40px minmax(0,1fr) 104px 52px;gap:8px;align-items:center;width:100%;min-height:44px;
+.call{display:grid;grid-template-columns:40px minmax(0,1fr) 104px 52px;gap:8px;align-items:center;width:100%;min-height:var(--tap-min);
       padding:6px 0;border:0;border-top:1px solid var(--s2);background:none;font:inherit;color:inherit;text-align:left;
       touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .call .t{font:700 12.5px/1.2 var(--sans);color:var(--i)}
 .call .w{min-width:0;font:400 11.5px/1.25 var(--sans);color:var(--i-mute)}
 .call .w b{display:block;font:700 12.5px/1.2 var(--sans)}
 .call .w b.up{color:var(--o-up)} .call .w b.down{color:var(--o-dn)} .call .w b.flat{color:var(--i)}
-.call svg{display:block;width:104px;height:18px}
+/* the picture's inks are the page's: the flat band in the flat colour the odds and the chart use, the dot in where-it-went's */
+.strip{display:block;width:104px;height:18px}
+.strip .ax{stroke:var(--s2);stroke-width:1}
+.strip .band{fill:var(--o-fl)}
+.strip .span{stroke:var(--i-mute);stroke-width:1.6;stroke-linecap:round}
+.strip .at{stroke:var(--i);stroke-width:1.2}
+.strip .dot{fill:var(--i);stroke:var(--s);stroke-width:1.5}
+.strip .dot.up{fill:var(--o-up)} .strip .dot.down{fill:var(--o-dn)}
 .grade{justify-self:end;padding:2px 6px;border-radius:6px;border:1px solid var(--o-fl);font:700 11px/1.3 var(--sans);color:var(--i-faint)}
 .grade.ok{background:var(--fill);border-color:var(--fill);color:var(--on-body)}
 .nums{padding:0 0 8px 48px;font:400 11.5px/1.45 var(--sans);color:var(--i-mute)}
@@ -119,38 +155,65 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
 .tab.on i{background:var(--i)}
 @media (prefers-reduced-motion:reduce){.chev{transition:none}.tab.is-pressed::before{opacity:.20}}
 @media (forced-colors:active){.tab::before{display:none}.tab.is-pressed,.tab.on{color:Highlight}}
+
+/* From 1024px up (the forecast page's one layout query, so the Reads tab stands in the same place on both pages) the
+   header is the board Final-Desktop's row across the top: the name, the tabs in flow after it, the line under the name
+   between them and the day at the right, with the pinned score centred under the row; no bottom bar. The days stay the
+   centred column the phone reads. */
+@media (min-width:1024px){
+  body{max-width:none;margin:0;padding:0 40px 20px}
+  main{width:100%;max-width:528px;margin:0 auto}
+  .hd{display:flex;flex-wrap:wrap;align-items:center;gap:0 28px;min-height:56px;margin:0 -40px;padding:0 40px 10px}
+  .hd-1{display:contents}
+  .hd-2{order:2;flex:0 1 auto;min-width:0;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hd-r{order:3}
+  .sum{order:4;flex:1 1 100%;max-width:528px;margin:0 auto}
+  .tabs{order:1;position:static;height:56px;padding:0;gap:4px;align-items:center;background:none;border-radius:0;box-shadow:none}
+  .tab{flex-direction:row;gap:8px;min-height:var(--tap-min);padding:0 12px}
+  .tab svg{width:18px;height:18px}
+  .tab i{margin-top:0}
+}
 </style>
 </head>
 <body>
 <header class="hd">
-  <div class="hd-1">SPX &middot; Reads</div>
+  <div class="hd-1"><span class="hd-l">SPX &middot; Reads</span><span class="hd-r" id="hdR"></span></div>
   <div class="hd-2" id="sub">loading</div>
+  <!-- the tab bar, fixed at the phone's foot and in the header's row from 1024px up -->
+  <nav class="tabs">
+    <a class="tab" href="/m/" aria-label="Forecast" data-press data-haptic>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l3.5-3.5 3 2L13 12"/><path d="M13 12 21 6.5" stroke-dasharray="1.5 2.6"/><path d="M13 12l8 2.5" stroke-dasharray="1.5 2.6"/><circle cx="13" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>
+      <s>FORECAST</s><i></i>
+    </a>
+    <span class="tab on" data-press>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      <s>READS</s><i></i>
+    </span>
+  </nav>
   <section class="card sum" id="sum" hidden></section>
 </header>
 <main id="main"></main>
-<nav class="tabs">
-  <a class="tab" href="/m/" aria-label="Forecast" data-press data-haptic>
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l3.5-3.5 3 2L13 12"/><path d="M13 12 21 6.5" stroke-dasharray="1.5 2.6"/><path d="M13 12l8 2.5" stroke-dasharray="1.5 2.6"/><circle cx="13" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>
-    <s>FORECAST</s><i></i>
-  </a>
-  <span class="tab on" data-press>
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-    <s>READS</s><i></i>
-  </span>
-</nav>
 <script src="/m/press.js"></script>
 <script>
 (function(){
   'use strict';
   var GRADES_URL = '/api/raw/file?root=state&path=spx_jev/integral_grades.jsonl&limit=400';
+  var BARS_URL = '/api/raw/file?root=state&path=spx_jev/bars/';
   var DAYS_SUMMED = 5, SCALE_PTS = 32, POLL_MS = 60000;
   var STRIP_W = 104, STRIP_H = 18;
+  var LINE_W = 300, LINE_H = 56, LINE_TOP = 8, LINE_AXIS = 42;   // LINE_W: the line's width for a card not laid out yet
   var NS = 'http://www.w3.org/2000/svg';
   var days = null, drawn = null, failed = false, opened = {};   // opened: each day's open or folded, the newest open at first
+  var barsByDay = {};                                           // each done day's bars, asked for once; a running day's are never kept
 
   function $(id){ return document.getElementById(id); }
   function el(tag, cls, text){ var e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
-  function svgEl(tag, attrs){ var e = document.createElementNS(NS, tag); Object.keys(attrs).forEach(function(k){ e.setAttribute(k, attrs[k]); }); return e; }
+  function svgEl(tag, attrs, text){
+    var e = document.createElementNS(NS, tag);
+    Object.keys(attrs).forEach(function(k){ e.setAttribute(k, attrs[k]); });
+    if(text != null) e.textContent = text;
+    return e;
+  }
   // every time on the page in the phone's own zone, 24-hour, as the forecast page draws it
   var VIEWER_FMT = {};
   function viewerTime(t, how){
@@ -164,6 +227,11 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
       var p = {}; f.formatToParts(new Date(ms)).forEach(function(x){ p[x.type] = x.value; });
       return ('0' + (+p.hour % 24)).slice(-2) + ':' + p.minute + (how.zone && p.timeZoneName ? ' ' + p.timeZoneName : '');
     } catch(e){ return '?'; }
+  }
+  // a market-clock "HH:MM" on a stamp's day as an instant: that date and the stamp's New York offset (the forecast page's)
+  function marketAt(iso, hhmm){
+    var m = /^(\d{4}-\d\d-\d\d)T.*?([+-]\d\d:\d\d|Z)$/.exec(iso || '');
+    return m ? Date.parse(m[1] + 'T' + hhmm + ':00' + m[2]) : NaN;
   }
   function money(x){ return (+x).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
   function signed(x){ x = +x; return (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x).toFixed(1); }
@@ -180,12 +248,16 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
     });
   }
   function isRight(c){ return c.verdict === 'right'; }
-  function rightOf(calls){ return calls.filter(isRight).length + ' of ' + calls.length + ' right'; }
+  function score(calls){ return calls.filter(isRight).length + ' of ' + calls.length; }
+  function rightOf(calls){ return score(calls) + ' right'; }
+  function share(calls){ return Math.round(calls.filter(isRight).length / calls.length * 100); }
   // "Thu 10-08": the market day's weekday and date, never the viewer's
   function dayName(d){
     var t = Date.parse(d + 'T12:00:00Z');
     return isNaN(t) ? d : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(t).getUTCDay()] + ' ' + d.slice(5);
   }
+  // the header's right side: the newest day, and once its close has passed that it is done
+  function headLine(d){ return dayName(d.day) + (Date.now() >= marketAt(d.calls[0].row_ts, '16:00') ? ' · day done' : ''); }
 
   // the window against the call on one scale: the flat band as a box, low to high as a line, the call's price as
   // the tick in the middle, the graded average as the dot in where-it-went's colour; past the scale rests at an end
@@ -193,14 +265,13 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
     var mid = STRIP_W / 2, y = STRIP_H / 2, per = (mid - 5) / SCALE_PTS;
     function x(v){ return Math.max(4, Math.min(STRIP_W - 4, mid + v * per)).toFixed(1); }
     var lo = c.worst ? c.worst.points : c.g, hi = c.best ? c.best.points : c.g, edge = +c.edge || 0;
-    var svg = svgEl('svg', {viewBox: '0 0 ' + STRIP_W + ' ' + STRIP_H, role: 'img',
+    var svg = svgEl('svg', {viewBox: '0 0 ' + STRIP_W + ' ' + STRIP_H, 'class': 'strip', role: 'img',
                             'aria-label': 'Low ' + signed(lo) + ', average ' + signed(c.g) + ', high ' + signed(hi) + ' points; flat within ' + edge.toFixed(1)});
-    svg.appendChild(svgEl('line', {x1: 2, y1: y, x2: STRIP_W - 2, y2: y, stroke: '#DCD7CD', 'stroke-width': 1}));
-    svg.appendChild(svgEl('rect', {x: (mid - edge * per).toFixed(1), y: y - 5, width: (2 * edge * per).toFixed(1), height: 10, rx: 2, fill: '#C9C2B5'}));
-    svg.appendChild(svgEl('line', {x1: x(lo), y1: y, x2: x(hi), y2: y, stroke: '#535B52', 'stroke-width': 1.6, 'stroke-linecap': 'round'}));
-    svg.appendChild(svgEl('line', {x1: mid, y1: y - 7, x2: mid, y2: y + 7, stroke: '#161A17', 'stroke-width': 1.2}));
-    var dot = {up: '#2F44B8', down: '#A8492F'}[c.label] || '#161A17';
-    svg.appendChild(svgEl('circle', {cx: x(c.g), cy: y, r: 4.2, fill: dot, stroke: '#F4F1EB', 'stroke-width': 1.5}));
+    svg.appendChild(svgEl('line', {x1: 2, y1: y, x2: STRIP_W - 2, y2: y, 'class': 'ax'}));
+    svg.appendChild(svgEl('rect', {x: (mid - edge * per).toFixed(1), y: y - 5, width: (2 * edge * per).toFixed(1), height: 10, rx: 2, 'class': 'band'}));
+    svg.appendChild(svgEl('line', {x1: x(lo), y1: y, x2: x(hi), y2: y, 'class': 'span'}));
+    svg.appendChild(svgEl('line', {x1: mid, y1: y - 7, x2: mid, y2: y + 7, 'class': 'at'}));
+    svg.appendChild(svgEl('circle', {cx: x(c.g), cy: y, r: 4.2, 'class': 'dot' + (c.label === 'up' || c.label === 'down' ? ' ' + c.label : '')}));
     return svg;
   }
   function squares(calls){
@@ -208,6 +279,55 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
     calls.forEach(function(c){ box.appendChild(el('i', isRight(c) ? 'ok' : null)); });
     box.setAttribute('role', 'img'); box.setAttribute('aria-label', rightOf(calls) + ', oldest first');
     return box;
+  }
+  // a day's one-minute bars, as the route wraps them. A done day's are asked for once and kept, done once its close's
+  // last bar has landed (16:05, where the forecast page's bars hours end); a running day's line is still growing, so
+  // its bars are asked for on every draw of its card, one per new grade, and never kept. Only a day's rows are kept: a
+  // fetch that failed, or that the station refused or answered with something else, is asked again next time
+  function barsOf(d){
+    var day = d.day, done = Date.now() >= marketAt(d.calls[0].row_ts, '16:05');
+    if(done && barsByDay[day]) return barsByDay[day];
+    var bars = fetch(BARS_URL + day + '.jsonl&limit=420', {cache: 'no-store'})
+      .then(function(r){ return r.ok ? r.json() : null; }).then(function(j){ return j && j.kind === 'jsonl' && Array.isArray(j.rows) ? j.rows : null; })
+      .catch(function(){ return null; })
+      .then(function(rows){ if(!rows) delete barsByDay[day]; return rows; });
+    if(done) barsByDay[day] = bars;
+    return bars;
+  }
+  // the day's price from the open to the close as a line W wide, the low on the axis, a dot at each call's read minute
+  // (its bar's close, or the last bar's before it), a wrong call's ringed and named where the words clear the line:
+  // under the dot, a row lower, else over it; the feet the open and the close in the viewer's zone. Nothing under two bars.
+  function dayLine(d, rows, W){
+    var pts = (rows || []).filter(function(b){ return b && typeof b.close === 'number' && !isNaN(Date.parse(b.ts)); })
+      .map(function(b){ return {t: Date.parse(b.ts), c: b.close}; }).sort(function(a, b){ return a.t - b.t; });
+    if(pts.length < 2) return null;
+    var at = d.calls[0].row_ts, open = marketAt(at, '09:30'), close = marketAt(at, '16:00');
+    var lo = Math.min.apply(null, pts.map(function(p){ return p.c; })), hi = Math.max.apply(null, pts.map(function(p){ return p.c; }));
+    function x(t){ return Math.max(2, Math.min(W - 2, 2 + (t - open) / (close - open) * (W - 4))); }
+    function y(c){ return hi > lo ? LINE_TOP + (hi - c) / (hi - lo) * (LINE_AXIS - LINE_TOP) : (LINE_TOP + LINE_AXIS) / 2; }
+    function clear(x0, x1, base){ return !pts.some(function(p){ var px = x(p.t), py = y(p.c); return px >= x0 - 2 && px <= x1 + 2 && py >= base - 9 && py <= base + 2; }); }
+    var wrong = d.calls.filter(function(c){ return !isRight(c); });
+    var svg = svgEl('svg', {viewBox: '0 0 ' + W + ' ' + LINE_H, 'class': 'price', role: 'img',
+                            'aria-label': 'The day’s price from the ' + viewerTime(open) + ' open to the ' + viewerTime(close) + ' close, a dot at each of the '
+                              + d.calls.length + ' calls' + (wrong.length ? ', the ' + (wrong.length === 1 ? 'wrong call' : wrong.length + ' wrong calls') + ' ringed: '
+                              + wrong.map(function(c){ return viewerTime(c.row_ts); }).join(', ') : '')});
+    svg.appendChild(svgEl('line', {x1: 2, y1: LINE_AXIS, x2: W - 2, y2: LINE_AXIS, 'class': 'ax'}));
+    svg.appendChild(svgEl('polyline', {points: pts.map(function(p){ return x(p.t).toFixed(1) + ',' + y(p.c).toFixed(1); }).join(' ')}));
+    d.calls.forEach(function(c){
+      var t = Date.parse(c.row_ts), p = null;
+      pts.forEach(function(q){ if(q.t <= t) p = q; });
+      if(!p) return;
+      var cx = x(p.t), cy = y(p.c), ok = isRight(c);
+      svg.appendChild(svgEl('circle', {cx: cx.toFixed(1), cy: cy.toFixed(1), r: ok ? 2.2 : 4.2, 'class': ok ? 'dot' : 'dot wrong'}));
+      if(ok) return;
+      var words = viewerTime(c.row_ts) + ' wrong', w = words.length * 6.3, right = cx + 8 + w <= W - 2, x0 = right ? cx + 8 : cx - 8 - w;
+      var base = [cy + 10, cy + 19, cy - 6].filter(function(b){ return b <= LINE_AXIS - 3 && b >= LINE_TOP + 6 && clear(x0, x0 + w, b); })[0];
+      if(base == null) base = Math.min(LINE_AXIS - 3, cy + 10);
+      svg.appendChild(svgEl('text', {x: (right ? cx + 8 : cx - 8).toFixed(1), y: base.toFixed(1), 'text-anchor': right ? 'start' : 'end'}, words));
+    });
+    svg.appendChild(svgEl('text', {x: 2, y: LINE_H - 2, 'class': 'foot'}, 'OPEN ' + viewerTime(open)));
+    svg.appendChild(svgEl('text', {x: W - 2, y: LINE_H - 2, 'text-anchor': 'end', 'class': 'foot'}, 'CLOSE ' + viewerTime(close)));
+    return svg;
   }
   function callRow(c){
     var row = el('button', 'call'), nums = el('div', 'nums');
@@ -228,29 +348,46 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
     return [row, nums];
   }
   function dayCard(d, open){
-    var card = el('section', 'card'), head = el('button', 'dh'), list = el('div', 'calls');
+    var card = el('section', 'card'), head = el('button', 'dh'), list = el('div', 'calls'), lined = false;
     head.type = 'button'; head.setAttribute('aria-expanded', String(open)); head.setAttribute('data-press', '');
     var lab = el('span', 'lab', dayName(d.day)); lab.appendChild(el('span', 'r', rightOf(d.calls)));
     head.appendChild(lab); head.appendChild(el('i', 'chev'));
     card.appendChild(head); card.appendChild(squares(d.calls));
     d.calls.forEach(function(c){ callRow(c).forEach(function(n){ list.appendChild(n); }); });
     list.hidden = !open;
+    // the day's line is asked for the first time the day is open and put in over its calls when it comes, laid out at
+    // the card's width as it stands then (the head's, which has no sides of its own)
+    function line(){
+      if(lined) return; lined = true;
+      barsOf(d).then(function(rows){ var svg = dayLine(d, rows, head.clientWidth || LINE_W); if(svg) card.insertBefore(svg, list); });
+    }
+    if(open) line();
     head.addEventListener('click', function(){
       var now = list.hidden; list.hidden = !now; head.setAttribute('aria-expanded', String(now)); opened[d.day] = now; allLabel();
+      if(now) line();
     });
     card.appendChild(list);
     return card;
   }
-  // the pinned summary's insides: the last DAYS_SUMMED days' score, and Collapse all, or Open all once every day is folded
+  // the pinned summary's insides: the last DAYS_SUMMED days' score with its share, Collapse all, or Open all once every
+  // day is folded, and the days under them oldest first, the newest in ink
   function summary(box, ds){
     var recent = ds.slice(0, DAYS_SUMMED), all = [].concat.apply([], recent.map(function(d){ return d.calls; }));
-    var left = el('div', 'sum-l'), btn = el('button', 'all');
+    var left = el('div', 'sum-l'), btn = el('button', 'all'), byDay = el('div', 'byday'), oldest = recent.slice().reverse();
     left.appendChild(el('div', 'lab', 'Last ' + recent.length + (recent.length === 1 ? ' day' : ' days')));
-    left.appendChild(el('div', 'sum-v', rightOf(all)));
+    left.appendChild(el('div', 'sum-v', rightOf(all))).appendChild(el('span', null, ' · ' + share(all) + '%'));
     btn.type = 'button'; btn.id = 'all'; btn.setAttribute('data-press', '');
     btn.textContent = anyOpen() ? 'Collapse all' : 'Open all';
     btn.addEventListener('click', function(){ var open = !anyOpen(); days.forEach(function(d){ opened[d.day] = open; }); draw(); });
-    box.textContent = ''; box.appendChild(left); box.appendChild(btn); box.hidden = false;
+    oldest.forEach(function(d, i){
+      var cell = el('div', i === oldest.length - 1 ? 'now' : null), bar = el('i', 'bar'), fill = el('i');
+      fill.style.width = share(d.calls) + '%'; bar.appendChild(fill);
+      cell.appendChild(el('b', null, dayName(d.day).slice(0, 3))); cell.appendChild(bar); cell.appendChild(el('span', null, score(d.calls)));
+      byDay.appendChild(cell);
+    });
+    byDay.setAttribute('role', 'img');
+    byDay.setAttribute('aria-label', 'By day: ' + oldest.map(function(d){ return dayName(d.day).slice(0, 3) + ' ' + score(d.calls); }).join(', '));
+    box.textContent = ''; box.appendChild(left); box.appendChild(btn); box.appendChild(byDay); box.hidden = false;
   }
   function anyOpen(){ return (days || []).some(function(d){ return opened[d.day]; }); }
   function allLabel(){ var b = $('all'); if(b) b.textContent = anyOpen() ? 'Collapse all' : 'Open all'; }
@@ -261,6 +398,7 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
     sub.textContent = (failed ? 'Fetch failed, showing the last list · ' : '') + '30-min calls, graded on the average' + (zone ? ' · ' + zone : '');
     if(!days) return;
     main.textContent = '';
+    $('hdR').textContent = days.length ? headLine(days[0]) : '';
     if(!days.length){ $('sum').hidden = true; main.appendChild(el('section', 'card', 'No graded calls yet.')); return; }
     days.forEach(function(d, i){ if(!(d.day in opened)) opened[d.day] = i === 0; });   // a new day opens only if it is the newest
     summary($('sum'), days);

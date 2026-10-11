@@ -33,7 +33,7 @@ function Node(tag){ this.tag = tag; this.attrs = {}; this.kids = []; this._t = '
 Node.prototype.insertBefore = function(n, ref){ var i = this.kids.indexOf(ref); this.kids.splice(i < 0 ? 0 : i, 0, n); return n; };
 Object.defineProperty(Node.prototype, 'firstChild', {get: function(){ return this.kids[0] || null; }});
 Node.prototype.setAttribute = function(k, v){ this.attrs[k] = String(v); };
-Node.prototype.appendChild = function(n){ this.kids.push(n); return n; };
+Node.prototype.appendChild = function(n){ this.kids.push(n); n.parentNode = this; return n; };
 Node.prototype.addEventListener = function(){};
 Object.defineProperty(Node.prototype, 'textContent', {get: function(){ return this._t + this.kids.map(function(k){ return k.textContent; }).join(''); },
                                                       set: function(v){ this._t = String(v); this.kids = []; }});
@@ -266,8 +266,8 @@ def test_a_new_card_asks_for_the_grades_at_once_and_keeps_a_call_open_until_its_
     js = ("var calls = 0, last = null, lastOk = true, barsDay = null;"
           "function fetch(){ calls++; return Promise.resolve({ok: true, json: function(){ return Promise.resolve({kind: 'jsonl', rows: []}); }}); }"
           "function $(id){ return {getAttribute: function(){ return 'true'; }, classList: {contains: function(){ return false; }}, dataset: {}}; }"
-          "function cardDay(){ return null; } function pollBars(){} function draw(){} function ages(){} function tick(){} function paintCalls(){} function paintChart(){}"
-          + _var("GRADES_URL") + _var("BOOK_URL") + _var("grades") + "".join(_fn(f) for f in ("chartOpen", "rawRows", "pollGrades", "arrived"))
+          "function cardDay(){ return null; } function pollBars(){} function pollBook(){} function draw(){} function ages(){} function tick(){} function paintCalls(){} function paintChart(){}"
+          "function chartDocked(){ return false; }" + _var("GRADES_URL") + _var("BOOK_URL") + _var("grades") + "".join(_fn(f) for f in ("chartVisible", "rawRows", "pollGrades", "arrived"))
           + "function settle(){ return new Promise(function(r){ setImmediate(r); }); }"
           "(async function(){ var out = {};"
           " arrived({generated_at: 'g1', row_ts: 'r1'}); await settle(); out.first = calls;"
@@ -335,8 +335,8 @@ def test_the_header_names_the_cards_market_day_and_the_next_read_in_the_viewers_
     card belongs to, its stamp's own date and never the viewer's, and the next read while one is still ahead, in the
     viewer's zone. After the day's last read, or on a card of another day, the day stands alone. The pre-market card
     names its day and the night's next checkpoint the same way, and both move with the clock."""
-    js = ("var READ_MINUTES = [2, 32], LAST_READ_DEFAULT = '15:32', nodes = {hdR: el('span')}; function $(id){ return nodes[id]; }"
-          + _fn("nextRead") + _fn("dayName") + _fn("headLine") + _fn("setHead") + _fn("preNextRead") +
+    js = ("var READ_MINUTES = [2, 32], LAST_READ_DEFAULT = '15:32', nodes = {hdR: el('span')}; function $(id){ return nodes[id]; } function chartDocked(){ return !!D.wide; }"
+          + _fn("nextRead") + _fn("dayName") + _fn("mins") + _fn("ageWord") + _fn("headLine") + _fn("setHead") + _fn("preNextRead") +
           "setHead(D.c); console.log(JSON.stringify([nodes.hdR.textContent, D.pre ? headLine(D.pre.day, preNextRead(D.pre, Date.now())) : null]));")
     card = {"row_ts": "2026-10-09T11:31:56-04:00", "session": {"last_read": "2026-10-09T15:32:00-04:00", "close": "2026-10-09T16:00:00-04:00"}}
     assert _run(js, {"now": "2026-10-09T11:40:00-04:00", "c": card}, LA)[0] == "Fri 10-09 · next read 09:02"
@@ -346,6 +346,11 @@ def test_the_header_names_the_cards_market_day_and_the_next_read_in_the_viewers_
     pre = {"day": "2026-10-12", "schedule": {"reads": ["2026-10-12T02:35:00-04:00", "2026-10-12T06:35:00-04:00", "2026-10-12T08:50:00-04:00"]}}
     assert _run(js, {"now": "2026-10-12T05:00:00-04:00", "c": card, "pre": pre}, LA)[1] == "Mon 10-12 · next read 03:35"
     assert _run(js, {"now": "2026-10-12T09:00:00-04:00", "c": card, "pre": pre}, LA)[1] == "Mon 10-12"
+    # from 1024px up the board's fuller line (Final-Desktop): the read's time and age before the next read; after the
+    # day's last read the day alone, and the pre-market card's line as on a phone
+    assert _run(js, {"now": "2026-10-09T11:40:00-04:00", "c": card, "wide": True}, LA)[0] == "Fri 10-09 · read 08:31, 8 min ago · next 09:02"
+    assert _run(js, {"now": "2026-10-09T15:40:00-04:00", "c": card, "wide": True}, LA)[0] == "Fri 10-09"
+    assert _run(js, {"now": "2026-10-12T05:00:00-04:00", "c": card, "pre": pre, "wide": True}, LA)[1] == "Mon 10-12 · next read 03:35"
     assert "setHead(c);" in _fn("paint") and "setHead(c);" in _fn("ages"), "the next read moves with the clock"
     assert "if(head) head.textContent = headLine(p.day, preNextRead(p, now));" in _fn("paintPre")
     assert '<span class="hd-r" id="hdR"></span>' in SPX and "BETA" not in SPX.split("<body>", 1)[1].split("<main", 1)[0]
@@ -592,9 +597,9 @@ def test_a_call_is_a_forecast_not_a_trade_signal_and_shadow_means_only_the_shado
     for the shadow questions, asked and logged, never graded and never weighted (the question set's definition)."""
     assert "never a call" not in SPX and "Neither is a call" not in SPX and "in shadow" not in SPX
     assert JS.count("not a trade signal") == 1                   # the pre-market card's closing line
-    # the page's last line, under the two buttons (Final-Home, 2026-10-10)
+    # the page's last line, under the two buttons on their row (Final-Home, 2026-10-10)
     assert SPX.index('<p class="note">A forecast, graded by the bars. Not advice.</p>') > SPX.index('id="infoBtn"')
-    assert "margin:-4px00;text-align:center" in _rule(".note")
+    assert "flex:11100%;margin:0;text-align:center" in _rule(".note")
     foot = re.search(r'(?s)<p class="foot">(.*?)</p>', SPX).group(1)
     assert "A call is a forecast, not a trade signal" in foot and "asked and logged, never graded and never weighted" in foot
     js = ("function bar(){ return el('div'); }" + _fn("tag") + _fn("skipLine") + _fn("skipWhy") + _fn("question") +
@@ -645,7 +650,9 @@ def test_the_switch_is_gone_and_the_old_sndk_forecast_address_forwards_to_the_fo
 def test_the_two_tabs_are_forecast_and_reads_on_every_page_that_carries_them():
     """Final-Home: two tabs, Forecast (the page at /m/) and Reads, the Now tab gone; each page lights its own and links
     the other, both answer a press through press.js with the glance's own rules, and the label is the board's 11px.
-    The glance keeps its bar until phase 5, with its Forecast tab now pointing at /m/."""
+    The bar is inside the header on both pages, fixed at the phone's foot and in the header's row from 1024px up
+    (Final-Desktop), so a screen reader meets the two tabs with the page's name. The glance keeps its bar until phase 5,
+    with its Forecast tab now pointing at /m/."""
     for page, lit, link in (("jev-spx.html", "FORECAST", "/m/reads.html"), ("reads.html", "READS", "/m/")):
         html = (M / page).read_text()
         nav = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', html).group(1)
@@ -653,9 +660,11 @@ def test_the_two_tabs_are_forecast_and_reads_on_every_page_that_carries_them():
         assert nav.count('<span class="tab on" data-press>') == 1 and f"<s>{lit}</s>" in nav, page
         assert "NOW" not in nav and 'href="/m/jev.html"' not in nav, page
         assert re.search(r'<a class="tab" href="[^"]+" aria-label="\w+" data-press data-haptic>', nav), page
+        assert html.index('<header class="hd">') < html.index('<nav class="tabs">') < html.index("</header>"), page
         assert html.index('<script src="/m/press.js"></script>') > html.index("</nav>"), page
         assert ".tab.is-pressed{" in html and ".tab.is-pressed::before{" in html, page
         assert ".tab s{font:500 11px/1 var(--sans);letter-spacing:.1em;text-decoration:none}" in html, page
+        assert re.search(r"\n\.tabs\{position:fixed;left:0;right:0;bottom:0;z-index:6;", html), page
     glance = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', (M / "index.html").read_text()).group(1)
     assert re.findall(r'<a class="tab" href="([^"]+)"', glance) == ["/m/reads.html", "/m/"]
     assert glance.count('<span class="tab on" data-press>') == 1 and "<s>NOW</s>" in glance
@@ -682,7 +691,7 @@ def test_a_good_fetch_after_a_failed_one_clears_the_failure_though_the_card_is_t
           "contains: function(k){ return !!SUB.cls[k]; }, add: function(k){ SUB.cls[k] = true; }, remove: function(k){ delete SUB.cls[k]; }}};"
           "function $(id){ return SUB; } function ages(){ drawn.push('ages'); } function tick(){}"
           "function draw(c, ok){ lastOk = ok; drawn.push(ok); if(ok) SUB.classList.remove('err'); }"
-          "function setTimeout(){} var barsDay = null, gradesAt = 0; function cardDay(){ return null; } function pollBars(){} function pollGrades(){}" + _fn("arrived") +
+          "function setTimeout(){} var barsDay = null, gradesAt = 0; function cardDay(){ return null; } function pollBars(){} function pollBook(){} function pollGrades(){}" + _fn("arrived") +
           "var c = {generated_at: 'g1', row_ts: 'r1'};"
           "arrived(c); arrived(c); draw(last, false); arrived(c); arrived(c);"
           "SUB.classList.add('err'); arrived(c);"
@@ -756,7 +765,7 @@ def test_the_blend_is_drawn_as_two_tiles_and_only_the_usual_odds_one_opens_the_s
     assert got == [["button", "tile", "Usual oddsFlat 64%"], ["div", "tile graded", "Half of each \u00B7 gradedDown 50%"]]
     bare = _run(js, {"h": h, "tod": None, "at": "2026-09-29T13:01:00-04:00", "now": "2026-09-29T13:04:00-04:00"}, LA)
     assert [k[0] for k in bare] == ["div", "div"]
-    assert "hc.appendChild(howChart(a, bl, c.row_ts, a !== h ? c.time_of_day : null));" in _fn("sumCard")
+    assert "var tiles = howChart(a, bl, c.row_ts, a !== h ? c.time_of_day : null, chartDocked() ? voices : null);" in _fn("sumCard")
 
 
 def test_the_reason_a_sum_stands_alone_gives_its_times_in_the_viewers_zone():
@@ -868,12 +877,12 @@ _PX_IDS = "['px', 'pxLive', 'pxK', 'pxV', 'pxC', 'pxS', 'chLive', 'chV', 'chC', 
 
 def _price_run(data, out, tz=LA):
     """paintPx over a quote and a card, the price box's and the sheet's price line's elements hidden to start with
-    (the sheet's openness is not this harness's: chartOpen says closed); ``out`` is the JS object printed back."""
+    (the chart's visibility is not this harness's: chartVisible says hidden, chartDocked a phone); ``out`` is the JS object printed back."""
     js = ("var IDS = {}; " + _PX_IDS + ".forEach(function(k){ IDS[k] = el('div'); IDS[k].hidden = true; });"
-          "function $(id){ return IDS[id]; } function chartOpen(){ return false; }"
+          "function $(id){ return IDS[id]; } function chartVisible(){ return false; } function chartDocked(){ return false; }"
           "var last = D.last, spot = D.spot && {price: D.spot, at: Date.parse(D.at), fresh: D.fresh};"
           + _var("SPOT_URL") + _var("SPOT_LIVE_MS") + _var("AVG_REACH") + _fn("placeNow") + _fn("within") + _fn("money") + _fn("cardDay")
-          + _fn("todaysCard") + _fn("paintPx")
+          + _fn("todaysCard") + _fn("spotState") + _fn("paintPx")
           + "paintPx(); console.log(JSON.stringify(" + out + "));")
     return _run(js, data, tz)
 
@@ -919,10 +928,10 @@ def _needle(price, card_day="2026-10-08", now="2026-10-08T14:35:00-04:00", later
     """The called-at bar of the owner's 14:31 call on 2026-10-08 (7,756.79, flat edge 2.24), drawn with a quote of
     ``price`` (None: no quote yet), then, with ``later``, moved by the next quote through paintPx."""
     js = ("var IDS = {}; " + _PX_IDS + ".forEach(function(k){ IDS[k] = el('div'); });"
-          "function $(id){ return IDS[id]; } function chartOpen(){ return false; } var last = {row_ts: D.card + 'T14:31:03-04:00'};"
+          "function $(id){ return IDS[id]; } function chartVisible(){ return false; } function chartDocked(){ return false; } var last = {row_ts: D.card + 'T14:31:03-04:00'};"
           "var spot = D.price == null ? null : {price: D.price, at: Date.now(), fresh: true};"
           + _var("SPOT_URL") + _var("SPOT_LIVE_MS") + _var("AVG_REACH") + "".join(_fn(f) for f in ("tag", "averageWords", "indexLevel", "money", "within",
-                                                                                 "cardDay", "todaysCard", "placeNow", "calledAt", "paintPx"))
+                                                                                 "cardDay", "todaysCard", "spotState", "placeNow", "calledAt", "paintPx"))
           + "var bar = calledAt({price: 7756.79, edge_points: 2.24}, 30).kids[1], n = bar.kids[2];"
           "if(D.later != null){ spot = {price: D.later, at: Date.now(), fresh: true}; paintPx(); }"
           "console.log(JSON.stringify({kids: bar.kids.map(function(k){ return k.attrs['class']; }), hidden: !!n.hidden,"
@@ -1506,8 +1515,8 @@ AVG = {"pick": "up", "probabilities": {"up": 0.55, "flat": 0.3, "down": 0.15}, "
        "minutes": 30, "flat_points": 5.25, "edge_points": 3.11}
 END_30 = {"pick": "flat", "probabilities": {"up": 0.1, "flat": 0.8, "down": 0.05, "unsure": 0.05}}
 CARD_STUBS = "var tickers = []; function clockBlock(read, minutes, mark, chip){ var b = el('div', 'clock'); if(chip) b.appendChild(chip); return b; }"
-# a card is drawn before any quote here, so its live-price needle starts hidden (placeNow)
-CARD_STUBS += "var spot = null; function todaysCard(){ return false; }" + _var("AVG_REACH") + _fn("placeNow") + _fn("money")
+# a card is drawn before any quote here, so its live-price needle starts hidden (placeNow); on a phone unless D.wide
+CARD_STUBS += "var spot = null; function todaysCard(){ return false; } function chartDocked(){ return !!D.wide; }" + _var("AVG_REACH") + _fn("placeNow") + _fn("money")
 
 
 def _parts(node):
@@ -1518,10 +1527,10 @@ SUM_CARD_FNS = ("top1", "oneAnswer", "phaseSpan", "howBar", "tile", "howChart", 
                 "labRow", "indexLevel", "calledAt", "threeWay", "voiceName", "voicesOf", "bySay", "sayWords", "voicesButton", "recordRow", "sumCard")
 
 
-def _sum_card(c, tz=LA, whole=False):
+def _sum_card(c, tz=LA, whole=False, wide=False):
     js = (CARD_STUBS + _odds() + "".join(_fn(f) for f in SUM_CARD_FNS) + _var("VOICE_WORDS")
           + "var main = el('main'); sumCard(D.c, main); console.log(JSON.stringify(dump(main.kids[0])));")
-    card = _run(js, {"c": c, "now": "2026-09-28T11:10:00-04:00"}, tz)
+    card = _run(js, {"c": c, "now": "2026-09-28T11:10:00-04:00", "wide": wide}, tz)
     return card if whole else _parts(card)
 
 
@@ -1609,12 +1618,30 @@ def test_the_combined_call_says_its_price_and_its_flat_band_and_keeps_its_voices
     top = _cls(card, "call-top")[0]
     assert [k["attrs"].get("class") for k in top["kids"]] == [None, "voices"] and _texts(top, "lab call") == ["Today\u2019s call \u00B7 combined"]
     btn = top["kids"][1]
-    assert btn["tag"] == "button" and _flat_text(btn) == "6 voices" and btn["attrs"]["aria-controls"] == "jevSheet"
+    assert btn["tag"] == "button" and btn["attrs"]["aria-controls"] == "jevSheet"
     assert btn["attrs"]["aria-label"] == "What went into it: 6 voices, 50/50 blend has 60% of the say. Open the list"
+    # the control is built with a tile's parts (the board's third tile from 1024px up); the phone's stylesheet shows the
+    # count alone, as the label row's words, so on a phone it reads "6 voices" and nothing of the tile's name or sub
+    assert [[k["attrs"]["class"], _flat_text(k)] for k in btn["kids"]] == [["tile-k", "What went into it"], ["tile-v", "6 voices"], ["tile-s", "50/50 blend has 60% of the say"]]
+    assert ".voices .tile-k,.voices .tile-s{display:none}" in SPX and _rule(".voices .tile-v") == "margin:0;font:inherit;color:inherit"
     assert "JEV aloneDown 72%" in _texts(card, "tod")[0]                     # the tile stays beside the usual odds
+    assert [k["attrs"]["class"] for k in _cls(card, "tod")[0]["kids"]] == ["tile", "tile"]
     for gone in ("mix", "ep", "ep-r", "row60", "src", "inplay"):
         assert not _cls(card, gone), gone
-    assert "End price" not in json.dumps(card) and "What went into it" not in _flat_text(card)
+    assert "End price" not in json.dumps(card)
+    # from 1024px up the one control leaves the label row and stands as the third tile (Final-Desktop): the same button,
+    # with the same words and sheet, placed by the builder; its tile face is the stylesheet's, with the tile's chevron
+    wide = _sum_card(REAL, whole=True, wide=True)
+    assert [k["attrs"].get("class") for k in _cls(wide, "call-top")[0]["kids"]] == [None]
+    tiles = _cls(wide, "tod")[0]["kids"]
+    assert [k["attrs"]["class"] for k in tiles] == ["tile", "tile", "voices"] and tiles[2]["attrs"]["aria-label"] == btn["attrs"]["aria-label"]
+    assert [_flat_text(k) for k in tiles] == ["Usual oddsFlat 65%", "JEV aloneDown 72%", "What went into it6 voices50/50 blend has 60% of the say"]
+    # a combined call whose blend tiles cannot draw (the blend not used) has no tile row to stand the control in: it
+    # keeps the label row at the wide width too, never lost
+    unused = _sum_card({**REAL, "hour": {**REAL["hour"], "average": {**REAL_AVG, "blend": {**REAL_AVG["blend"], "used": False}}}}, whole=True, wide=True)
+    assert [k["attrs"].get("class") for k in _cls(unused, "call-top")[0]["kids"]] == [None, "voices"] and not _cls(unused, "tod") and _cls(unused, "how")
+    assert re.search(r"\n\.px-k::after,button\.tile \.tile-k::after,\.voices::after,\.voices \.tile-k::after,[^{]*\{\n  content:", SPX)
+    assert "button.tile .tile-k::after,.voices .tile-k::after{margin-left:auto}" in SPX
     sheet = _voices_sheet(REAL_AVG)
     assert sheet["title"] == "What went into it \u00B7 6 voices" and sheet["opened"] == 1
     body = sheet["body"]
@@ -1961,7 +1988,9 @@ WHOLE_DOM = """
 function Node(tag){ this.tag = tag; this.attrs = {}; this.kids = []; this._t = ''; this.style = {}; this.dataset = {}; this.hidden = false; }
 Node.prototype.insertBefore = function(n, ref){ var i = this.kids.indexOf(ref); this.kids.splice(i < 0 ? 0 : i, 0, n); return n; };
 Node.prototype.setAttribute = function(k, v){ this.attrs[k] = String(v); };
-Node.prototype.appendChild = function(n){ this.kids.push(n); return n; };
+Node.prototype.getAttribute = function(k){ return k in this.attrs ? this.attrs[k] : null; };
+Node.prototype.removeAttribute = function(k){ delete this.attrs[k]; };
+Node.prototype.appendChild = function(n){ this.kids.push(n); n.parentNode = this; return n; };
 Node.prototype.addEventListener = function(){};
 Object.defineProperty(Node.prototype, 'firstChild', {get: function(){ return this.kids[0] || null; }});
 Object.defineProperty(Node.prototype, 'childNodes', {get: function(){ return this.kids; }});
@@ -1975,13 +2004,16 @@ Object.defineProperty(Node.prototype, 'classList', {get: function(){ var n = thi
           toggle: function(k, on){ put(has().filter(function(x){ return x !== k; }).concat(on ? [k] : [])); }}; }});
 var ids = {};
 ['h1', 'sub', 'state', 'main', 'dock', 'load', 'poll', 'csTitle', 'csBody', 'od', 'px', 'pxSpark', 'qBtn', 'infoBtn', 'claude', 'claudeLab',
- 'claudePick', 'claudeLine', 'claudeRows', 'claudeWhy', 'qsCount'].forEach(function(id){ ids[id] = new Node('div'); });
+ 'claudePick', 'claudeLine', 'claudeRows', 'claudeWhy', 'qsCount', 'chartSheet', 'chBody', 'chDay'].forEach(function(id){ ids[id] = new Node('div'); });
 ids.claude.hidden = true; ids.qBtn.hidden = true;          // hidden in the markup until a read, a card
 // an id the page gives a node it builds (the record row's) is found under main
 function byId(n, id){ if(n.id === id) return n; for(var i = 0; i < n.kids.length; i++){ var f = byId(n.kids[i], id); if(f) return f; } return null; }
 var document = {hidden: false, getElementById: function(id){ return ids[id] || byId(ids.main, id) || byId(ids.dock, id); }, createElement: function(t){ return new Node(t); },
                 createElementNS: function(ns, t){ return new Node(t); }, querySelectorAll: function(){ return []; }, addEventListener: function(){}};
-var window = {addEventListener: function(){}}, localStorage = {getItem: function(){ return null; }, setItem: function(){}}, MiraiSheet = {open: function(){}, isOpen: function(){ return false; }};
+// the page's one layout query, a phone unless a test says otherwise, and what it hands the query's change to
+var MQ = {matches: false, addEventListener: function(ev, fn){ MQ.change = fn; }};
+var window = {addEventListener: function(){}, matchMedia: function(){ return MQ; }}, localStorage = {getItem: function(){ return null; }, setItem: function(){}};
+var MiraiSheet = {open: function(){}, isOpen: function(){ return false; }, closed: 0, close: function(){ MiraiSheet.closed++; }};
 var CARDS = {'spx_jev/latest.json': D.live, 'spx_jev/lanes/tape/latest.json': D.tape, 'spx_jev/lanes/premarket/latest.json': D.premarket,
              'spx_jev/mirai_prediction/options_data.json': D.options, 'spx_jev/mirai_prediction/scoreboard.json': D.board,
              'spx_claude_forecast/latest.json': D.claude};
@@ -2526,17 +2558,18 @@ SITUATION = [{"path": "price.recent_move", "title": "Price, last 30 min", "verdi
               "sentence": "implied volatility moved 0.03 vol points in 30 minutes"}]
 
 
-def _situation(rows, sigma=75.3, age="13 MIN AGO", tz=LA):
-    """situationCard over ``rows`` on a card with ``sigma``, then its sheet: the card's tag and label, each row as [name,
-    gauge viewBox or None, verdict, caption], and the sheet's title and parts."""
+def _situation(rows, sigma=75.3, age="13 MIN AGO", tz=LA, wide=False):
+    """situationCard over ``rows`` on a card with ``sigma`` (on a phone unless ``wide``), then its sheet: the card's tag
+    and label, each row as [name, gauge viewBox or None, verdict, caption], and the sheet's title and parts."""
     js = ("var nodes = {csTitle: el('div'), csBody: el('div')}; function $(id){ return nodes[id]; } var opened = 0, MiraiSheet = {open: function(){ opened++; }};"
+          "function chartDocked(){ return !!D.wide; }"
           + _var("GAUGE_W") + _var("SIDE_WORDS") + "".join(_fn(f) for f in ("labRow", "signedWords", "gauge", "measured", "points", "factCaption", "openSituation", "situationCard"))
           + "var c = {row_ts: '2026-10-09T14:30:40-04:00', sigma: D.sigma, situation: D.rows}, card = situationCard(c, D.age, false);"
           "card.kids[0].kids[1].on = null; var rows = card.kids.slice(1).map(function(r){ var g = r.kids.filter(function(k){ return k.tag === 'svg'; })[0], v = r.kids[r.kids.length - 1];"
           " return [r.kids[0].textContent, g ? g.attrs.viewBox : null, v._t, v.kids.length ? v.kids[0].textContent : null]; });"
           "openSituation(c, card); console.log(JSON.stringify({tag: card.tag, attrs: card.attrs, lab: dump(card.kids[0]), rows: rows, title: nodes.csTitle.textContent, opened: opened,"
           " sheet: nodes.csBody.kids.map(function(k){ return k.kids.map(function(x){ return x.textContent; }); })}));")
-    return _run(js, {"rows": rows, "sigma": sigma, "age": age}, tz)
+    return _run(js, {"rows": rows, "sigma": sigma, "age": age, "wide": wide}, tz)
 
 
 def test_the_situation_is_one_control_of_key_value_rows_with_the_figures_in_points():
@@ -2562,9 +2595,10 @@ def test_the_situation_is_one_control_of_key_value_rows_with_the_figures_in_poin
 
 
 def test_the_situation_gauge_keeps_its_semantics_in_the_boards_box():
-    js = (_var("GAUGE_W") + _fn("gauge") + "console.log(JSON.stringify(D.f.map(function(f){ var g = gauge(f); return g && dump(g); })));")
-    signed, rank, distance, none = _run(js, {"f": [{"kind": "signed", "value": 0.03, "band": 0.029}, {"kind": "rank", "under": 13, "of": 19},
-                                                   {"kind": "distance", "value": 2.48, "near": 0.63}, {"kind": "wind"}]})
+    js = ("function chartDocked(){ return !!D.wide; }" + _var("GAUGE_W") + _fn("gauge")
+          + "console.log(JSON.stringify(D.f.map(function(f){ var g = gauge(f); return g && dump(g); })));")
+    facts = [{"kind": "signed", "value": 0.03, "band": 0.029}, {"kind": "rank", "under": 13, "of": 19}, {"kind": "distance", "value": 2.48, "near": 0.63}, {"kind": "wind"}]
+    signed, rank, distance, none = _run(js, {"f": facts})
     for g in (signed, rank, distance):
         assert g["attrs"] == {"viewBox": "0 0 64 14", "class": "sit-g", "aria-hidden": "true"}
         assert [k["tag"] for k in g["kids"]].count("rect") >= 1 and g["kids"][-1]["tag"] == "circle" and g["kids"][-1]["attrs"]["r"] == "4.2"
@@ -2575,6 +2609,12 @@ def test_the_situation_gauge_keeps_its_semantics_in_the_boards_box():
     assert distance["kids"][0]["attrs"]["x"] == "4.0" and abs(float(distance["kids"][-1]["attrs"]["cx"]) - (4 + 2.48 / 3.1 * 56)) < 0.1   # the span grows with the distance
     assert none is None
     assert "width:60px;height:14px" in _rule(".sit-g")
+    # from 1024px up the board's 150-wide gauge (Final-Desktop), the same drawing on a longer track, its ends a sixteenth in
+    signed, rank, distance, none = _run(js, {"f": facts, "wide": True})
+    for g in (signed, rank, distance):
+        assert g["attrs"]["viewBox"] == "0 0 150 14" and all(9.3 <= float(k["attrs"]["cx"]) <= 140.7 for k in g["kids"] if k["tag"] == "circle")
+    assert abs(float(rank["kids"][-1]["attrs"]["cx"]) - (9.375 + 13 / 19 * 131.25)) < 0.1 and distance["kids"][0]["attrs"]["x"] == "9.4"
+    assert "GAUGE_W_WIDE = 150" in _var("GAUGE_W") and "W = chartDocked() ? GAUGE_W_WIDE : GAUGE_W, L = W / 16, R = W - L" in _fn("gauge")
 
 
 def test_the_situation_sheet_gives_each_facts_sentence_in_the_viewers_zone():
@@ -2592,9 +2632,9 @@ def test_the_questions_and_the_info_controls_share_one_row_that_fits_a_320px_pho
     to itself before a card; at 320 each holds 138px inside, and "Questions · 12 asked" fits it at the 13.5px the
     buttons are set at (at the board's 14px it is 138.2 wide). The footer line is the page's last."""
     assert re.search(r'<div class="vq-row">\n  <button class="vq" id="qBtn" type="button" aria-controls="qSheet" hidden>Questions</button>\n'
-                     r'  <button class="vq info" id="infoBtn" type="button" aria-controls="infoSheet"><i aria-hidden="true">i</i>How to read</button>\n</div>\n'
-                     r'<p class="note">A forecast, graded by the bars. Not advice.</p>', SPX)
-    assert _rule(".vq-row") == "display:flex;gap:8px" and "flex:110;min-width:0;height:var(--tap-min);padding:0" in _rule(".vq") and ".vq[hidden]{display:none}" in SPX
+                     r'  <button class="vq info" id="infoBtn" type="button" aria-controls="infoSheet"><i aria-hidden="true">i</i>How to read</button>\n'
+                     r'  <p class="note">A forecast, graded by the bars. Not advice.</p>\n</div>', SPX)
+    assert _rule(".vq-row") == "display:flex;flex-wrap:wrap;gap:8px" and "flex:110;min-width:0;height:var(--tap-min);padding:0" in _rule(".vq") and ".vq[hidden]{display:none}" in SPX
     assert "font:70013.5px/1" in _rule(".vq")
     inside = (320 - 2 * 16 - 8) / 2 - 2
     assert _REC_W["Questions · 12 asked"] <= inside and 18 + 8 + _REC_W["How to read"] <= inside
@@ -2936,16 +2976,16 @@ def grade(hhmm, verdict, horizon="next_30", day="2026-10-09"):
 BOARD_GRADES = [grade("10:02", "right"), grade("10:32", "wrong"), grade("11:02", "right"), grade("11:02", "right", horizon="next_60"),
                 grade("10:02", "right", day="2026-10-08")]
 
-_CHART_FNS = ("cardDay", "todaysCard", "within", "money", "indexLevel", "dayName", "skipLine", "tag", "bookRow", "dayCalls", "liveCall",
-              "dayFacts", "paintSpark", "strikePitch", "chartWindow", "strikeBars", "kShort", "chWidth", "wordClear", "wordSpot", "chartSvg", "chTile", "keyLine",
-              "paintChart")
-_CHART_VARS = ("SPOT_URL", "WINDOW_SHARE", "CH_H", "CH_SIDE", "CH_ADV_400", "CH_ADV_500", "CH_ADV_800", "CH_ADV")
+_CHART_FNS = ("cardDay", "chartDocked", "todaysCard", "within", "money", "indexLevel", "dayName", "skipLine", "tag", "bookRow", "dayCalls", "liveCall",
+              "dayFacts", "paintSpark", "strikePitch", "chartWindow", "strikeBars", "kShort", "chWidth", "wordClear", "wordSpot", "chartSvg", "chTile", "gapWords",
+              "barAt", "bookTiles", "keyLine", "spotState", "chartDay", "paintChart")
+_CHART_VARS = ("SPOT_URL", "SPOT_LIVE_MS", "SPARK_W", "WINDOW_SHARE", "CH_H", "CH_SIDE", "CH_ADV_400", "CH_ADV_500", "CH_ADV_800", "CH_ADV")
 
 
 def _chart(data, tz=LA):
     """paintChart over a card, bars, a book and grades, at the sheet body's width D.W (320, a 360 phone's, unless
-    told): the market day on the title row and the body as dumped nodes."""
-    js = ("var IDS = {}; ['chBody', 'chDay', 'pxSpark'].forEach(function(k){ IDS[k] = el('div'); }); function $(id){ return IDS[id]; }"
+    told) and in the sheet unless D.wide, the panel from 1024px up: the market day on the title row and the body as dumped nodes."""
+    js = ("var IDS = {}; ['chBody', 'chDay', 'pxSpark'].forEach(function(k){ IDS[k] = el('div'); }); function $(id){ return IDS[id]; } var WIDE = {matches: !!D.wide};"
           "if(D.W) IDS.chBody.clientWidth = D.W;"
           "var last = D.card, bars = D.bars, book = D.book, grades = D.grades || null, spot = D.spot ? {price: D.spot, at: Date.now(), fresh: true} : null;"
           + "".join(_var(v) for v in _CHART_VARS) + "".join(_fn(f) for f in _CHART_FNS)
@@ -3050,8 +3090,9 @@ def test_the_chart_is_drawn_to_the_boards_scales():
     assert [_flat_text(k) for k in key["kids"]] == ["Dashed box · the 11:30 call, flat ± 3.1 pts to 12:00", "Walls · the most calls (7,815), the most puts (7,810)",
                                                    "Bars · today’s options per strike, puts left, calls right"]
     assert [[_flat_text(k) for k in t["kids"]] for t in tiles["kids"]] == [["Range so far", "35 pts", "0.46 of a normal day"], ["Magnet · busiest", "7,810", "373k · 1.5 pts below"]]
-    assert tiles["attrs"]["class"] == "tod ch-tiles" and cap == {"tag": "div", "attrs": {"class": "tag"}, "text": "Dealers lean against moves · options book 12:58 · not advice", "kids": []}
-    assert _flat_text(got["body"]["kids"][-1]) == cap["text"] and len(got["body"]["kids"]) == 4
+    assert tiles["attrs"]["class"] == "tod ch-tiles" and cap["attrs"] == {"class": "tag"} and _flat_text(cap) == "Dealers lean against moves · options book 12:58 · not advice"
+    assert [k["attrs"]["class"] for k in key["kids"]] == ["box", "walls", "bars"] and cap["kids"][-1]["attrs"]["class"] == "ch-advice"   # what the panel leaves out, by class
+    assert _flat_text(got["body"]["kids"][-1]) == _flat_text(cap) and len(got["body"]["kids"]) == 4
 
 
 def test_the_chart_in_tokyo_and_after_the_close():
@@ -3084,7 +3125,7 @@ def test_the_chart_says_so_without_bars_and_without_a_book():
     key, tiles, cap = got["body"]["kids"][1], got["body"]["kids"][2], got["body"]["kids"][3]
     assert [_flat_text(k) for k in key["kids"]] == ["Dashed box · the 11:30 call, flat ± 3.1 pts to 12:00"]
     assert [_flat_text(k) for k in tiles["kids"][1]["kids"]] == ["Magnet · busiest", "No book", "options book unavailable"]
-    assert cap["text"] == "Options book unavailable · not advice"
+    assert _flat_text(cap) == "Options book unavailable · not advice"
     # the sparkline: the closes across the box, the newest as the dot
     spark = got["spark"]["kids"]
     assert [k["tag"] for k in spark] == ["polyline", "circle"] and spark[0]["attrs"]["points"].split(" ")[0] == "1.0,18.8" and spark[1]["attrs"] == {"cx": "63", "cy": "3.4", "r": "2.2"}
@@ -3114,7 +3155,7 @@ def test_the_price_box_is_the_control_that_opens_the_chart():
 
 # the page's own wiring of the price box, lifted as the info button's is, with the chart's painting and fetching stubbed:
 # the sheet's opening and closing are what is under test
-_PX_BUTTON = ("function $(id){ return document.getElementById(id); } function paintChart(){} function pollBars(){} function pollBook(){} function pollGrades(){}"
+_PX_BUTTON = ("function $(id){ return document.getElementById(id); } function paintChart(){} function pollBars(){} function pollBook(){} function pollGrades(){} function chartDocked(){ return false; }"
               + _fn("openChart") + re.search(r"\n  var pxBtn = \$\('px'\);\n  pxBtn\.addEventListener\('click', [^\n]*\);", SPX).group(0))
 
 
@@ -3146,21 +3187,22 @@ def test_the_price_today_sheet_is_one_more_sheet_that_opens_and_closes_as_the_ot
 
 
 def test_the_book_is_fetched_only_while_the_sheet_is_open_and_each_file_at_most_once_a_minute():
-    """The reversion file is 10 MB the server reads whole on every call: it is asked for only while the sheet is open,
+    """The reversion file is 10 MB the server reads whole on every call: it is asked for only while the chart is visible
+    (here as the sheet; the panel is the test after),
     and at most every 60 seconds; the grades, which draw the dock's calls row as well as the chart's squares, on every
     new card and while the sheet is open, at most every 60 seconds too; the bars at most every 60 seconds through the
     session and the minutes after it in which the close's last bar lands, from the card's day, and only a card naming
     a new day asks for them outside that, dropping the last day's bars before asking for its own."""
     assert _var("BARS_URL").endswith("BARS_MS = 60000, BARS_HOURS = ['09:30', '16:05'];") and _var("BOOK_URL").endswith("BOOK_MS = 60000;")
     assert "setInterval(function(){ if(!document.hidden && todaysCard() && within(BARS_HOURS)) pollBars(); }, BARS_MS);" in JS
-    assert "setInterval(function(){ if(!document.hidden && chartOpen()){ pollBook(); pollGrades(); } }, BOOK_MS);" in JS
+    assert "setInterval(function(){ if(!document.hidden && chartVisible()){ pollBook(); pollGrades(); } }, BOOK_MS);" in JS
     assert "if(cardDay() !== barsDay) pollBars();" in _fn("arrived") and "pollBars();" in _fn("wake") and "pollBook" not in _fn("wake")
-    js = ("var calls = [], OPEN = 'true', painted = 0, sparked = 0; function $(id){ return {getAttribute: function(){ return OPEN; }}; }"
+    js = ("var calls = [], OPEN = 'true', WIDE = {matches: false}, painted = 0, sparked = 0; function $(id){ return {getAttribute: function(){ return OPEN; }}; }"
           "function paintChart(){ painted++; } function paintSpark(){ sparked++; } function paintCalls(){}"
           "function fetch(url){ calls.push(url.split('path=')[1]); return Promise.resolve({ok: true, json: function(){ return Promise.resolve({kind: 'jsonl', rows: [D.row]}); }}); }"
           "var last = {row_ts: '2026-10-09T10:02:00-04:00'};"
           + "".join(_var(v) for v in ("BARS_URL", "BOOK_URL", "GRADES_URL", "bars", "book", "grades"))
-          + "".join(_fn(f) for f in ("cardDay", "chartOpen", "rawRows", "bookRow", "pollBars", "pollBook", "pollGrades"))
+          + "".join(_fn(f) for f in ("cardDay", "chartDocked", "chartVisible", "rawRows", "bookRow", "pollBars", "pollBook", "pollGrades"))
           + "function tick(){ return new Promise(function(r){ setImmediate(r); }); }"
           "(async function(){ var out = {};"
           " pollBook(); pollGrades(); pollBook(); await tick(); await tick(); out.closed = calls.length;"
@@ -3215,3 +3257,222 @@ def test_a_wide_day_keeps_the_strike_prices_a_labels_height_apart():
     assert len(ys) >= 6 and min(b - a for a, b in zip(ys, ys[1:])) >= 11.5
     assert any(k["text"] == "7,810" and "t-lead" in k["attrs"].get("class", "") for k in prices)
 
+
+
+# ---- the wide layout (2026-10-10, Will's board Final-Desktop): from 1024px up the chart stands beside the column
+
+
+def _wide_css(html=SPX):
+    css = re.sub(r"(?s)/\*.*?\*/", "", "\n".join(re.findall(r"(?s)<style>(.*?)</style>", html)))
+    return css, re.search(r"(?s)@media \(min-width:1024px\)\{\n(.*?)\n\}", css).group(1)
+
+
+def test_the_wide_layout_is_the_pages_one_layout_query_and_stands_the_chart_beside_the_column():
+    """From 1024px up, the least width at which the 544px column keeps its width and the chart the 320 it is drawn at
+    with the board's 40px sides and 32px between (no phone is that wide), the page is the board: the body a 544px column
+    with the header across the top and the tabs in it, and the chart sheet placed at the column's right as a panel by
+    its id, never slid up: no scrim, no handle, no Close, no price line (the box beside it says it), its words
+    selectable as the page's are (the sheet refuses selection for the phone's long press), and the price box's chevron
+    gone, its label saying a tap shows the panel. The query is the page's one layout query (the others ask for less
+    motion or forced colours) and the script's WIDE is the same words. A window resized within the wide range draws the
+    chart again at the panel's new width, as the questions sheet redraws on a resize."""
+    css, wide = _wide_css()
+    queries = re.findall(r"@media \(([^)]+)\)", css)
+    assert queries.count("min-width:1024px") == 1
+    assert set(queries) == {"min-width:1024px", "prefers-reduced-motion:reduce", "forced-colors:active"}
+    assert "var WIDE = window.matchMedia('(min-width:1024px)');" in JS
+    # the breakpoint's arithmetic, from the rules themselves: the left side, the column and the gap put the panel at its
+    # left; the panel's padding either side of the chart's drawn 320 (the width the sheet lays it out at on a 360 phone,
+    # paintChart's fallback); then the right side
+    column = int(re.search(r"body > :not\([^)]*\)\{width:(\d+)px\}", wide).group(1))
+    left = int(re.search(r"#chartSheet\{[^}]*left:(\d+)px;right:(\d+)px", wide).group(1)); right = int(re.search(r"#chartSheet\{[^}]*;right:(\d+)px", wide).group(1))
+    pad = int(re.search(r"#chartSheet\{[^}]*padding:14px (\d+)px 16px", wide).group(1))
+    assert column == 544 and left == 40 + column + 32 and pad == 20 and right == 40
+    assert left + pad + 320 + pad + right <= 1024 and "var W = body.clientWidth || 320" in _fn("paintChart")
+    for need in ("body{position:relative;max-width:none;margin:0;padding:0 40px 20px}", "body > :not(.hd, .load, .scrim, .sheet){width:544px}",
+                 ".hd{flex-wrap:wrap;min-height:56px;margin:0 -40px;padding:0 40px;gap:0 28px}", ".px-k::after{display:none}",
+                 "#chartSheet{position:absolute;top:calc(var(--hd-h,56px) + 12px);left:616px;right:40px;bottom:auto;z-index:auto;max-height:none;overflow:visible;",
+                 "transform:none;visibility:visible;transition:none;border-radius:18px;padding:14px 20px 16px;box-shadow:var(--sh1);",
+                 "-webkit-user-select:auto;user-select:auto}", "#chartSheet .sh-grab,#chartSheet .ch-px,#chartSheet .sh-close,#chartSheet .ch-advice{display:none}"):
+        assert need in wide, need
+    assert "scrim" not in wide.replace("body > :not(.hd, .load, .scrim, .sheet)", "")   # the scrim is the sheets': the panel never sets it
+    # the chart sheet keeps its one markup: no second body, no second painter
+    assert SPX.count('id="chBody"') == 1 and JS.count("function chartSvg(") == 1 and JS.count("function paintChart(") == 1
+    assert "if(chartDocked()){ $('chartSheet').scrollIntoView({block: 'nearest'}); return; }" in _fn("openChart")
+    assert "(chartDocked() ? '. Show the price chart' : '. Open the price chart')" in _fn("paintPx")
+    assert "window.addEventListener('resize', function(){ if(chartDocked()) paintChart(); });" in JS
+    assert "'/m/press.js'" not in wide and "--on-faint" not in SPX and "--on-mute" not in SPX and "--state-hover" not in SPX   # the tokens nothing on the page reads went
+    assert not re.search(r"#[0-9A-Fa-f]{6}\b", JS), "the script names the page's tokens, never a colour"
+
+
+def test_the_tabs_sit_in_the_headers_row_on_both_pages_from_1024px_up():
+    """Final-Desktop's header is one row: the name, the tabs in flow after it (never fixed over the header, so the
+    trouble line, which sits between them in flow, can never run under them), and the day at the right; an error on
+    the forecast page, read whole, wraps under the row at its full width (at 1024 a long one squeezed between the tabs
+    and a full right side ran to six lines) rather than growing the row. The reads page draws the same row, with its
+    pinned score centred under it, so the Reads tab stands in the same place on both pages, and neither keeps a bottom
+    bar. The bar is the same markup on both: fixed at the phone's foot, static in the row."""
+    for page in ("jev-spx.html", "reads.html"):
+        html = (M / page).read_text()
+        css, wide = _wide_css(html)
+        assert ".tabs{order:1;position:static;height:56px;padding:0;gap:4px;align-items:center;background:none;border-radius:0;box-shadow:none}" in wide, page
+        assert ".tab{flex-direction:row;gap:8px;min-height:var(--tap-min);padding:0 12px}" in wide and ".tab svg{width:18px;height:18px}" in wide, page
+        assert ".hd-2{order:2;flex:0 1 auto;min-width:0;margin:0" in wide and ".hd-r{order:3}" in wide, page
+        assert "fixed" not in wide and "translateX" not in wide, page
+        assert "padding:0 40px 20px}" in wide, page            # no room kept for a bottom bar
+    assert ".hd-t,.hd-1{display:contents}" in _wide_css()[1]
+    assert ".hd-2.err{order:4;flex:1 1 100%;margin:0 0 10px}" in _wide_css()[1]     # after the right side, so the row stays one line
+    reads = _wide_css((M / "reads.html").read_text())[1]
+    assert ".hd{display:flex;flex-wrap:wrap;align-items:center;gap:0 28px;min-height:56px;margin:0 -40px;padding:0 40px 10px}" in reads
+    assert ".hd-1{display:contents}" in reads and ".sum{order:4;flex:1 1 100%;max-width:528px;margin:0 auto}" in reads
+    assert "main{width:100%;max-width:528px;margin:0 auto}" in reads   # the days stay the phone's centred column
+
+
+def test_the_wide_column_is_the_boards_three_tiles_a_row_of_horizons_and_the_note_beside_the_buttons():
+    """Final-Desktop's column, by the one wide block: the call's tiles are three (the voices control the third, placed by
+    the builder), the tiles' grid gives every tile the same share whatever their count (the chart's four too), Claude's
+    three horizons stand side by side with the Why control on the strip's label row, the sparkline is the board's 120,
+    today's calls are one row (the label, the squares, the score at the right, the chevron: the label row gives up its
+    box so its score and chevron follow the squares), and the note sits beside the two 176px buttons."""
+    _, wide = _wide_css()
+    assert ".calls-link{display:flex;align-items:center}" in wide and ".calls-link .calls{flex:1 1 auto;display:flex;align-items:center;gap:12px}" in wide
+    assert ".calls-link .lab{display:contents}" in wide and ".calls-link .lab .r,.calls-link .lab::after{order:1}" in wide and ".calls-link .sq{margin-top:0}" in wide
+    assert ".tod{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}" in wide
+    assert ".ch-tiles{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));grid-auto-flow:row}" in wide and ".ch-tiles .tile-s{white-space:normal}" in wide
+    assert ".voices{display:block;height:auto;margin:0;padding:9px 10px;border:1px solid var(--rule-soft);border-radius:12px;text-align:left;font:inherit;" in wide
+    assert ".voices::after{display:none}" in wide and ".voices .tile-k{display:flex}" in wide and ".voices .tile-s{display:block;white-space:normal}" in wide
+    assert ".claude{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;padding-bottom:10px}" in wide
+    assert ".cl-foot{grid-column:2;grid-row:1;margin:-16px 0;border-top:0}" in wide and ".cl-h{display:none}" in wide
+    assert ".cl-grid{grid-template-columns:repeat(3,auto minmax(0,1fr));gap:4px 8px}" in wide
+    assert ".cl-k,.cl-n{grid-row:1;grid-column:auto}" in wide and ".cl-bar{grid-row:2;grid-column:span 2}" in wide and ".cl-usual{grid-row:3;grid-column:span 2;margin-bottom:0}" in wide
+    assert ".px-spark{flex:0 0 120px}" in wide and "SPARK_W_WIDE = 120" in _var("SPARK_W") and "W = chartDocked() ? SPARK_W_WIDE : SPARK_W" in _fn("paintSpark")
+    assert ".vq{flex:0 0 176px}" in wide and ".note{flex:1 1 0;min-width:0;text-align:right}" in wide   # shrinks beside them, never under
+    spark = _chart({"now": "2026-10-09T14:43:00-04:00", "card": BOARD_CARD, "bars": BOARD_BARS, "book": None, "wide": True})["spark"]
+    assert spark["attrs"]["viewBox"] == "0 0 120 26" and spark["kids"][1]["attrs"]["cx"] == "119" and spark["kids"][0]["attrs"]["points"].startswith("1.0,")
+    # a crossing of WIDE draws the page again, so the tiles and the gauges take the new shape
+    assert "if(last) draw(last, lastOk); else paintPx();" in JS and "paintSpark();\n    if(chartVisible()){ paintChart(); pollBook(); pollGrades(); }" in JS
+
+
+def test_the_situation_stands_under_the_panel_from_1024px_up_by_the_panels_measured_height():
+    """Final-Desktop puts the situation under the chart in the right column, its three facts side by side (the name, the
+    verdict with its caption, the gauge). The card stays where the dock puts it in the markup (so the phone's order and
+    focus order never change) and the stylesheet places it: absolute at the panel's left and right, its top the header's
+    height plus the panel's (--ch-h, measured by the same observer that measures the header for the sticky price box)
+    plus the two gaps. A grid could not do it: the right column's two members would share the left column's rows, and
+    the card would drop to the column's foot whenever Claude's strip made the column the taller. An absolutely placed
+    card's margin adds nothing to the page's height, so the body's 20px under it is a box hung under the card, which
+    takes no tap."""
+    _, wide = _wide_css()
+    assert ".sit{position:absolute;top:calc(var(--hd-h,56px) + var(--ch-h,0px) + 24px);left:616px;right:40px;width:auto;display:flex;flex-wrap:wrap;" in wide   # width:auto: the card's own 100% would be the body's
+    assert '.sit::after{content:"";position:absolute;top:100%;left:0;right:0;height:20px;pointer-events:none}' in wide
+    # three facts side by side where the card holds three 160px cells (the board's 744, and 1280's 584), each an equal
+    # share; stacked at 1024, where the card is the phone sheet's width
+    assert "gap:10px 20px;padding:12px 20px 14px}" in wide and ".sit>.lab{flex:1 1 100%}" in wide
+    assert ".sit-row,.sit .sit-row:first-of-type{flex:1 1 160px;display:grid;grid-template-columns:minmax(0,1fr);gap:3px;margin:0;padding:0;border-top:0}" in wide
+    assert ".sit-v{grid-row:2;text-align:left;white-space:normal;font-size:15px}" in wide and ".sit-v span{display:inline;margin-left:6px;font-size:12.5px}" in wide
+    assert ".sit-g{grid-row:3;width:150px}" in wide
+    assert "[['.hd', '--hd-h'], ['#chartSheet', '--ch-h']].forEach" in SPX and SPX.index("['#chartSheet', '--ch-h']") > SPX.index('id="chartSheet"')
+    assert "document.querySelectorAll('#dock .lab .age')" in _fn("ages")       # the ages still find the card in the dock
+    got = _situation(SITUATION, wide=True)
+    assert got["rows"][0] == ["Price, last 30 min", "0 0 150 14", "Flat", "+2 pts"] and got["attrs"]["class"] == "card sit"
+
+
+def test_the_book_is_fetched_while_the_chart_is_visible_as_a_sheet_or_as_a_panel():
+    """chartVisible is the one gate on the 10 MB book: on a phone the sheet open, from 1024px up the panel laid out
+    (the query's matches), and neither means no fetch; a card's arrival asks through the same gate."""
+    js = ("var calls = [], OPEN = 'true', WIDE = {matches: false}; function $(id){ return {getAttribute: function(){ return OPEN; }}; }"
+          "function paintChart(){} function fetch(url){ calls.push(url.split('path=')[1].split('/')[0]); return Promise.resolve({ok: true, json: function(){ return Promise.resolve({kind: 'jsonl', rows: [D.row]}); }}); }"
+          "var last = {row_ts: '2026-10-09T10:02:00-04:00'};"
+          + "".join(_var(v) for v in ("BOOK_URL", "book")) + "".join(_fn(f) for f in ("cardDay", "chartDocked", "chartVisible", "rawRows", "bookRow", "pollBook"))
+          + "function tick(){ return new Promise(function(r){ setImmediate(r); }); }"
+          "(async function(){ var out = {};"
+          " pollBook(); await tick(); await tick(); out.phoneShut = [chartVisible(), calls.length];"
+          " WIDE.matches = true; pollBook(); await tick(); await tick(); out.panel = [chartVisible(), calls.slice()];"
+          " WIDE.matches = false; bookAt = 0; OPEN = 'false'; pollBook(); await tick(); await tick(); out.sheet = [chartVisible(), calls.length];"
+          " console.log(JSON.stringify(out)); })();")
+    assert _run(js, {"now": "2026-10-09T10:05:00-04:00", "row": NATIVE_ROW}) == {"phoneShut": [False, 0], "panel": [True, ["reversion"]], "sheet": [True, 2]}
+    assert "pollBook();" in _fn("arrived") and "if(!day || !chartVisible() || bookInflight) return;" in _fn("pollBook")
+
+
+def test_the_panel_draws_the_chart_at_the_boards_height_and_the_sheet_at_its_own():
+    """One painter: in the sheet the drawing is 248 tall (Final-Chart); in the panel, at its 744px, 442 (Final-Desktop),
+    with the same rows under the plot measured from the foot: the axis 36 up, the feet 22, the squares 12, the bottom
+    strike 48; the price axis stretches between. The gutter widens with the drawing (a third of it, as the sheet's 116
+    of 320), so the panel's bars are longer and its strike column keeps its room, while a drawing no wider than the
+    sheet's keeps the sheet's gutter to the pixel."""
+    sheet = _board()["body"]["kids"][0]
+    panel = _board(W=744, wide=True)["body"]["kids"][0]
+    assert sheet["attrs"]["viewBox"] == "0 0 320 248" and panel["attrs"]["viewBox"] == "0 0 744 442"
+    for svg, H in ((sheet, 248), (panel, 442)):
+        texts = {t["text"]: t["attrs"] for t in _find(svg, tag="text")}
+        axis = [a for a in (r["attrs"] for r in _find(svg, "axis")) if a["x1"] == "0"][0]
+        assert float(axis["y1"]) == H - 36 and float(texts["OPEN 06:30"]["y"]) == H - 22 and float(texts["7,775"]["y"]) == H - 48 + 4
+        assert float(_find(svg, "sq")[0]["attrs"]["y"]) == H - 12 and float(texts["7,830"]["y"]) == 24
+    assert "H = chartDocked() ? CH_H_WIDE : CH_H" in _fn("paintChart") and "CH_H_WIDE = 442" in _var("CH_H")
+    texts = {t["text"]: t["attrs"] for t in _find(panel, tag="text")}
+    zero = [a for a in (r["attrs"] for r in _find(panel, "axis")) if a["x1"] != "0"][0]
+    assert zero["x1"] == "652" and texts["STRIKE"]["x"] == "554" and texts["CLOSE 13:00 PDT"]["x"] == "475"   # 744 - 91 - 1; the column 98 and the plot 177 in from the zero
+    calls = _find(panel, "call")
+    assert max(float(c["attrs"]["width"]) for c in calls) == 91.0 and max(float(c["attrs"]["x"]) + float(c["attrs"]["width"]) for c in calls) == 744
+    assert [t["attrs"]["x"] for t in _find(panel, tag="text") if t["text"] == "214k"] == ["568", "744"]   # the scale's ends: 652 - 91 + 7, and the edge
+    assert "g = Math.max(1, W / CH_W), SIDE = Math.round(CH_SIDE * g)" in _fn("chartSvg") and "CH_W = 320" in _var("CH_SIDE")
+
+
+def test_the_panel_carries_the_boards_title_and_four_tiles_and_the_sheet_keeps_its_own():
+    """Final-Desktop's panel: the title row's right says the day, the price's state as the box says it with the quote's
+    time, and the viewer's zone ("Fri 10-09 · live 11:43 · PDT"; after the close "last close"); no price line under it
+    (hidden by the stylesheet); the legend's lines inline with the bars first and the walls left out (named on the
+    chart and in the tiles); four tiles, the range, the biggest strike with everything traded there, the call wall with
+    its calls and the put wall with its puts, each with its distance from the dot, the magnet named on the wall it sits
+    at; and the caption without "not advice", which the page's note says. The sheet keeps its day, its two tiles, its
+    legend lines and its caption, drawn by the same painter and the one tile builder."""
+    live = _board(W=744, wide=True)
+    assert live["day"] == "Fri 10-09 · live 11:43 · PDT"
+    key, tiles, cap = live["body"]["kids"][1], live["body"]["kids"][2], live["body"]["kids"][3]
+    assert [k["attrs"]["class"] for k in key["kids"]] == ["box", "walls", "bars"] and ".ch-key .walls{display:none}" in SPX and ".ch-key .bars{order:-1}" in SPX
+    assert [[_flat_text(k) for k in t["kids"]] for t in tiles["kids"]] == [["Range so far", "35 pts", "0.46 of a normal day"], ["Biggest strike", "7,810", "373k traded · 1.5 pts below"],
+                                                                           ["Call wall", "7,815", "214k calls · 3.5 pts above"], ["Put wall · magnet", "7,810", "171k puts · the magnet"]]
+    assert tiles["attrs"]["class"] == "tod ch-tiles" and [t["attrs"]["class"] for t in tiles["kids"]] == ["tile"] * 4
+    assert _flat_text(cap) == "Dealers lean against moves · options book 12:58 · not advice" and cap["kids"][-1]["attrs"]["class"] == "ch-advice"
+    # the magnet off the put wall: the wall's distance in its place, and no magnet on either name
+    apart = _board(W=744, wide=True, book={**NATIVE_ROW, "gex_views": {**NATIVE_ROW["gex_views"], "magnet": 7805.0}})["body"]["kids"][2]
+    assert [[_flat_text(k) for k in t["kids"]] for t in apart["kids"][2:]] == [["Call wall", "7,815", "214k calls · 3.5 pts above"], ["Put wall", "7,810", "171k puts · 1.5 pts below"]]
+    # after the close, and without a book: the state and the one tile the sheet shows
+    shut = _chart({"now": "2026-10-09T16:20:00-04:00", "card": BOARD_CARD, "bars": BOARD_BARS, "book": None, "spot": 7811.0, "W": 744, "wide": True})
+    assert shut["day"] == "Fri 10-09 · last close · PDT"
+    assert [[_flat_text(k) for k in t["kids"]] for t in _find(shut["body"], "ch-tiles")[0]["kids"]] == [["Range", "35 pts", "0.46 of a normal day"], ["Magnet · busiest", "No book", "options book unavailable"]]
+    assert _board(W=744, wide=True, spot=None)["day"] == "Fri 10-09"       # no quote yet: the day alone, as the sheet
+    assert _board()["day"] == "Fri 10-09" and len(_board()["body"]["kids"][2]["kids"]) == 2
+    assert JS.count("function chTile(") == 1 and "if(!chartDocked()){" in _fn("bookTiles") and "$('chDay').textContent = day ? chartDay(day) : '';" in _fn("paintChart")
+
+
+def test_a_resize_across_the_breakpoint_closes_an_open_sheet_and_asks_for_the_book():
+    """The sheet and the panel are one markup: a window widened past 1024px with the chart sheet open closes it the one
+    way sheet.js closes anything (MiraiSheet.close), so no scrim is left under a panel, draws the chart for the panel and
+    asks for the book; narrowed back, the panel is the hidden sheet again and nothing is asked for. Standing on the page
+    the panel is no dialog: docked, it is a region (the board's "SPX today" panel) with its aria-hidden and aria-modal
+    gone, so a screen reader reaches the chart as part of the page; narrowed back, the dialog and both attributes
+    return (a phone at load keeps the markup's). sheet.js writes aria-hidden last when the widening closed the sheet,
+    on the popstate its history entry unwinds through, so the page docks again on every popstate."""
+    if not _NODE:
+        pytest.skip("node is not installed")
+    script = ("const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + FIXED_NOW + WHOLE_DOM
+              + "var FETCHED = []; var fetched = fetch; fetch = function(url){ FETCHED.push(url.indexOf('path=') < 0 ? 'spot' : url.split('path=')[1].split('/')[0]); return fetched(url); };" + MAIN_JS
+              + "function aria(){ return [ids.chartSheet.attrs['aria-hidden'], ids.chartSheet.attrs['aria-modal'], ids.chartSheet.attrs['role']]; }"
+              "setImmediate(function(){ var out = {loaded: FETCHED.slice(), query: !!MQ.change, phone: aria()};"
+              " ids.chartSheet.attrs['aria-hidden'] = 'false'; MQ.matches = true; MQ.change();"
+              " setImmediate(function(){ out.widened = {closed: MiraiSheet.closed, book: FETCHED.slice(out.loaded.length), chart: ids.chBody.kids.length, aria: aria()};"
+              "  MQ.matches = false; MQ.change();"
+              "  setImmediate(function(){ out.narrowed = {closed: MiraiSheet.closed, more: FETCHED.length - out.loaded.length - out.widened.book.length, aria: aria()}; console.log(JSON.stringify(out)); }); }); });")
+    out = run_node(_NODE, script, input=json.dumps({**{k: MONDAY[k] for k in ("live", "tape", "premarket")}, "now": "2026-09-28T15:40:00-04:00"}),
+                   capture_output=True, text=True, timeout=20, env={**os.environ, "TZ": LA})
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout)
+    assert got["query"] is True and "reversion" not in got["loaded"] and got["phone"] == ["true", "true", "dialog"]   # a phone with the sheet shut never asks
+    assert got["widened"] == {"closed": 1, "book": ["reversion"], "chart": 1, "aria": ["false", None, "region"]}
+    assert got["narrowed"] == {"closed": 1, "more": 0, "aria": ["true", "true", "dialog"]}
+    assert 'id="chartSheet" role="dialog" aria-modal="true" aria-hidden="true"' in SPX     # the markup is the phone's: dockChart rewrites all three
+    assert "-webkit-user-select:auto;user-select:auto}" in _wide_css()[1]     # docked, its words select as the page's do
+    assert "return {open, isOpen, pin, close: dismiss};" in (M / "sheet.js").read_text()
+    assert "window.addEventListener('popstate', dockChart);" in JS and "window.addEventListener('popstate', shut);" in (M / "sheet.js").read_text()
+    assert SPX.index('<script src="/m/sheet.js"></script>') < SPX.index(MAIN_JS)     # sheet.js's popstate runs first, so the page's docks last

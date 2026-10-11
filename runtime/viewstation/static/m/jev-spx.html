@@ -35,7 +35,14 @@
   the minute from state/spx_jev/bars/<day>.jsonl, which also draws the box's
   sparkline, with today's options book from state/reversion/<day>.jsonl in the
   chart's gutter and the day's graded calls from spx_jev/integral_grades.jsonl
-  under its clock, all through the same raw-file route.
+  under its clock, all through the same raw-file route. From 1024px up (the
+  owner's MacBook Air) the page is the board Final-Desktop: the header across
+  the top with the tabs in it, the home as a 544px column, and the chart
+  standing beside it as a panel with the situation card under it, the sheet's
+  own markup placed there by the stylesheet's one layout query; one markup
+  and one painter serve both widths, and the few words and tiles the board
+  adds at that width turn on chartDocked. The book is fetched while the chart
+  is visible either way (chartVisible).
 
   Times are the viewer's. Every time the SPX card carries is a full timestamp
   with its offset, so every time on this page is drawn in the phone's own zone
@@ -59,12 +66,12 @@
 :root{
   --g:#E4E0D8; --s:#F4F1EB; --s2:#DCD7CD; --fill:#1F2622;
   --i:#161A17; --i-body:#333B35; --i-mute:#535B52; --i-faint:#5C6459;
-  --on-body:#E4E6DF; --on-mute:#A9B0A6; --on-faint:#8E958A;
+  --on-body:#E4E6DF;
   --px-ink:#2F44B8; --px-mark:#5470E4; --px-soft:#C9D1F4; --rule-soft:#7E8779;
   /* the odds, diverging from a neutral middle: down warm, up the page's blue, flat and unsure neutral */
   --o-dn:#A8492F; --o-dn-soft:#DE9F8A; --o-fl:#B9B2A4; --o-up-soft:#8E9DE6; --o-up:#2F44B8; --o-un:#D5D0C6;
   --sh1:0 1px 1px -.5px rgba(58,48,32,.05),0 3px 6px -1px rgba(58,48,32,.06),0 10px 22px -6px rgba(58,48,32,.07);
-  --tap-min:48px; --state-hover:.08; --state-press:.12;
+  --tap-min:48px; --state-press:.12;
   --press-in:80ms; --press-out:200ms; --ease-in:cubic-bezier(0,0,0,1); --ease-out:cubic-bezier(.2,0,0,1);
   --sans:"Jakarta",system-ui,Roboto,"Segoe UI",sans-serif;
   --tab-h:74px;
@@ -101,7 +108,7 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 /* aging is a shape, not a hue: the outlined chip */
 .lab .r.old{padding:3px 7px;border:1px solid var(--i-mute);border-radius:6px}
 /* the tap cue, one rule: a chevron drawn as a rotated border on every control that opens a sheet or the reads */
-.px-k::after,button.tile .tile-k::after,.voices::after,.rec .lab::after,.calls-link .lab::after,.sit .lab::after,.cl-why::after{
+.px-k::after,button.tile .tile-k::after,.voices::after,.voices .tile-k::after,.rec .lab::after,.calls-link .lab::after,.sit .lab::after,.cl-why::after{
   content:"";flex:none;width:6px;height:6px;border-right:1.5px solid var(--i-mute);border-top:1.5px solid var(--i-mute);transform:rotate(45deg)}
 #state{display:flex;flex-wrap:wrap;gap:6px}
 #state:empty{display:none}                          /* with no trouble it takes no gap under the price box */
@@ -111,13 +118,16 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 .lab.call+.big{margin-top:4px}
 .big{margin-top:8px;font:700 30px/1.1 var(--sans);color:var(--i);letter-spacing:-.01em}
 /* the call's label and big number, with the voices control at their right when the card names the call's voices: a
-   tap opens the list of what went into it */
+   tap opens the list of what went into it. The control is built with a tile's parts (the board's third tile from 1024px
+   up, where the layout query shows them); the phone shows its count alone, as the label row's words */
 .call-top{display:flex;align-items:flex-end;gap:8px;margin-top:12px}
 .call-top>div{flex:1 1 auto;min-width:0}
 .call-top .lab.call{margin-top:0}
 .voices{flex:none;display:inline-flex;align-items:center;gap:6px;height:var(--tap-min);margin:0 0 -2px;padding:0 0 0 8px;border:0;background:none;
         font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-mute);cursor:pointer;touch-action:manipulation;
         -webkit-tap-highlight-color:transparent}
+.voices .tile-k,.voices .tile-s{display:none}
+.voices .tile-v{margin:0;font:inherit;color:inherit}
 .voices:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
 /* the record of the 30-minute calls, one row at the card's foot (the scoreboard): the reads counted, how many were
    right against the usual odds, and the verdict in words; a tap opens the learning loop */
@@ -235,7 +245,7 @@ button.tile{cursor:pointer;border-color:var(--rule-soft);touch-action:manipulati
 button.tile:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
 .tile-k{display:flex;align-items:center;gap:6px;font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
 .tile-k span{min-width:0}
-button.tile .tile-k::after{margin-left:auto}
+button.tile .tile-k::after,.voices .tile-k::after{margin-left:auto}
 .tile-v{margin:4px 0 7px;font:700 15px/1.2 var(--sans);color:var(--i)}
 .tile.graded{border-color:var(--px-ink)}
 /* the time-of-day sheet: one row per part of the day, then the chosen part session by session */
@@ -433,15 +443,15 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
           background:var(--fill);color:var(--on-body);font:700 14px/1 var(--sans)}
 .sh-close:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
 /* the questions and the info sheet: two plain controls on one row at the foot of the page (the questions' only once a
-   card is drawn, so the info control has the row to itself before one), and a sheet of every question on the card, a
-   group at a time with one card in view. A swipe or a tap at either side moves along, the strip at its foot jumps
-   between groups, and a pull on its handle closes it; no other control in it */
-.vq-row{display:flex;gap:8px}
+   card is drawn, so the info control has the row to itself before one) with the page's last line under them, and a
+   sheet of every question on the card, a group at a time with one card in view. A swipe or a tap at either side moves
+   along, the strip at its foot jumps between groups, and a pull on its handle closes it; no other control in it */
+.vq-row{display:flex;flex-wrap:wrap;gap:8px}
 .vq{display:block;flex:1 1 0;min-width:0;height:var(--tap-min);padding:0;border:1px solid var(--rule-soft);border-radius:14px;background:var(--s);
     font:700 13.5px/1 var(--sans);color:var(--i);touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .vq[hidden]{display:none}
 .vq:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
-.note{margin:-4px 0 0;text-align:center;font:400 11.5px/1.3 var(--sans);color:var(--i-mute)}
+.note{flex:1 1 100%;margin:0;text-align:center;font:400 11.5px/1.3 var(--sans);color:var(--i-mute)}
 .sheet.qs{max-height:none;height:calc(var(--app-h) * .92);display:flex;flex-direction:column;overflow:hidden;
           padding:0 0 calc(env(safe-area-inset-bottom) + 14px)}
 .qs-grab{display:block;flex:none;width:100%;height:30px;border:0;background:none;touch-action:none;cursor:grab}
@@ -505,6 +515,9 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 .lp-verdict.dn{border-color:var(--o-dn);color:var(--o-dn)}
 .lp-key{margin-top:5px;font:400 11px/1.35 var(--sans);color:var(--i-faint)}
 .lp-line{display:block;width:100%;height:44px;margin:10px 0 4px}
+.lp-line .zero{stroke:var(--rule-soft);stroke-width:1;stroke-dasharray:3 3}
+.lp-line .path{fill:none;stroke:var(--px-ink);stroke-width:2}
+.lp-line .dot{fill:var(--px-ink)}
 .lp-t{width:100%;border-collapse:collapse;font:400 13px/1.35 var(--sans);margin-top:4px}
 .lp-t th{text-align:left;font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint);padding:6px 0 5px;border-bottom:1px solid var(--s2)}
 .lp-t th+th,.lp-t td+td{text-align:right;white-space:nowrap;padding-left:12px}
@@ -582,6 +595,83 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 .tab.on i{background:var(--i)}
 @media (prefers-reduced-motion:reduce){.tab.is-pressed::before{opacity:.20}}
 @media (forced-colors:active){.tab::before{display:none}.tab.is-pressed,.tab.on{color:Highlight}}
+
+/* From 1024px up (the script's WIDE, the page's one layout query: the least width at which the column keeps its 544 and
+   the chart the 320 it is drawn at, with the board's 40px sides and 32px between; no phone is that wide) the page is the
+   board Final-Desktop (2026-10-10): the header across the top with the name, the tabs and the right side on its one row
+   (the trouble line between them, in flow, so it can never run under the tabs; an error, read whole, wraps under the
+   row where it has the width rather than squeezing the row taller), the home as a column on the left, and
+   at its right the price-today chart standing as a panel with the situation card under it. The panel is the sheet's own
+   markup, placed at the column's right and never slid up, so no scrim, no handle, no Close and no price line (the box
+   beside it says it), and its words select as the page's do (the sheet refuses selection for the phone's long press);
+   the price box is no longer the way into it, so its chevron goes. The situation stands under the panel by the panel's
+   measured height (--ch-h), as the price box sticks under the header by the header's; an absolutely placed card's
+   margin adds nothing to the page's height, so the room under it that the body's padding gives an in-flow card is a
+   box hung under it. What the board widens is widened here by its rule: the call's tiles take the voices control as a
+   third, the chart's tiles and Claude's horizons stand in a row, today's calls on one line, the situation's facts side
+   by side, the note beside the two buttons. */
+@media (min-width:1024px){
+  body{position:relative;max-width:none;margin:0;padding:0 40px 20px}
+  body > :not(.hd, .load, .scrim, .sheet){width:544px}
+  .hd{flex-wrap:wrap;min-height:56px;margin:0 -40px;padding:0 40px;gap:0 28px}
+  .hd-t,.hd-1{display:contents}
+  .hd-2{order:2;flex:0 1 auto;min-width:0;margin:0}
+  .hd-2.err{order:4;flex:1 1 100%;margin:0 0 10px}
+  .hd-r{order:3}
+  .load{bottom:0}
+  .tabs{order:1;position:static;height:56px;padding:0;gap:4px;align-items:center;background:none;border-radius:0;box-shadow:none}
+  .tab{flex-direction:row;gap:8px;min-height:var(--tap-min);padding:0 12px}
+  .tab svg{width:18px;height:18px}
+  .tab i{margin-top:0}
+  .px{gap:14px}
+  .px-k::after{display:none}
+  .px-spark{flex:0 0 120px}
+  .tod{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}
+  /* the panel's tiles take a row of four where it is wide enough (the board's 744 panel) and two rows of two in a
+     narrow one (1024, where the panel is the sheet's width), their sub lines wrapping rather than running on */
+  .ch-tiles{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));grid-auto-flow:row}
+  .ch-tiles .tile-s{white-space:normal}
+  .voices{display:block;height:auto;margin:0;padding:9px 10px;border:1px solid var(--rule-soft);border-radius:12px;text-align:left;font:inherit;
+          letter-spacing:0;text-transform:none;color:inherit}
+  .voices::after{display:none}
+  .voices .tile-k{display:flex}
+  .voices .tile-v{margin:4px 0;font:700 15px/1.2 var(--sans);color:var(--i)}
+  .voices .tile-s{display:block;white-space:normal}
+  .claude{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;padding-bottom:10px}
+  .cl-lead,.cl-grid{grid-column:1 / -1}
+  .cl-foot{grid-column:2;grid-row:1;margin:-16px 0;border-top:0}
+  .cl-h{display:none}
+  .cl-grid{grid-template-columns:repeat(3,auto minmax(0,1fr));gap:4px 8px}
+  .cl-k,.cl-n{grid-row:1;grid-column:auto}
+  .cl-bar{grid-row:2;grid-column:span 2}
+  .cl-usual{grid-row:3;grid-column:span 2;margin-bottom:0}
+  /* today's calls on the board's one row: the label, the squares, the score at the right and the chevron; the label row
+     gives up its box so its score and chevron stand in the row after the squares */
+  .calls-link{display:flex;align-items:center}
+  .calls-link .calls{flex:1 1 auto;display:flex;align-items:center;gap:12px}
+  .calls-link .lab{display:contents}
+  .calls-link .lab .r,.calls-link .lab::after{order:1}
+  .calls-link .sq{margin-top:0}
+  .vq{flex:0 0 176px}
+  .note{flex:1 1 0;min-width:0;text-align:right}   /* beside the buttons, wrapping its own words, never under them */
+  .cl-why{padding-right:2px}                     /* the rotated chevron's corner otherwise overhangs the control */
+  #chartSheet{position:absolute;top:calc(var(--hd-h,56px) + 12px);left:616px;right:40px;bottom:auto;z-index:auto;max-height:none;overflow:visible;
+              transform:none;visibility:visible;transition:none;border-radius:18px;padding:14px 20px 16px;box-shadow:var(--sh1);
+              -webkit-user-select:auto;user-select:auto}
+  #chartSheet .sh-grab,#chartSheet .ch-px,#chartSheet .sh-close,#chartSheet .ch-advice{display:none}
+  .ch-key{flex-direction:row;flex-wrap:wrap;gap:2px 12px;margin-top:6px}
+  .ch-key .walls{display:none}
+  .ch-key .bars{order:-1}
+  .sit{position:absolute;top:calc(var(--hd-h,56px) + var(--ch-h,0px) + 24px);left:616px;right:40px;width:auto;display:flex;flex-wrap:wrap;
+       gap:10px 20px;padding:12px 20px 14px}
+  .sit>.lab{flex:1 1 100%}
+  .sit-row,.sit .sit-row:first-of-type{flex:1 1 160px;display:grid;grid-template-columns:minmax(0,1fr);gap:3px;margin:0;padding:0;border-top:0}
+  .sit-t,.sit-g,.sit-v{grid-column:1}
+  .sit-v{grid-row:2;text-align:left;white-space:normal;font-size:15px}
+  .sit-v span{display:inline;margin-left:6px;font-size:12.5px}
+  .sit-g{grid-row:3;width:150px}
+  .sit::after{content:"";position:absolute;top:100%;left:0;right:0;height:20px;pointer-events:none}
+}
 </style>
 </head>
 <body>
@@ -604,6 +694,17 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     <div class="hd-1"><span class="hd-l"><span id="h1">SPX &middot; Forecast</span><i class="poll" id="poll" hidden></i></span><span class="hd-r" id="hdR"></span></div>
     <div class="hd-2" id="sub">loading</div>
   </div>
+  <!-- the tab bar, fixed at the phone's foot and in the header's row from 1024px up -->
+  <nav class="tabs">
+    <span class="tab on" data-press>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l3.5-3.5 3 2L13 12"/><path d="M13 12 21 6.5" stroke-dasharray="1.5 2.6"/><path d="M13 12l8 2.5" stroke-dasharray="1.5 2.6"/><circle cx="13" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>
+      <s>FORECAST</s><i></i>
+    </span>
+    <a class="tab" href="/m/reads.html" aria-label="Reads" data-press data-haptic>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      <s>READS</s><i></i>
+    </a>
+  </nav>
 </header>
 <div class="load" id="load"><i></i>Reading the card</div>
 <button class="px" id="px" type="button" aria-controls="chartSheet" hidden>
@@ -614,15 +715,6 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 <div class="od" id="od" role="status" hidden></div>
 <div id="state"></div>
 <main id="main" style="display:flex;flex-direction:column;gap:12px"></main>
-<script>
-/* --hd-h: the sticky header's height, so the price box sticks right under it whatever the header line wraps to */
-(function(){
-  var hd = document.querySelector('.hd'); if(!hd) return;
-  function set(){ document.documentElement.style.setProperty('--hd-h', hd.offsetHeight + 'px'); }
-  set();
-  if(window.ResizeObserver) new ResizeObserver(set).observe(hd); else window.addEventListener('resize', set);
-})();
-</script>
 <!-- Claude's own read (skills/spx-claude-forecast, 2026-10-10): after every half-hour read Claude answers, apart from the
      call above and never mixed into it, with its up / flat / down chances per horizon. Read from
      state/spx_claude_forecast/latest.json; the strip stays hidden until the file holds a real read. Each bar is Claude's
@@ -634,13 +726,14 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   <div class="cl-grid" id="claudeRows"></div>
   <div class="cl-foot"><button class="cl-why" id="claudeWhy" type="button" aria-controls="jevSheet">Why</button></div>
 </section>
-<!-- today's calls and the situation (the live card's own sections) dock here, under Claude's read -->
+<!-- today's calls and the situation (the live card's own sections) dock here, under Claude's read; from 1024px up the
+     stylesheet stands the situation under the chart panel -->
 <div id="dock" style="display:flex;flex-direction:column;gap:12px"></div>
 <div class="vq-row">
   <button class="vq" id="qBtn" type="button" aria-controls="qSheet" hidden>Questions</button>
   <button class="vq info" id="infoBtn" type="button" aria-controls="infoSheet"><i aria-hidden="true">i</i>How to read</button>
+  <p class="note">A forecast, graded by the bars. Not advice.</p>
 </div>
-<p class="note">A forecast, graded by the bars. Not advice.</p>
 
 <div class="scrim" data-sheet-close></div>
 <div class="sheet" id="jevSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="csTitle">
@@ -672,6 +765,19 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   <div id="chBody"></div>
   <button class="sh-close" type="button" data-sheet-close>Close</button>
 </div>
+<script>
+/* --hd-h: the sticky header's height, so the price box sticks right under it whatever the header line wraps to;
+   --ch-h: the chart panel's, so from 1024px up the situation card stands right under the panel (the stylesheet's one
+   layout query places both) */
+(function(){
+  [['.hd', '--hd-h'], ['#chartSheet', '--ch-h']].forEach(function(m){
+    var e = document.querySelector(m[0]); if(!e) return;
+    function set(){ document.documentElement.style.setProperty(m[1], e.offsetHeight + 'px'); }
+    set();
+    if(window.ResizeObserver) new ResizeObserver(set).observe(e); else window.addEventListener('resize', set);
+  });
+})();
+</script>
 <div class="sheet qs" id="qSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="qsName">
   <button class="qs-grab" type="button" data-sheet-close aria-label="Close the questions"><i></i></button>
   <div class="qs-hd" id="qsHd"><div class="qs-name" id="qsName">Questions</div><div class="qs-sub" id="qsSub"></div><div class="qs-sub" id="qsCount"></div></div>
@@ -680,17 +786,6 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   <div class="qs-scrub"><div class="qs-lab"><span>All groups</span><span id="qsAt"></span></div>
     <div class="qs-strip" id="qsStrip" role="slider" tabindex="0" aria-label="Question groups" aria-valuemin="1"></div></div>
 </div>
-
-<nav class="tabs">
-  <span class="tab on" data-press>
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l3.5-3.5 3 2L13 12"/><path d="M13 12 21 6.5" stroke-dasharray="1.5 2.6"/><path d="M13 12l8 2.5" stroke-dasharray="1.5 2.6"/><circle cx="13" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>
-    <s>FORECAST</s><i></i>
-  </span>
-  <a class="tab" href="/m/reads.html" aria-label="Reads" data-press data-haptic>
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-    <s>READS</s><i></i>
-  </a>
-</nav>
 <script src="/m/press.js"></script>
 <script src="/m/sheet.js"></script>
 <script>
@@ -801,15 +896,21 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   function setSub(text){ var s = $('sub'); s.textContent = text; s.hidden = !text; }
   // The header's right side: the market day the card belongs to (its stamp's own date, written in New York's offset,
   // as the reads page names a day: "Fri 10-09", never the viewer's day) and, while one is still ahead, the next read
-  // in the viewer's zone. Drawn again on every poll and tick, since the next read moves with the clock.
+  // in the viewer's zone; from WIDE up the board's fuller line (Final-Desktop), the read's time and age before the next
+  // read, which a phone has no room for beside the name. Drawn again on every poll and tick, since the next read and
+  // the age move with the clock.
   function dayName(d){
     var t = Date.parse(d + 'T12:00:00Z');
     return isNaN(t) ? String(d) : WEEKDAYS[new Date(t).getUTCDay()].slice(0, 3) + ' ' + d.slice(5);
   }
-  function headLine(day, next){ return dayName(day) + (next != null ? ' · next read ' + viewerTime(next) : ''); }
+  function headLine(day, next, read){
+    if(next == null) return dayName(day);
+    var at = read != null && chartDocked() ? ' · read ' + viewerTime(read) + ', ' + ageWord(mins(read)) + ' · next ' : ' · next read ';
+    return dayName(day) + at + viewerTime(next);
+  }
   function setHead(c){
     var r = $('hdR'); if(!r) return;
-    r.textContent = headLine(String(c.row_ts || '').slice(0, 10), nextRead(Date.parse(c.session && c.session.last_read)));
+    r.textContent = headLine(String(c.row_ts || '').slice(0, 10), nextRead(Date.parse(c.session && c.session.last_read)), c.row_ts);
   }
   // The service reads at :02 and :32 market time. The next mark is the earliest one still ahead of the
   // market clock, never past the day's last read, found on the market clock and handed back as an instant,
@@ -949,9 +1050,13 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   function bySay(vs){ return vs.slice().sort(function(x, y){ return y.share - x.share; }); }
   // the voice with the most say, in one line: "50/50 blend has 83% of the say"
   function sayWords(vs){ var top = bySay(vs)[0]; return voiceName(top) + ' has ' + Math.round(top.share * 100) + '% of the say'; }
-  // the control beside the call's label: how many voices, and a tap opens them
+  // the control beside the call's label: how many voices, and a tap opens them. It is built with a tile's parts, the
+  // name over the count with who has the most say under it, since from WIDE up it stands as the board's third tile
+  // (Final-Desktop); the phone's stylesheet shows the count alone
   function voicesButton(vs){
-    var b = el('button', 'voices', vs.length + ' voices'); b.type = 'button'; b.setAttribute('aria-controls', 'jevSheet');
+    var b = el('button', 'voices'), k = el('div', 'tile-k'); b.type = 'button'; b.setAttribute('aria-controls', 'jevSheet');
+    k.appendChild(el('span', null, 'What went into it')); b.appendChild(k);
+    b.appendChild(el('div', 'tile-v', vs.length + ' voices')); b.appendChild(el('div', 'tile-s', sayWords(vs)));
     b.setAttribute('aria-label', 'What went into it: ' + vs.length + ' voices, ' + sayWords(vs) + '. Open the list');
     b.addEventListener('click', function(){ openVoices(vs, b); });
     return b;
@@ -997,7 +1102,8 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // Under the graded call, two tiles: the usual odds, how the last sessions went at this time of day (the yardstick JEV
   // has to beat), which opens the time-of-day sheet when the card carries its counts (the card's time_of_day,
   // clock._blocks), and JEV's own read under the combined forecast (shown_source pool_v2), or on an older card the
-  // half-and-half its calls grade, outlined as the graded one.
+  // half-and-half its calls grade, outlined as the graded one; with ``voices``, the call's voices control, as a third
+  // beside JEV's own (the board Final-Desktop, from WIDE up).
   function howBar(p){
     var b = el('div', 'how-bar');
     oddsKeys(p).forEach(function(k){ var i = el('i', 'o-' + k); i.style.flex = Math.max(0, p[k] || 0) + ' 1 0'; b.appendChild(i); });
@@ -1014,13 +1120,13 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     }
     return t;
   }
-  function howChart(h, bl, at, tod){
+  function howChart(h, bl, at, tod, voices){
     var j = h.jev, c = h.clock, pool2 = h.shown_source === 'pool_v2';
     if(bl && bl.used && j && c){
       var g = el('div', 'tod'), span = bl.phase_words ? phaseSpan(bl.phase_words, at) : '';
       g.appendChild(tile('Usual odds', c.probabilities, tod && tod.phases && tod.phases.length ? function(from){ openTod(tod, bl, at, from); } : null,
                          'Usual odds, last ' + bl.sessions + ' days at this time of day' + (span ? ', ' + span : '')));
-      if(pool2){ g.appendChild(tile('JEV alone', j.probabilities)); return g; }      // the headline is the graded call: JEV's own read beside it
+      if(pool2){ g.appendChild(tile('JEV alone', j.probabilities)); if(voices) g.appendChild(voices); return g; }      // the headline is the graded call: JEV's own read beside it
       g.appendChild(tile('Half of each \u00B7 graded', h.probabilities)).setAttribute('class', 'tile graded');
       return g;
     }
@@ -1110,7 +1216,8 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     } else sumCard(c, main);
     if(preFolds(premarket, Date.now(), marketDay())) main.appendChild(preFold(premarket));
 
-    // under Claude's read: today's 30-minute calls as squares, then the situation (Final-Home, 2026-10-10)
+    // under Claude's read: today's 30-minute calls as squares, then the situation (Final-Home, 2026-10-10), which from
+    // WIDE up the stylesheet stands under the chart panel instead
     var dock = document.getElementById('dock'); dock.textContent = '';
     var today = el('a', 'card calls-link'); today.id = 'todayCalls'; today.setAttribute('href', '/m/reads.html');
     callsRow(dayStates(c), 'Today\u2019s calls', today);
@@ -1298,6 +1405,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var same = last && last.generated_at === c.generated_at && last.row_ts === c.row_ts;
     last = c;
     if(cardDay() !== barsDay) pollBars();         // the card names the day whose bars the price box and the chart draw
+    pollBook();                                   // and whose book, while the chart is visible
     if(!same){ gradesAt = 0; pollGrades(); }      // a new card may carry a new grade: the day's calls are asked for again, past the minute's throttle
     if(same && lastOk && !$('sub').classList.contains('err')){ ages(c); tick(); return; }
     draw(c, true);
@@ -1439,17 +1547,21 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       // read as one tile under it (Will, 2026-10-07: two different answers on one screen confused); a card from before
       // the combined forecast leads with JEV's own read as it always did
       var combined = a.shown_source === 'pool_v2', own = headline(a), hp = own.probabilities, top = own.pick || top1(hp);
-      var head = el('div', 'call-top'), left = el('div'), vs = a !== h ? voicesOf(a) : [];
+      var head = el('div', 'call-top'), left = el('div'), vs = a !== h ? voicesOf(a) : [], voices = vs.length ? voicesButton(vs) : null;
       left.appendChild(labRow(combined ? 'Today\u2019s call \u00B7 combined' : 'Today\u2019s call \u00B7 JEV',
                               !combined && own.confidence != null ? pct(own.confidence) + ' sure' : null)).setAttribute('class', 'lab call');
       left.appendChild(el('div', 'big', cap(top) + ' ' + pct(hp[top])));
       head.appendChild(left);
-      if(vs.length) head.appendChild(voicesButton(vs));
+      // the voices control rides the label row on a phone; from WIDE up it stands as the third tile (Final-Desktop), the
+      // one element placed where the width wants it, and the page is drawn again when the width crosses WIDE. The
+      // tiles are built first: a card whose blend tiles cannot draw keeps the control on the label row at either width
+      var tiles = howChart(a, bl, c.row_ts, a !== h ? c.time_of_day : null, chartDocked() ? voices : null);
+      if(voices && !voices.parentNode) head.appendChild(voices);
       hc.appendChild(head);
       hc.appendChild(oddsBar(hp, top));
       if(a !== h) hc.appendChild(calledAt(a, minutes));
       var fb = fallbackLine(h, c.row_ts); if(fb) hc.appendChild(fb);
-      hc.appendChild(howChart(a, bl, c.row_ts, a !== h ? c.time_of_day : null));
+      hc.appendChild(tiles);
       // a scheduled event within the hour (the service's calendar): said once, in words
       if(c.event && c.event.sentence) hc.appendChild(tag(sentence(marketWords(c.event.sentence, c.row_ts))));
       hc.appendChild(recordRow());
@@ -1492,8 +1604,9 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   }
 
   // the situation: each fact a row, its name, a small gauge of its number against its cut, and its verdict in a word
-  // with the figure under it; the card is one control, and a tap opens the facts in the builder's own sentences
-  var GAUGE_W = 64, GAUGE_H = 14, GAUGE_L = 4, GAUGE_R = 60, GAUGE_MID = 7;
+  // with the figure under it; the card is one control, and a tap opens the facts in the builder's own sentences. The
+  // gauge is 64 wide on a phone and the board's 150 from WIDE up (Final-Desktop), its track a sixteenth in from each end
+  var GAUGE_W = 64, GAUGE_W_WIDE = 150, GAUGE_H = 14, GAUGE_MID = 7;
   // which way a signed fact moved, in the words its row uses: against VWAP it is above or below,
   // everything else went up or down
   // a change that rounds to nothing at the figure's precision is no change, never "Up 0.0" beside a Flat verdict
@@ -1505,31 +1618,31 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     return (v > 0 ? 'Up ' : 'Down ') + mag;
   }
   function gauge(f){
-    var svg = svgEl('svg', {viewBox: '0 0 ' + GAUGE_W + ' ' + GAUGE_H, 'class': 'sit-g', 'aria-hidden': 'true'}), mid = GAUGE_MID;
-    var span = GAUGE_R - GAUGE_L;
-    svg.appendChild(svgEl('line', {x1: GAUGE_L, y1: mid, x2: GAUGE_R, y2: mid, 'class': 'track'}));
+    var W = chartDocked() ? GAUGE_W_WIDE : GAUGE_W, L = W / 16, R = W - L, span = R - L, mid = GAUGE_MID;
+    var svg = svgEl('svg', {viewBox: '0 0 ' + W + ' ' + GAUGE_H, 'class': 'sit-g', 'aria-hidden': 'true'});
+    svg.appendChild(svgEl('line', {x1: L, y1: mid, x2: R, y2: mid, 'class': 'track'}));
     function zone(x0, x1){ svg.insertBefore(svgEl('rect', {x: x0.toFixed(1), y: mid - 4, width: (x1 - x0).toFixed(1), height: 8, rx: 2, 'class': 'zone'}), svg.firstChild); }
     function mark(x){ svg.appendChild(svgEl('line', {x1: x.toFixed(1), y1: mid - 5, x2: x.toFixed(1), y2: mid + 5, 'class': 'tick'})); }
     var at;
     if(f.kind === 'signed'){
       // centred on no change; the shaded middle is the flat band the verdict is judged against
-      var M = Math.max(f.band * 3, Math.abs(f.value) * 1.25), x = function(v){ return GAUGE_L + (v + M) / (2 * M) * span; };
+      var M = Math.max(f.band * 3, Math.abs(f.value) * 1.25), x = function(v){ return L + (v + M) / (2 * M) * span; };
       zone(x(-f.band), x(f.band)); mark(x(0));
       at = x(f.value);
     } else if(f.kind === 'rank'){
       // the prior sessions at this time of day, lowest to highest; the shaded ends are the bottom and top fifths
-      var x2 = function(q){ return GAUGE_L + q * span; }, cuts = f.cuts || [0.2, 0.8];
-      zone(GAUGE_L, x2(cuts[0])); zone(x2(cuts[1]), GAUGE_R);
+      var x2 = function(q){ return L + q * span; }, cuts = f.cuts || [0.2, 0.8];
+      zone(L, x2(cuts[0])); zone(x2(cuts[1]), R);
       at = x2(f.of ? Math.min(1, Math.max(0, f.under / f.of)) : 0);
     } else if(f.kind === 'distance'){
       // from price on the left out to the strike; the shaded start is the near-wall distance
-      var D = Math.max(f.near * 2, f.value * 1.25), x3 = function(v){ return GAUGE_L + v / D * span; };
-      zone(GAUGE_L, x3(f.near)); mark(GAUGE_L);
+      var D = Math.max(f.near * 2, f.value * 1.25), x3 = function(v){ return L + v / D * span; };
+      zone(L, x3(f.near)); mark(L);
       at = x3(f.value);
     } else {
       return null;
     }
-    svg.appendChild(svgEl('circle', {cx: Math.max(GAUGE_L, Math.min(GAUGE_R, at)).toFixed(1), cy: mid, r: 4.2, 'class': 'dot'}));
+    svg.appendChild(svgEl('circle', {cx: Math.max(L, Math.min(R, at)).toFixed(1), cy: mid, r: 4.2, 'class': 'dot'}));
     return svg;
   }
   // a figure carries its number, or it is not drawn: a diary row with no wall hands over a distance with none
@@ -2050,12 +2163,17 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // the card's market day: its stamp's own date, written in New York's offset
   function cardDay(){ return last ? String(last.row_ts || '').slice(0, 10) : null; }
   function todaysCard(){ return !!last && cardDay() === marketDay(); }
+  // the quote's state as the price box says it: live in the session on today's card while the quote is young, else the
+  // quote's time in the session, else the last close
+  function spotState(){
+    var open = todaysCard() && within(SESSION_HOURS), live = open && spot.fresh && Date.now() - spot.at < SPOT_LIVE_MS;
+    return {live: live, words: live ? 'live' : open ? viewerTime(spot.at) : 'last close'};
+  }
   function paintPx(){
     nowBars = nowBars.filter(function(b){ return b.track.isConnected !== false; });   // a redrawn card's old bars drop out
     nowBars.forEach(placeNow);
     var box = $('px'); if(!box || !spot) return;
-    var open = todaysCard() && within(SESSION_HOURS), live = open && spot.fresh && Date.now() - spot.at < SPOT_LIVE_MS;
-    var state = live ? 'live' : open ? viewerTime(spot.at) : 'last close';
+    var st = spotState(), live = st.live, state = st.words;
     box.hidden = false; $('pxLive').hidden = !live; $('chLive').hidden = !live;
     $('pxK').textContent = 'SPX ' + (live ? state : '\u00B7 ' + state);
     $('chK').textContent = state;
@@ -2069,8 +2187,8 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       said = d === 0 ? ', unchanged today' : (d < 0 ? ', down ' : ', up ') + money(Math.abs(d)) + ' today';
     } else { cEl.textContent = ''; cEl.className = 'px-c'; sEl.textContent = ''; }
     $('chC').textContent = cEl.textContent; $('chC').className = cEl.className;
-    box.setAttribute('aria-label', $('pxK').textContent + ' ' + money(spot.price) + said + '. Open the price chart');
-    if(chartOpen()) paintChart();
+    box.setAttribute('aria-label', $('pxK').textContent + ' ' + money(spot.price) + said + (chartDocked() ? '. Show the price chart' : '. Open the price chart'));
+    if(chartVisible()) paintChart();
   }
   function pollSpot(){
     if(spotInflight && Date.now() - spotInflight < SPOT_LIVE_MS) return;   // one at a time, a hung one given up on
@@ -2100,7 +2218,34 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   var bars = null, barsDay = null, barsAt = 0, barsInflight = false;
   var book = null, bookDay = null, bookAt = 0, bookInflight = false;
   var grades = null, gradesAt = 0, gradesInflight = false;
-  function chartOpen(){ return $('chartSheet').getAttribute('aria-hidden') === 'false'; }
+  // The chart shows two ways: as the sheet the price box opens on a phone, and from WIDE up (the stylesheet's one layout
+  // query) as a panel standing beside the column. The book, the grades and every paint of the chart follow its being
+  // visible either way. A resize across WIDE closes a sheet that was open, since the panel is the same markup, and
+  // draws the page again for the new shape (the card's tiles, the situation's gauges, the header's and the box's words
+  // follow chartDocked), with the sparkline and the chart; a resize within the wide range draws the chart again at the
+  // panel's new width (the phone sheet never resizes). Standing on the page the panel is no dialog: docked, it is a
+  // region, its aria-hidden and aria-modal gone, so a screen reader reaches it as part of the page, and narrowed back
+  // it is the dialog again (dockChart). When the widening closed the sheet, sheet.js writes aria-hidden last, on the
+  // popstate the sheet's history entry unwinds through, so the panel is told again on every popstate.
+  var WIDE = window.matchMedia('(min-width:1024px)');
+  WIDE.addEventListener('change', function(){
+    if(chartDocked() && $('chartSheet').getAttribute('aria-hidden') === 'false') MiraiSheet.close();
+    dockChart();
+    if(last) draw(last, lastOk); else paintPx();
+    paintSpark();
+    if(chartVisible()){ paintChart(); pollBook(); pollGrades(); }
+  });
+  window.addEventListener('popstate', dockChart);
+  window.addEventListener('resize', function(){ if(chartDocked()) paintChart(); });
+  function chartDocked(){ return WIDE.matches; }
+  function chartVisible(){ return chartDocked() || $('chartSheet').getAttribute('aria-hidden') === 'false'; }
+  function dockChart(){
+    var sheet = $('chartSheet'), docked = chartDocked();
+    sheet.setAttribute('aria-hidden', String(!docked));
+    sheet.setAttribute('role', docked ? 'region' : 'dialog');
+    if(docked) sheet.removeAttribute('aria-modal'); else sheet.setAttribute('aria-modal', 'true');
+  }
+  dockChart();
   // a jsonl file's rows as the route wraps them ({kind, rows}), null for anything else
   function rawRows(url){
     return fetch(url, {cache:'no-store'}).then(function(r){ return r.ok ? r.json() : null; })
@@ -2113,11 +2258,11 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     if(day !== barsDay){ bars = null; barsDay = day; barsAt = 0; paintSpark(); }
     if(Date.now() - barsAt < BARS_MS) return;
     barsInflight = true; barsAt = Date.now();
-    rawRows(BARS_URL + day + '.jsonl&limit=420').then(function(rows){ if(rows){ bars = rows; paintSpark(); if(chartOpen()) paintChart(); } })
+    rawRows(BARS_URL + day + '.jsonl&limit=420').then(function(rows){ if(rows){ bars = rows; paintSpark(); if(chartVisible()) paintChart(); } })
       .catch(function(){}).finally(function(){ barsInflight = false; });
   }
   function pollBook(){
-    var day = cardDay(); if(!day || !chartOpen() || bookInflight) return;
+    var day = cardDay(); if(!day || !chartVisible() || bookInflight) return;
     if(day !== bookDay){ book = null; bookDay = day; bookAt = 0; }
     if(Date.now() - bookAt < BOOK_MS) return;
     bookInflight = true; bookAt = Date.now();
@@ -2127,11 +2272,11 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   function pollGrades(){
     if(gradesInflight || Date.now() - gradesAt < BOOK_MS) return;
     gradesInflight = true; gradesAt = Date.now();
-    rawRows(GRADES_URL).then(function(rows){ if(rows){ grades = rows; paintCalls(); if(chartOpen()) paintChart(); } })
+    rawRows(GRADES_URL).then(function(rows){ if(rows){ grades = rows; paintCalls(); if(chartVisible()) paintChart(); } })
       .catch(function(){}).finally(function(){ gradesInflight = false; });
   }
   setInterval(function(){ if(!document.hidden && todaysCard() && within(BARS_HOURS)) pollBars(); }, BARS_MS);
-  setInterval(function(){ if(!document.hidden && chartOpen()){ pollBook(); pollGrades(); } }, BOOK_MS);
+  setInterval(function(){ if(!document.hidden && chartVisible()){ pollBook(); pollGrades(); } }, BOOK_MS);
   // the row the book is drawn from: the newest of the file's last rows whose book is SPX's own (gex_source native). A
   // row the station could not parse and one built from SPY's book (gex_source spy_proxy...) are passed over, and
   // with none native the chart draws no book and says so
@@ -2164,14 +2309,17 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     pts.forEach(function(p){ sum += p.c; if(p.l < low.l) low = p; if(p.h > high.h) high = p; });
     return {pts: pts, low: low, high: high, avg: sum / pts.length, newest: pts[pts.length - 1]};
   }
-  // the sparkline in the price box: the day's closes across its width, the newest as the dot; nothing with under two
+  // the sparkline in the price box: the day's closes across its width (the box's 64 on a phone, the board's 120 from
+  // WIDE up), the newest as the dot; nothing with under two
+  var SPARK_W = 64, SPARK_W_WIDE = 120;
   function paintSpark(){
-    var svg = $('pxSpark'), d = dayFacts(bars); svg.textContent = '';
+    var svg = $('pxSpark'), d = dayFacts(bars), W = chartDocked() ? SPARK_W_WIDE : SPARK_W; svg.textContent = '';
     if(!d || d.pts.length < 2) return;
+    svg.setAttribute('viewBox', '0 0 ' + W + ' 26');
     var lo = Math.min.apply(null, d.pts.map(function(p){ return p.c; })), hi = Math.max.apply(null, d.pts.map(function(p){ return p.c; }));
-    var x = function(i){ return 1 + i / (d.pts.length - 1) * 62; }, y = function(c){ return hi > lo ? 2 + (hi - c) / (hi - lo) * 22 : 13; };
+    var x = function(i){ return 1 + i / (d.pts.length - 1) * (W - 2); }, y = function(c){ return hi > lo ? 2 + (hi - c) / (hi - lo) * 22 : 13; };
     svg.appendChild(svgEl('polyline', {points: d.pts.map(function(p, i){ return x(i).toFixed(1) + ',' + y(p.c).toFixed(1); }).join(' ')}));
-    svg.appendChild(svgEl('circle', {cx: 63, cy: y(d.newest.c).toFixed(1), r: 2.2}));
+    svg.appendChild(svgEl('circle', {cx: W - 1, cy: y(d.newest.c).toFixed(1), r: 2.2}));
   }
   // The chart's window: the strikes it rules, from the day's low to its high with the walls, the magnet and the open
   // call's band inside, on the book's strike pitch (5 points on SPX). A strike just past that with at least
@@ -2217,10 +2365,14 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     return {bars: out, most: most, lead: lead};
   }
   function kShort(n){ return n >= 1000 ? Math.round(n / 1000) + 'k' : String(n); }
-  // the drawing's rows, the board's: the headers' baseline, the top and bottom strikes, the clock's axis and its feet,
-  // the calls' squares; and its gutter, a side's longest bar, the gap at the zero, the strike column
-  var CH_H = 248, CH_TOP = 20, CH_BOT = 200, CH_AXIS = 212, CH_FOOT = 226, CH_SQ = 236;
-  var CH_SIDE = 39, CH_GAP = 1, CH_LAB = 42, CH_COL = 76, CH_CAP = 9;
+  // the drawing's rows, the board's: the headers' baseline and the top strike from the top; the bottom strike, the
+  // clock's axis and its feet and the calls' squares from the foot, so the drawing stands taller in the panel
+  // (CH_H_WIDE, the board Final-Desktop's) than in the sheet (CH_H, Final-Chart's) with the same rows under the plot;
+  // and its gutter at the sheet's width (CH_W): a side's longest bar, the gap at the zero, the strike column. A wider
+  // drawing widens the gutter with it, so the panel's bars are longer and its column keeps its room (the board's 744
+  // gives a gutter a third of the width, as the sheet's 320 does)
+  var CH_H = 248, CH_H_WIDE = 442, CH_TOP = 20, CH_BOT = 48, CH_AXIS = 36, CH_FOOT = 22, CH_SQ = 12;
+  var CH_SIDE = 39, CH_GAP = 1, CH_LAB = 42, CH_COL = 76, CH_CAP = 9, CH_W = 320;
   // The drawing's words are placed by their width, so a word drawn is whole and a word that fits is drawn: each
   // letter's advance at 11px in the shipped face, measured in Chrome (2026-10-10) for the three faces the drawing
   // uses, the regular labels, the feet and the day's average at 500 (the glance's axisW table, with the letters
@@ -2251,24 +2403,26 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     placed.push({x0: spans[pick.a][0], x1: spans[pick.a][1], base: pick.base});
     return {x: xs[pick.a], a: pick.a, base: pick.base};
   }
-  // the drawing at width W: the day's closes as the line from the open to the newest bar, its low and high marked, the
+  // the drawing at width W and height H: the day's closes as the line from the open to the newest bar, its low and high marked, the
   // day's average dashed, the walls and the magnet ruled across it with their names, the open call's band as a dashed
   // box with the called price through it, the now-line at the newest bar with its time, the dot at ``price`` (the
   // quote on the day's own card) or the newest close; the gutter's strike column with the puts left and the calls
   // right of one zero; and the day's calls as squares under the clock
-  function chartSvg(W, c, d, book, calls, call, price, w, sb, inSession){
+  function chartSvg(W, H, c, d, book, calls, call, price, w, sb, inSession){
     var gv = (book && book.gex_views) || {};
-    var ZERO = W - CH_SIDE - CH_GAP, PW = ZERO - CH_COL, LAB = ZERO - CH_LAB;
+    var BOT = H - CH_BOT, AXIS = H - CH_AXIS, FOOT = H - CH_FOOT, SQ = H - CH_SQ;
+    var g = Math.max(1, W / CH_W), SIDE = Math.round(CH_SIDE * g);
+    var ZERO = W - SIDE - CH_GAP, PW = ZERO - Math.round(CH_COL * g), LAB = ZERO - Math.round(CH_LAB * g);
     var s = c.session || {}, close = s.close ? Date.parse(s.close) : marketAt(c.row_ts, '16:00'), open = marketAt(s.close || c.row_ts, '09:30');
     var x = function(t){ return Math.max(0, Math.min(PW, (t - open) / (close - open) * PW)); };
-    var y = function(v){ return CH_TOP + (w.hi - v) / (w.hi - w.lo) * (CH_BOT - CH_TOP); };
+    var y = function(v){ return CH_TOP + (w.hi - v) / (w.hi - w.lo) * (BOT - CH_TOP); };
     var pts = d.pts.map(function(p){ return {x: x(p.t), y: y(p.c)}; });
     var highWord = inSession ? 'high so far' : 'high';
     var dotPrice = price != null ? price : d.newest.c, nx = x(d.newest.t);
     var right = calls.filter(function(k){ return k.verdict === 'right'; }).length;
     var levels = [[gv.call_wall_gamma, 'wall', 'CALL WALL · TODAY'], [gv.magnet, 'mag', 'MAGNET'], [gv.put_wall_gamma, 'pwall', 'PUT WALL']]
       .filter(function(l){ return book && typeof l[0] === 'number' && isFinite(l[0]); });
-    var svg = svgEl('svg', {viewBox: '0 0 ' + W + ' ' + CH_H, 'class': 'chart', role: 'img',
+    var svg = svgEl('svg', {viewBox: '0 0 ' + W + ' ' + H, 'class': 'chart', role: 'img',
                             'aria-label': 'SPX today by the minute from the ' + viewerTime(open) + ' open to ' + viewerTime(d.newest.t) + ', low ' + money(d.low.l) + ' at ' + viewerTime(d.low.t)
                               + ', ' + highWord + ' ' + money(d.high.h) + ' at ' + viewerTime(d.high.t) + ', now ' + money(dotPrice)
                               + (book ? '; ' + levels.map(function(l){ return 'the ' + l[2].toLowerCase().replace(' · today', '') + ' at ' + indexLevel(l[0]); }).join(', ')
@@ -2282,7 +2436,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     // the rows: a light rule at every round ten the levels leave, the strike column's prices, the busiest in bold
     // a price every strike while they sit a label's height apart, every second, third... as the window widens; the
     // busiest strike is always priced, and a regular price that would land within a label's height of it is left out
-    var ruled = levels.map(function(l){ return l[0]; }), pitch = (CH_BOT - CH_TOP) / Math.max(1, (w.hi - w.lo) / w.step), every = Math.max(1, Math.ceil(12 / pitch));
+    var ruled = levels.map(function(l){ return l[0]; }), pitch = (BOT - CH_TOP) / Math.max(1, (w.hi - w.lo) / w.step), every = Math.max(1, Math.ceil(12 / pitch));
     var leadV = sb.lead ? sb.lead.v : null;
     for(var v = w.lo, i = 0; v <= w.hi; v += w.step, i++){
       if(v % 10 === 0 && ruled.indexOf(v) < 0) svg.appendChild(svgEl('line', {x1: 0, y1: y(v).toFixed(1), x2: PW, y2: y(v).toFixed(1), 'class': 'grid'}));
@@ -2315,7 +2469,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var lowWords = 'low ' + money(d.low.l) + ' · ' + viewerTime(d.low.t), highWords = highWord + ' ' + money(d.high.h) + ' · ' + viewerTime(d.high.t);
     svg.appendChild(svgEl('circle', {cx: lx.toFixed(1), cy: ly2.toFixed(1), r: 2, 'class': 'mark'}));
     var lw = chWidth(lowWords, 400), lowRight = lx + 5 + lw <= PW, lx0 = lowRight ? lx + 4.6 : lx - 4.6 - lw;
-    var lowY = ly2 + 13 <= CH_AXIS - 4 && wordClear(lx0, lx0 + lw, ly2 + 13, pts, placed) ? ly2 + 13 : ly2 - 6;
+    var lowY = ly2 + 13 <= AXIS - 4 && wordClear(lx0, lx0 + lw, ly2 + 13, pts, placed) ? ly2 + 13 : ly2 - 6;
     placed.push({x0: lx0, x1: lx0 + lw, base: lowY});
     svg.appendChild(svgEl('text', {x: (lowRight ? lx + 4.6 : lx - 4.6).toFixed(1), y: lowY.toFixed(1), 'text-anchor': lowRight ? 'start' : 'end', 'class': 'halo'}, lowWords));
     svg.appendChild(svgEl('circle', {cx: hx.toFixed(1), cy: hy.toFixed(1), r: 2, 'class': 'mark'}));
@@ -2324,33 +2478,33 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     highY = Math.max(CH_TOP + 2, highY);
     placed.push({x0: hx0, x1: hx0 + hw, base: highY});
     svg.appendChild(svgEl('text', {x: (highLeft ? hx - 5.4 : hx + 5.4).toFixed(1), y: highY.toFixed(1), 'text-anchor': highLeft ? 'end' : 'start', 'class': 'halo'}, highWords));
-    svg.appendChild(svgEl('line', {x1: nx.toFixed(1), y1: 14, x2: nx.toFixed(1), y2: CH_AXIS - 4, 'class': 'now'}));
+    svg.appendChild(svgEl('line', {x1: nx.toFixed(1), y1: 14, x2: nx.toFixed(1), y2: AXIS - 4, 'class': 'now'}));
     var avgAt = wordSpot(avgWords, 500, 0, [ay - 3.5, ay + 12.5], ['end', 'middle', 'start'], pts, placed, PW);
     svg.appendChild(svgEl('text', {x: avgAt.x.toFixed(1), y: avgAt.base.toFixed(1), 'text-anchor': avgAt.a, 'class': 't-avg halo'}, avgWords));
     // the time over the now-line, kept whole inside the plot and clear of the STRIKE header, which overhangs the plot's edge
     var nowWords = viewerTime(d.newest.t), half = chWidth(nowWords, 500) / 2;
     svg.appendChild(svgEl('text', {x: Math.max(half + 2, Math.min(LAB - chWidth('STRIKE', 800, 0.66) - 4 - half, nx)).toFixed(1), y: 10, 'text-anchor': 'middle', 'class': 't-now'}, nowWords));
     svg.appendChild(svgEl('circle', {cx: nx.toFixed(1), cy: y(dotPrice).toFixed(1), r: 4.2, 'class': 'dot'}));
-    svg.appendChild(svgEl('line', {x1: 0, y1: CH_AXIS, x2: PW, y2: CH_AXIS, 'class': 'axis'}));
+    svg.appendChild(svgEl('line', {x1: 0, y1: AXIS, x2: PW, y2: AXIS, 'class': 'axis'}));
     // the close foot names the zone only where both feet fit the plot: on a 320px phone the plot is 164px and
     // "OPEN 06:30" with "CLOSE 13:00 PDT" is 167, and in Tokyo the zone's name is longer
     var openFoot = 'OPEN ' + viewerTime(open), closeFoot = 'CLOSE ' + viewerTime(close, {zone: true});
     if(chWidth(openFoot, 500, 0.44) + chWidth(closeFoot, 500, 0.44) + 8 > PW) closeFoot = 'CLOSE ' + viewerTime(close);
-    svg.appendChild(svgEl('text', {x: 0, y: CH_FOOT, 'text-anchor': 'start', 'class': 't-axis'}, openFoot));
-    svg.appendChild(svgEl('text', {x: PW, y: CH_FOOT, 'text-anchor': 'end', 'class': 't-axis'}, closeFoot));
+    svg.appendChild(svgEl('text', {x: 0, y: FOOT, 'text-anchor': 'start', 'class': 't-axis'}, openFoot));
+    svg.appendChild(svgEl('text', {x: PW, y: FOOT, 'text-anchor': 'end', 'class': 't-axis'}, closeFoot));
     // the gutter: the zero, and at each strike its puts to the left and calls to the right on one scale, the busiest
     // strike's bars outlined, the scale's ends and zero under them
-    svg.appendChild(svgEl('line', {x1: ZERO, y1: 14, x2: ZERO, y2: CH_AXIS, 'class': 'axis'}));
-    var bh = Math.min(9, 0.6 * pitch), k = sb.most > 0 ? CH_SIDE / sb.most : 0;
+    svg.appendChild(svgEl('line', {x1: ZERO, y1: 14, x2: ZERO, y2: AXIS, 'class': 'axis'}));
+    var bh = Math.min(9, 0.6 * pitch), k = sb.most > 0 ? SIDE / sb.most : 0;
     sb.bars.forEach(function(b){
       var top = (y(b.v) - bh / 2).toFixed(1), lead = b.busiest ? ' lead' : '';
       if(b.puts * k >= 0.5) svg.appendChild(svgEl('rect', {x: (ZERO - CH_GAP - b.puts * k).toFixed(1), y: top, width: (b.puts * k).toFixed(1), height: bh.toFixed(1), rx: 1.5, 'class': 'put' + lead}));
       if(b.calls * k >= 0.5) svg.appendChild(svgEl('rect', {x: ZERO + CH_GAP, y: top, width: (b.calls * k).toFixed(1), height: bh.toFixed(1), rx: 1.5, 'class': 'call' + lead}));
     });
     if(sb.most > 0){
-      svg.appendChild(svgEl('text', {x: ZERO - CH_SIDE + 7, y: CH_FOOT, 'text-anchor': 'start'}, kShort(sb.most)));
-      svg.appendChild(svgEl('text', {x: ZERO, y: CH_FOOT, 'text-anchor': 'middle'}, '0'));
-      svg.appendChild(svgEl('text', {x: W, y: CH_FOOT, 'text-anchor': 'end'}, kShort(sb.most)));
+      svg.appendChild(svgEl('text', {x: ZERO - SIDE + 7, y: FOOT, 'text-anchor': 'start'}, kShort(sb.most)));
+      svg.appendChild(svgEl('text', {x: ZERO, y: FOOT, 'text-anchor': 'middle'}, '0'));
+      svg.appendChild(svgEl('text', {x: W, y: FOOT, 'text-anchor': 'end'}, kShort(sb.most)));
     }
     // the day's calls: a filled square where the call was right, an outlined one where it was wrong, the open one
     // dashed, each at its read's minute; their count at the right, with its name when the room past the last square holds it
@@ -2358,10 +2512,10 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     if(call) squares.push({x: x(call.read), cls: 'sq open'});
     squares.forEach(function(q){
       var out = q.cls !== 'sq';
-      svg.appendChild(svgEl('rect', {x: (q.x - (out ? 3.4 : 4)).toFixed(1), y: out ? CH_SQ + 0.6 : CH_SQ, width: out ? 6.8 : 8, height: out ? 6.8 : 8, rx: out ? 1.6 : 2, 'class': q.cls}));
+      svg.appendChild(svgEl('rect', {x: (q.x - (out ? 3.4 : 4)).toFixed(1), y: out ? SQ + 0.6 : SQ, width: out ? 6.8 : 8, height: out ? 6.8 : 8, rx: out ? 1.6 : 2, 'class': q.cls}));
     });
     var score = calls.length ? right + ' of ' + calls.length + ' right' : 'none graded yet', lastX = squares.length ? Math.max.apply(null, squares.map(function(q){ return q.x; })) + 4 : 0;
-    svg.appendChild(svgEl('text', {x: W, y: CH_SQ + 8, 'text-anchor': 'end'}, (chWidth('30-min calls · ' + score, 400) + 6 <= W - lastX ? '30-min calls · ' : '') + score));
+    svg.appendChild(svgEl('text', {x: W, y: SQ + 8, 'text-anchor': 'end'}, (chWidth('30-min calls · ' + score, 400) + 6 <= W - lastX ? '30-min calls · ' : '') + score));
     return svg;
   }
   function chTile(key, value, sub){
@@ -2369,39 +2523,70 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     if(sub) t.appendChild(el('div', 'tile-s', sub));
     return t;
   }
-  function keyLine(box, key, words){ var l = el('div'); l.appendChild(el('b', null, key)); l.appendChild(el('span', null, ' · ' + words)); box.appendChild(l); }
-  // the sheet's body: the drawing at the body's measured width, the legend lines, the two tiles (the range against
-  // the card's sigma, a normal day's move in points; the magnet with its contracts and its distance from the dot),
-  // and the caption with the book's time; without bars yet it says so, without a book the words say that instead
+  // a strike's distance from the dot in the board's words, and a strike's bar in the gutter (its contracts), when the
+  // window holds it
+  function gapWords(level, dotPrice){ var gap = dotPrice - level; return Math.abs(gap) < 0.05 ? 'at the price' : Math.abs(gap).toFixed(1) + ' pts ' + (gap > 0 ? 'below' : 'above'); }
+  function barAt(sb, v){ return sb.bars.filter(function(b){ return b.v === v; })[0]; }
+  // the tiles on the book: in the sheet the magnet, the busiest strike, with its contracts (Final-Chart); in the panel
+  // the board's three (Final-Desktop), the busiest strike with all traded there, then each wall with its own side's
+  // contracts, the magnet named on the wall it sits at; a book without a magnet is no book
+  function bookTiles(gv, sb, dotPrice){
+    if(typeof gv.magnet !== 'number') return [chTile('Magnet · busiest', 'No book', 'options book unavailable')];
+    if(!chartDocked()){
+      var at = barAt(sb, gv.magnet);
+      return [chTile('Magnet · busiest', indexLevel(gv.magnet), (at ? kShort(at.calls + at.puts) + ' · ' : '') + gapWords(gv.magnet, dotPrice))];
+    }
+    var out = [], lead = sb.lead;
+    if(lead) out.push(chTile('Biggest strike', indexLevel(lead.v), kShort(lead.calls + lead.puts) + ' traded · ' + gapWords(lead.v, dotPrice)));
+    [['Call wall', gv.call_wall_gamma, 'calls'], ['Put wall', gv.put_wall_gamma, 'puts']].forEach(function(wall){
+      var v = wall[1], bar = barAt(sb, v), magnet = v === gv.magnet;
+      if(typeof v !== 'number') return;
+      out.push(chTile(wall[0] + (magnet ? ' · magnet' : ''), indexLevel(v), (bar ? kShort(bar[wall[2]]) + ' ' + wall[2] + ' · ' : '') + (magnet ? 'the magnet' : gapWords(v, dotPrice))));
+    });
+    return out;
+  }
+  // a legend line, classed by what it names so the panel can leave out what its tiles say and put the bars first
+  function keyLine(box, cls, key, words){ var l = el('div', cls); l.appendChild(el('b', null, key)); l.appendChild(el('span', null, ' · ' + words)); box.appendChild(l); }
+  // the title row's right: the market day, and in the panel after it the price's state as the box says it with the
+  // quote's time, then the zone every time on the drawing is in (Final-Desktop: "Fri 10-09 · live 11:43 · PDT"); the
+  // sheet's title keeps the day alone, its price line under it saying the rest
+  function chartDay(day){
+    if(!chartDocked() || !spot) return dayName(day);
+    var st = spotState(), at = viewerTime(spot.at, {zone: true}).split(' ');
+    return dayName(day) + ' · ' + (st.live ? 'live ' + at[0] : st.words) + (at[1] ? ' · ' + at[1] : '');
+  }
+  // the sheet's or the panel's body: the drawing at the body's measured width and the shape's height, the legend lines,
+  // the tiles (the range against the card's sigma, a normal day's move in points, then the book's) and the caption with
+  // the book's time; without bars yet it says so, without a book the words say that instead
   function paintChart(){
     var body = $('chBody'), c = last, day = cardDay(), d = dayFacts(bars); body.textContent = '';
-    $('chDay').textContent = day ? dayName(day) : '';
+    $('chDay').textContent = day ? chartDay(day) : '';
     if(!c || !d){ body.appendChild(skipLine(day ? 'no price bars yet for ' + dayName(day) : 'no card yet, so no day to draw')); return; }
     var now = Date.now(), call = liveCall(c, now), calls = dayCalls(grades, day), gv = (book && book.gex_views) || {};
     var price = spot && day === marketDay() ? spot.price : null, dotPrice = price != null ? price : d.newest.c;
-    var W = body.clientWidth || 320, inSession = day === marketDay() && within(SESSION_HOURS);
+    var W = body.clientWidth || 320, H = chartDocked() ? CH_H_WIDE : CH_H, inSession = day === marketDay() && within(SESSION_HOURS);
     var w = chartWindow(d, book, call), sb = strikeBars(book, w);
-    body.appendChild(chartSvg(W, c, d, book, calls, call, price, w, sb, inSession));
+    body.appendChild(chartSvg(W, H, c, d, book, calls, call, price, w, sb, inSession));
     var key = el('div', 'ch-key');
-    if(call) keyLine(key, 'Dashed box', 'the ' + viewerTime(call.read) + ' call, flat ± ' + call.edge.toFixed(1) + ' pts to ' + viewerTime(call.mark));
+    if(call) keyLine(key, 'box', 'Dashed box', 'the ' + viewerTime(call.read) + ' call, flat ± ' + call.edge.toFixed(1) + ' pts to ' + viewerTime(call.mark));
     if(book){
-      keyLine(key, 'Walls', 'the most calls (' + indexLevel(gv.call_wall_gamma) + '), the most puts (' + indexLevel(gv.put_wall_gamma) + ')');
-      keyLine(key, 'Bars', 'today’s options per strike, puts left, calls right');
+      keyLine(key, 'walls', 'Walls', 'the most calls (' + indexLevel(gv.call_wall_gamma) + '), the most puts (' + indexLevel(gv.put_wall_gamma) + ')');
+      keyLine(key, 'bars', 'Bars', 'today’s options per strike, puts left, calls right');
     }
     if(key.firstChild) body.appendChild(key);
     var tiles = el('div', 'tod ch-tiles'), range = d.high.h - d.low.l;
     tiles.appendChild(chTile(inSession ? 'Range so far' : 'Range', Math.round(range) + ' pts', typeof c.sigma === 'number' && c.sigma > 0 ? (range / c.sigma).toFixed(2) + ' of a normal day' : null));
-    var at = sb.bars.filter(function(b){ return b.v === gv.magnet; })[0], gap = typeof gv.magnet === 'number' ? dotPrice - gv.magnet : null;
-    tiles.appendChild(chTile('Magnet · busiest', book && gap != null ? indexLevel(gv.magnet) : 'No book',
-                             book && gap != null ? (at ? kShort(at.calls + at.puts) + ' · ' : '') + (Math.abs(gap) < 0.05 ? 'at the price' : Math.abs(gap).toFixed(1) + ' pts ' + (gap > 0 ? 'below' : 'above'))
-                                                 : 'options book unavailable'));
+    bookTiles(gv, sb, dotPrice).forEach(function(t){ tiles.appendChild(t); });
     body.appendChild(tiles);
     var lean = {positive: 'dealers lean against moves', negative: 'dealers lean with moves'}[book && book.gamma_sign];
-    body.appendChild(tag((lean ? lean + ' · ' : '') + (book ? 'options book ' + viewerTime(book.ts) : 'options book unavailable') + ' · not advice'));
+    var cap = tag((lean ? lean + ' · ' : '') + (book ? 'options book ' + viewerTime(book.ts) : 'options book unavailable'));
+    cap.appendChild(el('span', 'ch-advice', ' · not advice'));   // the panel's page says it once, in the note, so the panel leaves it out
+    body.appendChild(cap);
   }
-  // drawn with what is on hand before it slides up, then the book and the grades are asked for, which only an open
-  // sheet may do
+  // drawn with what is on hand before it slides up, then the book and the grades are asked for, which only a visible
+  // chart may do; where the chart stands beside the column the box brings it into view instead
   function openChart(from){
+    if(chartDocked()){ $('chartSheet').scrollIntoView({block: 'nearest'}); return; }
     if(MiraiSheet.isOpen()) return;
     paintChart();
     MiraiSheet.open(from);
@@ -2500,10 +2685,9 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var lo = Math.min.apply(null, vals.concat([0])), hi = Math.max.apply(null, vals.concat([0])); if(hi === lo) hi = lo + 1;
     var x = function(i){ return pad + i * (w - 2 * pad) / (pts.length - 1); }, y = function(v){ return h - pad - (v - lo) / (hi - lo) * (h - 2 * pad); };
     // the zero line is named by the key above the drawing, never by a label the line could run through
-    svg.appendChild(svgEl('line', {x1: 0, x2: w, y1: y(0).toFixed(1), y2: y(0).toFixed(1), stroke: '#7E8779', 'stroke-dasharray': '3 3', 'stroke-width': 1}));
-    svg.appendChild(svgEl('polyline', {fill: 'none', stroke: '#2F44B8', 'stroke-width': 2,
-                                       points: pts.map(function(d, i){ return x(i).toFixed(1) + ',' + y(d.pool_v2_pct).toFixed(1); }).join(' ')}));
-    svg.appendChild(svgEl('circle', {cx: x(pts.length - 1).toFixed(1), cy: y(pts[pts.length - 1].pool_v2_pct).toFixed(1), r: 3, fill: '#2F44B8'}));
+    svg.appendChild(svgEl('line', {x1: 0, x2: w, y1: y(0).toFixed(1), y2: y(0).toFixed(1), 'class': 'zero'}));
+    svg.appendChild(svgEl('polyline', {'class': 'path', points: pts.map(function(d, i){ return x(i).toFixed(1) + ',' + y(d.pool_v2_pct).toFixed(1); }).join(' ')}));
+    svg.appendChild(svgEl('circle', {cx: x(pts.length - 1).toFixed(1), cy: y(pts[pts.length - 1].pool_v2_pct).toFixed(1), r: 3, 'class': 'dot'}));
     return svg;
   }
   function openRecord(from){
