@@ -7,11 +7,11 @@ import json
 import os
 import re
 import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
 
+from node_run import run_node
 from test_phone_jev_spx import FAKE_DOM, _flat_text
 
 M = Path(__file__).resolve().parents[1] / "static" / "m"
@@ -42,7 +42,7 @@ def _run(js, data=None, tz=LA):
     script = ("const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + FAKE_DOM + text + _var("DAYS_SUMMED") + _var("STRIP_W")
               + _var("NS") + "var VIEWER_FMT = {}, opened = D.opened || {}, days = D.days || null;" + "function svgEl(tag, attrs){ var e = new Node(tag);"
               " Object.keys(attrs).forEach(function(k){ e.attrs[k] = String(attrs[k]); }); return e; }" + fns + js)
-    out = subprocess.run([_NODE, "-e", script], input=json.dumps(data), capture_output=True, text=True, timeout=20,
+    out = run_node(_NODE, script, input=json.dumps(data), capture_output=True, text=True, timeout=20,
                          env={**os.environ, "TZ": tz})
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout)

@@ -25,6 +25,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import server
+from node_run import run_node
 
 
 def _block(sel):
@@ -152,7 +153,7 @@ def _glance(js, data=None, tz=None):
     script = ("const g=require(%s);const D=JSON.parse(require('fs').readFileSync(0,'utf8'));%s"
               % (json.dumps(str(M / "glance.js")), js))
     env = dict(os.environ, TZ=tz) if tz else None
-    out = subprocess.run([_NODE, "-e", script], input=json.dumps(data),
+    out = run_node(_NODE, script, input=json.dumps(data),
                          capture_output=True, text=True, timeout=20, env=env)
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout)
@@ -259,7 +260,7 @@ def _page(net, steps="return dump();", tz=None):
         pytest.skip("node is not installed")
     script = _PAGE_HARNESS.replace("__M__", json.dumps(str(M))).replace("__STEPS__", steps)
     env = dict(os.environ, TZ=tz) if tz else None
-    out = subprocess.run([_NODE, "-e", script], input=json.dumps(net, default=str),
+    out = run_node(_NODE, script, input=json.dumps(net, default=str),
                          capture_output=True, text=True, timeout=60, env=env)
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout)

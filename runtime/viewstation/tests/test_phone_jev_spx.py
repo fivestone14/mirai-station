@@ -10,11 +10,12 @@ import json
 import os
 import re
 import shutil
-import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
+
+from node_run import run_node
 
 
 M = Path(__file__).resolve().parents[1] / "static" / "m"
@@ -75,7 +76,7 @@ def _run(js, data=None, tz=LA):
                                           "leftWords", "verdict", "endPrice", "gradeOf", "laneLeads", "svgEl", "lastLaneRead", "hhmm", "marketClock",
                                           "marketDay", "sentence", "callSum", "endVerdict", "fallbackWords", "fallbackLine"))
               + _var("VIEWER_FMT") + _var("WEEKDAYS") + _var("MARKET_TIME") + _var("NS") + _var("ROW_H") + js)
-    out = subprocess.run([_NODE, "-e", script], input=json.dumps(data), capture_output=True, text=True, timeout=20,
+    out = run_node(_NODE, script, input=json.dumps(data), capture_output=True, text=True, timeout=20,
                          env={**os.environ, "TZ": tz})
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout)
@@ -2011,7 +2012,7 @@ def _whole(cards, now, tz=LA):
               " qBtn: {hidden: ids.qBtn.hidden, text: ids.qBtn.textContent},"
               " claude: ids.claude.hidden ? null : {lab: ids.claudeLab.textContent, pick: ids.claudePick.textContent, line: ids.claudeLine.textContent, rows: dump(ids.claudeRows)},"
               " od: ids.od.hidden ? null : ids.od.kids.map(function(k){ return [k.className, flat(k)]; })})); });")
-    out = subprocess.run([_NODE, "-e", script], input=json.dumps({**cards, "now": now}), capture_output=True, text=True, timeout=20,
+    out = run_node(_NODE, script, input=json.dumps({**cards, "now": now}), capture_output=True, text=True, timeout=20,
                          env={**os.environ, "TZ": tz})
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout)
@@ -2838,7 +2839,7 @@ def _sheets(steps, wiring=_INFO_BUTTON):
     if not _NODE:
         pytest.skip("node is not installed")
     script = (_SHEET_HARNESS.replace("__SHEET__", json.dumps(str(M / "sheet.js"))).replace("__STEPS__", steps))
-    out = subprocess.run([_NODE, "-e", script], input=json.dumps({"tree": _body_tree(), "wiring": wiring}),
+    out = run_node(_NODE, script, input=json.dumps({"tree": _body_tree(), "wiring": wiring}),
                          capture_output=True, text=True, timeout=20)
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout)

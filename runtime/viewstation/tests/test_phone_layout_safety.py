@@ -33,10 +33,11 @@ what this file guards:
 import json
 import re
 import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
+
+from node_run import run_node
 
 M = Path(__file__).resolve().parents[1] / "static" / "m"
 PHONE = (M / "index.html").read_text()
@@ -266,7 +267,7 @@ def _ladder(phone):
     content = phone - 2 * _side() - 2 * _px(".today", "padding")
     js = "const g=require(%s);console.log(JSON.stringify(g.activityGrid(%s, %s)));" % (
         json.dumps(str(M / "glance.js")), content, _head()[1])
-    out = subprocess.run([_NODE, "-e", js], capture_output=True, text=True, timeout=20)
+    out = run_node(_NODE, js, capture_output=True, text=True, timeout=20)
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout), content
 

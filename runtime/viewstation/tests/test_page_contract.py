@@ -7,7 +7,6 @@ and run in node instead, so the test holds what it does rather than how it is sp
 import json
 import re
 import shutil
-import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -15,6 +14,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import snapshot
+from node_run import run_node
 
 PAGE = (Path(__file__).resolve().parents[1] / "static" / "index.html").read_text()
 _NODE = shutil.which("node")
@@ -35,7 +35,7 @@ def _run_js(js, data=None):
     if not _NODE:
         pytest.skip("node is not installed")
     script = "const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + js
-    out = subprocess.run([_NODE, "-e", script], input=json.dumps(data),
+    out = run_node(_NODE, script, input=json.dumps(data),
                          capture_output=True, text=True, timeout=20)
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout)
