@@ -1,4 +1,4 @@
-"""The calls the card carries for the phone's "calls in play": every primary sum of the day with its grade,
+"""The calls the card carries: every primary sum of the day with its grade,
 read from the hour records and grades.jsonl exactly as the grader wrote them."""
 from __future__ import annotations
 

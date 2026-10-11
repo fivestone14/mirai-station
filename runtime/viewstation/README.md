@@ -70,7 +70,7 @@ forecast.
 
 | Page | What it shows |
 |---|---|
-| **Forecast** — `/m` (`static/m/jev-spx.html` with `press.js`, `sheet.js`) | The SPX forecast: the combined call and JEV's own, the opening lane and the pre-market call, the calls in play with their results, the learning loop, Claude's read against the usual, and the questions behind the card — from the `state/spx_jev/` cards, `mirai_prediction/scoreboard.json` and `state/spx_claude_forecast/latest.json` through the raw explorer, with the live price from `/api/spot`. |
+| **Forecast** — `/m` (`static/m/jev-spx.html` with `press.js`, `sheet.js`) | The SPX forecast: the combined call with its voices and JEV's own, the opening lane and the pre-market call, the record of the 30-minute calls (the learning loop behind a tap), Claude's read against the usual, today's calls as squares, the situation and the questions behind the card — from the `state/spx_jev/` cards and grades, `mirai_prediction/scoreboard.json` and `state/spx_claude_forecast/latest.json` through the raw explorer, with the live price from `/api/spot`. |
 | **Reads** — `/m/reads.html` | The SPX reads: every graded 30-minute call, a day at a time, from `state/spx_jev/integral_grades.jsonl` through the raw explorer. |
 | the SNDK glance — `/m/index.html` (`page.js`, `glance.js`) | The old Now page, reachable by name until phase 5 of the redesign (2026-10-10) retires it: the latest SNDK reading, a chart of the session and the last half hour against the stock's own record. `/m/jev.html`, the SNDK forecast, is now a redirect to `/m/`. |
 

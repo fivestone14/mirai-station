@@ -552,7 +552,7 @@ def still_to_grade(tally: dict) -> int:
 
 
 def tally_words(tally: dict) -> str:
-    """A close-out's tally in the phone's words (jev-spx.html tallyWords): '2 of 3 calls right · 1 passed', the
+    """A close-out's tally in plain words: '2 of 3 calls right · 1 passed', the
     passes apart, then how many stood on the end price alone, what is still to grade and what never will be; a
     morning of passes only is '3 passed', one with nothing graded and nothing closed 'no calls graded yet'."""
     passed, alone, closed = tally.get("passed", 0), tally.get("end_price_only", 0), tally.get("closed", 0)
