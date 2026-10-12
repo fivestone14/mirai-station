@@ -92,8 +92,13 @@ class AnswerMatrix:
 
     @classmethod
     def from_json(cls, d: dict) -> "AnswerMatrix":
-        return cls(lane=d["lane"], sum_id=d["sum_id"], built_for_day=d["built_for_day"], rows=[Row(**r) for r in d["rows"]],
-                   columns=d["columns"])
+        rows = [Row(**{FORMER_ROW_KEYS.get(k, k): v for k, v in r.items()}) for r in d["rows"]]
+        return cls(lane=d["lane"], sum_id=d["sum_id"], built_for_day=d["built_for_day"], rows=rows, columns=d["columns"])
+
+
+# Row keys a fit file written before the pools were renamed (2026-10-12) still holds, read under today's name; the files
+# are read as written, never rewritten.
+FORMER_ROW_KEYS = {"pool_v1_probs": "base_pool_probs"}
 
 
 # A judgment pick that says which way SPX goes only with the side the code measured, by question: (the code question whose
