@@ -36,8 +36,8 @@ from .paths import append_json_line, now_utc_iso, raw_code_features_file, read_j
 SWEEPS_SUBDIR = station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.relative_folder   # the lob-flow collector's raw days, {day}/sweeps.jsonl(.gz)
 SWEEP_BUCKETS = ("d25_40", "d10_25", "d00_10")      # the sweep's delta buckets OPTIONS-08 reads, nearest the money first: the
                                                      # 25-40 bucket empties after ~13:10 ET, so the next one out stands in
-STORE_SPX_BARS = str(station_paths.SPX_PRICE_BARS_BY_MINUTE_TABLE.relative_within(station_paths.JEV_TABLES_FOLDER))
-STORE_OVERNIGHT_BARS = str(station_paths.FUTURES_PRICE_BARS_BY_MINUTE_TABLE.relative_within(station_paths.JEV_TABLES_FOLDER))
+STORE_SPX_BARS = station_paths.SPX_PRICE_BARS_BY_MINUTE_TABLE            # the learning store's bar tables (market/tables/)
+STORE_OVERNIGHT_BARS = station_paths.FUTURES_PRICE_BARS_BY_MINUTE_TABLE
 ES = "/ES"
 SPY = "SPY"
 QUOTE_BAR_SYMBOLS = ("SPY", "QQQ", "IWM")           # FLOW-07 reads the read's day's quotes for these, saved bars or not
@@ -59,8 +59,9 @@ def _bar(ts, open_, high, low, close, volume=0.0) -> dict | None:
         return None
 
 
-def _store_glob(state_dir: Path | str, table: str) -> str | None:
-    folder = station_paths.JEV_TABLES_FOLDER.path(state_dir) / table
+def _store_glob(state_dir: Path | str, table) -> str | None:
+    """The Parquet files of a table (a station_paths store) as a glob, or None before its first build."""
+    folder = table.path(state_dir)
     if not folder.exists() or not any(folder.glob("day=*/*.parquet")):
         return None
     return str(folder / "*" / "*.parquet")
@@ -213,7 +214,7 @@ def load_context_bars_by_day(state_dir: Path | str, before_day: str, sessions: i
 
 
 def load_spy_minute_volumes(state_dir: Path | str, day: str) -> dict[int, float]:
-    """SPY's volume per minute of the day as the siege box keeps it (state/siege/baseline.json, a minute keyed by its
+    """SPY's volume per minute of the day as the siege box keeps it (state/spx/scanner/spy_volume_baselines_state.json, a minute keyed by its
     start in minutes after midnight ET, 570 = 09:30): the same figures as the saved minute bars, live and after the save."""
     path = Path(state_dir) / SPY_VOLUMES
     if not path.exists():

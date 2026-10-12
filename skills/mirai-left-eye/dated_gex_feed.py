@@ -14,7 +14,7 @@ while persisting in the market. This sidecar pulls exactly two extra bands:
 BLAST-RADIUS CONTRACT (the whole point of the design):
   * separate PROCESS  — runs from its own launchd job (05:17 PT pre-open), never
     inside a scan tick; the scan side is a cache-ONLY file read (`diary_summary`).
-  * separate STORE    — state/dated_gex/book.json; nothing here ever touches
+  * separate STORE    — state/market/spx_monthly_quarterly_open_interest_latest.json; nothing here ever touches
     native_gex_feed's chain cache or the contracts list build_views consumes, so
     gamma_flip / regime / shove / magnet keep their exact input distribution.
   * MAGNITUDE ONLY    — unsigned OI / gamma-mass / vanna-mass; the schema carries
@@ -469,7 +469,7 @@ def _quarterly_due(now: datetime, prev: dict) -> bool:
 
 def pull(now: Optional[datetime] = None) -> dict:
     """Nightly job entry: ONE batched cass_market_run for both monthlies (+ the
-    quarter-end when due), post-processed into state/dated_gex/book.json with
+    quarter-end when due), post-processed into state/market/spx_monthly_quarterly_open_interest_latest.json with
     uw_periscope store semantics. Returns a status dict; NEVER raises."""
     now = now or datetime.now(_ET)
     today = now.astimezone(_ET).date() if now.tzinfo else now.date()

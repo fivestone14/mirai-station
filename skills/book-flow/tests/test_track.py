@@ -3,10 +3,17 @@ be honest about the ones it never saw. Both are easy to get subtly wrong and
 neither is visible on the screen — a track off by one slice still draws a
 plausible line."""
 import json
+import sys
+from pathlib import Path
 
 import pytest
 
 from book_flow import track as T
+
+_RUNTIME = str(Path(__file__).resolve().parents[3] / "runtime")
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402  — every store the code names comes from here
 
 
 @pytest.fixture
@@ -56,15 +63,15 @@ def test_a_level_carries_forward_but_a_range_never_does(diary):
 
 
 def test_each_symbol_reads_its_own_diary(tmp_path, monkeypatch):
-    """The bug this pins was silent. SNDK's diary lives in state/sndk_reversion,
-    not state/reversion, and reading the wrong one does not raise — the file
+    """The bug this pins was silent. SNDK's diary is its own store, in its own
+    folder, not SPX's, and reading the wrong one does not raise — the file
     parses, every row is rejected by the ticker filter, and the board simply
     draws no price line and says nothing about why."""
-    for sub, tick, spot in (("reversion", "SPX", 7700.0),
-                            ("sndk_reversion", "SNDK", 1600.0)):
-        d = tmp_path / sub
-        d.mkdir(parents=True, exist_ok=True)
-        (d / "2026-09-04.jsonl").write_text(json.dumps(row("09:31", spot, ticker=tick)))
+    for store, tick, spot in ((station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN, "SPX", 7700.0),
+                              (station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN, "SNDK", 1600.0)):
+        p = store.path(tmp_path, day="2026-09-04")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(row("09:31", spot, ticker=tick)))
     monkeypatch.setattr(T, "DIARY", str(tmp_path / "{dir}" / "{day}.jsonl"))
     assert T.spot_track("2026-09-04", "SPX", STARTS, 300)["last"][0] == 7700.0
     assert T.spot_track("2026-09-04", "SNDK", STARTS, 300)["last"][0] == 1600.0

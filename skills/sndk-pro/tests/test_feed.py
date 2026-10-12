@@ -8,6 +8,7 @@ import pytest
 
 import atomic_io
 import sndk_feed
+import station_paths
 import synth
 
 ET = ZoneInfo("America/New_York")
@@ -160,7 +161,7 @@ def test_live_spot_anchors_the_window(monkeypatch):
 def test_no_live_quote_no_book(monkeypatch):
     # the old path anchored (and wrote) the known-stale chain spot — now the
     # tick fails closed before any discovery or pull happens
-    atomic_io.write_json_atomic(sndk_feed._state_dir() / "discovery.json",
+    atomic_io.write_json_atomic(station_paths.SNDK_OPTIONS_EXPIRIES_STATE.path(),
                                 {"date": NOW.date().isoformat(),
                                  "expiries": EXPS, "spot_hint": 1088.5})
     calls = []
@@ -176,7 +177,7 @@ def test_window_adapts_to_vol_hint(monkeypatch):
     # SNDK live case: σ≈90 on spot 1246 (~114% IV) — the fixed ±8% is ≈±1.1σ
     # and truncates the magnet's ±1.5σ reach; the hinted window must cover it
     sdf = round(90.0 / 1246.0, 5)
-    atomic_io.write_json_atomic(sndk_feed._state_dir() / "vol_hint.json",
+    atomic_io.write_json_atomic(station_paths.SNDK_IMPLIED_VOLATILITY_STATE.path(),
                                 {"sigma_daily_frac": sdf, "ts": NOW.isoformat()})
     w = sndk_feed._window_frac()
     assert w >= 1.5 * sdf                   # MAGNET_V3 reach + headroom inside
@@ -198,7 +199,7 @@ def test_vol_hint_persisted_after_build(monkeypatch):
     _stub_pull(monkeypatch, calls,
                contracts=synth.book(mtc=sndk_feed._minutes_to_close(NOW)))
     assert sndk_feed.sndk_chain(NOW, live_spot=1250.0) is not None
-    hint = atomic_io.read_json_or(sndk_feed._state_dir() / "vol_hint.json", None)
+    hint = atomic_io.read_json_or(station_paths.SNDK_IMPLIED_VOLATILITY_STATE.path(), None)
     # σ_daily/spot = IV/√252 ≈ 0.0315; a calendar-day √365 lands 0.0262
     assert hint["atm_iv"] == pytest.approx(synth.TRUE_IV, abs=0.01)
     assert hint["sigma_daily_frac"] == pytest.approx(synth.TRUE_IV / 252 ** 0.5, rel=0.02)
@@ -245,7 +246,7 @@ def test_stale_book_cache_pulls(monkeypatch):
 
 def test_corrupt_book_cache_pulls(monkeypatch):
     monkeypatch.setattr(sndk_feed, "discover_expiries", lambda now: list(EXPS))
-    path = sndk_feed._state_dir() / "chain_cache.json"
+    path = station_paths.SNDK_OPTIONS_CHAIN_STATE.path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{torn json")
     calls = []

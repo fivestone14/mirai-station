@@ -1,19 +1,20 @@
-"""A lane: one schedule, one sums doc, one folder under state/spx_jev/, one grader, and its share of the
-question doc (the questions whose ``lanes`` name its ``key``, loaded with ask.load_questions).
+"""A lane: one schedule, one sums doc, one folder under spx/jev/ (station_paths.JEV_LANE_FOLDERS), one grader, and
+its share of the question doc (the questions whose ``lanes`` name its ``key``, loaded with ask.load_questions).
 
 LIVE reads at :02 and :32 all session: the 30- and 60-minute sums, the cadence and
-the time-of-day blend, everything under state/spx_jev/. TAPE is the opening lane: every 5 minutes
+the time-of-day blend, everything under spx/jev/live_lane/. TAPE is the opening lane: every 5 minutes
 from 09:35 to 10:30, each read stamped at the newest finished bar, one five-way 10-minute sum,
 every question its schedule asks asked afresh (a day constant is asked at 09:35 and held),
-everything under state/spx_jev/lanes/tape/. PREMARKET reads at six checkpoints before the open: every
+everything under spx/jev/opening_lane/. PREMARKET reads at six checkpoints before the open: every
 read saves the overnight futures and builds the night's labels from them (a scene without a diary row,
 premarket.py), and JEV is asked only at the reads its questions' schedules name (08:48 and 09:28). Its
 two sums are graded from the settled open, 10 and 30 minutes on, never from yesterday's close, and
 stand unblended: how that window ended on prior sessions (clock.premarket_odds) forecast it worse than
 even thirds. With no blend and no validated reference for the
 window, it keeps no learning loop and its weights are neutral. Everything under
-state/spx_jev/lanes/premarket/. Each lane's raw archive is the exception: every lane appends to the one shared
-state/spx_jev/archive/ (archive_folder), each record naming its lane. Every step takes a lane and defaults to LIVE.
+spx/jev/premarket_lane/. Two things leave the lane folder: every lane appends to the one shared
+spx/jev/jev_reads_and_grades_by_event/ (archive_folder), each record naming its lane, and each lane's card is the
+phone's file under screen_files/phone/ (card_path). Every step takes a lane and defaults to LIVE.
 
 Every lane asks from one question doc, each question on its own schedule per lane (schedule.py). A lane
 with a ``schedule`` names its reads in market time; the launchd job fires at each of them, and
@@ -93,8 +94,8 @@ class Lane:
 
     def archive_folder(self, state_dir: Path | str, out_dir: Path | str | None = None) -> Path:
         """Where the lane's raw archive goes: the station's one archive, shared by every lane, while the
-        lane writes into its own folder under the state dir; ``<out_dir>/archive`` when it was pointed
-        anywhere else, so a run into a scratch folder keeps every record it makes there."""
+        lane writes into its own folder under the state dir; ``<out_dir>/<the archive's folder name>`` when it was
+        pointed anywhere else, so a run into a scratch folder keeps every record it makes there."""
         out = self.folder(state_dir, out_dir)
         if out.resolve() == (Path(state_dir) / self.out_dir).resolve():
             return Path(state_dir) / ARCHIVE_SUBDIR

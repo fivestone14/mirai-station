@@ -13,7 +13,7 @@ from datetime import timedelta
 
 import pytest
 
-from conftest import at, bars_from_closes, flat_bars, make_row
+from conftest import at, bars_from_closes, diary_path, flat_bars, make_row, write_jsonl
 from spx_jev.ask import UNMEASURED
 from spx_jev.cuts import SAME_CLOCK_MIN_SESSIONS, SETTLE_SEAT_SIGMA
 from spx_jev.labels.gamma import ROW_SLACK_MIN, build_gamma_labels
@@ -53,8 +53,7 @@ def labels(scene, history: dict | None = None):
 
 
 def write_diary(root, day: str, rows: list[dict]) -> None:
-    (root / "reversion").mkdir(parents=True, exist_ok=True)
-    (root / "reversion" / f"{day}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    write_jsonl(diary_path(root, day), rows)
 
 
 # the minutes the tests read at, a diary row a minute before each on every prior session
@@ -299,7 +298,7 @@ def test_magnet_distance_counts_only_finished_bars_and_prior_rows_by_the_same_mi
     assert "price sat 0.20 sigma from it on average" in labels(replace(scene, bars=scene.bars + [late]), history)[0]["magnet_distance"]
     for d in range(8, 18):
         day = f"2026-09-{d:02d}"
-        rows = [json.loads(line) for line in (history["state_dir"] / "reversion" / f"{day}.jsonl").read_text().splitlines()]
+        rows = [json.loads(line) for line in diary_path(history["state_dir"], day).read_text().splitlines()]
         write_diary(history["state_dir"], day, rows[:2] + [diary_row(at(12, 33, day), pin_top_share=0.5, magnet=7700.0)] + rows[2:])
     assert "stronger than on 10 of the last 10 sessions" in labels(scene, history)[0]["magnet_distance"]
 

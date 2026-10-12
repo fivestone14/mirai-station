@@ -55,7 +55,7 @@ The plugin lives at `~/.claude/plugins/mirai-station/`. Copy it from your main m
 
 ```bash
 # From main machine, replacing <mini-host> with the mini's hostname or Tailscale name
-rsync -avh --exclude '__pycache__' --exclude 'state/logs/' \
+rsync -avh --exclude '__pycache__' --exclude 'state/operations/logs/' \
   ~/.claude/plugins/mirai-station/ \
   <mini-host>:~/.claude/plugins/mirai-station/
 ```
@@ -208,7 +208,7 @@ launchctl list | grep mirai-station
 ~/.claude/plugins/mirai-station/runtime/scripts/run-watch-left-eye.sh
 
 # Tail today's diary
-tail -f ~/.claude/plugins/mirai-station/state/reversion/$(date +%Y-%m-%d).jsonl
+tail -f ~/.claude/plugins/mirai-station/state/spx/scanner/spx_options_scanner_results_by_scan/$(date +%Y-%m-%d).jsonl
 ```
 
 If a signal clears the alert threshold, an ntfy push lands on your phone. If the tape is quiet, no push — that's correct.
@@ -286,19 +286,24 @@ two stations sharing one would lock each other out. Enrol the new station on its
 
 ### 4. The iCloud mirror
 
-The Claude forecast's recorder mirrors `state/spx_claude_forecast/` to
-`~/Library/Mobile Documents/com~apple~CloudDocs/mirai-station-backups/spx_claude_forecast/`
-(nothing else in `state/` is backed up). The mirror only ever adds: a file deleted from
-`state/` stays in iCloud until removed there by hand. A new Mac signed into the same
-iCloud account inherits the folder and its recorder keeps adding to it, so a station
-retired with its mirror still in place leaves its forecast history behind on purpose.
+The Claude forecast's recorder mirrors `state/spx/claude_forecast/` and its own copies
+under `state/market/` (the dated options book, the SPY minute volume, the raw tape, the
+$VIX1D closes, the SPX 5-minute bars, the leveraged funds' sizes) to
+`~/Library/Mobile Documents/com~apple~CloudDocs/mirai-station-backups/`, each file under
+its path relative to `state/` (nothing else in `state/` is backed up; the logs and locks
+under `state/operations/` are not). The mirror only ever adds: a file deleted from
+`state/` stays in iCloud until removed there by hand, and the files it put under
+`spx_claude_forecast/` there before 2026-10-11 stay until the owner decides. A new Mac
+signed into the same iCloud account inherits the folder and its recorder keeps adding to
+it, so a station retired with its mirror still in place leaves its forecast history
+behind on purpose.
 
 ### 5. Smoke test
 
 ```bash
 ./runtime/scripts/run-watch-left-eye.sh      # one tick by hand; quiet tape → no output is correct
 launchctl list | grep mirai-station          # all 25 agents
-tail -f state/reversion/$(date +%Y-%m-%d).jsonl
+tail -f state/spx/scanner/spx_options_scanner_results_by_scan/$(date +%Y-%m-%d).jsonl
 ```
 
 If a paper fire clears threshold, an ntfy push lands on the subscribed phone.

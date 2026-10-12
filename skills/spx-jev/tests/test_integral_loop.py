@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import at
+from conftest import at, grades_path, hour_path
 from spx_jev import grade, integral, integral_loop, pool
 from spx_jev.scores import floored
 from spx_jev.clock import INTEGRAL_CACHE_NAME, MIN_SESSIONS, PHASES, _integral_rule_key
@@ -27,8 +27,22 @@ ALLOWED = {"q_a": {"yes", "no"}}
 MEMBERS = {"q_a": "v1"}
 DAYS = ("2026-09-14", "2026-09-15", "2026-09-16")
 TODAY = "2026-09-17"
-END_PRICE_FILES = ("pool_30.json", "pool_60.json")
-INTEGRAL_FILES = ("pool_30_integral.json", integral_loop.LOG_NAME)
+
+
+def _end_price_files(out: Path) -> tuple[Path, Path]:
+    """The end-price loop's two state files for a run reading ``out`` (pool.pool_folders: inside a scratch folder)."""
+    return pool.state_path(out, 30), pool.state_path(out, 60)
+
+
+def _integral_files(out: Path) -> tuple[Path, Path]:
+    """The switched loop's own two files: its state and its log."""
+    return integral_loop.state_path(out), integral_loop.log_path(out)
+
+
+def _rel(out: Path, paths) -> set[str]:
+    return {str(p.relative_to(out)) for p in paths}
+
+
 # the average-price odds as the phone showed them, JEV's own and the time-of-day odds on the average price they blend
 JEV_AVG = {"up": 0.6, "flat": 0.3, "down": 0.1}
 CLOCK_AVG = {"up": 0.2, "flat": 0.6, "down": 0.2}
@@ -86,7 +100,6 @@ def _write(out: Path, sessions: dict = SESSIONS, stale_at=None, event_at=None, a
     snapshots (whose answers the switched loop reads) and the average-price call, its grades.jsonl line and its
     average-price line, and the clock's stored counts on the average price for twelve sessions before them."""
     out.mkdir(parents=True, exist_ok=True)
-    (out / "hour").mkdir(exist_ok=True)
     _cache(out, _prior_counts())
     for day, reads in sessions.items():
         recs, grades, lines = [], [], []
@@ -114,8 +127,9 @@ def _write(out: Path, sessions: dict = SESSIONS, stale_at=None, event_at=None, a
                           "sum": "average_30" if average else "next_30", "graded": True, "label": label, "stale_read": stale_at == (day, k)})
             lines.append({"row_ts": t.isoformat(), "horizon": "next_60", "rule_version": integral.RULE_VERSION, "sum": "next_60",
                           "graded": True, "label": "down", "stale_read": False})
-        (out / "hour" / f"{day}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in recs))
-        with open(out / "grades.jsonl", "a") as f:
+        hour_path(out, day).parent.mkdir(exist_ok=True)
+        hour_path(out, day).write_text("".join(json.dumps(r) + "\n" for r in recs))
+        with open(grades_path(out), "a") as f:
             f.write("".join(json.dumps(g) + "\n" for g in grades))
         if integral_lines:
             with open(out / INTEGRAL_NAME, "a") as f:
@@ -134,11 +148,11 @@ def _tree(root: Path) -> dict[str, bytes]:
 
 
 def _learn(out: Path, lane_=ON) -> dict:
-    return weights_from(grade.load_jsonl(out / "grades.jsonl"), ALLOWED, lane_, out)
+    return weights_from(grade.load_jsonl(grades_path(out)), ALLOWED, lane_, out)
 
 
 def _log(out: Path) -> list[dict]:
-    return [json.loads(line) for line in (out / integral_loop.LOG_NAME).read_text().splitlines()]
+    return [json.loads(line) for line in integral_loop.log_path(out).read_text().splitlines()]
 
 
 # ---- the switch
@@ -156,15 +170,16 @@ def test_with_the_switch_off_no_file_of_the_switched_loop_is_made_or_read(tmp_pa
     """The grader learns the end-price loop exactly as before: the same weights and files with a switched loop's state
     lying beside them or not, and nothing of the switched loop is called."""
     plain, beside = _write(tmp_path / "plain"), _write(tmp_path / "beside")
-    (beside / "pool_30_integral.json").write_text("{not a state")
+    integral_loop.state_path(beside).parent.mkdir()
+    integral_loop.state_path(beside).write_text("{not a state")
     for name in ("update", "load_state", "dry_run"):
         monkeypatch.setattr(integral_loop, name, lambda *a, **k: pytest.fail("the switched loop was called with the switch off"))
     w_plain, w_beside = _learn(plain, OFF), _learn(beside, OFF)
     assert w_plain == w_beside and w_plain["method"] == "pool_v1" and w_plain["pool"]["last_session_applied"] == DAYS[-1]
-    assert (beside / "pool_30_integral.json").read_text() == "{not a state"
-    assert not any((plain / name).exists() for name in INTEGRAL_FILES) and not (beside / integral_loop.LOG_NAME).exists()
+    assert integral_loop.state_path(beside).read_text() == "{not a state"
+    assert not any(p.exists() for p in _integral_files(plain)) and not integral_loop.log_path(beside).exists()
     after_plain, after_beside = _tree(plain), _tree(beside)
-    del after_beside["pool_30_integral.json"]
+    del after_beside[str(integral_loop.state_path(beside).relative_to(beside))]
     assert after_plain == after_beside
 
 
@@ -175,7 +190,7 @@ def test_with_the_switch_off_the_grader_never_imports_the_switched_loop(tmp_path
             f"grade.weights_from([], {{}}, replace(LIVE, integral_loop=False), Path({str(tmp_path)!r})); "
             "print('spx_jev.integral_loop' in sys.modules)")
     done = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parent.parent, capture_output=True, text=True, check=True)
-    assert done.stdout.strip() == "False" and (tmp_path / "pool_30.json").exists()
+    assert done.stdout.strip() == "False" and pool.state_path(tmp_path, 30).exists()
 
 
 # ---- on
@@ -188,16 +203,16 @@ def test_on_the_loop_learns_from_the_average_price_label_beside_the_end_price_lo
     w = _learn(out, ON)
     _learn(off, OFF)
     after = _tree(out)
-    assert set(after) - set(before) == set(INTEGRAL_FILES) | set(END_PRICE_FILES) and all(after[k] == v for k, v in before.items())
-    assert all(after[name] == (off / name).read_bytes() for name in END_PRICE_FILES)
-    assert set(after) - set(_tree(off)) == set(INTEGRAL_FILES)                  # the switched loop's own two files, and no other
-    assert json.loads(after["pool_30.json"])["last_session_applied"] == DAYS[-1]
+    assert set(after) - set(before) == _rel(out, _integral_files(out) + _end_price_files(out)) and all(after[k] == v for k, v in before.items())
+    assert all(after[str(mine.relative_to(out))] == theirs.read_bytes() for mine, theirs in zip(_end_price_files(out), _end_price_files(off)))
+    assert set(after) - set(_tree(off)) == _rel(out, _integral_files(out))      # the switched loop's own two files, and no other
+    assert json.loads(after[str(pool.state_path(out, 30).relative_to(out))])["last_session_applied"] == DAYS[-1]
     # the weights keep the end-price loop's report, as with the switch off, and the switched loop's is beside it
     assert {k: v for k, v in w.items() if k != "pool_integral"} == _learn(_write(tmp_path / "off2"), OFF)
     w = w["pool_integral"]
     assert w["method"] == "pool_v1_integral" and w["pool"]["last_session_applied"] == DAYS[-1]
     assert w["questions"]["q_a"]["days"] == 3 and w["questions"]["q_a"]["weight"] == 1.0
-    state = json.loads((out / "pool_30_integral.json").read_text())
+    state = json.loads(integral_loop.state_path(out).read_text())
     assert state["constants_hash"] == integral_loop.CONSTANTS_HASH != pool.CONSTANTS_HASH
     assert state["reference_version"].startswith("integral_clock:")
     applied = [x for x in _log(out) if x["applied"]]
@@ -213,9 +228,9 @@ def test_on_the_end_price_bands_teach_it_nothing_and_the_average_price_labels_ev
     other_avg = _write(tmp_path / "avg", {d: [(turn[lab], band, yes) for lab, band, yes in reads] for d, reads in SESSIONS.items()})
     for out in (base, other_end, other_avg):
         integral_loop.update(out, TODAY)
-    state = (base / "pool_30_integral.json").read_bytes()
-    assert (other_end / "pool_30_integral.json").read_bytes() == state
-    assert (other_avg / "pool_30_integral.json").read_bytes() != state
+    state = integral_loop.state_path(base).read_bytes()
+    assert integral_loop.state_path(other_end).read_bytes() == state
+    assert integral_loop.state_path(other_avg).read_bytes() != state
 
 
 def test_on_a_stale_read_and_an_event_read_are_left_out_as_the_loop_leaves_them_out(tmp_path, clock):
@@ -237,7 +252,7 @@ def test_on_its_reference_is_the_average_price_clock_of_the_sessions_before_each
     _cache(later, {**_prior_counts(), DAYS[0]: _counts(9, 0, 0), DAYS[1]: _counts(9, 0, 0)})
     integral_loop.update(out, "2026-09-15")
     integral_loop.update(later, "2026-09-15")
-    assert (later / "pool_30_integral.json").read_bytes() == (out / "pool_30_integral.json").read_bytes()
+    assert integral_loop.state_path(later).read_bytes() == integral_loop.state_path(out).read_bytes()
 
 
 def test_on_blended_reads_with_no_reference_on_file_stop_the_update_until_the_counts_are_back(tmp_path, clock):
@@ -248,7 +263,7 @@ def test_on_blended_reads_with_no_reference_on_file_stop_the_update_until_the_co
     for counts in ({}, _prior_counts(MIN_SESSIONS - 1)):
         _cache(out, counts)
         assert integral_loop.update(out, TODAY) == {"next_30": f"{DAYS[0]}: no reference on file; stopped"}
-        assert json.loads((out / "pool_30_integral.json").read_text())["last_session_applied"] is None
+        assert json.loads(integral_loop.state_path(out).read_text())["last_session_applied"] is None
     assert _log(out)[-1] == {**_log(out)[-1], "applied": False, "session": DAYS[0],
                              "why": "no reference on file for reads blended with one: stopped, fail closed"}
     _cache(out, _prior_counts())
@@ -258,7 +273,7 @@ def test_on_blended_reads_with_no_reference_on_file_stop_the_update_until_the_co
     integral_loop.update(unblended, TODAY)
     reasons = {why for x in _log(unblended) for why in (x.get("manifest") or {}).get("excluded", {}).values()}
     assert reasons == {f"no snapshot: fewer than {MIN_SESSIONS} sessions of time-of-day odds on the average price before this one"}
-    assert json.loads((unblended / "pool_30_integral.json").read_text())["last_session_applied"] == DAYS[-1]
+    assert json.loads(integral_loop.state_path(unblended).read_text())["last_session_applied"] == DAYS[-1]
 
 
 def test_on_each_questions_count_is_over_the_reads_this_loop_learned_from_not_the_end_price_loops(tmp_path, clock):
@@ -283,9 +298,9 @@ def _alone(out: Path, day: str, k: int, answers: bool = True) -> str:
         left = {"left_out": "JEV gave no probabilities for next_30"}
         r["pool"] = {"next_30": {**left, **pool.answered({"q_a": {"yes": 0.5, "no": 0.5}}, MEMBERS, {"q_a"})} if answers else left}
         return {**r, "error": "JEV returned HTTP 529 for group hour"}
-    _edit(out / "hour" / f"{day}.jsonl", strip)
-    lines = [json.loads(line) for line in (out / "grades.jsonl").read_text().splitlines()]
-    (out / "grades.jsonl").write_text("".join(json.dumps(g) + "\n" for g in lines if g["row_ts"] != ts))
+    _edit(hour_path(out, day), strip)
+    lines = [json.loads(line) for line in grades_path(out).read_text().splitlines()]
+    grades_path(out).write_text("".join(json.dumps(g) + "\n" for g in lines if g["row_ts"] != ts))
     return ts
 
 
@@ -314,7 +329,7 @@ def test_on_a_session_before_the_question_is_passed_over_and_an_ungraded_read_st
     assert integral_loop.update(out, TODAY) == {"next_30": f"{DAYS[1]}: unsealed; stopped"}
     assert [x["why"] for x in _log(out)] == ["no read carries an average-price call: before the question",
                                             "unsealed: a read still has its average-price grade to come"]
-    assert json.loads((out / "pool_30_integral.json").read_text())["last_session_applied"] == DAYS[0]
+    assert json.loads(integral_loop.state_path(out).read_text())["last_session_applied"] == DAYS[0]
 
 
 def test_neither_loop_ever_loads_the_others_state(tmp_path, clock):
@@ -323,21 +338,21 @@ def test_neither_loop_ever_loads_the_others_state(tmp_path, clock):
     again from the records."""
     out = _write(tmp_path)
     pool.update(out, today=DAYS[1])
-    shutil.copy(out / "pool_30.json", out / "pool_30_integral.json")
-    planted = (out / "pool_30_integral.json").read_bytes()
+    shutil.copy(pool.state_path(out, 30), integral_loop.state_path(out))
+    planted = integral_loop.state_path(out).read_bytes()
     integral_loop.update(out, TODAY)
-    [kept] = (out / "archive").glob(f"pool_30_integral.json.pre-{pool.CONSTANTS_HASH}-*")
+    [kept] = pool.pool_folders(out)[2].glob(f"{integral_loop.state_path(out).name}.pre-{pool.CONSTANTS_HASH}-*")
     assert kept.read_bytes() == planted
-    assert json.loads((out / "pool_30_integral.json").read_text())["constants_hash"] == integral_loop.CONSTANTS_HASH
+    assert json.loads(integral_loop.state_path(out).read_text())["constants_hash"] == integral_loop.CONSTANTS_HASH
     assert any(x.get("rebuild", {}).get("from") == pool.CONSTANTS_HASH for x in _log(out))
     other = _write(tmp_path / "other")
     integral_loop.update(other, DAYS[1])
-    for name in ("pool_30.json", "pool_60.json"):
-        shutil.copy(other / "pool_30_integral.json", other / name)
+    for path in _end_price_files(other):
+        shutil.copy(integral_loop.state_path(other), path)
     pool.update(other, today=TODAY)
-    for name in ("pool_30.json", "pool_60.json"):
-        assert json.loads((other / name).read_text())["constants_hash"] == pool.CONSTANTS_HASH
-        assert list((other / "archive").glob(f"{name}.pre-{integral_loop.CONSTANTS_HASH}-*"))
+    for path in _end_price_files(other):
+        assert json.loads(path.read_text())["constants_hash"] == pool.CONSTANTS_HASH
+        assert list(pool.pool_folders(other)[2].glob(f"{path.name}.pre-{integral_loop.CONSTANTS_HASH}-*"))
 
 
 def test_flipping_the_switch_on_off_and_on_again_never_mixes_the_histories(tmp_path, clock):
@@ -355,11 +370,11 @@ def test_flipping_the_switch_on_off_and_on_again_never_mixes_the_histories(tmp_p
         clock(day)
         _learn(always_on, ON)
         _learn(always_off, OFF)
-    assert (flipped / "pool_30_integral.json").read_bytes() == (always_on / "pool_30_integral.json").read_bytes()
-    assert json.loads((flipped / "pool_30_integral.json").read_text())["last_session_applied"] == DAYS[2]
-    for name in END_PRICE_FILES:
-        assert (flipped / name).read_bytes() == (always_off / name).read_bytes()
-    assert json.loads((flipped / "pool_30.json").read_text())["last_session_applied"] == DAYS[2]
+    assert integral_loop.state_path(flipped).read_bytes() == integral_loop.state_path(always_on).read_bytes()
+    assert json.loads(integral_loop.state_path(flipped).read_text())["last_session_applied"] == DAYS[2]
+    for mine, theirs in zip(_end_price_files(flipped), _end_price_files(always_off)):
+        assert mine.read_bytes() == theirs.read_bytes()
+    assert json.loads(pool.state_path(flipped, 30).read_text())["last_session_applied"] == DAYS[2]
 
 
 def test_on_a_change_to_the_reference_odds_constants_starts_the_calibration_again(tmp_path, clock, monkeypatch):
@@ -373,7 +388,7 @@ def test_on_a_change_to_the_reference_odds_constants_starts_the_calibration_agai
     assert last["session"] == DAYS[2] and last["reference_changed"]["from"] != last["reference_changed"]["to"]
     alone = _write(tmp_path / "alone", {DAYS[2]: SESSIONS[DAYS[2]]})
     integral_loop.update(alone, TODAY)
-    assert json.loads((out / "pool_30_integral.json").read_text())["cal"] == json.loads((alone / "pool_30_integral.json").read_text())["cal"]
+    assert json.loads(integral_loop.state_path(out).read_text())["cal"] == json.loads(integral_loop.state_path(alone).read_text())["cal"]
 
 
 def test_on_a_half_day_teaches_it_nothing(tmp_path, clock):
@@ -394,14 +409,14 @@ def test_on_only_the_current_rule_versions_label_of_the_box_is_learned(tmp_path,
     (noisy / INTEGRAL_NAME).write_text("".join(json.dumps(g) + "\n" for g in older + other_box + lines))
     for out in (base, noisy):
         integral_loop.update(out, TODAY)
-    assert (noisy / "pool_30_integral.json").read_bytes() == (base / "pool_30_integral.json").read_bytes()
+    assert integral_loop.state_path(noisy).read_bytes() == integral_loop.state_path(base).read_bytes()
 
 
 def test_on_a_read_is_forecast_on_jevs_own_average_odds_the_shown_blend_and_its_fresh_answers(tmp_path):
     """JEV's own odds, not the blend the phone showed, are the JEV side of the mixes; the blend is blend50 as shown;
     the questions' answers and which were fresh are the read's own."""
     out = _write(tmp_path)
-    recs = grade.load_jsonl(out / "hour" / f"{DAYS[0]}.jsonl")
+    recs = grade.load_jsonl(hour_path(out, DAYS[0]))
     ref = integral_loop.reference(json.loads((out / INTEGRAL_CACHE_NAME).read_text())["days"], DAYS[0], "v")
     reads, excluded = integral_loop._session_reads(recs, integral_loop.average_lines(out), integral_loop.cold_state(), ref, LIVE)
     snap = reads[0]["snapshot"]
@@ -420,10 +435,10 @@ def test_on_the_calibration_counts_what_happened_and_forgets_it_by_the_decay(tmp
     reference expected up a quarter of the time; each session's count is kept at 0.95 of itself the next."""
     out = _write(tmp_path)
     integral_loop.update(out, DAYS[1])
-    cal = json.loads((out / "pool_30_integral.json").read_text())["cal"]
+    cal = json.loads(integral_loop.state_path(out).read_text())["cal"]
     assert cal["O"] == pytest.approx({"up": 2 / 3, "flat": 1 / 3, "down": 0.0}) and cal["E"]["up"] == pytest.approx(0.25)
     integral_loop.update(out, TODAY)
-    cal = json.loads((out / "pool_30_integral.json").read_text())["cal"]
+    cal = json.loads(integral_loop.state_path(out).read_text())["cal"]
     up = (0.95 * 2 / 3 + 1 / 3) * 0.95 + 1 / 3           # 14th: up, up, flat; 15th: down, flat, up; 16th: up, down, flat
     assert cal["O"]["up"] == pytest.approx(up, abs=1e-9) and cal["E"]["up"] == pytest.approx((0.95 * 0.25 + 0.25) * 0.95 + 0.25, abs=1e-9)
 
@@ -445,7 +460,7 @@ def test_on_the_reference_takes_the_newest_twenty_sessions_and_counts_none_that_
 
 def test_on_a_session_with_one_read_before_the_question_is_learned_from_its_other_reads(tmp_path, clock):
     out = _write(tmp_path)
-    _edit(out / "hour" / f"{DAYS[0]}.jsonl", lambda r: {k: v for k, v in r.items() if k != "average" or r["row_ts"] != at(10, 2, day=DAYS[0]).isoformat()})
+    _edit(hour_path(out, DAYS[0]), lambda r: {k: v for k, v in r.items() if k != "average" or r["row_ts"] != at(10, 2, day=DAYS[0]).isoformat()})
     integral_loop.update(out, DAYS[1])
     (line,) = _log(out)
     assert line["applied"] and line["manifest"]["excluded"] == {at(10, 2, day=DAYS[0]).isoformat(): "no average-price call on this read"}
@@ -460,7 +475,7 @@ def test_the_dry_run_writes_nothing_live_and_learns_what_switching_on_would(tmp_
     assert _tree(out) == before
     on = _write(tmp_path / "on", stale_at=(DAYS[0], 1))
     integral_loop.update(on, TODAY)
-    assert pool._canonical(run["state"]) == (on / "pool_30_integral.json").read_text()
+    assert pool._canonical(run["state"]) == integral_loop.state_path(on).read_text()
     assert grade.main(["--state-dir", str(tmp_path), "--out-dir", str(out), "--integral-loop-dry-run"]) == 0
     printed = capsys.readouterr().out.splitlines()
     assert _tree(out) == before
@@ -483,7 +498,7 @@ def test_the_dry_run_says_when_the_gate_is_met_and_keeps_passed_over_sessions_ap
         assert said.startswith(f"sessions learned from: {n}, the gate is 10 {gate}; passed over: 0; every read left out: 0")
     mixed = _write(tmp_path / "mixed", {"2026-09-11": SESSIONS[DAYS[0]]}, average=False)
     _write(mixed, {**SESSIONS, "2026-09-17": SESSIONS[DAYS[0]]})
-    _edit(mixed / "hour" / "2026-09-17.jsonl", lambda r: {**r, "event": {"within_30": True}})
+    _edit(hour_path(mixed, "2026-09-17"), lambda r: {**r, "event": {"within_30": True}})
     said = integral_loop.describe(integral_loop.dry_run(mixed, LIVE, "2026-09-18"))
     assert said[1].startswith("sessions learned from: 3, the gate is 10 (7 to go); passed over: 1; every read left out: 1")
     assert said[-2] == "frozen: no"

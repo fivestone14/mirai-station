@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import at, flat_bars, night_row
+from conftest import at, flat_bars, lane_folder, night_row, station_paths, write_json
 from spx_jev import events, overnight
 from spx_jev.labels.label_set import LabelSet
 from spx_jev.labels.measures import ET
@@ -41,10 +41,8 @@ def _session(day: str, move: float) -> list[dict]:
 @pytest.fixture
 def state(tmp_path):
     state_dir = tmp_path / "state"
-    folder = state_dir / "reversion" / "bars"
-    folder.mkdir(parents=True)
     for day, move in {"2026-09-16": 0.0, **MOVE}.items():
-        (folder / f"{day}-SPX.json").write_text(json.dumps(_session(day, move)), encoding="utf-8")
+        write_json(station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.path(state_dir, day=day), _session(day, move))
     for night in NIGHTS:
         start = overnight.night_window(night)[0]
         overnight.write_night(state_dir, night.isoformat(), [night_row("/ES", start + timedelta(minutes=k), 7750.0, minutes=5,
@@ -113,8 +111,8 @@ def test_two_nights_replay_through_the_harness_without_writing_under_the_state_d
 
 def test_the_replay_refuses_to_write_inside_the_state_dir(state, stubbed):
     with pytest.raises(SystemExit):
-        replay.main(["--state-dir", str(state), "--out", str(state / "spx_jev" / "replay")])
-    assert not (state / "spx_jev" / "replay").exists()
+        replay.main(["--state-dir", str(state), "--out", str(lane_folder(state) / "replay")])
+    assert not (lane_folder(state) / "replay").exists()
 
 
 def test_an_unfinished_night_is_not_replayed(state):

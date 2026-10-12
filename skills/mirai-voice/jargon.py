@@ -10,7 +10,7 @@ fuzzy pass for long tokens only. Microseconds, no model, no hallucination.
 Two tables:
   _RULES  — explicit (pattern → canonical) pairs, case-insensitive, word-bounded.
             Seeded from docs/gw-vocab.md terms + bench.py harvest; extend from
-            state/voice/convo logs whenever a new mis-hearing shows up.
+            state/voice_desk/voice_desk_transcripts_by_exchange/ logs whenever a new mis-hearing shows up.
   _FUZZY  — glossary for rapidfuzz. Only tokens >= _FUZZY_MIN_LEN are compared
             (never "pin"/"pen" class words) and only at >= _FUZZY_CUTOFF.
 """

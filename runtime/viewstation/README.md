@@ -19,8 +19,8 @@ first thing to know about this page.
 | What it is | A stock index, traded through 0DTE options | One company's shares, traded through weekly options |
 | Expiry cadence | An expiry **every day** — 0DTE mechanics all day, every day | **Weekly** expiries, so most days have no expiry at all and the book is standing positioning rather than same-day mechanics |
 | Scale of a day | A typical day's move is a fraction of a percent | A typical day's move is **8–10% of the share price** — enormous, and every threshold has to be re-measured for it |
-| Reasoner | Watchtower (`wt-11`), blind vote then reveal, its own memory in `state/spx_rag` | `sndk_read` (`strikes-7`), reads the Strikes Payload cold, its own memory in `state/sndk_rag` |
-| Scans land in | `state/reversion/` | `state/sndk_reversion/`, with the minute bars in `state/sndk_bars/` and the side packets in `state/sndk_side/` |
+| Reasoner | Watchtower (`wt-11`), blind vote then reveal, its own memory in `state/spx/scanner/spx_options_scanner_claude_notes_by_read/` | `sndk_read` (`strikes-7`), reads the Strikes Payload cold, its own memory in `state/sndk/sndk_options_reader_notes_by_read/` |
+| Scans land in | `state/spx/scanner/spx_options_scanner_results_by_scan/` | `state/sndk/sndk_options_scanner_results_by_scan/`, with the minute bars in `state/sndk/sndk_price_bars_by_minute/` and the side packets in `state/sndk/sndk_price_bar_facts_by_read/` |
 | Documents per scan | One: the scene | **Three**: the Strikes Payload the model reads (`sndk_board`), the legacy Scene Payload still built for the wake gate and the memory (`sndk_read`, deprecated 2026-09-05), and the bar-anchored side packet (`side-1`) — the last two are records and displays, never a prompt |
 | Extra layers | Siege, the Fade and Break lenses, the dated-book sidecar, LOB flow | **None of those** — they are SPX-only and show as dormant chips on the SNDK tab, by design, not by fault |
 | Maturity | The mature stack; the graded record, the learning loop and the paper scoreboard all belong to it | **Display-only on this page.** No grading, no ledger, nothing trades off it |
@@ -70,8 +70,8 @@ forecast.
 
 | Page | What it shows |
 |---|---|
-| **Forecast** — `/m` (`static/m/jev-spx.html` with `press.js`, `sheet.js`) | The SPX forecast: the combined call with its voices and JEV's own, the opening lane and the pre-market call, the record of the 30-minute calls (the learning loop behind a tap), Claude's read against the usual, today's calls as squares, the situation and the questions behind the card — from the `state/spx_jev/` cards and grades, `mirai_prediction/scoreboard.json` and `state/spx_claude_forecast/latest.json` through the raw explorer, with the live price from `/api/spot`. The price box opens the price-today chart (the day's bars from `state/spx_jev/bars/<day>.jsonl`, the options book from `state/reversion/<day>.jsonl` while the chart is visible); from 1024px up (the owner's MacBook Air) the page is the board Final-Desktop: the tabs in the header's row, a 544px column, and the chart standing beside it as a panel with the situation under it. |
-| **Reads** — `/m/reads.html` | The SPX reads: every graded 30-minute call, a day at a time, from `state/spx_jev/integral_grades.jsonl` through the raw explorer, with an open day's price line from `state/spx_jev/bars/<day>.jsonl`. |
+| **Forecast** — `/m` (`static/m/jev-spx.html` with `press.js`, `sheet.js`) | The SPX forecast: the combined call with its voices and JEV's own, the opening lane and the pre-market call, the record of the 30-minute calls (the learning loop behind a tap), Claude's read against the usual, today's calls as squares, the situation and the questions behind the card — from the JEV cards, the forecaster scoreboard and the Claude forecast card under `state/screen_files/phone/` and the lanes' grades under `state/spx/jev/`, each fetched by store name through `/api/store/file`, with the live price from `/api/spot`. The price box opens the price-today chart (the day's bars from `state/market/spx_price_bars_by_minute/<day>.jsonl`, the options book from `state/spx/scanner/spx_options_scanner_results_by_scan/<day>.jsonl` while the chart is visible); from 1024px up (the owner's MacBook Air) the page is the board Final-Desktop: the tabs in the header's row, a 544px column, and the chart standing beside it as a panel with the situation under it. |
+| **Reads** — `/m/reads.html` | The SPX reads: every graded 30-minute call, a day at a time, from `state/spx/jev/live_lane/jev_average_price_grades_by_read_and_horizon.jsonl` by store name through `/api/store/file`, with an open day's price line from `state/market/spx_price_bars_by_minute/<day>.jsonl`. |
 
 `/m/jev.html`, the SNDK forecast's old address, is a redirect to `/m/` so an
 old bookmark still lands on the forecast. The SNDK glance (`/m/index.html`,
@@ -105,11 +105,11 @@ Every route `server.py` serves:
 - Anything else under `static/` by its path — `/m/reads.html`, `/m/jev.html` (a redirect to `/m/`), `/pipeline.html`, the scripts, the font, the APK. A content-hashed `.woff2` is sent `immutable` for a year; everything else `no-cache`.
 
 **Open JSON**
-- `GET /api/spot?ticker=SPX` — the streaming price: one Schwab quote behind a 2 s cache, single-flight. A null spot means "keep showing the scan price". SNDK quotes during market hours also land on the spot tape under `state/sndk_tape/`.
+- `GET /api/spot?ticker=SPX` — the streaming price: one Schwab quote behind a 2 s cache, single-flight. A null spot means "keep showing the scan price". SNDK quotes during market hours also land on the spot tape under `state/sndk/sndk_last_prices_by_quote/`.
 - `GET /api/replay?day=YYYY-MM-DD` — the Replay tab: the Watchtower sweep ledger and fires for one past session, graded by the nightly card's own grader.
 - `GET /api/lob/days?ticker=SPX` and `GET /api/lob/board?day=YYYY-MM-DD&ticker=SPX&slice_s=60` — the Day Visual LOB board, through `book_flow`; one cold build at a time.
-- `GET /api/store/file?name=JEV_LIVE_CARD` and `GET /api/store/file?name=SPX_PRICE_BARS_BY_MINUTE&day=YYYY-MM-DD&limit=420` — a store by its NAME in `runtime/station_paths.py` (a lane-scoped store takes `lane=live|tape|premarket`); `GET /api/store/index?name=…` lists a day-keyed store's files on disk (`day`, `rel`, `size`, `mtime`). This is how the pages fetch their data, so a folder move changes `station_paths.py` and nothing a page holds. Same door as the raw explorer below: the state root only, the same readable types, `voice/` and `archive/` withheld, two reads at a time.
-- `GET /api/raw/index` and `GET /api/raw/file?root=state&path=…&limit=500` — the raw explorer over `state/` (`.json`, `.jsonl`, `.txt`, `.md`; `voice/` withheld; two reads at a time; path traversal refused; opened read-only). `MIRAI_STATE_DIR` names the folder, as it does for every SNDK reader.
+- `GET /api/store/file?name=JEV_LIVE_CARD` and `GET /api/store/file?name=SPX_PRICE_BARS_BY_MINUTE&day=YYYY-MM-DD&limit=420` — a store by its NAME in `runtime/station_paths.py` (a lane-scoped store takes `lane=live|tape|premarket`); `GET /api/store/index?name=…` lists a day-keyed store's files on disk (`day`, `rel`, `size`, `mtime`). This is how the pages fetch their data, so a folder move changes `station_paths.py` and nothing a page holds. Same door as the raw explorer below: the state root only, the same readable types, `voice_desk/` and `archive/` withheld, two reads at a time.
+- `GET /api/raw/index` and `GET /api/raw/file?root=state&path=…&limit=500` — the raw explorer over `state/` (`.json`, `.jsonl`, `.txt`, `.md`; `voice_desk/` and `archive/` withheld; two reads at a time; path traversal refused; opened read-only). `MIRAI_STATE_DIR` names the folder, as it does for every SNDK reader.
 - `GET /api/health` — liveness.
 - `GET /api/version` — the page's build id (`index.html` mtime); every open page polls it every 10 s and shows a "new version · tap to refresh" pill when it changes.
 - `GET /api/whoami` — who the front door says you are, and whether that is the permitted user.
@@ -117,14 +117,14 @@ Every route `server.py` serves:
 **Named-user JSON** — `?user=will`, or the front door's forwarded user (`X-Forwarded-User` and its kin); otherwise 403 `locked`. A route-level name check, never auth: the payload is derivable from the raw explorer anyway.
 - `GET /api/sndk/payload` — the SNDK Payload tab: the Strikes Payload JSON `sndk_board.build_scene_v2` hands the model, rebuilt through the reader's own code and served from a cache a refresher thread keeps warm (a rebuild when a diary row, a reading or a bar lands, or a minute passes). Beside `scene`: `legacy` (the Scene Payload v5, labelled deprecated), `gate_payload` (the old magnet and walls), `side` (the bar-anchored packet, a sibling of the scene and never sent to a model) and `gates` read off the reader's own constants. `user_prompt` and `scene_chars` are pinned to the scene alone.
 - `GET /api/sndk/pipeline?day=YYYY-MM-DD` and `GET /api/sndk/pipeline/days` — the Pipeline Architecture replay for `static/pipeline.html`: a recorded session's scans, distinct books, minute bars and read rows as minutes since the open, derived from the rows' own clocks.
-- `GET /api/sndk/memory?kind=overview|query|series&…` — the Memory view: an inventory of `state/sndk_rag`, or the same `sndk_rag.py` CLI the model runs, in a subprocess under this server's interpreter.
+- `GET /api/sndk/memory?kind=overview|query|series&…` — the Memory view: an inventory of `state/sndk/sndk_options_reader_notes_by_read/` (and the summaries and terrain files beside it), or the same `sndk_rag.py` CLI the model runs, in a subprocess under this server's interpreter.
 - `GET /api/_access` — the last 300 requests (time, path, Host, client, UA, status), for telling which device is polling. In memory only.
 
 **Read-only, no auth, no writes.** There is no `do_POST` and no route that
 writes anything — the one write it ever had (the SNDK reasoning pause) went on
 2026-08-23 when the station went public, because a switch that silences the
 model is not something a visitor should reach. That pause is an operator control
-now: edit `state/sndk_reads/control.json`, which `sndk_read.reasoning_on` reads
+now: edit `state/sndk/sndk_options_reader_reasoning_switch.json`, which `sndk_read.reasoning_on` reads
 and which fails **open**.
 
 The absence of auth is deliberate, not forgotten: reach this server directly and

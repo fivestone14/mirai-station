@@ -17,7 +17,8 @@
        JEV reads once per 30-minute mark on the newest SPX diary row; the runner waits until that row is
        at least 20 s old. The 16:02 fire (13:02 on a half day) passes the runner's after-close gate and only
        grades the day's last calls (the service's close-out). Reads the diary, the
-       bars and the market context; writes only state/spx_jev/. The key is read by the service itself
+       bars and the market context; writes only its own stores (the live lane under state/spx/jev/, the
+       learning loops under state/spx/prediction/, the card under state/screen_files/phone/). The key is read by the service itself
        from the git-ignored skills/spx-jev/.env, never from this file.
        NOTE: launchd's StartCalendarInterval uses SYSTEM-LOCAL time and ignores the
        TZ env var below. This box runs on Pacific, so Hour=6 Minute=32 == 06:32 PT == 09:32 ET

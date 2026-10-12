@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import at, bars_from_closes, flat_bars, make_row, prior_sessions, write_state
+from conftest import at, bars_from_closes, diary_path, flat_bars, make_row, prior_sessions, write_jsonl, write_state
 from spx_jev.labels import price
 from spx_jev.labels.price import ANCHORED, GATES, NO_ANCHOR, build_price_labels
 from spx_jev.labels.ranks import rank_sessions, same_clock_values
@@ -64,8 +64,7 @@ def _with_diaries(scene, root, days=PRIOR_DAYS, **levels):
     for k, d in enumerate(days, start=1):
         t = datetime.combine(datetime.fromisoformat(d).date(), clock, tzinfo=scene.now.tzinfo) - timedelta(minutes=1)
         row = make_row(t, 7700.0, prior_close=7700.0 - 1.5 * k, vwap=7700.0 - 1.5 * k, **levels)
-        (root / "reversion").mkdir(parents=True, exist_ok=True)
-        (root / "reversion" / f"{d}.jsonl").write_text(json.dumps(row) + "\n")
+        write_jsonl(diary_path(root, d), [row])
     return replace(scene, state_dir=root)
 
 
@@ -655,7 +654,7 @@ def test_a_bar_that_finishes_after_the_row_never_counts(tmp_path):
         write_state(state_dir, day, rows, day_bars, prior)
         for k, d in enumerate(prior, start=1):
             diary = [make_row(at(9, 31, day=d), 7700.0), make_row(at(15, 1, day=d), 7700.0, prior_close=7700.0 - k, vwap=7700.0 + k)]
-            (state_dir / "reversion" / f"{d}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in diary))
+            write_jsonl(diary_path(state_dir, d), diary)
         ls = build_price_labels(make_scene(state_dir, day, time(15, 2, 30)))
         return {f"{g}.{k}": v for g, labels in ls.state.items() for k, v in labels.items()}, ls.omitted, ls.gates
 

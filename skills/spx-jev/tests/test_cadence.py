@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from datetime import timedelta
 
-from conftest import at
+from conftest import answers_path, at, lane_folder
 from spx_jev.ask import build_requests, load_questions
 from spx_jev.cadence import (CHANGE_CUT, cadence_of, distance, ensure_cadence, fill_missing, held_answer, is_due, mark_asleep, plan,
                              recount, snap, unheld, vector)
@@ -266,12 +266,12 @@ def test_recount_counts_held_reads_as_the_answer_standing():
 
 
 def test_ensure_cadence_recounts_once_from_the_previous_day(tmp_path):
-    out = tmp_path / "spx_jev"
-    out.mkdir()
+    out = lane_folder(tmp_path)
     qid = LIVE[0]
     recs = [{"row_ts": at(9 + i // 2, 32 if i % 2 else 2, day=DAY_BEFORE).isoformat(),
              "answers": {"g": {"answers": {qid: {"type": "choice", "probabilities": {"same": 0.9}}}}}} for i in range(1, 13)]
-    (out / f"{DAY_BEFORE}.jsonl").write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    answers_path(out, DAY_BEFORE).parent.mkdir(parents=True, exist_ok=True)
+    answers_path(out, DAY_BEFORE).write_text("\n".join(json.dumps(r) for r in recs) + "\n")
     cad = ensure_cadence(out, DOC, "2026-09-18")
     assert cad["recounted_from"] == DAY_BEFORE and cad["questions"][qid]["minutes"] == 120
     again = ensure_cadence(out, DOC, "2026-09-18")                   # same source day: no second recount
@@ -286,7 +286,7 @@ def test_a_hand_recount_after_the_cut_over_counts_no_retired_question(tmp_path, 
     """cadence.main recounts from the doc as ask.retired reads it for the day, so a retired question gets no cadence."""
     import json as _json
     from spx_jev import cadence
-    out = tmp_path / "spx_jev"
+    out = lane_folder(tmp_path)
     out.mkdir(parents=True)
     seen = {}
     def recount(records, doc, previous, day):

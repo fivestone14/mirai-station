@@ -42,9 +42,9 @@ learned under any others, an end-price state among them, is never added to; it i
 again from the records, as pool.update does, so the two histories can never be mixed, whichever way the switch is
 flipped.
 
-Files, beside the lane's records, apart from the end-price loop's:
-    pool_30_integral.json        the state of the primary box (pool_{minutes}_integral.json)
-    pool_integral_log.jsonl      one line per session applied or refused, with its manifest
+Files, in the pool's folders (pool.pool_folders), apart from the end-price loop's:
+    base_pool_state/average_of_next_30_minutes.json                        the state of the primary box
+    base_pool_updates_by_day_and_horizon/average_of_next_30_minutes.jsonl  one line per session applied or refused, with its manifest
 """
 from __future__ import annotations
 
@@ -88,7 +88,12 @@ def cold_state() -> dict:
 
 def state_path(out_dir: Path, lane: Lane = LIVE) -> Path:
     """This loop's state: the base pool's file for the average price over the lane's primary window."""
-    return station_paths.BASE_POOL_STATE.in_lane_folder(out_dir, horizon=f"average_of_next_{lane.horizons[lane.primary][0]}_minutes")
+    return pool.pool_folders(out_dir)[0] / station_paths.BASE_POOL_STATE.file_name(horizon=f"average_of_next_{lane.horizons[lane.primary][0]}_minutes")
+
+
+def log_path(out_dir: Path) -> Path:
+    """This loop's log of sessions applied or refused, in the run's updates folder (pool.pool_folders)."""
+    return pool.pool_folders(out_dir)[1] / LOG_NAME
 
 
 def load_state(out_dir: Path, lane: Lane = LIVE) -> dict:
@@ -101,6 +106,7 @@ def load_state(out_dir: Path, lane: Lane = LIVE) -> dict:
 def save_state(out_dir: Path, lane: Lane, state: dict) -> None:
     """As pool.save_state writes it: canonical, in one step."""
     path = state_path(out_dir, lane)
+    path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(pool._canonical(state), encoding="utf-8")
     os.replace(tmp, path)
@@ -208,7 +214,7 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Pat
     if state.get("constants_hash") != CONSTANTS_HASH:
         replay_until = state.get("last_session_applied") or ""
         path = state_path(into, lane)
-        kept = str(pool.archive_state(path, state)) if path.exists() else None
+        kept = str(pool.archive_state(into, path, state)) if path.exists() else None
         _log(into, {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "code": CODE_HASH, "applied": False,
                     "rebuild": {"from": state.get("constants_hash"), "to": CONSTANTS_HASH, "kept": kept,
                                 "replay_until": replay_until or None},
@@ -262,7 +268,9 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Pat
 
 
 def _log(out_dir: Path, line: dict) -> None:
-    with open(Path(out_dir) / LOG_NAME, "a", encoding="utf-8") as f:
+    path = log_path(out_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(line, ensure_ascii=False, sort_keys=True) + "\n")
 
 
@@ -270,7 +278,7 @@ def learned_fresh(out_dir: Path) -> list[dict]:
     """The fresh picks (the sum record's ``fresh``) of every read this loop has learned from: those its log lists as
     included in a session it applied, each once."""
     by_day: dict[str, set[str]] = {}
-    for x in load_jsonl(Path(out_dir) / LOG_NAME):
+    for x in load_jsonl(log_path(out_dir)):
         if x.get("applied"):
             for ts in (x.get("manifest") or {}).get("included", []):
                 by_day.setdefault(ts[:10], set()).add(ts)
@@ -320,7 +328,7 @@ def dry_run(out_dir: Path, lane: Lane = LIVE, today: str | None = None) -> dict:
     work = Path(tempfile.mkdtemp(prefix="integral_loop."))
     try:
         said = update(out_dir, today, lane, into=work)
-        return {"said": said, "state": load_state(work, lane), "log": load_jsonl(work / LOG_NAME)}
+        return {"said": said, "state": load_state(work, lane), "log": load_jsonl(log_path(work))}
     finally:
         shutil.rmtree(work)
 

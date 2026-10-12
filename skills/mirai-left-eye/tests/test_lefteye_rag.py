@@ -8,12 +8,19 @@ must find). The twin doctrine: a retrieval defect fixed here should be
 checked against sndk_rag too, and vice versa — the shapes are kept parallel
 on purpose (shared RAG_V)."""
 import json
+import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
 
 import lefteye_rag as RAG
+
+_RUNTIME = str(Path(__file__).resolve().parents[3] / "runtime")
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402  — every store the code names comes from here
 
 ET = ZoneInfo("America/New_York")
 T0 = datetime(2026, 8, 7, 14, 30, tzinfo=ET)
@@ -42,9 +49,15 @@ def _row(spot=7747.3):
                           "mass_by_strike": [[7750.0, 90.0], [7700.0, 55.0]]}}
 
 
+def _diary_file(tmp_path, day):
+    """The scanner's diary file for `day` under the test's data root (the
+    _state fixture points MIRAI_STATE_DIR at tmp_path), its folder made."""
+    p = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path, day=day)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def _diary_day(tmp_path, day, spots, magnet=7750.0):
-    p = tmp_path / "reversion"
-    p.mkdir(parents=True, exist_ok=True)
     rows = []
     for i, s in enumerate(spots):
         rows.append(json.dumps({
@@ -52,7 +65,7 @@ def _diary_day(tmp_path, day, spots, magnet=7750.0):
             "spot": s, "gamma_sign": "positive", "regime": "pinning",
             "call_wall": 7900.0, "put_wall": 7550.0,
             "gex_views": {"magnet": magnet}}))
-    (p / f"{day}.jsonl").write_text("\n".join(rows) + "\n")
+    _diary_file(tmp_path, day).write_text("\n".join(rows) + "\n")
 
 
 # --- one record, two faces --------------------------------------------------
@@ -335,7 +348,7 @@ def test_terrain_recent_outranks_stale_alltime_levels(tmp_path):
         _diary_day(tmp_path, day, [7700.0 + i, 7710.0 + i],
                    magnet=7600.0 if old else 7800.0)
         if not old:                       # recent sessions live at 7800 walls
-            p = tmp_path / "reversion" / f"{day}.jsonl"
+            p = _diary_file(tmp_path, day)
             rows = [json.loads(ln) for ln in p.read_text().splitlines()]
             for r in rows:
                 r["call_wall"], r["put_wall"] = 7850.0, 7700.0
@@ -358,8 +371,6 @@ def test_series_buckets_the_diary_by_time(tmp_path):
 
 
 def test_series_is_queryable_by_strike_too(tmp_path):
-    p = tmp_path / "reversion"
-    p.mkdir(parents=True, exist_ok=True)
     rows = [json.dumps({
         "ts": f"2026-08-06T{10 + i:02d}:00:00-04:00", "ticker": "SPX",
         "spot": 7700.0 + i, "call_wall": 7900.0, "put_wall": 7550.0,
@@ -367,7 +378,7 @@ def test_series_is_queryable_by_strike_too(tmp_path):
                       "mass_by_strike": [[7750.0, 50.0 + i]],
                       "vol_gross_by_strike": [[7750.0, 1000 * (i + 1)]]}})
         for i in range(3)]
-    (p / "2026-08-06.jsonl").write_text("\n".join(rows) + "\n")
+    _diary_file(tmp_path, "2026-08-06").write_text("\n".join(rows) + "\n")
     out = RAG.series(date="2026-08-06", strike=7750.0)
     assert out["strike"] == 7750.0
     assert [r["gamma_mass_at_strike"] for r in out["rows"]] == [50.0, 51.0, 52.0]
@@ -380,8 +391,6 @@ def test_series_is_queryable_by_strike_too(tmp_path):
 def test_diary_day_keeps_only_spx_rth_rows(tmp_path):
     """History must never hand the model tape the reader ignores: another
     ticker's rows and off-RTH rows stay out of summaries/series."""
-    p = tmp_path / "reversion"
-    p.mkdir(parents=True, exist_ok=True)
     rows = [
         {"ts": "2026-08-06T23:31:00-04:00", "ticker": "SPX", "spot": 7800.0,
          "gex_views": {"magnet": 7750.0}},               # off-hours row
@@ -392,7 +401,7 @@ def test_diary_day_keeps_only_spx_rth_rows(tmp_path):
         {"ts": "2026-08-06T15:59:00-04:00", "ticker": "SPX", "spot": 7696.4,
          "gex_views": {"magnet": 7750.0}},
     ]
-    (p / "2026-08-06.jsonl").write_text(
+    _diary_file(tmp_path, "2026-08-06").write_text(
         "\n".join(json.dumps(r) for r in rows) + "\n")
     live = RAG._diary_day("2026-08-06")
     assert [r["spot"] for r in live] == [7712.7, 7696.4]
@@ -423,9 +432,7 @@ def test_lexical_scorer_prefers_overlap():
 
 
 def test_forced_rebuild_retires_a_phantom_session(tmp_path):
-    p = tmp_path / "reversion"
-    p.mkdir(parents=True, exist_ok=True)
-    (p / "2026-08-05.jsonl").write_text(json.dumps(
+    _diary_file(tmp_path, "2026-08-05").write_text(json.dumps(
         {"ts": "2026-08-05T23:31:00-04:00", "ticker": "SPX", "spot": 7800.0,
          "gex_views": {"magnet": 7750.0}}) + "\n")
     RAG._rag_dir().mkdir(parents=True, exist_ok=True)

@@ -9,7 +9,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
-from conftest import DAY, at
+from conftest import DAY, at, grades_path, hour_path
 from spx_jev import integral, service
 from spx_jev.grade import INTEGRAL_NAME
 from spx_jev.lane import LIVE, TAPE
@@ -29,11 +29,11 @@ def _line(ts: str, pick: str, g: float, edge: float = EDGE, horizon: str = "next
 
 def _write(out: Path, day: str, picks: dict[str, str], lines: list[dict], lane=LIVE, graded: dict[str, dict] | None = None) -> None:
     """The day's sum records (``picks`` by read), the end-price grades (``graded`` by read) and the integral lines."""
-    (out / "hour").mkdir(parents=True, exist_ok=True)
-    with open(out / "hour" / f"{day}.jsonl", "a", encoding="utf-8") as f:
+    hour_path(out, day).parent.mkdir(parents=True, exist_ok=True)
+    with open(hour_path(out, day), "a", encoding="utf-8") as f:
         for ts, pick in picks.items():
             f.write(json.dumps({"row_ts": ts, "pick": pick, "probabilities": {pick: 0.5, "flat": 0.3, "unsure": 0.2}}) + "\n")
-    with open(out / "grades.jsonl", "a", encoding="utf-8") as f:
+    with open(grades_path(out), "a", encoding="utf-8") as f:
         for ts, res in (graded or {}).items():
             f.write(json.dumps({"row_ts": ts, "horizons": [lane.primary], lane.primary: res}) + "\n")
     with open(out / INTEGRAL_NAME, "a", encoding="utf-8") as f:
@@ -110,9 +110,9 @@ def test_a_call_whose_end_price_sums_got_no_answer_is_listed_graded_and_tallied_
     call. It is a call in its own right, listed, graded on the average price over its window and counted, saying why
     it has no end price; one whose window can never be graded is closed for good, not still to grade."""
     graded_ts, closed_ts, open_ts = at(10, 2).isoformat(), at(15, 32).isoformat(), at(11, 2).isoformat()
-    (tmp_path / "hour").mkdir()
+    hour_path(tmp_path, DAY).parent.mkdir()
     error = "JEV unreachable for group hour after 3 tries: TimeoutError: The read operation timed out"
-    with open(tmp_path / "hour" / f"{DAY}.jsonl", "w", encoding="utf-8") as f:
+    with open(hour_path(tmp_path, DAY), "w", encoding="utf-8") as f:
         for ts in (graded_ts, open_ts, closed_ts):
             f.write(json.dumps({"row_ts": ts, "error": error, "average": {
                 "pick": "up", "probabilities": {"up": 0.6, "flat": 0.3, "down": 0.1}, "primary": "average_30", "box": "next_30"}}) + "\n")
@@ -136,8 +136,8 @@ def test_an_open_call_carries_its_average_so_far_against_its_whole_windows_edge(
     hhmm, spot, f, pick, closes = SCENARIOS["S9"]
     t0 = at(10, 30)
     ts, later = t0.isoformat(), at(10, 35).isoformat()
-    (tmp_path / "hour").mkdir()
-    (tmp_path / "hour" / f"{DAY}.jsonl").write_text("".join(json.dumps(
+    hour_path(tmp_path, DAY).parent.mkdir()
+    hour_path(tmp_path, DAY).write_text("".join(json.dumps(
         {"row_ts": r, "spot": spot, "zone": {"next_10": f, "average_10": 1.59, "big": 2.1 * f, "rule": 1}, "pick": pick,
          "probabilities": {pick: 0.5}}) + "\n" for r in (ts, later)))
     scene = SimpleNamespace(bars=_bars(t0, spot, closes[:5]), rows_today=[], market=None)

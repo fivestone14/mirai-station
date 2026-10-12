@@ -51,7 +51,7 @@ def read(move_points: float = 0.0, jumps: dict[str, dict[int, float]] | None = N
              for s, m in MULTIPLES.items() if s not in drop}
     state_dir = None
     if weights is not None:
-        (tmp_path / "spx_leaders").mkdir(exist_ok=True)
+        (tmp_path / WEIGHTS_FILE).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / WEIGHTS_FILE).write_text(json.dumps(weights))
         state_dir = tmp_path
     return scene_with(closes, today, MULTIPLES, now=now, state_dir=state_dir, drift_scales=drift_scales, days=days)

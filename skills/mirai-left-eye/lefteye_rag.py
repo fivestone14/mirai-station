@@ -26,11 +26,11 @@ WHAT ONE RECORD IS — one entry, two faces:
      judged scan. This face is what gets ranked by meaning at query time.
 
 TIERS:
-  day    state/spx_rag/slices/{date}.jsonl — one slice per judged verdict,
-         plus the DIARY (state/reversion) as the raw numeric series the
+  day    state/spx/scanner/spx_options_scanner_claude_notes_by_read/{date}.jsonl — one slice per judged verdict,
+         plus the DIARY (state/spx/scanner/spx_options_scanner_results_by_scan) as the raw numeric series the
          `series` command reads. Slices roll up into a day summary.
-  month  summaries.jsonl (one row per session) + terrain.json (standing walls,
-         recurring battle lines, tape character) — context, never the trigger.
+  month  spx_options_scanner_claude_session_summaries_by_day.jsonl (one row per session) +
+         spx_options_scanner_claude_terrain_state.json (standing walls, recurring battle lines, tape character) — context, never the trigger.
 
 RETRIEVAL — hybrid, same order every time: (1) filter on metadata (tier, date,
 time window, near-strike), (2) rank the survivors' narratives by meaning —
@@ -46,7 +46,7 @@ exists to hide, and slices are one allow-listed call away at the uncertain
 moments where anchoring bites. Same rule for interest strings that name the
 gates — neutralized to "gate event".
 
-Isolation: writes ONLY under state/spx_rag/. Reads the SPX reversion diary;
+Isolation: writes ONLY its notes, summaries and terrain files under state/spx/scanner/. Reads the SPX reversion diary;
 never touches any SNDK store. Called two ways:
   * imported by watchtower (record_slice — fail-open, must never cost a scan)
   * as the allow-listed CLI the reasoning model may run (watchtower._RAG_CMD)

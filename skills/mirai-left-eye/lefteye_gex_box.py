@@ -789,7 +789,7 @@ def gamma_tape(zero_dte: list[dict], spot: float,
     # unknown interval is not a rate. The 4-30 min window is enforced at BOTH ends: here
     # (consumption) and at the snapshot-advance rule in reversion_lens (the disk anchor only
     # advances once its window is ≥ the floor — production scans are one-shot processes, so
-    # the anchor round-trips through state/tape_prev/ and a too-eager advance would keep the
+    # the anchor round-trips through state/spx/scanner/spx_options_volume_last_scan_state.json and a too-eager advance would keep the
     # window forever under the floor).
     interval_min = None
     if prev and prev.get("ts") and now:

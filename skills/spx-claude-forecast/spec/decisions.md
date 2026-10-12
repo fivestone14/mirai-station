@@ -80,22 +80,25 @@ is in the scene and not under `absent`. With no reason left the answer is still 
 
 ## Storage
 
-- **One folder, `state/spx_claude_forecast/`, append-only daily files**: `payloads/` (what Claude saw,
-  written before any call), `reads/` (each answer as it lands, then the final forecast), `outcomes/`
-  (sealed nightly, never edited; a regrade appends a new rule version). Everything joins on `read_id`,
+- **One folder, `state/spx/claude_forecast/`, append-only daily files**: `claude_forecast_inputs_by_read/` (what Claude saw,
+  written before any call), `claude_forecast_answers_by_read/` (each answer as it lands, then the final forecast),
+  `claude_forecast_outcomes_by_read/` (sealed nightly, never edited; a regrade appends a new rule version). Everything joins on `read_id`,
   with `claude_input_sha256` fingerprinting the exact scene.
 - **The library is rebuilt whole every night** from those files and the seed, and can always be deleted
   and rebuilt. The seed (`seed:` reads) is history only, never scored as Claude.
-- **The package never writes anywhere else.** Every writer refuses a path outside its folder; a line
+- **The package never writes anywhere else.** Every writer refuses a path outside its own stores (that folder,
+  the recorder's copies under `state/market/`, its card under `state/screen_files/phone/`, its logs and locks
+  under `state/operations/`); a line
   written into the prediction system's files would make Pool 2 adopt the voice at a weight by accident.
 - **The recorder** copies station data before it is overwritten or deleted (the dated options book, siege's
-  SPY minutes, the raw tape, the $VIX1D close, SPX 5-minute bars), and the folder is mirrored to iCloud
-  Drive; nothing else in `state/` is backed up.
+  SPY minutes, the raw tape, the $VIX1D close, SPX 5-minute bars) into `state/market/`, and the folder and
+  those copies are mirrored to iCloud Drive under their paths relative to `state/`; nothing else in `state/`
+  is backed up.
 
 ## Operations
 
 - Kill switch `SPX_CLAUDE_FORECAST_DISABLE=1`; it also stands down under `SPX_JEV_DISABLE=1`. Pause and
-  daily caps (45 calls, $15 notional) in `control.json`. A cold-cache call costs about $0.31 at list
+  daily caps (45 calls, $15 notional) in `claude_forecast_pause_and_limits.json`. A cold-cache call costs about $0.31 at list
   price; warm calls far less; on the subscription it is quota, not dollars.
 - Under pytest nothing is spawned and the real caller is refused: the SPX read's own tests run on
   synthetic states realistic enough to reach a real call (they did once).
@@ -114,7 +117,7 @@ is in the scene and not under `absent`. With no reason left the answer is still 
   variant with the production forecast read by read: production's skill over a variant near zero means
   Claude was not using the cards; well above zero means the history as shown was worth something. That is
   what decides whether the cards stay, change, or go, before Claude is trusted with any weight.
-- **Never mixed in.** The replies live in `arms/`, stamped with the variant and the fingerprint of the
+- **Never mixed in.** The replies live in `claude_forecast_test_answers_by_variant_and_read/`, stamped with the variant and the fingerprint of the
   changed scene; they are never graded as the read, never in the library, never on the phone.
 - **Same gates, own cap.** The variants run under the live call's gates (pytest, pause, the daily cap) and a
   cap of nine answers a night; every shuffle and draw is seeded by the production scene's hash, so a night can

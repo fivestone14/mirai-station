@@ -8,11 +8,12 @@ import pytest
 
 import server
 import snapshot
+import station_paths       # on sys.path once snapshot is imported
 
 
 def test_memory_overview_reads_the_store(tmp_path, monkeypatch):
-    rag = tmp_path / "sndk_rag"
-    (rag / "slices").mkdir(parents=True)
+    slices = station_paths.SNDK_OPTIONS_READER_NOTES_BY_READ.folder(tmp_path)
+    slices.mkdir(parents=True)
     rows = [
         {"kind": "slice", "rag_v": 2, "meta": {"date": "2026-08-19", "time": "10:12", "quiet": True, "notable_count": 0, "abstain": "chosen"}, "narrative": "first"},
         # a forecast-era slice: it carries `vector` and never `quiet`, so it is
@@ -23,12 +24,15 @@ def test_memory_overview_reads_the_store(tmp_path, monkeypatch):
         {"kind": "slice", "rag_v": 2, "meta": {"date": "2026-08-19", "time": "14:21", "quiet": False, "notable_count": 2}, "narrative": "last line"},
         {"kind": "not-a-slice"},
     ]
-    (rag / "slices" / "2026-08-19.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
-    (rag / "summaries.jsonl").write_text(json.dumps({"kind": "day_summary", "date": "2026-08-05", "rag_v": 2}) + "\n")
-    (rag / "terrain.json").write_text(json.dumps({"built": "2026-08-03", "sessions": 4, "rag_v": 1, "narrative": "1100 magnet"}))
+    station_paths.SNDK_OPTIONS_READER_NOTES_BY_READ.path(tmp_path, day="2026-08-19").write_text(
+        "\n".join(json.dumps(r) for r in rows) + "\n")
+    summaries = station_paths.SNDK_OPTIONS_READER_SESSION_SUMMARIES_BY_DAY.path(tmp_path)
+    summaries.write_text(json.dumps({"kind": "day_summary", "date": "2026-08-05", "rag_v": 2}) + "\n")
+    station_paths.SNDK_OPTIONS_READER_TERRAIN_STATE.path(tmp_path).write_text(
+        json.dumps({"built": "2026-08-03", "sessions": 4, "rag_v": 1, "narrative": "1100 magnet"}))
     monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))      # where the history CLI finds the store too
     ov = snapshot.sndk_memory_overview()
-    assert ov["store"] == str(rag)
+    assert ov["store"] == str(summaries.parent)
     assert ov["slices_total"] == 4 and len(ov["days"]) == 1
     d = ov["days"][0]
     assert d["date"] == "2026-08-19" and d["n"] == 4 and d["first"] == "10:12" and d["last"] == "14:21"

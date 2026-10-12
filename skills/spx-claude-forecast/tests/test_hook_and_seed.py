@@ -33,7 +33,7 @@ def test_the_hook_starts_the_read_runner_detached_and_obeys_the_kill_switch(tmp_
     cmd, kwargs = started[0]
     assert cmd[1:4] == ["-m", "spx_claude_forecast.read_runner", "--state-dir"] and cmd[-1] == "live:2026-10-09T14:30:12-04:00"
     assert kwargs["start_new_session"] is True and kwargs["cwd"].endswith("spx-claude-forecast")
-    assert (tmp_path / "state" / "spx_claude_forecast" / "run_logs" / "read_runner.out").exists()
+    assert forecast_paths.ForecastPaths(tmp_path / "state").read_runner_log_file.exists()
     monkeypatch.setenv(control.DISABLE_ENV, "1")
     assert hook.spawn_claude_forecast(tmp_path / "state", "live:x") is False and len(started) == 1
 

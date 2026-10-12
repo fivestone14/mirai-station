@@ -14,7 +14,7 @@ from datetime import date, time, timedelta
 
 import pytest
 
-from conftest import DAY, at, bars_from_closes, flat_bars, make_row, write_state
+from conftest import DAY, at, bars_from_closes, diary_path, flat_bars, make_row, write_jsonl, write_state
 from spx_jev.cuts import GIVEBACK_THIRD, RANGE_TOP_SHARE, RULER_FLOOR_SIGMA, SAME_CLOCK_MIN_SESSIONS
 from spx_jev.labels.gap_open import build_gap_open_labels
 from spx_jev.labels.measures import bar_time
@@ -51,8 +51,7 @@ TWENTY = [0.02 * k for k in range(1, 21)]
 
 
 def write_first_row(root, day: str, **over) -> None:
-    (root / "reversion").mkdir(parents=True, exist_ok=True)
-    (root / "reversion" / f"{day}.jsonl").write_text(json.dumps(make_row(at(9, 31, day), 7700.0, sigma=SIGMA, **over)) + "\n")
+    write_jsonl(diary_path(root, day), [make_row(at(9, 31, day), 7700.0, sigma=SIGMA, **over)])
 
 
 def gap_history(root, gaps: list[float], newest: date = date(2026, 9, 17)) -> tuple[dict, dict]:
@@ -118,7 +117,7 @@ def test_the_gaps_size_needs_ten_usable_prior_sessions_and_leaves_out_estimated_
     sc = sized(scene_factory, tmp_path, 7712.0, gaps=TWENTY[:11])
     write_first_row(tmp_path, "2026-09-17", prior_close=None)
     assert "is larger than 6 of the last 10 days' gaps, middle third:" in labels(sc)[0]["gap.size"]
-    (tmp_path / "reversion" / "2026-09-16.jsonl").unlink()
+    diary_path(tmp_path, "2026-09-16").unlink()
     assert labels(sc)[1]["gap.size"] == need
     _, omitted, _ = labels(replace(sc, state_dir=None))
     assert omitted["gap.size"] == "no state folder to read the prior sessions' closes from"

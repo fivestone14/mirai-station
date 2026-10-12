@@ -9,7 +9,7 @@ MIRAI_STATION_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export MIRAI_STATION_ROOT
 export MIRAI_STATION_VENV="${HOME}/.local/share/mirai-station/venv"
 export MIRAI_STATION_STATE="${MIRAI_STATION_ROOT}/state"
-export MIRAI_STATION_LOGS="${MIRAI_STATION_STATE}/logs"
+export MIRAI_STATION_LOGS="${MIRAI_STATION_STATE}/operations/logs/station_runtime_log"   # runtime/station_paths.py STATION_RUNTIME_LOG
 
 # Force New York time for market-hour gates
 export TZ="America/New_York"
@@ -56,5 +56,5 @@ log() {
   local msg="$*"
   local ts
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "[$ts] $msg" | tee -a "${MIRAI_STATION_LOGS}/runtime-$(date +%Y-%m-%d).log"
+  echo "[$ts] $msg" | tee -a "${MIRAI_STATION_LOGS}/$(date +%Y-%m-%d).log"
 }

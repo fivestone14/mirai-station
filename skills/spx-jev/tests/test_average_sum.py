@@ -9,7 +9,7 @@ import math
 
 import pytest
 
-from conftest import DAY, FixedZones, at
+from conftest import DAY, FixedZones, answers_path, archive_of, at, card_of, card_path, grades_path, hour_path, lane_folder, weights_path
 from spx_jev import archive, grade, service
 from spx_jev.ask import jev_only
 from spx_jev.hour import average_request, average_summary, average_window, hour_request, load_hour_doc
@@ -74,7 +74,7 @@ def test_the_average_summary_is_the_call_and_a_missing_or_unasked_one_says_why()
 @pytest.fixture
 def fixture_run(tmp_path, monkeypatch):
     run_fixture(tmp_path, monkeypatch)
-    return tmp_path / "spx_jev", tmp_path / "spx_jev" / "lanes" / "tape", PREMARKET.folder(tmp_path / "premarket")
+    return lane_folder(tmp_path), lane_folder(tmp_path, "tape"), PREMARKET.folder(tmp_path / "premarket")
 
 
 def _lines(path):
@@ -88,7 +88,7 @@ def test_a_live_read_calls_the_average_and_its_grade_grades_that_pick_with_its_s
     told (the fixture's zones), so it is wrong, its odds scored against up beside JEV's own and the clock's. The
     end-price sum's own pick and its grade ride beside it."""
     live, _, _ = fixture_run
-    rec = _lines(live / "hour" / f"{DAY}.jsonl")[0]
+    rec = _lines(hour_path(live, DAY))[0]
     assert rec["average_request"]["state"]["answers"] == rec["request"]["state"]["answers"]    # the same sentences, two requests
     assert rec["average"]["edge_points"] == 3.11 and rec["average"]["jev"]["pick"] == "down" and rec["average"]["pick"] == "flat"
     assert rec["average"]["blend"]["used"] is True and rec["average"]["clock"]["probabilities"]["flat"] == 1.0
@@ -105,9 +105,9 @@ def test_a_live_read_calls_the_average_and_its_grade_grades_that_pick_with_its_s
     assert (call["pick"], call["p"], call["sum"]) == ("flat", 0.6, "average_30") and call["odds"] == rec["average"]["probabilities"]
     assert call["end_price"]["pick"] == rec["pick"] and call["end_price"]["hit"] is (rec["pick"] == "up")
     assert service.call_verdict(call) == "wrong" and call["integral"]["sum"] == "average_30" and "average_missing" not in call
-    card = json.loads((live / "latest.json").read_text())
+    card = json.loads(card_of(live).read_text())
     assert card["hour"]["average"]["pick"] == "flat" and card["hour"]["average"]["blend"]["sessions"] == 10
-    (read,) = [r for r in _lines(live / "archive" / f"{DAY}.jsonl") if r["kind"] == "read" and r["lane"] == "live"]
+    (read,) = [r for r in _lines(archive_of(live, DAY)) if r["kind"] == "read" and r["lane"] == "live"]
     assert read["average_request"]["id"] == "average" and read["average_response"]["answers"]["average_30"] == AVERAGE
     assert read["schema_version"] == archive.SCHEMA_VERSION == 5
 
@@ -117,7 +117,7 @@ def test_the_card_alone_carries_the_time_of_day_sheet_and_the_last_close(fixture
     its live price measures its change from the last close. Both ride the card alone (service.run_once): the day's
     records, the sums the grader reads and the archive stay as they were."""
     live, _, _ = fixture_run
-    card = json.loads((live / "latest.json").read_text())
+    card = json.loads(card_of(live).read_text())
     tod = card["time_of_day"]
     assert [p["phase"] for p in tod["phases"]] == ["opening", "morning", "late_morning", "lunch", "afternoon"]
     assert len(tod["days"]) == 10 and all(d["counted"] for d in tod["days"])
@@ -125,7 +125,7 @@ def test_the_card_alone_carries_the_time_of_day_sheet_and_the_last_close(fixture
     assert lunch["probabilities"] == card["hour"]["average"]["clock"]["probabilities"]
     prior = max(tod["days"], key=lambda d: d["day"])["day"]
     assert card["prior_close"]["day"] == prior and card["prior_close"]["at"] == f"{prior}T16:00:00-04:00"
-    for path in (live / f"{DAY}.jsonl", live / "hour" / f"{DAY}.jsonl", live / "archive" / f"{DAY}.jsonl"):
+    for path in (answers_path(live, DAY), hour_path(live, DAY), archive_of(live, DAY)):
         text = path.read_text()
         assert '"time_of_day":' not in text and '"blocks":' not in text and '"prior_close":' not in text, path
 
@@ -149,12 +149,12 @@ def test_weights_json_keeps_each_lanes_call_on_record_from_its_average_price_gra
     and the average up, is a miss scored at its 1.26 Brier with JEV's own and the clock's beside it; each other lane's
     call its own box's one read (the premarket's shorter check never counts twice)."""
     live, tape, pre = fixture_run
-    w = json.loads((live / "weights.json").read_text())["sums"]["average_30"]
+    w = json.loads(weights_path(live).read_text())["sums"]["average_30"]
     assert (w["n"], w["hit_rate"], w["committed_calls"], w["committed_hit_rate"], w["always_flat_hit_rate"]) == (1, 0.0, 1, 0.0, 0.0)
     assert (w["mean_brier"], w["mean_log_loss"], w["bands"], w["event_reads"]) == (1.26, round(math.log(10), 4), {"up": 1}, {"n": 0, "mean_brier": None})
     assert w["blended"] == {"n": 1, "mean_brier_blend": 1.26, "mean_brier_jev": 1.04, "mean_brier_clock": 2.0}
     for folder, lane in ((tape, TAPE), (pre, PREMARKET)):
-        s = json.loads((folder / "weights.json").read_text())["sums"]
+        s = json.loads(weights_path(folder).read_text())["sums"]
         assert s[lane.average]["n"] == 1 and s[lane.average]["hit_rate"] == 0.0 and set(s) == {*lane.horizons, lane.average}
 
 
@@ -164,7 +164,7 @@ def test_the_opening_call_is_the_average_and_its_size_stays_the_end_prices_secon
     assert (line["sum"], line["pick"], line["label"], line["verdict"]) == ("average_10", "down", "flat", "wrong")
     assert line["size"]["call"] == "small"                          # named by the five-way end-price sum, up_small, never asked again
     assert line["edge_told"] == line["edge"] == 1.56 and "brier" in line["scores"]
-    rec = _lines(tape / "hour" / f"{DAY}.jsonl")[0]
+    rec = _lines(hour_path(tape, DAY))[0]
     assert "unit" in rec["request"]["state"]["context"] and "unit" not in rec["average_request"]["state"]["context"]
 
 
@@ -172,7 +172,7 @@ def test_the_pre_market_call_is_graded_against_the_edge_its_question_gave(fixtur
     """The 09:28 read before the open: the call's zone from the settled open is the edge JEV is told in its context, and the
     grade sets the average from the settled open against that same edge."""
     _, _, pre = fixture_run
-    rec = _lines(pre / "hour" / f"{DAY}.jsonl")[0]
+    rec = _lines(hour_path(pre, DAY))[0]
     edge = rec["average"]["edge_points"]
     words = rec["average_request"]["state"]["context"]["average"]
     assert f"within {edge:.2f} points of the settled open" in words and "S&P futures" in words
@@ -226,8 +226,8 @@ def test_a_zero_on_the_label_costs_what_the_learning_loop_charges_it():
 
 def test_a_read_graded_under_both_rules_stands_on_the_newest_and_a_first_rule_line_alone_still_reads(tmp_path):
     ts, older = at(11, 2).isoformat(), at(10, 32).isoformat()
-    (tmp_path / "hour").mkdir()
-    (tmp_path / "hour" / f"{DAY}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in (
+    hour_path(tmp_path, DAY).parent.mkdir()
+    hour_path(tmp_path, DAY).write_text("".join(json.dumps(r) + "\n" for r in (
         {"row_ts": older, "pick": "up", "probabilities": {"up": 0.5, "flat": 0.3, "unsure": 0.2}},
         {"row_ts": ts, "pick": "up", "probabilities": {"up": 0.5, "flat": 0.3, "unsure": 0.2},
          "average": {"pick": "down", "probabilities": {"up": 0.1, "flat": 0.3, "down": 0.6}}})))
@@ -263,11 +263,11 @@ def test_a_read_whose_average_question_went_unanswered_is_the_end_price_call_gra
     """The average-price sum was asked and got no answer: the call is the end-price sum's, said so, and it stands on
     its end price even though the average-price grade graded that pick on the average price."""
     ts = at(11, 2).isoformat()
-    (tmp_path / "hour").mkdir()
-    (tmp_path / "hour" / f"{DAY}.jsonl").write_text(json.dumps(
+    hour_path(tmp_path, DAY).parent.mkdir()
+    hour_path(tmp_path, DAY).write_text(json.dumps(
         {"row_ts": ts, "pick": "up", "probabilities": {"up": 0.5, "flat": 0.3, "unsure": 0.2},
          "average": {"error": "HTTP 529", "primary": "average_30", "box": "next_30"}}) + "\n")
-    (tmp_path / "grades.jsonl").write_text(json.dumps({"row_ts": ts, "horizons": ["next_30"], "next_30": {"band": "up", "hit": True, "pick": "up"}}) + "\n")
+    grades_path(tmp_path).write_text(json.dumps({"row_ts": ts, "horizons": ["next_30"], "next_30": {"band": "up", "hit": True, "pick": "up"}}) + "\n")
     (tmp_path / grade.INTEGRAL_NAME).write_text(json.dumps({"row_ts": ts, "horizon": "next_30", "rule_version": 2, "sum": "next_30", "graded": True,
                                                             "label": "down", "verdict": "wrong", "pick": "up"}) + "\n")
     [call] = service.day_calls(tmp_path, DAY, LIVE)
@@ -332,12 +332,12 @@ def test_a_stored_average_whose_odds_are_not_odds_is_not_graded_and_never_stops_
     hhmm, spot, f, pick, closes = SCENARIOS["S1"]
     t0 = at(13, 1, day=SCENARIO_DAY)
     reads = [t0.isoformat(), at(13, 2, day=SCENARIO_DAY).isoformat()]
-    (tmp_path / "hour").mkdir()
+    hour_path(tmp_path, SCENARIO_DAY).parent.mkdir()
     base = {"spot": spot, "by": {"next_30": {"pick": "flat", "probabilities": {"flat": 1.0}}}}
-    (tmp_path / "hour" / f"{SCENARIO_DAY}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in (
+    hour_path(tmp_path, SCENARIO_DAY).write_text("".join(json.dumps(r) + "\n" for r in (
         {**base, "row_ts": reads[0], "average": {"pick": "up", "probabilities": {"up": "0.6", "flat": None, "down": 0.1}}},
         {**base, "row_ts": reads[1], "average": {"pick": "up", "probabilities": {"up": 0.6, "flat": 0.3, "down": 0.1}, "edge_points": 3.19}})))
-    (tmp_path / "grades.jsonl").write_text("".join(json.dumps({"row_ts": ts, "horizons": ["next_30"], "next_30": {"pick": "flat", "band": "flat"}}) + "\n"
+    grades_path(tmp_path).write_text("".join(json.dumps({"row_ts": ts, "horizons": ["next_30"], "next_30": {"pick": "flat", "band": "flat"}}) + "\n"
                                                    for ts in reads))
     bars = _bars(at(13, 0, day=SCENARIO_DAY), spot, [spot] + closes + [closes[-1]])
     monkeypatch.setattr(grade, "load_bars", lambda state_dir, d: bars)
@@ -365,7 +365,7 @@ def test_the_phones_call_is_blended_with_the_average_price_clock_and_never_the_e
     monkeypatch.setattr(service, "clock_odds", lambda *a, **k: end_odds)
     monkeypatch.setattr(service, "clock_integral_odds", lambda *a, **k: avg_odds)
     run_fixture(tmp_path, monkeypatch)
-    h = json.loads((tmp_path / "spx_jev" / "latest.json").read_text())["hour"]
+    h = json.loads(card_path(tmp_path).read_text())["hour"]
     assert h["clock"]["probabilities"] == end_odds["by"]["next_30"]["probabilities"]
     a = h["average"]
     assert a["clock"]["probabilities"] == avg_odds["by"]["average_30"]["probabilities"] and a["blend"]["sessions"] == 11

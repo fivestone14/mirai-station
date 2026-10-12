@@ -8,7 +8,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from conftest import DAY, PRIOR_DAYS, at, bars_from_closes, make_row, write_prior_rows, write_state
+from conftest import (DAY, PRIOR_DAYS, answers_path, archive_path, at, bars_from_closes, card_path, grades_path, integral_grades_path,
+                      lane_folder, last_asked_path, make_row, station_paths, weights_path, write_prior_rows, write_state)
 from spx_jev import grade, service
 from spx_jev.lane import TAPE
 from spx_jev.service import run_once
@@ -68,14 +69,15 @@ def _sums(seen):
 
 def test_a_tape_read_writes_its_own_folder_and_is_graded_on_the_exact_bar_ten_minutes_on(tmp_path, monkeypatch):
     state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)     # bars 09:30 .. 10:39: the read is stamped 10:40
-    (state / "spx_jev" / "latest.json").write_text('{"row_ts": "the live card"}')
+    card_path(state).parent.mkdir(parents=True)
+    card_path(state).write_text('{"row_ts": "the live card"}')
     seen = []
     _today(monkeypatch)
     monkeypatch.setattr(service, "send_all", _answers)
     monkeypatch.setattr(service, "send", _sums(seen))
-    out = state / "spx_jev" / "lanes" / "tape"
+    out = lane_folder(state, "tape")
     c = run_once(state, out, DOC, True, DAY, lane=TAPE)
-    assert json.loads((state / "spx_jev" / "latest.json").read_text()) == {"row_ts": "the live card"}
+    assert json.loads(card_path(state).read_text()) == {"row_ts": "the live card"}
     assert c["lane"] == "tape" and c["row_ts"] == at(10, 40).isoformat()
     assert c["ruler"] == {"unit_points": 6.0, "unit_sigma": 0.08, "slices_used": 3, "source": "tape",
                           "rank": {"band": "top third", "higher_than": 10, "of": 10}}      # the prior sessions' minutes span a point
@@ -84,26 +86,26 @@ def test_a_tape_read_writes_its_own_folder_and_is_graded_on_the_exact_bar_ten_mi
     assert seen[0]["state"]["context"]["unit"].startswith("one tape unit is 6.0 points, in the top third for this minute")
     assert c["schedule"]["reads"][0] == at(9, 35).isoformat() and c["schedule"]["close_out"] == at(10, 42).isoformat()
     # the lane keeps its last answers for its day constants (asked at 09:35 and held), in its own folder
-    assert json.loads((out / "last_asked.json").read_text())["q_dir"]["row_ts"] == at(10, 40).isoformat()
-    assert not (state / "spx_jev" / "last_asked.json").exists()
+    assert json.loads(last_asked_path(out).read_text())["q_dir"]["row_ts"] == at(10, 40).isoformat()
+    assert not last_asked_path(lane_folder(state)).exists()
 
     _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0), make_row(at(10, 45, ss=20), 7701.0)], 80)
     c2 = run_once(state, out, DOC, True, DAY, lane=TAPE)
     assert c2["row_ts"] == at(10, 50).isoformat() and "move_since_read" in c2["stretch"]
-    grades = [json.loads(l) for l in (out / "grades.jsonl").read_text().splitlines() if l.strip()]
+    grades = [json.loads(l) for l in grades_path(out).read_text().splitlines() if l.strip()]
     assert len(grades) == 1 and grades[0]["band"] == "flat" and grades[0]["realized_points"] == 0.0
     assert c2["calls"][1]["end_price"] == {"outcome": "flat", "hit": True, "moved": {"realized_points": 0.0, "realized_units": 0.0},
                                            "pick": "flat", "p": 0.6}
     graded = c2["calls"][1]["integral"]                                     # and on the average price over the same ten bars
     assert (graded["label"], graded["g"], graded["edge"], graded["verdict"]) == ("flat", 0.0, 1.56, "right")
     assert not any("checks" in x for x in c2["calls"])                    # each call has its own mark: no shared checks
-    assert json.loads((out / "weights.json").read_text())["lane"] == "tape"
+    assert json.loads(weights_path(out).read_text())["lane"] == "tape"
 
 
 def test_a_tape_run_pointed_at_the_live_folder_refuses(tmp_path, monkeypatch):
     state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
     with pytest.raises(ValueError, match="must not write into"):
-        run_once(state, state / "spx_jev", DOC, True, DAY, lane=TAPE)
+        run_once(state, lane_folder(state), DOC, True, DAY, lane=TAPE)
 
 
 def test_the_close_out_grades_the_last_calls_and_asks_jev_nothing(tmp_path, monkeypatch):
@@ -111,9 +113,9 @@ def test_the_close_out_grades_the_last_calls_and_asks_jev_nothing(tmp_path, monk
     _today(monkeypatch)
     monkeypatch.setattr(service, "send_all", _answers)
     monkeypatch.setattr(service, "send", _sums([]))
-    out = state / "spx_jev" / "lanes" / "tape"
+    out = lane_folder(state, "tape")
     run_once(state, out, DOC, True, DAY, lane=TAPE)
-    reads_before = (out / f"{DAY}.jsonl").read_text()
+    reads_before = answers_path(out, DAY).read_text()
 
     def refuse(*a, **k):
         raise AssertionError("the close-out asked JEV")
@@ -123,10 +125,10 @@ def test_the_close_out_grades_the_last_calls_and_asks_jev_nothing(tmp_path, monk
     monkeypatch.setattr(service, "now_et", lambda: datetime.fromisoformat(f"{DAY}T10:52:00").replace(tzinfo=ET))
     _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 82)
     assert service.main(["--state-dir", str(state), "--lane", "tape"]) == 0
-    c = json.loads((out / "latest.json").read_text())
+    c = json.loads(card_path(state, "tape").read_text())
     assert c["closed_out_at"] and c["tally"] == {"calls": 1, "graded": 1, "right": 1, "passed": 0, "end_price_only": 0, "closed": 0}
-    assert (out / f"{DAY}.jsonl").read_text() == reads_before
-    kinds = [json.loads(l)["kind"] for l in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
+    assert answers_path(out, DAY).read_text() == reads_before
+    kinds = [json.loads(l)["kind"] for l in archive_path(state, DAY).read_text().splitlines()]
     assert kinds == ["read", "grade", "close_out"]                          # the read, its grade at the close-out, the close-out
 
 
@@ -168,7 +170,7 @@ def test_a_close_out_whose_bar_has_not_come_leaves_the_call_open_and_a_later_liv
     _today(monkeypatch)
     monkeypatch.setattr(service, "send_all", _answers)
     monkeypatch.setattr(service, "send", _sums([]))
-    out = state / "spx_jev" / "lanes" / "tape"
+    out = lane_folder(state, "tape")
     run_once(state, out, DOC, True, DAY, lane=TAPE)
     waited = []
     monkeypatch.setattr(service, "wait_for_bar", lambda state_dir, fire: waited.append(fire) or False)
@@ -176,10 +178,10 @@ def test_a_close_out_whose_bar_has_not_come_leaves_the_call_open_and_a_later_liv
     monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
     monkeypatch.setattr(service, "now_et", lambda: at(10, 42))
     assert service.main(["--state-dir", str(state), "--lane", "tape"]) == 0
-    c = json.loads((out / "latest.json").read_text())
+    c = json.loads(card_path(state, "tape").read_text())
     assert waited == [at(10, 40)] and "closed_out_at" not in c and c["tally"]["graded"] == 0
     assert c["graded_at"]                                                         # the phone redraws on it all the same
-    archive = state / "spx_jev" / "archive" / f"{DAY}.jsonl"
+    archive = archive_path(state, DAY)
 
     def tape_kinds():
         return [r["kind"] for r in map(json.loads, archive.read_text().splitlines()) if r["lane"] == "tape"]
@@ -188,12 +190,12 @@ def test_a_close_out_whose_bar_has_not_come_leaves_the_call_open_and_a_later_liv
     _state(tmp_path, [make_row(at(10, 25, ss=10), 7700.0), make_row(at(11, 1, ss=5), 7700.0)], 91)
     monkeypatch.setattr(service, "now_et", lambda: at(11, 2))
     assert service.main(["--state-dir", str(state)]) == 0                         # the live lane's 11:02 run
-    c = json.loads((out / "latest.json").read_text())
+    c = json.loads(card_path(state, "tape").read_text())
     assert c["closed_out_at"] == c["graded_at"] and c["tally"] == {"calls": 1, "graded": 1, "right": 1, "passed": 0, "end_price_only": 0,
                                                                       "closed": 0}
     assert tape_kinds() == ["read", "close_out", "grade", "close_out"]
     assert service.main(["--state-dir", str(state)]) == 0                         # closed out: a later live run leaves it be
-    assert json.loads((out / "latest.json").read_text()) == c
+    assert json.loads(card_path(state, "tape").read_text()) == c
 
 
 def test_a_call_that_can_never_be_graded_is_counted_apart_never_as_still_to_grade():
@@ -246,7 +248,7 @@ def test_a_day_constant_is_asked_at_0935_held_on_the_lane_and_borrowed_by_the_li
     root = tmp_path / "state"
     monkeypatch.setattr(service, "send_all", _answers)
     monkeypatch.setattr(service, "send", _sums([]))
-    tape_out = root / "spx_jev" / "lanes" / "tape"
+    tape_out = lane_folder(root, "tape")
 
     def tape_read(n_bars):
         _state(root, [make_row(at(9, 31), 7700.0)], n_bars)
@@ -260,7 +262,7 @@ def test_a_day_constant_is_asked_at_0935_held_on_the_lane_and_borrowed_by_the_li
     def live_read(hh, mm):
         rows = [make_row(at(9, 31), 7700.0), make_row(at(hh, mm, ss=10), 7700.0)]
         write_state(root, DAY, rows, bars_from_closes([7700.0] * 390, wick=3.0))
-        return {q["id"]: q for q in run_once(root, root / "spx_jev", live_doc, True, DAY)["questions"]}
+        return {q["id"]: q for q in run_once(root, lane_folder(root), live_doc, True, DAY)["questions"]}
 
     at_1002 = live_read(10, 2)
     assert at_1002["q_const"]["held_from"] == at(9, 35).isoformat() and at_1002["q_every"]["answer"]["pick"] == "a"
@@ -276,7 +278,7 @@ def test_a_day_constant_whose_0935_ask_got_no_answer_is_asked_at_0940_once_and_t
     doc_path.write_text(json.dumps(SCHEDULED))
     doc = load_questions(doc_path, TAPE.key)
     root = tmp_path / "state"
-    tape_out = root / "spx_jev" / "lanes" / "tape"
+    tape_out = lane_folder(root, "tape")
     monkeypatch.setattr(service, "send", _sums([]))
     no_answer = "JEV returned HTTP 503 for group g1: upstream connect error"
     sent = []
@@ -294,14 +296,14 @@ def test_a_day_constant_whose_0935_ask_got_no_answer_is_asked_at_0940_once_and_t
 
     first = tape_read(5, fail=True)                                        # the 09:35 read: JEV answers nothing
     assert sent == [["q_const"]] and first["q_const"]["answer"] is None
-    lost = json.loads((tape_out / "last_asked.json").read_text())["q_const"]
+    lost = json.loads(last_asked_path(tape_out).read_text())["q_const"]
     assert lost == {"lost": {"row_ts": at(9, 35).isoformat(), "why": no_answer}}
     second = tape_read(10)                                                 # 09:40: asked again, beside the question due now
     assert sent[1] == ["q_const", "q_every"] and second["q_const"]["answer"]["pick"] == "a"
-    assert "lost" not in json.loads((tape_out / "last_asked.json").read_text())["q_const"]
+    assert "lost" not in json.loads(last_asked_path(tape_out).read_text())["q_const"]
     third = tape_read(15)                                                  # 09:45: answered at 09:40, so held, never asked again
     assert sent[2] == ["q_every"] and third["q_const"]["held_from"] == at(9, 40).isoformat()
-    reads = [json.loads(l) for l in (root / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
+    reads = [json.loads(l) for l in archive_path(root, DAY).read_text().splitlines()]
     assert [r["cadence"]["reasked"] for r in reads if r["kind"] == "read"] == [
         {}, {"q_const": {"row_ts": at(9, 35).isoformat(), "why": no_answer}}, {}]
 
@@ -323,11 +325,11 @@ def test_a_live_tape_send_stands_for_the_read_its_job_fired_at_and_a_replay_for_
     sent = {q["id"]: q for q in run_once(root, tmp_path / "sent", doc, True, None, lane=TAPE)["questions"]}
     assert sent["q_const"]["answer"]["pick"] == "a" and sent["q_every"]["skipped"] == "not on its schedule at the 09:35 ET read"
     (tmp_path / "replay").mkdir()                                          # the replay's 09:35 answer, for its 09:37 bar to hold
-    (tmp_path / "replay" / "last_asked.json").write_text(json.dumps(
+    last_asked_path(tmp_path / "replay").write_text(json.dumps(
         {"q_const": {"row_ts": at(9, 35).isoformat(), "answer": {"pick": "a", "probabilities": {"a": 1.0}}}}))
     replay = {q["id"]: q for q in run_once(root, tmp_path / "replay", doc, True, DAY, lane=TAPE)["questions"]}
     assert replay["q_const"]["held_from"] == at(9, 35).isoformat() and replay["q_every"]["answer"]["pick"] == "a"
-    record = json.loads((tmp_path / "replay" / f"{DAY}.jsonl").read_text().splitlines()[-1])
+    record = json.loads(answers_path(tmp_path / "replay", DAY).read_text().splitlines()[-1])
     assert {why for g in record["skipped"].values() for q, why in g.items() if q == "q_const"} == {"a day constant: asked at 09:35 ET and held"}
 
 
@@ -338,7 +340,7 @@ def test_a_grading_error_in_the_close_out_is_logged_and_the_card_and_record_are_
     _today(monkeypatch)
     monkeypatch.setattr(service, "send_all", _answers)
     monkeypatch.setattr(service, "send", _sums([]))
-    out = state / "spx_jev" / "lanes" / "tape"
+    out = lane_folder(state, "tape")
     run_once(state, out, DOC, True, DAY, lane=TAPE)
 
     def broken(*a, **k):
@@ -346,8 +348,8 @@ def test_a_grading_error_in_the_close_out_is_logged_and_the_card_and_record_are_
     monkeypatch.setattr(service, "grade_run", broken)
     c = service.close_out(state, out, DOC, TAPE, DAY)
     assert c["graded_at"] and c["tally"]["calls"] == 1
-    assert json.loads((out / "latest.json").read_text())["graded_at"] == c["graded_at"]
-    archived = [json.loads(l) for l in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
+    assert json.loads(card_path(state, "tape").read_text())["graded_at"] == c["graded_at"]
+    archived = [json.loads(l) for l in archive_path(state, DAY).read_text().splitlines()]
     assert archived[-1]["kind"] == "close_out"
     assert "spx-jev :: grading skipped this close-out: KeyError: 'next_10'" in capsys.readouterr().err
 
@@ -411,11 +413,11 @@ def test_a_failing_average_price_grade_costs_neither_the_read_nor_the_close_out(
     _today(monkeypatch)
     monkeypatch.setattr(service, "send_all", _answers)
     monkeypatch.setattr(service, "send", _sums([]))
-    out = state / "spx_jev" / "lanes" / "tape"
+    out = lane_folder(state, "tape")
     run_once(state, out, DOC, True, DAY, lane=TAPE)                          # the 10:40 read
     _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0), make_row(at(10, 45, ss=20), 7701.0)], 80)
     c = run_once(state, out, DOC, True, DAY, lane=TAPE)                      # the 10:50 read grades the 10:40 one
-    assert c["row_ts"] == at(10, 50).isoformat() and len((out / "grades.jsonl").read_text().splitlines()) == 1
+    assert c["row_ts"] == at(10, 50).isoformat() and len(grades_path(out).read_text().splitlines()) == 1
     said = capsys.readouterr().err
     assert "average-price grade failed: RuntimeError: no bars" in said and "grading skipped" not in said
 
@@ -423,16 +425,16 @@ def test_a_failing_average_price_grade_costs_neither_the_read_nor_the_close_out(
     monkeypatch.setattr(service, "now_et", lambda: datetime.fromisoformat(f"{DAY}T10:52:00").replace(tzinfo=ET))
     _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0), make_row(at(10, 45, ss=20), 7701.0)], 82)
     assert service.main(["--state-dir", str(state), "--lane", "tape"]) == 0
-    card = json.loads((out / "latest.json").read_text())
+    card = json.loads(card_path(state, "tape").read_text())
     # the end price graded the first call; with the average price not written, it stands on its end price, so marked,
     # in the card's tally and in the archived close-out's. The 10:50 call's bar has not come, so the card is graded but
     # not closed out
     assert card["graded_at"] and "closed_out_at" not in card
     assert card["tally"] == {"calls": 2, "graded": 1, "right": 1, "passed": 0, "end_price_only": 1, "closed": 0}
     assert card["calls"][1]["end_price"]["outcome"] == "flat" and card["calls"][1]["end_price_only"] and "integral" not in card["calls"][1]
-    archived = [json.loads(l) for l in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
+    archived = [json.loads(l) for l in archive_path(state, DAY).read_text().splitlines()]
     assert archived[-1]["kind"] == "close_out" and archived[-1]["tally"]["end_price_only"] == 1
-    assert not (out / "integral_grades.jsonl").exists() and "average-price grade failed: RuntimeError" in capsys.readouterr().err
+    assert not integral_grades_path(out).exists() and "average-price grade failed: RuntimeError" in capsys.readouterr().err
     # the average-price grade back: the next card write finds the line, and the fallback goes
     monkeypatch.setattr(grade, "integral_run", working)
     again = service.close_out(state, out, DOC, TAPE)
@@ -447,7 +449,7 @@ def test_a_tape_read_mid_window_gives_the_open_call_its_average_so_far(tmp_path,
     _today(monkeypatch)
     monkeypatch.setattr(service, "send_all", _answers)
     monkeypatch.setattr(service, "send", _sums([]))
-    out = state / "spx_jev" / "lanes" / "tape"
+    out = lane_folder(state, "tape")
     run_once(state, out, DOC, True, DAY, lane=TAPE)                          # the 10:40 read
     _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0), make_row(at(10, 44, ss=20), 7700.0)], 75)
     c = run_once(state, out, DOC, True, DAY, lane=TAPE)                      # the 10:45 read
@@ -460,7 +462,7 @@ def test_a_tape_read_with_no_bars_today_is_a_quiet_skip_naming_the_stopped_feed(
     """With the bars feed down from the open the tape lane once died on a ValueError traceback, exit 1, at every fire:
     it skips quietly, says the bars feed has stopped, and leaves the card as it was."""
     state = _state(tmp_path, [make_row(at(9, 31), 7700.0)], 1)
-    (state / "spx_jev" / "bars" / f"{DAY}.jsonl").write_text("")
+    station_paths.SPX_PRICE_BARS_BY_MINUTE.path(state, day=DAY).write_text("")
     with pytest.raises(service.NoRowYet, match="the bars feed has stopped"):
         run_once(state, tmp_path / "tape", DOC, True, DAY, lane=TAPE)
     monkeypatch.setattr(service, "load_env_file", lambda *a, **k: [])
@@ -469,4 +471,4 @@ def test_a_tape_read_with_no_bars_today_is_a_quiet_skip_naming_the_stopped_feed(
     assert service.main(["--state-dir", str(state), "--lane", "tape", "--day", DAY, "--out-dir", str(tmp_path / "tape")]) == 0
     said = capsys.readouterr().err
     assert "skipping this tick: no finished SPX minute bar of the day to stamp the read on: the bars feed has stopped" in said
-    assert "Traceback" not in said and not (tmp_path / "tape" / "latest.json").exists()
+    assert "Traceback" not in said and not TAPE.card_path(state, tmp_path / "tape").exists()

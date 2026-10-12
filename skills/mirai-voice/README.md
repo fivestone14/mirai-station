@@ -17,7 +17,8 @@ about the board. The organs, in the order sound travels:
 Service: `runtime/launchd/com.mirai-station.voice.plist` (daemon, KeepAlive) →
 `runtime/scripts/run-voice.sh`. Kill switch `MIRAI_VOICE_DISABLE=1` (shell AND
 python). Logs: `/tmp/mirai-station.voice.{out,err}`. Conversation log:
-`state/voice/convo-{date}.jsonl`; session continuity: `state/voice/session.json`.
+`state/voice_desk/voice_desk_transcripts_by_exchange/{date}.jsonl`; session continuity:
+`state/voice_desk/voice_desk_session_state.json`.
 
 Scope: SNDK only, by doctrine. Mic needs a secure context — localhost on the
 Mac works today; the iPad needs the HTTPS cert step (plan phase 4).

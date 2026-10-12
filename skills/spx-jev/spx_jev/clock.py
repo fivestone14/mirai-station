@@ -17,7 +17,7 @@ The odds
     30 minutes; a day the scanner barely covered is left out rather than counted as a full session.
 
     Point in time: prior sessions only, never today. A past session's counts are kept in
-    ``state/spx_jev/clock_days.json`` with the number of bars and the size and time of the diary and
+    ``state/spx/jev/live_lane/historical_odds_end_price_days_state.json`` with the number of bars and the size and time of the diary and
     market-context files they were counted from and the names of the sessions before it whose bars size its
     zones, and are counted again only if any of them changes, or if the rule itself (the zone's rule, the
     targets, phases, grid, version) changes. Fewer than MIN_SESSIONS counted sessions, or a read on an

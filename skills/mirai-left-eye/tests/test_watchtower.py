@@ -4,12 +4,18 @@ import json
 import os
 import sys
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import watchtower as wt
+
+_RUNTIME = str(Path(__file__).resolve().parents[3] / "runtime")
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402  — every store the code names comes from here
 
 ET = ZoneInfo("America/New_York")
 NOW = datetime(2026, 7, 6, 11, 38, tzinfo=ET)
@@ -941,7 +947,9 @@ def test_prompt_carries_the_permission_slip():
 
 
 def _stuck_diary(tmp_path, day, values):
-    f = tmp_path / "state" / "reversion" / f"{day}.jsonl"
+    """One day of the scanner's diary under the test's data root (the
+    _isolated_diary fixture points wt.STATE_DIR at tmp_path/state)."""
+    f = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path / "state", day=day)
     f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text("\n".join(json.dumps({"gex_motion": {"soft_side": v}})
                            for v in values) + "\n")

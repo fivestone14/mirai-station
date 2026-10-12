@@ -11,7 +11,7 @@ wall touch predicts the wall BREAKS (held 39% vs 54% for quiet touches).
 SIEGE = expect break; QUIET = expect hold. See skills/siege/README.md.
 ===========================================================================
 
-Shadow with one reader: the box writes to its own store (state/siege) and
+Shadow with one reader: the box writes to its own store (the wall sensor's files under state/spx/scanner/) and
 this bridge attaches one "siege" diary field. Since wt-7 (2026-07-18) the
 Watchtower's build_payload reads that field into siege_effort_at_walls —
 the wording and the era bump live in watchtower.py, never here.

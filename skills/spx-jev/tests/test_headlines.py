@@ -8,7 +8,7 @@ import time
 from datetime import timedelta
 
 import pytest
-from conftest import DAY, at
+from conftest import DAY, at, station_paths
 
 from spx_jev import headlines
 from spx_jev.cuts import HEADLINE_CUT_MIN
@@ -56,7 +56,7 @@ def test_a_poll_writes_each_new_item_once_stamped_with_its_own_clock_and_never_t
     again = RSS.replace("https://x/1", "https://x/1?utm=a").replace("Nvidia slips", "NVIDIA SLIPS")
     assert poll(tmp_path, now + timedelta(minutes=3), fetcher=_fetcher({f: again.encode() for f, _ in FEEDS})) == dict.fromkeys((f for f, _ in FEEDS), 0)
     assert len((folder(tmp_path) / f"{DAY}.jsonl").read_text().splitlines()) == 2
-    seen = json.loads((folder(tmp_path) / "seen.json").read_text())
+    seen = json.loads(station_paths.NEWS_HEADLINES_SEEN_STATE.path(tmp_path).read_text())
     assert set(keys_of({"title": "Nvidia slips as export curbs widen", "url": "https://x/1"})) <= set(seen)
 
 

@@ -15,7 +15,8 @@
   <!-- The spx-claude-forecast nightly job: seals what happened after every read of the day, rebuilds the
        library of past moments, scores every forecaster and writes the scorecard. Fires at 17:15 ET on
        weekdays, after the 16:20 ET daily-close save (the official close it grades to_close on) and the
-       17:05 ET prediction nightly. Writes only under state/spx_claude_forecast/ and the backup folder.
+       17:05 ET prediction nightly. Writes only under state/spx/claude_forecast/, its lock and run log under
+       state/operations/, and the backup folder.
        NOTE: launchd's StartCalendarInterval uses SYSTEM-LOCAL time and ignores the TZ env var below.
        This box runs on Pacific, so Hour=14 Minute=15 == 14:15 PT == 17:15 ET year-round (PT is ET minus
        3h through DST). -->

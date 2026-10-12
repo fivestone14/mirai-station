@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 
 import sndk_board as B
 import sndk_read as SR
+import station_paths
 from synth import OPEN_AT, T0, bar, board_row as mkrow, flat_bars, mkrows, recs
 
 ET = ZoneInfo("America/New_York")
@@ -1496,7 +1497,7 @@ def test_volume_in_reach_is_compared_with_the_same_minute_on_recent_ordinary_ses
     day = v2["day"]
     assert day["prior_sessions_compared"] == 3
     assert day["volume_in_reach_vs_same_time_prior_sessions"] == round(today / 351, 2)
-    cache = SR._reads_dir() / "prior_volume.json"
+    cache = station_paths.SNDK_PAST_VOLUME_CURVES_STATE.path()
     assert cache.exists()
     # the next build reads the baseline from the cache, not the diaries
     blob = json.loads(cache.read_text())
@@ -1569,7 +1570,7 @@ def test_a_malformed_volume_cache_costs_nothing_and_is_rebuilt():
                   vol={k: (c * 2 // 10, p * 2 // 10) for k, (c, p) in _OI_A.items()})
         r["gex_views"]["front_dte"] = dte
         _write_diary(day, [r])
-    cache = SR._reads_dir() / "prior_volume.json"
+    cache = station_paths.SNDK_PAST_VOLUME_CURVES_STATE.path()
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps({"v": B.PRIOR_VOLUME_CACHE_V, "days": {"2026-07-30": {"expiry": False, "series": "x"}}}))
     rows = mkrows(n=8)

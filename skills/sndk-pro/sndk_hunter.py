@@ -14,10 +14,11 @@ Per tick (launchd fires every 120s; the run wrapper gates RTH):
        re-pulling), IV rebuilt from quotes, gamma filled.
     3. sndk_views.build_row() — the pure engines (build_views / slide_0dte on
        the front book / dex / ladder / EM) → one row.
-    4. Append to state/sndk_reversion/{YYYY-MM-DD}.jsonl (the viewstation reads
+    4. Append to state/sndk/sndk_options_scanner_results_by_scan/{YYYY-MM-DD}.jsonl (the viewstation reads
        these files via the generic /api/raw endpoints — pinned contract).
 
-Isolation: writes ONLY under state/sndk_reversion + state/sndk_gex. Never
+Isolation: writes ONLY under state/sndk/ (the scan rows, and the chain, expiries and
+volatility state files). Never
 touches the SPX diary, reversion_lens, or hunter.py's scan loop.
 
 Kill switch: SNDK_PRO_DISABLE=1 (checked here AND in run-sndk.sh).

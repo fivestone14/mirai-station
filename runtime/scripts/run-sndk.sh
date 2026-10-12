@@ -2,7 +2,7 @@
 # launchd-fired wrapper: SNDK-PRO scan tick (record-only: nothing here trades).
 # One tick = pull the SNDK weekly chain (disk-cached for sndk_feed._CHAIN_TTL_S
 # inside python), compute gex/dex/ladder/EM views via the pure left-eye engines,
-# append one diary row to state/sndk_reversion/{date}.jsonl for the viewstation's
+# append one diary row to state/sndk/sndk_options_scanner_results_by_scan/{date}.jsonl for the viewstation's
 # /api/raw readers.
 # Gated on the authoritative market-status (RTH only) — the python side gates
 # again (defense in depth; sndk_hunter.py --force bypasses for manual runs).

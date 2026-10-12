@@ -5,7 +5,7 @@ description: |
   during market hours: the Gravity Engine (lefteye_gex_box, fed by the native
   ThetaData chain, its flow sensor and the fill ledger) maps where dealer
   positioning pulls price, three heads read that map, and one row goes into
-  the SPX diary (state/reversion/<date>.jsonl) that spx-jev and the Claude
+  the SPX diary (state/spx/scanner/spx_options_scanner_results_by_scan/<date>.jsonl) that spx-jev and the Claude
   forecast are built on. Everything is paper: a fire is a diary entry, never
   an order. The nightly report cards (gex_polarity_ab) grade the record.
 argument-hint: ""
@@ -46,8 +46,9 @@ phases:
      capped Claude call with its own memory in `lefteye_rag.py`). When the
      two lenses would fire opposite ways, hunter marks a `referee` note on
      the row; nothing is suppressed.
-   - `record()` appends the row to the diary, `state/reversion/<date>.jsonl`.
-   - The heartbeat (what was evaluated, any fire) goes to `logs/<date>.jsonl`;
+   - `record()` appends the row to the diary, `state/spx/scanner/spx_options_scanner_results_by_scan/<date>.jsonl`.
+   - The heartbeat (what was evaluated, any fire) goes to
+     `state/spx/scanner/spx_options_scanner_signal_checks_by_scan/<date>.jsonl`;
      `dashboard.py` rewrites the Obsidian "Today" note and
      `reversion_lens.write_learning_view` the learning view.
 2. **Alerts** (every minute, open or closed) — `python -m watch.cli gex-alerts`
@@ -79,22 +80,27 @@ or veto a trade and never reaches the phone — it exists to be graded.
 ## Other jobs in this directory
 
 - `dated_gex_feed.py` — the dated-book sidecar (`dated-book` job, 08:00 ET):
-  far-dated OI walls stored in `state/dated_gex/`, read by the scan and never
+  far-dated OI walls stored in `state/market/spx_monthly_quarterly_open_interest_latest.json`, read by the scan and never
   fetched inside it.
 - `lefteye_rag.py` — the Watchtower's memory CLI: slices and day summaries in
-  `state/spx_rag/`.
+  `state/spx/scanner/spx_options_scanner_claude_notes_by_read/` and the summaries and terrain files beside it.
 - `lob_bridge.py`, `siege_bridge.py` — the only coupling points to the lob-flow
   and siege boxes; both record-only.
 - `lefteye_fetcher.py` — Schwab daily bars and quotes.
 
 ## State written
 
-`state/reversion/` (the diary), `state/tape_prev/` (the previous scan's flow
-snapshot, so one-shot ticks can difference), `state/gex_fills/` (fill ledger),
-`state/spx_rag/` (tower memory), `state/dated_gex/` (dated book),
-`state/lob_flow/` and `state/siege/` (the bridges), `logs/<date>.jsonl` (the
-heartbeat; `gex_alerts` reads today's, so never prune it) and `state.json`
-(the per-day fire dedup).
+Under `state/spx/scanner/`: `spx_options_scanner_results_by_scan/` (the diary),
+`spx_options_volume_last_scan_state.json` (the previous scan's flow snapshot, so
+one-shot ticks can difference), `spx_options_strike_volume_weights_state.json` and
+`spy_options_strike_volume_weights_state.json` (the fill ledger),
+`spx_options_scanner_claude_notes_by_read/` with its summaries and terrain (tower
+memory), the wall sensor's files (`spx_dealer_walls_latest.json` and its kin, through
+the siege bridge), `spx_options_scanner_signal_checks_by_scan/<date>.jsonl` (the
+heartbeat; `gex_alerts` reads today's, so never prune it) and
+`spx_options_scanner_signals_sent_state.json` (the per-day fire dedup). Under
+`state/market/`: `spx_monthly_quarterly_open_interest_latest.json` (the dated book) and
+the order-flow collector's raw day folders the lob bridge reads.
 
 ## By hand
 

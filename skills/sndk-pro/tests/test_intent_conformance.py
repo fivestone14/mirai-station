@@ -152,9 +152,26 @@ def _store_pattern(spec):
     return re.compile("^(?:%s)$" % "|".join(alts))
 
 
+_STORE_UNIT = r"sndk/[a-z_]+(?:\.jsonl?)?"      # a store under sndk/: its folder, or the file itself when it is one file
+
+
+def _store_units(spec):
+    """The stores one 'file' cell of the table names, as paths under state/ up to the store (the day file dropped):
+    'sndk/x/<day>.jsonl · y.json' -> {'sndk/x', 'sndk/y.json'}; stores outside sndk/ are not this test's."""
+    pieces = spec.split(" · ")
+    top = pieces[0].split("/")[0] + "/" if "/" in pieces[0].strip("/") else ""
+    units = set()
+    for i, piece in enumerate(pieces):
+        rel = piece if i == 0 or piece.startswith("/") else top + piece
+        unit = re.sub(r"/<day>\.jsonl?$", "", rel)
+        if re.fullmatch(_STORE_UNIT, unit):
+            units.add(unit)
+    return units
+
+
 def _station_store_folders():
     nodes = STATION[STATION.index("const _PL_NODES=["):STATION.index("const _PL_EDGES=[")]
-    return set(re.findall(r"state/(sndk_[a-z_]+)/", nodes))
+    return set(re.findall(r"state/(%s)" % _STORE_UNIT, nodes))
 
 
 def _pipeline_note(node):
@@ -221,7 +238,7 @@ def _session(state, monkeypatch):
     apart. Returns (the scenes the model was sent, the read rows)."""
     monkeypatch.setenv("MIRAI_STATE_DIR", str(state))
     monkeypatch.setenv("SNDK_PAYLOAD", "strikes")
-    diary = state / "sndk_reversion"
+    diary = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(state)
     diary.mkdir(parents=True)
     prior_open = _OPEN - timedelta(days=1)
     (diary / f"{prior_open.date()}.jsonl").write_text(
@@ -252,7 +269,8 @@ def _session(state, monkeypatch):
         now = _OPEN + timedelta(minutes=read_at, seconds=30)
         sndk_bars.write_day(day, _bars(_OPEN, range(read_at)), now)
         SR.read_once(now=now, force=True)
-    rows = [json.loads(line) for line in (state / "sndk_reads" / f"{day}.jsonl").read_text().splitlines()]
+    rows = [json.loads(line) for line in station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN
+            .path(state, day=day).read_text().splitlines()]
     return sent, rows
 
 
@@ -493,14 +511,15 @@ def _legacy_scene_with_history(state, monkeypatch):
     between two books, and the day's first read."""
     monkeypatch.setenv("MIRAI_STATE_DIR", str(state))
     now, rich_row = synth.NOW, synth.rich_row
-    (state / "sndk_reversion").mkdir(parents=True)
+    diary = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(state)
+    diary.mkdir(parents=True)
     for back in range(1, SR.PCTL_MIN_SESSIONS + 1):
         day = now - timedelta(days=back)
         rows = [rich_row(ts=day - timedelta(minutes=2 * i),
                          mass=[[1300, 50.0 + back + i], [1100, 30.0], [1200, 10.0]],
                          meta={"book_asof": (day - timedelta(minutes=4 * (i // 2))).isoformat()})
                 for i in range(8)]
-        (state / "sndk_reversion" / f"{day.date()}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+        (diary / f"{day.date()}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
     # three clusters a side over a sub-floor field, the heaviest furthest out
     net = {k: 0.1 for k in range(1050, 1350, 5)}
     net.update({1240: 8.0, 1260: 8.0, 1300: 30.0, 1180: -8.0, 1160: -8.0, 1100: -30.0})
@@ -629,7 +648,7 @@ def _run_every_writer(state, monkeypatch):
     # (and so never writes the prior-volume cache the store table names)
     # every tick must not hand back the SAME volume: a book whose counts equal the
     # prior session's is withheld by the carried-volume rule, and then the read
-    # never reaches the volume baseline (and never writes prior_volume.json)
+    # never reaches the volume baseline (and never writes the past-volume curves)
     pulls = {"n": 0}
 
     def _chain(code):
@@ -652,9 +671,9 @@ def _run_every_writer(state, monkeypatch):
     open_at = now.replace(hour=9, minute=30)
     # seeded OUTSIDE the recorded block (the test writes these, not the station):
     # without closed sessions to compare, the read never reaches
-    # sndk_board.volume_vs_prior_sessions and prior_volume.json is never written,
-    # so the store table's writer column would go unproven
-    diary = state / "sndk_reversion"
+    # sndk_board.volume_vs_prior_sessions and the past-volume curves are never
+    # written, so the store table's writer column would go unproven
+    diary = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(state)
     diary.mkdir(parents=True, exist_ok=True)
     for back in (3, 4, 5, 6):
         past = now - timedelta(days=back)
@@ -676,11 +695,16 @@ def _run_every_writer(state, monkeypatch):
 
 
 def _folders_named(text):
-    """The top state folders a source file reaches: every store it names through station_paths (the store's
-    template says where it is today), and any folder literal it still joins onto the state root itself."""
+    """The stores a source file reaches, as paths under state/ up to the store (a keyed store's folder, else the
+    file): every store it names through station_paths (the store's template says where it is), and any folder
+    literal it still joins onto the state root itself, which the table never lists and so is caught."""
     names = set(re.findall(r"station_paths\.([A-Z][A-Z0-9_]+)", text))
-    return ({station_paths.STORES[n].relative.split("/")[0] for n in names if n in station_paths.STORES}
-            | set(re.findall(r'/\s*"(sndk_[a-z_]+)"', text)))
+    units = set()
+    for n in names:
+        if n in station_paths.STORES:
+            relative = station_paths.STORES[n].relative
+            units.add(relative.rpartition("/")[0] if "{" in relative.rpartition("/")[2] else relative)
+    return units | set(re.findall(r'/\s*"(sndk(?:/[a-z_]+)*)"', text))
 
 
 def _written_by(stack, module, function):
@@ -721,7 +745,7 @@ def test_every_file_sndk_pro_writes_is_in_the_where_it_is_saved_table(tmp_path, 
             source = next((ROOT / "runtime").rglob(f"{s['module']}.py"))
             text = source.read_text()
             assert re.search(r"^def %s\(" % re.escape(s["function"]), text, re.M), s["writer"]
-            assert s["file"].split("/")[0] in _folders_named(text), f"{source} never names {s['file']}"
+            assert _store_units(s["file"]) & _folders_named(text), f"{source} never names {s['file']}"
 
 
 def test_every_state_folder_the_code_joins_is_on_both_pipeline_diagrams_and_in_the_readme():
@@ -733,12 +757,12 @@ def test_every_state_folder_the_code_joins_is_on_both_pipeline_diagrams_and_in_t
     sources = [*(ROOT / "skills" / "sndk-pro").glob("sndk_*.py"),
                *(ROOT / "runtime" / "viewstation").glob("*.py"),
                *(ROOT / "runtime" / "watch" / "intraday").glob("sndk_*.py")]
-    joined = {f for f in set().union(*(_folders_named(p.read_text()) for p in sources)) if f.startswith("sndk_")}
+    joined = {f for f in set().union(*(_folders_named(p.read_text()) for p in sources)) if f.startswith("sndk/") or f == "sndk"}
     stores = _stores()
-    table = {s["file"].split("/")[0] for s in stores if s["file"].startswith("sndk_") and not s["dead"]}
-    dead = {s["file"].split("/")[0] for s in stores if s["dead"]}
-    readme = README[README.index("* Store:"):]
-    readme = set(re.findall(r"`state/(sndk_[a-z_]+)/", readme[:readme.index("\n* ")]))
+    table = set().union(*(_store_units(s["file"]) for s in stores if not s["dead"]))
+    dead = set().union(*(_store_units(s["file"]) for s in stores if s["dead"]), set())
+    readme = README[README.index("* Store"):]
+    readme = set(re.findall(r"`state/(%s)" % _STORE_UNIT, readme[:readme.index("\n* ")]))
     assert joined, "no state folder found in the code — the pattern broke"
     assert joined - table == set(), "folders the code uses that the store table does not list"
     assert joined & dead == set(), "a store the table calls dead is still used by the code"
@@ -764,16 +788,17 @@ def _watched_day(state, scanner_quiet_min=None, read_min_ago=None):
     the open until `scanner_quiet_min` ago (none at all when None), and one read
     row `read_min_ago` minutes old (none when None)."""
     day = _WATCHED.date().isoformat()
-    (state / "sndk_reversion").mkdir(parents=True)
-    (state / "sndk_reads").mkdir(parents=True)
+    diary = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(state, day=day)
+    reads = station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN.path(state, day=day)
+    diary.parent.mkdir(parents=True)
+    reads.parent.mkdir(parents=True)
     scans, t = [], _WATCHED.replace(hour=9, minute=30)
     while scanner_quiet_min is not None and t <= _WATCHED - timedelta(minutes=scanner_quiet_min):
         scans.append({"ticker": "SNDK", "ts": t.isoformat()})
         t += timedelta(minutes=2)
-    (state / "sndk_reversion" / f"{day}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in scans))
+    diary.write_text("".join(json.dumps(r) + "\n" for r in scans))
     if read_min_ago is not None:
-        (state / "sndk_reads" / f"{day}.jsonl").write_text(
-            json.dumps({"ts": (_WATCHED - timedelta(minutes=read_min_ago)).isoformat()}) + "\n")
+        reads.write_text(json.dumps({"ts": (_WATCHED - timedelta(minutes=read_min_ago)).isoformat()}) + "\n")
 
 
 def _run_dead_man(deadman, state):
@@ -782,7 +807,7 @@ def _run_dead_man(deadman, state):
         deadman.run(_WATCHED, state_dir=state, channel=[].append)
     read = {path for path, stack in _files_read(events, state.resolve()).items()
             if _written_by(stack, "sndk_deadman", "run")}
-    return json.loads((state / "sndk_reads" / "deadman_state.json").read_text()), read
+    return json.loads(station_paths.SNDK_OUTAGE_ALERT_STATE.path(state).read_text()), read
 
 
 def test_the_dead_man_watches_the_reader_on_the_readme_ceilings(tmp_path, monkeypatch):
@@ -823,7 +848,7 @@ def test_the_dead_man_watches_the_reader_on_the_readme_ceilings(tmp_path, monkey
 
 def test_the_store_table_says_what_the_status_files_hold_and_who_reads_them(tmp_path, monkeypatch):
     """The two files a person opens to see a job breathing, the bar job's
-    health.json and the dead-man's ledger, hold only keys their row in the
+    health file and the dead-man's ledger, hold only keys their row in the
     store table names, after a good run and after each way a run goes wrong;
     and every state file the dead-man reads names it among its readers."""
     stores = [s for s in _stores() if not s["dead"]]
@@ -860,7 +885,7 @@ def test_the_store_table_says_what_the_status_files_hold_and_who_reads_them(tmp_
         assert outage in blob["paged"], blob
         ledger |= set(blob) | set(blob["paged"])
         read |= seen
-    assert ledger - named("sndk_reads/deadman_state.json") == set(), "the ledger holds keys its store row does not name"
+    assert ledger - named(station_paths.SNDK_OUTAGE_ALERT_STATE.relative) == set(), "the ledger holds keys its store row does not name"
     assert read, "the dead-man read nothing — the recorder broke"
     for path in sorted(read):
         assert "dead-man" in row_for(path)["readers"], f"the dead-man reads {path} and its store row does not say so"
@@ -880,7 +905,7 @@ def test_the_strike_window_is_the_one_the_readme_states():
     for sigma_frac, expected in ((floor / k / 2, floor),
                                  ((floor + cap) / 2 / k, (floor + cap) / 2),
                                  (cap / k * 2, cap)):
-        atomic_io.write_json_atomic(sndk_feed._state_dir() / "vol_hint.json",
+        atomic_io.write_json_atomic(station_paths.SNDK_IMPLIED_VOLATILITY_STATE.path(),
                                     {"sigma_daily_frac": sigma_frac, "ts": T0.isoformat()})
         assert sndk_feed._window_frac() == pytest.approx(expected), sigma_frac
 
@@ -890,9 +915,11 @@ def _one_scan_diary(state, book_age_min, forced=False):
     row = _scan(58)
     row["meta"]["book_asof"] = (now - timedelta(minutes=book_age_min)).isoformat()
     row["meta"]["forced"] = forced
-    (state / "sndk_reversion").mkdir(parents=True, exist_ok=True)
-    (state / "sndk_reversion" / f"{now.date()}.jsonl").write_text(json.dumps(row) + "\n")
-    return now, state / "sndk_reads" / f"{now.date()}.jsonl"
+    day = now.date().isoformat()
+    diary = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(state, day=day)
+    diary.parent.mkdir(parents=True, exist_ok=True)
+    diary.write_text(json.dumps(row) + "\n")
+    return now, station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN.path(state, day=day)
 
 
 def test_a_stale_book_never_wakes_the_model(tmp_path, monkeypatch):

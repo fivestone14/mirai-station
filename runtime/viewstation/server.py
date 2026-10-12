@@ -22,7 +22,7 @@ STRICTLY READ-ONLY. There is no do_POST and no route that writes anything. It
 had one write once, the SNDK reasoning pause, and that went on 2026-08-23 when
 the station went public: a switch that silences the model is not something a
 visitor should be able to reach. The pause still exists as an operator control —
-edit state/sndk_reads/control.json, which skills/sndk-pro/sndk_read.py reads
+edit state/sndk/sndk_options_reader_reasoning_switch.json, which skills/sndk-pro/sndk_read.py reads
 (reasoning_on) and which fails OPEN. Anything re-introducing a write here must
 bring back the Origin / Sec-Fetch-Site guard that went with it: a read-only
 server does not need one, a writing one does.
@@ -101,8 +101,8 @@ def _payload_unlocked(qs: dict) -> bool:
 # model runs (skills/sndk-pro/sndk_rag.py, same interpreter, in a subprocess so
 # the embedder never loads into this server) and hands back both the parsed
 # result and the exact text the model would see. Note the CLI's own documented
-# side effect: a days/month ask rolls closed sessions up into summaries.jsonl /
-# terrain.json under state/sndk_rag — the memory maintaining itself, exactly as
+# side effect: a days/month ask rolls closed sessions up into sndk_options_reader_session_summaries_by_day.jsonl /
+# sndk_options_reader_terrain_state.json under state/sndk — the memory maintaining itself, exactly as
 # when the model asks; no trading state is touched.
 _RAG_CLI = PLUGIN_ROOT / "skills" / "sndk-pro" / "sndk_rag.py"
 _MEMORY_TIMEOUT_S = 60.0
@@ -302,10 +302,10 @@ def _safe_join(root: Path, rel: str) -> Path | None:
 _RAW_SUFFIXES = (".json", ".jsonl", ".txt", ".md")
 
 # Subtrees the explorer never exposes even though they sit under a readable
-# root. The voice logs are verbatim recordings of the operator talking, and a
-# live agent session id — a different category of private than a diary row.
-# The archive holds retired data, voice logs included, kept only for restore.
-_RAW_DENY = ("voice", "archive")
+# root. The voice desk's transcripts are verbatim recordings of the operator
+# talking, and a live agent session id — a different category of private than a
+# diary row. The archive holds retired data, voice logs included, kept only for restore.
+_RAW_DENY = ("voice_desk", "archive")
 
 
 def _raw_denied(root: Path, path: Path) -> bool:

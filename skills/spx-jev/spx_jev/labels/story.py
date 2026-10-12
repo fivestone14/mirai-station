@@ -121,7 +121,7 @@ class NightSoFar:
         self.clock = self.now.time()
         self.points_per_pct = points_per_pct
         self.rows = [r for r in scene.night if r["symbol"] == ES]
-        self.table = rolls.load(Path(scene.state_dir) / overnight.OVERNIGHT_SUBDIR)
+        self.table = rolls.load(Path(scene.state_dir))
         self.pending = roll_pending(self.table, ES, quoted_contract(scene.state_dir, self.day, ES, self.now))
         self.release = story.release_minute(self.day)
         self.report = bool(story.releases(self.day))

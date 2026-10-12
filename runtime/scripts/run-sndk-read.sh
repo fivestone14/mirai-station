@@ -2,7 +2,7 @@
 # launchd-fired wrapper: the SNDK chart's live READING (record-only).
 # One run = write one read row from the newest diary row (pure python, free),
 # and — only when the wake gate fires — spend ONE `claude -p` call to write the
-# plain-English observation. Appends to state/sndk_reads/{date}.jsonl for the
+# plain-English observation. Appends to state/sndk/sndk_options_reader_gates_and_answers_by_run/{date}.jsonl for the
 # viewstation's /api/raw readers.
 #
 # WHY THIS IS ITS OWN JOB and not a step inside run-sndk.sh: a model call takes

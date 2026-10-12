@@ -5,7 +5,7 @@ import json
 from dataclasses import fields
 from datetime import timedelta
 
-from conftest import DAY, PRIOR_DAYS, at, flat_bars, make_row, write_prior_rows, write_state
+from conftest import DAY, PRIOR_DAYS, archive_path, at, card_path, flat_bars, lane_folder, make_row, replay_files, write_prior_rows, write_state
 from spx_jev import archive, service
 from spx_jev.archive import SCHEMA_VERSION, CloseOutRecord, GradeRecord, ReadRecord
 
@@ -30,7 +30,7 @@ def _send(req, **kw):
 
 
 def _lines(state):
-    return [json.loads(l) for l in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
+    return [json.loads(l) for l in archive_path(state, DAY).read_text().splitlines()]
 
 
 def _typed(line: dict, record_type) -> bool:
@@ -45,7 +45,7 @@ def test_a_read_and_its_later_grade_land_in_the_archive_under_one_read_id(tmp_pa
     prior = {d: flat_bars(390, day=d) for d in PRIOR_DAYS}
     write_prior_rows(tmp_path, {d: [make_row(at(9, 31, day=d), 7700.0)] for d in prior})
     state = write_state(tmp_path, DAY, [make_row(at(10, 35, ss=10), 7700.0)], flat_bars(70), prior)
-    service.run_once(state, state / "spx_jev", DOC, True, DAY)
+    service.run_once(state, lane_folder(state), DOC, True, DAY)
     read = _lines(state)[0]
     assert _typed(read, ReadRecord) and read["kind"] == "read" and read["schema_version"] == SCHEMA_VERSION
     assert read["read_id"] == f"live:{at(10, 35, ss=10).isoformat()}" and read["lane"] == "live" and read["sent"] is True
@@ -56,13 +56,13 @@ def test_a_read_and_its_later_grade_land_in_the_archive_under_one_read_id(tmp_pa
     assert read["cadence"] == {"from": None, "held": {}, "not_due": {}, "asked": ["q_dir"], "reasked": {}} and read["market_context"] is None
 
     write_state(tmp_path, DAY, [make_row(at(10, 35, ss=10), 7700.0), make_row(at(11, 5, ss=20), 7701.0)], flat_bars(101))
-    service.run_once(state, state / "spx_jev", DOC, True, DAY)
+    service.run_once(state, lane_folder(state), DOC, True, DAY)
     lines = _lines(state)
     assert [l["kind"] for l in lines] == ["read", "read", "grade"]
     grade = lines[2]
     assert _typed(grade, GradeRecord) and grade["read_id"] == read["read_id"] and grade["grade"]["band"] == "flat"
     assert lines[:1] == [read]                                                                      # append only: the first line is untouched
-    assert CANARY not in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text()
+    assert CANARY not in archive_path(state, DAY).read_text()
 
 
 def test_the_market_context_a_read_could_see_is_archived_with_when_each_value_was_known(full_scene):
@@ -118,7 +118,7 @@ def test_a_replay_without_an_out_dir_writes_into_a_scratch_folder_never_the_stat
     assert _written(state) == before                                     # the station's folders are as they were
     (scratch,) = (tmp_path / "scratch").iterdir()
     assert scratch.name.startswith(f"spx-jev-replay-{DAY}-live-")
-    assert {"latest.json", f"{DAY}.jsonl", f"archive/{DAY}.jsonl"} <= set(_written(scratch))
+    assert replay_files(service.LIVE, state, scratch, DAY) <= set(_written(scratch))
 
 
 def test_a_run_given_its_own_out_dir_keeps_its_archive_there(tmp_path, monkeypatch):
@@ -126,5 +126,5 @@ def test_a_run_given_its_own_out_dir_keeps_its_archive_there(tmp_path, monkeypat
     state = write_state(tmp_path / "station", DAY, [make_row(at(10, 35, ss=10), 7700.0)], flat_bars(70))
     out = tmp_path / "trial"
     assert service.main(["--state-dir", str(state), "--day", DAY, "--out-dir", str(out)]) == 0
-    assert json.loads((out / "archive" / f"{DAY}.jsonl").read_text())["kind"] == "read"
-    assert not (state / "spx_jev" / "archive").exists() and not (state / "spx_jev" / "latest.json").exists()
+    assert json.loads((service.LIVE.archive_folder(state, out) / f"{DAY}.jsonl").read_text())["kind"] == "read"
+    assert not archive_path(state, DAY).parent.exists() and not card_path(state).exists()

@@ -1,8 +1,8 @@
-"""The recorder: copies station data before it is overwritten or deleted, and backs this folder up off-disk.
+"""The recorder: copies station data before it is overwritten or deleted, and backs the irreplaceable data up off-disk.
 
 Every task is idempotent (it copies only what is missing, and only for sessions that have finished, so a
 run by hand mid-session never freezes half a day) and reads the station's stores read-only; the copies
-land under ``state/spx_claude_forecast/recorder/``. Run by the ``spx-claude-forecast-recorder`` launchd job
+land under ``market/`` (runtime/station_paths.py names each). Run by the ``spx-claude-forecast-recorder`` launchd job
 at 08:40 and 16:25 ET (after the 08:17 ET dated-book fetch and after the close), plus Friday 17:30 ET after
 the Friday book refresh; it fires on weekends too, as a second chance at Friday's book before Monday's
 fetch overwrites it. The two Schwab tasks (spx_5m, leveraged_funds) stay out of market hours, where the login
@@ -11,20 +11,23 @@ is left to the live feeds; spx_5m also skips weekends, which bring no new sessio
     python -m spx_claude_forecast.recorder --state-dir <state> [--task all|dated_book|siege|vix1d|spx_5m|lob_raw|leveraged_funds|backup]
 
 Tasks:
-  dated_book   state/dated_gex/book.json is overwritten on every fetch (08:17 ET daily, 17:10 ET Fridays): keep
-               every distinct book under recorder/dated_book/{as_of}.json, named by the book's own as_of
-  siege        state/siege/baseline.json keeps 60 days of SPY per-minute volume, overwrites today's entry on every
-               scan and deletes the oldest day after that: keep one file per finished day under
-               recorder/siege_spy_minutes/{day}.json
-  vix1d        $VIX1D is quoted every ~70 s in state/spx_jev/context/{day}.jsonl but never kept as a close:
-               recorder/vix1d_close.jsonl gets one line per finished session, the day's last quote
+  dated_book   the dated options book (market/spx_monthly_quarterly_open_interest_latest.json) is overwritten on every
+               fetch (08:17 ET daily, 17:10 ET Fridays): keep every distinct book under
+               market/spx_monthly_quarterly_open_interest_by_day/{as_of}.json, named by the book's own as_of
+  siege        the wall sensor's baseline (spx/scanner/spy_volume_baselines_state.json) keeps 60 days of SPY per-minute
+               volume, overwrites today's entry on every scan and deletes the oldest day after that: keep one file per
+               finished day under market/spy_volume_by_minute/{day}.json
+  vix1d        $VIX1D is quoted every ~70 s in market/watchlist_quotes_by_minute/{day}.jsonl but never kept as a close:
+               market/vix_one_day_closes_by_day.jsonl gets one line per finished session, the day's last quote
   spx_5m       Schwab keeps SPX 5-minute bars far further back than 1-minute bars but loses a session a day:
-               recorder/spx_5m/{day}.jsonl, one file per session, fetched outside market hours
-  lob_raw      state/lob_flow/raw/{day}/ is deleted after 30 days: gzip copies under recorder/lob_raw/{day}/
+               market/spx_price_bars_by_5_minutes/{day}.jsonl, one file per session, fetched outside market hours
+  lob_raw      the collector's raw day folders (market/spx_same_day_options_raw_day_folders/{day}/) are deleted after
+               30 days: gzip copies under market/spx_same_day_options_raw_day_folders_recorder_copy/{day}/
   leveraged_funds  the leveraged index funds' assets and leverage as Schwab's instrument data states them now, one line
-               per run in recorder/leveraged_fund_sizes.jsonl, so a read can estimate the day's closing rebalance
+               per run in market/leveraged_fund_assets_by_run.jsonl, so a read can estimate the day's closing rebalance
                from sizes it could have known (the close-signals block)
-  backup       mirror this whole folder (except locks and run logs) to the off-disk backup folder
+  backup       mirror the forecast folder and the recorder's copies, under their paths relative to the data root, to the
+               off-disk backup folder (the logs and locks under operations/ are not backed up)
 """
 from __future__ import annotations
 
@@ -38,6 +41,7 @@ from datetime import datetime, time, timedelta
 from pathlib import Path
 
 from . import jsonl_store, station_stores
+from .paths import station_paths
 from .control import ET, PYTEST_ENV, log, log_job_run, now_et, now_utc_iso, prune_run_log, single_instance_lock, switched_off_reason
 from .paths import RUN_LOG_KEPT_DAYS, ForecastPaths, default_state_dir, ensure_folders
 
@@ -45,8 +49,9 @@ SESSION_CLOSE_SETTLED_AT = time(16, 5)    # a day's last quote and its stores ar
 MARKET_HOURS = (time(9, 20), time(16, 10))   # the Schwab task stays out of this window on weekdays
 SPX_5M_LOOKBACK_DAYS = 400               # ask for more than Schwab keeps; it answers with what it has
 LOB_RAW_MANIFEST_NAME = "_complete.json"  # the day's manifest, written last, so a copy that stopped halfway is redone
-DEFAULT_BACKUP_DIR = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "mirai-station-backups" / "spx_claude_forecast"
-BACKUP_SKIPPED_FOLDERS = ("locks", "run_logs")
+# The iCloud root the station backs up into; the backup mirrors the data root's layout under it (spx/claude_forecast/,
+# market/). The files it put there before phase 7, under spx_claude_forecast/, stay as they are until the owner decides.
+DEFAULT_BACKUP_DIR = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "mirai-station-backups"
 LOCK_NAME = "recorder"
 
 
@@ -92,7 +97,7 @@ def copy_siege_spy_minutes(paths: ForecastPaths, state_dir: Path, now: datetime 
             continue
         minute_volumes = days[day]
         record = {"day": day, "minutes_present": len(minute_volumes), "minute_volumes": minute_volumes,
-                  "source": "state/siege/baseline.json", "copied_at": now_utc_iso()}
+                  "source": station_paths.SPY_VOLUME_BASELINES_STATE.relative, "copied_at": now_utc_iso()}
         jsonl_store.write_json_atomically(target, record, indent=None)
         copied.append(day)
     return {"copied": len(copied), "days": copied, "days_on_disk": len(days)}
@@ -123,7 +128,7 @@ def record_vix1d_close(paths: ForecastPaths, state_dir: Path, now: datetime | No
             quote = (line.get("quotes") or {}).get("$VIX1D")
             if isinstance(quote, dict) and isinstance(quote.get("last"), (int, float)):
                 last_quote = {"day": day, "last": quote["last"], "previous_close": quote.get("close"),
-                              "quote_ts": line.get("ts"), "source": "state/spx_jev/context", "recorded_at": now_utc_iso()}
+                              "quote_ts": line.get("ts"), "source": str(station_paths.WATCHLIST_QUOTES_BY_MINUTE.relative_folder), "recorded_at": now_utc_iso()}
         if last_quote:
             jsonl_store.append_json_line(paths.vix1d_close_file, last_quote)
             written.append(day)
@@ -213,16 +218,25 @@ def _gzip_copy(source: Path, target: Path) -> None:
 
 # --- off-disk backup --------------------------------------------------------------------------------------
 
+def backup_sources(paths: ForecastPaths) -> list[Path]:
+    """Every file the backup mirrors: the whole forecast folder and the recorder's copies under market/ (the
+    irreplaceable data), each under its path relative to the data root."""
+    files: list[Path] = []
+    for place in (paths.root, *paths.recorder_copies):
+        if place.is_file():
+            files.append(place)
+        elif place.is_dir():
+            files.extend(p for p in sorted(place.rglob("*")) if p.is_file())
+    return [p for p in files if not p.name.endswith(".tmp")]
+
+
 def backup_forecast_folder(paths: ForecastPaths, backup_dir: Path) -> dict:
-    """Mirror the forecast folder into ``backup_dir``: a file is copied when it is missing there or its size
-    or mtime differs (the copy keeps the source's mtime). Nothing is ever deleted from the backup."""
+    """Mirror the forecast folder and the recorder's copies into ``backup_dir`` under their paths relative to the
+    data root: a file is copied when it is missing there or its size or mtime differs (the copy keeps the source's
+    mtime). Nothing is ever deleted from the backup."""
     copied = checked = 0
-    for source in sorted(paths.root.rglob("*")):
-        if not source.is_file() or source.name.endswith(".tmp"):
-            continue
-        relative = source.relative_to(paths.root)
-        if relative.parts and relative.parts[0] in BACKUP_SKIPPED_FOLDERS:
-            continue
+    for source in backup_sources(paths):
+        relative = source.relative_to(paths.state_dir)
         checked += 1
         target = backup_dir / relative
         stat = source.stat()

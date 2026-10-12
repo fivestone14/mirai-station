@@ -1,14 +1,26 @@
 """io_state — atomic writes, latest handshake, journals, cursors, rotation."""
 import json
 import os
+import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from lob_flow.io_state import (StateDir, atomic_write_json, load_cursor,
                                read_json, save_cursor)
 
+_RUNTIME = str(Path(__file__).resolve().parents[3] / "runtime")
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402  — every store the code names comes from here
+
 ET = ZoneInfo("America/New_York")
 NOW = datetime(2026, 7, 7, 10, 30, tzinfo=ET)
+
+
+def _raw_day(sd, day):
+    """One raw day folder under the StateDir's data root: what rotate() prunes."""
+    return station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.path(sd.state_root, day=day)
 
 
 def test_atomic_write_and_read(tmp_path):
@@ -73,9 +85,9 @@ def test_rotate_gzips_drops_and_caps(sd):
         sd.append(sd.raw(day, "sweeps"), {"day": day})
     rep = sd.rotate(NOW, raw_retention_days=30, disk_cap_mb=500)
     assert rep["dropped_days"] == 1
-    assert not (sd.root / "raw" / old).exists()
+    assert not _raw_day(sd, old).exists()
     assert not sd.raw(yday, "sweeps").exists()                 # gzipped
-    assert (sd.root / "raw" / yday / "sweeps.jsonl.gz").exists()
+    assert sd.raw(yday, "sweeps").with_suffix(".jsonl.gz").exists()
     assert sd.raw(today, "sweeps").exists()                    # today untouched
     assert [r["day"] for r in sd.rows(sd.raw(yday, "sweeps"))] == [yday]  # gz replay
 
@@ -86,7 +98,7 @@ def test_rotate_hard_cap_drops_oldest_first(sd):
         sd.append(sd.raw(day, "sweeps"), {"pad": "x" * 200000})
     rep = sd.rotate(NOW, raw_retention_days=300, disk_cap_mb=0)
     assert rep["cap_dropped"] >= 1
-    assert not (sd.root / "raw" / d1).exists()
+    assert not _raw_day(sd, d1).exists()
 
 
 def test_lock_pid_written(sd):

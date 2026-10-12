@@ -2,7 +2,7 @@
 # launchd-fired wrapper: the market around SPX, one snapshot a minute.
 # One run = one batched Schwab quote call for the volatility, futures, rates, sector, index-fund
 # and megacap symbols, and the newest finished 1-minute bar for each NYSE breadth symbol, appended
-# as one line to state/spx_jev/context/{date}.jsonl (spx_jev/market_context.py). REST only, through
+# as one line to state/market/watchlist_quotes_by_minute/{date}.jsonl (spx_jev/market_context.py). REST only, through
 # the station's shared client; the lob-flow streamer is never touched.
 # Gated on the market-status helper: market hours only.
 # Installed by install-launchd.sh (com.mirai-station.spx-jev-context, every 60 s).

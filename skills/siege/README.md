@@ -73,7 +73,12 @@ baseline fold on that scan. Episodes that lived through a feed hole carry
 
 ## Store schema (the viewstation contract — field names are FROZEN)
 
-Under the injected root (`state/siege/` in the mirai wiring):
+Under the injected root (the station's data root, `state/`, in the mirai wiring), each
+file named in `runtime/station_paths.py` and kept under `spx/scanner/`: `latest.json`
+below is `spx_dealer_walls_latest.json`, `cards/<date>.jsonl` is
+`spx_dealer_wall_touches_by_event/<date>.jsonl`, `baseline.json` is
+`spy_volume_baselines_state.json` and `session.json` is
+`spx_dealer_wall_touches_today_state.json`.
 
 * `latest.json` — `{as_of, session, spot, spx_spy_ratio, baseline: {days_accrued,
   label: cold|warming|robust}, health: {feed: OK|DEGRADED|FEED-LOST, reason},

@@ -21,16 +21,23 @@ import re
 import textwrap
 import threading
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 
 import server
 import snapshot
-import gex_polarity_ab      # on sys.path once snapshot is imported
-import lefteye_fetcher
+import lefteye_fetcher      # on sys.path once snapshot is imported
+import station_paths
 
 DAY = "2026-08-19"
 UNLOCK = "user=will"
+DIARY = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN
+
+
+def _rel(store, **keys):
+    """A store's file relative to the state root, as the raw explorer's `path=` names it."""
+    return str(store.relative_folder / store.file_name(**keys))
 
 # address -> the file under static/ it must serve: the pages do_GET names (the phone opens on the SPX
 # forecast since the redesign of 2026-10-10)...
@@ -48,7 +55,7 @@ OPEN_JSON = {
     "/api/lob/days": "ticker=SNDK",
     "/api/lob/board": f"day={DAY}&ticker=SNDK",
     "/api/raw/index": "",
-    "/api/raw/file": f"root=state&path=sndk_reversion/{DAY}.jsonl",
+    "/api/raw/file": f"root=state&path={_rel(DIARY, day=DAY)}",
     "/api/store/file": f"name=SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN&day={DAY}",
     "/api/store/index": "name=SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN",
     "/api/health": "",
@@ -83,22 +90,20 @@ def state(tmp_path, monkeypatch):
     """An empty state dir, and every reader behind a route pointed at it."""
     root = tmp_path / "state"
     root.mkdir()
-    # The station has no single state root. Every SNDK reader (sndk_read,
-    # snapshot's own and the raw explorer) takes MIRAI_STATE_DIR per call;
-    # snapshot's spot tape, the SPX modules and book_flow derive theirs from
-    # where their file sits.
+    # Every reader that resolves its root per call (sndk_read, the SPX modules,
+    # snapshot's own and the raw explorer) takes MIRAI_STATE_DIR through
+    # station_paths; snapshot's spot tape and book_flow fixed theirs at import,
+    # so each is pointed at the same stores under this root.
     monkeypatch.setenv("MIRAI_STATE_DIR", str(root))
-    monkeypatch.setattr(snapshot, "_TAPE_DIR", root / "sndk_tape")
-    skill_dir = tmp_path / "skills" / "mirai-left-eye"     # their state is SKILL_DIR.parent.parent / "state"
-    monkeypatch.setattr(snapshot.rev, "SKILL_DIR", skill_dir)
-    monkeypatch.setattr(gex_polarity_ab, "SKILL_DIR", skill_dir)
+    monkeypatch.setattr(snapshot, "_TAPE_DIR", station_paths.SNDK_LAST_PRICES_BY_QUOTE.folder(root))
     flow = server._book_flow()
     monkeypatch.setattr(flow, "STATE", root)
-    monkeypatch.setattr(flow, "CACHE_DIR", root / "flow" / "boards")
-    monkeypatch.setattr(flow, "SPX_TAPE", root / "lob_flow" / "raw" / "{day}" / "tape.jsonl")
-    monkeypatch.setattr(flow, "BOOK_SNAP", root / "flow" / "{ticker}" / "{day}" / "book.jsonl")
+    monkeypatch.setattr(flow, "CACHE_DIR", station_paths.SPX_OPTIONS_TRADES_3D_VIEW_CARD.folder(root))
+    monkeypatch.setattr(flow, "SPX_TAPE", station_paths.SPX_SAME_DAY_OPTIONS_TRADES_BY_TRADE.path(root, day="{day}"))
+    monkeypatch.setattr(flow, "BOOK_SNAP",
+                        station_paths.EQUITY_BOOK_DEPTH_SNAPSHOTS_BY_SLICE.path(root, ticker="{ticker}", day="{day}"))
     from book_flow import track
-    monkeypatch.setattr(track, "DIARY", root / "{dir}" / "{day}.jsonl")
+    monkeypatch.setattr(track, "DIARY", root / "{dir}" / station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.file_name(day="{day}"))
     # the broker is unreachable, which /api/spot answers with a null spot by contract
     monkeypatch.setattr(lefteye_fetcher, "live_spot", lambda ticker: None)
     monkeypatch.setattr(snapshot, "_SPOT_CACHE", {"ts": 0.0, "val": None, "src": None})
@@ -130,17 +135,17 @@ def _record_session(state, day):
             },
             "meta": {"expiries": [{"date": expiry, "dte": 2}], "book_asof": t.isoformat()},
         })
-    _write_jsonl(state / "sndk_reversion" / f"{day}.jsonl", scans)
-    _write_jsonl(state / "sndk_bars" / f"{day}.jsonl", [
+    _write_jsonl(DIARY.path(state, day=day), scans)
+    _write_jsonl(station_paths.SNDK_PRICE_BARS_BY_MINUTE.path(state, day=day), [
         {"ts": (opened + timedelta(minutes=i)).isoformat(),
          "open": 1580.0, "high": 1581.0, "low": 1579.0, "close": 1580.0, "volume": 1000.0}
         for i in range(30)])
     read_at = (opened + timedelta(minutes=5)).isoformat()
-    _write_jsonl(state / "sndk_reads" / f"{day}.jsonl", [
+    _write_jsonl(station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN.path(state, day=day), [
         {"ts": read_at, "wake": "first read", "wall_s": 4.5, "quiet": False, "error": None,
          "spot": 1582.0, "reading": {"read": "1600 holds the most contracts.", "points": []},
          "reading_ts": read_at}])
-    _write_jsonl(state / "sndk_rag" / "slices" / f"{day}.jsonl", [
+    _write_jsonl(station_paths.SNDK_OPTIONS_READER_NOTES_BY_READ.path(state, day=day), [
         {"kind": "slice", "rag_v": 2, "narrative": "1600 holds the most contracts.",
          "meta": {"date": day, "time": "09:35", "quiet": False, "notable_count": 1}}])
     book = []
@@ -148,7 +153,7 @@ def _record_session(state, day):
         ts_ms = int((opened + timedelta(minutes=k, seconds=5)).timestamp() * 1000)
         book += [{"ts_ms": ts_ms, "symbol": "SNDK", "side": "bid", "price": 1579.5, "size": 100 + k},
                  {"ts_ms": ts_ms, "symbol": "SNDK", "side": "ask", "price": 1580.5, "size": 90 + k}]
-    _write_jsonl(state / "flow" / "SNDK" / day / "book.jsonl", book)
+    _write_jsonl(station_paths.EQUITY_BOOK_DEPTH_SNAPSHOTS_BY_SLICE.path(state, ticker="SNDK", day=day), book)
 
 
 @pytest.fixture
@@ -281,15 +286,15 @@ def _sessions_shown(port, recorded):
         return _clean_json(*_get(port, _path(route, query)), route)
 
     def opens(day):
-        body = _get(port, _path("/api/raw/file", f"root=state&path=sndk_reversion/{day}.jsonl"))[2]
+        body = _get(port, _path("/api/raw/file", f"root=state&path={_rel(DIARY, day=day)}"))[2]
         return "error" not in json.loads(body)
 
     return {
         "/api/sndk/pipeline/days": doc("/api/sndk/pipeline/days", UNLOCK)["days"],
         "/api/sndk/pipeline": [doc("/api/sndk/pipeline", UNLOCK)["day"]],
         "/api/sndk/memory": [d["date"] for d in doc("/api/sndk/memory", f"kind=overview&{UNLOCK}")["days"]],
-        "/api/raw/index": sorted({i["rel"].split("/")[1].split(".")[0] for i in doc("/api/raw/index")["state"]
-                                  if i["rel"].startswith("sndk_reversion/")}),
+        "/api/raw/index": sorted({Path(i["rel"]).stem for i in doc("/api/raw/index")["state"]
+                                  if i["rel"].startswith(f"{DIARY.relative_folder}/")}),
         "/api/raw/file": [day for day in sorted(recorded) if opens(day)],
     }
 

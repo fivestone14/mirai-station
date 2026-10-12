@@ -5,7 +5,7 @@ diary series (the VIX, the straddle and the VIX curve through each day), and the
 * Prior diaries. A same-clock rank of a diary measure (the VIX, same-day vol, the straddle, the VIX curve)
   needs each prior session's rows, and the Scene keeps only each day's first. They are read here, only for days before the one being built,
   and kept for the process: a past day's file never changes.
-* The tape. ``state/lob_flow/raw/{day}/tape.jsonl`` (``tape.jsonl.gz`` once the collector archives the
+* The tape. ``state/market/spx_same_day_options_raw_day_folders/{day}/tape.jsonl`` (``tape.jsonl.gz`` once the collector archives the
   day): one line per 0DTE SPXW trade, with the quote it printed into. Lines land up to two hours out of
   time order, so every line up to the read's clock is read (the first line stamped after it was written
   after it, as options_flow reads the tape, today and on the prior sessions alike) and only the minutes

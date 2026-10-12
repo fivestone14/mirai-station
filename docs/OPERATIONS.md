@@ -23,13 +23,13 @@ launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.mirai-station.left-eye.p
 | What | Where |
 |---|---|
 | Per-scan stdout/stderr | `/tmp/mirai-station.*.{out,err}` (nothing rotates them: launchd appends, and they grow until deleted by hand) |
-| Runtime/env messages   | `~/.claude/plugins/mirai-station/state/logs/runtime-YYYY-MM-DD.log` |
-| Hunter's own jsonl     | `~/.claude/plugins/mirai-station/skills/mirai-left-eye/logs/YYYY-MM-DD.jsonl` |
-| SPX JEV decision service, eleven jobs (`spx-jev`: the same beside the SPX diary at :02 and :32; `spx-jev-tape`, the opening lane; its feeds `spx-jev-bars`, `spx-jev-context`, `spx-jev-save-day`, `spx-jev-overnight` and `spx-jev-headlines`; `spx-jev-premarket`, the lane before the open; `spx-jev-store`, `spx-jev-prediction-nightly` and `spx-premarket-deadman`, below). `launchctl list \| grep -E 'spx-jev\|spx-premarket'` shows all eleven | `/tmp/mirai-station.spx-jev*.{out,err}` and `/tmp/mirai-station.spx-premarket-deadman.{out,err}`; its records under `~/.claude/plugins/mirai-station/state/spx_jev/` |
-| SPX JEV overnight futures (`spx-jev-overnight`: /ES, /ZN, /BTC and /MBT bars from the prior close, saved at 09:26 and 16:20 ET on market days, with a manifest line of checks for each save that changed a night, and the roll table) | `/tmp/mirai-station.spx-jev-overnight.{out,err}`; `state/spx_jev/overnight/{date}.jsonl`, `manifest.jsonl`, `rolls.json` |
-| SPX JEV premarket lane (`spx-jev-premarket`: the night's labels at 02:35, 03:35 (04:35 in Frankfurt's winter-time week), 08:05, 08:48, 09:05 and 09:28 ET, JEV asked at 08:48 and 09:28, the close-out at 10:06 grading from the settled open) | `/tmp/mirai-station.spx-jev-premarket.{out,err}`; `state/spx_jev/lanes/premarket/` |
-| SPX JEV learning store (`spx-jev-store`: the last week's market days rebuilt from the raw files at 16:40 ET into checked Parquet, one line per day with its row counts and anything quarantined) | `/tmp/mirai-station.spx-jev-store.{out,err}`; `state/spx_jev/store/` |
-| SPX JEV premarket dead-man (`spx-premarket-deadman`: every 5 minutes on a market day, pages the phone once for a checkpoint with no read 15 minutes after it, and once for a 10:06 close-out that has not landed by 10:21 ET or landed with a pre-market call still ungraded, which a later live read tries to grade again) | `/tmp/mirai-station.spx-premarket-deadman.{out,err}`; `state/spx_jev/lanes/premarket/deadman_state.json` |
+| Runtime/env messages   | `~/.claude/plugins/mirai-station/state/operations/logs/station_runtime_log/YYYY-MM-DD.log` |
+| Hunter's own jsonl     | `~/.claude/plugins/mirai-station/state/spx/scanner/spx_options_scanner_signal_checks_by_scan/YYYY-MM-DD.jsonl` |
+| SPX JEV decision service, eleven jobs (`spx-jev`: the same beside the SPX diary at :02 and :32; `spx-jev-tape`, the opening lane; its feeds `spx-jev-bars`, `spx-jev-context`, `spx-jev-save-day`, `spx-jev-overnight` and `spx-jev-headlines`; `spx-jev-premarket`, the lane before the open; `spx-jev-store`, `spx-jev-prediction-nightly` and `spx-premarket-deadman`, below). `launchctl list \| grep -E 'spx-jev\|spx-premarket'` shows all eleven | `/tmp/mirai-station.spx-jev*.{out,err}` and `/tmp/mirai-station.spx-premarket-deadman.{out,err}`; its records under `~/.claude/plugins/mirai-station/state/spx/jev/` (the three lanes' folders, the shared archive and the tables), its learning loops under `state/spx/prediction/base_pool/`, its feeds under `state/market/` and the phone's cards under `state/screen_files/phone/` |
+| SPX JEV overnight futures (`spx-jev-overnight`: /ES, /ZN, /BTC and /MBT bars from the prior close, saved at 09:26 and 16:20 ET on market days, with a manifest line of checks for each save that changed a night, and the roll table) | `/tmp/mirai-station.spx-jev-overnight.{out,err}`; `state/market/futures_price_bars_by_minute/{date}.jsonl`, `futures_price_bar_change_counts_by_save.jsonl`, `futures_contracts_and_past_rolls_latest.json` |
+| SPX JEV premarket lane (`spx-jev-premarket`: the night's labels at 02:35, 03:35 (04:35 in Frankfurt's winter-time week), 08:05, 08:48, 09:05 and 09:28 ET, JEV asked at 08:48 and 09:28, the close-out at 10:06 grading from the settled open) | `/tmp/mirai-station.spx-jev-premarket.{out,err}`; `state/spx/jev/premarket_lane/` |
+| SPX JEV learning store (`spx-jev-store`: the last week's market days rebuilt from the raw files at 16:40 ET into checked Parquet, one line per day with its row counts and anything quarantined) | `/tmp/mirai-station.spx-jev-store.{out,err}`; `state/spx/jev/tables/` and `state/market/tables/`, the counts and the refused rows under `state/operations/health/` |
+| SPX JEV premarket dead-man (`spx-premarket-deadman`: every 5 minutes on a market day, pages the phone once for a checkpoint with no read 15 minutes after it, and once for a 10:06 close-out that has not landed by 10:21 ET or landed with a pre-market call still ungraded, which a later live read tries to grade again) | `/tmp/mirai-station.spx-premarket-deadman.{out,err}`; `state/operations/jev_premarket_outage_alert_state.json` |
 
 Quick health check:
 ```bash
@@ -44,7 +44,7 @@ tail -20 /tmp/mirai-station.left-eye.err
 
 This bypasses launchd entirely; useful for debugging. `mirai-watch tick` runs the same script, and its `--dry-run` flag is accepted and ignored: that is a real tick too, phone pushes included.
 
-The overnight futures by hand, the way the job saves them (`--day YYYY-MM-DD` saves one night, named for the day it leads into; `--backfill` takes every night Schwab still serves and re-detects the rolls; a rerun adds only what is not on disk). A save that changed a night writes its checks as a line in `state/spx_jev/overnight/manifest.jsonl`, so the newest line for a day is the last save that added to it (a rerun that added nothing writes none):
+The overnight futures by hand, the way the job saves them (`--day YYYY-MM-DD` saves one night, named for the day it leads into; `--backfill` takes every night Schwab still serves and re-detects the rolls; a rerun adds only what is not on disk). A save that changed a night writes its checks as a line in `state/market/futures_price_bar_change_counts_by_save.jsonl`, so the newest line for a day is the last save that added to it (a rerun that added nothing writes none):
 
 ```bash
 cd ~/.claude/plugins/mirai-station/skills/spx-jev
@@ -148,7 +148,7 @@ If a boot step flags a missing vault file, that is expected and not an error.
 
 Edit on main machine, then:
 ```bash
-rsync -avh --exclude '__pycache__' --exclude 'state/logs/' \
+rsync -avh --exclude '__pycache__' --exclude 'state/operations/logs/' \
   ~/.claude/plugins/mirai-station/ \
   <mini-host>:~/.claude/plugins/mirai-station/
 ```

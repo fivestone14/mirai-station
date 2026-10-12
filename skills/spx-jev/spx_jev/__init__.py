@@ -1,8 +1,9 @@
 """spx-jev — the JEV decision service beside the SPX diary: labels, requests, the sums,
 grading, and the phone's card.
 
-Read-only over the station's stored files; writes only under state/spx_jev/ (the service,
-and the two feeds that keep today's bars and the market around SPX). Nothing here touches
+Read-only over the station's stored files; writes only the stores runtime/station_paths.py
+names for it (the lanes under spx/jev/, the pools under spx/prediction/, the cards under
+screen_files/phone/, the two feeds' bars and market quotes under market/). Nothing here touches
 the live loop.
 
 The names below load on first use, not when the package is imported: ``python3 -m

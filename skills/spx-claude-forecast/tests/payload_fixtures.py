@@ -18,15 +18,23 @@ from types import SimpleNamespace
 
 from spx_claude_forecast import station_stores
 from spx_claude_forecast.control import ET
-from spx_claude_forecast.paths import ForecastPaths
+from spx_claude_forecast.paths import ForecastPaths, station_paths
 from spx_claude_forecast.payload.frozen_inputs import FrozenInputs, TapeFold, previous_session_day, slot_of
 
 DAY = "2026-10-09"
 SPOT = 7813.01
 SIGMA = 75.31
 REAL_READ_ID = "live:2026-10-09T14:30:12.458122-04:00"     # the real read every smoke test rebuilds
-STATION_FOLDERS = ("reversion", "spx_jev", "lob_flow", "siege", "dated_gex")   # the station stores a read is built from
-RECORDER_COPIES = ("dated_book", "siege_spy_minutes", "spx_5m", "vix1d_close.jsonl")   # the recorder's copies the loader reads
+# The station stores a read is built from (the live lane's folder is added by station_places); the package never
+# writes under any of them, so each is linked whole from the real state root.
+STATION_STORES = (station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN, station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY,
+                  station_paths.SPX_PRICE_BARS_BY_MINUTE, station_paths.WATCHLIST_QUOTES_BY_MINUTE,
+                  station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE, station_paths.SPX_VIX_RATES_PRICE_BARS_BY_DAY,
+                  station_paths.FUTURES_PRICE_BARS_BY_MINUTE, station_paths.FUTURES_CONTRACTS_AND_PAST_ROLLS_LATEST,
+                  station_paths.NEWS_HEADLINES_BY_ARTICLE, station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER,
+                  station_paths.SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_LATEST, station_paths.SPX_LARGEST_STOCK_WEIGHTS_BY_UPDATE,
+                  station_paths.SPX_ORDER_FLOW_READINGS_BY_MINUTE, station_paths.SPY_VOLUME_BASELINES_STATE,
+                  station_paths.JEV_READS_AND_GRADES_BY_EVENT, station_paths.PREDICTION_FOLDER)
 
 # A leaf of a block that may pass 1,000 without being a price level: issue counts, trade counts, headline counts,
 # a feed's age in seconds, and basis points on a big day.
@@ -88,7 +96,7 @@ def make_row(ts: datetime, spot: float = SPOT, sigma: float = SIGMA, **over) -> 
 
 def tape_fold_line(ts: datetime, *, tilt: float = 0.054, told: float = 0.54, trades: int | None = 1500,
                    engine: str = "lob_flow") -> dict:
-    """One line of the collector's record (``lob_flow/agg/<day>.jsonl``) with its 15-minute trade count; a line
+    """One line of the collector's record (SPX_ORDER_FLOW_READINGS_BY_MINUTE) with its 15-minute trade count; a line
     without a count is one the collector wrote before it counted."""
     snapshot = {"tilt": tilt, "determinate_share": told}
     if trades is not None:
@@ -258,24 +266,40 @@ def fake_inputs(tmp_path: Path, *, cut: datetime | None = None, bars: list[dict]
 # --- the real station state -------------------------------------------------------------------------------------
 
 def station_state_dir() -> Path | None:
-    """The real station state, for smoke tests that skip without it."""
-    root = Path.home() / ".claude" / "plugins" / "mirai-station" / "state"
-    return root if (root / "reversion").exists() else None
+    """The real station state (the root station_paths decides with no override), for smoke tests that skip without
+    it; the SPX options diary's folder is the sign it is there."""
+    root = station_paths.default_state_root()
+    return root if station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(root).exists() else None
+
+
+def station_places(root: Path) -> list[Path]:
+    """The station stores a read is built from, each as the one thing linked under ``root``: a keyed store's folder,
+    a single file itself, and the live lane's folder."""
+    return [*(store.folder(root) if store.key_names() else store.path(root) for store in STATION_STORES),
+            station_stores.spx_jev_dir(root)]
 
 
 def state_over_the_station(root: Path, *, recorder_copies: bool = True) -> Path:
-    """A temp state root whose station stores are the real ones (read-only symlinks), with the recorder's copies
-    linked under a temp forecast folder; everything the package writes lands in the temp folder. The nightly's
-    backup never descends a linked folder (rglob does not follow a symlinked directory)."""
+    """A temp state root whose station stores are the real ones (read-only symlinks) and whose recorder copies are
+    links to the real copies; everything the package writes lands in the temp root. A recorder copy's folder is a
+    real folder of links, never a link itself: the backup's rglob does not descend a linked folder, so the smoke
+    nightly's backup never copies a day of the real raw tape."""
     real = station_state_dir()
     state = root / "state"
     state.mkdir()
-    for name in STATION_FOLDERS:
-        (state / name).symlink_to(real / name)
+    for source, link in zip(station_places(real), station_places(state)):
+        if source.exists():
+            link.parent.mkdir(parents=True, exist_ok=True)
+            link.symlink_to(source)
     if recorder_copies:
-        recorder = ForecastPaths(state).recorder_dir
-        recorder.mkdir(parents=True)
-        for name in RECORDER_COPIES:
-            if (ForecastPaths(real).recorder_dir / name).exists():
-                (recorder / name).symlink_to(ForecastPaths(real).recorder_dir / name)
+        for source, copy in zip(ForecastPaths(real).recorder_copies, ForecastPaths(state).recorder_copies):
+            if not source.exists():
+                continue
+            copy.parent.mkdir(parents=True, exist_ok=True)
+            if source.is_file():
+                copy.symlink_to(source)
+            else:
+                copy.mkdir()
+                for entry in source.iterdir():
+                    (copy / entry.name).symlink_to(entry)
     return state

@@ -5,7 +5,7 @@ import json
 import os
 from datetime import date, timedelta
 
-from conftest import DAY, at, flat_bars
+from conftest import DAY, at, flat_bars, station_paths
 from spx_jev import bars, save_day, schwab
 from spx_jev.market_context import ALL_SYMBOLS, NO_HISTORY
 from spx_jev.save_day import days_to_save
@@ -40,7 +40,7 @@ def test_a_day_saves_the_market_feed_whole_and_fills_a_short_spx_file_once(tmp_p
     assert r["context"] and r["spx_bars_added"] == 190
     assert sorted(s for s, _ in calls) == sorted([s for s in ALL_SYMBOLS if s not in NO_HISTORY] + ["SPX"])
     assert len(load_bars(tmp_path, DAY)) == 390
-    minutes = (tmp_path / "spx_jev" / "context" / "bars" / f"{DAY}.jsonl").read_text().splitlines()
+    minutes = station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.path(tmp_path, day=DAY).read_text().splitlines()
     assert len(minutes) == 390 and len(json.loads(minutes[0])["bars"]) == len(ALL_SYMBOLS) - len(NO_HISTORY)
     assert load_market_context(tmp_path, DAY).last("XLK", at(10, 0)) == 7700.0
 
@@ -63,14 +63,14 @@ def test_a_failed_day_is_reported_and_costs_only_itself(tmp_path, monkeypatch, c
     assert save_day.main(["--state-dir", str(tmp_path)]) == 1
     err = capsys.readouterr()
     assert "2026-09-17 failed: SaveFailed: SPX bars: ConnectionError" in err.err and "1 of 2 days saved" in err.out
-    assert (tmp_path / "spx_jev" / "context" / "bars" / f"{DAY}.jsonl").exists()
-    assert not (tmp_path / "spx_jev" / "context" / "bars" / "2026-09-17.jsonl").exists()
+    assert station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.path(tmp_path, day=DAY).exists()
+    assert not station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.path(tmp_path, day="2026-09-17").exists()
 
 
 def test_a_run_with_nothing_finished_to_save_is_quiet(tmp_path, monkeypatch):
     monkeypatch.setattr(save_day, "days_to_save", lambda now: [])
     assert save_day.main(["--state-dir", str(tmp_path)]) == 0
-    assert not (tmp_path / "spx_jev").exists()
+    assert not any(tmp_path.iterdir())
 
 
 def test_a_session_short_of_its_minutes_is_short_and_a_full_one_is_not(tmp_path):
@@ -104,7 +104,7 @@ def test_a_later_run_asks_again_for_the_breadth_of_a_day_saved_on_its_own_evenin
     _schwab(monkeypatch, calls)
     day = date.fromisoformat(DAY)
     save_day.save_day(tmp_path, day, at(16, 30))
-    path = tmp_path / "spx_jev" / "context" / "bars" / f"{DAY}.jsonl"
+    path = station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.path(tmp_path, day=DAY)
     os.utime(path, (at(16, 30).timestamp(), at(16, 30).timestamp()))
     kept = path.read_text()
     calls.clear()

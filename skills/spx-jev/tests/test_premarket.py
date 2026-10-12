@@ -8,7 +8,8 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from conftest import DAY, at, bars_from_closes, make_row, night_row
+from conftest import (DAY, answers_path, archive_path, at, bars_from_closes, card_path, diary_path, hour_path, make_row, night_row,
+                      replay_files, station_paths, write_json, write_jsonl)
 from spx_jev import archive, build, events, grade, overnight, premarket, service, story
 from spx_jev.labels.context import PREMARKET_UNITS, build_context_labels
 from spx_jev.lane import PREMARKET
@@ -42,11 +43,10 @@ def _night(now: datetime) -> list[dict]:
 def _station(root, now=at(9, 28), anchors: int = len(PRIOR_DAYS)):
     """Six prior sessions of SPX bars closing at 7700, a morning anchor (60 to 65 points) on the last ``anchors`` of
     them, and the night's store to ``now``."""
-    (root / "reversion" / "bars").mkdir(parents=True, exist_ok=True)
     for k, d in enumerate(PRIOR_DAYS):
-        (root / "reversion" / "bars" / f"{d}-SPX.json").write_text(json.dumps(bars_from_closes([7700.0] * 390, day=d)))
+        write_json(station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.path(root, day=d), bars_from_closes([7700.0] * 390, day=d))
         if k >= len(PRIOR_DAYS) - anchors:
-            (root / "reversion" / f"{d}.jsonl").write_text(json.dumps(make_row(at(9, 35, day=d), 7700.0, sigma=60.0 + k)) + "\n")
+            write_jsonl(diary_path(root, d), [make_row(at(9, 35, day=d), 7700.0, sigma=60.0 + k)])
     path = overnight.night_path(root, DAY)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("".join(json.dumps(r) + "\n" for r in _night(now)))
@@ -174,24 +174,24 @@ def test_a_snapshot_read_writes_its_record_archive_and_card_and_asks_nothing(tmp
     out = PREMARKET.folder(state)
     c = run_checkpoint(state, out, DOC, True, at(2, 35), "02:35", save=False)
     assert jev["requests"] == [] and jev["sums"] == [] and jev["graded"] == []
-    (read,) = _lines(out / f"{DAY}.jsonl")
+    (read,) = _lines(answers_path(out, DAY))
     assert read["checkpoint"] == "02:35" and read["lane"] == "premarket" and read["sent"] is False and read["hour"] is None
     assert read["ruler"] == {"kind": "pre_open", "points": 62.5, "sessions": 6} and read["sigma"] == 62.5
     assert read["skipped"]["pm"]["pm_q"] == "not on its schedule at the 02:35 ET read"
-    assert read["night"]["file"] == f"overnight/{DAY}.jsonl" and read["night"]["saved"] is None
+    assert read["night"]["file"] == station_paths.FUTURES_PRICE_BARS_BY_MINUTE.relative.format(day=DAY) and read["night"]["saved"] is None
     assert read["night"]["seen"]["/ES"] == {"1": 640, "5": 0, "last": at(2, 35).isoformat()}
-    assert not (out / "hour").exists()
-    (rec,) = _lines(state / "spx_jev" / "archive" / f"{DAY}.jsonl")
+    assert not hour_path(out, DAY).parent.exists()
+    (rec,) = _lines(archive_path(state, DAY))
     assert rec["read_id"] == f"premarket:{at(2, 35).isoformat()}" and rec["lane"] == "premarket" and rec["checkpoint"] == "02:35"
     assert rec["schema_version"] == archive.SCHEMA_VERSION == 5 and rec["night"] == read["night"]
     assert rec["market_context"]["/ES"] == {"value": 7781.0, "known_at": at(2, 35).isoformat()}
     assert rec["cadence"] == {"from": None, "held": {}, "not_due": {"pm_q": "not on its schedule at the 02:35 ET read"}, "asked": [], "reasked": {}}
-    assert json.loads((out / "latest.json").read_text()) == c
+    assert json.loads(card_path(state, "premarket").read_text()) == c
     assert c["sent"] is False and c["unsent_reason"] == "nothing to ask at the 02:35 ET read" and c["hour"] is None
     assert c["schedule"]["jev_reads"] == [at(8, 48).isoformat(), at(9, 28).isoformat()]
     assert [s["checkpoint"] for s in c["story"]] == ["02:35"] and c["situation"] == []
     assert [q["id"] for q in c["questions"]] == ["pm_q"] and c["dark"][0]["id"] == "pm_dark"
-    assert not (state / "spx_jev" / "latest.json").exists()              # the live card is not the lane's
+    assert not card_path(state).exists()                                  # the live card is not the lane's
 
 
 def test_a_jev_read_asks_what_is_due_sums_from_the_settled_open_and_grades(tmp_path, jev):
@@ -202,9 +202,9 @@ def test_a_jev_read_asks_what_is_due_sums_from_the_settled_open_and_grades(tmp_p
     context = jev["sums"][0]["state"]["context"]
     assert "after the settled open" in context["horizon"] and "never from yesterday's close" in context["horizon"]
     assert "pre-open ruler" in context["units"] and set(jev["sums"][0]["questions"]) == {"open_10", "open_30"}
-    (read,) = _lines(out / f"{DAY}.jsonl")
+    (read,) = _lines(answers_path(out, DAY))
     assert read["sent"] is True and read["answers"]["pm"]["answers"]["pm_q"]["choice"] == "near"
-    (s,) = _lines(out / "hour" / f"{DAY}.jsonl")
+    (s,) = _lines(hour_path(out, DAY))
     assert s["lane"] == "premarket" and s["row_ts"] == at(9, 28).isoformat() and s["ruler"] == read["ruler"] and s["sigma"] == 62.5
     assert s["primary"] == "open_30" and set(s["by"]) == {"open_10", "open_30"} and s["fresh"] == {"pm_q": "near"}
     assert set(s["learn_exclude"]) == {"10", "30"}
@@ -235,7 +235,7 @@ def test_a_failed_sum_after_a_call_is_on_the_card_beside_the_earlier_call(tmp_pa
     c = run_checkpoint(state, out, DOC, True, at(9, 28), "09:28", save=False)
     assert c["sent"] is True and c["hour"]["read_at"] == at(8, 48).isoformat()
     assert c["hour_error"] == {"read_at": at(9, 28).isoformat(), "error": "JEV did not answer in time"}
-    read = _lines(state / "spx_jev" / "archive" / f"{DAY}.jsonl")[-1]                  # the plain reason on the card, JEV's own text kept
+    read = _lines(archive_path(state, DAY))[-1]                  # the plain reason on the card, JEV's own text kept
     assert read["hour_response"] == {"error": "JEV timed out"} and read["hour"]["error"] == "JEV did not answer in time"
 
 def test_a_group_that_got_no_answer_is_asked_once_more_before_the_open(tmp_path, jev, monkeypatch):
@@ -255,7 +255,7 @@ def test_a_group_that_got_no_answer_is_asked_once_more_before_the_open(tmp_path,
     c = run_checkpoint(state, PREMARKET.folder(state), DOC, True, at(9, 28), "09:28", save=False)
     assert calls == [["pm"], ["pm"]]
     assert next(q for q in c["questions"] if q["id"] == "pm_q")["answer"]["pick"] == "near"
-    (s,) = _lines(PREMARKET.folder(state) / "hour" / f"{DAY}.jsonl")
+    (s,) = _lines(hour_path(PREMARKET.folder(state), DAY))
     assert s["fresh"] == {"pm_q": "near"}
     calls.clear()
     late = run_checkpoint(state, tmp_path / "late", DOC, True, at(9, 29, ss=40), "09:28", save=False)
@@ -297,7 +297,7 @@ def test_a_read_without_a_ruler_writes_why_builds_nothing_and_asks_nothing(tmp_p
     state = _station(tmp_path, anchors=4)
     out = PREMARKET.folder(state)
     c = run_checkpoint(state, out, DOC, True, at(9, 28), "09:28", save=False)
-    (read,) = _lines(out / f"{DAY}.jsonl")
+    (read,) = _lines(answers_path(out, DAY))
     assert read["ruler"]["omitted"].startswith("no pre-open ruler") and read["state"] == {} and read["requests"] == []
     assert read["skipped"]["pm"]["pm_q"].startswith("no read before the open: no pre-open ruler") and jev["requests"] == []
     assert read["night"]["seen"]["/ES"]["1"] > 0
@@ -411,15 +411,15 @@ def test_a_fire_saves_the_night_reads_once_and_the_close_out_grades(tmp_path, co
     out = PREMARKET.folder(state)
     assert command(at(9, 28, ss=4), "--state-dir", str(state), "--send") == 0
     assert command.saves == [([date.fromisoformat(DAY)], at(9, 28, ss=4))]
-    (read,) = _lines(out / f"{DAY}.jsonl")
+    (read,) = _lines(answers_path(out, DAY))
     assert read["night"]["saved"] == {"added": 3, "failed": ["/BTC 1-min: RuntimeError: refused"]} and len(jev["requests"]) == 1
     assert command(at(9, 29), "--state-dir", str(state), "--send") == 0          # the same checkpoint again
-    assert len(_lines(out / f"{DAY}.jsonl")) == 1 and len(jev["requests"]) == 1
+    assert len(_lines(answers_path(out, DAY))) == 1 and len(jev["requests"]) == 1
     assert command(at(10, 6, ss=20), "--state-dir", str(state), "--send") == 0
-    c = json.loads((out / "latest.json").read_text())
+    c = json.loads(card_path(state, "premarket").read_text())
     # the fake grader grades nothing, so the call is still to grade and the card stays open for a later run
     assert "closed_out_at" not in c and c["tally"]["calls"] == 1 and jev["graded"] == [PREMARKET, PREMARKET]
-    lines = _lines(state / "spx_jev" / "archive" / f"{DAY}.jsonl")
+    lines = _lines(archive_path(state, DAY))
     assert [l["kind"] for l in lines] == ["read", "close_out"] and lines[1]["lane"] == "premarket"
 
 
@@ -444,7 +444,7 @@ def test_a_replay_saves_nothing_and_writes_only_where_it_is_told(tmp_path, comma
     trial = tmp_path / "trial"
     assert command(at(12, 0), "--state-dir", str(state), "--day", DAY, "--at", "08:48", "--out-dir", str(trial)) == 0
     assert _written(state) == before and command.saves == []
-    assert {f"{DAY}.jsonl", "latest.json", f"archive/{DAY}.jsonl"} <= set(_written(trial))
+    assert replay_files(PREMARKET, state, trial, DAY) <= set(_written(trial))
     with pytest.raises(SystemExit):
         command(at(12, 0), "--state-dir", str(state), "--day", DAY)
 

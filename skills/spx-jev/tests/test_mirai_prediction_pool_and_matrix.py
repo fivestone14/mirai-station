@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from conftest import station_paths
 from spx_jev import pool as pool_v1
 from spx_jev.mirai_prediction import pool_v2
 from spx_jev.mirai_prediction.answer_matrix import Row, column_catalog, row_answers
@@ -128,8 +129,8 @@ def test_column_catalog_layers_and_groups_come_from_the_catalog():
 
 
 def test_store_names_map_to_the_live_folders(tmp_path):
-    assert store_path(tmp_path, "graded_results").name == "average_grades"
-    assert store_path(tmp_path, "forecasts_at_read_time").name == "calls"
+    assert store_path(tmp_path, "graded_results") == station_paths.JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON_TABLE.path(tmp_path)
+    assert store_path(tmp_path, "forecasts_at_read_time") == station_paths.JEV_AND_POOL_FORECASTS_BY_READ_AND_HORIZON_TABLE.path(tmp_path)
     with pytest.raises(KeyError):
         store_path(tmp_path, "no_such_table")
 
@@ -234,7 +235,7 @@ def test_the_rows_of_a_matrix_built_after_the_cut_over_lose_the_dropped_columns_
         return Row(read_id=read_id, row_ts=f"{day}T11:00:00-04:00", day=day, sum_id="average_30",
                    historical_odds_probs=F["historical_odds"], jev_own_probs=None, shown_probs=None, pool_v1_probs=None,
                    outcome="flat", learn_exclude=False)
-    paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
+    paths.ensure_folders(paths.data_root(tmp_path))
     monkeypatch.setattr(answer_matrix, "load_base_rows", lambda *a: [row("live:a", "2026-10-07"), row("live:b", "2026-10-08")])
     monkeypatch.setattr(answer_matrix, "load_jev_answers",
                         lambda *a: ({"live:a": {"old": "up", "news_reaction": "shrugging_off"}, "live:b": {"news_reaction": "overreacting"}},

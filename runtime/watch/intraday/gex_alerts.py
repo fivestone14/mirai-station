@@ -5,12 +5,12 @@ restructure). Runs once per tick AFTER the left-eye scan
 (run-watch-left-eye.sh → `python -m watch.cli gex-alerts`). Three jobs:
 
   1. FRESH PAPER FIRES → phone. Reads today's hunter heartbeats
-     (skills/mirai-left-eye/logs/{date}.jsonl) and pushes any Fade-Lens fire
+     (spx/scanner/spx_options_scanner_signal_checks_by_scan/{date}.jsonl) and pushes any Fade-Lens fire
      not already pushed (sent-ledger dedup — one push per fire, ever).
   2. THE WALL-BREACH BELL. When spot pushes CONCRETELY beyond a dealer wall
      (the engine's recorded crossing, or the fallback check: buffer = frac ×
      the lens's σ yardstick), page the phone once per wall per cooldown.
-     Walls, spot and σ come from the LENS DIARY (state/reversion/{date}.jsonl):
+     Walls, spot and σ come from the LENS DIARY (state/spx/scanner/spx_options_scanner_results_by_scan/{date}.jsonl):
      the gravity engine's own numbers, no separate market feed.
   3. THE FEED SIRENS. A fresh diary row carrying a degraded-feed fact pages
      once per outage, with an all-clear when it heals; a live market with no
@@ -18,12 +18,12 @@ restructure). Runs once per tick AFTER the left-eye scan
 
 Until 2026-10-11 a breach also re-dived the morning macro brief's analyst and
 a pass after the close scored the brief's direction call; the brief retired
-and both went with it. Nothing writes state/market_expectation/ now but the
-alerts state below.
+and both went with it, and the state/market_expectation/ folder with them: the alerts
+state below moved under state/operations/ on 2026-10-11.
 
 All best-effort: any failure costs a log line, never a tick. Idempotent
-state: state/market_expectation/alerts_state.json (resets per day). The
-feed-health pass also writes state/spx_jev/mirai_prediction/options_data.json
+state: state/operations/phone_pushes_wall_timers_feed_outages_state.json (resets per day). The
+feed-health pass also writes state/screen_files/phone/options_feed_status_card.json
 on every in-session tick, the SPX phone page's options-data banner.
 """
 from __future__ import annotations
@@ -260,9 +260,9 @@ def _stand_in_since(rows: List[dict]) -> Optional[str]:
     return since
 
 
-def _hunter_fires(date_iso: str) -> List[dict]:
-    """Every Fade-Lens fire in today's hunter heartbeats."""
-    path = station_paths.SPX_OPTIONS_SCANNER_SIGNAL_CHECKS_BY_SCAN.path(paths.PLUGIN_ROOT, day=date_iso)
+def _hunter_fires(state_dir: Path, date_iso: str) -> List[dict]:
+    """Every Fade-Lens fire in today's hunter heartbeats (the scanner's signal checks)."""
+    path = station_paths.SPX_OPTIONS_SCANNER_SIGNAL_CHECKS_BY_SCAN.path(state_dir, day=date_iso)
     fires: List[dict] = []
     try:
         for ln in path.read_text().splitlines():
@@ -296,7 +296,7 @@ def run(now: Optional[datetime] = None, *, state_dir: Optional[Path] = None,
     # --- 1) fresh paper fires → phone (one push per fire, ever) --------------
     try:
         pushed = set(st.get("pushed") or [])
-        for f in _hunter_fires(date_iso):
+        for f in _hunter_fires(state_dir, date_iso):
             fid = f"{f.get('ts')}:{f.get('ticker')}:{f.get('direction')}"
             if fid in pushed:
                 continue

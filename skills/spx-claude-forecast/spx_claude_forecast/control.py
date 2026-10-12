@@ -111,7 +111,7 @@ def why_not_to_call(paths: ForecastPaths, day: str, is_real_caller: bool) -> str
 
 @contextmanager
 def single_instance_lock(paths: ForecastPaths, job: str) -> Iterator[bool]:
-    """Hold ``locks/{job}.lock`` for the block; yields False, without waiting, when another process holds it.
+    """Hold the job's lock (operations/locks/claude_forecast_{job}_job.lock) for the block; yields False, without waiting, when another process holds it.
     launchd never runs a label twice at once, but a run by hand beside a launchd run would."""
     lock_file = jsonl_store.assert_path_is_ours(paths.lock_file(job))
     lock_file.parent.mkdir(parents=True, exist_ok=True)
@@ -128,7 +128,7 @@ def single_instance_lock(paths: ForecastPaths, job: str) -> Iterator[bool]:
 
 
 def log_job_run(paths: ForecastPaths, job: str, started_at: str, ok: bool, error: str | None = None, **fields) -> None:
-    """One line per job run in run_logs/job_run_log.jsonl, with the run's scalar fields (counts, names,
+    """One line per job run in operations/logs/claude_forecast_job_runs_log.jsonl, with the run's scalar fields (counts, names,
     reasons); never raises."""
     record = {"job": job, "started_at": started_at, "finished_at": now_utc_iso(), "ok": bool(ok), **fields}
     if error:

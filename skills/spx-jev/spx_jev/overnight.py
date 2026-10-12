@@ -13,7 +13,7 @@ the night that follows it. Each save asks for both resolutions: 1-minute bars (S
 40,000, some six weeks) and 5-minute bars (back to March 2026), so the 5-minute series runs unbroken
 from the backfill on.
 
-``state/spx_jev/overnight/{day}.jsonl``, one bar per line, sorted by symbol, resolution and time:
+``state/market/futures_price_bars_by_minute/{day}.jsonl``, one bar per line, sorted by symbol, resolution and time:
 
     {"schema_version", "day", "ts" (the bar's start, ISO with the New York offset), "symbol" ("/ES"),
      "contract" ("/ESZ26"), "contract_from" ("roll_table" or "quote"), "bar_minutes" (1 or 5),
@@ -27,7 +27,7 @@ negative volume) is kept with its ``flags``, never dropped. The contract is the 
 (rolls.py) says Schwab's stitched series was on at the bar's last minute (a 5-minute bar a roll falls inside
 closed on the new contract), else the one Schwab quotes the root under.
 
-``state/spx_jev/overnight/manifest.jsonl``, one line per save that changed a night: per symbol and
+``state/market/futures_price_bar_change_counts_by_save.jsonl``, one line per save that changed a night: per symbol and
 resolution the bar count against the bars expected in the window (CME Globex hours, Sunday 18:00 to
 Friday 17:00 with the 17:00 halt; bitcoin round the clock since CRYPTO_ROUND_THE_CLOCK_FROM), the
 gaps (each missing stretch's first bar and its minutes), the flagged bars, the duplicates in Schwab's
@@ -63,7 +63,6 @@ import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.p
 
 ET = ZoneInfo("America/New_York")
 OVERNIGHT_SUBDIR = station_paths.FUTURES_PRICE_BARS_BY_MINUTE.relative_folder
-SAVE_LOCK = station_paths.FUTURES_PRICE_BARS_SAVE_LOCK.file_name()    # held while nights merge and write: the 09:26 job and the 09:28 read can save at once
 SCHEMA_VERSION = 1
 SOURCE = "schwab_price_history"
 SYMBOLS = ("/ES", "/ZN", "/BTC", "/MBT")
@@ -343,7 +342,7 @@ def save_nights(state_dir: Path, days: list[date], now: datetime, fetch_from: da
     failed += refused
     lines = []
     with saving(state_dir):
-        table = rolls.load(Path(state_dir) / OVERNIGHT_SUBDIR)
+        table = rolls.load(state_dir)
         for day in sorted(days):
             line = save_night(state_dir, day, got, quoted, table, now, failed)
             if line:
@@ -355,9 +354,9 @@ def save_nights(state_dir: Path, days: list[date], now: datetime, fetch_from: da
 def saving(state_dir: Path):
     """The store's save lock, waited for: a Mac that slept through the 09:26 job and the 09:28 read fires both
     on waking, and each merges into the same night's file and its one temporary file."""
-    folder = Path(state_dir) / OVERNIGHT_SUBDIR
-    folder.mkdir(parents=True, exist_ok=True)
-    with open(folder / SAVE_LOCK, "w") as f:
+    lock = station_paths.FUTURES_PRICE_BARS_SAVE_LOCK.path(state_dir)   # held while nights merge and write: the 09:26 job and the 09:28 read can save at once
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock, "w") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
         yield
 
@@ -371,10 +370,9 @@ def refresh_rolls(state_dir: Path, now: datetime, since: str | None = None) -> d
     reference markets' 5-minute bars, add them to the table (rolls.merge keeps every roll already found),
     write it, and restamp every saved night whose contracts change, each with its manifest line as a save
     writes it (all of them, only when the rolls or the current contracts changed). Returns the table."""
-    folder = Path(state_dir) / OVERNIGHT_SUBDIR
     days = [d for d in saved_days(state_dir) if since is None or d >= since]
     if not days:
-        return rolls.load(folder)
+        return rolls.load(state_dir)
     start = night_window(date.fromisoformat(days[0]))[0]
     references = {}
     for ref in REFERENCE_SYMBOLS:
@@ -398,14 +396,14 @@ def refresh_rolls(state_dir: Path, now: datetime, since: str | None = None) -> d
     # a save stamps its night from the table while it holds the lock, and a restamp writes the same night files
     # through the same temporary file: the table and the restamps are one step under it
     with saving(state_dir):
-        table = before = rolls.load(folder)
+        table = before = rolls.load(state_dir)
         found = rolls.align_siblings({symbol: rolls.detect(symbol, list(five[symbol].values()), references[rolls.REFERENCES[symbol]],
                                                            nights[symbol]) for symbol in SYMBOLS}, nights)
         for symbol in SYMBOLS:
             table = rolls.merge(table, symbol, found[symbol], days[0], quoted.get(symbol))
         changed = (table["current"], table["rolls"]) != (before["current"], before["rolls"])
         table["detected_at"] = now.isoformat(timespec="seconds")
-        rolls.save(folder, table)
+        rolls.save(state_dir, table)
         for day in saved_days(state_dir) if changed else []:
             save_night(state_dir, date.fromisoformat(day), {}, quoted, table, now, [])
     return table
@@ -470,14 +468,14 @@ def backfill(state_dir: Path, now: datetime, since: date = BACKFILL_FROM) -> tup
     # under the save lock, as save_nights: a read's save could otherwise merge into the same night file at once.
     # refresh_rolls takes the lock itself, so it runs after it is let go
     with saving(state_dir):
-        table = rolls.load(Path(state_dir) / OVERNIGHT_SUBDIR)
+        table = rolls.load(state_dir)
         lines = [line for day in backfill_days(got, now) if (line := save_night(state_dir, day, got, quoted, table, now, failed))]
     table = refresh_rolls(state_dir, now)
     return lines, table
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Save the overnight futures bars under state/spx_jev/overnight/.")
+    ap = argparse.ArgumentParser(description="Save the overnight futures bars under state/market/futures_price_bars_by_minute/.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
     ap.add_argument("--day", help="YYYY-MM-DD, the trading day one night leads into")
     ap.add_argument("--backfill", action="store_true", help="every night Schwab still serves, then the roll table")

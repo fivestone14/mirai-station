@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 from zoneinfo import ZoneInfo
 
 from watch.intraday import gex_alerts
+import station_paths                       # on sys.path through watch.paths
 
 ET = ZoneInfo("America/New_York")
 NOW = datetime(2026, 7, 6, 13, 0, tzinfo=ET)          # a Monday, mid-session
@@ -17,10 +18,15 @@ NOW_EOD = datetime(2026, 7, 6, 16, 5, tzinfo=ET)
 DAY = "2026-07-06"
 
 
+def _diary(state_dir: Path) -> Path:
+    """The scanner's diary for DAY, its folder made."""
+    path = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(state_dir, day=DAY)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def _write_lens_rows(state_dir: Path, rows):
-    d = state_dir / "reversion"
-    d.mkdir(parents=True, exist_ok=True)
-    with open(d / f"{DAY}.jsonl", "w") as f:
+    with open(_diary(state_dir), "w") as f:
         for r in rows:
             f.write(json.dumps(r) + "\n")
 
@@ -46,35 +52,27 @@ def _options_data(state_dir):
     return json.loads(gex_alerts._options_data_path(Path(state_dir)).read_text())
 
 
-def _write_fires(plugin_root: Path, fires):
-    """The hunter's heartbeat log for DAY, where station_paths puts it under a plugin root."""
-    import station_paths
-    path = station_paths.SPX_OPTIONS_SCANNER_SIGNAL_CHECKS_BY_SCAN.path(plugin_root, day=DAY)
+def _write_fires(state_dir: Path, fires):
+    """The hunter's heartbeat log for DAY (the scanner's signal checks), where station_paths puts it under the data root."""
+    path = station_paths.SPX_OPTIONS_SCANNER_SIGNAL_CHECKS_BY_SCAN.path(state_dir, day=DAY)
     path.parent.mkdir(parents=True, exist_ok=True)
     hb = {"ts": f"{DAY}T10:00:00-04:00", "fires": fires}
     path.write_text(json.dumps(hb) + "\n")
 
 
 class TestGexAlerts(unittest.TestCase):
-    def _run(self, state_dir, plugin_root=None, now=NOW):
-        import watch.paths as paths
+    def _run(self, state_dir, now=NOW):
         sent = []
-        old_root = paths.PLUGIN_ROOT
-        if plugin_root is not None:
-            paths.PLUGIN_ROOT = Path(plugin_root)      # the hunter's log is a repo-held store, found under the plugin root
-        try:
-            out = gex_alerts.run(now, state_dir=Path(state_dir), channel=sent.append)
-        finally:
-            paths.PLUGIN_ROOT = old_root
+        out = gex_alerts.run(now, state_dir=Path(state_dir), channel=sent.append)
         return out, sent
 
     def test_fire_pushed_once_ever(self):
-        with TemporaryDirectory() as td, TemporaryDirectory() as sk:
-            _write_fires(Path(sk), [{"ts": f"{DAY}T10:00:00", "ticker": "SPX",
+        with TemporaryDirectory() as td:
+            _write_fires(Path(td), [{"ts": f"{DAY}T10:00:00", "ticker": "SPX",
                                      "direction": "call", "side": "LONG",
                                      "magnet": 7500.0, "gap_stretch": -1.2}])
-            out1, sent1 = self._run(td, sk)
-            out2, sent2 = self._run(td, sk)
+            out1, sent1 = self._run(td)
+            out2, sent2 = self._run(td)
             self.assertEqual(out1["pushed"], 1)
             self.assertEqual(sum("paper" in s for s in sent1), 1)
             self.assertEqual(out2["pushed"], 0)          # dedup across runs
@@ -377,9 +375,9 @@ class TestFeedHealthSiren(unittest.TestCase):
 
     def test_non_dict_state_file_resets_instead_of_crashing(self):
         with TemporaryDirectory() as td:
-            p = Path(td) / "market_expectation"
-            p.mkdir(parents=True)
-            (p / "alerts_state.json").write_text("null")   # valid JSON, not a dict
+            p = gex_alerts._alerts_state_path(Path(td))
+            p.parent.mkdir(parents=True)
+            p.write_text("null")                           # valid JSON, not a dict
             r = self._fresh_row()
             r["native_coverage"] = {"no_zero_dte": True}
             _write_lens_rows(Path(td), [r])
@@ -388,12 +386,10 @@ class TestFeedHealthSiren(unittest.TestCase):
 
     def test_mangled_diary_bytes_cost_rows_not_the_run(self):
         with TemporaryDirectory() as td:
-            d = Path(td) / "reversion"
-            d.mkdir(parents=True)
             import json as _json
             good = self._fresh_row()
             good["native_coverage"] = {"no_zero_dte": True}
-            with open(d / f"{DAY}.jsonl", "wb") as f:
+            with open(_diary(Path(td)), "wb") as f:
                 f.write(b"\xff\xfe not json \n")        # invalid UTF-8 line
                 f.write((_json.dumps(good) + "\n").encode())
             out, _ = self._run(td)                # must page on the good row

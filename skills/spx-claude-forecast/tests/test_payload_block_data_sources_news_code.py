@@ -11,6 +11,7 @@ from payload_fixtures import (DAY, SPOT, absent_reasons, assert_no_leak, at, con
                               tape_fold_line, write_jsonl, write_tape_folds)
 
 from spx_claude_forecast import jsonl_store, station_stores
+from spx_claude_forecast.paths import station_paths
 from spx_claude_forecast.payload.blocks import code, news
 from spx_claude_forecast.payload.blocks.code import build_code_block
 from spx_claude_forecast.payload.blocks.data_sources import build_data_sources_block
@@ -21,7 +22,7 @@ CUT = at(14, 30, 12)
 
 
 def headlines_file(state_dir: Path, day: str) -> Path:
-    return station_stores.spx_jev_dir(state_dir) / "headlines" / f"{day}.jsonl"
+    return station_paths.NEWS_HEADLINES_BY_ARTICLE.path(state_dir, day=day)
 
 
 def headline(captured: datetime, title: str, feed: str = "google_news", source: str | None = None) -> dict:

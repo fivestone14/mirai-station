@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # launchd-fired wrapper: after the close, save the day's full 1-minute bars.
-# One run = every market-feed symbol's whole session to state/spx_jev/context/bars/{date}.jsonl,
-# and SPX's own session to state/spx_jev/bars/{date}.jsonl when that file is short
+# One run = every market-feed symbol's whole session to state/market/watchlist_price_bars_by_minute/{date}.jsonl,
+# and SPX's own session to state/market/spx_price_bars_by_minute/{date}.jsonl when that file is short
 # (spx_jev/save_day.py), for today and any market day of the last week not yet on disk. REST only,
 # through the station's shared client; the lob-flow streamer is never touched. Idempotent: a day on
 # disk is never fetched again.

@@ -29,7 +29,7 @@ def test_check_refuses_bad_rows_and_keeps_good_ones():
 
 
 def test_table_build_dedupes_and_writes_refused_rows(tmp_path, monkeypatch):
-    root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
+    root = paths.ensure_folders(paths.data_root(tmp_path))
     monkeypatch.setattr(table_builder, "_day_read_ids", lambda *a: None)
     paths.append_json_line(paths.raw_forecasts_file(root, "2026-10-01"), line())
     paths.append_json_line(paths.raw_forecasts_file(root, "2026-10-01"), line(probs={"up": 0.3, "flat": 0.5, "down": 0.2}))
@@ -44,7 +44,7 @@ def test_table_build_dedupes_and_writes_refused_rows(tmp_path, monkeypatch):
 
 
 def test_scores_join_on_read_and_sum(tmp_path, monkeypatch):
-    root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
+    root = paths.ensure_folders(paths.data_root(tmp_path))
     monkeypatch.setattr(table_builder, "_day_read_ids", lambda *a: None)
     for sid in ("average_30", "next_60"):
         for v in ("historical_odds", "pool_v2"):
@@ -59,7 +59,7 @@ def test_scores_join_on_read_and_sum(tmp_path, monkeypatch):
 
 
 def test_an_excluded_read_is_scored_but_not_learned(tmp_path, monkeypatch):
-    root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
+    root = paths.ensure_folders(paths.data_root(tmp_path))
     monkeypatch.setattr(table_builder, "_day_read_ids", lambda *a: None)
     paths.append_json_line(paths.raw_forecasts_file(root, "2026-10-01"), line(learn_exclude=True))
     paths.append_json_line(paths.raw_forecasts_file(root, "2026-10-01"),
@@ -93,7 +93,7 @@ def test_fit_for_a_day_refuses_rows_from_that_day():
 
 
 def test_load_fits_never_returns_a_later_days_fit(tmp_path):
-    root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
+    root = paths.ensure_folders(paths.data_root(tmp_path))
     matrix = AnswerMatrix(lane="live", sum_id="average_30", built_for_day="2026-10-02", rows=[], columns={})
     doc = {"version": voice_fits.FIT_VERSION, "fit_day": "2026-10-02", "max_day_used": "2026-10-01",
            "additive_scorer": {"pushes": {}, "answer_normal_odds": {}, "layer_volume": {}, "columns": {}},
@@ -105,7 +105,7 @@ def test_load_fits_never_returns_a_later_days_fit(tmp_path):
 
 
 def test_an_old_version_fit_is_passed_over_for_the_newest_current_one(tmp_path):
-    root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
+    root = paths.ensure_folders(paths.data_root(tmp_path))
     matrix = AnswerMatrix(lane="live", sum_id="average_30", built_for_day="2026-10-02", rows=[], columns={})
     doc = {"version": voice_fits.FIT_VERSION, "fit_day": "2026-10-02", "max_day_used": "2026-10-01",
            "additive_scorer": {"pushes": {}, "answer_normal_odds": {}, "layer_volume": {}, "columns": {}},
@@ -117,16 +117,16 @@ def test_an_old_version_fit_is_passed_over_for_the_newest_current_one(tmp_path):
 
 
 def test_old_fit_files_are_pruned_and_the_newest_days_kept(tmp_path):
-    root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
+    root = paths.ensure_folders(paths.data_root(tmp_path))
     for d in range(1, 15):
         paths.write_json_atomically(paths.voice_fits_file(root, f"2026-09-{d:02d}", "average_30"), {})
     deleted = paths.prune_voice_fits(root, keep_days=3)
-    assert len(deleted) == 11 and sorted(p.name[:10] for p in (root / "catalogs" / "voice_fits").glob("*.json")) == ["2026-09-12", "2026-09-13", "2026-09-14"]
+    assert len(deleted) == 11 and sorted(p.name[:10] for p in paths.voice_fits_dir(root).glob("*.json")) == ["2026-09-12", "2026-09-13", "2026-09-14"]
 
 
 def test_the_archive_keeps_the_newest_backups_per_file_and_a_weeks_forced_replays(tmp_path):
-    root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
-    archive = root / "archive"
+    root = paths.ensure_folders(paths.data_root(tmp_path))
+    archive = paths.archive_dir(root)
     for d in range(1, 13):
         for name in ("weights_average_30.json", "2026-10-01.jsonl"):
             (archive / f"{name}.202610{d:02d}T060000Z").write_text("{}")
@@ -145,7 +145,7 @@ def test_the_archive_keeps_the_newest_backups_per_file_and_a_weeks_forced_replay
 
 
 def test_the_nightly_job_catches_up_the_days_pool_v2_has_not_learned(tmp_path):
-    root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
+    root = paths.ensure_folders(paths.data_root(tmp_path))
     for day in ("2026-09-20", "2026-10-01", "2026-10-02"):
         paths.append_json_line(paths.raw_forecasts_file(root, day), line(day=day))
     assert days_to_catch_up(root, "live", "2026-10-05") == ["2026-10-01", "2026-10-02"]        # 09-20 is past the window
@@ -157,31 +157,31 @@ def test_next_market_day_skips_the_weekend():
 
 
 def test_the_hook_never_raises_and_logs_a_failure(tmp_path, monkeypatch):
-    monkeypatch.setattr(read_hook, "data_root", lambda s: tmp_path / "spx_jev" / "mirai_prediction")
+    monkeypatch.setattr(read_hook, "data_root", lambda s: paths.data_root(tmp_path))
 
     def boom(*a, **k):
         raise RuntimeError("no store here")
     monkeypatch.setattr(read_hook, "forecast_read", boom)
     result = read_hook.after_read(tmp_path, "live", "live:2026-10-01T10:00:00-04:00")
     assert result["written"] == 0 and "RuntimeError" in result["error"]
-    log = paths.read_json_lines(paths.job_run_log_file(tmp_path / "spx_jev" / "mirai_prediction"))
+    log = paths.read_json_lines(paths.job_run_log_file(paths.data_root(tmp_path)))
     assert log and log[-1]["ok"] is False and log[-1]["job_name"] == "read_hook"
 
 
 def test_the_hook_skips_a_read_already_written(tmp_path, monkeypatch):
-    root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
+    root = paths.ensure_folders(paths.data_root(tmp_path))
     paths.append_json_line(paths.raw_forecasts_file(root, "2026-10-01"), line())
     assert read_hook.already_written(root, "2026-10-01", "live:2026-10-01T10:00:00-04:00", "average_30")
     assert not read_hook.already_written(root, "2026-10-01", "live:2026-10-01T10:00:00-04:00", "next_60")
 
 
 def test_atomic_json_and_backups(tmp_path):
-    root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
-    target = root / "pools" / "pool_v2" / "weights_x.json"
+    root = paths.ensure_folders(paths.data_root(tmp_path))
+    target = paths.pool_v2_dir(root) / "weights_x.json"
     paths.write_json_atomically(target, {"a": 1})
     assert json.loads(target.read_text()) == {"a": 1} and not target.with_name(target.name + ".tmp").exists()
     copy = paths.backup_before_change(root, target)
-    assert copy and copy.exists() and copy.parent == root / "archive"
+    assert copy and copy.exists() and copy.parent == paths.archive_dir(root)
 
 
 def test_pool_2_takes_over_the_call_and_keeps_the_blend_beside_it():
@@ -263,7 +263,7 @@ def test_the_voices_mixed_are_the_ones_pool_2_weighs_never_the_pools_or_the_benc
 def test_the_live_forecast_returns_each_sums_mixed_voices_beside_its_mix_and_the_log_keeps_neither(tmp_path, monkeypatch):
     from types import SimpleNamespace
     from spx_jev.mirai_prediction import live_call
-    root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
+    root = paths.ensure_folders(paths.data_root(tmp_path))
     monkeypatch.setattr(read_hook, "data_root", lambda s: root)
     monkeypatch.setattr(read_hook, "code_features_for_read", lambda *a: {})
     empty = AnswerMatrix(lane="live", sum_id="average_30", built_for_day="2026-10-01", rows=[], columns={})
@@ -286,7 +286,7 @@ def test_the_live_forecast_returns_each_sums_mixed_voices_beside_its_mix_and_the
 def test_a_voices_list_that_fails_drops_only_that_list_and_the_sum_keeps_its_mix(tmp_path, monkeypatch):
     from types import SimpleNamespace
     from spx_jev.mirai_prediction import live_call
-    root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
+    root = paths.ensure_folders(paths.data_root(tmp_path))
     monkeypatch.setattr(read_hook, "data_root", lambda s: root)
     monkeypatch.setattr(read_hook, "code_features_for_read", lambda *a: {})
     empty = AnswerMatrix(lane="live", sum_id="average_30", built_for_day="2026-10-01", rows=[], columns={})
@@ -306,17 +306,17 @@ def test_a_voices_list_that_fails_drops_only_that_list_and_the_sum_keeps_its_mix
 
 def test_prune_archive_on_a_missing_or_empty_folder_deletes_nothing(tmp_path):
     from datetime import datetime, timezone
-    root = tmp_path / "spx_jev" / "mirai_prediction"
+    root = paths.data_root(tmp_path)
     assert paths.prune_archive(root, now=datetime(2026, 10, 7, tzinfo=timezone.utc)) == []        # no archive folder yet
-    (root / "archive").mkdir(parents=True)
+    paths.archive_dir(root).mkdir(parents=True)
     assert paths.prune_archive(root, now=datetime(2026, 10, 7, tzinfo=timezone.utc)) == []        # an empty one
 
 
 def test_a_forced_replay_folder_without_a_readable_stamp_is_pruned_by_its_age(tmp_path):
     import os, time
     from datetime import datetime, timezone
-    root = tmp_path / "spx_jev" / "mirai_prediction"
-    old = root / "archive" / "replay_force_odd-name"
+    root = paths.data_root(tmp_path)
+    old = paths.archive_dir(root) / "replay_force_odd-name"
     old.mkdir(parents=True)
     stale = time.time() - 30 * 86400
     os.utime(old, (stale, stale))

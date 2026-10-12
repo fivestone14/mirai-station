@@ -18,7 +18,7 @@ import json
 from dataclasses import replace
 from datetime import date, datetime, timedelta
 
-from conftest import at, bars_from_closes, make_row
+from conftest import at, bars_from_closes, make_row, station_paths, write_json
 from spx_jev.labels.events_shocks import DARK, LABELS, build_events_shocks_labels
 from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.labels.usual_link import SPX
@@ -556,8 +556,7 @@ MEGACAPS = {"NVDA": 0.08, "MSFT": 0.07, "AAPL": 0.065, "AMZN": 0.04, "META": 0.0
 def with_megacaps(s, root, lead: float):
     """``s`` with the index weights on file and the largest names priced: NVDA moving ``lead`` times the index's
     return, the rest flat."""
-    (root / "spx_leaders").mkdir(parents=True, exist_ok=True)
-    (root / "spx_leaders" / "weights.json").write_text(json.dumps({"as_of": "2026-10-01", "weights": MEGACAPS}))
+    write_json(station_paths.SPX_LARGEST_STOCK_WEIGHTS_BY_UPDATE.path(root), {"as_of": "2026-10-01", "weights": MEGACAPS})
     mk, open_spx = burst_market(s.bars), float(s.bars[0]["close"])
     known = dict(mk.known)
     for name in ("NVDA", "MSFT", "AAPL", "AMZN", "META", "AVGO", "GOOGL", "TSLA"):
@@ -574,9 +573,9 @@ def test_the_largest_megacap_share_of_the_shock_is_measured_from_the_index_weigh
             "of 35%: one name; 10 of 11 sector funds") in one
     spread = labels(with_megacaps(s, tmp_path, 2.0))[0]["shock.cross_asset"]
     assert "of the 8 largest names NVDA supplied the most of it, 16% of the index's move, under the one-name share of 35%; 10 of 11" in spread
-    (tmp_path / "spx_leaders" / "weights.json").unlink()
+    station_paths.SPX_LARGEST_STOCK_WEIGHTS_BY_UPDATE.path(tmp_path).unlink()
     gone = labels(replace(s, market=burst_market(s.bars), prior_markets=PRIOR_MARKETS, state_dir=tmp_path))[0]["shock.cross_asset"]
-    assert "no megacap's share of it is measured (no index weights: spx_leaders/weights.json is not written yet); 10 of 11" in gone
+    assert f"no megacap's share of it is measured (no index weights: {station_paths.SPX_LARGEST_STOCK_WEIGHTS_BY_UPDATE.relative} is not written yet); 10 of 11" in gone
 
 
 def test_the_shocks_markets_and_the_index_are_priced_at_one_instant_on_a_live_day(scene_factory, tmp_path):

@@ -9,7 +9,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
-from conftest import PRIOR_DAYS, at, bars_from_closes
+from conftest import PRIOR_DAYS, archive_path, at, bars_from_closes
 
 from spx_jev.mirai_prediction import answer_matrix, code_feature_inputs, paths, read_hook
 from spx_jev.mirai_prediction.answer_matrix import Row, build_answer_matrix
@@ -388,7 +388,7 @@ def test_flow_08_drive_test_then_drive_rotation():
 # ---------------------------------------------------------------- the raw record and the matrix
 
 def test_record_code_features_writes_once_and_rereads_the_stored_line(tmp_path, monkeypatch):
-    root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
+    root = paths.ensure_folders(paths.data_root(tmp_path))
     monkeypatch.setattr(code_feature_inputs, "load_market_history", lambda *a: MarketHistory())
     rec = record(f"{DAY}T11:00:00-04:00", {"levels.break_armed": "a break upward is armed, 0.3 sigma above"})
     first = code_feature_inputs.record_code_features(root, tmp_path, "live", DAY, rec, "live")
@@ -404,7 +404,7 @@ def base_row(read_id: str, day: str) -> Row:
 
 
 def test_matrix_takes_the_code_columns_and_leaves_a_read_without_a_line_silent(tmp_path, monkeypatch):
-    root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
+    root = paths.ensure_folders(paths.data_root(tmp_path))
     monkeypatch.setattr(answer_matrix, "load_base_rows", lambda *a: [base_row("live:a", "2026-09-16"), base_row("live:b", "2026-09-17")])
     monkeypatch.setattr(answer_matrix, "load_jev_answers", lambda *a: ({"live:a": {"q1": "yes"}}, {"q1": "g"}, {"q1": "2026-09-16"}))
     paths.append_json_line(paths.raw_code_features_file(root, "2026-09-16"), {"read_id": "live:a", "lane": "live", "answers": {"TREND-01": "big up"}})
@@ -419,7 +419,7 @@ def test_matrix_takes_the_code_columns_and_leaves_a_read_without_a_line_silent(t
 
 
 def test_the_hook_records_the_code_features_before_forecasting_and_never_raises(tmp_path, monkeypatch):
-    root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
+    root = paths.ensure_folders(paths.data_root(tmp_path))
     monkeypatch.setattr(read_hook, "data_root", lambda s: root)
     monkeypatch.setattr(code_feature_inputs, "load_market_history", lambda *a: MarketHistory())
     empty = answer_matrix.AnswerMatrix(lane="live", sum_id="average_30", built_for_day=DAY, rows=[], columns={})
@@ -439,7 +439,7 @@ def test_the_hook_records_the_code_features_before_forecasting_and_never_raises(
 
 
 def test_a_code_feature_failure_is_logged_and_the_read_goes_on(tmp_path, monkeypatch):
-    root = paths.ensure_folders(tmp_path / "spx_jev" / "mirai_prediction")
+    root = paths.ensure_folders(paths.data_root(tmp_path))
 
     def boom(*a, **k):
         raise OSError("no bars")
@@ -450,7 +450,7 @@ def test_a_code_feature_failure_is_logged_and_the_read_goes_on(tmp_path, monkeyp
 
 
 def test_backfill_writes_every_archived_live_read_once(tmp_path):
-    archive = tmp_path / "spx_jev" / "archive"
+    archive = archive_path(tmp_path, DAY).parent
     archive.mkdir(parents=True)
     reads = [record(f"{DAY}T10:02:00-04:00", {"levels.break_armed": "a break downward is armed"}, kind="read"),
              record(f"{DAY}T10:32:00-04:00", {"calendar.expiry_phase": "today is inside the 4-day opex-week window"}, kind="read"),
@@ -460,7 +460,7 @@ def test_backfill_writes_every_archived_live_read_once(tmp_path):
     assert report["days"] == {DAY: {"reads": 2, "written": 2, "skipped": 0}}
     assert report["questions"]["LEVELS-11"] == {"answered": 1, "none": 1} and report["questions"]["SESSION-01"] == {"answered": 1, "none": 1}
     assert report["questions"]["MACRO-09"] == {"answered": 2, "none": 0}                     # the premarket read serves both live reads
-    root = tmp_path / "spx_jev" / "mirai_prediction"
+    root = paths.data_root(tmp_path)
     lines = paths.read_json_lines(paths.raw_code_features_file(root, DAY))
     assert [l["read_id"] for l in lines] == [reads[0]["read_id"], reads[1]["read_id"]] and all(l["source"] == "backfill" for l in lines)
     assert run_backfill(tmp_path, "live", DAY, DAY)["days"][DAY] == {"reads": 2, "written": 0, "skipped": 2}

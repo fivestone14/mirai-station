@@ -229,4 +229,4 @@ def test_the_night_seals_a_real_read_once_per_horizon_and_rebuilds_the_library(s
     results = nightly.run_nightly(station_state, "2026-10-09", now=late, backup_dir=tmp_path / "backup")
     assert results["test_variants"]["asked"] == 0 and set(results["test_variants"]["skipped"].values()) == {"refused_under_pytest"}
     assert results["library"]["rows"] >= 2 and results["scores"]["rows"] >= 3 and "error" not in results["scorecard"]
-    assert (tmp_path / "backup" / "outcomes" / "2026-10-09.jsonl").exists()
+    assert forecast_paths.ForecastPaths(tmp_path / "backup").outcomes_file("2026-10-09").exists()   # the backup mirrors the data root

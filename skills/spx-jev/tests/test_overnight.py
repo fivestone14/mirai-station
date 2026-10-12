@@ -167,7 +167,7 @@ def test_contracts_come_from_the_roll_table_and_a_new_quote_is_a_pending_roll(tm
     table = rolls.merge(rolls.load(tmp_path), "/ES", {"rolls": [{"symbol": "/ES", "day": "2026-09-14", "at": "2026-09-13T18:00:00-04:00"}],
                                                       "rejected": [], "windows_without_roll": [], "typical_step": 0.01,
                                                       "unit": "percent"}, "2026-08-01", "/ESZ26")
-    rolls.save(tmp_path / "spx_jev" / "overnight", table)
+    rolls.save(tmp_path, table)
     served[("/ES", 1)] = _bars(t("2026-09-11", 15, 55), 4000)
     monday = date(2026, 9, 14)
     (line,), _ = overnight.save_nights(tmp_path, [monday], t("2026-09-14", 9, 26))
@@ -248,7 +248,7 @@ def test_a_roll_refresh_waits_for_a_save_already_writing_the_store(tmp_path, ser
         worker = threading.Thread(target=lambda: overnight.refresh_rolls(tmp_path, t("2026-09-25", 16, 20)) and done.set())
         worker.start()
         assert not done.wait(0.3)
-        assert not rolls.table_path(tmp_path / "spx_jev" / "overnight").exists() and _rows(tmp_path, "2026-09-11") == before
+        assert not rolls.table_path(tmp_path).exists() and _rows(tmp_path, "2026-09-11") == before
     worker.join(5)
     assert done.is_set() and {r["contract"] for r in _rows(tmp_path, "2026-09-11")} == {"/ESU26"}
 
@@ -324,7 +324,7 @@ def test_the_backfill_saves_every_night_served_then_the_roll_table(tmp_path, ser
     lines, table = overnight.backfill(tmp_path, t("2026-09-21", 9, 0))
     assert [l["day"] for l in lines] == ["2026-09-16", "2026-09-17", "2026-09-18", "2026-09-21"]
     assert lines[0]["symbols"]["/ES"]["bars"]["5"]["history_from"] == t("2026-09-16", 9, 30).isoformat()
-    assert overnight.rolls.table_path(tmp_path / "spx_jev" / "overnight").exists() and table["rolls"] == []
+    assert overnight.rolls.table_path(tmp_path).exists() and table["rolls"] == []
     assert overnight.backfill(tmp_path, t("2026-09-21", 9, 0))[0] == []              # resumable: a rerun adds nothing
     s = overnight.summary(lines)["/ES 5-min"]
     assert s["nights"] == 4 and s["earliest"] == t("2026-09-16", 9, 30).isoformat()

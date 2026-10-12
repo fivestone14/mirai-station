@@ -51,7 +51,7 @@ THETA_SHADOW = True              # theta native-GEX A/B recorder (record only, n
 # DISK-BACKED (N5 verify, 2026-07-12): the production scanner is a ONE-SHOT launchd process
 # (a fresh hunter.py per wake), so "in-process memory" is EMPTY on every live scan — the
 # marginal fields (gamma_tape_60m, flow_recent) had been structurally None on every live row
-# while their unit tests passed. The snapshot now round-trips through state/tape_prev/ so
+# while their unit tests passed. The snapshot now round-trips through state/spx/scanner/spx_options_volume_last_scan_state.json so
 # consecutive one-shot scans can difference. In-memory dict stays as a same-process cache.
 _TAPE_PREV: dict[str, dict] = {}
 
@@ -1650,7 +1650,7 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
         # while spot touches a dealer-gamma wall. REVERSED SIGN doctrine
         # (backtest n=168 touches, 11/13 days): heavy volume at a touch
         # predicts the wall BREAKS (held 39% vs 54% quiet) — SIEGE = expect
-        # break, QUIET = expect hold. Record-only: own store (state/siege) +
+        # break, QUIET = expect hold. Record-only: own store (the wall sensor's files under state/spx/scanner/) +
         # this diary key via the bridge; no payload words, no tower coupling.
         # Walls mirror the lob seam's choice — RAW 0DTE gamma walls first
         # (the strikes the touch evidence was measured on), operative
@@ -1773,7 +1773,7 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
 
 def record(telemetry: dict, now: datetime | None = None) -> None:
     """DIARY WRITER — appends the scan's row to today's diary file, the permanent
-    evidence stream (state/reversion/{date}.jsonl, best-effort). This is the
+    evidence stream (state/spx/scanner/spx_options_scanner_results_by_scan/{date}.jsonl, best-effort). This is the
     learning-capture stream the self-tuner will reconcile."""
     if not telemetry:
         return

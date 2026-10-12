@@ -45,9 +45,9 @@ At read time a question whose last two fresh answers differed by CHANGE_CUT or m
 The schedule's ``every_min`` is the starting value until a recount exists; the doc's free-text
 ``cadence`` is for people and is never read.
 
-Files, under state/spx_jev/:
-    cadence.json      {"recounted_from": day, "questions": {qid: {"minutes", "p25_hold_min", "changes", "reads", "why"}}}
-    last_asked.json   {qid: {"row_ts", "answer", "moved", "code_answer", "lost", "asleep"}}   the newest fresh answer per
+Files, under the lane's folder (state/spx/jev/live_lane/ for the live lane):
+    jev_question_ask_schedule_state.json ("cadence")   {"recounted_from": day, "questions": {qid: {"minutes", "p25_hold_min", "changes", "reads", "why"}}}
+    jev_last_answers_state.json ("last_asked")   {qid: {"row_ts", "answer", "moved", "code_answer", "lost", "asleep"}}   the newest fresh answer per
                       question, how far it moved from the one before, the code's answer at that read for a question
                       that has one (not written yet: see the note on ``then`` above), and, until a fresh answer
                       replaces the entry, the ask since then that got no answer: {"row_ts", "why"}, and the newest
@@ -404,7 +404,9 @@ def recount(records: list[dict], doc: dict, previous: dict | None = None, day: s
 
 
 def previous_day_with_records(out_dir: Path, today: str) -> str | None:
-    days = sorted(p.stem for p in Path(out_dir).glob("20??-??-??.jsonl") if p.stem < today)
+    """The newest day before ``today`` with a day of answers in the lane folder ``out_dir``."""
+    folder = station_paths.JEV_ANSWERS_BY_READ.folder_within(station_paths.JEV_LANE_FOLDER, out_dir)
+    days = sorted(p.stem for p in folder.glob("20??-??-??.jsonl") if p.stem < today)
     return days[-1] if days else None
 
 
@@ -427,7 +429,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Recount each question's cadence from a day's runs.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
     ap.add_argument("--day", help="the day to recount; default the newest day with records")
-    ap.add_argument("--write", action="store_true", help="write state/spx_jev/cadence.json")
+    ap.add_argument("--write", action="store_true", help="write state/spx/jev/live_lane/jev_question_ask_schedule_state.json")
     args = ap.parse_args(argv)
     out_dir = LIVE.folder(args.state_dir)
     doc = load_questions(LIVE.questions, LIVE.key)

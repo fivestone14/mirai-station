@@ -20,7 +20,8 @@
        04:35 ET, Europe's checkpoint in a week Frankfurt keeps winter time and New York does not; the
        command reads only the day's own checkpoints and refuses a fire more than 5 minutes late, so the
        04:35 fire reads nothing in any other week, and the 03:35 one nothing in that week. Writes only
-       state/spx_jev/lanes/premarket/, its lines in the archive, and the overnight store.
+       state/spx/jev/premarket_lane/, its card under state/screen_files/phone/, its lines in the shared
+       archive under state/spx/jev/, and the overnight store under state/market/.
        NOTE: launchd's StartCalendarInterval uses SYSTEM-LOCAL time and ignores the
        TZ env var below. This box runs on Pacific, so Hour=5 Minute=48 == 05:48 PT == 08:48 ET
        year-round (PT is ET minus 3h through DST). 02:35 ET is 23:35 PT the evening before, so its

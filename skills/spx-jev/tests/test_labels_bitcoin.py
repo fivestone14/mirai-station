@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import DAY, ET, at, bars_from_closes, night_row
+from conftest import DAY, ET, at, bars_from_closes, night_path, night_row, station_paths, write_json
 from spx_jev.cuts import OVERNIGHT_RANK_MIN_NIGHTS, SAME_CLOCK_MIN_SESSIONS, WINDOW_10_MIN
 from spx_jev.labels import bitcoin
 from spx_jev.labels.bitcoin import GATE_OF, PREMARKET, NightStore, build_bitcoin_labels, futures_close_at
@@ -29,16 +29,22 @@ def written(ls) -> dict[str, str]:
 
 
 def write_night(root: Path, day: str, rows: list[dict]) -> None:
-    folder = root / "spx_jev" / "overnight"
-    folder.mkdir(parents=True, exist_ok=True)
-    with open(folder / f"{day}.jsonl", "a") as f:
+    path = night_path(root, day)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a") as f:
         f.write("".join(json.dumps(r) + "\n" for r in rows))
 
 
 def write_table(root: Path, rolls: list[dict] = (), current: dict | None = None) -> None:
-    folder = root / "spx_jev" / "overnight"
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / "rolls.json").write_text(json.dumps({"schema_version": 1, "current": current or {}, "rolls": list(rolls)}))
+    write_json(station_paths.FUTURES_CONTRACTS_AND_PAST_ROLLS_LATEST.path(root),
+               {"schema_version": 1, "current": current or {}, "rolls": list(rolls)})
+
+
+def write_manifest(root: Path, line: dict) -> None:
+    """The overnight saver's manifest (one save line), as the labels read it for the contract Schwab quoted."""
+    path = station_paths.FUTURES_PRICE_BAR_CHANGE_COUNTS_BY_SAVE.path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(line) + "\n")
 
 
 def mbt_roll(at_: datetime) -> dict:
@@ -169,14 +175,13 @@ def test_the_night_is_refused_across_a_roll_and_a_prior_roll_night_sits_out(tmp_
 def test_a_roll_the_quote_shows_before_the_table_does_refuses_the_night(tmp_path, premarket_scene_factory):
     prior_nights(tmp_path)
     write_table(tmp_path, current={"/ES": "/ESZ26", "/MBT": "/MBTV26"})
-    manifest = tmp_path / "spx_jev" / "overnight" / "manifest.jsonl"
     line = {"day": DAY, "saved_at": at(9, 26).isoformat(), "symbols": {"/ES": {"contract_quoted": "/ESZ26"}, "/MBT": {"contract_quoted": "/MBTX26"}}}
-    manifest.write_text(json.dumps(line) + "\n")
+    write_manifest(tmp_path, line)
     ls = build_bitcoin_labels(premarket_read(premarket_scene_factory, tmp_path, 0.3, 2.6))
     assert ls.omitted["overnight.btc_vs_futures"].startswith("Schwab quotes /MBTX26 but the roll table is still on /MBTV26")
     assert ls.omitted["weekend.btc_path"] == "not the first session after a weekend or a holiday"
     # a save after the read is not seen by it
-    manifest.write_text(json.dumps({**line, "saved_at": at(9, 29).isoformat()}) + "\n")
+    write_manifest(tmp_path, {**line, "saved_at": at(9, 29).isoformat()})
     assert "overnight.btc_vs_futures" in written(build_bitcoin_labels(premarket_read(premarket_scene_factory, tmp_path, 0.3, 2.6)))
 
 
@@ -184,8 +189,7 @@ ROLL_FRIDAY = "2026-09-25"        # the last Friday of September: /MBT rolled at
 
 
 def quote(root: Path, day: str, saved_at: datetime, mbt: str) -> None:
-    line = {"day": day, "saved_at": saved_at.isoformat(), "symbols": {"/ES": {"contract_quoted": "/ESZ26"}, "/MBT": {"contract_quoted": mbt}}}
-    (root / "spx_jev" / "overnight" / "manifest.jsonl").write_text(json.dumps(line) + "\n")
+    write_manifest(root, {"day": day, "saved_at": saved_at.isoformat(), "symbols": {"/ES": {"contract_quoted": "/ESZ26"}, "/MBT": {"contract_quoted": mbt}}})
 
 
 @pytest.mark.parametrize("start, end, thursday", [
@@ -466,14 +470,13 @@ def five_day_state(root: Path, last_five: float, sessions: int = 26) -> None:
     (0.1% times sin(1.5 k), which leaves the last five sessions mid-rank), and over them ``last_five`` percent more a day."""
     spx, btc = 7000.0, MBT
     days = trading_days_before(DAY, sessions)
-    (root / "reversion" / "bars").mkdir(parents=True, exist_ok=True)
     for k, d in enumerate(days):
         index_day = 0.001 + 0.002 * (-1) ** k
         spx *= 1 + index_day
         btc *= 1 + 2 * index_day + 0.001 * math.sin(1.5 * k) + (last_five / 100 if k >= len(days) - 5 else 0.0)
         close = datetime.combine(d, time(16), tzinfo=ET)
         last_bar = {"ts": (close - timedelta(minutes=1)).isoformat(), "open": spx, "high": spx, "low": spx, "close": spx}
-        (root / "reversion" / "bars" / f"{d.isoformat()}-SPX.json").write_text(json.dumps([last_bar]))
+        write_json(station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.path(root, day=d.isoformat()), [last_bar])
         write_night(root, d.isoformat(), [one_bar("/MBT", close, btc, d)])
 
 

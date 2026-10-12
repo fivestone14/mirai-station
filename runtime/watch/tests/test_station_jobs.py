@@ -362,6 +362,7 @@ def _run_gated(tmp_path, script, market, python=True):
     _file(scripts / "env.sh",
           'export MIRAI_STATION_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"\n'
           f'export MIRAI_STATION_VENV="{venv}"\n'
+          'export MIRAI_STATION_STATE="${MIRAI_STATION_ROOT}/state"\n'
           'log() { echo "$*"; }\n')
     shutil.copy2(SCRIPTS / script, scripts / script)
     _file(tmp_path / "bin" / "date",

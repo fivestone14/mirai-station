@@ -13,7 +13,8 @@
   </array>
 
   <!-- After the close, once a day: every market-feed symbol's full 1-minute bars for the day to
-       state/spx_jev/context/bars/{date}.jsonl, and SPX's own day to state/spx_jev/bars/{date}.jsonl
+       state/market/watchlist_price_bars_by_minute/{date}.jsonl, and SPX's own day to
+       state/market/spx_price_bars_by_minute/{date}.jsonl
        when that file is short (spx_jev/save_day.py), before Schwab's 34-session window rolls past
        the day. Market days only; a day on disk is never fetched again, and a missed night is caught
        up by the next. Fires at 16:20 ET, after the bars feed's last run (16:12) and gex-polarity's

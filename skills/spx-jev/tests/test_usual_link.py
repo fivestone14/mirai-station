@@ -8,7 +8,7 @@ from datetime import timedelta
 
 import pytest
 
-from conftest import DAY, at
+from conftest import DAY, at, station_paths, write_jsonl
 from spx_jev.cuts import MIN_RANK_SESSIONS, SAME_CLOCK_MIN_SESSIONS
 from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.labels.usual_link import SPX, AgainstIndex, OwnMoves, Session, link_windows, same_clock_sessions, usual_link
@@ -109,10 +109,8 @@ def test_the_index_is_priced_from_no_snapshot_before_the_first_finished_minute_n
         return {"ts": taken.isoformat(), "failed": [], "bars": {},
                 "quotes": {SPX: {"last": spx, "close": 7742.32, "volume": 0, "quote_time": None},
                            "SMH": {"last": smh, "close": 610.0, "volume": 0, "quote_time": None}}}
-    folder = tmp_path / "spx_jev" / "context"
-    folder.mkdir(parents=True)
     lines = [quotes(at(9, 30, ss=5), 7725.0, 605.8), quotes(at(9, 31, ss=16), 7742.32, 606.1), quotes(at(9, 32, ss=26), 7722.0, 606.4)]
-    (folder / f"{DAY}.jsonl").write_text("".join(json.dumps(l) + "\n" for l in lines))
+    write_jsonl(station_paths.WATCHLIST_QUOTES_BY_MINUTE.path(tmp_path, day=DAY), lines)
     s = Session([_bar(at(9, 30), 7721.7), _bar(at(9, 31), 7720.5)], load_market_context(tmp_path, DAY))
     assert s.price(SPX, at(9, 31)) is None and s.price("SMH", at(9, 31)) is None       # only the 09:30:05 snapshot by then
     assert s.price(SPX, at(9, 32)) is None                                             # 09:31:16's index still at its close

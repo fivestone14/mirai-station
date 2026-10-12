@@ -31,7 +31,7 @@ LABELS = ("gap.size", "gap.fill_progress", "gap.morning_vs_gap", "gap.reach_dist
           "overnight.price_vs_range", "overnight.range")
 GATES = ("gap_fill_next_hour",)
 # Not dark, which is for data no feed carries: the night's /ES bars are on disk, and only the code that reads them is missing.
-NO_OVERNIGHT = ("not built yet: the overnight store (state/spx_jev/overnight/, saved at 09:26 ET) holds /ES's bars, "
+NO_OVERNIGHT = ("not built yet: the overnight store (market/futures_price_bars_by_minute/, saved at 09:26 ET) holds /ES's bars, "
                 "but no session read measures the night's range from them")
 OVERNIGHT_LABELS = ("overnight.price_vs_range", "overnight.range")
 DARK: dict[str, str] = {}

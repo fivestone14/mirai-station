@@ -11,7 +11,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from conftest import DAY, at, bars_from_closes, flat_bars, make_row
+from conftest import DAY, at, bars_from_closes, diary_path, flat_bars, make_row, station_paths, tape_folder, write_jsonl
 from spx_jev import events
 from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.labels.vol import build_vol_labels
@@ -44,9 +44,8 @@ def labels(scene):
 
 
 def write_prior_diaries(root, rows_by_day: dict[str, list[dict]]):
-    (root / "reversion").mkdir(parents=True, exist_ok=True)
     for day, rows in rows_by_day.items():
-        (root / "reversion" / f"{day}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+        write_jsonl(diary_path(root, day), rows)
     return root
 
 
@@ -1087,7 +1086,7 @@ def smile_quotes(end, slope: float, forward: float = 7700.0, atm: float = 0.15) 
 
 
 def write_tape(root, day: str, lines: list[dict], archived: bool = False):
-    folder = root / "lob_flow" / "raw" / day
+    folder = tape_folder(root, day)
     folder.mkdir(parents=True, exist_ok=True)
     text = "".join(json.dumps(x) + "\n" for x in lines)
     if archived:
@@ -1180,7 +1179,7 @@ def test_a_put_tilt_that_cannot_be_ranked_leaves_its_question_missing_the_label_
     later = replace(later, now=at(10, 20, ss=15))
     why = "no fresh 25-delta put and call quotes on the lob-flow tape in the minute to 10:20"
     assert tilt_and_gate(later) == (None, why, None)
-    why = f"no lob-flow tape for {DAY} (state/lob_flow/raw)"
+    why = f"no lob-flow tape for {DAY} ({station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.relative_folder})"
     assert tilt_and_gate(replace(thin, state_dir=None)) == (None, why, None)
     assert labels(replace(thin, state_dir=None))[1]["skew.shift_vs_price"] == why
 

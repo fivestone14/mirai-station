@@ -14,7 +14,7 @@
 
   <!-- The market around SPX, a snapshot a minute during market hours: breadth, the VIX family, the ES
        future, rates, the sectors, the index funds and the big names, appended to
-       state/spx_jev/context/{date}.jsonl (spx_jev/market_context.py). One batched quote call and seven
+       state/market/watchlist_quotes_by_minute/{date}.jsonl (spx_jev/market_context.py). One batched quote call and seven
        breadth history calls a run, spaced half a second apart, through the station's shared REST
        client; never the lob-flow streamer. The runner's market gate keeps it to market hours. -->
   <key>StartInterval</key>

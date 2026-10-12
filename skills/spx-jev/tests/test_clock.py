@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from conftest import FixedZones, at, bars_from_closes, flat_bars, make_row
+from conftest import FixedZones, at, bars_from_closes, diary_path, flat_bars, lane_folder, make_row, station_paths, write_jsonl
 from spx_jev import clock
 from spx_jev.clock import blend, day_counts, odds, phase_of, premarket_odds
 from spx_jev.lane import LIVE
@@ -24,10 +24,10 @@ def _rows(day: str) -> list[dict]:
 
 
 def _prior(tmp_path, n: int) -> dict:
-    (tmp_path / "reversion").mkdir(exist_ok=True)
+    station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(tmp_path).mkdir(parents=True, exist_ok=True)
     days = {f"2026-09-{d:02d}": flat_bars(390, day=f"2026-09-{d:02d}") for d in range(1, n + 1)}
     for d in days:
-        (tmp_path / "reversion" / f"{d}.jsonl").write_text("".join(json.dumps(make_row(at(9 + (30 + m) // 60, (30 + m) % 60, day=d), 7700.0)) + "\n"
+        diary_path(tmp_path, d).write_text("".join(json.dumps(make_row(at(9 + (30 + m) // 60, (30 + m) % 60, day=d), 7700.0)) + "\n"
                                                                    for m in range(0, 390, 5)))
     return days
 
@@ -62,7 +62,7 @@ def test_the_replayed_reads_are_graded_in_their_zones_and_carry_the_morning_anch
 
 
 def test_the_odds_need_ten_sessions_and_then_blend_half_and_half(tmp_path):
-    out = tmp_path / "spx_jev"
+    out = lane_folder(tmp_path)
     few = odds(tmp_path, out, _prior(tmp_path, 9), NOW)
     assert few["left_out"].startswith("only 9 prior sessions")
     c = odds(tmp_path, out, _prior(tmp_path, 10), NOW)
@@ -79,19 +79,18 @@ def test_the_odds_need_ten_sessions_and_then_blend_half_and_half(tmp_path):
 def test_a_day_is_counted_again_when_its_market_context_changes(tmp_path, monkeypatch):
     """The VIX an estimated anchor falls back on is read from the day's context files, so a stored day
     whose context file appears or changes is recounted, and the others are not."""
-    out, prior = tmp_path / "spx_jev", _prior(tmp_path, 10)
+    out, prior = lane_folder(tmp_path), _prior(tmp_path, 10)
     odds(tmp_path, out, prior, NOW)
     counted = []
     monkeypatch.setattr(clock, "day_counts", lambda bars, *rest: counted.append(bars[0]["ts"][:10]) or {})
     odds(tmp_path, out, prior, NOW)
     assert counted == []
-    (tmp_path / "spx_jev" / "context").mkdir(parents=True)
-    (tmp_path / "spx_jev" / "context" / "2026-09-03.jsonl").write_text("{}\n")
+    write_jsonl(station_paths.WATCHLIST_QUOTES_BY_MINUTE.path(tmp_path, day="2026-09-03"), [{}])
     odds(tmp_path, out, prior, NOW)
     assert counted == ["2026-09-03"]
 
 def test_a_half_day_gets_no_blend(tmp_path):
-    c = odds(tmp_path, tmp_path / "spx_jev", {}, at(12, 2, day="2026-11-27"))
+    c = odds(tmp_path, lane_folder(tmp_path), {}, at(12, 2, day="2026-11-27"))
     assert c["left_out"].startswith("a 13:00 half day")
     assert blend({"by": {"next_30": {"pick": "up", "probabilities": {"up": 1.0}}}}, c)["blend"]["used"] is False
 
@@ -104,12 +103,12 @@ PREMARKET_NOW = at(9, 28, day="2026-09-18")
 def _climbing(tmp_path, anchors: list[float]) -> dict:
     """One prior session per anchor from 2026-09-01: flat to the 09:34 bar, then half a point a minute, 5
     points by 09:44 and 15 by 10:04, its diary anchored at the given sigma."""
-    (tmp_path / "reversion").mkdir(exist_ok=True)
+    station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(tmp_path).mkdir(parents=True, exist_ok=True)
     days = {}
     for k, sigma in enumerate(anchors, start=1):
         d = f"2026-09-{k:02d}"
         days[d] = bars_from_closes([7700.0] * 5 + [7700.0 + 0.5 * i for i in range(1, 386)], day=d)
-        (tmp_path / "reversion" / f"{d}.jsonl").write_text(json.dumps(make_row(at(9, 31, day=d), 7700.0, sigma=sigma, sigma_anchor=sigma)) + "\n")
+        diary_path(tmp_path, d).write_text(json.dumps(make_row(at(9, 31, day=d), 7700.0, sigma=sigma, sigma_anchor=sigma)) + "\n")
     return days
 
 
@@ -154,12 +153,12 @@ def _spiking(tmp_path, n: int, jump: float = 10.0) -> dict:
     up and hands its close to the next bar's open, so it is a real move, not a bad tick. Every read (09:32, 09:42, ...)
     ends its 30-minute window on one: up at the end price, 10 points against a flat zone of 5.25, but flat on the average,
     three such minutes in thirty sitting 1 point up against an edge of 3.11."""
-    (tmp_path / "reversion").mkdir(exist_ok=True)
+    station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(tmp_path).mkdir(parents=True, exist_ok=True)
     days = {}
     for d in range(1, n + 1):
         day = f"2026-09-{d:02d}"
         days[day] = bars_from_closes([7700.0 + (jump if i % 10 == 1 else 0.0) for i in range(390)], day=day)
-        (tmp_path / "reversion" / f"{day}.jsonl").write_text("".join(json.dumps(make_row(at(9 + (32 + m) // 60, (32 + m) % 60, day=day), 7700.0)) + "\n"
+        diary_path(tmp_path, day).write_text("".join(json.dumps(make_row(at(9 + (32 + m) // 60, (32 + m) % 60, day=day), 7700.0)) + "\n"
                                                                      for m in range(0, 380, 10)))
     return days
 
@@ -168,7 +167,7 @@ def test_the_average_price_odds_are_counted_on_the_average_price_alone(tmp_path,
     """The same reads on the same sessions: every one up at the end price and flat on the average. The end-price odds
     say up and the average-price odds flat, each from its own file, and counting the one never reads, writes or moves
     the other."""
-    out, prior = tmp_path / "spx_jev", _spiking(tmp_path, 10)
+    out, prior = lane_folder(tmp_path), _spiking(tmp_path, 10)
     end = odds(tmp_path, out, prior, NOW)
     kept = (out / clock.CACHE_NAME).read_bytes()
     avg = clock.integral_odds(tmp_path, out, prior, NOW)
@@ -192,7 +191,7 @@ def test_the_average_price_odds_carry_every_part_of_the_day_for_the_phones_sheet
     counts: integral_odds hands them over as ``blocks``, each part shrunk as the blend's own part is, so the read's part
     reads the same odds the call was blended with. The blend itself never carries them: they ride the card alone, never
     a day's records."""
-    avg = clock.integral_odds(tmp_path, tmp_path / "spx_jev", _spiking(tmp_path, 10), NOW)
+    avg = clock.integral_odds(tmp_path, lane_folder(tmp_path), _spiking(tmp_path, 10), NOW)
     b = avg["blocks"]
     # every span a full stamp on the read's day, as every time on the card is (the phone draws it in the viewer's zone)
     assert [(p["phase"], p["from"], p["to"]) for p in b["phases"]] == [
@@ -218,7 +217,7 @@ def test_a_session_short_of_graded_reads_is_listed_as_left_out_of_every_part():
 
 
 def test_the_average_price_odds_need_ten_sessions_and_a_full_day(tmp_path):
-    out = tmp_path / "spx_jev"
+    out = lane_folder(tmp_path)
     few = clock.integral_odds(tmp_path, out, _spiking(tmp_path, 9), NOW)
     assert few == {"left_out": "only 9 prior sessions with enough reads graded on the average price; its time-of-day odds need 10"}
     half = clock.integral_odds(tmp_path, out, _spiking(tmp_path, 10), at(12, 2, day="2026-11-27"))

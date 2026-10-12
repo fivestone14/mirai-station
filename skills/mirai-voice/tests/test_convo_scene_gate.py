@@ -22,9 +22,13 @@ import pytest
 
 _SNDK = Path(__file__).resolve().parents[2] / "sndk-pro"
 sys.path.insert(0, str(_SNDK))
+_RUNTIME = str(Path(__file__).resolve().parents[3] / "runtime")   # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
 
 import sndk_read as SR          # noqa: E402
 import convo                    # noqa: E402
+import station_paths            # noqa: E402
 
 ET = SR._ET
 
@@ -59,13 +63,12 @@ def tape(tmp_path, monkeypatch):
     """A real half-hour of rows, written where the reader looks for them."""
     monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
     day = datetime(2026, 8, 19, 13, 1, tzinfo=ET)
-    d = tmp_path / "sndk_reversion"
-    d.mkdir(parents=True)
+    diary = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path, day="2026-08-19")
+    diary.parent.mkdir(parents=True)
     import json
     rows = [_row(day - timedelta(minutes=2 * i), 1500.0 + i) for i in range(15)][::-1]
-    (d / "2026-08-19.jsonl").write_text(
-        "".join(json.dumps(r) + "\n" for r in rows))
-    (tmp_path / "sndk_reads").mkdir(parents=True)
+    diary.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN.folder(tmp_path).mkdir(parents=True)
     return day
 
 

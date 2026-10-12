@@ -11,6 +11,7 @@ from datetime import datetime
 import pytest
 
 from watch.intraday import spx_premarket_deadman as D
+import station_paths                       # on sys.path through watch.paths
 
 DAY = "2026-09-28"                                        # a Monday
 READS = ("02:35", "03:35", "08:05", "08:48", "09:05", "09:28")
@@ -20,21 +21,28 @@ def _at(hhmm, day=DAY):
     return datetime.fromisoformat(f"{day}T{hhmm}:00").replace(tzinfo=D.ET)
 
 
+def _reads_file(state_dir, day):
+    """The lane's read file for `day`, its folder made, where the lane writes it under the state dir."""
+    path = station_paths.JEV_ANSWERS_BY_READ.path(state_dir, lane=D.LANE, day=day)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 @pytest.fixture
 def lane(tmp_path):
-    """A state dir with the pre-market lane's folder, a sent-message list, and writers for its card and reads."""
-    folder = tmp_path / "spx_jev" / "lanes" / "premarket"
-    folder.mkdir(parents=True)
+    """A state dir, a sent-message list, and writers for the pre-market lane's phone card and its reads."""
+    card_path = station_paths.JEV_CARD_BY_LANE[D.LANE].path(tmp_path)
+    card_path.parent.mkdir(parents=True)
     sent: list = []
 
     def card(day=DAY, reads=READS, closed=False, tally=None):
-        (folder / "latest.json").write_text(json.dumps(
+        card_path.write_text(json.dumps(
             {"day": day, "lane": "premarket", "closed_out_at": f"{day}T14:06:04+00:00" if closed else None,
              "schedule": {"reads": [f"{day}T{c}:00-04:00" for c in reads], "close_out": f"{day}T10:06:00-04:00"},
              **({"tally": tally} if tally else {})}))
 
     def read(*checkpoints, day=DAY):
-        (folder / f"{day}.jsonl").write_text("".join(
+        _reads_file(tmp_path, day).write_text("".join(
             json.dumps({"row_ts": f"{day}T{c}:04-04:00", "checkpoint": c}) + "\n" for c in checkpoints))
 
     def run(now, **kw):
@@ -145,7 +153,7 @@ def test_the_ledger_starts_afresh_each_day(lane):
 def test_a_torn_read_line_is_not_a_read(lane):
     lane.card()
     lane.read("02:35")
-    with open(lane.dir / "spx_jev" / "lanes" / "premarket" / f"{DAY}.jsonl", "a") as f:
+    with open(_reads_file(lane.dir, DAY), "a") as f:
         f.write('{"row_ts": "2026-09-28T03:35:04-04:00", "checkp')
     assert lane.run(_at("03:50"))["missed"] == ["03:35"]
 

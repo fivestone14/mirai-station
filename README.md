@@ -81,7 +81,7 @@ flowchart TB
     SFEED --> SREAD
   end
 
-  DIARY["④ THE DIARY<br/><i>one JSONL row per scan · state/reversion/ · state/sndk_reversion/</i>"]
+  DIARY["④ THE DIARY<br/><i>one JSONL row per scan · state/spx/scanner/spx_options_scanner_results_by_scan/ · state/sndk/sndk_options_scanner_results_by_scan/</i>"]
   CARD["⑤ REPORT CARDS<br/><i>nightly A/B grade · Wilson promotion gate</i>"]
 
   subgraph TELL["⑥ TELL"]
@@ -121,7 +121,7 @@ two phases:
    - the **Flow Sensor + Gravity Engine** read first and hand up the magnet, σ,
      walls, and regime;
    - the **three heads** each evaluate that map;
-   - `record()` appends one row to today's **diary** (`state/reversion/<date>.jsonl`);
+   - `record()` appends one row to today's **diary** (`state/spx/scanner/spx_options_scanner_results_by_scan/<date>.jsonl`);
    - the Obsidian "Today" note and the viewstation refresh.
 2. **Alerts** — `watch.cli gex-alerts` runs *always* (after hours too): fresh paper
    fires, the wall-breach bell and the feed sirens push to the phone via **ntfy**.
@@ -137,7 +137,7 @@ entry, not an order.
 | Head | Code key | Thesis | Fires when… |
 |---|---|---|---|
 | **A · Fade Lens** | `reversion_extreme` | GRAVITY wins — price snaps back to the magnet | four gates all pass: **stretched** (σ from close / VWAP / wall), **pinning** regime, **reaction** (last bar turns back), and **runway** to the magnet |
-| **B · Watchtower** | `watchtower` | an independent LLM "second opinion" that forecasts direction from the map | blind-then-reveal, 3-vote majority, `claude-sonnet-5` pinned by exact id, capped 35 judged scans/day. Since **wt-11** it may reach for exactly two tools — its own history CLI (`lefteye_rag.py` → `state/spx_rag/`, its past reads as searchable memory) and WebSearch for the catalyst behind a genuinely abnormal tape — doctrine-gated, history is context never the trigger. **Never touches the phone and can never place or veto a trade** — it exists only to be graded |
+| **B · Watchtower** | `watchtower` | an independent LLM "second opinion" that forecasts direction from the map | blind-then-reveal, 3-vote majority, `claude-sonnet-5` pinned by exact id, capped 35 judged scans/day. Since **wt-11** it may reach for exactly two tools — its own history CLI (`lefteye_rag.py` → `state/spx/scanner/spx_options_scanner_claude_notes_by_read/`, its past reads as searchable memory) and WebSearch for the catalyst behind a genuinely abnormal tape — doctrine-gated, history is context never the trigger. **Never touches the phone and can never place or veto a trade** — it exists only to be graded |
 | **C · Break Lens** | `level_reclaim` | FLOW wins — a weakened map is overpowered and price breaks away | a two-stage *cock → fire*: gravity cocks the hammer on a rejection at the storm side; live one-way flow fires it. Recording-only |
 
 The Fade Lens and Break Lens are opposite twins — one bets the pin holds, the other
@@ -205,7 +205,7 @@ often than not, so it ships as a band, never a scalar; the old arrow pointed **8
 further than price travels** in the window it implied. Nothing on this surface is
 outside the noise band, and nothing here is presented as an edge.
 
-A **pause** switch (`state/sndk_reads/control.json`, flipped from the viewstation's SNDK tab) silences
+A **pause** switch (`state/sndk/sndk_options_reader_reasoning_switch.json`, flipped from the viewstation's SNDK tab) silences
 the model's *sentence* and nothing else — the gates and rankings are pure
 functions of a row already on disk, so every scan still lands a row, stamped
 `paused: true`. A gap in a training set costs more than a gap in the prose. Both
@@ -298,8 +298,8 @@ reads it, and it is the single gate between paper and live. **Nothing has cleare
 | **Schwab** (`schwab-py`) | daily/1-min bars, live quotes, the SPY chain (the ×10 proxy) | Keychain OAuth (7-day token, kept alive by `auth-watch`) |
 | **Claude** (subscription) | the Watchtower vote and the SNDK reading via one-shot `claude -p`; the voice conversation via a held-open `claude-agent-sdk` day session (a CLI spawn costs 7–100 s — far too slow to speak) | Claude Code CLI login — **no API key** |
 
-The whole option-book foundation lives immutable in `state/gex_fills/`
-(`native_SPX.json`, `proxy_SPY.json`); everything downstream re-prices off it.
+The whole option-book foundation lives immutable in `state/spx/scanner/`
+(`spx_options_strike_volume_weights_state.json`, `spy_options_strike_volume_weights_state.json`); everything downstream re-prices off it.
 
 ---
 
@@ -335,15 +335,17 @@ mirai-station/
 │   ├── viewstation/            read-only HTTP on :8787: the desktop page + the phone pages (static/m/)
 │   ├── launchd/                25 LaunchAgent plists (the fleet, below)
 │   └── scripts/                install/venv/run wrappers + env.sh (Keychain reader)
-├── state/                      runtime-mutable — never copied between machines (the layout below is today's; runtime/station_paths.py is the one place that knows it)
-│   ├── reversion/              the SPX diary + nightly grades
-│   ├── spx_rag/                the Watchtower's memory (slices · summaries · terrain)
-│   ├── spx_jev/ spx_claude_forecast/ jev/               the JEV services and the Claude forecast
-│   ├── sndk_reversion/ sndk_reads/ sndk_gex/ sndk_rag/   the SNDK station
-│   ├── gex_fills/ dated_gex/                             the book and its baselines
-│   ├── siege/ lob_flow/ tape_prev/                      the shadow sensors
-│   ├── market_expectation/     gex_alerts' alerts_state.json only (the retired macro brief's records went 2026-10-11)
-│   └── voice/ logs/            conversation log + session continuity
+├── state/                      runtime-mutable — never copied between machines; every store in its named folder since 2026-10-11 (runtime/station_paths.py is the one place that knows the layout)
+│   ├── market/                 prices, quotes, depth, trades, open interest, the calendar, and their tables/
+│   ├── spx/scanner/            the SPX options scanner (the left eye), the order-flow readings, the wall sensor, the Watchtower's memory
+│   ├── spx/jev/                the JEV lanes (live_lane · opening_lane · premarket_lane), the shared archive, its tables/
+│   ├── spx/prediction/         the base pool, the learner pool, the code questions' answers, the forecasts and their tables/
+│   ├── spx/claude_forecast/    Claude's own SPX forecast: its record, its tables/, its rulebooks
+│   ├── sndk/                   the SNDK scanner, its reader and the reader's memory
+│   ├── voice_desk/             the voice desk's transcripts + session continuity
+│   ├── screen_files/           phone/ cards and the desktop/ 3D view, written only for a screen
+│   ├── operations/             logs/ · locks/ · health/ · the alert states
+│   └── archive/                rollback copies and retired data, dated at archiving
 └── docs/                       INSTALL · OPERATIONS · gex-glossary · gw-vocab ·
                                 wt8-doctrine · spx-payload-inventory ·
                                 sndk-payload-inventory · salvage-notes
@@ -368,7 +370,7 @@ the fleet.
 | `auth-watch` | 08:00 ET | Schwab token keep-alive + dead-bearer ping |
 | `dated-book` | 08:17 ET daily, + Fri 17:10 ET | the far-dated structural-wall sidecar |
 | `gex-polarity` | 16:15 ET | after-close A/B grader + LOB nightly fold |
-| `spx-jev` | :02 and :32 ET, 09:32 to 16:02 (gated to RTH; the 16:02 fire only grades) | the SPX JEV decision service beside the SPX diary: labels, asks JEV, sums and grades, writes `state/spx_jev/` — its own job, never on the scan path (`skills/spx-jev/README.md`) |
+| `spx-jev` | :02 and :32 ET, 09:32 to 16:02 (gated to RTH; the 16:02 fire only grades) | the SPX JEV decision service beside the SPX diary: labels, asks JEV, sums and grades, writes the live lane under `state/spx/jev/`, the learning loops under `state/spx/prediction/` and its card under `state/screen_files/phone/` — its own job, never on the scan path (`skills/spx-jev/README.md`) |
 | `spx-jev-tape` | every 5 min 09:35 to 10:30 ET, and 10:42 (gated to RTH) | SPX JEV's opening lane |
 | `spx-jev-premarket` | 02:35, 03:35 (04:35 in Frankfurt's winter-time week), 08:05, 08:48, 09:05, 09:28 ET, and 10:06 | SPX JEV's lane before the open, from the night's futures; 10:06 is its close-out |
 | `spx-premarket-deadman` | every 5 min | pages a pre-market checkpoint with no read, or a close-out not landed or leaving a call ungraded |
@@ -376,10 +378,10 @@ the fleet.
 | `spx-jev-context` | every 60 s (gated to RTH) | the market around SPX (breadth, VIX family, futures, rates, sectors, megacaps) for SPX JEV |
 | `spx-jev-save-day` | 16:20 ET | the day's full minute bars of every market-feed symbol |
 | `spx-jev-overnight` | 09:26 and 16:20 ET | the overnight futures (/ES, /ZN, /BTC, /MBT) and the roll table |
-| `spx-jev-headlines` | every 3 min, 07:00 to 16:30 ET weekdays | four public RSS feeds, each new item stamped with the poll's own clock under `state/spx_jev/headlines/`, for the judgment questions |
+| `spx-jev-headlines` | every 3 min, 07:00 to 16:30 ET weekdays | four public RSS feeds, each new item stamped with the poll's own clock under `state/market/news_headlines_by_article/`, for the judgment questions |
 | `spx-jev-store` | 16:40 ET | SPX JEV's learning store, rebuilt from its raw files into checked Parquet |
-| `spx-jev-prediction-nightly` | 17:05 ET weekdays | the Mirai Prediction System's nightly job: its tables, the voice scores, pool_v2's learning, the learners' refit and the phone's scoreboard, under `state/spx_jev/mirai_prediction/` |
-| `spx-claude-forecast-recorder` | 08:40 and 16:25 ET, plus Fri 17:30 ET | copies station data before it is overwritten or deleted (the dated book, siege's SPY minutes, the raw tape, the $VIX1D close, SPX 5-minute bars) into `state/spx_claude_forecast/recorder/` and mirrors the folder to iCloud |
+| `spx-jev-prediction-nightly` | 17:05 ET weekdays | the Mirai Prediction System's nightly job: its tables, the voice scores, pool_v2's learning, the learners' refit and the phone's scoreboard, under `state/spx/prediction/` (the scoreboard card under `state/screen_files/phone/`) |
+| `spx-claude-forecast-recorder` | 08:40 and 16:25 ET, plus Fri 17:30 ET | copies station data before it is overwritten or deleted (the dated book, siege's SPY minutes, the raw tape, the $VIX1D close, SPX 5-minute bars) into `state/market/` and mirrors the forecast folder and those copies to iCloud |
 | `spx-claude-forecast-nightly` | 17:15 ET weekdays | seals what happened after every Claude read, rebuilds the library of past moments, scores every forecaster, writes the scorecard |
 
 ### Kill switches

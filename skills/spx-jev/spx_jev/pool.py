@@ -57,9 +57,10 @@ lane does not run the loop (lane.PREMARKET.pool): its sums are not blended, so n
 blend50 needs, and no price-only reference for the window from the settled open has been validated
 (clock.py).
 
-Files, beside the lane's records:
-    pool_30.json, pool_60.json   the state per horizon: weights, tables, e-processes, statuses, the watermark
-                                 (pool_10.json and pool_30.json for sums of 10 and 30 minutes)
+Files (station_paths names them; pool_folders says where a run keeps them):
+    base_pool_state/next_30_minutes.json, next_60_minutes.json   the state per horizon: weights, tables, e-processes,
+                                 statuses, the watermark (next_10_minutes.json and next_30_minutes.json for the sums of
+                                 10 and 30 minutes when the loop is run on the opening or pre-market lane)
 """
 from __future__ import annotations
 
@@ -200,9 +201,23 @@ def cold_state(source: str = SOURCE) -> dict:
             "cap_binds": [], "frozen": None, "last_session_applied": None, "replay_until": None}
 
 
+def pool_folders(out_dir: Path | str) -> tuple[Path, Path, Path]:
+    """Where a run that reads the lane folder ``out_dir`` keeps the pool's files: ``(the state files, the nightly
+    updates, the rollback copies)``. The station's folders under the data root (station_paths: spx/prediction/base_pool/
+    and archive/) when ``out_dir`` is the live lane's folder there; inside ``out_dir`` itself, under the same last
+    folder names, for any other folder, so another lane's run or a replay into a scratch folder keeps its pool to itself."""
+    out_dir = Path(out_dir)
+    state, updates, copies = (station_paths.BASE_POOL_STATE, station_paths.BASE_POOL_UPDATES_BY_DAY_AND_HORIZON,
+                              station_paths.BASE_POOL_STATE_ROLLBACK_COPIES)
+    root = station_paths.JEV_LANE_FOLDER.root_of(out_dir, lane="live")
+    if root is not None:
+        return state.folder(root), updates.folder(root), copies.path(root)
+    return out_dir / state.relative_folder.name, out_dir / updates.relative_folder.name, out_dir / Path(copies.relative).name
+
+
 def state_path(out_dir: Path, minutes: int) -> Path:
     """The end-price pool's state for the horizon ``minutes`` long (station_paths names the horizons the pool learns)."""
-    return station_paths.BASE_POOL_STATE.in_lane_folder(out_dir, horizon=f"next_{minutes}_minutes")
+    return pool_folders(out_dir)[0] / station_paths.BASE_POOL_STATE.file_name(horizon=f"next_{minutes}_minutes")
 
 
 def load_state(out_dir: Path, minutes: int) -> dict:
@@ -258,6 +273,7 @@ def save_state(out_dir: Path, minutes: int, state: dict) -> None:
     """Rounded to ROUND places and written with sorted keys and fixed separators, so a rebuild from the
     same records hashes the same; in one step, so a reader never sees half a file."""
     path = state_path(out_dir, minutes)
+    path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(_canonical(state), encoding="utf-8")
     os.replace(tmp, path)
@@ -698,11 +714,11 @@ def learn_session(state: dict, day: str, reads: list[dict], excluded: dict[str, 
     return body
 
 
-def archive_state(path: Path, state: dict) -> Path:
-    """Keep a state learned under other constants in the folder's archive/, named by the constants it was learned
-    under and today's date, before a rebuild replaces it. Returns where it went."""
-    folder = station_paths.BASE_POOL_STATE_ROLLBACK_COPIES.in_lane_folder(path.parent)
-    folder.mkdir(exist_ok=True)
+def archive_state(out_dir: Path, path: Path, state: dict) -> Path:
+    """Keep a state learned under other constants in the run's rollback-copies folder (pool_folders), named by the
+    constants it was learned under and today's date, before a rebuild replaces it. Returns where it went."""
+    folder = pool_folders(out_dir)[2]
+    folder.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(ET).date().isoformat()
     base = f"{path.name}.pre-{state.get('constants_hash') or 'unknown'}-{stamp}"
     dest, n = folder / base, 1
@@ -738,7 +754,7 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline:
         replay_until = max((s["last_session_applied"] or "") for s in states.values())
         for h in order:
             if state_path(out_dir, lane.horizons[h][0]).exists():
-                archive_state(state_path(out_dir, lane.horizons[h][0]), states[h])
+                archive_state(out_dir, state_path(out_dir, lane.horizons[h][0]), states[h])
         states = {h: {**cold_state(), "replay_until": replay_until or None} for h in order}
     watermark = min((s["last_session_applied"] or "") for s in states.values())
     stopped = False

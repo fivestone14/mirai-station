@@ -120,7 +120,7 @@ def _tonight(scene: Scene) -> tuple[Tonight | None, str]:
     if overnight.holiday_night(now.date()):
         return None, HOLIDAY_NIGHT
     return Tonight(now.date(), now.time().replace(second=0, microsecond=0),
-                   rolls.load(Path(scene.state_dir) / overnight.OVERNIGHT_SUBDIR), Path(scene.state_dir),
+                   rolls.load(Path(scene.state_dir)), Path(scene.state_dir),
                    float(pc) / 100.0 / scene.sigma), ""
 
 

@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 
 import sndk_board as B
 import sndk_read as SR
+import station_paths
 from synth import DAY, PRIOR, YEST, at, board_row as mkrow, flat_bars, fronted, recs, write_prior
 
 ET = ZoneInfo("America/New_York")
@@ -172,13 +173,13 @@ def test_the_checker_reads_a_board_with_no_volume_on_it(tmp_path):
 def write_prior_with_next(tmp_path, front_vol, next_vol, day=PRIOR):
     """The prior session's last row, carrying BOTH books' counts, with today's
     next weekly expiry (2026-09-25) sitting in its next slot."""
-    d = tmp_path / "sndk_reversion"
-    d.mkdir(parents=True, exist_ok=True)
+    p = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path, day=day.strftime("%Y-%m-%d"))
+    p.parent.mkdir(parents=True, exist_ok=True)
     r = mkrow(at(day, 15, 58), vol=front_vol, next_arrays=True)
     r["meta"]["expiries"] = [{"date": "2026-09-18", "dte": 1}, {"date": "2026-09-25", "dte": 8}]
     r["gex_views"]["next_dte"] = 8
     r["gex_views"]["vol_side_by_strike_next"] = [[k, c, p] for k, (c, p) in sorted(next_vol.items())]
-    (d / f"{day.strftime('%Y-%m-%d')}.jsonl").write_text(json.dumps(r) + "\n")
+    p.write_text(json.dumps(r) + "\n")
 
 
 def _today_with_next(next_vol, front_vol, hh=9, mm=31):

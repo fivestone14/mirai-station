@@ -12,6 +12,7 @@ standing up a socket."""
 import pytest
 
 import server
+import station_paths       # on sys.path once server is imported
 
 
 class _Req:
@@ -117,21 +118,26 @@ def test_raw_fetch_enforces_the_suffix_allowlist(tmp_path, monkeypatch):
 def test_voice_transcripts_are_never_served(tmp_path, monkeypatch):
     """Verbatim recordings of the operator talking, and a live agent session
     id, are a different category of private than a diary row."""
-    (tmp_path / "voice").mkdir()
-    (tmp_path / "voice" / "convo-2026-08-06.jsonl").write_text('{"said": "..."}\n')
-    (tmp_path / "voice" / "session.json").write_text('{"session_id": "abc"}')
-    (tmp_path / "reversion").mkdir()
-    (tmp_path / "reversion" / "2026-08-06.jsonl").write_text('{"row": 1}\n')
+    transcript = station_paths.VOICE_DESK_TRANSCRIPTS_BY_EXCHANGE.path(tmp_path, day="2026-08-06")
+    session = station_paths.VOICE_DESK_SESSION_STATE.path(tmp_path)
+    diary = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path, day="2026-08-06")
+    for p in (transcript, session, diary):
+        p.parent.mkdir(parents=True, exist_ok=True)
+    transcript.write_text('{"said": "..."}\n')
+    session.write_text('{"session_id": "abc"}')
+    diary.write_text('{"row": 1}\n')
+    rel = {p: str(p.relative_to(tmp_path)) for p in (transcript, session, diary)}
     monkeypatch.setattr(server, "RAW_ROOTS", {"state": tmp_path})
 
-    assert server._raw_file("state", "voice/convo-2026-08-06.jsonl", 50) == {"error": "not found"}
-    assert server._raw_file("state", "voice/session.json", 50) == {"error": "not found"}
+    assert server._raw_file("state", rel[transcript], 50) == {"error": "not found"}
+    assert server._raw_file("state", rel[session], 50) == {"error": "not found"}
     # the ordinary diary still reads, or the explorer would be pointless
-    assert server._raw_file("state", "reversion/2026-08-06.jsonl", 50).get("kind") == "jsonl"
+    assert server._raw_file("state", rel[diary], 50).get("kind") == "jsonl"
 
     listed = [i["rel"] for i in server._raw_index()["state"]]
-    assert not any(r.startswith("voice") for r in listed)
-    assert "reversion/2026-08-06.jsonl" in listed
+    voice_desk = rel[session].split("/")[0]
+    assert not any(r.startswith(voice_desk) for r in listed)
+    assert rel[diary] in listed
 
 
 class _Route(server.Handler):

@@ -9,6 +9,10 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+_RUNTIME = str(Path(__file__).resolve().parents[3] / "runtime")     # runtime/station_paths.py names every store a fixture writes
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402
 
 ET = timezone(timedelta(hours=-4))
 DAY = "2026-09-18"
@@ -85,28 +89,127 @@ def context_line(ts: datetime, quotes: dict[str, float] | None = None, bars: dic
             "failed": []}
 
 
+def write_jsonl(path: Path, rows: list[dict]) -> Path:
+    """``rows`` as one JSON line each at ``path``, its folder made; the file is replaced, not appended."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    return path
+
+
+def write_json(path: Path, obj) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(obj))
+    return path
+
+
+def lane_folder(root: Path, lane: str = "live") -> Path:
+    """A lane's folder under the data root ``root`` (station_paths.JEV_LANE_FOLDERS)."""
+    return station_paths.JEV_LANE_FOLDER.path(root, lane=lane)
+
+
+def diary_path(root: Path, day: str) -> Path:
+    """The left-eye scanner's SPX diary for ``day``."""
+    return station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(root, day=day)
+
+
+def tape_folder(root: Path, day: str) -> Path:
+    """The lob-flow collector's raw day folder (tape.jsonl, sweeps.jsonl inside it)."""
+    return station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.path(root, day=day)
+
+
+def night_path(root: Path, day: str) -> Path:
+    """The overnight futures store's file for the night into ``day``."""
+    return station_paths.FUTURES_PRICE_BARS_BY_MINUTE.path(root, day=day)
+
+
+def archive_path(root: Path, day: str) -> Path:
+    """The one archive every lane appends to, under the data root ``root``."""
+    return station_paths.JEV_READS_AND_GRADES_BY_EVENT.path(root, day=day)
+
+
+def card_path(root: Path, lane: str = "live") -> Path:
+    """The phone's card for ``lane`` under the data root ``root``."""
+    return station_paths.JEV_CARD_BY_LANE[lane].path(root)
+
+
+def state_root_of(out: Path, lane: str = "live") -> Path:
+    """The data root a lane's folder ``out`` sits under."""
+    root = station_paths.JEV_LANE_FOLDER.root_of(out, lane=lane)
+    assert root is not None, f"{out} is not the {lane} lane's folder under a data root"
+    return root
+
+
+def card_of(out: Path, lane: str = "live") -> Path:
+    """The phone's card of the lane whose folder under a data root is ``out``."""
+    return card_path(state_root_of(out, lane), lane)
+
+
+def archive_of(out: Path, day: str, lane: str = "live") -> Path:
+    """The shared archive's day file, reached from the lane folder ``out`` under a data root."""
+    return archive_path(state_root_of(out, lane), day)
+
+
+def replay_files(lane, state: Path, out: Path, day: str) -> set[str]:
+    """What one read of ``lane`` replayed into the scratch folder ``out`` writes there, relative to ``out``: its answers,
+    its card (lane.card_path) and its archive line (lane.archive_folder)."""
+    return {str(answers_path(out, day).relative_to(out)), str(lane.card_path(state, out).relative_to(out)),
+            str((lane.archive_folder(state, out) / f"{day}.jsonl").relative_to(out))}
+
+
+# A lane's own files inside its folder ``out`` (the lane folder under a data root, or a replay's scratch folder).
+def answers_path(out: Path, day: str) -> Path:
+    return station_paths.JEV_ANSWERS_BY_READ.in_lane_folder(out, day=day)
+
+
+def hour_path(out: Path, day: str) -> Path:
+    return station_paths.JEV_AND_POOL_FORECASTS_BY_READ.in_lane_folder(out, day=day)
+
+
+def grades_path(out: Path) -> Path:
+    return station_paths.JEV_END_PRICE_GRADES_BY_READ.in_lane_folder(out)
+
+
+def integral_grades_path(out: Path) -> Path:
+    return station_paths.JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON.in_lane_folder(out)
+
+
+def weights_path(out: Path) -> Path:
+    return station_paths.JEV_QUESTION_WEIGHTS_STATE.in_lane_folder(out)
+
+
+def last_asked_path(out: Path) -> Path:
+    return station_paths.JEV_LAST_ANSWERS_STATE.in_lane_folder(out)
+
+
+# The base pool's files under a data root: the live lane's pools live beside the lane, not in it (pool.pool_folders).
+def pool_state_path(root: Path, horizon: str) -> Path:
+    return station_paths.BASE_POOL_STATE.path(root, horizon=horizon)
+
+
+def pool_log_path(root: Path) -> Path:
+    return station_paths.BASE_POOL_UPDATES_BY_DAY_AND_HORIZON.path(root, horizon="average_of_next_30_minutes")
+
+
 def write_state(root: Path, day: str, rows: list[dict], bars: list[dict], prior_days: dict[str, list[dict]] | None = None,
                 context: list[dict] | None = None) -> Path:
     """A station state directory: the day's diary and live bars, prior sessions' saved bar files,
     and the day's market-context snapshots."""
-    (root / "reversion" / "bars").mkdir(parents=True, exist_ok=True)
-    (root / "spx_jev" / "bars").mkdir(parents=True, exist_ok=True)
-    (root / "reversion" / f"{day}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
-    (root / "spx_jev" / "bars" / f"{day}.jsonl").write_text("".join(json.dumps(b) + "\n" for b in bars))
+    station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.folder(root).mkdir(parents=True, exist_ok=True)
+    write_jsonl(diary_path(root, day), rows)
+    write_jsonl(station_paths.SPX_PRICE_BARS_BY_MINUTE.path(root, day=day), bars)
     for d, pbars in (prior_days or {}).items():
-        (root / "reversion" / "bars" / f"{d}-SPX.json").write_text(json.dumps(pbars))
+        write_json(station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.path(root, day=d), pbars)
     if context is not None:
-        (root / "spx_jev" / "context").mkdir(parents=True, exist_ok=True)
-        (root / "spx_jev" / "context" / f"{day}.jsonl").write_text("".join(json.dumps(line) + "\n" for line in context))
+        write_jsonl(station_paths.WATCHLIST_QUOTES_BY_MINUTE.path(root, day=day), context)
     return root
 
 
 def write_prior_rows(root: Path, rows_by_day: dict[str, list[dict]]) -> Path:
     """Prior sessions' diaries, each day's raw rows oldest first: a first row stamped by 09:40 gives the day its
     trusted morning ruler, and a row near a read's clock gives the day's distances at that minute."""
-    (root / "reversion").mkdir(parents=True, exist_ok=True)
+    station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(root).mkdir(parents=True, exist_ok=True)
     for d, rows in rows_by_day.items():
-        (root / "reversion" / f"{d}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+        write_jsonl(diary_path(root, d), rows)
     return root
 
 

@@ -156,10 +156,9 @@ def test_a_night_across_a_market_holiday_is_not_ranked_against_normal_nights(pre
 
 
 def _roll_at(state_dir, at: datetime, symbol: str = "/ES", current: str = "/ESZ26") -> None:
-    folder = state_dir / overnight.OVERNIGHT_SUBDIR
     found = {"rolls": [{"symbol": symbol, "day": at.date().isoformat(), "at": at.isoformat()}], "rejected": [],
              "windows_without_roll": [], "typical_step": 0.01, "unit": "percent"}
-    rolls.save(folder, rolls.merge(rolls.load(folder), symbol, found, "2026-08-01", current))
+    rolls.save(state_dir, rolls.merge(rolls.load(state_dir), symbol, found, "2026-08-01", current))
 
 
 def test_a_roll_tonight_refuses_every_measure_of_the_futures(tmp_path, read):
@@ -181,8 +180,7 @@ def test_a_roll_night_in_the_base_sits_out_of_the_rank(tmp_path, read):
 
 def test_a_roll_the_quote_shows_before_the_table_waits(tmp_path, read):
     _save_prior(tmp_path, _spread())
-    folder = tmp_path / overnight.OVERNIGHT_SUBDIR
-    rolls.save(folder, {**rolls.load(folder), "current": {"/ES": "/ESZ26"}})
+    rolls.save(tmp_path, {**rolls.load(tmp_path), "current": {"/ES": "/ESZ26"}})
     line = {"day": DAY.isoformat(), "saved_at": _at(9, 26).isoformat(), "symbols": {"/ES": {"contract_quoted": "/ESH27"}}}
     overnight.manifest_path(tmp_path).write_text(json.dumps(line) + "\n")
     ls = read([(_at(9, 0), 1.2)])

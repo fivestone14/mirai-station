@@ -7,6 +7,7 @@ from pathlib import Path
 
 from payload_fixtures import DAY, SIGMA, FakeMarket, absent_reasons, assert_no_leak, at, fake_inputs, make_row, prior_days, write_json, write_jsonl
 
+from spx_claude_forecast.paths import station_paths
 from spx_claude_forecast.payload import units
 from spx_claude_forecast.payload.blocks.cross_asset import build_cross_asset_block
 from spx_claude_forecast.payload.blocks.foreign import build_foreign_block
@@ -154,9 +155,13 @@ def night_rows(symbol: str, base: float, moves: tuple, contract: str, minutes: i
     return rows
 
 
+def night_file(tmp_path: Path, day: str = DAY) -> Path:
+    return station_paths.FUTURES_PRICE_BARS_BY_MINUTE.path(tmp_path / "state", day=day)
+
+
 def write_night(tmp_path: Path, day: str = DAY, extra_rows: list[dict] | None = None) -> Path:
     rows = night_rows("/ES", ES_CLOSE, ES_MOVES, "/ESZ26") + night_rows("/ZN", ZN_CLOSE, ZN_MOVES, "/ZNZ26") + (extra_rows or [])
-    return write_jsonl(tmp_path / "state" / "spx_jev" / "overnight" / f"{day}.jsonl", rows)
+    return write_jsonl(night_file(tmp_path, day), rows)
 
 
 def test_overnight_reads_the_nights_move_range_legs_and_gap_origin_from_the_store_in_sig(tmp_path):
@@ -185,7 +190,7 @@ def test_overnight_gap_origin_is_the_largest_leg_in_the_direction_of_the_night(t
              ("2026-10-09T02:35", "2026-10-09T03:25", -18.0),     # europe_open
              ("2026-10-09T04:00", "2026-10-09T07:00", -15.0))     # europe_morning
     rows = night_rows("/ES", ES_CLOSE, moves, "/ESZ26")
-    write_jsonl(tmp_path / "state" / "spx_jev" / "overnight" / f"{DAY}.jsonl", rows)
+    write_jsonl(night_file(tmp_path), rows)
     result = build_overnight_block(fake_inputs(tmp_path, cut=CUT))
     assert result.data["gap_origin"] == "europe_open"
     assert absent_reasons(result)["overnight.zn_pct"] == "no_zn_bars"
@@ -198,7 +203,7 @@ def test_overnight_absent_without_the_nights_file(tmp_path):
 
 def test_overnight_leaves_out_a_move_across_a_contract_roll(tmp_path):
     write_night(tmp_path)
-    write_json(tmp_path / "state" / "spx_jev" / "overnight" / "rolls.json",
+    write_json(station_paths.FUTURES_CONTRACTS_AND_PAST_ROLLS_LATEST.path(tmp_path / "state"),
                {"schema_version": 1, "current": {"/ES": "/ESZ26"}, "rejected": [], "windows_without_roll": {},
                 "rolls": [{"symbol": "/ES", "day": DAY, "at": at(1, 0).isoformat(), "from": "/ESU26", "to": "/ESZ26"}]})
     result = build_overnight_block(fake_inputs(tmp_path, cut=CUT))

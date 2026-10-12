@@ -2,7 +2,7 @@
 # launchd-fired wrapper: the SNDK minute-bar SIDECAR (09-02).
 # One run = fetch today's 1-min session bars from Schwab (one call, the whole
 # session) and append every COMPLETED minute not already on disk to
-# state/sndk_bars/{date}.jsonl. Idempotent, self-healing: a run after a gap
+# state/sndk/sndk_price_bars_by_minute/{date}.jsonl. Idempotent, self-healing: a run after a gap
 # writes the gap. Own clock, own process — the scanner and the reader never wait
 # on it, and it never waits on them.
 # Gated on the market-status helper like run-sndk.sh, PLUS a twelve-minute

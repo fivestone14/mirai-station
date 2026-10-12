@@ -12,7 +12,7 @@
   </array>
   <!-- SNDK minute-bar SIDECAR (09-02): every 60 s during RTH (+12 min after the
        close) fetch today's 1-min session bars in one call and append the
-       completed minutes not yet on disk to state/sndk_bars/{date}.jsonl. Its own
+       completed minutes not yet on disk to state/sndk/sndk_price_bars_by_minute/{date}.jsonl. Its own
        clock and process on purpose: the scanner's absences (8.4% of session
        minutes, in whole-hour blocks) were the largest measured loss in the
        price record, and a job that shares the scanner's fate cannot fill them.

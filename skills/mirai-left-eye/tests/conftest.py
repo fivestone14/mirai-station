@@ -16,12 +16,13 @@ import lefteye_fill_ledger
 
 @pytest.fixture(autouse=True)
 def _isolate_state_dir(tmp_path, monkeypatch):
-    """lefteye_rag and dated_gex_feed resolve state/ through MIRAI_STATE_DIR
-    and write there as a side effect of a judged scan — before this guard the
-    watchtower suite left its synthetic 2026-07-06 slices in the real
-    state/spx_rag, where the next rollup would have summarized them as a
-    session. Point the env at a throwaway dir for every test; a test that
-    needs its own layout sets the same variable again on top."""
+    """lefteye_rag, dated_gex_feed and gex_polarity_ab (whose grade_day PERSISTS
+    real-range bars) resolve the data root through MIRAI_STATE_DIR and write
+    there as a side effect of a judged scan — before this guard the watchtower
+    suite left its synthetic 2026-07-06 slices in the real scanner notes store,
+    where the next rollup would have summarized them as a session. Point the
+    env at a throwaway dir for every test; a test that needs its own layout
+    sets the same variable again on top."""
     monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path / "state"))
 
 
@@ -33,14 +34,6 @@ def _isolate_fill_ledger(tmp_path, monkeypatch):
     (and a midday pytest run would reset the live day's decayed history).
     Redirect every test's ledger IO to a throwaway dir."""
     monkeypatch.setattr(lefteye_fill_ledger, "_DEFAULT_DIR", tmp_path / "gex_fills")
-
-
-@pytest.fixture(autouse=True)
-def _isolate_bars_store(tmp_path, monkeypatch):
-    """grade_day now PERSISTS real-range bars as a side effect — redirect the
-    bars store to a throwaway dir so tests never write production state."""
-    import gex_polarity_ab
-    monkeypatch.setattr(gex_polarity_ab, "_bars_dir", lambda: tmp_path / "bars")
 
 
 @pytest.fixture(autouse=True)

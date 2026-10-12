@@ -35,7 +35,7 @@ from .plausible import left_out
 from .ranks import (SameClockRank, fifth, fifth_side, move_rank, rank_days, rank_sessions, same_clock_market, same_clock_values,
                     tick_bands_by_minute, tick_bursts)
 from .rulers import SigmaRuler, estimated_note, sigma_anchor
-from .vol_sources import (ROW_MAX_GAP, DiaryPoint, Skew, diary_point, minute_floor, point_at, prior_diary, prior_diary_by,
+from .vol_sources import (ROW_MAX_GAP, TAPE_RAW_SUBDIR, DiaryPoint, Skew, diary_point, minute_floor, point_at, prior_diary, prior_diary_by,
                           skew_at)
 from .words import hm, pct, plural, sig, signed
 
@@ -1092,7 +1092,7 @@ def _skew(scene: Scene, ls: LabelSet) -> None:
     then = at_min - timedelta(minutes=WINDOW_30_MIN)
     smiles = skew_at(scene.state_dir, scene.day, (at_min, then), scene.now) if scene.state_dir else None
     if smiles is None:
-        why = f"no lob-flow tape for {scene.day} (state/lob_flow/raw)"
+        why = f"no lob-flow tape for {scene.day} ({TAPE_RAW_SUBDIR})"
         for path in paths:
             ls.omit(path, why)
         return

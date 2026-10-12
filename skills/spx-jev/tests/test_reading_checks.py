@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from conftest import archive_path
 from spx_jev import reading_checks
 from spx_jev.reading_checks import check_day, check_record, named_answer, summary
 
@@ -50,7 +51,7 @@ def test_a_pick_is_checked_against_the_named_option_and_a_day_is_summed_by_quest
                                     "pick": "steep_put_tilt", "named": "flat_put_tilt", "agrees": False}]
     right = record({"skew": {"put_tilt_vs_usual": FLAT}}, TILT, "put_tilt_vs_clock", "flat_put_tilt", "live:2026-09-28T10:32:00-04:00")
     unnamed = record({"event": {"reaction": "price fell"}}, REACTION, "move_reaction_path", "holding")
-    archive = tmp_path / "spx_jev" / "archive"
+    archive = archive_path(tmp_path, "2026-09-28").parent
     archive.mkdir(parents=True)
     (archive / "2026-09-28.jsonl").write_text("\n".join([json.dumps(wrong), "not json", json.dumps(right), json.dumps(unnamed),
                                                         json.dumps({"kind": "close_out"})]) + "\n")
@@ -61,7 +62,7 @@ def test_a_pick_is_checked_against_the_named_option_and_a_day_is_summed_by_quest
 
 
 def test_the_command_reads_and_prints_and_writes_nothing(tmp_path, capsys):
-    archive = tmp_path / "spx_jev" / "archive"
+    archive = archive_path(tmp_path, "2026-09-28").parent
     archive.mkdir(parents=True)
     day = archive / "2026-09-28.jsonl"
     day.write_text(json.dumps(record({"skew": {"put_tilt_vs_usual": FLAT}}, TILT, "put_tilt_vs_clock", "steep_put_tilt")) + "\n")

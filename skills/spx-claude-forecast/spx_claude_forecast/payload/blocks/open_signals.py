@@ -10,7 +10,7 @@ than 1.0 extended) is given only for a gap past the station's touch tolerance of
 (cuts.GAP_TOUCH_SIGMA): inside it there is no gap to keep, and a share of a hair's width would read as a
 price level. The noise band is the average move from the 09:30 open to this minute over the prior
 NOISE_PRIOR_SESSIONS sessions, as a share of the open, laid either side of today's open. The opening option
-imbalance is the lob-flow collector's own fold of the 0DTE tape (state/lob_flow/agg, never deleted, read
+imbalance is the lob-flow collector's own fold of the 0DTE tape (state/spx/scanner/spx_order_flow_readings_by_minute/, never deleted, read
 through the flow block's reader) as written at 09:40, when its 15-minute window holds exactly the first
 ten minutes of trading.
 """

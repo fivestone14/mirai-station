@@ -14,10 +14,16 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import snapshot
+import station_paths       # on sys.path once snapshot is imported
 from node_run import run_node
 
 PAGE = (Path(__file__).resolve().parents[1] / "static" / "index.html").read_text()
 _NODE = shutil.which("node")
+
+
+def _named(store):
+    """How the page names a store's folder: under the data root's folder, as station_paths spells it."""
+    return f"{station_paths.STATE_FOLDER_NAME}/{store.relative_folder}"
 
 
 def _method(name):
@@ -69,9 +75,9 @@ def _payload(tmp_path, monkeypatch):
                                    "net_by_strike": [[1550.0, -3.0e6], [1600.0, -2.0e6], [1700.0, 4.0e6]]},
                      "meta": {"expiries": [{"date": "2026-08-21", "dte": 2}], "book_source": "disk_cache",
                               "book_asof": (ts - timedelta(minutes=2)).isoformat()}})
-    diary = tmp_path / "sndk_reversion"
-    diary.mkdir()
-    (diary / "2026-08-19.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    diary = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path, day="2026-08-19")
+    diary.parent.mkdir(parents=True)
+    diary.write_text("".join(json.dumps(r) + "\n" for r in rows))
     return snapshot.sndk_payload(last + timedelta(minutes=1))
 
 
@@ -506,7 +512,7 @@ def test_the_payload_tab_carries_the_schema_card():
     assert "function _plTeardown(" in PAGE
     assert PAGE.index("_plTeardown();") > PAGE.index("function closeModal(")  # called from it
     # the side packet is part of the picture, not a footnote to it
-    assert "sndk_side.build_side()" in PAGE and "state/sndk_side" in PAGE
+    assert "sndk_side.build_side()" in PAGE and _named(station_paths.SNDK_PRICE_BAR_FACTS_BY_READ) in PAGE
     for rel in ("skills/sndk-pro/sndk_hunter.py", "skills/sndk-pro/sndk_views.py",
                 "skills/sndk-pro/sndk_bars.py", "skills/sndk-pro/sndk_read.py",
                 "skills/sndk-pro/sndk_rag.py", "runtime/watch/intraday/sndk_deadman.py",
@@ -514,7 +520,7 @@ def test_the_payload_tab_carries_the_schema_card():
         assert (root / rel).exists(), rel
         assert rel.split("/")[-1].replace(".plist", "") in PAGE, rel
     assert "ThetaData supplies this week" not in PAGE       # the SNDK chain is the market-data server's
-    assert "state/sndk_bars" in PAGE
+    assert _named(station_paths.SNDK_PRICE_BARS_BY_MINUTE) in PAGE
     # 09-02 verification pass (three agents against the code): the packet is built every
     # scan, the guards are named
     assert "Every scan: the newest snapshot" in PAGE

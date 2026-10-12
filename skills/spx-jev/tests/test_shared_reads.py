@@ -9,7 +9,8 @@ from datetime import timedelta
 
 import pytest
 
-from conftest import DAY, at, bars_from_closes, context_line, flat_bars, make_row, prior_sessions, write_state
+from conftest import (DAY, at, bars_from_closes, context_line, diary_path, flat_bars, make_row, prior_sessions, station_paths, write_jsonl,
+                      write_state)
 from spx_jev.cuts import MIN_RANK_SESSIONS, NIGHT_RANK_COUNT, SAME_CLOCK_MIN_SESSIONS
 from spx_jev.labels.measures import move_size, path_efficiency, session_extremes, settled_open
 from spx_jev.labels.ranks import (move_rank, rank_sessions, same_clock_market, same_clock_values, tick_bands_by_minute,
@@ -173,13 +174,12 @@ def test_the_session_extremes_say_when_each_was_first_made():
 # ---- the market context's symbols
 
 def test_futures_read_under_their_root_and_yields_in_percent(tmp_path):
-    (tmp_path / "spx_jev" / "context" / "bars").mkdir(parents=True)
     lines = [context_line(at(10, 0, ss=5), quotes={"/ESZ26": 7805.75, "$TNX": 51.84, "XLK": 200.0}),
              context_line(at(10, 5, ss=5), quotes={"/ESZ26": 7807.0, "$TNX": 51.9})]
-    (tmp_path / "spx_jev" / "context" / f"{DAY}.jsonl").write_text("".join(json.dumps(l) + "\n" for l in lines))
+    write_jsonl(station_paths.WATCHLIST_QUOTES_BY_MINUTE.path(tmp_path, day=DAY), lines)
     backfill = {"ts": at(9, 31).isoformat(), "bars": {"$TNX": {"ts": at(9, 30).isoformat(), "open": 51.0, "high": 51.5, "low": 50.9, "close": 51.2},
                                                       "/ES": {"ts": at(9, 30).isoformat(), "open": 7800.0, "high": 7801.0, "low": 7799.0, "close": 7800.5}}}
-    (tmp_path / "spx_jev" / "context" / "bars" / f"{DAY}.jsonl").write_text(json.dumps(backfill) + "\n")
+    write_jsonl(station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.path(tmp_path, day=DAY), [backfill])
     mk = load_market_context(tmp_path, DAY)
     assert "/ESZ26" not in mk.known and mk.first("/ES") == 7800.5 and mk.last("/ES", at(10, 6)) == 7807.0
     assert mk.last("$TNX", at(10, 1)) == pytest.approx(5.184) and mk.first("$TNX") == pytest.approx(5.12)
@@ -194,11 +194,10 @@ def test_futures_read_under_their_root_and_yields_in_percent(tmp_path):
 def test_the_scene_loads_each_prior_sessions_morning_ruler_and_market(tmp_path):
     prior = {d: flat_bars(390, day=d) for d in ("2026-09-16", "2026-09-17")}
     state = write_state(tmp_path, DAY, [make_row(at(10, 5), 7700.0)], flat_bars(40), prior)
-    (state / "reversion" / "2026-09-17.jsonl").write_text(
+    diary_path(state, "2026-09-17").write_text(
         json.dumps(make_row(at(9, 31, day="2026-09-17"), 7700.0, sigma_anchor=71.0)) + "\n" + json.dumps({"broken": True}) + "\n")
-    (state / "reversion" / "2026-09-16.jsonl").write_text(json.dumps(make_row(at(10, 15, day="2026-09-16"), 7700.0, sigma_live=69.0)) + "\n")
-    (state / "spx_jev" / "context").mkdir(parents=True)
-    (state / "spx_jev" / "context" / "2026-09-17.jsonl").write_text(json.dumps(context_line(at(10, 0, day="2026-09-17"), quotes={"$VIX": 15.0})) + "\n")
+    write_jsonl(diary_path(state, "2026-09-16"), [make_row(at(10, 15, day="2026-09-16"), 7700.0, sigma_live=69.0)])
+    write_jsonl(station_paths.WATCHLIST_QUOTES_BY_MINUTE.path(state, day="2026-09-17"), [context_line(at(10, 0, day="2026-09-17"), quotes={"$VIX": 15.0})])
     scene = make_scene(state, DAY)
     assert scene.prior_rulers == {"2026-09-17": SigmaRuler(71.0, "anchor"), "2026-09-16": SigmaRuler(69.0, "live")}
     assert list(scene.prior_markets) == ["2026-09-17"] and scene.prior_markets["2026-09-17"].first("$VIX") == 15.0

@@ -1,12 +1,12 @@
 """The flow block: what the near-price 0DTE options tape and SPY's own tape say in the minutes before the cut.
 
-Two records of the same tape. The lob-flow collector's record, ``state/lob_flow/agg/{day}.jsonl``, is one line
+Two records of the same tape. The lob-flow collector's record, ``state/spx/scanner/spx_order_flow_readings_by_minute/{day}.jsonl``, is one line
 a minute with the delta-weighted tilt of the last 15 minutes' trades (state_builder.OPTIONS_TAPE_WINDOW_MIN),
 the share of that flow whose side could be told and the trade count (lob_flow.sensors.read_tape); it is kept
 forever, and it gates the block: no line by the cut is a missing tape, a newest line older than the station's
 tape age limit (state_builder.OPTIONS_TAPE_MAX_AGE_MIN) a stale one, and a count of zero or one far from its
 usual for the minute (the median of the prior sessions' counts at the same clock) a failed content check. The
-collector's raw tape, ``state/lob_flow/raw/{day}/tape.jsonl``, is one line per trade and is deleted after
+collector's raw tape, ``state/market/spx_same_day_options_raw_day_folders/{day}/tape.jsonl``, is one line per trade and is deleted after
 thirty days; it is read through the station's own reader (spx_jev.labels.options_flow.tape_minutes) for the
 fields the record cannot give: the signed lean of the last 30 minutes' premium, the large prints of the last
 10 minutes and the premium pace. Those are absent, never guessed, once the raw tape is gone.

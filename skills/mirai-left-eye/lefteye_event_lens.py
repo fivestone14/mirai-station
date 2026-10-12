@@ -23,7 +23,7 @@ Behavior notes (deliberate, v1):
     are excluded here (belt and suspenders: whole-day rows carry a null
     time_et, so the truthy-time filter drops them too).
   * Calendar coupling is SOFT and READ-ONLY: the single WRITER of
-    state/lob_flow/calendar.json stays lob-flow's FileCalendar (it seeds the
+    state/market/market_event_calendar_by_event.json stays lob-flow's FileCalendar (it seeds the
     file on first run). This module only reads it — at most ONE file read per
     ET day (module-level cache) — and a missing/corrupt file simply means
     "no event day". Never writes, never repairs, never networks.
@@ -87,7 +87,7 @@ def reset_calendar_cache() -> None:
 
 
 def load_calendar(path=None) -> list:
-    """READ-ONLY view of the shared event calendar (state/lob_flow/calendar.json).
+    """READ-ONLY view of the shared event calendar (state/market/market_event_calendar_by_event.json).
 
     The single WRITER of that file stays lob-flow's FileCalendar — this is a
     soft read-only data coupling: we never create, seed, or repair the file.

@@ -19,7 +19,7 @@
        too, on purpose: a second chance at Friday's book before Monday's 08:17 ET fetch overwrites it
        (the runner has no weekday gate; the Schwab task skips weekends itself). Every task copies only
        what is missing, and only finished sessions. Reads every station store read-only; writes only
-       under state/spx_claude_forecast/ and the backup folder.
+       its copies under state/market/, its lock and run log under state/operations/, and the backup folder.
        NOTE: launchd's StartCalendarInterval uses SYSTEM-LOCAL time and ignores the TZ env var below.
        This box runs on Pacific, so Hour=5 Minute=40 == 05:40 PT == 08:40 ET, Hour=13 Minute=25 ==
        16:25 ET and Weekday=5 Hour=14 Minute=30 == Friday 17:30 ET, year-round (PT is ET minus 3h

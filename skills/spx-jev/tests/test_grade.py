@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import math
 
-from conftest import DAY, at, bars_from_closes, flat_bars, make_row, write_state
+from conftest import DAY, at, bars_from_closes, flat_bars, grades_path, hour_path, lane_folder, make_row, weights_path, write_state
 from spx_jev.ask import load_questions
 from conftest import FixedZones
 from spx_jev.cuts import NEXT_30_FLAT_PCT, NEXT_60_FLAT_PCT
@@ -133,24 +133,24 @@ def test_every_weight_is_one_and_an_event_read_never_reaches_them():
 
 def test_run_appends_grades_and_writes_weights_once(tmp_path, fixed_zones):
     state = write_state(tmp_path, DAY, _rows(), _climb())
-    out = state / "spx_jev"
-    (out / "hour").mkdir(parents=True)
+    out = lane_folder(state)
+    hour_path(out, DAY).parent.mkdir(parents=True)
     rec = _rec(11, 0, 7700.0, _by({"up": 0.6, "flat": 0.3, "down": 0.1}, "up", {"up": 0.5, "flat": 0.4, "down": 0.1}, "up"), {"q1": "rising"})
-    (out / "hour" / f"{DAY}.jsonl").write_text(json.dumps(rec) + "\n" + json.dumps(_rec(15, 45, 7700.0, _by({"flat": 1.0}, "flat"))) + "\n"
+    hour_path(out, DAY).write_text(json.dumps(rec) + "\n" + json.dumps(_rec(15, 45, 7700.0, _by({"flat": 1.0}, "flat"))) + "\n"
                                                + json.dumps(rec) + "\n")
     w = run(state, out, ALLOWED)
     assert w["graded_runs"] == 1 and w["new_this_run"] == 1 and w["closed_out"] == 1
-    assert json.loads((out / "weights.json").read_text())["questions"]["q1"] == w["questions"]["q1"]
+    assert json.loads(weights_path(out).read_text())["questions"]["q1"] == w["questions"]["q1"]
     assert run(state, out, ALLOWED)["new_this_run"] == 0
     assert not (out / "weights_log.jsonl").exists()                   # the weight history went on 2026-10-11: nothing read it
 
 
 def test_a_past_day_with_no_bars_is_closed_out(tmp_path, fixed_zones):
-    out = tmp_path / "spx_jev"
-    (out / "hour").mkdir(parents=True)
-    (out / "hour" / f"{DAY}.jsonl").write_text(json.dumps(_rec(11, 0, 7700.0, _by({"flat": 1.0}, "flat"))) + "\n")
+    out = lane_folder(tmp_path)
+    hour_path(out, DAY).parent.mkdir(parents=True)
+    hour_path(out, DAY).write_text(json.dumps(_rec(11, 0, 7700.0, _by({"flat": 1.0}, "flat"))) + "\n")
     w = run(tmp_path, out, ALLOWED)
-    assert w["closed_out"] == 1 and json.loads((out / "grades.jsonl").read_text())["reason"] == "no bars for the day"
+    assert w["closed_out"] == 1 and json.loads(grades_path(out).read_text())["reason"] == "no bars for the day"
 
 
 def test_only_live_questions_and_their_current_options_are_weighed():
@@ -177,11 +177,11 @@ def test_a_record_is_graded_in_the_zones_it_stamped_and_one_with_none_is_sized_o
     stamped = {**_rec(12, 0, 7700.0, by), "sigma": 150.0, "zone": {"next_30": 5.25, "next_60": 8.25, "average_30": 3.11, "rule": 1}}
     unstamped = {**_rec(12, 30, 7700.0, by), "sigma": 150.0}
     state = write_state(tmp_path, DAY, _rows(sigma_after_noon=150.0), climb)
-    out = state / "spx_jev"
-    (out / "hour").mkdir(parents=True)
-    (out / "hour" / f"{DAY}.jsonl").write_text(json.dumps(stamped) + "\n" + json.dumps(unstamped) + "\n")
+    out = lane_folder(state)
+    hour_path(out, DAY).parent.mkdir(parents=True)
+    hour_path(out, DAY).write_text(json.dumps(stamped) + "\n" + json.dumps(unstamped) + "\n")
     run(state, out, ALLOWED)
-    first, second = [json.loads(line) for line in (out / "grades.jsonl").read_text().splitlines()]
+    first, second = [json.loads(line) for line in grades_path(out).read_text().splitlines()]
     assert first["next_30"]["realized_points"] == 15.0 and first["band"] == "up" and first["zone"] == {"next_30": 5.25, "next_60": 8.25}
     assert second["horizons"] == [] and second["skipped"]["next_30"].startswith("no flat zone: fewer than 10 prior full sessions")
 

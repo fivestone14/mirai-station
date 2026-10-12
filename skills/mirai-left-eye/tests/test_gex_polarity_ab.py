@@ -2,13 +2,25 @@ import json
 import os
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import gex_polarity_ab as pab
 
+_RUNTIME = str(Path(__file__).resolve().parents[3] / "runtime")
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402  — every store the code names comes from here
+
 ET = ZoneInfo("America/New_York")
 T0 = datetime(2026, 7, 1, 10, 0, tzinfo=ET)
+
+
+def _hist(tmp_path):
+    """The grades ledger under the test's data root (conftest points
+    MIRAI_STATE_DIR at tmp_path/state, so persist() lands there)."""
+    return station_paths.SPX_OPTIONS_SCANNER_GRADES_BY_DAY.path(tmp_path / "state")
 
 
 def _path(seq):
@@ -124,16 +136,15 @@ def test_meta_distinguishes_no_rows_from_no_bars():
     assert res["engines"] == {}          # rows but no bars → nothing gradeable
 
 
-def test_persist_upserts_history_and_writes_no_file_per_day(tmp_path, monkeypatch):
-    monkeypatch.setattr(pab, "SKILL_DIR", tmp_path / "skills" / "mirai-left-eye")
+def test_persist_upserts_history_and_writes_no_file_per_day(tmp_path):
     res = {"day": "2026-07-01", "tickers": {}, "overall": {}, "engines": {}}
     out = pab.persist(res)
-    hist = tmp_path / "state" / "reversion" / "polarity_history.jsonl"
+    hist = _hist(tmp_path)
     assert out == hist and hist.exists()
     pab.persist(res)   # second run same day → history still has ONE line for it
     lines = [ln for ln in hist.read_text().splitlines() if ln.strip()]
     assert len(lines) == 1 and json.loads(lines[0])["day"] == "2026-07-01"
-    assert sorted(p.name for p in hist.parent.iterdir()) == ["polarity_history.jsonl"]
+    assert sorted(p.name for p in hist.parent.iterdir()) == [hist.name]
 
 
 def _lens_row(minutes, direction="call", fired=True):
@@ -154,29 +165,25 @@ def test_lens_report_card_collapses_clustered_fires():
     assert lens["wins"] == 1                                     # +0.25σ hit before −0.35σ
 
 
-def test_lens_verdicts_not_duplicated_on_rerun(tmp_path, monkeypatch):
-    monkeypatch.setattr(pab, "SKILL_DIR", tmp_path / "skills" / "x")
+def test_lens_verdicts_not_duplicated_on_rerun(tmp_path):
     rows = [_lens_row(0)]
     bars = [{"ts": (T0 + timedelta(minutes=2)).isoformat(), "high": 7493, "low": 7491}]
     res = pab.grade_day("2026-07-01", rows=rows,
                         bars_lookup=lambda t: bars if t == "SPX" else [])
     pab.persist(res)
     pab.persist(res)   # nightly re-run: upsert, never append
-    hist = tmp_path / "state" / "reversion" / "polarity_history.jsonl"
-    lines = [l for l in hist.read_text().splitlines() if l.strip()]
+    lines = [l for l in _hist(tmp_path).read_text().splitlines() if l.strip()]
     assert len(lines) == 1
     assert json.loads(lines[0])["lens"]["n"] == 1
 
 
-def test_pin_profile_stats_strength_vs_history(tmp_path, monkeypatch):
-    monkeypatch.setattr(pab, "SKILL_DIR", tmp_path / "skills" / "x")
-    hist_dir = tmp_path / "state" / "reversion"
-    hist_dir.mkdir(parents=True)
+def test_pin_profile_stats_strength_vs_history(tmp_path):
+    hist = _hist(tmp_path)
+    hist.parent.mkdir(parents=True)
     # two prior days with eod totals 100 and 200 → baseline median = 100
     prior = [{"day": f"2026-06-{d}", "engines": {"gex_views": {"tickers": {"SPX": {
               "pin_profile": {"eod_pin_total": v}}}}}} for d, v in (("29", 100.0), ("30", 200.0))]
-    (hist_dir / "polarity_history.jsonl").write_text(
-        "\n".join(json.dumps(p) for p in prior) + "\n")
+    hist.write_text("\n".join(json.dumps(p) for p in prior) + "\n")
     rows = [{"ticker": "SPX", "ts": T0.isoformat(), "spot": 7490, "sigma": 10,
              "gex_views": {"regime": "long_gamma", "magnet": 7500,
                             "pin_total_gamma": 160.0, "pin_top_share": 0.62}}]
@@ -211,7 +218,7 @@ def test_bars_persist_and_replay():
     flat = [{"ts": T0.isoformat(), "high": 7505.0, "low": 7505.0, "close": 7505.0}]
     res2 = pab.grade_day("2026-07-02", rows=rows, bars_lookup=lambda tk: flat)
     assert res2["meta"]["bars_kind"]["SPX"] == "point"
-    assert not (pab._bars_dir() / "2026-07-02-SPX.json").exists()
+    assert not pab._bars_file("2026-07-02", "SPX").exists()
 
 
 def _day_line(day, wins, n, kind="ohlc", key="lens"):
@@ -390,12 +397,10 @@ def test_break_lens_surfaces_cocks_by_level():
     assert res["break_lens"]["cocks_by_level"] == {"7370": 2, "7400": 1}
 
 
-def test_break_lens_cards_persist_in_history(tmp_path, monkeypatch):
-    monkeypatch.setattr(pab, "SKILL_DIR", tmp_path / "skills" / "x")
+def test_break_lens_cards_persist_in_history(tmp_path):
     res = _break_grade([_break_row(0, fired=True, fired_pre_gates=True)], _PUT_WIN_BAR)
     pab.persist(res)
-    hist = tmp_path / "state" / "reversion" / "polarity_history.jsonl"
-    rec = json.loads([l for l in hist.read_text().splitlines() if l.strip()][0])
+    rec = json.loads([l for l in _hist(tmp_path).read_text().splitlines() if l.strip()][0])
     assert rec["break_lens"]["n"] == 1
     assert rec["break_lens_pre_gates"]["n"] == 1              # its own top-level key
 

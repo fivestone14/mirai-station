@@ -3,12 +3,12 @@
     python3 -m spx_jev.bars                   # append today's finished minutes (the launchd job's run)
     python3 -m spx_jev.bars --day 2026-09-25  # fill a past session by hand
 
-Past sessions' bars are saved once a day after the close (``state/reversion/bars/{day}-SPX.json``,
+Past sessions' bars are saved once a day after the close (``state/market/spx_price_bars_by_minute_scanner_copy/{day}-SPX.json``,
 the gex-polarity job); nothing kept today's until this job. The scanner fetches them on every scan
 and keeps none, so the opening lane, which stamps each read at the newest finished bar, and the
 grader, which reads the bar at each mark, would have nothing to read before 16:15 ET. Every run
 fetches the whole session in one call (Schwab's 1-minute history, the station's own client) and
-appends each finished minute not yet on disk to ``state/spx_jev/bars/{day}.jsonl``, so a gap left by
+appends each finished minute not yet on disk to ``state/market/spx_price_bars_by_minute/{day}.jsonl``, so a gap left by
 a missed run is filled by the next one that succeeds.
 
 Only finished minutes are written: the running minute's high and low are still moving. The shape
@@ -86,7 +86,7 @@ def run(state_dir: Path, day: str | None = None, now: datetime | None = None) ->
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Append today's finished SPX minute bars to state/spx_jev/bars/.")
+    ap = argparse.ArgumentParser(description="Append today's finished SPX minute bars to state/market/spx_price_bars_by_minute/.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
     ap.add_argument("--day", help="YYYY-MM-DD session to fetch, default today; a past session backfills")
     args = ap.parse_args(argv)

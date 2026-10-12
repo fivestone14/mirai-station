@@ -1,7 +1,7 @@
 """SNDK minute bars — the SIDECAR (2026-09-02).
 
 One line per completed minute of the regular session, appended to
-state/sndk_bars/<day>.jsonl by its own launchd job (com.mirai-station.sndk-bars,
+state/sndk/sndk_price_bars_by_minute/<day>.jsonl by its own launchd job (com.mirai-station.sndk-bars,
 every 60 s, RTH plus a twelve-minute catch-up window after the close). The
 scanner already fetched today's bars on every 2-minute tick and kept none of
 them — it used them for VWAP and threw them away — so the day's highs and lows,
@@ -26,7 +26,7 @@ running is a partial and never lands. The reader (sndk_read) falls back to the
 never fabricates an extreme.
 
 Shape (same keys as lefteye_fetcher.intraday_bars and the grader's
-state/reversion/bars files, so nothing has to translate):
+state/market/spx_price_bars_by_minute_scanner_copy files, so nothing has to translate):
   {"ts": "<ISO, America/New_York>", "open", "high", "low", "close", "volume"}
 """
 from __future__ import annotations

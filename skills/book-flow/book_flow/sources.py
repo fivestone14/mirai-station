@@ -51,7 +51,7 @@ def _iter_jsonl(path: Path) -> Iterator[dict]:
 
 
 # ---------------------------------------------------------------------------
-# SPX options tape  (state/lob_flow/raw/{day}/tape.jsonl)
+# SPX options tape  (market/spx_same_day_options_raw_day_folders/{day}/tape.jsonl)
 # ---------------------------------------------------------------------------
 
 def spx_tape_board(path: Path, *, slice_s: int = 60, max_bins: int = 60,

@@ -5,6 +5,13 @@ import time
 from datetime import datetime, timezone
 
 import snapshot
+import station_paths       # on sys.path once snapshot is imported
+
+DAY = "2026-09-22"
+
+
+def _diary(tmp_path):
+    return station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path, day=DAY)
 
 
 def _wire(monkeypatch, tmp_path):
@@ -14,8 +21,8 @@ def _wire(monkeypatch, tmp_path):
     monkeypatch.setattr(snapshot, "_build_payload", lambda now: calls.append(now) or {"scene": {"n": len(calls)}})
     monkeypatch.setattr(snapshot, "STATE_DIR", tmp_path)
     monkeypatch.setattr(snapshot, "_state_dir", lambda: tmp_path)
-    (tmp_path / "sndk_reversion").mkdir()
-    (tmp_path / "sndk_reversion" / "2026-09-22.jsonl").write_text('{"ticker":"SNDK"}\n')
+    _diary(tmp_path).parent.mkdir(parents=True)
+    _diary(tmp_path).write_text('{"ticker":"SNDK"}\n')
     return calls
 
 
@@ -27,7 +34,7 @@ def test_served_from_the_cache_until_a_file_changes(monkeypatch, tmp_path):
     assert "cache_age_s" in second
     # a new row lands: the request is still served from memory; the refresher's rebuild picks it up
     time.sleep(0.01)
-    with open(tmp_path / "sndk_reversion" / "2026-09-22.jsonl", "a") as f:
+    with open(_diary(tmp_path), "a") as f:
         f.write('{"ticker":"SNDK"}\n')
     assert snapshot._payload_stale()
     third = snapshot.sndk_payload()

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # launchd-fired wrapper: the headline feed, one poll every 3 minutes.
 # One run = four public RSS GETs (CNBC Top News, Google News search, MarketWatch Top Stories, the Fed's press
-# feed), each new item appended to state/spx_jev/headlines/{date}.jsonl stamped with the poll's own clock
+# feed), each new item appended to state/market/news_headlines_by_article/{date}.jsonl stamped with the poll's own clock
 # (spx_jev/headlines.py). Stdlib only; no Schwab, no key. The poll gates itself to 07:00-16:30 ET on weekdays
 # (`--now` runs it regardless, by hand), and a lock file keeps two polls from interleaving.
 # Installed by install-launchd.sh (com.mirai-station.spx-jev-headlines, every 180 s).

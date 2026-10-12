@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import sndk_board as B
 import sndk_feed
 import sndk_read as SR
+import station_paths            # on sys.path once sndk_read is imported
 
 SPOT = 1250.0
 TRUE_IV = 0.5
@@ -179,14 +180,14 @@ def fronted(r, front="2026-09-18"):
 
 def write_prior(tmp_path, last_hhmm=(15, 58), vol=None, front="2026-09-18", day=PRIOR, next_vol=None):
     """The prior session's last diary row, with its volume counts."""
-    d = tmp_path / "sndk_reversion"
-    d.mkdir(parents=True, exist_ok=True)
+    p = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path, day=day.strftime("%Y-%m-%d"))
+    p.parent.mkdir(parents=True, exist_ok=True)
     r = fronted(board_row(at(day, *last_hhmm), vol=vol), front)
     if next_vol is not None:
         r["meta"]["expiries"] = [{"date": front, "dte": 0}, {"date": "2026-09-18", "dte": 7}]
         r["gex_views"]["next_dte"] = 7
         r["gex_views"]["vol_side_by_strike_next"] = [[k, c, p] for k, (c, p) in sorted(next_vol.items())]
-    (d / f"{day.strftime('%Y-%m-%d')}.jsonl").write_text(json.dumps(r) + "\n")
+    p.write_text(json.dumps(r) + "\n")
 
 
 # --- read_once's diary rows and model reply (test_read_once) ------------------
@@ -337,9 +338,9 @@ def _every_scene_shape(tmp_path):
     an absent chain_spot, a repeated book and a history flag are mutually
     exclusive states of the same tape — so the guards that walk them union them."""
     prev = NOW - timedelta(days=1)
-    diary = tmp_path / "sndk_reversion"
-    diary.mkdir(parents=True, exist_ok=True)
-    (diary / f"{prev.date().isoformat()}.jsonl").write_text("\n".join(
+    diary = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path, day=prev.date().isoformat())
+    diary.parent.mkdir(parents=True, exist_ok=True)
+    diary.write_text("\n".join(
         json.dumps(rich_row(ts=prev - timedelta(minutes=i * 2))) for i in range(40)) + "\n")
 
     def scene(rows, frozen=None):

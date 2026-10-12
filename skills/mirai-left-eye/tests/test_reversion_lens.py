@@ -10,12 +10,26 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import datetime  # noqa: E402
+from pathlib import Path  # noqa: E402
 from zoneinfo import ZoneInfo  # noqa: E402
 
 import reversion_lens as R  # noqa: E402
 import lefteye_gex_box as G  # noqa: E402
 
+_RUNTIME = str(Path(__file__).resolve().parents[3] / "runtime")
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
+import station_paths  # noqa: E402  — every store the code names comes from here
+
 NOW = datetime.datetime(2026, 6, 23, 10, 30, tzinfo=ZoneInfo("America/New_York"))
+
+
+def _diary_file(tmp_path, day):
+    """The scanner's diary file for `day` under the test's data root (conftest
+    points MIRAI_STATE_DIR at tmp_path/state), its folder made."""
+    p = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path / "state", day=day)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def test_beta_is_shadow_by_default():
@@ -869,17 +883,14 @@ def test_break_runway_signed_twin_records_overshoot():
     assert g2["runway_sigma"] == 1.0 and g2["runway_signed_sigma"] == 1.0
 
 
-def test_read_today_telemetry_skips_torn_line(tmp_path, monkeypatch):
+def test_read_today_telemetry_skips_torn_line(tmp_path):
     # a crash/disk-full mid-append leaves one torn line — every row AFTER it
     # must still reach the state machine (a frozen memory re-derives the same
     # cock all day: duplicate one-shots, wedged TTL)
     import json
-    monkeypatch.setattr(R, "SKILL_DIR", tmp_path / "skills" / "x")
-    d = tmp_path / "state" / "reversion"
-    d.mkdir(parents=True)
     good1 = json.dumps({"ticker": "SPX", "ts": NOW.isoformat()})
     good2 = json.dumps({"ticker": "SPX", "ts": NOW.isoformat(), "spot": 7400.0})
-    (d / f"{NOW.date().isoformat()}.jsonl").write_text(
+    _diary_file(tmp_path, NOW.date().isoformat()).write_text(
         good1 + "\n" + '{"torn": tru' + "\n" + good2 + "\n")
     rows = R._read_today_telemetry(NOW)
     assert len(rows) == 2 and rows[1]["spot"] == 7400.0
@@ -888,11 +899,9 @@ def test_read_today_telemetry_skips_torn_line(tmp_path, monkeypatch):
 # ---------------------------------------------------------------- net_exposure
 def test_prev_close_totals_prefers_own_record_and_caches(tmp_path, monkeypatch):
     import json
-    monkeypatch.setattr(R, "SKILL_DIR", tmp_path / "skills" / "x")
     monkeypatch.setattr(R, "_PREV_CLOSE", {})
-    d = tmp_path / "state" / "reversion"
-    d.mkdir(parents=True)
     y = (NOW - datetime.timedelta(days=1)).date().isoformat()
+    yesterday = _diary_file(tmp_path, y)
     rows = [
         {"ticker": "SPX", "net_exposure": {"net_gamma_total": 1.0,
                                            "net_delta_total": 2.0}},
@@ -904,12 +913,12 @@ def test_prev_close_totals_prefers_own_record_and_caches(tmp_path, monkeypatch):
         {"ticker": "QQQ", "net_exposure": {"net_gamma_total": 9.0,
                                            "net_delta_total": 9.0}},
     ]
-    (d / f"{y}.jsonl").write_text(
+    yesterday.write_text(
         "\n".join(json.dumps(r) for r in rows) + "\n" + '{"torn": tru' + "\n")
     got = R._prev_close_totals("SPX", NOW)
     assert got == {"gamma": 111.0, "delta": -22.0, "date": y}
     # cached in-process (tape_prev idiom): the file is never re-read this day
-    (d / f"{y}.jsonl").unlink()
+    yesterday.unlink()
     assert R._prev_close_totals("SPX", NOW) == got
 
 
@@ -917,12 +926,9 @@ def test_prev_close_totals_falls_back_to_raw_keys_across_a_weekend(tmp_path, mon
     # pre-record rows carry only gex_views/dex_views — day 1 must still get a
     # yesterday; and the walk spans a weekend to the last session's file
     import json
-    monkeypatch.setattr(R, "SKILL_DIR", tmp_path / "skills" / "x")
     monkeypatch.setattr(R, "_PREV_CLOSE", {})
-    d = tmp_path / "state" / "reversion"
-    d.mkdir(parents=True)
     friday = (NOW - datetime.timedelta(days=4)).date().isoformat()  # NOW is a Tuesday
-    (d / f"{friday}.jsonl").write_text(json.dumps(
+    _diary_file(tmp_path, friday).write_text(json.dumps(
         {"ticker": "SPX", "gex_views": {"net_gex_tenor": 5.5},
          "dex_views": {"net_dex_total": -3.3}}) + "\n")
     assert R._prev_close_totals("SPX", NOW) == {"gamma": 5.5, "delta": -3.3,
@@ -933,21 +939,18 @@ def test_prev_close_totals_most_recent_file_decides(tmp_path, monkeypatch):
     # yesterday's file exists but carries no totals → None; an older session's
     # number must never be presented as "yesterday's close"
     import json
-    monkeypatch.setattr(R, "SKILL_DIR", tmp_path / "skills" / "x")
     monkeypatch.setattr(R, "_PREV_CLOSE", {})
-    d = tmp_path / "state" / "reversion"
-    d.mkdir(parents=True)
-    y1 = (NOW - datetime.timedelta(days=1)).date().isoformat()
-    y2 = (NOW - datetime.timedelta(days=2)).date().isoformat()
-    (d / f"{y1}.jsonl").write_text(json.dumps({"ticker": "SPX", "spot": 7400.0}) + "\n")
-    (d / f"{y2}.jsonl").write_text(json.dumps(
+    y1 = _diary_file(tmp_path, (NOW - datetime.timedelta(days=1)).date().isoformat())
+    y2 = _diary_file(tmp_path, (NOW - datetime.timedelta(days=2)).date().isoformat())
+    y1.write_text(json.dumps({"ticker": "SPX", "spot": 7400.0}) + "\n")
+    y2.write_text(json.dumps(
         {"ticker": "SPX", "net_exposure": {"net_gamma_total": 7.0,
                                            "net_delta_total": 8.0}}) + "\n")
     assert R._prev_close_totals("SPX", NOW) is None
     # ...and no files at all is the same honest None
     monkeypatch.setattr(R, "_PREV_CLOSE", {})
-    (d / f"{y1}.jsonl").unlink()
-    (d / f"{y2}.jsonl").unlink()
+    y1.unlink()
+    y2.unlink()
     assert R._prev_close_totals("SPX", NOW) is None
 
 

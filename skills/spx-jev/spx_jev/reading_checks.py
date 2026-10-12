@@ -14,7 +14,7 @@ pick is checked against it; a question whose labels name no option, or more than
 is a misreading worth rewording the question or the label for (the put tilt's steep-for-flat on 09-28 was
 one), never a grade: nothing here feeds the weights, the sums or the phone.
 
-Reads ``state/spx_jev/archive/{day}.jsonl`` and writes nothing.
+Reads ``state/spx/jev/jev_reads_and_grades_by_event/{day}.jsonl`` and writes nothing.
 """
 from __future__ import annotations
 

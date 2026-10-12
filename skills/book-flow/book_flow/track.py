@@ -7,7 +7,7 @@ fixed number, and 7730 means something completely different at 09:40 spot 7712
 than it does at 15:30 spot 7741. The price track is the missing half — the
 market's own path across the same price axis, on the same clock.
 
-The source is the diary the station already writes (`state/reversion/{day}.jsonl`,
+The source is the diary the station already writes (the scanners' results, `SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN` in runtime/station_paths.py,
 one row a scan, ~90 s apart, carrying `spot` and `vwap`). Nothing new is
 recorded and nothing reaches the network: this is a second read of a file that
 has been on disk since the session ran.
@@ -42,7 +42,7 @@ if _RUNTIME not in sys.path:
 import station_paths  # noqa: E402
 
 # The diary is PER SYMBOL and the directory name is not derivable from the
-# ticker: SPX writes state/reversion, SNDK writes state/sndk_reversion. Reading
+# ticker: SPX and SNDK each have their own scanner results store (station_paths). Reading
 # the wrong one is silent — the file parses, the rows carry a `ticker` that the
 # filter then rejects, and `spot_track` returns None as if the day had no diary
 # at all. A board would simply draw no price line and give no reason.

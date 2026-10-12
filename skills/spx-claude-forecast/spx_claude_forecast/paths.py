@@ -1,34 +1,36 @@
 """Where everything this package writes lives, and nothing else.
 
 Every file is named in runtime/station_paths.py; this module hands them out from one state root. The package
-writes only under one folder there, ``state/spx_claude_forecast/`` today (``forecast_root``), plus an
-off-disk backup folder it is told about. Every other station store it reads is listed in
+writes only under its own folder there, ``spx/claude_forecast/`` (``root``), the recorder's copies under
+``market/``, its phone card under ``screen_files/phone/``, its logs and locks under ``operations/``, plus an
+off-disk backup folder it is told about (``writable``). Every other station store it reads is listed in
 ``station_stores.py`` and is never opened for writing: a write anywhere else is a bug the writers in
 ``jsonl_store.py`` refuse (see ``assert_path_is_ours``).
 
-    state/spx_claude_forecast/
-      STORE_MAP.json                 every path below, with its writer, reader and retention; written by ensure_folders
-      control.json                   the pause switch and the daily caps (control.py)
-      payloads/{day}.jsonl           one line per scheduled read slot: the frozen scene Claude saw (Phase 3)
-      reads/{day}.jsonl              Claude's answers and the final forecast per read (Phase 5)
-      outcomes/{day}.jsonl           what actually happened, sealed nightly, never edited (Phase 4/7)
-      arms/{day}.jsonl               test-variant replies on frozen payloads, never mixed into the record (Phase 8)
-      seed/payloads/, seed/outcomes/ past reads rebuilt from stored history (Phase 4)
-      library/rows.parquet           one row per past read: market facts + outcome (rebuilt nightly)
-      library/scores.parquet         the track record: one row per read x horizon x forecaster
-      library/manifest.json          what the library was built from
-      recorder/                      copies of station data that would otherwise be overwritten or deleted (Phase 0)
-        dated_book/{as_of}.json      every distinct state/dated_gex/book.json
-        siege_spy_minutes/{day}.json one day of SPY per-minute volume from state/siege/baseline.json
-        spx_5m/{day}.jsonl           SPX 5-minute bars from Schwab, one file per session
-        vix1d_close.jsonl            one line per day: the last $VIX1D quote of the session
-        leveraged_fund_sizes.jsonl   one line per recorder run: the leveraged index funds' assets and leverage from Schwab
-        lob_raw/{day}/               gzip copies of state/lob_flow/raw/{day}/ before the collector deletes them
-      rules/{sha}.txt                the rulebook text Claude was sent, once per distinct text
-      run_logs/job_run_log.jsonl     one line per job run (pruned after 30 days)
-      run_logs/read_runner.out       the detached read runner's output, appended per read (never pruned)
-      locks/                         single-instance lock files
-      latest.json, scorecard.json    the phone tile and Will's view (replaced atomically)
+    spx/claude_forecast/
+      STORE_MAP.json                                  every path below, with its writer, reader and retention; written by ensure_folders (retired by the map; goes with its writer in phase 2)
+      claude_forecast_pause_and_limits.json           the pause switch and the daily caps (control.py)
+      claude_forecast_inputs_by_read/{day}.jsonl      one line per scheduled read slot: the frozen scene Claude saw (Phase 3)
+      claude_forecast_answers_by_read/{day}.jsonl     Claude's answers and the final forecast per read (Phase 5)
+      claude_forecast_outcomes_by_read/{day}.jsonl    what actually happened, sealed nightly, never edited (Phase 4/7)
+      claude_forecast_test_answers_by_variant_and_read/{day}.jsonl   test-variant replies on frozen payloads, never mixed into the record (Phase 8)
+      claude_forecast_rebuilt_inputs_by_read/, claude_forecast_rebuilt_outcomes_by_read/   past reads rebuilt from stored history (Phase 4)
+      tables/claude_forecast_fingerprints_and_outcomes_by_read.parquet          one row per past read: market facts + outcome (rebuilt nightly)
+      tables/claude_forecast_grades_by_forecaster_read_and_horizon.parquet      the track record: one row per read x horizon x forecaster
+      tables/claude_forecast_fingerprints_and_outcomes_build_latest.json        what the library was built from
+      claude_forecast_rulebooks_by_version/{sha}.txt  the rulebook text Claude was sent, once per distinct text
+      claude_forecast_scoreboard_latest.json          Will's view (replaced atomically)
+    market/                                           the recorder's copies of station data that would otherwise be overwritten or deleted (Phase 0)
+      spx_monthly_quarterly_open_interest_by_day/{as_of}.json   every distinct dated options book
+      spy_volume_by_minute/{day}.json                 one day of SPY per-minute volume from the wall sensor's baseline
+      spx_price_bars_by_5_minutes/{day}.jsonl         SPX 5-minute bars from Schwab, one file per session
+      vix_one_day_closes_by_day.jsonl                 one line per day: the last $VIX1D quote of the session
+      leveraged_fund_assets_by_run.jsonl              one line per recorder run: the leveraged index funds' assets and leverage from Schwab
+      spx_same_day_options_raw_day_folders_recorder_copy/{day}/   gzip copies of the collector's raw day folders before it deletes them
+    screen_files/phone/claude_forecast_card.json      the phone tile (replaced atomically)
+    operations/logs/claude_forecast_job_runs_log.jsonl   one line per job run (pruned after 30 days)
+    operations/logs/claude_forecast_read_job_log.txt     the detached read runner's output, appended per read (never pruned)
+    operations/locks/claude_forecast_*_job.lock       single-instance lock files
 """
 from __future__ import annotations
 
@@ -48,8 +50,8 @@ if _RUNTIME not in sys.path:
     sys.path.append(_RUNTIME)
 import station_paths  # noqa: E402
 
-FORECAST_FOLDER_NAME = station_paths.CLAUDE_FORECAST_FOLDER.relative   # under the station's data root, beside spx_jev (today)
-RUN_LOG_KEPT_DAYS = 30                               # run_logs/job_run_log.jsonl is the only thing here that is ever pruned
+FORECAST_FOLDER_NAME = station_paths.CLAUDE_FORECAST_FOLDER.relative   # under the station's data root: spx/claude_forecast
+RUN_LOG_KEPT_DAYS = 30                               # the job runs log is the only thing here that is ever pruned
 
 
 def default_state_dir() -> Path:
@@ -128,11 +130,7 @@ class ForecastPaths:
     def library_manifest_file(self) -> Path:
         return self._at(station_paths.CLAUDE_FORECAST_FINGERPRINTS_AND_OUTCOMES_BUILD_LATEST)
 
-    # --- the recorder: copies of at-risk station data -------------------------------------------
-    @property
-    def recorder_dir(self) -> Path:
-        return self._at(station_paths.CLAUDE_FORECAST_RECORDER_FOLDER)
-
+    # --- the recorder: copies of at-risk station data (under market/) ---------------------------
     def dated_book_copy_file(self, as_of_stamp: str) -> Path:
         return self._at(station_paths.SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_BY_DAY, stamp=as_of_stamp)
 
@@ -156,6 +154,14 @@ class ForecastPaths:
 
     def lob_raw_copy_dir(self, day: str) -> Path:
         return self._at(station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDERS_RECORDER_COPY, day=day)
+
+    @property
+    def recorder_copies(self) -> tuple[Path, ...]:
+        """Every folder and file the recorder fills under market/, the backup's irreplaceable set beside the root."""
+        return (self.dated_book_copies_dir, station_paths.SPY_VOLUME_BY_MINUTE.folder(self.state_dir),
+                station_paths.SPX_PRICE_BARS_BY_5_MINUTES.folder(self.state_dir),
+                station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDERS_RECORDER_COPY.folder(self.state_dir),
+                self.vix1d_close_file, self.leveraged_fund_sizes_file)
 
     # --- everything else -------------------------------------------------------------------------
     @property
@@ -194,9 +200,17 @@ class ForecastPaths:
         return (self.root, self.payloads_dir, self.reads_dir, self.outcomes_dir, self.arms_dir, self.seed_payloads_dir,
                 self.seed_outcomes_dir, self.library_rows_file.parent, station_paths.CLAUDE_FORECAST_RULEBOOKS_BY_VERSION.folder(self.state_dir),
                 self.run_log_file.parent, station_paths.CLAUDE_FORECAST_NIGHTLY_JOB_LOCK.folder(self.state_dir),
-                self.dated_book_copies_dir, station_paths.SPY_VOLUME_BY_MINUTE.folder(self.state_dir),
+                self.latest_file.parent, self.dated_book_copies_dir, station_paths.SPY_VOLUME_BY_MINUTE.folder(self.state_dir),
                 station_paths.SPX_PRICE_BARS_BY_5_MINUTES.folder(self.state_dir),
                 station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDERS_RECORDER_COPY.folder(self.state_dir))
+
+    @property
+    def writable(self) -> tuple[Path, ...]:
+        """The only places this package may write: its own folder, the recorder's copies (each folder or file on its
+        own, since market/ holds other pipelines' stores too), its phone card, its logs and its locks. A write anywhere
+        else is a bug jsonl_store refuses."""
+        return (self.root, *self.recorder_copies, self.latest_file, self.run_log_file, self.read_runner_log_file,
+                *(self.lock_file(job) for job in station_paths.CLAUDE_FORECAST_JOB_LOCK_BY_JOB))
 
 
 STORE_MAP = {
@@ -221,13 +235,13 @@ STORE_MAP = {
 
 
 def ensure_folders(state_dir: Path | str, backup_dir: Path | str | None = None) -> ForecastPaths:
-    """Set this process up to write: create every folder the package writes to, declare the forecast root
-    (and the backup folder, when given) as the only writable places, and refresh STORE_MAP.json when its
+    """Set this process up to write: create every folder the package writes to, declare its writable places
+    (``ForecastPaths.writable``, and the backup folder when given) as the only ones, and refresh STORE_MAP.json when its
     text changed (an unchanged file keeps its mtime, so the backup does not recopy it); returns the path set."""
     paths = ForecastPaths(Path(state_dir).expanduser())
     for folder in paths.folders:
         folder.mkdir(parents=True, exist_ok=True)
-    jsonl_store.allow_writes_under(paths.root, *([backup_dir] if backup_dir else []))
+    jsonl_store.allow_writes_under(*paths.writable, *([backup_dir] if backup_dir else []))
     text = json.dumps({"root": str(paths.root), "stores": STORE_MAP}, ensure_ascii=False, indent=1, sort_keys=True)
     if not paths.store_map_file.exists() or paths.store_map_file.read_text(encoding="utf-8") != text:
         jsonl_store.write_bytes_atomically(paths.store_map_file, text.encode("utf-8"))

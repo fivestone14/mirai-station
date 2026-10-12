@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import sndk_read as SR
+import station_paths
 from synth import NOW, _REAL_CALL_THE_MODEL, _diary_row, _diary_row_with_board, _v2_reply
 
 ET = ZoneInfo("America/New_York")
@@ -29,14 +30,14 @@ def _call_row(ts, read="the heaviest strike sat at 1300 all morning"):
 def state(tmp_path, monkeypatch):
     monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
     monkeypatch.setattr(SR, "_market_live", lambda: True)
-    (tmp_path / "sndk_reversion").mkdir()
-    (tmp_path / "sndk_reads").mkdir()
     day = NOW.date().isoformat()
-    dp = tmp_path / "sndk_reversion" / f"{day}.jsonl"
+    dp = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path, day=day)
+    dp.parent.mkdir(parents=True)
+    station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN.folder(tmp_path).mkdir(parents=True)
     dp.write_text("\n".join(
         json.dumps(_diary_row(NOW - timedelta(minutes=m), spot=1200.0 + m))
         for m in (8, 6, 4, 2)) + "\n")
-    return tmp_path, tmp_path / "sndk_reads" / f"{day}.jsonl"
+    return tmp_path, station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN.path(tmp_path, day=day)
 
 
 def _rows(reads_path):
@@ -132,13 +133,14 @@ def test_first_read_after_an_era_change_says_so(state, monkeypatch):
 def board_state(tmp_path, monkeypatch):
     monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
     monkeypatch.setattr(SR, "_market_live", lambda: True)
-    (tmp_path / "sndk_reversion").mkdir()
-    (tmp_path / "sndk_reads").mkdir()
     day = NOW.date().isoformat()
-    (tmp_path / "sndk_reversion" / f"{day}.jsonl").write_text("\n".join(
+    dp = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path, day=day)
+    dp.parent.mkdir(parents=True)
+    station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN.folder(tmp_path).mkdir(parents=True)
+    dp.write_text("\n".join(
         json.dumps(_diary_row_with_board(NOW - timedelta(minutes=m), spot=1200.0 + m))
         for m in (8, 6, 4, 2)) + "\n")
-    return tmp_path, tmp_path / "sndk_reads" / f"{day}.jsonl", day
+    return tmp_path, station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN.path(tmp_path, day=day), day
 
 
 def test_strikes_mode_end_to_end(board_state, monkeypatch):
@@ -189,7 +191,7 @@ def test_a_call_keeps_the_list_it_showed_and_the_next_read_uses_it(board_state, 
 
     # the next read, an hour on: the last call showed 9999, which is not listed now
     later = NOW + timedelta(minutes=SR.HEARTBEAT_MIN + 1)
-    dp = tmp / "sndk_reversion" / f"{day}.jsonl"
+    dp = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp, day=day)
     dp.write_text(dp.read_text() + json.dumps(_diary_row_with_board(later, spot=1204.0)) + "\n")
     rs = _rows(reads)
     rs[-1]["strikes_sent"] = row["strikes_sent"] + [9999.0]
@@ -250,7 +252,7 @@ def test_board_failure_falls_back_to_the_scene_payload(board_state, monkeypatch,
 def test_the_control_file_switch_and_its_malformed_shapes(board_state, monkeypatch):
     tmp, reads, day = board_state
     monkeypatch.delenv("SNDK_PAYLOAD", raising=False)
-    ctl = tmp / "sndk_reads" / "control.json"
+    ctl = station_paths.SNDK_OPTIONS_READER_REASONING_SWITCH.path(tmp)
     ctl.write_text(json.dumps({"reasoning": True, "payload": "scene"}))
     assert SR.payload_mode() == "scene" and SR.active_era() == SR.LEGACY_ERA != SR.ERA
     for bad in ('', 'null', '[]', '"scene"', '{"payload": 7}', '{"payload": "Scene"}', '{"payload": null}', '{', '{"reasoning": true}'):
@@ -272,7 +274,7 @@ def test_a_dry_run_in_strikes_mode_writes_nothing(board_state, monkeypatch, caps
     monkeypatch.setattr(SR, "call_the_model", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no call on a dry run")))
     assert SR.read_once(now=NOW, force=True, dry=True) == 0
     assert not reads.exists()
-    assert not (tmp / "sndk_side").exists()          # the side payload is not kept either
+    assert not station_paths.SNDK_PRICE_BAR_FACTS_BY_READ.folder(tmp).exists()   # the side payload is not kept either
     out = capsys.readouterr().out
     assert '"payload": "strikes"' in out and '"strikes"' in out.split("--- scene handed to the model ---")[1]
 
@@ -383,7 +385,7 @@ def test_the_next_call_is_shown_the_sentence_the_last_one_left(board_state, monk
     reads.write_text("\n".join(json.dumps(r) for r in rs) + "\n")
 
     later = NOW + timedelta(minutes=SR.HEARTBEAT_MIN + 1)
-    dp = tmp / "sndk_reversion" / f"{day}.jsonl"
+    dp = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp, day=day)
     dp.write_text(dp.read_text() + json.dumps(_diary_row_with_board(later, spot=1204.0)) + "\n")
     assert SR.read_once(now=later) == 0
     slr = json.loads(prompts[1].split("SCENE:\n", 1)[1])["context"]["since_last_read"]
@@ -423,7 +425,7 @@ def test_a_sentence_the_guards_deleted_leaves_the_older_one_in_front_of_the_mode
 def test_a_paused_wake_calls_nothing_and_a_timed_out_call_still_lands_its_row(board_state, monkeypatch):
     tmp, reads, day = board_state
     monkeypatch.setenv("SNDK_PAYLOAD", "strikes")
-    control = tmp / "sndk_reads" / "control.json"
+    control = station_paths.SNDK_OPTIONS_READER_REASONING_SWITCH.path(tmp)
     control.write_text(json.dumps({"reasoning": False}))
     reads.write_text(json.dumps(_call_row(NOW - timedelta(minutes=70))) + "\n")
 

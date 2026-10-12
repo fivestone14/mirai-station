@@ -66,7 +66,7 @@ def test_a_night_well_under_the_usual_coverage_is_short():
 def _ranked(state_dir, now, quoted=None):
     """ranked_move on /ES over the store at ``now``, as the premarket labels measure overnight.es_move."""
     day, clock = now.date(), now.time().replace(second=0, microsecond=0)
-    table = rolls.load(state_dir / overnight.OVERNIGHT_SUBDIR)
+    table = rolls.load(state_dir)
     return night_ranks.ranked_move(list(night_ranks._night_rows(state_dir, day, "/ES")), state_dir, day, "/ES", clock, table, quoted)
 
 
@@ -87,21 +87,19 @@ def test_the_futures_move_refuses_a_night_across_a_roll_and_skips_roll_nights_in
     at = datetime.combine(roll_night, time(3, 0), tzinfo=ET)
     found = {"rolls": [{"symbol": "/ES", "day": roll_night.isoformat(), "at": at.isoformat()}], "rejected": [],
              "windows_without_roll": [], "typical_step": 0.01, "unit": "percent"}
-    folder = tmp_path / overnight.OVERNIGHT_SUBDIR
-    table = rolls.merge(rolls.load(folder), "/ES", found, "2026-08-01", "/ESZ26")
-    rolls.save(folder, table)
+    table = rolls.merge(rolls.load(tmp_path), "/ES", found, "2026-08-01", "/ESZ26")
+    rolls.save(tmp_path, table)
     base = night_ranks.prior_nights(tmp_path, DAY, "/ES", time(9, 27), table, lambda m: abs(m.pct))
     assert {n.day: n.skip for n in base if n.skip} == {"2026-09-08": "holiday", roll_night.isoformat(): "roll"}
 
     _save(tmp_path, DAY, 0.3)
     table["rolls"][0]["at"] = datetime.combine(DAY, time(2, 0), tzinfo=ET).isoformat()   # the roll falls inside tonight
-    rolls.save(folder, table)
+    rolls.save(tmp_path, table)
     assert "rolled to the next contract" in _ranked(tmp_path, datetime.combine(DAY, time(9, 27), tzinfo=ET))[1]
 
 
 def test_the_futures_move_waits_for_a_roll_the_quote_shows_and_the_table_has_not_located(tmp_path):
-    folder = tmp_path / overnight.OVERNIGHT_SUBDIR
-    rolls.save(folder, {**rolls.load(folder), "current": {"/ES": "/ESZ26"}})
+    rolls.save(tmp_path, {**rolls.load(tmp_path), "current": {"/ES": "/ESZ26"}})
     ranked, why = _ranked(tmp_path, datetime.combine(DAY, time(9, 27), tzinfo=ET), quoted="/ESH27")
     assert ranked is None and why.startswith("Schwab quotes /ESH27 but the roll table is still on /ESZ26")
 

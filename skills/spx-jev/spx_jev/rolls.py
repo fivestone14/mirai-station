@@ -27,7 +27,7 @@ the current contract is always the one before the first roll advanced by the num
 roll found again never moves it twice. A quote that disagrees with the table's current contract is a
 roll the data has not shown yet (``pending``); the manifest carries it and the rank skips that night.
 
-The table lives beside the overnight store, ``state/spx_jev/overnight/rolls.json``, since the daily
+The table lives beside the overnight store, ``state/market/futures_contracts_and_past_rolls_latest.json``, since the daily
 job rewrites it.
 """
 from __future__ import annotations
@@ -215,19 +215,19 @@ def name(rolls: list[dict], symbol: str, current: str) -> list[dict]:
 
 # ---- the table -----------------------------------------------------------------------------------
 
-def table_path(folder: Path) -> Path:
-    return Path(folder) / station_paths.FUTURES_CONTRACTS_AND_PAST_ROLLS_LATEST.file_name()
+def table_path(state_dir: Path) -> Path:
+    return station_paths.FUTURES_CONTRACTS_AND_PAST_ROLLS_LATEST.path(state_dir)
 
 
-def load(folder: Path) -> dict:
-    path = table_path(folder)
+def load(state_dir: Path) -> dict:
+    path = table_path(state_dir)
     if not path.exists():
         return {"schema_version": SCHEMA_VERSION, "current": {}, "rolls": [], "rejected": [], "windows_without_roll": {}}
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def save(folder: Path, table: dict) -> Path:
-    path = table_path(folder)
+def save(state_dir: Path, table: dict) -> Path:
+    path = table_path(state_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(table, indent=1) + "\n", encoding="utf-8")

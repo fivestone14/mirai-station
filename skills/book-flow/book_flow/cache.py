@@ -91,7 +91,7 @@ def board_for_day(day: str, ticker: str = "SPX", *, slice_s: int = 60,
     # entirely plausible, because a board at the wrong bin width is still a board.
     stamp = (f"v{DOC_V}-{int(st.st_mtime)}-{st.st_size}"
              f"-{slice_s}-{max_bins}-{bin_w}")
-    cache = CACHE_DIR / station_paths.SPX_OPTIONS_TRADES_3D_VIEW_CARD.file_name(ticker=ticker, day=day)
+    cache = CACHE_DIR / station_paths.SPX_OPTIONS_TRADES_3D_VIEW_CARD.file_name(day=day)   # the folder says SPX; the view draws SPX alone
     if cache.is_file():
         try:
             doc = json.loads(cache.read_text())

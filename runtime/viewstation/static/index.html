@@ -2666,7 +2666,7 @@
 "use strict";
 /* ============================================================
    Mirai Awakening — live-shape snapshot, 2026-07-07 (SPX 0DTE)
-   Real fields & verbatim scenes from state/reversion/2026-07-07.jsonl
+   Real fields & verbatim scenes from state/spx/scanner/spx_options_scanner_results_by_scan/2026-07-07.jsonl
    ============================================================ */
 /* SYS carries DEMO-snapshot defaults ONLY (N21/H1): every header readout that can be
    known live is re-painted from the feed each poll — mode from row.live, WT count from
@@ -4626,7 +4626,7 @@ function toggleTenorAll(){
        localStorage.setItem('gx.t.dated','{}'); }catch(e){}
   buildMap(); gxOverview(); gxKickFade();
 }
-// the pill list — dated expiries from the sidecar book (state/dated_gex/book.json),
+// the pill list — dated expiries from the sidecar book (state/market/spx_monthly_quarterly_open_interest_latest.json),
 // merged with the diary row's dated_gex bands by expiry so the pills exist as soon
 // as EITHER source has spoken (the walls tooltip prefers the diary band, which the
 // wall lines actually draw from)
@@ -5629,7 +5629,7 @@ function gxMountCards(){
 }
 // ---- SESSION PRICE PATH (07-25, the LEVELS fold-in) ------------------------------
 // DATA-SOURCE VERDICT (feasibility check, 07-25): true 1-min OHLC exists on disk
-// (state/reversion/bars/<day>-SPX.json) but it is written by the GRADER
+// (state/market/spx_price_bars_by_minute_scanner_copy/<day>-SPX.json) but it is written by the GRADER
 // (gex_polarity_ab._persist_bars) at grade time — an end-of-day / midday snapshot,
 // NOT a live feed (07-24's file froze at 13:15). Candles drawn from it would stall
 // mid-session while looking alive. The honest live series is the diary's per-scan
@@ -7212,11 +7212,11 @@ const LY = [
       {k:'Wall defense', d:'Real resting orders behind a wall, or a bluff nobody quotes.',
        dgm:'<svg class="dgm sub-dgm" viewBox="0 0 128 50" aria-hidden="true"><line class="dg-ln" x1="40" y1="10" x2="40" y2="44"/><rect class="dg-soft" x="44" y="16" width="20" height="6" rx="1.5"/><rect class="dg-soft" x="44" y="25" width="20" height="6" rx="1.5"/><text class="dg-txt" x="52" y="44" text-anchor="middle">real</text><line class="dg-ln" x1="96" y1="10" x2="96" y2="44" stroke-dasharray="4 4"/><line class="dg-dn" x1="88" y1="19" x2="104" y2="33"/><line class="dg-dn" x1="104" y1="19" x2="88" y2="33"/><text class="dg-txt-h" x="96" y="44" text-anchor="middle">bluff</text></svg>'}],
     // baked numbers = a boot-paint snapshot only — loadPlaneLedgers() re-derives this
-    // card from state/lob_flow/ (baselines + defense cards) on the ledger clock
+    // card from state/spx/scanner/ (the depth baselines + the order-flow grades) on the ledger clock
     rd:{kind:'lob', baseDays:21, baseNeed:21, tier:'robust', episodes:0, epNeed:30,
       defNow:{n:59,hits:59,rate:1.0}, defNowLabel:'latest session', defPrev:{n:866,hits:579,rate:0.669}, defPrevLabel:'cumulative',
       blockers:['LOB_LIVE off','control spy_depth has 0 episodes'],
-      summary:'Snapshot 08-10: baseline FULL at 21 of 21 days (robust). The wall lie-detector still swings day to day (35% → 61% → 82% → 88% → 100% over the last 5 sessions; 67% on 866 episodes overall) and its spy_depth control has 0 episodes, so the promotion clock can\'t start. Refreshes live from state/lob_flow.'}},
+      summary:'Snapshot 08-10: baseline FULL at 21 of 21 days (robust). The wall lie-detector still swings day to day (35% → 61% → 82% → 88% → 100% over the last 5 sessions; 67% on 866 episodes overall) and its spy_depth control has 0 episodes, so the promotion clock can\'t start. Refreshes live from the order-flow files under state/spx/scanner/.'}},
   {id:'speed', num:'3', name:'Speedometer', code:'lefteye_speedometer', hue:'--l-speed', tier:'sensory',
     role:'≈ residual-stream norm / activation magnitude', status:['iris','shadow · diary'],
     plain:'Measures what the tape is ACTUALLY doing, not what anyone predicts: how much of a normal day\'s movement has been spent so far, whether a real jolt just hit and which way, and whether the scary downside kind of shaking is taking over.',
@@ -7285,10 +7285,10 @@ const LY = [
     example:'The layers below each lean a direction; the Watchtower weighs them all and says, e.g., "up, about half a normal day\'s move, and this is a settle day, not a fight."',
     rd:{kind:'days', decided:0, need:12, sw:'shadow · cap 35/day', rate:null, wl:null, note:'wt-11 era · ledger reset 08-10',
       blockers:['0 / 12 decided days (wt-11 era)'],
-      summary:'wt-5 gave the tower eyes — the event clock, the STANCE (fight vs settle) axis, gravity-default branched on the gamma sign, and a reveal that can no longer delete a unanimous blind majority. wt-6 added the book\'s slope: shove, Speedometer, and cocked-vs-fired. wt-7 (07-18) un-blinded the Siege stack: effort-at-wall verdicts reach the payload as siege_effort_at_walls, REVERSED SIGN spelled out. wt-8 (07-25) made the gamma sign the PERMISSION SLIP — positive gamma forbids drift/momentum bets, shove asymmetry is worded as terrain (resistance, not live pushing), soft_side wears a stuck-vane guard, and the magnet is demoted to a location/late-day pin target. wt-9 (07-27) folded in three COLOR-tier chart-reading advisories: regime_intensity_1d, the siege PAUSE-vs-TERMINUS lean, and air pockets. wt-10 (07-27) added flow confirmation at the walls, the measured cT/pT fences, the √time reach decay, and the strike-tag ladder. wt-11 (08-10) is the SNDK sr-2→sr-5 port, every threshold re-measured on the SPX tape: the scene stopped carrying constants (the dex sign word, the charm/vanna sign fields, and the never-fired charm drift word are gone — what varies is what ships: neutral strength+level blocks, the timestamp-true 30-min dex change), gained the magnet band (the pin is usually a ~1pp statistical tie), vol_trend, per-strike momentum, the measured 30-min move SPREAD, measured-empty clear flags, and the date; and the memory opened — exactly two tools (its own history CLI + WebSearch), doctrine-gated by history flags, one memory slice written per judged read into state/spx_rag. Every era restarts the ledger: 0 of 12 decided days so far.'},
+      summary:'wt-5 gave the tower eyes — the event clock, the STANCE (fight vs settle) axis, gravity-default branched on the gamma sign, and a reveal that can no longer delete a unanimous blind majority. wt-6 added the book\'s slope: shove, Speedometer, and cocked-vs-fired. wt-7 (07-18) un-blinded the Siege stack: effort-at-wall verdicts reach the payload as siege_effort_at_walls, REVERSED SIGN spelled out. wt-8 (07-25) made the gamma sign the PERMISSION SLIP — positive gamma forbids drift/momentum bets, shove asymmetry is worded as terrain (resistance, not live pushing), soft_side wears a stuck-vane guard, and the magnet is demoted to a location/late-day pin target. wt-9 (07-27) folded in three COLOR-tier chart-reading advisories: regime_intensity_1d, the siege PAUSE-vs-TERMINUS lean, and air pockets. wt-10 (07-27) added flow confirmation at the walls, the measured cT/pT fences, the √time reach decay, and the strike-tag ladder. wt-11 (08-10) is the SNDK sr-2→sr-5 port, every threshold re-measured on the SPX tape: the scene stopped carrying constants (the dex sign word, the charm/vanna sign fields, and the never-fired charm drift word are gone — what varies is what ships: neutral strength+level blocks, the timestamp-true 30-min dex change), gained the magnet band (the pin is usually a ~1pp statistical tie), vol_trend, per-strike momentum, the measured 30-min move SPREAD, measured-empty clear flags, and the date; and the memory opened — exactly two tools (its own history CLI + WebSearch), doctrine-gated by history flags, one memory slice written per judged read into the scanner's Claude notes under state/spx/scanner/. Every era restarts the ledger: 0 of 12 decided days so far.'},
     /* wt-11: the diary + memory schema, on the plane itself (the sword plane's card
        grammar) — the record the grader reads and the store the tower can recall */
-    schema:{src:'diary row · watchtower + state/spx_rag/slices', code:[
+    schema:{src:'diary row · watchtower + state/spx/scanner/spx_options_scanner_claude_notes_by_read', code:[
       '"watchtower": {',
       '  "prompt_version": "wt-11",   // era — a bump resets the Wilson clock',
       '  "fired": true, "direction": "put",   // the graded pair (sweep ledger)',
@@ -7299,19 +7299,19 @@ const LY = [
       '                               // conviction_stated = the model\'s own figure',
       '  "votes": {"n": 3, "agreement": 0.67},',
       '  "agrees_with_gates": false,  // disagreement is information',
-      '  "scene": "one-sentence read → also a state/spx_rag memory slice",',
+      '  "scene": "one-sentence read → also a memory slice under state/spx/scanner/",',
       '  "wall_s": 41.2 }             // seconds the calls spent',
     ]}},
   // ---- SIEGE stack (stack:'siege') — underlying-volume effort at the GexBox walls.
   // Shadow with one reader since wt-7 (2026-07-18): rendered on the second deck at
   // STK.SPOTS.siege; the effort word now enters the Watchtower payload
-  // (siege_effort_at_walls) while grading stays record-only on disk (state/siege/).
-  // Readiness is derived live from state/siege/latest.json + cards (loadSiege); an
+  // (siege_effort_at_walls) while grading stays record-only on disk (the wall sensor's files under state/spx/scanner/).
+  // Readiness is derived live from state/spx/scanner/spx_dealer_walls_latest.json + the touch cards (loadSiege); an
   // absent store renders as cold, never as an error.
   {id:'sfeed', num:'S0', name:'SPY Tape Feed', code:'siege L0 · spy tape (underlying volume)', hue:'--l-sfeed', base:true, tier:'feed', stack:'siege',
     role:'≈ token embedding · the underlying volume stream', status:['iris','shadow · feed'],
     plain:'The underlying tape: one-minute SPY bars — price and, crucially, VOLUME — bridged onto SPX levels through a live ratio re-fit each session. The options chain says where the GWs stand; this feed says how hard the crowd is actually pushing on them.',
-    schema:{src:'state/siege/latest.json · health + tape', code:[
+    schema:{src:'state/spx/scanner/spx_dealer_walls_latest.json · health + tape', code:[
       '{',
       '  as_of: "2026-07-17T10:42:00-04:00",',
       '  session: "2026-07-17",',
@@ -7328,7 +7328,7 @@ const LY = [
   {id:'stouch', num:'S1', name:'Touch Detector', code:'siege L1 · touch detector', hue:'--l-stouch', tier:'sensory', stack:'siege',
     role:'≈ event trigger · arms when price reaches a wall', status:['iris','shadow · record-only'],
     plain:'Watches the distance between price and each tower GexBox hands over — the [0DTE]GWc, the [0DTE]GWp, the MagP. When price gets close enough it opens an episode and freezes the wall price at first touch, so a wall that teleports outward on a breach can no longer hide the fight.',
-    schema:{src:'state/siege/latest.json · towers[]', code:[
+    schema:{src:'state/spx/scanner/spx_dealer_walls_latest.json · towers[]', code:[
       '{',
       '  towers: [                 // walls the detector is tracking',
       '    {',
@@ -7347,7 +7347,7 @@ const LY = [
   {id:'seffort', num:'S2', name:'Effort-at-Wall', code:'siege L2 · effort lens', hue:'--l-seffort', tier:'lens', stack:'siege',
     role:'≈ decision head over the tape · one verdict per engaged tower', status:['iris','shadow · record-only'],
     plain:'The core read, with the sign flipped on purpose: it measures how much volume shows up while price presses the nearest GW. Heavy effort means the crowd is genuinely fighting the level — SIEGE, expect a BREAK. No effort means nobody cares to fight — QUIET, expect the wall to HOLD.',
-    schema:{src:'state/siege/latest.json · towers[] · effort', code:[
+    schema:{src:'state/spx/scanner/spx_dealer_walls_latest.json · towers[] · effort', code:[
       '{',
       '  effort_pct: 87.0,         // SPY volume at the wall vs baseline (0-100 percentile)',
       '  verdict: "SIEGE",         // SIEGE · QUIET · NEUTRAL',
@@ -7360,7 +7360,7 @@ const LY = [
   {id:'sscore', num:'S3', name:'Scorekeeper', code:'siege L3 · scorekeeper', hue:'--l-sscore', tier:'processor', stack:'siege',
     role:'≈ grader · resolves episodes, accrues the baseline', status:['iris','shadow · record-only'],
     plain:'Grades every finished episode — did the SIEGE call actually break, did the QUIET wall actually hold? — and accrues the volume baseline session by session (cold → warming → robust). Its cards are the evidence that will one day argue for promotion.',
-    schema:{src:'state/siege/cards/<date>.jsonl (baseline label rides latest.json)', code:[
+    schema:{src:'state/spx/scanner/spx_dealer_wall_touches_by_event/<date>.jsonl (baseline label rides spx_dealer_walls_latest.json)', code:[
       '{',
       '  // one card per resolved episode — the recorded keys',
       '  tower_kind: "call_wall",  // call_wall · put_wall · magnet',
@@ -7377,7 +7377,7 @@ const LY = [
   {id:'sword', num:'S4', name:'Tower Word', code:'siege L4 · tower word (wt-7)', hue:'--l-sword', tier:'processor', stack:'siege',
     role:'≈ the payload writer — the siege word in the wt payload since wt-7', status:['iris','shadow · in wt payload'],
     plain:'The mouth of the stack, open since wt-7 (07-18). It composes the one word the Watchtower wants — BREAK or HOLD per engaged GW, with the effort number beside it — and the Watchtower now reads it every scan as siege_effort_at_walls, reversed sign spelled out in the wording. Grading stays record-only: the word is evidence in the room, it gates nothing.',
-    schema:{src:'state/siege/latest.json · verdict → wt payload · siege_effort_at_walls', code:[
+    schema:{src:'state/spx/scanner/spx_dealer_walls_latest.json · verdict → wt payload · siege_effort_at_walls', code:[
       '{',
       '  siege_effort_at_walls: {  // in the Watchtower payload since wt-7',
       '    towers: [{',
@@ -7536,7 +7536,7 @@ function dexReadiness(L){
     <div class="rd-sum">${L.rd.summary}</div></div>`;
 }
 
-// ---- SIEGE readiness: derived LIVE from state/siege/ (unlike the main stack's baked
+// ---- SIEGE readiness: derived LIVE from the wall sensor's files under state/spx/scanner/ (unlike the main stack's baked
 // nightly numbers — the siege store is being built in parallel, so the UI must read
 // whatever is really on disk). An absent store is a normal state, not an error: every
 // layer renders a calm "cold / not yet run" card until the collector's first write.
@@ -7565,9 +7565,9 @@ function siegeReadiness(L){
   const doctrine=`<div class="blockers"><span class="blk">SIEGE = volume showed up → expect BREAK</span><span class="blk ok">QUIET = nobody fought → expect HOLD</span></div>`;
   const wiredBlk=`<span class="blk ok">✓ wired — siege_effort_at_walls in the watchtower payload (since wt-7)</span>`;
   if(!lt){
-    const why = SIEGE ? 'state/siege/ absent — the collector has not written yet' : 'reading state/siege/ …';
+    const why = SIEGE ? 'the wall sensor\u2019s files under state/spx/scanner/ are absent — the collector has not written yet' : 'reading the wall sensor\u2019s files under state/spx/scanner/ …';
     return `<div class="rd">
-      <div class="rd-h"><span class="lab">Store · state/siege/</span><span class="pct">cold</span></div>
+      <div class="rd-h"><span class="lab">Store · state/spx/scanner/spx_dealer_wall*</span><span class="pct">cold</span></div>
       <div class="track" style="opacity:.45"><i style="width:100%;background:repeating-linear-gradient(90deg,var(--c) 0 5px,transparent 5px 11px)"></i></div>
       <div class="rd-fr">${why}</div>
       ${L.id==='seffort'?doctrine:''}
@@ -7765,7 +7765,7 @@ async function loadPlaneLedgers(){
       r.blockers=['LOB_LIVE off', `baseline ${r.tier} (${r.baseDays} / ${r.baseNeed}d)`, `control spy_depth has ${ctrl} episodes`];
       const recent=cards.slice(-5).map(c=>{ const df=(((c.data||{}).engines||{}).lob_flow||{}).defense||{};
         return df.n?Math.round((df.hits||0)/df.n*100)+'%':'—'; });
-      r.summary=`Baseline day ${r.baseDays} of ${r.baseNeed}. The wall lie-detector still swings day to day (${recent.join(' → ')} over the last ${recent.length} sessions; ${cn?Math.round(ch/cn*100)+'% on '+cn+' episodes overall':'no episodes yet'}) and its spy_depth control has ${ctrl} episodes, so the promotion clock can't start. Derived live from state/lob_flow.`;
+      r.summary=`Baseline day ${r.baseDays} of ${r.baseNeed}. The wall lie-detector still swings day to day (${recent.join(' → ')} over the last ${recent.length} sessions; ${cn?Math.round(ch/cn*100)+'% on '+cn+' episodes overall':'no episodes yet'}) and its spy_depth control has ${ctrl} episodes, so the promotion clock can't start. Derived live from the order-flow files under state/spx/scanner/.`;
       touched.push('lob');
     }
   }catch(e){}
@@ -8235,7 +8235,7 @@ function annotatedJSON(s){
     `${i(2)}${K('conviction')}: ${s.wt.conv==null?NU:N(s.wt.conv)},${c('share of votes that agreed — null on a single-vote scan (agreement needs ≥2 votes)')}`,
     `${i(2)}${K('votes')}: ${votes},${c('times it was asked (up to 3 on a fire) and the agreement among them')}`,
     `${i(2)}${K('agrees_with_gates')}: ${s.wt.agrees==null?NU:Bl(s.wt.agrees)},${c('did the reasoning head and the machine gates concur? (null = the row never carried the flag)')}`,
-    `${i(2)}${K('scene')}: ${S(s.wt.scene)}${c('the tower’s plain-English read — since wt-11 a memory slice also lands in state/spx_rag, pinned to the BLIND sentence (a revised row’s memory may differ from this one)')}`,
+    `${i(2)}${K('scene')}: ${S(s.wt.scene)}${c('the tower’s plain-English read — since wt-11 a memory slice also lands in state/spx/scanner/spx_options_scanner_claude_notes_by_read, pinned to the BLIND sentence (a revised row’s memory may differ from this one)')}`,
     `${i(1)}}`,
     '}',
   ];
@@ -10150,7 +10150,7 @@ function renderDict(){
    every identifier is SNDK./snk-prefixed; the SPX Map/FEED/SPOT loops are
    never touched. Reads the parallel producer's diary via the SAME generic
    endpoints (/api/store/index + /api/store/file by store name → the scanner's rows),
-   the sr-1 LIVE READ from the second producer (→ state/sndk_reads/*.jsonl —
+   the sr-1 LIVE READ from the second producer (→ state/sndk/sndk_options_reader_gates_and_answers_by_run/*.jsonl —
    the magnet band, the frozen list and the model's observation; own file,
    own poll, absent until it lands), and
    /api/spot?ticker=SNDK. Reused helpers (never forked, never edited — the
@@ -10931,7 +10931,7 @@ function snkLegend(){
 }
 
 // ================================================================
-// THE LIVE READ (sr-1, 07-31; ONE LANE since obs-3) — state/sndk_reads/*.jsonl, written by
+// THE LIVE READ (sr-1, 07-31; ONE LANE since obs-3) — state/sndk/sndk_options_reader_gates_and_answers_by_run/*.jsonl, written by
 // the parallel producer skills/sndk-pro/sndk_read.py (its own launchd job, so a slow model
 // call can never delay a scan). One thing rides the row: the READING — the model's own
 // observations of the board, forbidden by its own doctrine from naming a direction. The
@@ -11240,7 +11240,7 @@ async function openSnkHistModal(){
     M.classList.add('open'); M.setAttribute('aria-hidden','false');
     document.getElementById('modal-x').onclick=closeModal; _modalOpened();
   };
-  shell(`<div class="snkh-note">loading state/sndk_reads…</div>`);
+  shell(`<div class="snkh-note">loading state/sndk/sndk_options_reader_gates_and_answers_by_run…</div>`);
   let rows=[];
   try{
     const day=SNDK.readDay||((SNDK.read&&SNDK.read.ts)?String(SNDK.read.ts).slice(0,10):null);
@@ -11614,17 +11614,17 @@ const _PL_NODES=[
    'Appends every COMPLETED minute not already on disk. A minute still running is a partial and never lands; --day backfills a past session.',
    'launchd com.mirai-station.sndk-bars'],
 
-  ['sd',  'Records','store','Diary',                 'state/sndk_reversion/<day>.jsonl',
+  ['sd',  'Records','store','Diary',                 'state/sndk/sndk_options_scanner_results_by_scan/<day>.jsonl',
    'One row per scan, about 190 a day: price, the day’s implied move, the walls and the flip, eight numbers for every strike, and the timestamp the option book itself carried.'],
-  ['sb',  'Records','store','Bars',                  'state/sndk_bars/<day>.jsonl',
-   'One line per completed minute, 390 a day, and health.json, the last run’s summary, which on a failed run still says how many minutes are on disk and when the last one was, beside the error. The witness for highs, lows and range breaks: sampling every 2 minutes instead misses one break in three.'],
-  ['sc',  'Records','store','Book cache',            'state/sndk_gex/chain_cache.json',
-   'The last option-chain pull, good for 180 seconds, one and a half scans. The scan after a pull re-prices this cache against the live quote instead of pulling the chain again, so the chain is pulled every other scan — which is why its arrow runs back up. Beside it, overwritten the same way: vol_hint.json and discovery.json (the day’s expiries). The fetch_log.jsonl that only grew beside them stopped on 2026-10-11: nothing read it.'],
-  ['ctl', 'Records','store','Reader switch',         'state/sndk_reads/control.json',
+  ['sb',  'Records','store','Bars',                  'state/sndk/sndk_price_bars_by_minute/<day>.jsonl',
+   'One line per completed minute, 390 a day, and the last run’s summary at state/operations/health/sndk_price_bars_health_latest.json, which on a failed run still says how many minutes are on disk and when the last one was, beside the error. The witness for highs, lows and range breaks: sampling every 2 minutes instead misses one break in three.'],
+  ['sc',  'Records','store','Book cache',            'state/sndk/sndk_options_chain_state.json',
+   'The last option-chain pull, good for 180 seconds, one and a half scans. The scan after a pull re-prices this cache against the live quote instead of pulling the chain again, so the chain is pulled every other scan — which is why its arrow runs back up. Beside it, overwritten the same way: state/sndk/sndk_implied_volatility_state.json (the vol hint) and state/sndk/sndk_options_expiries_state.json (the day’s expiries). The fetch log that only grew beside them stopped on 2026-10-11: nothing read it.'],
+  ['ctl', 'Records','store','Reader switch',         'state/sndk/sndk_options_reader_reasoning_switch.json',
    'Hand-edited, never written by code: the pause switch that stops the model call while every row still lands, and which payload the reader builds. Missing or unreadable means reasoning on and the Strikes Payload.'],
-  ['pp',  'Records','store','Percentile history',    'state/sndk_reads/pctl_prior.json',
+  ['pp',  'Records','store','Percentile history',    'state/sndk/sndk_options_reader_percentile_history_state.json',
    'The prior sessions’ figures behind the legacy scene’s percentile words, rewritten when the list of prior sessions changes, by whichever process builds that scene first. Never reaches the Strikes Payload.'],
-  ['pv',  'Records','store','Volume baseline',       'state/sndk_reads/prior_volume.json',
+  ['pv',  'Records','store','Volume baseline',       'state/sndk/sndk_past_volume_curves_state.json',
    'Per recent closed session, whether it was an expiry day and the volume across the window at each book, so the day summary can set today’s volume against the same clock minute on up to five ordinary sessions without re-reading about 9 MB of diaries every tick. Rebuilt only for a session not already in it.'],
 
   ['r1',  'Reader','step',  '1 · Wake gate',         'should_wake()',
@@ -11642,18 +11642,18 @@ const _PL_NODES=[
   ['r2b', 'Reader','step',  '2b · Side packet',      'sndk_side.build_side()',
    'A second document, anchored to the minute bars rather than the option book, built beside the scene and never sent to a model. It takes its price lines from the same diary row the scene uses. Every time in it is derived from a bar index, so every value can be checked against the bar it came from.'],
 
-  ['od',  'Delivery','sink','Read row',              'state/sndk_reads/<day>.jsonl',
+  ['od',  'Delivery','sink','Read row',              'state/sndk/sndk_options_reader_gates_and_answers_by_run/<day>.jsonl',
    'One row per reader tick: the reading or the last one carried forward, why it woke, which payload fed the model, the frozen gate the next wake measures against, what the guards dropped, what each spent call was billed, the strike list it showed the model, so the next read can say exactly what joined and what left. About 180 rows a day. The next read takes its gate snapshot and strike list from the last row that spent a call, the sentence still on screen from the last row that has one, and the day’s readings, whose claims the day summary grades.'],
-  ['os',  'Delivery','sink','Side packets',          'state/sndk_side/<day>.jsonl',
+  ['os',  'Delivery','sink','Side packets',          'state/sndk/sndk_price_bar_facts_by_read/<day>.jsonl',
    'One line for each scan judged worth a model call, including one the pause switch held back. Written when the wake fires rather than when the model answers, so it also lands on a call that failed or was emptied by the guards; a capped scan keeps nothing, because the cap clears the wake. The dashboard’s chart reads the newest one back for the day’s open, high and low; the Side view rebuilds its own. Quiet scans keep nothing and rebuild from the bars and the diary row.'],
-  ['om',  'Delivery','sink','Memory',                'sndk_rag.py → state/sndk_rag/',
-   'One slice per completed reading: the sentence plus the numbers true that minute. Searchable by the voice desk and the Memory view, which also rebuild the day summaries and standing terrain beside it when asked; the reading model has no tools and cannot reach it, and nothing is ever injected into a reading.'],
+  ['om',  'Delivery','sink','Memory',                'sndk_rag.py → state/sndk/sndk_options_reader_notes_by_read/<day>.jsonl',
+   'One slice per completed reading: the sentence plus the numbers true that minute. Searchable by the voice desk and the Memory view, which also rebuild the day summaries (state/sndk/sndk_options_reader_session_summaries_by_day.jsonl) and the standing terrain (state/sndk/sndk_options_reader_terrain_state.json) beside it when asked; the reading model has no tools and cannot reach it, and nothing is ever injected into a reading.'],
   ['ow',  'Delivery','sink','Dashboard',             'runtime/viewstation/',
    'Chart, drawers, the reading card, the Payload tab and its Side view. The Payload tab REBUILDS the packet through the reader’s own code rather than reading a kept copy, so it shows what would be sent now — which is why its arrows come off the records as well as the read row. The Side view rebuilds the side packet too, and the chart takes the day’s open, high and low from the newest saved one; the Memory view reads memory, and the chart’s fine line is the price tape.'],
-  ['ot',  'Delivery','sink','Price tape',            'state/sndk_tape/<day>.jsonl',
+  ['ot',  'Delivery','sink','Price tape',            'state/sndk/sndk_last_prices_by_quote/<day>.jsonl',
    'A price at most every 4 seconds, written by the dashboard server itself whenever a page asks for the live price, so a day nobody watched has no tape. Only the chart reads it.'],
   ['op',  'Delivery','sink','Voice · pager',        'mirai-voice · sndk_deadman.py',
-   'The voice desk quotes the reading as an observation, and the dead-man pages the phone when the scanner goes quiet, or when the reader stops writing rows while the scanner still runs, keeping what it has paged in state/sndk_reads/deadman_state.json. The phone’s SNDK glance, which drew the reading and the session’s chart off the diary row, the bars and the live quote through the payload route, was retired on 2026-10-10 with the phone’s redesign: the shell opens the SPX forecast, and nothing on the phone reads SNDK.',
+   'The voice desk quotes the reading as an observation, and the dead-man pages the phone when the scanner goes quiet, or when the reader stops writing rows while the scanner still runs, keeping what it has paged in state/operations/sndk_outage_alert_state.json. The phone’s SNDK glance, which drew the reading and the session’s chart off the diary row, the bars and the live quote through the payload route, was retired on 2026-10-10 with the phone’s redesign: the shell opens the SPX forecast, and nothing on the phone reads SNDK.',
    'launchd com.mirai-station.sndk-deadman · every 5 min'],
 ];
 // from, to, and 'back' for a return path. Checked against the code 09-04; the
@@ -12304,11 +12304,11 @@ const SNDK = {
   // extra upstream calls); tapeLive = the same samples accumulated client-side between the
   // slow tape reads, so the trail wiggles at spot cadence without a single added fetch.
   tape:[], tapeLive:[],
-  // THE LIVE READ (sr-1) — the newest state/sndk_reads row: the magnet band, the frozen
+  // THE LIVE READ (sr-1) — the newest state/sndk/sndk_options_reader_gates_and_answers_by_run row: the magnet band, the frozen
   // list and the model's observation. Its own file, its own producer, its own poll; null
   // until one lands and every new surface hides while it is.
   readFile:null, readDay:null, read:null, readTs:null, readFails:0,
-  // THE MINUTE PRICE LOG (09-14) — state/sndk_bars: {day, lastTs, health}. The board's day
+  // THE MINUTE PRICE LOG (09-14) — state/sndk/sndk_price_bars_by_minute: {day, lastTs, health}. The board's day
   // high and low, its price ranges and every breakout are read off this log, and a stalled
   // log used to be silent everywhere. barsInfo() turns it into the MINUTE LOG STALE pill.
   bars:null, barsFails:0,
@@ -12515,7 +12515,7 @@ const SNDK = {
     SNDK.paintStrip();
     SNDK.timers.bars=setTimeout(()=>SNDK.pollBars(), SNDK.barsMs);
   },
-  // THE LIVE READ (sr-1) — state/sndk_reads/*.jsonl through the same generic raw explorer,
+  // THE LIVE READ (sr-1) — state/sndk/sndk_options_reader_gates_and_answers_by_run/*.jsonl through the same generic raw explorer,
   // on the SAME 8s clock as the diary poll. A SEPARATE loop, not a second fetch inside
   // pollDiary: the two files come from two producers on two launchd jobs, so a stalled
   // reads file must never hold up the map (and vice versa). Same visibility discipline as
@@ -12652,7 +12652,7 @@ const SNDK = {
       if(SNDK.on&&SNDK.model) SNDK.buildChart();
     }catch(e){}
   },
-  // FINE TAPE readback — state/sndk_tape/{today}.jsonl on a SLOW clock (60s): its only job
+  // FINE TAPE readback — state/sndk/sndk_last_prices_by_quote/{today}.jsonl on a SLOW clock (60s): its only job
   // is history (a reload, a second device, the morning before this tab opened) — the live
   // edge already rides tapeLive + the streaming tip. Fetched by today's ET date directly
   // (no /api/raw/index round-trip: a tape only ever exists for a live session day; a 404
@@ -14290,7 +14290,7 @@ const SNDK = {
     cc.innerHTML=`<div class="snk-empty" id="snk-await">
         <div class="gm">SNDK</div>
         <div class="t1">Awaiting the first SNDK scan</div>
-        <div class="t2">state/sndk_reversion/ has no diary yet. The map draws itself entirely from the first
+        <div class="t2">state/sndk/sndk_options_scanner_results_by_scan/ has no diary yet. The map draws itself entirely from the first
           recorded row — strike pitch, price window and σ all derive from the data, so nothing here is
           simulated and no placeholder terrain is shown.</div>
         ${sp!=null?`<div class="lv">live ${snkUsd(sp,2)} <span style="color:var(--ink-faint)">· ${SNDK.spot.src||'quote'}</span></div>`:''}
@@ -14772,7 +14772,7 @@ const PAYLOAD = {
     if(!head||!pre||!sch) return;
     const m=(row&&row.meta)||{};
     const age=x=>x&&x.mtime?snkDur(Math.max(0,(Date.now()/1000-x.mtime)/60))+' ago':'not today';
-    head.innerHTML=`<b>state/sndk_reversion/${esc(day)}.jsonl</b><span>one row per scan, every 2 minutes \u00b7 <i>${total}</i> rows today</span>`
+    head.innerHTML=`<b>state/sndk/sndk_options_scanner_results_by_scan/${esc(day)}.jsonl</b><span>one row per scan, every 2 minutes \u00b7 <i>${total}</i> rows today</span>`
       +`<span class="sib"><b>beside it</b> `
       +`<code>sndk_bars/${esc(day)}.jsonl</code> minute bars, ${age(sib.bars)} \u00b7 `
       +`<code>sndk_reads/${esc(day)}.jsonl</code> readings, ${age(sib.reads)} \u00b7 `
@@ -14788,7 +14788,7 @@ const PAYLOAD = {
         const n=Array.isArray(v)?` <small>[${v.length}]</small>`:(v&&typeof v==='object'?` <small>{${Object.keys(v).length}}</small>`:'');
         return `<div class="dk${absent?' ab':''}"><code>${fed?'<i class="dot"></i>':''}${esc(k)}${n}</code><span>${esc(txt)}</span></div>`;
       }).join('')}</section>`).join('')
-      +`<section><h4>Not on the row</h4><div class="dk"><code>state/sndk_bars/&lt;day&gt;.jsonl</code><span>One completed minute bar per line, written by its own job. The reader takes the day\u2019s highs, lows and boxes from it.</span></div><div class="dk"><code>state/sndk_reads/&lt;day&gt;.jsonl</code><span>One row per scan from the reader: the reading, why it woke, the frozen gate, what the guards dropped.</span></div><div class="dk"><code>state/sndk_rag/slices/&lt;day&gt;.jsonl</code><span>One memory slice per completed reading: the model\u2019s sentence and the numbers true that minute.</span></div></section>`;
+      +`<section><h4>Not on the row</h4><div class="dk"><code>state/sndk/sndk_price_bars_by_minute/&lt;day&gt;.jsonl</code><span>One completed minute bar per line, written by its own job. The reader takes the day\u2019s highs, lows and boxes from it.</span></div><div class="dk"><code>state/sndk/sndk_options_reader_gates_and_answers_by_run/&lt;day&gt;.jsonl</code><span>One row per scan from the reader: the reading, why it woke, the frozen gate, what the guards dropped.</span></div><div class="dk"><code>state/sndk/sndk_options_reader_notes_by_read/&lt;day&gt;.jsonl</code><span>One memory slice per completed reading: the model\u2019s sentence and the numbers true that minute.</span></div></section>`;
   },
   disarm(){ if(PAYLOAD.timer){ clearInterval(PAYLOAD.timer); PAYLOAD.timer=null; } },
   closeTip(){ PAYLOAD.tipOpen=false; document.querySelectorAll('.st.tip.open').forEach(c=>c.classList.remove('open')); },
@@ -15013,7 +15013,7 @@ const PAYLOAD = {
       ['Option book',        'The market-data server supplies the front one or two weekly expiries \u2014 open interest, volume, bid and ask for strikes within a band around the live price. Pulled every other scan and cached on disk for 180 s; the off scan re-prices the cached book at the live quote.', 'sndk_feed \u00b7 market-data server'],
       ['Clean and price',    'Implied vol is re-solved per strike from the bid/ask mid against Schwab\u2019s live price; a strike that cannot be solved keeps or loses the provider\u2019s number, and gamma is filled in where the provider left it blank.', 'sndk_feed'],
       ['Build the map',      'The book becomes one snapshot: gamma by strike, the heaviest strike, the walls, the flip, the expected move, VWAP and the dealer-delta surface.', 'sndk_views'],
-      ['Record',             'Every 120 seconds during market hours the snapshot is written to the diary; a sidecar job keeps the day\u2019s completed one-minute bars beside it, from Schwab, every 60 seconds.', 'state/sndk_reversion \u00b7 state/sndk_bars'],
+      ['Record',             'Every 120 seconds during market hours the snapshot is written to the diary; a sidecar job keeps the day\u2019s completed one-minute bars beside it, from Schwab, every 60 seconds.', 'state/sndk/sndk_options_scanner_results_by_scan \u00b7 state/sndk/sndk_price_bars_by_minute'],
       ['Assemble the payload','Every scan: the newest snapshot, today\u2019s earlier rows, the minute bars, the prior sessions and what changed since the model\u2019s last look become this JSON \u2014 the ranked strike table with twelve books of history behind each strike, whatever the rule says has GONE (its live region list has not been sent since 2026-09-05), and what happened between frames. The old scene is still built beside it for the wake gate.', 'sndk_board \u00b7 build_scene_v2'],
       ['Ask the model',      'Only when something changed: Claude reads the standing rulebook plus this JSON and says, in plain words, what stands out, the piles it draws as clusters, the heavy strike on each side, and which price levels are worth watching. Never a direction \u2014 that call measured worthless and was removed. Then every number and level is checked against this JSON, a cluster naming an unlisted strike is dropped, and forecast language is deleted before anyone sees it.','claude -p \u00b7 DOCTRINE_V2 \u00b7 guards'],
       ['Use the observation','What it noticed lands on the chart card, the voice desk and \u2014 when the model actually spoke \u2014 the memory store.', 'reading'],

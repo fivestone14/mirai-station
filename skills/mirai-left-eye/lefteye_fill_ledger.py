@@ -19,7 +19,8 @@ enters through the gamma × fill_weight product in the pin — gamma collapses o
 strikes the market has left, fills concentrate near the money.
 
 Every watch tick is a FRESH process, so the ledger persists to
-state/gex_fills/{ledger_id}.json. Day rollover reseeds (0DTE volume is per-day;
+state/spx/scanner/ (spx_options_strike_volume_weights_state.json for native_SPX,
+spy_options_strike_volume_weights_state.json for proxy_SPY). Day rollover reseeds (0DTE volume is per-day;
 the first scan of a day seeds weight = cumulative volume, which equals the legacy
 read at the open and diverges usefully after). All IO is best-effort: any failure
 leaves contracts un-annotated and the pin falls back to plain cumulative volume —

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # launchd-fired wrapper: DATED BOOK SIDECAR nightly pull (shadow, display-only).
 # Fetches the next two SPX AM monthlies + the quarter-end EOM chain (ONE batched
-# cass_market_run) and persists state/dated_gex/book.json. Runs pre-open at
+# cass_market_run) and persists state/market/spx_monthly_quarterly_open_interest_latest.json. Runs pre-open at
 # 05:17 PT daily plus Friday 14:10 PT (fires EVERY Friday — only the OpEx one
 # matters, when python rolls to the new front monthlies; the rest are cheap
 # re-pulls of the same fronts). Physically

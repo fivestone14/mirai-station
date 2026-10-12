@@ -15,7 +15,8 @@ pytest.importorskip("pyarrow")
 import duckdb  # noqa: E402
 import pyarrow.parquet as pq  # noqa: E402
 
-from conftest import DAY, at, flat_bars  # noqa: E402
+from conftest import (DAY, archive_path, at, flat_bars, hour_path, integral_grades_path, lane_folder, night_path,  # noqa: E402
+                      station_paths, write_json, write_jsonl)
 from spx_jev import store  # noqa: E402
 
 SKILL = Path(__file__).resolve().parents[1]
@@ -99,22 +100,17 @@ def _day_archive() -> list[dict]:
 def _state(tmp_path, archive: list | None = None, extra_lines: list[str] = ()) -> None:
     """A station state dir holding one day of every raw file the store reads."""
     lines = [json.dumps(r) for r in (_day_archive() if archive is None else archive)] + list(extra_lines)
-    folder = tmp_path / "spx_jev"
-    (folder / "archive").mkdir(parents=True)
-    (folder / "archive" / f"{DAY}.jsonl").write_text("\n".join(lines) + "\n")
-    (folder / "hour").mkdir()
-    (folder / "hour" / f"{DAY}.jsonl").write_text(json.dumps({"row_ts": READ, "learn_exclude": {"30": True, "60": False}}) + "\n")
-    (folder / "bars").mkdir()
-    (folder / "bars" / f"{DAY}.jsonl").write_text("".join(json.dumps(b) + "\n" for b in flat_bars(390)))
-    (tmp_path / "reversion" / "bars").mkdir(parents=True)
-    (tmp_path / "reversion" / "bars" / f"{DAY}-SPX.json").write_text(json.dumps(flat_bars(390)))
-    (folder / "overnight").mkdir()
+    archive_path(tmp_path, DAY).parent.mkdir(parents=True)
+    archive_path(tmp_path, DAY).write_text("\n".join(lines) + "\n")
+    write_jsonl(hour_path(lane_folder(tmp_path), DAY), [{"row_ts": READ, "learn_exclude": {"30": True, "60": False}}])
+    write_jsonl(station_paths.SPX_PRICE_BARS_BY_MINUTE.path(tmp_path, day=DAY), flat_bars(390))
+    write_json(station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.path(tmp_path, day=DAY), flat_bars(390))
     night = [{"schema_version": 1, "day": DAY, "ts": "2026-09-18T08:00:00-04:00", "symbol": "/ES", "contract": "/ESZ26",
               "contract_from": "roll_table", "bar_minutes": 1, "open": 6600.0, "high": 6601.0, "low": 6599.0, "close": 6600.5,
               "volume": 100.0, "session": "premarket", "source": "schwab_price_history", "saved_at": "2026-09-18T09:26:10-04:00",
               "flags": []}]
     night.insert(0, {**night[0], "ts": "2026-09-17T15:55:00-04:00", "session": "regular"})     # Thursday's last minutes
-    (folder / "overnight" / f"{DAY}.jsonl").write_text("".join(json.dumps(b) + "\n" for b in night))
+    write_jsonl(night_path(tmp_path, DAY), night)
 
 
 @pytest.fixture
@@ -125,19 +121,19 @@ def built(tmp_path):
 
 
 def _table(root, name: str) -> list[dict]:
-    return pq.ParquetFile(store.partition(store.store_dir(root), name, D)).read().to_pylist()
+    return pq.ParquetFile(store.partition(root, store.BY_NAME[name], D)).read().to_pylist()
 
 
 def test_every_table_is_written_for_the_day_with_its_types_and_schema_version(built):
     root, log = built
     for table in store.TABLES + (store.VALIDATION,):
-        schema = pq.ParquetFile(store.partition(store.store_dir(root), table.name, D)).schema_arrow
+        schema = pq.ParquetFile(store.partition(root, table, D)).schema_arrow
         assert schema.metadata[b"spx_jev_store_schema"] == str(store.SCHEMA_VERSION).encode()
         assert schema.equals(table.schema, check_metadata=False) and "day" not in schema.names
-    reads = pq.ParquetFile(store.partition(store.store_dir(root), "reads", D)).schema_arrow
+    reads = pq.ParquetFile(store.partition(root, store.BY_NAME["reads"], D)).schema_arrow
     assert str(reads.field("row_ts").type) == "timestamp[us, tz=America/New_York]"
     assert set(log) == {t.name for t in store.TABLES}
-    assert not store.partition(store.store_dir(root), "quarantine", D).exists()      # nothing refused: no file of refusals
+    assert not store.partition(root, store.BY_NAME["quarantine"], D).exists()      # nothing refused: no file of refusals
 
 
 def test_a_read_is_one_row_with_its_times_ruler_counts_and_reasons(built):
@@ -280,14 +276,13 @@ def test_a_read_whose_average_price_sum_failed_calls_its_end_price_and_says_why(
 
 def test_the_average_price_grade_is_stored_from_each_lanes_file_its_newest_rule_standing(tmp_path):
     _state(tmp_path, _with_average(_day_archive()))
-    folder = tmp_path / "spx_jev"
-    (folder / "integral_grades.jsonl").write_text("".join(json.dumps(g) + "\n" for g in (
+    integral_grades_path(lane_folder(tmp_path)).write_text("".join(json.dumps(g) + "\n" for g in (
         _integral(READ, rule=2, label="flat", verdict="wrong"), _integral(READ),
         {"row_ts": EARLY, "horizon": "next_30", "rule_version": 1, "graded": False, "reason": "not graded: bars missing",
          "missing": [29, 30], "bad_ticks": [], "stale_read": False},
         _integral("2026-09-17T10:32:00-04:00"))))
-    (folder / "lanes" / "tape").mkdir(parents=True)
-    (folder / "lanes" / "tape" / "integral_grades.jsonl").write_text(json.dumps(_integral(
+    integral_grades_path(lane_folder(tmp_path, "tape")).parent.mkdir(parents=True)
+    integral_grades_path(lane_folder(tmp_path, "tape")).write_text(json.dumps(_integral(
         TAPE_READ, horizon="next_10", sum="average_10", minutes=10, label="flat", verdict="passed", lean={"direction": "down", "p": 0.4},
         size={"band": "flat", "size": "small", "call": None, "right": None})) + "\n")
     log = store.build_day(tmp_path, D, at(16, 45))
@@ -369,12 +364,14 @@ def test_every_column_selects_in_plain_sql_none_a_duckdb_reserved_word():
 
 def test_a_rebuild_leaves_the_raw_files_untouched_and_writes_the_same_rows(built):
     root, _ = built
-    raw = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in root.rglob("*") if p.is_file() and "store" not in p.parts}
+    tables = [t.store.path(root) for t in store.TABLES + (store.QUARANTINE, store.VALIDATION)]
+    raw = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in root.rglob("*")
+           if p.is_file() and not any(p.is_relative_to(t) for t in tables)}
     first = {t.name: _table(root, t.name) for t in store.TABLES}
     store.build_day(root, D, at(17, 0))
     assert {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in raw} == raw
     assert {name: _table(root, name) for name in first} == first
-    assert [p.name for p in store.partition(store.store_dir(root), "reads", D).parent.iterdir()] == [store.PART]
+    assert [p.name for p in store.partition(root, store.BY_NAME["reads"], D).parent.iterdir()] == [store.PART]
 
 
 def test_today_is_built_once_its_saves_have_run_and_only_market_days(tmp_path):
@@ -382,11 +379,9 @@ def test_today_is_built_once_its_saves_have_run_and_only_market_days(tmp_path):
     assert store.days_to_build(at(16, 40), catch_up=7)[0] == date(2026, 9, 11)
     assert store.last_finished(at(12, 0, day="2026-09-20")) == D                      # Sunday: Friday is the last
     for d in ("2026-09-17", "2026-09-19", "2026-09-21"):                               # Thursday, Saturday, a future Monday
-        (tmp_path / "spx_jev" / "overnight").mkdir(parents=True, exist_ok=True)
-        (tmp_path / "spx_jev" / "overnight" / f"{d}.jsonl").write_text("")
-    (tmp_path / "reversion" / "bars").mkdir(parents=True)
-    (tmp_path / "reversion" / "bars" / "2026-09-16-SPX.json").write_text("[]")
-    (tmp_path / "reversion" / "bars" / "2026-09-15-SNDK.json").write_text("[]")
+        write_jsonl(night_path(tmp_path, d), [])
+    write_json(station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.path(tmp_path, day="2026-09-16"), [])
+    (station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.folder(tmp_path) / "2026-09-15-SNDK.json").write_text("[]")
     assert store.days_on_disk(tmp_path, D) == [date(2026, 9, 16), date(2026, 9, 17)]
     assert store.off_days_on_disk(tmp_path, D + timedelta(days=1)) == [date(2026, 9, 19)]
 
@@ -407,7 +402,7 @@ def test_the_command_builds_the_day_and_names_its_counts(tmp_path, capsys):
 
 def test_a_backfill_names_the_raw_files_it_leaves_out_for_not_being_market_days(tmp_path, capsys):
     _state(tmp_path)
-    (tmp_path / "spx_jev" / "overnight" / "2026-09-07.jsonl").write_text("")                    # Labor Day's futures
+    write_jsonl(night_path(tmp_path, "2026-09-07"), [])                                           # Labor Day's futures
     assert store.main(["--state-dir", str(tmp_path), "--backfill"]) == 0
     out = capsys.readouterr().out
     assert "not market days, so not stored: the raw files of 2026-09-07" in out and f"{DAY} reads 3" in out
@@ -426,12 +421,11 @@ def test_a_record_whose_parts_are_malformed_is_quarantined_and_the_rest_of_the_d
 
 def test_a_raw_line_in_the_wrong_shape_or_not_utf8_is_quarantined_and_the_rest_of_the_day_is_built(tmp_path):
     _state(tmp_path)
-    folder = tmp_path / "spx_jev"
-    with open(folder / "bars" / f"{DAY}.jsonl", "ab") as f:
+    with open(station_paths.SPX_PRICE_BARS_BY_MINUTE.path(tmp_path, day=DAY), "ab") as f:
         f.write(b'{"ts": "\xff"}\n')
-    with open(folder / "hour" / f"{DAY}.jsonl", "a") as f:
+    with open(hour_path(lane_folder(tmp_path), DAY), "a") as f:
         f.write(json.dumps({"row_ts": {"not": "text"}}) + "\n")
-    (folder / "integral_grades.jsonl").write_text(json.dumps({"row_ts": READ, "horizon": ["next_30"]}) + "\n")
+    integral_grades_path(lane_folder(tmp_path)).write_text(json.dumps({"row_ts": READ, "horizon": ["next_30"]}) + "\n")
     log = store.build_day(tmp_path, D, at(16, 45))
     reasons = sorted(q["reason"] for q in _table(tmp_path, "quarantine"))
     assert reasons[0].startswith("a malformed average-price grade: TypeError") and reasons[1:] == [

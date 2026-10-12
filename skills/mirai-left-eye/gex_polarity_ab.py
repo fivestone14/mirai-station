@@ -11,9 +11,9 @@ scores higher is the correct polarity. It also grades MAGNET GRAVITATION per eng
 (closest approach of the price path to the stated magnet, in σ) — the head-to-head
 that settles which engine's pin is real when the two disagree.
 
-Read-only vs the live loop: reads state/reversion/{day}.jsonl + 1-min bars; places
+Read-only vs the live loop: reads state/spx/scanner/spx_options_scanner_results_by_scan/{day}.jsonl + 1-min bars; places
 no orders itself, but its promotion_gate() is THE earn-trust check consumed by
-reversion_lens.live_allowed(). Persists its verdicts to the state/reversion/polarity_history.jsonl
+reversion_lens.live_allowed(). Persists its verdicts to the state/spx/scanner/spx_options_scanner_grades_by_day.jsonl
 ledger, one row per day, so the record accumulates instead of scrolling away (a per-day
 polarity-{day}.json holding the same row was written beside it until 2026-10-11).
 Scheduled after close via com.mirai-station.gex-polarity; manual:
@@ -127,9 +127,9 @@ def _verdict(n: int, current_hits: int) -> dict:
             "inverted_hit_rate": round(1 - cur, 2), "verdict": v}
 
 
-def _bars_dir() -> Path:
-    """The saved real-range bars, beside the scanner's rows (a duplicate of the bars feed; the map drops it)."""
-    return station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder() / "bars"
+def _bars_file(day: str, ticker: str) -> Path:
+    """The grader's saved real-range bars for a session (a copy of the bars feed's; merged into its store at a later phase)."""
+    return station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.path(day=day, ticker=ticker)
 
 
 def _bars_have_ranges(bars: list) -> bool:
@@ -144,9 +144,8 @@ def _persist_bars(day: str, ticker: str, bars: list) -> None:
     a longer one — a midday manual grade must not freeze a partial morning over
     the full session (best-effort)."""
     try:
-        d = _bars_dir()
-        d.mkdir(parents=True, exist_ok=True)
-        f = d / f"{day}-{ticker}.json"
+        f = _bars_file(day, ticker)
+        f.parent.mkdir(parents=True, exist_ok=True)
         if f.exists():
             try:
                 if len(json.loads(f.read_text()) or []) > len(bars):
@@ -165,7 +164,7 @@ def _default_bars(ticker: str, day: str) -> list:
     is the last resort — grades from it are marked estimate-only and never feed
     the promotion gate."""
     saved: list = []
-    f = _bars_dir() / f"{day}-{ticker}.json"
+    f = _bars_file(day, ticker)
     try:
         if f.exists():
             saved = json.loads(f.read_text()) or []

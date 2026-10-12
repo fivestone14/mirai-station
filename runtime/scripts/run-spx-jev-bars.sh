@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # launchd-fired wrapper: the SPX live-bars sidecar.
 # One run = fetch today's 1-min SPX session from Schwab (one call, the whole session) and append
-# every FINISHED minute not already on disk to state/spx_jev/bars/{date}.jsonl. Idempotent and
+# every FINISHED minute not already on disk to state/market/spx_price_bars_by_minute/{date}.jsonl. Idempotent and
 # self-healing: a run after a gap writes the gap. Its own clock and process; the SPX JEV service
 # reads the file, and the scanner never waits on it.
 # Gated on the market-status helper like run-sndk-bars.sh, plus the twelve minutes after the day's

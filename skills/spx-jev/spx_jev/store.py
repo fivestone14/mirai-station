@@ -5,9 +5,10 @@
     python3 -m spx_jev.store --backfill             # every market day with a raw file on disk, naming other days left out
 
 The raw files stay the record (the archive's own note: a cleaner store is a later transform of them). This job
-only reads them, and writes only under ``state/spx_jev/store/``:
+only reads them, and writes only the tables runtime/station_paths.py names: the JEV tables under ``spx/jev/tables/``,
+the bar tables under ``market/tables/``, the refused rows and the build counts under ``operations/health/``:
 
-    <table>/day=YYYY-MM-DD/part-0.parquet   one file per table per built day, zero rows included, replaced whole;
+    <table folder>/day=YYYY-MM-DD/part-0.parquet   one file per table per built day, zero rows included, replaced whole;
                                              ``day`` is the folder's, not a column in the file (hive partitioning).
                                              ``quarantine`` alone has a file only for a day a row was refused on.
 
@@ -76,13 +77,6 @@ from .sessions import is_trading_day, previous_trading_day, session_close, sessi
 from .state_builder import DEFAULT_STATE_DIR, LIVE_BARS_SUBDIR, SESSION_BARS_SUBDIR, SYMBOL
 
 import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
-
-STORE_SUBDIR = Path(station_paths.JEV_TABLES_FOLDER.relative)
-
-
-def _table_name(store) -> str:
-    """A table's folder under the store, from its name in station_paths."""
-    return str(store.relative_within(station_paths.JEV_TABLES_FOLDER))
 
 PART = "part-0.parquet"
 # 4: no facts table (2026-10-07); 3: the average-price call, its answer and grade, both loops' logs. The seven tables
@@ -162,11 +156,13 @@ Check = Callable[[dict], "str | None"]
 
 @dataclass(frozen=True)
 class Table:
-    """A stored table: its columns ``(name, type, required)``, the columns that make a row one row, the checks a
+    """A stored table: its short name (the ``table_name`` the counts and the refused rows carry), where it lives
+    (``store``, named in station_paths), its columns ``(name, type, required)``, the columns that make a row one row, the checks a
     typed row must pass (each returns why it fails, or None), how to choose among rows sharing a key (lowest
     ``rank`` kept; a differing row of the same rank, or of a table with none, is quarantined), the columns that say where a row came from
     and so never make two rows differ, and whether each row belongs to a read of the day."""
     name: str
+    store: station_paths.Store
     columns: tuple[tuple[str, pa.DataType, bool], ...]
     key: tuple[str, ...]
     checks: tuple[Check, ...] = ()
@@ -273,7 +269,7 @@ LANE_NAMES = tuple(LANES)
 AVERAGE_OUTCOMES = ("up", "flat", "down")
 ANSWER_STATUSES = ("answered", "lost", "unsent", "held", "not_due", "asleep", "missing", "dark", "unread", "other")
 
-READS = Table(_table_name(station_paths.JEV_READ_SUMMARIES_BY_READ_TABLE), _read_cols(
+READS = Table("reads", station_paths.JEV_READ_SUMMARIES_BY_READ_TABLE, _read_cols(
     ("archived_at", TS, True), ("minute_et", INT, False), ("minutes_from_open", INT, False), ("checkpoint", STR, False),
     ("sent", BOOL, True), ("model", STR, False), ("spot", NUM, False), ("sigma", NUM, False),
     ("ruler_source", STR, False), ("ruler_points", NUM, False), ("ruler_unit_sigma", NUM, False), ("ruler_sessions", INT, False),
@@ -288,7 +284,7 @@ READS = Table(_table_name(station_paths.JEV_READ_SUMMARIES_BY_READ_TABLE), _read
     checks=(_is("lane", LANE_NAMES), _read_id_matches, _on_day("row_ts"), _positive("spot", "sigma", "ruler_points"),
             _not_after("row_ts", "archived_at", "archived before its read")))
 
-ANSWERS = Table(_table_name(station_paths.JEV_ANSWERS_BY_READ_AND_QUESTION_TABLE), _read_cols(
+ANSWERS = Table("answers", station_paths.JEV_ANSWERS_BY_READ_AND_QUESTION_TABLE, _read_cols(
     ("group_id", STR, False), ("question_id", STR, True), ("status", STR, True), ("reason", STR, False),
     ("type", STR, False), ("pick", STR, False), ("confidence", NUM, False), ("probabilities", PROBS, False),
     ("score", NUM, False), ("noul", NUM, False), ("model", STR, False), ("question_hash", STR, False),
@@ -300,7 +296,7 @@ ANSWERS = Table(_table_name(station_paths.JEV_ANSWERS_BY_READ_AND_QUESTION_TABLE
             _not_after("reasked_from", "row_ts", "asked again for a later read")),
     of_read=True)
 
-CALLS = Table(_table_name(station_paths.JEV_AND_POOL_FORECASTS_BY_READ_AND_HORIZON_TABLE), _read_cols(
+CALLS = Table("calls", station_paths.JEV_AND_POOL_FORECASTS_BY_READ_AND_HORIZON_TABLE, _read_cols(
     ("sum_id", STR, True), ("horizon", STR, True), ("is_call", BOOL, True), ("minutes", INT, True), ("mark", TS, False),
     ("minute_et", INT, False), ("minutes_from_open", INT, False), ("is_primary", BOOL, True), ("shown_source", STR, True),
     ("shown_pick", STR, False), ("shown_probs", PROBS, True), ("shown_confidence", NUM, False), ("price", NUM, False),
@@ -317,7 +313,7 @@ CALLS = Table(_table_name(station_paths.JEV_AND_POOL_FORECASTS_BY_READ_AND_HORIZ
             _not_after("row_ts", "mark", "marked before its read")),
     of_read=True)
 
-AVERAGE_GRADES = Table(_table_name(station_paths.JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON_TABLE), _read_cols(
+AVERAGE_GRADES = Table("average_grades", station_paths.JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON_TABLE, _read_cols(
     ("horizon", STR, True), ("sum_id", STR, True), ("rule_version", INT, True), ("graded", BOOL, True), ("reason", STR, False),
     ("minutes", INT, False), ("mark", TS, False), ("from_price", NUM, False), ("flat_points", NUM, False), ("factor", NUM, False),
     ("edge", NUM, False), ("edge_told", NUM, False), ("average_move", NUM, False), ("outcome", STR, False),
@@ -339,12 +335,12 @@ AVERAGE_GRADES = Table(_table_name(station_paths.JEV_AVERAGE_PRICE_GRADES_BY_REA
 
 _BAR = (("open", NUM, True), ("high", NUM, False), ("low", NUM, False), ("close", NUM, True), ("volume", NUM, False))
 
-SPX_BARS = Table(_table_name(station_paths.SPX_PRICE_BARS_BY_MINUTE_TABLE), (("day", DAY, True), ("ts", TS, True)) + _BAR + (("source", STR, True),),
+SPX_BARS = Table("spx_bars", station_paths.SPX_PRICE_BARS_BY_MINUTE_TABLE, (("day", DAY, True), ("ts", TS, True)) + _BAR + (("source", STR, True),),
                  key=("ts",),
                  checks=(_on_day("ts"), _in_session, _positive("open", "high", "low", "close"), _not_negative("volume"), _bar_shape),
                  rank=lambda r: (r["source"] != "session_file",), provenance=("source",))
 
-OVERNIGHT_BARS = Table(_table_name(station_paths.FUTURES_PRICE_BARS_BY_MINUTE_TABLE), (("day", DAY, True), ("ts", TS, True), ("symbol", STR, True), ("contract", STR, False),
+OVERNIGHT_BARS = Table("overnight_bars", station_paths.FUTURES_PRICE_BARS_BY_MINUTE_TABLE, (("day", DAY, True), ("ts", TS, True), ("symbol", STR, True), ("contract", STR, False),
                                           ("contract_from", STR, False), ("bar_minutes", INT, True), ("prior_session", BOOL, True)) + _BAR
                        + (("session", STR, False), ("source", STR, False), ("saved_at", TS, True), ("flags", WORDS, False),
                           ("overnight_schema", INT, False)),
@@ -352,10 +348,10 @@ OVERNIGHT_BARS = Table(_table_name(station_paths.FUTURES_PRICE_BARS_BY_MINUTE_TA
                        checks=(_is("bar_minutes", (1, 5)), _positive("open", "high", "low", "close"), _not_negative("volume"),
                                _bar_shape, _night_ends_by_close, _saved_after_finish))
 
-QUARANTINE = Table(_table_name(station_paths.TABLE_BUILD_REFUSED_ROWS_BY_EVENT), (("day", DAY, True), ("table_name", STR, True), ("key", STR, False), ("reason", STR, True),
+QUARANTINE = Table("quarantine", station_paths.TABLE_BUILD_REFUSED_ROWS_BY_EVENT, (("day", DAY, True), ("table_name", STR, True), ("key", STR, False), ("reason", STR, True),
                                   ("source", STR, True), ("row_json", STR, True)), key=())
 
-VALIDATION = Table(_table_name(station_paths.TABLE_BUILD_COUNTS_BY_TABLE_AND_DAY), (("day", DAY, True), ("table_name", STR, True), ("rows_in", INT, True), ("kept", INT, True),
+VALIDATION = Table("validation", station_paths.TABLE_BUILD_COUNTS_BY_TABLE_AND_DAY, (("day", DAY, True), ("table_name", STR, True), ("rows_in", INT, True), ("kept", INT, True),
                                   ("duplicates", INT, True), ("superseded", INT, True), ("quarantined", INT, True),
                                   ("reasons", COUNTS, True), ("sources", WORDS, True), ("store_schema", INT, True),
                                   ("built_at", TS, True)), key=())
@@ -821,18 +817,15 @@ def validate(table: Table, rows: list[dict], reads: set[str] | None = None) -> t
 
 # ----------------------------------------------------------------------------- writing
 
-def store_dir(state_dir: Path | str) -> Path:
-    return Path(state_dir) / STORE_SUBDIR
+def partition(state_dir: Path | str, table: Table, day: date) -> Path:
+    """The day's file of ``table`` under the data root (its store's folder, hive-partitioned by day)."""
+    return table.store.path(state_dir) / f"day={day.isoformat()}" / PART
 
 
-def partition(store: Path, table: str, day: date) -> Path:
-    return store / table / f"day={day.isoformat()}" / PART
-
-
-def _write(store: Path, table: Table, day: date, rows: list[dict]) -> Path:
+def _write(state_dir: Path | str, table: Table, day: date, rows: list[dict]) -> Path:
     """The day's partition of ``table``, replaced whole: written beside it and renamed over it, so a reader
     sees the old file or the new one, never half of one."""
-    path = partition(store, table.name, day)
+    path = partition(state_dir, table, day)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{PART}.{os.getpid()}.tmp")
     pq.write_table(pa.Table.from_pylist(rows, schema=table.schema), tmp)
@@ -844,7 +837,6 @@ def build_day(state_dir: Path | str, day: date, now: datetime | None = None) -> 
     """Rebuild one day of every table from its raw files: read, check, write. Returns the validation counts by table."""
     now = now or datetime.now(ET)
     raw = read_raw(Path(state_dir), day)
-    store = store_dir(state_dir)
     kept: dict[str, list[dict]] = {}
     quarantined = list(raw.unreadable)
     log: dict[str, dict] = {}
@@ -859,19 +851,19 @@ def build_day(state_dir: Path | str, day: date, now: datetime | None = None) -> 
         log["raw_line"] = {"rows_in": len(raw.unreadable), "kept": 0, "duplicates": 0, "superseded": 0,
                            "quarantined": len(raw.unreadable), "reasons": dict(Counter(b["reason"] for b in raw.unreadable))}
     for table in TABLES:
-        _write(store, table, day, kept[table.name])
+        _write(state_dir, table, day, kept[table.name])
     if quarantined:
-        _write(store, QUARANTINE, day, quarantined)
+        _write(state_dir, QUARANTINE, day, quarantined)
     else:
-        _remove_partition(store, QUARANTINE, day)    # a day built again with nothing refused keeps no stale file of refusals
-    _write(store, VALIDATION, day, [{"day": day, "table_name": name, **counts, "sources": raw.sources.get(name, []),
+        _remove_partition(state_dir, QUARANTINE, day)    # a day built again with nothing refused keeps no stale file of refusals
+    _write(state_dir, VALIDATION, day, [{"day": day, "table_name": name, **counts, "sources": raw.sources.get(name, []),
                                      "store_schema": SCHEMA_VERSION, "built_at": now} for name, counts in log.items()])
     return log
 
 
-def _remove_partition(store: Path, table: Table, day: date) -> None:
+def _remove_partition(state_dir: Path | str, table: Table, day: date) -> None:
     """The day's partition of ``table`` gone, its day folder with it when nothing else is in there."""
-    path = partition(store, table.name, day)
+    path = partition(state_dir, table, day)
     try:
         path.unlink()
         path.parent.rmdir()
@@ -926,7 +918,8 @@ def off_days_on_disk(state_dir: Path | str, until: date) -> list[date]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Build the learning store under state/spx_jev/store/: each market day's raw "
+    ap = argparse.ArgumentParser(description="Build the learning store (the tables runtime/station_paths.py names under "
+                                             "spx/jev/tables/, market/tables/ and operations/health/): each market day's raw "
                                              "files as checked Parquet.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
     which = ap.add_mutually_exclusive_group()
@@ -958,7 +951,7 @@ def main(argv: list[str] | None = None) -> int:
         bad = {t: c["quarantined"] for t, c in log.items() if c["quarantined"]}
         print(f"spx-jev-store :: {d} " + ", ".join(f"{t} {c['kept']}" for t, c in log.items() if t in BY_NAME)
               + (f"; quarantined {', '.join(f'{t} {n}' for t, n in bad.items())}" if bad else ""))
-    print(f"spx-jev-store :: {len(days) - failed} of {len(days)} days built under {store_dir(state_dir)}; "
+    print(f"spx-jev-store :: {len(days) - failed} of {len(days)} days built under {station_paths.JEV_TABLES_FOLDER.path(state_dir)} and {station_paths.SPX_PRICE_BARS_BY_MINUTE_TABLE.folder(state_dir)}; "
           + ", ".join(f"{t.name} {kept[t.name]} rows ({quarantined[t.name]} quarantined)" for t in TABLES)
           + (f"; raw_line {quarantined['raw_line']} quarantined" if quarantined["raw_line"] else ""))
     return 1 if failed else 0

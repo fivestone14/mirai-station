@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 import pytest
 
 import sndk_side as SS
+import station_paths
 from synth import T0
 
 DAY = T0.date().isoformat()
@@ -511,10 +512,10 @@ def test_the_packet_lands_in_its_own_file_and_the_row_only_points_at_it(
 
     monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
     monkeypatch.setattr(SR, "_market_live", lambda: True)
-    (tmp_path / "sndk_reversion").mkdir()
-    (tmp_path / "sndk_reads").mkdir()
     day = NOW.date().isoformat()
-    (tmp_path / "sndk_reversion" / f"{day}.jsonl").write_text("\n".join(
+    diary = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path, day=day)
+    diary.parent.mkdir(parents=True)
+    diary.write_text("\n".join(
         json.dumps(_diary_row(NOW - timedelta(minutes=m))) for m in (8, 6, 4, 2)) + "\n")
 
     open_at = datetime.combine(NOW.date(), SS.SESSION_OPEN, tzinfo=SS._ET)
@@ -528,8 +529,8 @@ def test_the_packet_lands_in_its_own_file_and_the_row_only_points_at_it(
     monkeypatch.setattr(SR, "call_the_model",
                         lambda *a, **k: (_v2_reply(), None, 1.0, None))
     SR.read_once(now=NOW)
-    rows = [json.loads(l) for l in
-            (tmp_path / "sndk_reads" / f"{day}.jsonl").read_text().splitlines()]
+    rows = [json.loads(l) for l in station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN
+            .path(tmp_path, day=day).read_text().splitlines()]
     assert "side" not in rows[-1], "the packet must not ride the row"
     assert rows[-1]["side_bar"] is not None
 
@@ -555,10 +556,10 @@ def test_a_broken_packet_never_fails_the_read(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
     monkeypatch.setattr(SR, "_market_live", lambda: True)
-    (tmp_path / "sndk_reversion").mkdir()
-    (tmp_path / "sndk_reads").mkdir()
     day = NOW.date().isoformat()
-    (tmp_path / "sndk_reversion" / f"{day}.jsonl").write_text("\n".join(
+    diary = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path, day=day)
+    diary.parent.mkdir(parents=True)
+    diary.write_text("\n".join(
         json.dumps(_diary_row(NOW - timedelta(minutes=m))) for m in (8, 6, 4, 2)) + "\n")
 
     def boom(*a, **k):
@@ -571,8 +572,8 @@ def test_a_broken_packet_never_fails_the_read(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(SR, "call_the_model",
                         lambda *a, **k: (_v2_reply(), None, 1.0, None))
     SR.read_once(now=NOW)
-    rows = [json.loads(l) for l in
-            (tmp_path / "sndk_reads" / f"{day}.jsonl").read_text().splitlines()]
+    rows = [json.loads(l) for l in station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN
+            .path(tmp_path, day=day).read_text().splitlines()]
     assert rows, "the read row must still land"
     assert "side" not in rows[-1] and "side_bar" not in rows[-1]
     assert SS.read_day(day) == []
@@ -591,10 +592,10 @@ def test_a_quiet_row_does_not_carry_the_packet(tmp_path, monkeypatch):
 
     monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
     monkeypatch.setattr(SR, "_market_live", lambda: True)
-    (tmp_path / "sndk_reversion").mkdir()
-    (tmp_path / "sndk_reads").mkdir()
     day = NOW.date().isoformat()
-    (tmp_path / "sndk_reversion" / f"{day}.jsonl").write_text("\n".join(
+    diary = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path, day=day)
+    diary.parent.mkdir(parents=True)
+    diary.write_text("\n".join(
         json.dumps(_diary_row(NOW - timedelta(minutes=m))) for m in (8, 6, 4, 2)) + "\n")
     open_at = datetime.combine(NOW.date(), SS.SESSION_OPEN, tzinfo=SS._ET)
     SB.write_day(day, [{"ts": (open_at + timedelta(minutes=i)).isoformat(),
@@ -603,8 +604,8 @@ def test_a_quiet_row_does_not_carry_the_packet(tmp_path, monkeypatch):
 
     monkeypatch.setattr(SR, "should_wake", lambda *a, **k: None)   # nothing to say
     SR.read_once(now=NOW)
-    rows = [json.loads(l) for l in
-            (tmp_path / "sndk_reads" / f"{day}.jsonl").read_text().splitlines()]
+    rows = [json.loads(l) for l in station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN
+            .path(tmp_path, day=day).read_text().splitlines()]
     assert rows, "a quiet row must still land — a hidden surface is not a missing one"
     assert "side" not in rows[-1] and "side_bar" not in rows[-1]
     assert SS.read_day(day) == [], "a quiet minute keeps nothing"

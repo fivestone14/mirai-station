@@ -36,24 +36,24 @@ right after it archives the read's record. Nothing here is in the combined call.
 | `spec/phases.md` | The build order, phases 0 to 9, each with the check that proves it is done. |
 | `spec/decisions.md` | The choices this runs on and why, and where the build departed from the plan. |
 | `spec/record_formats.md` | The locked plain-English field names of the reads and outcomes files and of Claude's reply, with examples. |
-| `spx_claude_forecast/paths.py` | Every path the package writes, under `state/spx_claude_forecast/`, and `STORE_MAP.json`. |
+| `spx_claude_forecast/paths.py` | Every path the package writes, under `state/spx/claude_forecast/` (the record, the tables, the rulebooks), `state/market/` (the recorder's copies), `state/screen_files/phone/` (the card) and `state/operations/` (logs and locks), and `STORE_MAP.json`. |
 | `spx_claude_forecast/jsonl_store.py` | The only writers: append-only lines under a file lock, atomic replacement, write-once blobs; every writer refuses a path outside the forecast folder. |
-| `spx_claude_forecast/control.py` | The kill switch (`SPX_CLAUDE_FORECAST_DISABLE=1`), the pause switch and daily caps in `control.json`, the single-instance lock, the run log. |
+| `spx_claude_forecast/control.py` | The kill switch (`SPX_CLAUDE_FORECAST_DISABLE=1`), the pause switch and daily caps in `claude_forecast_pause_and_limits.json`, the single-instance lock, the run log. |
 | `spx_claude_forecast/station_stores.py` | Where the station's own stores are (read-only) and how the sibling `spx_jev` code is imported. |
-| `spx_claude_forecast/recorder.py` | Copies station data before it is overwritten or deleted (the dated options book, siege's SPY minutes, the raw tape, the $VIX1D close, SPX 5-minute bars) and mirrors the folder to iCloud Drive. |
+| `spx_claude_forecast/recorder.py` | Copies station data before it is overwritten or deleted (the dated options book, siege's SPY minutes, the raw tape, the $VIX1D close, SPX 5-minute bars) into `state/market/` and mirrors the forecast folder and those copies to iCloud Drive. |
 | `spx_claude_forecast/payload/` | The payload: `frozen_inputs.py` loads one read's inputs cut at the read's time; `blocks/` holds one module per block; `build.py` assembles the scene, picks the history, runs the leak checks, hashes it and renders the two prompts. |
 | `spx_claude_forecast/precedents.py` | The base rate for the time of day and the eight nearest past moments, from the library. |
-| `spx_claude_forecast/library.py` | `library/rows.parquet`: one row per past read (seven everyday items, quality gates, sealed outcome), rebuilt nightly. |
+| `spx_claude_forecast/library.py` | `tables/claude_forecast_fingerprints_and_outcomes_by_read.parquet`: one row per past read (seven everyday items, quality gates, sealed outcome), rebuilt nightly. |
 | `spx_claude_forecast/rulebook.py` + `rulebook_cr-1.txt` | The fixed instructions Claude gets on every call, hashed onto every payload. |
 | `spx_claude_forecast/claude_call.py` | One `claude -p` call on the subscription: refuses to run with an API key set, every tool denied, the bill kept. |
 | `spx_claude_forecast/answer_checks.py` | Code's checks on an answer: delete what fails, never rewrite, say what was done. |
 | `spx_claude_forecast/final_forecast.py` | The two answers averaged into the final forecast, with the gaps between them and from the base rate. |
 | `spx_claude_forecast/read_runner.py` | One read end to end; `hook.py` is the call the SPX read makes to start it. |
-| `spx_claude_forecast/latest_card.py`, `reason_words.py` | `latest.json`, the one record the phone's card reads: the final forecast beside the base rate, the reasons in plain words, the scorecard's verdict. |
-| `spx_claude_forecast/test_variants.py` | The nightly test variants (Phase 8): three of the day's reads asked again with the cards removed, their outcomes shuffled, and random cards, into `arms/`, scored beside production so the cards' worth can be told. |
+| `spx_claude_forecast/latest_card.py`, `reason_words.py` | `state/screen_files/phone/claude_forecast_card.json`, the one record the phone's card reads: the final forecast beside the base rate, the reasons in plain words, the scorecard's verdict. |
+| `spx_claude_forecast/test_variants.py` | The nightly test variants (Phase 8): three of the day's reads asked again with the cards removed, their outcomes shuffled, and random cards, into `claude_forecast_test_answers_by_variant_and_read/`, scored beside production so the cards' worth can be told. |
 | `spx_claude_forecast/grading.py` | What happened after a read, graded the way the station grades (its flat-zone rule), plus the to_close edge. |
-| `spx_claude_forecast/seed.py` | Past half-hours rebuilt from stored files as the starting history (`seed/`). |
-| `spx_claude_forecast/nightly.py`, `scoring.py`, `scorecard.py` | The 17:15 ET job: seal outcomes, rebuild the library, score every forecaster, write `scorecard.json`. |
+| `spx_claude_forecast/seed.py` | Past half-hours rebuilt from stored files as the starting history (`claude_forecast_rebuilt_inputs_by_read/`, `claude_forecast_rebuilt_outcomes_by_read/`). |
+| `spx_claude_forecast/nightly.py`, `scoring.py`, `scorecard.py` | The 17:15 ET job: seal outcomes, rebuild the library, score every forecaster, write `claude_forecast_scoreboard_latest.json`. |
 | `launchd/` | The recorder (08:40 and 16:25 ET, Friday 17:30 ET) and the nightly job (17:15 ET). |
 | `tests/` | Offline tests over a temp state root, plus real-store smoke tests that skip without the station: `cd skills/spx-claude-forecast && python -m pytest tests -q`. |
 
@@ -62,8 +62,8 @@ The rule for `spec/`: it holds only the data contract, the roadmap and the decis
 ## Where things live
 
 - **Code:** `skills/spx-claude-forecast/spx_claude_forecast/`
-- **Data:** `state/spx_claude_forecast/`, holding `payloads/`, `reads/`, `outcomes/` and `arms/` (the test variants) per day, plus the library, the seed, `recorder/`, `latest.json` and `scorecard.json`. `STORE_MAP.json` there lists every path with its writer and retention.
-- **Backup:** the folder is mirrored to `~/Library/Mobile Documents/com~apple~CloudDocs/mirai-station-backups/spx_claude_forecast/` by the recorder (nothing else in `state/` is backed up today).
+- **Data:** `state/spx/claude_forecast/`, holding `claude_forecast_inputs_by_read/`, `claude_forecast_answers_by_read/`, `claude_forecast_outcomes_by_read/` and `claude_forecast_test_answers_by_variant_and_read/` (the test variants) per day, plus the library (`tables/`), the seed (`claude_forecast_rebuilt_*_by_read/`), the rulebooks, `claude_forecast_pause_and_limits.json` and `claude_forecast_scoreboard_latest.json`. The recorder's copies are under `state/market/`, the phone's card is `state/screen_files/phone/claude_forecast_card.json`, and the job logs and locks are under `state/operations/`. `STORE_MAP.json` in the folder lists every path with its writer and retention.
+- **Backup:** the forecast folder and the recorder's copies are mirrored to `~/Library/Mobile Documents/com~apple~CloudDocs/mirai-station-backups/` by the recorder, each under its path relative to `state/` (nothing else in `state/` is backed up today; the files it put under `spx_claude_forecast/` there before 2026-10-11 stay until the owner decides).
 - **The one change outside this folder:** a single guarded call to `spawn_claude_forecast` right after `archive.append` in `skills/spx-jev/spx_jev/service.py`.
 - **Kill switch:** `SPX_CLAUDE_FORECAST_DISABLE=1`.
 

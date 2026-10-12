@@ -15,6 +15,7 @@ import pytest
 
 import sndk_rag as RAG
 import sndk_read as SR
+import station_paths
 
 ET = ZoneInfo("America/New_York")
 T0 = datetime(2026, 7, 31, 14, 30, tzinfo=ET)
@@ -45,8 +46,8 @@ def _scene():
 
 
 def _diary_day(tmp_path, day, spots, magnet=1300.0):
-    p = tmp_path / "sndk_reversion"
-    p.mkdir(parents=True, exist_ok=True)
+    p = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path, day=day)
+    p.parent.mkdir(parents=True, exist_ok=True)
     rows = []
     for i, s in enumerate(spots):
         rows.append(json.dumps({
@@ -54,7 +55,7 @@ def _diary_day(tmp_path, day, spots, magnet=1300.0):
             "spot": s, "gamma_sign": "negative", "regime": "trending",
             "call_wall": 1300.0, "put_wall": 1100.0,
             "gex_views": {"magnet": magnet}}))
-    (p / f"{day}.jsonl").write_text("\n".join(rows) + "\n")
+    p.write_text("\n".join(rows) + "\n")
 
 
 # --- one record, two faces --------------------------------------------------
@@ -388,7 +389,7 @@ def test_terrain_recent_outranks_stale_alltime_levels(tmp_path):
         _diary_day(tmp_path, day, [1200.0 + i, 1210.0 + i],
                    magnet=1300.0 if old else 1500.0)
         if not old:                       # recent sessions live at 1500 walls
-            p = tmp_path / "sndk_reversion" / f"{day}.jsonl"
+            p = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path, day=day)
             rows = [json.loads(ln) for ln in p.read_text().splitlines()]
             for r in rows:
                 r["call_wall"], r["put_wall"] = 1500.0, 1400.0
@@ -404,13 +405,13 @@ def test_terrain_recent_outranks_stale_alltime_levels(tmp_path):
 # --- the numeric series (the diary IS the plain store) ----------------------
 def test_series_buckets_the_diary_by_time(tmp_path):
     """One row per step bucket — the first scan in it — inside the window."""
-    p = tmp_path / "sndk_reversion"
-    p.mkdir(parents=True, exist_ok=True)
+    p = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path, day="2026-07-30")
+    p.parent.mkdir(parents=True, exist_ok=True)
     stamps = [("09:26", 1250.0),                    # live tape, but before --from
               ("09:31", 1200.0), ("09:38", 1201.0),  # one 10-minute bucket: the first wins
               ("09:41", 1150.0), ("10:05", 1120.0),
               ("11:30", 1100.0)]                    # after --to
-    (p / "2026-07-30.jsonl").write_text("\n".join(json.dumps(
+    p.write_text("\n".join(json.dumps(
         {"ts": f"2026-07-30T{t}:00-04:00", "ticker": "SNDK", "spot": s,
          "call_wall": 1300.0, "put_wall": 1100.0, "gex_views": {"magnet": 1300.0}})
         for t, s in stamps) + "\n")
@@ -442,8 +443,8 @@ def test_series_is_queryable_by_strike_too(tmp_path):
     """§05: the plain store is queryable by time AND strike — with --strike,
     each bucket reports that strike's own gamma mass and traded volume,
     absent when the strike sat outside that scan's window."""
-    p = tmp_path / "sndk_reversion"
-    p.mkdir(parents=True, exist_ok=True)
+    p = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path, day="2026-07-30")
+    p.parent.mkdir(parents=True, exist_ok=True)
     rows = [json.dumps({
         "ts": f"2026-07-30T{10 + i:02d}:00:00-04:00", "ticker": "SNDK",
         "spot": 1200.0 + i, "call_wall": 1300.0, "put_wall": 1100.0,
@@ -451,7 +452,7 @@ def test_series_is_queryable_by_strike_too(tmp_path):
                       "mass_by_strike": [[1300.0, 50.0 + i]],
                       "vol_gross_by_strike": [[1300.0, 1000 * (i + 1)]]}})
         for i in range(3)]
-    (p / "2026-07-30.jsonl").write_text("\n".join(rows) + "\n")
+    p.write_text("\n".join(rows) + "\n")
     out = RAG.series(date="2026-07-30", strike=1300.0)
     assert out["strike"] == 1300.0
     assert [r["gamma_mass_at_strike"] for r in out["rows"]] == [50.0, 51.0, 52.0]
@@ -475,8 +476,8 @@ def test_wake_reasons_pass_through_unmodified(tmp_path):
 def test_diary_day_excludes_forced_and_off_hours_rows(tmp_path):
     """History must never hand the model tape the reader ignores: forced
     warmup rows and pre-flag midnight rows stay out of summaries/series."""
-    p = tmp_path / "sndk_reversion"
-    p.mkdir(parents=True, exist_ok=True)
+    p = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path, day="2026-07-28")
+    p.parent.mkdir(parents=True, exist_ok=True)
     rows = [
         {"ts": "2026-07-28T00:05:00-04:00", "ticker": "SNDK", "spot": 1246.0,
          "gex_views": {"magnet": 1300.0}, "meta": {"forced": True}},
@@ -487,8 +488,7 @@ def test_diary_day_excludes_forced_and_off_hours_rows(tmp_path):
         {"ts": "2026-07-28T15:59:00-04:00", "ticker": "SNDK", "spot": 1096.4,
          "gex_views": {"magnet": 1300.0}},
     ]
-    (p / "2026-07-28.jsonl").write_text(
-        "\n".join(json.dumps(r) for r in rows) + "\n")
+    p.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
     live = RAG._diary_day("2026-07-28")
     assert [r["spot"] for r in live] == [1162.7, 1096.4]
     s = RAG.build_summary("2026-07-28")
@@ -498,9 +498,9 @@ def test_diary_day_excludes_forced_and_off_hours_rows(tmp_path):
 def test_forced_rebuild_retires_a_phantom_session(tmp_path):
     """A day whose only rows fail the live-tape filter must LEAVE the
     summaries on --force, not linger as a phantom session."""
-    p = tmp_path / "sndk_reversion"
-    p.mkdir(parents=True, exist_ok=True)
-    (p / "2026-07-27.jsonl").write_text(json.dumps(
+    p = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path, day="2026-07-27")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(
         {"ts": "2026-07-27T23:31:00-04:00", "ticker": "SNDK", "spot": 1246.0,
          "gex_views": {"magnet": 1300.0}}) + "\n")
     # seed a stale summary the way the pre-fix code would have

@@ -5,11 +5,12 @@ temp file into place with a single os.replace, every reader tolerates a
 missing/short/torn file. One writer per file by convention (the engine, one
 scan at a time).
 
-Layout under one injected root (state/siege in the mirai wiring):
-    latest.json         # the viewstation contract — field names are FROZEN; carries the feed verdict per scan
-    baseline.json       # minute-volume normalcy memory, folded day by day
-    session.json        # the intraday episode state machine
-    cards/{date}.jsonl  # one row per resolved episode
+Layout under one injected root (the station's data root, state/, in the mirai wiring; each file is named in
+runtime/station_paths.py and sits under spx/scanner/):
+    spx_dealer_walls_latest.json                   # "latest": the viewstation contract — field names are FROZEN; carries the feed verdict per scan
+    spy_volume_baselines_state.json                # "baseline": minute-volume normalcy memory, folded day by day
+    spx_dealer_wall_touches_today_state.json       # "session": the intraday episode state machine
+    spx_dealer_wall_touches_by_event/{date}.jsonl  # "cards": one row per resolved episode
 """
 from __future__ import annotations
 

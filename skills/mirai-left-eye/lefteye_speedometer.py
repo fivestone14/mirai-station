@@ -24,7 +24,7 @@ of the day", not vs a flat whole-day expected move.
 
 Derived sensory layer, SHADOW-adjacent: pure functions, no votes, no trades.
 READ-ONLY — writes nothing anywhere, touches no network. The baseline is the
-saved real-range bars store (state/reversion/bars, written by gex_polarity_ab's
+saved real-range bars store (state/market/spx_price_bars_by_minute_scanner_copy, written by gex_polarity_ab's
 grader); the baseline is injectable so every path is testable offline.
 Stateless: a mid-session restart just re-derives everything from today's bars.
 
@@ -262,9 +262,9 @@ def diurnal_table(baseline: Optional[dict]) -> Optional[dict]:
 # baseline loader (read-only; the bars store is WRITTEN by gex_polarity_ab)
 # =========================================================================
 def _bars_dir() -> Path:
-    """Saved real-range bars store — mirrors gex_polarity_ab._bars_dir (the
-    writer); monkeypatch point for tests."""
-    return station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder() / "bars"
+    """The grader's saved real-range bars (gex_polarity_ab._bars_file writes them, under
+    station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY); monkeypatch point for tests."""
+    return station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.folder()
 
 
 def _read_json(path: Path):

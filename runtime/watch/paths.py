@@ -9,7 +9,7 @@ Environment variables (set in `runtime/scripts/env.sh`):
 
     MIRAI_STATION_ROOT        plugin root              (default: derived from __file__)
     MIRAI_STATION_STATE       state dir                (default: $ROOT/state; runtime/station_paths.py decides)
-    MIRAI_STATION_LOGS        log dir                  (default: $STATE/logs)
+    MIRAI_STATION_LOGS        log dir                  (default: $STATE/operations/logs/station_runtime_log)
 
 The data stores themselves are named in runtime/station_paths.py; the jobs here
 ask it for each file by name.

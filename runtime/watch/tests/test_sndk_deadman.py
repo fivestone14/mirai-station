@@ -14,29 +14,32 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from watch.intraday import sndk_deadman as D
+import station_paths                       # on sys.path through watch.paths
 
 ET = ZoneInfo("America/New_York")
 # A Thursday, mid-session — a real trading day, so market_status agrees.
 LIVE = datetime(2026, 8, 27, 11, 4, tzinfo=ET)
+DIARY = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN
+READS = station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN
 
 
 @pytest.fixture
 def desk(tmp_path):
     """A state dir, a sent-message list, and writers for today's diary and reads."""
-    (tmp_path / "sndk_reversion").mkdir(parents=True)
-    (tmp_path / "sndk_reads").mkdir(parents=True)
+    DIARY.folder(tmp_path).mkdir(parents=True)
+    READS.folder(tmp_path).mkdir(parents=True)
     sent: list = []
 
-    def _lines(subdir, rows):
-        p = tmp_path / subdir / f"{LIVE.date().isoformat()}.jsonl"
+    def _lines(store, rows):
+        p = store.path(tmp_path, day=LIVE.date().isoformat())
         p.write_text("".join(
             (r if isinstance(r, str) else json.dumps(r)) + "\n" for r in rows))
 
     def write(*rows):
-        _lines("sndk_reversion", rows)
+        _lines(DIARY, rows)
 
     def read(*rows):
-        _lines("sndk_reads", rows)
+        _lines(READS, rows)
 
     def row(minutes_ago, **kw):
         return {"ticker": "SNDK", "spot": 1500.0,
@@ -141,11 +144,11 @@ def test_the_ledger_does_not_leak_across_days(desk):
     """Yesterday's 'already paged' must not silence today."""
     desk.write(desk.row(41))
     desk.run()
-    stale = json.loads((desk.dir / "sndk_reads" / "deadman_state.json").read_text())
+    stale = json.loads(station_paths.SNDK_OUTAGE_ALERT_STATE.path(desk.dir).read_text())
     assert stale["date"] == "2026-08-27" and "silent" in stale["paged"]
     # same file, a later session: the state resets rather than suppressing
     tomorrow = LIVE + timedelta(days=1)
-    (desk.dir / "sndk_reversion" / f"{tomorrow.date().isoformat()}.jsonl").write_text(
+    DIARY.path(desk.dir, day=tomorrow.date().isoformat()).write_text(
         json.dumps({"ticker": "SNDK", "spot": 1500.0,
                     "ts": (tomorrow - timedelta(minutes=41)).isoformat()}) + "\n")
     assert D.run(tomorrow, state_dir=desk.dir, channel=desk.sent.append)["paged"] == 1
@@ -169,7 +172,7 @@ def test_test_fire_proves_the_pager_without_touching_the_diary(desk):
     out = desk.run(test_fire=True)
     assert out["test_fire"] is True and out["delivered"] is True and len(desk.sent) == 1
     assert "TEST FIRE" in desk.sent[0]
-    assert list((desk.dir / "sndk_reversion").iterdir()) == []
+    assert list(DIARY.folder(desk.dir).iterdir()) == []
     assert desk.run()["paged"] == 1 and "never started" in desk.sent[1]
 
 

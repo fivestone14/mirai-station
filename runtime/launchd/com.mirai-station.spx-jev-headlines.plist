@@ -14,7 +14,7 @@
 
   <!-- The headline feed, a poll every 3 minutes: four public RSS feeds (CNBC Top News, Google News search,
        MarketWatch Top Stories, the Fed's press feed), each new item appended to
-       state/spx_jev/headlines/{date}.jsonl stamped with the poll's own clock (spx_jev/headlines.py), for the
+       state/market/news_headlines_by_article/{date}.jsonl stamped with the poll's own clock (spx_jev/headlines.py), for the
        judgment questions (spx_jev/judgment.py). Stdlib only, no Schwab. The poll gates itself to 07:00-16:30 ET
        on weekdays, so the interval runs all day and the poll says when it is outside the window. -->
   <key>StartInterval</key>

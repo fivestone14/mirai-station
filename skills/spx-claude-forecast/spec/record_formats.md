@@ -19,7 +19,7 @@ The goal is that someone who knows nothing about this system can read one line a
 - No line has two fields with the same name at different levels. Inside a named group, a field may drop the group's prefix (existing_system_result_check.direction).
 - Line layout: every line starts with line_type, then the join keys (flat), then named groups. A status always sits inside its group.
 - Scores columns: a column is the JSON path with dots turned into underscores, and the horizon level is dropped because horizon is its own column (result.direction becomes result_direction; forecast.<horizon>.status becomes forecast_status).
-- Same-phase knock-ons outside reads and outcomes. In payloads/ and precedent_set: payload_id becomes claude_input_sha256 and base_rate_shown becomes base_rate_shown_to_claude. eras.jsonl becomes prompt_and_model_versions.jsonl. In the payload ask: the horizon keys take the new names, order becomes direction_order_asked with values up_pct/flat_pct/down_pct, min becomes window_minutes, graded_on becomes graded_move_measured_to with the new values, and edge_sig becomes flat_edge_sig. In the rulebook: UNITS says 'flat edge' instead of 'edge' and its bucket sentence uses the 7 keys, and MATCHING says 'weight' instead of 'share'. session_idx is dropped everywhere.
+- Same-phase knock-ons outside reads and outcomes. In claude_forecast_inputs_by_read/ and precedent_set: payload_id becomes claude_input_sha256 and base_rate_shown becomes base_rate_shown_to_claude. eras.jsonl becomes prompt_and_model_versions.jsonl. In the payload ask: the horizon keys take the new names, order becomes direction_order_asked with values up_pct/flat_pct/down_pct, min becomes window_minutes, graded_on becomes graded_move_measured_to with the new values, and edge_sig becomes flat_edge_sig. In the rulebook: UNITS says 'flat edge' instead of 'edge' and its bucket sentence uses the 7 keys, and MATCHING says 'weight' instead of 'share'. session_idx is dropped everywhere.
 
 ## Four changes that go beyond renaming (approved by Will 10-09)
 
@@ -46,7 +46,7 @@ After the fixes, every GUESS or LOST name is renamed or explained in the rename 
 
 The examples use real station values: clock odds 18.3/65.4/16.3 and the station's move, edge, high/low, grade and Pool 2.
 
-## Example: one Claude answer (reads/, `line_type: claude_answer`) and the final forecast (`line_type: final_forecast`)
+## Example: one Claude answer (claude_forecast_answers_by_read/, `line_type: claude_answer`) and the final forecast (`line_type: final_forecast`)
 
 ```json
 {
@@ -456,9 +456,9 @@ The examples use real station values: clock odds 18.3/65.4/16.3 and the station'
 }
 ```
 
-## latest.json (the phone's card, rewritten after every read)
+## claude_forecast_card.json (the phone's card, rewritten after every read)
 
-One file, `state/spx_claude_forecast/latest.json`, written by `read_runner` through `latest_card.py` once the final line has landed, so the phone (the "Claude's read" card on `m/jev-spx.html`) never opens a daily file. The join keys are the final line's (`read_id`, `claude_input_sha256`, `trading_day`, `half_hour_slot_et`, `status`, `usable_answer_count`, `prompt_and_model_version`, `written_at`), and `forecast` is the final line's block per horizon as it stands (the chances, the size buckets, each answer's chances, `base_rate_shown_to_claude` and the gaps). What the file adds:
+One file, `state/screen_files/phone/claude_forecast_card.json`, written by `read_runner` through `latest_card.py` once the final line has landed, so the phone (the "Claude's read" card on `m/jev-spx.html`) never opens a daily file. The join keys are the final line's (`read_id`, `claude_input_sha256`, `trading_day`, `half_hour_slot_et`, `status`, `usable_answer_count`, `prompt_and_model_version`, `written_at`), and `forecast` is the final line's block per horizon as it stands (the chances, the size buckets, each answer's chances, `base_rate_shown_to_claude` and the gaps). What the file adds:
 
 | Field | Meaning |
 | --- | --- |
@@ -467,7 +467,7 @@ One file, `state/spx_claude_forecast/latest.json`, written by `read_runner` thro
 | `strongest_reason_against_lean` | The first surviving reason against the lean, with the same words; null when none survived. |
 | `record` | The nightly scorecard as one line: `verdict` (Too early or Scored), `graded_reads`, `scorecard_built_at`, and per horizon `claude_right_pct`, `skill_vs_base_rate_pct` and `reads` (null until scored). |
 
-## Example: one outcome line (outcomes/, one per read and horizon)
+## Example: one outcome line (claude_forecast_outcomes_by_read/, one per read and horizon)
 
 ```json
 {
@@ -533,14 +533,14 @@ One file, `state/spx_claude_forecast/latest.json`, written by `read_runner` thro
 }
 ```
 
-## arms/ (the nightly test variants, built 10-10)
+## claude_forecast_test_answers_by_variant_and_read/ (the nightly test variants, built 10-10)
 
-`arms/{day}.jsonl` holds the test variants' lines, written by the nightly (`test_variants.py`), never by a live read. Three of the variants named in the rename map are built: `no_precedents_shown`, `precedent_outcomes_shuffled` and `random_precedents_shown`; each asks one answer on up to three of the day's usable reads.
+`claude_forecast_test_answers_by_variant_and_read/{day}.jsonl` holds the test variants' lines, written by the nightly (`test_variants.py`), never by a live read. Three of the variants named in the rename map are built: `no_precedents_shown`, `precedent_outcomes_shuffled` and `random_precedents_shown`; each asks one answer on up to three of the day's usable reads.
 
 - The answer line is a production `claude_answer` line with `test_variant`, `test_variant_version` and `test_variant_claude_input_sha256` in place of `test_variant: "none"`, its `answer_id` as `<read_id>#test:<variant>:answer_1`, and one field more: `test_variant_precedents`, the precedents block exactly as the variant sent it, so a reviewer never has to replay the shuffle or the draw.
 - The forecast line is the `test_variant_forecast` line shown above (`arm_line`): the final forecast's shape under the variant's stamp; `claude_input_sha256` stays production's, the join key.
-- In `scores.parquet` a variant's rows carry its name in `test_variant` with `forecaster` `claude_final` (and `claude_answer_1`); the comparison forecasters are scored once, on production's rows.
-- On `scorecard.json`, `test_variants.<variant>.<horizon>` gives `reads` (paired with production on the same read and horizon), `production_right_pct`, `variant_right_pct` and `production_skill_vs_variant_pct`; `checkpoints` gives Will's review points (150, 300, 600 graded reads), which are reached and which is next.
+- In `tables/claude_forecast_grades_by_forecaster_read_and_horizon.parquet` a variant's rows carry its name in `test_variant` with `forecaster` `claude_final` (and `claude_answer_1`); the comparison forecasters are scored once, on production's rows.
+- On `claude_forecast_scoreboard_latest.json`, `test_variants.<variant>.<horizon>` gives `reads` (paired with production on the same read and horizon), `production_right_pct`, `variant_right_pct` and `production_skill_vs_variant_pct`; `checkpoints` gives Will's review points (150, 300, 600 graded reads), which are reached and which is next.
 
 ## Example: the reply Claude returns
 

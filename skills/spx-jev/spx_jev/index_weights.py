@@ -1,4 +1,4 @@
-"""The index weights file, ``state/spx_leaders/weights.json``: each largest stock's share of the S&P 500, dated, for
+"""The index weights file, ``state/market/spx_largest_stock_weights_by_update.json``: each largest stock's share of the S&P 500, dated, for
 the megacap labels (labels/leadership.py).
 
     python3 -m spx_jev.index_weights --show

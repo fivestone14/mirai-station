@@ -2,7 +2,7 @@
 # launchd-fired wrapper for the SPX JEV premarket lane (record-only: nothing here trades).
 # One run = one checkpoint before the open: save the night's overnight futures, build the night's labels
 # on a scene without a diary row, ask JEV the questions due there when a key is present, and write
-# state/spx_jev/lanes/premarket/ (its records, sums and card) and the archive (spx_jev/premarket.py).
+# state/spx/jev/premarket_lane/ (its records and sums; its card under state/screen_files/phone/) and the archive (spx_jev/premarket.py).
 # The 10:06 ET fire is the close-out: it asks JEV nothing and grades the morning's calls from the
 # settled open. REST only, through the station's shared client; the lob-flow streamer is never touched.
 # No market-hours gate: it runs before the open by design. The command itself reads only on market

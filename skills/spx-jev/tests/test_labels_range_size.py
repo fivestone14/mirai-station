@@ -9,7 +9,7 @@ from datetime import date, time, timedelta
 
 import pytest
 
-from conftest import at, bars_from_closes, flat_bars, make_row, prior_sessions, write_state
+from conftest import at, bars_from_closes, diary_path, flat_bars, make_row, prior_sessions, write_jsonl, write_state
 from spx_jev.labels.range_size import build_range_size_labels
 from spx_jev.labels.rulers import NO_ANCHOR, SigmaRuler, tape_unit
 from spx_jev.state_builder import make_scene
@@ -285,7 +285,7 @@ def test_a_bar_that_finishes_after_the_row_never_counts(tmp_path):
         write_state(state_dir, day, rows, day_bars, prior)
         for d in prior:
             diary = [make_row(at(9, 31, day=d), 7700.0), make_row(at(12, 25, day=d), 7700.0)]
-            (state_dir / "reversion" / f"{d}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in diary))
+            write_jsonl(diary_path(state_dir, d), diary)
         return _labels(make_scene(state_dir, day, time(12, 30, 30), bar_clock=True))[0]
 
     seen, clean = labels_on(tmp_path / "all", bars + later), labels_on(tmp_path / "clean", bars)

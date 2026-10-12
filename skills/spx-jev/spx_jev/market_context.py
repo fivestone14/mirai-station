@@ -6,9 +6,9 @@ the funds for bonds, credit, oil and gold.
     python3 -m spx_jev.market_context --backfill --symbols /ZN,SPXL  # those symbols into every saved session lacking them
 
 Schwab keeps about 34 sessions of 1-minute history, so anything wanted for longer has to be saved as
-it happens. Two files per day under ``state/spx_jev/context/``:
+it happens. Two files per day under ``state/market/``:
 
-    {day}.jsonl        one line per live snapshot, written by the job each minute in market hours:
+    watchlist_quotes_by_minute/{day}.jsonl        one line per live snapshot, written by the job each minute in market hours:
                        {"ts": when it was taken, "quotes": {symbol: {"last", "close", "volume", "quote_time"}},
                         "bars": {symbol: the newest finished 1-minute bar}}
                        Quotes for every symbol Schwab quotes, and the index's own (QUOTE_ONLY), batched
@@ -16,7 +16,7 @@ it happens. Two files per day under ``state/spx_jev/context/``:
                        empty shells, and for $VIX1D nothing but its quote, since it has no history. Runs land about 70 s apart and a failed run
                        saves no bars, so each run also saves every earlier finished breadth bar of the day
                        not yet on file, one line per minute before its snapshot: {"ts", "bars"}.
-    bars/{day}.jsonl   one line per minute of a past session, written by --backfill:
+    watchlist_price_bars_by_minute/{day}.jsonl    one line per minute of a past session, written by --backfill:
                        {"ts": the minute's end, "bars": {symbol: bar}}; a day already on disk is skipped, unless
                        --symbols names symbols it lacks, which are fetched and put into it (a symbol added to
                        SYMBOLS later than the saved days: --backfill --symbols /ZN,SPXL once, for the sessions
@@ -334,7 +334,7 @@ def backfill(state_dir: Path, first: date, last: date, symbols: tuple[str, ...] 
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Save the market around SPX under state/spx_jev/context/.")
+    ap = argparse.ArgumentParser(description="Save the market around SPX under state/market/watchlist_quotes_by_minute/.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
     ap.add_argument("--backfill", metavar="FROM", nargs="?", const=FIRST_BACKFILL_DAY,
                     help=f"save every past session's minute bars from this day (default {FIRST_BACKFILL_DAY}) to yesterday")

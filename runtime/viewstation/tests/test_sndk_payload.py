@@ -19,6 +19,7 @@ import pytest
 
 import server
 import snapshot
+import station_paths       # on sys.path once snapshot is imported
 
 ET = ZoneInfo("America/New_York")
 
@@ -58,9 +59,16 @@ def _row(ts, spot, sigma=80.0, forced=False):
 
 
 def _write_day(tmp_path, day, rows):
-    d = tmp_path / "sndk_reversion"
-    d.mkdir(parents=True, exist_ok=True)
-    (d / f"{day}.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    p = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(tmp_path, day=day)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+
+
+def _reads_file(tmp_path, day):
+    """The reader's row file for `day`, its folder made, as sndk_read puts it on disk."""
+    p = station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN.path(tmp_path, day=day)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def test_builder_hands_back_the_readers_scene(tmp_path, monkeypatch):
@@ -160,7 +168,7 @@ def test_builder_falls_back_to_the_last_scan_after_hours(tmp_path, monkeypatch):
 
 def test_builder_says_so_when_there_is_no_tape(tmp_path, monkeypatch):
     monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
-    (tmp_path / "sndk_reversion").mkdir()
+    station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(tmp_path).mkdir(parents=True)
     d = snapshot.sndk_payload(datetime(2026, 8, 19, 13, 2, tzinfo=ET))
     assert d["scene"] is None and "no SNDK diary rows" in d["error"]
 
@@ -182,10 +190,10 @@ def _write_bars(tmp_path, day, n=120, price=1580.0):
     """The minute sidecar's own file shape, written straight to disk — the tab
     reads it through sndk_read.minute_bars exactly as the reader does."""
     from datetime import timedelta
-    d = tmp_path / "sndk_bars"
-    d.mkdir(parents=True, exist_ok=True)
+    p = station_paths.SNDK_PRICE_BARS_BY_MINUTE.path(tmp_path, day=day)
+    p.parent.mkdir(parents=True, exist_ok=True)
     open_at = datetime.fromisoformat(f"{day}T09:30:00-04:00")
-    (d / f"{day}.jsonl").write_text("\n".join(json.dumps({
+    p.write_text("\n".join(json.dumps({
         "ts": (open_at + timedelta(minutes=i)).isoformat(),
         "open": price, "high": price + 1.0, "low": price - 1.0,
         "close": price, "volume": 1000.0}) for i in range(n)) + "\n")
@@ -268,11 +276,11 @@ def test_pipeline_events_and_days_read_the_rows_own_clocks(tmp_path, monkeypatch
     rows[0]["meta"]["book_asof"] = rows[0]["ts"]
     rows[1]["meta"]["book_asof"] = rows[0]["ts"]                          # a cached repeat: one distinct book
     _write_day(tmp_path, day, rows)
-    (tmp_path / "sndk_bars").mkdir()
-    (tmp_path / "sndk_bars" / f"{day}.jsonl").write_text("\n".join(
+    bars = station_paths.SNDK_PRICE_BARS_BY_MINUTE.path(tmp_path, day=day)
+    bars.parent.mkdir(parents=True)
+    bars.write_text("\n".join(
         json.dumps({"ts": t.replace(minute=30 + i).isoformat(), "open": 1, "high": 2, "low": 1, "close": 2, "volume": 10}) for i in range(5)) + "\n")
-    (tmp_path / "sndk_reads").mkdir()
-    (tmp_path / "sndk_reads" / f"{day}.jsonl").write_text(json.dumps(
+    _reads_file(tmp_path, day).write_text(json.dumps(
         {"ts": t.replace(minute=32, second=30).isoformat(), "era": "strikes-1", "payload": "strikes", "wake": "first read",
          "model": "claude-sonnet-5", "wall_s": 4.5, "quiet": False, "error": None}) + "\n")
     ev = snapshot.pipeline_events(day)
@@ -292,8 +300,7 @@ def test_the_payload_tab_shows_the_sentence_still_on_screen(tmp_path, monkeypatc
     _write_day(tmp_path, "2026-08-19", [_row(t, 1580.0), _row(t.replace(minute=57), 1583.0),
                                         _row(t.replace(hour=13, minute=1), 1586.2)])
     said, emptied = t.replace(minute=57), t.replace(minute=59)
-    (tmp_path / "sndk_reads").mkdir()
-    (tmp_path / "sndk_reads" / "2026-08-19.jsonl").write_text("\n".join(json.dumps(r) for r in [
+    _reads_file(tmp_path, "2026-08-19").write_text("\n".join(json.dumps(r) for r in [
         {"ts": said.isoformat(), "wall_s": 5.0, "spot": 1583.0, "gate": {"spot": 1583.0},
          "reading": {"read": "1600 holds the most contracts."}, "reading_ts": said.isoformat()},
         {"ts": emptied.isoformat(), "wall_s": 6.0, "spot": 1584.0, "gate": {"spot": 1584.0},
@@ -314,10 +321,9 @@ def test_the_payload_tab_carries_the_day_summary_the_reader_would_send(tmp_path,
     now = datetime(2026, 8, 19, 13, 2, tzinfo=ET)
     era = snapshot.sndk_payload(now)["era"]
     said = t.replace(minute=57)
-    (tmp_path / "sndk_reads").mkdir(exist_ok=True)     # the first build already wrote its volume cache there
 
     def write(era_of_call):
-        (tmp_path / "sndk_reads" / "2026-08-19.jsonl").write_text(json.dumps(
+        _reads_file(tmp_path, "2026-08-19").write_text(json.dumps(
             {"ts": said.isoformat(), "era": era_of_call, "wall_s": 5.0, "spot": 1583.0, "gate": {"spot": 1583.0},
              "reading": {"read": "1600 holds the most contracts.",
                          "sides": {"above": {"heavy": 1600.0, "heavy_leads_on": ["contracts"]}}},

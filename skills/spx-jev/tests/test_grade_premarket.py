@@ -7,8 +7,9 @@ from functools import partial
 
 import pytest
 
-from conftest import DAY, FixedZones, at, bars_from_closes, flat_bars, write_state
-from spx_jev import events, grade, service
+from conftest import (DAY, FixedZones, archive_path, at, bars_from_closes, flat_bars, grades_path, hour_path, integral_grades_path,
+                      lane_folder, station_paths, write_state)
+from spx_jev import events, grade, pool, service
 from spx_jev.grade import grade_one, horizon_start, mark_at, run
 from spx_jev.lane import LIVE, PREMARKET, TAPE
 
@@ -114,8 +115,8 @@ def test_an_event_the_read_saw_ahead_but_over_before_the_window_is_not_flagged(t
 def _premarket_state(tmp_path, recs):
     state = write_state(tmp_path, DAY, [], _climb())
     out = PREMARKET.folder(state)
-    (out / "hour").mkdir(parents=True)
-    (out / "hour" / f"{DAY}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in recs))
+    hour_path(out, DAY).parent.mkdir(parents=True)
+    hour_path(out, DAY).write_text("".join(json.dumps(r) + "\n" for r in recs))
     return state, out
 
 
@@ -123,25 +124,25 @@ def test_the_lane_run_grades_into_its_own_folder_and_archive_with_neutral_weight
     rec = _rec()
     state, out = _premarket_state(tmp_path, [rec, rec])
     w = run(state, out, ALLOWED, lane=PREMARKET)
-    lines = [json.loads(l) for l in (out / "grades.jsonl").read_text().splitlines()]
+    lines = [json.loads(l) for l in grades_path(out).read_text().splitlines()]
     assert len(lines) == 1 and lines[0]["from"]["settled_open"] == 7700.0 and lines[0]["open_30"]["realized_points"] == 30.0
     assert w["lane"] == "premarket" and w["primary"] == "open_30" and w["graded_runs"] == 1 and w["method"] == "neutral"
     assert set(w["sums"]) == {"open_10", "open_30", "open_average_30"} and w["sums"]["open_10"]["n"] == 1
     assert w["sums"]["open_average_30"]["n"] == 0                       # a read from before the average-price call: no call on record
-    archived = [json.loads(l) for l in (state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()]
+    archived = [json.loads(l) for l in archive_path(state, DAY).read_text().splitlines()]
     assert [(a["read_id"], a["lane"]) for a in archived] == [(f"premarket:{rec['row_ts']}", "premarket")]
-    assert not list(out.glob("pool_*")) and not list((state / "spx_jev").glob("pool_*"))              # no loop runs on the lane
-    assert not (state / "spx_jev" / "grades.jsonl").exists()
+    assert not pool.pool_folders(out)[0].exists() and not station_paths.BASE_POOL_STATE.folder(state).exists()   # no loop runs on the lane
+    assert not grades_path(lane_folder(state)).exists()
     assert run(state, out, ALLOWED, lane=PREMARKET)["new_this_run"] == 0
 
 
 def test_the_live_grader_closes_out_a_read_before_the_open_that_reached_its_folder(tmp_path):
     state = write_state(tmp_path, DAY, [], _climb())
     out = LIVE.folder(state)
-    (out / "hour").mkdir(parents=True)
-    (out / "hour" / f"{DAY}.jsonl").write_text(json.dumps({**_rec(), "by": {"next_30": {"pick": "up", "probabilities": {"up": 1.0}}}}) + "\n")
+    hour_path(out, DAY).parent.mkdir(parents=True)
+    hour_path(out, DAY).write_text(json.dumps({**_rec(), "by": {"next_30": {"pick": "up", "probabilities": {"up": 1.0}}}}) + "\n")
     assert run(state, out, ALLOWED)["closed_out"] == 1
-    assert json.loads((out / "grades.jsonl").read_text())["reason"].startswith("stamped before the open")
+    assert json.loads(grades_path(out).read_text())["reason"].startswith("stamped before the open")
 
 
 def test_the_days_calls_are_marked_from_the_settled_open(tmp_path):
@@ -166,17 +167,17 @@ def test_a_call_whose_end_price_sums_got_no_answer_is_checked_at_both_marks_on_i
     rec = {k: v for k, v in _rec().items() if k not in ("by", "pick", "probabilities", "primary")}
     state, out = _premarket_state(tmp_path, [{**rec, "error": "JEV did not answer in time", "average": call}])
     run(state, out, ALLOWED, lane=PREMARKET)
-    assert not (out / "grades.jsonl").exists() or not (out / "grades.jsonl").read_text().strip()
-    lines = {g["horizon"]: g for g in map(json.loads, (out / "integral_grades.jsonl").read_text().splitlines())}
+    assert not grades_path(out).exists() or not grades_path(out).read_text().strip()
+    lines = {g["horizon"]: g for g in map(json.loads, integral_grades_path(out).read_text().splitlines())}
     assert set(lines) == {"open_10", "open_30"}
     assert all((g["sum"], g["pick"], g["verdict"], g["end_price"]) == ("open_average_30", "down", "wrong", grade.ALONE) for g in lines.values())
     assert "scores" not in lines["open_10"] and "scores" in lines["open_30"]
     (c,) = service.day_calls(out, DAY, PREMARKET)
     assert c["end_price_missing"] == "JEV did not answer in time" and set(c["checks"]) == {"open_10", "open_30"}
     assert {h: r["integral"]["verdict"] for h, r in c["checks"].items()} == {"open_10": "wrong", "open_30": "wrong"}
-    before = (out / "integral_grades.jsonl").read_bytes()
+    before = integral_grades_path(out).read_bytes()
     run(state, out, ALLOWED, lane=PREMARKET)
-    assert (out / "integral_grades.jsonl").read_bytes() == before                     # each check graded once
+    assert integral_grades_path(out).read_bytes() == before                     # each check graded once
 
 
 def test_the_service_refuses_the_premarket_lane_with_a_pointer():

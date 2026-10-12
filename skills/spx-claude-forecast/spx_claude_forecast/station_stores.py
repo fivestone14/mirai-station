@@ -1,21 +1,21 @@
 """Where the station's own stores are, read-only, and how to reach the spx_jev code that reads them.
 
-Every path here is READ, and each is named in runtime/station_paths.py. Nothing in this package writes under any of
-them; ``jsonl_store`` refuses to.
+Every path here is READ, and each is named in runtime/station_paths.py (the names below). Nothing in this package
+writes under any of them; ``jsonl_store`` refuses to.
 
-    state/reversion/{day}.jsonl              the SPX options diary (the left-eye scanner's rows)
-    state/reversion/bars/{day}-SPX.json      the saved full session of SPX 1-minute bars
-    state/spx_jev/bars/{day}.jsonl           today's live SPX 1-minute bars
-    state/spx_jev/context/{day}.jsonl        market quotes every ~60 s ($VIX, $VIX1D, /ES, breadth ...)
-    state/spx_jev/daily_closes/{sym}.jsonl   daily OHLC per symbol, rewritten whole at 16:20 ET
-    state/spx_jev/archive/{day}.jsonl        the SPX read records (kind "read") and their grades
-    state/spx_jev/integral_grades.jsonl      the station's average-price grades per read and horizon
-    state/spx_jev/mirai_prediction/raw/code_features/{day}.jsonl   code's 79 answers per read
-    state/lob_flow/agg/{day}.jsonl           the 0DTE options tape, folded per minute (never deleted)
-    state/lob_flow/raw/{day}/                the raw tape (deleted after 30 days; the recorder copies it)
-    state/siege/baseline.json                SPY per-minute volume per day (keeps 60 days; the recorder copies it)
-    state/dated_gex/book.json                the dated options book (overwritten on every fetch; the recorder copies it)
-    skills/spx-jev/calendar/events.json      the event calendar
+    SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN            the SPX options diary (the left-eye scanner's rows)
+    SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY          the saved full session of SPX 1-minute bars
+    SPX_PRICE_BARS_BY_MINUTE                       today's live SPX 1-minute bars
+    WATCHLIST_QUOTES_BY_MINUTE                     market quotes every ~60 s ($VIX, $VIX1D, /ES, breadth ...)
+    SPX_VIX_RATES_PRICE_BARS_BY_DAY                daily OHLC per symbol, rewritten whole at 16:20 ET
+    JEV_READS_AND_GRADES_BY_EVENT                  the SPX read records (kind "read") and their grades
+    JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON   the station's average-price grades per read and horizon (the live lane's)
+    CODE_QUESTION_ANSWERS_BY_READ                  code's 79 answers per read
+    SPX_ORDER_FLOW_READINGS_BY_MINUTE              the 0DTE options tape, folded per minute (never deleted)
+    SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER            the raw tape (deleted after 30 days; the recorder copies it)
+    SPY_VOLUME_BASELINES_STATE                     SPY per-minute volume per day (keeps 60 days; the recorder copies it)
+    SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_LATEST     the dated options book (overwritten on every fetch; the recorder copies it)
+    MARKET_EVENT_CALENDAR_BY_EVENT_SPX_JEV_COPY    the event calendar (the spx-jev package's copy, in the repo)
 """
 from __future__ import annotations
 
@@ -34,8 +34,8 @@ def reversion_rows_file(state_dir: Path, day: str) -> Path:
 
 
 def session_bars_dir(state_dir: Path) -> Path:
-    """The saved full sessions of SPX bars, beside the diary (a duplicate of the bars feed; the map drops it)."""
-    return station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(state_dir) / "bars"
+    """The scanner grader's saved full sessions of SPX bars (merged into the bars feed's store at a later phase)."""
+    return station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.folder(state_dir)
 
 
 def spx_jev_dir(state_dir: Path) -> Path:

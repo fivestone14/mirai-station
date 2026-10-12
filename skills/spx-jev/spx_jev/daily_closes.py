@@ -5,7 +5,7 @@ history, one call a symbol.
     python3 -m spx_jev.daily_closes --through 2026-10-02
 
 Schwab keeps daily candles for years, so one call serves a symbol's whole history and the first run is the
-backfill. One file per symbol under ``state/spx_jev/daily_closes/``:
+backfill. One file per symbol under ``state/market/spx_vix_rates_price_bars_by_day/``:
 
     {symbol}.jsonl     one line per session, oldest first, as Schwab served it (the Treasury yield $TNX at ten
                        times the yield, as the market feed keeps it; state_builder.context_value puts it in percent):
@@ -115,7 +115,7 @@ def save(state_dir: Path, through: date, now: datetime | None = None, symbols: t
 def main(argv: list[str] | None = None) -> int:
     from .save_day import last_closed       # save_day runs this step, so its rule for the last closed session is read late
 
-    ap = argparse.ArgumentParser(description="Save each symbol's daily closes, years back, under state/spx_jev/daily_closes/.")
+    ap = argparse.ArgumentParser(description="Save each symbol's daily closes, years back, under state/market/spx_vix_rates_price_bars_by_day/.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
     ap.add_argument("--through", help="YYYY-MM-DD, the last session to keep; default the last one that has closed")
     args = ap.parse_args(argv)

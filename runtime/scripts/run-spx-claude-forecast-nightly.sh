@@ -3,7 +3,7 @@
 # One run = seal what actually happened after every read of the day (graded the way the station grades,
 # with the station's own forecasts copied beside), catch up any missed days, rebuild the library of past
 # moments, score every forecaster, write the scorecard, mirror the folder off-disk. Writes only under
-# state/spx_claude_forecast/ and the backup folder; reads every station store read-only.
+# state/spx/claude_forecast/ (its card, logs and locks under screen_files/ and operations/) and the backup folder; reads every station store read-only.
 # Installed by install-launchd.sh (com.mirai-station.spx-claude-forecast-nightly): 17:15 ET weekdays, after
 # the 16:20 ET daily-close save and the 17:05 ET prediction nightly. The job itself refuses to seal a day
 # before the close plus 75 minutes, so an early fire is harmless. A second copy stands down on the lock.

@@ -545,7 +545,7 @@ def _event_clock(now: datetime, t: dict) -> dict | None:
         if not horizon:
             return {"kind": None,
                     "note": "event calendar has NO upcoming entries — the tower is blind to "
-                            "scheduled prints until state/lob_flow/calendar.json is re-seeded."}
+                            "scheduled prints until state/market/market_event_calendar_by_event.json is re-seeded."}
     except Exception:
         pass
     return None

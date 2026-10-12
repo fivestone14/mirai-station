@@ -7,7 +7,9 @@ from datetime import datetime
 
 import pytest
 
-from conftest import DAY, PRIOR_DAYS, at, flat_bars, make_row, write_prior_rows, write_state
+from conftest import (DAY, PRIOR_DAYS, answers_path, archive_path, at, card_path, diary_path, flat_bars, grades_path, hour_path,
+                      integral_grades_path, lane_folder, last_asked_path, make_row, pool_log_path, pool_state_path, station_paths,
+                      weights_path, write_prior_rows, write_state)
 from spx_jev import archive, service
 from spx_jev.service import run_once
 
@@ -75,7 +77,7 @@ def _times(card: dict):
 
 def test_a_read_answers_holds_sums_and_grades(tmp_path, monkeypatch):
     state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
-    out = state / "spx_jev"
+    out = lane_folder(state)
     monkeypatch.setattr(service, "send_all", _answers())
     monkeypatch.setattr(service, "send", _sums)
     c = run_once(state, out, DOC, True, DAY)
@@ -83,7 +85,7 @@ def test_a_read_answers_holds_sums_and_grades(tmp_path, monkeypatch):
     q = {e["id"]: e for e in c["questions"]}
     assert q["q_dir"]["answer"]["pick"] == "rising" and q["q_two"]["answer"]["pick"] == "yes"
     assert c["hour"]["pick"] == "flat" and c["hour"]["used"] == 2 and c["hour"]["missing"] == 0
-    assert json.loads((out / "last_asked.json").read_text())["q_dir"]["moved"] == 0.0
+    assert json.loads(last_asked_path(out).read_text())["q_dir"]["moved"] == 0.0
 
     # thirty minutes on: group g2 fails, so q_two keeps its last answer, stamped with the read it was given on
     _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0), make_row(at(11, 5, ss=20), 7701.0)], 101)
@@ -91,16 +93,16 @@ def test_a_read_answers_holds_sums_and_grades(tmp_path, monkeypatch):
     c2 = run_once(state, out, DOC, True, DAY)
     q2 = {e["id"]: e for e in c2["questions"]}
     assert q2["q_two"]["held_from"] == at(10, 35, ss=10).isoformat() and q2["q_two"]["answer"]["pick"] == "yes"
-    hour2 = json.loads((out / "hour" / f"{DAY}.jsonl").read_text().splitlines()[1])
+    hour2 = json.loads(hour_path(out, DAY).read_text().splitlines()[1])
     assert hour2["fresh"] == {"q_dir": "rising"} and "(held since 10:35 ET, not re-asked)" in hour2["sentences"]["q_two"]
-    rec2 = json.loads((out / f"{DAY}.jsonl").read_text().splitlines()[1])
+    rec2 = json.loads(answers_path(out, DAY).read_text().splitlines()[1])
     assert rec2["held"] == {"q_two": at(10, 35, ss=10).isoformat()}
-    grades = [json.loads(l) for l in (out / "grades.jsonl").read_text().splitlines() if l.strip()]
+    grades = [json.loads(l) for l in grades_path(out).read_text().splitlines() if l.strip()]
     assert len(grades) == 1 and grades[0]["horizons"] == ["next_30"] and grades[0]["band"] == "flat"
-    weights = json.loads((out / "weights.json").read_text())
+    weights = json.loads(weights_path(out).read_text())
     assert weights["method"] == "pool_v1" and weights["questions"]["q_dir"] == {**weights["questions"]["q_dir"], "weight": 1.0, "n": 1}
     assert weights["pool_integral"]["method"] == "pool_v1_integral"
-    for p in out.rglob("*"):
+    for p in state.rglob("*"):
         if p.is_file():
             assert CANARY not in p.read_text(), p
 
@@ -120,21 +122,21 @@ def test_a_score_answer_reaches_the_card_the_store_and_the_sums_by_its_option_na
             "probabilities": {"0": 0.2, "1": 0.7, "2": 0.1}}}}
     from spx_jev.ask import send_all as real_send_all
     state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
-    out = state / "spx_jev"
+    out = lane_folder(state)
     monkeypatch.setattr(service, "send_all", lambda requests, **kw: real_send_all(requests, api_key=CANARY, sender=sender))
     monkeypatch.setattr(service, "send", _sums)
     c = run_once(state, out, doc, True, DAY)
     entry = c["questions"][0]
     assert entry["options"] == ["none", "small", "large"]
     assert entry["answer"]["pick"] == "small" and entry["answer"]["probabilities"] == {"none": 0.2, "small": 0.7, "large": 0.1}
-    assert json.loads((out / "last_asked.json").read_text())["q_size"]["answer"]["pick"] == "small"
-    assert json.loads((out / "hour" / f"{DAY}.jsonl").read_text().splitlines()[0])["fresh"] == {"q_size": "small"}
+    assert json.loads(last_asked_path(out).read_text())["q_size"]["answer"]["pick"] == "small"
+    assert json.loads(hour_path(out, DAY).read_text().splitlines()[0])["fresh"] == {"q_size": "small"}
 
 
 def test_every_time_on_the_card_is_a_full_timestamp_with_its_offset(tmp_path, monkeypatch):
     """The phone shows times in the viewer's own zone, so no field may carry a bare market clock."""
     state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
-    out = state / "spx_jev"
+    out = lane_folder(state)
     monkeypatch.setattr(service, "send_all", _answers())
     monkeypatch.setattr(service, "send", _sums)
     run_once(state, out, DOC, True, DAY)
@@ -157,14 +159,14 @@ def test_a_sent_run_refuses_a_row_from_another_day_and_a_row_already_read(tmp_pa
     monkeypatch.setattr(service, "send_all", _answers())
     monkeypatch.setattr(service, "send", _sums)
     with pytest.raises(service.NoRowYet, match="no diary row for today yet"):
-        run_once(state, state / "spx_jev", DOC, True, None)
+        run_once(state, lane_folder(state), DOC, True, None)
     monkeypatch.setattr(service, "today_et", lambda: DAY)
     monkeypatch.setattr(service, "STALE_ROW_SKIP_MIN", 1e9)
-    run_once(state, state / "spx_jev", DOC, True, None)
-    before = (state / "spx_jev" / "latest.json").read_bytes()
+    run_once(state, lane_folder(state), DOC, True, None)
+    before = card_path(state).read_bytes()
     with pytest.raises(service.NoRowYet, match="already read"):
-        run_once(state, state / "spx_jev", DOC, True, None)
-    assert (state / "spx_jev" / "latest.json").read_bytes() == before
+        run_once(state, lane_folder(state), DOC, True, None)
+    assert card_path(state).read_bytes() == before
 
 
 def test_a_live_read_on_a_stalled_scanner_is_skipped_and_the_card_stays(tmp_path, monkeypatch):
@@ -179,14 +181,15 @@ def test_a_live_read_on_a_stalled_scanner_is_skipped_and_the_card_stays(tmp_path
     monkeypatch.setattr(service, "datetime", Clock)
     day = fixed.date().isoformat()
     state = write_state(tmp_path, day, [make_row(fixed - timedelta(minutes=7), 7700.0)], flat_bars(150, day=day))
-    (state / "spx_jev" / "latest.json").write_text('{"row_ts": "the last card"}')
+    card_path(state).parent.mkdir(parents=True)
+    card_path(state).write_text('{"row_ts": "the last card"}')
     monkeypatch.setattr(service, "send_all", _answers())
     monkeypatch.setattr(service, "send", _sums)
     with pytest.raises(service.NoRowYet, match="7.0 minutes old") as skipped:
-        run_once(state, state / "spx_jev", DOC, True, None)
+        run_once(state, lane_folder(state), DOC, True, None)
     # the scanner can be running with no SPX quote to write (09-28's Schwab outage): the words name the diary
     assert "the SPX diary has not been written since 11:53 ET" in str(skipped.value) and "scanner" not in str(skipped.value)
-    assert json.loads((state / "spx_jev" / "latest.json").read_text())["row_ts"] == "the last card"
+    assert json.loads(card_path(state).read_text())["row_ts"] == "the last card"
 
 
 def test_a_sent_read_with_nothing_due_says_nothing_was_sent(tmp_path, monkeypatch, capsys):
@@ -196,11 +199,11 @@ def test_a_sent_read_with_nothing_due_says_nothing_was_sent(tmp_path, monkeypatc
     monkeypatch.setattr(service, "send_all", _answers())
     monkeypatch.setattr(service, "send", _sums)
     monkeypatch.setattr(service, "not_due", lambda doc, lane, now, fired=None: {"q_dir": "not due", "q_two": "not due"})
-    quiet = run_once(state, state / "spx_jev", DOC, True, DAY)
+    quiet = run_once(state, lane_folder(state), DOC, True, DAY)
     assert quiet["sent"] and quiet["asked"] == 0 and quiet["hour"] is None
     monkeypatch.setattr(service, "not_due", lambda doc, lane, now, fired=None: {})
-    asked = run_once(state, state / "spx_jev", DOC, True, DAY)
-    assert asked["asked"] == 2 and run_once(state, state / "spx_jev", DOC, False, DAY)["asked"] == 0
+    asked = run_once(state, lane_folder(state), DOC, True, DAY)
+    assert asked["asked"] == 2 and run_once(state, lane_folder(state), DOC, False, DAY)["asked"] == 0
 
     monkeypatch.setenv("TYPESAFE_API_KEY", CANARY)
     monkeypatch.setattr(service, "load_env_file", lambda *a, **k: [])
@@ -223,7 +226,7 @@ def test_a_question_whose_label_says_nothing_happened_sleeps_on_the_card_and_in_
             "q_breadth": {"status": "live", "type": "noul", "ask": "Is breadth leaning?",
                           "instructions": "Read `breadth.tick_lean`.", "criteria": {"true": "t", "false": "f"}}}}]}
     state = _state(tmp_path, [make_row(at(9, 31), 7700.0), make_row(at(10, 35, ss=10), 7700.0)], 70)
-    out = state / "spx_jev"
+    out = lane_folder(state)
     monkeypatch.setattr(service, "send_all", _answers())
     monkeypatch.setattr(service, "send", _sums)
     c = run_once(state, out, doc, True, DAY)
@@ -231,17 +234,17 @@ def test_a_question_whose_label_says_nothing_happened_sleeps_on_the_card_and_in_
     assert q["q_extreme"]["skipped"] == "asleep: no new session high or low in the last 15 minutes"
     assert q["q_breadth"]["skipped"] == "missing breadth.tick_lean" and c["omitted"]["breadth.tick_lean"] == "no market-context snapshot today"
     assert c["hour"]["missing"] == 1
-    rec = json.loads((out / f"{DAY}.jsonl").read_text())
-    [kept] = [json.loads(l) for l in (out / "archive" / f"{DAY}.jsonl").read_text().splitlines() if json.loads(l).get("kind") == "read"]
+    rec = json.loads(answers_path(out, DAY).read_text())
+    [kept] = [json.loads(l) for l in archive_path(state, DAY).read_text().splitlines() if json.loads(l).get("kind") == "read"]
     assert rec["skipped"]["g1"]["q_extreme"] == kept["skipped"]["g1"]["q_extreme"] == q["q_extreme"]["skipped"]
 
 
 def test_an_unsent_run_says_why_and_holds_nothing(tmp_path):
     state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
-    c = run_once(state, state / "spx_jev", DOC, False, DAY, unsent_reason="not sent: no key on this machine")
+    c = run_once(state, lane_folder(state), DOC, False, DAY, unsent_reason="not sent: no key on this machine")
     assert not c["sent"] and c["fresh_count"] == 0 and c["hour"] is None
     assert all(e["skipped"] == "not sent: no key on this machine" for e in c["questions"])
-    assert not (state / "spx_jev" / "last_asked.json").exists()
+    assert not last_asked_path(lane_folder(state)).exists()
 
 
 def test_a_failed_request_is_a_plain_reason_on_the_card_and_jevs_own_text_stays_in_the_archive(tmp_path, monkeypatch):
@@ -254,10 +257,10 @@ def test_a_failed_request_is_a_plain_reason_on_the_card_and_jevs_own_text_stays_
         raise TimeoutError("The read operation timed out")
     monkeypatch.setattr(service, "send_all", _answers(failing=("g2",)))
     monkeypatch.setattr(service, "send", sums_time_out)
-    c = run_once(state, state / "spx_jev", DOC, True, DAY)
+    c = run_once(state, lane_folder(state), DOC, True, DAY)
     assert next(q for q in c["questions"] if q["id"] == "q_two")["skipped"] == "asked, no answer received: JEV did not answer in time"
     assert c["hour"]["error"] == c["hour"]["average"]["error"] == "JEV did not answer in time"
-    read = json.loads((state / "spx_jev" / "archive" / f"{DAY}.jsonl").read_text().splitlines()[0])
+    read = json.loads(archive_path(state, DAY).read_text().splitlines()[0])
     assert read["responses"]["g2"]["error"].startswith("TimeoutError: handshake timed out")
     assert read["hour_response"]["error"] == "TimeoutError: The read operation timed out"
 
@@ -281,7 +284,7 @@ def test_a_dark_question_carries_its_own_reason_onto_the_card_and_into_its_skip_
     state = _state(tmp_path, [make_row(at(11, 32), 7700.0)], 120)
     c = run_once(state, tmp_path / "out", doc, False, DAY)
     assert c["dark"] == [{"id": "q_dark", "viewpoint": "volume_price", "ask": "Is the euro leading?", "dark_reason": reason}]
-    read = json.loads((tmp_path / "out" / "archive" / f"{DAY}.jsonl").read_text().splitlines()[0])
+    read = json.loads((service.LIVE.archive_folder(state, tmp_path / "out") / f"{DAY}.jsonl").read_text().splitlines()[0])
     assert read["skipped"]["g3"]["q_dark"] == f"dark: {reason}"
 
 
@@ -301,11 +304,11 @@ def test_the_sum_is_blended_with_the_time_of_day_once_there_are_enough_sessions(
     prior = {f"2026-09-{d:02d}": flat_bars(390, day=f"2026-09-{d:02d}") for d in range(1, MIN_SESSIONS + 1)}
     state = write_state(tmp_path, DAY, [make_row(at(12, 2, ss=10), 7700.0)], flat_bars(160), prior)
     for d in prior:
-        (state / "reversion" / f"{d}.jsonl").write_text("".join(json.dumps(make_row(at(9 + (30 + m) // 60, (30 + m) % 60, day=d), 7700.0)) + "\n"
+        diary_path(state, d).write_text("".join(json.dumps(make_row(at(9 + (30 + m) // 60, (30 + m) % 60, day=d), 7700.0)) + "\n"
                                                                 for m in range(0, 390, 5)))
     monkeypatch.setattr(service, "send_all", _answers())
     monkeypatch.setattr(service, "send", _sums)
-    h = run_once(state, state / "spx_jev", DOC, True, DAY)["hour"]
+    h = run_once(state, lane_folder(state), DOC, True, DAY)["hour"]
     assert h["blend"]["used"] is True and h["blend"]["phase"] == "lunch"
     assert h["probabilities"]["flat"] == JEV_SHARE * 0.8 + (1 - JEV_SHARE) * 1.0
 
@@ -330,7 +333,7 @@ def test_a_read_before_a_scheduled_close_event_carries_the_tag_and_jev_never_see
     real = _answers()
     monkeypatch.setattr(service, "send_all", lambda reqs, **kw: seen.extend(reqs) or real(reqs, **kw))
     monkeypatch.setattr(service, "send", _sums)
-    c = run_once(state, state / "spx_jev", DOC, True, DAY)
+    c = run_once(state, lane_folder(state), DOC, True, DAY)
     assert c["event"]["within_30"] is True and c["event"]["events"][0]["at"] == at(16, 0).isoformat()
     assert seen and not any("scheduled" in json.dumps(r["state"]) for r in seen)
 
@@ -340,31 +343,31 @@ def test_a_live_read_writes_the_loops_forecasts_keeps_the_blend_on_the_phone_and
     prior = {f"2026-09-{d:02d}": flat_bars(390, day=f"2026-09-{d:02d}") for d in range(1, MIN_SESSIONS + 1)}
     state = write_state(tmp_path, DAY, [make_row(at(12, 2, ss=10), 7700.0)], flat_bars(390), prior)
     for d in prior:
-        (state / "reversion" / f"{d}.jsonl").write_text("".join(json.dumps(make_row(at(9 + (30 + m) // 60, (30 + m) % 60, day=d), 7700.0)) + "\n"
+        diary_path(state, d).write_text("".join(json.dumps(make_row(at(9 + (30 + m) // 60, (30 + m) % 60, day=d), 7700.0)) + "\n"
                                                                 for m in range(0, 390, 5)))
     monkeypatch.setattr(service, "send_all", _answers())
     monkeypatch.setattr(service, "send", _sums)
-    c = run_once(state, state / "spx_jev", DOC, True, DAY)
-    out = state / "spx_jev"
-    rec = json.loads((out / "hour" / f"{DAY}.jsonl").read_text().splitlines()[0])
+    c = run_once(state, lane_folder(state), DOC, True, DAY)
+    out = lane_folder(state)
+    rec = json.loads(hour_path(out, DAY).read_text().splitlines()[0])
     snap = rec["pool"]["next_30"]
     assert set(snap["experts"]) == set(service.pool.W0) and snap["awake"] == ["q_dir", "q_two"] and snap["members"].keys() == {"q_dir", "q_two"}
     assert snap["blend50_exact"] == {k: round(v, 4) for k, v in c["hour"]["probabilities"].items()}
     assert c["hour"]["shown_source"] == "blend50_exact" and rec["shown_source"] == "blend50_exact"
-    read = json.loads((out / "archive" / f"{DAY}.jsonl").read_text().splitlines()[0])
+    read = json.loads(archive_path(state, DAY).read_text().splitlines()[0])
     assert read["schema_version"] == archive.SCHEMA_VERSION and read["pool"]["next_60"]["experts"]
     # the day is over and both marks were graded in the same run: the end-price loop learned it at once
-    learned = json.loads((out / "pool_30.json").read_text())
+    learned = json.loads(pool_state_path(state, "next_30_minutes").read_text())
     assert learned["last_session_applied"] == DAY and learned["evidence"]["q_dir"]["days"] == 1
-    assert json.loads((out / "pool_60.json").read_text())["last_session_applied"] == DAY
+    assert json.loads(pool_state_path(state, "next_60_minutes").read_text())["last_session_applied"] == DAY
     # the weights report it as they did, and the average-price loop beside it passes the day over: no read had an
     # average-price call
-    weights = json.loads((out / "weights.json").read_text())
+    weights = json.loads(weights_path(out).read_text())
     assert weights["method"] == "pool_v1" and weights["pool"]["last_session_applied"] == DAY and weights["questions"]["q_dir"]["days"] == 1
     beside = weights["pool_integral"]
     assert beside["method"] == "pool_v1_integral" and beside["pool"]["last_session_applied"] == DAY
     assert beside["questions"]["q_dir"]["weight"] == 1.0 and "days" not in beside["questions"]["q_dir"]
-    said = [json.loads(line) for line in (out / "pool_integral_log.jsonl").read_text().splitlines()]
+    said = [json.loads(line) for line in pool_log_path(state).read_text().splitlines()]
     assert [(x["session"], x["applied"], x["why"]) for x in said] == [(DAY, False, "no read carries an average-price call: before the question")]
 
 
@@ -380,8 +383,8 @@ def test_a_read_whose_end_price_sums_got_no_answer_keeps_the_answers_the_average
                                                              "probabilities": {"up": 0.6, "flat": 0.3, "down": 0.1}}}}
     monkeypatch.setattr(service, "send_all", _answers())
     monkeypatch.setattr(service, "send", sums)
-    c = run_once(state, state / "spx_jev", DOC, True, DAY)
-    rec = json.loads((state / "spx_jev" / "hour" / f"{DAY}.jsonl").read_text().splitlines()[0])
+    c = run_once(state, lane_folder(state), DOC, True, DAY)
+    rec = json.loads(hour_path(lane_folder(state), DAY).read_text().splitlines()[0])
     snap = rec["pool"]["next_30"]
     assert snap["left_out"] == "JEV gave no probabilities for next_30" and set(snap["members"]) == {"q_dir", "q_two"}
     assert snap["awake"] == ["q_dir", "q_two"] and "shown_source" not in rec
@@ -401,8 +404,8 @@ def test_the_call_shows_its_exact_blend_said_under_shown_source(tmp_path, monkey
     state = _state(tmp_path, [make_row(at(12, 2, ss=10), 7700.0)], 150)
     monkeypatch.setattr(service, "send_all", _answers())
     monkeypatch.setattr(service, "send", _average_sums)
-    c = run_once(state, state / "spx_jev", DOC, True, DAY)
-    rec = json.loads((state / "spx_jev" / "hour" / f"{DAY}.jsonl").read_text().splitlines()[0])
+    c = run_once(state, lane_folder(state), DOC, True, DAY)
+    rec = json.loads(hour_path(lane_folder(state), DAY).read_text().splitlines()[0])
     assert c["hour"]["average"]["shown_source"] == rec["average"]["shown_source"] == "blend50_exact"
     assert c["hour"]["average"]["pick"] == "up" and c["hour"]["shown_source"] == rec["shown_source"] == "blend50_exact"
 
@@ -414,24 +417,25 @@ def test_a_failing_average_price_loop_costs_neither_the_read_nor_the_close_out(t
     prior = {f"2026-09-{d:02d}": flat_bars(390, day=f"2026-09-{d:02d}") for d in range(1, MIN_SESSIONS + 1)}
     state = write_state(tmp_path, DAY, [make_row(at(12, 2, ss=10), 7700.0)], flat_bars(390), prior)
     for d in prior:
-        (state / "reversion" / f"{d}.jsonl").write_text("".join(json.dumps(make_row(at(9 + (30 + m) // 60, (30 + m) % 60, day=d), 7700.0)) + "\n"
+        diary_path(state, d).write_text("".join(json.dumps(make_row(at(9 + (30 + m) // 60, (30 + m) % 60, day=d), 7700.0)) + "\n"
                                                                 for m in range(0, 390, 5)))
-    out = state / "spx_jev"
+    out = lane_folder(state)
     out.mkdir(parents=True, exist_ok=True)
-    (out / "pool_30_integral.json").write_text("[]")
+    pool_state_path(state, "average_of_next_30_minutes").parent.mkdir(parents=True, exist_ok=True)
+    pool_state_path(state, "average_of_next_30_minutes").write_text("[]")
     monkeypatch.setattr(service, "send_all", _answers())
     monkeypatch.setattr(service, "send", _sums)
     c = run_once(state, out, DOC, True, DAY)
-    assert c["row_ts"] == at(12, 2, ss=10).isoformat() and (out / "latest.json").exists()
+    assert c["row_ts"] == at(12, 2, ss=10).isoformat() and card_path(state).exists()
     assert "average-price loop failed: AttributeError" in capsys.readouterr().err
-    weights = json.loads((out / "weights.json").read_text())
+    weights = json.loads(weights_path(out).read_text())
     assert weights["method"] == "pool_v1" and weights["pool"]["last_session_applied"] == DAY and weights["graded_runs"] == 1
     assert weights["pool_integral"] == {"failed": "AttributeError: 'list' object has no attribute 'get'"}
-    lines = (out / "integral_grades.jsonl").read_text().splitlines()
+    lines = integral_grades_path(out).read_text().splitlines()
     assert {json.loads(line)["horizon"] for line in lines} == {"next_30", "next_60"}
     card = service.close_out(state, out, DOC, service.LIVE, DAY)
     assert card and card["graded_at"] and card["tally"]["graded"] == 1 and "average-price loop failed" in capsys.readouterr().err
-    assert (out / "pool_30_integral.json").read_text() == "[]"
+    assert pool_state_path(state, "average_of_next_30_minutes").read_text() == "[]"
 
 
 def test_the_live_lanes_fire_after_the_close_grades_the_last_calls_and_asks_jev_nothing(tmp_path, monkeypatch):
@@ -447,11 +451,11 @@ def test_the_live_lanes_fire_after_the_close_grades_the_last_calls_and_asks_jev_
             return at_1602.astimezone(tz) if tz else at_1602.replace(tzinfo=None)
     monkeypatch.setattr(grade, "datetime", Clock)
     state = _state(tmp_path, [make_row(at(15, 31, ss=40), 7700.0)], 361)
-    out = state / "spx_jev"
+    out = lane_folder(state)
     monkeypatch.setattr(service, "send_all", _answers())
     monkeypatch.setattr(service, "send", _sums)
     run_once(state, out, DOC, True, DAY)
-    reads_before = (out / f"{DAY}.jsonl").read_text()
+    reads_before = answers_path(out, DAY).read_text()
 
     def refuse(*a, **k):
         raise AssertionError("the close-out asked JEV")
@@ -461,9 +465,9 @@ def test_the_live_lanes_fire_after_the_close_grades_the_last_calls_and_asks_jev_
     monkeypatch.setattr(service, "now_et", lambda: at_1602)
     _state(tmp_path, [make_row(at(15, 31, ss=40), 7700.0)], 390)
     assert service.main(["--state-dir", str(state)]) == 0
-    c = json.loads((out / "latest.json").read_text())
+    c = json.loads(card_path(state).read_text())
     assert c["closed_out_at"] and c["tally"]["graded"] == 1
-    assert (out / f"{DAY}.jsonl").read_text() == reads_before
+    assert answers_path(out, DAY).read_text() == reads_before
 
 
 # ---- the judgment group (Phase 3): the code's answers before the requests, the gate, never a raise
@@ -495,7 +499,7 @@ def _headlines(state, minutes_before: int, title: str):
 def test_the_code_answers_the_gates_before_the_requests_and_a_fired_judgment_question_is_asked_unsummed(tmp_path, monkeypatch):
     from spx_jev import judgment
     state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
-    out = state / "spx_jev"
+    out = lane_folder(state)
     _headlines(state, 10, "Nvidia slips as its guidance disappoints")
     order = []
 
@@ -515,20 +519,25 @@ def test_the_code_answers_the_gates_before_the_requests_and_a_fired_judgment_que
     assert order[0][1] is False and order[0][2] == f"live:{at(10, 35, ss=10).isoformat()}" and "price" in order[0][3] and "judgment" not in order[0][3]
     q = {e["id"]: e for e in c["questions"]}
     assert q["news_reaction"]["answer"]["pick"] == "shrugging_off" and q["push_blowoff_or_fresh"]["answer"]["pick"] == "blow_off"
-    rec = json.loads((out / f"{DAY}.jsonl").read_text().splitlines()[0])
+    rec = json.loads(answers_path(out, DAY).read_text().splitlines()[0])
     assert rec["state"]["judgment"]["headlines"].startswith("1 headlines captured from 10:25 to 10:25 ET") and "Nvidia slips" in rec["state"]["judgment"]["headlines"]
     assert rec["state"]["judgment"]["push_exhaustion"].startswith("the code's 60-minute range sweep reads 'up held' (TREND-10)")
     assert [r["id"] for r in rec["requests"]] == ["g1", "judgment"] and rec["skipped"].get("judgment") is None
-    hour_rec = json.loads((out / "hour" / f"{DAY}.jsonl").read_text().splitlines()[0])
+    hour_rec = json.loads(hour_path(out, DAY).read_text().splitlines()[0])
     assert hour_rec["used"] == {"q_dir": "rising"} and hour_rec["left_out"]["news_reaction"] == "a shadow forecast, never an input"
     assert c["held_count"] == 0
-    assert not list((state / "spx_jev" / "mirai_prediction").rglob("*.jsonl")) if (state / "spx_jev" / "mirai_prediction").exists() else True
+    # the Mirai Prediction System wrote nothing: no code answers, no forecasts, no job log, no refused rows
+    from spx_jev.mirai_prediction import paths as prediction_paths
+    root = prediction_paths.data_root(state)
+    untouched = (prediction_paths.raw_code_features_dir(root), prediction_paths.raw_forecasts_dir(root),
+                 prediction_paths.job_run_log_file(root).parent, prediction_paths.refused_rows_file(root, DAY).parent)
+    assert not [p for folder in untouched if folder.exists() for p in folder.rglob("*.jsonl")]
 
 
 def test_a_judgment_question_whose_gate_is_off_costs_the_read_nothing(tmp_path, monkeypatch):
     from spx_jev import judgment
     state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
-    out = state / "spx_jev"
+    out = lane_folder(state)
     monkeypatch.setattr(judgment, "code_answers_for", lambda *a, **k: {"TREND-10": "none", "TREND-11": None})
     sent = []
     real = _answers()
@@ -539,14 +548,14 @@ def test_a_judgment_question_whose_gate_is_off_costs_the_read_nothing(tmp_path, 
     q = {e["id"]: e for e in c["questions"]}
     assert q["news_reaction"]["answer"] is None and q["news_reaction"]["skipped"] == "gate: headlines not fired: no headlines captured in the 60 minutes before the read"
     assert q["push_blowoff_or_fresh"]["skipped"] == "gate: TREND-10 or TREND-11 not fired: TREND-10 'none', TREND-11 not measured this read"
-    rec = json.loads((out / f"{DAY}.jsonl").read_text().splitlines()[0])
+    rec = json.loads(answers_path(out, DAY).read_text().splitlines()[0])
     assert set(rec["skipped"]["judgment"]) == {"news_reaction", "push_blowoff_or_fresh", "*"} and "judgment" in rec["state"]
 
 
 def test_the_judgment_group_failing_never_costs_the_read(tmp_path, monkeypatch):
     from spx_jev import judgment
     state = _state(tmp_path, [make_row(at(10, 35, ss=10), 7700.0)], 70)
-    out = state / "spx_jev"
+    out = lane_folder(state)
     _headlines(state, 10, "Stocks slip as Treasury yields climb")
     monkeypatch.setattr(judgment, "code_answers_for", lambda *a, **k: 1 / 0)
     monkeypatch.setattr(service, "send_all", _answers())
@@ -591,7 +600,7 @@ def _headline_on(state, day: str, title: str):
 def _cut_over_read(tmp_path, monkeypatch, day: str, doc: dict, code: dict | None):
     from spx_jev import judgment
     state = _state_on(tmp_path, day)
-    out = state / "spx_jev"
+    out = lane_folder(state)
     _headline_on(state, day, "Nvidia slips as its guidance disappoints")
     monkeypatch.setattr(judgment, "code_answers_for", lambda *a, **k: dict(code or {}))
     sent = []
@@ -599,7 +608,7 @@ def _cut_over_read(tmp_path, monkeypatch, day: str, doc: dict, code: dict | None
     monkeypatch.setattr(service, "send_all", lambda requests, **kw: sent.extend(r["id"] for r in requests) or real(requests, **kw))
     monkeypatch.setattr(service, "send", _sums)
     c = run_once(state, out, doc, True, day)
-    hour_rec = json.loads((out / "hour" / f"{day}.jsonl").read_text().splitlines()[0])
+    hour_rec = json.loads(hour_path(out, day).read_text().splitlines()[0])
     return c, hour_rec, sent, out
 
 
@@ -640,9 +649,9 @@ def test_from_the_cut_over_the_retired_question_is_dark_and_the_sums_ride_on_the
     assert c["dark"] == [{"id": "q_dir", "viewpoint": "volume_price", "ask": "Did price rise, fall, or go nowhere?", "dark_reason": RETIRED}]
     snap = rec["pool"]["next_30"]
     assert set(snap["experts"]) == set(service.pool.W0) and snap["members"] == {} and snap["awake"] == []
-    record = json.loads((out / f"{CUT}.jsonl").read_text().splitlines()[0])
+    record = json.loads(answers_path(out, CUT).read_text().splitlines()[0])
     assert record["skipped"]["g1"] == {"q_dir": f"dark: {RETIRED}", "*": "nothing to ask in this group this read"}
-    assert "q_dir" not in json.loads((out / "last_asked.json").read_text())
+    assert "q_dir" not in json.loads(last_asked_path(out).read_text())
 
 
 def test_from_the_cut_over_a_read_with_no_judgment_and_no_code_answer_still_asks_the_sums_over_nothing(tmp_path, monkeypatch):
@@ -682,7 +691,7 @@ def _live_pool_2_read(tmp_path, monkeypatch, voice_list=None):
     monkeypatch.setattr(live_call, "forecast_now_with_voices", lambda *a: (mixed, voices))
     if voice_list is not None:
         monkeypatch.setattr(live_call, "voice_list", voice_list)
-    return run_once(state, state / "spx_jev", DOC, True, None)
+    return run_once(state, lane_folder(state), DOC, True, None)
 
 
 def test_a_live_read_carries_the_voices_of_the_combined_forecast_and_each_end_price_sums_flat_zone(tmp_path, monkeypatch):
@@ -695,7 +704,7 @@ def test_a_live_read_carries_the_voices_of_the_combined_forecast_and_each_end_pr
     assert [v["name"] for v in h["by"]["next_60"]["voices"]] == ["historical_odds", "matcher"] and "voices" not in h["by"]["next_30"]
     assert (h["by"]["next_30"]["flat_points"], h["by"]["next_60"]["flat_points"]) == (5.25, 8.25)
     assert (h["average"]["flat_points"], h["average"]["edge_points"]) == (5.25, 3.11)   # the box's zone and the call's own
-    rec = json.loads((tmp_path / "spx_jev" / "hour" / f"{DAY}.jsonl").read_text().splitlines()[0])
+    rec = json.loads(hour_path(lane_folder(tmp_path), DAY).read_text().splitlines()[0])
     assert rec["zone"] == {"next_30": 5.25, "next_60": 8.25, "average_30": 3.11, "rule": 1}
 
 

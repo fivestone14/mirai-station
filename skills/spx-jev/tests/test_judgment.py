@@ -8,7 +8,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
-from conftest import DAY, PRIOR_DAYS, at
+from conftest import DAY, PRIOR_DAYS, at, station_paths, write_jsonl
 
 from spx_jev import cadence, grade, hour, judgment, store
 from spx_jev.ask import GATED, build_requests, load_questions
@@ -204,19 +204,17 @@ def test_the_facts_read_the_headlines_captured_at_least_two_minutes_before_the_r
 def _write_tnx(state_dir, now_last: float, prior_close: float, sessions: list[tuple[str, float]]):
     """Today's $TNX quote at 10:31 and, per prior session, its 10:31 bar; every session closes at ``prior_close`` (daily_closes),
     so each session's move at the minute is its bar less that."""
-    ctx = state_dir / "spx_jev" / "context"
-    (ctx / "bars").mkdir(parents=True)
-    (ctx / f"{DAY}.jsonl").write_text(json.dumps({"ts": at(10, 31).isoformat(), "quotes": {"$TNX": {"last": now_last, "close": prior_close}}}) + "\n"
-                                      + json.dumps({"ts": at(10, 40).isoformat(), "quotes": {"$TNX": {"last": 99.0, "close": prior_close}}}) + "\n")
+    write_jsonl(station_paths.WATCHLIST_QUOTES_BY_MINUTE.path(state_dir, day=DAY),
+                [{"ts": at(10, 31).isoformat(), "quotes": {"$TNX": {"last": now_last, "close": prior_close}}},
+                 {"ts": at(10, 40).isoformat(), "quotes": {"$TNX": {"last": 99.0, "close": prior_close}}}])
     oldest = min(day for day, _ in sessions)
     closes = [{"day": (date.fromisoformat(oldest) - timedelta(days=1)).isoformat(), "close": prior_close}]
     for day, at_minute in sessions:
         closes.append({"day": day, "close": prior_close})
-        (ctx / "bars" / f"{day}.jsonl").write_text(json.dumps({"ts": at(10, 31, day).isoformat(), "bars": {"$TNX": {"ts": at(10, 30, day).isoformat(), "close": at_minute}}}) + "\n"
-                                                   + json.dumps({"ts": at(11, 0, day).isoformat(), "bars": {"$TNX": {"ts": at(10, 59, day).isoformat(), "close": 99.0}}}) + "\n")
-    dc = state_dir / "spx_jev" / "daily_closes"
-    dc.mkdir(parents=True)
-    (dc / "$TNX.jsonl").write_text("".join(json.dumps(r) + "\n" for r in closes))
+        write_jsonl(station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.path(state_dir, day=day),
+                    [{"ts": at(10, 31, day).isoformat(), "bars": {"$TNX": {"ts": at(10, 30, day).isoformat(), "close": at_minute}}},
+                     {"ts": at(11, 0, day).isoformat(), "bars": {"$TNX": {"ts": at(10, 59, day).isoformat(), "close": 99.0}}}])
+    write_jsonl(station_paths.SPX_VIX_RATES_PRICE_BARS_BY_DAY.path(state_dir, symbol="$TNX"), closes)
 
 
 def test_the_yields_move_is_ranked_at_the_same_minute_against_each_sessions_own_prior_close(tmp_path):
@@ -224,7 +222,7 @@ def test_the_yields_move_is_ranked_at_the_same_minute_against_each_sessions_own_
     _write_tnx(tmp_path, 41.5, 41.0, sessions)
     ym = yield_move(tmp_path, DAY, ROW)
     assert ym.basis_points == 5.0 and ym.rank == SameClockRank(5, 10) and not ym.fired and "rose 5.0 basis points" in ym.words()
-    (tmp_path / "spx_jev" / "context" / f"{DAY}.jsonl").write_text(json.dumps({"ts": at(10, 31).isoformat(), "quotes": {"$TNX": {"last": 39.6, "close": 41.0}}}) + "\n")
+    write_jsonl(station_paths.WATCHLIST_QUOTES_BY_MINUTE.path(tmp_path, day=DAY), [{"ts": at(10, 31).isoformat(), "quotes": {"$TNX": {"last": 39.6, "close": 41.0}}}])
     ym = yield_move(tmp_path, DAY, ROW)
     assert ym.basis_points == -14.0 and ym.rank == SameClockRank(10, 10) and ym.fired and ym.words().endswith("top third")
 

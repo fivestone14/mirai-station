@@ -71,7 +71,7 @@ _RATE_LIMIT_RE = re.compile(
     re.IGNORECASE)
 
 _SESSION_FILE = station_paths.VOICE_DESK_SESSION_STATE.path()
-_STATE_DIR = _SESSION_FILE.parent                          # the desk's own folder (voice/ today)
+_STATE_DIR = _SESSION_FILE.parent                          # the desk's own folder (voice_desk/)
 
 SPOKEN_TIMEOUT = "That one timed out on me. Ask again."
 SPOKEN_RATELIMIT = "I've hit the usage limit. Give me a few minutes."

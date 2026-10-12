@@ -14,7 +14,7 @@
 
   <!-- The SPX live-bars sidecar: every 60 s during market hours (and twelve minutes after the close) fetch
        today's 1-min SPX session in one call and append the finished minutes not yet on disk to
-       state/spx_jev/bars/{date}.jsonl, so the opening lane and the grader have today's bars before the
+       state/market/spx_price_bars_by_minute/{date}.jsonl, so the opening lane and the grader have today's bars before the
        16:15 ET session file exists. The runner's market gate keeps it to market hours. launchd will not
        run two copies at once. -->
   <key>StartInterval</key>

@@ -1,5 +1,5 @@
 """The overnight block: what the futures did between the prior close and the open, from the station's overnight
-store (``state/spx_jev/overnight/{day}.jsonl``, spx_jev.overnight), the night named for the session it leads into.
+store (``state/market/futures_price_bars_by_minute/{day}.jsonl``, spx_jev.overnight), the night named for the session it leads into.
 
 The night is read as the store saved it and cut at the read: only bars finished by the cut count, and every
 price is taken at the last pre-open point, the open (09:30 ET) or the cut itself on a read before it. The move
@@ -70,7 +70,7 @@ def build_overnight_block(inputs: FrozenInputs) -> BlockResult:
         return whole_block_absent(BLOCK, "no_es_bars")
     day = date.fromisoformat(inputs.day)
     until = min(inputs.cut, _session_open(day))
-    table = station_stores.import_spx_jev("rolls").load(path.parent)
+    table = station_stores.import_spx_jev("rolls").load(inputs.state_dir)   # the roll table sits under market/, by the data root
     result = BlockResult()
     _index_future(inputs, rows, day, until, table, result)
     _ten_year_future(inputs, rows, day, until, table, result)

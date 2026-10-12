@@ -1,12 +1,24 @@
-"""Every data store of the station, defined once, under its final name.
+"""Every data store of the station, defined once, under its final name, in its named folder.
 
-Cleanup phase 1 (2026-10-11). Each store below is a ``Store`` whose NAME is the store's final name from the
-approved naming map (``final_mapping_v4.md``: ``<subject>_<content>_by_<grain>``, or a ``_latest`` / ``_card`` /
-``_state`` / ``_log`` ending) and whose VALUE is still TODAY'S location under the data root, ``state/``. The
-``_TABLE`` ending is this file's own rule, not the map's: a Parquet table and the raw folder it is built from share
-the map's name (``tables/jev_answers_by_read_and_question/``), so the constant for the table takes ``_TABLE`` to tell
-the two apart. Nothing has moved yet. When the folders move, only the templates in this file change; every
-reader and writer, and every page that asks the viewstation for a store by name, follows.
+Cleanup phase 1 (2026-10-11) named every store here; phase 7 (the same day) moved each store's VALUE to its folder in
+the approved layout (``final_mapping_v4.md``), still under the data root ``state/`` (a later phase renames state/ to
+data/). Each store below is a ``Store`` whose NAME is the store's final name from the map (``<subject>_<content>_by_<grain>``,
+or a ``_latest`` / ``_card`` / ``_state`` / ``_log`` ending) and whose VALUE is where it now lives. The ``_TABLE`` ending
+is this file's own rule, not the map's: a Parquet table and the raw folder it is built from share the map's name
+(``tables/jev_answers_by_read_and_question/``), so the constant for the table takes ``_TABLE`` to tell the two apart.
+When a folder moves again, only the templates in this file change; every reader and writer, and every page that asks
+the viewstation for a store by name, follows.
+
+The layout under the data root: ``market/`` (prices, quotes, depth, trades, open interest, the calendar; its ``tables/``),
+``spx/scanner/`` (the SPX options scanner, the order-flow collector's readings, the wall sensor), ``spx/jev/`` (the three
+lanes, the shared archive, its ``tables/``), ``spx/prediction/`` (the base pool, the learner pool, the code questions'
+answers, the forecasts and their ``tables/``), ``spx/claude_forecast/``, ``sndk/``, ``voice_desk/``, ``screen_files/``
+(``phone/``, ``desktop/``: files written only for a screen), ``operations/`` (``logs/``, ``locks/``, ``health/``, the
+alert states) and ``archive/`` (rollback copies and retired data).
+
+The stores the map MERGES (the raw tape's working copy and its recorder copy, the SPY minute volume's baseline and its
+recorder copies, the two event calendars, the scanner's saved SPX sessions and the SPX minute bars) are not merged yet:
+each copy has a location of its own below, so nothing is lost, and a later phase merges them.
 
 How to import it
 ----------------
@@ -39,18 +51,21 @@ one that resolved per call keeps doing that too.
 Keys
 ----
 A template's ``{day}`` is ``YYYY-MM-DD``; ``{lane}`` is a JEV lane name (``live``, ``tape``, ``premarket``) and is
-replaced by that lane's folder; ``{symbol}``, ``{ticker}``, ``{sha}``, ``{stamp}``, ``{sum_id}``, ``{ledger_id}``
+replaced by that lane's folder; ``{symbol}``, ``{ticker}``, ``{sha}``, ``{stamp}``, ``{sum_id}``, ``{horizon}``
 and ``{stream}`` are the code's own keys. A store that is one of a keyed family (a pool horizon) names the allowed
-values; a family's members that the map names one by one are separate stores, gathered in a ``_BY_...`` dict.
+values and what each becomes in the path; a family's members that the map names one by one are separate stores,
+gathered in a ``_BY_...`` dict.
 
 Three ways to a path. ``path(root, **keys)`` is the whole path from the data root. ``within(parent, folder, **keys)``
 is the same file inside a folder the caller already holds, for the packages whose working root is a folder under the
 data root (the prediction system's, the Claude forecast's, a JEV lane's, which a replay can point at a scratch
 folder); ``in_lane_folder`` is its JEV spelling. ``file_name(**keys)`` is the last segment alone, for a reader that
-holds the folder (the viewstation's tape folder, the fill ledger's folder).
+holds the folder (the viewstation's tape folder, the fill ledger's folder). ``root_of(folder, **keys)`` goes the other
+way: the data root a folder store's folder sits under, for code handed a lane's or a system's folder that must reach a
+store outside it (the pools beside the lane, the cards under screen_files/).
 
 Not defined here: rows the map marks DROP, and stores already retired (their writers are gone). A reader of a
-DROP row keeps its own constant until phase 2 removes the writer; the report of this phase lists them.
+DROP row keeps its own constant until phase 2 removes the writer.
 """
 from __future__ import annotations
 
@@ -82,8 +97,8 @@ def state_root(explicit: Path | str | None = None) -> Path:
     return default_state_root()
 
 
-# The JEV lanes' folders, today. The live lane writes beside the shared archive; the other lanes have folders of their own.
-JEV_LANE_FOLDERS = {"live": "spx_jev", "tape": "spx_jev/lanes/tape", "premarket": "spx_jev/lanes/premarket"}
+# The JEV lanes' folders under spx/jev/: each lane's own records, beside the shared archive and the tables.
+JEV_LANE_FOLDERS = {"live": "spx/jev/live_lane", "tape": "spx/jev/opening_lane", "premarket": "spx/jev/premarket_lane"}
 
 
 class Store:
@@ -184,204 +199,216 @@ class Store:
         """The keys a caller must give: the template's placeholders that are not fixed."""
         return [k for k in re.findall(r"{(\w+)}", self.relative) if not isinstance(self.keys.get(k), str)]
 
+    def root_of(self, folder: Path | str, **keys) -> Path | None:
+        """The data root under which ``folder`` is this store's path (a folder store: a lane's folder, a system's
+        folder), else None: the filled template stripped from the end of ``folder``, segment by segment, as given
+        (no symlink is followed). Code handed such a folder uses it to reach a store that sits outside the folder."""
+        wanted = Path(self._fill(self.relative, dict(keys))).parts
+        parts = Path(folder).parts
+        if len(parts) <= len(wanted) or parts[-len(wanted):] != wanted:
+            return None
+        return Path(*parts[:-len(wanted)])
+
 
 # =====================================================================================================================
-# market/   prices, quotes, depth, trades, open interest, the calendar
+# market/   prices, quotes, depth, trades, open interest, the calendar, and the tables built from them
 # =====================================================================================================================
-SPX_PRICE_BARS_BY_MINUTE = Store("spx_jev/bars/{day}.jsonl")
-WATCHLIST_QUOTES_BY_MINUTE = Store("spx_jev/context/{day}.jsonl")
-WATCHLIST_PRICE_BARS_BY_MINUTE = Store("spx_jev/context/bars/{day}.jsonl")
-FUTURES_PRICE_BARS_BY_MINUTE = Store("spx_jev/overnight/{day}.jsonl")
-FUTURES_PRICE_BAR_CHANGE_COUNTS_BY_SAVE = Store("spx_jev/overnight/manifest.jsonl")
-FUTURES_CONTRACTS_AND_PAST_ROLLS_LATEST = Store("spx_jev/overnight/rolls.json")
-SPX_VIX_RATES_PRICE_BARS_BY_DAY = Store("spx_jev/daily_closes/{symbol}.jsonl")
-NEWS_HEADLINES_BY_ARTICLE = Store("spx_jev/headlines/{day}.jsonl")
-NEWS_HEADLINES_SEEN_STATE = Store("spx_jev/headlines/seen.json")
+SPX_PRICE_BARS_BY_MINUTE = Store("market/spx_price_bars_by_minute/{day}.jsonl")
+# the scanner grader's own saved session of SPX minute bars, kept apart until a later phase folds it into the store above
+SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY = Store("market/spx_price_bars_by_minute_scanner_copy/{day}-{ticker}.json", ticker="SPX")
+WATCHLIST_QUOTES_BY_MINUTE = Store("market/watchlist_quotes_by_minute/{day}.jsonl")
+WATCHLIST_PRICE_BARS_BY_MINUTE = Store("market/watchlist_price_bars_by_minute/{day}.jsonl")
+FUTURES_PRICE_BARS_BY_MINUTE = Store("market/futures_price_bars_by_minute/{day}.jsonl")
+FUTURES_PRICE_BAR_CHANGE_COUNTS_BY_SAVE = Store("market/futures_price_bar_change_counts_by_save.jsonl")
+FUTURES_CONTRACTS_AND_PAST_ROLLS_LATEST = Store("market/futures_contracts_and_past_rolls_latest.json")
+SPX_VIX_RATES_PRICE_BARS_BY_DAY = Store("market/spx_vix_rates_price_bars_by_day/{symbol}.jsonl")
+NEWS_HEADLINES_BY_ARTICLE = Store("market/news_headlines_by_article/{day}.jsonl")
+NEWS_HEADLINES_SEEN_STATE = Store("market/news_headlines_seen_state.json")
 # The collector's raw day folder holds the SPX same-day options trades (tape), their depth (sweeps) and the SPY depth
 # stream with its gap markers; the recorder keeps a gzip copy of each day folder (plus its _complete.json manifest)
 # before the collector deletes it. The two copies merge into one store at a later phase.
-SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER = Store("lob_flow/raw/{day}")
-SPX_SAME_DAY_OPTIONS_AND_SPY_DEPTH_RAW_STREAM = Store("lob_flow/raw/{day}/{stream}.jsonl")   # stream: tape, sweeps, spy-depth
-SPX_SAME_DAY_OPTIONS_TRADES_BY_TRADE = Store("lob_flow/raw/{day}/tape.jsonl")
-SPX_SAME_DAY_OPTIONS_DEPTH_BY_MINUTE = Store("lob_flow/raw/{day}/sweeps.jsonl")
-SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDERS_RECORDER_COPY = Store("spx_claude_forecast/recorder/lob_raw/{day}")
-# SPY volume per minute: the recorder's one-day copies (the map's store) and, under spx/scanner, the wall sensor's
-# working memory of it (every day inside one file; SPY_VOLUME_BASELINES_STATE, below).
-SPY_VOLUME_BY_MINUTE = Store("spx_claude_forecast/recorder/siege_spy_minutes/{day}.json")
-SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_LATEST = Store("dated_gex/book.json")
-SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_BY_DAY = Store("spx_claude_forecast/recorder/dated_book/{stamp}.json")
-SPX_PRICE_BARS_BY_5_MINUTES = Store("spx_claude_forecast/recorder/spx_5m/{day}.jsonl")
-VIX_ONE_DAY_CLOSES_BY_DAY = Store("spx_claude_forecast/recorder/vix1d_close.jsonl")
-LEVERAGED_FUND_ASSETS_BY_RUN = Store("spx_claude_forecast/recorder/leveraged_fund_sizes.jsonl")
-SPX_LARGEST_STOCK_WEIGHTS_BY_UPDATE = Store("spx_leaders/weights.json")
-# The event calendar is kept twice today: the collector's seeded copy under state, and the spx-jev package's own file.
-MARKET_EVENT_CALENDAR_BY_EVENT = Store("lob_flow/calendar.json")
+SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER = Store("market/spx_same_day_options_raw_day_folders/{day}")
+SPX_SAME_DAY_OPTIONS_AND_SPY_DEPTH_RAW_STREAM = Store("market/spx_same_day_options_raw_day_folders/{day}/{stream}.jsonl")   # stream: tape, sweeps, spy-depth
+SPX_SAME_DAY_OPTIONS_TRADES_BY_TRADE = Store("market/spx_same_day_options_raw_day_folders/{day}/tape.jsonl")
+SPX_SAME_DAY_OPTIONS_DEPTH_BY_MINUTE = Store("market/spx_same_day_options_raw_day_folders/{day}/sweeps.jsonl")
+SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDERS_RECORDER_COPY = Store("market/spx_same_day_options_raw_day_folders_recorder_copy/{day}")
+# SPY volume per minute: the recorder's one-day copies (the map's store); the wall sensor's working memory of it (every
+# day inside one file) is SPY_VOLUME_BASELINES_STATE under spx/scanner, merged into this store at a later phase.
+SPY_VOLUME_BY_MINUTE = Store("market/spy_volume_by_minute/{day}.json")
+SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_LATEST = Store("market/spx_monthly_quarterly_open_interest_latest.json")
+SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_BY_DAY = Store("market/spx_monthly_quarterly_open_interest_by_day/{stamp}.json")
+SPX_PRICE_BARS_BY_5_MINUTES = Store("market/spx_price_bars_by_5_minutes/{day}.jsonl")
+VIX_ONE_DAY_CLOSES_BY_DAY = Store("market/vix_one_day_closes_by_day.jsonl")
+LEVERAGED_FUND_ASSETS_BY_RUN = Store("market/leveraged_fund_assets_by_run.jsonl")
+SPX_LARGEST_STOCK_WEIGHTS_BY_UPDATE = Store("market/spx_largest_stock_weights_by_update.json")
+# The event calendar is kept twice: the collector's copy under the data root, and the spx-jev package's own hand-kept
+# file in the repo. A later phase merges them.
+MARKET_EVENT_CALENDAR_BY_EVENT = Store("market/market_event_calendar_by_event.json")
 MARKET_EVENT_CALENDAR_BY_EVENT_SPX_JEV_COPY = Store("skills/spx-jev/calendar/events.json", base="repo")
-SPX_PRICE_BARS_BY_MINUTE_TABLE = Store("spx_jev/store/spx_bars")
-FUTURES_PRICE_BARS_BY_MINUTE_TABLE = Store("spx_jev/store/overnight_bars")
+SPX_PRICE_BARS_BY_MINUTE_TABLE = Store("market/tables/spx_price_bars_by_minute")
+FUTURES_PRICE_BARS_BY_MINUTE_TABLE = Store("market/tables/futures_price_bars_by_minute")
 
 # =====================================================================================================================
 # spx/scanner/   the SPX options scanner (the left eye), the order-flow collector's readings and the wall sensor
 # =====================================================================================================================
-SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN = Store("reversion/{day}.jsonl")
-SPX_OPTIONS_SCANNER_GRADES_BY_DAY = Store("reversion/polarity_history.jsonl")
-SPX_ORDER_FLOW_READINGS_BY_MINUTE = Store("lob_flow/agg/{day}.jsonl")
-SPX_ORDER_FLOW_GRADES_BY_DAY = Store("lob_flow/cards/{day}.json")
-SPX_OPTIONS_DEPTH_BASELINES_STATE = Store("lob_flow/baselines/lob_flow.json")
-SPY_DEPTH_BASELINES_STATE = Store("lob_flow/baselines/spy_depth.json")
+SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN = Store("spx/scanner/spx_options_scanner_results_by_scan/{day}.jsonl")
+SPX_OPTIONS_SCANNER_GRADES_BY_DAY = Store("spx/scanner/spx_options_scanner_grades_by_day.jsonl")
+SPX_ORDER_FLOW_READINGS_BY_MINUTE = Store("spx/scanner/spx_order_flow_readings_by_minute/{day}.jsonl")
+SPX_ORDER_FLOW_GRADES_BY_DAY = Store("spx/scanner/spx_order_flow_grades_by_day/{day}.json")
+SPX_OPTIONS_DEPTH_BASELINES_STATE = Store("spx/scanner/spx_options_depth_baselines_state.json")
+SPY_DEPTH_BASELINES_STATE = Store("spx/scanner/spy_depth_baselines_state.json")
 DEPTH_BASELINES_STATE_BY_ENGINE = {"lob_flow": SPX_OPTIONS_DEPTH_BASELINES_STATE, "spy_depth": SPY_DEPTH_BASELINES_STATE}
-SPX_DEALER_WALL_TOUCHES_BY_EVENT = Store("siege/cards/{day}.jsonl")
-SPX_DEALER_WALLS_LATEST = Store("siege/latest.json")
-SPY_VOLUME_BASELINES_STATE = Store("siege/baseline.json")                           # the wall sensor's working memory: SPY volume per minute, every kept day
+SPX_DEALER_WALL_TOUCHES_BY_EVENT = Store("spx/scanner/spx_dealer_wall_touches_by_event/{day}.jsonl")
+SPX_DEALER_WALLS_LATEST = Store("spx/scanner/spx_dealer_walls_latest.json")
+SPY_VOLUME_BASELINES_STATE = Store("spx/scanner/spy_volume_baselines_state.json")   # the wall sensor's working memory: SPY volume per minute, every kept day
 # The scanner's Claude second opinion keeps its memory beside its notes: a summary per session and the terrain it draws
 # from them. The map retires the two files, but the reader's CLI still rebuilds them on demand, so they stay live stores.
-SPX_OPTIONS_SCANNER_CLAUDE_NOTES_BY_READ = Store("spx_rag/slices/{day}.jsonl")
-SPX_OPTIONS_SCANNER_CLAUDE_SESSION_SUMMARIES_BY_DAY = Store("spx_rag/summaries.jsonl")
-SPX_OPTIONS_SCANNER_CLAUDE_TERRAIN_STATE = Store("spx_rag/terrain.json")
-SPX_OPTIONS_SCANNER_SIGNAL_CHECKS_BY_SCAN = Store("skills/mirai-left-eye/logs/{day}.jsonl", base="repo")
-SPX_OPTIONS_STRIKE_VOLUME_WEIGHTS_STATE = Store("gex_fills/native_SPX.json")
-SPY_OPTIONS_STRIKE_VOLUME_WEIGHTS_STATE = Store("gex_fills/proxy_SPY.json")
+SPX_OPTIONS_SCANNER_CLAUDE_NOTES_BY_READ = Store("spx/scanner/spx_options_scanner_claude_notes_by_read/{day}.jsonl")
+SPX_OPTIONS_SCANNER_CLAUDE_SESSION_SUMMARIES_BY_DAY = Store("spx/scanner/spx_options_scanner_claude_session_summaries_by_day.jsonl")
+SPX_OPTIONS_SCANNER_CLAUDE_TERRAIN_STATE = Store("spx/scanner/spx_options_scanner_claude_terrain_state.json")
+SPX_OPTIONS_SCANNER_SIGNAL_CHECKS_BY_SCAN = Store("spx/scanner/spx_options_scanner_signal_checks_by_scan/{day}.jsonl")
+SPX_OPTIONS_STRIKE_VOLUME_WEIGHTS_STATE = Store("spx/scanner/spx_options_strike_volume_weights_state.json")
+SPY_OPTIONS_STRIKE_VOLUME_WEIGHTS_STATE = Store("spx/scanner/spy_options_strike_volume_weights_state.json")
 # the fill ledger's two files by the ledger id the scanner stamps them under (native_<ticker>, proxy_<ticker>)
 OPTIONS_STRIKE_VOLUME_WEIGHTS_STATE_BY_LEDGER = {"native_SPX": SPX_OPTIONS_STRIKE_VOLUME_WEIGHTS_STATE,
                                                  "proxy_SPY": SPY_OPTIONS_STRIKE_VOLUME_WEIGHTS_STATE}
-SPX_OPTIONS_VOLUME_LAST_SCAN_STATE = Store("tape_prev/SPX.json")
+SPX_OPTIONS_VOLUME_LAST_SCAN_STATE = Store("spx/scanner/spx_options_volume_last_scan_state.json")
 OPTIONS_VOLUME_LAST_SCAN_STATE_BY_TICKER = {"SPX": SPX_OPTIONS_VOLUME_LAST_SCAN_STATE}   # the scanner scans SPX alone
-SPX_DEALER_WALL_TOUCHES_TODAY_STATE = Store("siege/session.json")
-SPX_OPTIONS_TRADES_RESUME_POINT_STATE = Store("lob_flow/cursor.json")
-SPX_ORDER_FLOW_READINGS_LATEST = Store("lob_flow/latest.json")
-SPX_DEALER_GAMMA_LEVELS_LATEST = Store("lob_flow/gex_context.json")
-SPX_OPTIONS_SCANNER_SIGNALS_SENT_STATE = Store("skills/mirai-left-eye/state.json", base="repo")
+SPX_DEALER_WALL_TOUCHES_TODAY_STATE = Store("spx/scanner/spx_dealer_wall_touches_today_state.json")
+SPX_OPTIONS_TRADES_RESUME_POINT_STATE = Store("spx/scanner/spx_options_trades_resume_point_state.json")
+SPX_ORDER_FLOW_READINGS_LATEST = Store("spx/scanner/spx_order_flow_readings_latest.json")
+SPX_DEALER_GAMMA_LEVELS_LATEST = Store("spx/scanner/spx_dealer_gamma_levels_latest.json")
+SPX_OPTIONS_SCANNER_SIGNALS_SENT_STATE = Store("spx/scanner/spx_options_scanner_signals_sent_state.json")
 
 # =====================================================================================================================
 # spx/jev/   the JEV question pipeline: its three lanes, the shared archive and its Parquet tables
 # =====================================================================================================================
 JEV_LANE_FOLDER = Store("{lane}")
-JEV_READS_AND_GRADES_BY_EVENT = Store("spx_jev/archive/{day}.jsonl")
-JEV_ANSWERS_BY_READ = Store("{lane}/{day}.jsonl")
-JEV_AND_POOL_FORECASTS_BY_READ = Store("{lane}/hour/{day}.jsonl")
-JEV_END_PRICE_GRADES_BY_READ = Store("{lane}/grades.jsonl")
-JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON = Store("{lane}/integral_grades.jsonl")
-JEV_AVERAGE_PRICE_GRADES_LOCK = Store("{lane}/integral_grades.jsonl.lock")
-JEV_QUESTION_WEIGHTS_STATE = Store("{lane}/weights.json")
-JEV_LAST_ANSWERS_STATE = Store("{lane}/last_asked.json")
-JEV_QUESTION_ASK_SCHEDULE_STATE = Store("{lane}/cadence.json", lane="live")
-HISTORICAL_ODDS_END_PRICE_DAYS_STATE = Store("{lane}/clock_days.json", lane="live")
-HISTORICAL_ODDS_AVERAGE_PRICE_DAYS_STATE = Store("{lane}/clock_integral_days.json", lane="live")
-JEV_READ_SUMMARIES_BY_READ_TABLE = Store("spx_jev/store/reads")
-JEV_ANSWERS_BY_READ_AND_QUESTION_TABLE = Store("spx_jev/store/answers")
-JEV_AND_POOL_FORECASTS_BY_READ_AND_HORIZON_TABLE = Store("spx_jev/store/calls")
-JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON_TABLE = Store("spx_jev/store/average_grades")
-JEV_TABLES_FOLDER = Store("spx_jev/store")                                           # every table above, plus the build's counts and refused rows
+JEV_READS_AND_GRADES_BY_EVENT = Store("spx/jev/jev_reads_and_grades_by_event/{day}.jsonl")
+JEV_ANSWERS_BY_READ = Store("{lane}/jev_answers_by_read/{day}.jsonl")
+JEV_AND_POOL_FORECASTS_BY_READ = Store("{lane}/jev_and_pool_forecasts_by_read/{day}.jsonl")
+JEV_END_PRICE_GRADES_BY_READ = Store("{lane}/jev_end_price_grades_by_read.jsonl")
+JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON = Store("{lane}/jev_average_price_grades_by_read_and_horizon.jsonl")
+JEV_AVERAGE_PRICE_GRADES_LOCK = Store("{lane}/jev_average_price_grades_by_read_and_horizon.jsonl.lock")
+JEV_QUESTION_WEIGHTS_STATE = Store("{lane}/jev_question_weights_state.json")
+JEV_LAST_ANSWERS_STATE = Store("{lane}/jev_last_answers_state.json")
+JEV_QUESTION_ASK_SCHEDULE_STATE = Store("{lane}/jev_question_ask_schedule_state.json", lane="live")
+HISTORICAL_ODDS_END_PRICE_DAYS_STATE = Store("{lane}/historical_odds_end_price_days_state.json", lane="live")
+HISTORICAL_ODDS_AVERAGE_PRICE_DAYS_STATE = Store("{lane}/historical_odds_average_price_days_state.json", lane="live")
+JEV_TABLES_FOLDER = Store("spx/jev/tables")                                          # the four JEV tables below
+JEV_READ_SUMMARIES_BY_READ_TABLE = Store("spx/jev/tables/jev_read_summaries_by_read")
+JEV_ANSWERS_BY_READ_AND_QUESTION_TABLE = Store("spx/jev/tables/jev_answers_by_read_and_question")
+JEV_AND_POOL_FORECASTS_BY_READ_AND_HORIZON_TABLE = Store("spx/jev/tables/jev_and_pool_forecasts_by_read_and_horizon")
+JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON_TABLE = Store("spx/jev/tables/jev_average_price_grades_by_read_and_horizon")
 
 # =====================================================================================================================
 # spx/prediction/   the base pool (pool 1), the learner pool (pool 2), the code questions and the forecaster tables
 # =====================================================================================================================
+PREDICTION_FOLDER = Store("spx/prediction")                                          # the prediction system's folder: every store below but its rollback copies
 # The base pool's state, one file per horizon it learns: the live lane's two end-price horizons and its average-price
 # one (the station's pools), plus the 10-minute horizons of the opening and pre-market lanes, which the loop learns only
-# when it is run on one of those lanes by hand, into that lane's own folder. At the move the files become one
-# horizon-keyed folder (base_pool_state/next_30_minutes.json ...).
-BASE_POOL_STATE = Store("{lane}/{horizon}.json", lane="live",
-                        horizon={"next_10_minutes": "pool_10", "next_30_minutes": "pool_30", "next_60_minutes": "pool_60",
-                                 "average_of_next_10_minutes": "pool_10_integral", "average_of_next_30_minutes": "pool_30_integral"})
-BASE_POOL_UPDATES_BY_DAY_AND_HORIZON = Store("{lane}/pool_{horizon}_log.jsonl", lane="live",
-                                             horizon={"average_of_next_30_minutes": "integral"})
-BASE_POOL_STATE_ROLLBACK_COPIES = Store("{lane}/archive", lane="live")              # <state file>.pre-<constants hash>-<day> copies
-LEARNER_POOL_FOLDER = Store("spx_jev/mirai_prediction")                              # the prediction system's own folder, today
-LEARNER_POOL_STATE = Store("spx_jev/mirai_prediction/pools/pool_v2/weights_{sum_id}.json")
-LEARNER_POOL_TRAINED_FORECASTERS_BY_DAY = Store("spx_jev/mirai_prediction/catalogs/voice_fits/{day}_{sum_id}.json")
-LEARNER_POOL_ROLLBACK_COPIES = Store("spx_jev/mirai_prediction/archive")             # <file>.<UTC stamp> copies and replay_force_<stamp>/
-CODE_QUESTION_ANSWERS_BY_READ = Store("spx_jev/mirai_prediction/raw/code_features/{day}.jsonl")
-FORECASTS_BY_FORECASTER_READ_AND_HORIZON = Store("spx_jev/mirai_prediction/raw/new_voice_forecasts/{day}.jsonl")
-FORECASTS_BY_FORECASTER_READ_AND_HORIZON_TABLE = Store("spx_jev/mirai_prediction/tables/new_voice_forecasts")
-GRADES_BY_FORECASTER_READ_AND_HORIZON_TABLE = Store("spx_jev/mirai_prediction/tables/voice_scores")
+# when it is run on one of those lanes by hand, into a base_pool_state folder inside that lane's own folder (pool.py).
+BASE_POOL_STATE = Store("spx/prediction/base_pool/base_pool_state/{horizon}.json",
+                        horizon={h: h for h in ("next_10_minutes", "next_30_minutes", "next_60_minutes",
+                                                "average_of_next_10_minutes", "average_of_next_30_minutes")})
+BASE_POOL_UPDATES_BY_DAY_AND_HORIZON = Store("spx/prediction/base_pool/base_pool_updates_by_day_and_horizon/{horizon}.jsonl",
+                                             horizon={"average_of_next_30_minutes": "average_of_next_30_minutes"})
+BASE_POOL_STATE_ROLLBACK_COPIES = Store("archive/base_pool_state_rollback_copies")   # <state file>.pre-<constants hash>-<day> copies
+LEARNER_POOL_SUM_IDS = {"next_60": "next_60_minutes", "average_30": "average_of_next_30_minutes"}   # the code's sum ids -> the horizon words
+LEARNER_POOL_STATE = Store("spx/prediction/learner_pool/learner_pool_state/{sum_id}.json", sum_id=LEARNER_POOL_SUM_IDS)
+LEARNER_POOL_TRAINED_FORECASTERS_BY_DAY = Store("spx/prediction/learner_pool/learner_pool_trained_forecasters_by_day/{day}_{sum_id}.json",
+                                                sum_id=LEARNER_POOL_SUM_IDS)
+LEARNER_POOL_ROLLBACK_COPIES = Store("archive/learner_pool_rollback_copies")         # <file>.<UTC stamp> copies and replay_force_<stamp>/
+CODE_QUESTION_ANSWERS_BY_READ = Store("spx/prediction/code_question_answers_by_read/{day}.jsonl")
+FORECASTS_BY_FORECASTER_READ_AND_HORIZON = Store("spx/prediction/forecasts_by_forecaster_read_and_horizon/{day}.jsonl")
+FORECASTS_BY_FORECASTER_READ_AND_HORIZON_TABLE = Store("spx/prediction/tables/forecasts_by_forecaster_read_and_horizon")
+GRADES_BY_FORECASTER_READ_AND_HORIZON_TABLE = Store("spx/prediction/tables/grades_by_forecaster_read_and_horizon")
 
 # =====================================================================================================================
 # spx/claude_forecast/   Claude's own SPX forecast
 # =====================================================================================================================
-CLAUDE_FORECAST_FOLDER = Store("spx_claude_forecast")                                # the package's one writable folder, today
-CLAUDE_FORECAST_INPUTS_BY_READ = Store("spx_claude_forecast/payloads/{day}.jsonl")
-CLAUDE_FORECAST_ANSWERS_BY_READ = Store("spx_claude_forecast/reads/{day}.jsonl")
-CLAUDE_FORECAST_OUTCOMES_BY_READ = Store("spx_claude_forecast/outcomes/{day}.jsonl")
-CLAUDE_FORECAST_TEST_ANSWERS_BY_VARIANT_AND_READ = Store("spx_claude_forecast/arms/{day}.jsonl")
-CLAUDE_FORECAST_RULEBOOKS_BY_VERSION = Store("spx_claude_forecast/rules/{sha}.txt")
-CLAUDE_FORECAST_REBUILT_INPUTS_BY_READ = Store("spx_claude_forecast/seed/payloads/{day}.jsonl")
-CLAUDE_FORECAST_REBUILT_OUTCOMES_BY_READ = Store("spx_claude_forecast/seed/outcomes/{day}.jsonl")
-CLAUDE_FORECAST_FINGERPRINTS_AND_OUTCOMES_BY_READ_TABLE = Store("spx_claude_forecast/library/rows.parquet")
-CLAUDE_FORECAST_GRADES_BY_FORECASTER_READ_AND_HORIZON_TABLE = Store("spx_claude_forecast/library/scores.parquet")
-CLAUDE_FORECAST_FINGERPRINTS_AND_OUTCOMES_BUILD_LATEST = Store("spx_claude_forecast/library/manifest.json")
-CLAUDE_FORECAST_SCOREBOARD_LATEST = Store("spx_claude_forecast/scorecard.json")
-CLAUDE_FORECAST_PAUSE_AND_LIMITS = Store("spx_claude_forecast/control.json")
-CLAUDE_FORECAST_RECORDER_FOLDER = Store("spx_claude_forecast/recorder")              # the recorder's copies (the market/ rows above)
+CLAUDE_FORECAST_FOLDER = Store("spx/claude_forecast")                                # the package's own folder: the record, the tables, the rulebooks
+CLAUDE_FORECAST_INPUTS_BY_READ = Store("spx/claude_forecast/claude_forecast_inputs_by_read/{day}.jsonl")
+CLAUDE_FORECAST_ANSWERS_BY_READ = Store("spx/claude_forecast/claude_forecast_answers_by_read/{day}.jsonl")
+CLAUDE_FORECAST_OUTCOMES_BY_READ = Store("spx/claude_forecast/claude_forecast_outcomes_by_read/{day}.jsonl")
+CLAUDE_FORECAST_TEST_ANSWERS_BY_VARIANT_AND_READ = Store("spx/claude_forecast/claude_forecast_test_answers_by_variant_and_read/{day}.jsonl")
+CLAUDE_FORECAST_RULEBOOKS_BY_VERSION = Store("spx/claude_forecast/claude_forecast_rulebooks_by_version/{sha}.txt")
+CLAUDE_FORECAST_REBUILT_INPUTS_BY_READ = Store("spx/claude_forecast/claude_forecast_rebuilt_inputs_by_read/{day}.jsonl")
+CLAUDE_FORECAST_REBUILT_OUTCOMES_BY_READ = Store("spx/claude_forecast/claude_forecast_rebuilt_outcomes_by_read/{day}.jsonl")
+CLAUDE_FORECAST_FINGERPRINTS_AND_OUTCOMES_BY_READ_TABLE = Store("spx/claude_forecast/tables/claude_forecast_fingerprints_and_outcomes_by_read.parquet")
+CLAUDE_FORECAST_GRADES_BY_FORECASTER_READ_AND_HORIZON_TABLE = Store("spx/claude_forecast/tables/claude_forecast_grades_by_forecaster_read_and_horizon.parquet")
+CLAUDE_FORECAST_FINGERPRINTS_AND_OUTCOMES_BUILD_LATEST = Store("spx/claude_forecast/tables/claude_forecast_fingerprints_and_outcomes_build_latest.json")
+CLAUDE_FORECAST_SCOREBOARD_LATEST = Store("spx/claude_forecast/claude_forecast_scoreboard_latest.json")
+CLAUDE_FORECAST_PAUSE_AND_LIMITS = Store("spx/claude_forecast/claude_forecast_pause_and_limits.json")
 
 # =====================================================================================================================
 # sndk/   the SNDK options scanner and its Claude reader
 # =====================================================================================================================
-SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN = Store("sndk_reversion/{day}.jsonl")
-SNDK_PRICE_BARS_BY_MINUTE = Store("sndk_bars/{day}.jsonl")
-SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN = Store("sndk_reads/{day}.jsonl")
-SNDK_PRICE_BAR_FACTS_BY_READ = Store("sndk_side/{day}.jsonl")
-SNDK_LAST_PRICES_BY_QUOTE = Store("sndk_tape/{day}.jsonl")
+SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN = Store("sndk/sndk_options_scanner_results_by_scan/{day}.jsonl")
+SNDK_PRICE_BARS_BY_MINUTE = Store("sndk/sndk_price_bars_by_minute/{day}.jsonl")
+SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN = Store("sndk/sndk_options_reader_gates_and_answers_by_run/{day}.jsonl")
+SNDK_PRICE_BAR_FACTS_BY_READ = Store("sndk/sndk_price_bar_facts_by_read/{day}.jsonl")
+SNDK_LAST_PRICES_BY_QUOTE = Store("sndk/sndk_last_prices_by_quote/{day}.jsonl")
 # The reader's memory beside its notes: a summary per session and the terrain drawn from them, rebuilt on demand by its
 # CLI (the map retires the two files; they stay live stores while that code runs).
-SNDK_OPTIONS_READER_NOTES_BY_READ = Store("sndk_rag/slices/{day}.jsonl")
-SNDK_OPTIONS_READER_SESSION_SUMMARIES_BY_DAY = Store("sndk_rag/summaries.jsonl")
-SNDK_OPTIONS_READER_TERRAIN_STATE = Store("sndk_rag/terrain.json")
-SNDK_OPTIONS_CHAIN_STATE = Store("sndk_gex/chain_cache.json")
-SNDK_OPTIONS_EXPIRIES_STATE = Store("sndk_gex/discovery.json")
-SNDK_IMPLIED_VOLATILITY_STATE = Store("sndk_gex/vol_hint.json")
-SNDK_OPTIONS_READER_REASONING_SWITCH = Store("sndk_reads/control.json")
-SNDK_OPTIONS_READER_PERCENTILE_HISTORY_STATE = Store("sndk_reads/pctl_prior.json")
-SNDK_PAST_VOLUME_CURVES_STATE = Store("sndk_reads/prior_volume.json")
-
-# =====================================================================================================================
-# screen_files/   files written only for a screen: the phone's cards and the desktop's 3D view
-# =====================================================================================================================
-JEV_LIVE_CARD = Store("{lane}/latest.json", lane="live")
-JEV_OPENING_CARD = Store("{lane}/latest.json", lane="tape")
-JEV_PREMARKET_CARD = Store("{lane}/latest.json", lane="premarket")
-JEV_CARD_BY_LANE = {"live": JEV_LIVE_CARD, "tape": JEV_OPENING_CARD, "premarket": JEV_PREMARKET_CARD}
-CLAUDE_FORECAST_CARD = Store("spx_claude_forecast/latest.json")
-FORECASTER_SCOREBOARD_CARD = Store("spx_jev/mirai_prediction/scoreboard.json")
-OPTIONS_FEED_STATUS_CARD = Store("spx_jev/mirai_prediction/options_data.json")
-SPX_OPTIONS_TRADES_3D_VIEW_CARD = Store("flow/boards/{ticker}-{day}.json")          # the view bins other tickers the same way
+SNDK_OPTIONS_READER_NOTES_BY_READ = Store("sndk/sndk_options_reader_notes_by_read/{day}.jsonl")
+SNDK_OPTIONS_READER_SESSION_SUMMARIES_BY_DAY = Store("sndk/sndk_options_reader_session_summaries_by_day.jsonl")
+SNDK_OPTIONS_READER_TERRAIN_STATE = Store("sndk/sndk_options_reader_terrain_state.json")
+SNDK_OPTIONS_CHAIN_STATE = Store("sndk/sndk_options_chain_state.json")
+SNDK_OPTIONS_EXPIRIES_STATE = Store("sndk/sndk_options_expiries_state.json")
+SNDK_IMPLIED_VOLATILITY_STATE = Store("sndk/sndk_implied_volatility_state.json")
+SNDK_OPTIONS_READER_REASONING_SWITCH = Store("sndk/sndk_options_reader_reasoning_switch.json")
+SNDK_OPTIONS_READER_PERCENTILE_HISTORY_STATE = Store("sndk/sndk_options_reader_percentile_history_state.json")
+SNDK_PAST_VOLUME_CURVES_STATE = Store("sndk/sndk_past_volume_curves_state.json")
 
 # =====================================================================================================================
 # voice_desk/   the spoken SNDK desk's own files (the owner's default: the desk still runs; keep or retire is open)
 # =====================================================================================================================
-VOICE_DESK_SESSION_STATE = Store("voice/session.json")                               # the open agent session's id and day
-VOICE_DESK_TRANSCRIPTS_BY_EXCHANGE = Store("voice/convo-{day}.jsonl")                # one row per spoken exchange; the raw explorer never serves them
+VOICE_DESK_SESSION_STATE = Store("voice_desk/voice_desk_session_state.json")        # the open agent session's id and day
+VOICE_DESK_TRANSCRIPTS_BY_EXCHANGE = Store("voice_desk/voice_desk_transcripts_by_exchange/{day}.jsonl")   # one row per spoken exchange; the raw explorer never serves them
+
+# =====================================================================================================================
+# screen_files/   files written only for a screen: the phone's cards and the desktop's 3D view
+# =====================================================================================================================
+JEV_LIVE_CARD = Store("screen_files/phone/jev_live_card.json")
+JEV_OPENING_CARD = Store("screen_files/phone/jev_opening_card.json")
+JEV_PREMARKET_CARD = Store("screen_files/phone/jev_premarket_card.json")
+JEV_CARD_BY_LANE = {"live": JEV_LIVE_CARD, "tape": JEV_OPENING_CARD, "premarket": JEV_PREMARKET_CARD}
+CLAUDE_FORECAST_CARD = Store("screen_files/phone/claude_forecast_card.json")
+FORECASTER_SCOREBOARD_CARD = Store("screen_files/phone/forecaster_scoreboard_card.json")
+OPTIONS_FEED_STATUS_CARD = Store("screen_files/phone/options_feed_status_card.json")
+SPX_OPTIONS_TRADES_3D_VIEW_CARD = Store("screen_files/desktop/spx_options_trades_3d_view_card/{day}.json")   # a rebuildable cache of one day's board
 
 # =====================================================================================================================
 # operations/   logs, locks, health files and alert state
 # =====================================================================================================================
-STATION_RUNTIME_LOG = Store("logs/runtime-{day}.log")                                # env.sh's log(); runtime/watch names the folder
-CLAUDE_FORECAST_JOB_RUNS_LOG = Store("spx_claude_forecast/run_logs/job_run_log.jsonl")
-CLAUDE_FORECAST_READ_JOB_LOG = Store("spx_claude_forecast/run_logs/read_runner.out")
-PREDICTION_JOB_RUNS_LOG = Store("spx_jev/mirai_prediction/run_logs/job_run_log.jsonl")
-FORECASTER_FORECASTS_JOB_LOG = Store("spx_jev/mirai_prediction/run_logs/read_hook.out")
-SPX_OPTIONS_TAPE_COLLECTOR_LOCK = Store("lob_flow/collector.lock")
-SPX_OPTIONS_TAPE_COLLECTOR_FOLDER = Store("lob_flow")                                # the collector's folder: its disk use is measured here
-CLAUDE_FORECAST_NIGHTLY_JOB_LOCK = Store("spx_claude_forecast/locks/nightly.lock")
-CLAUDE_FORECAST_RECORDER_JOB_LOCK = Store("spx_claude_forecast/locks/recorder.lock")
-CLAUDE_FORECAST_REBUILD_PAST_READS_JOB_LOCK = Store("spx_claude_forecast/locks/seed.lock")
+STATION_RUNTIME_LOG = Store("operations/logs/station_runtime_log/{day}.log")        # env.sh's log(); runtime/watch names the folder
+CLAUDE_FORECAST_JOB_RUNS_LOG = Store("operations/logs/claude_forecast_job_runs_log.jsonl")
+CLAUDE_FORECAST_READ_JOB_LOG = Store("operations/logs/claude_forecast_read_job_log.txt")
+PREDICTION_JOB_RUNS_LOG = Store("operations/logs/prediction_job_runs_log.jsonl")
+FORECASTER_FORECASTS_JOB_LOG = Store("operations/logs/forecaster_forecasts_job_log.txt")
+SPX_OPTIONS_TAPE_COLLECTOR_LOCK = Store("operations/locks/spx_options_tape_collector.lock")
+CLAUDE_FORECAST_NIGHTLY_JOB_LOCK = Store("operations/locks/claude_forecast_nightly_job.lock")
+CLAUDE_FORECAST_RECORDER_JOB_LOCK = Store("operations/locks/claude_forecast_recorder_job.lock")
+CLAUDE_FORECAST_REBUILD_PAST_READS_JOB_LOCK = Store("operations/locks/claude_forecast_rebuild_past_reads_job.lock")
 CLAUDE_FORECAST_JOB_LOCK_BY_JOB = {"nightly": CLAUDE_FORECAST_NIGHTLY_JOB_LOCK, "recorder": CLAUDE_FORECAST_RECORDER_JOB_LOCK,
                                    "seed": CLAUDE_FORECAST_REBUILD_PAST_READS_JOB_LOCK}
-SCHWAB_SIGN_IN_LOCK = Store(".cassandra_oauth.lock")                                 # the Schwab sign-in's single-copy lock (cassandra_oauth.py)
-FUTURES_PRICE_BARS_SAVE_LOCK = Store("spx_jev/overnight/.save.lock")                 # the overnight saver's single-copy lock
-NEWS_HEADLINES_POLL_LOCK = Store("spx_jev/headlines/.lock")                          # the headline poller's single-copy lock
-SNDK_PRICE_BARS_HEALTH_LATEST = Store("sndk_bars/health.json")
-TABLE_BUILD_COUNTS_BY_TABLE_AND_DAY = Store("spx_jev/store/validation")
-TABLE_BUILD_REFUSED_ROWS_BY_EVENT = Store("spx_jev/store/quarantine")
-FORECASTER_TABLE_REFUSED_ROWS_BY_EVENT = Store("spx_jev/mirai_prediction/tables/_checks/refused_rows/{day}.jsonl")
-JEV_PREMARKET_OUTAGE_ALERT_STATE = Store("{lane}/deadman_state.json", lane="premarket")
-SNDK_OUTAGE_ALERT_STATE = Store("sndk_reads/deadman_state.json")
-PHONE_PUSHES_WALL_TIMERS_FEED_OUTAGES_STATE = Store("market_expectation/alerts_state.json")
+SCHWAB_SIGN_IN_LOCK = Store("operations/locks/schwab_sign_in.lock")                  # the Schwab sign-in's single-copy lock (cassandra_oauth.py)
+FUTURES_PRICE_BARS_SAVE_LOCK = Store("operations/locks/futures_price_bars_save.lock")   # the overnight saver's single-copy lock
+NEWS_HEADLINES_POLL_LOCK = Store("operations/locks/news_headlines_poll.lock")       # the headline poller's single-copy lock
+SNDK_PRICE_BARS_HEALTH_LATEST = Store("operations/health/sndk_price_bars_health_latest.json")
+TABLE_BUILD_COUNTS_BY_TABLE_AND_DAY = Store("operations/health/table_build_counts_by_table_and_day")
+TABLE_BUILD_REFUSED_ROWS_BY_EVENT = Store("operations/health/table_build_refused_rows_by_event")
+FORECASTER_TABLE_REFUSED_ROWS_BY_EVENT = Store("operations/health/forecaster_table_refused_rows_by_event/{day}.jsonl")
+JEV_PREMARKET_OUTAGE_ALERT_STATE = Store("operations/jev_premarket_outage_alert_state.json")
+SNDK_OUTAGE_ALERT_STATE = Store("operations/sndk_outage_alert_state.json")
+PHONE_PUSHES_WALL_TIMERS_FEED_OUTAGES_STATE = Store("operations/phone_pushes_wall_timers_feed_outages_state.json")
 
 # =====================================================================================================================
 # Not in the approved map, awaiting the owner's decision: book_flow's equity-book collector (shipped disabled, no launchd
 # job, nothing on disk) and the stores only it would write. The phase 1 follow-ups ask for the collector's code and these
 # stores to go once grep proves nothing live uses them (nothing does: lob3d.js draws SPX alone); the deletion of its
-# files is left to the lead.
+# files is left to the lead, so these keep their old templates until then.
 # =====================================================================================================================
 EQUITY_BOOK_COLLECTOR_FOLDER = Store("flow")
 EQUITY_BOOK_TICKER_FOLDER = Store("flow/{ticker}")

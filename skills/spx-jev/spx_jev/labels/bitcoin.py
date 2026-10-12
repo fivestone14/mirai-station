@@ -198,7 +198,7 @@ class NightStore:
 def _premarket_labels(scene: Scene) -> dict[str, Got]:
     if scene.state_dir is None:
         return {path: "no overnight store to rank the night against" for path in PREMARKET}
-    table = rolls.load(Path(scene.state_dir) / overnight.OVERNIGHT_SUBDIR)
+    table = rolls.load(Path(scene.state_dir))
     futures = night_move(scene, table, FUTURES, "S&P futures", futures_close_at(date.fromisoformat(scene.day)))
     return {"overnight.btc_vs_futures": btc_vs_futures(scene, table, futures), "weekend.btc_path": weekend_path(scene, table, futures)}
 
@@ -569,7 +569,7 @@ def five_day(scene: Scene, store: NightStore) -> Got:
     against the five sessions ending on each of the last NIGHT_RANK_COUNT sessions before, needing SAME_CLOCK_MIN_SESSIONS."""
     if scene.state_dir is None:
         return "no overnight store to read bitcoin's session closes from"
-    table = rolls.load(Path(scene.state_dir) / overnight.OVERNIGHT_SUBDIR)
+    table = rolls.load(Path(scene.state_dir))
     refused = pending_roll(scene, table, BITCOIN, f"{NAME}'s last {FIVE_SESSIONS} sessions")
     if refused:
         return refused

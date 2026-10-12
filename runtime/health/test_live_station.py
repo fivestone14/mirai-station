@@ -237,22 +237,21 @@ def book_fresh(diary_path: Path, now: datetime, limit_min: float) -> tuple[bool 
     return True, f"the options book is {age:.1f} min old (limit {limit_min:g} min)"
 
 
-def bars_fresh(bars_dir: Path, now: datetime, limit_min: float) -> tuple[bool | None, str]:
+def bars_fresh(state_dir: Path, now: datetime, limit_min: float) -> tuple[bool | None, str]:
     """The minute-bar sidecar's last run reported no error and its record trails now by no more than the reader's minute-log limit."""
     closed = _closed(now)
     if closed:
         return None, closed
     now = now.astimezone(ET)
-    bars_dir = Path(bars_dir)
     problems = []
     try:
-        health = json.loads((bars_dir / station_paths.SNDK_PRICE_BARS_HEALTH_LATEST.file_name()).read_text())
+        health = json.loads(station_paths.SNDK_PRICE_BARS_HEALTH_LATEST.path(state_dir).read_text())
     except (OSError, ValueError):
         health = {}
     if isinstance(health, dict) and health.get("error"):
         problems.append(f"the minute-bar sidecar's last run ({_hhmm(health.get('ts'))}) "
                         f"failed with {health['error']}")
-    stamps = [t for b in _rows(bars_dir / station_paths.SNDK_PRICE_BARS_BY_MINUTE.file_name(day=now.date().isoformat()))
+    stamps = [t for b in _rows(station_paths.SNDK_PRICE_BARS_BY_MINUTE.path(state_dir, day=now.date().isoformat()))
               if (t := _parse_ts(b.get("ts"))) is not None]
     last = max(stamps, default=None)
     behind = (now - max(last or _open_at(now), _open_at(now))).total_seconds() / 60.0
@@ -426,10 +425,10 @@ def lane_read(lane_dir: Path, now: datetime, reads: tuple[str, ...], grace_min: 
     return True, f"the {what} lane read at all {len(owed)} of its reads due by {now:%H:%M} ET"
 
 
-def store_built(store_dir: Path, now: datetime, fires: str, run_min: float) -> tuple[bool, str]:
+def store_built(state_dir: Path, now: datetime, fires: str, run_min: float) -> tuple[bool, str]:
     """The SPX learning store holds the last market day its nightly job has had time to build: today once
     ``run_min`` minutes past the job's ``fires`` time on a market day, else the market day before today. A
-    day is built when its validation log is on disk (state/spx_jev/store/validation/day=YYYY-MM-DD/)."""
+    day is built when its build counts are on disk (operations/health/table_build_counts_by_table_and_day/day=YYYY-MM-DD/)."""
     now = now.astimezone(ET)
     day = now.date()
     due = datetime.combine(day, time.fromisoformat(fires), tzinfo=ET) + timedelta(minutes=run_min)
@@ -437,7 +436,7 @@ def store_built(store_dir: Path, now: datetime, fires: str, run_min: float) -> t
         day -= timedelta(days=1)
         while not _market_day(day):
             day -= timedelta(days=1)
-    logs = station_paths.TABLE_BUILD_COUNTS_BY_TABLE_AND_DAY.within(station_paths.JEV_TABLES_FOLDER, store_dir)
+    logs = station_paths.TABLE_BUILD_COUNTS_BY_TABLE_AND_DAY.path(state_dir)
     if (logs / f"day={day.isoformat()}" / "part-0.parquet").is_file():
         return True, f"the SPX learning store holds {day}, the last market day its nightly job has built"
     built = sorted(p.name.removeprefix("day=") for p in logs.glob("day=*"))
@@ -659,24 +658,31 @@ def test_book_fresh_dates_a_row_without_book_asof_by_its_scan_like_the_reader(tm
     assert book_fresh(_write(tmp_path / "b.jsonl", _scan(LIVE, 9)), LIVE, BOOK_MIN)[0] is False
 
 
+def _bars_day(state: Path, day, *bars) -> Path:
+    return _write(station_paths.SNDK_PRICE_BARS_BY_MINUTE.path(state, day=day.isoformat()), *bars)
+
+
+def _bars_health(state: Path, health: dict) -> Path:
+    return _write(station_paths.SNDK_PRICE_BARS_HEALTH_LATEST.path(state), health)
+
+
 def test_bars_fresh_passes_a_current_record_with_no_error(tmp_path):
-    _write(tmp_path / f"{LIVE.date()}.jsonl", _bar(LIVE, 30), _bar(LIVE, BARS_MIN))
-    _write(tmp_path / "health.json", {"ts": LIVE.isoformat(), "appended": 1, "last_bar_at": "x"})
+    _bars_day(tmp_path, LIVE.date(), _bar(LIVE, 30), _bar(LIVE, BARS_MIN))
+    _bars_health(tmp_path, {"ts": LIVE.isoformat(), "appended": 1, "last_bar_at": "x"})
     ok, why = bars_fresh(tmp_path, LIVE, BARS_MIN)
     assert ok is True and "4.0 min behind" in why
 
 
 def test_bars_fresh_fails_a_stalled_record(tmp_path):
-    _write(tmp_path / f"{LIVE.date()}.jsonl", _bar(LIVE, 90), _bar(LIVE, 88))
-    _write(tmp_path / "health.json", {"ts": LIVE.isoformat(), "appended": 0})
+    _bars_day(tmp_path, LIVE.date(), _bar(LIVE, 90), _bar(LIVE, 88))
+    _bars_health(tmp_path, {"ts": LIVE.isoformat(), "appended": 0})
     ok, why = bars_fresh(tmp_path, LIVE, BARS_MIN)
     assert ok is False and "stops at 09:36 ET" in why and "88.0 min behind" in why
 
 
 def test_bars_fresh_fails_on_a_health_error_even_with_a_current_record(tmp_path):
-    _write(tmp_path / f"{LIVE.date()}.jsonl", _bar(LIVE, 1))
-    _write(tmp_path / "health.json", {"ts": LIVE.isoformat(), "appended": 0,
-                                      "error": '<OAuthError "unsupported_token_type">'})
+    _bars_day(tmp_path, LIVE.date(), _bar(LIVE, 1))
+    _bars_health(tmp_path, {"ts": LIVE.isoformat(), "appended": 0, "error": '<OAuthError "unsupported_token_type">'})
     ok, why = bars_fresh(tmp_path, LIVE, BARS_MIN)
     assert ok is False and "unsupported_token_type" in why
 
@@ -691,7 +697,7 @@ def test_bars_fresh_allows_the_first_minutes_after_the_open_and_no_more(tmp_path
 def test_freshness_checks_skip_when_the_market_is_closed(tmp_path, now):
     """Every input here is stale, so a check that forgot the market clock would fail instead."""
     diary = _write(tmp_path / "d.jsonl", _scan(now, 300, book_asof=(now - timedelta(hours=5)).isoformat()))
-    _write(tmp_path / "health.json", {"error": "boom"})
+    _bars_health(tmp_path, {"error": "boom"})
     for ok, why in (scanner_fresh(diary, now, SILENT_MIN, FIRST_ROW_BY_MIN),
                     book_fresh(diary, now, BOOK_MIN),
                     reader_fresh(tmp_path / "missing.jsonl", diary, now, READER_MIN, SILENT_MIN),
@@ -1088,9 +1094,11 @@ def test_the_spx_jobs_this_review_loads_are_the_installers():
 
 
 def _store(tmp_path: Path, *days: str) -> Path:
+    """A data root whose learning store has built ``days`` (their build counts are on disk)."""
+    counts = station_paths.TABLE_BUILD_COUNTS_BY_TABLE_AND_DAY.path(tmp_path)
     for d in days:
-        (tmp_path / "validation" / f"day={d}").mkdir(parents=True)
-        (tmp_path / "validation" / f"day={d}" / "part-0.parquet").write_bytes(b"PAR1")
+        (counts / f"day={d}").mkdir(parents=True)
+        (counts / f"day={d}" / "part-0.parquet").write_bytes(b"PAR1")
     return tmp_path
 
 
@@ -1207,9 +1215,9 @@ def test_live_spx_store_job_is_loaded(station):
 
 @live
 def test_live_spx_store_holds_the_last_market_day(station):
-    store = station_paths.JEV_TABLES_FOLDER.path(station.state)
-    _hold(store_built(store, station.now, STORE_FIRES_ET, STORE_RUN_MIN),
-          f"ls {store}/validation | tail -n 3; tail -n 5 /tmp/mirai-station.spx-jev-store.err")
+    counts = station_paths.TABLE_BUILD_COUNTS_BY_TABLE_AND_DAY.path(station.state)
+    _hold(store_built(station.state, station.now, STORE_FIRES_ET, STORE_RUN_MIN),
+          f"ls {counts} | tail -n 3; tail -n 5 /tmp/mirai-station.spx-jev-store.err")
 
 
 @live
@@ -1295,8 +1303,8 @@ def test_live_options_book_is_fresh(station, limits):
 
 @live
 def test_live_minute_bars_are_fresh_with_no_error(station, limits):
-    bars = station_paths.SNDK_PRICE_BARS_BY_MINUTE.folder(station.state)
-    _hold(bars_fresh(bars, station.now, limits["bar_record_min"]),
+    bars = station_paths.SNDK_PRICE_BARS_BY_MINUTE.folder(station.state)   # for the hint; the check takes the data root
+    _hold(bars_fresh(station.state, station.now, limits["bar_record_min"]),
           f"cat {bars}/health.json; tail -n 1 {bars}/{station.day}.jsonl; "
           f"tail -n 5 {_log(station, 'com.mirai-station.sndk-bars', 'stdout')}")
 

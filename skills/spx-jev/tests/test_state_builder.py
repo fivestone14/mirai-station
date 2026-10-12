@@ -7,7 +7,7 @@ from datetime import timedelta
 import pytest
 
 from conftest import (DAY, SECTORS, at, bars_from_closes, context_line, flat_bars, make_row, measured, options_tape_at,
-                      prior_sessions, write_state)
+                      prior_sessions, station_paths, write_jsonl, write_state)
 from spx_jev.cuts import (IV_FLAT_BAND_PTS, TAPE_BIG_UNITS, TAPE_FLAT_UNITS, WALL_NEAR_SIGMA,
                            WALL_TOUCH_SIEGE_PERCENTILE)
 from spx_jev.labels.registry import build_labels
@@ -197,7 +197,7 @@ def test_the_wall_touch_volume_is_omitted_on_a_sick_feed_or_a_young_baseline(sce
 def test_past_sessions_come_from_the_saved_file_and_today_from_the_live_one(tmp_path):
     prior = {"2026-09-17": flat_bars(390, day="2026-09-17"), "2026-09-16": flat_bars(200, day="2026-09-16")}
     state = write_state(tmp_path, DAY, [make_row(at(10, 0), 7700.0)], flat_bars(31), prior)
-    (tmp_path / "spx_jev" / "bars" / "2026-09-17.jsonl").write_text(json.dumps(flat_bars(5, day="2026-09-17")[0]) + "\n")
+    write_jsonl(station_paths.SPX_PRICE_BARS_BY_MINUTE.path(tmp_path, day="2026-09-17"), [flat_bars(5, day="2026-09-17")[0]])
     assert len(load_bars(state, "2026-09-17")) == 390                # the saved session wins over a partial live file
     assert len(load_bars(state, DAY)) == 31                          # today: the live file
     assert list(prior_bar_days(state, DAY)) == ["2026-09-17"]        # a 200-bar day is not a full session
@@ -237,9 +237,8 @@ def test_the_market_context_joins_snapshots_and_backfilled_bars_by_when_each_was
     lines = [context_line(at(10, 0, ss=20), quotes={"XLK": 200.0, "$TICK": 0.0}, bars={"$TICK": (at(9, 59), 350.0)}),
              context_line(at(10, 1, ss=20), quotes={"XLK": 201.0}, bars={"$TICK": (at(10, 0), -40.0)})]
     write_state(tmp_path, DAY, [make_row(at(10, 2), 7700.0)], flat_bars(32), context=lines)
-    (tmp_path / "spx_jev" / "context" / "bars").mkdir()
-    (tmp_path / "spx_jev" / "context" / "bars" / f"{DAY}.jsonl").write_text(
-        json.dumps({"ts": at(9, 31).isoformat(), "bars": {"XLK": {"ts": at(9, 30).isoformat(), "close": 199.0}}}) + "\n")
+    write_jsonl(station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.path(tmp_path, day=DAY),
+                [{"ts": at(9, 31).isoformat(), "bars": {"XLK": {"ts": at(9, 30).isoformat(), "close": 199.0}}}])
     mk = load_market_context(tmp_path, DAY)
     assert mk.first("XLK") == 199.0 and mk.last("XLK", at(10, 1)) == 200.0 and mk.last("XLK", at(10, 2)) == 201.0
     assert mk.last("$TICK", at(10, 0, ss=30)) == 350.0               # the 09:59 bar finished at 10:00; a zero quote is a shell
@@ -254,9 +253,8 @@ def test_a_derived_vold_never_stands_in_for_the_vold_schwab_served_for_that_minu
     live = [{**context_line(at(10, 1, ss=20)), "bars": {"$VOLD": derived}},
             {**context_line(at(10, 2, ss=20)), "bars": {"$VOLD": {**derived, "ts": at(10, 1).isoformat(), "close": 9000.0}}}]
     write_state(tmp_path, DAY, [make_row(at(10, 2), 7700.0)], flat_bars(32), context=live)
-    (tmp_path / "spx_jev" / "context" / "bars").mkdir()
-    (tmp_path / "spx_jev" / "context" / "bars" / f"{DAY}.jsonl").write_text(
-        json.dumps({"ts": at(9, 31).isoformat(), "bars": {"$VOLD": {"ts": at(10, 0).isoformat(), "close": -15869.0}}}) + "\n")
+    write_jsonl(station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.path(tmp_path, day=DAY),
+                [{"ts": at(9, 31).isoformat(), "bars": {"$VOLD": {"ts": at(10, 0).isoformat(), "close": -15869.0}}}])
     mk = load_market_context(tmp_path, DAY)
     assert mk.last("$VOLD", at(10, 1)) == -15869.0                   # Schwab's own, not the snapshot's derived value
     assert mk.last("$VOLD", at(10, 2)) == 9000.0                     # a minute Schwab never served keeps the derived one
@@ -264,12 +262,10 @@ def test_a_derived_vold_never_stands_in_for_the_vold_schwab_served_for_that_minu
 
 
 def test_the_options_tape_reads_only_the_collectors_signed_lines(tmp_path):
-    agg = tmp_path / "lob_flow" / "agg"
-    agg.mkdir(parents=True)
     lines = [{"ts": at(10, 0).isoformat(), "engine": "lob_flow", "snapshot": {"tilt": 0.0, "determinate_share": None}},
              {"ts": at(10, 1).isoformat(), "engine": "spy_depth", "snapshot": {"tilt": 0.9, "determinate_share": 1.0}},
              {"ts": at(10, 2).isoformat(), "engine": "lob_flow", "snapshot": {"tilt": -0.04, "determinate_share": 0.55}}]
-    (agg / f"{DAY}.jsonl").write_text("".join(json.dumps(l) + "\n" for l in lines))
+    write_jsonl(station_paths.SPX_ORDER_FLOW_READINGS_BY_MINUTE.path(tmp_path, day=DAY), lines)
     tape = load_options_tape(tmp_path, [DAY, "2026-09-17"])
     assert list(tape.days) == [DAY] and tape.at(at(10, 3)) == (-0.04, 0.55)
     assert tape.at(at(10, 1)) is None and tape.at(at(10, 6)) is None     # before the first signed line; past the age line

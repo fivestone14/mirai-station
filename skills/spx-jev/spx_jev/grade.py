@@ -2,8 +2,8 @@
 
     python3 -m spx_jev.grade                # grade every ungraded record, rewrite weights.json
     python3 -m spx_jev.grade --day 2026-09-29
-    python3 -m spx_jev.grade --lane tape    # the opening lane, under state/spx_jev/lanes/tape/
-    python3 -m spx_jev.grade --lane premarket   # the reads before the open, under state/spx_jev/lanes/premarket/
+    python3 -m spx_jev.grade --lane tape    # the opening lane, under state/spx/jev/opening_lane/
+    python3 -m spx_jev.grade --lane premarket   # the reads before the open, under state/spx/jev/premarket_lane/
     python3 -m spx_jev.grade --integral-backfill [--day D]   # the average-price grade of past graded horizons, from their bars
     python3 -m spx_jev.grade --integral-report  # per box, the flat share on the average price against the end price
     python3 -m spx_jev.grade --integral-loop-dry-run   # what the loop would learn from the average-price grade, built in a scratch folder
@@ -86,10 +86,10 @@ The average-price grade
     the file for past days from their saved bars without grading anything else, and ``--integral-report``
     prints the flat share on both grades over the same windows, which is how the factor is judged.
 
-Outputs, all under the lane's folder (state/spx_jev/ for the live lane)
-    grades.jsonl       one line per graded horizon of a record (append only, keyed by row_ts and
+Outputs, all under the lane's folder (state/spx/jev/live_lane/ for the live lane)
+    jev_end_price_grades_by_read.jsonl   one line per graded horizon of a record (append only, keyed by row_ts and
                        the ``horizons`` the line carries; the primary's line has its fields flat on top)
-    weights.json       {"graded_runs": reads whose primary mark is graded, "primary",
+    jev_question_weights_state.json   {"graded_runs": reads whose primary mark is graded, "primary",
                         "sums": {qid: {"n", "hit_rate", "committed_calls", "committed_hit_rate", "always_flat_hit_rate", "mean_brier", "bands",
                                        "blended": {"n", "mean_brier_blend", "mean_brier_jev", "mean_brier_clock", "jev_hit_rate"},
                                        "event_reads": {"n", "mean_brier"}},
@@ -102,11 +102,11 @@ Outputs, all under the lane's folder (state/spx_jev/ for the live lane)
                         average-price loop's method, questions and pool, or {"failed": why}),
                         "new_this_run", "new_by_horizon", "closed_out"}
     and every new line, once more, in the raw archive (archive.GradeRecord, keyed to its read)
-    integral_grades.jsonl  one line per graded horizon, the average-price grade (append only, keyed by row_ts,
+    jev_average_price_grades_by_read_and_horizon.jsonl  one line per graded horizon, the average-price grade (append only, keyed by row_ts,
                        ``horizon`` and ``rule_version``): the sum graded (``sum``), integral.grade_window's fields,
                        the end-price label (``end_label``), on a RECORD horizon the five-band size line (``size``),
                        and for the average-price sum's call its ``scores`` and the edge JEV was told
-                       (``edge_told``, its zone); beside it integral_grades.jsonl.lock, held while it is read and appended
+                       (``edge_told``, its zone); beside it jev_average_price_grades_by_read_and_horizon.jsonl.lock, held while it is read and appended
 """
 from __future__ import annotations
 

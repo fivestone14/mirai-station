@@ -11,7 +11,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
-from conftest import DAY, PRIOR_DAYS, at, bars_from_closes
+from conftest import DAY, PRIOR_DAYS, at, bars_from_closes, diary_path, station_paths, write_json, write_jsonl
 
 from spx_jev.mirai_prediction import code_feature_inputs as inputs
 from spx_jev.mirai_prediction import code_features_market as market
@@ -608,7 +608,7 @@ def test_every_market_answer_is_in_its_options_and_the_unfed_questions_are_silen
 # ---------------------------------------------------------------- the loaders
 
 def test_context_bars_loader_skips_bad_lines_and_bad_bars(tmp_path):
-    folder = tmp_path / "spx_jev" / "context" / "bars"
+    folder = station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.folder(tmp_path)
     folder.mkdir(parents=True)
     good = {"ts": "2026-10-06T09:31:00-04:00", "bars": {"SPY": {"ts": "2026-10-06T09:30:00-04:00", "open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 10},
                                                        "QQQ": {"ts": "2026-10-06T09:30:00-04:00", "open": "x"}}}
@@ -620,7 +620,7 @@ def test_context_bars_loader_skips_bad_lines_and_bad_bars(tmp_path):
 
 
 def test_quotes_as_bars_carry_the_minute_volume_from_the_cumulative_count(tmp_path):
-    folder = tmp_path / "spx_jev" / "context"
+    folder = station_paths.WATCHLIST_QUOTES_BY_MINUTE.folder(tmp_path)
     folder.mkdir(parents=True)
     lines = [{"ts": "2026-10-06T09:31:05-04:00", "quotes": {"SPY": {"last": 770.0, "volume": 1000}}, "bars": {"$ADVN": {"ts": "2026-10-06T09:30:00-04:00", "open": 1, "high": 1, "low": 1, "close": 1200.0, "volume": 0}}},
              {"ts": "2026-10-06T09:32:10-04:00", "quotes": {"SPY": {"last": 770.5, "volume": 1600}, "/ZN": {"last": None}}, "bars": {}},
@@ -631,14 +631,14 @@ def test_quotes_as_bars_carry_the_minute_volume_from_the_cumulative_count(tmp_pa
 
 
 def test_diary_and_sweeps_loaders_tolerate_bad_lines(tmp_path):
-    (tmp_path / "reversion").mkdir()
     rows = [{"ts": "2026-10-06T09:31:00-04:00", "call_wall": 7750.0, "gex_source": "spy_proxy×10.0361",
              "gex_views": {"magnet": 7700.0, "call_wall_gamma": 7725.0, "put_wall_gamma": 7720.0}}, {"no": "ts"}, {"ts": "2026-10-06T09:32:00-04:00", "gex_views": None}]
-    (tmp_path / "reversion" / "2026-10-06.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\nnot json\n")
+    diary_path(tmp_path, "2026-10-06").parent.mkdir(parents=True)
+    diary_path(tmp_path, "2026-10-06").write_text("\n".join(json.dumps(r) for r in rows) + "\nnot json\n")
     diary = inputs.load_diary_rows(tmp_path, "2026-10-06")
     assert [r["magnet"] for r in diary] == [7700.0, None] and diary[0]["call_wall"] == 7750.0 and diary[1]["put_wall"] is None
     assert (diary[0]["call_wall_gamma"], diary[0]["put_wall_gamma"], diary[0]["gex_source"]) == (7725.0, 7720.0, "spy_proxy×10.0361")
-    raw = tmp_path / "lob_flow" / "raw"
+    raw = station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.folder(tmp_path)
     (raw / "2026-10-05").mkdir(parents=True)
     (raw / "2026-10-06").mkdir()
     sweep = {"ts": "2026-10-06T10:00:03-04:00", "buckets": {"d25_40": {"spread": 0.1, "size": 200}}}
@@ -650,12 +650,11 @@ def test_diary_and_sweeps_loaders_tolerate_bad_lines(tmp_path):
 
 
 def test_a_prior_sessions_diary_row_is_the_newest_by_the_clock_within_the_slack(tmp_path):
-    (tmp_path / "reversion").mkdir()
     day = "2026-10-05"
     rows = [{"ts": f"{day}T{hm}:04-04:00", "spot": 7700.0 + i, "sigma": 70.0, "gex_source": "native",
              "gex_views": {"magnet": 7700.0, "mass_by_strike": [[7700.0, 1.0]], "net_by_strike": [[7700.0, 9.0]]}}
             for i, hm in enumerate(("11:00", "11:29", "11:40"))]
-    (tmp_path / "reversion" / f"{day}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    write_jsonl(diary_path(tmp_path, day), rows)
     got = inputs.diary_row_at(tmp_path, day, "11:30:30")
     assert got["spot"] == 7701.0 and got["mass_by_strike"] == [[7700.0, 1.0]] and got["sigma"] == 70.0 and "net_by_strike" not in got
     assert inputs.diary_row_at(tmp_path, day, "11:36:00") is None        # the 11:29 row is more than 5 minutes old by then
@@ -668,7 +667,7 @@ def test_a_prior_sessions_diary_row_is_the_newest_by_the_clock_within_the_slack(
 
 
 def test_the_collector_records_are_the_trailing_sessions_before_the_day(tmp_path):
-    folder = tmp_path / "lob_flow" / "agg"
+    folder = station_paths.SPX_ORDER_FLOW_READINGS_BY_MINUTE.folder(tmp_path)
     folder.mkdir(parents=True)
     line = {"engine": "lob_flow", "snapshot": {"defense": {"k": {"strike": 7700.0, "n_events": 1, "n_unrecovered": 2}}}}
     for day in ("2026-10-01", "2026-10-02", "2026-10-05"):
@@ -784,8 +783,7 @@ def test_volatility_18_reads_the_ten_year_yields_move_against_the_same_minute(tm
 # ---------------------------------------------------------------- the day's SPY volume, and the night's 1-minute bars
 
 def test_the_days_spy_volume_comes_from_the_siege_box_minute_by_minute(tmp_path):
-    (tmp_path / "siege").mkdir()
-    (tmp_path / "siege" / "baseline.json").write_text(json.dumps({"days": {"2026-10-06": {"601": 500, "602": 700, "603": 0}}}))
+    write_json(station_paths.SPY_VOLUME_BASELINES_STATE.path(tmp_path), {"days": {"2026-10-06": {"601": 500, "602": 700, "603": 0}}})
     minutes = inputs.load_spy_minute_volumes(tmp_path, "2026-10-06")
     assert minutes == {601: 500.0, 602: 700.0, 603: 0.0} and inputs.load_spy_minute_volumes(tmp_path, "2026-10-07") == {}
     quote = lambda hh, mm, ss, last, volume: {"ts": f"2026-10-06T{hh}:{mm}:{ss}-04:00", "open": last, "high": last, "low": last, "close": last, "volume": volume}
@@ -801,7 +799,7 @@ def test_the_days_spy_volume_comes_from_the_siege_box_minute_by_minute(tmp_path)
 
 
 def test_the_night_loader_keeps_the_one_minute_bars_only(tmp_path):
-    folder = tmp_path / "spx_jev" / "overnight"
+    folder = station_paths.FUTURES_PRICE_BARS_BY_MINUTE.folder(tmp_path)
     folder.mkdir(parents=True)
     rows = [{"ts": "2026-10-05T18:00:00-04:00", "symbol": "/ES", "session": "overnight", "bar_minutes": 1, "open": 1, "high": 2, "low": 0.5, "close": 1.5},
             {"ts": "2026-10-05T18:00:00-04:00", "symbol": "/ES", "session": "overnight", "bar_minutes": 5, "open": 1, "high": 9, "low": 0.1, "close": 1.5},
@@ -817,16 +815,13 @@ def test_trend_07_reads_the_same_spy_closes_live_and_after_the_day_is_saved(tmp_
     path = tuple(770.0 + 0.03 * ((i // 7) % 2 * 2 - 1) for i in range(120))               # SPY swinging a few cents round its VWAP
     lines = [{"ts": f"{day}T{9 + (30 + i) // 60:02d}:{(30 + i) % 60:02d}:40-04:00", "quotes": {"SPY": {"last": p, "volume": 1000 * (i + 1)}}}
              for i, p in enumerate(path)]
-    ctx = tmp_path / "spx_jev" / "context"
-    (ctx / "bars").mkdir(parents=True)
-    (ctx / f"{day}.jsonl").write_text("".join(json.dumps(l) + "\n" for l in lines))
-    (tmp_path / "siege").mkdir()
-    (tmp_path / "siege" / "baseline.json").write_text(json.dumps({"days": {day: {str(570 + i): 1000 for i in range(120)}}}))
+    write_jsonl(station_paths.WATCHLIST_QUOTES_BY_MINUTE.path(tmp_path, day=day), lines)
+    write_json(station_paths.SPY_VOLUME_BASELINES_STATE.path(tmp_path), {"days": {day: {str(570 + i): 1000 for i in range(120)}}})
     inputs._PRIOR_SESSIONS_CACHE.clear()
     live = inputs.load_market_history(tmp_path, "live", day).context_bars_by_day[day]["SPY"]
     saved = [{"ts": f"{day}T{9 + (30 + i) // 60:02d}:{(30 + i) % 60:02d}:00-04:00", "bars": {"SPY": {"ts": f"{day}T{9 + (30 + i) // 60:02d}:{(30 + i) % 60:02d}:00-04:00",
               "open": p, "high": p, "low": p, "close": p - 0.04, "volume": 1000}}} for i, p in enumerate(path)]
-    (ctx / "bars" / f"{day}.jsonl").write_text("".join(json.dumps(l) + "\n" for l in saved))
+    write_jsonl(station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.path(tmp_path, day=day), saved)
     after = inputs.load_market_history(tmp_path, "live", day).context_bars_by_day[day]["SPY"]
     inputs._PRIOR_SESSIONS_CACHE.clear()
     assert live == after and live[0]["volume"] == 1000.0

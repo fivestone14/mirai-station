@@ -32,7 +32,7 @@ def test_the_dated_book_is_copied_once_per_as_of(state_dir):
     assert paths.dated_book_copy_file("2026-10-09T171004-0400").exists()
     write_json(book, {"ok": True, "as_of": "2026-10-12T08:17:00-04:00", "bands": []})     # Monday overwrites it
     assert recorder.copy_dated_book(paths, state_dir)["copied"] == 1
-    assert len(list((paths.recorder_dir / "dated_book").glob("*.json"))) == 2
+    assert len(list(paths.dated_book_copies_dir.glob("*.json"))) == 2
 
 
 def test_a_book_without_a_usable_as_of_is_reported_not_raised(state_dir):
@@ -42,7 +42,7 @@ def test_a_book_without_a_usable_as_of_is_reported_not_raised(state_dir):
     assert recorder.copy_dated_book(paths, state_dir)["copied"] == 0
     write_json(book, {"ok": True, "as_of": "yesterday-ish"})
     assert "as_of" in recorder.copy_dated_book(paths, state_dir)["why"]
-    assert not list((paths.recorder_dir / "dated_book").glob("*.json"))
+    assert not list(paths.dated_book_copies_dir.glob("*.json"))
 
 
 def test_siege_days_are_copied_one_file_per_finished_day_and_only_when_missing(state_dir):
@@ -143,9 +143,10 @@ def test_backup_mirrors_changed_files_and_skips_locks_and_run_logs(state_dir, tm
     jsonl_store.append_json_line(paths.payloads_file("2026-10-09"), {"read_id": "live:a"})
     paths.lock_file("nightly").write_text("")
     backup_dir = tmp_path / "backup"
+    mirror = forecast_paths.ForecastPaths(backup_dir)            # the backup keeps each file's path relative to the data root
     first = recorder.backup_forecast_folder(paths, backup_dir)
-    assert first["copied"] >= 1 and (backup_dir / "payloads" / "2026-10-09.jsonl").exists()
-    assert not (backup_dir / "locks").exists()
+    assert first["copied"] >= 1 and mirror.payloads_file("2026-10-09").exists()
+    assert not mirror.lock_file("nightly").parent.exists()
     assert recorder.backup_forecast_folder(paths, backup_dir)["copied"] == 0
     jsonl_store.append_json_line(paths.payloads_file("2026-10-09"), {"read_id": "live:b"})
     assert recorder.backup_forecast_folder(paths, backup_dir)["copied"] == 1
@@ -178,8 +179,9 @@ def test_run_over_every_task_offline_ends_with_the_copies_in_the_backup(state_di
     results = recorder.run(state_dir, backup_dir=tmp_path / "backup")
     assert list(results) == list(recorder.TASKS) and not any("error" in r for r in results.values())
     assert results["spx_5m"]["days"] == ["2026-10-08"] and results["backup"]["copied"] >= 4
-    assert (tmp_path / "backup" / "recorder" / "dated_book" / "2026-10-09T171004-0400.json").exists()
-    assert (tmp_path / "backup" / "recorder" / "vix1d_close.jsonl").exists()
+    mirror = forecast_paths.ForecastPaths(tmp_path / "backup")
+    assert mirror.dated_book_copy_file("2026-10-09T171004-0400").exists()
+    assert mirror.vix1d_close_file.exists()
     assert len(jsonl_store.read_json_lines(forecast_paths.ForecastPaths(state_dir).run_log_file)) == len(recorder.TASKS)
 
 

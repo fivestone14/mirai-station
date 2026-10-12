@@ -1,6 +1,6 @@
 """The SPX diary row, cut down to what the labeller reads.
 
-The left-eye scanner writes one row per scan to ``state/reversion/{day}.jsonl``, about 40 KB of
+The left-eye scanner writes one row per scan to ``state/spx/scanner/spx_options_scanner_results_by_scan/{day}.jsonl``, about 40 KB of
 engines, lenses and fire blocks. The labeller reads a few dozen of those numbers, so each row is
 reduced here to exactly them, by name, and everything else is dropped on the way in: a day of rows
 fits in memory, the clock can replay twenty sessions, and a field the labeller starts reading has

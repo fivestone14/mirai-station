@@ -2,20 +2,21 @@
 
 This is the microservice boundary. It reads what Mirai station already stores (the SPX diary
 rows, minute bars, the market context), builds the labels, asks JEV, sums the answers, blends the
-sums with the time-of-day odds (clock.py), grades them, and writes only under ``state/spx_jev/``:
+sums with the time-of-day odds (clock.py), grades them, and writes only the stores runtime/station_paths.py names for
+it (the live lane's folder is spx/jev/live_lane/):
 
-    state/spx_jev/{day}.jsonl        every run, appended: the state, the requests, the answers
-    state/spx_jev/hour/{day}.jsonl   the sums, one record per run: what step 6 grades
-    state/spx_jev/latest.json        the phone's file: the newest run, small, self-describing
-    state/spx_jev/last_asked.json    the last fresh answer per question, for the cadence, a later ask that got no answer, and when it last slept
-    state/spx_jev/cadence.json       how often each question is asked, recounted daily
-    state/spx_jev/clock_days.json    the time-of-day counts per past session (see clock.py)
-    state/spx_jev/clock_integral_days.json   the same on the average price, for the phone's call (clock.integral_odds)
-    state/spx_jev/grades.jsonl, weights.json   step 6 (see grade.py, weights.py)
-    state/spx_jev/archive/{day}.jsonl   the raw archive: every read, grade and close-out of every lane (archive.py)
-    state/spx_jev/pool_30.json, pool_60.json   the end-price learning loop (pool.py)
-    state/spx_jev/integral_grades.jsonl   the average-price grade of every call (grade.integral_run)
-    state/spx_jev/pool_30_integral.json, pool_integral_log.jsonl   the average-price learning loop (integral_loop.py)
+    live_lane/jev_answers_by_read/{day}.jsonl            every run, appended: the state, the requests, the answers
+    live_lane/jev_and_pool_forecasts_by_read/{day}.jsonl the sums, one record per run: what step 6 grades
+    screen_files/phone/jev_live_card.json                the phone's file: the newest run, small, self-describing
+    live_lane/jev_last_answers_state.json                the last fresh answer per question, for the cadence, a later ask that got no answer, and when it last slept
+    live_lane/jev_question_ask_schedule_state.json       how often each question is asked, recounted daily
+    live_lane/historical_odds_end_price_days_state.json  the time-of-day counts per past session (see clock.py)
+    live_lane/historical_odds_average_price_days_state.json   the same on the average price, for the phone's call (clock.integral_odds)
+    live_lane/jev_end_price_grades_by_read.jsonl, jev_question_weights_state.json   step 6 (see grade.py, weights.py)
+    spx/jev/jev_reads_and_grades_by_event/{day}.jsonl    the raw archive: every read, grade and close-out of every lane (archive.py)
+    spx/prediction/base_pool/base_pool_state/next_30_minutes.json, next_60_minutes.json   the end-price learning loop (pool.py)
+    live_lane/jev_average_price_grades_by_read_and_horizon.jsonl   the average-price grade of every call (grade.integral_run)
+    spx/prediction/base_pool/base_pool_state/average_of_next_30_minutes.json, base_pool_updates_by_day_and_horizon/   the average-price learning loop (integral_loop.py)
 
 The phone's call is the average-price sum (hour.average_summary, under the sum's ``average``), asked
 in its own request beside the end-price sums; those are kept beside the call, asked, blended, graded
@@ -43,7 +44,7 @@ A lane (lane.py) is the same run with its own docs, folder, clock and grader. Th
 (``--lane tape``) stamps each read at the newest finished bar by its fire minute (a sent run first waits, up to
 BAR_WAIT_S, for the bar that finishes at that minute: wait_for_bar), measures the tape unit
 (labels.rulers.tape_unit), asks what its schedule asks afresh, prices its sum's bands from the unit, and writes the
-same files under state/spx_jev/lanes/tape/, each record marked with the lane and the unit.
+same files under state/spx/jev/opening_lane/ (its card under screen_files/phone/), each record marked with the lane and the unit.
 
     python3 -m spx_jev.service            # one run on the newest row, not sent
     python3 -m spx_jev.service --send     # post to JEV; the key comes from .env
@@ -909,7 +910,9 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
               **_stamp(lane, unit, band), "state": state, "omitted": omitted, "requests": requests, "skipped": skipped,
               "held": {qid: h["held_from"] for qid, h in held.items()}, "cadence_from": cad.get("recounted_from"),
               "answers": answers, "sent": do_send, "send_seconds": send_seconds, "hour": hour}
-    with open(station_paths.JEV_ANSWERS_BY_READ.in_lane_folder(out_dir, day=day_name), "a", encoding="utf-8") as f:
+    answers_file = station_paths.JEV_ANSWERS_BY_READ.in_lane_folder(out_dir, day=day_name)
+    answers_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(answers_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
     if hour_rec and hour_rec.get("request"):
         (out_dir / HOUR_SUBDIR).mkdir(parents=True, exist_ok=True)
@@ -1004,6 +1007,7 @@ def first_window_row(now: datetime) -> datetime | None:
 
 def write_card(card: Path, c: dict) -> None:
     """Replace the lane's card (lane.card_path) in one step, so the phone never reads half a card."""
+    card.parent.mkdir(parents=True, exist_ok=True)
     tmp = card.with_name(card.name + ".tmp")
     tmp.write_text(json.dumps(c, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, card)

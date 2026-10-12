@@ -1,23 +1,26 @@
-"""Where the Mirai Prediction System keeps its data: one folder, sorted by what kind of data it is.
+"""Where the Mirai Prediction System keeps its data, every file named in runtime/station_paths.py.
 
-Every file is named in runtime/station_paths.py (the learner pool's stores); this module hands them out relative to
-this system's root, which is where the stores sit today:
+This system's folder is ``<state_dir>/spx/prediction/`` (``data_root``); its stores sit in it, and the few files it
+writes for other parts of the station sit where those parts look (``state_dir_of`` finds the data root again from the
+folder a job holds):
 
-    <state_dir>/spx_jev/mirai_prediction/
-        raw/new_voice_forecasts/{day}.jsonl        written live by the read hook; append-only; the record
-        raw/code_features/{day}.jsonl              the code feature builder's answers per read (layers 1-2), written live
-                                                    before the read is forecast, or by the backfill; append-only; the record
-        tables/new_voice_forecasts/day=.../         built nightly from raw/ with checks; safe to delete and rebuild
-        tables/voice_scores/day=.../                each voice's penalty per graded read
-        tables/_checks/refused_rows/{day}.jsonl     rows a check refused, with the reason
-        pools/pool_v2/weights_{sum_id}.json         pool_v2's state: voice weights, which voices are asleep, days learned
-        catalogs/voice_fits/{day}_{sum_id}.json     the fitted learners for that day (fit on days before it) with the answer
-                                                    matrix they were fitted on; only the newest FIT_FILES_KEPT_DAYS days are kept
-        scoreboard.json                             the phone card's file
-        run_logs/job_run_log.jsonl                  every job and hook run
-        archive/                                    backups taken before any state file changes (the newest
-                                                    ARCHIVE_BACKUPS_KEPT per file name) and what a forced replay
-                                                    cleared (replay_force_*, REPLAY_BACKUPS_KEPT_DAYS days)
+    spx/prediction/
+        forecasts_by_forecaster_read_and_horizon/{day}.jsonl    written live by the read hook; append-only; the record
+        code_question_answers_by_read/{day}.jsonl               the code feature builder's answers per read (layers 1-2), written live
+                                                                 before the read is forecast, or by the backfill; append-only; the record
+        tables/forecasts_by_forecaster_read_and_horizon/day=.../ built nightly from the raw file with checks; safe to delete and rebuild
+        tables/grades_by_forecaster_read_and_horizon/day=.../    each voice's penalty per graded read
+        learner_pool/learner_pool_state/{horizon}.json          pool_v2's state: voice weights, which voices are asleep, days learned
+        learner_pool/learner_pool_trained_forecasters_by_day/{day}_{horizon}.json
+                                                                 the fitted learners for that day (fit on days before it) with the answer
+                                                                 matrix they were fitted on; only the newest FIT_FILES_KEPT_DAYS days are kept
+    screen_files/phone/forecaster_scoreboard_card.json          the phone card's file
+    operations/logs/prediction_job_runs_log.jsonl               every job and hook run
+    operations/logs/forecaster_forecasts_job_log.txt            the after-read hook's output
+    operations/health/forecaster_table_refused_rows_by_event/{day}.jsonl   rows a check refused, with the reason
+    archive/learner_pool_rollback_copies/                       backups taken before any state file changes (the newest
+                                                                 ARCHIVE_BACKUPS_KEPT per file name) and what a forced replay
+                                                                 cleared (replay_force_*, REPLAY_BACKUPS_KEPT_DAYS days)
 """
 from __future__ import annotations
 
@@ -33,7 +36,7 @@ if _RUNTIME not in sys.path:
     sys.path.append(_RUNTIME)
 import station_paths  # noqa: E402
 
-FOLDER = station_paths.LEARNER_POOL_FOLDER   # this system's folder under the data root; every store below sits in it today
+FOLDER = station_paths.PREDICTION_FOLDER     # this system's folder under the data root: spx/prediction
 FIT_FILES_KEPT_DAYS = 10         # older fit files are deleted by the nightly job (every one can be rebuilt from the store)
 ARCHIVE_BACKUPS_KEPT = 10        # archive/ keeps the newest backups per file name; the nightly job deletes the rest
 REPLAY_BACKUPS_KEPT_DAYS = 7     # and a forced replay's backup folder (replay_force_<stamp>) once it is this old
@@ -46,8 +49,17 @@ def spx_jev_dir(state_dir: Path | str) -> Path:
 
 
 def data_root(state_dir: Path | str) -> Path:
-    """This system's folder: <state_dir>/spx_jev/mirai_prediction."""
+    """This system's folder: <state_dir>/spx/prediction."""
     return FOLDER.path(state_dir)
+
+
+def state_dir_of(root: Path | str) -> Path:
+    """The data root this system's folder ``root`` sits under (every job hands data_root(state_dir) back), for the
+    files it writes outside its folder: the phone card, the logs, the refused rows, the rollback copies."""
+    state_dir = FOLDER.root_of(root)
+    if state_dir is None:
+        raise ValueError(f"{root} is not the prediction system's folder ({FOLDER.relative}) under a data root")
+    return state_dir
 
 
 def ensure_folders(root: Path) -> Path:
@@ -85,7 +97,7 @@ def voice_scores_table_dir(root: Path) -> Path:
 
 
 def refused_rows_file(root: Path, day: str) -> Path:
-    return station_paths.FORECASTER_TABLE_REFUSED_ROWS_BY_EVENT.within(FOLDER, root, day=day)
+    return station_paths.FORECASTER_TABLE_REFUSED_ROWS_BY_EVENT.path(state_dir_of(root), day=day)
 
 
 def pool_v2_weights_file(root: Path, sum_id: str) -> Path:
@@ -105,11 +117,11 @@ def voice_fits_dir(root: Path) -> Path:
 
 
 def archive_dir(root: Path) -> Path:
-    return station_paths.LEARNER_POOL_ROLLBACK_COPIES.within(FOLDER, root)
+    return station_paths.LEARNER_POOL_ROLLBACK_COPIES.path(state_dir_of(root))
 
 
 def read_hook_log_file(root: Path) -> Path:
-    return station_paths.FORECASTER_FORECASTS_JOB_LOG.within(FOLDER, root)
+    return station_paths.FORECASTER_FORECASTS_JOB_LOG.path(state_dir_of(root))
 
 
 def prune_voice_fits(root: Path, keep_days: int = FIT_FILES_KEPT_DAYS) -> list[str]:
@@ -127,11 +139,11 @@ def prune_voice_fits(root: Path, keep_days: int = FIT_FILES_KEPT_DAYS) -> list[s
 
 
 def scoreboard_file(root: Path) -> Path:
-    return station_paths.FORECASTER_SCOREBOARD_CARD.within(FOLDER, root)
+    return station_paths.FORECASTER_SCOREBOARD_CARD.path(state_dir_of(root))
 
 
 def job_run_log_file(root: Path) -> Path:
-    return station_paths.PREDICTION_JOB_RUNS_LOG.within(FOLDER, root)
+    return station_paths.PREDICTION_JOB_RUNS_LOG.path(state_dir_of(root))
 
 
 def now_utc_iso() -> str:
@@ -185,13 +197,13 @@ def read_json_lines(path: Path) -> list[dict]:
 
 
 def log_job_run(root: Path, job_name: str, started_at: str, ok: bool, error: str | None = None, **counts) -> None:
-    """One line per job or hook run in run_logs/job_run_log.jsonl."""
+    """One line per job or hook run in operations/logs/prediction_job_runs_log.jsonl."""
     append_json_line(job_run_log_file(root), {"job_name": job_name, "started_at": started_at, "finished_at": now_utc_iso(),
                                               "ok": ok, "error": error, **counts})
 
 
 def backup_before_change(root: Path, path: Path) -> Path | None:
-    """Copy a state file into archive/ before it changes; returns the copy's path, or None when there was no file."""
+    """Copy a state file into the rollback-copies folder before it changes; returns the copy's path, or None when there was no file."""
     if not path.exists():
         return None
     stamp = datetime.now(timezone.utc).strftime(STAMP)
@@ -203,7 +215,7 @@ def backup_before_change(root: Path, path: Path) -> Path | None:
 
 def prune_archive(root: Path, now: datetime | None = None, keep: int = ARCHIVE_BACKUPS_KEPT,
                   replay_days: int = REPLAY_BACKUPS_KEPT_DAYS) -> list[str]:
-    """Delete all but the newest ``keep`` backups of each file name in archive/, and a forced replay's backup folder
+    """Delete all but the newest ``keep`` backups of each file name in the rollback-copies folder, and a forced replay's backup folder
     older than ``replay_days`` days; returns the names deleted. A name without the backup stamp is left alone."""
     folder = archive_dir(root)
     if not folder.exists():

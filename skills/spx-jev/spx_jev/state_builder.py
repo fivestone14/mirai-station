@@ -2,11 +2,11 @@
 the options tape, loaded point in time into a Scene. The labels themselves are built by the families
 under ``labels/`` (labels.registry.build_labels).
 
-* Read-only. Rows come from the left-eye scanner's diary ``state/reversion/{day}.jsonl``
-  (cut down by row_adapter), bars from ``state/reversion/bars/{day}-SPX.json`` for past
-  sessions and ``state/spx_jev/bars/{day}.jsonl`` for today (bars.py), the market around
-  SPX from ``state/spx_jev/context/`` (market_context.py), the signed 0DTE options tape from
-  the lob-flow collector's ``state/lob_flow/agg/{day}.jsonl`` and the SPY volume at wall touches
+* Read-only. Rows come from the left-eye scanner's diary ``state/spx/scanner/spx_options_scanner_results_by_scan/{day}.jsonl``
+  (cut down by row_adapter), bars from ``state/market/spx_price_bars_by_minute_scanner_copy/{day}-SPX.json`` for past
+  sessions and ``state/market/spx_price_bars_by_minute/{day}.jsonl`` for today (bars.py), the market around
+  SPX from ``state/market/watchlist_quotes_by_minute/`` and ``watchlist_price_bars_by_minute/`` (market_context.py),
+  the signed 0DTE options tape from the lob-flow collector's ``state/spx/scanner/spx_order_flow_readings_by_minute/{day}.jsonl`` and the SPY volume at wall touches
   from the row's ``siege`` block. Nothing is written here.
 * Point in time. ``now`` is the row's own timestamp, not the wall clock. Only
   bars that finished before ``now`` count, so a replay never sees the
@@ -33,7 +33,7 @@ import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.p
 # are ``{day}.jsonl`` (the map's own rule), so a folder constant and a day name still make a file.
 DEFAULT_STATE_DIR = station_paths.state_root()                                              # the data root when no --state-dir is given
 ROWS_SUBDIR = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.relative_folder            # the left-eye scanner's SPX diary
-SESSION_BARS_SUBDIR = ROWS_SUBDIR / "bars"         # a finished session's bars, saved after the close beside the diary (the map drops it)
+SESSION_BARS_SUBDIR = station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.relative_folder   # a finished session's bars, saved after the close by the scanner's grader (merged into the bars feed's store at a later phase)
 LIVE_BARS_SUBDIR = station_paths.SPX_PRICE_BARS_BY_MINUTE.relative_folder                  # today's bars as they finish (bars.py)
 CONTEXT_SUBDIR = station_paths.WATCHLIST_QUOTES_BY_MINUTE.relative_folder                  # the market around SPX (market_context.py)
 OPTIONS_TAPE_SUBDIR = station_paths.SPX_ORDER_FLOW_READINGS_BY_MINUTE.relative_folder      # the lob-flow collector's per-minute record

@@ -7,9 +7,10 @@
 <title>SPX · Forecast</title>
 <!--
   The SPX forecast, the phone's home page (/m since the redesign of
-  2026-10-10): the decision card over the SPX service's cards. Reads
-  state/spx_jev/latest.json and the tape and pre-market lanes' latest.json
-  through the viewstation's existing read-only raw-file route, and the live
+  2026-10-10): the decision card over the SPX service's cards. Reads the
+  three lanes' cards (JEV_LIVE_CARD, JEV_OPENING_CARD, JEV_PREMARKET_CARD in
+  runtime/station_paths.py, under screen_files/phone/) through the
+  viewstation's by-name store route, and the live
   SPX print through its existing /api/spot route (one cached Schwab quote),
   so the only line in server.py for it is the one that serves it at /m. All
   three cards are written by skills/spx-jev (its own launchd jobs), never by
@@ -22,8 +23,8 @@
   the first hour; while today's newest lane call is still open, that call leads
   the page and the 30-minute call folds to one line. Once it closes, the
   30-minute call leads again and the opening folds to its score for the day.
-  Before both, the pre-market lane (spx_jev.premarket) writes
-  state/spx_jev/lanes/premarket/latest.json at each of the night's checkpoints;
+  Before both, the pre-market lane (spx_jev.premarket) writes its card
+  (JEV_PREMARKET_CARD) at each of the night's checkpoints;
   from the day's first pre-market read until the opening lane's first read
   (09:35) that card leads the page alone: the clock to the open, the call
   checked 10 and 30 minutes after the settled open, the story so far one chip
@@ -32,10 +33,10 @@
   result as it is graded.
 
   The price box opens the price-today sheet (2026-10-10): the day's SPX line by
-  the minute from state/spx_jev/bars/<day>.jsonl, which also draws the box's
-  sparkline, with today's options book from state/reversion/<day>.jsonl in the
-  chart's gutter and the day's graded calls from spx_jev/integral_grades.jsonl
-  under its clock, all through the same raw-file route. From 1024px up (the
+  the minute from the bars feed (SPX_PRICE_BARS_BY_MINUTE), which also draws the box's
+  sparkline, with today's options book from the scanner's results (SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN) in the
+  chart's gutter and the day's graded calls (JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON)
+  under its clock, all through the same by-name store route. From 1024px up (the
   owner's MacBook Air) the page is the board Final-Desktop: the header across
   the top with the tabs in it, the home as a 544px column, and the chart
   standing beside it as a panel with the situation card under it, the sheet's
@@ -717,7 +718,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 <main id="main" style="display:flex;flex-direction:column;gap:12px"></main>
 <!-- Claude's own read (skills/spx-claude-forecast, 2026-10-10): after every half-hour read Claude answers, apart from the
      call above and never mixed into it, with its up / flat / down chances per horizon. Read from
-     state/spx_claude_forecast/latest.json; the strip stays hidden until the file holds a real read. Each bar is Claude's
+     its card (CLAUDE_FORECAST_CARD); the strip stays hidden until the file holds a real read. Each bar is Claude's
      three chances; the line under it is how often this time of day stayed flat on earlier sessions (the base rate
      Claude was shown); the Why control opens the sheet that sets the two side by side, with Claude's reasons in words. -->
 <section class="claude" id="claude" hidden aria-labelledby="claudeLab">
@@ -2202,13 +2203,13 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   setInterval(function(){ if(!document.hidden && todaysCard() && within(SESSION_HOURS)) pollSpot(); }, SPOT_MS);
 
   // ---- the price-today chart (2026-10-10, Will's board Final-Chart): a tap on the price box opens the day's SPX line
-  // by the minute, with today's options book drawn into the chart's right gutter. Three files, all through the raw-file
-  // route. The day's one-minute bars (state/spx_jev/bars/<day>.jsonl, the SPX service's bars job) also draw the
+  // by the minute, with today's options book drawn into the chart's right gutter. Three files, all through the by-name
+  // store route. The day's one-minute bars (SPX_PRICE_BARS_BY_MINUTE, the SPX service's bars job) also draw the
   // sparkline in the price box, so they are fetched once a card names the day and then at most every BARS_MS through
   // BARS_HOURS, the session and the minutes after it in which the close's last bar lands. The options book
-  // (state/reversion/<day>.jsonl, the station's reversion pass) is some 10 MB that the server reads whole on every
+  // (SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN, the station's reversion pass) is some 10 MB that the server reads whole on every
   // call, so it is fetched only while the sheet is open and at most every BOOK_MS; the day's graded calls
-  // (integral_grades.jsonl, as the reads page reads it) draw the dock's calls row as well as the chart's squares, so they
+  // (JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON, as the reads page reads it) draw the dock's calls row as well as the chart's squares, so they
   // are fetched on every new card and, while the sheet is open, on the same terms as the book. The day is the
   // card's market day: after the close and before the next day's card the chart is the last session's, as the card
   // is. The live dot is the page's own quote (spot), never a second poll.
@@ -2623,7 +2624,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       .finally(function(){ var box = $('od'); if(box) optionsBanner(box, options); });
   }
 
-  // ---- the record: the Mirai Prediction System's scoreboard (state/spx_jev/mirai_prediction/scoreboard.json), one small
+  // ---- the record: the Mirai Prediction System's scoreboard (FORECASTER_SCOREBOARD_CARD), one small
   // file read beside the card. The record row at the foot of the 30-minute card gives the reads counted, how often the
   // combined forecast (pool_v2, the call shown above) was right against the usual-odds guess (the historical odds) it is
   // scored against, and the verdict in words; the row stays hidden until the file exists. A tap opens the learning loop:
@@ -2722,7 +2723,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 
   // ---- Claude's own read (skills/spx-claude-forecast, 2026-10-10): after every half-hour read Claude answers, apart from
   // the call above and never mixed into it, with its up, flat and down chances per horizon, from
-  // state/spx_claude_forecast/latest.json on the page's cadence. A missing file (no read yet, the switch off) costs the
+  // its card (CLAUDE_FORECAST_CARD) on the page's cadence. A missing file (no read yet, the switch off) costs the
   // call nothing, the strip stays hidden; so does a sample read (read_id "sample:..."), which is never a real one. Chances
   // are whole percents (up_pct, flat_pct, down_pct), the usual odds beside each horizon as base_rate_shown_to_claude; the
   // reasons come with their words (reason_words.py), so nothing here translates a path. A horizon the read did not ask

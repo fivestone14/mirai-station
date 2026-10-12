@@ -27,11 +27,11 @@ No answer JEV gave earlier, and no earlier record, reaches a label: every read r
 bars. Nothing is held either: a sum stands on its own read's answers. A read whose pre-open ruler or prior
 close cannot be formed writes its record with the reason, builds no labels and asks nothing.
 
-    state/spx_jev/lanes/premarket/{day}.jsonl         one read per checkpoint
-    state/spx_jev/lanes/premarket/hour/{day}.jsonl    one sum per read that asked JEV: what the grader grades
-    state/spx_jev/lanes/premarket/latest.json         the card, shown from the day's first read until the tape lane's first
-    state/spx_jev/lanes/premarket/grades.jsonl, weights.json   (grade.py; the lane keeps no learning loop, lane.PREMARKET.pool)
-    state/spx_jev/archive/{day}.jsonl                 its ReadRecord, GradeRecord and CloseOutRecord lines, lane "premarket",
+    spx/jev/premarket_lane/jev_answers_by_read/{day}.jsonl             one read per checkpoint
+    spx/jev/premarket_lane/jev_and_pool_forecasts_by_read/{day}.jsonl  one sum per read that asked JEV: what the grader grades
+    screen_files/phone/jev_premarket_card.json       the card, shown from the day's first read until the tape lane's first
+    spx/jev/premarket_lane/jev_end_price_grades_by_read.jsonl, jev_question_weights_state.json   (grade.py; the lane keeps no learning loop, lane.PREMARKET.pool)
+    spx/jev/jev_reads_and_grades_by_event/{day}.jsonl its ReadRecord, GradeRecord and CloseOutRecord lines, lane "premarket",
                                                       in the archive every lane shares
 
 The close-out at 10:06 waits up to service.BAR_WAIT_S for the bar that finishes at 10:05, where its 30-minute check is
@@ -215,7 +215,7 @@ def make_premarket_scene(state_dir: Path, now: datetime) -> Scene:
     prior = prior_sessions(state_dir, day)
     close_price, close_at = prior_close_at(prior["prior_day"])
     night = night_rows(state_dir, day, now)
-    spot = futures_spot(night, rolls.load(state_dir / overnight.OVERNIGHT_SUBDIR), close_price, close_at, now)
+    spot = futures_spot(night, rolls.load(state_dir), close_price, close_at, now)
     row = {"ts": now.isoformat(timespec="seconds"), "spot": round(spot if spot is not None else close_price, 2), "sigma": None,
            "prior_close": close_price, "spot_from": "futures" if spot is not None else "prior_close"}
     scene = Scene(row=row, rows_today=[row], bars=[], now=now, sigma=0.0, market=load_market_context(state_dir, day),
@@ -376,12 +376,14 @@ def run_checkpoint(state_dir: Path, out_dir: Path, doc: dict, do_send: bool, now
     if not sent and do_send:
         unsent_reason = f"nothing to ask at the {checkpoint} ET read" + ("" if scene else f": {ruler['omitted']}")
     rows = scene.night if scene else night_rows(state_dir, day, now)
-    night = {"file": f"overnight/{day}.jsonl", "saved": saved, "seen": night_seen(rows, now)}
+    night = {"file": station_paths.FUTURES_PRICE_BARS_BY_MINUTE.relative.format(day=day), "saved": saved, "seen": night_seen(rows, now)}
     record = {"row_ts": row_ts, "checkpoint": checkpoint, "lane": PREMARKET.tag, "spot": scene.spot if scene else None,
               "sigma": scene.sigma if scene else None, "ruler": ruler, "event": event, "state": labels.state, "omitted": labels.omitted,
               "figures": labels.figures, "requests": requests, "skipped": skipped, "answers": answers, "sent": sent,
               "send_seconds": send_seconds, "hour": hour, "night": night}
-    with open(station_paths.JEV_ANSWERS_BY_READ.in_lane_folder(out_dir, day=day), "a", encoding="utf-8") as f:
+    answers_file = station_paths.JEV_ANSWERS_BY_READ.in_lane_folder(out_dir, day=day)
+    answers_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(answers_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
     if hour_rec and hour_rec.get("request"):
         # the sum record is what the grader grades, from the settled open in the stamped ruler; the learning

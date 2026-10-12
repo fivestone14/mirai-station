@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # launchd-fired wrapper for the SPX JEV decision service (record-only: nothing here trades).
-# One tick = read the newest SPX diary row (state/reversion/, the left-eye scanner's) and what sits
-# beside it, build the labels, ask JEV when a key is present, write state/spx_jev/{day}.jsonl and
-# state/spx_jev/latest.json for the phone. Same gates as run-sndk.sh, so it is quiet outside
+# One tick = read the newest SPX diary row (state/spx/scanner/spx_options_scanner_results_by_scan/, the left-eye scanner's) and what sits
+# beside it, build the labels, ask JEV when a key is present, write the live lane's records under
+# state/spx/jev/live_lane/ and its card at state/screen_files/phone/jev_live_card.json for the phone. Same gates as run-sndk.sh, so it is quiet outside
 # market hours; a separate job from the scanner, never imported by it.
 # Installed by install-launchd.sh (com.mirai-station.spx-jev, :02 and :32). The opening lane's job
 # (com.mirai-station.spx-jev-tape, every 5 minutes 09:35 to 10:30 ET) runs the same script with
-# `--lane tape`; the service then writes under state/spx_jev/lanes/tape/ only.
+# `--lane tape`; the service then writes under state/spx/jev/opening_lane/ (and its own card) only.
 # The gate lets a fire through within 13 minutes after the day's real close: the live job's 16:02 fire
 # (13:02 on a half day), which the service runs as a grade-only close-out.
 # Kill switch: SPX_JEV_DISABLE=1 => exit-0 no-op.
@@ -50,7 +50,7 @@ fi
 # Read a finished row: wait until the newest diary row is at least 20 s old, so a tick that
 # fires in the same second as the scanner's write never reads a half-written row. GNU stat
 # (a Linux box) takes -c; the Mac's BSD stat refuses it and takes -f.
-ROWS="${MIRAI_STATION_ROOT}/state/reversion/$(date +%F).jsonl"
+ROWS="${MIRAI_STATION_STATE}/spx/scanner/spx_options_scanner_results_by_scan/$(date +%F).jsonl"   # station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN
 if [[ -f "$ROWS" ]]; then
   if stat -c %Y "$ROWS" >/dev/null 2>&1; then MTIME=$(stat -c %Y "$ROWS"); else MTIME=$(stat -f %m "$ROWS"); fi
   AGE=$(( $(date +%s) - MTIME ))

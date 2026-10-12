@@ -17,7 +17,7 @@ aggregate() stood records the measured reasons. Old read rows keep their
 `arrow` field as history; nothing writes a new one.
 
 The design rests on what four sessions of recorded SNDK rows measured
-(2026-07-28..31, 756 rows, verified against state/sndk_reversion/):
+(2026-07-28..31, 756 rows, verified against state/sndk/sndk_options_scanner_results_by_scan/):
 
   * 12 of the ~20 fields a "hand it everything" payload would carry are
     CONSTANTS. dex_word is the identical string on 756/756 rows and renders as
@@ -34,7 +34,8 @@ The design rests on what four sessions of recorded SNDK rows measured
     runs and 86 shove runs. Every accuracy claim on this surface is inside the
     noise band. Nothing here is presented as an edge.
 
-Isolation (README doctrine): writes ONLY state/sndk_reads. Never imports
+Isolation (README doctrine): writes ONLY state/sndk/sndk_options_reader_gates_and_answers_by_run/ and its own
+state files beside it under state/sndk/. Never imports
 watchtower, never touches the SPX diary, never blocks sndk_hunter's tick —
 this is its own launchd job so a slow model call cannot drop a scan.
 
@@ -146,7 +147,7 @@ PAYLOAD_DEFAULT = "strikes" # which builder feeds the model unless the switch sa
                             # obs-5 (2026-09-02): THE MINUTE-BAR SIDECAR. The
                             # session's highs and lows, the opening box, every
                             # box break and the prior sessions' range now read
-                            # state/sndk_bars/<day>.jsonl — one completed
+                            # state/sndk/sndk_price_bars_by_minute/<day>.jsonl — one completed
                             # minute per line, written by its own launchd job
                             # (sndk_bars.py) — and fall back to the 2-minute
                             # spots when the file is absent or thin, saying
@@ -722,7 +723,7 @@ def reasoning_on() -> bool:
 def payload_mode() -> str:
     """'strikes' or 'scene': which payload the model reads. The environment
     wins (manual runs), then the control file the pause switch already uses
-    (`state/sndk_reads/control.json`, key "payload"), then the module
+    (`state/sndk/sndk_options_reader_reasoning_switch.json`, key "payload"), then the module
     default. Anything unrecognised reads as the default. The next 120 s tick
     picks up a change; no code edit, no restart."""
     v = os.environ.get("SNDK_PAYLOAD")
@@ -1098,7 +1099,7 @@ def state_for_next_wake(row: dict, scene: Optional[dict] = None,
     """The structural state the wake gate compares against, snapshotted.
 
     THIS EXISTS BECAUSE `prev` IS NOT A DIARY ROW. `read_once` passes the last
-    row that SPENT A CALL, and those live in state/sndk_reads/, whose schema is
+    row that SPENT A CALL, and those live in state/sndk/sndk_options_reader_gates_and_answers_by_run/, whose schema is
     ts / wake / spot / sigma / magnet_band / reading / ... and carries
     none of `call_wall`, `put_wall`, `gamma_flip`, `atm_iv`, `gamma_sign` or
     `gex_views`. A gate reading those off `prev` gets None every time and
@@ -4409,7 +4410,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         # row, not only on the ones that spend a call, so a restart mid-session
         # cannot leave the gate with nothing to measure from.
         "gate": state_for_next_wake(row, scene, rows, scene_now),
-        # a pointer, not the packet: state/sndk_side/<day>.jsonl holds it
+        # a pointer, not the packet: state/sndk/sndk_price_bar_facts_by_read/<day>.jsonl holds it
         **({"side_bar": (side.get("as_of") or {}).get("bar_index")} if side else {}),
         "reading": None, "model": None, "wall_s": None, "error": None,
     }

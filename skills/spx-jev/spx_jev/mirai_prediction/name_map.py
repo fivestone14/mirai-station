@@ -1,7 +1,7 @@
 """The one place old names meet the diagram's names, and the few shared words every module uses.
 
-The live store keeps its folder names; this system reads them through STORE_NAMES so every other module uses the
-diagram's words. Pool_v1's expert names become voice names the same way (VOICE_NAMES). Nothing on disk is renamed.
+The learning store's tables are reached through STORES, by the diagram's words, each a store named in
+runtime/station_paths.py. Pool_v1's expert names become voice names the same way (VOICE_NAMES).
 STAGES, SUMS_BY_LANE and REFERENCE_VOICE live here too, so the hook, the nightly job and the learners share one spelling, and
 CUT_OVER_DAY (cuts.py's) is read from here: the day the live lane stopped asking the pre-merge questions.
 """
@@ -19,7 +19,6 @@ STORES = {
     "forecasts_at_read_time": station_paths.JEV_AND_POOL_FORECASTS_BY_READ_AND_HORIZON_TABLE,   # one row per sum per read: historical odds, JEV's call, the shown call, pool_v1's mix
     "graded_results": station_paths.JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON_TABLE,   # the average-price grade per sum per read (the older end-price grade is not used)
 }
-STORE_NAMES = {name: str(store.relative_within(station_paths.JEV_TABLES_FOLDER)) for name, store in STORES.items()}   # diagram name -> table folder
 
 # pool_v1's expert names (spx_jev.pool) -> voice names
 VOICE_NAMES = {
@@ -60,7 +59,7 @@ SUM_WINDOW_MINUTES = {"average_30": 30, "next_30": 30, "next_60": 60, "average_1
 
 
 def store_path(state_dir: Path | str, new_name: str) -> Path:
-    """The folder of a store table by its diagram name, e.g. store_path(S, "graded_results") -> .../store/average_grades."""
+    """The folder of a store table by its diagram name, e.g. store_path(S, "graded_results") -> .../spx/jev/tables/jev_average_price_grades_by_read_and_horizon."""
     try:
         store = STORES[new_name]
     except KeyError as e:

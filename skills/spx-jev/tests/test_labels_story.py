@@ -162,7 +162,7 @@ def test_too_few_nights_on_file_leaves_the_story_out_with_the_reason(premarket_s
 def test_a_night_across_a_roll_is_not_told(premarket_scene_factory, tmp_path):
     _write_nights(tmp_path, _prior_days())
     at = datetime.combine(previous_trading_day(DAY), time(20), tzinfo=ET)
-    rolls.save(tmp_path / overnight.OVERNIGHT_SUBDIR, {"schema_version": 1, "current": {"/ES": "/ESZ26"},
+    rolls.save(tmp_path, {"schema_version": 1, "current": {"/ES": "/ESZ26"},
                                                        "rolls": [{"symbol": "/ES", "day": at.date().isoformat(), "at": at.isoformat(),
                                                                   "from": "/ESU26", "to": "/ESZ26"}]})
     ls = read(premarket_scene_factory, tmp_path, {"asia": 1.0})
@@ -172,7 +172,7 @@ def test_a_night_across_a_roll_is_not_told(premarket_scene_factory, tmp_path):
 
 def test_a_roll_the_quote_shows_before_the_table_locates_it_stops_the_story(premarket_scene_factory, tmp_path):
     _write_nights(tmp_path, _prior_days())
-    rolls.save(tmp_path / overnight.OVERNIGHT_SUBDIR, {"schema_version": 1, "current": {"/ES": "/ESZ26"}, "rolls": []})
+    rolls.save(tmp_path, {"schema_version": 1, "current": {"/ES": "/ESZ26"}, "rolls": []})
     saved = datetime.combine(DAY, time(9, 26), tzinfo=ET)
     overnight.manifest_path(tmp_path).write_text(json.dumps({"day": DAY.isoformat(), "saved_at": saved.isoformat(),
                                                              "symbols": {"/ES": {"contract_quoted": "/ESH27"}}}) + "\n")
@@ -380,7 +380,7 @@ def test_a_label_built_at_0928_equals_the_same_label_rebuilt_later_from_the_same
     calendar([("08:30", "JOBS")])
     _write_nights(tmp_path, _prior_days())
     _write_last_hours(tmp_path)
-    rolls.save(tmp_path / overnight.OVERNIGHT_SUBDIR, {"schema_version": 1, "current": {"/ES": "/ESZ26"}, "rolls": []})
+    rolls.save(tmp_path, {"schema_version": 1, "current": {"/ES": "/ESZ26"}, "rolls": []})
     path, jumps = {"asia": 1.0, "europe_morning": 0.6, "last_stretch": -0.4}, {time(8, 35): -0.8, time(9, 10): 0.5, time(9, 45): 3.0}
     live_scene = scene(premarket_scene_factory, tmp_path, path, jumps=jumps)
     live = build_story_labels(live_scene)

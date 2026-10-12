@@ -10,12 +10,15 @@ from pathlib import Path
 
 import pytest
 
-from conftest import DAY, at, flat_bars, make_row
+from conftest import DAY, at, diary_path, flat_bars, make_row, station_paths, tape_folder, write_json, write_jsonl
 from spx_jev.labels.rulers import SigmaRuler
 from spx_jev.labels.options_flow import build_options_flow_labels
 
 PRIOR_DAYS = ("2026-09-17", "2026-09-16", "2026-09-15", "2026-09-14", "2026-09-11", "2026-09-10", "2026-09-09", "2026-09-08",
               "2026-09-04", "2026-09-03", "2026-09-02", "2026-09-01")
+# the folders the omission reasons name: the collector's raw day folders and its per-minute record, relative to the data root
+RAW_FOLDER = station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.relative_folder
+RECORD_FOLDER = station_paths.SPX_ORDER_FLOW_READINGS_BY_MINUTE.relative_folder
 
 
 def trade(t: datetime, right: str = "call", side: str = "mid", size: int = 1, condition: int = 18, strike: float = 7700.0) -> dict:
@@ -38,7 +41,7 @@ def every_minute(day: str, until: datetime, **kw) -> list[dict]:
 def write_tape(root: Path, day: str, lines: list[dict], packed: bool = False, late: list[dict] = ()) -> None:
     """The day's tape file, minute by minute but newest line first within each minute, as the collector's lines land
     out of time order; then the ``late`` lines, journaled after the rest."""
-    folder = root / "lob_flow" / "raw" / day
+    folder = tape_folder(root, day)
     folder.mkdir(parents=True, exist_ok=True)
     journaled = sorted(lines, key=lambda x: (x["ts_ms"] // 60_000, -x["ts_ms"])) + list(late)
     text = "".join(json.dumps(x) + "\n" for x in journaled)
@@ -172,7 +175,7 @@ def test_the_tape_labels_are_omitted_without_a_tape_or_a_running_collector(scene
     assert ls.omitted["options.big_prints_10"] == "no state folder to read the lob-flow collector's 0DTE tape from"
     assert ls.gates["opening_premium_burst"] is None
     ls, _ = read(replace(scene, now=at(10, 0, "2026-09-21")))
-    assert ls.omitted["options.premium_pace_30"] == "no lob-flow tape for 2026-09-21 under lob_flow/raw: the collector did not run"
+    assert ls.omitted["options.premium_pace_30"] == f"no lob-flow tape for 2026-09-21 under {RAW_FOLDER}: the collector did not run"
     stopped = tape_scene(scene_factory, tmp_path, NOW, every_minute(DAY, at(9, 57)))
     ls, _ = read(stopped)
     assert ls.omitted["options.flow_lean_30"] == "no 0DTE trade in the lob-flow tape in the last 3 minutes: the collector stopped"
@@ -283,8 +286,7 @@ def traded(calls: int, puts: int, strike: float = 7700.0) -> dict:
 
 
 def write_diary(root: Path, day: str, rows: list[dict]) -> None:
-    (root / "reversion").mkdir(parents=True, exist_ok=True)
-    (root / "reversion" / f"{day}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    write_jsonl(diary_path(root, day), rows)
 
 
 def shift_scene(scene_factory, root: Path, calls: int, puts: int, then: datetime = at(9, 50), prior_days: tuple[str, ...] = PRIOR_DAYS):
@@ -339,7 +341,7 @@ def sweep(t: datetime, size: float | None, spread: float | None) -> dict:
 
 
 def write_sweeps(root: Path, day: str, lines: list[dict], packed: bool = False) -> None:
-    folder = root / "lob_flow" / "raw" / day
+    folder = tape_folder(root, day)
     folder.mkdir(parents=True, exist_ok=True)
     text = "".join(json.dumps(x) + "\n" for x in lines)
     if packed:
@@ -386,7 +388,7 @@ def test_quote_liquidity_is_omitted_when_the_sweeps_stop_thin_out_or_have_too_li
     ls, _ = read(quote_scene(scene_factory, tmp_path / "nine", sweeps_until(DAY, NOW, 150.0, 0.1), PRIOR_DAYS[:9]))
     assert ls.omitted["options.quote_liquidity"] == "its rank needs 10 prior sessions with lob-flow quote sweeps at this minute, have 9"
     ls, _ = read(replace(quote_scene(scene_factory, tmp_path / "none", []), now=at(10, 0, "2026-09-21")))
-    assert ls.omitted["options.quote_liquidity"] == "no lob-flow quote sweeps for 2026-09-21 under lob_flow/raw: the collector did not run"
+    assert ls.omitted["options.quote_liquidity"] == f"no lob-flow quote sweeps for 2026-09-21 under {RAW_FOLDER}: the collector did not run"
 
 
 # ---- options.strike_defense and liquidity.spy_quote: the collector's record
@@ -408,8 +410,7 @@ def spy_line(t: datetime, spread: float, size: float) -> dict:
 
 
 def write_record(root: Path, day: str, lines: list[dict]) -> None:
-    (root / "lob_flow" / "agg").mkdir(parents=True, exist_ok=True)
-    (root / "lob_flow" / "agg" / f"{day}.jsonl").write_text("".join(json.dumps(x) + "\n" for x in lines))
+    write_jsonl(station_paths.SPX_ORDER_FLOW_READINGS_BY_MINUTE.path(root, day=day), lines)
 
 
 def prior_record(day: str, k: int) -> list[dict]:
@@ -511,8 +512,8 @@ def test_spy_quote_is_omitted_when_the_stream_stops_or_has_too_little_history(sc
     ls, _ = read(record_scene(scene_factory, tmp_path / "nine", readings(NOW), PRIOR_DAYS[:9]))
     assert ls.omitted["liquidity.spy_quote"] == "its rank needs 10 prior sessions with the collector's SPY quote at this minute, have 9"
     ls, _ = read(replace(record_scene(scene_factory, tmp_path / "none", []), now=at(10, 0, "2026-09-21")))
-    assert ls.omitted["liquidity.spy_quote"] == "no lob-flow record for 2026-09-21 under lob_flow/agg: the collector did not run"
-    assert ls.omitted["options.strike_defense"] == "no lob-flow record for 2026-09-21 under lob_flow/agg: the collector did not run"
+    assert ls.omitted["liquidity.spy_quote"] == f"no lob-flow record for 2026-09-21 under {RECORD_FOLDER}: the collector did not run"
+    assert ls.omitted["options.strike_defense"] == f"no lob-flow record for 2026-09-21 under {RECORD_FOLDER}: the collector did not run"
 
 
 # ---- volume.spy_last30_share and volume.spy_pace_30: the siege box's SPY minute volumes
@@ -527,8 +528,7 @@ def spy_minutes(morning: float, window: float, until: int = 960) -> dict[str, fl
 
 def volume_scene(scene_factory, root: Path, today: dict[str, float], prior_days: tuple[str, ...] = PRIOR_DAYS, now: datetime = NOON):
     days = {d: spy_minutes(1000.0, 500.0 + 200 * k) for k, d in enumerate(prior_days)}   # 11.1% to 40.3% of the day in the half hour
-    (root / "siege").mkdir(parents=True, exist_ok=True)
-    (root / "siege" / "baseline.json").write_text(json.dumps({"days": {**days, DAY: today}}))
+    write_json(station_paths.SPY_VOLUME_BASELINES_STATE.path(root), {"days": {**days, DAY: today}})
     scene = scene_factory(now, flat_bars(int((now - at(9, 30)).total_seconds() // 60)), prior_bars={d: flat_bars(390, day=d) for d in PRIOR_DAYS})
     return replace(scene, state_dir=root)
 
@@ -551,7 +551,7 @@ def test_spy_volume_is_set_against_the_same_half_hour_of_the_prior_sessions(scen
 
 def test_spy_volume_is_omitted_without_its_minutes_a_running_feed_or_ten_sessions(scene_factory, tmp_path):
     ls, _ = read(replace(volume_scene(scene_factory, tmp_path / "none", spy_minutes(1000.0, 1000.0, 720)), state_dir=tmp_path / "empty"))
-    assert ls.omitted["volume.spy_pace_30"] == "no SPY minute volumes at siege/baseline.json: the siege box has not run"
+    assert ls.omitted["volume.spy_pace_30"] == f"no SPY minute volumes at {station_paths.SPY_VOLUME_BASELINES_STATE.relative}: the siege box has not run"
     ls, _ = read(volume_scene(scene_factory, tmp_path / "stopped", spy_minutes(1000.0, 1000.0, 714)))
     assert ls.omitted["volume.spy_last30_share"] == "no SPY minute volume from the siege box in the last 5 minutes: its feed stopped"
     holed = {m: v for m, v in spy_minutes(1000.0, 1000.0, 720).items() if not 690 <= int(m) < 706}

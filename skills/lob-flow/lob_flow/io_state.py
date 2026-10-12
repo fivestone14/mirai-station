@@ -4,16 +4,15 @@ through here. Atomic writes (tmp+rename, never a torn read), the latest.json
 handshake the host tick reads, append-only raw journals with cursors for
 crash-replay, and the rotation that enforces the disk budget.
 
-Every file is named in runtime/station_paths.py; StateDir is handed the station's data root and asks it. Today
-they all sit in the collector's own folder there (lob_flow/):
-    latest.json                  # the ONLY file the host's tick reads
-    gex_context.json             # written by the host, read by the daemon
-    calendar.json                # scheduled-event dates (seeded if missing)
-    cursor.json / collector.lock
-    baselines/{name}.json
-    raw/{date}/{stream}.jsonl    # per-day append-only journals
-    agg/{date}.jsonl             # per-fold aggregate rows (kept forever)
-    cards/{date}.json            # nightly head-to-head grades
+Every file is named in runtime/station_paths.py; StateDir is handed the station's data root and asks it:
+    spx/scanner/spx_order_flow_readings_latest.json      # the ONLY file the host's tick reads
+    spx/scanner/spx_dealer_gamma_levels_latest.json      # written by the host, read by the daemon
+    market/market_event_calendar_by_event.json           # scheduled-event dates (seeded if missing)
+    spx/scanner/spx_options_trades_resume_point_state.json, operations/locks/spx_options_tape_collector.lock
+    spx/scanner/{spx_options,spy}_depth_baselines_state.json
+    market/spx_same_day_options_raw_day_folders/{date}/{stream}.jsonl   # per-day append-only journals (the disk budget's folder)
+    spx/scanner/spx_order_flow_readings_by_minute/{date}.jsonl          # per-fold aggregate rows (kept forever)
+    spx/scanner/spx_order_flow_grades_by_day/{date}.json                # nightly head-to-head grades
 """
 from __future__ import annotations
 
@@ -59,8 +58,11 @@ def read_json(path: Path) -> Optional[dict]:
 class StateDir:
     def __init__(self, root: Path):
         self.state_root = Path(root)                              # the station's data root (state/ today)
-        # the collector's own folder under it: the lock, the raw rotation and the disk budget live here
-        self.root = station_paths.SPX_OPTIONS_TAPE_COLLECTOR_FOLDER.path(self.state_root)
+
+    @property
+    def raw_root(self) -> Path:
+        """The raw day folders' parent: what the rotation prunes and the disk budget measures."""
+        return station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.folder(self.state_root)
 
     # -- named files ---------------------------------------------------------
     @property
@@ -147,7 +149,7 @@ class StateDir:
         """flock handle (caller keeps it alive) or None if another collector
         already owns the day. Opened without O_TRUNC so a refused attempt
         never wipes the owner's recorded PID."""
-        self.root.mkdir(parents=True, exist_ok=True)
+        self.lock.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(self.lock, os.O_CREAT | os.O_WRONLY)
         fh = os.fdopen(fd, "w")
         try:
@@ -162,8 +164,12 @@ class StateDir:
 
     # -- rotation ---------------------------------------------------------------
     def disk_usage_mb(self) -> float:
+        """The raw day folders' size: the one thing the cap can shrink (the aggregates, baselines and cards, which it
+        never deletes, no longer count toward it since they left the collector's folder)."""
         total = 0
-        for p in self.root.rglob("*"):
+        if not self.raw_root.exists():
+            return 0.0
+        for p in self.raw_root.rglob("*"):
             try:
                 if p.is_file():
                     total += p.stat().st_size
@@ -176,7 +182,7 @@ class StateDir:
         days past retention, and enforce the hard disk cap oldest-first.
         Aggregates, baselines, and cards are never deleted by the cap."""
         report = {"gzipped": 0, "dropped_days": 0, "cap_dropped": 0}
-        raw_root = station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.folder(self.state_root)
+        raw_root = self.raw_root
         if not raw_root.exists():
             return report
         today = now.date().isoformat()

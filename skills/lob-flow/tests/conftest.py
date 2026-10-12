@@ -19,7 +19,7 @@ def cfg():
 
 @pytest.fixture
 def sd(tmp_path):
-    return StateDir(tmp_path / "lob")
+    return StateDir(tmp_path / "state")          # the station's data root, not the box's own folder
 
 
 def make_quote(strike=6300.0, right="call", bid=10.0, ask=10.2,

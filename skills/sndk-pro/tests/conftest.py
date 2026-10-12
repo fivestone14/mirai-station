@@ -15,7 +15,11 @@ _SKILL = os.path.dirname(_HERE)
 _SKILLS = os.path.dirname(_SKILL)
 sys.path.insert(0, _SKILL)
 sys.path.insert(0, os.path.join(_SKILLS, "mirai-left-eye"))
+_RUNTIME = os.path.join(os.path.dirname(_SKILLS), "runtime")   # runtime/station_paths.py names every store
+if _RUNTIME not in sys.path:
+    sys.path.append(_RUNTIME)
 
+import station_paths  # noqa: E402
 import lefteye_fill_ledger  # noqa: E402
 import sndk_feed  # noqa: E402
 import sndk_board  # noqa: E402
@@ -82,8 +86,8 @@ def pytest_collection_modifyitems(session, config, items):
 
 @pytest.fixture(autouse=True)
 def _isolate_state(tmp_path, monkeypatch):
-    """sndk_feed persists discovery/fetch-log under state/sndk_gex and the
-    hunter appends diary rows under state/sndk_reversion — both honor
+    """sndk_feed persists the expiry probe and the book cache, and the hunter
+    appends diary rows, each under its station_paths store — every store honors
     MIRAI_STATE_DIR, so every test's IO lands in a throwaway dir."""
     monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path))
 
@@ -92,7 +96,8 @@ def _isolate_state(tmp_path, monkeypatch):
 def _isolate_fill_ledger(tmp_path, monkeypatch):
     """The engine's slide paths can annotate the fill ledger as a side effect
     (left-eye conftest verbatim) — never let a test stamp production state."""
-    monkeypatch.setattr(lefteye_fill_ledger, "_DEFAULT_DIR", tmp_path / "gex_fills")
+    monkeypatch.setattr(lefteye_fill_ledger, "_DEFAULT_DIR",
+                        station_paths.SPX_OPTIONS_STRIKE_VOLUME_WEIGHTS_STATE.folder(tmp_path))
 
 
 @pytest.fixture(autouse=True)

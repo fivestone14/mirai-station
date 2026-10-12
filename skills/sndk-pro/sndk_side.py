@@ -3,7 +3,7 @@
 A second, smaller document built beside the scene on the same scan. The scene
 is options-first: it is assembled from the diary row, and its clock is the
 2-minute scan. This one is bars-first — it is assembled from the minute-bar
-sidecar (`sndk_bars`, state/sndk_bars/<day>.jsonl) and its clock is the bar.
+sidecar (`sndk_bars`, state/sndk/sndk_price_bars_by_minute/<day>.jsonl) and its clock is the bar.
 The two are meant to disagree about what matters, not about the facts.
 
 WHY IT EXISTS. A day's trade map from a working SNDK trader was taken apart in

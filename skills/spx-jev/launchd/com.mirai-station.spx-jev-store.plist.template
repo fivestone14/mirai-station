@@ -14,7 +14,8 @@
 
   <!-- After the close, once a day: the learning store (spx_jev/store.py) rebuilds the last week's
        market days from the raw files, today included, into checked Parquet under
-       state/spx_jev/store/. Market days only. Fires at 16:40 ET, after
+       state/spx/jev/tables/ and state/market/tables/, the counts and the refused rows under
+       state/operations/health/. Market days only. Fires at 16:40 ET, after
        the day saver's and the overnight store's 16:20 saves; a day either had not finished saving
        is rebuilt by the next night's run.
        NOTE: launchd's StartCalendarInterval uses SYSTEM-LOCAL time and ignores the

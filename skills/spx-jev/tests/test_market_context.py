@@ -5,11 +5,13 @@ import json
 import os
 from datetime import date, datetime, timedelta
 
-from conftest import DAY, at
+from conftest import DAY, at, station_paths, write_jsonl
 from spx_jev import market_context, schwab
 from spx_jev.market_context import (ALL_SYMBOLS, BAR_SYMBOLS, DERIVED_ADD, DERIVED_VOLD, NO_HISTORY, SYMBOLS, add_symbols,
                                     append_snapshot, backfill, backfill_day, derived_add, derived_vold, refresh_breadth, snapshot)
 from spx_jev.state_builder import load_market_context
+
+QUOTES, BARS = station_paths.WATCHLIST_QUOTES_BY_MINUTE, station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE   # the snapshots, the saved bars
 
 
 def _bar(t, close):
@@ -54,14 +56,14 @@ def test_each_run_saves_every_finished_breadth_minute_not_yet_on_file(tmp_path, 
     assert line["bars"]["$TICK"]["close"] == 5.0
     assert [minute["$TICK"]["close"] for minute in line["earlier"]] == [2.0, 3.0, 4.0]      # 09:57 was on file
     append_snapshot(tmp_path, line)
-    lines = [json.loads(l) for l in (tmp_path / "spx_jev" / "context" / f"{DAY}.jsonl").read_text().splitlines()]
+    lines = [json.loads(l) for l in QUOTES.path(tmp_path, day=DAY).read_text().splitlines()]
     assert [set(l) for l in lines[1:]] == [{"ts", "bars"}] * 3 + [{"ts", "quotes", "bars", "failed"}]
     assert all(l["ts"] == line["ts"] for l in lines[1:])
     mk = load_market_context(tmp_path, DAY)
     assert mk.between("$TICK", at(9, 57), at(10, 2)) == [1.0, 2.0, 3.0, 4.0, 5.0] == mk.between("$TRIN", at(9, 57), at(10, 2))
     append_snapshot(tmp_path, snapshot(at(10, 2, ss=50), market_context.saved_bars(tmp_path, date.fromisoformat(DAY))))
-    assert "earlier" not in json.loads((tmp_path / "spx_jev" / "context" / f"{DAY}.jsonl").read_text().splitlines()[-1])
-    assert len((tmp_path / "spx_jev" / "context" / f"{DAY}.jsonl").read_text().splitlines()) == 6
+    assert "earlier" not in json.loads(QUOTES.path(tmp_path, day=DAY).read_text().splitlines()[-1])
+    assert len(QUOTES.path(tmp_path, day=DAY).read_text().splitlines()) == 6
 
 
 def test_a_failed_call_costs_only_what_it_would_have_fetched(monkeypatch):
@@ -215,7 +217,7 @@ def test_the_command_never_touches_a_state_dir_it_was_not_given(tmp_path, monkey
     monkeypatch.setattr(schwab, "quotes", lambda symbols: {})
     monkeypatch.setattr(schwab, "minute_bars", lambda symbol, start, end: [])
     assert market_context.main(["--state-dir", str(tmp_path)]) == 1          # nothing came back: a failed run
-    assert list((tmp_path / "spx_jev" / "context").glob("*.jsonl"))          # the empty snapshot is still on the record
+    assert list(QUOTES.folder(tmp_path).glob("*.jsonl"))          # the empty snapshot is still on the record
 
 
 def test_bitcoin_futures_are_quoted_and_read_under_their_root(tmp_path, monkeypatch):
@@ -288,11 +290,9 @@ def test_a_day_saved_on_its_own_evening_has_its_breadth_saved_again_once_schwab_
 def test_the_saved_day_wins_over_what_the_live_snapshot_kept_for_the_same_minute(tmp_path):
     """The live file keeps what Schwab served during the session; the saved day, put right after it, is what a later
     session reads for that minute."""
-    folder = tmp_path / "spx_jev" / "context"
-    (folder / "bars").mkdir(parents=True)
     minute = at(10, 1).isoformat()
-    (folder / f"{DAY}.jsonl").write_text(json.dumps({"ts": minute, "bars": {"$TICK": {**_bar(at(10, 0), 0.0)}}}) + "\n")
-    (folder / "bars" / f"{DAY}.jsonl").write_text(json.dumps({"ts": minute, "bars": {"$TICK": {**_bar(at(10, 0), -300.0)}}}) + "\n")
+    write_jsonl(QUOTES.path(tmp_path, day=DAY), [{"ts": minute, "bars": {"$TICK": {**_bar(at(10, 0), 0.0)}}}])
+    write_jsonl(BARS.path(tmp_path, day=DAY), [{"ts": minute, "bars": {"$TICK": {**_bar(at(10, 0), -300.0)}}}])
     assert load_market_context(tmp_path, DAY).last("$TICK", at(10, 1)) == -300.0
 
 
@@ -339,7 +339,7 @@ def test_a_symbol_added_later_is_put_into_each_saved_session_lacking_it_the_rest
     monkeypatch.setattr(schwab, "minute_bars", _session_of(lambda s: 2.0))
     written = backfill(tmp_path, date(2026, 9, 17), date.fromisoformat(DAY), symbols=("TQQQ",))
     assert [p.name for p in written] == ["2026-09-17.jsonl", f"{DAY}.jsonl"]
-    whole = json.loads((tmp_path / "spx_jev" / "context" / "bars" / "2026-09-17.jsonl").read_text().splitlines()[0])["bars"]
+    whole = json.loads(BARS.path(tmp_path, day="2026-09-17").read_text().splitlines()[0])["bars"]
     assert len(whole) == len(ALL_SYMBOLS) - len(NO_HISTORY) and load_market_context(tmp_path, DAY).last("TQQQ", at(10, 0)) == 2.0
     assert market_context.main(["--state-dir", str(tmp_path), "--backfill", "2026-09-18", "--symbols", "TQQQ,SPXL"]) == 0
     assert "for TQQQ, SPXL" in capsys.readouterr().out

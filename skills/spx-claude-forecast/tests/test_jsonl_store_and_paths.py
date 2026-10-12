@@ -6,13 +6,14 @@ import json
 import pytest
 
 from spx_claude_forecast import jsonl_store, paths as forecast_paths
+from spx_claude_forecast.paths import station_paths
 
 
 def test_ensure_folders_creates_every_folder_and_the_store_map(tmp_path):
     paths = forecast_paths.ensure_folders(tmp_path / "state")
     assert all(folder.is_dir() for folder in paths.folders)
     store_map = json.loads(paths.store_map_file.read_text())
-    assert "payloads/{day}.jsonl" in store_map["stores"] and store_map["root"].endswith("spx_claude_forecast")
+    assert "payloads/{day}.jsonl" in store_map["stores"] and store_map["root"] == str(paths.root)
 
 
 def test_the_state_root_comes_from_the_per_test_override_then_the_station_env_then_the_plugin_tree(monkeypatch, tmp_path):
@@ -88,11 +89,11 @@ def test_write_bytes_once_writes_only_when_missing_or_short(state_dir):
 
 
 def test_every_writer_refuses_a_path_outside_the_forecast_folder(state_dir, tmp_path):
-    pool_2_file = state_dir / "spx_jev" / "mirai_prediction" / "raw" / "new_voice_forecasts" / "2026-10-09.jsonl"
+    pool_2_file = station_paths.FORECASTS_BY_FORECASTER_READ_AND_HORIZON.path(state_dir, day="2026-10-09")
     with pytest.raises(jsonl_store.WriteOutsideOwnFolder):
         jsonl_store.append_json_line(pool_2_file, {"voice_name": "claude_forecast"})
-    with pytest.raises(jsonl_store.WriteOutsideOwnFolder):
-        jsonl_store.write_json_atomically(state_dir / "spx_jev" / "latest.json", {})
+    with pytest.raises(jsonl_store.WriteOutsideOwnFolder):                      # JEV's card sits beside the forecast's own
+        jsonl_store.write_json_atomically(station_paths.JEV_CARD_BY_LANE["live"].path(state_dir), {})
     with pytest.raises(jsonl_store.WriteOutsideOwnFolder):
         jsonl_store.write_bytes_once(tmp_path / "elsewhere.txt", b"x")
     assert not pool_2_file.exists()

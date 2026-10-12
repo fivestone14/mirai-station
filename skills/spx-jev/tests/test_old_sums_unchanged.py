@@ -16,8 +16,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from conftest import DAY, PRIOR_DAYS, FixedZones, at, bars_from_closes, flat_bars, make_row, write_prior_rows, write_state
-from spx_jev import flat_zone, grade, pool, premarket, service, story
+from conftest import (DAY, PRIOR_DAYS, FixedZones, at, bars_from_closes, flat_bars, grades_path, hour_path, lane_folder, make_row,
+                      station_paths, weights_path, write_prior_rows, write_state)
+from spx_jev import clock, flat_zone, grade, pool, premarket, service, story
 from spx_jev.ask import send_all as real_send_all
 from spx_jev.lane import LIVE, PREMARKET, TAPE
 from spx_jev.service import run_once
@@ -68,12 +69,17 @@ def _sums(average_reply=None):
     return send
 
 
-def _files(out: Path, clock: bool = False) -> dict[str, str]:
-    rec = json.loads((out / "hour" / f"{DAY}.jsonl").read_text().splitlines()[0])
+def _files(out: Path, with_clock: bool = False) -> dict[str, str]:
+    """The old sums' files of the lane folder ``out``, each under the name the golden file knows it by."""
+    rec = json.loads(hour_path(out, DAY).read_text().splitlines()[0])
     files = {"request": json.dumps(rec["request"], ensure_ascii=False, sort_keys=True)}
-    for name in ("grades.jsonl", "weights.json", "pool_30.json", "pool_60.json") + (("clock_days.json",) if clock else ()):
-        if (out / name).exists():
-            files[name] = (out / name).read_text()
+    where = {"grades.jsonl": grades_path(out), "weights.json": weights_path(out),
+             "pool_30.json": pool.state_path(out, 30), "pool_60.json": pool.state_path(out, 60)}
+    if with_clock:
+        where["clock_days.json"] = out / clock.CACHE_NAME
+    for name, path in where.items():
+        if path.exists():
+            files[name] = path.read_text()
     return files
 
 
@@ -95,7 +101,7 @@ def _pin_clocks(root: Path) -> None:
 
 
 def _bars_file(state: Path, closes: list[float]) -> None:
-    path = state / "spx_jev" / "bars" / f"{DAY}.jsonl"
+    path = station_paths.SPX_PRICE_BARS_BY_MINUTE.path(state, day=DAY)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("".join(json.dumps(b) + "\n" for b in bars_from_closes(closes, wick=3.0)))
 
@@ -112,11 +118,11 @@ def run_fixture(tmp_path, monkeypatch, average_reply=None) -> dict[str, dict[str
     write_prior_rows(tmp_path, {d: [make_row(at(9 + (30 + m) // 60, (30 + m) % 60, day=d), 7700.0) for m in range(1, 390, 5)] for d in prior})
     state = write_state(tmp_path, DAY, [make_row(at(10, 2, ss=10), CLOSES[31])], bars_from_closes(CLOSES, wick=3.0), prior)
     _pin_clocks(tmp_path)
-    live = state / "spx_jev"
+    live = lane_folder(state)
     run_once(state, live, DOC, True, DAY)
     # the opening lane reads on the newest finished bar: its 10:40 read sees the bars to 10:39, and is graded once the rest are in
     _bars_file(state, CLOSES[:70])
-    tape = state / "spx_jev" / "lanes" / "tape"
+    tape = lane_folder(state, "tape")
     run_once(state, tape, DOC, True, DAY, lane=TAPE)
     _bars_file(state, CLOSES)
     grade.run(state, tape, grade.live_options(DOC), lane=TAPE)
@@ -129,7 +135,7 @@ def run_fixture(tmp_path, monkeypatch, average_reply=None) -> dict[str, dict[str
     premarket.run_checkpoint(station, pre, PREMARKET_DOC, True, at(9, 28), "09:28", save=False)
     _bars_file(station, CLOSES)
     grade.run(station, pre, grade.live_options(PREMARKET_DOC), lane=PREMARKET)
-    return {"live": _files(live, clock=True), "tape": _files(tape), "premarket": _files(pre)}
+    return {"live": _files(live, with_clock=True), "tape": _files(tape), "premarket": _files(pre)}
 
 
 def _old_path(weights: str, lane: str) -> str:
@@ -189,14 +195,13 @@ def test_a_failed_or_garbled_average_reply_leaves_the_old_sums_and_the_read_whol
     ``by``, the card says the average-price sum got no readable answer, and the call is the end-price sum's."""
     got = run_fixture(tmp_path, monkeypatch, reply)
     _same_as_before(got)
-    for folder, lane in ((tmp_path / "spx_jev", service.LIVE), (tmp_path / "spx_jev" / "lanes" / "tape", TAPE),
-                         (PREMARKET.folder(tmp_path / "premarket"), PREMARKET)):
-        rec = json.loads((folder / "hour" / f"{DAY}.jsonl").read_text().splitlines()[0])
+    for root, lane in ((tmp_path, service.LIVE), (tmp_path, TAPE), (tmp_path / "premarket", PREMARKET)):
+        rec = json.loads(hour_path(lane.folder(root), DAY).read_text().splitlines()[0])
         # the end-price sum as it would have been: JEV's own pick, blended on the live lane
         own = rec["by"][lane.primary].get("jev", rec["by"][lane.primary])
         assert own["pick"] == OLD_SUMS[lane.primary]["choice"] and set(rec["by"]) == set(lane.horizons) and rec["pick"], lane.name
         assert rec["average"]["error"] and "pick" not in rec["average"], lane.name
-        card = json.loads((folder / "latest.json").read_text())
+        card = json.loads(lane.card_path(root).read_text())
         assert card["hour"]["average"]["error"] == rec["average"]["error"], lane.name
-        [call] = service.day_calls(folder, DAY, lane)
+        [call] = service.day_calls(lane.folder(root), DAY, lane)
         assert call["sum"] == lane.primary and call["pick"] == rec["pick"] and call["average_missing"], lane.name

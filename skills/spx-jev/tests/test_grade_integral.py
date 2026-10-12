@@ -12,7 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from conftest import DAY, FixedZones, at, bars_from_closes, make_row, write_state
+from conftest import (DAY, FixedZones, at, bars_from_closes, grades_path, hour_path, integral_grades_path, lane_folder, make_row,
+                      weights_path, write_state)
 from spx_jev import archive, grade, integral, integral_loop, pool
 from spx_jev.grade import INTEGRAL_LOCK, INTEGRAL_NAME, grade_one, integral_line, integral_report, integral_run, main, run
 from spx_jev.lane import PREMARKET, TAPE
@@ -64,8 +65,8 @@ def _rec(hh, mm, pick30="up", pick60="flat", spot=7700.0):
 
 def _state(root: Path, bars=None, recs=None) -> Path:
     state = write_state(root, DAY, _rows(), _climb() if bars is None else bars)
-    (state / "spx_jev" / "hour").mkdir(parents=True)
-    (state / "spx_jev" / "hour" / f"{DAY}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in recs or [_rec(11, 0), _rec(12, 30, "unsure", spot=7730.0)]))
+    hour_path(lane_folder(state), DAY).parent.mkdir(parents=True)
+    hour_path(lane_folder(state), DAY).write_text("".join(json.dumps(r) + "\n" for r in recs or [_rec(11, 0), _rec(12, 30, "unsure", spot=7730.0)]))
     return state
 
 
@@ -80,10 +81,10 @@ def _tree(root: Path) -> dict[str, bytes]:
 
 def test_every_graded_horizon_gets_one_integral_line_and_a_second_run_writes_none(tmp_path, clock):
     state = _state(tmp_path)
-    out = state / "spx_jev"
+    out = lane_folder(state)
     run(state, out, ALLOWED)
     lines = _lines(out / INTEGRAL_NAME)
-    graded = [(g["row_ts"], q) for g in _lines(out / "grades.jsonl") for q in g.get("horizons") or []]
+    graded = [(g["row_ts"], q) for g in _lines(grades_path(out)) for q in g.get("horizons") or []]
     assert [(g["row_ts"], g["horizon"]) for g in lines] == graded and len(graded) == 4
     assert all(g["rule_version"] == integral.RULE_VERSION and g["graded"] is True for g in lines)
     climb = lines[0]                                               # 11:00, up: the climb's first half hour
@@ -103,22 +104,23 @@ def test_grades_weights_and_the_loops_state_are_byte_for_byte_what_the_grader_wr
     with it: every file under the state dir but the side file is the same to the byte."""
     with_it, without = _state(tmp_path / "with"), tmp_path / "without"
     shutil.copytree(with_it, without)
-    run(with_it, with_it / "spx_jev", ALLOWED)
+    run(with_it, lane_folder(with_it), ALLOWED)
     monkeypatch.setattr(grade, "integral_run", lambda *a, **k: [])
-    run(without, without / "spx_jev", ALLOWED)
-    assert _lines(with_it / "spx_jev" / INTEGRAL_NAME) and not (without / "spx_jev" / INTEGRAL_NAME).exists()
+    run(without, lane_folder(without), ALLOWED)
+    assert _lines(integral_grades_path(lane_folder(with_it))) and not integral_grades_path(lane_folder(without)).exists()
     after = _tree(with_it)
-    assert {"spx_jev/grades.jsonl", "spx_jev/weights.json", "spx_jev/pool_30.json", "spx_jev/pool_60.json"} <= set(after)
+    out = lane_folder(with_it)
+    assert {str(p.relative_to(with_it)) for p in (grades_path(out), weights_path(out), pool.state_path(out, 30), pool.state_path(out, 60))} <= set(after)
     assert after == _tree(without)
 
 
 def test_a_hole_waits_today_and_is_written_not_graded_once_the_day_is_over(tmp_path, clock):
     holes = {at(11, 10).isoformat(), at(11, 20).isoformat()}
     state = _state(tmp_path, bars=[b for b in _climb() if b["ts"] not in holes], recs=[_rec(11, 0)])
-    out = state / "spx_jev"
+    out = lane_folder(state)
     clock(DAY)
     run(state, out, ALLOWED)
-    assert _lines(out / "grades.jsonl")[0]["horizons"] == ["next_30", "next_60"]      # the end-price grade reads only the mark
+    assert _lines(grades_path(out))[0]["horizons"] == ["next_30", "next_60"]      # the end-price grade reads only the mark
     assert not (out / INTEGRAL_NAME).exists()                                          # this one waits: the bars may still come
     clock("2026-09-21")
     run(state, out, ALLOWED)
@@ -133,17 +135,17 @@ def test_the_backfill_fills_past_days_from_their_bars_and_touches_nothing_else(t
     live = _state(tmp_path / "live")
     shutil.copytree(live, tmp_path / "past")
     past = tmp_path / "past"
-    run(live, live / "spx_jev", ALLOWED)                           # graded with the integral grade from the start
+    run(live, lane_folder(live), ALLOWED)                           # graded with the integral grade from the start
     with monkeypatch.context() as m:
         m.setattr(grade, "integral_run", lambda *a, **k: [])
-        run(past, past / "spx_jev", ALLOWED)                       # graded before it existed
+        run(past, lane_folder(past), ALLOWED)                       # graded before it existed
     before = _tree(past)
     assert main(["--integral-backfill", "--state-dir", str(past)]) == 0
     assert _tree(past) == before
-    filled = (past / "spx_jev" / INTEGRAL_NAME).read_bytes()
-    assert filled == (live / "spx_jev" / INTEGRAL_NAME).read_bytes()      # the same lines the run writes
+    filled = integral_grades_path(lane_folder(past)).read_bytes()
+    assert filled == integral_grades_path(lane_folder(live)).read_bytes()      # the same lines the run writes
     assert main(["--integral-backfill", "--state-dir", str(past), "--day", DAY]) == 0
-    assert (past / "spx_jev" / INTEGRAL_NAME).read_bytes() == filled      # idempotent
+    assert integral_grades_path(lane_folder(past)).read_bytes() == filled      # idempotent
 
 
 def test_a_record_horizon_carries_the_five_band_size_beside_the_direction():
@@ -190,9 +192,9 @@ def test_a_call_whose_end_price_sums_got_no_answer_is_graded_on_its_own_window(t
     del half["by"]["next_30"]
     late = {**failed, "row_ts": at(15, 45).isoformat()}
     state = _state(tmp_path, recs=[failed, half, late])
-    out = state / "spx_jev"
+    out = lane_folder(state)
     run(state, out, ALLOWED)
-    assert [(g["row_ts"], g["horizons"], g["skipped"]) for g in _lines(out / "grades.jsonl")] == [
+    assert [(g["row_ts"], g["horizons"], g["skipped"]) for g in _lines(grades_path(out))] == [
         (half["row_ts"], ["next_60"], {"next_30": "no answer for this sum"})]        # the end-price grade, as before
     lines = {(g["row_ts"], g["horizon"]): g for g in _lines(out / INTEGRAL_NAME)}
     assert set(lines) == {(failed["row_ts"], "next_30"), (half["row_ts"], "next_30"), (half["row_ts"], "next_60"), (late["row_ts"], "next_30")}
@@ -212,7 +214,7 @@ def test_a_call_whose_end_price_sums_got_no_answer_is_graded_on_its_own_window(t
 def test_a_call_graded_alone_waits_today_for_its_bars_like_any_other(tmp_path, clock):
     failed = {"row_ts": at(11, 0).isoformat(), "spot": 7700.0, "sigma": SIGMA, "error": "timed out", "average": AVERAGE_CALL}
     state = _state(tmp_path, bars=_climb()[:110], recs=[failed])
-    out = state / "spx_jev"
+    out = lane_folder(state)
     clock(DAY)
     run(state, out, ALLOWED)
     assert not (out / INTEGRAL_NAME).exists()                                        # its mark is ahead: a later run grades it
@@ -256,8 +258,8 @@ def test_the_premarket_0945_check_grades_the_call_the_card_shows_not_the_ten_min
 
 
 def test_the_report_gives_each_box_its_flat_share_on_both_grades(tmp_path, capsys):
-    out = tmp_path / "spx_jev"
-    out.mkdir()
+    out = lane_folder(tmp_path)
+    out.mkdir(parents=True)
     lines = [{"row_ts": f"r{k}", "horizon": "next_30", "rule_version": integral.RULE_VERSION, "graded": True, "label": lab, "end_label": end,
               "stale_read": k == 0} for k, (lab, end) in enumerate((("flat", "flat"), ("flat", "up"), ("up", "up"), ("flat", "down")))]
     lines += [{"row_ts": "r9", "horizon": "next_30", "rule_version": integral.RULE_VERSION, "graded": False, "reason": integral.NOT_GRADED},
@@ -276,13 +278,13 @@ def test_the_report_gives_each_box_its_flat_share_on_both_grades(tmp_path, capsy
 def test_the_side_file_only_ever_grows(tmp_path, clock):
     """A second day's run appends its lines after the first day's, whose bytes stay exactly as they were."""
     state = _state(tmp_path)
-    out = state / "spx_jev"
+    out = lane_folder(state)
     run(state, out, ALLOWED)
     first = (out / INTEGRAL_NAME).read_bytes()
     day2 = "2026-09-21"
     write_state(state, day2, [make_row(at(9, 31, day=day2), 7700.0, sigma=SIGMA, sigma_anchor=SIGMA, sigma_live=SIGMA)],
                 bars_from_closes([7700.0] * 390, day=day2))
-    (out / "hour" / f"{day2}.jsonl").write_text(json.dumps({**_rec(11, 0), "row_ts": at(11, 0, day=day2).isoformat()}) + "\n")
+    hour_path(out, day2).write_text(json.dumps({**_rec(11, 0), "row_ts": at(11, 0, day=day2).isoformat()}) + "\n")
     clock("2026-09-22")
     run(state, out, ALLOWED)
     grown = (out / INTEGRAL_NAME).read_bytes()
@@ -292,7 +294,7 @@ def test_the_side_file_only_ever_grows(tmp_path, clock):
 
 def test_a_line_under_an_older_rule_version_does_not_stand_for_this_one(tmp_path, clock):
     state = _state(tmp_path, recs=[_rec(11, 0)])
-    out = state / "spx_jev"
+    out = lane_folder(state)
     old = {"row_ts": at(11, 0).isoformat(), "horizon": "next_30", "rule_version": integral.RULE_VERSION - 1, "graded": True, "label": "flat"}
     (out / INTEGRAL_NAME).write_text(json.dumps(old) + "\n")
     run(state, out, ALLOWED)
@@ -304,13 +306,13 @@ def test_a_line_under_an_older_rule_version_does_not_stand_for_this_one(tmp_path
 def test_a_stale_reads_flag_reaches_the_side_file(tmp_path, clock):
     """A record whose spot, 7690, no bar near 11:00 traded (price stood at 7700): graded, and flagged for anything that learns."""
     state = _state(tmp_path, recs=[_rec(11, 0, spot=7690.0)])
-    run(state, state / "spx_jev", ALLOWED)
-    assert {(g["stale_read"], g["graded"]) for g in _lines(state / "spx_jev" / INTEGRAL_NAME)} == {(True, True)}
+    run(state, lane_folder(state), ALLOWED)
+    assert {(g["stale_read"], g["graded"]) for g in _lines(integral_grades_path(lane_folder(state)))} == {(True, True)}
 
 
 def test_a_backfill_waits_for_a_run_holding_the_side_file(tmp_path, clock, monkeypatch):
     state = _state(tmp_path)
-    out = state / "spx_jev"
+    out = lane_folder(state)
     with monkeypatch.context() as m:
         m.setattr(grade, "integral_run", lambda *a, **k: [])
         run(state, out, ALLOWED)                                   # graded, the side file not yet filled
