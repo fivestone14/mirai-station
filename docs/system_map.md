@@ -38,7 +38,9 @@ Every plist's command is
 `bash -lc "$HOME/mirai_awakening/scheduled_jobs/job_start_scripts/start_job_with_logs.sh <job> <run script> [args]"`.
 The start script makes `data/operations/logs/`, sends what the job prints to `<job>_output_log.txt`
 and `<job>_errors_log.txt` there (`<job>` is the launchd label without `com.mirai-station.`, hyphens
-written as underscores) and becomes the run script. The run script sources `env.sh` (the repo root
+written as underscores) and becomes the run script. First it rotates the job's two logs: a log last
+written on an earlier day goes to `data/operations/logs/older/<that day>/`, gzipped, and the rotated
+days are kept 14 days. The run script sources `env.sh` (the repo root
 from its own position, the venv at `~/.local/share/mirai-station/venv`, `MIRAI_STATION_STATE` as
 `<repo>/data`), asks the market gate in `alerts_and_phone_pushes/` where one applies, then moves to
 the working folder below and starts the entry with the venv's python. launchd expands nothing in a
@@ -52,7 +54,7 @@ plist path, which is why the plists cannot name the log files themselves.
 | lob-collector · dated-book · gex-polarity | run-lob-collector.sh · run-dated-book.sh · run-gex-polarity.sh | pipelines/spx_options_scanner | `lob_bridge.py --run-collector` · `dated_gex_feed.py --pull` · `gex_polarity_ab.py` then `lob_bridge.py --nightly` |
 | spx-jev · spx-jev-tape | run-spx-jev.sh · run-spx-jev.sh --lane tape | pipelines/spx_jev_questions_and_pools | `python -m spx_jev.service` |
 | spx-jev-premarket | run-spx-jev-premarket.sh | pipelines/spx_jev_questions_and_pools | `python -m spx_jev.premarket` |
-| spx-jev-bars · -context · -save-day · -overnight · -headlines · -store | run-spx-jev-*.sh | pipelines/spx_jev_questions_and_pools | `python -m spx_jev.bars` · `.market_context` · `.save_day` · `.overnight` · `.headlines` · `.store` |
+| spx-jev-bars · -context · -save-day · -overnight · -headlines · -store | run-spx-jev-*.sh | pipelines/spx_jev_questions_and_pools | `python -m spx_jev.bars` · `.market_context` · `.save_day` · `.overnight` · `.headlines` · `.store`, then `station_store_files.py --compress-finished-days` (gzips old day files) |
 | spx-jev-prediction-nightly | run-spx-jev-prediction-nightly.sh | pipelines/spx_jev_questions_and_pools | `python -m spx_jev.mirai_prediction.nightly_job` |
 | spx-claude-forecast-recorder · -nightly | run-spx-claude-forecast-*.sh | pipelines/spx_claude_forecast | `python -m spx_claude_forecast.recorder` · `.nightly` |
 | viewstation | run-viewstation.sh | the server's own folder | `screens/desktop_and_phone_server/server.py` |

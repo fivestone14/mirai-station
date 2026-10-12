@@ -16,7 +16,7 @@ from pathlib import Path
 
 from . import jsonl_store
 from .control import now_utc_iso
-from .paths import ForecastPaths
+from .paths import ForecastPaths, station_store_files
 
 HORIZONS = ("next_30_minutes", "next_60_minutes", "to_close")
 FINGERPRINT_FIELDS = ("gap_sig", "price_minus_close_sig", "last_30_minutes_sig", "range_sig", "range_position",
@@ -116,9 +116,7 @@ def collect_rows(paths: ForecastPaths) -> list[dict]:
     live_slots: set[tuple[str, str]] = set()
     for origin, payload_dir, outcome_dir in (("live", paths.payloads_dir, paths.outcomes_dir),
                                              ("seed", paths.seed_payloads_dir, paths.seed_outcomes_dir)):
-        if not payload_dir.exists():
-            continue
-        for payload_file in sorted(payload_dir.glob("20??-??-??.jsonl")):
+        for payload_file in station_store_files.day_files(payload_dir):     # plain or gzipped once old
             day = payload_file.name[:10]
             outcomes_by_read: dict[str, list[dict]] = {}
             for line in jsonl_store.iter_json_lines(outcome_dir / f"{day}.jsonl"):

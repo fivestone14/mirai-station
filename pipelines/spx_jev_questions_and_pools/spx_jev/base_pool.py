@@ -80,6 +80,7 @@ from .state_builder import ET, load_jsonl, parse_ts
 from .weights import QuestionWeights
 
 import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
+import station_store_files  # noqa: E402
 
 if TYPE_CHECKING:
     from .baseline import Baseline
@@ -759,7 +760,7 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline:
     watermark = min((s["last_session_applied"] or "") for s in states.values())
     stopped = False
     hour_dir = out_dir / HOUR_SUBDIR
-    for day in sorted(p.stem for p in hour_dir.glob("*.jsonl")) if hour_dir.exists() else []:
+    for day in station_store_files.day_file_days(hour_dir):
         if day <= watermark or day >= today:
             continue
         recs, seen = [], set()

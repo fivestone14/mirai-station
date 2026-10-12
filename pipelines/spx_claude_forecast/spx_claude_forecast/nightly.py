@@ -27,7 +27,7 @@ from pathlib import Path
 
 from . import grading, jsonl_store, library, precedents, recorder, scorecard, scoring, station_stores, test_variants
 from .control import ET, log, log_job_run, now_et, now_utc_iso, prune_run_log, single_instance_lock, switched_off_reason
-from .paths import ForecastPaths, default_state_dir, ensure_folders
+from .paths import ForecastPaths, default_state_dir, ensure_folders, station_store_files
 
 SEAL_AFTER_CLOSE_MINUTES = 75       # the official close and the 16:20 ET daily-close save must both be on disk
 CATCH_UP_DAYS = 10
@@ -159,10 +159,7 @@ def run_nightly(state_dir: Path, day: str | None = None, now: datetime | None = 
 
 
 def _recent_days_with_payloads(paths: ForecastPaths, day: str) -> list[str]:
-    folder = paths.payloads_dir
-    if not folder.exists():
-        return []
-    days = sorted(p.name[:10] for p in folder.glob("20??-??-??.jsonl") if p.name[:10] < day)
+    days = [d for d in station_store_files.day_file_days(paths.payloads_dir) if d < day]
     return days[-CATCH_UP_DAYS:]
 
 

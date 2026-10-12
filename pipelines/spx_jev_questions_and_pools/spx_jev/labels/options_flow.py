@@ -250,12 +250,12 @@ def _prior_books(state_dir: Path, day: str, clock: time) -> list[tuple[datetime,
     about 40 KB, so each line's time is read from its start and only the rows in the stretch are parsed; the
     scanner writes its rows in time order."""
     path = Path(state_dir) / ROWS_SUBDIR / f"{day}.jsonl"
-    if not path.exists():
+    if not station_store_files.day_file_exists(path):
         return []
     end = datetime.combine(date.fromisoformat(day), clock, tzinfo=ET)
     start = end - timedelta(minutes=WINDOW_10_MIN + ROW_SLACK_MIN)
     out = []
-    with open(path, encoding="utf-8") as f:
+    with station_store_files.open_day_file(path) as f:
         for line in f:
             if not line.startswith(ROW_LINE_START):
                 continue
@@ -786,12 +786,13 @@ class CollectorRecord:
 
 def collector_record(state_dir: Path, day: str) -> CollectorRecord | None:
     path = Path(state_dir) / OPTIONS_TAPE_SUBDIR / f"{day}.jsonl"
-    return _read_record(str(path), path.stat().st_mtime_ns) if path.exists() else None
+    signature = station_store_files.day_file_signature(path)          # plain or gzipped; the same either way
+    return _read_record(str(path), signature) if signature else None
 
 
 @lru_cache(maxsize=32)
-def _read_record(path: str, mtime_ns: int) -> CollectorRecord:
-    """``mtime_ns`` keys the cache, so today's file, still being written, is read afresh."""
+def _read_record(path: str, signature: tuple[int, int]) -> CollectorRecord:
+    """``signature`` (the file's size and mtime) keys the cache, so today's file, still being written, is read afresh."""
     defense, spy = [], []
     for line in load_jsonl(Path(path)):
         if not isinstance(line.get("ts"), str):

@@ -43,6 +43,7 @@ _REPO_ROOT = str(_SKILL_DIR.parent.parent)             # station_paths.py names 
 if _REPO_ROOT not in sys.path:
     sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
+import station_store_files  # noqa: E402
 _LEFT_EYE = str(_SKILL_DIR.parent / "spx_options_scanner")
 if _LEFT_EYE not in sys.path:
     sys.path.insert(0, _LEFT_EYE)
@@ -117,7 +118,7 @@ def _prev_close_totals(now: datetime) -> Optional[dict]:
     for back in range(1, 7):
         path = _diary_path((now - timedelta(days=back)).date().isoformat())
         try:
-            lines = path.read_text().splitlines()
+            lines = station_store_files.read_day_file_text(path).splitlines()
         except OSError:
             continue
         for line in reversed(lines):

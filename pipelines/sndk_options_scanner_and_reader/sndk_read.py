@@ -75,6 +75,7 @@ _REPO_ROOT = str(_SKILL_DIR.parent.parent)             # station_paths.py names 
 if _REPO_ROOT not in sys.path:
     sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
+import station_store_files  # noqa: E402
 _LEFT_EYE = str(_SKILL_DIR.parent / "spx_options_scanner")
 if _LEFT_EYE not in sys.path:
     sys.path.insert(0, _LEFT_EYE)
@@ -674,11 +675,6 @@ def _state_dir() -> Path:
     return station_paths.state_root()
 
 
-# One session's file, found by the shape of its name. Never "2026-*": a year in
-# the pattern stops every later session from entering the history on January 1.
-_DAY_FILE_GLOB = "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl"
-
-
 def _diary_dir() -> Path:
     return station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder()
 
@@ -769,7 +765,7 @@ def _market_live() -> bool:
 def _read_jsonl(path: Path) -> list[dict]:
     out: list[dict] = []
     try:
-        for ln in path.read_text().splitlines():
+        for ln in station_store_files.read_day_file_text(path).splitlines():   # an old day plain or gzipped alike
             try:
                 r = json.loads(ln)
             except json.JSONDecodeError:
@@ -2750,8 +2746,8 @@ def _prior_sessions(today: str) -> dict:
 
     Forced/off-hours rows are excluded on the same rule the reader uses
     everywhere else: a midnight row is not a scan of the tape."""
-    days = sorted(p for p in _diary_dir().glob(_DAY_FILE_GLOB)
-                  if p.stem < today)[-PCTL_MAX_SESSIONS:]
+    days = [p for p in station_store_files.day_files(_diary_dir())
+            if p.stem < today][-PCTL_MAX_SESSIONS:]
     key = [p.stem for p in days]
     cache = station_paths.SNDK_OPTIONS_READER_PERCENTILE_HISTORY_STATE.path()
     try:
@@ -3336,8 +3332,7 @@ def _prior_session_date(today: str) -> Optional[str]:
     the session whose close the standing open interest was struck at. Read off
     the diary rather than off a weekday calendar, so a holiday or a dark day
     can never be handed over as a date that was never traded."""
-    days = sorted(pp.stem for pp in _diary_dir().glob(_DAY_FILE_GLOB)
-                  if pp.stem < today)
+    days = [d for d in station_store_files.day_file_days(_diary_dir()) if d < today]
     return days[-1] if days else None
 
 
@@ -3359,11 +3354,8 @@ def minute_bars(day: str) -> list[dict]:
 
 
 def _file_key(p: Optional[Path]):
-    try:
-        st = p.stat()
-        return (str(p), st.st_mtime_ns, st.st_size)
-    except (OSError, AttributeError):
-        return (str(p), None)
+    signature = station_store_files.day_file_signature(p) if p is not None else None   # plain or gzipped alike
+    return (str(p), signature[1], signature[0]) if signature else (str(p), None)
 
 
 _EXTREMES_CACHE: dict = {}
@@ -3406,8 +3398,8 @@ def _prior_sessions_range(today: str) -> Optional[dict]:
     from its minute bars when the file is full, else from its scans, with
     `measured_from` saying which ("mixed" when the days differ). Today's own
     file is never opened."""
-    days = sorted(p for p in _diary_dir().glob(_DAY_FILE_GLOB)
-                  if p.stem < today)[-PRIOR_RANGE_SESSIONS:]
+    days = [p for p in station_store_files.day_files(_diary_dir())
+            if p.stem < today][-PRIOR_RANGE_SESSIONS:]
     found = [(p.stem, ex) for p in days if (ex := _day_extremes(p.stem, p))]
     if not found:
         return None

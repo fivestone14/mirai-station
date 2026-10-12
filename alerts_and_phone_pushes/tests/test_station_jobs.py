@@ -547,7 +547,7 @@ def _year_pinned_patterns():
             tree = ast.parse(path.read_text(), filename=str(path))
         except (SyntaxError, UnicodeDecodeError):
             continue
-        # a pattern kept in a constant (sndk_read._DAY_FILE_GLOB) is still a pattern
+        # a pattern kept in a module-level constant is still a pattern
         constants = {node.targets[0].id: node.value.value for node in tree.body
                      if isinstance(node, ast.Assign) and len(node.targets) == 1
                      and isinstance(node.targets[0], ast.Name)

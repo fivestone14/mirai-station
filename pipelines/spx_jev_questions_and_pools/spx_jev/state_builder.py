@@ -60,10 +60,10 @@ def parse_ts(s: str) -> datetime:
 
 
 def load_jsonl(path: Path) -> list[dict]:
-    if not path.exists():
-        return []
+    """Every JSON object line of the file, a torn line skipped; ``[]`` without one. A day file of a store kept
+    compressed when old (station_store_files.COMPRESSED_DAY_FILE_STORES) is read plain or gzipped alike."""
     out: list[dict] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in station_store_files.read_day_file_lines(path):
         line = line.strip()
         if not line:
             continue
@@ -87,9 +87,9 @@ def first_row(state_dir: Path, day: str) -> list[dict]:
     """The day's first usable diary row, alone in a list, or none: read a line at a time, since a row is
     about 40 KB and only the morning's sigma is wanted from a past day."""
     path = Path(state_dir) / ROWS_SUBDIR / f"{day}.jsonl"
-    if not path.exists():
+    if not station_store_files.day_file_exists(path):
         return []
-    with open(path, encoding="utf-8") as f:
+    with station_store_files.open_day_file(path) as f:
         for line in f:
             try:
                 row = labeller_row(json.loads(line))
@@ -107,7 +107,7 @@ def load_bars(state_dir: Path, day: str) -> list[dict]:
 
 
 def row_days(state_dir: Path) -> list[str]:
-    return sorted(p.stem for p in (Path(state_dir) / ROWS_SUBDIR).glob("????-??-??.jsonl"))
+    return station_store_files.day_file_days(Path(state_dir) / ROWS_SUBDIR)
 
 
 def bar_days(state_dir: Path) -> list[str]:

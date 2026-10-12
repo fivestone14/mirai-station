@@ -37,6 +37,7 @@ _REPO_ROOT = str(SKILL_DIR.parent.parent)             # station_paths.py names e
 if _REPO_ROOT not in sys.path:
     sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
+import station_store_files  # noqa: E402
 
 # --- BETA gate -------------------------------------------------------------
 REVERSION_LIVE = False           # False = shadow (record only, no confluence vote)
@@ -122,7 +123,7 @@ def _prev_close_totals(ticker: str, now: datetime) -> Optional[dict]:
         for back in range(1, 7):
             path = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(day=(now - timedelta(days=back)).date().isoformat())
             try:
-                lines = path.read_text().splitlines()
+                lines = station_store_files.read_day_file_text(path).splitlines()
             except OSError:
                 continue
             for line in reversed(lines):

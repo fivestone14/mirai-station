@@ -46,6 +46,7 @@ _REPO_ROOT = str(SKILL_DIR.parent.parent)             # station_paths.py names e
 if _REPO_ROOT not in sys.path:
     sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
+import station_store_files  # noqa: E402
 
 # State dir (where the reversion telemetry lives): the station's one resolver.
 STATE_DIR = station_paths.state_root()
@@ -287,8 +288,8 @@ def _latest_session_date(now: datetime) -> str | None:
     """Most recent date (≤ today) with a lens diary — so the closed view
     persists the LAST real session until the next premarket reset."""
     today = now.date().isoformat()
-    dates = [p.stem for p in station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(STATE_DIR).glob(
-        "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl") if p.stem <= today]
+    dates = [d for d in station_store_files.day_file_days(station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(STATE_DIR))
+             if d <= today]
     return max(dates) if dates else None
 
 

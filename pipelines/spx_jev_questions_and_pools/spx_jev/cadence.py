@@ -69,6 +69,7 @@ from .schedule import every_min, holds_for_the_day
 from .state_builder import DEFAULT_STATE_DIR, load_jsonl, parse_ts
 
 import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
+import station_store_files  # noqa: E402
 
 CADENCE_NAME = station_paths.JEV_QUESTION_ASK_SCHEDULE_STATE.file_name()
 LAST_NAME = station_paths.JEV_LAST_ANSWERS_STATE.file_name()
@@ -406,7 +407,7 @@ def recount(records: list[dict], doc: dict, previous: dict | None = None, day: s
 def previous_day_with_records(out_dir: Path, today: str) -> str | None:
     """The newest day before ``today`` with a day of answers in the lane folder ``out_dir``."""
     folder = station_paths.JEV_ANSWERS_BY_READ.folder_within(station_paths.JEV_LANE_FOLDER, out_dir)
-    days = sorted(p.stem for p in folder.glob("20??-??-??.jsonl") if p.stem < today)
+    days = [d for d in station_store_files.day_file_days(folder) if d < today]
     return days[-1] if days else None
 
 

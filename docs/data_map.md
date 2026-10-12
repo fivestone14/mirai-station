@@ -259,7 +259,7 @@ it is the writer of the two on-demand files.
 | store (constant) | path | one row or file holds | written by | read by |
 |---|---|---|---|---|
 | `STATION_RUNTIME_LOG` | `operations/logs/station_runtime_log/{day}.log` | one day of `env.sh`'s `log()` lines (a runner's gate failure or disabled run, the installer, the venv bootstrap) | the job start scripts | by hand |
-| `LAUNCHD_JOB_OUTPUT_LOG`, `LAUNCHD_JOB_ERRORS_LOG` | `operations/logs/{job}_output_log.txt`, `{job}_errors_log.txt` (`{job}` = the label without `com.mirai-station.`, hyphens as underscores) | what one launchd job printed, and its errors; appended on every run, nothing rotates them | `start_job_with_logs.sh`, every job | by hand; the health check names the path in a failure hint |
+| `LAUNCHD_JOB_OUTPUT_LOG`, `LAUNCHD_JOB_ERRORS_LOG` | `operations/logs/{job}_output_log.txt`, `{job}_errors_log.txt` (`{job}` = the label without `com.mirai-station.`, hyphens as underscores) | what one launchd job printed, and its errors, today's only: appended on every run, rotated daily into `operations/logs/older/` (below) | `start_job_with_logs.sh`, every job | by hand; the health check names the path in a failure hint |
 | `CLAUDE_FORECAST_JOB_RUNS_LOG` | `operations/logs/claude_forecast_job_runs_log.jsonl` | one Claude-forecast job run | the Claude forecast (read runner, nightly, recorder, seed, test variants) | its own pruner (30 days; nightly and recorder) |
 | `CLAUDE_FORECAST_READ_JOB_LOG` | `operations/logs/claude_forecast_read_job_log.txt` | the detached read runner's printed output, appended per read | the hook that spawns the read runner (under spx-jev) | by hand |
 | `PREDICTION_JOB_RUNS_LOG` | `operations/logs/prediction_job_runs_log.jsonl` | one prediction-system job or hook run | the prediction system (nightly, read hook, replay, backfill) | by hand |
@@ -276,6 +276,32 @@ it is the writer of the two on-demand files.
 | `JEV_PREMARKET_OUTAGE_ALERT_STATE` | `operations/jev_premarket_outage_alert_state.json` | today's premarket outage pages already sent | spx-premarket-deadman | alerts |
 | `SNDK_OUTAGE_ALERT_STATE` | `operations/sndk_outage_alert_state.json` | today's SNDK outage pages and down-since times | sndk-deadman | alerts, health |
 | `PHONE_PUSHES_WALL_TIMERS_FEED_OUTAGES_STATE` | `operations/phone_pushes_wall_timers_feed_outages_state.json` | the alerts job's working memory for today: pushes already sent, dealer-wall alert timers, feed sirens and feed-down-since times | left-eye (the `gex-alerts` step) | alerts |
+
+## Old days are gzipped after 14 days; logs rotate daily, kept 14 days
+
+**Day files.** Nothing is deleted from a data store. Once a night, after the store build (the spx-jev-store job,
+16:40 ET on weekdays), `station_store_files.compress_finished_days` gzips in place every day file older than 14 days
+(`KEEP_PLAIN_DAYS`) of the big daily stores: `{day}.jsonl` becomes `{day}.jsonl.gz`, the same bytes (checked to
+decompress identically before the plain file goes) and the same modified time. Today's and the last 14 days' files
+stay plain. The stores (`COMPRESSED_DAY_FILE_STORES`): `SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN`,
+`SPX_ORDER_FLOW_READINGS_BY_MINUTE`, `WATCHLIST_QUOTES_BY_MINUTE`, `WATCHLIST_PRICE_BARS_BY_MINUTE`,
+`JEV_READS_AND_GRADES_BY_EVENT`, each lane's `JEV_ANSWERS_BY_READ` and `JEV_AND_POOL_FORECASTS_BY_READ`,
+`CLAUDE_FORECAST_INPUTS_BY_READ`, `CLAUDE_FORECAST_ANSWERS_BY_READ`, `CLAUDE_FORECAST_REBUILT_INPUTS_BY_READ`,
+`SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN` and `SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN`. Not gzipped: the futures bars
+(spx-jev-overnight restamps every saved night whole when a roll changes), the small daily stores, the Parquet tables,
+the raw tape (the collector gzips its own finished days), and every `_state`, `_latest` and `_card` file. Every reader
+of a gzipped store reads a day through `station_store_files` (`read_day_file_text`, `read_day_file_lines`,
+`open_day_file`, `day_file_exists`, `day_files`, `day_file_days`, `day_file_signature`) with the plain path the store
+names, so a `.gz` day reads exactly like the plain file; the server's `/api/store/index`, `/api/store/file` and raw
+explorer list and serve it as the plain file, decompressed. A line written to a day already gzipped (a backfill by hand)
+lands in a new plain file beside the `.gz`, is read after it, and is folded into the `.gz` the next night;
+`station_store_files.replace_day_file_text` rewrites a gzipped day as its `.gz`. By hand:
+`python station_store_files.py --compress-finished-days [--state-dir DIR]`.
+
+**Job logs.** `start_job_with_logs.sh` rotates a job's `{job}_output_log.txt` and `{job}_errors_log.txt` as the job
+starts: a log last written on an earlier day moves to `operations/logs/older/{that day}/` and is gzipped; a rotated
+day older than 14 days is removed. A job that never restarts (viewstation, voice, caffeinate) rotates at its next start.
+The `.jsonl` run logs are not rotated (`claude_forecast_job_runs_log.jsonl` prunes itself to 30 days).
 
 ## The training sets and their join keys
 

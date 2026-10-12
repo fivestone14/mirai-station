@@ -64,6 +64,7 @@ from .sessions import SESSION_CLOSE, session_close
 from .state_builder import ET, load_jsonl, parse_ts
 
 import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
+import station_store_files  # noqa: E402
 
 LOOP_VERSION = 1                # bump when this loop's learning changes: a state from before is learned again (update)
 GATE_SESSIONS = 10              # SPX sessions of average-price grades before Will decides whether to trust what it learns
@@ -226,7 +227,7 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, into: Pat
     lines = average_lines(out_dir, lane)
     cache, version = references(out_dir, lane)
     hour_dir = out_dir / HOUR_SUBDIR
-    for day in sorted(p.stem for p in hour_dir.glob("*.jsonl")) if hour_dir.exists() else []:
+    for day in station_store_files.day_file_days(hour_dir):
         if day <= (state["last_session_applied"] or "") or day >= today:
             continue
         recs, seen = [], set()

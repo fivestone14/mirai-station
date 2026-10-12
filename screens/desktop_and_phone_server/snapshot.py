@@ -36,6 +36,7 @@ _REPO_ROOT = str(PLUGIN_ROOT)                     # station_paths names every st
 if _REPO_ROOT not in sys.path:
     sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
+import station_store_files  # noqa: E402
 
 STATE_DIR = station_paths.state_root()
 
@@ -273,8 +274,7 @@ def _payload_key() -> tuple:
     """What the payload depends on: the newest diary file and, for that day, the
     readings and the bars (the side packet is built from the bars). Sizes and mtimes, no contents read."""
     state = _state_dir()
-    diary = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(state)
-    files = sorted(diary.glob("[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl")) if diary.is_dir() else []
+    files = station_store_files.day_files(station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(state))
     if not files:
         return ("no diary",)
     newest = files[-1]
@@ -282,11 +282,8 @@ def _payload_key() -> tuple:
     key = [str(state), day]
     for path in (newest, station_paths.SNDK_OPTIONS_READER_GATES_AND_ANSWERS_BY_RUN.path(state, day=day),
                  station_paths.SNDK_PRICE_BARS_BY_MINUTE.path(state, day=day)):
-        try:
-            st = path.stat()
-            key.append((path.name, st.st_size, st.st_mtime_ns))
-        except OSError:
-            key.append((path.name, None, None))
+        signature = station_store_files.day_file_signature(path)      # plain or gzipped alike
+        key.append((path.name, *(signature or (None, None))))
     return tuple(key)
 
 
@@ -354,8 +351,7 @@ def _build_payload(now: datetime) -> dict:
     if str(_SNDK_PRO_DIR) not in sys.path:
         sys.path.insert(0, str(_SNDK_PRO_DIR))
     import sndk_read as R   # lazy: the tab is rarely open; keeps server start light
-    diary = R._diary_dir()
-    files = sorted(diary.glob("[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl"))
+    files = station_store_files.day_files(R._diary_dir())   # plain, or gzipped once older than 14 days
     rows: list = []
     day = None
     for path in reversed(files):                      # newest session with live rows
@@ -505,9 +501,9 @@ def _minutes_since_open(ts: str) -> Optional[float]:
 
 def _jsonl_rows(path: Path) -> list:
     out: list = []
-    if not path.exists():
+    if not station_store_files.day_file_exists(path):      # an old day is read plain or gzipped alike
         return out
-    with open(path) as f:
+    with station_store_files.open_day_file(path) as f:
         for line in f:
             try:
                 r = json.loads(line)
@@ -524,8 +520,8 @@ def pipeline_days(limit: int = 30) -> list:
     """Days that have a diary and minute bars, newest first."""
     state = _state_dir()
     have_bars = {p.stem for p in station_paths.SNDK_PRICE_BARS_BY_MINUTE.folder(state).glob("[0-9]*-[0-9]*-[0-9]*.jsonl")}
-    days = sorted((p.stem for p in station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(state).glob("[0-9]*-[0-9]*-[0-9]*.jsonl")
-                   if p.stem in have_bars), reverse=True)
+    days = sorted((d for d in station_store_files.day_file_days(station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(state))
+                   if d in have_bars), reverse=True)
     return days[:limit]
 
 

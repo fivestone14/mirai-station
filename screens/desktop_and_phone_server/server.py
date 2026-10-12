@@ -60,6 +60,7 @@ STATIC = HERE / "static"
 sys.path.insert(0, str(HERE))
 import snapshot as snap  # noqa: E402
 import station_paths  # noqa: E402  (snapshot put the repo root on sys.path)
+import station_store_files  # noqa: E402
 
 PLUGIN_ROOT = snap.PLUGIN_ROOT
 STATE_DIR = snap.STATE_DIR
@@ -316,24 +317,36 @@ def _raw_denied(root: Path, path: Path) -> bool:
     return bool(parts) and parts[0] in _RAW_DENY
 
 
+def _day_file_as_served(p: Path) -> Path | None:
+    """The file the explorer lists and serves for ``p``: itself when its type is readable, the plain day file a
+    gzipped old day file stands for (``{day}.jsonl.gz`` -> ``{day}.jsonl``, served decompressed), else None."""
+    if p.suffix in _RAW_SUFFIXES:
+        return p
+    if p.name.endswith(".jsonl" + station_store_files.COMPRESSED_DAY_FILE_SUFFIX):
+        return p.with_name(p.name[: -len(station_store_files.COMPRESSED_DAY_FILE_SUFFIX)])
+    return None
+
+
 def _raw_index() -> dict:
     out = {}
     for label, root in _raw_roots().items():
-        items = []
+        items, listed = [], set()
         if root.exists():
             for p in sorted(root.rglob("*")):
-                if p.is_file() and p.suffix in _RAW_SUFFIXES and not _raw_denied(root, p):
-                    try:
-                        st = p.stat()
-                    except OSError:
-                        continue
-                    items.append({
-                        "rel": str(p.relative_to(root)),
-                        "size": st.st_size,
-                        "mtime": st.st_mtime,
-                        "ext": p.suffix,
-                    })
-        out[label] = items
+                served = _day_file_as_served(p) if p.is_file() else None
+                if served is None or served in listed or _raw_denied(root, served):
+                    continue
+                signature = station_store_files.day_file_signature(served)   # a gzipped day: its plain size, its mtime
+                if signature is None:
+                    continue
+                listed.add(served)
+                items.append({
+                    "rel": str(served.relative_to(root)),
+                    "size": signature[0],
+                    "mtime": signature[1] / 1e9,
+                    "ext": served.suffix,
+                })
+        out[label] = sorted(items, key=lambda item: item["rel"])
     return out
 
 
@@ -410,26 +423,29 @@ def _store_index(name: str, qs: dict) -> dict:
     others.pop("day")
     folder = st.folder(root, **others)
     pattern = re.compile(re.escape(st.file_name(day="\0", **others)).replace("\x00", r"(\d{4}-\d{2}-\d{2})"))
-    items = []
+    items, listed = [], set()
     if folder.is_dir() and _safe_join(root, str(folder.relative_to(root))) is not None and not _raw_denied(root, folder.resolve()):
         for p in sorted(folder.iterdir()):
-            m = pattern.fullmatch(p.name)
-            if not m or not p.is_file() or p.suffix not in _RAW_SUFFIXES:
+            served = _day_file_as_served(p) if p.is_file() else None   # an old day gzipped is listed as its plain file
+            m = pattern.fullmatch(served.name) if served is not None else None
+            if not m or served in listed:
                 continue
-            try:
-                stat = p.stat()
-            except OSError:
+            signature = station_store_files.day_file_signature(served)
+            if signature is None:
                 continue
-            items.append({"day": m.group(1), "rel": str(p.relative_to(root)), "size": stat.st_size, "mtime": stat.st_mtime})
-    return {"name": name, "items": items}
+            listed.add(served)
+            items.append({"day": m.group(1), "rel": str(served.relative_to(root)), "size": signature[0], "mtime": signature[1] / 1e9})
+    return {"name": name, "items": sorted(items, key=lambda item: item["day"])}
 
 
 def _read_raw(root: Path, path: Path | None, limit: int) -> dict:
-    if path is None or not path.is_file():
+    """A readable file's content: a .jsonl day file the station gzipped once old is served decompressed, in the same
+    shape as the plain file."""
+    if path is None or not (path.is_file() or path.suffix == ".jsonl" and station_store_files.day_file_exists(path)):
         return {"error": "not found"}
     if path.suffix not in _RAW_SUFFIXES or _raw_denied(root, path):
         return {"error": "not found"}
-    text = path.read_text(errors="replace")
+    text = station_store_files.read_day_file_text(path, errors="replace")
     if path.suffix == ".jsonl":
         rows = []
         for line in text.splitlines():

@@ -68,6 +68,7 @@ _REPO_ROOT = str(_SKILL_DIR.parent.parent)             # station_paths.py names 
 if _REPO_ROOT not in sys.path:
     sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
+import station_store_files  # noqa: E402
 _LEFT_EYE = str(_SKILL_DIR.parent / "spx_options_scanner")
 if _LEFT_EYE not in sys.path:
     sys.path.insert(0, _LEFT_EYE)
@@ -117,7 +118,7 @@ def _diary_dir() -> Path:
 def _read_jsonl(path: Path) -> list[dict]:
     out: list[dict] = []
     try:
-        for ln in path.read_text().splitlines():
+        for ln in station_store_files.read_day_file_text(path).splitlines():   # an old diary day plain or gzipped
             try:
                 r = json.loads(ln)
             except json.JSONDecodeError:
@@ -428,7 +429,7 @@ def rollup(day: Optional[str] = None, force: bool = False) -> list[str]:
     if day:
         days = [day] if day < today else []
     else:
-        days = sorted({p.stem for p in _diary_dir().glob("*.jsonl")}
+        days = sorted(set(station_store_files.day_file_days(_diary_dir()))
                       | {p.stem for p in station_paths.SNDK_OPTIONS_READER_NOTES_BY_READ.folder().glob("*.jsonl")})
     days = [d for d in days if d < today]
     done = []

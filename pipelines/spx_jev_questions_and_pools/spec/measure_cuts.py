@@ -41,6 +41,7 @@ from spx_jev import cuts as CUTS  # noqa: E402  (the package beside spec/, for t
 from spx_jev.flat_zone import Zones  # noqa: E402
 from spx_jev.lane import LIVE, TAPE  # noqa: E402
 import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
+import station_store_files  # noqa: E402
 
 DEFAULT_STATE_DIR = station_paths.state_root()       # the station's data root (~/mirai_awakening/data unless overridden)
 OUT = Path(__file__).resolve().parent / "cuts.json"
@@ -141,7 +142,7 @@ HOW_DECLARED = {
 
 def _jsonl(path: Path) -> list[dict]:
     out = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in station_store_files.read_day_file_lines(path):        # an old diary day plain or gzipped alike
         try:
             obj = json.loads(line)
         except json.JSONDecodeError:
@@ -181,7 +182,7 @@ def sessions(state_dir: Path, name: str) -> list[tuple[str, list[dict], list[dic
         bar_file = lambda d: station_paths.SNDK_PRICE_BARS_BY_MINUTE.path(state_dir, day=d)
         read_bars = _jsonl
     out = []
-    for p in sorted(rows_dir.glob("20??-??-??.jsonl")):
+    for p in station_store_files.day_files(rows_dir):
         day, bp = p.stem, bar_file(p.stem)
         if not bp.exists():
             continue

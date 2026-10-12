@@ -72,6 +72,7 @@ from .sessions import SESSION_CLOSE, session_close
 from .state_builder import CONTEXT_SUBDIR, ROWS_SUBDIR, MarketContext, bar_days, load_market_context, load_rows, parse_ts, prior_bar_days
 
 import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
+import station_store_files  # noqa: E402
 
 JEV_SHARE = 0.5          # declared, not fitted
 MIN_SESSIONS = 10        # fewer counted prior sessions than this and the odds are too thin to blend
@@ -216,12 +217,10 @@ def _phase_odds(days: list[dict], ph: str) -> dict | None:
 
 
 def _file_print(path: Path) -> list[int] | None:
-    """A file's size and modification time, or None when it is not there."""
-    try:
-        st = path.stat()
-    except OSError:
-        return None
-    return [st.st_size, st.st_mtime_ns]
+    """A day file's size and modification time, or None when it is not there: the same before and after the day is
+    gzipped (station_store_files.day_file_signature), so compressing an old day does not recount it."""
+    signature = station_store_files.day_file_signature(path)
+    return None if signature is None else list(signature)
 
 
 def _load_cache(path: Path, key: str) -> dict:

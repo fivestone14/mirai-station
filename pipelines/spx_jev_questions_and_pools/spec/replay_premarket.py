@@ -65,6 +65,8 @@ from spx_jev.labels.registry import build_labels  # noqa: E402
 from spx_jev.lane import PREMARKET  # noqa: E402
 from spx_jev.schedule import asks_at, not_due  # noqa: E402
 from spx_jev.state_builder import DEFAULT_STATE_DIR, load_bars, previous_session  # noqa: E402
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
+import station_store_files  # noqa: E402
 
 MIN_NIGHTS = 20
 MIN_PER_ANSWER = 5
@@ -467,11 +469,11 @@ def report(judged: list[dict], reads: list[dict], outcomes: dict[str, dict], day
 
 def bitcoin_context_days(state_dir: Path) -> int:
     """How many saved market-context days quote /MBT (either file of the day)."""
-    folder = Path(state_dir) / "spx_jev" / "context"
     days = set()
-    for path in [*folder.glob("????-??-??.jsonl"), *(folder / "bars").glob("????-??-??.jsonl")]:
-        if '"/MBT' in path.read_text(encoding="utf-8"):
-            days.add(path.stem)
+    for store in (station_paths.WATCHLIST_QUOTES_BY_MINUTE, station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE):
+        for path in station_store_files.day_files(store.folder(state_dir)):   # an old day plain or gzipped alike
+            if '"/MBT' in station_store_files.read_day_file_text(path):
+                days.add(path.stem)
     return len(days)
 
 

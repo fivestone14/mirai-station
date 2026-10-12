@@ -298,10 +298,10 @@ def load_tape_folds(state_dir: Path, day: str, prior_days: list[str], cut: datet
 
 def _tape_folds_of(state_dir: Path, day: str) -> tuple[TapeFold, ...]:
     path = station_stores.lob_flow_agg_file(state_dir, day)
-    if not path.exists():
+    signature = station_store_files.day_file_signature(path)   # plain or gzipped once old: the same either way
+    if signature is None:
         return ()
-    stat = path.stat()
-    return _tape_folds_file(str(path), stat.st_mtime_ns, stat.st_size)
+    return _tape_folds_file(str(path), signature[1], signature[0])
 
 
 @functools.lru_cache(maxsize=TAPE_FOLD_FILES_CACHED)

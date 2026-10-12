@@ -30,6 +30,8 @@ from ..expiry import settle_at, todays_settle
 from ..row_adapter import labeller_row
 from ..sessions import next_trading_day
 from ..state_builder import ROWS_SUBDIR, Scene, row_days
+
+import station_store_files  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 from .label_set import LabelSet
 from .measures import ET, bars_finished_between, is_num, walls
 from .ranks import SameClockRank, rank_sessions
@@ -219,10 +221,10 @@ def _diary_row_at(state_dir: Path, day: str, then: datetime) -> dict | None:
     labeller reads it. A day's diary is about 10 MB, so it is read a line at a time and only the chosen row
     is parsed whole; the scanner writes its rows in time order."""
     path = Path(state_dir) / ROWS_SUBDIR / f"{day}.jsonl"
-    if not path.exists():
+    if not station_store_files.day_file_exists(path):
         return None
     chosen = None
-    with open(path, encoding="utf-8") as f:
+    with station_store_files.open_day_file(path) as f:
         for line in f:
             m = ROW_TS.match(line)
             if m is None:

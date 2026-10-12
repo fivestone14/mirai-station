@@ -77,6 +77,7 @@ from .sessions import is_trading_day, previous_trading_day, session_close, sessi
 from .state_builder import DEFAULT_STATE_DIR, LIVE_BARS_SUBDIR, SYMBOL
 
 import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
+import station_store_files  # noqa: E402
 
 PART = "part-0.parquet"
 # 5: the base pool's columns named for it (2026-10-11: the calls table's ``base_pool_*``, the answers table's
@@ -364,10 +365,11 @@ BY_NAME = {t.name: t for t in TABLES + (QUARANTINE, VALIDATION)}
 # ----------------------------------------------------------------------------- raw files
 
 def _lines(path: Path) -> Iterator[tuple[int, Any]]:
-    """Each non-blank line of a JSONL file with its number, parsed, or None for a line that is not UTF-8 JSON."""
-    if not path.exists():
+    """Each non-blank line of a JSONL file with its number, parsed, or None for a line that is not UTF-8 JSON; an old
+    day file read plain or gzipped alike (station_store_files)."""
+    if not station_store_files.day_file_exists(path):
         return
-    with open(path, "rb") as f:
+    with station_store_files.open_day_file(path, "rb") as f:
         for n, line in enumerate(f, 1):
             if line.strip():
                 try:
@@ -686,7 +688,7 @@ def read_raw(state_dir: Path, day: date) -> Raw:
         return path.relative_to(state_dir).as_posix() if path.is_relative_to(state_dir) else str(path)
 
     def lines(path: Path, *tables: str) -> Iterator[tuple[str, dict]]:
-        if path.exists():
+        if station_store_files.day_file_exists(path):
             for t in tables:
                 sources[t].append(rel(path))
         for n, obj in _lines(path):
@@ -880,8 +882,8 @@ def days_to_build(now: datetime, catch_up: int = CATCH_UP_DAYS) -> list[date]:
 def _days_named(state_dir: Path | str, until: date) -> set[date]:
     """Every day up to ``until`` that any raw file the store reads is named for."""
     state_dir = Path(state_dir)
-    names = [p.stem for folder in (ARCHIVE_SUBDIR, LIVE_BARS_SUBDIR, OVERNIGHT_SUBDIR)
-             for p in (state_dir / folder).glob("????-??-??.jsonl")]
+    names = [day for folder in (ARCHIVE_SUBDIR, LIVE_BARS_SUBDIR, OVERNIGHT_SUBDIR)
+             for day in station_store_files.day_file_days(state_dir / folder)]
     out = set()
     for n in names:
         try:

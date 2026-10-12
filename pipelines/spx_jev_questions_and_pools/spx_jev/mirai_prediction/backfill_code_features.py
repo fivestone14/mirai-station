@@ -18,6 +18,8 @@ from .code_features import load_catalog
 from .live_records import _json_lines
 from .paths import backup_before_change, data_root, ensure_folders, log_job_run, now_utc_iso, raw_code_features_file
 
+import station_store_files  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
+
 
 def archived_reads(state_dir: Path | str, lane: str, day: str) -> list[dict]:
     """The lane's read records of the day from the shared archive, in time order, each with its read_id."""
@@ -35,7 +37,7 @@ def archived_reads(state_dir: Path | str, lane: str, day: str) -> list[dict]:
 def archive_days(state_dir: Path | str, lane: str, from_day: str, to_day: str) -> list[str]:
     from ..lane import LANES
     folder = Path(LANES[lane].archive_folder(state_dir))
-    return sorted(p.stem for p in folder.glob("????-??-??.jsonl") if from_day <= p.stem <= to_day) if folder.exists() else []
+    return [d for d in station_store_files.day_file_days(folder) if from_day <= d <= to_day]   # plain or gzipped
 
 
 def run_backfill(state_dir: Path | str, lane: str, from_day: str, to_day: str, force: bool = False) -> dict:

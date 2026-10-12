@@ -132,6 +132,7 @@ from .state_builder import DEFAULT_STATE_DIR, MarketContext, load_bars, load_jso
 from .weights import WEIGHTS_NAME, QuestionWeights
 
 import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
+import station_store_files  # noqa: E402
 
 ET = ZoneInfo("America/New_York")
 
@@ -515,7 +516,7 @@ def run(state_dir: Path, out_dir: Path, allowed: dict[str, set[str]], day: str |
     done = graded_horizons(load_jsonl(grades_path), lane)
     every = set(lane.horizons)
     new = []
-    days = [day] if day else sorted(p.stem for p in hour_dir.glob("*.jsonl")) if hour_dir.exists() else []
+    days = [day] if day else station_store_files.day_file_days(hour_dir)
     for d in days:
         recs = [r for r in load_jsonl(hour_dir / f"{d}.jsonl") if done.get(r.get("row_ts"), set()) != every and isinstance(r.get("by"), dict)]
         if not recs:
@@ -717,7 +718,7 @@ def integral_run(state_dir: Path, out_dir: Path, lane: Lane = LIVE, day: str | N
                     todo[g["row_ts"][:10]].append((g, qid))
         alone: dict[str, list[tuple[str, str]]] = defaultdict(list)
         boxes = tuple(lane.horizons) if lane.graded_from_settled_open else (lane.primary,)
-        for d in [day] if day else sorted(p.stem for p in hour_dir.glob("*.jsonl")) if hour_dir.exists() else []:
+        for d in [day] if day else station_store_files.day_file_days(hour_dir):
             for r in load_jsonl(hour_dir / f"{d}.jsonl"):
                 if average_alone(r, lane):
                     for qid in boxes:

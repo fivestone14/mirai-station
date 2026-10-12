@@ -809,10 +809,10 @@ def _closed_day_rows(day: str) -> list:
     the file on disk: the carried-volume check, the open-interest change and the
     volume baseline all open the same files."""
     p = SR._diary_path(day)
-    try:
-        key = (str(p), p.stat().st_mtime_ns)
-    except OSError:
+    signature = SR.station_store_files.day_file_signature(p)   # plain, or gzipped once older than 14 days
+    if signature is None:
         return []
+    key = (str(p), signature[1])
     if key not in _CLOSED_ROWS:
         if len(_CLOSED_ROWS) > 12:
             _CLOSED_ROWS.clear()
@@ -876,8 +876,7 @@ def prior_volume_series(today: str) -> dict:
     not already in it: the reader is a fresh process every tick, and those
     diaries are about 9 MB of JSON. A book whose volume was the prior session's
     is left out, judged with the whole closed day in hand."""
-    days = sorted(p.stem for p in SR._diary_dir().glob("[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].jsonl")
-                  if p.stem < today)
+    days = [d for d in SR.station_store_files.day_file_days(SR._diary_dir()) if d < today]
     cache = SR.station_paths.SNDK_PAST_VOLUME_CURVES_STATE.path()
     try:
         blob = json.loads(cache.read_text())

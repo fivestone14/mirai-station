@@ -14,8 +14,14 @@ import fcntl
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any, Callable, Iterator
+
+_REPO_ROOT = str(Path(__file__).resolve().parents[3])      # station_store_files.py reads an old day file plain or gzipped
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
+import station_store_files  # noqa: E402
 
 _WRITABLE_ROOTS: list[Path] = []     # set by allow_writes_under(); empty means "nothing is writable yet"
 
@@ -88,10 +94,11 @@ def read_json_lines(path: Path | str) -> list[dict]:
 
 
 def iter_json_lines(path: Path | str) -> Iterator[dict]:
+    """Every well-formed record, streamed; a day file the station gzipped once old (its ``.gz``) is read the same."""
     p = Path(path)
-    if not p.exists():
+    if not station_store_files.day_file_exists(p):
         return
-    with open(p, "r", encoding="utf-8") as f:
+    with station_store_files.open_day_file(p) as f:
         for raw in f:
             raw = raw.strip()
             if not raw:

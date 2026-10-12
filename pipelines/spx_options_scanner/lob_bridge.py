@@ -41,6 +41,7 @@ _REPO_ROOT = str(SKILL_DIR.parent.parent)             # station_paths.py names e
 if _REPO_ROOT not in sys.path:
     sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
+import station_store_files  # noqa: E402
 
 ET = ZoneInfo("America/New_York")
 STATE_DIR = station_paths.state_root()          # the data root; StateDir finds the collector's files under it
@@ -263,8 +264,8 @@ def nightly(day: Optional[str] = None) -> None:
     sd = _state()
     diary = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(day=day)
     rows = []
-    if diary.exists():
-        for ln in diary.read_text().splitlines():
+    if station_store_files.day_file_exists(diary):         # plain, or gzipped once older than 14 days
+        for ln in station_store_files.read_day_file_lines(diary):
             if not ln.strip():
                 continue
             try:

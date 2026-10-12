@@ -376,7 +376,7 @@ def fold_day_into_baselines(sd: StateDir, day: str, cfg: LobConfig,
     max-attainable |z|, which catches a structurally dead alarm); refuses
     event days (they stay out of the memory)."""
     clean = calendar.is_clean_day(date.fromisoformat(day))
-    rows = [r for r in sd.rows(sd.agg(day))
+    rows = [r for r in sd.agg_rows(day)
             if r.get("engine") == store_name and r.get("baseline_rows")]
     flat = [x for r in rows for x in r["baseline_rows"]]
     store = BaselineStore(sd.baseline(store_name), cfg)

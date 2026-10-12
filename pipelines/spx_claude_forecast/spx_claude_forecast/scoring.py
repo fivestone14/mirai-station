@@ -15,7 +15,7 @@ from __future__ import annotations
 from . import jsonl_store, library, station_stores
 from .final_forecast import answer_number_of
 from .grading import DIRECTIONS, SIZE_BUCKETS
-from .paths import ForecastPaths
+from .paths import ForecastPaths, station_store_files
 from .rulebook import TEST_VARIANT_NONE
 
 SCORING_CODE_VERSION = "1"            # bump when a score's formula changes; every row carries it
@@ -128,9 +128,7 @@ def load_arms_by_day(paths: ForecastPaths) -> dict[str, list[dict]]:
 
 
 def _lines_by_day(folder) -> dict[str, list[dict]]:
-    if not folder.exists():
-        return {}
-    return {file.name[:10]: jsonl_store.read_json_lines(file) for file in sorted(folder.glob("20??-??-??.jsonl"))}
+    return {file.name[:10]: jsonl_store.read_json_lines(file) for file in station_store_files.day_files(folder)}
 
 
 def test_variant_lines(arms_lines: list[dict]) -> tuple[dict[tuple[str, str], dict], dict[tuple[str, str], list[dict]]]:

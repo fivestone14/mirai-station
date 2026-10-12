@@ -81,6 +81,7 @@ _REPO_ROOT = str(_SKILL_DIR.parent.parent)             # station_paths.py names 
 if _REPO_ROOT not in sys.path:
     sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
+import station_store_files  # noqa: E402
 _ET = ZoneInfo("America/New_York")
 RAG_V = 2                    # the SHARED record-shape era (twin of sndk_rag) —
                              # this store is born at v2: stitched day
@@ -123,7 +124,7 @@ def _diary_dir() -> Path:
 def _read_jsonl(path: Path) -> list[dict]:
     out: list[dict] = []
     try:
-        for ln in path.read_text().splitlines():
+        for ln in station_store_files.read_day_file_text(path).splitlines():   # an old diary day plain or gzipped
             try:
                 r = json.loads(ln)
             except json.JSONDecodeError:
@@ -389,7 +390,7 @@ def rollup(day: Optional[str] = None, force: bool = False) -> list[str]:
     if day:
         days = [day] if day < today else []
     else:
-        days = sorted({p.stem for p in _diary_dir().glob("2*.jsonl")}
+        days = sorted(set(station_store_files.day_file_days(_diary_dir()))
                       | {p.stem for p in station_paths.SPX_OPTIONS_SCANNER_CLAUDE_NOTES_BY_READ.folder().glob("*.jsonl")})
     days = [d for d in days if d < today]
     done = []

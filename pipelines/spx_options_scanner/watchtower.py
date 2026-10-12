@@ -68,6 +68,7 @@ _REPO_ROOT = str(SKILL_DIR.parent.parent)             # station_paths.py names e
 if _REPO_ROOT not in sys.path:
     sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
+import station_store_files  # noqa: E402
 STATE_DIR = station_paths.state_root()
 CONFIG = SKILL_DIR.parents[1] / "settings" / "limits-and-cooldowns.json"
 
@@ -2533,7 +2534,7 @@ def _soft_side_stuck(now: datetime | None, current) -> bool:
     for back in range(6):                   # today + up to 5 prior days (spans a weekend)
         f = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(STATE_DIR, day=(now - timedelta(days=back)).date().isoformat())
         try:
-            lines = f.read_text().splitlines()
+            lines = station_store_files.read_day_file_text(f).splitlines()
         except OSError:
             continue
         day_reads = []
@@ -2867,7 +2868,7 @@ def observe(telemetry: dict, now: datetime | None = None) -> dict | None:
 # ==============================================================================
 def _replay(day: str, live: bool) -> None:
     f = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(STATE_DIR, day=day)
-    rows = [json.loads(ln) for ln in f.read_text().splitlines() if ln.strip()]
+    rows = [json.loads(ln) for ln in station_store_files.read_day_file_lines(f) if ln.strip()]   # plain or gzipped
     print(f"replay {day}: {len(rows)} rows — payloads for the interesting scans\n")
     for i, r in enumerate(rows):
         ok, why = interesting(r.get("reversion_extreme") or {})

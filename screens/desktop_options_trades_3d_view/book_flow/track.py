@@ -40,6 +40,7 @@ _REPO_ROOT = str(PLUGIN_ROOT)             # station_paths.py names every store
 if _REPO_ROOT not in sys.path:
     sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
+import station_store_files  # noqa: E402
 
 # The diary is PER SYMBOL and the directory name is not derivable from the
 # ticker: SPX and SNDK each have their own scanner results store (station_paths). Reading
@@ -67,10 +68,10 @@ def _read_diary(day: str, ticker: str) -> list[tuple[datetime, float, Optional[f
     if sub is None:
         return []                                  # no diary for this symbol
     path = Path(str(DIARY).format(dir=sub, day=day))
-    if not path.is_file():
+    if not station_store_files.day_file_exists(path):          # plain, or gzipped once older than 14 days
         return []
     out = []
-    for line in path.read_text().splitlines():
+    for line in station_store_files.read_day_file_lines(path):
         line = line.strip()
         if not line:
             continue

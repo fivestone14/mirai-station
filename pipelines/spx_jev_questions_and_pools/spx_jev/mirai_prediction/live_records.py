@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import station_store_files  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
+
 
 def lane_folder(state_dir: Path | str, lane: str) -> Path:
     """The lane's own folder under the state dir (the live lane's is data/spx/jev/live_lane)."""
@@ -16,10 +18,11 @@ def lane_folder(state_dir: Path | str, lane: str) -> Path:
 
 
 def _json_lines(path: Path):
-    """Every well-formed JSON object of a .jsonl file; a bad or half-written line is skipped."""
-    if not path.exists():
+    """Every well-formed JSON object of a .jsonl file, an old day plain or gzipped alike; a bad or half-written line
+    is skipped."""
+    if not station_store_files.day_file_exists(path):
         return
-    with open(path, encoding="utf-8") as f:
+    with station_store_files.open_day_file(path) as f:
         for line in f:
             try:
                 rec = json.loads(line)

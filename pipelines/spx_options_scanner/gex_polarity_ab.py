@@ -53,13 +53,13 @@ MAGNET_TAG_SIGMA = 0.05    # "tagged" = closest approach within this σ — an e
 
 def _read_rows(day: str) -> list[dict]:
     path = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(day=day)
-    if not path.exists():
+    if not station_store_files.day_file_exists(path):      # plain, or gzipped once older than 14 days
         return []
     # TORN-LINE TOLERANCE: one interrupted append must never kill the whole
     # nightly grade (or /api/replay for the day) — skip the bad line, keep the
     # rest, mirroring the intraday reader (_read_today_telemetry).
     rows = []
-    for ln in open(path):
+    for ln in station_store_files.read_day_file_lines(path):
         if not ln.strip():
             continue
         try:

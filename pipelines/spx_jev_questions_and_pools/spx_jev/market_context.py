@@ -44,6 +44,7 @@ from .sessions import SESSION_CLOSE, SESSION_OPEN, is_trading_day
 from .state_builder import CONTEXT_SUBDIR, DEFAULT_STATE_DIR, INDEX_QUOTE, load_jsonl
 
 import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
+import station_store_files  # noqa: E402
 
 ET = ZoneInfo("America/New_York")
 JOB = "spx-jev-context"
@@ -215,7 +216,7 @@ def backfill_day(state_dir: Path, day: date) -> Path | None:
     day each symbol Schwab served no bars for is logged as an error. A minute with no $VOLD or $ADD takes it
     from the symbols it is made of (fill_derived)."""
     path = station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.path(state_dir, day=day.isoformat())
-    if path.exists():
+    if station_store_files.day_file_exists(path):           # plain, or gzipped once old
         return None
     by_minute, empty = _session_bars(tuple(s for s in ALL_SYMBOLS if s not in NO_HISTORY), day)
     if not by_minute:
@@ -233,7 +234,7 @@ def add_symbols(state_dir: Path, day: date, symbols: tuple[str, ...]) -> Path | 
     symbol Schwab serves no bars for (a session older than it keeps) is logged, and the file is rewritten only when
     something came back. Returns the file when it was written."""
     path = station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.path(state_dir, day=day.isoformat())
-    if not path.exists():
+    if not station_store_files.day_file_exists(path):
         return backfill_day(state_dir, day)
     by_minute = {line["ts"]: dict(line["bars"]) for line in load_jsonl(path)
                  if isinstance(line.get("ts"), str) and isinstance(line.get("bars"), dict)}
@@ -247,9 +248,9 @@ def add_symbols(state_dir: Path, day: date, symbols: tuple[str, ...]) -> Path | 
         return None
     for ts, bars in fresh.items():
         by_minute.setdefault(ts, {}).update(bars)
-    written = path.stat().st_mtime
-    _write_day(path, by_minute)
-    os.utime(path, (written, written))     # refresh_breadth reads a day's mtime for whether its breadth was put right
+    written = station_store_files.day_file_signature(path)[1]
+    target = _write_day(path, by_minute)
+    os.utime(target, ns=(written, written))   # refresh_breadth reads a day's mtime for whether its breadth was put right
     return path
 
 
@@ -259,7 +260,8 @@ def refresh_breadth(state_dir: Path, day: date) -> Path | None:
     saved. A refetch that still reads wrong (breadth_wrong) leaves the file alone, so the next run asks again.
     Returns the file when it was rewritten."""
     path = station_paths.WATCHLIST_PRICE_BARS_BY_MINUTE.path(state_dir, day=day.isoformat())
-    if not path.exists() or datetime.fromtimestamp(path.stat().st_mtime, ET).date() > day:
+    written = station_store_files.day_file_mtime(path)
+    if written is None or datetime.fromtimestamp(written, ET).date() > day:
         return None
     fresh, _ = _session_bars(SYMBOLS["breadth"], day)
     if why := breadth_wrong(fresh):
@@ -312,11 +314,11 @@ def _derive_all(by_minute: dict[str, dict], day: date) -> None:
         _not_derived(symbol, f"for {n} minutes of the {day.isoformat()} session")
 
 
-def _write_day(path: Path, by_minute: dict[str, dict]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".jsonl.tmp")
-    tmp.write_text("".join(json.dumps({"ts": ts, "bars": by_minute[ts]}) + "\n" for ts in sorted(by_minute)), encoding="utf-8")
-    tmp.replace(path)                    # a day is on disk whole or not at all, so a rerun never skips half a day
+def _write_day(path: Path, by_minute: dict[str, dict]) -> Path:
+    """The day rewritten whole and atomically, so a day is on disk whole or not at all and a rerun never skips half
+    a day; a day already gzipped (older than station_store_files.KEEP_PLAIN_DAYS) stays gzipped. Returns the file."""
+    return station_store_files.replace_day_file_text(
+        path, "".join(json.dumps({"ts": ts, "bars": by_minute[ts]}) + "\n" for ts in sorted(by_minute)))
 
 
 def backfill(state_dir: Path, first: date, last: date, symbols: tuple[str, ...] = ()) -> list[Path]:

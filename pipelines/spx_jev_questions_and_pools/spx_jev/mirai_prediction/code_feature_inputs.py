@@ -85,7 +85,7 @@ def load_day_bars(state_dir: Path | str, day: str) -> list[dict]:
 
 
 def _file_days(folder: Path) -> list[str]:
-    return sorted(p.stem for p in folder.glob("????-??-??.jsonl")) if folder.exists() else []
+    return station_store_files.day_file_days(folder)        # an old day plain or gzipped alike
 
 
 def load_spx_bars_by_day(state_dir: Path | str, before_day: str, sessions: int = HISTORY_SESSIONS) -> dict[str, list[dict]]:
@@ -288,11 +288,11 @@ def diary_row_at(state_dir: Path | str, day: str, clock: str) -> dict | None:
     labeller's ROW_SLACK_MIN before it (labels/gamma.py's rule). A day's diary is about 10 MB, so it is read a line at a
     time up to the clock and only the chosen row is parsed; the scanner writes its rows in time order."""
     path = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(state_dir, day=day)
-    if not path.exists():
+    if not station_store_files.day_file_exists(path):
         return None
     then = datetime.fromisoformat(f"{day}T{clock}").replace(tzinfo=ET)
     chosen = None
-    with open(path, encoding="utf-8") as f:
+    with station_store_files.open_day_file(path) as f:
         for line in f:
             m = ROW_TS.match(line)
             if m is None:
@@ -314,7 +314,7 @@ def load_collector_records(state_dir: Path | str, before_day: str, sessions: int
     """The lob-flow collector's records (spx/scanner/spx_order_flow_readings_by_minute/{day}.jsonl) of the trailing
     sessions before ``before_day``."""
     folder = Path(state_dir) / OPTIONS_TAPE_SUBDIR
-    days = sorted(p.stem for p in folder.glob("????-??-??.jsonl") if p.stem < before_day) if folder.exists() else []
+    days = [d for d in station_store_files.day_file_days(folder) if d < before_day]
     return {day: record for day in days[-sessions:] if (record := collector_record(Path(state_dir), day)) is not None}
 
 
@@ -400,7 +400,7 @@ def load_market_history(state_dir: Path | str, lane: str, day: str) -> MarketHis
     prior = _prior_sessions_parts(state_dir, lane, day)
     tonight = _part(lambda: load_night_bars(state_dir, day, ES), [])
     quotes = _part(lambda: load_context_quotes_as_bars(state_dir, day), {})
-    saved = _part(lambda: load_context_bars(state_dir, day) if _context_bars_file(state_dir, day).exists() else None, None)
+    saved = _part(lambda: load_context_bars(state_dir, day) if station_store_files.day_file_exists(_context_bars_file(state_dir, day)) else None, None)
     today = saved if saved is not None else quotes
     if quotes.get(SPY):         # SPY's prices from the quotes on both paths: a saved bar's close a few cents off flips TREND-07's side
         today = {**today, SPY: quotes[SPY]}

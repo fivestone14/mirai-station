@@ -29,6 +29,7 @@ _REPO_ROOT = str(Path(__file__).resolve().parents[3])             # station_path
 if _REPO_ROOT not in sys.path:
     sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
+import station_store_files  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Atomic primitives
@@ -132,6 +133,17 @@ class StateDir:
         if not path.exists():
             return
         for ln in open(path):
+            if ln.strip():
+                try:
+                    yield json.loads(ln)
+                except json.JSONDecodeError:
+                    continue
+
+    def agg_rows(self, day: str) -> Iterator[dict]:
+        """One day's order-flow readings (the agg journal), a torn line skipped: plain, or gzipped once the day is
+        older than station_store_files.KEEP_PLAIN_DAYS (the nightly compression), read through the station's one
+        day-file reader."""
+        for ln in station_store_files.read_day_file_lines(self.agg(day)):
             if ln.strip():
                 try:
                     yield json.loads(ln)

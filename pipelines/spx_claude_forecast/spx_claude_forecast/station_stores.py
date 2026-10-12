@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
-from .paths import STATION_ROOT, station_paths
+from .paths import STATION_ROOT, station_paths, station_store_files
 
 SPX_JEV_SKILL_DIR = STATION_ROOT / "pipelines" / "spx_jev_questions_and_pools"
 
@@ -47,8 +47,7 @@ def context_file(state_dir: Path, day: str) -> Path:
 
 
 def context_days(state_dir: Path) -> list[str]:
-    folder = station_paths.WATCHLIST_QUOTES_BY_MINUTE.folder(state_dir)
-    return sorted(p.name[:10] for p in folder.glob("20??-??-??.jsonl")) if folder.exists() else []
+    return station_store_files.day_file_days(station_paths.WATCHLIST_QUOTES_BY_MINUTE.folder(state_dir))   # plain or gzipped
 
 
 def daily_closes_file(state_dir: Path, symbol: str) -> Path:

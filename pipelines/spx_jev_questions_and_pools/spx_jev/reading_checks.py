@@ -28,6 +28,7 @@ from .ask import get_path, paths_in, pick
 from .state_builder import DEFAULT_STATE_DIR
 
 import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
+import station_store_files  # noqa: E402
 
 ARCHIVE = station_paths.JEV_READS_AND_GRADES_BY_EVENT.relative_folder
 MIN_PHRASE_CHARS = 12          # a shorter lead of a description ("up", "flat") names nothing on its own
@@ -76,9 +77,7 @@ def check_day(state_dir: Path | str, day: str) -> list[dict]:
     """Every check in one day's archive; a line that is not JSON is skipped, as the store skips it."""
     path = Path(state_dir) / ARCHIVE / f"{day}.jsonl"
     out = []
-    if not path.exists():
-        return out
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in station_store_files.read_day_file_lines(path):
         try:
             record = json.loads(line)
         except ValueError:
