@@ -252,7 +252,7 @@ judgment group.
 `lanes` name `thirty_minute`). Each carries `retired_from: {"thirty_minute": "2026-10-08"}` in `spec/question_set.json` (the
 writer keeps it in the doc; `--check` holds the doc to the set) and `ask.retired(doc, day)` reads it as dark from that day with
 the reason `retired at the cut-over`: `build_requests` skips it, the cadence, the sums' `used`/`fresh`, `grade.live_options` and
-the weights, `pool_snapshots`' members and `last_asked.json` all keep to live questions, and the card lists it under `dark`
+the weights, `base_pool_snapshots`' members and `last_asked.json` all keep to live questions, and the card lists it under `dark`
 with that reason (the phone's "N of M answered" counts the card's questions, so never a retired one; the questions sheet deals
 them as their own last group, "retired at the cut-over, no longer asked"). The questions stay in the set and the doc, dated,
 never deleted; their answers before the day stay in the store and the archive.

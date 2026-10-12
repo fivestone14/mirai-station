@@ -310,7 +310,7 @@ JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON_TABLE = Store("spx/jev/tables/jev_a
 PREDICTION_FOLDER = Store("spx/prediction")                                          # the prediction system's folder: every store below but its rollback copies
 # The base pool's state, one file per horizon it learns: the live lane's two end-price horizons and its average-price
 # one (the station's pools), plus the 10-minute horizons of the opening and pre-market lanes, which the loop learns only
-# when it is run on one of those lanes by hand, into a base_pool_state folder inside that lane's own folder (pool.py).
+# when it is run on one of those lanes by hand, into a base_pool_state folder inside that lane's own folder (base_pool.py).
 BASE_POOL_STATE = Store("spx/prediction/base_pool/base_pool_state/{horizon}.json",
                         horizon={h: h for h in ("next_10_minutes", "next_30_minutes", "next_60_minutes",
                                                 "average_of_next_10_minutes", "average_of_next_30_minutes")})
