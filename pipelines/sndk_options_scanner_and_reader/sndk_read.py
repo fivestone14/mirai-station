@@ -2769,7 +2769,7 @@ def _prior_sessions(today: str) -> dict:
     day_lops: list[float] = []
     for p in days:
         try:
-            lines = p.read_text().splitlines()
+            lines = station_store_files.read_day_file_text(p).splitlines()   # an old day plain or gzipped alike
         except OSError:
             continue
         seen_book = None
