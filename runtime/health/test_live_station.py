@@ -1049,7 +1049,8 @@ def test_the_premarket_pager_holds_the_lane_to_the_limits_this_review_does(monke
 
 
 def _lane(tmp_path: Path, *stamps: datetime, day: str = PRE_DAY) -> Path:
-    _write(tmp_path / f"{day}.jsonl", *({"row_ts": t.isoformat(), "sent": True} for t in stamps))
+    _write(station_paths.JEV_ANSWERS_BY_READ.in_lane_folder(tmp_path, day=day),
+           *({"row_ts": t.isoformat(), "sent": True} for t in stamps))
     return tmp_path
 
 
@@ -1205,7 +1206,8 @@ def test_live_spx_lane_read_at_every_read_owed(station, lane):
     folder = station_paths.JEV_LANE_FOLDER.path(station.state, lane=lane)
     job = "com.mirai-station.spx-jev" + ("-tape" if lane == "tape" else "")
     _hold(lane_read(folder, station.now, reads, grace, LANE_READ_OWED_MIN, lane),
-          f"cut -c1-60 {folder}/{station.day}.jsonl; grep -E 'skipping|failed' /tmp/{job.removeprefix('com.')}.err | tail -n 5")
+          f"cut -c1-60 {folder}/jev_answers_by_read/{station.day}.jsonl; "
+          f"grep -E 'skipping|failed' /tmp/{job.removeprefix('com.')}.err | tail -n 5")
 
 
 @live
@@ -1225,7 +1227,7 @@ def test_live_spx_premarket_read_at_every_checkpoint(station):
     limits = premarket_limits(station.root)
     lane = station_paths.JEV_LANE_FOLDER.path(station.state, lane="premarket")
     _hold(premarket_fired(station.state, station.now, limits["first_checkpoint"], limits["close_out"], limits["late_min"]),
-          f"cut -c1-80 {lane}/{station.day}.jsonl; tail -n 5 {_log(station, SPX_PREMARKET_JOB, 'stderr')}")
+          f"cut -c1-80 {lane}/jev_answers_by_read/{station.day}.jsonl; tail -n 5 {_log(station, SPX_PREMARKET_JOB, 'stderr')}")
 
 
 @live
@@ -1305,7 +1307,7 @@ def test_live_options_book_is_fresh(station, limits):
 def test_live_minute_bars_are_fresh_with_no_error(station, limits):
     bars = station_paths.SNDK_PRICE_BARS_BY_MINUTE.folder(station.state)   # for the hint; the check takes the data root
     _hold(bars_fresh(station.state, station.now, limits["bar_record_min"]),
-          f"cat {bars}/health.json; tail -n 1 {bars}/{station.day}.jsonl; "
+          f"cat {station_paths.SNDK_PRICE_BARS_HEALTH_LATEST.path(station.state)}; tail -n 1 {bars}/{station.day}.jsonl; "
           f"tail -n 5 {_log(station, 'com.mirai-station.sndk-bars', 'stdout')}")
 
 

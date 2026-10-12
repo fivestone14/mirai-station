@@ -22,7 +22,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from .sources import book_snapshot_board, spx_tape_board
+from .sources import spx_tape_board
 from .track import spot_track
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[3]
@@ -35,11 +35,11 @@ STATE = station_paths.state_root()
 CACHE_DIR = station_paths.SPX_OPTIONS_TRADES_3D_VIEW_CARD.folder(STATE)
 DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
-# Where each ticker's raw session lives, and how to read it. SPX rides the
-# lob-flow recorder that has been running since 2026-08-05; every other ticker
-# comes from the book collector's own flattened snapshots.
+# Where the raw session lives. SPX rides the lob-flow recorder that has been
+# running since 2026-08-05, and it is the one ticker the board draws: the
+# equity-book collector that would have fed any other was never switched on
+# and went on 2026-10-11.
 SPX_TAPE = station_paths.SPX_SAME_DAY_OPTIONS_TRADES_BY_TRADE.path(STATE, day="{day}")
-BOOK_SNAP = station_paths.EQUITY_BOOK_DEPTH_SNAPSHOTS_BY_SLICE.path(STATE, ticker="{ticker}", day="{day}")
 
 # Bumped whenever the WIRE SHAPE changes. It rides the cache key, so an old
 # board rebuilds instead of being served without a field the tab expects.
@@ -55,18 +55,19 @@ def _resolve(base: Path) -> Optional[Path]:
     return gz if gz.is_file() else None
 
 
-def _src(day: str, ticker: str) -> tuple[Optional[Path], str]:
-    if ticker == "SPX":
-        return _resolve(Path(str(SPX_TAPE).format(day=day))), "options_tape"
-    return _resolve(Path(str(BOOK_SNAP).format(ticker=ticker, day=day))), "equity_book"
+def _src(day: str, ticker: str) -> Optional[Path]:
+    if ticker != "SPX":
+        return None
+    return _resolve(Path(str(SPX_TAPE).format(day=day)))
 
 
 def available_days(ticker: str = "SPX") -> list[str]:
     """Days with a recorded session, newest first. Drives the tab's day picker,
     so it must never invent a day the renderer would then fail to load."""
-    root = (station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.folder(STATE) if ticker == "SPX"
-            else station_paths.EQUITY_BOOK_TICKER_FOLDER.path(STATE, ticker=ticker))
-    name = (station_paths.SPX_SAME_DAY_OPTIONS_TRADES_BY_TRADE if ticker == "SPX" else station_paths.EQUITY_BOOK_DEPTH_SNAPSHOTS_BY_SLICE).file_name()
+    if ticker != "SPX":
+        return []
+    root = station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.folder(STATE)
+    name = station_paths.SPX_SAME_DAY_OPTIONS_TRADES_BY_TRADE.file_name()
     if not root.is_dir():
         return []
     return sorted((p.name for p in root.glob("[0-9]" * 4 + "-*-*")
@@ -74,23 +75,20 @@ def available_days(ticker: str = "SPX") -> list[str]:
 
 
 def board_for_day(day: str, ticker: str = "SPX", *, slice_s: int = 60,
-                  max_bins: int = 60, bin_w: Optional[float] = 0.05) -> dict:
+                  max_bins: int = 60) -> dict:
     if not DAY_RE.match(day or ""):
         return {"error": "bad day"}
     if not re.fullmatch(r"[A-Z.$^]{1,8}", ticker or ""):
         return {"error": "bad ticker"}
-    src, kind = _src(day, ticker)
+    src = _src(day, ticker)
     if src is None:
         return {"error": f"no recorded session for {ticker} on {day}",
                 "ticker": ticker, "day": day, "prices": [], "slices": []}
 
     st = src.stat()
-    # bin_w belongs in the key for the same reason slice_s does: it changes the
-    # ARITHMETIC, not just the framing. Leaving it out meant a board rebuilt at a
-    # new bin width was served the old one from disk — silently, and looking
-    # entirely plausible, because a board at the wrong bin width is still a board.
-    stamp = (f"v{DOC_V}-{int(st.st_mtime)}-{st.st_size}"
-             f"-{slice_s}-{max_bins}-{bin_w}")
+    # slice_s and max_bins belong in the key: they change the ARITHMETIC, not
+    # just the framing, and a board built at the wrong slice is still a board.
+    stamp = f"v{DOC_V}-{int(st.st_mtime)}-{st.st_size}-{slice_s}-{max_bins}"
     cache = CACHE_DIR / station_paths.SPX_OPTIONS_TRADES_3D_VIEW_CARD.file_name(day=day)   # the folder says SPX; the view draws SPX alone
     if cache.is_file():
         try:
@@ -100,12 +98,7 @@ def board_for_day(day: str, ticker: str = "SPX", *, slice_s: int = 60,
         except Exception:
             pass                                  # a torn cache rebuilds
 
-    if kind == "options_tape":
-        doc = spx_tape_board(src, slice_s=slice_s, max_bins=max_bins,
-                             ticker=ticker)
-    else:
-        doc = book_snapshot_board(src, ticker=ticker, slice_s=slice_s,
-                                  bin_w=bin_w, max_bins=max_bins)
+    doc = spx_tape_board(src, slice_s=slice_s, max_bins=max_bins, ticker=ticker)
     doc["day"] = day
     # Where the underlying actually was while all this was being posted. Never
     # fatal: a board with no price path is still a board, and a day recorded

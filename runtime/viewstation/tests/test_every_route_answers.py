@@ -52,8 +52,8 @@ FILES = {"/m/reads.html": "m/reads.html", "/m/jev.html": "m/jev.html"}
 OPEN_JSON = {
     "/api/spot": "ticker=SNDK",
     "/api/replay": f"day={DAY}",
-    "/api/lob/days": "ticker=SNDK",
-    "/api/lob/board": f"day={DAY}&ticker=SNDK",
+    "/api/lob/days": "ticker=SPX",
+    "/api/lob/board": f"day={DAY}&ticker=SPX",
     "/api/raw/index": "",
     "/api/raw/file": f"root=state&path={_rel(DIARY, day=DAY)}",
     "/api/store/file": f"name=SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN&day={DAY}",
@@ -100,8 +100,6 @@ def state(tmp_path, monkeypatch):
     monkeypatch.setattr(flow, "STATE", root)
     monkeypatch.setattr(flow, "CACHE_DIR", station_paths.SPX_OPTIONS_TRADES_3D_VIEW_CARD.folder(root))
     monkeypatch.setattr(flow, "SPX_TAPE", station_paths.SPX_SAME_DAY_OPTIONS_TRADES_BY_TRADE.path(root, day="{day}"))
-    monkeypatch.setattr(flow, "BOOK_SNAP",
-                        station_paths.EQUITY_BOOK_DEPTH_SNAPSHOTS_BY_SLICE.path(root, ticker="{ticker}", day="{day}"))
     from book_flow import track
     monkeypatch.setattr(track, "DIARY", root / "{dir}" / station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.file_name(day="{day}"))
     # the broker is unreachable, which /api/spot answers with a null spot by contract
@@ -118,8 +116,8 @@ def _write_jsonl(path, rows):
 
 def _record_session(state, day):
     """One ordinary recorded SNDK session: scans every two minutes, the minute
-    bars under them, one reading and its memory slice, and the equity book the
-    LOB board replays — each in the shape its writer puts on disk."""
+    bars under them, one reading and its memory slice, and the SPX options tape
+    the LOB board replays — each in the shape its writer puts on disk."""
     opened = datetime.fromisoformat(f"{day}T09:30:00-04:00")
     expiry = (opened + timedelta(days=2)).date().isoformat()
     scans = []
@@ -148,12 +146,12 @@ def _record_session(state, day):
     _write_jsonl(station_paths.SNDK_OPTIONS_READER_NOTES_BY_READ.path(state, day=day), [
         {"kind": "slice", "rag_v": 2, "narrative": "1600 holds the most contracts.",
          "meta": {"date": day, "time": "09:35", "quiet": False, "notable_count": 1}}])
-    book = []
+    tape = []
     for k in range(5):
         ts_ms = int((opened + timedelta(minutes=k, seconds=5)).timestamp() * 1000)
-        book += [{"ts_ms": ts_ms, "symbol": "SNDK", "side": "bid", "price": 1579.5, "size": 100 + k},
-                 {"ts_ms": ts_ms, "symbol": "SNDK", "side": "ask", "price": 1580.5, "size": 90 + k}]
-    _write_jsonl(station_paths.EQUITY_BOOK_DEPTH_SNAPSHOTS_BY_SLICE.path(state, ticker="SNDK", day=day), book)
+        tape += [{"ts_ms": ts_ms, "strike": 6500.0, "right": "C", "size": 3, "bid_size": 100 + k, "ask_size": 90 + k},
+                 {"ts_ms": ts_ms, "strike": 6500.0, "right": "P", "size": 2, "bid_size": 80 + k, "ask_size": 70 + k}]
+    _write_jsonl(station_paths.SPX_SAME_DAY_OPTIONS_TRADES_BY_TRADE.path(state, day=day), tape)
 
 
 @pytest.fixture
@@ -273,7 +271,7 @@ def test_every_locked_route_answers_cleanly_once_unlocked(station, session, rout
 
 def test_every_day_picker_lists_the_recorded_session(station, session):
     """A recorded session is offered by every day picker that reads it, so the page can open it."""
-    for route, query in (("/api/sndk/pipeline/days", UNLOCK), ("/api/lob/days", "ticker=SNDK")):
+    for route, query in (("/api/sndk/pipeline/days", UNLOCK), ("/api/lob/days", "ticker=SPX")):
         doc = _clean_json(*_get(station, _path(route, query)), route)
         assert DAY in doc["days"], f"{route} does not offer the recorded session: {doc['days']}"
 

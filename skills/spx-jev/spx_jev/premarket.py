@@ -551,7 +551,7 @@ def already_read(out_dir: Path, day: str, checkpoint: str) -> bool:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="The SPX JEV premarket lane: one read at a checkpoint before the open, or its close-out.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
-    ap.add_argument("--out-dir", default=None, help="default <state-dir>/spx_jev/lanes/premarket; a replay defaults to a fresh scratch folder")
+    ap.add_argument("--out-dir", default=None, help="default <state-dir>/spx/jev/premarket_lane; a replay defaults to a fresh scratch folder")
     ap.add_argument("--questions", default=None, help="default the lane's question doc")
     ap.add_argument("--send", action="store_true", help="post to JEV; the key comes from .env or TYPESAFE_API_KEY")
     ap.add_argument("--day", help="replay this session day, YYYY-MM-DD, with --at")

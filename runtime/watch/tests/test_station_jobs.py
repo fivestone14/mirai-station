@@ -327,7 +327,7 @@ def test_a_slow_read_never_pages_the_phone():
 # run script -> what it starts only while the market is live
 GATED = {"run-sndk.sh": "sndk_hunter.py", "run-sndk-read.sh": "sndk_read.py",
          "run-sndk-bars.sh": "sndk_bars.py", "run-lob-collector.sh": "lob_bridge.py",
-         "run-book-collector.sh": "book_flow", "run-watch-left-eye.sh": "hunter.py",
+         "run-watch-left-eye.sh": "hunter.py",
          "run-spx-jev.sh": "spx_jev.service",
          "run-spx-jev-bars.sh": "spx_jev.bars", "run-spx-jev-context.sh": "spx_jev.market_context"}
 MARKET_STATUS = {
@@ -354,7 +354,7 @@ def _run_gated(tmp_path, script, market, python=True):
     Returns the finished process and the recorded launches."""
     root, venv, launched = tmp_path / "station", tmp_path / "venv", tmp_path / "launched"
     scripts, intraday = root / "runtime" / "scripts", root / "runtime" / "watch" / "intraday"
-    for skill in ("sndk-pro", "mirai-left-eye", "book-flow", "spx-jev"):
+    for skill in ("sndk-pro", "mirai-left-eye", "spx-jev"):
         (root / "skills" / skill).mkdir(parents=True)
     _file(intraday.parent / "__init__.py", "")
     _file(intraday / "__init__.py", "")

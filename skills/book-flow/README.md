@@ -1,7 +1,7 @@
 # book-flow — the price × time board
 
-What size was **added** and **removed** at each price through a session, and
-the collector that records it. Feeds the viewstation's **Day Visual LOB** tab.
+What size was **added** and **removed** at each price through a session. Feeds
+the viewstation's **Day Visual LOB** tab, which draws the SPX options tape.
 
 Vocabulary note: **LOB** = limit order book, the ladder of resting buy and sell
 orders at each price. Nothing more exotic.
@@ -12,18 +12,21 @@ orders at each price. Nothing more exotic.
 
 Resting size at a price is a *level*; the board wants *flows*, so every
 observation is differenced against the last one seen **at that price**. Grew =
-added. Shrank = removed — and snapshots cannot say whether a removal was a
+added. Shrank = removed — and a sample cannot say whether a removal was a
 cancel or a fill, so the field is named `rem` and never `cancelled`.
 
-## Two feeds, one shape
+## One feed, one shape
 
 | Feed | Source | Add/remove is | Hole |
 |---|---|---|---|
-| `options_tape` | `state/lob_flow/raw/{day}/tape.jsonl` (recording since 2026-08-05) | **inferred** — each print carries its own contract's bid/ask size | a strike is only sampled when it trades |
-| `equity_book` | `state/flow/{ticker}/{day}/book.jsonl` (this package's collector) | **literal** — the difference between two whole snapshots | none |
+| `options_tape` | `state/market/spx_same_day_options_raw_day_folders/{day}/tape.jsonl` (the lob-flow collector, recording since 2026-08-05) | **inferred** — each print carries its own contract's bid/ask size | a strike is only sampled when it trades |
 
-Both produce the same wire document, so the renderer cannot tell them apart.
-`kind` says which, purely so a reader knows how much to trust it.
+The wire document carries `kind` purely so a reader knows how much to trust it.
+A second feed, `equity_book` — the literal difference between two whole
+`NASDAQ_BOOK` / `NYSE_BOOK` snapshots, recorded by this package's own collector —
+was built and never switched on: Schwab allows exactly one streamer connection
+per login, and the lob-flow SPX collector holds it all session. The collector,
+its stream reader, its run script and its stores went on 2026-10-11.
 
 ## Files
 
@@ -31,10 +34,9 @@ Both produce the same wire document, so the renderer cannot tell them apart.
 |---|---|
 | `contracts.py` | data shapes and knobs — no logic, no I/O |
 | `board.py` | the accumulator: observations in, slices out. Pure |
-| `sources.py` | the two feeds, plus gzip-transparent reading of rotated days |
+| `sources.py` | the tape feed, plus gzip-transparent reading of rotated days |
+| `track.py` | where the underlying was through the session, from the scanner's diary |
 | `cache.py` | the only thing the viewstation calls; disk-cached wire documents |
-| `stream.py` | Schwab `NASDAQ_BOOK` / `NYSE_BOOK` → flat level rows |
-| `daemon.py` | the long-lived collector. **Shipped disabled** |
 
 ## Three things that will bite whoever edits this
 
@@ -57,14 +59,3 @@ python -m book_flow.cache --ticker SPX --day 2026-09-04 --slice-s 300
 # tests — fully offline, no network, no host state
 pytest tests/
 ```
-
-## The collector is off, and why
-
-`daemon.ENABLED` is `False` and no launchd job is loaded. Schwab allows exactly
-**one streamer connection per login**, and the lob-flow SPX collector holds it
-all session. Starting this one takes that connection, dropping the SPX box from
-`stream+mcp` to mcp-only and silencing its SPY control.
-
-**Not yet built:** the handshake that would publish this collector's SPY depth
-samples back into `state/lob_flow/` so the SPX box keeps its control. Until
-that exists, enabling this is a straight trade, not a free upgrade.

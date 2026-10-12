@@ -2,17 +2,18 @@
 contracts.py — the SHARED LANGUAGE of the board. Data shapes and knobs only:
 no logic, no I/O, nothing importable that can fail.
 
-The board is one idea reused by two very different feeds:
+The board is one idea:
 
     price  x  time  ->  how much size was ADDED and how much was REMOVED
 
-For the SNDK equity book that is literal — consecutive NASDAQ_BOOK snapshots
-differ, and the difference at each price level IS the add/remove. For the SPX
-options tape it is inferred: every trade carries the bid/ask size prevailing at
-its own strike, so consecutive prints at one strike sample the resting size and
-their difference is the same quantity, measured less often.
+For the SPX options tape it is inferred: every trade carries the bid/ask size
+prevailing at its own strike, so consecutive prints at one strike sample the
+resting size and their difference is that quantity, measured only when a trade
+prints. (An equity-book feed, where consecutive whole snapshots make the
+difference literal, was designed beside it and never switched on; its
+collector went on 2026-10-11.)
 
-Both produce the SAME Slice, so the renderer never learns which fed it.
+Every feed produces the SAME Slice, so the renderer never learns which fed it.
 """
 from __future__ import annotations
 
@@ -82,7 +83,7 @@ class BoardConfig:
     a board nobody can read, so the collector must set it.
     """
     ticker: str
-    kind: str                          # "options_tape" | "equity_book"
+    kind: str                          # the feed that fed it, carried on the wire: "options_tape"
     slice_s: int = 60
     bin_w: Optional[float] = None
     max_bins: int = 60                 # widest board the renderer draws well

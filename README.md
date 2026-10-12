@@ -322,7 +322,7 @@ mirai-station/
 │   ├── spx-jev/                the SPX JEV decision service, its feeds, the headlines
 │   │                           feed and the Mirai Prediction System
 │   ├── spx-claude-forecast/    the Claude read over a frozen payload: recorder · nightly
-│   ├── book-flow/              Day-LOB boards (collector never switched on)
+│   ├── book-flow/              the Day Visual LOB board: the SPX options tape as price × time
 │   ├── mirai-voice/            ears · jargon · convo · doctrine · mouth · voice_server
 │   ├── siege/                  effort-at-the-wall sensor (shadow, self-contained)
 │   ├── lob-flow/               Layer-2 order-book FLOW sensor (shadow, self-contained)

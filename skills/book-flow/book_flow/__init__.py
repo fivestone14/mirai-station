@@ -6,7 +6,7 @@ detail the viewstation must not reach into.
 """
 from .contracts import Bin, BoardConfig, Slice, TickerSpec
 from .board import BoardBuilder, to_wire, trim_bins
-from .sources import book_snapshot_board, spx_tape_board
+from .sources import spx_tape_board
 
 __all__ = ["Bin", "BoardConfig", "Slice", "TickerSpec", "BoardBuilder",
-           "to_wire", "trim_bins", "spx_tape_board", "book_snapshot_board"]
+           "to_wire", "trim_bins", "spx_tape_board"]

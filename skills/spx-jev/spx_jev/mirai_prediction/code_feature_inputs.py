@@ -1,13 +1,16 @@
 """What the code feature builder reads from the state dir (read-only), and the raw-first record of its answers.
 
-    load_day_bars            today's SPX minute bars, bars/{day}.jsonl (the live-bars sidecar)
+    load_day_bars            today's SPX minute bars, market/spx_price_bars_by_minute/{day}.jsonl (the live-bars sidecar)
     load_market_history      the trailing sessions' SPX bars, the nights' /ES bars, the market feed's minute bars per
                              symbol (the read's day's SPY volume from the siege box's minute volumes), the daily closes,
                              the index weights, the day's SPX diary rows (and the prior sessions' row at a read's minute),
-                             the lob-flow quote sweeps and collector records, and the day's premarket reads: bars/,
-                             overnight/, context/, context/bars/, daily_closes/, reversion/, lob_flow/raw/, lob_flow/agg/ and
-                             siege/baseline.json files where they exist, the store's Parquet tables (spx_bars,
-                             overnight_bars) for the sessions before the files begin. The parts that are prior sessions
+                             the lob-flow quote sweeps and collector records, and the day's premarket reads: under
+                             market/, spx_price_bars_by_minute/, futures_price_bars_by_minute/, watchlist_quotes_by_minute/,
+                             watchlist_price_bars_by_minute/, spx_vix_rates_price_bars_by_day/ and
+                             spx_same_day_options_raw_day_folders/; under spx/scanner/, spx_options_scanner_results_by_scan/,
+                             spx_order_flow_readings_by_minute/ and spy_volume_baselines_state.json, where they exist, and
+                             the store's Parquet tables (market/tables/spx_price_bars_by_minute,
+                             market/tables/futures_price_bars_by_minute) for the sessions before the files begin. The parts that are prior sessions
                              only are cached in-process for the day (the live service loads them once, then each read
                              loads the day's own parts).
     record_code_features     the answers for one read: the raw line already written for it, else computed now and
@@ -275,7 +278,8 @@ def slim_diary_row(row: dict) -> dict | None:
 
 
 def load_diary_rows(state_dir: Path | str, day: str) -> list[dict]:
-    """The day's SPX diary rows (reversion/{day}.jsonl), slim (slim_diary_row), in time order, a malformed row skipped."""
+    """The day's SPX diary rows (spx/scanner/spx_options_scanner_results_by_scan/{day}.jsonl), slim (slim_diary_row), in
+    time order, a malformed row skipped."""
     out = [slim for row in load_jsonl(station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(state_dir, day=day)) if (slim := slim_diary_row(row)) is not None]
     return sorted(out, key=lambda r: r["ts"])
 
@@ -308,7 +312,8 @@ def diary_row_at(state_dir: Path | str, day: str, clock: str) -> dict | None:
 
 
 def load_collector_records(state_dir: Path | str, before_day: str, sessions: int = HISTORY_SESSIONS) -> dict[str, CollectorRecord]:
-    """The lob-flow collector's records (lob_flow/agg/{day}.jsonl) of the trailing sessions before ``before_day``."""
+    """The lob-flow collector's records (spx/scanner/spx_order_flow_readings_by_minute/{day}.jsonl) of the trailing
+    sessions before ``before_day``."""
     folder = Path(state_dir) / OPTIONS_TAPE_SUBDIR
     days = sorted(p.stem for p in folder.glob("????-??-??.jsonl") if p.stem < before_day) if folder.exists() else []
     return {day: record for day in days[-sessions:] if (record := collector_record(Path(state_dir), day)) is not None}

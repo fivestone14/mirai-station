@@ -404,19 +404,6 @@ JEV_PREMARKET_OUTAGE_ALERT_STATE = Store("operations/jev_premarket_outage_alert_
 SNDK_OUTAGE_ALERT_STATE = Store("operations/sndk_outage_alert_state.json")
 PHONE_PUSHES_WALL_TIMERS_FEED_OUTAGES_STATE = Store("operations/phone_pushes_wall_timers_feed_outages_state.json")
 
-# =====================================================================================================================
-# Not in the approved map, awaiting the owner's decision: book_flow's equity-book collector (shipped disabled, no launchd
-# job, nothing on disk) and the stores only it would write. The phase 1 follow-ups ask for the collector's code and these
-# stores to go once grep proves nothing live uses them (nothing does: lob3d.js draws SPX alone); the deletion of its
-# files is left to the lead, so these keep their old templates until then.
-# =====================================================================================================================
-EQUITY_BOOK_COLLECTOR_FOLDER = Store("flow")
-EQUITY_BOOK_TICKER_FOLDER = Store("flow/{ticker}")
-EQUITY_BOOK_DEPTH_SNAPSHOTS_BY_SLICE = Store("flow/{ticker}/{day}/book.jsonl")
-EQUITY_BOOK_GAPS_BY_EVENT = Store("flow/{ticker}/{day}/gaps.jsonl")
-EQUITY_BOOK_COLLECTOR_HEALTH_LATEST = Store("flow/health.json")
-EQUITY_BOOK_COLLECTOR_LOCK = Store("flow/collector.lock")
-
 
 def _register() -> dict[str, Store]:
     """Every Store above by its constant name, in definition order; names the stores and powers the by-name lookups."""

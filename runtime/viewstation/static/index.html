@@ -9451,7 +9451,7 @@ async function rpFetchBars(day){
   /* 20-agent sweep 08-11: only a DURABLE miss (clean response, no bars file)
      caches null — a transient failure (server restart, timeout, 500) used to
      pin the day to the coarse scan-spot path for the whole browser session */
-  try{ const res=await fetch(`/api/raw/file?root=state&path=reversion/bars/${day}-SPX.json&limit=1000`,{cache:'no-store'});
+  try{ const res=await fetch(`/api/store/file?name=SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY&day=${day}&limit=1000`,{cache:'no-store'});
     if(!res.ok&&res.status!==404) return null;               // transient — retry next visit
     const d=await res.json(); RP.barsCache[day]=(d&&d.kind==='json'&&Array.isArray(d.data))?d.data:null; }
   catch(e){ return null; }                                   // transient — no cache poison
@@ -11681,7 +11681,7 @@ const _PL_STAGE_DOC={
 };
 const _PL_LEFTOUT=[
   ['The payload copies','stopped 2026-10-11',
-   'Each read that spent a call filed two copies nothing read back: the Gate Payload to state/sndk_legacy/<day>.jsonl, and the exact message it sent — the Strikes Payload as sent, the model and effort, the commit and a hash of the builder’s source, the rulebook once per version under rules/ — to state/sndk_payloads/<day>.jsonl. The dashboard rebuilds both through the reader’s own code, so the writes stopped; the files already on disk stay until the data sweep.'],
+   'Each read that spent a call filed two copies nothing read back: the Gate Payload to state/sndk_legacy/<day>.jsonl, and the exact message it sent — the Strikes Payload as sent, the model and effort, the commit and a hash of the builder’s source, the rulebook once per version under rules/ — to state/sndk_payloads/<day>.jsonl. The dashboard rebuilds both through the reader’s own code, so the writes stopped, and the files already on disk were archived under state/archive/ the same day.'],
   ['The phone glance','retired 2026-10-10',
    'The Now page at /m/index.html drew the latest reading, the session’s chart and the last half hour against the stock’s own record off the payload route. The phone’s redesign made the SPX forecast its home with no SNDK tab, so the page went with its two scripts and the two payload fields only it read, the half-hour record and since_read; the reader, its stores and this dashboard are unchanged.'],
   ['Day grades','written until 08-27, deleted 2026-09-16',
@@ -14774,9 +14774,9 @@ const PAYLOAD = {
     const age=x=>x&&x.mtime?snkDur(Math.max(0,(Date.now()/1000-x.mtime)/60))+' ago':'not today';
     head.innerHTML=`<b>state/sndk/sndk_options_scanner_results_by_scan/${esc(day)}.jsonl</b><span>one row per scan, every 2 minutes \u00b7 <i>${total}</i> rows today</span>`
       +`<span class="sib"><b>beside it</b> `
-      +`<code>sndk_bars/${esc(day)}.jsonl</code> minute bars, ${age(sib.bars)} \u00b7 `
-      +`<code>sndk_reads/${esc(day)}.jsonl</code> readings, ${age(sib.reads)} \u00b7 `
-      +`<code>sndk_rag/slices/${esc(day)}.jsonl</code> memory, ${age(sib.rag)}</span>`;
+      +`<code>sndk_price_bars_by_minute/${esc(day)}.jsonl</code> minute bars, ${age(sib.bars)} \u00b7 `
+      +`<code>sndk_options_reader_gates_and_answers_by_run/${esc(day)}.jsonl</code> readings, ${age(sib.reads)} \u00b7 `
+      +`<code>sndk_options_reader_notes_by_read/${esc(day)}.jsonl</code> memory, ${age(sib.rag)}</span>`;
     if(!row){ pre.innerHTML='<div class="ln">no row</div>'; sch.innerHTML=''; return; }
     if(when) when.textContent=`\u00b7 ${esc(String(row.ts||'').slice(11,19))} ET \u00b7 book ${m.book_source==='disk_cache'?'from the 180 s cache':'pulled fresh'}${m.cache_age_s!=null?`, ${Math.round(m.cache_age_s)} s old`:''}`;
     const out=[]; plLines(row, 0, '', '', out); pre.innerHTML=plRows(out);
