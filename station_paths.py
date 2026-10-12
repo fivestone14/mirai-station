@@ -174,8 +174,9 @@ class Store:
 
     @property
     def relative_folder(self) -> Path:
-        """The store's folder relative to its root (``reversion`` for ``reversion/{day}.jsonl``), for the packages that
-        keep a ``<root> / FOLDER / f"{day}.jsonl"`` habit over many call sites; the day-file shape is the map's own rule."""
+        """The store's folder relative to its root (``spx/scanner/spx_options_scanner_results_by_scan`` for
+        ``spx/scanner/spx_options_scanner_results_by_scan/{day}.jsonl``), for the packages that keep a
+        ``<root> / FOLDER / f"{day}.jsonl"`` habit over many call sites; the day-file shape is the map's own rule."""
         return Path(self.relative).parent
 
     def relative_within(self, parent: "Store") -> Path:

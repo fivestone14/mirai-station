@@ -212,7 +212,11 @@ def day_file_exists(path: Path | str) -> bool:
 
 def read_day_file_bytes(path: Path | str) -> bytes:
     """The day file's bytes, plain or gzipped: the .gz's decompressed bytes, then any plain file's (a line added to a
-    compressed day by hand, until the next night folds it in). FileNotFoundError when neither is there."""
+    compressed day by hand, until the next night folds it in). FileNotFoundError when neither is there.
+
+    The plain file beside a .gz is always read as lines ADDED after the .gz's, never as a replacement: a whole-day
+    plain rewrite beside a .gz (a hand-run ``seed --force`` on a compressed day, say) reads and folds as duplicate
+    lines. Decompress the day first (gunzip the .gz back to the plain file), then rewrite it."""
     path = Path(path)
     parts = []
     try:
@@ -390,6 +394,7 @@ def _compress_day_file(path: Path) -> tuple[int, int, bool] | None:
     if len(plain) != before.st_size:
         return None
     previous = gz.read_bytes() if gz.is_file() else None
+    previous_mtime_ns = gz.stat().st_mtime_ns if previous is not None else None
     content = plain
     if previous is not None:
         earlier = gzip.decompress(previous)
@@ -405,7 +410,7 @@ def _compress_day_file(path: Path) -> tuple[int, int, bool] | None:
         if previous is None:
             gz.unlink()
         else:
-            _write_bytes_atomically(gz, previous)
+            _write_bytes_atomically(gz, previous, mtime_ns=previous_mtime_ns)
         return None
     path.unlink()
     return len(plain), len(compressed), previous is not None

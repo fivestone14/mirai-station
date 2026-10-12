@@ -7140,7 +7140,7 @@ const LY = [
     // baked numbers = a boot-paint snapshot only — loadPlaneLedgers() re-derives this
     // card from spx_options_scanner_grades_by_day.jsonl on the ledger clock
     rd:{kind:'graded', n:22, rate:0.545, inv:0.455, verdict:'latest: keep the sign (CORRECT)',
-      summary:'Snapshot 08-10 — cumulative A/B: 12 of 22 idea-episodes right as-is (55%; 45% if inverted), newest nightly verdict "current (+calls/−puts) CORRECT" — but the verdict still flip-flops night to night, so the sign stays under nightly A/B review. Refreshes live from polarity_history.'}},
+      summary:'Snapshot 08-10 — cumulative A/B: 12 of 22 idea-episodes right as-is (55%; 45% if inverted), newest nightly verdict "current (+calls/−puts) CORRECT" — but the verdict still flip-flops night to night, so the sign stays under nightly A/B review. Refreshes live from spx_options_scanner_grades_by_day.'}},
   {id:'dex', num:'1.2', name:'DEX — Dealer Delta (direction side)', code:'lefteye_dex.dex_views · dex_v1', hue:'--l-dex', tier:'sensory',
     role:'≈ the direction-side twin of Gravity · DEX = dealer delta exposure', status:['iris','SHADOW · record-only'],
     plain:'Gravity (GEX) says whether dealer hedging damps or amplifies the next move; DEX asks the direction question — how much net dealer DELTA is still standing to be re-hedged on the underlying itself. The one caveat rides every read: naive net is LONG by construction — read the split + flow-signed twin, never the naive sign. Written to the diary as dex_views on each SPX row; an absent key is NO READ, never a zero book.',
@@ -7264,7 +7264,7 @@ const LY = [
     // card from spx_options_scanner_grades_by_day.jsonl (newest grade_v era) on the ledger clock
     rd:{kind:'days', decided:5, need:12, sw:'REVERSION_LIVE off', rate:0.471, wl:null, note:'ungated twin: 82 wins on 204 episodes',
       blockers:['switch off','5 / 12 decided days'],   // matches the baked rd/summary (sweep 08-11: the chip said 1/12 under a card saying 5/12)
-      summary:'Snapshot 08-10: 5 of 12 decided days in the grade_v2 era (8W/7L/2 scratch on 17 gated episodes, 47%, Wilson floor 0.26); the runway gate blocks most setups and the live switch is off. The ungated pre-runway twin has 82 wins on 204 episodes. Gate: ≥12 days, Wilson floor > .50, ≥58%. Refreshes live from polarity_history.'}},
+      summary:'Snapshot 08-10: 5 of 12 decided days in the grade_v2 era (8W/7L/2 scratch on 17 gated episodes, 47%, Wilson floor 0.26); the runway gate blocks most setups and the live switch is off. The ungated pre-runway twin has 82 wins on 204 episodes. Gate: ≥12 days, Wilson floor > .50, ≥58%. Refreshes live from spx_options_scanner_grades_by_day.'}},
   {id:'break', num:'C', name:'Break Lens', code:'level_reclaim', hue:'--l-break', tier:'lens',
     role:'≈ an alternate expert — bet the escape', status:['coral','shadow'],
     plain:'The opposite bet: when buying or selling power smashes price through a level, it rides the breakout instead of fading it. A two-step arm-then-fire trigger.',
@@ -7694,7 +7694,7 @@ async function loadPlaneLedgers(){
       if(gn){
         const g=LY.find(l=>l.id==='grav').rd, v=esc(glast.tickers.SPX.verdict||'—');
         g.n=gn; g.rate=gh/gn; g.inv=1-gh/gn; g.verdict=`latest: ${v}`;
-        g.summary=`Cumulative A/B across ${gdays} graded days: ${gh} of ${gn} idea-episodes right as-is (${Math.round(gh/gn*100)}%; ${Math.round((1-gh/gn)*100)}% if inverted). The nightly verdict still flip-flops — the latest graded night said "${v}" — so the sign stays under nightly A/B review. Derived live from polarity_history.`;
+        g.summary=`Cumulative A/B across ${gdays} graded days: ${gh} of ${gn} idea-episodes right as-is (${Math.round(gh/gn*100)}%; ${Math.round((1-gh/gn)*100)}% if inverted). The nightly verdict still flip-flops — the latest graded night said "${v}" — so the sign stays under nightly A/B review. Derived live from spx_options_scanner_grades_by_day.`;
         touched.push('grav');
       }
       // fade lens: decided days in the NEWEST grade_v era only (a version bump makes old
@@ -7711,7 +7711,7 @@ async function loadPlaneLedgers(){
         fd.decided=dec.length; fd.rate=n?w/n:null; fd.wl=wilsonLo(w,n);
         fd.note=`ungated twin: ${pw} win${pw===1?'':'s'} on ${pn} episodes`;
         fd.blockers=['switch off', `${dec.length} / 12 decided days`];
-        const gate='Gate: ≥12 days, Wilson floor > .50, ≥58%. Derived live from polarity_history.';
+        const gate='Gate: ≥12 days, Wilson floor > .50, ≥58%. Derived live from spx_options_scanner_grades_by_day.';
         const twin=`The ungated pre-runway twin has ${pw} win${pw===1?'':'s'} on ${pn} episodes.`;
         fd.summary= dec.length
           ? `${dec.length} of 12 decided days in the grade_v${era} era (${w}W/${Math.max(0,n-w-sk)}L${sk?'/'+sk+' scratch':''} on ${n} gated episode${n===1?'':'s'}); the runway gate blocks most gated setups and the live switch is off. ${twin} ${gate}`
@@ -7732,7 +7732,7 @@ async function loadPlaneLedgers(){
         const td=LY.find(l=>l.id==='tower').rd;
         td.decided=twDec.length; td.rate=twDec.length?twW/twDec.length:null;
         td.wl=wilsonLo(twW,twDec.length);
-        td.note=`${esc(twEra)} era · derived live from polarity_history`;
+        td.note=`${esc(twEra)} era · derived live from spx_options_scanner_grades_by_day`;
         td.blockers=[`${twDec.length} / 12 decided days (${esc(twEra)} era)`];
         touched.push('tower');
       }
@@ -8374,7 +8374,7 @@ function gateStates(s){
 // the call was right. Win = area positive AND most bars right; loss = both negative;
 // mixed = they disagree. A day is a HIT if the summed area is positive. Calls close only
 // on an opposite-direction call (dir_flip) or the session close — no more scene chopping.
-// Newest nightly grade row from polarity_history.jsonl, loaded once and cached; old-shape
+// Newest nightly grade row from spx_options_scanner_grades_by_day.jsonl, loaded once and cached; old-shape
 // rows (watchtower / watchtower_scene) are never rendered — they get the empty state.
 let LEDGERS=null, _ledgersLoading=false;
 async function loadLedgers(){

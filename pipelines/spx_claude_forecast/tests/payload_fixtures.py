@@ -277,7 +277,7 @@ def station_places(root: Path) -> list[Path]:
     """The station stores a read is built from, each as the one thing linked under ``root``: a keyed store's folder,
     a single file itself, and the live lane's folder."""
     return [*(store.folder(root) if store.key_names() else store.path(root) for store in STATION_STORES),
-            station_stores.spx_jev_dir(root)]
+            station_paths.JEV_LANE_FOLDER.path(root, lane="live")]
 
 
 def state_over_the_station(root: Path, *, recorder_copies: bool = True) -> Path:

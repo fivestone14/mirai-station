@@ -29,7 +29,7 @@ Usage: mirai-watch <command> [args]
 Commands:
   activate                Load the launchd plists (5-min scan+tick + caffeinate)
   deactivate              Unload the launchd plists
-  status                  Show launchd state + tail today's log
+  status                  Show launchd state + tail the left-eye job's output log
   tick                    Run one unified scan->monitor tick now
                           Optional: --dry-run, --verbose, --quiet
   doctor                  Self-diagnose paths, deps, claude CLI, role briefs
@@ -57,9 +57,10 @@ case "$cmd" in
     echo "== launchd =="
     launchctl list | grep com.mirai-station || echo "  (no mirai-station jobs loaded)"
     echo
-    echo "== today's log (last 20 lines) =="
-    log="${MIRAI_STATION_LOGS}/watch-$(date +%F).jsonl"
-    if [[ -f "$log" ]]; then tail -n 20 "$log"; else echo "  (no log for today)"; fi
+    echo "== left-eye output log (last 20 lines) =="
+    # The job's stdout, as start_job_with_logs.sh writes it (station_paths.py LAUNCHD_JOB_OUTPUT_LOG).
+    log="${MIRAI_STATION_STATE}/operations/logs/left_eye_output_log.txt"
+    if [[ -f "$log" ]]; then tail -n 20 "$log"; else echo "  (no left-eye output yet)"; fi
     ;;
   tick)
     # Gex-only chassis: one manual tick = the same scan+alerts pass launchd runs.

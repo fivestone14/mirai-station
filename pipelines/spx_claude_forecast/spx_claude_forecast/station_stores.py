@@ -33,10 +33,6 @@ def reversion_rows_file(state_dir: Path, day: str) -> Path:
     return station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(state_dir, day=day)
 
 
-def spx_jev_dir(state_dir: Path) -> Path:
-    return station_paths.JEV_LANE_FOLDER.path(state_dir, lane="live")
-
-
 def live_hour_file(state_dir: Path, day: str) -> Path:
     """The live lane's sums for the day (one record per read)."""
     return station_paths.JEV_AND_POOL_FORECASTS_BY_READ.path(state_dir, lane="live", day=day)

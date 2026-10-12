@@ -13,7 +13,7 @@ the close.
 The payload, Claude's answer and the actual result are stored together on one
 key (`read_id` + `claude_input_sha256`). The forecast is graded every night beside the
 base rate, the clock odds and Pool 2. It shows on the phone as its own card
-(`/m/jev-spx.html`, read from `latest.json`), and it is **never mixed into the
+(`/m/jev-spx.html`, read from the card store `claude_forecast_card.json`), and it is **never mixed into the
 combined call** (Pool 2) until Will decides it has earned a place.
 
 It runs live from day one. Stored history back to 07-20 seeds the library of

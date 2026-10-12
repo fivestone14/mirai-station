@@ -295,7 +295,10 @@ of a gzipped store reads a day through `station_store_files` (`read_day_file_tex
 names, so a `.gz` day reads exactly like the plain file; the server's `/api/store/index`, `/api/store/file` and raw
 explorer list and serve it as the plain file, decompressed. A line written to a day already gzipped (a backfill by hand)
 lands in a new plain file beside the `.gz`, is read after it, and is folded into the `.gz` the next night;
-`station_store_files.replace_day_file_text` rewrites a gzipped day as its `.gz`. By hand:
+`station_store_files.replace_day_file_text` rewrites a gzipped day as its `.gz`. The plain file beside a `.gz` is always
+taken as lines added after the `.gz`'s, never as a replacement: a whole-day plain rewrite beside a `.gz` (a hand-run
+`seed --force` on a compressed day, say) reads and folds as duplicate lines, so decompress the day first (gunzip the
+`.gz` back to the plain file), then rewrite it. By hand:
 `python station_store_files.py --compress-finished-days [--state-dir DIR]`.
 
 **Job logs.** `start_job_with_logs.sh` rotates a job's `{job}_output_log.txt` and `{job}_errors_log.txt` as the job

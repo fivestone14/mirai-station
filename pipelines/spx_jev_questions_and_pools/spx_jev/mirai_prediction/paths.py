@@ -43,11 +43,6 @@ REPLAY_BACKUPS_KEPT_DAYS = 7     # and a forced replay's backup folder (replay_f
 STAMP = "%Y%m%dT%H%M%SZ"         # the UTC stamp every backup is named by
 
 
-def spx_jev_dir(state_dir: Path | str) -> Path:
-    """The live service's own folder: <state_dir>/spx_jev (read-only for this system)."""
-    return station_paths.JEV_LANE_FOLDER.path(state_dir, lane="live")
-
-
 def data_root(state_dir: Path | str) -> Path:
     """This system's folder: <state_dir>/spx/prediction."""
     return FOLDER.path(state_dir)

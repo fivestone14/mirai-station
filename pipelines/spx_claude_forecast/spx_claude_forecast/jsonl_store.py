@@ -5,7 +5,7 @@ answers) append to the same ``reads/{day}.jsonl`` at once, so a line is written 
 under an exclusive ``flock`` in a single ``os.write``, and a file that does not end in a newline gets
 one first so a torn line from a crash is fenced off rather than glued to the next record. Replaced
 files are fsynced and so is their folder. Every writer refuses a path outside the forecast root or
-the backup root, which is how "never writes into Pool 2's files" is enforced in code; the check runs
+the backup root, which is how "never writes into the learner pool's files" is enforced in code; the check runs
 on the fully resolved path, so a symlink inside the folder cannot point a write outside it.
 """
 from __future__ import annotations

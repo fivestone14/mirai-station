@@ -1,5 +1,5 @@
-"""Plain words for the things Claude's reasons point at, so the phone (and a newcomer reading latest.json) never
-meets a dotted path.
+"""Plain words for the things Claude's reasons point at, so the phone (and a newcomer reading the card store,
+claude_forecast_card.json) never meets a dotted path.
 
 A reason is ``{input_field_path, pushes_toward, horizon}`` (spec/record_formats.md, the reply's ``reasons``).
 ``input_field_path`` is a dotted path into the scene (``tape.rv30_vs_clock_x``); the words for every path the

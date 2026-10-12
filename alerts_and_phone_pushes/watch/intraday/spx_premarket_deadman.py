@@ -10,8 +10,9 @@ a market day: has every checkpoint that is owed by now got its read, and has the
 close-out landed with every call graded? It pages the phone once per miss.
 
 It reads only the lane's own two files, the same ones the health review's
-premarket_fired check reads under the same limits: today's card (latest.json:
-its day, the checkpoints it names, closed_out_at, tally) and today's read file (one
+premarket_fired check reads under the same limits: today's card (jev_premarket_card.json,
+station_paths.JEV_PREMARKET_CARD: its day, the checkpoints it names, closed_out_at,
+tally) and today's read file (one
 line per checkpoint read). It imports nothing from spx_jev, reads no feed and
 calls no model, so it cannot fail for the reason the lane failed.
 
