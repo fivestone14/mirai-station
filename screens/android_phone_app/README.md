@@ -96,7 +96,7 @@ compileSdk 34, minSdk 26. Debug APK 3.2 MB, release 2.5 MB.
 Over the station, from anywhere:
 
     cp app/build/outputs/apk/release/app-release.apk \
-       ../runtime/viewstation/static/m/mirai.apk
+       ../desktop_and_phone_server/static/m/mirai.apk
 
 Then on the phone, open `<station>/m/mirai.apk` in Chrome and enter the station
 password. Android blocks the install the first time: **Settings → Apps → Chrome

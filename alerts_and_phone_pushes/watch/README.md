@@ -8,9 +8,9 @@ What actually runs now, every trading day:
 
 | When | What | Entry point |
 |---|---|---|
-| every 60 s (launchd `left-eye`) | the SCAN: Fade Lens on SPX — flow sensor → gravity engine → gates → diary row + notes | `skills/mirai-left-eye/hunter.py` via `runtime/scripts/run-watch-left-eye.sh` |
+| every 60 s (launchd `left-eye`) | the SCAN: Fade Lens on SPX — flow sensor → gravity engine → gates → diary row + notes | `pipelines/spx_options_scanner/hunter.py` via `scheduled_jobs/job_start_scripts/run-watch-left-eye.sh` |
 | intraday (inside the scan) | fresh-fire phone pushes, the wall-breach bell and the feed sirens | `watch/intraday/gex_alerts.py` |
-| 16:15 ET (`gex-polarity`) | the REPORT CARDS: grade both engines + the lens against the tape | `skills/mirai-left-eye/gex_polarity_ab.py` |
+| 16:15 ET (`gex-polarity`) | the REPORT CARDS: grade both engines + the lens against the tape | `pipelines/spx_options_scanner/gex_polarity_ab.py` |
 | 05:00 PT daily (`auth-watch`) | Schwab 7-day token keep-alive ping | `watch.intraday.auth_check` |
 | every 5 min (`sndk-deadman`) | pages the phone when the SNDK scanner or its reader stops writing | `watch.intraday.sndk_deadman` via `run-sndk-deadman.sh` |
 | every 5 min (`spx-premarket-deadman`) | pages the phone for a pre-market checkpoint with no read, or a close-out that never landed | `watch.intraday.spx_premarket_deadman` via `run-spx-premarket-deadman.sh` |

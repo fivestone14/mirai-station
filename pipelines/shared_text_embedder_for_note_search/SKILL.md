@@ -7,7 +7,7 @@ description: |
   lefteye_rag (the Watchtower's memory) and sndk_rag (the SNDK reading's), each
   of which imports embed.py straight off this directory and reads config.json
   itself to rank its stored slices against a query. (The morning macro brief,
-  which embedded its read through runtime/watch/right_eye_skill, retired
+  which embedded its read through alerts_and_phone_pushes/watch/right_eye_skill, retired
   2026-10-11; the loader and _config.py went with it.)
 
   RETIRED 2026-07-10: the former RAG news-memory pipeline (per-item embed →
@@ -41,7 +41,7 @@ What survives is the embedding surface only:
 
 ## Live wiring
 
-`skills/mirai-left-eye/lefteye_rag.py` and `skills/sndk-pro/sndk_rag.py` each
+`pipelines/spx_options_scanner/lefteye_rag.py` and `pipelines/sndk_options_scanner_and_reader/sndk_rag.py` each
 put this directory on `sys.path`, import `embed_text` and read `config.json`
 themselves to rank their memory slices semantically; if the model cannot load
 they fall back to their lexical ranker and say so in the output.

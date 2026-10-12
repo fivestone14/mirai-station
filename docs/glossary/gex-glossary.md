@@ -11,10 +11,10 @@ Reference diagram: `~/Desktop/mirai-gex-flow.png`.
 ## Wall / magnet / pin notation
 
 The standard notation for every *labeled* wall, magnet, or pin level lives in
-**`docs/gw-vocab.md`** (2026-07-19): `GWc`/`GWp` = call/put gex walls, `MagP` =
+**`docs/glossary/gw-vocab.md`** (2026-07-19): `GWc`/`GWp` = call/put gex walls, `MagP` =
 magnetic pull, `Pin` = pinning, each with a prime intensity mark (`'` `''`
 `'''`) and a tenor prefix (`[0DTE]`, `[1-7DTE]`, `[AUG21]`-style dates).
-`skills/mirai-left-eye/gw_vocab.py` is the Python source of truth for the
+`pipelines/spx_options_scanner/gw_vocab.py` is the Python source of truth for the
 thresholds and the wall-clustering rule; the viewstation carries its JS twin.
 Prose stays plain English ("the magnet", "a wall") — the notation is for
 labeled levels in rendered views.
@@ -83,7 +83,7 @@ is now the only gravity read.)
 ## Layer 2 — LOB (FLOW) sensor box (added 2026-07-04, shadow)
 | Code | Plain name | What it actually does |
 |---|---|---|
-| `skills/lob-flow/` | The Box | Self-contained Layer-2 sensor package — full glossary in its own README.md |
+| `data_collectors/spx_options_tape_collector/` | The Box | Self-contained Layer-2 sensor package — full glossary in its own README.md |
 | `lob_bridge.py` | The Bridge | The only file that knows both worlds: hands gravity strikes down, reads the collector's fold up, holds the dormant `LOB_LIVE` switch |
 | `lob_flow.daemon` | Collector | Launchd worker that owns all Layer-2 network: chain sweeps, tape polls, Schwab stream, folds |
 | `read_tape()` | Tape Reader | Who's eating: signs each trade bucket by where its VWAP sits inside the quote |

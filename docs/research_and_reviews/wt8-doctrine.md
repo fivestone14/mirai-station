@@ -107,4 +107,4 @@ totals themselves still hold no tier): `net_exposure`
 band and walls as named rungs — GWc/cT/HVL/pT/GWp; HVL is the adopted display
 name for the flip line, storage key unchanged), and `adaptive_em` (the ruler's
 EM re-split asymmetric by measured asymmetry; total width preserved). Shapes in
-docs/gex-glossary.md.*
+docs/glossary/gex-glossary.md.*

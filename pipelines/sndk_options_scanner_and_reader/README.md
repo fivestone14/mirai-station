@@ -8,7 +8,7 @@ and the hardened MCP transport (`native_gex_feed._run`) are **imported** from
 the sibling skill, never forked, and every SNDK rule lives in this directory.
 
 Vocabulary: **GRAVITY** = dealer positioning pull, **FLOW** = live force
-(host convention, `docs/gw-vocab.md`).
+(host convention, `docs/glossary/gw-vocab.md`).
 
 ## The three SNDK facts everything here is built around
 
@@ -53,11 +53,11 @@ clock, verbatim.
 
 | File | Plain name | What it does |
 |---|---|---|
-| `sndk_feed.py` | The Chain Runner | Per-day probe discovery (day-cached; probe ERRORS on a candidate front day → degraded, never cached), one batched `cass_market_run` pull every other tick (the raw book is persisted to `state/sndk/sndk_options_chain_state.json` and re-served for 180 s, one and a half ticks — each tick is a fresh process, so the off tick re-prices the cached book at the fresh quote instead of re-pulling, and the oldest book re-served plus the tick that replaces it still lands inside the reader's stale-book limit), chunked + clip-detected, IV rebuild + gamma fill on the front-book clock, front-expiry coverage teeth |
+| `sndk_feed.py` | The Chain Runner | Per-day probe discovery (day-cached; probe ERRORS on a candidate front day → degraded, never cached), one batched `cass_market_run` pull every other tick (the raw book is persisted to `data/sndk/sndk_options_chain_state.json` and re-served for 180 s, one and a half ticks — each tick is a fresh process, so the off tick re-prices the cached book at the fresh quote instead of re-pulling, and the oldest book re-served plus the tick that replaces it still lands inside the reader's stale-book limit), chunked + clip-detected, IV rebuild + gamma fill on the front-book clock, front-expiry coverage teeth |
 | `sndk_views.py` | The Map Maker | Pure: chain + live spot → one diary row via the left-eye engines (gex/dex/ladder/EM/net-exposure) |
-| `sndk_hunter.py` | The Shift Worker | One tick per invocation: quote → chain → row → append `state/sndk/sndk_options_scanner_results_by_scan/{date}.jsonl`. `--force` bypasses the RTH gate (manual proof runs) |
-| `sndk_read.py` | The Reader | The chart's live reading. Spends one `claude -p` call — the model says what stands out on an unbiased scene, every number checked against the board, never a direction — only when the wake gate fires → `state/sndk/sndk_options_reader_gates_and_answers_by_run/{date}.jsonl` |
-| `sndk_rag.py` | The Memory | On-demand history TOOL (never auto-injected): per-read slice records (metadata face + narrative face), day summaries with a sentiment read, month-tier standing terrain, hybrid metadata-filter→narrative-rank retrieval → `state/sndk/sndk_options_reader_notes_by_read/` (+ the summaries and terrain beside it) |
+| `sndk_hunter.py` | The Shift Worker | One tick per invocation: quote → chain → row → append `data/sndk/sndk_options_scanner_results_by_scan/{date}.jsonl`. `--force` bypasses the RTH gate (manual proof runs) |
+| `sndk_read.py` | The Reader | The chart's live reading. Spends one `claude -p` call — the model says what stands out on an unbiased scene, every number checked against the board, never a direction — only when the wake gate fires → `data/sndk/sndk_options_reader_gates_and_answers_by_run/{date}.jsonl` |
+| `sndk_rag.py` | The Memory | On-demand history TOOL (never auto-injected): per-read slice records (metadata face + narrative face), day summaries with a sentiment read, month-tier standing terrain, hybrid metadata-filter→narrative-rank retrieval → `data/sndk/sndk_options_reader_notes_by_read/` (+ the summaries and terrain beside it) |
 
 ## One lane on purpose (Lane A removed at obs-3, 2026-09-01)
 
@@ -82,7 +82,7 @@ Every reading now **opens with the frame** (obs-3): the scene's
 what held still — which is what makes the honest "nothing changed" sentence
 possible at all.
 
-The scene (docs/sndk-payload-inventory.md is the field-by-field map):
+The scene (docs/research_and_reviews/sndk-payload-inventory.md is the field-by-field map):
 grouped by force — **data_sources** (**new in sr-7**: the two clocks that
 were being conflated — the scan and the option book, which the feed re-serves
 from a disk cache on half of all scans and which is routinely minutes older
@@ -384,14 +384,14 @@ momentum, stronger), a strike placed on the wrong side of the live price, and
 "unchanged" on a board whose change cells moved.
 
 **The switch.** `payload_mode()` reads `SNDK_PAYLOAD` (env), then
-`state/sndk/sndk_options_reader_reasoning_switch.json` (`"payload": "scene" | "strikes"`), then
+`data/sndk/sndk_options_reader_reasoning_switch.json` (`"payload": "scene" | "strikes"`), then
 `PAYLOAD_DEFAULT`. The era follows it (`sndk_read.ERA` / `LEGACY_ERA`, bumped whenever what the
 model is shown changes), so rows written after a revert never pool. The live scene is still built every scan: the wake
 gate, the frame, the memory slice and the row's `gate` state read it, and its
 old magnet and walls are built as the **Gate Payload** (`sndk_board.legacy`),
 whose regions rule checks the reply. The dashboard shows all three documents.
 (Until 2026-10-11 each spent call also copied the Gate Payload to
-`state/sndk_legacy/` and the exact message it sent to `state/sndk_payloads/`;
+`data/sndk_legacy/` and the exact message it sent to `data/sndk_payloads/`;
 nothing read either copy, and both writes stopped.)
 
 **Measured before it shipped** (28 sessions, 5,038 scans): a magnet price had
@@ -413,7 +413,7 @@ measured over 23 sessions, the session extremes sat a median 0.10σ (~$7)
 short, the opening box ~$8 too narrow, and one box break in three was missed
 or invented. `sndk_bars.py` is a SIDECAR with its own launchd job
 (`com.mirai-station.sndk-bars`, every 60 s in RTH plus twelve minutes after
-the close): one completed minute per line in `state/sndk/sndk_price_bars_by_minute/<day>.jsonl`,
+the close): one completed minute per line in `data/sndk/sndk_price_bars_by_minute/<day>.jsonl`,
 idempotent and self-healing because Schwab returns the whole session in one
 call — a run after any gap writes the gap, and `--day` backfills a past
 session. It is deliberately NOT on the diary row: bars stored per row exist
@@ -429,17 +429,17 @@ sidecar's own clock. Absence falls back to the scans and never fabricates.
 
 ## Wiring
 
-- `com.mirai-station.sndk-bars` (launchd, every 60 s, RTH + 12 min) → `runtime/scripts/run-sndk-bars.sh` → `sndk_bars.py` → `state/sndk/sndk_price_bars_by_minute/<day>.jsonl` (+ `state/operations/health/sndk_price_bars_health_latest.json`). Backfill a session by hand: `sndk_bars.py --day YYYY-MM-DD`.
+- `com.mirai-station.sndk-bars` (launchd, every 60 s, RTH + 12 min) → `scheduled_jobs/job_start_scripts/run-sndk-bars.sh` → `sndk_bars.py` → `data/sndk/sndk_price_bars_by_minute/<day>.jsonl` (+ `data/operations/health/sndk_price_bars_health_latest.json`). Backfill a session by hand: `sndk_bars.py --day YYYY-MM-DD`.
 
-* launchd: `com.mirai-station.sndk` fires `runtime/scripts/run-sndk.sh` every
+* launchd: `com.mirai-station.sndk` fires `scheduled_jobs/job_start_scripts/run-sndk.sh` every
   120s (half the SPX rate — conservative with the shared server); the wrapper
   gates on `watch.intraday.market_status` RTH.
-* launchd: `com.mirai-station.sndk-read` fires `runtime/scripts/run-sndk-read.sh`
+* launchd: `com.mirai-station.sndk-read` fires `scheduled_jobs/job_start_scripts/run-sndk-read.sh`
   every 120s. **Its own job on purpose** — a read can run its model call to the
   180 s timeout and then the reviewer to its 40 s, and it must never be able to
   eat the scanner's tick and cost a diary row.
-* launchd: `com.mirai-station.sndk-deadman` fires `runtime/scripts/run-sndk-deadman.sh`
-  every 5 min (`runtime/watch/intraday/sndk_deadman.py`, its own process, reading
+* launchd: `com.mirai-station.sndk-deadman` fires `scheduled_jobs/job_start_scripts/run-sndk-deadman.sh`
+  every 5 min (`alerts_and_phone_pushes/watch/intraday/sndk_deadman.py`, its own process, reading
   files only). In market hours it pages the phone when the diary has no row by
   09:35 ET, when the diary's newest row is more than 6 min old, and when, with
   the scanner alive, the newest read row is more than 9.7 min old: 6 min plus
@@ -447,22 +447,22 @@ sidecar's own clock. Absence falls back to the scans and never fabricates.
   current run of rows began if that is later, and the reader is not judged while
   the scanner is silent, so one outage is one page. Each outage gets one
   recovery page, the reader's only once a new read row lands; what it has paged
-  is kept in `state/operations/sndk_outage_alert_state.json`.
-* Store (every file named in `runtime/station_paths.py`, under `state/sndk/` since 2026-10-11):
-  `state/sndk/sndk_options_scanner_results_by_scan/` (diary rows — the viewstation reads them
+  is kept in `data/operations/sndk_outage_alert_state.json`.
+* Store (every file named in `station_paths.py`, under `data/sndk/` since 2026-10-11):
+  `data/sndk/sndk_options_scanner_results_by_scan/` (diary rows — the viewstation reads them
   by store name; **pinned UI contract**),
-  `state/sndk/sndk_options_reader_gates_and_answers_by_run/` (the read rows, same pinned contract;
-  beside them the hand-edited switch `state/sndk/sndk_options_reader_reasoning_switch.json`,
-  `state/sndk/sndk_options_reader_percentile_history_state.json`, and
-  `state/sndk/sndk_past_volume_curves_state.json`),
-  `state/sndk/sndk_price_bars_by_minute/` (the minute bars; the bars job's last result at
-  `state/operations/health/sndk_price_bars_health_latest.json`),
-  `state/sndk/sndk_options_expiries_state.json` + `state/sndk/sndk_options_chain_state.json` +
-  `state/sndk/sndk_implied_volatility_state.json` (the expiry probe, the raw-book cache, the vol hint),
-  `state/sndk/sndk_price_bar_facts_by_read/` (the side packet, one line per wake),
-  `state/sndk/sndk_options_reader_notes_by_read/` + `state/sndk/sndk_options_reader_session_summaries_by_day.jsonl` +
-  `state/sndk/sndk_options_reader_terrain_state.json` (slice records + day summaries + terrain — the
-  on-demand memory), and `state/sndk/sndk_last_prices_by_quote/` (the live price the viewstation
+  `data/sndk/sndk_options_reader_gates_and_answers_by_run/` (the read rows, same pinned contract;
+  beside them the hand-edited switch `data/sndk/sndk_options_reader_reasoning_switch.json`,
+  `data/sndk/sndk_options_reader_percentile_history_state.json`, and
+  `data/sndk/sndk_past_volume_curves_state.json`),
+  `data/sndk/sndk_price_bars_by_minute/` (the minute bars; the bars job's last result at
+  `data/operations/health/sndk_price_bars_health_latest.json`),
+  `data/sndk/sndk_options_expiries_state.json` + `data/sndk/sndk_options_chain_state.json` +
+  `data/sndk/sndk_implied_volatility_state.json` (the expiry probe, the raw-book cache, the vol hint),
+  `data/sndk/sndk_price_bar_facts_by_read/` (the side packet, one line per wake),
+  `data/sndk/sndk_options_reader_notes_by_read/` + `data/sndk/sndk_options_reader_session_summaries_by_day.jsonl` +
+  `data/sndk/sndk_options_reader_terrain_state.json` (slice records + day summaries + terrain — the
+  on-demand memory), and `data/sndk/sndk_last_prices_by_quote/` (the live price the viewstation
   keeps while a page asks for it). Every file, with its writer, size and
   readers, is in the pipeline map's "Where it is saved" table.
   Off-hours `--force` rows carry `meta.forced: true` so they never pool
@@ -507,7 +507,7 @@ sidecar's own clock. Absence falls back to the scans and never fabricates.
   also stops the reading: with no fresh rows, reading on would only re-narrate
   a frozen book.
 * **Pause — not a kill switch**, and the difference is the whole point:
-  `state/sndk/sndk_options_reader_reasoning_switch.json` (`{"reasoning": bool}`). It silences the
+  `data/sndk/sndk_options_reader_reasoning_switch.json` (`{"reasoning": bool}`). It silences the
   model's **sentence** and nothing else: the magnet ranking, the frozen list
   and the wake reason are all pure functions of a diary row already on disk, so
   they keep computing and every scan still lands a row, stamped `paused: true`. A gap in a training set costs far more than a

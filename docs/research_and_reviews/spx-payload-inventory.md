@@ -10,7 +10,7 @@ reasoning input. This list is the pressure-test shortlist: anything marked
 Sources: diary row = `reversion_lens.evaluate` (telemetry), scene =
 `watchtower.build_payload` (PROMPT_VERSION wt-11), memory =
 `lefteye_rag.py` → `state/spx_rag/`. The SNDK twin of this document is
-`docs/sndk-payload-inventory.md` — the two scenes are deliberately parallel
+`docs/research_and_reviews/sndk-payload-inventory.md` — the two scenes are deliberately parallel
 where the tapes allow it, and deliberately different where they don't
 (0DTE daily vs weekly expiries; the SPX scene is THOROUGH by doctrine where
 the SNDK scene is lean).

@@ -80,19 +80,19 @@ is in the scene and not under `absent`. With no reason left the answer is still 
 
 ## Storage
 
-- **One folder, `state/spx/claude_forecast/`, append-only daily files**: `claude_forecast_inputs_by_read/` (what Claude saw,
+- **One folder, `data/spx/claude_forecast/`, append-only daily files**: `claude_forecast_inputs_by_read/` (what Claude saw,
   written before any call), `claude_forecast_answers_by_read/` (each answer as it lands, then the final forecast),
   `claude_forecast_outcomes_by_read/` (sealed nightly, never edited; a regrade appends a new rule version). Everything joins on `read_id`,
   with `claude_input_sha256` fingerprinting the exact scene.
 - **The library is rebuilt whole every night** from those files and the seed, and can always be deleted
   and rebuilt. The seed (`seed:` reads) is history only, never scored as Claude.
 - **The package never writes anywhere else.** Every writer refuses a path outside its own stores (that folder,
-  the recorder's copies under `state/market/`, its card under `state/screen_files/phone/`, its logs and locks
-  under `state/operations/`); a line
+  the recorder's copies under `data/market/`, its card under `data/screen_files/phone/`, its logs and locks
+  under `data/operations/`); a line
   written into the prediction system's files would make Pool 2 adopt the voice at a weight by accident.
 - **The recorder** copies station data before it is overwritten or deleted (the dated options book, siege's
-  SPY minutes, the raw tape, the $VIX1D close, SPX 5-minute bars) into `state/market/`, and the folder and
-  those copies are mirrored to iCloud Drive under their paths relative to `state/`; nothing else in `state/`
+  SPY minutes, the raw tape, the $VIX1D close, SPX 5-minute bars) into `data/market/`, and the folder and
+  those copies are mirrored to iCloud Drive under their paths relative to `data/`; nothing else in `data/`
   is backed up.
 
 ## Operations

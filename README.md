@@ -20,7 +20,7 @@ The core question is always the same: **does gravity hold price to its magnet, o
 does flow overpower it and break away?**
 
 Wherever a wall, magnet, or pin is *labeled* in a rendered view it uses the standard
-notation from **`docs/gw-vocab.md`**: `GWc`/`GWp` (call/put gex walls), `MagP`
+notation from **`docs/glossary/gw-vocab.md`**: `GWc`/`GWp` (call/put gex walls), `MagP`
 (magnetic pull), `Pin`, each with a `'` `''` `'''` intensity mark and a tenor prefix
 (`[0DTE]`, `[1-7DTE]`, `[AUG21]`-style dates).
 
@@ -81,7 +81,7 @@ flowchart TB
     SFEED --> SREAD
   end
 
-  DIARY["④ THE DIARY<br/><i>one JSONL row per scan · state/spx/scanner/spx_options_scanner_results_by_scan/ · state/sndk/sndk_options_scanner_results_by_scan/</i>"]
+  DIARY["④ THE DIARY<br/><i>one JSONL row per scan · data/spx/scanner/spx_options_scanner_results_by_scan/ · data/sndk/sndk_options_scanner_results_by_scan/</i>"]
   CARD["⑤ REPORT CARDS<br/><i>nightly A/B grade · Wilson promotion gate</i>"]
 
   subgraph TELL["⑥ TELL"]
@@ -121,7 +121,7 @@ two phases:
    - the **Flow Sensor + Gravity Engine** read first and hand up the magnet, σ,
      walls, and regime;
    - the **three heads** each evaluate that map;
-   - `record()` appends one row to today's **diary** (`state/spx/scanner/spx_options_scanner_results_by_scan/<date>.jsonl`);
+   - `record()` appends one row to today's **diary** (`data/spx/scanner/spx_options_scanner_results_by_scan/<date>.jsonl`);
    - the Obsidian "Today" note and the viewstation refresh.
 2. **Alerts** — `watch.cli gex-alerts` runs *always* (after hours too): fresh paper
    fires, the wall-breach bell and the feed sirens push to the phone via **ntfy**.
@@ -137,7 +137,7 @@ entry, not an order.
 | Head | Code key | Thesis | Fires when… |
 |---|---|---|---|
 | **A · Fade Lens** | `reversion_extreme` | GRAVITY wins — price snaps back to the magnet | four gates all pass: **stretched** (σ from close / VWAP / wall), **pinning** regime, **reaction** (last bar turns back), and **runway** to the magnet |
-| **B · Watchtower** | `watchtower` | an independent LLM "second opinion" that forecasts direction from the map | blind-then-reveal, 3-vote majority, `claude-sonnet-5` pinned by exact id, capped 35 judged scans/day. Since **wt-11** it may reach for exactly two tools — its own history CLI (`lefteye_rag.py` → `state/spx/scanner/spx_options_scanner_claude_notes_by_read/`, its past reads as searchable memory) and WebSearch for the catalyst behind a genuinely abnormal tape — doctrine-gated, history is context never the trigger. **Never touches the phone and can never place or veto a trade** — it exists only to be graded |
+| **B · Watchtower** | `watchtower` | an independent LLM "second opinion" that forecasts direction from the map | blind-then-reveal, 3-vote majority, `claude-sonnet-5` pinned by exact id, capped 35 judged scans/day. Since **wt-11** it may reach for exactly two tools — its own history CLI (`lefteye_rag.py` → `data/spx/scanner/spx_options_scanner_claude_notes_by_read/`, its past reads as searchable memory) and WebSearch for the catalyst behind a genuinely abnormal tape — doctrine-gated, history is context never the trigger. **Never touches the phone and can never place or veto a trade** — it exists only to be graded |
 | **C · Break Lens** | `level_reclaim` | FLOW wins — a weakened map is overpowered and price breaks away | a two-stage *cock → fire*: gravity cocks the hammer on a rejection at the storm side; live one-way flow fires it. Recording-only |
 
 The Fade Lens and Break Lens are opposite twins — one bets the pin holds, the other
@@ -145,8 +145,8 @@ bets it breaks. When they disagree, the hunter marks a `referee` note in the dia
 
 The Watchtower's prompt is versioned by **era** (`wt-11` current — the SNDK
 sr-2→sr-5 honesty port, every threshold re-measured on the SPX tape;
-`docs/spx-payload-inventory.md` is the field-by-field scene inventory and
-`docs/wt8-doctrine.md` records the wt-8-era reasoning foundations). Bump the
+`docs/research_and_reviews/spx-payload-inventory.md` is the field-by-field scene inventory and
+`docs/research_and_reviews/wt8-doctrine.md` records the wt-8-era reasoning foundations). Bump the
 era on any change to the payload or the prompt so a later read of the record
 can never blend two rule sets.
 
@@ -205,13 +205,13 @@ often than not, so it ships as a band, never a scalar; the old arrow pointed **8
 further than price travels** in the window it implied. Nothing on this surface is
 outside the noise band, and nothing here is presented as an edge.
 
-A **pause** switch (`state/sndk/sndk_options_reader_reasoning_switch.json`, flipped from the viewstation's SNDK tab) silences
+A **pause** switch (`data/sndk/sndk_options_reader_reasoning_switch.json`, flipped from the viewstation's SNDK tab) silences
 the model's *sentence* and nothing else — the gates and rankings are pure
 functions of a row already on disk, so every scan still lands a row, stamped
 `paused: true`. A gap in a training set costs more than a gap in the prose. Both
 readers fail **open**.
 
-Details: `skills/sndk-pro/README.md`.
+Details: `pipelines/sndk_options_scanner_and_reader/README.md`.
 
 ---
 
@@ -229,13 +229,13 @@ predicts the level breaking or holding.
 
 `SIEGE` (effort ≥ 70th pct) → expect break · `QUIET` (≤ 30) → expect hold ·
 `NEUTRAL` in the middle. Wired into the Watchtower payload since wt-7; graded
-record-only. Details: `skills/siege/README.md`.
+record-only. Details: `data_collectors/spy_volume_at_walls_sensor/README.md`.
 
 ## 4 · LOB-FLOW — order-book pressure *(shadow)*
 
 A Layer-2 order-book FLOW sensor, collected on its own 60 s job and folded nightly.
 Distinct from the options aggressor tape: this measures the *stock* book. Promotion
-gate dormant. Details: `skills/lob-flow/README.md`.
+gate dormant. Details: `data_collectors/spx_options_tape_collector/README.md`.
 
 ## 5 · The Dated Book sidecar *(record-only)*
 
@@ -260,7 +260,7 @@ beside them) and the phone pages under `/m`. It reuses the project's own rendere
 every number matches the canonical views. Reaching the port directly, by LAN or tailnet
 address, gets you everything; the front door for anything further away is a Cloudflare
 Tunnel into Caddy, which holds the password and proxies here. Never forward the port
-itself. Details: `runtime/viewstation/README.md`.
+itself. Details: `screens/desktop_and_phone_server/README.md`.
 
 ## 7 · Mirai Voice — the desk, spoken
 
@@ -276,7 +276,7 @@ A WebSocket sidecar on **`:8788`** with server-side VAD turn-taking, barge-in, a
 
 Scope: **SNDK only, by doctrine.** The mic needs a secure context — localhost on the
 Mac works today; the iPad needs the HTTPS cert step. Details:
-`skills/mirai-voice/README.md`.
+`screens/voice_desk/README.md`.
 
 ## 8 · Grading & the earn-trust gate
 
@@ -298,44 +298,53 @@ reads it, and it is the single gate between paper and live. **Nothing has cleare
 | **Schwab** (`schwab-py`) | daily/1-min bars, live quotes, the SPY chain (the ×10 proxy) | Keychain OAuth (7-day token, kept alive by `auth-watch`) |
 | **Claude** (subscription) | the Watchtower vote and the SNDK reading via one-shot `claude -p`; the voice conversation via a held-open `claude-agent-sdk` day session (a CLI spawn costs 7–100 s — far too slow to speak) | Claude Code CLI login — **no API key** |
 
-The whole option-book foundation lives immutable in `state/spx/scanner/`
+The whole option-book foundation lives immutable in `data/spx/scanner/`
 (`spx_options_strike_volume_weights_state.json`, `spy_options_strike_volume_weights_state.json`); everything downstream re-prices off it.
 
 ---
 
 ## Layout
 
+One project home, `~/mirai_awakening`, every folder named for what it holds (since
+2026-10-11; `docs/system_map.md` maps each folder to its jobs, entry points and tests):
+
 ```
-mirai-station/
-├── skills/
-│   ├── mirai-left-eye/         the SPX brain: hunter · reversion_lens (3 heads) ·
+mirai_awakening/
+├── station_paths.py            every data store named once (its name → its place under data/); jobs, server and pages ask it
+├── pipelines/
+│   ├── spx_options_scanner/    the SPX brain (the left eye): hunter · reversion_lens (3 heads) ·
 │   │                           lefteye_gex_box (Gravity Engine) · native_gex_feed
 │   │                           (FLOW sensor) · watchtower · dated_gex_feed (sidecar) ·
 │   │                           lefteye_dex (direction-side twin, shadow) ·
 │   │                           profile_ladder + adaptive_em (display, shadow) ·
 │   │                           fill_ledger · gex_polarity_ab (grader) ·
 │   │                           siege_bridge · lob_bridge · dashboard · price lenses
-│   ├── sndk-pro/               the isolated SNDK station: feed · views · hunter ·
+│   ├── spx_jev_questions_and_pools/   the SPX JEV decision service (spx_jev), its feeds, the
+│   │                           headlines feed and the Mirai Prediction System
+│   ├── spx_claude_forecast/    the Claude read over a frozen payload: recorder · nightly
+│   ├── sndk_options_scanner_and_reader/   the isolated SNDK station: feed · views · hunter ·
 │   │                           read (model reading) · rag (on-demand memory)
-│   ├── sndk-jev/               the SNDK JEV decision service (TypeSafe), retired 2026-10-11:
-│   │                           no job runs it; the folder goes next
-│   ├── spx-jev/                the SPX JEV decision service, its feeds, the headlines
-│   │                           feed and the Mirai Prediction System
-│   ├── spx-claude-forecast/    the Claude read over a frozen payload: recorder · nightly
-│   ├── book-flow/              the Day Visual LOB board: the SPX options tape as price × time
-│   ├── mirai-voice/            ears · jargon · convo · doctrine · mouth · voice_server
-│   ├── siege/                  effort-at-the-wall sensor (shadow, self-contained)
-│   ├── lob-flow/               Layer-2 order-book FLOW sensor (shadow, self-contained)
-│   ├── iv-viability/           per-contract IV gate + the Schwab credential/data vault
-│   └── mirai-right-eye/        embedder only (RAG retired 2026-07-10) → the two memories' semantic rankers
-├── runtime/
-│   ├── station_paths.py        every data store named once (its final name → where it is today); jobs, server and pages ask it
-│   ├── watch/                  the tick chassis: cli · hunter wrapper ·
+│   └── shared_text_embedder_for_note_search/   embed.py, the bge-small embedder the two memories rank with
+├── data_collectors/
+│   ├── schwab_market_data_client/   the Schwab sign-in, token vault and fetchers every pipeline imports
+│   ├── spx_options_tape_collector/  lob_flow: the same-day SPX options tape and depth collector (shadow)
+│   └── spy_volume_at_walls_sensor/  siege: SPY volume spent at dealer walls (shadow)
+├── screens/
+│   ├── desktop_and_phone_server/    read-only HTTP on :8787: the desktop page + the phone pages (static/m/)
+│   ├── desktop_options_trades_3d_view/   book_flow: the Day Visual LOB board, the SPX options tape as price × time
+│   ├── android_phone_app/      the Android shell that opens the phone pages
+│   └── voice_desk/             ears · jargon · convo · doctrine · mouth · voice_server (:8788)
+├── alerts_and_phone_pushes/
+│   ├── watch/                  the watch package: cli · paths · push ·
 │   │   └── intraday/           market_status · gex_alerts · push_ntfy · auth · the dead-man's switches
-│   ├── viewstation/            read-only HTTP on :8787: the desktop page + the phone pages (static/m/)
-│   ├── launchd/                25 LaunchAgent plists (the fleet, below)
-│   └── scripts/                install/venv/run wrappers + env.sh (Keychain reader)
-├── state/                      runtime-mutable — never copied between machines; every store in its named folder since 2026-10-11 (runtime/station_paths.py is the one place that knows the layout)
+│   └── tests/
+├── settings/                   limits-and-cooldowns.json
+├── scheduled_jobs/
+│   ├── launchd_job_definitions/   25 LaunchAgent plists (the fleet, below)
+│   └── job_start_scripts/      env.sh (Keychain reader) · start_job_with_logs.sh · the run-*.sh runners · install · venv
+├── health_checks/              the live health review and its unit tests
+├── skills/sndk-jev/            the SNDK JEV decision service (TypeSafe), retired 2026-10-11: no job runs it; the folder goes next
+├── data/                       runtime-mutable, git-ignored — never copied between machines (station_paths.py is the one place that knows the layout)
 │   ├── market/                 prices, quotes, depth, trades, open interest, the calendar, and their tables/
 │   ├── spx/scanner/            the SPX options scanner (the left eye), the order-flow readings, the wall sensor, the Watchtower's memory
 │   ├── spx/jev/                the JEV lanes (live_lane · opening_lane · premarket_lane), the shared archive, its tables/
@@ -344,16 +353,15 @@ mirai-station/
 │   ├── sndk/                   the SNDK scanner, its reader and the reader's memory
 │   ├── voice_desk/             the voice desk's transcripts + session continuity
 │   ├── screen_files/           phone/ cards and the desktop/ 3D view, written only for a screen
-│   ├── operations/             logs/ · locks/ · health/ · the alert states
+│   ├── operations/             logs/ (every job's output and errors) · locks/ · health/ · the alert states
 │   └── archive/                rollback copies and retired data, dated at archiving
-└── docs/                       INSTALL · OPERATIONS · gex-glossary · gw-vocab ·
-                                wt8-doctrine · spx-payload-inventory ·
-                                sndk-payload-inventory · salvage-notes
+└── docs/                       system_map · how_to_run/ (INSTALL · OPERATIONS) · glossary/ (gex-glossary · gw-vocab) ·
+                                research_and_reviews/ (wt8-doctrine · the two payload inventories · sndk-plan · salvage-notes)
 ```
 
 ### The launchd fleet (25 agents)
 
-`runtime/scripts/install-launchd.sh` names every agent it loads (`PLISTS`); that list is
+`scheduled_jobs/job_start_scripts/install-launchd.sh` names every agent it loads (`PLISTS`); that list is
 the fleet.
 
 | Label | Cadence | Job |
@@ -370,7 +378,7 @@ the fleet.
 | `auth-watch` | 08:00 ET | Schwab token keep-alive + dead-bearer ping |
 | `dated-book` | 08:17 ET daily, + Fri 17:10 ET | the far-dated structural-wall sidecar |
 | `gex-polarity` | 16:15 ET | after-close A/B grader + LOB nightly fold |
-| `spx-jev` | :02 and :32 ET, 09:32 to 16:02 (gated to RTH; the 16:02 fire only grades) | the SPX JEV decision service beside the SPX diary: labels, asks JEV, sums and grades, writes the live lane under `state/spx/jev/`, the learning loops under `state/spx/prediction/` and its card under `state/screen_files/phone/` — its own job, never on the scan path (`skills/spx-jev/README.md`) |
+| `spx-jev` | :02 and :32 ET, 09:32 to 16:02 (gated to RTH; the 16:02 fire only grades) | the SPX JEV decision service beside the SPX diary: labels, asks JEV, sums and grades, writes the live lane under `data/spx/jev/`, the learning loops under `data/spx/prediction/` and its card under `data/screen_files/phone/` — its own job, never on the scan path (`pipelines/spx_jev_questions_and_pools/README.md`) |
 | `spx-jev-tape` | every 5 min 09:35 to 10:30 ET, and 10:42 (gated to RTH) | SPX JEV's opening lane |
 | `spx-jev-premarket` | 02:35, 03:35 (04:35 in Frankfurt's winter-time week), 08:05, 08:48, 09:05, 09:28 ET, and 10:06 | SPX JEV's lane before the open, from the night's futures; 10:06 is its close-out |
 | `spx-premarket-deadman` | every 5 min | pages a pre-market checkpoint with no read, or a close-out not landed or leaving a call ungraded |
@@ -378,10 +386,10 @@ the fleet.
 | `spx-jev-context` | every 60 s (gated to RTH) | the market around SPX (breadth, VIX family, futures, rates, sectors, megacaps) for SPX JEV |
 | `spx-jev-save-day` | 16:20 ET | the day's full minute bars of every market-feed symbol |
 | `spx-jev-overnight` | 09:26 and 16:20 ET | the overnight futures (/ES, /ZN, /BTC, /MBT) and the roll table |
-| `spx-jev-headlines` | every 3 min, 07:00 to 16:30 ET weekdays | four public RSS feeds, each new item stamped with the poll's own clock under `state/market/news_headlines_by_article/`, for the judgment questions |
+| `spx-jev-headlines` | every 3 min, 07:00 to 16:30 ET weekdays | four public RSS feeds, each new item stamped with the poll's own clock under `data/market/news_headlines_by_article/`, for the judgment questions |
 | `spx-jev-store` | 16:40 ET | SPX JEV's learning store, rebuilt from its raw files into checked Parquet |
-| `spx-jev-prediction-nightly` | 17:05 ET weekdays | the Mirai Prediction System's nightly job: its tables, the voice scores, pool_v2's learning, the learners' refit and the phone's scoreboard, under `state/spx/prediction/` (the scoreboard card under `state/screen_files/phone/`) |
-| `spx-claude-forecast-recorder` | 08:40 and 16:25 ET, plus Fri 17:30 ET | copies station data before it is overwritten or deleted (the dated book, siege's SPY minutes, the raw tape, the $VIX1D close, SPX 5-minute bars) into `state/market/` and mirrors the forecast folder and those copies to iCloud |
+| `spx-jev-prediction-nightly` | 17:05 ET weekdays | the Mirai Prediction System's nightly job: its tables, the voice scores, pool_v2's learning, the learners' refit and the phone's scoreboard, under `data/spx/prediction/` (the scoreboard card under `data/screen_files/phone/`) |
+| `spx-claude-forecast-recorder` | 08:40 and 16:25 ET, plus Fri 17:30 ET | copies station data before it is overwritten or deleted (the dated book, siege's SPY minutes, the raw tape, the $VIX1D close, SPX 5-minute bars) into `data/market/` and mirrors the forecast folder and those copies to iCloud |
 | `spx-claude-forecast-nightly` | 17:15 ET weekdays | seals what happened after every Claude read, rebuilds the library of past moments, scores every forecaster, writes the scorecard |
 
 ### Kill switches
@@ -410,9 +418,9 @@ The SNDK reasoning **pause** is deliberately *not* a kill switch — see §2.
 ## Quickstart (Mac mini)
 
 ```bash
-cd ~/.claude/plugins/mirai-station
-./runtime/scripts/venv-bootstrap.sh      # provision ~/.local/share/mirai-station/venv
-./runtime/scripts/install-launchd.sh     # symlink + bootstrap the 25 agents
+cd ~/mirai_awakening
+./scheduled_jobs/job_start_scripts/venv-bootstrap.sh      # provision ~/.local/share/mirai-station/venv
+./scheduled_jobs/job_start_scripts/install-launchd.sh     # symlink + bootstrap the 25 agents
 ```
 
 Then:
@@ -427,21 +435,24 @@ modules silently fail. The launchd path is unaffected: every `run-*.sh` calls
 ```bash
 PY=~/.local/share/mirai-station/venv/bin/python
 
-./runtime/scripts/run-watch-left-eye.sh                    # one SPX tick by hand
-$PY skills/sndk-pro/sndk_hunter.py --force                 # one SNDK tick, off-hours
-$PY skills/sndk-pro/sndk_read.py --replay YYYY-MM-DD       # re-run a recorded day, writes nothing
-$PY skills/mirai-voice/repl.py --mute                      # the whole voice loop in a terminal
+./scheduled_jobs/job_start_scripts/run-watch-left-eye.sh                    # one SPX tick by hand
+$PY pipelines/sndk_options_scanner_and_reader/sndk_hunter.py --force                 # one SNDK tick, off-hours
+$PY pipelines/sndk_options_scanner_and_reader/sndk_read.py --replay YYYY-MM-DD       # re-run a recorded day, writes nothing
+$PY screens/voice_desk/repl.py --mute                      # the whole voice loop in a terminal
 ```
 
 Tests — **one suite directory at a time** (each box ships its own `conftest.py`, and
 they collide if collected together):
 
 ```bash
-for t in skills/mirai-left-eye/tests skills/sndk-pro/tests skills/sndk-jev/tests skills/spx-jev/tests skills/spx-claude-forecast/tests \
-         skills/siege/tests skills/lob-flow/tests skills/iv-viability/tests skills/mirai-voice/tests \
-         runtime/watch/tests runtime/viewstation/tests runtime/health; do
+for t in pipelines/spx_options_scanner/tests pipelines/sndk_options_scanner_and_reader/tests \
+         pipelines/spx_jev_questions_and_pools/tests pipelines/spx_claude_forecast/tests \
+         data_collectors/spy_volume_at_walls_sensor/tests data_collectors/spx_options_tape_collector/tests \
+         data_collectors/schwab_market_data_client/tests screens/voice_desk/tests \
+         screens/desktop_options_trades_3d_view/tests screens/desktop_and_phone_server/tests \
+         alerts_and_phone_pushes/tests health_checks; do
   $PY -m pytest "$t" -q
-done                                                       # ~2,100 tests
+done                                                       # ~4,400 tests
 ```
 
 Before you commit — the pre-push hook refuses anything else:
@@ -453,20 +464,20 @@ export TZ=UTC                                               # commit dates must 
 ```
 
 - **Full setup** (auto-login, Caffeinate, Keychain secrets, MCP servers, ntfy):
-  `docs/INSTALL.md`
-- **Moving to new hardware**: `docs/INSTALL.md`, the section of that name
-- **Runbook** (start/stop, logs, troubleshooting): `docs/OPERATIONS.md`
+  `docs/how_to_run/INSTALL.md`
+- **Moving to new hardware**: `docs/how_to_run/INSTALL.md`, the section of that name
+- **Runbook** (start/stop, logs, troubleshooting): `docs/how_to_run/OPERATIONS.md`
 - **Plain-name glossary** (every code identifier → what it actually does):
-  `docs/gex-glossary.md`
-- **Label notation** (`GWc`/`GWp`/`MagP`/`Pin` + primes): `docs/gw-vocab.md`
-- **Watchtower reasoning doctrine** (wt-8-era foundations): `docs/wt8-doctrine.md`
-- **SPX scene, field by field** (wt-11): `docs/spx-payload-inventory.md`
-- **SNDK scene, field by field**: `docs/sndk-payload-inventory.md`
+  `docs/glossary/gex-glossary.md`
+- **Label notation** (`GWc`/`GWp`/`MagP`/`Pin` + primes): `docs/glossary/gw-vocab.md`
+- **Watchtower reasoning doctrine** (wt-8-era foundations): `docs/research_and_reviews/wt8-doctrine.md`
+- **SPX scene, field by field** (wt-11): `docs/research_and_reviews/spx-payload-inventory.md`
+- **SNDK scene, field by field**: `docs/research_and_reviews/sndk-payload-inventory.md`
 
 There is also a human-facing, numbered walkthrough of the whole project at
 `~/Desktop/Mirai-Awakening/` — an organized window of symlinks into this directory,
 with a plain-English `README.md` in every folder. Edit through it and you are editing
-the real files; the machine always runs from the plugin location.
+the real files; the machine always runs from `~/mirai_awakening`.
 
 ---
 
@@ -478,8 +489,8 @@ brain now). An earlier "Mirai Watch" LangGraph tick-graph and a LanceDB news sto
 went with them. Treat anything mentioning *voters / confluence / pick_builder /
 outcomes / oracle / algo-read / langgraph* as historical — the live shape is the one
 this README describes. What the retired system did, and what's worth bringing back,
-is recorded in `docs/salvage-notes.md`.
+is recorded in `docs/research_and_reviews/salvage-notes.md`.
 
 **mirai-station is the always-on twin.** The interactive vault stays on the main
-machine; the mini emits alerts and writes its own `state/` — cross-machine vault sync
+machine; the mini emits alerts and writes its own `data/` — cross-machine vault sync
 is intentionally out of scope.

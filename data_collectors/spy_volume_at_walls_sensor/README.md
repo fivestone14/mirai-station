@@ -3,7 +3,7 @@
 A **self-contained, shadow-only** sensor box that measures one thing: how much
 underlying (SPY) volume gets spent while spot is TOUCHING a dealer-gamma level
 (a **tower**: GWc / GWp / MagP — call wall, put wall, magnet; notation per the
-host's `docs/gw-vocab.md`) — and whether that effort predicts the level
+host's `docs/glossary/gw-vocab.md`) — and whether that effort predicts the level
 breaking or holding.
 
 Vocabulary: **GRAVITY** = dealer positioning pull (the walls, handed in from
@@ -73,8 +73,8 @@ baseline fold on that scan. Episodes that lived through a feed hole carry
 
 ## Store schema (the viewstation contract — field names are FROZEN)
 
-Under the injected root (the station's data root, `state/`, in the mirai wiring), each
-file named in `runtime/station_paths.py` and kept under `spx/scanner/`: `latest.json`
+Under the injected root (the station's data root, `data/`, in the mirai wiring), each
+file named in `station_paths.py` and kept under `spx/scanner/`: `latest.json`
 below is `spx_dealer_walls_latest.json`, `cards/<date>.jsonl` is
 `spx_dealer_wall_touches_by_event/<date>.jsonl`, `baseline.json` is
 `spy_volume_baselines_state.json` and `session.json` is

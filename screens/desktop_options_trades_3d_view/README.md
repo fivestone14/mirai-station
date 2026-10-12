@@ -19,7 +19,7 @@ cancel or a fill, so the field is named `rem` and never `cancelled`.
 
 | Feed | Source | Add/remove is | Hole |
 |---|---|---|---|
-| `options_tape` | `state/market/spx_same_day_options_raw_day_folders/{day}/tape.jsonl` (the lob-flow collector, recording since 2026-08-05) | **inferred** — each print carries its own contract's bid/ask size | a strike is only sampled when it trades |
+| `options_tape` | `data/market/spx_same_day_options_raw_day_folders/{day}/tape.jsonl` (the lob-flow collector, recording since 2026-08-05) | **inferred** — each print carries its own contract's bid/ask size | a strike is only sampled when it trades |
 
 The wire document carries `kind` purely so a reader knows how much to trust it.
 A second feed, `equity_book` — the literal difference between two whole

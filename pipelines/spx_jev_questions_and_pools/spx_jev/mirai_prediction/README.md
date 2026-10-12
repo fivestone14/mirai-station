@@ -15,7 +15,7 @@ graded result -> scored per voice -> pool_v2 weights -> refit each morning -> ph
 
 ## Where the data lives
 
-`state/spx_jev/mirai_prediction/`
+`data/spx/prediction/` (every file named in `station_paths.py`)
 
 | folder / file | what it holds |
 |---|---|
@@ -52,7 +52,7 @@ The live store keeps its folder names; `name_map.py` maps them (`graded_results`
   market value is ranked against earlier days only, never the same day's earlier reads.
 
 ```
-cd skills/spx-jev
+cd pipelines/spx_jev_questions_and_pools
 python -m spx_jev.mirai_prediction.nightly_job --state-dir ../../state --lane live [--day YYYY-MM-DD]
 python -m spx_jev.mirai_prediction.read_hook   --state-dir ../../state --lane live [--read-id live:<row_ts>]
 python -m spx_jev.mirai_prediction.replay      --state-dir ../../state --lane live --from 2026-09-29 --to 2026-10-05 [--force]
@@ -87,7 +87,7 @@ and its arc column, LEVELS-08) take the day's last premarket-lane read. A questi
 sentence is a template the parser does not know, answers None, never an error. A symbol's own-day bars live are the
 quotes (one price a snapshot), so every market answerer reads closes and volume only, never a minute's high or low: live
 and backfill measure the same thing. The read's day's SPY volume is the siege box's minute volume
-(`state/siege/baseline.json`, the same figures as the saved minute bars), live and in backfill; FLOW-07 reads the day's
+(`data/spx/scanner/spy_volume_baselines_state.json`, the same figures as the saved minute bars), live and in backfill; FLOW-07 reads the day's
 SPY/QQQ/IWM from their quotes whether or not the day is saved. A live read runs in a fresh process: loading the day's
 history cold and answering every question takes about 1.2 s (a 10-07 read, 2026-10-07); the prior-sessions parts are
 cached only within one process (the replay and the backfill, which walk a day's reads together).
@@ -147,9 +147,9 @@ The feeds the blocked questions of the merged set waited for, built first; the P
 
 | feed | where it lives | what it is | unblocks |
 |---|---|---|---|
-| market-feed symbols | `state/spx_jev/context/{day}.jsonl` (quotes, a minute apart) and `context/bars/{day}.jsonl` (full days); `market_context.SYMBOLS` | /ZN (the ten-year note future, under its root), SPXL, TQQQ, SPXS and SQQQ (`leveraged_funds`), TSLA and BRK/B (`megacaps`, Schwab's name for Berkshire's B share). KRE and XHB (`industry_funds`) were quoted beside them for MACRO-05 and left the feed on 2026-10-10, the question having been dropped; the saved sessions keep what they hold. The 41 saved sessions back to 2026-08-11 were backfilled once for the new symbols (`--backfill --symbols`, 2026-10-07 01:30 ET); Schwab served the funds and stocks from 2026-08-21 and /ZN from 2026-08-24, so the eight oldest saved sessions lack them all and 08-21 lacks /ZN (31 sessions hold all nine of the symbols added then; the thin 3x funds miss a few minutes a day, as any thin fund does). The 11-sector group and the other groups the labels count are unchanged. | /ZN: MACRO-01, MACRO-02, MACRO-07; the 3x funds: SENTIMENT-02; TSLA/BRK/B: BREADTH-03, BREADTH-07 (with the index weights, below). MACRO-04, MACRO-05, MACRO-06 and EVENTS-05, which also read them, were dropped on 2026-10-07 |
-| daily closes | `state/spx_jev/daily_closes/{symbol}.jsonl` (`daily_closes.py`) | $SPX, TLT, $TNX, $VIX and $VIX9D, one line per market day from 2016-10-10, as Schwab served it ($TNX at ten times the yield), rewritten whole by the 16:20 day saver, so a missed night costs nothing. `daily_closes.load(state_dir, symbol, before=day)` is the point-in-time read: the sessions before the day only. | VOLATILITY-17, VOLATILITY-12, SESSION-02 |
-| index weights | `state/spx_leaders/weights.json` (`index_weights.py`) | Dated sets of the largest stocks' shares of the index, read by `labels/leadership.py` (the newest set dated on or before the read's day, so a day replayed later reads what it had); a new set goes under its own `as_of`, never over an old one. The first entry, as_of 2026-10-06, is approximate and hand-kept from memory (NVDA 7.8%, MSFT 6.6%, AAPL 6.2%, AMZN 3.9%, GOOGL 2.5% + GOOG 2.0%, META 2.9%, AVGO 2.6%, TSLA 1.9%, BRK/B 1.6%); a second entry, as_of 2026-08-21, holds the same shares backdated to the day TSLA and BRK/B entered the feed, so the heavyweight questions have history; replace them with SSGA's SPY holdings as a new entry. With it on file the four megacap labels (`leaders.heavyweight_gap`, `.megacap_cohesion_30m`, `.pull_vs_rest_30m`, `.single_name_10m`) read from the next live read on. | BREADTH-03, BREADTH-07, BREADTH-09 (BREADTH-08 was dropped on 2026-10-07) |
+| market-feed symbols | `data/market/watchlist_quotes_by_minute/{day}.jsonl` (quotes, a minute apart) and `market/watchlist_price_bars_by_minute/{day}.jsonl` (full days); `market_context.SYMBOLS` | /ZN (the ten-year note future, under its root), SPXL, TQQQ, SPXS and SQQQ (`leveraged_funds`), TSLA and BRK/B (`megacaps`, Schwab's name for Berkshire's B share). KRE and XHB (`industry_funds`) were quoted beside them for MACRO-05 and left the feed on 2026-10-10, the question having been dropped; the saved sessions keep what they hold. The 41 saved sessions back to 2026-08-11 were backfilled once for the new symbols (`--backfill --symbols`, 2026-10-07 01:30 ET); Schwab served the funds and stocks from 2026-08-21 and /ZN from 2026-08-24, so the eight oldest saved sessions lack them all and 08-21 lacks /ZN (31 sessions hold all nine of the symbols added then; the thin 3x funds miss a few minutes a day, as any thin fund does). The 11-sector group and the other groups the labels count are unchanged. | /ZN: MACRO-01, MACRO-02, MACRO-07; the 3x funds: SENTIMENT-02; TSLA/BRK/B: BREADTH-03, BREADTH-07 (with the index weights, below). MACRO-04, MACRO-05, MACRO-06 and EVENTS-05, which also read them, were dropped on 2026-10-07 |
+| daily closes | `data/market/spx_vix_rates_price_bars_by_day/{symbol}.jsonl` (`daily_closes.py`) | $SPX, TLT, $TNX, $VIX and $VIX9D, one line per market day from 2016-10-10, as Schwab served it ($TNX at ten times the yield), rewritten whole by the 16:20 day saver, so a missed night costs nothing. `daily_closes.load(state_dir, symbol, before=day)` is the point-in-time read: the sessions before the day only. | VOLATILITY-17, VOLATILITY-12, SESSION-02 |
+| index weights | `data/market/spx_largest_stock_weights_by_update.json` (`index_weights.py`) | Dated sets of the largest stocks' shares of the index, read by `labels/leadership.py` (the newest set dated on or before the read's day, so a day replayed later reads what it had); a new set goes under its own `as_of`, never over an old one. The first entry, as_of 2026-10-06, is approximate and hand-kept from memory (NVDA 7.8%, MSFT 6.6%, AAPL 6.2%, AMZN 3.9%, GOOGL 2.5% + GOOG 2.0%, META 2.9%, AVGO 2.6%, TSLA 1.9%, BRK/B 1.6%); a second entry, as_of 2026-08-21, holds the same shares backdated to the day TSLA and BRK/B entered the feed, so the heavyweight questions have history; replace them with SSGA's SPY holdings as a new entry. With it on file the four megacap labels (`leaders.heavyweight_gap`, `.megacap_cohesion_30m`, `.pull_vs_rest_30m`, `.single_name_10m`) read from the next live read on. | BREADTH-03, BREADTH-07, BREADTH-09 (BREADTH-08 was dropped on 2026-10-07) |
 | event calendar | `calendar/events.json`, `events.AUCTION` | The tier `auction` (Treasury note and bond auctions, results about 13:00 ET) has a shape and a name; the calendar has no rows of it yet, and none are invented: add them from the Treasury's published schedule. `learn_exclude` does not read the tier (that would change what the live loop learns from; a later phase). | no question now: EVENTS-05, which read it with /ZN, was dropped on 2026-10-07; the tier stays for a later one |
 
 ## Rules added 2026-10-06 (the design-spec review)
@@ -169,7 +169,7 @@ The feeds the blocked questions of the merged set waited for, built first; the P
 07:00-16:30 ET on weekdays, `--now` runs it by hand). Four public RSS feeds, stdlib only, a 10-second timeout each: CNBC Top News
 (`cnbc.com/id/100003114/device/rss/rss.html`), a Google News search (`"S&P 500" OR Nvidia OR Fed OR tariff OR "Treasury yields"`,
 the last hour; the outlet from its `<source>` tag), MarketWatch Top Stories (`feeds.content.dowjones.io/public/rss/mw_topstories`)
-and the Fed's press feed (`federalreserve.gov/feeds/press_all.xml`). One JSON line per NEW item to `state/spx_jev/headlines/{day}.jsonl`
+and the Fed's press feed (`federalreserve.gov/feeds/press_all.xml`). One JSON line per NEW item to `data/market/news_headlines_by_article/{day}.jsonl`
 (ET day): `captured_at` (the poll's own clock, ISO ET: **the truth**), `pub_claimed` (the raw pubDate, untrusted), `feed`, `source`,
 `title`, `url`, `guid`. `seen.json` dedupes across polls (sha1 of the url and of the lower-cased title, pruned to 48 h, written
 atomically); a feed that fails is named with its error on stderr and costs only its own items; `.lock` keeps two polls apart. **The

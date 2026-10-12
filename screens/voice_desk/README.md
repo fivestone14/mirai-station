@@ -14,11 +14,11 @@ about the board. The organs, in the order sound travels:
 | `repl.py` | test bench | the whole loop in a terminal: `repl.py [--mic|--mute]` |
 | `bench.py` | test bench | STT/TTS latency + mis-hearing harvest |
 
-Service: `runtime/launchd/com.mirai-station.voice.plist` (daemon, KeepAlive) →
-`runtime/scripts/run-voice.sh`. Kill switch `MIRAI_VOICE_DISABLE=1` (shell AND
-python). Logs: `/tmp/mirai-station.voice.{out,err}`. Conversation log:
-`state/voice_desk/voice_desk_transcripts_by_exchange/{date}.jsonl`; session continuity:
-`state/voice_desk/voice_desk_session_state.json`.
+Service: `scheduled_jobs/launchd_job_definitions/com.mirai-station.voice.plist` (daemon, KeepAlive) →
+`scheduled_jobs/job_start_scripts/run-voice.sh`. Kill switch `MIRAI_VOICE_DISABLE=1` (shell AND
+python). Logs: `data/operations/logs/voice_{output,errors}_log.txt`. Conversation log:
+`data/voice_desk/voice_desk_transcripts_by_exchange/{date}.jsonl`; session continuity:
+`data/voice_desk/voice_desk_session_state.json`.
 
 Scope: SNDK only, by doctrine. Mic needs a secure context — localhost on the
 Mac works today; the iPad needs the HTTPS cert step (plan phase 4).

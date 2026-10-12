@@ -40,7 +40,7 @@
 > when it was written; the number gate's harvest skips it, so a figure the model
 > once said is sayable again only while the board still carries it. And every
 > call's exact message was kept, before it was sent, in
-> `state/sndk_payloads/<day>.jsonl`: the scene as an object, the rulebook once per
+> `data/sndk_payloads/<day>.jsonl`: the scene as an object, the rulebook once per
 > distinct text under `rules/<sha>.txt`, and `prompt_sha256`, which
 > `sndk_read.sent_prompt` checked when it rebuilt the prompt. (Stopped
 > 2026-10-11: nothing read the copies. The files already written stay.)
@@ -61,7 +61,7 @@
 > `vol_added_per_book`, `vol_added_in_series`, `next_week`
 > (`touched_in_books` was cut 2026-09-13, review item #44);
 > plus `frames`, `regions` and `between_frames`. Everything marked "in payload"
-> below now means "in the legacy scene". `skills/sndk-pro/README.md`
+> below now means "in the legacy scene". `pipelines/sndk_options_scanner_and_reader/README.md`
 > (strikes-1) is the current map.
 
 

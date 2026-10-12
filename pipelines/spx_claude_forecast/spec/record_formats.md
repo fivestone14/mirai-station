@@ -458,7 +458,7 @@ The examples use real station values: clock odds 18.3/65.4/16.3 and the station'
 
 ## claude_forecast_card.json (the phone's card, rewritten after every read)
 
-One file, `state/screen_files/phone/claude_forecast_card.json`, written by `read_runner` through `latest_card.py` once the final line has landed, so the phone (the "Claude's read" card on `m/jev-spx.html`) never opens a daily file. The join keys are the final line's (`read_id`, `claude_input_sha256`, `trading_day`, `half_hour_slot_et`, `status`, `usable_answer_count`, `prompt_and_model_version`, `written_at`), and `forecast` is the final line's block per horizon as it stands (the chances, the size buckets, each answer's chances, `base_rate_shown_to_claude` and the gaps). What the file adds:
+One file, `data/screen_files/phone/claude_forecast_card.json`, written by `read_runner` through `latest_card.py` once the final line has landed, so the phone (the "Claude's read" card on `m/jev-spx.html`) never opens a daily file. The join keys are the final line's (`read_id`, `claude_input_sha256`, `trading_day`, `half_hour_slot_et`, `status`, `usable_answer_count`, `prompt_and_model_version`, `written_at`), and `forecast` is the final line's block per horizon as it stands (the chances, the size buckets, each answer's chances, `base_rate_shown_to_claude` and the gaps). What the file adds:
 
 | Field | Meaning |
 | --- | --- |

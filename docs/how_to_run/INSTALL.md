@@ -1,6 +1,6 @@
 # mirai-station — Mac mini install
 
-> Architecture is described in the top-level `README.md` and `docs/gex-glossary.md`.
+> Architecture is described in the top-level `README.md` and `docs/glossary/gex-glossary.md`.
 > This doc is the infra runbook (secrets, venv, launchd fleet). The live shape is:
 > hunter (Shift Manager) → Flow Sensor + Gravity Engine → three heads (Fade Lens,
 > Watchtower, Break Lens) → diary → nightly report cards → viewstation + ntfy.
@@ -49,15 +49,15 @@ claude --version
 python3 --version    # >= 3.12
 ```
 
-## 2. Drop the plugin onto the mini
+## 2. Drop the repo onto the mini
 
-The plugin lives at `~/.claude/plugins/mirai-station/`. Copy it from your main machine:
+The repo lives at `~/mirai_awakening/`. Copy it from your main machine:
 
 ```bash
 # From main machine, replacing <mini-host> with the mini's hostname or Tailscale name
-rsync -avh --exclude '__pycache__' --exclude 'state/operations/logs/' \
-  ~/.claude/plugins/mirai-station/ \
-  <mini-host>:~/.claude/plugins/mirai-station/
+rsync -avh --exclude '__pycache__' --exclude 'data/operations/logs/' \
+  ~/mirai_awakening/ \
+  <mini-host>:~/mirai_awakening/
 ```
 
 Or `git clone` if you've put it in a private repo.
@@ -82,7 +82,7 @@ security add-generic-password -U -a "$USER" -s "mirai-station-ntfy" \
 # api_key / app_secret / callback_url / fernet_key, and it mints the Fernet key
 # that encrypts the token file. A hand-added entry lands under the wrong account
 # and the vault never finds it.
-$PY skills/iv-viability/iv_fetcher.py --setup
+$PY data_collectors/schwab_market_data_client/iv_fetcher.py --setup
 
 # ThetaData / Cassandra's Edge — the native SPX chain (primary GEX source) AND
 # the SNDK chain. OAuth since 2026-09-09: there is no bearer to paste. --login
@@ -90,24 +90,24 @@ $PY skills/iv-viability/iv_fetcher.py --setup
 # prints the URL instead and takes the redirected address back by paste, for a
 # station enrolled over SSH where the browser is on another machine.
 # Service iv-viability-cassandra, accounts cassandra_edge_{refresh,access,client}.
-$PY skills/mirai-left-eye/native_gex_feed.py --login
-$PY skills/mirai-left-eye/native_gex_feed.py --login --manual   # over SSH
+$PY pipelines/spx_options_scanner/native_gex_feed.py --login
+$PY pipelines/spx_options_scanner/native_gex_feed.py --login --manual   # over SSH
 ```
 
 Test retrieval:
 ```bash
 security find-generic-password -a "$USER" -s "mirai-station-ntfy" -w
-$PY -c "import sys; sys.path.insert(0,'skills/iv-viability'); import vault; \
+$PY -c "import sys; sys.path.insert(0,'data_collectors/schwab_market_data_client'); import vault; \
         print('schwab:', vault.has_credentials(), \
               '| cassandra:', vault.has_cassandra_refresh_token())"
-$PY skills/mirai-left-eye/native_gex_feed.py --status   # the live verdict
+$PY pipelines/spx_options_scanner/native_gex_feed.py --status   # the live verdict
 ```
 
 ## 4. Provision the Python venv
 
 ```bash
-cd ~/.claude/plugins/mirai-station
-./runtime/scripts/venv-bootstrap.sh
+cd ~/mirai_awakening
+./scheduled_jobs/job_start_scripts/venv-bootstrap.sh
 ```
 
 Verify the hunter can import its deps:
@@ -132,7 +132,7 @@ python3 -c "import json;print(json.dumps(json.load(open('$HOME/.claude.json'))['
 
 Smoke test (verifies endpoint, auth, and headless tool access in one shot):
 ```bash
-cd ~/.claude/plugins/mirai-station/runtime
+cd ~/mirai_awakening/runtime
 claude -p --model haiku \
   --allowedTools "mcp__market-research__cass_market_search" \
   "Call cass_market_search with query 'stock brief' and output only the name of the first tool it returns."
@@ -161,11 +161,11 @@ sends and publish fakes into it. Treat it like a password.
 
 3. Install the **ntfy** app on your phone and subscribe to that topic.
 
-`runtime/scripts/env.sh` exports it as `MIRAI_NTFY_TOPIC`, which
+`scheduled_jobs/job_start_scripts/env.sh` exports it as `MIRAI_NTFY_TOPIC`, which
 `settings.ntfy_topic()` reads ahead of the config file. Every run wrapper sources
 `env.sh`, so every agent picks it up.
 
-> **Never put the topic in `runtime/watch/config/limits-and-cooldowns.json`.**
+> **Never put the topic in `settings/limits-and-cooldowns.json`.**
 > That file is tracked by git — a topic written there is a secret published to the
 > repo and to every clone of its history. The `topic` key is deliberately left
 > empty; empty **and** no env var means log-only, which fails safe. (This is not
@@ -179,7 +179,7 @@ through it. Quiet tape → no push, by design. (A log of every push intent,
 ## 7. Install LaunchAgents
 
 ```bash
-~/.claude/plugins/mirai-station/runtime/scripts/install-launchd.sh
+~/mirai_awakening/scheduled_jobs/job_start_scripts/install-launchd.sh
 ```
 
 This symlinks the plists into `~/Library/LaunchAgents/` and bootstraps them via `launchctl`: 25 agents, every one named in the installer's `PLISTS` list. The station `README.md`'s fleet table describes them, SPX JEV's eleven jobs and the Claude forecast's two among them, and its kill-switch table gives `SPX_JEV_DISABLE=1` for those eleven (the forecast pair stands down with it, and has `SPX_CLAUDE_FORECAST_DISABLE=1` of its own). The core seven:
@@ -205,10 +205,10 @@ launchctl list | grep mirai-station
 
 ```bash
 # Run a single tick immediately (bypasses the launchd schedule; quiet tape → no output is correct)
-~/.claude/plugins/mirai-station/runtime/scripts/run-watch-left-eye.sh
+~/mirai_awakening/scheduled_jobs/job_start_scripts/run-watch-left-eye.sh
 
 # Tail today's diary
-tail -f ~/.claude/plugins/mirai-station/state/spx/scanner/spx_options_scanner_results_by_scan/$(date +%Y-%m-%d).jsonl
+tail -f ~/mirai_awakening/data/spx/scanner/spx_options_scanner_results_by_scan/$(date +%Y-%m-%d).jsonl
 ```
 
 If a signal clears the alert threshold, an ntfy push lands on your phone. If the tape is quiet, no push — that's correct.
@@ -229,7 +229,7 @@ ps -ef | grep caffeinate              # caffeinate should be running
 
 ## Operating outside market hours
 
-The market-hours gate (`runtime/watch/intraday/market_status.py`) is a self-contained NYSE date-math calendar (holidays + half-days, no network call). Outside market hours the scan phase exits instantly; launchd still wakes left-eye every 60 s, that's fine and cheap (the alert phase still runs, so the feed sirens and the wall-breach bell keep their state across the day).
+The market-hours gate (`alerts_and_phone_pushes/watch/intraday/market_status.py`) is a self-contained NYSE date-math calendar (holidays + half-days, no network call). Outside market hours the scan phase exits instantly; launchd still wakes left-eye every 60 s, that's fine and cheap (the alert phase still runs, so the feed sirens and the wall-breach bell keep their state across the day).
 
 The left-eye plist carries `StartInterval` only. Its earlier `StartCalendarInterval` array was removed on purpose (the plist comment says why: entries with a weekday but no hour fired every hour), so fewer wake-ups means a longer interval, not a calendar.
 
@@ -244,25 +244,24 @@ learned state) is *not* copied; each machine rebuilds it. The target Mac needs �
 §1 above first (Python 3.12+, Claude Code signed into the subscription, a user whose
 Keychain the launchd jobs can read).
 
-### 1. Copy the plugin directory (code only, not state)
+### 1. Copy the repo (code only, not data)
 
 ```bash
-# On the source Mac. The venv lives outside the tree, so only state/ needs excluding:
-tar -C ~/.claude/plugins \
-    --exclude 'mirai-station/state' \
+# On the source Mac. The venv lives outside the tree, so only data/ needs excluding:
+tar -C ~ \
+    --exclude 'mirai_awakening/data' \
     --exclude '__pycache__' \
-    -czf /tmp/mirai-station.tar.gz mirai-station
+    -czf /tmp/mirai_awakening.tar.gz mirai_awakening
 
 # Transfer the tarball (scp / AirDrop / drive). Then on the target Mac:
-mkdir -p ~/.claude/plugins
-tar -C ~/.claude/plugins -xzf ~/Downloads/mirai-station.tar.gz
+tar -C ~ -xzf ~/Downloads/mirai_awakening.tar.gz
 ```
 
-> **Do not copy `state/`.** Each instance rebuilds its own diary, grades, learned
+> **Do not copy `data/`.** Each instance rebuilds its own diary, grades, learned
 > baselines and option-book snapshots from scratch; copying them across machines
 > mixes two histories.
 
-The tarball carries the two TypeSafe key files, `skills/spx-jev/.env` and
+The tarball carries the two TypeSafe key files, `pipelines/spx_jev_questions_and_pools/.env` and
 `skills/sndk-jev/.env`, because they sit inside the tree. A `git clone` does not
 (both are git-ignored): on a cloned station, copy each `.env.example` to `.env`,
 `chmod 600` it, and paste the key in.
@@ -272,9 +271,9 @@ The tarball carries the two TypeSafe key files, `skills/spx-jev/.env` and
 §4 and §7 above, in short:
 
 ```bash
-cd ~/.claude/plugins/mirai-station
-./runtime/scripts/venv-bootstrap.sh      # builds ~/.local/share/mirai-station/venv
-./runtime/scripts/install-launchd.sh     # symlink + bootstrap the 28-agent fleet
+cd ~/mirai_awakening
+./scheduled_jobs/job_start_scripts/venv-bootstrap.sh      # builds ~/.local/share/mirai-station/venv
+./scheduled_jobs/job_start_scripts/install-launchd.sh     # symlink + bootstrap the 28-agent fleet
 ```
 
 ### 3. Populate the Keychain
@@ -286,13 +285,13 @@ two stations sharing one would lock each other out. Enrol the new station on its
 
 ### 4. The iCloud mirror
 
-The Claude forecast's recorder mirrors `state/spx/claude_forecast/` and its own copies
-under `state/market/` (the dated options book, the SPY minute volume, the raw tape, the
+The Claude forecast's recorder mirrors `data/spx/claude_forecast/` and its own copies
+under `data/market/` (the dated options book, the SPY minute volume, the raw tape, the
 $VIX1D closes, the SPX 5-minute bars, the leveraged funds' sizes) to
 `~/Library/Mobile Documents/com~apple~CloudDocs/mirai-station-backups/`, each file under
-its path relative to `state/` (nothing else in `state/` is backed up; the logs and locks
-under `state/operations/` are not). The mirror only ever adds: a file deleted from
-`state/` stays in iCloud until removed there by hand, and the files it put under
+its path relative to `data/` (nothing else in `data/` is backed up; the logs and locks
+under `data/operations/` are not). The mirror only ever adds: a file deleted from
+`data/` stays in iCloud until removed there by hand, and the files it put under
 `spx_claude_forecast/` there before 2026-10-11 stay until the owner decides. A new Mac
 signed into the same iCloud account inherits the folder and its recorder keeps adding to
 it, so a station retired with its mirror still in place leaves its forecast history
@@ -301,9 +300,9 @@ behind on purpose.
 ### 5. Smoke test
 
 ```bash
-./runtime/scripts/run-watch-left-eye.sh      # one tick by hand; quiet tape → no output is correct
+./scheduled_jobs/job_start_scripts/run-watch-left-eye.sh      # one tick by hand; quiet tape → no output is correct
 launchctl list | grep mirai-station          # all 25 agents
-tail -f state/spx/scanner/spx_options_scanner_results_by_scan/$(date +%Y-%m-%d).jsonl
+tail -f data/spx/scanner/spx_options_scanner_results_by_scan/$(date +%Y-%m-%d).jsonl
 ```
 
 If a paper fire clears threshold, an ntfy push lands on the subscribed phone.
@@ -311,13 +310,13 @@ If a paper fire clears threshold, an ntfy push lands on the subscribed phone.
 ### Uninstalling
 
 ```bash
-./runtime/scripts/uninstall-launchd.sh   # bootout + remove the plists
-rm -rf ~/.claude/plugins/mirai-station   # plugin, including the two .env files
+./scheduled_jobs/job_start_scripts/uninstall-launchd.sh   # bootout + remove the plists
+rm -rf ~/mirai_awakening                 # the repo, its data and the .env files
 rm -rf ~/.local/share/mirai-station      # venv
 # Keychain: the Cassandra OAuth items are keyed by account, not by $USER, so wipe them
 # with the vault; the ntfy topic and the four Schwab items (service iv-viability-schwab,
 # accounts api_key / app_secret / callback_url / fernet_key) go by name.
-$PY skills/mirai-left-eye/native_gex_feed.py --logout
+$PY pipelines/spx_options_scanner/native_gex_feed.py --logout
 security delete-generic-password -a "$USER" -s "mirai-station-ntfy"
 for a in api_key app_secret callback_url fernet_key; do security delete-generic-password -a "$a" -s "iv-viability-schwab"; done
 # The iCloud mirror (step 4) is not touched by any of this.
