@@ -131,8 +131,9 @@ def save_spx_5m_bars(paths: ForecastPaths, now: datetime | None = None, fetch=No
 def backup_sources(paths: ForecastPaths, now: datetime | None = None) -> list[Path]:
     """Every file the backup mirrors: the whole forecast folder, the recorder's own files and the three market/
     stores other jobs keep (the irreplaceable data), each under its path relative to the data root. Of the raw tape,
-    the finished days only: today's folder is still being written, and its plain files are gzipped at the
-    collector's next start, so a copy of them would be stale by then."""
+    the finished days' gzipped streams only: today's folder is still being written, and a finished day's plain
+    streams are gzipped in place at the collector's next start (09:30 ET, after the 08:40 run), so mirroring them
+    would land every day in iCloud twice, plain and then compressed, with nothing ever deleted there."""
     today = (now or now_et()).astimezone(ET).date().isoformat()
     files: list[Path] = []
     for place in (paths.root, *paths.backed_up_market_stores):
@@ -141,7 +142,7 @@ def backup_sources(paths: ForecastPaths, now: datetime | None = None) -> list[Pa
         elif place == paths.raw_tape_folder and place.is_dir():
             for day_dir in sorted(place.iterdir()):
                 if day_dir.is_dir() and day_dir.name < today:
-                    files.extend(p for p in sorted(day_dir.rglob("*")) if p.is_file())
+                    files.extend(p for p in sorted(day_dir.rglob("*.gz")) if p.is_file())
         elif place.is_dir():
             files.extend(p for p in sorted(place.rglob("*")) if p.is_file())
     return [p for p in files if not p.name.endswith(".tmp")]

@@ -112,7 +112,7 @@ class MarketHistory:
                            readings), prior sessions and the read's day (only readings at or before the read are used)
     quote_sweeps_by_day    the lob-flow collector's quote sweeps: day -> [(ts, quoted spread, delta bucket)], prior
                            sessions and the read's day (cut at the read)
-    calendar_path          the event calendar file read for the EVENTS questions; None for the skill's own calendar/events.json
+    calendar_path          the event calendar file read for the EVENTS questions; None for the station's settings/market_event_calendar_by_event.json
     cache                  what the market answerers derive once per day (series, usual links), never saved
     """
     spx_bars_by_day: dict[str, list[dict]] = field(default_factory=dict)

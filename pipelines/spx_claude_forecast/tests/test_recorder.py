@@ -85,21 +85,24 @@ def test_backup_mirrors_changed_files_and_skips_locks_and_run_logs(state_dir, tm
 
 
 def test_backup_mirrors_the_market_stores_other_jobs_keep_and_leaves_todays_raw_tape(state_dir, tmp_path):
-    """The dated-book job's history, the wall sensor's SPY volume files and the collector's finished raw days are
-    mirrored under their own paths; today's raw day folder, still being written, is not."""
+    """The dated-book job's history, the wall sensor's SPY volume files and the collector's finished raw days' gzipped
+    streams are mirrored under their own paths; today's raw day folder, still being written, is not, and neither is a
+    finished day's plain stream the collector has yet to gzip (it would land in iCloud twice)."""
     paths = forecast_paths.ForecastPaths(state_dir)
     write_json(station_paths.SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_BY_DAY.path(state_dir, stamp="2026-10-09T171004-0400"), {"ok": True})
     write_json(station_paths.SPY_VOLUME_BY_MINUTE.path(state_dir, day="2026-10-08"), {"day": "2026-10-08", "minute_volumes": {"570": 80}})
     raw = paths.raw_tape_folder
     (raw / "2026-10-08").mkdir(parents=True)
     (raw / "2026-10-08" / "tape.jsonl.gz").write_bytes(b"\x1f\x8b done")
+    (raw / "2026-10-08" / "sweeps.jsonl").write_text('{"s": 1}\n')                   # not gzipped yet: left for the next run
     (raw / "2026-10-09").mkdir()
     (raw / "2026-10-09" / "tape.jsonl").write_text('{"c": 3}\n')
     backup_dir = tmp_path / "backup"
     assert recorder.backup_forecast_folder(paths, backup_dir, now=AFTER_CLOSE)["copied"] == 3
     assert station_paths.SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_BY_DAY.path(backup_dir, stamp="2026-10-09T171004-0400").exists()
     assert station_paths.SPY_VOLUME_BY_MINUTE.path(backup_dir, day="2026-10-08").exists()
-    assert (station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.path(backup_dir, day="2026-10-08") / "tape.jsonl.gz").exists()
+    mirrored_day = station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.path(backup_dir, day="2026-10-08")
+    assert [p.name for p in mirrored_day.iterdir()] == ["tape.jsonl.gz"]              # the plain sweeps stream is not mirrored
     assert not station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.path(backup_dir, day="2026-10-09").exists()
     assert (raw / "2026-10-09" / "tape.jsonl").exists() and (raw / "2026-10-08" / "tape.jsonl.gz").exists()   # the station's files are untouched
 

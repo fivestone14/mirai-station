@@ -60,8 +60,8 @@ STORE_RUN_MIN = 10
 SPX_JOBS = ("com.mirai-station.spx-jev", "com.mirai-station.spx-jev-tape", "com.mirai-station.spx-jev-bars",
             "com.mirai-station.spx-jev-context", "com.mirai-station.spx-jev-overnight", "com.mirai-station.spx-jev-save-day",
             "com.mirai-station.spx-jev-headlines", "com.mirai-station.spx-jev-prediction-nightly",
-            # the Claude forecast's two jobs (pipelines/spx_claude_forecast, installed 2026-10-09): the recorder that copies
-            # at-risk station data and mirrors the folder, and the nightly grade, library and backup
+            # the Claude forecast's two jobs (pipelines/spx_claude_forecast, installed 2026-10-09): the recorder that keeps
+            # what no other job does and mirrors the folder and the market stores, and the nightly grade, library and backup
             "com.mirai-station.spx-claude-forecast-recorder", "com.mirai-station.spx-claude-forecast-nightly")
 # The live and opening lanes' reads in market time (pipelines/spx_jev_questions_and_pools/spx_jev/lane.py: LIVE_READS less its 16:02
 # close-out, and TAPE.schedule) and how many minutes before its read time a read may be stamped (each lane's

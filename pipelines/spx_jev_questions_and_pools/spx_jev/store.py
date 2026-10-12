@@ -27,7 +27,7 @@ until 2026-10-11, when nothing read them, and the DuckDB views file (spx_jev.duc
                     the phone showed, and for each JEV alone, the time-of-day odds, the blend and the learning loop's mix
     average_grades  one row per graded window on the average price (each lane's integral_grades.jsonl): the sum whose
                     call it graded, the label, right, wrong or passed, the margin, the path and the scores
-    spx_bars        SPX's minute bars (the saved session file, else the bars feed's)
+    spx_bars        SPX's minute bars (the bars feed's day file, the one store since 2026-10-12)
     overnight_bars  the overnight futures store's bars with their contract; a night starts in the prior session's
                     last minutes, which that session's own night also holds, so those are marked ``prior_session``
     quarantine      every row a check refused, with the check's reason and the raw row

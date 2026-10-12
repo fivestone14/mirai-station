@@ -402,7 +402,11 @@ item back against that store. Delete after two weeks if nothing broke.
 | the wall sensor's one-file memory of SPY's volume per minute | spx/scanner/spy_volume_baselines_state.json | market/spy_volume_by_minute/{{day}}.json (one file a day) |
 | the tape collector's event calendar | market/market_event_calendar_by_event.json | settings/market_event_calendar_by_event.json (in the repo) |
 
-Conflicts the run reported (each kept both copies):
+Each run appends its conflicts below (a conflict keeps both copies); a rerun never erases an earlier run's list.
+"""
+RUN_NOTE = """
+## Run on {when}
+
 {conflicts}
 """
 
@@ -434,8 +438,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"dry run: {len(run.actions)} actions listed, {len(run.conflicts)} conflicts; nothing changed")
         return 0
     run.archive.mkdir(parents=True, exist_ok=True)
-    (run.archive / "MANIFEST.md").write_text(MANIFEST.format(when=now.isoformat(timespec="seconds"),
-                                                              conflicts="\n".join(f"- {c}" for c in run.conflicts) or "- none"), encoding="utf-8")
+    manifest = run.archive / "MANIFEST.md"
+    if not manifest.exists():
+        manifest.write_text(MANIFEST.format(when=now.isoformat(timespec="seconds")), encoding="utf-8")
+    with open(manifest, "a", encoding="utf-8") as f:
+        f.write(RUN_NOTE.format(when=now.isoformat(timespec="seconds"),
+                                conflicts="\n".join(f"- {c}" for c in run.conflicts) or "- no conflicts"))
     print("self-check:")
     check_spx_bars(run)
     check_raw_tape(run)
