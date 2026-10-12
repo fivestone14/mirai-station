@@ -10,7 +10,7 @@ folder a job holds):
                                                                  before the read is forecast, or by the backfill; append-only; the record
         tables/forecasts_by_forecaster_read_and_horizon/day=.../ built nightly from the raw file with checks; safe to delete and rebuild
         tables/grades_by_forecaster_read_and_horizon/day=.../    each voice's penalty per graded read
-        learner_pool/learner_pool_state/{horizon}.json          pool_v2's state: voice weights, which voices are asleep, days learned
+        learner_pool/learner_pool_state/{horizon}.json          the learner pool's state: voice weights, which voices are asleep, days learned
         learner_pool/learner_pool_trained_forecasters_by_day/{day}_{horizon}.json
                                                                  the fitted learners for that day (fit on days before it) with the answer
                                                                  matrix they were fitted on; only the newest FIT_FILES_KEPT_DAYS days are kept
@@ -66,7 +66,7 @@ def ensure_folders(root: Path) -> Path:
     """Create every folder of the layout; returns the root."""
     root = Path(root)
     for folder in (raw_forecasts_dir(root), raw_code_features_dir(root), forecasts_table_dir(root), voice_scores_table_dir(root),
-                   refused_rows_file(root, "x").parent, pool_v2_dir(root), voice_fits_dir(root), job_run_log_file(root).parent,
+                   refused_rows_file(root, "x").parent, learner_pool_dir(root), voice_fits_dir(root), job_run_log_file(root).parent,
                    archive_dir(root)):
         folder.mkdir(parents=True, exist_ok=True)
     return root
@@ -100,11 +100,11 @@ def refused_rows_file(root: Path, day: str) -> Path:
     return station_paths.FORECASTER_TABLE_REFUSED_ROWS_BY_EVENT.path(state_dir_of(root), day=day)
 
 
-def pool_v2_weights_file(root: Path, sum_id: str) -> Path:
+def learner_pool_weights_file(root: Path, sum_id: str) -> Path:
     return station_paths.LEARNER_POOL_STATE.within(FOLDER, root, sum_id=sum_id)
 
 
-def pool_v2_dir(root: Path) -> Path:
+def learner_pool_dir(root: Path) -> Path:
     return station_paths.LEARNER_POOL_STATE.folder_within(FOLDER, root)
 
 

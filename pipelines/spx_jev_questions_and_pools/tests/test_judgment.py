@@ -268,7 +268,7 @@ def test_the_old_loop_never_sums_weights_holds_or_pools_a_judgment_answer():
     assert sentences == {} and left_out == {"news_reaction": "a shadow forecast, never an input"}
     assert not set(GATES) & set(grade.live_options(doc))                       # the grader's weights never see them
     live = {qid for g in doc["groups"] for qid, q in g["questions"].items() if q.get("status") == "live"}
-    assert not set(GATES) & live                                                # pool_snapshots takes its members from the live questions
+    assert not set(GATES) & live                                                # base_pool_snapshots takes its members from the live questions
     skip, held = cadence.plan(doc, {"news_reaction": {"row_ts": ROW, "answer": answered["news_reaction"]}}, {}, at(11, 2), {}, {}, "11:02")
     assert "news_reaction" not in held and "news_reaction" not in skip         # never held: asked afresh whenever its gate fires
     assert "news_reaction" not in cadence.recount([], doc)["questions"]

@@ -66,7 +66,7 @@ from typing import Any, Callable, Iterator
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from . import grade, pool
+from . import base_pool, grade
 from .archive import ARCHIVE_SUBDIR
 from .ask import GATED as GATE_REASON_PREFIX, confidence as answer_confidence, pick as answer_pick
 from .events import ET
@@ -79,9 +79,10 @@ from .state_builder import DEFAULT_STATE_DIR, LIVE_BARS_SUBDIR, SESSION_BARS_SUB
 import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 PART = "part-0.parquet"
-# 4: no facts table (2026-10-07); 3: the average-price call, its answer and grade, both loops' logs. The seven tables
-# dropped on 2026-10-11 changed no kept table's columns, so the version stands.
-SCHEMA_VERSION = 4
+# 5: the base pool's columns named for it (2026-10-11: the calls table's ``base_pool_*``, the answers table's
+# ``base_pool_question_version``; ``pool_*`` and ``pool_version`` before). 4: no facts table (2026-10-07); 3: the average-price
+# call, its answer and grade, both loops' logs. The seven tables dropped on 2026-10-11 changed no kept table's columns.
+SCHEMA_VERSION = 5
 CATCH_UP_DAYS = 7              # a run rebuilds every market day this many calendar days back, so a late save is picked up
 BUILD_AFTER_CLOSE_MIN = 30     # today counts from its close plus this (16:30, 13:30 on a half day); the 16:40 job runs after the 16:20 saves either way
 PROB_SUM_TOLERANCE = 0.05      # JEV rounds each option to two places, so six options can sum to 0.97
@@ -288,7 +289,7 @@ ANSWERS = Table("answers", station_paths.JEV_ANSWERS_BY_READ_AND_QUESTION_TABLE,
     ("group_id", STR, False), ("question_id", STR, True), ("status", STR, True), ("reason", STR, False),
     ("type", STR, False), ("pick", STR, False), ("confidence", NUM, False), ("probabilities", PROBS, False),
     ("score", NUM, False), ("noul", NUM, False), ("model", STR, False), ("question_hash", STR, False),
-    ("pool_version", STR, False), ("held_from", TS, False), ("held_found", BOOL, False), ("reasked", BOOL, False),
+    ("base_pool_question_version", STR, False), ("held_from", TS, False), ("held_found", BOOL, False), ("reasked", BOOL, False),
     ("reasked_from", TS, False), ("reask_why", STR, False)),
     key=("read_id", "question_id"),
     checks=(_is("status", ANSWER_STATUSES), _probabilities("probabilities"), _answered, _within("confidence", 0.0, 1.0),
@@ -303,13 +304,13 @@ CALLS = Table("calls", station_paths.JEV_AND_POOL_FORECASTS_BY_READ_AND_HORIZON_
     ("flat_points", NUM, False), ("edge_points", NUM, False), ("jev_pick", STR, False), ("jev_probs", PROBS, False),
     ("jev_confidence", NUM, False), ("clock_pick", STR, False), ("clock_probs", PROBS, False), ("clock_n", INT, False),
     ("blended", BOOL, False), ("blend_jev_share", NUM, False), ("blend_phase", STR, False), ("blend_sessions", INT, False),
-    ("pool_probs", PROBS, False), ("pool_p_move", NUM, False), ("pool_p_up_given_move", NUM, False),
-    ("pool_state_hash", STR, False), ("pool_reference_version", STR, False), ("pool_left_out", STR, False),
+    ("base_pool_probs", PROBS, False), ("base_pool_p_move", NUM, False), ("base_pool_p_up_given_move", NUM, False),
+    ("base_pool_state_hash", STR, False), ("base_pool_reference_version", STR, False), ("base_pool_left_out", STR, False),
     ("direction_pick", STR, False), ("direction_probs", PROBS, False), ("size_pick", STR, False), ("size_probs", PROBS, False),
     ("learn_exclude", BOOL, False), ("model", STR, False)),
     key=("read_id", "sum_id"),
-    checks=(_probabilities("shown_probs", "jev_probs", "clock_probs", "pool_probs", "direction_probs", "size_probs"),
-            _within("pool_p_move", 0.0, 1.0), _within("pool_p_up_given_move", 0.0, 1.0),
+    checks=(_probabilities("shown_probs", "jev_probs", "clock_probs", "base_pool_probs", "direction_probs", "size_probs"),
+            _within("base_pool_p_move", 0.0, 1.0), _within("base_pool_p_up_given_move", 0.0, 1.0),
             _not_after("row_ts", "mark", "marked before its read")),
     of_read=True)
 
@@ -490,7 +491,7 @@ def _read_rows(day: date, src: str, rec: dict, asked_by: dict, hours: dict) -> d
             answers[qid] = {**base, "group_id": gid, "question_id": qid, "status": status, "reason": reason,
                             **_answer_fields(a if status == "answered" else None),
                             "model": (reply or {}).get("model") if status == "answered" else None,
-                            "question_hash": question_hash(q), "pool_version": versions.get(qid),
+                            "question_hash": question_hash(q), "base_pool_question_version": versions.get(qid),
                             "held_from": None, "held_found": None, "reasked": (again is not None) if reask_known else None,
                             "reasked_from": (again or {}).get("row_ts"), "reask_why": (again or {}).get("why")}
     skip_reasons: dict[str, str] = {}
@@ -501,13 +502,13 @@ def _read_rows(day: date, src: str, rec: dict, asked_by: dict, hours: dict) -> d
             skip_reasons[qid] = why
             answers[qid] = {**base, "group_id": gid, "question_id": qid, "status": _skip_status(qid, str(why), not_due),
                             "reason": why, **_answer_fields(None), "model": None, "question_hash": None,
-                            "pool_version": versions.get(qid), "held_from": None, "held_found": None, "reasked": False if reask_known else None,
+                            "base_pool_question_version": versions.get(qid), "held_from": None, "held_found": None, "reasked": False if reask_known else None,
                             "reasked_from": None, "reask_why": None}
     for qid, since in held.items():
         if qid in answers and answers[qid]["status"] == "answered":
             continue
         source = asked_by.get((qid, since))
-        row = answers.get(qid) or {**base, "group_id": None, "question_id": qid, "reason": None, "pool_version": versions.get(qid),
+        row = answers.get(qid) or {**base, "group_id": None, "question_id": qid, "reason": None, "base_pool_question_version": versions.get(qid),
                                    "reasked": False if reask_known else None, "reasked_from": None, "reask_why": None}
         # a group that got no answer holds its questions' last answers, and the sum reads those (service.run_once)
         reason = f"lost, its last answer held: {row['reason']}" if row.get("status") == "lost" else row["reason"]
@@ -574,7 +575,7 @@ def _average_answers(base: dict, rec: dict, sent: bool) -> list[dict]:
         out.append({**base, "group_id": req.get("id"), "question_id": qid, "status": status, "reason": reason,
                     **_answer_fields(a if status == "answered" else None),
                     "model": reply.get("model") if status == "answered" else None, "question_hash": question_hash(q),
-                    "pool_version": None, "held_from": None, "held_found": None, "reasked": None, "reasked_from": None,
+                    "base_pool_question_version": None, "held_from": None, "held_found": None, "reasked": None, "reasked_from": None,
                     "reask_why": None})
     return out
 
@@ -612,7 +613,7 @@ def _call_rows(base: dict, rec: dict, hour: dict, pool_snap: dict, hour_rec: dic
             mark = None
         if top is avg:
             # the call's own source when the service names one, else the blend when it was blended, else JEV alone
-            source = avg.get("shown_source") or (pool.SHOWN_BLEND if blend.get("used") else "jev")
+            source = avg.get("shown_source") or (base_pool.SHOWN_BLEND if blend.get("used") else "jev")
             shown_b = {"pick": avg.get("pick"), "probabilities": avg.get("probabilities"), "confidence": avg.get("confidence")}
         else:
             source, shown_b = hour.get("shown_source") or "jev", b
@@ -626,11 +627,11 @@ def _call_rows(base: dict, rec: dict, hour: dict, pool_snap: dict, hour_rec: dic
                     "jev_pick": jev.get("pick"), "jev_probs": jev.get("probabilities"), "jev_confidence": jev.get("confidence"),
                     "clock_pick": clock.get("pick"), "clock_probs": clock.get("probabilities"), "clock_n": clock.get("n"),
                     "blended": b.get("blended"), "blend_jev_share": blend.get("jev_share"), "blend_phase": blend.get("phase"),
-                    "blend_sessions": blend.get("sessions"), "pool_probs": snap.get("pool"), "pool_p_move": snap.get("p_move"),
-                    "pool_p_up_given_move": snap.get("p_up_given_move"), "pool_state_hash": snap.get("state_hash"),
+                    "blend_sessions": blend.get("sessions"), "base_pool_probs": snap.get("pool"), "base_pool_p_move": snap.get("p_move"),
+                    "base_pool_p_up_given_move": snap.get("p_up_given_move"), "base_pool_state_hash": snap.get("state_hash"),
                     # the frozen reference's version, ``baseline`` on reads before the loops named it by its source
-                    "pool_reference_version": snap.get("reference_version", snap.get("baseline")),
-                    "pool_left_out": snap.get("left_out"),
+                    "base_pool_reference_version": snap.get("reference_version", snap.get("baseline")),
+                    "base_pool_left_out": snap.get("left_out"),
                     "direction_pick": (views.get("direction") or {}).get("pick"),
                     "direction_probs": (views.get("direction") or {}).get("probabilities"),
                     "size_pick": (views.get("size") or {}).get("pick"), "size_probs": (views.get("size") or {}).get("probabilities"),

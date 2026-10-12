@@ -34,7 +34,7 @@ awake on in its current version, against "no change" on those same reads (the we
 reads, forecast by the awake members' mix, as sleeping experts do). A state learned under other constants
 is kept in archive/ and learned again from the records, the sessions it had applied replayed without bets
 (update, reformed); nothing is ever added to it. A question is labelled earning only by e-BH
-over every question version ever tested. It runs at the first grading run after a session ends (PoolWeights.learn).
+over every question version ever tested. It runs at the first grading run after a session ends (BasePoolWeights.learn).
 
 The reference's two experts and its raw odds on a snapshot (``raw_baseline``) are named by the
 reference's source (w0): ``baseline`` here, ``clock`` in the average-price loop (integral_loop.py),
@@ -45,8 +45,8 @@ version as ``reference_version``. A state or a snapshot written before these nam
 
 Nothing here changes JEV's prompt: every live question keeps its sentence and weighs 1.0 in step 3.
 The end-price sums kept beside the call show today's exact 50/50 blend (shown), and the pool never reaches
-the phone: since 2026-10-06 the call is Pool 2's combined forecast (mirai_prediction.live_call), which mixes
-this loop's pool as one voice among its others (pool_v1). The promotion machinery that once decided whether
+the phone: since 2026-10-06 the call is the learner pool's combined forecast (mirai_prediction.live_call), which
+mixes this loop's pool as one voice among its others (``base_pool``). The promotion machinery that once decided whether
 the pool replaced the blend (the phone's e-processes, POOL_ON_PHONE, SIM_GATES_PASSED) was retired on
 2026-10-07; its bars stay in CONSTANTS so no live state is learned again for the retirement.
 
@@ -815,19 +815,19 @@ def update(out_dir: Path, today: str | None = None, lane: Lane = LIVE, baseline:
 
 # ----------------------------------------------------------------------------- the seam
 
-class PoolWeights(QuestionWeights):
+class BasePoolWeights(QuestionWeights):
     """The loop behind the question-weights seam. learn() applies every newly sealed session and reports
     each live question's standing against "no change"; every live question still weighs 1.0 in step 3,
     since trimming the prompt stays a person's decision."""
 
-    method = "pool_v1"
+    method = "base_pool"
 
     def __init__(self, questions: dict[str, dict] | None = None, pool: dict | None = None) -> None:
         super().__init__(questions)
         self.pool = pool or {}
 
     @classmethod
-    def learn(cls, graded: list[dict], allowed: dict[str, set[str]], out_dir: Path | None = None, lane: Lane = LIVE) -> "PoolWeights":
+    def learn(cls, graded: list[dict], allowed: dict[str, set[str]], out_dir: Path | None = None, lane: Lane = LIVE) -> "BasePoolWeights":
         applied = update(out_dir, lane=lane) if out_dir is not None else {}
         state = load_state(out_dir, lane.horizons[lane.primary][0]) if out_dir is not None else cold_state()
         n = Counter(qid for g in graded for qid, p in (g.get("fresh") or {}).items() if qid in allowed and str(p) in allowed[qid])

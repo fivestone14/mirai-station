@@ -1,6 +1,6 @@
 """Scores for a three-way forecast of where price ends a horizon: up, flat or down.
 
-Every forecast the learning loop reads (pool.py) and the baseline it is measured against
+Every forecast the learning loop reads (base_pool.py) and the baseline it is measured against
 (baseline.py) is scored here, one way:
 
     floored(p)       each of up, flat and down at least EPS, then renormalised, so the worst single

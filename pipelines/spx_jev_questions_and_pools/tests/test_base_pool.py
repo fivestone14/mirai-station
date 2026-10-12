@@ -8,9 +8,9 @@ from datetime import timedelta
 import pytest
 
 from conftest import at, grades_path, hour_path, station_paths
-from spx_jev import pool
+from spx_jev import base_pool
 from spx_jev.lane import LIVE
-from spx_jev.pool import (NO_CHANGE, REFERENCE, W0, apply_session, bet, cold_state, coverage, membership, new_eprocess,
+from spx_jev.base_pool import (NO_CHANGE, REFERENCE, W0, apply_session, bet, cold_state, coverage, membership, new_eprocess,
                           snapshot, statuses, update)
 from spx_jev.scores import floored
 from spx_jev.state_builder import load_jsonl
@@ -90,19 +90,19 @@ def test_one_session_moves_the_weights_by_the_day_mean_loss_against_the_referenc
     assert log["coverage"] == [1.0, 1.0]
     f = {n: floored(x) for n, x in reads[0]["snapshot"]["experts"].items()}
     loss = {n: -math.log(1 - f[n]["flat"]) for n in W0}                    # moved: the move loss is -ln m
-    gap = {n: max(-pool.GAP_CLIP, min(pool.GAP_CLIP, loss[n] - loss[REFERENCE])) for n in W0}
-    raw = {n: math.log(W0[n]) - pool.ETA * 2 * gap[n] for n in W0}
+    gap = {n: max(-base_pool.GAP_CLIP, min(base_pool.GAP_CLIP, loss[n] - loss[REFERENCE])) for n in W0}
+    raw = {n: math.log(W0[n]) - base_pool.ETA * 2 * gap[n] for n in W0}
     top = max(raw.values())
     p = {n: math.exp(v - top) for n, v in raw.items()}
     s = sum(p.values())
-    want = {n: (1 - pool.ALPHA) * p[n] / s + pool.ALPHA * W0[n] for n in W0}
-    got = pool._prob(state["top"]["M"])
+    want = {n: (1 - base_pool.ALPHA) * p[n] / s + base_pool.ALPHA * W0[n] for n in W0}
+    got = base_pool._prob(state["top"]["M"])
     assert got == pytest.approx(want, rel=1e-12)
     assert got["jev_share_1.0"] > W0["jev_share_1.0"] and got["blend50"] < W0["blend50"]    # JEV called a move, the blend flat
     assert [round(got[n], 6) for n in ("jev_share_1.0", "blend50", "questions")] == [0.062829, 0.298486, 0.278744]
-    assert round(pool._prob(state["top"]["D"])["blend50"], 6) == 0.330548
+    assert round(base_pool._prob(state["top"]["D"])["blend50"], 6) == 0.330548
     # two questions share 0.8 of the block's prior, over the 0.25 cap: the excess goes to "no change"
-    assert pool._prob(state["block"]["M"]) == pytest.approx({NO_CHANGE: 0.5, "q_a": 0.25, "q_b": 0.25})
+    assert base_pool._prob(state["block"]["M"]) == pytest.approx({NO_CHANGE: 0.5, "q_a": 0.25, "q_b": 0.25})
     # the tables count every read: two reads answered yes at 0.9
     assert log["evidence"]["q_a"]["days"] == 1 and state["tables"]["q_a"]["C"]["yes"]["up"] == pytest.approx(1.8)
 
@@ -114,7 +114,7 @@ def test_a_questions_tables_forget_a_session_it_slept_through():
     apply_session(state, "2026-09-18", _session(state, ["up", "up"]), 30, True)
     asleep = _session(state, ["up", "up"], answers={}, day="2026-09-21")
     apply_session(state, "2026-09-21", asleep, 30, True)
-    assert state["tables"]["q_a"]["C"]["yes"]["up"] == pytest.approx(1.8 * pool.TABLE_DECAY)
+    assert state["tables"]["q_a"]["C"]["yes"]["up"] == pytest.approx(1.8 * base_pool.TABLE_DECAY)
     assert "q_b" not in state["tables"]                                    # never awake: no table made for it
 
 
@@ -134,7 +134,7 @@ def test_a_questions_evidence_counts_only_the_reads_it_was_awake_on():
             if i >= 10:
                 members["q_late"] = r
             experts = {n: r for n in W0}
-            experts["questions"] = floored(pool.mixed(members, state["block"]))
+            experts["questions"] = floored(base_pool.mixed(members, state["block"]))
             reads.append({"row_ts": (at(10, 2, day=day) + timedelta(minutes=30 * i)).isoformat(), "outcome": y,
                           "snapshot": {"experts": experts, "block_members": members, "q_probs": {q: {"a": 1.0} for q in members if q != NO_CHANGE},
                                        "members": {"q_skill": "v1", "q_all_day": "v1", "q_late": "v1"},
@@ -151,7 +151,7 @@ def test_a_score_answer_is_learned_by_its_level_names_like_a_choice():
     """A score named by its levels (hour.named_levels) is a soft answer over those names, and the day's
     tables count the outcome under each level as they do under a choice's options."""
     entry = {"pick": "up", "probabilities": {"strong_down": 0.0, "down": 0.1, "nowhere": 0.3, "up": 0.6, "strong_up": 0.0}, "score": 2.5}
-    soft = pool.soft_answer(entry)
+    soft = base_pool.soft_answer(entry)
     assert soft == pytest.approx(entry["probabilities"])
     state = cold_state()
     membership(state, MEMBERS, "2026-09-18")
@@ -165,21 +165,21 @@ def test_centring_gives_a_one_answer_question_no_credit_and_keeps_only_what_tell
     one answer is then exactly R; a question with two answers keeps the gap between them and loses the shared miss."""
     r = {"up": 0.3, "flat": 0.4, "down": 0.3}
     one = {"C": {"same": {"up": 6.0, "flat": 28.0, "down": 6.0}}, "X": {"same": {"up": 12.0, "flat": 16.0, "down": 12.0}}}
-    assert pool.tilted(r, {"same": 1.0}, one, r) == pytest.approx(r)
+    assert base_pool.tilted(r, {"same": 1.0}, one, r) == pytest.approx(r)
     two = {"C": {"rising": {"up": 8.0, "flat": 10.0, "down": 2.0}, "falling": {"up": 2.0, "flat": 10.0, "down": 8.0}},
            "X": {"rising": {"up": 6.0, "flat": 8.0, "down": 6.0}, "falling": {"up": 6.0, "flat": 8.0, "down": 6.0}}}
-    rising = pool.tilted(r, {"rising": 1.0}, two, r)
+    rising = base_pool.tilted(r, {"rising": 1.0}, two, r)
     assert rising["up"] > r["up"] > rising["down"]                          # its own signal survives
     assert rising["flat"] == pytest.approx(r["flat"], abs=0.03)             # the flat both answers share is cancelled
-    assert pool.tilted(r, {"rising": 1.0}, {}, r) == pytest.approx(r)       # empty tables: no tilt
+    assert base_pool.tilted(r, {"rising": 1.0}, {}, r) == pytest.approx(r)       # empty tables: no tilt
 
 
 def test_a_weight_step_is_eta_per_read_and_a_wild_day_is_clipped():
     logs = {"ref": 0.0, "good": 0.0, "wild": 0.0}
     prior = {n: 1 / 3 for n in logs}
-    _, rec = pool.weights_step(logs, {"ref": 1.0, "good": 0.98, "wild": 4.0}, "ref", prior, 11.0)
-    assert rec["good"]["capped"] == pytest.approx(pool.ETA * 11 * 0.02) and not rec["good"]["bound"]
-    assert rec["wild"]["capped"] == pytest.approx(-pool.ETA * 11 * pool.GAP_CLIP) and rec["wild"]["bound"]
+    _, rec = base_pool.weights_step(logs, {"ref": 1.0, "good": 0.98, "wild": 4.0}, "ref", prior, 11.0)
+    assert rec["good"]["capped"] == pytest.approx(base_pool.ETA * 11 * 0.02) and not rec["good"]["bound"]
+    assert rec["wild"]["capped"] == pytest.approx(-base_pool.ETA * 11 * base_pool.GAP_CLIP) and rec["wild"]["bound"]
     assert rec["ref"]["capped"] == 0.0
 
 
@@ -205,7 +205,7 @@ def test_a_question_reworded_mid_session_learns_nothing_from_its_old_versions_re
 def test_a_refitted_reference_starts_the_question_tables_again(tmp_path):
     _write_session(tmp_path, "2026-09-14", [("up", "up"), ("down", "down")])
     update(tmp_path, today="2026-09-15")
-    assert json.loads(pool.state_path(tmp_path, 30).read_text())["tables"]["q_a"]["C"]
+    assert json.loads(base_pool.state_path(tmp_path, 30).read_text())["tables"]["q_a"]["C"]
     _write_session(tmp_path, "2026-09-15", [("up", "up")])
     hour = hour_path(tmp_path, "2026-09-15")
     recs = [json.loads(l) for l in hour.read_text().splitlines()]
@@ -214,7 +214,7 @@ def test_a_refitted_reference_starts_the_question_tables_again(tmp_path):
             s["reference_version"] = "v2:refitted"
     hour.write_text("".join(json.dumps(r) + "\n" for r in recs))
     update(tmp_path, today="2026-09-16")
-    state = json.loads(pool.state_path(tmp_path, 30).read_text())
+    state = json.loads(base_pool.state_path(tmp_path, 30).read_text())
     # only the new session's one read is left in the table, nothing from the old reference's two
     assert state["reference_version"] == "v2:refitted"
     assert sum(math.fsum(row.values()) for row in state["tables"]["q_a"]["C"].values()) == pytest.approx(1.0)
@@ -226,7 +226,7 @@ def test_the_bet_is_sized_from_the_past_and_grows_on_steady_evidence():
     assert ep["e"] == 1.0 and ep["n"] == 1                                 # no past, no bet
     for _ in range(40):
         bet(ep, 0.3)
-    assert ep["e"] > pool.SUPPRESS_E
+    assert ep["e"] > base_pool.SUPPRESS_E
     worse = new_eprocess()
     for _ in range(40):
         bet(worse, -0.3)
@@ -248,10 +248,10 @@ def test_earning_needs_ebh_over_every_version_ever_tested_and_twenty_days():
 def test_a_question_joins_at_its_prior_share_leaves_to_the_archive_and_restarts_on_new_words():
     state = cold_state()
     assert membership(state, {"q_a": "v1"}, "d1")["joined"] == ["q_a"]
-    assert pool._prob(state["block"]["M"]) == pytest.approx({NO_CHANGE: 0.2, "q_a": 0.8})
-    state["block"]["M"] = pool._logs({NO_CHANGE: 0.5, "q_a": 0.5})
+    assert base_pool._prob(state["block"]["M"]) == pytest.approx({NO_CHANGE: 0.2, "q_a": 0.8})
+    state["block"]["M"] = base_pool._logs({NO_CHANGE: 0.5, "q_a": 0.5})
     membership(state, {"q_a": "v1", "q_b": "v1"}, "d2")
-    v = pool._prob(state["block"]["M"])
+    v = base_pool._prob(state["block"]["M"])
     assert v["q_b"] == pytest.approx(0.4) and v[NO_CHANGE] == pytest.approx(v["q_a"])   # the others' ratio kept
     changes = membership(state, {"q_a": "v2"}, "d3")
     assert changes == {"joined": ["q_a"], "retired": ["q_b"], "new_version": ["q_a"]}
@@ -267,9 +267,9 @@ def test_a_questions_version_changes_with_any_word_jev_is_sent_and_with_its_opti
     first = next(iter(choice["criteria"]))
     reworded = {**choice, "criteria": {**choice["criteria"], first: "a different meaning"}}
     reordered = {**score, "options": list(reversed(score["options"]))}
-    assert pool.question_version(reworded) != pool.question_version(choice)
-    assert pool.question_version(reordered) != pool.question_version(score)
-    assert pool.question_version(dict(choice)) == pool.question_version(choice)
+    assert base_pool.question_version(reworded) != base_pool.question_version(choice)
+    assert base_pool.question_version(reordered) != base_pool.question_version(score)
+    assert base_pool.question_version(dict(choice)) == base_pool.question_version(choice)
 
 
 # ---- the update over the lane's files
@@ -302,13 +302,13 @@ def test_the_update_applies_sealed_sessions_once_and_a_rebuild_from_the_records_
         _write_session(tmp_path / "a", d, outs)
         _write_session(tmp_path / "b", d, outs)
     assert update(tmp_path / "a", today="2026-09-17") == {"next_60": "2026-09-16: applied, 3 reads", "next_30": "2026-09-16: applied, 3 reads"}
-    first = pool.state_path(tmp_path / "a", 30).read_bytes()
+    first = base_pool.state_path(tmp_path / "a", 30).read_bytes()
     assert update(tmp_path / "a", today="2026-09-17")["next_30"] == "nothing new to apply"
-    assert pool.state_path(tmp_path / "a", 30).read_bytes() == first          # applying a session twice is a no-op
+    assert base_pool.state_path(tmp_path / "a", 30).read_bytes() == first          # applying a session twice is a no-op
     update(tmp_path / "b", today="2026-09-15")
     update(tmp_path / "b", today="2026-09-17")                               # one night at a time lands in the same place
     for minutes in (30, 60):
-        assert pool.state_path(tmp_path / "a", minutes).read_bytes() == pool.state_path(tmp_path / "b", minutes).read_bytes()
+        assert base_pool.state_path(tmp_path / "a", minutes).read_bytes() == base_pool.state_path(tmp_path / "b", minutes).read_bytes()
     state = json.loads(first)
     assert state["last_session_applied"] == "2026-09-16" and state["evidence"]["q_a"]["days"] == 3
 
@@ -317,7 +317,7 @@ def test_a_state_and_snapshots_saved_before_the_experts_were_named_by_source_car
     """The live files of 2026-09-29: a state saved with the frozen experts named clock and clock_cal, its reference's
     version under ``baseline`` and the constants hashed under those names, and reads whose snapshots say raw_clock. The
     loop reads them under today's names and lands on the same bytes as one that never had the old names."""
-    back = {new: old for old, new in pool.LEGACY_NAMES.items()}
+    back = {new: old for old, new in base_pool.LEGACY_NAMES.items()}
     days = ["2026-09-14", "2026-09-15", "2026-09-16"]
     for d, outs in zip(days, ([("up", "up")] * 3, [("flat", "flat")] * 3, [("down", "flat"), ("flat", "down"), ("up", "up")])):
         for side in ("now", "before"):
@@ -326,10 +326,10 @@ def test_a_state_and_snapshots_saved_before_the_experts_were_named_by_source_car
         update(tmp_path / side, today=days[1])
     old = tmp_path / "before"
     for minutes in (30, 60):
-        path = pool.state_path(old, minutes)
+        path = base_pool.state_path(old, minutes)
         s = json.loads(path.read_text())
         s["top"] = {k: {back.get(n, n): w for n, w in top.items()} for k, top in s["top"].items()}
-        s["baseline"], s["constants_hash"] = s.pop("reference_version"), pool.LEGACY_CONSTANTS_HASH
+        s["baseline"], s["constants_hash"] = s.pop("reference_version"), base_pool.LEGACY_CONSTANTS_HASH
         path.write_text(json.dumps(s))
     for d in days[1:]:
         recs = [json.loads(l) for l in hour_path(old, d).read_text().splitlines()]
@@ -340,13 +340,13 @@ def test_a_state_and_snapshots_saved_before_the_experts_were_named_by_source_car
                 s["baseline"] = s.pop("reference_version")
                 r["pool"][h] = s
         hour_path(old, d).write_text("".join(json.dumps(r) + "\n" for r in recs))
-    assert "raw_clock" in hour_path(old, days[2]).read_text() and "clock_cal" in pool.state_path(old, 30).read_text()
-    assert pool.load_state(old, 30)["constants_hash"] == pool.CONSTANTS_HASH and "baseline_cal" in pool.load_state(old, 30)["top"]["M"]
+    assert "raw_clock" in hour_path(old, days[2]).read_text() and "clock_cal" in base_pool.state_path(old, 30).read_text()
+    assert base_pool.load_state(old, 30)["constants_hash"] == base_pool.CONSTANTS_HASH and "baseline_cal" in base_pool.load_state(old, 30)["top"]["M"]
     for side in ("now", "before"):
         assert update(tmp_path / side, today="2026-09-17")["next_30"] == "2026-09-16: applied, 3 reads"
     for minutes in (30, 60):
-        assert pool.state_path(old, minutes).read_bytes() == pool.state_path(tmp_path / "now", minutes).read_bytes()
-    state = json.loads(pool.state_path(old, 30).read_text())
+        assert base_pool.state_path(old, minutes).read_bytes() == base_pool.state_path(tmp_path / "now", minutes).read_bytes()
+    state = json.loads(base_pool.state_path(old, 30).read_text())
     assert state["reference_version"] == FakeBaseline.version and "baseline" not in state and set(state["top"]["M"]) == set(W0)
 
 
@@ -356,7 +356,7 @@ def test_an_unsealed_session_stops_the_update_and_one_before_the_loop_is_passed_
     _write_session(tmp_path, "2026-09-15", [("up", "up")])
     said = update(tmp_path, today="2026-09-16")
     assert said["next_30"] == "2026-09-14: unsealed; stopped"
-    state = json.loads(pool.state_path(tmp_path, 30).read_text())
+    state = json.loads(base_pool.state_path(tmp_path, 30).read_text())
     assert state["last_session_applied"] == "2026-09-11" and state["evidence"] == {}       # 09-11 passed over, 09-14 not applied
 
 
@@ -369,9 +369,9 @@ def test_a_state_made_under_other_constants_is_kept_and_learned_again_from_the_r
         _write_session(tmp_path / side, "2026-09-14", [("up", "up"), ("flat", "down")])
     update(tmp_path / "old", today="2026-09-15")
     for minutes in (30, 60):
-        path = pool.state_path(tmp_path / "old", minutes)
+        path = base_pool.state_path(tmp_path / "old", minutes)
         path.write_text(json.dumps({**json.loads(path.read_text()), "constants_hash": "deadbeefdeadbeef"}))
-    planted = pool.state_path(tmp_path / "old", 30).read_bytes()
+    planted = base_pool.state_path(tmp_path / "old", 30).read_bytes()
     hour = hour_path(tmp_path / "old", "2026-09-14")
     recs = [json.loads(l) for l in hour.read_text().splitlines()]
     for r in recs:                                                         # snapshots from before the constants changed
@@ -382,10 +382,10 @@ def test_a_state_made_under_other_constants_is_kept_and_learned_again_from_the_r
         _write_session(tmp_path / side, "2026-09-15", [("up", "up")])
     assert update(tmp_path / "old", today="2026-09-16") == {"next_60": "2026-09-15: applied, 1 reads", "next_30": "2026-09-15: applied, 1 reads"}
     update(tmp_path / "fresh", today="2026-09-16")
-    [kept] = pool.pool_folders(tmp_path / "old")[2].glob(f"{pool.state_path(tmp_path / 'old', 30).name}.pre-deadbeefdeadbeef-*")
+    [kept] = base_pool.pool_folders(tmp_path / "old")[2].glob(f"{base_pool.state_path(tmp_path / 'old', 30).name}.pre-deadbeefdeadbeef-*")
     assert kept.read_bytes() == planted
-    old, fresh = (json.loads(pool.state_path(tmp_path / side, 30).read_text()) for side in ("old", "fresh"))
-    assert old["constants_hash"] == pool.CONSTANTS_HASH and old["last_session_applied"] == "2026-09-15"
+    old, fresh = (json.loads(base_pool.state_path(tmp_path / side, 30).read_text()) for side in ("old", "fresh"))
+    assert old["constants_hash"] == base_pool.CONSTANTS_HASH and old["last_session_applied"] == "2026-09-15"
     assert old["tables"] == fresh["tables"] and old["top"] == fresh["top"] and old["block"] == fresh["block"]
     assert old["evidence"]["q_a"]["days"] == 1 < fresh["evidence"]["q_a"]["days"] == 2      # the replayed day bet nothing
 
@@ -397,16 +397,16 @@ def test_a_rebuild_stopped_part_way_still_bets_nothing_on_the_days_it_replays_wh
     _write_session(tmp_path, "2026-09-15", [("flat", "flat")])
     update(tmp_path, today="2026-09-16")
     for minutes in (30, 60):
-        path = pool.state_path(tmp_path, minutes)
+        path = base_pool.state_path(tmp_path, minutes)
         path.write_text(json.dumps({**json.loads(path.read_text()), "constants_hash": "deadbeefdeadbeef"}))
     grades = grades_path(tmp_path)
     kept = grades.read_text()
     grades.write_text("".join(l + "\n" for l in kept.splitlines() if "2026-09-14" not in l))      # 09-14 not graded yet
     assert update(tmp_path, today="2026-09-16")["next_30"] == "2026-09-14: unsealed; stopped"
-    assert json.loads(pool.state_path(tmp_path, 30).read_text())["replay_until"] == "2026-09-15"
+    assert json.loads(base_pool.state_path(tmp_path, 30).read_text())["replay_until"] == "2026-09-15"
     grades.write_text(kept)
     update(tmp_path, today="2026-09-16")
-    state = json.loads(pool.state_path(tmp_path, 30).read_text())
+    state = json.loads(base_pool.state_path(tmp_path, 30).read_text())
     assert state["last_session_applied"] == "2026-09-15"
     assert state["evidence"]["q_a"]["days"] == 0
 
@@ -437,7 +437,7 @@ def test_an_old_snapshot_is_formed_again_in_any_run_and_one_from_another_referen
         f.write("".join(l + "\n" for l in grades_path(tmp_path).read_text().splitlines() if "2026-09-15" in l))
     said = update(other, today="2026-09-16", baseline=Refitted())
     assert said["next_60"] == "2026-09-15: a snapshot cannot be formed again; stopped"
-    assert json.loads(pool.state_path(other, 60).read_text())["last_session_applied"] == "2026-09-14"
+    assert json.loads(base_pool.state_path(other, 60).read_text())["last_session_applied"] == "2026-09-14"
 
 
 def test_a_snapshot_formed_under_other_forming_settings_stops_a_rebuild(tmp_path):
@@ -446,22 +446,22 @@ def test_a_snapshot_formed_under_other_forming_settings_stops_a_rebuild(tmp_path
     _write_session(tmp_path, "2026-09-14", [("up", "up")])
     hour = hour_path(tmp_path, "2026-09-14")
     recs = [json.loads(l) for l in hour.read_text().splitlines()]
-    assert recs[0]["pool"]["next_30"]["forming_hash"] == pool.FORMING_HASH
+    assert recs[0]["pool"]["next_30"]["forming_hash"] == base_pool.FORMING_HASH
     for r in recs:
         for s in r["pool"].values():
             s["constants_hash"], s["forming_hash"] = "deadbeefdeadbeef", "0000000000000000"
     hour.write_text("".join(json.dumps(r) + "\n" for r in recs))
     assert update(tmp_path, today="2026-09-15", baseline=FakeBaseline())["next_60"] == "2026-09-14: a snapshot cannot be formed again; stopped"
-    assert json.loads(pool.state_path(tmp_path, 60).read_text())["last_session_applied"] is None
+    assert json.loads(base_pool.state_path(tmp_path, 60).read_text())["last_session_applied"] is None
 
 
 def test_a_session_with_a_read_missing_its_snapshot_fails_closed_and_an_event_read_is_left_out(tmp_path):
     _write_session(tmp_path, "2026-09-14", [("up", "up"), ("flat", "flat")], event_at=1)
     assert update(tmp_path, today="2026-09-15")["next_30"] == "2026-09-14: applied, 1 reads"
     recs = [json.loads(l) for l in hour_path(tmp_path, "2026-09-14").read_text().splitlines()]
-    outcomes = pool.graded_outcomes(load_jsonl(grades_path(tmp_path)), LIVE.horizons)
+    outcomes = base_pool.graded_outcomes(load_jsonl(grades_path(tmp_path)), LIVE.horizons)
     for h, minutes in (("next_30", 30), ("next_60", 60)):
-        reads, excluded = pool._session_reads(recs, outcomes, h, minutes)
+        reads, excluded = base_pool._session_reads(recs, outcomes, h, minutes)
         assert len(reads) == 1 and list(excluded.values()) == [f"a scheduled event inside the {minutes}-minute window"]
     hour = hour_path(tmp_path, "2026-09-15")
     _write_session(tmp_path, "2026-09-15", [("up", "up"), ("up", "up")])
@@ -480,9 +480,9 @@ def test_the_loop_leaves_out_what_the_read_recorded_beyond_the_tier_1_tag():
     opex = learn_exclude(datetime(2026, 10, 16, 15, 32, tzinfo=ET), (30, 60))          # a monthly expiry's close
     assert jolts == {"30": True, "60": True} and opex == {"30": True, "60": True}
     assert learn_exclude(datetime(2026, 10, 16, 14, 32, tzinfo=ET), (30, 60)) == {"30": False, "60": False}
-    assert pool.event_inside({"event": None, "learn_exclude": jolts}, 30)
-    assert not pool.event_inside({"event": {"within_30": True}, "learn_exclude": {"30": False}}, 30)
-    assert pool.event_inside({"event": {"within_30": True}}, 30)                       # a record from before learn_exclude
+    assert base_pool.event_inside({"event": None, "learn_exclude": jolts}, 30)
+    assert not base_pool.event_inside({"event": {"within_30": True}, "learn_exclude": {"30": False}}, 30)
+    assert base_pool.event_inside({"event": {"within_30": True}}, 30)                       # a record from before learn_exclude
 
 
 # ---- the premarket lane: its own state, one window a day
@@ -510,12 +510,12 @@ def test_the_premarket_loop_keeps_its_own_files_and_learns_nothing_from_reads_wi
     grades_path(out).write_text("".join(json.dumps({"row_ts": r["row_ts"], "horizons": ["open_10", "open_30"], "pending": [], "skipped": {},
                                                            "open_10": {"band": "up"}, "open_30": {"band": "up"}}) + "\n" for r in recs))
     assert update(out, today="2026-09-21", lane=PREMARKET) == {"open_30": "2026-09-18: applied, 0 reads", "open_10": "2026-09-18: applied, 0 reads"}
-    # its pool sits inside its own folder (pool.pool_folders), and the station's pool folder beside the live lane is untouched
-    assert sorted(p.name for p in pool.pool_folders(out)[0].glob("*.json")) == [
+    # its pool sits inside its own folder (base_pool.pool_folders), and the station's pool folder beside the live lane is untouched
+    assert sorted(p.name for p in base_pool.pool_folders(out)[0].glob("*.json")) == [
         station_paths.BASE_POOL_STATE.file_name(horizon=h) for h in ("next_10_minutes", "next_30_minutes")]
     assert not station_paths.BASE_POOL_STATE.folder(tmp_path).exists()
-    outcomes = pool.graded_outcomes(load_jsonl(grades_path(out)), PREMARKET.horizons)
-    reads, excluded = pool._session_reads(recs, outcomes, "open_30", 30)
+    outcomes = base_pool.graded_outcomes(load_jsonl(grades_path(out)), PREMARKET.horizons)
+    reads, excluded = base_pool._session_reads(recs, outcomes, "open_30", 30)
     assert reads == [] and set(excluded.values()) == {f"no snapshot: {left_out['left_out']}"}
-    w = pool.PoolWeights.learn([], {"q1": {"up"}}, out, PREMARKET)
+    w = base_pool.BasePoolWeights.learn([], {"q1": {"up"}}, out, PREMARKET)
     assert w.pool["last_session_applied"] == "2026-09-18" and w.pool["applied"] == {"open_30": "nothing new to apply", "open_10": "nothing new to apply"}

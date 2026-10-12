@@ -1,42 +1,42 @@
-"""Every voice's forecast for one read: the voices pool_v1 already has, renamed, plus the three learners.
+"""Every voice's forecast for one read: the voices the base pool already has, renamed, plus the three learners.
 
 Today's voices come from the live system's own records, never recomputed:
-    sum "next_60" (an end-price sum)    pool_v1's per-read snapshot in hour/{day}.jsonl: its experts, renamed through name_map
+    sum "next_60" (an end-price sum)    the base pool's per-read snapshot in hour/{day}.jsonl: its experts, renamed through name_map
                                          (historical_odds, historical_odds_calibrated, blend_50_50, question_tilt, jev_mix_*_percent;
                                          JEV's own call is there as jev_mix_100_percent, so it is not added a second time)
-    sum "average_30" (the phone's call)  pool_v1 keeps no per-read snapshot for it, so its voices are the row's own columns:
+    sum "average_30" (the phone's call)  the base pool keeps no per-read snapshot for it, so its voices are the row's own columns:
                                          historical_odds (clock_probs), jev_own (jev_probs), blend_50_50 (shown_probs while the
-                                         shown call was the blend; the service forecasts a read before Pool 2 takes it over,
-                                         so live rows always carry the blend there)
+                                         shown call was the blend; the service forecasts a read before the learner pool takes it
+                                         over, so live rows always carry the blend there)
 The learners (additive_scorer, matcher, jev_corrected) forecast from the day's fits; a learner that is asleep or cannot
-forecast a read is simply absent, so pool_v2 neither mixes nor updates it for that read.
+forecast a read is simply absent, so the learner pool neither mixes nor updates it for that read.
 """
 from __future__ import annotations
 
 from ..scores import floored
-from .name_map import REFERENCE_VOICE, rename_voice
+from .name_map import BASE_POOL, LEARNER_POOL, REFERENCE_VOICE, current_voice_name, rename_voice
 
-END_PRICE_SUMS = {"next_30": "next_30", "next_60": "next_60"}   # sum_id -> the horizon key of pool_v1's snapshot
+END_PRICE_SUMS = {"next_30": "next_30", "next_60": "next_60"}   # sum_id -> the horizon key of the base pool's snapshot
 
 
-def existing_voice_forecasts(row, pool_v1_snapshot: dict | None) -> dict[str, dict[str, float]]:
-    """The voices pool_v1 already has, for this read and sum, by voice name."""
+def existing_voice_forecasts(row, base_pool_snapshot: dict | None) -> dict[str, dict[str, float]]:
+    """The voices the base pool already has, for this read and sum, by voice name."""
     out: dict[str, dict[str, float]] = {}
     horizon = END_PRICE_SUMS.get(row.sum_id)
-    snapshot = ((pool_v1_snapshot or {}).get(horizon) or {}) if horizon else {}
+    snapshot = ((base_pool_snapshot or {}).get(horizon) or {}) if horizon else {}
     experts = snapshot.get("experts")
     if isinstance(experts, dict) and experts:
         for old, probs in experts.items():
             if isinstance(probs, dict):
                 out[rename_voice(old)] = floored(probs)
         if isinstance(snapshot.get("pool"), dict):
-            out["pool_v1"] = floored(snapshot["pool"])          # scored beside the others, never mixed into pool_v2
+            out[BASE_POOL] = floored(snapshot["pool"])          # scored beside the others, never mixed into the learner pool
     else:
-        if row.pool_v1_probs is not None:
-            out["pool_v1"] = floored(row.pool_v1_probs)
+        if row.base_pool_probs is not None:
+            out[BASE_POOL] = floored(row.base_pool_probs)
         if row.jev_own_probs is not None:
             out["jev_own"] = floored(row.jev_own_probs)
-        if row.shown_probs is not None and row.shown_source != "pool_v2":
+        if row.shown_probs is not None and current_voice_name(row.shown_source) != LEARNER_POOL:
             out["blend_50_50"] = floored(row.shown_probs)
     if row.historical_odds_probs is not None:
         out.setdefault(REFERENCE_VOICE, floored(row.historical_odds_probs))
@@ -70,9 +70,9 @@ def learner_forecasts(fits: dict, row, candidates) -> tuple[dict[str, dict[str, 
     return out, notes
 
 
-def all_voice_forecasts(fits: dict, row, pool_v1_snapshot: dict | None, candidates) -> tuple[dict[str, dict[str, float]], dict[str, dict]]:
+def all_voice_forecasts(fits: dict, row, base_pool_snapshot: dict | None, candidates) -> tuple[dict[str, dict[str, float]], dict[str, dict]]:
     """Every voice's forecast for the read: existing voices plus the learners that are awake."""
-    forecasts = existing_voice_forecasts(row, pool_v1_snapshot)
+    forecasts = existing_voice_forecasts(row, base_pool_snapshot)
     learned, notes = learner_forecasts(fits, row, candidates)
     forecasts.update(learned)
     return forecasts, notes

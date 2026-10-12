@@ -7,8 +7,10 @@
                           learn_exclude (the live loop's own flag for the read) travels with every row
     voice_scores          every forecast of a graded read scored: penalty (spx_jev.scores log_loss with the 0.02 floor), whether the
                           called band was the outcome, and the reference's penalty on the same read; excluded reads are
-                          scored too (they were shown on the phone) and flagged, so the scoreboard counts them and pool_v2 skips them
-Each day's partition is written whole and atomically (day=YYYY-MM-DD/part-0.parquet), so a rebuild is safe to repeat.
+                          scored too (they were shown on the phone) and flagged, so the scoreboard counts them and the learner pool skips them
+Each day's partition is written whole and atomically (day=YYYY-MM-DD/part-0.parquet), so a rebuild is safe to repeat. A voice's name
+is read under the name it goes by now (name_map.current_voice_name): a raw line or a partition from before 2026-10-11 says
+``pool_v1`` and ``pool_v2`` for the base pool and the learner pool, and is never rewritten.
 """
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from ..scores import OUTCOMES, floored, log_loss
-from .name_map import REFERENCE_VOICE, store_path
+from .name_map import REFERENCE_VOICE, current_voice_name, store_path
 from .paths import append_json_line, forecasts_table_dir, raw_forecasts_file, read_json_lines, refused_rows_file, voice_scores_table_dir
 
 PROBS_TOLERANCE = 1e-3
@@ -102,8 +104,8 @@ def build_new_voice_forecasts_table(root: Path, state_dir: Path | str, lane: str
             refused += 1
             append_json_line(refused_file, {"table": "new_voice_forecasts", "reason": why, "row": row})
             continue
-        kept[(row["read_id"], row["sum_id"], row["voice_name"])] = row       # the last line for a key wins
-    out = [{"read_id": r["read_id"], "lane": lane, "row_ts": str(r.get("row_ts")), "sum_id": r["sum_id"], "voice_name": r["voice_name"],
+        kept[(row["read_id"], row["sum_id"], current_voice_name(row["voice_name"]))] = row       # the last line for a key wins
+    out = [{"read_id": r["read_id"], "lane": lane, "row_ts": str(r.get("row_ts")), "sum_id": r["sum_id"], "voice_name": current_voice_name(r["voice_name"]),
             "up": float(r["voice_probs"]["up"]), "flat": float(r["voice_probs"]["flat"]), "down": float(r["voice_probs"]["down"]),
             "fit_day": r.get("fit_day"), "created_at": str(r.get("created_at")), "source": r.get("source") or "live",
             "learn_exclude": bool(r.get("learn_exclude", False))}
@@ -114,12 +116,13 @@ def build_new_voice_forecasts_table(root: Path, state_dir: Path | str, lane: str
 
 
 def load_day_forecasts(root: Path, day: str) -> list[dict]:
-    """The built forecasts of one day as dicts with a voice_probs map."""
+    """The built forecasts of one day as dicts with a voice_probs map, each voice under its current name."""
     part = forecasts_table_dir(root) / f"day={day}" / "part-0.parquet"
     if not part.exists():
         return []
     rows = pq.read_table(part).to_pylist()
     for r in rows:
+        r["voice_name"] = current_voice_name(r["voice_name"])
         r["voice_probs"] = {"up": r.pop("up"), "flat": r.pop("flat"), "down": r.pop("down")}
     return rows
 

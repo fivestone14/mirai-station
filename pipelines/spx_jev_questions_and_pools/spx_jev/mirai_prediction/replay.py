@@ -1,11 +1,11 @@
 """Replay the stored days in order, exactly as the live loop would have run them: proof the chain works end to end, and
-a weight history for pool_v2 before go-live.
+a weight history for the learner pool before go-live.
 
     python -m spx_jev.mirai_prediction.replay --state-dir <state> --lane live --from 2026-09-29 --to 2026-10-05 [--force]
 
 For each day d: fit the learners for d (reads from days before d only), forecast every stored read of d with every voice
-(lines marked source="replay"), then run the night's steps for d (table, scores, pool_v2). A day already present in raw/
-is skipped unless --force, which first backs up and clears this system's raw files, tables and pool_v2 state for the range.
+(lines marked source="replay"), then run the night's steps for d (table, scores, the learner pool). A day already present in raw/
+is skipped unless --force, which first backs up and clears this system's raw files, tables and learner pool state for the range.
 """
 from __future__ import annotations
 
@@ -16,10 +16,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .code_feature_inputs import load_market_history
-from .live_records import load_pool_v1_snapshots
+from .live_records import load_base_pool_snapshots
 from .name_map import SUMS_BY_LANE, store_path
 from .nightly_job import run_nightly
-from .paths import archive_dir, data_root, ensure_folders, forecasts_table_dir, log_job_run, now_utc_iso, pool_v2_dir, raw_forecasts_file, voice_scores_table_dir
+from .paths import archive_dir, data_root, ensure_folders, forecasts_table_dir, log_job_run, now_utc_iso, learner_pool_dir, raw_forecasts_file, voice_scores_table_dir
 from .read_hook import forecast_read
 from .scoreboard import write_scoreboard
 from .voice_fits import fit_voices_for_day
@@ -46,7 +46,7 @@ def read_ids_of_day(state_dir: Path | str, lane: str, day: str) -> list[str]:
 
 
 def clear_range(root: Path, days: list[str]) -> None:
-    """Back up then remove this system's raw files, table partitions and pool_v2 state for the days (--force)."""
+    """Back up then remove this system's raw files, table partitions and learner pool state for the days (--force)."""
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     backup = archive_dir(root) / f"replay_force_{stamp}"
     backup.mkdir(parents=True, exist_ok=True)
@@ -54,9 +54,9 @@ def clear_range(root: Path, days: list[str]) -> None:
         for path in (raw_forecasts_file(root, day), forecasts_table_dir(root) / f"day={day}", voice_scores_table_dir(root) / f"day={day}"):
             if path.exists():
                 shutil.move(str(path), str(backup / f"{path.parent.name}__{path.name}"))
-    pool_dir = pool_v2_dir(root)
+    pool_dir = learner_pool_dir(root)
     if pool_dir.exists():
-        shutil.move(str(pool_dir), str(backup / "pool_v2"))
+        shutil.move(str(pool_dir), str(backup / "learner_pool"))
         pool_dir.mkdir(parents=True, exist_ok=True)
 
 
@@ -73,12 +73,12 @@ def run_replay(state_dir: Path | str, lane: str, from_day: str, to_day: str, for
             report["days"][day] = {"skipped": "already replayed; use --force to redo"}
             continue
         day_fits_by_sum = {sum_id: fit_voices_for_day(state_dir, root, lane, sum_id, day)[0] for sum_id in sums}
-        snapshots = load_pool_v1_snapshots(state_dir, lane, day)
+        snapshots = load_base_pool_snapshots(state_dir, lane, day)
         history = load_market_history(state_dir, lane, day)
         written = 0
         for read_id in read_ids_of_day(state_dir, lane, day):
             result = forecast_read(state_dir, lane, day, read_id, source="replay", day_fits_by_sum=day_fits_by_sum,
-                                   pool_v1_snapshots=snapshots, budget_seconds=None, market_history=history)
+                                   base_pool_snapshots=snapshots, budget_seconds=None, market_history=history)
             written += result.get("written", 0)
         night = run_nightly(state_dir, lane, day, fit_next=False, scoreboard=False)
         report["days"][day] = {"forecast_lines": written, "night": {k: v for k, v in night.items() if k not in ("day", "lane")}}

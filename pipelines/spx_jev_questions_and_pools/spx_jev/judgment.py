@@ -15,7 +15,7 @@ first captured in the HEADLINE_WINDOW_MIN minutes ending HEADLINE_CUT_MIN minute
 label holds, so JEV reads only what the station could have read before the read.
 
 The questions are ``shadow`` in the set: asked and logged, never summed, never weighted, never held, and never a
-member of the old learning loop (hour.answer_sentences, grade.live_options, pool_snapshots and the cadence all keep to
+member of the old learning loop (hour.answer_sentences, grade.live_options, base_pool_snapshots and the cadence all keep to
 ``live`` questions). The learning store files their answers as ``answered`` all the same, so the Mirai Prediction
 System's matrix takes them as its layer-3 columns ``jev:<question id>`` (answer_matrix.load_jev_answers).
 

@@ -1,34 +1,38 @@
-"""Pool_v2: today's voices plus the three learners, each weighted by its track record. Pool_v1 is never touched.
+"""The learner pool: today's voices plus the three learners, each weighted by its track record. Its mix is the combined
+forecast the phone shows (live_call). The base pool (spx_jev.base_pool) is never touched: it is read as one voice.
 
-The mix is pool_v1's rule (spx_jev.pool.mixed): a linear pool with one set of weights for "will it move?" and another
-for "which way?", renormalised over the voices present and awake for the read. The daily update is pool_v1's rule too
-(spx_jev.pool.weights_step): each voice's log weight moves by -ETA x the day's reads x its day-mean penalty gap against
-the reference voice (the historical odds) over the reads the voice spoke on, the gap clipped to GAP_CLIP, then
-Fixed-Share pulls every weight ALPHA of the way back to its starting weight. Reads are counted by their window coverage
-(pool_v1.coverage): a 60-minute read every 30 minutes shares half its window with the next, so two such reads count as
-about one and a half, and one stretch of market is never learned twice.
+The mix is the base pool's rule (spx_jev.base_pool.mixed): a linear pool with one set of weights for "will it move?" and
+another for "which way?", renormalised over the voices present and awake for the read. The daily update is the base
+pool's rule too (spx_jev.base_pool.weights_step): each voice's log weight moves by -ETA x the day's reads x its day-mean
+penalty gap against the reference voice (the historical odds) over the reads the voice spoke on, the gap clipped to
+GAP_CLIP, then Fixed-Share pulls every weight ALPHA of the way back to its starting weight. Reads are counted by their
+window coverage (base_pool.coverage): a 60-minute read every 30 minutes shares half its window with the next, so two such
+reads count as about one and a half, and one stretch of market is never learned twice.
 
-Differences from pool_v1, by design: a learner starts at NEW_VOICE_START_WEIGHT and earns from day one; a voice with no
-forecast on a read is asleep for it (neither mixed nor updated, and the reference is measured on the same reads); the
-freeze (pool_v1's rule) watches the existing voices only, so one wild newcomer cannot stop the pool learning. When the gap
-clip binds on more than FREEZE_CLIP_LIMIT of their voice-days over FREEZE_WINDOW_DAYS learned days, the weights stop
-moving and say why under "frozen" until someone reviews them (unfreeze_pool_v2); the mix keeps the last weights
-meanwhile. A starting weight of zero is refused: it could never grow. Reads the live loop marks learn_exclude are left
-out by the nightly job before they reach here.
+Differences from the base pool, by design: a learner starts at NEW_VOICE_START_WEIGHT and earns from day one; a voice
+with no forecast on a read is asleep for it (neither mixed nor updated, and the reference is measured on the same reads);
+the freeze (the base pool's rule) watches the existing voices only, so one wild newcomer cannot stop the pool learning.
+When the gap clip binds on more than FREEZE_CLIP_LIMIT of their voice-days over FREEZE_WINDOW_DAYS learned days, the
+weights stop moving and say why under "frozen" until someone reviews them (unfreeze_learner_pool); the mix keeps the last
+weights meanwhile. A starting weight of zero is refused: it could never grow. Reads the live loop marks learn_exclude are
+left out by the nightly job before they reach here.
+
+The state (learner_pool_state/{horizon}.json) keys its weights by voice name alone; neither pool is ever a key in it, so
+the pools' renaming of 2026-10-11 (``pool_v2`` to ``learner_pool``, ``pool_v1`` to ``base_pool``) left every weight as it was.
 """
 from __future__ import annotations
 
 import math
 from pathlib import Path
 
-from .. import pool as pool_v1
+from .. import base_pool
 from ..scores import OUTCOMES, floored, losses
 from ..events import ET
-from .name_map import LEARNER_NAMES, REFERENCE_VOICE, STAGES, rename_voice
-from .paths import backup_before_change, now_utc_iso, pool_v2_weights_file, write_json_atomically
+from .name_map import LEARNER_NAMES, POOL_NAMES, REFERENCE_VOICE, STAGES, rename_voice
+from .paths import backup_before_change, learner_pool_weights_file, now_utc_iso, write_json_atomically
 
 NEW_VOICE_START_WEIGHT = 0.03
-NEVER_MIXED = ("pool_v1", "pool_v2")        # the pools are scored beside the voices, never mixed as voices
+NEVER_MIXED = POOL_NAMES                    # the pools are scored beside the voices, never mixed as voices
 # Issue SPX30-1 (2026-10-09): the voices that carry JEV's own opinion sit out of the mix. Over the 95 graded 30-minute reads
 # of 09-29..10-08 the 50/50 blend (half JEV) held most of the "will it move" weight it started with, because its move score
 # ties the odds', and its up/down picks went 5 right of 21; benched, the replay goes 51 -> 56 right (next_60 55 -> 56) and
@@ -36,20 +40,20 @@ NEVER_MIXED = ("pool_v1", "pool_v2")        # the pools are scored beside the vo
 # its track record); it is only left out of the mix and the phone's "what went into it".
 BENCHED_VOICES = ("blend_50_50", "jev_own", *(f"jev_mix_{p}_percent" for p in (20, 40, 60, 80, 100)))
 STATE_VERSION = 1
-FREEZE_WINDOW_DAYS = pool_v1.CAP_BIND_WINDOW     # 20 learned days
-FREEZE_CLIP_LIMIT = pool_v1.CAP_BIND_LIMIT       # 5% of the existing voices' voice-days
+FREEZE_WINDOW_DAYS = base_pool.CAP_BIND_WINDOW     # 20 learned days
+FREEZE_CLIP_LIMIT = base_pool.CAP_BIND_LIMIT       # 5% of the existing voices' voice-days
 
 
 def start_weights(voice_names: list[str]) -> dict[str, float]:
-    """Starting weights: the existing voices keep pool_v1's starting shape (spx_jev.pool.W0, renamed), rescaled to leave
-    NEW_VOICE_START_WEIGHT for each learner; a voice pool_v1 never had shares the existing voices' mean share."""
+    """Starting weights: the existing voices keep the base pool's starting shape (spx_jev.base_pool.W0, renamed), rescaled to
+    leave NEW_VOICE_START_WEIGHT for each learner; a voice the base pool never had shares the existing voices' mean share."""
     voice_names = [v for v in voice_names if v not in NEVER_MIXED]
     learners = [v for v in voice_names if v in LEARNER_NAMES]
     existing = [v for v in voice_names if v not in LEARNER_NAMES]
     if not existing:
-        raise ValueError("pool_v2 needs at least one existing voice beside the learners")
-    v1 = {rename_voice(old): w for old, w in pool_v1.W0.items()}
-    base = {v: v1.get(v) for v in existing}
+        raise ValueError("the learner pool needs at least one existing voice beside the learners")
+    shape = {rename_voice(old): w for old, w in base_pool.W0.items()}
+    base = {v: shape.get(v) for v in existing}
     mean_known = sum(w for w in base.values() if w) / max(1, sum(1 for w in base.values() if w))
     base = {v: (w if w else mean_known) for v, w in base.items()}
     room = 1.0 - NEW_VOICE_START_WEIGHT * len(learners)
@@ -62,24 +66,24 @@ def start_weights(voice_names: list[str]) -> dict[str, float]:
     return weights
 
 
-def new_pool_v2(sum_id: str, voice_names: list[str]) -> dict:
+def new_learner_pool(sum_id: str, voice_names: list[str]) -> dict:
     w = start_weights(voice_names)
     return {"version": STATE_VERSION, "sum_id": sum_id, "created_at": now_utc_iso(), "start_weights": w,
             "voice_log_weights": {stage: {v: math.log(x) for v, x in w.items()} for stage in STAGES},
             "days_learned": [], "last_day_learned": None, "reads_learned": 0, "clip_hits": [], "frozen": None,
-            "reference_voice": REFERENCE_VOICE, "constants": {"eta": pool_v1.ETA, "gap_clip": pool_v1.GAP_CLIP, "alpha": pool_v1.ALPHA}}
+            "reference_voice": REFERENCE_VOICE, "constants": {"eta": base_pool.ETA, "gap_clip": base_pool.GAP_CLIP, "alpha": base_pool.ALPHA}}
 
 
-def load_pool_v2(root: Path, sum_id: str) -> dict | None:
-    path = pool_v2_weights_file(root, sum_id)
+def load_learner_pool(root: Path, sum_id: str) -> dict | None:
+    path = learner_pool_weights_file(root, sum_id)
     if not path.exists():
         return None
     import json
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def save_pool_v2(root: Path, state: dict) -> Path:
-    path = pool_v2_weights_file(root, state["sum_id"])
+def save_learner_pool(root: Path, state: dict) -> Path:
+    path = learner_pool_weights_file(root, state["sum_id"])
     backup_before_change(root, path)
     write_json_atomically(path, state)
     return path
@@ -122,39 +126,39 @@ def mixable_voices(state: dict, forecasts: dict[str, dict[str, float]]) -> list[
             if v in state["voice_log_weights"]["move"] and v not in NEVER_MIXED and v not in BENCHED_VOICES]
 
 
-def mix_pool_v2(state: dict, forecasts: dict[str, dict[str, float]]) -> dict[str, float] | None:
-    """The pooled forecast over the voices present (awake) for this read, the benched ones left out: pool_v1's mixed() rule
-    with pool_v2's weights."""
+def mix_learner_pool(state: dict, forecasts: dict[str, dict[str, float]]) -> dict[str, float] | None:
+    """The pooled forecast over the voices present (awake) for this read, the benched ones left out: the base pool's mixed()
+    rule with the learner pool's weights."""
     present = mixable_voices(state, forecasts)
     if not present:
         return None
     logs = {"M": {v: state["voice_log_weights"]["move"][v] for v in present},
             "D": {v: state["voice_log_weights"]["direction"][v] for v in present}}
-    return floored(pool_v1.mixed({v: floored(forecasts[v]) for v in present}, logs))
+    return floored(base_pool.mixed({v: floored(forecasts[v]) for v in present}, logs))
 
 
 def read_coverage(read_times: list[str | None], window_minutes: int | None) -> list[float]:
-    """Each read's share of its window not already covered by an earlier read's window (pool_v1.coverage), in the order
+    """Each read's share of its window not already covered by an earlier read's window (base_pool.coverage), in the order
     given; 1.0 for every read when the window or a time is unknown."""
     if not window_minutes or any(t is None for t in read_times):
         return [1.0] * len(read_times)
     from datetime import datetime
     stamps = [datetime.fromisoformat(t).astimezone(ET) for t in read_times]
     order = sorted(range(len(stamps)), key=lambda i: stamps[i])
-    shares = pool_v1.coverage([stamps[i] for i in order], window_minutes)
+    shares = base_pool.coverage([stamps[i] for i in order], window_minutes)
     out = [0.0] * len(stamps)
     for i, share in zip(order, shares):
         out[i] = share
     return out
 
 
-def unfreeze_pool_v2(state: dict) -> dict:
+def unfreeze_learner_pool(state: dict) -> dict:
     """After a review: the weights move again and the freeze's window starts afresh."""
     state["frozen"], state["clip_hits"] = None, []
     return state
 
 
-def update_pool_v2_after_day(state: dict, day: str, reads: list[tuple[dict[str, dict[str, float]], str]],
+def update_learner_pool_after_day(state: dict, day: str, reads: list[tuple[dict[str, dict[str, float]], str]],
                              read_times: list[str | None] | None = None, window_minutes: int | None = None) -> tuple[dict, dict]:
     """Learn one day: ``reads`` = [(forecasts by voice, outcome)] for the day's graded reads, ``read_times`` their row_ts
     and ``window_minutes`` how far the sum looks ahead, so overlapping reads count by their coverage. Returns (new state,
@@ -194,19 +198,19 @@ def update_pool_v2_after_day(state: dict, day: str, reads: list[tuple[dict[str, 
             if n <= 0:
                 continue
             gap = (total - reference_sum[stage][voice]) / n
-            clipped = max(-pool_v1.GAP_CLIP, min(pool_v1.GAP_CLIP, gap))
-            new_logs[voice] = logs[voice] - pool_v1.ETA * n * clipped
+            clipped = max(-base_pool.GAP_CLIP, min(base_pool.GAP_CLIP, gap))
+            new_logs[voice] = logs[voice] - base_pool.ETA * n * clipped
             steps.setdefault(voice, {})[stage] = {"gap": round(gap, 5), "clipped": gap != clipped, "reads": round(n, 4)}
             if voice not in LEARNER_NAMES:              # the freeze watches the existing voices, never the newcomers
                 existing_days += 1
                 existing_hits += gap != clipped
         if frozen:
             continue
-        # renormalise, then Fixed-Share toward the starting weights (pool_v1's rule)
+        # renormalise, then Fixed-Share toward the starting weights (the base pool's rule)
         top = max(new_logs.values())
         e = {v: math.exp(x - top) for v, x in new_logs.items()}
         s = sum(e.values())
-        shares = {v: (1 - pool_v1.ALPHA) * e[v] / s + pool_v1.ALPHA * state["start_weights"][v] for v in new_logs}
+        shares = {v: (1 - base_pool.ALPHA) * e[v] / s + base_pool.ALPHA * state["start_weights"][v] for v in new_logs}
         state["voice_log_weights"][stage] = {v: math.log(max(x, 1e-12)) for v, x in shares.items()}
     state["days_learned"].append(day)
     state["last_day_learned"] = day

@@ -1,9 +1,12 @@
 """The one place old names meet the diagram's names, and the few shared words every module uses.
 
 The learning store's tables are reached through STORES, by the diagram's words, each a store named in
-station_paths.py. Pool_v1's expert names become voice names the same way (VOICE_NAMES).
-STAGES, SUMS_BY_LANE and REFERENCE_VOICE live here too, so the hook, the nightly job and the learners share one spelling, and
-CUT_OVER_DAY (cuts.py's) is read from here: the day the live lane stopped asking the pre-merge questions.
+station_paths.py. The base pool's expert names become voice names the same way (VOICE_NAMES), and the two pools' own
+names as voices are POOL_NAMES: ``base_pool`` (spx_jev.base_pool, the end-price learning loop) and ``learner_pool``
+(learner_pool.py, the combined forecast). Records written before 2026-10-11 name them ``pool_v1`` and ``pool_v2``
+(FORMER_POOL_NAMES); every reader takes a voice name through current_voice_name, so the old records are read, never
+rewritten. STAGES, SUMS_BY_LANE and REFERENCE_VOICE live here too, so the hook, the nightly job and the learners share one
+spelling, and CUT_OVER_DAY (cuts.py's) is read from here: the day the live lane stopped asking the pre-merge questions.
 """
 from __future__ import annotations
 
@@ -16,11 +19,18 @@ from .paths import station_paths
 STORES = {
     "jev_reads": station_paths.JEV_READ_SUMMARIES_BY_READ_TABLE,                       # one row per read of any lane
     "jev_answers": station_paths.JEV_ANSWERS_BY_READ_AND_QUESTION_TABLE,                # JEV's answer per question per read (layer 3)
-    "forecasts_at_read_time": station_paths.JEV_AND_POOL_FORECASTS_BY_READ_AND_HORIZON_TABLE,   # one row per sum per read: historical odds, JEV's call, the shown call, pool_v1's mix
+    "forecasts_at_read_time": station_paths.JEV_AND_POOL_FORECASTS_BY_READ_AND_HORIZON_TABLE,   # one row per sum per read: historical odds, JEV's call, the shown call, the base pool's mix
     "graded_results": station_paths.JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON_TABLE,   # the average-price grade per sum per read (the older end-price grade is not used)
 }
 
-# pool_v1's expert names (spx_jev.pool) -> voice names
+# the two pools as voices: scored beside the voices, never mixed as one
+BASE_POOL = "base_pool"                        # spx_jev.base_pool's mix, snapshot at every read (Will's "Pool 1")
+LEARNER_POOL = "learner_pool"                  # this system's mix, the combined forecast the phone shows (Will's "Pool 2")
+POOL_NAMES = (BASE_POOL, LEARNER_POOL)
+# the names records written before 2026-10-11 gave them (raw forecast lines, voice tables, ``shown_source``): read, never rewritten
+FORMER_POOL_NAMES = {"pool_v1": BASE_POOL, "pool_v2": LEARNER_POOL}
+
+# the base pool's expert names (spx_jev.base_pool) -> voice names
 VOICE_NAMES = {
     "baseline": "historical_odds",
     "baseline_cal": "historical_odds_calibrated",
@@ -30,7 +40,7 @@ VOICE_NAMES = {
     "blend50_exact": "blend_50_50_as_shown",
     "questions": "question_tilt",
     "jev": "jev_own",
-    "pool": "pool_v1",
+    "pool": BASE_POOL,
     **{f"jev_share_{s:.1f}": f"jev_mix_{int(round(s * 100))}_percent" for s in (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)},
 }
 
@@ -45,13 +55,13 @@ PLAIN_NAMES = {
     "additive_scorer": "Additive scorer",
     "matcher": "Matcher",
     "jev_corrected": "Corrected JEV",
-    "pool_v1": "Old forecast (retired)",
-    "pool_v2": "Combined forecast",          # the user-facing name of pool_v2, Will 2026-10-06
+    BASE_POOL: "Base pool",
+    LEARNER_POOL: "Combined forecast",       # the user-facing name of the learner pool, Will 2026-10-06
     **{f"jev_mix_{p}_percent": f"JEV mix {p}%" for p in (0, 20, 40, 60, 80, 100)},
 }
 
 LEARNER_NAMES = ("additive_scorer", "matcher", "jev_corrected")
-REFERENCE_VOICE = "historical_odds"            # every skill and every pool_v2 step is measured against this voice
+REFERENCE_VOICE = "historical_odds"            # every skill and every learner pool step is measured against this voice
 STAGES = ("move", "direction")                 # the two questions every forecast is split into: will it move? which way?
 JUDGMENT_GROUP = "judgment"                   # the request group of the six JEV judgment questions (spec/question_set.json)
 SUMS_BY_LANE = {"live": ("average_30", "next_60")}   # what each lane learns on (only the live lane feeds this system)
@@ -68,8 +78,14 @@ def store_path(state_dir: Path | str, new_name: str) -> Path:
 
 
 def rename_voice(old: str) -> str:
-    """A pool_v1 expert name as a voice name; an unknown name is kept as it is."""
+    """A base pool expert name as a voice name; an unknown name is kept as it is."""
     return VOICE_NAMES.get(old, old)
+
+
+def current_voice_name(name: str | None) -> str | None:
+    """A voice name as a record holds it, under the name it goes by now: a pool's former name (``pool_v1``, ``pool_v2``)
+    becomes its name today; any other name is kept as it is."""
+    return FORMER_POOL_NAMES.get(name, name) if name is not None else None
 
 
 def plain_name(voice: str) -> str:

@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from conftest import at, grades_path, hour_path
-from spx_jev import grade, integral, integral_loop, pool
+from spx_jev import base_pool, grade, integral, integral_loop
 from spx_jev.scores import floored
 from spx_jev.clock import INTEGRAL_CACHE_NAME, MIN_SESSIONS, PHASES, _integral_rule_key
 from spx_jev.grade import INTEGRAL_NAME, weights_from
@@ -30,8 +30,8 @@ TODAY = "2026-09-17"
 
 
 def _end_price_files(out: Path) -> tuple[Path, Path]:
-    """The end-price loop's two state files for a run reading ``out`` (pool.pool_folders: inside a scratch folder)."""
-    return pool.state_path(out, 30), pool.state_path(out, 60)
+    """The end-price loop's two state files for a run reading ``out`` (base_pool.pool_folders: inside a scratch folder)."""
+    return base_pool.state_path(out, 30), base_pool.state_path(out, 60)
 
 
 def _integral_files(out: Path) -> tuple[Path, Path]:
@@ -76,7 +76,7 @@ def _frozen(day: str):
 def clock(monkeypatch):
     """Every clock the grader and both loops stamp with, stopped at noon on ``day``, so two runs log alike."""
     def set_day(day: str = TODAY):
-        for module in (grade, pool, integral_loop):
+        for module in (grade, base_pool, integral_loop):
             monkeypatch.setattr(module, "datetime", _frozen(day))
     set_day()
     return set_day
@@ -109,7 +109,7 @@ def _write(out: Path, sessions: dict = SESSIONS, stale_at=None, event_at=None, a
             rec = {"row_ts": t.isoformat(), "spot": 7700.0, "sigma": 75.0, "event": {"within_30": True} if event_at == (day, k) else None,
                    "by": {h: {"pick": "up", "probabilities": {"up": 0.4, "flat": 0.4, "down": 0.1, "unsure": 0.1}} for h in ("next_30", "next_60")},
                    "fresh": {"q_a": "yes"},
-                   "pool": {h: pool.snapshot(pool.cold_state(), FakeBaseline(), h, t, {"up": 0.5, "flat": 0.3, "down": 0.2},
+                   "pool": {h: base_pool.snapshot(base_pool.cold_state(), FakeBaseline(), h, t, {"up": 0.5, "flat": 0.3, "down": 0.2},
                                              {"up": 0.2, "flat": 0.6, "down": 0.2}, {"up": 0.35, "flat": 0.45, "down": 0.2}, answers,
                                              MEMBERS, {"q_a"}) for h in ("next_30", "next_60")}}
             if average and blended:
@@ -175,7 +175,7 @@ def test_with_the_switch_off_no_file_of_the_switched_loop_is_made_or_read(tmp_pa
     for name in ("update", "load_state", "dry_run"):
         monkeypatch.setattr(integral_loop, name, lambda *a, **k: pytest.fail("the switched loop was called with the switch off"))
     w_plain, w_beside = _learn(plain, OFF), _learn(beside, OFF)
-    assert w_plain == w_beside and w_plain["method"] == "pool_v1" and w_plain["pool"]["last_session_applied"] == DAYS[-1]
+    assert w_plain == w_beside and w_plain["method"] == "base_pool" and w_plain["pool"]["last_session_applied"] == DAYS[-1]
     assert integral_loop.state_path(beside).read_text() == "{not a state"
     assert not any(p.exists() for p in _integral_files(plain)) and not integral_loop.log_path(beside).exists()
     after_plain, after_beside = _tree(plain), _tree(beside)
@@ -190,7 +190,7 @@ def test_with_the_switch_off_the_grader_never_imports_the_switched_loop(tmp_path
             f"grade.weights_from([], {{}}, replace(LIVE, integral_loop=False), Path({str(tmp_path)!r})); "
             "print('spx_jev.integral_loop' in sys.modules)")
     done = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parent.parent, capture_output=True, text=True, check=True)
-    assert done.stdout.strip() == "False" and pool.state_path(tmp_path, 30).exists()
+    assert done.stdout.strip() == "False" and base_pool.state_path(tmp_path, 30).exists()
 
 
 # ---- on
@@ -206,14 +206,14 @@ def test_on_the_loop_learns_from_the_average_price_label_beside_the_end_price_lo
     assert set(after) - set(before) == _rel(out, _integral_files(out) + _end_price_files(out)) and all(after[k] == v for k, v in before.items())
     assert all(after[str(mine.relative_to(out))] == theirs.read_bytes() for mine, theirs in zip(_end_price_files(out), _end_price_files(off)))
     assert set(after) - set(_tree(off)) == _rel(out, _integral_files(out))      # the switched loop's own two files, and no other
-    assert json.loads(after[str(pool.state_path(out, 30).relative_to(out))])["last_session_applied"] == DAYS[-1]
+    assert json.loads(after[str(base_pool.state_path(out, 30).relative_to(out))])["last_session_applied"] == DAYS[-1]
     # the weights keep the end-price loop's report, as with the switch off, and the switched loop's is beside it
     assert {k: v for k, v in w.items() if k != "pool_integral"} == _learn(_write(tmp_path / "off2"), OFF)
     w = w["pool_integral"]
-    assert w["method"] == "pool_v1_integral" and w["pool"]["last_session_applied"] == DAYS[-1]
+    assert w["method"] == "base_pool_integral" and w["pool"]["last_session_applied"] == DAYS[-1]
     assert w["questions"]["q_a"]["days"] == 3 and w["questions"]["q_a"]["weight"] == 1.0
     state = json.loads(integral_loop.state_path(out).read_text())
-    assert state["constants_hash"] == integral_loop.CONSTANTS_HASH != pool.CONSTANTS_HASH
+    assert state["constants_hash"] == integral_loop.CONSTANTS_HASH != base_pool.CONSTANTS_HASH
     assert state["reference_version"].startswith("integral_clock:")
     applied = [x for x in _log(out) if x["applied"]]
     assert [x["session"] for x in applied] == list(DAYS) and all(len(x["manifest"]["included"]) == 3 for x in applied)
@@ -296,7 +296,7 @@ def _alone(out: Path, day: str, k: int, answers: bool = True) -> str:
             return r
         del r["by"]
         left = {"left_out": "JEV gave no probabilities for next_30"}
-        r["pool"] = {"next_30": {**left, **pool.answered({"q_a": {"yes": 0.5, "no": 0.5}}, MEMBERS, {"q_a"})} if answers else left}
+        r["pool"] = {"next_30": {**left, **base_pool.answered({"q_a": {"yes": 0.5, "no": 0.5}}, MEMBERS, {"q_a"})} if answers else left}
         return {**r, "error": "JEV returned HTTP 529 for group hour"}
     _edit(hour_path(out, day), strip)
     lines = [json.loads(line) for line in grades_path(out).read_text().splitlines()]
@@ -320,7 +320,7 @@ def test_on_a_call_whose_end_price_sums_got_no_answer_is_learned_once_its_own_li
     ts = _alone(bare, DAYS[0], 1, answers=False)
     assert integral_loop.update(bare, TODAY) == {"next_30": f"{DAYS[0]}: applied, 2 reads"}
     assert _log(bare)[-1]["manifest"]["excluded"] == {ts: "no answers on file: the read's end-price snapshot was left out"}
-    assert pool.update(bare, TODAY)["next_30"] == f"{DAYS[0]}: applied, 2 reads"    # the end-price loop never had it
+    assert base_pool.update(bare, TODAY)["next_30"] == f"{DAYS[0]}: applied, 2 reads"    # the end-price loop never had it
 
 
 def test_on_a_session_before_the_question_is_passed_over_and_an_ungraded_read_stops_the_update(tmp_path, clock):
@@ -337,22 +337,22 @@ def test_neither_loop_ever_loads_the_others_state(tmp_path, clock):
     constants each is keyed by tell them apart, so the stranger is kept in archive/ and each loop learns its own
     again from the records."""
     out = _write(tmp_path)
-    pool.update(out, today=DAYS[1])
-    shutil.copy(pool.state_path(out, 30), integral_loop.state_path(out))
+    base_pool.update(out, today=DAYS[1])
+    shutil.copy(base_pool.state_path(out, 30), integral_loop.state_path(out))
     planted = integral_loop.state_path(out).read_bytes()
     integral_loop.update(out, TODAY)
-    [kept] = pool.pool_folders(out)[2].glob(f"{integral_loop.state_path(out).name}.pre-{pool.CONSTANTS_HASH}-*")
+    [kept] = base_pool.pool_folders(out)[2].glob(f"{integral_loop.state_path(out).name}.pre-{base_pool.CONSTANTS_HASH}-*")
     assert kept.read_bytes() == planted
     assert json.loads(integral_loop.state_path(out).read_text())["constants_hash"] == integral_loop.CONSTANTS_HASH
-    assert any(x.get("rebuild", {}).get("from") == pool.CONSTANTS_HASH for x in _log(out))
+    assert any(x.get("rebuild", {}).get("from") == base_pool.CONSTANTS_HASH for x in _log(out))
     other = _write(tmp_path / "other")
     integral_loop.update(other, DAYS[1])
     for path in _end_price_files(other):
         shutil.copy(integral_loop.state_path(other), path)
-    pool.update(other, today=TODAY)
+    base_pool.update(other, today=TODAY)
     for path in _end_price_files(other):
-        assert json.loads(path.read_text())["constants_hash"] == pool.CONSTANTS_HASH
-        assert list(pool.pool_folders(other)[2].glob(f"{path.name}.pre-{integral_loop.CONSTANTS_HASH}-*"))
+        assert json.loads(path.read_text())["constants_hash"] == base_pool.CONSTANTS_HASH
+        assert list(base_pool.pool_folders(other)[2].glob(f"{path.name}.pre-{integral_loop.CONSTANTS_HASH}-*"))
 
 
 def test_flipping_the_switch_on_off_and_on_again_never_mixes_the_histories(tmp_path, clock):
@@ -374,7 +374,7 @@ def test_flipping_the_switch_on_off_and_on_again_never_mixes_the_histories(tmp_p
     assert json.loads(integral_loop.state_path(flipped).read_text())["last_session_applied"] == DAYS[2]
     for mine, theirs in zip(_end_price_files(flipped), _end_price_files(always_off)):
         assert mine.read_bytes() == theirs.read_bytes()
-    assert json.loads(pool.state_path(flipped, 30).read_text())["last_session_applied"] == DAYS[2]
+    assert json.loads(base_pool.state_path(flipped, 30).read_text())["last_session_applied"] == DAYS[2]
 
 
 def test_on_a_change_to_the_reference_odds_constants_starts_the_calibration_again(tmp_path, clock, monkeypatch):
@@ -475,7 +475,7 @@ def test_the_dry_run_writes_nothing_live_and_learns_what_switching_on_would(tmp_
     assert _tree(out) == before
     on = _write(tmp_path / "on", stale_at=(DAYS[0], 1))
     integral_loop.update(on, TODAY)
-    assert pool._canonical(run["state"]) == integral_loop.state_path(on).read_text()
+    assert base_pool._canonical(run["state"]) == integral_loop.state_path(on).read_text()
     assert grade.main(["--state-dir", str(tmp_path), "--out-dir", str(out), "--integral-loop-dry-run"]) == 0
     printed = capsys.readouterr().out.splitlines()
     assert _tree(out) == before

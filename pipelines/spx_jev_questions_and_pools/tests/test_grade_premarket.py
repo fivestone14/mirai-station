@@ -9,7 +9,7 @@ import pytest
 
 from conftest import (DAY, FixedZones, archive_path, at, bars_from_closes, flat_bars, grades_path, hour_path, integral_grades_path,
                       lane_folder, station_paths, write_state)
-from spx_jev import events, grade, pool, service
+from spx_jev import base_pool, events, grade, service
 from spx_jev.grade import grade_one, horizon_start, mark_at, run
 from spx_jev.lane import LIVE, PREMARKET, TAPE
 
@@ -131,7 +131,7 @@ def test_the_lane_run_grades_into_its_own_folder_and_archive_with_neutral_weight
     assert w["sums"]["open_average_30"]["n"] == 0                       # a read from before the average-price call: no call on record
     archived = [json.loads(l) for l in archive_path(state, DAY).read_text().splitlines()]
     assert [(a["read_id"], a["lane"]) for a in archived] == [(f"premarket:{rec['row_ts']}", "premarket")]
-    assert not pool.pool_folders(out)[0].exists() and not station_paths.BASE_POOL_STATE.folder(state).exists()   # no loop runs on the lane
+    assert not base_pool.pool_folders(out)[0].exists() and not station_paths.BASE_POOL_STATE.folder(state).exists()   # no loop runs on the lane
     assert not grades_path(lane_folder(state)).exists()
     assert run(state, out, ALLOWED, lane=PREMARKET)["new_this_run"] == 0
 

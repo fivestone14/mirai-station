@@ -8,7 +8,7 @@ The neutral method weighs every live question 1.0, whatever the grades say; SNDK
 mutual-information weights were not carried over, since on its first 50 graded reads none of them
 beat shuffled outcomes (the study of 2026-09-26). A learning method subclasses QuestionWeights, sets
 ``method`` and overrides ``learn``; the grader, the weights file and step 3 stay as they are. The
-live lane learns with pool.PoolWeights (lane.Lane.pool), which keeps every weight at 1.0 too and
+live lane learns with base_pool.BasePoolWeights (lane.Lane.pool), which keeps every weight at 1.0 too and
 reports each question's standing beside it.
 
     weights.json   {"method", "min_weight", "questions": {qid: {"weight", "n", "in_step_3", "why"}}, ...}

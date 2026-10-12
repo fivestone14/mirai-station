@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # launchd-fired wrapper: the Mirai Prediction System's nightly job, after the learning store's rebuild.
 # One run = today's work for the live lane (spx_jev/mirai_prediction/nightly_job.py): build this system's tables
-# from its raw record files, score every voice against the day's grades, let pool_v2 learn the day, refit the
+# from its raw record files, score every voice against the day's grades, let the learner pool learn the day, refit the
 # three learners for the next market day, write the phone's scoreboard. Reads the store only; no Schwab call, no
 # JEV call; writes only under data/spx/prediction/ (plus its phone card, logs and refused rows under screen_files/ and operations/). Idempotent: tables are rewritten whole, a day is
 # learned once.

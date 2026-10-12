@@ -154,7 +154,7 @@ def test_each_question_of_a_read_has_its_status_its_options_and_the_question_it_
     ans = {(a["read_id"], a["question_id"]): a for a in _table(root, "answers")}
     shape = ans[(f"live:{READ}", "move_shape")]
     assert (shape["status"], shape["pick"], dict(shape["probabilities"])) == ("answered", "clean", {"clean": 0.9, "burst": 0.1})
-    assert shape["question_hash"] == store.question_hash(Q_SHAPE) and shape["pool_version"] == "0123456789ab"
+    assert shape["question_hash"] == store.question_hash(Q_SHAPE) and shape["base_pool_question_version"] == "0123456789ab"
     assert shape["reasked"] is True and shape["reasked_from"] == datetime.fromisoformat(EARLY)
     lost = ans[(f"live:{READ}", "one_way_hour")]
     assert lost["status"] == "lost" and "TimeoutError" in lost["reason"] and lost["probabilities"] is None
@@ -193,9 +193,9 @@ def test_a_call_keeps_jev_alone_the_clock_the_blend_the_learned_mix_and_what_was
     calls = {(c["read_id"], c["sum_id"]): c for c in _table(root, "calls")}
     c = calls[(f"live:{READ}", "next_30")]
     assert c["shown_source"] == "blend50_exact" and dict(c["jev_probs"])["up"] == 0.4 and c["clock_n"] == 180
-    assert (c["blended"], c["blend_jev_share"], c["pool_p_move"], c["learn_exclude"]) == (True, 0.5, 0.5, True)
-    assert c["mark"] == at(11, 2) and c["is_primary"] is True and c["is_call"] is True and c["pool_reference_version"] == "v1:x"
-    assert calls[(f"live:{READ}", "next_60")]["pool_left_out"] == "JEV gave no probabilities for next_60"
+    assert (c["blended"], c["blend_jev_share"], c["base_pool_p_move"], c["learn_exclude"]) == (True, 0.5, 0.5, True)
+    assert c["mark"] == at(11, 2) and c["is_primary"] is True and c["is_call"] is True and c["base_pool_reference_version"] == "v1:x"
+    assert calls[(f"live:{READ}", "next_60")]["base_pool_left_out"] == "JEV gave no probabilities for next_60"
     tape = calls[(f"tape:{TAPE_READ}", "next_10")]
     assert tape["shown_source"] == "jev" and tape["direction_pick"] == "down" and tape["mark"] == at(9, 50)
 
@@ -307,7 +307,7 @@ def test_a_calls_frozen_reference_is_read_under_its_new_name_and_its_old_one(tmp
     rows[1]["pool"]["next_30"]["reference_version"] = rows[1]["pool"]["next_30"].pop("baseline")
     _state(tmp_path, rows)
     store.build_day(tmp_path, D, at(16, 45))
-    assert {c["sum_id"]: c["pool_reference_version"] for c in _table(tmp_path, "calls") if c["lane"] == "live" and c["read_id"] == f"live:{READ}"}["next_30"] == "v1:x"
+    assert {c["sum_id"]: c["base_pool_reference_version"] for c in _table(tmp_path, "calls") if c["lane"] == "live" and c["read_id"] == f"live:{READ}"}["next_30"] == "v1:x"
 
 
 def test_the_bars_keep_one_row_a_minute_the_better_source_winning_and_every_copy_counted(built):

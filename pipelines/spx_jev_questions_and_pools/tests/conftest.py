@@ -181,7 +181,7 @@ def last_asked_path(out: Path) -> Path:
     return station_paths.JEV_LAST_ANSWERS_STATE.in_lane_folder(out)
 
 
-# The base pool's files under a data root: the live lane's pools live beside the lane, not in it (pool.pool_folders).
+# The base pool's files under a data root: the live lane's pools live beside the lane, not in it (base_pool.pool_folders).
 def pool_state_path(root: Path, horizon: str) -> Path:
     return station_paths.BASE_POOL_STATE.path(root, horizon=horizon)
 

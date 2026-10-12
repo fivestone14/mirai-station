@@ -75,7 +75,7 @@ def test_grade_read_at_the_close_marks_windows_past_it_not_asked_and_measures_to
     assert all(l["result"]["status"] == "no_data" for l in no_zones)
 
 
-def _read_record(shown_source: str = "pool_v2", archived_seconds_after: int = 28) -> dict:
+def _read_record(shown_source: str = "learner_pool", archived_seconds_after: int = 28) -> dict:
     clock = {"probabilities": {"up": 0.1834, "down": 0.1627, "flat": 0.654}}
     main = {"up": 0.2361, "flat": 0.616, "down": 0.1479}
     return {"row_ts": "2026-10-09T14:30:12-04:00",
@@ -96,7 +96,7 @@ def test_comparison_forecasts_copy_the_station_odds_and_only_a_live_main_forecas
     _, replay = grading.comparison_forecasts_from_read_record(_read_record(archived_seconds_after=3 * 86400), "next_30_minutes")
     assert replay["existing_system_main_forecast"].startswith("a replay")
     _, other = grading.comparison_forecasts_from_read_record(_read_record(shown_source="blend50"), "next_30_minutes")
-    assert "not pool_v2" in other["existing_system_main_forecast"]
+    assert "not the learner pool (learner_pool)" in other["existing_system_main_forecast"]
     _, none = grading.comparison_forecasts_from_read_record(None, "to_close")
     assert set(none) == {"existing_system_time_of_day_odds_20_sessions", "existing_system_main_forecast"}
 

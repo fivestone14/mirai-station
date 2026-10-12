@@ -1,16 +1,18 @@
 # Mirai Prediction System
 
-The learning loop behind the SPX call. Since 2026-10-06 its combined forecast (pool_v2) IS the call the phone shows and
-the grader grades; it runs inside each live read with a fallback to the old 50/50 blend, never writes pool_v1's own state
-(pool_v1 only supplies voices), and learns every night. Its names are the design diagram's names.
+The learning loop behind the SPX call. Since 2026-10-06 its combined forecast (the learner pool, `learner_pool`) IS the call the phone shows and
+the grader grades; it runs inside each live read with a fallback to the old 50/50 blend, never writes the base pool's own state
+(the base pool, `spx_jev.base_pool`, only supplies voices), and learns every night. Its names are the design diagram's names; the
+two pools are `base_pool` and `learner_pool` since 2026-10-11 (`pool_v1` and `pool_v2` in records from before, read through
+`name_map.current_voice_name`, never rewritten).
 
 ```
 market data --> layer 1 (code feature builder: measures ranked vs their own history)  --\
             --> layer 2 (code feature builder: discrete labels)                          >--> additive_scorer, matcher
             --> layer 3 (JEV's answers)                              --/
 JEV's own call ---------------------------------------------------------> jev_corrected
-historical odds + today's voices + the three learners ------------------> pool_v2  (pool_v1 stays as it is)
-graded result -> scored per voice -> pool_v2 weights -> refit each morning -> phone scoreboard
+historical odds + today's voices + the three learners ------------------> learner_pool  (the base pool stays as it is)
+graded result -> scored per voice -> learner_pool weights -> refit each morning -> phone scoreboard
 ```
 
 ## Where the data lives
@@ -23,7 +25,7 @@ graded result -> scored per voice -> pool_v2 weights -> refit each morning -> ph
 | `code_question_answers_by_read/{day}.jsonl` | the code feature builder's answers per read (layers 1-2), written live before the read is forecast or by the backfill; append-only; the record |
 | `tables/forecasts_by_forecaster_read_and_horizon/day=…/` | the same, checked and built nightly (Parquet); safe to delete and rebuild |
 | `tables/grades_by_forecaster_read_and_horizon/day=…/` | each voice's penalty and right/wrong per graded read |
-| `learner_pool/learner_pool_state/{horizon}.json` | pool_v2's voice weights (move and direction), days learned; the code's sum ids `next_60` and `average_30` are the files `next_60_minutes.json` and `average_of_next_30_minutes.json` |
+| `learner_pool/learner_pool_state/{horizon}.json` | the learner pool's voice weights (move and direction), days learned; the code's sum ids `next_60` and `average_30` are the files `next_60_minutes.json` and `average_of_next_30_minutes.json` |
 | `learner_pool/learner_pool_trained_forecasters_by_day/{day}_{horizon}.json` | the three learners fitted for that day (on days before it) and the answer matrix they were fitted on; the newest 10 days are kept, older files are pruned (every one can be rebuilt) |
 
 The few files it writes for other parts of the station sit where those parts look:
@@ -42,7 +44,7 @@ The learning store's tables under `data/spx/jev/tables/` are reached by the diag
 
 ## How it runs
 
-- **At every live read** `service.py` calls `live_call.forecast_now_with_voices` inside the read (Pool 2's mix is the call
+- **At every live read** `service.py` calls `live_call.forecast_now_with_voices` inside the read (the learner pool's mix is the call
   since 2026-10-06; the voices it mixed ride on each sum it took over as `voices`, most say first, for the phone's "what
   went into it"), falling back to `service_hook.spawn_after_read`, which starts `read_hook` in its own process. The hook
   first has the code feature builder answer its questions for the read and appends the line to `code_question_answers_by_read/`
@@ -52,9 +54,9 @@ The learning store's tables under `data/spx/jev/tables/` are reached by the diag
   (about 0.4 s; the first sum always runs, a later one is skipped past the 5-second budget; never raises). Each line
   carries the live loop's `learn_exclude` flag for the read.
 - **At 17:05 ET** (`com.mirai-station.spx-jev-prediction-nightly`, after the store's 16:40 rebuild) `nightly_job` first catches
-  up any day of the last 10 with raw lines pool_v2 has not learned (a night the box slept through), then for today builds the
+  up any day of the last 10 with raw lines the learner pool has not learned (a night the box slept through), then for today builds the
   tables, scores every voice against `graded_results` (joined on `read_id` + `sum_id`; excluded reads are scored and flagged
-  but not learned), lets pool_v2 learn the day, refits the learners for the next market day, prunes old fit files, writes
+  but not learned), lets the learner pool learn the day, refits the learners for the next market day, prunes old fit files, writes
   the phone's scoreboard card, and prunes the rollback copies.
 - **Walk-forward, always:** a fit for day D uses graded rows from days before D only (`voice_fits.check_no_leak`), and a
   market value is ranked against earlier days only, never the same day's earlier reads.
@@ -163,14 +165,14 @@ The feeds the blocked questions of the merged set waited for, built first; the P
 
 ## Rules added 2026-10-06 (the design-spec review)
 
-- **Overlapping reads count once:** pool_v2's daily step counts each read by its window coverage (pool_v1's rule): a
+- **Overlapping reads count once:** the learner pool's daily step counts each read by its window coverage (the base pool's rule): a
   60-minute read every 30 minutes shares half its window with the next, so a day's 11 such reads count as about 6.
 - **Matcher, one vote per group:** a column's distance (0 same / 1 different / 0.5 silent) is averaged within its group
   before the groups are averaged, so a group of eight questions on one topic counts once.
 - **Finer layer volumes:** the scorer's grid starts 0, 0.005, 0.01, 0.02, 0.03, 0.05, 0.075, 0.10, 0.15, then 0.20 to 1.50
   in 0.05 steps; three search passes.
-- **The freeze:** when the gap clip binds on more than 5% of the existing voices' voice-days over 20 learned days, pool_v2's
-  weights stop moving and `frozen` says why (the learners never count toward it); `pool_v2.unfreeze_pool_v2` after a review.
+- **The freeze:** when the gap clip binds on more than 5% of the existing voices' voice-days over 20 learned days, the learner pool's
+  weights stop moving and `frozen` says why (the learners never count toward it); `learner_pool.unfreeze_learner_pool` after a review.
 
 ## Phase 3 (2026-10-07): the headline feed and the judgment group
 
@@ -201,7 +203,7 @@ move. A gate whose code answer is None is not fired; a question not fired is ski
 | `news_reaction` | EVENTS-07 | a CNBC, MarketWatch or Fed-feed headline (never Google News) naming an index-wide mover (the Fed/FOMC/Powell, CPI/PPI/jobs/payrolls/GDP/PCE/retail sales, tariffs or trade, Treasury yields, a heavyweight's earnings or guidance: `judgment.INDEX_NEWS`, `MEGACAP_RESULTS`) first captured in the `HEADLINE_FRESH_MIN` (30) minutes before the cut and after the cut of the day's last read that asked it; on 10-07 it fires on 2 of 13 reads (09-29 to 10-06 have no headlines) | `judgment.headlines`, `price.recent_move`, `price.day_range_position` |
 
 The questions are `shadow` in the set (each `shadow_proof` says why: not a proof, a wall): `hour.answer_sentences` leaves a shadow
-answer out of the sums, `grade.live_options` and the weights never see it, `service.pool_snapshots` takes pool_v1's members from
+answer out of the sums, `grade.live_options` and the weights never see it, `service.base_pool_snapshots` takes the base pool's members from
 the live questions only, and the cadence never holds one. The learning store files a shadow question JEV answered as
 `status = answered` all the same (the status is the reply's, not the question's), so `answer_matrix.load_jev_answers` takes it
 as a layer-3 column `jev:<id>`, each its own voting group (they judge different things; answer_matrix.column_catalog). The old loop is kept away
@@ -255,8 +257,8 @@ with that reason (the phone's "N of M answered" counts the card's questions, so 
 them as their own last group, "retired at the cut-over, no longer asked"). The questions stay in the set and the doc, dated,
 never deleted; their answers before the day stay in the store and the archive.
 
-**What stays:** pool_v1 forms its snapshot at every read as before and stays a voice source (`pool_v1` in pool_v2's mix; its own
-phone promotion, which could never reach the phone once Pool 2 took the call, was retired on 2026-10-07), its
+**What stays:** the base pool forms its snapshot at every read as before and stays a voice source (`base_pool` beside the learner pool's mix, never in it; its own
+phone promotion, which could never reach the phone once the learner pool took the call, was retired on 2026-10-07), its
 members empty from the cut-over, so its question block is the prior alone; the blend, the historical odds and the learners are
 untouched. The opening and pre-market lanes are not cut over: no code feature builder answers their reads, so their sums have
 nothing else to ride on; the 13 opening-only and 12 pre-market-only questions, and the live-lane questions those lanes share,
@@ -274,7 +276,7 @@ The 95 graded 30-minute calls of 09-29..10-08 went 51 right, against 56 for the 
 
 | id | issue | verdict | status |
 |---|---|---|---|
-| SPX30-1 | JEV's opinion leaks into the call through the 50/50 blend (and JEV's own call, the JEV mixes) | the culprit: benched, 51 -> 56 right (next_60 55 -> 56) | FIXED 2026-10-09: `pool_v2.BENCHED_VOICES` (still scored and learned, never mixed) |
+| SPX30-1 | JEV's opinion leaks into the call through the 50/50 blend (and JEV's own call, the JEV mixes) | the culprit: benched, 51 -> 56 right (next_60 55 -> 56) | FIXED 2026-10-09: `learner_pool.BENCHED_VOICES` (still scored and learned, never mixed) |
 | SPX30-2 | the day's ruler (`labels/rulers.morning_ruler`) is the first 09:30 diary row, unchecked; 09-09, 10-07, 10-08 read ~0.65x the rest of the morning, so the flat band shrank and every ranked move read ~1.4x too big; the ruler also mixes clocks (calendar IV over the root of 252 trading days, ~2.3x the priced move, hidden by the fixed 0.07) and one band all day made 31% of opening half hours flat against 71% at 15:00 | real, small (+1 call) | FIXED 2026-10-09: the static sigma bands (0.07, 0.11, 0.04, the tape units) are gone from the code, the spec and the question text; every box's flat zone is sized at each read in points from the day's tape and the VIX (`spx_jev/flat_zone.py`), refit each day to its flat target, told to JEV, stamped on the record and graded against; 09-29..10-09 regraded under `integral.RULE_VERSION` 4, the store and the historical odds rebuilt, pool_v2 relearned on the new labels. The ruler itself still rules the labels (`morning_ruler`, the tape unit): the first-row guard stays open there. Verified the same night by three agents (the math against the research scripts on 637 zones, the data against the backup, the live path end to end); their fixes applied: a read before the VIX's opening print cannot see it, the realized fallback takes each session's clock out with its own shape, a zone failure never costs a read its questions (the live and premarket lanes ask no sum instead), and the premarket's average sum has its own flat target (`PREMARKET.average_flat_pct`; it was 82% flat without one, 55% with it; its 11 reads regraded). Still open: the retired end-price loop (`base_pool_state/next_30_minutes.json`, `next_60_minutes.json`) keeps weights learned on the old labels until its next sealed session; the premarket multipliers rest on 20 numbers (one start a session), so expect about 2 points of noise there |
 | SPX30-3 | VOLATILITY-02's reader blanks the record-busy sentence ("more than every one of the last N sessions"), 6 of 12 reads on 10-08 | real bug, ~0 cost so far | FIXED 2026-10-10 (db316b3): `code_features.fifth()` reads the record wording as the top, the catalog's note says so, 10-08's answers were re-parsed from the archived sentences and the learners refit for 10-12 on them |
 | SPX30-4 | voices that copy the historical odds (the scorer while its volumes are 0, jev_mix_0, question_tilt) hold seats | not a culprit: removing them goes 51 -> 49 | decided: leave them |

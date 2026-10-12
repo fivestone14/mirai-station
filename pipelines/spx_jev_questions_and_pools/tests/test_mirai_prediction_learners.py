@@ -20,7 +20,7 @@ DAYS = [f"2026-09-{d:02d}" for d in range(1, 29)] + [f"2026-10-{d:02d}" for d in
 def make_row(i: int, day: str, answers: dict, outcome: str | None, jev=None, odds=ODDS, exclude=False) -> Row:
     ts = f"{day}T{10 + i % 6:02d}:{(i * 7) % 60:02d}:00-04:00"
     return Row(read_id=f"live:{ts}", row_ts=ts, day=day, sum_id="average_30", historical_odds_probs=dict(odds),
-               jev_own_probs=jev, shown_probs=None, pool_v1_probs=None, outcome=outcome, learn_exclude=exclude, answers=answers)
+               jev_own_probs=jev, shown_probs=None, base_pool_probs=None, outcome=outcome, learn_exclude=exclude, answers=answers)
 
 
 def make_matrix(rows: list[Row], columns: dict, before_day: str = "2026-10-10") -> AnswerMatrix:

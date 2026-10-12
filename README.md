@@ -389,7 +389,7 @@ the fleet.
 | `spx-jev-overnight` | 09:26 and 16:20 ET | the overnight futures (/ES, /ZN, /BTC, /MBT) and the roll table |
 | `spx-jev-headlines` | every 3 min, 07:00 to 16:30 ET weekdays | four public RSS feeds, each new item stamped with the poll's own clock under `data/market/news_headlines_by_article/`, for the judgment questions |
 | `spx-jev-store` | 16:40 ET | SPX JEV's learning store, rebuilt from its raw files into checked Parquet |
-| `spx-jev-prediction-nightly` | 17:05 ET weekdays | the Mirai Prediction System's nightly job: its tables, the voice scores, pool_v2's learning, the learners' refit and the phone's scoreboard, under `data/spx/prediction/` (the scoreboard card under `data/screen_files/phone/`) |
+| `spx-jev-prediction-nightly` | 17:05 ET weekdays | the Mirai Prediction System's nightly job: its tables, the voice scores, the learner pool's learning, the learners' refit and the phone's scoreboard, under `data/spx/prediction/` (the scoreboard card under `data/screen_files/phone/`) |
 | `spx-claude-forecast-recorder` | 08:40 and 16:25 ET, plus Fri 17:30 ET | copies station data before it is overwritten or deleted (the dated book, siege's SPY minutes, the raw tape, the $VIX1D close, SPX 5-minute bars) into `data/market/` and mirrors the forecast folder and those copies to iCloud |
 | `spx-claude-forecast-nightly` | 17:15 ET weekdays | seals what happened after every Claude read, rebuilds the library of past moments, scores every forecaster, writes the scorecard |
 

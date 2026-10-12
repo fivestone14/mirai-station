@@ -756,7 +756,7 @@ def test_the_blend_note_names_the_phase_by_its_hours_in_the_viewers_zone():
 
 
 def _how():
-    return (_var("ODDS_ORDER") + _fn("oddsKeys") + _fn("top1") + _fn("oneAnswer") + _fn("phaseSpan") + _fn("howBar") + _fn("tile")
+    return (_var("ODDS_ORDER") + _fn("oddsKeys") + _fn("top1") + _fn("oneAnswer") + _fn("phaseSpan") + _fn("howBar") + _fn("tile") + _fn("combinedCall")
             + _fn("howChart"))
 
 
@@ -799,7 +799,7 @@ def test_every_question_group_has_a_heading_in_words():
 
 
 FOLD_JS = ("var tickers = [], READ_MINUTES = [2, 32], LAST_READ_DEFAULT = '15:32';" + _fn("top1") + _fn("plusIso") + _fn("nextRead")
-           + _fn("noCallWords") + _fn("jevOwn") + _fn("headline") + _fn("foldLive")
+           + _fn("noCallWords") + _fn("jevOwn") + _fn("combinedCall") + _fn("headline") + _fn("foldLive")
            + "var f = foldLive(D.c); console.log(JSON.stringify([f.kids.map(function(k){ return k.textContent; }), tickers.length]));")
 
 
@@ -813,10 +813,10 @@ def test_the_folded_30_minute_line_counts_down_only_a_call_that_was_made():
 
 def test_the_folded_30_minute_line_names_the_pick_the_card_would_lead_with():
     """One rule for the headline (headline): under the opening call the fold names the combined forecast's pick on a
-    card since the cut-over (shown_source pool_v2), never JEV's own beside it (Will, 2026-10-07: two answers on one
+    card since the cut-over (shown_source learner_pool; pool_v2 on a card from before 2026-10-11), never JEV's own beside it (Will, 2026-10-07: two answers on one
     screen confused); on a card from before it, JEV's own read, as the card led with it then."""
     blend = {"used": True, "jev_share": 0.5}
-    avg = {"pick": "flat", "probabilities": {"up": 0.38, "flat": 0.47, "down": 0.15}, "blend": blend, "shown_source": "pool_v2",
+    avg = {"pick": "flat", "probabilities": {"up": 0.38, "flat": 0.47, "down": 0.15}, "blend": blend, "shown_source": "learner_pool",
            "jev": {"pick": "up", "probabilities": {"up": 0.67, "flat": 0.2, "down": 0.13}}}
     c = {"row_ts": "2026-09-28T10:02:10-04:00", "marks": {"next_30": "2026-09-28T10:32:00-04:00"}, "hour": {"average": avg}}
     assert _run(FOLD_JS, {"now": "2026-09-28T10:05:00-04:00", "c": c}, LA)[0] == ["30-min call \u00B7 07:02", "Flat 47%", "27 min left"]
@@ -1534,7 +1534,7 @@ def _parts(node):
     return [[k["attrs"].get("class", k["tag"]), _flat_text(k)] for k in node["kids"]]
 
 
-SUM_CARD_FNS = ("top1", "oneAnswer", "phaseSpan", "howBar", "tile", "howChart", "tag", "skipLine", "plusIso", "averageWords", "jevOwn", "headline",
+SUM_CARD_FNS = ("top1", "oneAnswer", "phaseSpan", "howBar", "tile", "howChart", "tag", "skipLine", "plusIso", "averageWords", "jevOwn", "combinedCall", "headline",
                 "labRow", "indexLevel", "calledAt", "threeWay", "voiceName", "voicesOf", "bySay", "sayWords", "voicesButton", "recordRow", "sumCard")
 
 
@@ -1565,17 +1565,17 @@ def test_a_blended_call_leads_with_jevs_own_read_and_keeps_the_half_and_half_in_
 
 
 def test_the_combined_forecast_leads_the_card_and_jevs_own_read_sits_in_a_tile():
-    """Will, 2026-10-07: once the combined forecast is the call (shown_source pool_v2), the headline is the call the calls in
+    """Will, 2026-10-07: once the combined forecast is the call (shown_source learner_pool), the headline is the call the calls in
     play grade, labelled combined; JEV's own read moves to a "JEV alone" tile beside the usual odds, and the 60-minute line
     is the combined forecast's too. (The 13:29 ET read of 10-07 showed JEV's Up 67% big while the graded call was Flat 47%.)"""
     blend = {"used": True, "jev_share": 0.5, "phase_words": "afternoon, 13:00 to 14:00", "sessions": 20}
-    avg = {**AVG, "pick": "flat", "probabilities": {"up": 0.38, "flat": 0.47, "down": 0.15}, "blend": blend, "shown_source": "pool_v2",
+    avg = {**AVG, "pick": "flat", "probabilities": {"up": 0.38, "flat": 0.47, "down": 0.15}, "blend": blend, "shown_source": "learner_pool",
            "jev": {"probabilities": {"up": 0.67, "flat": 0.2, "down": 0.13}, "confidence": 0.6},
            "clock": {"probabilities": {"up": 0.22, "flat": 0.61, "down": 0.17}}}
     n60 = {"pick": "flat", "probabilities": {"up": 0.2, "flat": 0.5, "down": 0.3}, "blended": True,
            "blend50_exact": {"up": 0.5, "flat": 0.3, "down": 0.2}, "jev": {"pick": "up", "probabilities": {"up": 0.9, "flat": 0.05, "down": 0.05}}}
     c = {"row_ts": "2026-09-28T13:29:10-04:00", "marks": {"next_30": "2026-09-28T13:59:00-04:00", "next_60": "2026-09-28T14:29:00-04:00"},
-         "calls": [], "hour": {**END_30, "used": 2, "shown_source": "pool_v2", "by": {"next_30": END_30, "next_60": n60}, "average": avg}}
+         "calls": [], "hour": {**END_30, "used": 2, "shown_source": "learner_pool", "by": {"next_30": END_30, "next_60": n60}, "average": avg}}
     card = _sum_card(c, whole=True)
     assert _texts(card, "big") == ["Flat 47%"] and _texts(card, "lab call") == ["Today’s call · combined"]
     assert _texts(card, "tod")[0].startswith("Usual oddsFlat 61%") and "JEV aloneUp 67%" in _texts(card, "tod")[0] and "graded" not in _texts(card, "tod")[0]
@@ -1586,7 +1586,8 @@ def _voice(name, plain, down, flat, up, share):
     return {"name": name, "plain_name": plain, "probabilities": {"up": up, "flat": flat, "down": down}, "share": share}
 
 
-# the 15:29 ET card of 2026-10-07 (state/spx_jev/latest.json) as the service now writes it: the call's voices beside it
+# the 15:29 ET card of 2026-10-07 (state/spx_jev/latest.json) as the service wrote it then (shown_source pool_v2, the learner pool's
+# name before 2026-10-11, which the page still reads): the call's voices beside it
 # (live_call.take_over, listed in the order written, not by share) and each end-price sum's flat band in points
 REAL_AVG = {"pick": "flat", "probabilities": {"up": 0.1653, "flat": 0.4803, "down": 0.3545}, "primary": "average_30", "box": "next_30",
             "minutes": 30, "flat_points": 3.62, "edge_points": 2.14, "price": 7798.0, "shown_source": "pool_v2",
@@ -2314,14 +2315,14 @@ def test_every_colour_and_size_the_page_names_is_defined():
 # the scoreboard as the station held it on 2026-10-10 (state/spx_jev/mirai_prediction/scoreboard.json), trimmed to what the page
 # reads: 107 graded reads, the combined forecast right 52.3% of them, the usual-odds guess 57.9%, the call 5.34 points worse
 BOARD = {"sums": {"average_30": {"graded_reads_count": 107, "since_day": "2026-09-29",
-                                 "pool_v2": {"name": "pool_v2", "plain_name": "Combined forecast", "reads_count": 107, "right_pct": 52.3,
+                                 "learner_pool": {"name": "learner_pool", "plain_name": "Combined forecast", "reads_count": 107, "right_pct": 52.3,
                                              "skill_vs_historical_odds_pct": -5.34, "status": "Worse", "interval_90": [-11.94, -0.55]},
                                  "voices": [{"name": "historical_odds", "plain_name": "Historical odds", "right_pct": 57.9, "skill_vs_historical_odds_pct": 0.0, "reads_count": 107},
                                             {"name": "jev_own", "plain_name": "JEV's own call", "right_pct": 37.4, "skill_vs_historical_odds_pct": -41.02, "reads_count": 107},
                                             {"name": "blend_50_50", "plain_name": "50/50 blend", "right_pct": 55.7, "skill_vs_historical_odds_pct": -9.38, "reads_count": 97},
                                             {"name": "matcher", "plain_name": "Matcher", "right_pct": 57.9, "skill_vs_historical_odds_pct": -5.29, "reads_count": 95}],
-                                 "daily_skill": [{"day": "2026-10-07", "pool_v1_pct": -33.81, "pool_v2_pct": -22.11}, {"day": "2026-10-08", "pool_v1_pct": -2.06, "pool_v2_pct": 5.01},
-                                                 {"day": "2026-10-09", "pool_v1_pct": -6.18, "pool_v2_pct": -4.48}]}}}
+                                 "daily_skill": [{"day": "2026-10-07", "base_pool_pct": -33.81, "learner_pool_pct": -22.11}, {"day": "2026-10-08", "base_pool_pct": -2.06, "learner_pool_pct": 5.01},
+                                                 {"day": "2026-10-09", "base_pool_pct": -6.18, "learner_pool_pct": -4.48}]}}}
 _RECORD_FNS = ("labRow", "learnSum", "learnGuess", "scorePct", "verdictWords", "sideOf", "recordRow", "paintRecord", "scoreBar", "scoreRow", "skillLine", "openRecord")
 
 
@@ -2348,7 +2349,7 @@ def test_the_record_row_gives_the_scoreboards_numbers_in_the_learning_loops_word
     assert got["parts"] == [["lab", "Record \u00B7 30 min107 of 300 reads"], ["rec-l", "56 of 107 right \u00B7 usual odds 58 \u00B7 a bit worse"], ["rec-n", "Too early to judge"]]
     assert got["label"] == "Record on 30-minute calls: 56 of 107 right \u00B7 usual odds 58 \u00B7 a bit worse, too early to judge. Open the learning loop"
     assert _record({"sums": {"average_30": {"graded_reads_count": 0}}})["hidden"] is True and _record(None)["hidden"] is True
-    judged = {"sums": {"average_30": {**BOARD["sums"]["average_30"], "graded_reads_count": 312, "pool_v2": {**BOARD["sums"]["average_30"]["pool_v2"], "reads_count": 312, "right_pct": 60.0, "skill_vs_historical_odds_pct": 12.5}}}}
+    judged = {"sums": {"average_30": {**BOARD["sums"]["average_30"], "graded_reads_count": 312, "learner_pool": {**BOARD["sums"]["average_30"]["learner_pool"], "reads_count": 312, "right_pct": 60.0, "skill_vs_historical_odds_pct": 12.5}}}}
     assert _record(judged)["parts"][1:] == [["rec-l", "187 of 312 right \u00B7 usual odds 58 \u00B7 better"], ["rec-n", "Judged at 300 reads"]]
     assert "paintRecord(); drawClaude(); }" in _fn("draw") and "paintRecord(); })" in _fn("pollLearn")
     assert "var LEARN_URL = '/api/store/file?name=FORECASTER_SCOREBOARD_CARD', LEARN_SUM = 'average_30', LEARN_MS = 60000;" in JS
@@ -2401,7 +2402,7 @@ CLAUDE = {"read_id": "live:2026-10-09T14:30:12-04:00", "trading_day": "2026-10-0
                                             "input_field_path_in_words": "the last 30 min moved less than usual at this hour",
                                             "pushes_toward_in_words": "points to a smaller move", "horizon_in_words": "next 30 min"},
           "record": {"verdict": "Too early", "graded_reads": 0, "scorecard_built_at": None, "horizons": {}}, "written_at": "2026-10-09T14:31:40-04:00"}
-_CLAUDE_FNS = ("top1", "jevOwn", "headline", "clOk", "clBase", "clPick", "clDir", "clHeader", "clBar", "clNumbers", "moveVsUsual", "tiltVsUsual", "against", "leadLine",
+_CLAUDE_FNS = ("top1", "jevOwn", "combinedCall", "headline", "clOk", "clBase", "clPick", "clDir", "clHeader", "clBar", "clNumbers", "moveVsUsual", "tiltVsUsual", "against", "leadLine",
                "agreeWords", "paintClaude", "drawClaude", "horizonKey", "reasonRow", "recordLine", "openWhy")
 # the 30-minute card the CLAUDE read was made for (its read_id is "live:" and the card's row stamp), calling flat, and one calling up
 FLAT_CARD = {"row_ts": "2026-10-09T14:30:12-04:00", "hour": {"average": {"pick": "flat", "probabilities": {"flat": 0.62, "up": 0.24, "down": 0.15}}}}

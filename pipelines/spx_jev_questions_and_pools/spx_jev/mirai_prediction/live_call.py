@@ -1,36 +1,39 @@
-"""Pool 2 as the call: the Mirai Prediction System forecasts the read inside the live service, and Pool 2's mix is the
-call the phone shows and the grader grades. Since 2026-10-06 (Will: "retire Pool 1, go with Pool 2's forecast").
+"""The learner pool as the call: the Mirai Prediction System forecasts the read inside the live service, and the learner
+pool's mix is the call the phone shows and the grader grades. Since 2026-10-06 (Will: "retire Pool 1, go with Pool 2's
+forecast"; the pools are named base_pool and learner_pool since 2026-10-11).
 
     forecast_now_with_voices
                    every voice forecasts the read from the records the service has in memory (nothing on disk yet), the
-                   raw lines are written exactly as the detached hook would write them, and Pool 2's mix per sum is returned
+                   raw lines are written exactly as the detached hook would write them, and the learner pool's mix per sum is returned
                    with the voices it mixed per sum, with their say
-    take_over      the sums with Pool 2's mix as their pick and probabilities, the exact 50/50 blend kept beside each as
+    take_over      the sums with the learner pool's mix as their pick and probabilities, the exact 50/50 blend kept beside each as
                    blend50_exact (so the phone can still say what it replaced), shown_source = SHOWN_SOURCE, and the voices
                    that went into each as ``voices``, most say first (the phone's "what went into it")
 
 Any failure leaves the call on its blend; the service then starts the detached hook as before, so the day's lines are
-never lost. Pool 1 (spx_jev.pool) keeps running quietly as a source of voices; it is no longer shown or graded as the call.
+never lost. The base pool (spx_jev.base_pool) keeps running quietly as a source of voices; it is no longer shown or graded as
+the call. A record from before 2026-10-11 says ``pool_v2`` where this writes ``shown_source``; readers take both
+(name_map.current_voice_name).
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-from .name_map import plain_name
+from .name_map import LEARNER_POOL, plain_name
 from .read_hook import forecast_read
 
-SHOWN_SOURCE = "pool_v2"
+SHOWN_SOURCE = LEARNER_POOL
 BUDGET_SECONDS = 5.0
 
 
 def forecast_now_with_voices(state_dir: Path | str, lane: str, day: str, read_record: dict,
                              hour_record: dict) -> tuple[dict[str, dict[str, float]], dict[str, dict]]:
-    """({sum_id: Pool 2's probabilities}, {sum_id: the voices it mixed, read_hook.mixed_voices}) for the read the service
+    """({sum_id: the learner pool's probabilities}, {sum_id: the voices it mixed, read_hook.mixed_voices}) for the read the service
     is making, from its in-memory records."""
     snapshots = {hour_record["row_ts"]: hour_record["pool"]} if isinstance(hour_record.get("pool"), dict) else {}
-    result = forecast_read(state_dir, lane, day, read_record.get("read_id"), source="live", pool_v1_snapshots=snapshots,
+    result = forecast_read(state_dir, lane, day, read_record.get("read_id"), source="live", base_pool_snapshots=snapshots,
                            budget_seconds=BUDGET_SECONDS, read_record=read_record, hour_record=hour_record)
-    return result.get("pool_v2") or {}, result.get("voices") or {}
+    return result.get(LEARNER_POOL) or {}, result.get("voices") or {}
 
 
 def voice_list(mixed: dict) -> list[dict]:
@@ -53,13 +56,13 @@ def _with_voices(sum_doc: dict, voices: dict[str, dict], sum_id: str) -> dict:
 
 
 def _with_call(sum_doc: dict, probs: dict[str, float]) -> dict:
-    """One sum with Pool 2's probabilities as its call; the blend it replaced kept beside it."""
+    """One sum with the learner pool's probabilities as its call; the blend it replaced kept beside it."""
     return {**sum_doc, "pick": max(probs, key=probs.get), "probabilities": probs,
             "blend50_exact": sum_doc.get("blend50_exact") or sum_doc.get("probabilities")}
 
 
 def take_over(hour: dict, forecasts: dict[str, dict[str, float]], lane, voices: dict[str, dict] | None = None) -> dict:
-    """The hour's sums with Pool 2's mix as the call wherever Pool 2 forecast the sum: the average-price call under
+    """The hour's sums with the learner pool's mix as the call wherever the learner pool forecast the sum: the average-price call under
     ``average`` (and its ``by``), and each end-price sum under ``by`` (the primary's copied to the top),
     each with the ``voices`` that went into it (forecast_now_with_voices) when there are any."""
     voices = voices or {}

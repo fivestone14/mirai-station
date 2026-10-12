@@ -33,7 +33,7 @@ SIZE_BUCKETS = ("down_over_3_flat_edges", "down_2_to_3_flat_edges", "down_1_to_2
                 "up_1_to_2_flat_edges", "up_2_to_3_flat_edges", "up_over_3_flat_edges")
 DIRECTIONS = ("up", "flat", "down")
 STATION_HORIZONS = {"next_30_minutes": "next_30", "next_60_minutes": "next_60"}   # the station's names for the same windows
-MAIN_FORECAST_SOURCE = "pool_v2"     # the station's headline forecast (Pool 2); any other shown source is not the main forecast
+MAIN_FORECAST_SOURCES = ("learner_pool", "pool_v2")   # the station's headline forecast, the learner pool (``pool_v2`` in a record from before 2026-10-11); any other shown source is not the main forecast
 MAIN_FORECAST_LIVE_WITHIN_SECONDS = 600   # a main forecast archived later than this after the read is a replay, never used
 
 
@@ -202,8 +202,8 @@ def comparison_forecasts_from_read_record(read_record: dict | None, horizon: str
     written = _written_after_read(read_record or {})
     if not isinstance(main, dict):
         missing["existing_system_main_forecast"] = "not in the read record"
-    elif block.get("shown_source") != MAIN_FORECAST_SOURCE:
-        missing["existing_system_main_forecast"] = f"the shown forecast was {block.get('shown_source')!r}, not {MAIN_FORECAST_SOURCE}"
+    elif block.get("shown_source") not in MAIN_FORECAST_SOURCES:
+        missing["existing_system_main_forecast"] = f"the shown forecast was {block.get('shown_source')!r}, not the learner pool ({MAIN_FORECAST_SOURCES[0]})"
     elif written is None:
         missing["existing_system_main_forecast"] = "the read record has no archived_at stamp"
     elif written[1] > MAIN_FORECAST_LIVE_WITHIN_SECONDS:

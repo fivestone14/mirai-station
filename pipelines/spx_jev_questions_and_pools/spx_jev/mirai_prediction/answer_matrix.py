@@ -4,7 +4,8 @@ Built by the nightly job from the live store's Parquet tables (read through name
 the live hook never scans the store; the hook only adds today's row to it:
 
     forecasts_at_read_time (calls)   one row per sum per read: the historical odds (clock_probs), JEV's own call (jev_probs),
-                                     the call the phone showed (shown_probs), pool_v1's mix (pool_probs), learn_exclude
+                                     the call the phone showed (shown_probs), the base pool's mix (base_pool_probs; ``pool_probs``
+                                     in a partition built under store schema 4, read through _base_pool_probs_column), learn_exclude
     graded_results (average_grades)  the result of that sum's window: up, flat or down, joined on (read_id, sum_id) - never on horizon
     jev_answers (answers)            layer 3: JEV's pick per question where status == "answered"; anything else is silent (None);
                                      the questions of one request group share one group, so a group casts one vote in the scorer;
@@ -61,11 +62,11 @@ class Row:
     historical_odds_probs: dict | None
     jev_own_probs: dict | None
     shown_probs: dict | None
-    pool_v1_probs: dict | None
+    base_pool_probs: dict | None
     outcome: str | None                      # up / flat / down, or None while the window is still open or ungraded
     learn_exclude: bool
     answers: dict[str, str | None] = field(default_factory=dict)   # column id -> label, None when silent
-    shown_source: str | None = None          # what the shown call was: the blend, pool_v1 or (since 2026-10-06) pool_v2
+    shown_source: str | None = None          # what the shown call was: the blend or (since 2026-10-06) the learner pool, as the record names it
 
     def is_trainable(self) -> bool:
         return self.outcome in OUTCOMES and not self.learn_exclude and self.historical_odds_probs is not None
@@ -147,6 +148,16 @@ def _query(sql: str) -> list[dict]:
     return [dict(zip(cols, rec)) for rec in rel.fetchall()]
 
 
+def _base_pool_probs_column(calls: str) -> str:
+    """The calls table's column with the base pool's mix, as the partitions on disk name it: ``base_pool_probs`` (store schema 5,
+    2026-10-11), ``pool_probs`` in a partition built before, and the first of the two that is set while partitions of both
+    ages stand (the store rebuilds the last seven days each night; ``python -m spx_jev.store --backfill`` rebuilds every day)."""
+    import duckdb
+    present = {r[0] for r in duckdb.sql(f"DESCRIBE SELECT * FROM read_parquet('{calls}', hive_partitioning=1, union_by_name=true)").fetchall()}
+    have = [f"c.{col}" for col in ("base_pool_probs", "pool_probs") if col in present]
+    return f"{have[0] if len(have) == 1 else f'COALESCE({have[0]}, {have[1]})'} AS base_pool_probs"
+
+
 def load_base_rows(state_dir: Path | str, lane: str, sum_id: str, before_day: str) -> list[Row]:
     """forecasts_at_read_time JOIN graded_results on (read_id, sum_id): one Row per read of this sum, days before ``before_day``,
     without answers yet. A read whose window is not graded yet has outcome None."""
@@ -162,8 +173,8 @@ def load_base_rows(state_dir: Path | str, lane: str, sum_id: str, before_day: st
         grade_cols = "g.outcome AS outcome"
     sql = f"""
         SELECT c.read_id, CAST(c.row_ts AS VARCHAR) AS row_ts, CAST(c.day AS VARCHAR) AS day, c.sum_id,
-               c.clock_probs, c.jev_probs, c.shown_probs, c.pool_probs, c.learn_exclude, c.shown_source, {grade_cols}
-        FROM read_parquet('{calls}', hive_partitioning=1) c
+               c.clock_probs, c.jev_probs, c.shown_probs, {_base_pool_probs_column(calls)}, c.learn_exclude, c.shown_source, {grade_cols}
+        FROM read_parquet('{calls}', hive_partitioning=1, union_by_name=true) c
         {grade_join}
         WHERE c.lane = '{lane}' AND c.sum_id = '{sum_id}' AND CAST(c.day AS VARCHAR) < '{before_day}'
         ORDER BY c.row_ts
@@ -172,7 +183,7 @@ def load_base_rows(state_dir: Path | str, lane: str, sum_id: str, before_day: st
     for r in _query(sql):
         rows.append(Row(read_id=r["read_id"], row_ts=str(r["row_ts"]), day=str(r["day"])[:10], sum_id=sum_id,
                         historical_odds_probs=_probs(r["clock_probs"]), jev_own_probs=_probs(r["jev_probs"]),
-                        shown_probs=_probs(r["shown_probs"]), pool_v1_probs=_probs(r["pool_probs"]),
+                        shown_probs=_probs(r["shown_probs"]), base_pool_probs=_probs(r["base_pool_probs"]),
                         outcome=r["outcome"] if r["outcome"] in OUTCOMES else None, learn_exclude=bool(r["learn_exclude"]),
                         shown_source=r["shown_source"]))
     return rows
@@ -318,7 +329,7 @@ def todays_rows(state_dir: Path | str, lane: str, day: str, read_record: dict, m
             answers.setdefault(col, None)
         out[sum_id] = Row(read_id=read_record["read_id"], row_ts=row_ts, day=day, sum_id=sum_id,
                           historical_odds_probs=_probs(call.get("clock_probs")), jev_own_probs=_probs(call.get("jev_probs")),
-                          shown_probs=_probs(call.get("shown_probs")), pool_v1_probs=_probs(call.get("pool_probs")),
+                          shown_probs=_probs(call.get("shown_probs")), base_pool_probs=_probs(call.get("base_pool_probs")),
                           outcome=None, learn_exclude=bool(call.get("learn_exclude")), answers=answers,
                           shown_source=call.get("shown_source"))
     return out

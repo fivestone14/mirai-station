@@ -79,7 +79,7 @@ class ReadRecord:
     event: dict | None                           # the tier-1 event tag (events.py), never sent to JEV
     ruler: dict | None = None                    # the tape lane's unit; the premarket lane's pre-open ruler, or why it has none
     band: dict | None = None                     # the tape lane's bands in points
-    pool: dict | None = None                     # the learning loop's forecasts per horizon (pool.snapshot)
+    pool: dict | None = None                     # the learning loop's forecasts per horizon (base_pool.snapshot)
     checkpoint: str | None = None                # the premarket lane's checkpoint, "HH:MM" market time
     night: dict | None = None                    # the premarket lane's overnight store as the read saw it (premarket.night_seen)
     average_request: dict | None = None          # the average-price sum's request, None when it was not asked

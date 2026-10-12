@@ -1,12 +1,12 @@
-"""pool_v2's mix and update against pool_v1's own rules; the answer matrix's columns; the voices."""
+"""The learner pool's mix and update against the base pool's own rules; the answer matrix's columns; the voices."""
 from __future__ import annotations
 
 
 import pytest
 
 from conftest import station_paths
-from spx_jev import pool as pool_v1
-from spx_jev.mirai_prediction import pool_v2
+from spx_jev import base_pool
+from spx_jev.mirai_prediction import learner_pool
 from spx_jev.mirai_prediction.answer_matrix import Row, column_catalog, row_answers
 from spx_jev.mirai_prediction.code_features import load_catalog
 from spx_jev.mirai_prediction.name_map import rename_voice, store_path
@@ -19,96 +19,96 @@ F = {"historical_odds": {"up": 0.2, "flat": 0.6, "down": 0.2}, "jev_own": {"up":
 
 
 def test_start_weights_give_learners_three_percent_and_never_zero():
-    w = pool_v2.start_weights(list(F))
+    w = learner_pool.start_weights(list(F))
     assert sum(w.values()) == pytest.approx(1.0)
     for v in ("additive_scorer", "matcher", "jev_corrected"):
-        assert w[v] == pytest.approx(pool_v2.NEW_VOICE_START_WEIGHT)
+        assert w[v] == pytest.approx(learner_pool.NEW_VOICE_START_WEIGHT)
     assert all(x > 0 for x in w.values())
-    assert w["blend_50_50"] > w["historical_odds"]      # pool_v1's starting shape is kept among the existing voices
+    assert w["blend_50_50"] > w["historical_odds"]      # the base pool's starting shape is kept among the existing voices
 
 
 def test_the_pools_are_never_mixed_as_voices():
-    state = pool_v2.new_pool_v2("average_30", list(F) + ["pool_v1"])
-    assert "pool_v1" not in state["start_weights"]
-    mixed = pool_v2.mix_pool_v2(state, {**F, "pool_v1": {"up": 0.9, "flat": 0.05, "down": 0.05}})
+    state = learner_pool.new_learner_pool("average_30", list(F) + ["base_pool"])
+    assert "base_pool" not in state["start_weights"]
+    mixed = learner_pool.mix_learner_pool(state, {**F, "base_pool": {"up": 0.9, "flat": 0.05, "down": 0.05}})
     assert mixed["up"] < 0.5
 
 
-def test_mix_follows_pool_v1s_rule():
-    state = pool_v2.new_pool_v2("average_30", list(F))
-    mine = pool_v2.mix_pool_v2(state, F)
-    mixed = [v for v in F if v not in pool_v2.BENCHED_VOICES]
+def test_mix_follows_the_base_pools_rule():
+    state = learner_pool.new_learner_pool("average_30", list(F))
+    mine = learner_pool.mix_learner_pool(state, F)
+    mixed = [v for v in F if v not in learner_pool.BENCHED_VOICES]
     logs = {"M": {v: state["voice_log_weights"]["move"][v] for v in mixed},
             "D": {v: state["voice_log_weights"]["direction"][v] for v in mixed}}
-    theirs = floored(pool_v1.mixed({v: floored(F[v]) for v in mixed}, logs))
+    theirs = floored(base_pool.mixed({v: floored(F[v]) for v in mixed}, logs))
     for k in mine:
         assert mine[k] == pytest.approx(theirs[k], abs=1e-9)
 
 
 def test_the_voices_carrying_jevs_opinion_are_benched_but_still_learn():
     # issue SPX30-1: JEV's own call, the 50/50 blend and the JEV mixes sit out of the mix whatever their weight ...
-    state = pool_v2.new_pool_v2("average_30", list(F))
-    assert {"jev_own", "blend_50_50"} <= set(pool_v2.BENCHED_VOICES)
-    assert "jev_mix_0_percent" not in pool_v2.BENCHED_VOICES                 # the 0% mix is the calibrated odds, no JEV in it
+    state = learner_pool.new_learner_pool("average_30", list(F))
+    assert {"jev_own", "blend_50_50"} <= set(learner_pool.BENCHED_VOICES)
+    assert "jev_mix_0_percent" not in learner_pool.BENCHED_VOICES                 # the 0% mix is the calibrated odds, no JEV in it
     loud = {**F, "jev_own": {"up": 0.98, "flat": 0.01, "down": 0.01}, "blend_50_50": {"up": 0.98, "flat": 0.01, "down": 0.01}}
-    assert pool_v2.mix_pool_v2(state, loud) == pytest.approx(pool_v2.mix_pool_v2(state, F), abs=1e-12)
-    assert set(pool_v2.mixable_voices(state, F)) == set(F) - {"jev_own", "blend_50_50"}
+    assert learner_pool.mix_learner_pool(state, loud) == pytest.approx(learner_pool.mix_learner_pool(state, F), abs=1e-12)
+    assert set(learner_pool.mixable_voices(state, F)) == set(F) - {"jev_own", "blend_50_50"}
     # ... but they are still scored and learned, so their weight keeps their track record
-    state, line = pool_v2.update_pool_v2_after_day(state, "2026-10-01", [(F, "flat")] * 5)
+    state, line = learner_pool.update_learner_pool_after_day(state, "2026-10-01", [(F, "flat")] * 5)
     assert line["applied"] and {"jev_own", "blend_50_50"} <= set(line["steps"])
 
 
 def test_an_absent_voice_is_asleep_for_the_read():
-    state = pool_v2.new_pool_v2("average_30", list(F))
+    state = learner_pool.new_learner_pool("average_30", list(F))
     awake = {k: v for k, v in F.items() if k != "matcher"}
-    mixed = pool_v2.mix_pool_v2(state, awake)
+    mixed = learner_pool.mix_learner_pool(state, awake)
     assert mixed is not None
-    state, line = pool_v2.update_pool_v2_after_day(state, "2026-10-01", [(awake, "flat")] * 5)
+    state, line = learner_pool.update_learner_pool_after_day(state, "2026-10-01", [(awake, "flat")] * 5)
     assert line["applied"] and "matcher" not in line["steps"]            # asleep on every read: no step of its own
     assert all(step["move"]["reads"] == 5 for step in line["steps"].values())
 
 
 def test_a_voice_asleep_on_some_reads_is_measured_against_the_odds_on_its_own_reads():
-    state = pool_v2.new_pool_v2("average_30", list(F))
+    state = learner_pool.new_learner_pool("average_30", list(F))
     # the matcher speaks on one read only, and there it matches the odds exactly: its gap must be zero, whatever the
     # other reads (where it was asleep) cost the odds
     awake = {**F, "matcher": F["historical_odds"]}
     asleep = {k: v for k, v in F.items() if k != "matcher"}
-    state, line = pool_v2.update_pool_v2_after_day(state, "2026-10-01", [(awake, "flat"), (asleep, "up"), (asleep, "up")])
+    state, line = learner_pool.update_learner_pool_after_day(state, "2026-10-01", [(awake, "flat"), (asleep, "up"), (asleep, "up")])
     assert line["steps"]["matcher"]["move"] == {"gap": 0.0, "clipped": False, "reads": 1}
 
 
 def test_a_voice_joining_later_keeps_the_starting_weights_summing_to_one():
-    state = pool_v2.new_pool_v2("average_30", ["historical_odds", "jev_own"])
-    state = pool_v2.add_missing_voices(state, ["blend_50_50", "matcher"])
+    state = learner_pool.new_learner_pool("average_30", ["historical_odds", "jev_own"])
+    state = learner_pool.add_missing_voices(state, ["blend_50_50", "matcher"])
     assert sum(state["start_weights"].values()) == pytest.approx(1.0)
     assert state["start_weights"]["matcher"] < state["start_weights"]["blend_50_50"]
 
 
-def test_update_matches_pool_v1s_weights_step_on_one_day():
-    state = pool_v2.new_pool_v2("average_30", list(F))
+def test_update_matches_the_base_pools_weights_step_on_one_day():
+    state = learner_pool.new_learner_pool("average_30", list(F))
     reads = [(F, "flat"), (F, "up"), (F, "flat")]
     logs_before = dict(state["voice_log_weights"]["move"])
-    # pool_v1's rule on the same inputs: day-mean move losses, step against the reference, Fixed-Share toward the prior
+    # the base pool's rule on the same inputs: day-mean move losses, step against the reference, Fixed-Share toward the prior
     day_loss = {v: sum(losses(floored(p), y)[0] for f, y in reads for p in [f[v]]) / len(reads) for v in F}
-    theirs, _ = pool_v1.weights_step(logs_before, day_loss, "historical_odds", state["start_weights"], len(reads))
-    state, line = pool_v2.update_pool_v2_after_day(state, "2026-10-01", reads)
-    mine = pool_v2.weight_shares(state, "move")
+    theirs, _ = base_pool.weights_step(logs_before, day_loss, "historical_odds", state["start_weights"], len(reads))
+    state, line = learner_pool.update_learner_pool_after_day(state, "2026-10-01", reads)
+    mine = learner_pool.weight_shares(state, "move")
     for v in F:
         assert mine[v] == pytest.approx(theirs[v], abs=1e-9)
     assert line["applied"] and line["reads"] == 3
 
 
 def test_a_day_is_learned_once():
-    state = pool_v2.new_pool_v2("average_30", list(F))
-    state, first = pool_v2.update_pool_v2_after_day(state, "2026-10-01", [(F, "flat")])
-    state, again = pool_v2.update_pool_v2_after_day(state, "2026-10-01", [(F, "flat")])
+    state = learner_pool.new_learner_pool("average_30", list(F))
+    state, first = learner_pool.update_learner_pool_after_day(state, "2026-10-01", [(F, "flat")])
+    state, again = learner_pool.update_learner_pool_after_day(state, "2026-10-01", [(F, "flat")])
     assert first["applied"] and not again["applied"]
 
 
 def test_zero_start_weight_is_refused():
     with pytest.raises(ValueError):
-        pool_v2.start_weights(["additive_scorer"])       # learners alone: no existing voice to carry the rest
+        learner_pool.start_weights(["additive_scorer"])       # learners alone: no existing voice to carry the rest
 
 
 # ---------------------------------------------------------------- answer matrix
@@ -141,41 +141,41 @@ def test_voice_names_follow_the_diagram():
     assert rename_voice("questions") == "question_tilt"
 
 
-def test_existing_voices_for_an_end_price_sum_come_from_pool_v1s_snapshot():
+def test_existing_voices_for_an_end_price_sum_come_from_the_base_pools_snapshot():
     row = Row(read_id="live:t", row_ts="t", day="2026-10-01", sum_id="next_60", historical_odds_probs=F["historical_odds"],
-              jev_own_probs=F["jev_own"], shown_probs=F["blend_50_50"], pool_v1_probs=None, outcome=None, learn_exclude=False)
+              jev_own_probs=F["jev_own"], shown_probs=F["blend_50_50"], base_pool_probs=None, outcome=None, learn_exclude=False)
     snap = {"next_60": {"experts": {"baseline": F["historical_odds"], "jev_share_0.2": F["blend_50_50"], "questions": F["matcher"]},
                         "pool": F["additive_scorer"]}}
     out = existing_voice_forecasts(row, snap)
     # JEV's own call is already in the snapshot (jev_share_1.0), so the row's copy is not added a second time
-    assert set(out) == {"historical_odds", "jev_mix_20_percent", "question_tilt", "pool_v1"}
+    assert set(out) == {"historical_odds", "jev_mix_20_percent", "question_tilt", "base_pool"}
 
 
 def test_existing_voices_for_the_average_sum_come_from_the_row():
     row = Row(read_id="live:t", row_ts="t", day="2026-10-01", sum_id="average_30", historical_odds_probs=F["historical_odds"],
-              jev_own_probs=F["jev_own"], shown_probs=F["blend_50_50"], pool_v1_probs=None, outcome=None, learn_exclude=False)
+              jev_own_probs=F["jev_own"], shown_probs=F["blend_50_50"], base_pool_probs=None, outcome=None, learn_exclude=False)
     assert set(existing_voice_forecasts(row, None)) == {"historical_odds", "jev_own", "blend_50_50"}
 
 
 def test_overlapping_reads_count_by_their_coverage():
     # 60-minute reads every 30 minutes: the first covers its whole window, each later one only its new half
     times = ["2026-10-01T10:00:00-04:00", "2026-10-01T10:30:00-04:00", "2026-10-01T11:00:00-04:00"]
-    assert pool_v2.read_coverage(times, 60) == pytest.approx([1.0, 0.5, 0.5])
-    assert pool_v2.read_coverage(list(reversed(times)), 60) == pytest.approx([0.5, 0.5, 1.0])    # by time, not by list order
-    assert pool_v2.read_coverage(times, 30) == pytest.approx([1.0, 1.0, 1.0])                    # back to back: no overlap
-    assert pool_v2.read_coverage([None, None], 60) == [1.0, 1.0]
+    assert learner_pool.read_coverage(times, 60) == pytest.approx([1.0, 0.5, 0.5])
+    assert learner_pool.read_coverage(list(reversed(times)), 60) == pytest.approx([0.5, 0.5, 1.0])    # by time, not by list order
+    assert learner_pool.read_coverage(times, 30) == pytest.approx([1.0, 1.0, 1.0])                    # back to back: no overlap
+    assert learner_pool.read_coverage([None, None], 60) == [1.0, 1.0]
 
 
-def test_the_day_step_uses_the_counted_reads_like_pool_v1():
+def test_the_day_step_uses_the_counted_reads_like_the_base_pool():
     times = ["2026-10-01T10:00:00-04:00", "2026-10-01T10:30:00-04:00", "2026-10-01T11:00:00-04:00"]
     reads = [(F, "flat"), (F, "up"), (F, "flat")]
-    state = pool_v2.new_pool_v2("next_60", list(F))
+    state = learner_pool.new_learner_pool("next_60", list(F))
     logs_before = dict(state["voice_log_weights"]["move"])
     c = [1.0, 0.5, 0.5]
     day_loss = {v: sum(ci * losses(floored(f[v]), y)[0] for ci, (f, y) in zip(c, reads)) / sum(c) for v in F}
-    theirs, _ = pool_v1.weights_step(logs_before, day_loss, "historical_odds", state["start_weights"], sum(c))
-    state, line = pool_v2.update_pool_v2_after_day(state, "2026-10-01", reads, times, 60)
-    mine = pool_v2.weight_shares(state, "move")
+    theirs, _ = base_pool.weights_step(logs_before, day_loss, "historical_odds", state["start_weights"], sum(c))
+    state, line = learner_pool.update_learner_pool_after_day(state, "2026-10-01", reads, times, 60)
+    mine = learner_pool.weight_shares(state, "move")
     for v in F:
         assert mine[v] == pytest.approx(theirs[v], abs=1e-9)
     assert line["counted_reads"] == pytest.approx(2.0) and line["reads"] == 3
@@ -184,23 +184,23 @@ def test_the_day_step_uses_the_counted_reads_like_pool_v1():
 def test_the_freeze_watches_the_existing_voices_only():
     calm = {k: v for k, v in F.items() if k != "jev_own"}                    # no existing voice far from the odds on a flat read
     wild = {**calm, "matcher": {"up": 0.98, "flat": 0.01, "down": 0.01}}       # a newcomer hits the clip every day
-    state = pool_v2.new_pool_v2("average_30", list(wild))
-    for d in range(pool_v2.FREEZE_WINDOW_DAYS + 2):
-        state, line = pool_v2.update_pool_v2_after_day(state, f"2026-08-{d + 1:02d}", [(wild, "flat")])
+    state = learner_pool.new_learner_pool("average_30", list(wild))
+    for d in range(learner_pool.FREEZE_WINDOW_DAYS + 2):
+        state, line = learner_pool.update_learner_pool_after_day(state, f"2026-08-{d + 1:02d}", [(wild, "flat")])
     assert state["frozen"] is None and line["applied"]                       # the newcomer never freezes the pool
 
 
 def test_the_freeze_stops_the_weights_and_an_unfreeze_starts_them_again():
     awful = {**F, "jev_own": {"up": 0.98, "flat": 0.01, "down": 0.01}}       # an existing voice clipped every day
-    state = pool_v2.new_pool_v2("average_30", list(F))
-    for d in range(pool_v2.FREEZE_WINDOW_DAYS):
-        state, line = pool_v2.update_pool_v2_after_day(state, f"2026-08-{d + 1:02d}", [(awful, "flat")])
+    state = learner_pool.new_learner_pool("average_30", list(F))
+    for d in range(learner_pool.FREEZE_WINDOW_DAYS):
+        state, line = learner_pool.update_learner_pool_after_day(state, f"2026-08-{d + 1:02d}", [(awful, "flat")])
     assert state["frozen"] and "frozen" in line
     before = dict(state["voice_log_weights"]["move"])
-    state, line = pool_v2.update_pool_v2_after_day(state, "2026-09-01", [(awful, "flat")])
+    state, line = learner_pool.update_learner_pool_after_day(state, "2026-09-01", [(awful, "flat")])
     assert not line["applied"] and state["voice_log_weights"]["move"] == before and "2026-09-01" in state["days_learned"]
-    state = pool_v2.unfreeze_pool_v2(state)
-    state, line = pool_v2.update_pool_v2_after_day(state, "2026-09-02", [(awful, "flat")])
+    state = learner_pool.unfreeze_learner_pool(state)
+    state, line = learner_pool.update_learner_pool_after_day(state, "2026-09-02", [(awful, "flat")])
     assert line["applied"] and state["voice_log_weights"]["move"] != before
 
 
@@ -233,7 +233,7 @@ def test_the_rows_of_a_matrix_built_after_the_cut_over_lose_the_dropped_columns_
 
     def row(read_id, day):
         return Row(read_id=read_id, row_ts=f"{day}T11:00:00-04:00", day=day, sum_id="average_30",
-                   historical_odds_probs=F["historical_odds"], jev_own_probs=None, shown_probs=None, pool_v1_probs=None,
+                   historical_odds_probs=F["historical_odds"], jev_own_probs=None, shown_probs=None, base_pool_probs=None,
                    outcome="flat", learn_exclude=False)
     paths.ensure_folders(paths.data_root(tmp_path))
     monkeypatch.setattr(answer_matrix, "load_base_rows", lambda *a: [row("live:a", "2026-10-07"), row("live:b", "2026-10-08")])

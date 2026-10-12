@@ -47,7 +47,7 @@ def test_scores_join_on_read_and_sum(tmp_path, monkeypatch):
     root = paths.ensure_folders(paths.data_root(tmp_path))
     monkeypatch.setattr(table_builder, "_day_read_ids", lambda *a: None)
     for sid in ("average_30", "next_60"):
-        for v in ("historical_odds", "pool_v2"):
+        for v in ("historical_odds", "pool_v2"):          # a raw line from before 2026-10-11 names the learner pool pool_v2: read as learner_pool
             paths.append_json_line(paths.raw_forecasts_file(root, "2026-10-01"), line(sum_id=sid, voice=v))
     table_builder.build_new_voice_forecasts_table(root, tmp_path, "live", "2026-10-01")
     monkeypatch.setattr(table_builder, "load_day_outcomes", lambda *a: {("live:2026-10-01T10:00:00-04:00", "average_30"): "flat"})
@@ -85,7 +85,7 @@ def test_skill_is_one_minus_the_penalty_ratio():
 
 def test_fit_for_a_day_refuses_rows_from_that_day():
     row = Row(read_id="r", row_ts="2026-10-01T10:00:00", day="2026-10-01", sum_id="average_30", historical_odds_probs=PROBS,
-              jev_own_probs=None, shown_probs=None, pool_v1_probs=None, outcome="flat", learn_exclude=False, answers={})
+              jev_own_probs=None, shown_probs=None, base_pool_probs=None, outcome="flat", learn_exclude=False, answers={})
     m = AnswerMatrix(lane="live", sum_id="average_30", built_for_day="2026-10-01", rows=[row], columns={})
     with pytest.raises(voice_fits.LeakError):
         voice_fits.check_no_leak(m, "2026-10-01")
@@ -134,7 +134,7 @@ def test_the_archive_keeps_the_newest_backups_per_file_and_a_weeks_forced_replay
     (archive / "notes.txt").write_text("")                                        # no stamp: left alone
     for d in (1, 5, 6):
         (archive / f"replay_force_202610{d:02d}T060000Z").mkdir()
-        (archive / f"replay_force_202610{d:02d}T060000Z" / "pool_v2").mkdir()
+        (archive / f"replay_force_202610{d:02d}T060000Z" / "learner_pool").mkdir()
     deleted = paths.prune_archive(root, now=datetime(2026, 10, 12, 5, tzinfo=timezone.utc), keep=10, replay_days=7)
     assert sorted(deleted) == sorted([f"{n}.202610{d:02d}T060000Z" for n in ("weights_average_30.json", "2026-10-01.jsonl") for d in (1, 2)]
                                      + ["replay_force_20261001T060000Z"])
@@ -144,7 +144,7 @@ def test_the_archive_keeps_the_newest_backups_per_file_and_a_weeks_forced_replay
     assert paths.prune_archive(root, now=datetime(2026, 10, 12, 5, tzinfo=timezone.utc)) == []
 
 
-def test_the_nightly_job_catches_up_the_days_pool_v2_has_not_learned(tmp_path):
+def test_the_nightly_job_catches_up_the_days_the_learner_pool_has_not_learned(tmp_path):
     root = paths.ensure_folders(paths.data_root(tmp_path))
     for day in ("2026-09-20", "2026-10-01", "2026-10-02"):
         paths.append_json_line(paths.raw_forecasts_file(root, day), line(day=day))
@@ -177,7 +177,7 @@ def test_the_hook_skips_a_read_already_written(tmp_path, monkeypatch):
 
 def test_atomic_json_and_backups(tmp_path):
     root = paths.ensure_folders(paths.data_root(tmp_path))
-    target = paths.pool_v2_dir(root) / "weights_x.json"
+    target = paths.learner_pool_dir(root) / "weights_x.json"
     paths.write_json_atomically(target, {"a": 1})
     assert json.loads(target.read_text()) == {"a": 1} and not target.with_name(target.name + ".tmp").exists()
     copy = paths.backup_before_change(root, target)
@@ -196,10 +196,10 @@ def test_pool_2_takes_over_the_call_and_keeps_the_blend_beside_it():
     out = live_call.take_over(hour, pool_2, LIVE)
     avg = out["average"]
     assert avg["pick"] == "up" and avg["probabilities"] == pool_2["average_30"] and avg["blend50_exact"] == blend
-    assert avg["shown_source"] == "pool_v2" and avg["by"]["average_30"]["pick"] == "up"
+    assert avg["shown_source"] == "learner_pool" and avg["by"]["average_30"]["pick"] == "up"
     assert out["by"]["next_60"]["pick"] == "down" and out["by"]["next_60"]["blend50_exact"] == blend
     assert out["by"]["next_30"]["pick"] == "flat" and "blend50_exact" not in out["by"]["next_30"]   # not learned: untouched
-    assert out["pick"] == "flat" and out["shown_source"] == "pool_v2"                               # the primary (next_30) kept its blend
+    assert out["pick"] == "flat" and out["shown_source"] == "learner_pool"                               # the primary (next_30) kept its blend
     assert hour["average"]["pick"] == "flat"                                                        # the input is never changed in place
 
 
@@ -224,7 +224,7 @@ def _mixed(**shares):
 
 def test_pool_2_takes_over_with_the_voices_that_went_into_each_sum_most_say_first():
     """The phone lists what went into the combined forecast: each mixed voice's own odds and its share of the say, on the
-    call (the average-price sum) and on the 60-minute sum, ordered by the share; the 30-minute sum Pool 2 never forecast
+    call (the average-price sum) and on the 60-minute sum, ordered by the share; the 30-minute sum the learner pool never forecast
     carries none."""
     from spx_jev.lane import LIVE
     from spx_jev.mirai_prediction import live_call
@@ -235,7 +235,7 @@ def test_pool_2_takes_over_with_the_voices_that_went_into_each_sum_most_say_firs
     assert [v["name"] for v in avg] == ["matcher", "jev_own", "historical_odds"] and [v["share"] for v in avg] == [0.5, 0.3, 0.2]
     assert avg[0] == {"name": "matcher", "plain_name": "Matcher", "probabilities": {"up": 0.2, "flat": 0.5, "down": 0.3}, "share": 0.5}
     assert [v["name"] for v in out["by"]["next_60"]["voices"]] == ["additive_scorer", "blend_50_50"]
-    assert out["by"]["next_60"]["shown_source"] == "pool_v2" and "voices" not in out["by"]["next_30"]
+    assert out["by"]["next_60"]["shown_source"] == "learner_pool" and "voices" not in out["by"]["next_30"]
     assert "voices" not in out and out["average"]["pick"] == "up"
 
 
@@ -246,18 +246,18 @@ def test_no_forecast_means_no_voices_and_a_voice_list_that_cannot_be_read_never_
     assert live_call.take_over(_pool_2_hour(), {}, LIVE, voices) == _pool_2_hour()
     pool_2 = {"average_30": {"up": 0.6, "flat": 0.2, "down": 0.2}}
     out = live_call.take_over(_pool_2_hour(), pool_2, LIVE, {"average_30": {"probabilities": {"matcher": {}}}})   # no shares
-    assert out["average"]["pick"] == "up" and out["average"]["shown_source"] == "pool_v2" and "voices" not in out["average"]
+    assert out["average"]["pick"] == "up" and out["average"]["shown_source"] == "learner_pool" and "voices" not in out["average"]
     assert "voices" not in live_call.take_over(_pool_2_hour(), pool_2, LIVE)["average"]
 
 
 def test_the_voices_mixed_are_the_ones_pool_2_weighs_never_the_pools_or_the_benched_with_shares_summing_to_one():
-    from spx_jev.mirai_prediction.pool_v2 import new_pool_v2
-    state = new_pool_v2("average_30", ["historical_odds", "matcher", "jev_own"])
-    forecasts = {v: PROBS for v in ("historical_odds", "matcher", "jev_own", "pool_v1", "not_in_the_pool")}
+    from spx_jev.mirai_prediction.learner_pool import new_learner_pool
+    state = new_learner_pool("average_30", ["historical_odds", "matcher", "jev_own"])
+    forecasts = {v: PROBS for v in ("historical_odds", "matcher", "jev_own", "base_pool", "not_in_the_pool")}
     got = read_hook.mixed_voices(state, forecasts)
     assert set(got["probabilities"]) == set(got["shares"]) == {"historical_odds", "matcher"}   # jev_own benched (SPX30-1)
     assert abs(sum(got["shares"].values()) - 1.0) < 1e-9
-    assert read_hook.mixed_voices(state, {"pool_v1": PROBS}) == {"probabilities": {}, "shares": {}}
+    assert read_hook.mixed_voices(state, {"base_pool": PROBS}) == {"probabilities": {}, "shares": {}}
 
 
 def test_the_live_forecast_returns_each_sums_mixed_voices_beside_its_mix_and_the_log_keeps_neither(tmp_path, monkeypatch):
@@ -270,7 +270,7 @@ def test_the_live_forecast_returns_each_sums_mixed_voices_beside_its_mix_and_the
     monkeypatch.setattr(read_hook, "day_fits_for", lambda *a: voice_fits.DayFits(fits={}, matrix=empty, fit_day=None))
     row = SimpleNamespace(read_id="live:2026-10-01T10:00:00-04:00", row_ts="2026-10-01T10:00:00-04:00", learn_exclude=False)
     monkeypatch.setattr(read_hook, "todays_rows", lambda *a: {"average_30": row})
-    forecasts = {"historical_odds": PROBS, "matcher": {"up": 0.6, "flat": 0.2, "down": 0.2}, "pool_v1": PROBS}
+    forecasts = {"historical_odds": PROBS, "matcher": {"up": 0.6, "flat": 0.2, "down": 0.2}, "base_pool": PROBS}
     monkeypatch.setattr(read_hook, "all_voice_forecasts", lambda *a: (forecasts, {}))
     rec = {"read_id": row.read_id}
     mixed, voices = live_call.forecast_now_with_voices(tmp_path, "live", "2026-10-01", rec, {"row_ts": row.row_ts})
@@ -280,7 +280,7 @@ def test_the_live_forecast_returns_each_sums_mixed_voices_beside_its_mix_and_the
     monkeypatch.setattr(read_hook, "load_archive_read", lambda *a: rec)
     read_hook.after_read(tmp_path, "live", row.read_id, "2026-10-03")
     logged = paths.read_json_lines(paths.job_run_log_file(root))[-1]
-    assert logged["ok"] is True and "voices" not in logged and "pool_v2" not in logged
+    assert logged["ok"] is True and "voices" not in logged and "learner_pool" not in logged
 
 
 def test_a_voices_list_that_fails_drops_only_that_list_and_the_sum_keeps_its_mix(tmp_path, monkeypatch):

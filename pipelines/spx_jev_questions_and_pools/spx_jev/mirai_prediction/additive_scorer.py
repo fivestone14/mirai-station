@@ -208,7 +208,7 @@ def fit_additive_scorer(matrix) -> AdditiveScorerFit:
 
 def forecast_with_additive_scorer(fit: AdditiveScorerFit, row) -> dict[str, float] | None:
     """{up, flat, down} for one row; None while the scorer is asleep (no pushes fitted yet, so it would only echo the
-    historical odds and double their weight in pool_v2) or when the row has no historical odds to start from."""
+    historical odds and double their weight in the learner pool) or when the row has no historical odds to start from."""
     if row.historical_odds_probs is None or not fit.pushes:
         return None
     p_move = stage_probability(row, fit.pushes.get("move", {}), fit.columns, fit.layer_volume.get("move", {}), "move")

@@ -5,7 +5,7 @@
 
 The four numbers are chosen by a coordinate grid search that minimises the mean three-way penalty on the graded rows
 (the score the whole system uses: spx_jev.scores). Below MIN_GRADED_ROWS graded rows the voice is asleep: it gives no
-forecast, so pool_v2 neither mixes nor updates it.
+forecast, so the learner pool neither mixes nor updates it.
 """
 from __future__ import annotations
 

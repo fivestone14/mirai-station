@@ -14,7 +14,7 @@ it (the live lane's folder is spx/jev/live_lane/):
     live_lane/historical_odds_average_price_days_state.json   the same on the average price, for the phone's call (clock.integral_odds)
     live_lane/jev_end_price_grades_by_read.jsonl, jev_question_weights_state.json   step 6 (see grade.py, weights.py)
     spx/jev/jev_reads_and_grades_by_event/{day}.jsonl    the raw archive: every read, grade and close-out of every lane (archive.py)
-    spx/prediction/base_pool/base_pool_state/next_30_minutes.json, next_60_minutes.json   the end-price learning loop (pool.py)
+    spx/prediction/base_pool/base_pool_state/next_30_minutes.json, next_60_minutes.json   the end-price learning loop (base_pool.py)
     live_lane/jev_average_price_grades_by_read_and_horizon.jsonl   the average-price grade of every call (grade.integral_run)
     spx/prediction/base_pool/base_pool_state/average_of_next_30_minutes.json, base_pool_updates_by_day_and_horizon/   the average-price learning loop (integral_loop.py)
 
@@ -34,10 +34,10 @@ checks nothing against the wall clock, and never writes into the station's recor
 where. Every read carries the tier-1 events due within the hour
 (events.py) in its record, its sum record and the card; JEV never sees them.
 
-On the live lane every sum also carries the learning loop's forecasts (pool.snapshot): the fixed
+On the live lane every sum also carries the learning loop's forecasts (base_pool.snapshot): the fixed
 mixes of JEV's sum with the price-only reference, today's blend, the question block and the pool,
 scored once the session is sealed. The call and the end-price sums keep their exact blend (``shown_source`` =
-pool.SHOWN_BLEND); neither loop's pool reaches the phone. Since 2026-10-06 Pool 2's combined
+base_pool.SHOWN_BLEND); neither loop's pool reaches the phone. Since 2026-10-06 the learner pool's combined
 forecast takes the call over after the read (mirai_prediction.live_call), the blend kept beside it.
 
 A lane (lane.py) is the same run with its own docs, folder, clock and grader. The tape lane
@@ -65,7 +65,7 @@ from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import archive, ask, flat_zone, integral, judgment, pool
+from . import archive, ask, base_pool, flat_zone, integral, judgment
 from .ask import build_requests, confidence, load_questions, pick, plain_error, retired, send, send_all
 from .baseline import Baseline
 from .cadence import (cadence_of, distance, ensure_cadence, fill_missing, held_answer, load_cadence, load_last, lost_today, mark_asleep,
@@ -281,25 +281,25 @@ def sum_the_hour(doc: dict, hour_doc: dict, answered: dict[str, dict], weights: 
             reply, avg_reply)
 
 
-def pool_snapshots(out_dir: Path, hour: dict, doc: dict, answered: dict[str, dict], fresh: set[str], now: datetime,
+def base_pool_snapshots(out_dir: Path, hour: dict, doc: dict, answered: dict[str, dict], fresh: set[str], now: datetime,
                    lane: Lane = LIVE) -> dict[str, dict]:
-    """The learning loop's forecasts at this read, one per horizon (pool.snapshot), from JEV's own sum,
+    """The learning loop's forecasts at this read, one per horizon (base_pool.snapshot), from JEV's own sum,
     the live clock's odds and the shown blend on the hour summary, and every live question's answer,
     fresh or held. A horizon JEV gave no probabilities for is left out, with the reason and the questions'
-    part (pool.answered), from which the average-price loop still learns a call standing on its average alone."""
+    part (base_pool.answered), from which the average-price loop still learns a call standing on its average alone."""
     live = {qid: q for g in doc["groups"] for qid, q in g["questions"].items() if q.get("status") == "live"}
-    members = {qid: pool.question_version(q) for qid, q in live.items()}
-    answers = {qid: a for qid, e in answered.items() if qid in members and (a := pool.soft_answer(e))}
+    members = {qid: base_pool.question_version(q) for qid, q in live.items()}
+    answers = {qid: a for qid, e in answered.items() if qid in members and (a := base_pool.soft_answer(e))}
     baseline = Baseline.load()
     out = {}
     for h, (minutes, _) in lane.horizons.items():
         b = (hour.get("by") or {}).get(h)
         if not isinstance(b, dict) or not isinstance(b.get("probabilities"), dict):
-            out[h] = {"left_out": f"JEV gave no probabilities for {h}", **pool.answered(answers, members, fresh)}
+            out[h] = {"left_out": f"JEV gave no probabilities for {h}", **base_pool.answered(answers, members, fresh)}
             continue
         jev = b["jev"]["probabilities"] if b.get("blended") else b["probabilities"]
         live_clock = b["clock"]["probabilities"] if b.get("blended") else None
-        out[h] = pool.snapshot(pool.load_state(out_dir, minutes), baseline, h, now, jev, live_clock, b["probabilities"],
+        out[h] = base_pool.snapshot(base_pool.load_state(out_dir, minutes), baseline, h, now, jev, live_clock, b["probabilities"],
                                answers, members, fresh)
     return out
 
@@ -830,12 +830,12 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
             # every forecast the learning loop will score, written down now; the phone keeps the exact blend. A call
             # on its average alone keeps the questions' answers, for the average-price loop to learn from
             try:
-                hour_rec["pool"] = pool_snapshots(out_dir, hour, doc, answered, set(fresh), now, lane)
+                hour_rec["pool"] = base_pool_snapshots(out_dir, hour, doc, answered, set(fresh), now, lane)
             except Exception as e:  # the loop must never cost the read its sum
                 log(f"the learning loop's snapshot was left out this run: {type(e).__name__}: {e}")
                 hour_rec["pool"] = {h: {"left_out": f"the snapshot failed this run: {type(e).__name__}"} for h in lane.horizons}
             if isinstance(hour.get("by"), dict):
-                hour = {**hour, "shown_source": pool.SHOWN_BLEND}
+                hour = {**hour, "shown_source": base_pool.SHOWN_BLEND}
         if hour is not None and lane.clock_blend and "probabilities" in (hour.get("average") or {}):
             # the phone's call is blended the same way, with how often the average over the same window ended each way
             # at this time of day, counted on the average price alone (clock.integral_odds)
@@ -850,7 +850,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
                 hour = {**hour, "average": {**hour["average"], "blend": {"used": False, "why": why}}}
         if hour is not None and lane.integral_loop and "probabilities" in (hour.get("average") or {}):
             # the call shows its exact blend, said under shown_source
-            hour = {**hour, "average": {**hour["average"], "shown_source": pool.SHOWN_BLEND}}
+            hour = {**hour, "average": {**hour["average"], "shown_source": base_pool.SHOWN_BLEND}}
         if hour is not None:
             hour = {**hour, "used": len(hour_rec["used"]), "left_out": len(hour_rec["left_out"]), "missing": len(missing),
                     **({"code_sentences": hour_rec["code_sentences"]} if hour_rec.get("code_sentences") else {})}
@@ -892,8 +892,8 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
         log("the Mirai Prediction System is switched off (SPX_JEV_PREDICTION_DISABLE=1): the call stays on its blend")
     if do_send and lane.pool and day is None and not prediction_off and hour is not None and hour_rec and hour_rec.get("request"):
         # the Mirai Prediction System forecasts this read now, from the records as they stand (the call still its blend,
-        # so the blend stays a voice), and Pool 2's mix becomes the call the phone shows and the grader grades; the blend
-        # it replaced stays beside it as blend50_exact. Pool 1 is retired from the phone since 2026-10-06. Any failure
+        # so the blend stays a voice), and the learner pool's mix becomes the call the phone shows and the grader grades; the blend
+        # it replaced stays beside it as blend50_exact. The base pool is retired from the phone since 2026-10-06. Any failure
         # leaves the call on its blend and the detached hook writes the day's lines instead.
         try:
             from .mirai_prediction import live_call
@@ -903,9 +903,9 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
             if forecasts:
                 hour = live_call.take_over(hour, forecasts, lane, voices)
             else:
-                log("Pool 2 had no forecast for this read; the call stays on its blend")
-        except Exception as e:  # Pool 2 must never cost the read its call
-            log(f"Pool 2 was left out this run, the call stays on its blend: {type(e).__name__}: {e}")
+                log("the learner pool had no forecast for this read; the call stays on its blend")
+        except Exception as e:  # the learner pool must never cost the read its call
+            log(f"the learner pool was left out this run, the call stays on its blend: {type(e).__name__}: {e}")
     record = {"row_ts": scene.row["ts"], "sigma": scene.sigma, "event": event,
               **_stamp(lane, unit, band), "state": state, "omitted": omitted, "requests": requests, "skipped": skipped,
               "held": {qid: h["held_from"] for qid, h in held.items()}, "cadence_from": cad.get("recounted_from"),

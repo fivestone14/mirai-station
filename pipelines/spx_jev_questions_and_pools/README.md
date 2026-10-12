@@ -57,7 +57,7 @@ returns a probability for each answer option. A call is a forecast, not a trade 
 | `spx_jev/baseline.py`, `spec/fit_baseline.py`, `spec/baseline.json` | The Baseline | The price-only forecast the learning loop measures JEV against: the time-of-day odds, and the same odds split by how far SPX has moved today, counted once on the 41 qualifying sessions and frozen, with the leave-one-day-out validation that picked the reference (the time-of-day odds; the movement split lost out of sample). |
 | `spx_jev/grade.py` | The Grader | Reads the bars at each end-price sum's mark and scores it, grades the call and every graded window again on the average price over it (`integral.py`), and hands the grades to the question weights and both learning loops. The premarket lane's sums are graded from the settled open (the close of the 09:34 bar, known at 09:35) to the 09:44 and 10:04 bars, in the pre-open ruler the read stamped, never from yesterday's close; no other lane grades a read stamped before the open. |
 | `spx_jev/weights.py` | The Weights | One interface, `QuestionWeights`, for how much each question counts in the sums. Every live question weighs 1.0: the neutral method on the tape lane, the learning loop on the live lane. |
-| `spx_jev/pool.py` | The Learning Loop | 06-learning-loop-design: at each live read, the forecasts it will score (the fixed mixes of JEV's sum with the price-only reference, today's blend, that frozen reference alone (`baseline`), the question block "no change" competes in, the pool); once a session is sealed, one day's evidence moves the move and the direction weights apart, the tables and calibration decay, and day-level e-processes decide the "earning" labels (e-BH). This is the end-price loop; the average-price loop (`integral_loop.py`, 6b) learns beside it on the average-price grade. Neither pool reaches the phone: since 2026-10-06 the phone shows Pool 2's combined forecast (`mirai_prediction/live_call.py`), and this loop's pool (`pool_v1`) is one of its voice sources only. The promotion machinery that once decided whether the pool replaced the blend (`POOL_ON_PHONE`, `SIM_GATES_PASSED`, the phone e-processes) was retired on 2026-10-07. |
+| `spx_jev/base_pool.py` | The Learning Loop (the base pool) | 06-learning-loop-design: at each live read, the forecasts it will score (the fixed mixes of JEV's sum with the price-only reference, today's blend, that frozen reference alone (`baseline`), the question block "no change" competes in, the pool); once a session is sealed, one day's evidence moves the move and the direction weights apart, the tables and calibration decay, and day-level e-processes decide the "earning" labels (e-BH). This is the end-price loop; the average-price loop (`integral_loop.py`, 6b) learns beside it on the average-price grade. Neither pool reaches the phone: since 2026-10-06 the phone shows the learner pool's combined forecast (`mirai_prediction/live_call.py`), and this loop's pool (`base_pool`) is one of its voice sources only. The promotion machinery that once decided whether the pool replaced the blend (`POOL_ON_PHONE`, `SIM_GATES_PASSED`, the phone e-processes) was retired on 2026-10-07. |
 | `spx_jev/archive.py` | The Archive | The raw record for machine learning: every read, grade and close-out of every lane, append only, one typed record per line. |
 | `spx_jev/store.py` | The Learning Store | Each market day's raw files (the archive, the sum records, every lane's `jev_average_price_grades_by_read_and_horizon.jsonl`, the bars and the overnight store) as typed Parquet under `data/spx/jev/tables/` (the bars' and the futures' tables under `data/market/tables/`), every row checked and a refused one kept with its reason under `data/operations/health/`. Rebuilt nightly; the raw files are only read. |
 | `spx_jev/service.py` | The Service | One run per read: build, ask (when a key exists), sum, grade, write the record, the archive and the phone's card. |
@@ -248,7 +248,7 @@ archive there too, under `archive/`.
    record and the card's `hour` keep `used` as the answered questions summed
    and, from the cut-over, `code_sentences`, how many of the code's
    measurements the sum rode on beside them. The old
-   loop's `pool_v1` keeps forming its snapshot as a voice source with no
+   loop's `base_pool` keeps forming its snapshot as a voice source with no
    members.
 4. The sums, JEV (`questions/spx_hour.json`), two requests sent at once on
    the same sentences. The call: where the average price over the next 30
@@ -271,7 +271,7 @@ archive there too, under `archive/`.
 6. Grading, code (`grade.py`), every sent run: each sum at its own mark, a hit
    and a Brier score for the blend, JEV's own sum and the clock's odds on the
    same outcome. The grades go to the question weights' `learn`: on the live
-   lane the learning loop (`pool.py`) applies every newly sealed session.
+   lane the learning loop (`base_pool.py`) applies every newly sealed session.
    Beside it (`integral.py`), each graded window is graded again on the
    average price over it against the call's zone, or the box's narrowed to fit an average,
    its direction deciding: the call's pick where the average-price sum
@@ -287,7 +287,7 @@ archive there too, under `archive/`.
    loop's report; the end-price loop keeps learning beside it, byte for
    byte as with the switch off. Neither loop's pool decides the call: the
    call carries its exact blend, `shown_source` on `hour.average` saying so
-   (`pool.SHOWN_BLEND`), and since 2026-10-06 Pool 2's combined forecast
+   (`base_pool.SHOWN_BLEND`), and since 2026-10-06 the learner pool's combined forecast
    replaces it after the read (`mirai_prediction/live_call.py`); the
    promotion that once decided the call was retired on 2026-10-07. A
    session is learnt at the first grading run after its reads' average-price
@@ -386,7 +386,7 @@ raw text stays in the archive, and `held_from` when held), `fresh_count` and
 `hour` (the blended end-price sums with `jev`, `clock` and `blend`, kept
 beside the call, and the call under `average`: its pick, odds, window and edge
 in points, blended the same way on the average price, and `shown_source`, its
-exact blend, or Pool 2's mix once it takes the call over after the read), `event`, `calls` and `tally` (the day's newest
+exact blend, or the learner pool's mix once it takes the call over after the read), `event`, `calls` and `tally` (the day's newest
 calls, each the average-price sum's pick and odds where it answered, `sum`
 naming the one, and where it was asked and got no readable answer the
 end-price sum's, marked `average_missing` and graded on its end price; a read
@@ -434,8 +434,8 @@ any day can be rebuilt from them whole.
 | Table | One row per | What it holds |
 |---|---|---|
 | `reads` (`jev_read_summaries_by_read/`) | read, any lane | `read_id` (lane and row time), `lane`, `row_ts`, `archived_at`, `minute_et` and `minutes_from_open`, `checkpoint`, `sent`, `model`, `spot`, `sigma`, the ruler (`ruler_source`, `ruler_points`, `ruler_unit_sigma`, `ruler_sessions`, `ruler_omitted`) and the opening lane's bands, the event tag, how many questions were `answered`, `lost`, `unsent`, `held`, `not_due`, `asleep`, `missing`, `dark`, `unread` or `other`, how many were `reasked`, the labels written, omitted and asleep, the end-price sums' `sum_used`, `sum_left_out`, `sum_missing` and `sum_error`, the average-price sum's `average_error` (why the read has no call on the average price), and `skip_reasons` (question to why) |
-| `answers` (`jev_answers_by_read_and_question/`) | question per read | `status` as counted on the read and its `reason`, `type`, `pick`, `confidence`, `probabilities` (option to probability; a yes/no as `true` and `false`), `score` and `noul` as JEV sent them, `question_hash` (the question exactly as JEV was sent it), `pool_version` (the learning loop's version of it), `held_from` and `held_found` for a held answer (its values are copied from the read that asked it; a lost ask whose last answer the sum read instead is `held`, its `reason` starting `lost`), `reasked` (empty for a read archived before the lane recorded its re-asks), `reasked_from`, `reask_why`. The average-price sum's own question is a row too (`group_id` `average`, from archive version 5), left out of the read's question counts |
-| `calls` (`jev_and_pool_forecasts_by_read_and_horizon/`) | sum per read | `sum_id` (`next_30`, `average_30` and the like), `horizon` (the box whose window it forecasts), `is_call` (the call the phone showed: the average-price sum's where it answered, else the end-price primary's), `minutes` (the call's window as it was told, 28 on the 15:32 read), `mark`, `is_primary` (the end-price box the weights and pools learn from), the time of day, the sum's final odds (`shown_source`, `shown_pick`, `shown_probs`: the blend, or Pool 2's mix since 2026-10-06), the call's `price`, `flat_points` and `edge_points`, JEV alone (`jev_pick`, `jev_probs`), the time-of-day odds (`clock_probs`, `clock_n`), the blend (`blended`, `blend_jev_share`, `blend_phase`), the end-price loop's mix (`pool_probs`, `pool_p_move`, `pool_p_up_given_move`, `pool_reference_version`, or why it was left out in `pool_left_out`), the opening lane's `direction_*` and `size_*` views, and `learn_exclude` |
+| `answers` (`jev_answers_by_read_and_question/`) | question per read | `status` as counted on the read and its `reason`, `type`, `pick`, `confidence`, `probabilities` (option to probability; a yes/no as `true` and `false`), `score` and `noul` as JEV sent them, `question_hash` (the question exactly as JEV was sent it), `base_pool_question_version` (the learning loop's version of it), `held_from` and `held_found` for a held answer (its values are copied from the read that asked it; a lost ask whose last answer the sum read instead is `held`, its `reason` starting `lost`), `reasked` (empty for a read archived before the lane recorded its re-asks), `reasked_from`, `reask_why`. The average-price sum's own question is a row too (`group_id` `average`, from archive version 5), left out of the read's question counts |
+| `calls` (`jev_and_pool_forecasts_by_read_and_horizon/`) | sum per read | `sum_id` (`next_30`, `average_30` and the like), `horizon` (the box whose window it forecasts), `is_call` (the call the phone showed: the average-price sum's where it answered, else the end-price primary's), `minutes` (the call's window as it was told, 28 on the 15:32 read), `mark`, `is_primary` (the end-price box the weights and pools learn from), the time of day, the sum's final odds (`shown_source`, `shown_pick`, `shown_probs`: the blend, or the learner pool's mix since 2026-10-06; `shown_source` names it `learner_pool`, `pool_v2` on a row from before 2026-10-11), the call's `price`, `flat_points` and `edge_points`, JEV alone (`jev_pick`, `jev_probs`), the time-of-day odds (`clock_probs`, `clock_n`), the blend (`blended`, `blend_jev_share`, `blend_phase`), the end-price loop's mix (`base_pool_probs`, `base_pool_p_move`, `base_pool_p_up_given_move`, `base_pool_reference_version`, or why it was left out in `base_pool_left_out`), the opening lane's `direction_*` and `size_*` views, and `learn_exclude` |
 | `average_grades` (`jev_average_price_grades_by_read_and_horizon/`) | window graded on the average price, per lane | `horizon`, `sum_id` (the sum whose call it graded: the average-price sum's, else the end-price sum's), `rule_version` (a read graded under more than one stands on its newest; the older counts as `superseded`), `graded` and why not (`reason`, `minutes_missing`), `mark`, `from_price`, `flat_points`, `edge`, `edge_told`, `average_move` (the average against the read, in points), `outcome` and the end price's `end_outcome`, `pick`, `verdict` (`right`, `wrong` or `passed`), `abstained`, `correct` (empty when passed), `margin`, a passed call's `lean`, the `running` labels, the best, worst and sharpest minute, `minutes_filled`, `bad_ticks`, `stale_read`, the opening lane's size (`size_outcome`, the end-price five-way pick's `size_pick` and `size_right`), and the scores (`brier`, `log_loss`, and JEV's and the clock's when blended) |
 | `spx_bars` (`market/tables/spx_price_bars_by_minute/`) | SPX minute | open, high, low, close, volume, and `source` (the saved session file kept over the bars feed's) |
 | `overnight_bars` (`market/tables/futures_price_bars_by_minute/`) | futures bar of the night leading into `day` | `symbol`, `contract`, `contract_from`, `bar_minutes`, the prices and volume, `session`, `saved_at`, `flags`, `overnight_schema` (the overnight file's own version), and `prior_session` for the prior session's last minutes a night starts with, which the prior day's night also holds: `WHERE NOT prior_session` gives each bar once |
@@ -596,9 +596,9 @@ running.
   the code's answer changes (a schedule's `then`) is built only on the cadence
   side: such a question is held.
 - Neither learning loop's pool reaches the phone: the promotion machinery
-  (`pool.POOL_ON_PHONE`, `pool.SIM_GATES_PASSED`, the phone e-processes) was
-  retired on 2026-10-07, since Pool 2 has taken the call since 2026-10-06 and
-  pool_v1 is one of its voices. 06's simulation acceptance gates were never
+  (`base_pool.POOL_ON_PHONE`, `base_pool.SIM_GATES_PASSED`, the phone e-processes) was
+  retired on 2026-10-07, since the learner pool has taken the call since 2026-10-06 and
+  the base pool is one of its voices. 06's simulation acceptance gates were never
   built. Nor is 06's direction test (Primary B: the edge score, with day-level
   e-processes for JEV against the reference and the pool against the exact
   blend), or the per-forecast losses, Brier and edge score 06 adds to

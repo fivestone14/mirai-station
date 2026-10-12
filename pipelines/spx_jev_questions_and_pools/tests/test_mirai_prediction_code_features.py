@@ -400,7 +400,7 @@ def test_record_code_features_writes_once_and_rereads_the_stored_line(tmp_path, 
 
 def base_row(read_id: str, day: str) -> Row:
     return Row(read_id=read_id, row_ts=f"{day}T11:00:00-04:00", day=day, sum_id="average_30", historical_odds_probs={"up": 0.2, "flat": 0.6, "down": 0.2},
-               jev_own_probs=None, shown_probs=None, pool_v1_probs=None, outcome="flat", learn_exclude=False)
+               jev_own_probs=None, shown_probs=None, base_pool_probs=None, outcome="flat", learn_exclude=False)
 
 
 def test_matrix_takes_the_code_columns_and_leaves_a_read_without_a_line_silent(tmp_path, monkeypatch):

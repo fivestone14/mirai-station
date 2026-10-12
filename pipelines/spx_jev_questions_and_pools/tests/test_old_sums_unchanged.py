@@ -18,7 +18,7 @@ import pytest
 
 from conftest import (DAY, PRIOR_DAYS, FixedZones, at, bars_from_closes, flat_bars, grades_path, hour_path, lane_folder, make_row,
                       station_paths, weights_path, write_prior_rows, write_state)
-from spx_jev import clock, flat_zone, grade, pool, premarket, service, story
+from spx_jev import base_pool, clock, flat_zone, grade, premarket, service, story
 from spx_jev.ask import send_all as real_send_all
 from spx_jev.lane import LIVE, PREMARKET, TAPE
 from spx_jev.service import run_once
@@ -74,7 +74,7 @@ def _files(out: Path, with_clock: bool = False) -> dict[str, str]:
     rec = json.loads(hour_path(out, DAY).read_text().splitlines()[0])
     files = {"request": json.dumps(rec["request"], ensure_ascii=False, sort_keys=True)}
     where = {"grades.jsonl": grades_path(out), "weights.json": weights_path(out),
-             "pool_30.json": pool.state_path(out, 30), "pool_60.json": pool.state_path(out, 60)}
+             "pool_30.json": base_pool.state_path(out, 30), "pool_60.json": base_pool.state_path(out, 60)}
     if with_clock:
         where["clock_days.json"] = out / clock.CACHE_NAME
     for name, path in where.items():
@@ -144,9 +144,9 @@ def _old_path(weights: str, lane: str) -> str:
     calls; the loop's experts under the names they had before they were named by their source."""
     w = json.loads(weights)
     if lane == "live" and LIVE.integral_loop:
-        assert w.pop("pool_integral")["method"] == "pool_v1_integral"
+        assert w.pop("pool_integral")["method"] == "base_pool_integral"
     if "pool" in w:
-        back = {new: old for old, new in pool.LEGACY_NAMES.items()}
+        back = {new: old for old, new in base_pool.LEGACY_NAMES.items()}
         w["pool"]["top"] = {side: dict(sorted((back.get(n, n), x) for n, x in top.items())) for side, top in w["pool"]["top"].items()}
     assert w["sums"].pop({"live": LIVE, "tape": TAPE, "premarket": PREMARKET}[lane].average)["graded_on"] == "the average price"
     for s in w["sums"].values():
@@ -158,12 +158,12 @@ def _old_names(state: str) -> str:
     """A learning-loop state under the names it was saved by before its experts were named by their source, written as
     the loop writes it: the same numbers, so the bytes match the golden file's."""
     s = json.loads(state)
-    back = {new: old for old, new in pool.LEGACY_NAMES.items()}
+    back = {new: old for old, new in base_pool.LEGACY_NAMES.items()}
     s["top"] = {side: {back.get(n, n): w for n, w in top.items()} for side, top in s["top"].items()}
     s["baseline"] = s.pop("reference_version")
-    assert s["constants_hash"] == pool.CONSTANTS_HASH
-    s["constants_hash"] = pool.LEGACY_CONSTANTS_HASH
-    return pool._canonical(s)
+    assert s["constants_hash"] == base_pool.CONSTANTS_HASH
+    s["constants_hash"] = base_pool.LEGACY_CONSTANTS_HASH
+    return base_pool._canonical(s)
 
 
 def _same_as_before(got: dict) -> None:

@@ -100,8 +100,8 @@ def test_a_read_answers_holds_sums_and_grades(tmp_path, monkeypatch):
     grades = [json.loads(l) for l in grades_path(out).read_text().splitlines() if l.strip()]
     assert len(grades) == 1 and grades[0]["horizons"] == ["next_30"] and grades[0]["band"] == "flat"
     weights = json.loads(weights_path(out).read_text())
-    assert weights["method"] == "pool_v1" and weights["questions"]["q_dir"] == {**weights["questions"]["q_dir"], "weight": 1.0, "n": 1}
-    assert weights["pool_integral"]["method"] == "pool_v1_integral"
+    assert weights["method"] == "base_pool" and weights["questions"]["q_dir"] == {**weights["questions"]["q_dir"], "weight": 1.0, "n": 1}
+    assert weights["pool_integral"]["method"] == "base_pool_integral"
     for p in state.rglob("*"):
         if p.is_file():
             assert CANARY not in p.read_text(), p
@@ -351,7 +351,7 @@ def test_a_live_read_writes_the_loops_forecasts_keeps_the_blend_on_the_phone_and
     out = lane_folder(state)
     rec = json.loads(hour_path(out, DAY).read_text().splitlines()[0])
     snap = rec["pool"]["next_30"]
-    assert set(snap["experts"]) == set(service.pool.W0) and snap["awake"] == ["q_dir", "q_two"] and snap["members"].keys() == {"q_dir", "q_two"}
+    assert set(snap["experts"]) == set(service.base_pool.W0) and snap["awake"] == ["q_dir", "q_two"] and snap["members"].keys() == {"q_dir", "q_two"}
     assert snap["blend50_exact"] == {k: round(v, 4) for k, v in c["hour"]["probabilities"].items()}
     assert c["hour"]["shown_source"] == "blend50_exact" and rec["shown_source"] == "blend50_exact"
     read = json.loads(archive_path(state, DAY).read_text().splitlines()[0])
@@ -363,9 +363,9 @@ def test_a_live_read_writes_the_loops_forecasts_keeps_the_blend_on_the_phone_and
     # the weights report it as they did, and the average-price loop beside it passes the day over: no read had an
     # average-price call
     weights = json.loads(weights_path(out).read_text())
-    assert weights["method"] == "pool_v1" and weights["pool"]["last_session_applied"] == DAY and weights["questions"]["q_dir"]["days"] == 1
+    assert weights["method"] == "base_pool" and weights["pool"]["last_session_applied"] == DAY and weights["questions"]["q_dir"]["days"] == 1
     beside = weights["pool_integral"]
-    assert beside["method"] == "pool_v1_integral" and beside["pool"]["last_session_applied"] == DAY
+    assert beside["method"] == "base_pool_integral" and beside["pool"]["last_session_applied"] == DAY
     assert beside["questions"]["q_dir"]["weight"] == 1.0 and "days" not in beside["questions"]["q_dir"]
     said = [json.loads(line) for line in pool_log_path(state).read_text().splitlines()]
     assert [(x["session"], x["applied"], x["why"]) for x in said] == [(DAY, False, "no read carries an average-price call: before the question")]
@@ -373,7 +373,7 @@ def test_a_live_read_writes_the_loops_forecasts_keeps_the_blend_on_the_phone_and
 
 def test_a_read_whose_end_price_sums_got_no_answer_keeps_the_answers_the_average_price_loop_learns_from(tmp_path, monkeypatch):
     """Only the end-price request failed: the read writes no end-price snapshot, but keeps the questions' answers
-    beside the reason (pool.answered), so the average-price loop can learn the call standing on its average alone."""
+    beside the reason (base_pool.answered), so the average-price loop can learn the call standing on its average alone."""
     state = _state(tmp_path, [make_row(at(12, 2, ss=10), 7700.0)], 150)
 
     def sums(req, **kw):
@@ -429,7 +429,7 @@ def test_a_failing_average_price_loop_costs_neither_the_read_nor_the_close_out(t
     assert c["row_ts"] == at(12, 2, ss=10).isoformat() and card_path(state).exists()
     assert "average-price loop failed: AttributeError" in capsys.readouterr().err
     weights = json.loads(weights_path(out).read_text())
-    assert weights["method"] == "pool_v1" and weights["pool"]["last_session_applied"] == DAY and weights["graded_runs"] == 1
+    assert weights["method"] == "base_pool" and weights["pool"]["last_session_applied"] == DAY and weights["graded_runs"] == 1
     assert weights["pool_integral"] == {"failed": "AttributeError: 'list' object has no attribute 'get'"}
     lines = integral_grades_path(out).read_text().splitlines()
     assert {json.loads(line)["horizon"] for line in lines} == {"next_30", "next_60"}
@@ -648,7 +648,7 @@ def test_from_the_cut_over_the_retired_question_is_dark_and_the_sums_ride_on_the
     assert [e["id"] for e in c["questions"]] == ["news_reaction", "push_blowoff_or_fresh"] and c["fresh_count"] == 2
     assert c["dark"] == [{"id": "q_dir", "viewpoint": "volume_price", "ask": "Did price rise, fall, or go nowhere?", "dark_reason": RETIRED}]
     snap = rec["pool"]["next_30"]
-    assert set(snap["experts"]) == set(service.pool.W0) and snap["members"] == {} and snap["awake"] == []
+    assert set(snap["experts"]) == set(service.base_pool.W0) and snap["members"] == {} and snap["awake"] == []
     record = json.loads(answers_path(out, CUT).read_text().splitlines()[0])
     assert record["skipped"]["g1"] == {"q_dir": f"dark: {RETIRED}", "*": "nothing to ask in this group this read"}
     assert "q_dir" not in json.loads(last_asked_path(out).read_text())
@@ -677,7 +677,7 @@ def test_the_prediction_kill_switch_keeps_the_call_on_its_blend_and_never_foreca
 
 
 def _live_pool_2_read(tmp_path, monkeypatch, voice_list=None):
-    """A live read (today's row, sent) whose in-read forecast is Pool 2's, with the voices it mixed beside it."""
+    """A live read (today's row, sent) whose in-read forecast is the learner pool's, with the voices it mixed beside it."""
     from spx_jev.mirai_prediction import live_call
     state = _state(tmp_path, [make_row(at(12, 2, ss=10), 7700.0)], 150)
     monkeypatch.setattr(service, "send_all", _answers())
@@ -695,11 +695,11 @@ def _live_pool_2_read(tmp_path, monkeypatch, voice_list=None):
 
 
 def test_a_live_read_carries_the_voices_of_the_combined_forecast_and_each_end_price_sums_flat_zone(tmp_path, monkeypatch):
-    """The phone's "what went into it" and its end-price ±: the voices Pool 2 mixed ride on the call and on the 60-minute
+    """The phone's "what went into it" and its end-price ±: the voices the learner pool mixed ride on the call and on the 60-minute
     sum, most say first, and each end-price sum carries the flat zone in points the grader sets it against, the sum record
     stamping every zone the read was told."""
     h = _live_pool_2_read(tmp_path, monkeypatch)["hour"]
-    assert h["average"]["shown_source"] == "pool_v2" and h["average"]["pick"] == "down"
+    assert h["average"]["shown_source"] == "learner_pool" and h["average"]["pick"] == "down"
     assert [v["name"] for v in h["average"]["voices"]] == ["historical_odds", "matcher"]
     assert [v["name"] for v in h["by"]["next_60"]["voices"]] == ["historical_odds", "matcher"] and "voices" not in h["by"]["next_30"]
     assert (h["by"]["next_30"]["flat_points"], h["by"]["next_60"]["flat_points"]) == (5.25, 8.25)
@@ -713,5 +713,5 @@ def test_a_failure_listing_the_voices_never_costs_the_read_its_combined_call(tmp
         raise RuntimeError("the voices broke")
     c = _live_pool_2_read(tmp_path, monkeypatch, voice_list=boom)
     h = c["hour"]
-    assert h["average"]["shown_source"] == "pool_v2" and h["average"]["pick"] == "down" and h["by"]["next_60"]["pick"] == "flat"
+    assert h["average"]["shown_source"] == "learner_pool" and h["average"]["pick"] == "down" and h["by"]["next_60"]["pick"] == "flat"
     assert "voices" not in h["average"] and "voices" not in h["by"]["next_60"]

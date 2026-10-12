@@ -14,7 +14,7 @@ import pytest
 
 from conftest import (DAY, FixedZones, at, bars_from_closes, grades_path, hour_path, integral_grades_path, lane_folder, make_row,
                       weights_path, write_state)
-from spx_jev import archive, grade, integral, integral_loop, pool
+from spx_jev import archive, base_pool, grade, integral, integral_loop
 from spx_jev.grade import INTEGRAL_LOCK, INTEGRAL_NAME, grade_one, integral_line, integral_report, integral_run, main, run
 from spx_jev.lane import PREMARKET, TAPE
 
@@ -42,7 +42,7 @@ def _frozen(day: str, hh: int = 12):
 def clock(monkeypatch):
     """Stop every clock the grader, the loop and the archive stamp with; call it again to move to another day."""
     def set_day(day: str = "2026-09-21"):
-        for module in (grade, pool, integral_loop, archive):
+        for module in (grade, base_pool, integral_loop, archive):
             monkeypatch.setattr(module, "datetime", _frozen(day))
     set_day()
     return set_day
@@ -110,7 +110,7 @@ def test_grades_weights_and_the_loops_state_are_byte_for_byte_what_the_grader_wr
     assert _lines(integral_grades_path(lane_folder(with_it))) and not integral_grades_path(lane_folder(without)).exists()
     after = _tree(with_it)
     out = lane_folder(with_it)
-    assert {str(p.relative_to(with_it)) for p in (grades_path(out), weights_path(out), pool.state_path(out, 30), pool.state_path(out, 60))} <= set(after)
+    assert {str(p.relative_to(with_it)) for p in (grades_path(out), weights_path(out), base_pool.state_path(out, 30), base_pool.state_path(out, 60))} <= set(after)
     assert after == _tree(without)
 
 

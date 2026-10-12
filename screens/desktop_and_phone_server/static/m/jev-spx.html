@@ -983,10 +983,12 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   function top1(p){ return p ? Object.keys(p).sort(function(x, y){ return p[y] - p[x]; })[0] : null; }
   // JEV's own odds for a call: a blended call's own answer from JEV, an unblended one as it came
   function jevOwn(a){ return a && ((a.blend && a.blend.used) || a.blended) && a.jev && a.jev.probabilities ? a.jev : a; }
-  // the odds the headline shows, the ones today's calls grade: the combined forecast (shown_source pool_v2) since
+  // the odds the headline shows, the ones today's calls grade: the combined forecast (the learner pool's mix, shown_source
+  // learner_pool; pool_v2 on a card from before 2026-10-11) since
   // 2026-10-06; on a card from before it JEV's own read, as it always led (Will, 2026-09-30). One rule, so the card,
   // the fold under the opening call and Claude's line against the call never name different picks
-  function headline(a){ return a && a.shown_source === 'pool_v2' ? a : jevOwn(a); }
+  function combinedCall(a){ return !!a && (a.shown_source === 'learner_pool' || a.shown_source === 'pool_v2'); }
+  function headline(a){ return combinedCall(a) ? a : jevOwn(a); }
   function oneAnswer(p){ var k = top1(p); return k ? cap(k) + ' ' + Math.round((p[k] || 0) * 100) + '%' : 'none'; }
   // the sum a card's call is: the average-price one (the service's hour.average: up, flat or down over the window, no
   // unsure) once JEV answered it, else the end-price sum, on a card from before it or a read whose average-price
@@ -1102,7 +1104,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   function phaseSpan(words, at){ return marketWords(String(words).replace(/^[^,]*,\s*/, ''), at); }
   // Under the graded call, two tiles: the usual odds, how the last sessions went at this time of day (the yardstick JEV
   // has to beat), which opens the time-of-day sheet when the card carries its counts (the card's time_of_day,
-  // clock._blocks), and JEV's own read under the combined forecast (shown_source pool_v2), or on an older card the
+  // clock._blocks), and JEV's own read under the combined forecast (combinedCall), or on an older card the
   // half-and-half its calls grade, outlined as the graded one; with ``voices``, the call's voices control, as a third
   // beside JEV's own (the board Final-Desktop, from WIDE up).
   function howBar(p){
@@ -1122,12 +1124,12 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     return t;
   }
   function howChart(h, bl, at, tod, voices){
-    var j = h.jev, c = h.clock, pool2 = h.shown_source === 'pool_v2';
+    var j = h.jev, c = h.clock, combined = combinedCall(h);
     if(bl && bl.used && j && c){
       var g = el('div', 'tod'), span = bl.phase_words ? phaseSpan(bl.phase_words, at) : '';
       g.appendChild(tile('Usual odds', c.probabilities, tod && tod.phases && tod.phases.length ? function(from){ openTod(tod, bl, at, from); } : null,
                          'Usual odds, last ' + bl.sessions + ' days at this time of day' + (span ? ', ' + span : '')));
-      if(pool2){ g.appendChild(tile('JEV alone', j.probabilities)); if(voices) g.appendChild(voices); return g; }      // the headline is the graded call: JEV's own read beside it
+      if(combined){ g.appendChild(tile('JEV alone', j.probabilities)); if(voices) g.appendChild(voices); return g; }      // the headline is the graded call: JEV's own read beside it
       g.appendChild(tile('Half of each \u00B7 graded', h.probabilities)).setAttribute('class', 'tile graded');
       return g;
     }
@@ -1544,10 +1546,10 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       var hc = el('div', 'card dashed');
       hc.appendChild(clockBlock(c.row_ts, minutes, marks.next_30 !== undefined ? marks.next_30 : plusIso(c.row_ts, minutes),
                                 el('div', 'mode', '30-min call')));
-      // the headline is the call today's calls grade: since 2026-10-06 the combined forecast (Pool 2), with JEV's own
+      // the headline is the call today's calls grade: since 2026-10-06 the combined forecast (the learner pool), with JEV's own
       // read as one tile under it (Will, 2026-10-07: two different answers on one screen confused); a card from before
       // the combined forecast leads with JEV's own read as it always did
-      var combined = a.shown_source === 'pool_v2', own = headline(a), hp = own.probabilities, top = own.pick || top1(hp);
+      var combined = combinedCall(a), own = headline(a), hp = own.probabilities, top = own.pick || top1(hp);
       var head = el('div', 'call-top'), left = el('div'), vs = a !== h ? voicesOf(a) : [], voices = vs.length ? voicesButton(vs) : null;
       left.appendChild(labRow(combined ? 'Today\u2019s call \u00B7 combined' : 'Today\u2019s call \u00B7 JEV',
                               !combined && own.confidence != null ? pct(own.confidence) + ' sure' : null)).setAttribute('class', 'lab call');
@@ -2626,13 +2628,21 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 
   // ---- the record: the Mirai Prediction System's scoreboard (FORECASTER_SCOREBOARD_CARD), one small
   // file read beside the card. The record row at the foot of the 30-minute card gives the reads counted, how often the
-  // combined forecast (pool_v2, the call shown above) was right against the usual-odds guess (the historical odds) it is
+  // combined forecast (the learner pool, the call shown above) was right against the usual-odds guess (the historical odds) it is
   // scored against, and the verdict in words; the row stays hidden until the file exists. A tap opens the learning loop:
   // the two right rates as bars, the score, the days' skill as a line, and every voice, the old 50/50 blend among them.
   var LEARN_URL = '/api/store/file?name=FORECASTER_SCOREBOARD_CARD', LEARN_SUM = 'average_30', LEARN_MS = 60000;
   var BASE = 'historical_odds', BASE_WORDS = 'Usual-odds guess', DECIDE_AT = 300;
   var board = null;
-  function learnSum(b){ var s = b && b.sums && b.sums[LEARN_SUM]; return s && s.graded_reads_count && s.pool_v2 ? s : null; }
+  // the scoreboard's sum with its learner pool under its name today: a card written before 2026-10-11 says pool_v2
+  function learnSum(b){
+    var s = b && b.sums && b.sums[LEARN_SUM];
+    if(s && !s.learner_pool && s.pool_v2){
+      var daily = (s.daily_skill || []).map(function(d){ var o = {learner_pool_pct: d.pool_v2_pct}; for(var k in d) o[k] = d[k]; return o; });
+      var t = {}; for(var k in s) t[k] = s[k]; t.learner_pool = s.pool_v2; t.daily_skill = daily; s = t;
+    }
+    return s && s.graded_reads_count && s.learner_pool ? s : null;
+  }
   function learnGuess(s){ return (s.voices || []).filter(function(v){ return v.name === BASE; })[0]; }
   // a score to one decimal with its sign, a true minus sign for a loss; none yet as a dash
   function scorePct(v, signed){ if(v == null) return '—'; var s = (Math.round(v * 10) / 10).toFixed(1); return (signed && v > 0 ? '+' : '') + s.replace('-', '−') + '%'; }
@@ -2653,7 +2663,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var b = $('rec'), s = learnSum(board); if(!b) return;
     b.hidden = !s;
     if(!s) return;
-    var p2 = s.pool_v2, guess = learnGuess(s), skill = p2.skill_vs_historical_odds_pct, line = $('recL'), note = $('recNote');
+    var p2 = s.learner_pool, guess = learnGuess(s), skill = p2.skill_vs_historical_odds_pct, line = $('recL'), note = $('recNote');
     $('recN').textContent = s.graded_reads_count + ' of ' + DECIDE_AT + ' reads';
     line.textContent = '';
     line.appendChild(el('b', null, Math.round(p2.right_pct * p2.reads_count / 100) + ' of ' + p2.reads_count + ' right'));
@@ -2680,20 +2690,20 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // the call's skill day by day as a line over the usual guess's zero
   function skillLine(daily){
     var svg = svgEl('svg', {viewBox: '0 0 328 44', 'class': 'lp-line', 'aria-hidden': 'true'});
-    var pts = (daily || []).filter(function(d){ return typeof d.pool_v2_pct === 'number'; });
+    var pts = (daily || []).filter(function(d){ return typeof d.learner_pool_pct === 'number'; });
     if(pts.length < 2) return svg;
-    var w = 328, h = 44, pad = 4, vals = pts.map(function(d){ return d.pool_v2_pct; });
+    var w = 328, h = 44, pad = 4, vals = pts.map(function(d){ return d.learner_pool_pct; });
     var lo = Math.min.apply(null, vals.concat([0])), hi = Math.max.apply(null, vals.concat([0])); if(hi === lo) hi = lo + 1;
     var x = function(i){ return pad + i * (w - 2 * pad) / (pts.length - 1); }, y = function(v){ return h - pad - (v - lo) / (hi - lo) * (h - 2 * pad); };
     // the zero line is named by the key above the drawing, never by a label the line could run through
     svg.appendChild(svgEl('line', {x1: 0, x2: w, y1: y(0).toFixed(1), y2: y(0).toFixed(1), 'class': 'zero'}));
-    svg.appendChild(svgEl('polyline', {'class': 'path', points: pts.map(function(d, i){ return x(i).toFixed(1) + ',' + y(d.pool_v2_pct).toFixed(1); }).join(' ')}));
-    svg.appendChild(svgEl('circle', {cx: x(pts.length - 1).toFixed(1), cy: y(pts[pts.length - 1].pool_v2_pct).toFixed(1), r: 3, 'class': 'dot'}));
+    svg.appendChild(svgEl('polyline', {'class': 'path', points: pts.map(function(d, i){ return x(i).toFixed(1) + ',' + y(d.learner_pool_pct).toFixed(1); }).join(' ')}));
+    svg.appendChild(svgEl('circle', {cx: x(pts.length - 1).toFixed(1), cy: y(pts[pts.length - 1].learner_pool_pct).toFixed(1), r: 3, 'class': 'dot'}));
     return svg;
   }
   function openRecord(from){
     var s = learnSum(board); if(!s) return;
-    var body = $('csBody'), p2 = s.pool_v2, guess = learnGuess(s), skill = p2.skill_vs_historical_odds_pct;
+    var body = $('csBody'), p2 = s.learner_pool, guess = learnGuess(s), skill = p2.skill_vs_historical_odds_pct;
     $('csTitle').textContent = 'Learning loop · 30 min · ' + s.graded_reads_count + ' of ' + DECIDE_AT + ' reads';
     body.textContent = '';
     body.appendChild(el('div', 'lp-sub', 'How often the direction was right'));

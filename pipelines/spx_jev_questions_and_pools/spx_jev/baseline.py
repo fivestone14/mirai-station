@@ -18,7 +18,7 @@ day of bars.
 
 The fit also replays every qualifying session left out in turn (leave one day out) and records each
 forecast's out-of-sample day-mean log loss. That decides the reference per horizon: E_state when it
-beat E_clock out of sample, else E_clock (pool.py calibrates whichever it is).
+beat E_clock out of sample, else E_clock (base_pool.py calibrates whichever it is).
 """
 from __future__ import annotations
 
@@ -149,7 +149,7 @@ def rule_hash(doc: dict) -> str:
 
 
 class Baseline:
-    """The frozen tables as the loop reads them at every read (pool.py): E_clock and its long-run shares.
+    """The frozen tables as the loop reads them at every read (base_pool.py): E_clock and its long-run shares.
     E_state lost the validation at both horizons, so the loop's reference is the calibrated E_clock and
     E_state is not read; a test holds the file's reference to that."""
 
