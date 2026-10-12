@@ -1,4 +1,5 @@
-"""Will's view of the track record: ``scorecard.json``, built from the score rows every night. Never sent to Claude.
+"""Will's view of the track record: ``claude_forecast_scoreboard_latest.json``, built from the score rows every night.
+Never sent to Claude.
 
 Per horizon: how many live reads were graded, Claude's skill against the base rate it was shown (one minus
 its mean log loss over the base rate's, on the same reads), the same against the station's time-of-day

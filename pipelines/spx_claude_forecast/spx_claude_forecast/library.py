@@ -1,7 +1,8 @@
 """The library of past moments: one row per read with what the market looked like and what happened next.
 
-Rebuilt whole every night from the record (``payloads/`` + ``outcomes/`` for live reads, ``seed/`` for the
-rebuilt history) into ``library/rows.parquet``; nothing in it is the source of truth, so it can always be
+Rebuilt whole every night from the record (``claude_forecast_inputs_by_read/`` + ``claude_forecast_outcomes_by_read/``
+for live reads, the ``claude_forecast_rebuilt_*_by_read/`` pair for the rebuilt history) into
+``tables/claude_forecast_fingerprints_and_outcomes_by_read.parquet``; nothing in it is the source of truth, so it can always be
 deleted and rebuilt. The read-time builder asks it for the base rate and the precedent cards
 (``precedents.py``). A row carries the everyday fingerprint the matching uses (seven numbers every payload
 has), the quality gates, and the sealed outcome per horizon; it never carries Claude's answer, so a card

@@ -1,5 +1,7 @@
 # SNDK Pro — the plan, reorganised around the observer
 
+> A dated note: the paths and folder names in it are those of its day. Where every store lives today, with its writer and readers, is `docs/data_map.md` at the repo root.
+
 Superseded: the Phase 1-5 numbering. Those were written when the model made a
 directional call, and half of what they scheduled has been overtaken by
 measurement rather than completed.

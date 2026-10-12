@@ -344,7 +344,8 @@ mirai_awakening/
 │   └── job_start_scripts/      env.sh (Keychain reader) · start_job_with_logs.sh · the run-*.sh runners · install · venv
 ├── health_checks/              the live health review and its unit tests
 ├── skills/sndk-jev/            the SNDK JEV decision service (TypeSafe), retired 2026-10-11: no job runs it; the folder goes next
-├── data/                       runtime-mutable, git-ignored — never copied between machines (station_paths.py is the one place that knows the layout)
+├── data/                       runtime-mutable, git-ignored — never copied between machines (station_paths.py is the one place that
+│                               knows the layout; docs/data_map.md is the one page that explains every store)
 │   ├── market/                 prices, quotes, depth, trades, open interest, the calendar, and their tables/
 │   ├── spx/scanner/            the SPX options scanner (the left eye), the order-flow readings, the wall sensor, the Watchtower's memory
 │   ├── spx/jev/                the JEV lanes (live_lane · opening_lane · premarket_lane), the shared archive, its tables/
@@ -355,7 +356,7 @@ mirai_awakening/
 │   ├── screen_files/           phone/ cards and the desktop/ 3D view, written only for a screen
 │   ├── operations/             logs/ (every job's output and errors) · locks/ · health/ · the alert states
 │   └── archive/                rollback copies and retired data, dated at archiving
-└── docs/                       system_map · how_to_run/ (INSTALL · OPERATIONS) · glossary/ (gex-glossary · gw-vocab) ·
+└── docs/                       system_map · data_map · how_to_run/ (INSTALL · OPERATIONS) · glossary/ (gex-glossary · gw-vocab) ·
                                 research_and_reviews/ (wt8-doctrine · the two payload inventories · sndk-plan · salvage-notes)
 ```
 
@@ -467,6 +468,8 @@ export TZ=UTC                                               # commit dates must 
   `docs/how_to_run/INSTALL.md`
 - **Moving to new hardware**: `docs/how_to_run/INSTALL.md`, the section of that name
 - **Runbook** (start/stop, logs, troubleshooting): `docs/how_to_run/OPERATIONS.md`
+- **System map** (every folder → its jobs, entry points and tests): `docs/system_map.md`
+- **Data map** (every store → its path, what one row holds, who writes and reads it, the training sets and their join keys): `docs/data_map.md`
 - **Plain-name glossary** (every code identifier → what it actually does):
   `docs/glossary/gex-glossary.md`
 - **Label notation** (`GWc`/`GWp`/`MagP`/`Pin` + primes): `docs/glossary/gw-vocab.md`

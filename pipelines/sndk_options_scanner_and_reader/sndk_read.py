@@ -42,7 +42,8 @@ this is its own launchd job so a slow model call cannot drop a scan.
 Two switches, and they are NOT the same thing:
     SNDK_READ_DISABLE=1   KILL — no row, no record at all (checked
                           here AND in run-sndk-read.sh).
-    sndk_reads/control.json  PAUSE — silences only the model's sentence; every
+    sndk/sndk_options_reader_reasoning_switch.json
+                          PAUSE — silences only the model's sentence; every
                           deterministic layer keeps running and every row keeps
                           landing on disk (see reasoning_on).
 

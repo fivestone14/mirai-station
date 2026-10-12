@@ -64,7 +64,8 @@ def size_ranked_probability_score(size_buckets_pct: dict | None, happened_bucket
 def score_rows_for_read(outcome_lines: list[dict], final_line: dict | None, answer_lines: list[dict],
                         test_variant: str = TEST_VARIANT_NONE) -> list[dict]:
     """Score rows for one read from its sealed outcome lines, its final forecast line and its answer lines. With a
-    ``test_variant`` the lines are that variant's (arms/), and only Claude's rows are scored, stamped with it: the
+    ``test_variant`` the lines are that variant's (claude_forecast_test_answers_by_variant_and_read/), and only Claude's rows
+    are scored, stamped with it: the
     comparison forecasters are production's rows already."""
     rows = []
     answers_by_number = {answer_number_of(a): a for a in answer_lines}

@@ -1,5 +1,7 @@
 # Salvage notes — logic worth re-implementing, from the retired signal system
 
+> A dated note: the paths and folder names in it are those of its day. Where every store lives today, with its writer and readers, is `docs/data_map.md` at the repo root.
+
 Deleted 2026-07-03 in the gex-module restructure. The pre-restructure backup
 (`mirai-station.backup-pre-gexmodule-20260703`) was itself deleted 2026-07-10
 after the live record validated — so the notes below are now the *only* record of

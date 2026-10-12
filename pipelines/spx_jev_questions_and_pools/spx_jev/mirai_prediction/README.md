@@ -15,48 +15,56 @@ graded result -> scored per voice -> pool_v2 weights -> refit each morning -> ph
 
 ## Where the data lives
 
-`data/spx/prediction/` (every file named in `station_paths.py`)
+`data/spx/prediction/` (every file named in `station_paths.py`; who writes and reads each is a row in `docs/data_map.md`)
 
 | folder / file | what it holds |
 |---|---|
-| `raw/new_voice_forecasts/{day}.jsonl` | every voice's forecast per read, written live; append-only; the record |
-| `raw/code_features/{day}.jsonl` | the code feature builder's answers per read (layers 1-2), written live before the read is forecast or by the backfill; append-only; the record |
-| `tables/new_voice_forecasts/day=…/` | the same, checked and built nightly (Parquet); safe to delete and rebuild |
-| `tables/voice_scores/day=…/` | each voice's penalty and right/wrong per graded read |
-| `tables/_checks/refused_rows/{day}.jsonl` | rows a check refused, with the reason |
-| `pools/pool_v2/weights_{sum_id}.json` | pool_v2's voice weights (move and direction), days learned |
-| `catalogs/voice_fits/{day}_{sum_id}.json` | the three learners fitted for that day (on days before it) and the answer matrix they were fitted on; the newest 10 days are kept, older files are pruned (every one can be rebuilt) |
-| `scoreboard.json` | the phone card's file |
-| `run_logs/job_run_log.jsonl` | every job and hook run |
-| `archive/` | backups taken before a state file changes (the newest 10 per file name are kept) and what a forced replay cleared (`replay_force_<stamp>/`, kept 7 days); the nightly job prunes the rest |
+| `forecasts_by_forecaster_read_and_horizon/{day}.jsonl` | every voice's forecast per read, written live; append-only; the record |
+| `code_question_answers_by_read/{day}.jsonl` | the code feature builder's answers per read (layers 1-2), written live before the read is forecast or by the backfill; append-only; the record |
+| `tables/forecasts_by_forecaster_read_and_horizon/day=…/` | the same, checked and built nightly (Parquet); safe to delete and rebuild |
+| `tables/grades_by_forecaster_read_and_horizon/day=…/` | each voice's penalty and right/wrong per graded read |
+| `learner_pool/learner_pool_state/{horizon}.json` | pool_v2's voice weights (move and direction), days learned; the code's sum ids `next_60` and `average_30` are the files `next_60_minutes.json` and `average_of_next_30_minutes.json` |
+| `learner_pool/learner_pool_trained_forecasters_by_day/{day}_{horizon}.json` | the three learners fitted for that day (on days before it) and the answer matrix they were fitted on; the newest 10 days are kept, older files are pruned (every one can be rebuilt) |
 
-The live store keeps its folder names; `name_map.py` maps them (`graded_results` = `store/average_grades`,
-`forecasts_at_read_time` = `store/calls`, `jev_answers` = `store/answers`).
+The few files it writes for other parts of the station sit where those parts look:
+
+| file | what it holds |
+|---|---|
+| `data/screen_files/phone/forecaster_scoreboard_card.json` | the phone card's file |
+| `data/operations/logs/prediction_job_runs_log.jsonl` | every job and hook run |
+| `data/operations/logs/forecaster_forecasts_job_log.txt` | the after-read hook's printed output |
+| `data/operations/health/forecaster_table_refused_rows_by_event/{day}.jsonl` | rows a check refused, with the reason |
+| `data/archive/learner_pool_rollback_copies/` | backups taken before a state file changes (the newest 10 per file name are kept) and what a forced replay cleared (`replay_force_<stamp>/`, kept 7 days); the nightly job prunes the rest |
+
+The learning store's tables under `data/spx/jev/tables/` are reached by the diagram's names through `name_map.py`
+(`graded_results` = `jev_average_price_grades_by_read_and_horizon/`, `forecasts_at_read_time` =
+`jev_and_pool_forecasts_by_read_and_horizon/`, `jev_answers` = `jev_answers_by_read_and_question/`).
 
 ## How it runs
 
 - **At every live read** `service.py` calls `live_call.forecast_now_with_voices` inside the read (Pool 2's mix is the call
   since 2026-10-06; the voices it mixed ride on each sum it took over as `voices`, most say first, for the phone's "what
   went into it"), falling back to `service_hook.spawn_after_read`, which starts `read_hook` in its own process. The hook
-  first has the code feature builder answer its questions for the read and appends the line to `raw/code_features/`
+  first has the code feature builder answer its questions for the read and appends the line to `code_question_answers_by_read/`
   (the record the nightly matrix joins on), then loads the day's fit file (fits + answer matrix, no store scan), adds
-  today's row with those answers and JEV's picks, forecasts the read with every voice and appends the lines to `raw/`
+  today's row with those answers and JEV's picks, forecasts the read with every voice and appends the lines to
+  `forecasts_by_forecaster_read_and_horizon/`
   (about 0.4 s; the first sum always runs, a later one is skipped past the 5-second budget; never raises). Each line
   carries the live loop's `learn_exclude` flag for the read.
 - **At 17:05 ET** (`com.mirai-station.spx-jev-prediction-nightly`, after the store's 16:40 rebuild) `nightly_job` first catches
   up any day of the last 10 with raw lines pool_v2 has not learned (a night the box slept through), then for today builds the
   tables, scores every voice against `graded_results` (joined on `read_id` + `sum_id`; excluded reads are scored and flagged
   but not learned), lets pool_v2 learn the day, refits the learners for the next market day, prunes old fit files, writes
-  `scoreboard.json`, and prunes `archive/`.
+  the phone's scoreboard card, and prunes the rollback copies.
 - **Walk-forward, always:** a fit for day D uses graded rows from days before D only (`voice_fits.check_no_leak`), and a
   market value is ranked against earlier days only, never the same day's earlier reads.
 
 ```
 cd pipelines/spx_jev_questions_and_pools
-python -m spx_jev.mirai_prediction.nightly_job --state-dir ../../state --lane live [--day YYYY-MM-DD]
-python -m spx_jev.mirai_prediction.read_hook   --state-dir ../../state --lane live [--read-id live:<row_ts>]
-python -m spx_jev.mirai_prediction.replay      --state-dir ../../state --lane live --from 2026-09-29 --to 2026-10-05 [--force]
-python -m spx_jev.mirai_prediction.backfill_code_features --state-dir ../../state --from 2026-09-28 --to 2026-10-06 [--force]
+python -m spx_jev.mirai_prediction.nightly_job --state-dir ../../data --lane live [--day YYYY-MM-DD]
+python -m spx_jev.mirai_prediction.read_hook   --state-dir ../../data --lane live [--read-id live:<row_ts>]
+python -m spx_jev.mirai_prediction.replay      --state-dir ../../data --lane live --from 2026-09-29 --to 2026-10-05 [--force]
+python -m spx_jev.mirai_prediction.backfill_code_features --state-dir ../../data --from 2026-09-28 --to 2026-10-06 [--force]
 python -m pytest tests/test_mirai_prediction_*.py -q
 ```
 
@@ -70,7 +78,7 @@ since the question pressure test of 2026-10-07 (below; MACRO-09 answers in two c
 what was known at its time: the label sentences as archived (one small parser per template), the SPX minute bars finished
 by the read (TREND-05/08/09/10/12, LEVELS-06's opening box, LEVELS-09, FLOW-08, ...) and the night's 1-minute /ES bars
 (LEVELS-07, LEVELS-08 without a premarket read). `code_features_market.py` holds the Phase 2 answerers that read the
-Phase 1 feeds: the market feed's minute bars per symbol (`context/bars/`, today's from the quotes until the day is saved)
+Phase 1 feeds: the market feed's minute bars per symbol (`data/market/watchlist_price_bars_by_minute/`, today's from the quotes until the day is saved)
 for SPY/QQQ/IWM, /ZN, HYG/USO/GLD, the 3x funds, the megacaps, $VIX/$VIX9D/$TNX and breadth; the daily closes
 (VOLATILITY-08/17, SESSION-02, VOLATILITY-18's yield move); the index weights dated on or before the day
 (BREADTH-03/07/09); the calendar read at the read's time (EVENTS-02/03, VOLATILITY-14/18); the day's diary walls, gamma
@@ -80,7 +88,8 @@ row at the read's clock (OPTIONS-02); the lob-flow quote sweeps (OPTIONS-08) and
 source (the exact formula and window), label keys, the exact answer list, notes (every DRAFT threshold says so, and every
 question the pressure test changed says how and why) and, for a question kept as context only, `"votes": false`. A ranked
 measure is compared with the same measure at the same minute on the trailing 20 sessions (at least 10, else None), from
-`bars/`, `context/bars/` and the store's `spx_bars` and `overnight_bars` (`code_feature_inputs.py`; the SPX bars reach 60
+`data/market/spx_price_bars_by_minute/`, `watchlist_price_bars_by_minute/` and the tables `market/tables/spx_price_bars_by_minute/` and
+`futures_price_bars_by_minute/` (`code_feature_inputs.py`; the SPX bars reach 60
 sessions for the gap rank); a symbol's usual multiple of SPX (the beta of its 30-minute returns on SPX's over the prior
 sessions' half hours) is fitted once per day and applied to every session in a rank. The premarket questions (MACRO-09
 and its arc column, LEVELS-08) take the day's last premarket-lane read. A question whose data is missing, or whose
@@ -94,7 +103,7 @@ cached only within one process (the replay and the backfill, which walk a day's 
 
 **Non-voting questions.** `"votes": false` (BREADTH-09, VOLATILITY-12, VOLATILITY-17, MACRO-02, SENTIMENT-02; OPTIONS-02 until
 step 2 rebuilt its measure)
-keeps a question answered, stored under `raw/code_features/` and in the matrix as context (the judgment gates read
+keeps a question answered, stored under `code_question_answers_by_read/` and in the matrix as context (the judgment gates read
 BREADTH-09 and MACRO-02, VOLATILITY-18 reads BREADTH-09, and from the cut-over JEV's sentences carry every answer), but
 `answer_matrix.voting_columns` leaves it out of the additive scorer's pushes and volumes and the matcher's distance. Each
 fit file names them (`non_voting_columns`, beside `columns_by_layer` and `voting_columns_by_layer`; fit version 5).
@@ -135,7 +144,7 @@ answer now carries the pull's side (`in play up, ...` / `in play down, ...`). Th
 simulation (each read's day's diary, collector record, quotes and SPY volumes cut to what existed at the read) answers
 every changed question as the backfill does on every 10-07 read, and on 09-29, 10-02 and 10-05 for the options questions.
 
-Each read's answers are written to `raw/code_features/{day}.jsonl` first (live, before the read is forecast; or by the
+Each read's answers are written to `code_question_answers_by_read/{day}.jsonl` first (live, before the read is forecast; or by the
 backfill command, idempotent, source `backfill`) and the nightly matrix joins them on `read_id` as columns
 `code:<question_id>` with the catalog's layer and group; a read without a line is silent in every code column. Layer 3
 (`jev:<question>`) is JEV's pick per answered question of the live set, grouped by request group; since Phase 3 that includes
@@ -171,8 +180,8 @@ The feeds the blocked questions of the merged set waited for, built first; the P
 the last hour; the outlet from its `<source>` tag), MarketWatch Top Stories (`feeds.content.dowjones.io/public/rss/mw_topstories`)
 and the Fed's press feed (`federalreserve.gov/feeds/press_all.xml`). One JSON line per NEW item to `data/market/news_headlines_by_article/{day}.jsonl`
 (ET day): `captured_at` (the poll's own clock, ISO ET: **the truth**), `pub_claimed` (the raw pubDate, untrusted), `feed`, `source`,
-`title`, `url`, `guid`. `seen.json` dedupes across polls (sha1 of the url and of the lower-cased title, pruned to 48 h, written
-atomically); a feed that fails is named with its error on stderr and costs only its own items; `.lock` keeps two polls apart. **The
+`title`, `url`, `guid`. `news_headlines_seen_state.json` dedupes across polls (sha1 of the url and of the lower-cased title, pruned to 48 h, written
+atomically); a feed that fails is named with its error on stderr and costs only its own items; `data/operations/locks/news_headlines_poll.lock` keeps two polls apart. **The
 capture-time rule:** a question reads only what the station captured by its cut: `headlines_before(state_dir, row_ts, minutes)`
 returns the lines captured in the `headline_window_min` (60) minutes ending `headline_cut_min` (2) minutes before the read, newest
 first, never one captured later, whatever its feed claimed.
@@ -187,8 +196,8 @@ move. A gate whose code answer is None is not fired; a question not fired is ski
 | id (`jev:<id>` column) | merged id | gate | labels it reads |
 |---|---|---|---|
 | `heavyweight_catalyst_or_flow` | BREADTH-10 | BREADTH-09 reads `in play up, ...` or `in play down, ...` | `judgment.heavyweight` (the stock, the way it pulls, its pull and the rest of the index since the close, `code_features_market.heavyweight_pull`, and the window's headlines naming it or its ticker) |
-| `macro_gap_equity_reason` | MACRO-03 | MACRO-02 reads `far up` or `far down` (the gap's top fifth) and the day's last read JEV answered the question on (the archive's responses; its code answers from `raw/code_features/`) did not read the same: answered once until the answer changes, a lost ask retried | `judgment.macro_gap` (the answer, and the gap's size in percent and points and its side, `code_features_market.macro_gap`), `judgment.headlines` |
-| `yield_move_meaning` | EVENTS-06 | the ten-year yield's move since the prior close ranks top third at this minute (`judgment.yield_move`: today's `$TNX` quote against its prior close, each prior session's `context/bars` reading at the minute against its own daily close, 20 sessions, needing 10), and EVENTS-03 reads no release in its reaction window (EVENTS-05 until 2026-10-07) | `judgment.yield_move`, `judgment.headlines` |
+| `macro_gap_equity_reason` | MACRO-03 | MACRO-02 reads `far up` or `far down` (the gap's top fifth) and the day's last read JEV answered the question on (the archive's responses; its code answers from `code_question_answers_by_read/`) did not read the same: answered once until the answer changes, a lost ask retried | `judgment.macro_gap` (the answer, and the gap's size in percent and points and its side, `code_features_market.macro_gap`), `judgment.headlines` |
+| `yield_move_meaning` | EVENTS-06 | the ten-year yield's move since the prior close ranks top third at this minute (`judgment.yield_move`: today's `$TNX` quote against its prior close, each prior session's `watchlist_price_bars_by_minute` reading at the minute against its own daily close, 20 sessions, needing 10), and EVENTS-03 reads no release in its reaction window (EVENTS-05 until 2026-10-07) | `judgment.yield_move`, `judgment.headlines` |
 | `news_reaction` | EVENTS-07 | a CNBC, MarketWatch or Fed-feed headline (never Google News) naming an index-wide mover (the Fed/FOMC/Powell, CPI/PPI/jobs/payrolls/GDP/PCE/retail sales, tariffs or trade, Treasury yields, a heavyweight's earnings or guidance: `judgment.INDEX_NEWS`, `MEGACAP_RESULTS`) first captured in the `HEADLINE_FRESH_MIN` (30) minutes before the cut and after the cut of the day's last read that asked it; on 10-07 it fires on 2 of 13 reads (09-29 to 10-06 have no headlines) | `judgment.headlines`, `price.recent_move`, `price.day_range_position` |
 
 The questions are `shadow` in the set (each `shadow_proof` says why: not a proof, a wall): `hour.answer_sentences` leaves a shadow
@@ -200,7 +209,7 @@ by the question's status alone.
 
 **The read's order changed:** `service.run_once` now has the code feature builder answer the read right after the labels are
 built and before the requests are packed (`judgment.judge`), so the gates can read the answers. A live read records the line
-under `raw/code_features/{day}.jsonl` first (source `live`); `live_call.forecast_now_with_voices` after the read finds it by `read_id` and
+under `code_question_answers_by_read/{day}.jsonl` first (source `live`); `live_call.forecast_now_with_voices` after the read finds it by `read_id` and
 computes nothing twice. A replay or an unsent run computes the answers and writes nothing. Every part of the judgment step
 catches its own failure (the code answers, the headlines, the yield's move, each gate): a failure leaves the question not
 fired, with the failure named in its reason, and the read goes on; the step never raises.
@@ -233,7 +242,7 @@ answers as plain sentences, `code:<id>: "<catalog title>: <answer>"` for every c
 (`hour.cut_over_sentences`; a None is left out, as the matrix holds it). The context's units line says the lines are the code's
 measurements and JEV's own judgments. A read with no judgment answer and no code answer still asks the sums over an empty map.
 The hour record and the card's `hour` keep `used` (the answered questions summed) and `code_sentences` (how many code measurements
-rode beside them; absent before the cut-over). The code answers are the same line `raw/code_features/{day}.jsonl` holds for the read: `judgment.judge` returns them to
+rode beside them; absent before the cut-over). The code answers are the same line `code_question_answers_by_read/{day}.jsonl` holds for the read: `judgment.judge` returns them to
 `service.run_once` beside the gate verdicts, and from the cut-over the live lane answers them whether or not the doc holds the
 judgment group.
 
@@ -266,7 +275,7 @@ The 95 graded 30-minute calls of 09-29..10-08 went 51 right, against 56 for the 
 | id | issue | verdict | status |
 |---|---|---|---|
 | SPX30-1 | JEV's opinion leaks into the call through the 50/50 blend (and JEV's own call, the JEV mixes) | the culprit: benched, 51 -> 56 right (next_60 55 -> 56) | FIXED 2026-10-09: `pool_v2.BENCHED_VOICES` (still scored and learned, never mixed) |
-| SPX30-2 | the day's ruler (`labels/rulers.morning_ruler`) is the first 09:30 diary row, unchecked; 09-09, 10-07, 10-08 read ~0.65x the rest of the morning, so the flat band shrank and every ranked move read ~1.4x too big; the ruler also mixes clocks (calendar IV over the root of 252 trading days, ~2.3x the priced move, hidden by the fixed 0.07) and one band all day made 31% of opening half hours flat against 71% at 15:00 | real, small (+1 call) | FIXED 2026-10-09: the static sigma bands (0.07, 0.11, 0.04, the tape units) are gone from the code, the spec and the question text; every box's flat zone is sized at each read in points from the day's tape and the VIX (`spx_jev/flat_zone.py`), refit each day to its flat target, told to JEV, stamped on the record and graded against; 09-29..10-09 regraded under `integral.RULE_VERSION` 4, the store and the historical odds rebuilt, pool_v2 relearned on the new labels. The ruler itself still rules the labels (`morning_ruler`, the tape unit): the first-row guard stays open there. Verified the same night by three agents (the math against the research scripts on 637 zones, the data against the backup, the live path end to end); their fixes applied: a read before the VIX's opening print cannot see it, the realized fallback takes each session's clock out with its own shape, a zone failure never costs a read its questions (the live and premarket lanes ask no sum instead), and the premarket's average sum has its own flat target (`PREMARKET.average_flat_pct`; it was 82% flat without one, 55% with it; its 11 reads regraded). Still open: the retired end-price loop (`pool_30.json`, `pool_60.json`) keeps weights learned on the old labels until its next sealed session; the premarket multipliers rest on 20 numbers (one start a session), so expect about 2 points of noise there |
+| SPX30-2 | the day's ruler (`labels/rulers.morning_ruler`) is the first 09:30 diary row, unchecked; 09-09, 10-07, 10-08 read ~0.65x the rest of the morning, so the flat band shrank and every ranked move read ~1.4x too big; the ruler also mixes clocks (calendar IV over the root of 252 trading days, ~2.3x the priced move, hidden by the fixed 0.07) and one band all day made 31% of opening half hours flat against 71% at 15:00 | real, small (+1 call) | FIXED 2026-10-09: the static sigma bands (0.07, 0.11, 0.04, the tape units) are gone from the code, the spec and the question text; every box's flat zone is sized at each read in points from the day's tape and the VIX (`spx_jev/flat_zone.py`), refit each day to its flat target, told to JEV, stamped on the record and graded against; 09-29..10-09 regraded under `integral.RULE_VERSION` 4, the store and the historical odds rebuilt, pool_v2 relearned on the new labels. The ruler itself still rules the labels (`morning_ruler`, the tape unit): the first-row guard stays open there. Verified the same night by three agents (the math against the research scripts on 637 zones, the data against the backup, the live path end to end); their fixes applied: a read before the VIX's opening print cannot see it, the realized fallback takes each session's clock out with its own shape, a zone failure never costs a read its questions (the live and premarket lanes ask no sum instead), and the premarket's average sum has its own flat target (`PREMARKET.average_flat_pct`; it was 82% flat without one, 55% with it; its 11 reads regraded). Still open: the retired end-price loop (`base_pool_state/next_30_minutes.json`, `next_60_minutes.json`) keeps weights learned on the old labels until its next sealed session; the premarket multipliers rest on 20 numbers (one start a session), so expect about 2 points of noise there |
 | SPX30-3 | VOLATILITY-02's reader blanks the record-busy sentence ("more than every one of the last N sessions"), 6 of 12 reads on 10-08 | real bug, ~0 cost so far | FIXED 2026-10-10 (db316b3): `code_features.fifth()` reads the record wording as the top, the catalog's note says so, 10-08's answers were re-parsed from the archived sentences and the learners refit for 10-12 on them |
 | SPX30-4 | voices that copy the historical odds (the scorer while its volumes are 0, jev_mix_0, question_tilt) hold seats | not a culprit: removing them goes 51 -> 49 | decided: leave them |
 | SPX30-5 | the matcher's blanks count half a mismatch | wrong cause (blanks change nothing); it carries an early "too flat" lean and loses to the odds at every neighbour count | open: bench it until it beats the odds |

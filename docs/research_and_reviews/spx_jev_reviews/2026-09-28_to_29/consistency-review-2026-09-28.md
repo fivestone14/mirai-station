@@ -1,5 +1,7 @@
 # SPX JEV consistency review — 2026-09-28
 
+> A dated note: the paths and folder names in it are those of its day. Where every store lives today, with its writer and readers, is `docs/data_map.md` at the repo root.
+
 Snapshot reviewed: `92ac5e3` (frozen copy at the scratchpad `wt-review`), read-only. Live data read: `state/spx_jev` for Monday 09-28 and the `/tmp/mirai-station.spx-*` logs. Eight review lenses each proposed findings; two independent skeptics then tried to disprove every one. Nothing was edited or committed, nothing was sent to JEV, no Schwab calls were made. Scratch scripts are in the session scratchpad under `review/`.
 
 File paths below are relative to the repo (`skills/spx-jev/spx_jev/...` shortened to `spx_jev/...`; the phone page is `runtime/viewstation/static/m/jev-spx.html`).

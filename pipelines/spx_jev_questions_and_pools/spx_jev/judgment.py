@@ -20,7 +20,7 @@ member of the old learning loop (hour.answer_sentences, grade.live_options, pool
 System's matrix takes them as its layer-3 columns ``jev:<question id>`` (answer_matrix.load_jev_answers).
 
 Since 2026-10-07 the service answers the code questions before it builds the read's requests (service.run_once), so
-the gates can read them; the live read records them under raw/code_features/ first and the forecast after the read
+the gates can read them; the live read records them under code_question_answers_by_read/ first and the forecast after the read
 reuses the stored line by read_id.
 """
 from __future__ import annotations
@@ -229,7 +229,7 @@ def read_record_for_code(lane_name: str, scene: Scene, labels: LabelSet, event: 
 
 def code_answers_for(state_dir: Path | str, lane_name: str, day: str, read_record: dict, record: bool, history=None,
                      day_bars: list[dict] | None = None) -> dict[str, str | None]:
-    """The code feature builder's answers for the read. A live read records them under raw/code_features/ first
+    """The code feature builder's answers for the read. A live read records them under code_question_answers_by_read/ first
     (code_feature_inputs.record_code_features, reused by read_id when the read is forecast); a replay or an unsent run
     computes them and writes nothing. ``history`` and ``day_bars`` are the day's, when the caller loaded them."""
     from .mirai_prediction.code_feature_inputs import load_day_bars, load_market_history, record_code_features
@@ -263,7 +263,7 @@ def last_read(state_dir: Path | str, lane_name: str, day: str, row_ts: str, took
 
 
 def code_answers_of(state_dir: Path | str, day: str, read_id: str) -> dict[str, str | None]:
-    """One read's code answers as raw/code_features/ holds them (the last line for it); empty without one."""
+    """One read's code answers as code_question_answers_by_read/ holds them (the last line for it); empty without one."""
     from .mirai_prediction.code_feature_inputs import stored_code_features
     from .mirai_prediction.paths import data_root
     return dict(stored_code_features(data_root(state_dir), day).get(read_id, {}).get("answers") or {})

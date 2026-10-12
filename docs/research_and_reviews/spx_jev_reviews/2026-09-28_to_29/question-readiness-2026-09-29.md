@@ -1,5 +1,7 @@
 # SPX JEV question readiness — Tuesday 2026-09-29
 
+> A dated note: the paths and folder names in it are those of its day. Where every store lives today, with its writer and readers, is `docs/data_map.md` at the repo root.
+
 Written 02:25 ET Tuesday, before the 02:35 pre-market read. Six checkers looked at the questions and the logic around them: a full replay, two logic reviews, a rank-history check, a request check and a sums-and-grades check. The nine fixes they agreed on were built and tested in a scratch copy of the repo. **None of them is on the live station and nothing was pushed** (section 7 says why). No Schwab calls were made. The only JEV call was the request checker's one-question key test.
 
 Scratch work: `<session scratchpad>/readiness/` (the fixes are in `fixclone/` and `ontop/`, the before-and-after replays in `verify/` and `verify2/`).

@@ -1,7 +1,8 @@
-"""Builds this system's tables from its raw record files, with checks: raw/ is the record, tables/ can always be rebuilt.
+"""Builds this system's tables from its raw record files, with checks: the raw files are the record, tables/ can always be rebuilt.
 
-    new_voice_forecasts   from raw/new_voice_forecasts/{day}.jsonl: one row per (read_id, sum_id, voice_name), the last line wins;
-                          a row is refused (to tables/_checks/refused_rows/{day}.jsonl) when its probabilities do not sum to one,
+    new_voice_forecasts   from forecasts_by_forecaster_read_and_horizon/{day}.jsonl: one row per (read_id, sum_id, voice_name), the
+                          last line wins; a row is refused (to operations/health/forecaster_table_refused_rows_by_event/{day}.jsonl)
+                          when its probabilities do not sum to one,
                           its read is not among the day's reads in the live store, or it was created before its read;
                           learn_exclude (the live loop's own flag for the read) travels with every row
     voice_scores          every forecast of a graded read scored: penalty (spx_jev.scores log_loss with the 0.02 floor), whether the
@@ -85,7 +86,7 @@ SCORE_SCHEMA = pa.schema([("read_id", pa.string()), ("lane", pa.string()), ("row
 
 
 def build_new_voice_forecasts_table(root: Path, state_dir: Path | str, lane: str, day: str) -> dict:
-    """raw -> tables/new_voice_forecasts/day=DAY; returns counts."""
+    """raw -> tables/forecasts_by_forecaster_read_and_horizon/day=DAY; returns counts."""
     raw = read_json_lines(raw_forecasts_file(root, day))
     known = _day_read_ids(state_dir, lane, day)
     kept: dict[tuple[str, str, str], dict] = {}
@@ -134,7 +135,7 @@ def load_day_outcomes(state_dir: Path | str, lane: str, day: str) -> dict[tuple[
 
 
 def build_voice_scores_table(root: Path, state_dir: Path | str, lane: str, day: str) -> dict:
-    """Score every forecast of a graded read for the day -> tables/voice_scores/day=DAY."""
+    """Score every forecast of a graded read for the day -> tables/grades_by_forecaster_read_and_horizon/day=DAY."""
     forecasts = load_day_forecasts(root, day)
     outcomes = load_day_outcomes(state_dir, lane, day)
     reference: dict[tuple[str, str], float] = {}

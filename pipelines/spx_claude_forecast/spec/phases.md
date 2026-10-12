@@ -1,5 +1,7 @@
 # spx-claude-forecast: implementation phases
 
+> Paths in this table are the ones of the day each phase was built (`state/`, `recorder/`, `STORE_MAP.json`); where every store lives today is `docs/data_map.md` at the repo root.
+
 Each phase ends with a check that proves it is done. **The phone app is not changed until Phase 9.** Nothing starts without Will's go,
 and commits go on main with `TZ=UTC`. The choices behind each phase are in `decisions.md`; how it works is in the code and the README.
 

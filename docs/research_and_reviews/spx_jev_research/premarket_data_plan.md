@@ -1,5 +1,7 @@
 # SPX JEV pre-market lane: data plan (2026-09-27)
 
+> A dated note: the paths and folder names in it are those of its day. Where every store lives today, with its writer and readers, is `docs/data_map.md` at the repo root.
+
 One read at 09:28 ET covers 5 dark questions. Six reviewers checked the data read-only, with a few live Schwab calls on 09-27.
 
 **In short:** Schwab already has every price these questions need. Nothing saves those prices, nothing runs before 09:30, and the grader would skip a 09:28 read. None of the 5 questions needs a new feed. All of them need building.

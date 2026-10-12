@@ -21,7 +21,7 @@ EXCL=':(exclude).github/scripts/*'
 # --untracked (2026-09-09): plain `git grep` sees TRACKED files only, so a brand
 # new file was invisible to every scan below until the commit that added it had
 # already been made — exactly the moment the gate is supposed to speak. A file
-# git is ignoring is still skipped, which is what we want: state/ is 659 MB.
+# git is ignoring is still skipped, which is what we want: data/ is 659 MB.
 UNTRACKED='--untracked'
 
 report() {                                  # report <label> <hits>

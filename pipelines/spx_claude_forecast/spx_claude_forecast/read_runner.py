@@ -4,8 +4,9 @@
 
 Started detached by ``hook.spawn_claude_forecast`` after the SPX read has archived its record, so nothing
 here is ever on the read's path. Every step lands a line before the next starts: the payload line
-(``payloads/{day}.jsonl``) before any call; each answer line (``reads/{day}.jsonl``) as it comes back; the
-final forecast line last; then ``latest.json`` for the phone. A read that cannot be built writes a
+(``claude_forecast_inputs_by_read/{day}.jsonl``) before any call; each answer line
+(``claude_forecast_answers_by_read/{day}.jsonl``) as it comes back; the final forecast line last; then
+``claude_forecast_card.json`` for the phone. A read that cannot be built writes a
 ``blind`` payload line; a paused switch, a daily cap or a run under pytest writes the payload and a final
 line whose status says why no call was made. Line fields follow spec/record_formats.md. The run never
 raises past ``main``.

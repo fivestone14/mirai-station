@@ -11,7 +11,8 @@ the live hook never scans the store; the hook only adds today's row to it:
                                      a judgment question's pick outside its options today (renamed in the question pressure test)
                                      is silent, and the picks that point a way only with the code's side are stored signed by it
                                      (SIGNED_PICKS: "material_cause:up"), live and in the nightly matrix alike (row_answers)
-    raw/code_features/{day}.jsonl    layers 1-2: the code feature builder's answer per catalog question ("code:<question_id>"),
+    code_question_answers_by_read/{day}.jsonl
+                                     layers 1-2: the code feature builder's answer per catalog question ("code:<question_id>"),
                                      this system's own raw record (code_features.py), joined on read_id; a read with no line
                                      has None in every code column. Each column's layer and group come from the catalog;
                                      a question the catalog marks "votes": false keeps its column (context: the judgment

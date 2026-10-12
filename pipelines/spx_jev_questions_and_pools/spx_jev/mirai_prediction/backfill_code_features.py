@@ -2,8 +2,8 @@
 
     python -m spx_jev.mirai_prediction.backfill_code_features --state-dir <state> --from 2026-09-28 --to 2026-10-06 [--lane live] [--force]
 
-Idempotent: a read with a line in raw/code_features/{day}.jsonl already is skipped. --force backs the day's file up into
-archive/ and rewrites it whole (after the builder changes). Prints, per day, the reads seen, written and skipped, and
+Idempotent: a read with a line in code_question_answers_by_read/{day}.jsonl already is skipped. --force backs the day's file
+up into archive/learner_pool_rollback_copies/ and rewrites it whole (after the builder changes). Prints, per day, the reads seen, written and skipped, and
 over the range, per question, how many reads it answered and how many it left None.
 """
 from __future__ import annotations

@@ -102,7 +102,7 @@ def _payload_unlocked(qs: dict) -> bool:
 # the embedder never loads into this server) and hands back both the parsed
 # result and the exact text the model would see. Note the CLI's own documented
 # side effect: a days/month ask rolls closed sessions up into sndk_options_reader_session_summaries_by_day.jsonl /
-# sndk_options_reader_terrain_state.json under state/sndk — the memory maintaining itself, exactly as
+# sndk_options_reader_terrain_state.json under data/sndk — the memory maintaining itself, exactly as
 # when the model asks; no trading state is touched.
 _RAG_CLI = PLUGIN_ROOT / "pipelines" / "sndk_options_scanner_and_reader" / "sndk_rag.py"
 _MEMORY_TIMEOUT_S = 60.0

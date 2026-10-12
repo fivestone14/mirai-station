@@ -2,7 +2,7 @@
 
 ``spawn_claude_forecast(state_dir, read_id)`` is called from ``spx_jev.service.run_once`` right after the
 read's record is archived. It checks the kill switches, starts ``python -m spx_claude_forecast.read_runner``
-detached (its own session, output to ``run_logs/read_runner.out``), and returns at once. It never raises:
+detached (its own session, output to ``operations/logs/claude_forecast_read_job_log.txt``), and returns at once. It never raises:
 every failure is a False.
 
 Under pytest it spawns nothing. pytest sets PYTEST_CURRENT_TEST for every test, and the SPX read's own

@@ -40,8 +40,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from spx_jev import cuts as CUTS  # noqa: E402  (the package beside spec/, for the declared values)
 from spx_jev.flat_zone import Zones  # noqa: E402
 from spx_jev.lane import LIVE, TAPE  # noqa: E402
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
-DEFAULT_STATE_DIR = Path.home() / ".claude" / "plugins" / "mirai-station" / "state"
+DEFAULT_STATE_DIR = station_paths.state_root()       # the station's data root (~/mirai_awakening/data unless overridden)
 OUT = Path(__file__).resolve().parent / "cuts.json"
 MIN_BARS = 300
 MIN_ROWS = 100
@@ -171,11 +172,13 @@ def _rows(raw: list[dict], ticker: str) -> list[dict]:
 
 def sessions(state_dir: Path, name: str) -> list[tuple[str, list[dict], list[dict]]]:
     """``[(day, bars, rows)]`` for every full session of ``name`` ("SPX" or "SNDK") on disk."""
-    if name == "SPX":
-        rows_dir, bar_file = state_dir / "reversion", lambda d: state_dir / "reversion" / "bars" / f"{d}-SPX.json"
+    if name == "SPX":        # the scanner's diary and the grader's saved full-session bars
+        rows_dir = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(state_dir)
+        bar_file = lambda d: station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.path(state_dir, day=d)
         read_bars = lambda p: json.loads(p.read_text(encoding="utf-8"))
-    else:
-        rows_dir, bar_file = state_dir / "sndk_reversion", lambda d: state_dir / "sndk_bars" / f"{d}.jsonl"
+    else:                    # the SNDK scanner's diary and its minute-bar sidecar
+        rows_dir = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(state_dir)
+        bar_file = lambda d: station_paths.SNDK_PRICE_BARS_BY_MINUTE.path(state_dir, day=d)
         read_bars = _jsonl
     out = []
     for p in sorted(rows_dir.glob("20??-??-??.jsonl")):

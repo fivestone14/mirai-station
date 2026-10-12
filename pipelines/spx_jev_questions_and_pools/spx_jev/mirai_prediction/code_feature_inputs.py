@@ -14,7 +14,7 @@
                              only are cached in-process for the day (the live service loads them once, then each read
                              loads the day's own parts).
     record_code_features     the answers for one read: the raw line already written for it, else computed now and
-                             appended to raw/code_features/{day}.jsonl BEFORE anything forecasts with them (the write
+                             appended to code_question_answers_by_read/{day}.jsonl BEFORE anything forecasts with them (the write
                              path rule: new data goes to raw JSONL first, every table is built from it)
 
 Every bar's ts is normalised to ET so the builder compares minutes of day as strings.

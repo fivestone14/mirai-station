@@ -9,11 +9,10 @@ from spx_claude_forecast import jsonl_store, paths as forecast_paths
 from spx_claude_forecast.paths import station_paths
 
 
-def test_ensure_folders_creates_every_folder_and_the_store_map(tmp_path):
+def test_ensure_folders_creates_every_folder_and_nothing_else(tmp_path):
     paths = forecast_paths.ensure_folders(tmp_path / "state")
     assert all(folder.is_dir() for folder in paths.folders)
-    store_map = json.loads(paths.store_map_file.read_text())
-    assert "payloads/{day}.jsonl" in store_map["stores"] and store_map["root"] == str(paths.root)
+    assert not any(p.is_file() for p in paths.root.rglob("*"))      # folders only: no STORE_MAP.json, no stray file
 
 
 def test_the_state_root_comes_from_the_per_test_override_then_the_station_env_then_the_repo(monkeypatch, tmp_path):
@@ -29,13 +28,10 @@ def test_the_state_root_comes_from_the_per_test_override_then_the_station_env_th
     assert forecast_paths.default_state_dir() == tmp_path / "override"
 
 
-def test_ensure_folders_is_idempotent_and_leaves_an_unchanged_store_map_untouched(tmp_path):
+def test_ensure_folders_is_idempotent(tmp_path):
     paths = forecast_paths.ensure_folders(tmp_path / "state")
-    before = paths.store_map_file.stat()
     again = forecast_paths.ensure_folders(tmp_path / "state")
     assert again == paths and all(folder.is_dir() for folder in paths.folders)
-    after = paths.store_map_file.stat()
-    assert (after.st_ino, after.st_mtime_ns) == (before.st_ino, before.st_mtime_ns)   # the backup sees no change
     assert not list(paths.root.glob("*.tmp"))
 
 

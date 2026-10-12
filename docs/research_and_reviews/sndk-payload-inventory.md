@@ -1,5 +1,7 @@
 # SNDK property inventory — in the scene payload vs not (living list)
 
+> A dated note: the paths and folder names in it are those of its day. Where every store lives today, with its writer and readers, is `docs/data_map.md` at the repo root.
+
 > **strikes-7 (2026-09-15).** No field changes; the rulebook's OUTPUT block no
 > longer dictates "sentence one ... sentence two: the standing board on both
 > sides". The reading leads with what CHANGED on the board (`day` says what did),

@@ -1,7 +1,7 @@
 """The one line the live service calls after it has saved a read: start the read hook in a separate process and return.
 
 spawn_after_read never raises and never waits: it launches ``python -m spx_jev.mirai_prediction.read_hook`` detached
-(its own session, output appended to run_logs/read_hook.out), so the live read, its grading and the phone's card are
+(its own session, output appended to operations/logs/forecaster_forecasts_job_log.txt), so the live read, its grading and the phone's card are
 never delayed or broken by anything this system does. Set SPX_JEV_PREDICTION_DISABLE=1 to turn the hook off.
 """
 from __future__ import annotations

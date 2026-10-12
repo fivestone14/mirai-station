@@ -158,7 +158,7 @@ def probe_days(today: date, window_days: int = _DISCOVERY_WINDOW_DAYS) -> list:
 # --- store -------------------------------------------------------------------
 
 def _state_dir() -> Path:
-    """The feed's own folder (sndk_gex/ today): the chain, the expiries and the volatility hint sit there."""
+    """The feed's own folder (data/sndk/): the chain, the expiries and the volatility hint sit there."""
     return station_paths.SNDK_OPTIONS_CHAIN_STATE.folder()
 
 

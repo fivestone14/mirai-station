@@ -3,7 +3,8 @@
 One project, one folder: `~/mirai_awakening`. Every folder is named for what it holds. The code
 never assumes where the repo sits (each module finds the root from its own position), while the
 launchd plists spell the final home as `$HOME/mirai_awakening`. `station_paths.py` at the root
-names every data store once; `data/` (git-ignored) is the data root. The retired
+names every data store once; `data/` (git-ignored) is the data root; `docs/data_map.md` is the one
+page to look a store up on (its path, what one row holds, who writes and reads it). The retired
 `skills/sndk-jev/` is the one folder left from the old layout, until it is removed.
 
 ## Folders
@@ -28,8 +29,8 @@ names every data store once; `data/` (git-ignored) is the data root. The retired
 | `scheduled_jobs/launchd_job_definitions/` | the 25 LaunchAgent plists, symlinked into `~/Library/LaunchAgents` by the installer | `alerts_and_phone_pushes/tests/test_station_jobs.py` |
 | `scheduled_jobs/job_start_scripts/` | `env.sh`, `start_job_with_logs.sh`, the `run-*.sh` runners, the installer and uninstaller, the venv bootstrap | the same test, which runs the gated runners in a stand-in station |
 | `health_checks/` | the live health review (`MIRAI_LIVE=1 pytest health_checks`) and its always-on unit tests | `health_checks` |
-| `docs/` | `how_to_run/` (install, runbook), `glossary/`, `research_and_reviews/`, this map | none |
-| `data/` | the data root, git-ignored: `market/`, `spx/`, `sndk/`, `voice_desk/`, `screen_files/`, `operations/`, `archive/`, the layout `station_paths.py` draws | none |
+| `docs/` | `data_map.md` (every store), `how_to_run/` (install, runbook), `glossary/`, `research_and_reviews/`, this map | none |
+| `data/` | the data root, git-ignored: `market/`, `spx/`, `sndk/`, `voice_desk/`, `screen_files/`, `operations/`, `archive/`, the layout `station_paths.py` draws and `docs/data_map.md` explains | none |
 
 ## How a job runs
 

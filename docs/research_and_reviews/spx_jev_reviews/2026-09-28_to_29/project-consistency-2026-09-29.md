@@ -1,5 +1,7 @@
 # Project consistency review, 2026-09-29
 
+> A dated note: the paths and folder names in it are those of its day. Where every store lives today, with its writer and readers, is `docs/data_map.md` at the repo root.
+
 Read-only review of live main at 4576873, which includes the other session's 27 unpushed commits (average-price call on the phone, end-price call kept in shadow, second learning loop on). Six lenses covered two-sessions, names, set/code/docs, jobs/docs, data and phone UI. Code paths are relative to `skills/spx-jev/` unless they start with `runtime/`. Nothing was edited, committed, sent to JEV or requested from Schwab. Scratch work is in `scratchpad/consist/`.
 
 Items already queued for Tuesday are not repeated here: the 9 readiness fixes, the 18 question defects and the 43 items from 09-28. Where the new work changes a queued item, that is called out below.

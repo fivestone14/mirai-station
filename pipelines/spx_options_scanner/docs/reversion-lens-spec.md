@@ -1,5 +1,7 @@
 # Reversion Lens — BETA spec (session conclusions, 2026-06-23)
 
+> A dated note: the paths and folder names in it are those of its day. Where every store lives today, with its writer and readers, is `docs/data_map.md` at the repo root.
+
 The mean-reversion / exhaustion lens for SPX. Born from the 6/23 review: the
 system caught nothing on a textbook gap-down V-bounce (7347.6 → 7424) because all
 9 existing signals are **momentum/agreement** detectors and the system is

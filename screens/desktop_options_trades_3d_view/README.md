@@ -36,7 +36,7 @@ its stream reader, its run script and its stores went on 2026-10-11.
 | `board.py` | the accumulator: observations in, slices out. Pure |
 | `sources.py` | the tape feed, plus gzip-transparent reading of rotated days |
 | `track.py` | where the underlying was through the session, from the scanner's diary |
-| `cache.py` | the only thing the viewstation calls; disk-cached wire documents |
+| `cache.py` | the only thing the viewstation calls; disk-cached wire documents, one per day at `data/screen_files/desktop/spx_options_trades_3d_view_card/{day}.json` (a rebuildable cache, keyed on the tape file's size and time) |
 
 ## Three things that will bite whoever edits this
 

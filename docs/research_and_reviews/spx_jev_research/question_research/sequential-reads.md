@@ -1,5 +1,7 @@
 # Sequential reads before the open (SPX JEV)
 
+> A dated note: the paths and folder names in it are those of its day. Where every store lives today, with its writer and readers, is `docs/data_map.md` at the repo root.
+
 2026-09-27. Notes only: no repo file and nothing under state/ was edited. This merges four designs and three skeptic reviews. The questions are in `sequential-questions.json` and the tags for existing questions are in `sequential-tags.json`, both in this folder.
 
 ## The short version

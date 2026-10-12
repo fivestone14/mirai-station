@@ -743,7 +743,7 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
     code_answers: dict[str, str | None] = {}
     if (gated := judgment.gated_questions(doc)) or (lane.pool and day_name >= CUT_OVER_DAY):
         # the judgment questions stand behind the code feature builder's answers, so those are answered now, before the
-        # requests are built: a live read records them under raw/code_features/ (the forecast after the read reuses
+        # requests are built: a live read records them under code_question_answers_by_read/ (the forecast after the read reuses
         # the line by read_id), a replay or an unsent run computes them and writes nothing. Never raises: a failure
         # leaves every judgment question not fired, with the failure as its reason. From the cut-over the live lane's
         # sums ride on these answers, so they are answered whether or not the doc holds the judgment group
@@ -1086,7 +1086,7 @@ def retry_close_outs(state_dir: Path, now: datetime) -> None:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="JEV decision service for SPX: one run on the newest diary row, output for the phone.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
-    ap.add_argument("--out-dir", default=None, help="default the lane's folder under <state-dir>: spx_jev, or spx_jev/lanes/<lane>; "
+    ap.add_argument("--out-dir", default=None, help="default the lane's folder under <state-dir>: spx/jev/live_lane, opening_lane or premarket_lane; "
                                                    "a replay (--day) defaults to a fresh scratch folder instead")
     ap.add_argument("--questions", default=None, help="default the lane's question doc")
     ap.add_argument("--day", help="build a past day's newest row instead of today's")

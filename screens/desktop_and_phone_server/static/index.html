@@ -3083,7 +3083,7 @@ for(const ev of ['pointerdown','keydown','touchstart','wheel','click'])
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) spotKick(); });
 let LIVE = false;
 let MODE = 'connecting';   // 'connecting' → 'live' | 'demo'; feedBadge derives 'lost' from FEED.fails
-// Ask the viewstation's file index for the newest reversion/<date>.jsonl (robust across the
+// Ask the viewstation's file index for the newest spx_options_scanner_results_by_scan/<date>.jsonl (robust across the
 // midnight rollover / pre-market gap), pull its last 40 rows: newest row drives the map,
 // and the most-recent JUDGED watchtower (skipping quiet/cap rows) drives the reading.
 /* MODEL-AUTHORED text that reaches innerHTML goes through here (20-agent sweep
@@ -3242,7 +3242,7 @@ async function fetchRecent(){
   for(let k=raw.length-1;k>=0;k--){ const w=raw[k].watchtower; if(w && !w.skipped && (w.scene||w.fired!==undefined)){ wt={...w, _ts:raw[k].ts}; break; } }
   return { rows: raw.filter(x=>x&&typeof x==='object').map(r=>{ try{ return rowToScan(r); }catch(e){ return null; } }).filter(Boolean), newestRaw: raw[raw.length-1], wt };
 }
-// load every past reversion/<date>.jsonl so the diary book has a page per day (today stays live via LIVEROWS)
+// load every past spx_options_scanner_results_by_scan/<date>.jsonl so the diary book has a page per day (today stays live via LIVEROWS)
 async function loadDiaryHistory(){
   try{
     const idx=await fetch('/api/store/index?name=SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN',{cache:'no-store'}); const j=await idx.json();
@@ -7138,7 +7138,7 @@ const LY = [
       {k:'Gamma flip', d:'The line splitting calm-&-pinned from jumpy-&-trending.',
        dgm:'<svg class="dgm sub-dgm" viewBox="0 0 128 50" aria-hidden="true"><line class="dg-ax" x1="6" y1="42" x2="122" y2="42"/><polyline class="dg-ln" points="10,27 26,27 42,27 56,27"/><text class="dg-txt" x="33" y="16" text-anchor="middle">pin</text><line class="dg-hue" x1="64" y1="10" x2="64" y2="42" stroke-dasharray="3 3"/><polyline class="dg-hue" points="70,27 80,17 90,33 100,18 112,30"/><text class="dg-txt-h" x="94" y="14" text-anchor="middle">push</text></svg>'}],
     // baked numbers = a boot-paint snapshot only — loadPlaneLedgers() re-derives this
-    // card from reversion/polarity_history.jsonl on the ledger clock
+    // card from spx_options_scanner_grades_by_day.jsonl on the ledger clock
     rd:{kind:'graded', n:22, rate:0.545, inv:0.455, verdict:'latest: keep the sign (CORRECT)',
       summary:'Snapshot 08-10 — cumulative A/B: 12 of 22 idea-episodes right as-is (55%; 45% if inverted), newest nightly verdict "current (+calls/−puts) CORRECT" — but the verdict still flip-flops night to night, so the sign stays under nightly A/B review. Refreshes live from polarity_history.'}},
   {id:'dex', num:'1.2', name:'DEX — Dealer Delta (direction side)', code:'lefteye_dex.dex_views · dex_v1', hue:'--l-dex', tier:'sensory',
@@ -7261,7 +7261,7 @@ const LY = [
       {k:'Room to run', d:'Enough distance back to the magnet to be worth it (runway gate).',
        dgm:'<svg class="dgm sub-dgm" viewBox="0 0 128 50" aria-hidden="true"><line class="dg-ax" x1="6" y1="42" x2="122" y2="42"/><circle class="dg-ball" cx="100" cy="18" r="4"/><text class="dg-txt" x="100" y="13" text-anchor="middle">price</text><line class="dg-ln" x1="24" y1="30" x2="114" y2="30" stroke-dasharray="3 3"/><text class="dg-txt" x="30" y="27">magnet</text><line class="dg-hue" x1="94" y1="23" x2="48" y2="30"/><polygon class="dg-hue-f" points="40,31 50,26 51,35"/><text class="dg-txt-h" x="62" y="46" text-anchor="middle">room back</text></svg>'}],
     // baked numbers = a boot-paint snapshot only — loadPlaneLedgers() re-derives this
-    // card from reversion/polarity_history.jsonl (newest grade_v era) on the ledger clock
+    // card from spx_options_scanner_grades_by_day.jsonl (newest grade_v era) on the ledger clock
     rd:{kind:'days', decided:5, need:12, sw:'REVERSION_LIVE off', rate:0.471, wl:null, note:'ungated twin: 82 wins on 204 episodes',
       blockers:['switch off','5 / 12 decided days'],   // matches the baked rd/summary (sweep 08-11: the chip said 1/12 under a card saying 5/12)
       summary:'Snapshot 08-10: 5 of 12 decided days in the grade_v2 era (8W/7L/2 scratch on 17 gated episodes, 47%, Wilson floor 0.26); the runway gate blocks most setups and the live switch is off. The ungated pre-runway twin has 82 wins on 204 episodes. Gate: ≥12 days, Wilson floor > .50, ≥58%. Refreshes live from polarity_history.'}},

@@ -57,7 +57,7 @@ def read_json(path: Path) -> Optional[dict]:
 
 class StateDir:
     def __init__(self, root: Path):
-        self.state_root = Path(root)                              # the station's data root (state/ today)
+        self.state_root = Path(root)                              # the station's data root (data/)
 
     @property
     def raw_root(self) -> Path:

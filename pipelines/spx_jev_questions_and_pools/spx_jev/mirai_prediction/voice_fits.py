@@ -1,5 +1,5 @@
-"""The day's fits: the three learners fitted each night on the days before, saved under catalogs/voice_fits/ with the
-answer matrix they were fitted on.
+"""The day's fits: the three learners fitted each night on the days before, saved under
+learner_pool/learner_pool_trained_forecasters_by_day/ with the answer matrix they were fitted on.
 
 fit_voices_for_day(state_dir, root, lane, sum_id, day) builds the answer matrix for ``day`` (reads from days strictly
 before it), fits additive_scorer, matcher and jev_corrected, and writes {day}_{sum_id}.json with a leak check: no row used

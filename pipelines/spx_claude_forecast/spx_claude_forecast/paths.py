@@ -8,7 +8,6 @@ off-disk backup folder it is told about (``writable``). Every other station stor
 ``jsonl_store.py`` refuse (see ``assert_path_is_ours``).
 
     spx/claude_forecast/
-      STORE_MAP.json                                  every path below, with its writer, reader and retention; written by ensure_folders (retired by the map; goes with its writer in phase 2)
       claude_forecast_pause_and_limits.json           the pause switch and the daily caps (control.py)
       claude_forecast_inputs_by_read/{day}.jsonl      one line per scheduled read slot: the frozen scene Claude saw (Phase 3)
       claude_forecast_answers_by_read/{day}.jsonl     Claude's answers and the final forecast per read (Phase 5)
@@ -31,10 +30,11 @@ off-disk backup folder it is told about (``writable``). Every other station stor
     operations/logs/claude_forecast_job_runs_log.jsonl   one line per job run (pruned after 30 days)
     operations/logs/claude_forecast_read_job_log.txt     the detached read runner's output, appended per read (never pruned)
     operations/locks/claude_forecast_*_job.lock       single-instance lock files
+
+Who writes and reads each store, and what one row holds, is in docs/data_map.md at the repo root.
 """
 from __future__ import annotations
 
-import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -168,10 +168,6 @@ class ForecastPaths:
     def control_file(self) -> Path:
         return self._at(station_paths.CLAUDE_FORECAST_PAUSE_AND_LIMITS)
 
-    @property
-    def store_map_file(self) -> Path:
-        return self.root / "STORE_MAP.json"            # retired by the map (nothing reads it); still written until its writer goes
-
     def rules_file(self, rules_sha: str) -> Path:
         return self._at(station_paths.CLAUDE_FORECAST_RULEBOOKS_BY_VERSION, sha=rules_sha)
 
@@ -196,7 +192,7 @@ class ForecastPaths:
 
     @property
     def folders(self) -> tuple[Path, ...]:
-        """Every folder ensure_folders creates; the list is also what STORE_MAP.json describes."""
+        """Every folder ensure_folders creates."""
         return (self.root, self.payloads_dir, self.reads_dir, self.outcomes_dir, self.arms_dir, self.seed_payloads_dir,
                 self.seed_outcomes_dir, self.library_rows_file.parent, station_paths.CLAUDE_FORECAST_RULEBOOKS_BY_VERSION.folder(self.state_dir),
                 self.run_log_file.parent, station_paths.CLAUDE_FORECAST_NIGHTLY_JOB_LOCK.folder(self.state_dir),
@@ -213,36 +209,11 @@ class ForecastPaths:
                 *(self.lock_file(job) for job in station_paths.CLAUDE_FORECAST_JOB_LOCK_BY_JOB))
 
 
-STORE_MAP = {
-    "payloads/{day}.jsonl": {"writer": "read hook (Phase 3)", "reader": "nightly job (seal, test variants, library); the read runner's already-built check", "retention": "forever", "edited": "never"},
-    "reads/{day}.jsonl": {"writer": "Claude call (Phase 5)", "reader": "nightly job (test variants, scores, scorecard); the daily call cap", "retention": "forever", "edited": "never"},
-    "outcomes/{day}.jsonl": {"writer": "nightly seal (Phase 7)", "reader": "nightly job (seal, library, scores)", "retention": "forever", "edited": "never; a regrade appends a new rule version"},
-    "arms/{day}.jsonl": {"writer": "nightly test variants (test_variants.py)", "reader": "nightly job (test variants, scores); the daily call cap", "retention": "forever", "edited": "never"},
-    "seed/": {"writer": "seed rebuild (Phase 4)", "reader": "library", "retention": "forever, one set per builder version", "edited": "never"},
-    "library/": {"writer": "nightly rebuild", "reader": "read runner (base rate, precedents); nightly job (test variants, scorecard)", "retention": "rebuildable from the files above", "edited": "replaced whole"},
-    "recorder/dated_book/{as_of}.json": {"writer": "recorder", "reader": "payload builder", "retention": "forever", "edited": "never"},
-    "recorder/siege_spy_minutes/{day}.json": {"writer": "recorder", "reader": "payload builder (SPY volume vs usual)", "retention": "forever", "edited": "never"},
-    "recorder/spx_5m/{day}.jsonl": {"writer": "recorder (Schwab, outside market hours)", "reader": "none yet (kept as insurance)", "retention": "forever", "edited": "never"},
-    "recorder/vix1d_close.jsonl": {"writer": "recorder", "reader": "payload builder", "retention": "forever", "edited": "never"},
-    "recorder/leveraged_fund_sizes.jsonl": {"writer": "recorder (Schwab instrument data, every run)", "reader": "payload builder (the close-signals rebalance estimate)", "retention": "forever", "edited": "never"},
-    "recorder/lob_raw/{day}/": {"writer": "recorder", "reader": "none yet (the flow block reads the station's own lob_flow/agg and lob_flow/raw)", "retention": "forever (insurance only)", "edited": "never"},
-    "rules/{sha}.txt": {"writer": "Claude call", "reader": "none in code; kept so a sent prompt can be rebuilt by hand", "retention": "forever", "edited": "never"},
-    "control.json": {"writer": "Will or the CLI", "reader": "the call gate (read runner, nightly test variants)", "retention": "current", "edited": "replaced atomically"},
-    "run_logs/job_run_log.jsonl": {"writer": "every job", "reader": "none in code; the nightly and the recorder prune it", "retention": f"{RUN_LOG_KEPT_DAYS} days", "edited": "never"},
-    "run_logs/read_runner.out": {"writer": "read hook (the detached read runner's stdout and stderr)", "reader": "none in code; read by hand when a read goes wrong", "retention": "forever", "edited": "appended"},
-    "latest.json, scorecard.json": {"writer": "read hook, nightly job", "reader": "the phone's Claude card (latest.json); the read runner's card verdict and Will (scorecard.json)", "retention": "current", "edited": "replaced atomically"},
-}
-
-
 def ensure_folders(state_dir: Path | str, backup_dir: Path | str | None = None) -> ForecastPaths:
-    """Set this process up to write: create every folder the package writes to, declare its writable places
-    (``ForecastPaths.writable``, and the backup folder when given) as the only ones, and refresh STORE_MAP.json when its
-    text changed (an unchanged file keeps its mtime, so the backup does not recopy it); returns the path set."""
+    """Set this process up to write: create every folder the package writes to and declare its writable places
+    (``ForecastPaths.writable``, and the backup folder when given) as the only ones; returns the path set."""
     paths = ForecastPaths(Path(state_dir).expanduser())
     for folder in paths.folders:
         folder.mkdir(parents=True, exist_ok=True)
     jsonl_store.allow_writes_under(*paths.writable, *([backup_dir] if backup_dir else []))
-    text = json.dumps({"root": str(paths.root), "stores": STORE_MAP}, ensure_ascii=False, indent=1, sort_keys=True)
-    if not paths.store_map_file.exists() or paths.store_map_file.read_text(encoding="utf-8") != text:
-        jsonl_store.write_bytes_atomically(paths.store_map_file, text.encode("utf-8"))
     return paths

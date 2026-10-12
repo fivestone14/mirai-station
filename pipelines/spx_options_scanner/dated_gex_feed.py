@@ -181,7 +181,7 @@ def near_wall(pairs, spot, side: str):
 
 
 def _state_dir() -> Path:
-    """The book's own folder (dated_gex/ today)."""
+    """The book's own folder (data/market/, where the open-interest history sits too)."""
     return _book_path().parent
 
 

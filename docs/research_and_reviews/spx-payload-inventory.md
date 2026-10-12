@@ -1,5 +1,7 @@
 # SPX Watchtower scene inventory — in the payload vs not (living list)
 
+> A dated note: the paths and folder names in it are those of its day. Where every store lives today, with its writer and readers, is `docs/data_map.md` at the repo root.
+
 Scope: **SPX only** (the wt-11 era, 2026-08-10 — the SNDK sr-2→sr-5 port,
 every threshold re-measured on this tape). The scene payload is what
 `watchtower.build_payload` hands the model each judged scan. Everything else

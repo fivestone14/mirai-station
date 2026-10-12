@@ -872,7 +872,7 @@ def _window_volume(row: dict) -> Optional[float]:
 def prior_volume_series(today: str) -> dict:
     """{day: {"expiry": bool, "series": [[minute of day, volume in reach], ...]}}
     for the recent closed sessions, back to PRIOR_VOLUME_SESSIONS that were not
-    expiry days. Kept in sndk_reads/prior_volume.json and rebuilt only for days
+    expiry days. Kept in sndk/sndk_past_volume_curves_state.json and rebuilt only for days
     not already in it: the reader is a fresh process every tick, and those
     diaries are about 9 MB of JSON. A book whose volume was the prior session's
     is left out, judged with the whole closed day in hand."""

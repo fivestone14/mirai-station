@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # launchd-fired wrapper: after the day's saves, rebuild the learning store.
 # One run = every market day of the last week, today once its after-close saves have run, turned
-# from the raw files under state/ into checked Parquet under data/spx/jev/tables/ and data/market/tables/ (spx_jev/store.py).
+# from the raw files under data/ into checked Parquet under data/spx/jev/tables/ and data/market/tables/ (spx_jev/store.py).
 # Reads the raw files only; no Schwab call, no JEV call. Idempotent: a day is rebuilt whole from its
 # files each time.
 # No market-hours gate: it runs after the close by design. The command itself builds market days

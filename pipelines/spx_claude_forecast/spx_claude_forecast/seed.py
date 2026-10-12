@@ -7,7 +7,8 @@ row a live read would have taken: the newest row at or before the slot plus SEED
 read fires just after the half hour and takes the newest row then), provided it is no further than that
 window before the slot; otherwise the slot is ``blind``. The payload is built at that row's own timestamp
 with the same builder the live read uses (without the station's labeller, which the blocks do not need),
-and the outcome is graded with the same grader. Rows land under ``seed/payloads`` and ``seed/outcomes``
+and the outcome is graded with the same grader. Rows land under ``claude_forecast_rebuilt_inputs_by_read`` and
+``claude_forecast_rebuilt_outcomes_by_read``
 with ``origin: seed`` and ``read_id`` ``seed:<day>T<HH:MM>``; they are precedents and base-rate counts
 only, never scored as Claude. A slot already seeded is skipped unless ``--force``.
 """

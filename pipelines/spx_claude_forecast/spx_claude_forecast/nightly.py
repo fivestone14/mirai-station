@@ -10,10 +10,11 @@ Steps, each logged and each failing softly so the rest still run:
              was no_data is tried again and, if it now grades, gets the next finalize_attempt_number.
   catch_up   the same for the last CATCH_UP_DAYS days, so a missed night is never a hole
   test_variants  three of the day's reads asked again with the cards removed, their outcomes shuffled and
-             random cards (test_variants.py), into arms/; under the live call's gates and a cap of their own
-  library    library/rows.parquet rebuilt whole from the record
-  scores     library/scores.parquet rebuilt whole
-  scorecard  scorecard.json for the phone and for Will
+             random cards (test_variants.py), into claude_forecast_test_answers_by_variant_and_read/; under the live
+             call's gates and a cap of their own
+  library    tables/claude_forecast_fingerprints_and_outcomes_by_read.parquet rebuilt whole from the record
+  scores     tables/claude_forecast_grades_by_forecaster_read_and_horizon.parquet rebuilt whole
+  scorecard  claude_forecast_scoreboard_latest.json for the phone and for Will
   backup     the folder mirrored off-disk; the run log pruned
 """
 from __future__ import annotations

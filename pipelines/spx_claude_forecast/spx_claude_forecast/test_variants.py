@@ -8,7 +8,8 @@ and the last by slot):
   random_precedents_shown       eight cards drawn at random from the same time-of-day pool, nearness ignored
 
 Byte for byte the rest of the scene is the production read's, so the only thing that separates a variant's
-score from the production score is what the cards were worth. The replies land in ``arms/{day}.jsonl`` as
+score from the production score is what the cards were worth. The replies land in
+``claude_forecast_test_answers_by_variant_and_read/{day}.jsonl`` as
 answer lines and ``test_variant_forecast`` lines (spec/record_formats.md), stamped with the variant and the
 fingerprint of the changed scene; the scorer pairs them with the production forecast on the same outcome
 lines (scoring, scorecard ``test_variants``). They are never mixed into the record and never shown on the

@@ -1,11 +1,11 @@
-"""After every live read: every voice forecasts the read, pool_v2 mixes them, and the lines are written to raw/.
+"""After every live read: every voice forecasts the read, pool_v2 mixes them, and the lines are written to the raw record files.
 
 Runs inside the live read (live_call.forecast_now_with_voices) or in its own process (service_hook.spawn_after_read). First the code
-feature builder answers its questions for the read and the line goes to raw/code_features/{day}.jsonl (the record the
+feature builder answers its questions for the read and the line goes to code_question_answers_by_read/{day}.jsonl (the record the
 nightly matrix joins on), so today's row carries them. Then, for each sum the lane learns on (SUMS_BY_LANE), it loads the
 day's fits with the answer matrix they were fitted on (or the newest earlier day's), builds today's row from the raw
 records, asks every voice, mixes pool_v2 over the voices present, and appends one line per voice plus one for "pool_v2"
-to raw/new_voice_forecasts/{day}.jsonl. The first sum always runs; a later sum is skipped once the time budget is spent.
+to forecasts_by_forecaster_read_and_horizon/{day}.jsonl. The first sum always runs; a later sum is skipped once the time budget is spent.
 A code feature failure is logged and the read is forecast with no code answers; a failure listing a sum's voices is
 logged and drops only that sum's list, never its mix; after_read never raises.
 

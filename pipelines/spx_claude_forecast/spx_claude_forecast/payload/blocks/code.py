@@ -2,7 +2,7 @@
 groups whose facts no other block of the scene already carries, spread across the catalog's areas.
 
 The station answers 79 code questions per read (spx_jev.mirai_prediction.code_features) and stores them under
-raw/code_features/; the loader hands them over as ``{qid: option or None}``. Most of them restate a number
+spx/prediction/code_question_answers_by_read/; the loader hands them over as ``{qid: option or None}``. Most of them restate a number
 another block gives exactly (the move since the open, the distance to the flip, SPY's volume pace), so the
 block keeps only the groups listed in CODE_GROUPS: the composites and residuals (a break held or failed, a
 leg's age, fear beyond what price explains, an extreme confirmed or not) that no block's numbers add up to.
