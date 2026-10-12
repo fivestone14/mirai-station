@@ -19,7 +19,7 @@ NOW = datetime(2026, 7, 7, 10, 30, tzinfo=ET)
 
 
 def _raw_day(sd, day):
-    """One raw day folder under the StateDir's data root: what rotate() prunes."""
+    """One raw day folder under the StateDir's data root: what rotate() gzips once the day is over."""
     return station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.path(sd.state_root, day=day)
 
 
@@ -77,28 +77,21 @@ def test_cursor_roundtrip_and_day_reset(sd):
     assert load_cursor(sd, "2026-07-08") == {"day": "2026-07-08", "contracts": {}}
 
 
-def test_rotate_gzips_drops_and_caps(sd):
+def test_rotate_gzips_finished_days_and_keeps_every_day(sd):
     old = (NOW - timedelta(days=40)).date().isoformat()
     yday = (NOW - timedelta(days=1)).date().isoformat()
     today = NOW.date().isoformat()
     for day in (old, yday, today):
         sd.append(sd.raw(day, "sweeps"), {"day": day})
-    rep = sd.rotate(NOW, raw_retention_days=30, disk_cap_mb=500)
-    assert rep["dropped_days"] == 1
-    assert not _raw_day(sd, old).exists()
-    assert not sd.raw(yday, "sweeps").exists()                 # gzipped
-    assert sd.raw(yday, "sweeps").with_suffix(".jsonl.gz").exists()
+    rep = sd.rotate(NOW)
+    assert rep == {"gzipped": 2}
+    assert _raw_day(sd, old).exists()                          # no retention: a day past 30 is kept
+    for day in (old, yday):
+        assert not sd.raw(day, "sweeps").exists()              # gzipped in place
+        assert sd.raw(day, "sweeps").with_suffix(".jsonl.gz").exists()
     assert sd.raw(today, "sweeps").exists()                    # today untouched
     assert [r["day"] for r in sd.rows(sd.raw(yday, "sweeps"))] == [yday]  # gz replay
-
-
-def test_rotate_hard_cap_drops_oldest_first(sd):
-    d1, d2 = "2026-07-01", "2026-07-06"
-    for day in (d1, d2):
-        sd.append(sd.raw(day, "sweeps"), {"pad": "x" * 200000})
-    rep = sd.rotate(NOW, raw_retention_days=300, disk_cap_mb=0)
-    assert rep["cap_dropped"] >= 1
-    assert not _raw_day(sd, d1).exists()
+    assert sd.rotate(NOW) == {"gzipped": 0}                    # a rerun finds nothing left to compress
 
 
 def test_lock_pid_written(sd):

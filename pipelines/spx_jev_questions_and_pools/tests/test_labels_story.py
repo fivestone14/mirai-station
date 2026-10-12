@@ -21,9 +21,8 @@ import pytest
 from conftest import bars_from_closes, night_row
 from spx_jev import events, overnight, rolls, story
 from spx_jev.labels.story import LABELS, build_story_labels, previous_checkpoint
-from spx_jev.row_adapter import SYMBOL
 from spx_jev.sessions import previous_trading_day
-from spx_jev.state_builder import SESSION_BARS_SUBDIR
+from spx_jev.state_builder import LIVE_BARS_SUBDIR
 
 DAY = date(2026, 9, 24)                     # a Thursday; its 20 prior nights run back past Labor Day
 ET = overnight.ET
@@ -107,10 +106,10 @@ def _last_hour(d: date, move: float) -> list[dict]:
 
 def _write_last_hours(root, sessions: int = 20) -> None:
     """The ``sessions`` sessions before yesterday in the store, their last hours 0.02 to 0.40 percent, alternately down and up."""
-    folder = root / SESSION_BARS_SUBDIR
+    folder = root / LIVE_BARS_SUBDIR
     folder.mkdir(parents=True, exist_ok=True)
     for k, d in enumerate(_prior_days(sessions + 1)[1:], start=1):
-        (folder / f"{d}-{SYMBOL}.json").write_text(json.dumps(_last_hour(d, 0.02 * k * (-1) ** k)))
+        (folder / f"{d}.jsonl").write_text("".join(json.dumps(b) + "\n" for b in _last_hour(d, 0.02 * k * (-1) ** k)))
 
 
 def yesterday(move: float) -> dict[str, list[dict]]:

@@ -630,7 +630,7 @@ def test_a_fed_speaker_day_says_no_row_loads_the_straddle_and_a_fed_day_does_not
 def test_the_ruler_is_omitted_past_the_calendars_last_kept_day(scene_factory, tmp_path, monkeypatch):
     calendar(tmp_path, monkeypatch, "2026-09-18", [], covers_through="2026-09-17")
     got = labels(ruler_scene(scene_factory, tmp_path, "2026-09-18", (11, 30), load=1.0, swell=1.40))[1]["vol.ruler_event_load"]
-    assert got == "the event calendar (calendar/events.json) is kept only through 2026-09-17: extend it"
+    assert got == "the event calendar (settings/market_event_calendar_by_event.json) is kept only through 2026-09-17: extend it"
 
 
 def test_the_ruler_rank_reads_only_what_each_prior_session_had_by_the_clock(scene_factory, tmp_path, monkeypatch):

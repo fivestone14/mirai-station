@@ -18,13 +18,13 @@ and SPY ranks do: the ruler never touches these numbers.
 """
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
 from ... import station_stores
 from ...control import ET
+from ...paths import station_store_files
 from .. import units
 from ..block_result import BlockResult, whole_block_absent
 from ..frozen_inputs import FrozenInputs, TapeFold
@@ -268,16 +268,13 @@ def _minute_volumes(raw: Any) -> dict[int, float]:
 
 
 def _recorded_volumes(inputs: FrozenInputs, day: str) -> dict[int, float]:
-    path = inputs.paths.siege_spy_minutes_file(day)
-    try:
-        return _minute_volumes(json.loads(path.read_text(encoding="utf-8")).get("minute_volumes"))
-    except (OSError, ValueError, AttributeError):
-        return {}
+    """A prior session's SPY minute volumes from the station's one store (the wall sensor's day file)."""
+    return station_store_files.read_spy_volume_by_minute(inputs.state_dir, day)
 
 
 def _spy_volume(inputs: FrozenInputs, prior_days: list[str], result: BlockResult) -> dict | None:
     """SPY's volume over the last 30 finished minutes as a multiple of its usual at these minutes (the median of
-    the recorder's copies of the prior sessions), ranked against those sessions."""
+    the prior sessions' day files), ranked against those sessions."""
     field = f"{BLOCK}.spy_volume_30m_x"
     measures = station_stores.import_spx_jev("labels.measures")
     end = measures.minute_of_day(inputs.cut.astimezone(ET))

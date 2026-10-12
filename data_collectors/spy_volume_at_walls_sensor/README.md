@@ -74,11 +74,12 @@ baseline fold on that scan. Episodes that lived through a feed hole carry
 ## Store schema (the viewstation contract — field names are FROZEN)
 
 Under the injected root (the station's data root, `data/`, in the mirai wiring), each
-file named in `station_paths.py` and kept under `spx/scanner/`: `latest.json`
-below is `spx_dealer_walls_latest.json`, `cards/<date>.jsonl` is
-`spx_dealer_wall_touches_by_event/<date>.jsonl`, `baseline.json` is
-`spy_volume_baselines_state.json` and `session.json` is
-`spx_dealer_wall_touches_today_state.json`.
+file named in `station_paths.py`: `latest.json` below is `spx/scanner/spx_dealer_walls_latest.json`,
+`cards/<date>.jsonl` is `spx/scanner/spx_dealer_wall_touches_by_event/<date>.jsonl`,
+`session.json` is `spx/scanner/spx_dealer_wall_touches_today_state.json`, and the
+baseline is `market/spy_volume_by_minute/<date>.json`, one file a day (today's
+rewritten on every healthy scan, the newest 60 read back; the station's one store
+of SPY's volume per minute, shared with the SPX JEV labels and the Claude forecast).
 
 * `latest.json` — `{as_of, session, spot, spx_spy_ratio, baseline: {days_accrued,
   label: cold|warming|robust}, health: {feed: OK|DEGRADED|FEED-LOST, reason},
@@ -88,7 +89,8 @@ below is `spx_dealer_walls_latest.json`, `cards/<date>.jsonl` is
   tower_kind, level_frozen, spy_level, ratio_used, window_vol, baseline_med,
   effort_basis, effort_pct, verdict, outcome, move_after_30m_pts,
   coverage_share, near_spot, degraded}`
-* `baseline.json` (minute-volume normalcy memory, accrued day
+* the baseline day files, `market/spy_volume_by_minute/<date>.json` (`{day, minutes_present,
+  minute_volumes: {"<minute of day>": shares}, written_at}`; the normalcy memory accrued day
   by day — labels `cold` < 5 accrued days ≤ `warming` < 21 ≤ `robust`),
   `session.json` (intraday episode state). A `health.json` with the same
   verdict as `latest.json`'s `health` field was written until 2026-10-11.

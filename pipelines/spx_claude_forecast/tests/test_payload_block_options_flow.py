@@ -7,6 +7,7 @@ from datetime import timedelta
 from types import SimpleNamespace
 
 from payload_fixtures import DAY, SIGMA, SPOT, absent_reasons, assert_no_leak, at, fake_inputs, make_row, prior_days, tape_fold_line, write_json, write_tape_folds
+from spx_claude_forecast.paths import station_paths
 
 from spx_claude_forecast.payload import units
 from spx_claude_forecast.payload.blocks.flow import build_flow_block
@@ -137,14 +138,14 @@ def test_flow_fails_its_content_check_on_no_trades_or_an_unusual_count(tmp_path)
     assert why["flow.spy_volume_30m_x"] == "no_spy_minutes"
 
 
-def test_spy_volume_is_set_against_the_recorders_copies_at_the_same_minutes(tmp_path):
+def test_spy_volume_is_set_against_the_prior_days_files_at_the_same_minutes(tmp_path):
     today = {str(m): 10_000 for m in range(570, 870)}          # 09:30 to 14:29, flat: the last 30 minutes hold 300,000
     today["875"] = 99_999                                       # a minute after the cut must not count
     inputs = fake_inputs(tmp_path, prior_bars={d: [] for d in PRIOR_DAYS}, spy_minute_volumes=today)
     write_tape_folds(inputs.state_dir, DAY, [tape_fold_line(CUT - timedelta(seconds=40)), spy_depth_line(CUT - timedelta(seconds=40), spread=0.02)])
     for i, d in enumerate(PRIOR_DAYS):
         per_minute = 20_000 + 1_000 * i                         # median over the 12 sessions is 25,500 a minute
-        write_json(inputs.paths.siege_spy_minutes_file(d), {"day": d, "minute_volumes": {str(m): per_minute for m in range(570, 960)}})
+        write_json(station_paths.SPY_VOLUME_BY_MINUTE.path(inputs.state_dir, day=d), {"day": d, "minute_volumes": {str(m): per_minute for m in range(570, 960)}})
     result = build_flow_block(inputs)
     assert result.data["spy_volume_30m_x"] == {"v": round(300_000 / (30 * 25_500), 2), "r": [0, 12]}
     assert result.data["spy_spread_cents"] == 2

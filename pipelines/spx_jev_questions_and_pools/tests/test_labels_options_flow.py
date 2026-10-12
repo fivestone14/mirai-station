@@ -528,7 +528,8 @@ def spy_minutes(morning: float, window: float, until: int = 960) -> dict[str, fl
 
 def volume_scene(scene_factory, root: Path, today: dict[str, float], prior_days: tuple[str, ...] = PRIOR_DAYS, now: datetime = NOON):
     days = {d: spy_minutes(1000.0, 500.0 + 200 * k) for k, d in enumerate(prior_days)}   # 11.1% to 40.3% of the day in the half hour
-    write_json(station_paths.SPY_VOLUME_BASELINES_STATE.path(root), {"days": {**days, DAY: today}})
+    for d, minutes in {**days, DAY: today}.items():
+        write_json(station_paths.SPY_VOLUME_BY_MINUTE.path(root, day=d), {"day": d, "minute_volumes": minutes})
     scene = scene_factory(now, flat_bars(int((now - at(9, 30)).total_seconds() // 60)), prior_bars={d: flat_bars(390, day=d) for d in PRIOR_DAYS})
     return replace(scene, state_dir=root)
 
@@ -551,7 +552,7 @@ def test_spy_volume_is_set_against_the_same_half_hour_of_the_prior_sessions(scen
 
 def test_spy_volume_is_omitted_without_its_minutes_a_running_feed_or_ten_sessions(scene_factory, tmp_path):
     ls, _ = read(replace(volume_scene(scene_factory, tmp_path / "none", spy_minutes(1000.0, 1000.0, 720)), state_dir=tmp_path / "empty"))
-    assert ls.omitted["volume.spy_pace_30"] == f"no SPY minute volumes at {station_paths.SPY_VOLUME_BASELINES_STATE.relative}: the siege box has not run"
+    assert ls.omitted["volume.spy_pace_30"] == f"no SPY minute volumes for {DAY} in {station_paths.SPY_VOLUME_BY_MINUTE.relative_folder}/: the siege box has not run"
     ls, _ = read(volume_scene(scene_factory, tmp_path / "stopped", spy_minutes(1000.0, 1000.0, 714)))
     assert ls.omitted["volume.spy_last30_share"] == "no SPY minute volume from the siege box in the last 5 minutes: its feed stopped"
     holed = {m: v for m, v in spy_minutes(1000.0, 1000.0, 720).items() if not 690 <= int(m) < 706}

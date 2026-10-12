@@ -2,7 +2,7 @@
 expiry cycles, with no date or weekday in it.
 
 The events come from the station's hand-kept calendar as the inputs carry it (``inputs.events``, the parsed
-calendar/events.json): every row on the day with its clock time and how long ago it started (or how long
+settings/market_event_calendar_by_event.json): every row on the day with its clock time and how long ago it started (or how long
 until it does), the day's class by the highest impact tier among them, the next high-impact row in sessions
 ahead, and the Fed phase around the nearest rate decision. The calendar's own tiers (1, pre_open, data_10am,
 data_2pm, fed_speaker, auction) fold into three impact tiers: high is a tier-1 row or a headline macro print

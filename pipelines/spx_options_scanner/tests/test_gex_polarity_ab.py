@@ -206,19 +206,21 @@ def test_magnet_stats_excludes_spot_hugging_magnets():
     assert st["n"] == 1 and st["n_hugging"] == 1 and st["tag_rate"] == 1.0
 
 
-def test_bars_persist_and_replay():
-    # grade_day saves real-range bars; _default_bars replays them before any fetch
-    bars = [{"ts": T0.isoformat(), "high": 7510.0, "low": 7500.0, "close": 7505.0}]
+def test_bars_replay_from_the_one_store_and_a_grade_writes_none():
+    # a past day's bars come from the station's bars store (the bars feed's day file); grade_day saves no copy of its own
+    bars = [{"ts": T0.isoformat(), "open": 7502.0, "high": 7510.0, "low": 7500.0, "close": 7505.0, "volume": 0.0}]
+    store_file = station_paths.SPX_PRICE_BARS_BY_MINUTE.path(day="2026-07-01")
+    store_file.parent.mkdir(parents=True, exist_ok=True)
+    store_file.write_text(json.dumps(bars[0]) + "\n")
+    assert pab._default_bars("SPX", "2026-07-01") == bars      # replayed from the store
     rows = [{"ticker": "SPX", "ts": T0.isoformat(), "spot": 7500, "sigma": 10,
              "gex_theta": {"regime": "long_gamma", "magnet": 7505}}]
     res = pab.grade_day("2026-07-01", rows=rows, bars_lookup=lambda tk: bars)
     assert res["meta"]["bars_kind"]["SPX"] == "ohlc"
-    assert pab._default_bars("SPX", "2026-07-01") == bars      # replayed from disk
-    # flat point-bars are marked as estimates and never persisted
     flat = [{"ts": T0.isoformat(), "high": 7505.0, "low": 7505.0, "close": 7505.0}]
     res2 = pab.grade_day("2026-07-02", rows=rows, bars_lookup=lambda tk: flat)
-    assert res2["meta"]["bars_kind"]["SPX"] == "point"
-    assert not pab._bars_file("2026-07-02", "SPX").exists()
+    assert res2["meta"]["bars_kind"]["SPX"] == "point"         # flat point-bars are marked as estimates
+    assert sorted(p.name for p in store_file.parent.iterdir()) == ["2026-07-01.jsonl"]   # the grader wrote nothing
 
 
 def _day_line(day, wins, n, kind="ohlc", key="lens"):

@@ -20,7 +20,7 @@ a nightly-graded record — is a confidence nudge clamped to ×[0.85, 1.15].
 | Code | Plain name | What it actually does |
 |---|---|---|
 | `contracts.py` | Shared Language | Every data shape, adapter interface, and knob — no logic, no I/O |
-| `io_state.py` | Filing System | Atomic writes, the `latest.json` handshake, journals + cursors, disk rotation |
+| `io_state.py` | Filing System | Atomic writes, the `latest.json` handshake, journals + cursors, the gzip of finished raw days (kept forever, nothing pruned) |
 | `options_feed.py` | Chain Tap | Pulls the chain's top-of-book (with sizes) and the trade tape (with quote-at-print) from the hosted MCP |
 | `spy_stream.py` | Control's Feed | Streams SPY top-of-book + the ~30-strike SPXW focus set over Schwab |
 | `daemon.py` | Collector | The only long-lived process: four loops — sweep, tape, stream, fold |
@@ -82,7 +82,8 @@ Provide: a token provider + endpoint (or your own feed implementing the
 `OptionsQuoteFeed`/`OptionsTapeFeed` Protocols), optionally a schwab-py client
 factory for the control (`pip install lob-flow[schwab]`), a state dir, and two
 small JSON files (`gex_context.json` optional — the defense test simply
-disables without it; `calendar.json` seeds itself). Call
+disables without it; the event calendar, read-only: a missing one makes every
+day dirty and blocks nothing). Call
 `lob_flow.daemon.main(cfg, adapters)` from your own supervised launcher, and
 consume with `read_latest(state_dir, now)`.
 

@@ -22,7 +22,7 @@ from pathlib import Path
 
 from . import grading, jsonl_store, station_stores
 from .control import ET, log, log_job_run, now_utc_iso, single_instance_lock
-from .paths import ForecastPaths, default_state_dir, ensure_folders
+from .paths import ForecastPaths, default_state_dir, ensure_folders, station_store_files
 from .payload.build import build_payload
 from .payload.frozen_inputs import load_frozen_inputs_at
 from .read_runner import blind_payload_line
@@ -39,9 +39,9 @@ SEED_MISSING_COMPARISONS = {           # a seed read has no Claude call and no s
 
 
 def session_days(state_dir: Path, start: str, end: str) -> list[str]:
-    """Trading days with a saved full session of bars between ``start`` and ``end`` inclusive."""
-    folder = station_stores.session_bars_dir(state_dir)
-    return sorted(p.name[:10] for p in folder.glob("20??-??-??-SPX.json") if start <= p.name[:10] <= end)
+    """Trading days with a session of bars on file (the station's one bars store) between ``start`` and ``end``
+    inclusive; ``--to`` defaults to yesterday, so today's still-growing file is not seeded."""
+    return [day for day in station_store_files.spx_price_bar_days(state_dir) if start <= day <= end]
 
 
 def seeded_slots(paths: ForecastPaths, day: str) -> set[str]:

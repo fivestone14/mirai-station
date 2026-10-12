@@ -192,13 +192,13 @@ def pool_log_path(root: Path) -> Path:
 
 def write_state(root: Path, day: str, rows: list[dict], bars: list[dict], prior_days: dict[str, list[dict]] | None = None,
                 context: list[dict] | None = None) -> Path:
-    """A station state directory: the day's diary and live bars, prior sessions' saved bar files,
+    """A station state directory: the day's diary, the day's and the prior sessions' bar files (one store),
     and the day's market-context snapshots."""
-    station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.folder(root).mkdir(parents=True, exist_ok=True)
+    station_paths.SPX_PRICE_BARS_BY_MINUTE.folder(root).mkdir(parents=True, exist_ok=True)
     write_jsonl(diary_path(root, day), rows)
     write_jsonl(station_paths.SPX_PRICE_BARS_BY_MINUTE.path(root, day=day), bars)
     for d, pbars in (prior_days or {}).items():
-        write_json(station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.path(root, day=d), pbars)
+        write_jsonl(station_paths.SPX_PRICE_BARS_BY_MINUTE.path(root, day=d), pbars)
     if context is not None:
         write_jsonl(station_paths.WATCHLIST_QUOTES_BY_MINUTE.path(root, day=day), context)
     return root

@@ -210,10 +210,8 @@ class LobConfig:
     band_borrow_mad_inflate: float = 1.5     # cold VIX band borrows its neighbor
                                              # at inflated MAD instead of going mute
 
-    # freshness / storage
+    # freshness
     latest_max_age_s: int = 600
-    raw_retention_days: int = 30
-    disk_cap_mb: int = 500
 
     # promotion (dormant until proven)
     promote_min_episodes: int = 30

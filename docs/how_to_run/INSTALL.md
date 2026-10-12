@@ -285,9 +285,10 @@ two stations sharing one would lock each other out. Enrol the new station on its
 
 ### 4. The iCloud mirror
 
-The Claude forecast's recorder mirrors `data/spx/claude_forecast/` and its own copies
-under `data/market/` (the dated options book, the SPY minute volume, the raw tape, the
-$VIX1D closes, the SPX 5-minute bars, the leveraged funds' sizes) to
+The Claude forecast's recorder mirrors `data/spx/claude_forecast/` and the irreplaceable
+stores under `data/market/` (its own $VIX1D closes, SPX 5-minute bars and leveraged funds'
+sizes; the open-interest history, SPY's volume per minute and the finished raw tape days
+other jobs keep) to
 `~/Library/Mobile Documents/com~apple~CloudDocs/mirai-station-backups/`, each file under
 its path relative to `data/` (nothing else in `data/` is backed up; the logs and locks
 under `data/operations/` are not). The mirror only ever adds: a file deleted from

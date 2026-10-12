@@ -3,16 +3,17 @@
     python3 -m spx_jev.bars                   # append today's finished minutes (the launchd job's run)
     python3 -m spx_jev.bars --day 2026-09-25  # fill a past session by hand
 
-Past sessions' bars are saved once a day after the close (``data/market/spx_price_bars_by_minute_scanner_copy/{day}-SPX.json``,
-the gex-polarity job); nothing kept today's until this job. The scanner fetches them on every scan
-and keeps none, so the opening lane, which stamps each read at the newest finished bar, and the
-grader, which reads the bar at each mark, would have nothing to read before 16:15 ET. Every run
-fetches the whole session in one call (Schwab's 1-minute history, the station's own client) and
-appends each finished minute not yet on disk to ``data/market/spx_price_bars_by_minute/{day}.jsonl``, so a gap left by
-a missed run is filled by the next one that succeeds.
+This is the station's one store of SPX minute bars (``data/market/spx_price_bars_by_minute/{day}.jsonl``, read
+everywhere through station_store_files): today's file grows a minute at a time here, save_day.py tops a short day
+up after the close, and every past session is the same kind of file (the scanner grader's own saved sessions were
+folded in on 2026-10-12). The scanner fetches bars on every scan and keeps none, so without this job the opening
+lane, which stamps each read at the newest finished bar, and the grader, which reads the bar at each mark, would
+have nothing to read before the close. Every run fetches the whole session in one call (Schwab's 1-minute history,
+the station's own client) and appends each finished minute not yet on disk, so a gap left by a missed run is filled
+by the next one that succeeds.
 
-Only finished minutes are written: the running minute's high and low are still moving. The shape
-is the station's bar shape, the one the past-session files use, so the labeller reads both alike:
+Only finished minutes are written: the running minute's high and low are still moving. The shape is the station's
+bar shape, the same for every day on file, so the labeller reads them all alike:
     {"ts": "<ISO, America/New_York, the bar's start>", "open", "high", "low", "close", "volume"}
 """
 from __future__ import annotations

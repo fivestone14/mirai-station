@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import DAY, ET, at, bars_from_closes, night_path, night_row, station_paths, write_json
+from conftest import DAY, ET, at, bars_from_closes, night_path, night_row, station_paths, write_json, write_jsonl
 from spx_jev.cuts import OVERNIGHT_RANK_MIN_NIGHTS, SAME_CLOCK_MIN_SESSIONS, WINDOW_10_MIN
 from spx_jev.labels import bitcoin
 from spx_jev.labels.bitcoin import GATE_OF, PREMARKET, NightStore, build_bitcoin_labels, futures_close_at
@@ -476,7 +476,7 @@ def five_day_state(root: Path, last_five: float, sessions: int = 26) -> None:
         btc *= 1 + 2 * index_day + 0.001 * math.sin(1.5 * k) + (last_five / 100 if k >= len(days) - 5 else 0.0)
         close = datetime.combine(d, time(16), tzinfo=ET)
         last_bar = {"ts": (close - timedelta(minutes=1)).isoformat(), "open": spx, "high": spx, "low": spx, "close": spx}
-        write_json(station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.path(root, day=d.isoformat()), [last_bar])
+        write_jsonl(station_paths.SPX_PRICE_BARS_BY_MINUTE.path(root, day=d.isoformat()), [last_bar])
         write_night(root, d.isoformat(), [one_bar("/MBT", close, btc, d)])
 
 

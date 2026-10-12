@@ -60,7 +60,7 @@ def test_the_shipped_calendar_loads_every_row_has_words_and_none_is_sandisks():
 def test_the_shipped_calendar_reaches_the_year_end_with_each_tier_on_its_clock():
     events._load.cache_clear()
     assert events.uncovered(date(2026, 12, 31)) is None
-    assert events.uncovered(date(2027, 1, 4)) == "the event calendar (calendar/events.json) is kept only through 2026-12-31: extend it"
+    assert events.uncovered(date(2027, 1, 4)) == "the event calendar (settings/market_event_calendar_by_event.json) is kept only through 2026-12-31: extend it"
     rows = events._load(str(events.CALENDAR)).events
     assert all(e.start.strftime("%H:%M") == ("08:15" if e.kind == "ADP" else "08:30") for e in rows if e.tier == events.PRE_OPEN)
     assert all(e.start.strftime("%H:%M") == "10:00" for e in rows if e.tier == events.DATA_10AM)
@@ -91,7 +91,10 @@ def test_the_releases_before_the_open_reach_back_to_august_each_from_its_source(
     events._load.cache_clear()
     doc = json.loads(events.CALENDAR.read_text(encoding="utf-8"))
     rows = [e for e in doc["events"] if e["tier"] == events.PRE_OPEN]
-    assert min(e["date"] for e in rows) == "2026-08-04"
+    # the one row before pre_open_covers_from, 07-14 CPI, came from the tape collector's calendar at the phase 5 merge
+    # (2026-10-12); the labels never read it, since events.uncovered says the day is not covered
+    assert [e["date"] for e in rows if e["date"] < doc["pre_open_covers_from"]] == ["2026-07-14"]
+    assert min(e["date"] for e in rows if e["date"] >= doc["pre_open_covers_from"]) == "2026-08-04"
     assert all(e["source"].strip() and isinstance(e["verified"], bool) and e["in_session"] is False for e in rows)
     assert all(e["verified"] is False for e in rows if e["kind"] == "JOBLESS_CLAIMS")    # a rule, not a published date
     thursdays = {e["date"] for e in rows if e["kind"] == "JOBLESS_CLAIMS"}
@@ -143,7 +146,7 @@ def test_other_tiers_are_read_by_the_labels_with_their_flags_and_never_tagged(tm
 
 def test_a_calendar_that_names_no_last_day_covers_none(tmp_path):
     p = _cal(tmp_path, [{"date": "2026-10-28", "time_et": "14:00", "kind": "FOMC", "tier": 1}])
-    assert events.uncovered(date(2026, 10, 28), p) == "the event calendar (calendar/events.json) names no last kept day (covers_through)"
+    assert events.uncovered(date(2026, 10, 28), p) == "the event calendar (settings/market_event_calendar_by_event.json) names no last kept day (covers_through)"
 
 
 def test_the_quiet_period_runs_from_the_second_saturday_before_the_meeting_to_the_day_after(tmp_path):
@@ -166,8 +169,8 @@ def test_a_day_before_the_calendars_first_kept_day_is_unknown_not_quiet():
     """The 10:00, 14:00 and speaker tiers are listed from September only, so an August morning with no rows is not an
     ordinary day for the event labels, though its releases before the open are listed."""
     events._load.cache_clear()
-    assert events.uncovered(date(2026, 8, 6)) == "the event calendar (calendar/events.json) is kept only from 2026-09-01"
+    assert events.uncovered(date(2026, 8, 6)) == "the event calendar (settings/market_event_calendar_by_event.json) is kept only from 2026-09-01"
     assert events.uncovered(date(2026, 9, 1)) is None
     assert events.uncovered(date(2026, 8, 6), tier=events.PRE_OPEN) is None
     assert events.uncovered(date(2026, 7, 31), tier=events.PRE_OPEN) == \
-        "the event calendar (calendar/events.json) is kept only from 2026-08-01"
+        "the event calendar (settings/market_event_calendar_by_event.json) is kept only from 2026-08-01"

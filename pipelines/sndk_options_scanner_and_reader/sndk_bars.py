@@ -25,8 +25,8 @@ running is a partial and never lands. The reader (sndk_read) falls back to the
 (`price.extremes_from`, `context.ranges.measured_from`); absence of this file
 never fabricates an extreme.
 
-Shape (same keys as lefteye_fetcher.intraday_bars and the grader's
-data/market/spx_price_bars_by_minute_scanner_copy files, so nothing has to translate):
+Shape (same keys as lefteye_fetcher.intraday_bars and the station's SPX bars store,
+data/market/spx_price_bars_by_minute/{day}.jsonl, so nothing has to translate):
   {"ts": "<ISO, America/New_York>", "open", "high", "low", "close", "volume"}
 """
 from __future__ import annotations

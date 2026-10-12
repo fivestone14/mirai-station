@@ -45,7 +45,8 @@ def seed_baseline(store, days=21, vol_of_day=lambda i: 1000):
                                            for m in range(570, 960)}
             i += 1
         d -= timedelta(days=1)
-    store.write_baseline(data)
+    for day, minutes in data["days"].items():
+        store.write_spy_volume_day(day, minutes)
 
 
 def run(store, hh, mm, spot, towers, bars, sigma=40.0, cfg=None, day=DAY):

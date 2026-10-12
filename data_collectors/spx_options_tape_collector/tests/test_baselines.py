@@ -2,13 +2,16 @@
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from lob_flow.baselines import (BaselineStore, DEFAULT_CALENDAR, FileCalendar,
+from lob_flow.baselines import (BaselineStore, FileCalendar,
                                 day_samples, first_friday, key_of,
                                 session_block, third_friday, tod_bin,
                                 vix_band, vix_expiration_wednesday)
 
+import station_paths  # noqa: E402  (lob_flow.io_state puts the repo root on sys.path)
+
 ET = ZoneInfo("America/New_York")
 NOW = datetime(2026, 7, 7, 10, 30, tzinfo=ET)
+CALENDAR = station_paths.MARKET_EVENT_CALENDAR_BY_EVENT.path()   # the station's one event calendar, in the repo
 
 
 def test_session_blocks(cfg):
@@ -136,9 +139,9 @@ def test_friday_rules():
     assert third_friday(2026, 7) == date(2026, 7, 17)
 
 
-def test_calendar_seeds_and_blocks_fomc_window(tmp_path):
-    cal = FileCalendar(tmp_path / "calendar.json")
-    assert (tmp_path / "calendar.json").exists()             # seeded
+def test_calendar_reads_the_stations_file_and_blocks_fomc_window(tmp_path):
+    cal = FileCalendar(CALENDAR)
+    assert not (tmp_path / "calendar.json").exists()         # read-only: nothing is seeded or written
     fomc = datetime(2026, 7, 29, 14, 10, tzinfo=ET)
     b = cal.block(fomc)
     assert b.blocked and b.kind == "FOMC"
@@ -146,7 +149,7 @@ def test_calendar_seeds_and_blocks_fomc_window(tmp_path):
 
 
 def test_calendar_blocks_cpi_and_nfp_mornings(tmp_path):
-    cal = FileCalendar(tmp_path / "calendar.json")
+    cal = FileCalendar(CALENDAR)
     cpi = datetime(2026, 7, 14, 8, 45, tzinfo=ET)
     assert cal.block(cpi).kind == "CPI"
     nfp = datetime(2026, 8, 7, 8, 30, tzinfo=ET)             # first Friday Aug
@@ -154,7 +157,7 @@ def test_calendar_blocks_cpi_and_nfp_mornings(tmp_path):
 
 
 def test_clean_day_rules(tmp_path):
-    cal = FileCalendar(tmp_path / "calendar.json")
+    cal = FileCalendar(CALENDAR)
     assert not cal.is_clean_day(date(2026, 7, 29))           # FOMC
     assert not cal.is_clean_day(date(2026, 7, 17))           # OPEX (computed)
     assert not cal.is_clean_day(date(2026, 8, 7))            # NFP (computed)
@@ -162,20 +165,22 @@ def test_clean_day_rules(tmp_path):
 
 
 def test_opex_dirty_but_not_blocked_intraday(tmp_path):
-    cal = FileCalendar(tmp_path / "calendar.json")
+    cal = FileCalendar(CALENDAR)
     opex_noon = datetime(2026, 7, 17, 12, 0, tzinfo=ET)
     assert not cal.block(opex_noon).blocked
 
 
-def test_default_calendar_marks_unverified():
-    unverified = [e for e in DEFAULT_CALENDAR["events"] if not e.get("verified")]
-    assert unverified, "pattern-based dates must stay flagged for the refresh"
-
-
-def test_calendar_fails_closed_beyond_coverage(tmp_path):
-    """Past the seeded horizon the calendar can't know the event days — every
-    day there is DIRTY (never folded) until the file is refreshed."""
+def test_a_missing_calendar_covers_nothing_and_blocks_nothing(tmp_path):
     cal = FileCalendar(tmp_path / "calendar.json")
+    assert not (tmp_path / "calendar.json").exists()         # never seeded
+    assert not cal.is_clean_day(date(2026, 7, 7))            # fail closed: no file, no clean day
+    assert not cal.block(datetime(2026, 7, 29, 14, 10, tzinfo=ET)).blocked
+
+
+def test_calendar_fails_closed_beyond_coverage():
+    """Past the file's covers_through the calendar can't know the event days — every
+    day there is DIRTY (never folded) until the file is extended."""
+    cal = FileCalendar(CALENDAR)
     assert not cal.is_clean_day(date(2027, 3, 9))            # unknown territory
 
 
@@ -197,7 +202,7 @@ def test_cold_vix_band_borrows_neighbor(tmp_path, cfg, store_seeder):
 
 def test_fomc_block_covers_the_presser(tmp_path):
     """The violent half of a Fed day is the 14:30-15:30 press conference."""
-    cal = FileCalendar(tmp_path / "calendar.json")
+    cal = FileCalendar(CALENDAR)
     presser = datetime(2026, 7, 29, 15, 15, tzinfo=ET)
     assert cal.block(presser).kind == "FOMC"
     after = datetime(2026, 7, 29, 15, 45, tzinfo=ET)
@@ -205,7 +210,7 @@ def test_fomc_block_covers_the_presser(tmp_path):
 
 
 def test_vix_expiration_and_quarter_roll_are_dirty(tmp_path):
-    cal = FileCalendar(tmp_path / "calendar.json")
+    cal = FileCalendar(CALENDAR)
     assert vix_expiration_wednesday(date(2026, 7, 22)) == date(2026, 7, 22)
     assert not cal.is_clean_day(date(2026, 7, 22))          # VIX settlement day
     open_block = datetime(2026, 7, 22, 9, 45, tzinfo=ET)

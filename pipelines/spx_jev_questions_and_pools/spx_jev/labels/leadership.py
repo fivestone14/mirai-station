@@ -10,7 +10,7 @@ the index weights from ``data/market/spx_largest_stock_weights_by_update.json`` 
 of the index}``, the newest dated on or before the read's day); without it they are omitted with the reason.
 
 Not built: the heavyweight gap's earnings tag (the spec's "NVDA reported after yesterday's close"). It waits
-for megacap earnings rows in calendar/events.json, which has none and no row format for them yet.
+for megacap earnings rows in the event calendar (settings/market_event_calendar_by_event.json), which has none and no row format for them yet.
 """
 from __future__ import annotations
 

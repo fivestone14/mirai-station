@@ -16,7 +16,7 @@ each) takes some 15 seconds a read: only the lines inside the window asked for a
 
 The other sources: the collector's quote sweeps (``sweeps.jsonl`` beside the tape) and its record
 (``data/spx/scanner/spx_order_flow_readings_by_minute/{day}.jsonl``: the refill test and SPY's quote), the diary's same-day volume by
-strike, and SPY's volume by minute as the siege box keeps it (``data/spx/scanner/spy_volume_baselines_state.json``), since the market-context
+strike, and SPY's volume by minute as the siege box keeps it (``data/market/spy_volume_by_minute/{day}.json``, one file a day), since the market-context
 job saves SPY's quote live but not its minute bars. Every one is read point in time and ranked against the same
 minutes of up to the last 20 prior sessions, needing 10 of them (ranks.rank_sessions), never a fixed size: what a
 large trade is, which way premium leaned, how far the swing to calls went, how wide SPY's quote is, how near a
@@ -47,7 +47,8 @@ from .rulers import estimated_note, sigma_anchor
 from .vol_sources import TAPE_LINE_START, TAPE_RAW_SUBDIR, tape_path
 from .words import pct, plural, sig, signed
 
-import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402
+import station_store_files  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 LABELS = ("options.turnover", "options.call_put_split", "options.aggressor_side", "options.new_activity",
           "options.big_prints_10", "options.call_put_shift_10m", "options.flow_lean_30", "options.premium_burst_5m",
@@ -71,7 +72,7 @@ ROW_LINE_START = '{"ts": "'
 # depth swings by half from one minute to the next.
 QUOTE_WINDOW_MIN = 5
 QUOTE_BUCKET = "d25_40"                  # the collector's 25-40 delta bucket, the same-day quotes near price that trade
-SPY_VOLUMES = Path(station_paths.SPY_VOLUME_BASELINES_STATE.relative)   # the siege box's SPY volume by minute of day, folded on every diary scan
+SPY_VOLUMES = station_paths.SPY_VOLUME_BY_MINUTE.relative_folder   # the siege box's SPY volume by minute of day, one file a day, today's rewritten on every diary scan
 # The siege box folds SPY's minutes on each diary scan, about every two minutes: a newest minute older than this means it stopped.
 SPY_VOLUME_MAX_AGE_MIN = 5
 # A window with under half its minutes on file is a feed hole, not a quiet stretch (the siege box's own rule).
@@ -840,14 +841,12 @@ def _spy_volume_days(scene: Scene) -> tuple[dict[str, dict[int, float]] | None, 
     file, no minutes for today, or a feed that stopped."""
     if scene.state_dir is None:
         return None, "no state folder to read the siege box's SPY minute volumes from"
-    path = Path(scene.state_dir) / SPY_VOLUMES
-    if not path.exists():
-        return None, f"no SPY minute volumes at {SPY_VOLUMES}: the siege box has not run"
-    days = _read_spy_volumes(str(path), path.stat().st_mtime_ns)
+    days = {d: mins for d in (scene.day, *scene.prior_bars)
+            if (mins := station_store_files.read_spy_volume_by_minute(scene.state_dir, d))}
     end = minute_of_day(scene.now.astimezone(ET))
     done = [m for m in days.get(scene.day) or {} if m < end]
     if not done:
-        return None, f"no SPY minute volumes for {scene.day} in {SPY_VOLUMES}"
+        return None, f"no SPY minute volumes for {scene.day} in {SPY_VOLUMES}/: the siege box has not run"
     if max(done) < end - SPY_VOLUME_MAX_AGE_MIN:
         return None, f"no SPY minute volume from the siege box in the last {SPY_VOLUME_MAX_AGE_MIN} minutes: its feed stopped"
     return days, ""
@@ -891,11 +890,3 @@ def _spy_pace_30(last30: float, base: list[float], ls: LabelSet) -> None:
         return
     ls.put("volume.spy_pace_30", f"SPY traded {last30 / statistics.median(base[:rank.of]):.1f} times its usual volume for this half hour, "
                                  f"{fifth(rank)}, {rank.words()}")
-
-
-@lru_cache(maxsize=4)
-def _read_spy_volumes(path: str, mtime_ns: int) -> dict[str, dict[int, float]]:
-    """The siege box's ``{"days": {day: {minute of day: volume}}}``, a minute keyed by when its bar started. ``mtime_ns``
-    keys the cache: the siege box rewrites the file on every scan."""
-    raw = (json.loads(Path(path).read_text(encoding="utf-8")) or {}).get("days") or {}
-    return {d: {int(m): float(v) for m, v in mins.items() if is_num(v)} for d, mins in raw.items() if isinstance(mins, dict)}

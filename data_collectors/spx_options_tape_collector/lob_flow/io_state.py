@@ -2,15 +2,15 @@
 io_state.py — the FILING SYSTEM of the box: every byte that touches disk goes
 through here. Atomic writes (tmp+rename, never a torn read), the latest.json
 handshake the host tick reads, append-only raw journals with cursors for
-crash-replay, and the rotation that enforces the disk budget.
+crash-replay, and the gzip of finished raw days (kept forever).
 
 Every file is named in station_paths.py; StateDir is handed the station's data root and asks it:
     spx/scanner/spx_order_flow_readings_latest.json      # the ONLY file the host's tick reads
     spx/scanner/spx_dealer_gamma_levels_latest.json      # written by the host, read by the daemon
-    market/market_event_calendar_by_event.json           # scheduled-event dates (seeded if missing)
+    settings/market_event_calendar_by_event.json         # the station's one event calendar, versioned in the repo (read-only)
     spx/scanner/spx_options_trades_resume_point_state.json, operations/locks/spx_options_tape_collector.lock
     spx/scanner/{spx_options,spy}_depth_baselines_state.json
-    market/spx_same_day_options_raw_day_folders/{date}/{stream}.jsonl   # per-day append-only journals (the disk budget's folder)
+    market/spx_same_day_options_raw_day_folders/{date}/{stream}.jsonl   # per-day append-only journals, gzipped once the day is over, never pruned
     spx/scanner/spx_order_flow_readings_by_minute/{date}.jsonl          # per-fold aggregate rows (kept forever)
     spx/scanner/spx_order_flow_grades_by_day/{date}.json                # nightly head-to-head grades
 """
@@ -21,7 +21,7 @@ import json
 import os
 import shutil
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Iterator, Optional
 
@@ -61,7 +61,7 @@ class StateDir:
 
     @property
     def raw_root(self) -> Path:
-        """The raw day folders' parent: what the rotation prunes and the disk budget measures."""
+        """The raw day folders' parent: one folder a day, kept forever (finished days gzipped in place)."""
         return station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.folder(self.state_root)
 
     # -- named files ---------------------------------------------------------
@@ -70,7 +70,7 @@ class StateDir:
     @property
     def gex_context(self) -> Path: return station_paths.SPX_DEALER_GAMMA_LEVELS_LATEST.path(self.state_root)
     @property
-    def calendar(self) -> Path: return station_paths.MARKET_EVENT_CALENDAR_BY_EVENT.path(self.state_root)
+    def calendar(self) -> Path: return station_paths.MARKET_EVENT_CALENDAR_BY_EVENT.path()   # in the repo, not under the data root
     @property
     def cursor(self) -> Path: return station_paths.SPX_OPTIONS_TRADES_RESUME_POINT_STATE.path(self.state_root)
     @property
@@ -163,56 +163,30 @@ class StateDir:
         return fh
 
     # -- rotation ---------------------------------------------------------------
-    def disk_usage_mb(self) -> float:
-        """The raw day folders' size: the one thing the cap can shrink (the aggregates, baselines and cards, which it
-        never deletes, no longer count toward it since they left the collector's folder)."""
-        total = 0
-        if not self.raw_root.exists():
-            return 0.0
-        for p in self.raw_root.rglob("*"):
-            try:
-                if p.is_file():
-                    total += p.stat().st_size
-            except OSError:
-                continue
-        return total / 1e6
-
-    def rotate(self, now: datetime, raw_retention_days: int, disk_cap_mb: int) -> dict:
-        """Daemon-start housekeeping: gzip yesterday's raw journals, drop raw
-        days past retention, and enforce the hard disk cap oldest-first.
-        Aggregates, baselines, and cards are never deleted by the cap."""
-        report = {"gzipped": 0, "dropped_days": 0, "cap_dropped": 0}
+    def rotate(self, now: datetime) -> dict:
+        """Daemon-start housekeeping: gzip every finished day's raw journals in
+        place. Nothing is deleted: the raw day folders are the station's one
+        copy of the same-day options tape (cleanup phase 5, 2026-10-12; the
+        recorder's gzip copies were folded in), kept until a retention phase
+        decides otherwise. Today's folder is left plain: it is the live
+        crash-replay source."""
+        report = {"gzipped": 0}
         raw_root = self.raw_root
         if not raw_root.exists():
             return report
         today = now.date().isoformat()
-        cutoff = (now.date() - timedelta(days=raw_retention_days)).isoformat()
         for day_dir in sorted(raw_root.iterdir()):
-            if not day_dir.is_dir():
+            if not day_dir.is_dir() or day_dir.name >= today:
                 continue
-            if day_dir.name < cutoff:
-                shutil.rmtree(day_dir, ignore_errors=True)
-                report["dropped_days"] += 1
-                continue
-            if day_dir.name < today:                     # compress finished days
-                import gzip
-                for f in day_dir.glob("*.jsonl"):
-                    try:
-                        with open(f, "rb") as src, gzip.open(f"{f}.gz", "wb") as dst:
-                            shutil.copyfileobj(src, dst)
-                        f.unlink()
-                        report["gzipped"] += 1
-                    except OSError:
-                        continue
-        # hard cap: drop oldest raw days until under budget — but NEVER today's
-        # (it is the live crash-replay source)
-        while self.disk_usage_mb() > disk_cap_mb:
-            days = sorted(d for d in raw_root.iterdir()
-                          if d.is_dir() and d.name != today)
-            if not days:
-                break
-            shutil.rmtree(days[0], ignore_errors=True)
-            report["cap_dropped"] += 1
+            import gzip                                  # compress finished days
+            for f in day_dir.glob("*.jsonl"):
+                try:
+                    with open(f, "rb") as src, gzip.open(f"{f}.gz", "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+                    f.unlink()
+                    report["gzipped"] += 1
+                except OSError:
+                    continue
         return report
 
 

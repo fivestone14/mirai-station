@@ -500,8 +500,8 @@ def big_change(prev: dict | None, cur: dict) -> tuple[bool, str]:
 def _event_clock(now: datetime, t: dict) -> dict | None:
     """N2 — THE CLOCK THE TOWER NEVER HAD. The single biggest predictor of whether
     the yard erupts is a scheduled macro print minutes away, and the tower was blind
-    to it. Reads the same shared calendar the event lens reads (FOMC/CPI seeded,
-    NFP by rule), and speaks in minutes. When the calendar itself has nothing on the
+    to it. Reads the same calendar the event lens reads (the station's one event
+    calendar's FOMC/CPI rows, NFP by rule), and speaks in minutes. When the calendar itself has nothing on the
     horizon, that BLINDNESS is surfaced instead of silently absent."""
     try:
         import lefteye_event_lens as _ev
@@ -545,7 +545,7 @@ def _event_clock(now: datetime, t: dict) -> dict | None:
         if not horizon:
             return {"kind": None,
                     "note": "event calendar has NO upcoming entries — the tower is blind to "
-                            "scheduled prints until data/market/market_event_calendar_by_event.json is re-seeded."}
+                            "scheduled prints until settings/market_event_calendar_by_event.json is extended."}
     except Exception:
         pass
     return None

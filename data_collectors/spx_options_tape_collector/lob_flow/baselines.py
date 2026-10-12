@@ -253,28 +253,15 @@ def day_samples(bin_rows: list[dict], cap: int) -> dict[str, list[float]]:
 
 
 # ---------------------------------------------------------------------------
-# Calendar gate (FOMC / CPI / NFP seeded; NFP + OPEX also computed by rule)
+# Calendar gate (FOMC / CPI rows of the station's calendar; NFP + OPEX computed by rule)
 # ---------------------------------------------------------------------------
 
-# Seed: FOMC decision days verified against the Fed calendar 2026-07-04;
-# CPI 2026-07-14 verified (BLS); 2026-10-14 verified against the BLS release
-# schedule on 2026-09-25 (the second-week pattern had given the 13th). The
-# other CPI dates follow the pattern and stay verified:false for the refresh.
-DEFAULT_CALENDAR = {
-    "note": "refresh quarterly; unverified dates follow the standard pattern",
-    "events": [
-        {"date": "2026-07-14", "kind": "CPI", "time_et": "08:30", "verified": True},
-        {"date": "2026-07-29", "kind": "FOMC", "time_et": "14:00", "verified": True},
-        {"date": "2026-08-12", "kind": "CPI", "time_et": "08:30", "verified": False},
-        {"date": "2026-09-11", "kind": "CPI", "time_et": "08:30", "verified": False},
-        {"date": "2026-09-16", "kind": "FOMC", "time_et": "14:00", "verified": True},
-        {"date": "2026-10-14", "kind": "CPI", "time_et": "08:30", "verified": True},
-        {"date": "2026-10-28", "kind": "FOMC", "time_et": "14:00", "verified": True},
-        {"date": "2026-11-10", "kind": "CPI", "time_et": "08:30", "verified": False},
-        {"date": "2026-12-09", "kind": "FOMC", "time_et": "14:00", "verified": True},
-        {"date": "2026-12-10", "kind": "CPI", "time_et": "08:30", "verified": False},
-    ],
-}
+# The rows this gate reads from the station's one event calendar (settings/market_event_calendar_by_event.json,
+# every tier, kept by hand): the two macro prints the collector's own copy carried before cleanup phase 5 folded it
+# in (2026-10-12). The other kinds there (the jobs report, PCE, the Fed's press conference, speakers, rebalances...)
+# are not read, so the baselines' clean days and the alert blocks are what they were; widening the set is a decision,
+# not a cleanup.
+CALENDAR_KINDS = frozenset({"FOMC", "CPI"})
 
 BLOCK_HALF_WIDTH_MIN = 45
 
@@ -299,7 +286,7 @@ def vix_expiration_wednesday(day: date) -> Optional[date]:
 
 
 def _is_quarter_end_trading_day(day: date) -> bool:
-    """Last weekday of Mar/Jun/Sep/Dec (approx; holiday shifts via seed)."""
+    """Last weekday of Mar/Jun/Sep/Dec (approx; holiday shifts via explicit calendar rows)."""
     if day.month not in (3, 6, 9, 12) or day.weekday() >= 5:
         return False
     nxt = day + timedelta(days=1)
@@ -309,24 +296,26 @@ def _is_quarter_end_trading_day(day: date) -> bool:
 
 
 class FileCalendar:
-    """EventCalendar over a seeded JSON file + two computed rules:
+    """EventCalendar over the station's event calendar file + two computed rules:
     NFP = first Friday 08:30 ET, OPEX = third Friday (whole day dirty).
 
-    Holiday shifts (an NFP released Thursday because Friday is a holiday, an
-    OPEX moved off Good Friday) are handled by SEEDING explicit entries — the
-    quarterly refresh must verify them. Beyond the seeded coverage horizon the
-    calendar FAILS CLOSED: unknown-territory days are never 'clean', so a
-    stale file can't quietly poison the baselines with unseen FOMC days."""
+    Read-only: the file is versioned in the repo and kept by hand (every tier of
+    it; this gate reads the CALENDAR_KINDS rows). Holiday shifts (an NFP released
+    Thursday because Friday is a holiday, an OPEX moved off Good Friday) are
+    handled by explicit rows there — the quarterly refresh must verify them.
+    Beyond the file's coverage horizon (its covers_through, else its last row)
+    the calendar FAILS CLOSED: unknown-territory days are never 'clean', so a
+    stale file can't quietly poison the baselines with unseen FOMC days; a
+    missing or unreadable file covers nothing, so every day is dirty."""
 
-    def __init__(self, path: Path, seed: Optional[dict] = None):
+    def __init__(self, path: Path):
         self.path = path
-        obj = read_json(path)
-        if obj is None:
-            obj = seed or DEFAULT_CALENDAR
-            atomic_write_json(path, obj)
-        self.events = obj.get("events", [])
+        obj = read_json(path) or {}
+        rows = obj.get("events") if isinstance(obj, dict) else None
+        self.events = [e for e in (rows or []) if isinstance(e, dict) and e.get("kind") in CALENDAR_KINDS]
         dates = [e.get("date") for e in self.events if e.get("date")]
-        self.coverage_until = max(dates) if dates else None
+        through = obj.get("covers_through") if isinstance(obj, dict) else None
+        self.coverage_until = through if isinstance(through, str) else (max(dates) if dates else None)
 
     def _events_on(self, day: date) -> list[dict]:
         out = [e for e in self.events if e.get("date") == day.isoformat()]
@@ -367,9 +356,10 @@ class FileCalendar:
 
     def is_clean_day(self, day: date) -> bool:
         """Clean = eligible for the normalcy memory. Any scheduled event or
-        OPEX makes the whole day dirty; so does any day past the seeded
-        coverage horizon (fail closed — refresh the calendar instead)."""
-        if self.coverage_until and day.isoformat() > self.coverage_until:
+        OPEX makes the whole day dirty; so does any day past the file's
+        coverage horizon, and every day when there is no file (fail closed —
+        extend the calendar instead)."""
+        if self.coverage_until is None or day.isoformat() > self.coverage_until:
             return False
         return not self._events_on(day)
 

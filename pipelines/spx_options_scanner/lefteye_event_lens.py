@@ -22,10 +22,11 @@ Behavior notes (deliberate, v1):
     owned elsewhere (lob-flow baselines / fill ledger), not macro prints, and
     are excluded here (belt and suspenders: whole-day rows carry a null
     time_et, so the truthy-time filter drops them too).
-  * Calendar coupling is SOFT and READ-ONLY: the single WRITER of
-    data/market/market_event_calendar_by_event.json stays lob-flow's FileCalendar (it seeds the
-    file on first run). This module only reads it — at most ONE file read per
-    ET day (module-level cache) — and a missing/corrupt file simply means
+  * Calendar coupling is SOFT and READ-ONLY: the calendar is the station's one
+    hand-kept, versioned file (settings/market_event_calendar_by_event.json,
+    station_paths.MARKET_EVENT_CALENDAR_BY_EVENT; every tier, the SPX JEV
+    package reads them all). This module only reads it — at most ONE file read
+    per ET day (module-level cache) — and a missing/corrupt file simply means
     "no event day". Never writes, never repairs, never networks.
   * NFP is NOT in the JSON: FileCalendar computes it by rule (first Friday of
     the month, 08:30 ET) and we replicate the same 3-line rule, deduped on
@@ -71,8 +72,8 @@ K_PREMARKET_MIN = 30
 # few percent at most) — only a genuine event-premium collapse trips it.
 CRUSH_RATIO = 0.85
 
-# Single WRITER of this file stays lob-flow's FileCalendar — soft, read-only
-# data coupling; this module must never create or repair it.
+# The station's one event calendar, versioned in the repo and kept by hand — soft,
+# read-only data coupling; this module must never create or repair it.
 CALENDAR_PATH = station_paths.MARKET_EVENT_CALENDAR_BY_EVENT.path()
 
 # Deterministic quality-flag order (telemetry diffs stay stable across scans).
@@ -87,10 +88,10 @@ def reset_calendar_cache() -> None:
 
 
 def load_calendar(path=None) -> list:
-    """READ-ONLY view of the shared event calendar (data/market/market_event_calendar_by_event.json).
+    """READ-ONLY view of the station's event calendar (settings/market_event_calendar_by_event.json).
 
-    The single WRITER of that file stays lob-flow's FileCalendar — this is a
-    soft read-only data coupling: we never create, seed, or repair the file.
+    The file is kept by hand and versioned in the repo — this is a soft
+    read-only data coupling: we never create, seed, or repair the file.
     Missing / corrupt / odd-shaped file -> [] (a quiet no-event day, fail-open).
     Cached keyed on the ET date-string so the lens costs at most ONE file read
     per day no matter how many scans call it.

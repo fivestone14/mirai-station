@@ -24,8 +24,9 @@ of the day", not vs a flat whole-day expected move.
 
 Derived sensory layer, SHADOW-adjacent: pure functions, no votes, no trades.
 READ-ONLY — writes nothing anywhere, touches no network. The baseline is the
-saved real-range bars store (data/market/spx_price_bars_by_minute_scanner_copy, written by gex_polarity_ab's
-grader); the baseline is injectable so every path is testable offline.
+station's one bars store (data/market/spx_price_bars_by_minute/{day}.jsonl, the
+bars feed's day files, read through station_store_files); the baseline is
+injectable so every path is testable offline.
 Stateless: a mid-session restart just re-derives everything from today's bars.
 
 Known limitation: the rest-of-day projection assumes a 16:00 ET close — on a
@@ -48,6 +49,7 @@ _REPO_ROOT = str(SKILL_DIR.parent.parent)             # station_paths.py names e
 if _REPO_ROOT not in sys.path:
     sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
+import station_store_files  # noqa: E402
 
 # --- session grid ---------------------------------------------------------
 # 78 five-minute buckets cover the 09:30-16:00 cash session; a bar's bucket is
@@ -259,17 +261,17 @@ def diurnal_table(baseline: Optional[dict]) -> Optional[dict]:
 
 
 # =========================================================================
-# baseline loader (read-only; the bars store is WRITTEN by gex_polarity_ab)
+# baseline loader (read-only; the bars store is WRITTEN by the bars feed, spx_jev.bars)
 # =========================================================================
 def _bars_dir() -> Path:
-    """The grader's saved real-range bars (gex_polarity_ab._bars_file writes them, under
-    station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY); monkeypatch point for tests."""
-    return station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.folder()
+    """The station's bars store folder (station_paths.SPX_PRICE_BARS_BY_MINUTE, one
+    {day}.jsonl a day); monkeypatch point for tests."""
+    return station_paths.SPX_PRICE_BARS_BY_MINUTE.folder()
 
 
-def _read_json(path: Path):
-    """Single file-read seam (tests monkeypatch this to count opens)."""
-    return json.loads(path.read_text())
+def _read_bars(path: Path) -> list[dict]:
+    """Single file-read seam (tests monkeypatch this to count opens): one day file's bars."""
+    return station_store_files.read_spx_price_bars_file(path)
 
 
 # (path, mtime)-keyed cache: a day-file that has not changed is never re-read.
@@ -278,21 +280,21 @@ _BASELINE_CACHE: dict[tuple[str, float], list] = {}
 
 def _load_baseline(ticker: str = "SPX", exclude_day: str = "",
                    n_files: int = BASELINE_FILES) -> dict[str, list[dict]]:
-    """Newest n_files saved {day}-{ticker}.json bar files → {day: bars}.
-    exclude_day (normally today) is skipped — today's live bars must never
+    """Newest n_files {day}.jsonl bar files of the store → {day: bars} (the store
+    holds SPX alone; ``ticker`` is kept for the read's signature). exclude_day
+    (normally today) is skipped — today's live bars, still growing, must never
     grade themselves against themselves. Per-file failures are skipped, never
     raised (a corrupt file costs one baseline day, not the read)."""
     d = _bars_dir()
-    suffix = f"-{ticker}.json"
     try:
-        files = sorted(d.glob(f"*{suffix}"), key=lambda p: p.name, reverse=True)[:n_files]
+        files = sorted(d.glob("????-??-??.jsonl"), key=lambda p: p.name, reverse=True)[:n_files]
     except OSError:
         return {}
     if len(_BASELINE_CACHE) > 256:                       # bound stale-mtime growth
         _BASELINE_CACHE.clear()
     out: dict[str, list[dict]] = {}
     for f in files:
-        day = f.name[: -len(suffix)]
+        day = f.stem
         if day == exclude_day:
             continue
         try:
@@ -304,11 +306,11 @@ def _load_baseline(ticker: str = "SPX", exclude_day: str = "",
             out[day] = cached
             continue
         try:
-            bars = _read_json(f)
+            bars = _read_bars(f)
         except Exception:
-            continue                                     # corrupt file → skip
-        if not isinstance(bars, list) or not bars:
-            continue
+            continue                                     # unreadable file → skip
+        if not bars:
+            continue                                     # corrupt or empty file → skip
         _BASELINE_CACHE[key] = bars
         out[day] = bars
     return out

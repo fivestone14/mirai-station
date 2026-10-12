@@ -4,18 +4,18 @@ Every path here is READ, and each is named in station_paths.py (the names below)
 writes under any of them; ``jsonl_store`` refuses to.
 
     SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN            the SPX options diary (the left-eye scanner's rows)
-    SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY          the saved full session of SPX 1-minute bars
-    SPX_PRICE_BARS_BY_MINUTE                       today's live SPX 1-minute bars
+    SPX_PRICE_BARS_BY_MINUTE                       the SPX 1-minute bars, one file a day (the one store; station_store_files reads it)
     WATCHLIST_QUOTES_BY_MINUTE                     market quotes every ~60 s ($VIX, $VIX1D, /ES, breadth ...)
     SPX_VIX_RATES_PRICE_BARS_BY_DAY                daily OHLC per symbol, rewritten whole at 16:20 ET
     JEV_READS_AND_GRADES_BY_EVENT                  the SPX read records (kind "read") and their grades
     JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON   the station's average-price grades per read and horizon (the live lane's)
     CODE_QUESTION_ANSWERS_BY_READ                  code's 79 answers per read
     SPX_ORDER_FLOW_READINGS_BY_MINUTE              the 0DTE options tape, folded per minute (never deleted)
-    SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER            the raw tape (deleted after 30 days; the recorder copies it)
-    SPY_VOLUME_BASELINES_STATE                     SPY per-minute volume per day (keeps 60 days; the recorder copies it)
-    SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_LATEST     the dated options book (overwritten on every fetch; the recorder copies it)
-    MARKET_EVENT_CALENDAR_BY_EVENT_SPX_JEV_COPY    the event calendar (the spx-jev package's copy, in the repo)
+    SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER            the raw tape, one folder a day, kept forever (finished days gzipped in place)
+    SPY_VOLUME_BY_MINUTE                           SPY's volume per minute, one file a day (the wall sensor's; station_store_files reads it)
+    SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_LATEST     the dated options book, overwritten on every fetch
+    SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_BY_DAY     every book pulled, kept by the dated-book job (paths.open_interest_history_folder)
+    MARKET_EVENT_CALENDAR_BY_EVENT                 the station's one event calendar, versioned in the repo under settings/
 """
 from __future__ import annotations
 
@@ -31,11 +31,6 @@ SPX_JEV_SKILL_DIR = STATION_ROOT / "pipelines" / "spx_jev_questions_and_pools"
 
 def reversion_rows_file(state_dir: Path, day: str) -> Path:
     return station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.path(state_dir, day=day)
-
-
-def session_bars_dir(state_dir: Path) -> Path:
-    """The scanner grader's saved full sessions of SPX bars (merged into the bars feed's store at a later phase)."""
-    return station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.folder(state_dir)
 
 
 def spx_jev_dir(state_dir: Path) -> Path:
@@ -68,20 +63,12 @@ def lob_flow_agg_file(state_dir: Path, day: str) -> Path:
     return station_paths.SPX_ORDER_FLOW_READINGS_BY_MINUTE.path(state_dir, day=day)
 
 
-def lob_flow_raw_dir(state_dir: Path) -> Path:
-    return station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.folder(state_dir)
-
-
-def siege_baseline_file(state_dir: Path) -> Path:
-    return station_paths.SPY_VOLUME_BASELINES_STATE.path(state_dir)
-
-
 def dated_book_file(state_dir: Path) -> Path:
     return station_paths.SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_LATEST.path(state_dir)
 
 
 def events_calendar_file() -> Path:
-    return station_paths.MARKET_EVENT_CALENDAR_BY_EVENT_SPX_JEV_COPY.path(STATION_ROOT)
+    return station_paths.MARKET_EVENT_CALENDAR_BY_EVENT.path()
 
 
 def import_spx_jev(module: str) -> ModuleType:

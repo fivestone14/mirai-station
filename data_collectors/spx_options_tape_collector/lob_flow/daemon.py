@@ -89,7 +89,7 @@ def main(cfg: LobConfig, adapters: Adapters) -> int:
     lock = sd.acquire_lock()
     if lock is None:
         return 0                                       # another collector owns today
-    sd.rotate(now, cfg.raw_retention_days, cfg.disk_cap_mb)
+    sd.rotate(now)
     mem = _Mem()
     _replay_today(sd, mem, now)
     try:

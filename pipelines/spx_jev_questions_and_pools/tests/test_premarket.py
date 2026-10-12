@@ -44,7 +44,7 @@ def _station(root, now=at(9, 28), anchors: int = len(PRIOR_DAYS)):
     """Six prior sessions of SPX bars closing at 7700, a morning anchor (60 to 65 points) on the last ``anchors`` of
     them, and the night's store to ``now``."""
     for k, d in enumerate(PRIOR_DAYS):
-        write_json(station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.path(root, day=d), bars_from_closes([7700.0] * 390, day=d))
+        write_jsonl(station_paths.SPX_PRICE_BARS_BY_MINUTE.path(root, day=d), bars_from_closes([7700.0] * 390, day=d))
         if k >= len(PRIOR_DAYS) - anchors:
             write_jsonl(diary_path(root, d), [make_row(at(9, 35, day=d), 7700.0, sigma=60.0 + k)])
     path = overnight.night_path(root, DAY)

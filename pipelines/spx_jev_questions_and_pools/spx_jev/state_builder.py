@@ -3,8 +3,8 @@ the options tape, loaded point in time into a Scene. The labels themselves are b
 under ``labels/`` (labels.registry.build_labels).
 
 * Read-only. Rows come from the left-eye scanner's diary ``data/spx/scanner/spx_options_scanner_results_by_scan/{day}.jsonl``
-  (cut down by row_adapter), bars from ``data/market/spx_price_bars_by_minute_scanner_copy/{day}-SPX.json`` for past
-  sessions and ``data/market/spx_price_bars_by_minute/{day}.jsonl`` for today (bars.py), the market around
+  (cut down by row_adapter), bars from ``data/market/spx_price_bars_by_minute/{day}.jsonl`` (bars.py; the one store of
+  SPX minute bars, today's file growing a minute at a time, read through station_store_files), the market around
   SPX from ``data/market/watchlist_quotes_by_minute/`` and ``watchlist_price_bars_by_minute/`` (market_context.py),
   the signed 0DTE options tape from the lob-flow collector's ``data/spx/scanner/spx_order_flow_readings_by_minute/{day}.jsonl`` and the SPY volume at wall touches
   from the row's ``siege`` block. Nothing is written here.
@@ -20,7 +20,6 @@ import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
-from typing import Any
 
 from .labels.measures import ET, is_num, settled_open
 from .labels.rulers import SigmaRuler, morning_ruler, tape_unit, vix_at_settled_open
@@ -28,13 +27,13 @@ from .row_adapter import SYMBOL, labeller_row
 from .sessions import previous_trading_day, session_close, session_minutes, session_open
 
 import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
+import station_store_files  # noqa: E402
 
 # Every folder below is the store's, relative to the data root, as station_paths.py names it; the day files in them
 # are ``{day}.jsonl`` (the map's own rule), so a folder constant and a day name still make a file.
 DEFAULT_STATE_DIR = station_paths.state_root()                                              # the data root when no --state-dir is given
 ROWS_SUBDIR = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.relative_folder            # the left-eye scanner's SPX diary
-SESSION_BARS_SUBDIR = station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.relative_folder   # a finished session's bars, saved after the close by the scanner's grader (merged into the bars feed's store at a later phase)
-LIVE_BARS_SUBDIR = station_paths.SPX_PRICE_BARS_BY_MINUTE.relative_folder                  # today's bars as they finish (bars.py)
+LIVE_BARS_SUBDIR = station_paths.SPX_PRICE_BARS_BY_MINUTE.relative_folder                  # the SPX minute bars, today's as they finish and every past session's (bars.py, save_day.py)
 CONTEXT_SUBDIR = station_paths.WATCHLIST_QUOTES_BY_MINUTE.relative_folder                  # the market around SPX (market_context.py)
 OPTIONS_TAPE_SUBDIR = station_paths.SPX_ORDER_FLOW_READINGS_BY_MINUTE.relative_folder      # the lob-flow collector's per-minute record
 
@@ -101,23 +100,10 @@ def first_row(state_dir: Path, day: str) -> list[dict]:
     return []
 
 
-def _usable_bars(raw: Any) -> list[dict]:
-    bars = [b for b in raw if isinstance(b, dict) and isinstance(b.get("ts"), str)
-            and all(is_num(b.get(k)) for k in ("open", "high", "low", "close"))] if isinstance(raw, list) else []
-    bars.sort(key=lambda b: b["ts"])
-    return bars
-
-
 def load_bars(state_dir: Path, day: str) -> list[dict]:
-    """The day's minute bars: the finished session's saved file when it exists (written after the
-    close, a full day), else today's live file (bars.py), which grows a minute at a time."""
-    session = Path(state_dir) / SESSION_BARS_SUBDIR / f"{day}-{SYMBOL}.json"
-    if session.exists():
-        try:
-            return _usable_bars(json.loads(session.read_text(encoding="utf-8")))
-        except (OSError, ValueError):
-            pass
-    return _usable_bars(load_jsonl(Path(state_dir) / LIVE_BARS_SUBDIR / f"{day}.jsonl"))
+    """The day's minute bars from the one store (``data/market/spx_price_bars_by_minute/{day}.jsonl``): a past
+    session whole, today's file as far as it has grown; a torn line is skipped."""
+    return station_store_files.read_spx_price_bars(state_dir, day)
 
 
 def row_days(state_dir: Path) -> list[str]:
@@ -125,9 +111,7 @@ def row_days(state_dir: Path) -> list[str]:
 
 
 def bar_days(state_dir: Path) -> list[str]:
-    session = {p.name[:10] for p in (Path(state_dir) / SESSION_BARS_SUBDIR).glob(f"????-??-??-{SYMBOL}.json")}
-    live = {p.stem for p in (Path(state_dir) / LIVE_BARS_SUBDIR).glob("????-??-??.jsonl")}
-    return sorted(session | live)
+    return station_store_files.spx_price_bar_days(state_dir)
 
 
 def prior_bar_days(state_dir: Path, day: str, limit: int = MAX_BASELINE_SESSIONS) -> dict[str, list[dict]]:

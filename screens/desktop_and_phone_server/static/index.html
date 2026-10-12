@@ -5628,13 +5628,13 @@ function gxMountCards(){
   if(MAP){ MAP.cardsEl=d; MAP._cardskey=null; }
 }
 // ---- SESSION PRICE PATH (07-25, the LEVELS fold-in) ------------------------------
-// DATA-SOURCE VERDICT (feasibility check, 07-25): true 1-min OHLC exists on disk
-// (data/market/spx_price_bars_by_minute_scanner_copy/<day>-SPX.json) but it is written by the GRADER
-// (gex_polarity_ab._persist_bars) at grade time — an end-of-day / midday snapshot,
-// NOT a live feed (07-24's file froze at 13:15). Candles drawn from it would stall
-// mid-session while looking alive. The honest live series is the diary's per-scan
-// spots (~80s-5min cadence) + the streaming /api/spot quote extending the path to
-// now — drawn as a faint line/area, and the caption says exactly that. NEVER candles.
+// DATA-SOURCE VERDICT (feasibility check, 07-25; the store since 2026-10-12): true 1-min OHLC
+// is on disk in the station's one bars store (data/market/spx_price_bars_by_minute/<day>.jsonl,
+// the bars feed's file, one line a minute as each finishes). A past day's file is whole; today's
+// trails the running minute, so candles drawn from it would lag the live print. The honest live
+// series is the diary's per-scan spots (~80s-5min cadence) + the streaming /api/spot quote
+// extending the path to now — drawn as a faint line/area, and the caption says exactly that.
+// NEVER candles; the replay (rpBars) reads the past day's file for its price path.
 // gxMergeSeries — PURE (the JSC smoke harness drills it by name): union two {t:ms,p}
 // series by timestamp, ascending, later writer wins the collision. `a` is the full-day
 // PATHSERIES cache (the morning), `b` the fresh 60-row LIVEROWS tail — b overwrites the
@@ -9451,9 +9451,9 @@ async function rpFetchBars(day){
   /* 20-agent sweep 08-11: only a DURABLE miss (clean response, no bars file)
      caches null — a transient failure (server restart, timeout, 500) used to
      pin the day to the coarse scan-spot path for the whole browser session */
-  try{ const res=await fetch(`/api/store/file?name=SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY&day=${day}&limit=1000`,{cache:'no-store'});
+  try{ const res=await fetch(`/api/store/file?name=SPX_PRICE_BARS_BY_MINUTE&day=${day}&limit=1000`,{cache:'no-store'});
     if(!res.ok&&res.status!==404) return null;               // transient — retry next visit
-    const d=await res.json(); RP.barsCache[day]=(d&&d.kind==='json'&&Array.isArray(d.data))?d.data:null; }
+    const d=await res.json(); RP.barsCache[day]=(d&&d.kind==='jsonl'&&Array.isArray(d.rows)&&d.rows.length)?d.rows:null; }
   catch(e){ return null; }                                   // transient — no cache poison
   return RP.barsCache[day];
 }

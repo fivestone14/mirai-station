@@ -52,6 +52,7 @@ _REPO_ROOT = str(_SKILL_DIR.parent.parent)             # station_paths.py names 
 if _REPO_ROOT not in sys.path:
     sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
+import station_store_files  # noqa: E402
 
 # Strike windows per band (fractions of spot). Monthlies: ±12% core with the put
 # side reaching −20% (6000P-class crash strata sit ~−20% and are top-5 OI on every
@@ -187,6 +188,11 @@ def _state_dir() -> Path:
 
 def _book_path() -> Path:
     return station_paths.SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_LATEST.path()
+
+
+def _history_path(as_of: str) -> Path:
+    """The pull's own file in the open-interest history (data/market/spx_monthly_quarterly_open_interest_by_day/)."""
+    return station_paths.SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_BY_DAY.path(stamp=station_store_files.open_interest_book_stamp(as_of))
 
 
 # --- server-side fetch (runs inside ONE cass_market_run; native _chunk clone) ---
@@ -470,7 +476,8 @@ def _quarterly_due(now: datetime, prev: dict) -> bool:
 def pull(now: Optional[datetime] = None) -> dict:
     """Nightly job entry: ONE batched cass_market_run for both monthlies (+ the
     quarter-end when due), post-processed into data/market/spx_monthly_quarterly_open_interest_latest.json with
-    uw_periscope store semantics. Returns a status dict; NEVER raises."""
+    uw_periscope store semantics, and kept once more under its as_of in the
+    open-interest history folder beside it. Returns a status dict; NEVER raises."""
     now = now or datetime.now(_ET)
     today = now.astimezone(_ET).date() if now.tzinfo else now.date()
     if os.environ.get("DATED_BOOK_DISABLE") == "1":
@@ -608,6 +615,9 @@ def pull(now: Optional[datetime] = None) -> dict:
         if prev2.get("ok") and str(prev2.get("as_of", "")) > book["as_of"]:
             return {"ok": False, "regress_blocked": True}
         atomic_io.write_json_atomic(_book_path(), book)
+        # the history: every book ever pulled, beside the latest, named by its own as_of (the Claude forecast reads
+        # the newest at or before a read's cut; until cleanup phase 5 its recorder copied the latest file to make it)
+        atomic_io.write_json_atomic(_history_path(book["as_of"]), book)
         return {"ok": True, "bands": len(bands), "calls": res.get("calls")}
     except Exception as e:
         return {"ok": False, "kept_previous": bool(prev),

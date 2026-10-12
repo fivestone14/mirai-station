@@ -80,8 +80,8 @@ or veto a trade and never reaches the phone — it exists to be graded.
 ## Other jobs in this directory
 
 - `dated_gex_feed.py` — the dated-book sidecar (`dated-book` job, 08:00 ET):
-  far-dated OI walls stored in `data/market/spx_monthly_quarterly_open_interest_latest.json`, read by the scan and never
-  fetched inside it.
+  far-dated OI walls stored in `data/market/spx_monthly_quarterly_open_interest_latest.json` (and every pull kept under
+  its as_of in `spx_monthly_quarterly_open_interest_by_day/`), read by the scan and never fetched inside it.
 - `lefteye_rag.py` — the Watchtower's memory CLI: slices and day summaries in
   `data/spx/scanner/spx_options_scanner_claude_notes_by_read/` and the summaries and terrain files beside it.
 - `lob_bridge.py`, `siege_bridge.py` — the only coupling points to the lob-flow
@@ -99,8 +99,9 @@ memory), the wall sensor's files (`spx_dealer_walls_latest.json` and its kin, th
 the siege bridge), `spx_options_scanner_signal_checks_by_scan/<date>.jsonl` (the
 heartbeat; `gex_alerts` reads today's, so never prune it) and
 `spx_options_scanner_signals_sent_state.json` (the per-day fire dedup). Under
-`data/market/`: `spx_monthly_quarterly_open_interest_latest.json` (the dated book) and
-the order-flow collector's raw day folders the lob bridge reads.
+`data/market/`: `spx_monthly_quarterly_open_interest_latest.json` (the dated book) with its
+history `spx_monthly_quarterly_open_interest_by_day/`, and the order-flow collector's raw day
+folders the lob bridge reads.
 
 ## By hand
 

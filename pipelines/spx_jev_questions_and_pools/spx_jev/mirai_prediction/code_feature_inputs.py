@@ -8,7 +8,7 @@
                              market/, spx_price_bars_by_minute/, futures_price_bars_by_minute/, watchlist_quotes_by_minute/,
                              watchlist_price_bars_by_minute/, spx_vix_rates_price_bars_by_day/ and
                              spx_same_day_options_raw_day_folders/; under spx/scanner/, spx_options_scanner_results_by_scan/,
-                             spx_order_flow_readings_by_minute/ and spy_volume_baselines_state.json, where they exist, and
+                             spx_order_flow_readings_by_minute/ and spy_volume_by_minute/, where they exist, and
                              the store's Parquet tables (market/tables/spx_price_bars_by_minute,
                              market/tables/futures_price_bars_by_minute) for the sessions before the files begin. The parts that are prior sessions
                              only are cached in-process for the day (the live service loads them once, then each read
@@ -30,11 +30,13 @@ from .. import daily_closes
 from ..events import ET
 from ..index_weights import WEIGHTS_FILE
 from ..labels.gamma import ROW_SLACK_MIN, ROW_TS
-from ..labels.options_flow import SPY_VOLUMES, CollectorRecord, _read_spy_volumes, collector_record
+from ..labels.options_flow import CollectorRecord, collector_record
 from ..state_builder import LIVE_BARS_SUBDIR, OPTIONS_TAPE_SUBDIR, load_jsonl
 from .code_features import GAP_HISTORY_SESSIONS, HISTORY_SESSIONS, MarketHistory, answer_code_features, bars_up_to
 from .live_records import _json_lines
 from .paths import append_json_line, now_utc_iso, raw_code_features_file, read_json_lines, station_paths
+
+import station_store_files  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 SWEEPS_SUBDIR = station_paths.SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER.relative_folder   # the lob-flow collector's raw days, {day}/sweeps.jsonl(.gz)
 SWEEP_BUCKETS = ("d25_40", "d10_25", "d00_10")      # the sweep's delta buckets OPTIONS-08 reads, nearest the money first: the
@@ -217,12 +219,9 @@ def load_context_bars_by_day(state_dir: Path | str, before_day: str, sessions: i
 
 
 def load_spy_minute_volumes(state_dir: Path | str, day: str) -> dict[int, float]:
-    """SPY's volume per minute of the day as the siege box keeps it (data/spx/scanner/spy_volume_baselines_state.json, a minute keyed by its
-    start in minutes after midnight ET, 570 = 09:30): the same figures as the saved minute bars, live and after the save."""
-    path = Path(state_dir) / SPY_VOLUMES
-    if not path.exists():
-        return {}
-    return dict(_read_spy_volumes(str(path), path.stat().st_mtime_ns).get(day) or {})
+    """SPY's volume per minute of the day as the siege box keeps it (data/market/spy_volume_by_minute/{day}.json, a minute keyed
+    by its start in minutes after midnight ET, 570 = 09:30): the same figures as the saved minute bars, live and after the save."""
+    return station_store_files.read_spy_volume_by_minute(state_dir, day)
 
 
 def with_siege_spy_volume(today: dict[str, list[dict]], minutes: dict[int, float], day: str, from_quotes: bool) -> dict[str, list[dict]]:

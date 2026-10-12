@@ -74,7 +74,7 @@ from .hour import FIVE
 from .lane import HOUR_SUBDIR, LANES
 from .overnight import OVERNIGHT_SUBDIR
 from .sessions import is_trading_day, previous_trading_day, session_close, session_open
-from .state_builder import DEFAULT_STATE_DIR, LIVE_BARS_SUBDIR, SESSION_BARS_SUBDIR, SYMBOL
+from .state_builder import DEFAULT_STATE_DIR, LIVE_BARS_SUBDIR, SYMBOL
 
 import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
@@ -728,19 +728,6 @@ def read_raw(state_dir: Path, day: date) -> Raw:
             if str(g.get("row_ts", ""))[:10] == iso:
                 take(w, g, "average-price grade", lambda: {"average_grades": [_average_grade_row(day, w, name, g)]})
 
-    session = state_dir / SESSION_BARS_SUBDIR / f"{iso}-{SYMBOL}.json"
-    saved, readable = _json_file(session)
-    if session.exists():
-        sources["spx_bars"].append(rel(session))
-    if not readable or (saved is not None and not isinstance(saved, list)):
-        unreadable.append(_unreadable(day, rel(session), None, "not a JSON list of bars"))
-    elif saved:
-        for i, bar in enumerate(saved):
-            where = f"{rel(session)}[{i}]"
-            if isinstance(bar, dict):
-                rows["spx_bars"].append({**_bar_row(day, bar, source="session_file"), "_source": where})
-            else:
-                unreadable.append(_unreadable(day, where, bar, "not a JSON object"))
     for w, bar in lines(state_dir / LIVE_BARS_SUBDIR / f"{iso}.jsonl", "spx_bars"):
         rows["spx_bars"].append({**_bar_row(day, bar, source="live_file"), "_source": w})
 
@@ -895,7 +882,6 @@ def _days_named(state_dir: Path | str, until: date) -> set[date]:
     state_dir = Path(state_dir)
     names = [p.stem for folder in (ARCHIVE_SUBDIR, LIVE_BARS_SUBDIR, OVERNIGHT_SUBDIR)
              for p in (state_dir / folder).glob("????-??-??.jsonl")]
-    names += [p.name[:10] for p in (state_dir / SESSION_BARS_SUBDIR).glob(f"????-??-??-{SYMBOL}.json")]
     out = set()
     for n in names:
         try:

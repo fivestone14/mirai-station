@@ -194,12 +194,11 @@ def test_the_wall_touch_volume_is_omitted_on_a_sick_feed_or_a_young_baseline(sce
 
 # ---- reading the station's files
 
-def test_past_sessions_come_from_the_saved_file_and_today_from_the_live_one(tmp_path):
+def test_every_session_comes_from_the_one_bars_store(tmp_path):
     prior = {"2026-09-17": flat_bars(390, day="2026-09-17"), "2026-09-16": flat_bars(200, day="2026-09-16")}
     state = write_state(tmp_path, DAY, [make_row(at(10, 0), 7700.0)], flat_bars(31), prior)
-    write_jsonl(station_paths.SPX_PRICE_BARS_BY_MINUTE.path(tmp_path, day="2026-09-17"), [flat_bars(5, day="2026-09-17")[0]])
-    assert len(load_bars(state, "2026-09-17")) == 390                # the saved session wins over a partial live file
-    assert len(load_bars(state, DAY)) == 31                          # today: the live file
+    assert len(load_bars(state, "2026-09-17")) == 390                # a past session: its day file, whole
+    assert len(load_bars(state, DAY)) == 31                          # today: the same store, as far as it has grown
     assert list(prior_bar_days(state, DAY)) == ["2026-09-17"]        # a 200-bar day is not a full session
 
 

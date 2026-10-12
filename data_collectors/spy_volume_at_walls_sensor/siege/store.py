@@ -6,11 +6,12 @@ missing/short/torn file. One writer per file by convention (the engine, one
 scan at a time).
 
 Layout under one injected root (the station's data root, data/, in the mirai wiring; each file is named in
-station_paths.py and sits under spx/scanner/):
-    spx_dealer_walls_latest.json                   # "latest": the viewstation contract — field names are FROZEN; carries the feed verdict per scan
-    spy_volume_baselines_state.json                # "baseline": minute-volume normalcy memory, folded day by day
-    spx_dealer_wall_touches_today_state.json       # "session": the intraday episode state machine
-    spx_dealer_wall_touches_by_event/{date}.jsonl  # "cards": one row per resolved episode
+station_paths.py; the sensor's own sit under spx/scanner/, SPY's volume under market/):
+    spx/scanner/spx_dealer_walls_latest.json                   # "latest": the viewstation contract — field names are FROZEN; carries the feed verdict per scan
+    market/spy_volume_by_minute/{date}.json                    # "baseline": SPY's volume per minute, one file a day; today's rewritten on every healthy
+                                                               #   scan, the newest 60 read back as the normalcy memory (station_store_files reads and writes them)
+    spx/scanner/spx_dealer_wall_touches_today_state.json       # "session": the intraday episode state machine
+    spx/scanner/spx_dealer_wall_touches_by_event/{date}.jsonl  # "cards": one row per resolved episode
 """
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ _REPO_ROOT = str(Path(__file__).resolve().parents[3])             # station_path
 if _REPO_ROOT not in sys.path:
     sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
+import station_store_files  # noqa: E402
 
 
 def write_json_atomic(path, obj):
@@ -74,9 +76,10 @@ class SiegeStore:
     @property
     def latest(self) -> Path: return station_paths.SPX_DEALER_WALLS_LATEST.path(self.root)
     @property
-    def baseline(self) -> Path: return station_paths.SPY_VOLUME_BASELINES_STATE.path(self.root)
-    @property
     def session(self) -> Path: return station_paths.SPX_DEALER_WALL_TOUCHES_TODAY_STATE.path(self.root)
+
+    def spy_volume_file(self, day: str) -> Path:
+        return station_paths.SPY_VOLUME_BY_MINUTE.path(self.root, day=day)
 
     def cards(self, day: str) -> Path:
         return station_paths.SPX_DEALER_WALL_TOUCHES_BY_EVENT.path(self.root, day=day)
@@ -88,11 +91,14 @@ class SiegeStore:
     def write_session(self, obj: dict) -> None:
         write_json_atomic(self.session, obj)
 
-    def read_baseline(self) -> dict:
-        return read_json_or(self.baseline, {})
+    def read_spy_volume_days(self, newest: int) -> dict[str, dict[str, int]]:
+        """The newest ``newest`` days' SPY volume files as the baseline keeps them, {day: {"<minute>": shares}}."""
+        days = station_store_files.read_spy_volume_days(self.root, newest=newest)
+        return {d: {str(m): int(v) for m, v in mins.items()} for d, mins in days.items()}
 
-    def write_baseline(self, obj: dict) -> None:
-        write_json_atomic(self.baseline, obj)
+    def write_spy_volume_day(self, day: str, minute_volumes: dict) -> None:
+        """Replace ``day``'s SPY volume file whole (atomic: temp file, then one rename)."""
+        station_store_files.write_spy_volume_by_minute(self.root, day, minute_volumes)
 
     def write_latest(self, obj: dict) -> None:
         write_json_atomic(self.latest, obj)

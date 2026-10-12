@@ -2,7 +2,7 @@
 
 Pure logic, no network, no real state dir: bars are synthetic GBM paths at
 fixed seeds, the baseline is injected as a dict, and the loader test
-monkeypatches _bars_dir + _read_json onto a tmp dir."""
+monkeypatches _bars_dir + _read_bars onto a tmp dir."""
 import json
 import math
 import os
@@ -196,17 +196,17 @@ def test_loader_exclude_and_mtime_cache(tmp_path, monkeypatch):
     d.mkdir()
     for i, day in enumerate(["2026-07-01", "2026-07-02", "2026-07-03"]):
         bars = bars_from_returns(day, gbm_returns(10, seed=200 + i))
-        (d / f"{day}-SPX.json").write_text(json.dumps(bars))
+        (d / f"{day}.jsonl").write_text("".join(json.dumps(b) + "\n" for b in bars))
     monkeypatch.setattr(spd, "_bars_dir", lambda: d)
     spd._BASELINE_CACHE.clear()
     opens = {"n": 0}
-    real_read = spd._read_json
+    real_read = spd._read_bars
 
     def counting_read(path):
         opens["n"] += 1
         return real_read(path)
 
-    monkeypatch.setattr(spd, "_read_json", counting_read)
+    monkeypatch.setattr(spd, "_read_bars", counting_read)
     base = spd._load_baseline("SPX", exclude_day="2026-07-03")
     assert set(base) == {"2026-07-01", "2026-07-02"}   # exclude_day skipped
     assert opens["n"] == 2                             # excluded file never opened
@@ -214,6 +214,6 @@ def test_loader_exclude_and_mtime_cache(tmp_path, monkeypatch):
     assert opens["n"] == 2                             # mtime cache hit: 0 re-reads
     assert base2 == base
     # a corrupt file is skipped per-file, never raises
-    (d / "junk-SPX.json").write_text("{not json")
+    (d / "2026-07-04.jsonl").write_text("{not json")
     base3 = spd._load_baseline("SPX", exclude_day="2026-07-03")
     assert set(base3) == {"2026-07-01", "2026-07-02"}

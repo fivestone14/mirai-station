@@ -172,10 +172,10 @@ def _rows(raw: list[dict], ticker: str) -> list[dict]:
 
 def sessions(state_dir: Path, name: str) -> list[tuple[str, list[dict], list[dict]]]:
     """``[(day, bars, rows)]`` for every full session of ``name`` ("SPX" or "SNDK") on disk."""
-    if name == "SPX":        # the scanner's diary and the grader's saved full-session bars
+    if name == "SPX":        # the scanner's diary and the station's SPX minute bars (one file a day)
         rows_dir = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(state_dir)
-        bar_file = lambda d: station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.path(state_dir, day=d)
-        read_bars = lambda p: json.loads(p.read_text(encoding="utf-8"))
+        bar_file = lambda d: station_paths.SPX_PRICE_BARS_BY_MINUTE.path(state_dir, day=d)
+        read_bars = _jsonl
     else:                    # the SNDK scanner's diary and its minute-bar sidecar
         rows_dir = station_paths.SNDK_OPTIONS_SCANNER_RESULTS_BY_SCAN.folder(state_dir)
         bar_file = lambda d: station_paths.SNDK_PRICE_BARS_BY_MINUTE.path(state_dir, day=d)

@@ -10,16 +10,19 @@ is this file's own rule, not the map's: a Parquet table and the raw folder it is
 When a folder moves again, only the templates in this file change; every reader and writer, and every page that asks
 the viewstation for a store by name, follows.
 
-The layout under the data root: ``market/`` (prices, quotes, depth, trades, open interest, the calendar; its ``tables/``),
+The layout under the data root: ``market/`` (prices, quotes, depth, trades, open interest; its ``tables/``),
 ``spx/scanner/`` (the SPX options scanner, the order-flow collector's readings, the wall sensor), ``spx/jev/`` (the three
 lanes, the shared archive, its ``tables/``), ``spx/prediction/`` (the base pool, the learner pool, the code questions'
 answers, the forecasts and their ``tables/``), ``spx/claude_forecast/``, ``sndk/``, ``voice_desk/``, ``screen_files/``
 (``phone/``, ``desktop/``: files written only for a screen), ``operations/`` (``logs/``, ``locks/``, ``health/``, the
 alert states) and ``archive/`` (rollback copies and retired data).
 
-The stores the map MERGES (the raw tape's working copy and its recorder copy, the SPY minute volume's baseline and its
-recorder copies, the two event calendars, the scanner's saved SPX sessions and the SPX minute bars) are not merged yet:
-each copy has a location of its own below, so nothing is lost, and a later phase merges them.
+The stores the map MERGED are one copy each since cleanup phase 5 (2026-10-12): the SPX minute bars are the bars
+feed's day files alone (the grader's saved sessions folded in), the raw options tape is the collector's day folders
+alone (compressed in place when a day is finished, never pruned; the recorder's gzip copies folded in), SPY's volume
+per minute is one file a day under market/ (the wall sensor writes today's and reads its baseline back from them), the
+open-interest book's history is written by the dated-book job itself, and the event calendar is one versioned file
+under settings/. ``station_store_files.py`` reads and writes the shared ones one way for every pipeline.
 
 How to import it
 ----------------
@@ -215,9 +218,7 @@ class Store:
 # =====================================================================================================================
 # market/   prices, quotes, depth, trades, open interest, the calendar, and the tables built from them
 # =====================================================================================================================
-SPX_PRICE_BARS_BY_MINUTE = Store("market/spx_price_bars_by_minute/{day}.jsonl")
-# the scanner grader's own saved session of SPX minute bars, kept apart until a later phase folds it into the store above
-SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY = Store("market/spx_price_bars_by_minute_scanner_copy/{day}-{ticker}.json", ticker="SPX")
+SPX_PRICE_BARS_BY_MINUTE = Store("market/spx_price_bars_by_minute/{day}.jsonl")   # the one copy: the bars feed's; read through station_store_files
 WATCHLIST_QUOTES_BY_MINUTE = Store("market/watchlist_quotes_by_minute/{day}.jsonl")
 WATCHLIST_PRICE_BARS_BY_MINUTE = Store("market/watchlist_price_bars_by_minute/{day}.jsonl")
 FUTURES_PRICE_BARS_BY_MINUTE = Store("market/futures_price_bars_by_minute/{day}.jsonl")
@@ -227,26 +228,27 @@ SPX_VIX_RATES_PRICE_BARS_BY_DAY = Store("market/spx_vix_rates_price_bars_by_day/
 NEWS_HEADLINES_BY_ARTICLE = Store("market/news_headlines_by_article/{day}.jsonl")
 NEWS_HEADLINES_SEEN_STATE = Store("market/news_headlines_seen_state.json")
 # The collector's raw day folder holds the SPX same-day options trades (tape), their depth (sweeps) and the SPY depth
-# stream with its gap markers; the recorder keeps a gzip copy of each day folder (plus its _complete.json manifest)
-# before the collector deletes it. The two copies merge into one store at a later phase.
+# stream with its gap markers, kept forever: a finished day's files are gzipped in place (``{stream}.jsonl.gz``) by the
+# collector's next start and nothing prunes them (a later retention phase may). Every reader takes the plain file or
+# its .gz, whichever is there.
 SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDER = Store("market/spx_same_day_options_raw_day_folders/{day}")
 SPX_SAME_DAY_OPTIONS_AND_SPY_DEPTH_RAW_STREAM = Store("market/spx_same_day_options_raw_day_folders/{day}/{stream}.jsonl")   # stream: tape, sweeps, spy-depth
 SPX_SAME_DAY_OPTIONS_TRADES_BY_TRADE = Store("market/spx_same_day_options_raw_day_folders/{day}/tape.jsonl")
 SPX_SAME_DAY_OPTIONS_DEPTH_BY_MINUTE = Store("market/spx_same_day_options_raw_day_folders/{day}/sweeps.jsonl")
-SPX_SAME_DAY_OPTIONS_RAW_DAY_FOLDERS_RECORDER_COPY = Store("market/spx_same_day_options_raw_day_folders_recorder_copy/{day}")
-# SPY volume per minute: the recorder's one-day copies (the map's store); the wall sensor's working memory of it (every
-# day inside one file) is SPY_VOLUME_BASELINES_STATE under spx/scanner, merged into this store at a later phase.
+# SPY volume per minute, one file a day: the wall sensor writes today's on every healthy scan and reads the newest 60
+# back as its baseline (station_store_files reads and writes them for every pipeline).
 SPY_VOLUME_BY_MINUTE = Store("market/spy_volume_by_minute/{day}.json")
+# the open-interest book: the latest pull, overwritten on each, and the dated-book job's own copy of every pull beside it
 SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_LATEST = Store("market/spx_monthly_quarterly_open_interest_latest.json")
-SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_BY_DAY = Store("market/spx_monthly_quarterly_open_interest_by_day/{stamp}.json")
+SPX_MONTHLY_QUARTERLY_OPEN_INTEREST_BY_DAY = Store("market/spx_monthly_quarterly_open_interest_by_day/{stamp}.json")   # stamp: station_store_files.open_interest_book_stamp(as_of)
 SPX_PRICE_BARS_BY_5_MINUTES = Store("market/spx_price_bars_by_5_minutes/{day}.jsonl")
 VIX_ONE_DAY_CLOSES_BY_DAY = Store("market/vix_one_day_closes_by_day.jsonl")
 LEVERAGED_FUND_ASSETS_BY_RUN = Store("market/leveraged_fund_assets_by_run.jsonl")
 SPX_LARGEST_STOCK_WEIGHTS_BY_UPDATE = Store("market/spx_largest_stock_weights_by_update.json")
-# The event calendar is kept twice: the collector's copy under the data root, and the spx-jev package's own hand-kept
-# file in the repo. A later phase merges them.
-MARKET_EVENT_CALENDAR_BY_EVENT = Store("market/market_event_calendar_by_event.json")
-MARKET_EVENT_CALENDAR_BY_EVENT_SPX_JEV_COPY = Store("pipelines/spx_jev_questions_and_pools/calendar/events.json", base="repo")
+# The event calendar: one hand-kept, versioned file in the repo (under settings/, not under data/), read by the tape
+# collector and the scanner's event lens (the CPI and FOMC rows, with the days they compute by rule), by the SPX JEV
+# package (every tier) and by the Claude forecast.
+MARKET_EVENT_CALENDAR_BY_EVENT = Store("settings/market_event_calendar_by_event.json", base="repo")
 SPX_PRICE_BARS_BY_MINUTE_TABLE = Store("market/tables/spx_price_bars_by_minute")
 FUTURES_PRICE_BARS_BY_MINUTE_TABLE = Store("market/tables/futures_price_bars_by_minute")
 
@@ -262,7 +264,6 @@ SPY_DEPTH_BASELINES_STATE = Store("spx/scanner/spy_depth_baselines_state.json")
 DEPTH_BASELINES_STATE_BY_ENGINE = {"lob_flow": SPX_OPTIONS_DEPTH_BASELINES_STATE, "spy_depth": SPY_DEPTH_BASELINES_STATE}
 SPX_DEALER_WALL_TOUCHES_BY_EVENT = Store("spx/scanner/spx_dealer_wall_touches_by_event/{day}.jsonl")
 SPX_DEALER_WALLS_LATEST = Store("spx/scanner/spx_dealer_walls_latest.json")
-SPY_VOLUME_BASELINES_STATE = Store("spx/scanner/spy_volume_baselines_state.json")   # the wall sensor's working memory: SPY volume per minute, every kept day
 # The scanner's Claude second opinion keeps its memory beside its notes: a summary per session and the terrain it draws
 # from them. The map retires the two files, but the reader's CLI still rebuilds them on demand, so they stay live stores.
 SPX_OPTIONS_SCANNER_CLAUDE_NOTES_BY_READ = Store("spx/scanner/spx_options_scanner_claude_notes_by_read/{day}.jsonl")

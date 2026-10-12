@@ -128,10 +128,10 @@ def test_event_cycle_is_omitted_past_the_calendars_last_kept_day_and_before_its_
     monkeypatch.setattr(expiry_calendar, "uncovered", lambda d: UNCOVERED(d, path))
     state, omitted = calendar_labels(scene_factory, "2026-10-01")
     assert "event_cycle" not in state
-    assert omitted["calendar.event_cycle"] == ("the event calendar (calendar/events.json) is kept only through 2026-10-01: extend it, "
+    assert omitted["calendar.event_cycle"] == ("the event calendar (settings/market_event_calendar_by_event.json) is kept only through 2026-10-01: extend it, "
                                                "so the releases either side of today are unknown")
     assert calendar_labels(scene_factory, "2026-09-01")[1]["calendar.event_cycle"] == \
-        "the event calendar (calendar/events.json) is kept only from 2026-09-01, so the releases either side of today are unknown"
+        "the event calendar (settings/market_event_calendar_by_event.json) is kept only from 2026-09-01, so the releases either side of today are unknown"
 
 
 # ---- the calendar questions' gates: "nothing on the calendar" sleeps; a calendar that cannot be read is missing

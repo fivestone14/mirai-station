@@ -14,7 +14,7 @@ from spx_jev.schedule import asks_at, check, not_due, read_slot
 LIVE_DOC = load_questions(LIVE.questions, LIVE.key)
 TAPE_DOC = load_questions(TAPE.questions, TAPE.key)
 DAY = date(2026, 9, 18)
-FOMC_DAY = date(2026, 10, 28)                  # calendar/events.json: the decision at 14:00, the press conference at 14:30
+FOMC_DAY = date(2026, 10, 28)                  # the event calendar: the decision at 14:00, the press conference at 14:30
 
 
 def test_a_read_stands_for_its_lanes_latest_read_time_with_the_lanes_grace():

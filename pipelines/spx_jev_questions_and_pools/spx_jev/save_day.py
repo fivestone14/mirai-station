@@ -13,11 +13,10 @@ succeeds, up to CATCH_UP_DAYS back. The one exception is the breadth: Schwab ser
 breadth wrong until after it, so a day saved on its own evening has its breadth fetched again by a later
 run, once Schwab has put it right (market_context.refresh_breadth).
 
-SPX's own day. The gex-polarity job saves ``data/market/spx_price_bars_by_minute_scanner_copy/{day}-SPX.json`` at 16:15 ET (every
-diary day from 2026-07-06 to 2026-09-25 has one), but only when that day's diary carries its engines'
-reads and the bars have real ranges, and a failed write is swallowed. So this job does not lean on it: when
-the bars feed's own file, ``data/market/spx_price_bars_by_minute/{day}.jsonl``, holds fewer than the session's minutes,
-it fetches the session once and appends what is missing (bars.append_day). A full file costs no call.
+SPX's own day. The bars feed's file, ``data/market/spx_price_bars_by_minute/{day}.jsonl``, is the station's one store
+of SPX minute bars (the grader's own saved sessions were folded into it on 2026-10-12; the grader saves none now):
+when it holds fewer than the session's minutes, this job fetches the session once and appends what is missing
+(bars.append_day). A full file costs no call.
 
 Market days only (sessions.is_trading_day; a calendar that cannot be read falls back to Monday to
 Friday, and a holiday fetched that way writes nothing, since Schwab has no bars for it). A session is

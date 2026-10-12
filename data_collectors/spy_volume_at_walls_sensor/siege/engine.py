@@ -181,7 +181,7 @@ def scan(store: SiegeStore, *, now: datetime, spot: Optional[float], sigma,
     st.setdefault("watch", {})
     episodes = st.setdefault("episodes", [])
 
-    baseline = BaselineStore(store.read_baseline(), cfg)
+    baseline = BaselineStore({"days": store.read_spy_volume_days(cfg.baseline_keep_days)}, cfg)
     feed, reason = feed_health(spy_bars, now, cfg)
     healthy = feed == FEED_OK
     by_min = bars_by_minute(spy_bars)
@@ -191,7 +191,7 @@ def scan(store: SiegeStore, *, now: datetime, spot: Optional[float], sigma,
 
     if healthy:
         baseline.fold_today(session, minute_vols)
-        store.write_baseline(baseline.data())
+        store.write_spy_volume_day(session, baseline.days[session])   # today's file; the past days' stay as they are
         r = derive_ratio(spot, spy_bars, now, cfg.bar_match_tol_min)
         if r:
             st["ratio"] = r            # else: carry the last frozen ratio

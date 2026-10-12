@@ -22,7 +22,7 @@ from typing import Any
 
 from .. import jsonl_store, station_stores
 from ..control import ET
-from ..paths import ForecastPaths
+from ..paths import ForecastPaths, station_store_files
 
 LIVE_LANE = "live"
 SLOT_MINUTES = 30                     # reads land near :00 and :30; the slot is the nearest mark
@@ -71,7 +71,7 @@ class FrozenInputs:
     snapshot_prior_closes: dict[str, float]   # Schwab's prior close per symbol, from the newest snapshot by the cut that quotes it
     tape_folds: dict[str, list[TapeFold]]     # the 0DTE tape's folds by day, oldest first: today's up to the cut, each prior session's whole
     dated_book: dict | None           # the newest dated options book with as_of <= cut
-    spy_minute_volumes: dict[str, int] | None   # today's SPY per-minute volume so far, {minute_of_day: shares}
+    spy_minute_volumes: dict | None            # today's SPY per-minute volume so far, {minute_of_day: shares}
     vix1d_prior_close: float | None
     daily_closes: dict[str, list[dict]] = field(default_factory=dict)   # per symbol, days strictly before ``day``
     events: dict | list | None = None
@@ -154,7 +154,7 @@ def load_frozen_inputs_at(state_dir: Path | str, paths: ForecastPaths, cut: date
     market_snapshot, snapshot_prior_closes = load_market_snapshot(state_dir, day, cut, notes)
     tape_folds = load_tape_folds(state_dir, day, list(scene.prior_bars), cut)
     dated_book = _load_dated_book(paths, state_dir, cut, notes)
-    spy_minute_volumes = _load_spy_minute_volumes(paths, state_dir, day, notes)
+    spy_minute_volumes = _load_spy_minute_volumes(state_dir, day, notes)
     vix1d_prior_close = _load_vix1d_prior_close(paths, day, notes)
     daily_closes = _load_daily_closes(state_dir, day, notes)
     events = _load_events(notes)
@@ -334,9 +334,10 @@ def _stamp(value: Any) -> datetime | None:
 
 
 def _load_dated_book(paths: ForecastPaths, state_dir: Path, cut: datetime, notes: list[str]) -> dict | None:
-    """The newest recorder copy whose as_of is at or before the cut; the live book only if it is older than the cut."""
+    """The newest book in the dated-book job's history whose as_of is at or before the cut; the live book only if it is
+    older than the cut."""
     candidates: list[tuple[str, Path]] = []
-    folder = paths.dated_book_copies_dir
+    folder = paths.open_interest_history_folder
     if folder.exists():
         for copy in folder.glob("*.json"):
             candidates.append((copy.stem, copy))
@@ -345,8 +346,7 @@ def _load_dated_book(paths: ForecastPaths, state_dir: Path, cut: datetime, notes
         try:
             as_of = json.loads(live.read_text(encoding="utf-8")).get("as_of")
             if isinstance(as_of, str):
-                from ..recorder import book_stamp
-                candidates.append((book_stamp(as_of), live))
+                candidates.append((station_store_files.open_interest_book_stamp(as_of), live))
         except (json.JSONDecodeError, AttributeError, ValueError):
             notes.append("dated book: the live file is not valid JSON")
     cut_stamp = cut.strftime("%Y-%m-%dT%H%M%S%z")
@@ -361,17 +361,12 @@ def _load_dated_book(paths: ForecastPaths, state_dir: Path, cut: datetime, notes
         return None
 
 
-def _load_spy_minute_volumes(paths: ForecastPaths, state_dir: Path, day: str, notes: list[str]) -> dict[str, int] | None:
-    """Today's SPY minute volumes: the recorder's copy for a past day, else siege's live baseline (folded by the minute)."""
-    copy = paths.siege_spy_minutes_file(day)
-    try:
-        if copy.exists():
-            return json.loads(copy.read_text(encoding="utf-8")).get("minute_volumes")
-        live = station_stores.siege_baseline_file(state_dir)
-        if live.exists():
-            return (json.loads(live.read_text(encoding="utf-8")).get("days") or {}).get(day)
-    except (json.JSONDecodeError, OSError) as e:
-        notes.append(f"spy minute volumes: {type(e).__name__}: {e}")
+def _load_spy_minute_volumes(state_dir: Path, day: str, notes: list[str]) -> dict[int, float] | None:
+    """The day's SPY minute volumes from the station's one store (the wall sensor's day file, today's rewritten on every
+    scan), {minute of day: shares}; None, noted, when the day has none."""
+    minutes = station_store_files.read_spy_volume_by_minute(state_dir, day)
+    if minutes:
+        return minutes
     notes.append("spy minute volumes: none for the day")
     return None
 

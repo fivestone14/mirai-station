@@ -104,7 +104,6 @@ def _state(tmp_path, archive: list | None = None, extra_lines: list[str] = ()) -
     archive_path(tmp_path, DAY).write_text("\n".join(lines) + "\n")
     write_jsonl(hour_path(lane_folder(tmp_path), DAY), [{"row_ts": READ, "learn_exclude": {"30": True, "60": False}}])
     write_jsonl(station_paths.SPX_PRICE_BARS_BY_MINUTE.path(tmp_path, day=DAY), flat_bars(390))
-    write_json(station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.path(tmp_path, day=DAY), flat_bars(390))
     night = [{"schema_version": 1, "day": DAY, "ts": "2026-09-18T08:00:00-04:00", "symbol": "/ES", "contract": "/ESZ26",
               "contract_from": "roll_table", "bar_minutes": 1, "open": 6600.0, "high": 6601.0, "low": 6599.0, "close": 6600.5,
               "volume": 100.0, "session": "premarket", "source": "schwab_price_history", "saved_at": "2026-09-18T09:26:10-04:00",
@@ -310,10 +309,10 @@ def test_a_calls_frozen_reference_is_read_under_its_new_name_and_its_old_one(tmp
     assert {c["sum_id"]: c["base_pool_reference_version"] for c in _table(tmp_path, "calls") if c["lane"] == "live" and c["read_id"] == f"live:{READ}"}["next_30"] == "v1:x"
 
 
-def test_the_bars_keep_one_row_a_minute_the_better_source_winning_and_every_copy_counted(built):
+def test_the_bars_keep_one_row_a_minute_from_the_one_store(built):
     root, log = built
     spx = _table(root, "spx_bars")
-    assert len(spx) == 390 and {b["source"] for b in spx} == {"session_file"} and log["spx_bars"]["duplicates"] == 390
+    assert len(spx) == 390 and {b["source"] for b in spx} == {"live_file"} and log["spx_bars"]["duplicates"] == 0
     night = _table(root, "overnight_bars")
     assert [(b["ts"], b["prior_session"]) for b in night] == [(at(15, 55, day="2026-09-17"), True), (at(8, 0), False)]
     assert night[1]["contract"] == "/ESZ26" and night[1]["overnight_schema"] == 1      # the overnight file's version
@@ -380,8 +379,7 @@ def test_today_is_built_once_its_saves_have_run_and_only_market_days(tmp_path):
     assert store.last_finished(at(12, 0, day="2026-09-20")) == D                      # Sunday: Friday is the last
     for d in ("2026-09-17", "2026-09-19", "2026-09-21"):                               # Thursday, Saturday, a future Monday
         write_jsonl(night_path(tmp_path, d), [])
-    write_json(station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.path(tmp_path, day="2026-09-16"), [])
-    (station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.folder(tmp_path) / "2026-09-15-SNDK.json").write_text("[]")
+    write_jsonl(station_paths.SPX_PRICE_BARS_BY_MINUTE.path(tmp_path, day="2026-09-16"), [])
     assert store.days_on_disk(tmp_path, D) == [date(2026, 9, 16), date(2026, 9, 17)]
     assert store.off_days_on_disk(tmp_path, D + timedelta(days=1)) == [date(2026, 9, 19)]
 

@@ -1,7 +1,7 @@
 """The events and shocks family: the scheduled event clock and what releases did (context.event_clock,
 event.*), the news labels (news.*, both dark), and unscheduled bursts seen through the tape (shock.*).
 
-* The calendar labels read calendar/events.json (events.py) for today: its releases before the open,
+* The calendar labels read the station's event calendar (events.py, settings/market_event_calendar_by_event.json) for today: its releases before the open,
   in the session and the Fed's speakers. Past the calendar's last kept day they are omitted, since an
   empty day there is unknown rather than quiet. A row whose date follows a rule is worded 'expected'.
 * A burst is a 5-minute move from the settled open larger than the biggest 5-minute move of the hour to

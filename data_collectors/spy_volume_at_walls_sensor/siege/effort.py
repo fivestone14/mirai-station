@@ -14,8 +14,9 @@ produced the number is recorded on every row (effort_basis) — a grader must
 never mix the two silently.
 
 The baseline accrues day by day: each healthy scan folds today's RTH minute
-volumes over today's entry, so a finished session is complete without a
-nightly job. Only PRIOR days count as trailing history.
+volumes over today's entry and writes today's file (market/spy_volume_by_minute/,
+one file a day, the newest 60 read back at the next scan), so a finished session
+is complete without a nightly job. Only PRIOR days count as trailing history.
 """
 from __future__ import annotations
 
@@ -43,8 +44,8 @@ class BaselineStore:
         return {"days": self.days}
 
     def fold_today(self, session: str, minute_vols: dict[int, float]) -> None:
-        """Overwrite today's entry with the session so far; prune oldest past
-        the retention cap."""
+        """Overwrite today's entry with the session so far; prune the memory's
+        oldest past the retention cap (the day files on disk stay)."""
         self.days[session] = {str(m): int(v) for m, v in minute_vols.items()}
         for day in sorted(self.days)[:-self.cfg.baseline_keep_days]:
             del self.days[day]

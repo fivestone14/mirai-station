@@ -783,7 +783,7 @@ def test_volatility_18_reads_the_ten_year_yields_move_against_the_same_minute(tm
 # ---------------------------------------------------------------- the day's SPY volume, and the night's 1-minute bars
 
 def test_the_days_spy_volume_comes_from_the_siege_box_minute_by_minute(tmp_path):
-    write_json(station_paths.SPY_VOLUME_BASELINES_STATE.path(tmp_path), {"days": {"2026-10-06": {"601": 500, "602": 700, "603": 0}}})
+    write_json(station_paths.SPY_VOLUME_BY_MINUTE.path(tmp_path, day="2026-10-06"), {"day": "2026-10-06", "minute_volumes": {"601": 500, "602": 700, "603": 0}})
     minutes = inputs.load_spy_minute_volumes(tmp_path, "2026-10-06")
     assert minutes == {601: 500.0, 602: 700.0, 603: 0.0} and inputs.load_spy_minute_volumes(tmp_path, "2026-10-07") == {}
     quote = lambda hh, mm, ss, last, volume: {"ts": f"2026-10-06T{hh}:{mm}:{ss}-04:00", "open": last, "high": last, "low": last, "close": last, "volume": volume}
@@ -816,7 +816,7 @@ def test_trend_07_reads_the_same_spy_closes_live_and_after_the_day_is_saved(tmp_
     lines = [{"ts": f"{day}T{9 + (30 + i) // 60:02d}:{(30 + i) % 60:02d}:40-04:00", "quotes": {"SPY": {"last": p, "volume": 1000 * (i + 1)}}}
              for i, p in enumerate(path)]
     write_jsonl(station_paths.WATCHLIST_QUOTES_BY_MINUTE.path(tmp_path, day=day), lines)
-    write_json(station_paths.SPY_VOLUME_BASELINES_STATE.path(tmp_path), {"days": {day: {str(570 + i): 1000 for i in range(120)}}})
+    write_json(station_paths.SPY_VOLUME_BY_MINUTE.path(tmp_path, day=day), {"day": day, "minute_volumes": {str(570 + i): 1000 for i in range(120)}})
     inputs._PRIOR_SESSIONS_CACHE.clear()
     live = inputs.load_market_history(tmp_path, "live", day).context_bars_by_day[day]["SPY"]
     saved = [{"ts": f"{day}T{9 + (30 + i) // 60:02d}:{(30 + i) % 60:02d}:00-04:00", "bars": {"SPY": {"ts": f"{day}T{9 + (30 + i) // 60:02d}:{(30 + i) % 60:02d}:00-04:00",

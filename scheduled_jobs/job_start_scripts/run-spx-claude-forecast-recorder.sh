@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # launchd-fired wrapper for the spx-claude-forecast recorder (record-only: nothing here trades).
-# One run = copy station data that would otherwise be overwritten or deleted (the dated options book, siege's
-# SPY minute volumes, the raw options tape, the $VIX1D close, SPX 5-minute bars from Schwab) into
-# the recorder's copies under data/market/, then mirror the forecast folder and those copies off-disk. Every task copies only
-# what is missing. Reads every station store read-only; writes only under its own folder and the backup.
+# One run = record what no other job keeps (the $VIX1D close, SPX 5-minute bars from Schwab, the leveraged funds'
+# sizes) under data/market/, then mirror the forecast folder and the irreplaceable data/market/ stores (those files,
+# the open-interest history, SPY's volume per minute, the finished raw tape days) off-disk. Every task writes only
+# what is missing. Reads every station store read-only; writes only its own files and the backup.
 # Installed by install-launchd.sh (com.mirai-station.spx-claude-forecast-recorder): 08:40 ET after the
 # dated-book fetch, 16:25 ET after the close, and Friday 17:30 ET after the Friday book refresh.
 # No weekday gate, on purpose: a weekend run is a second chance at Friday's book before Monday's fetch

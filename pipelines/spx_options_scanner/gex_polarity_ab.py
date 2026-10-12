@@ -36,6 +36,7 @@ _REPO_ROOT = str(SKILL_DIR.parent.parent)             # station_paths.py names e
 if _REPO_ROOT not in sys.path:
     sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
+import station_store_files  # noqa: E402
 TICKERS = ("SPX",)
 ENGINES = ("gex_views", "gex_theta",   # SPY-proxy GexBox · native ThetaData
            "lob_flow", "spy_depth")    # Layer-2 LOB sensor · its SPY control
@@ -127,49 +128,21 @@ def _verdict(n: int, current_hits: int) -> dict:
             "inverted_hit_rate": round(1 - cur, 2), "verdict": v}
 
 
-def _bars_file(day: str, ticker: str) -> Path:
-    """The grader's saved real-range bars for a session (a copy of the bars feed's; merged into its store at a later phase)."""
-    return station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.path(day=day, ticker=ticker)
-
-
 def _bars_have_ranges(bars: list) -> bool:
     """True when the bars carry real high/low ranges. Flat point-bars (high==low)
     can't see a stop-out wick — grades built on them are estimates, not evidence."""
     return any((b.get("high") or 0) != (b.get("low") or 0) for b in bars)
 
 
-def _persist_bars(day: str, ticker: str, bars: list) -> None:
-    """Save real-range bars so any future re-grade replays actual price ranges
-    instead of falling back to flat point-bars. NEVER lets a shorter set clobber
-    a longer one — a midday manual grade must not freeze a partial morning over
-    the full session (best-effort)."""
-    try:
-        f = _bars_file(day, ticker)
-        f.parent.mkdir(parents=True, exist_ok=True)
-        if f.exists():
-            try:
-                if len(json.loads(f.read_text()) or []) > len(bars):
-                    return
-            except (OSError, json.JSONDecodeError):
-                pass
-        f.write_text(json.dumps(bars))
-    except (OSError, TypeError):
-        pass
-
-
 def _default_bars(ticker: str, day: str) -> list:
     """Bars for grading, best source first. For TODAY the live Schwab fetch wins
-    (a saved midday snapshot must never shadow the rest of the session); for past
-    days the SAVED real-range bars replay; ThetaData's flat underlying-price path
-    is the last resort — grades from it are marked estimate-only and never feed
-    the promotion gate."""
-    saved: list = []
-    f = _bars_file(day, ticker)
-    try:
-        if f.exists():
-            saved = json.loads(f.read_text()) or []
-    except (OSError, json.JSONDecodeError):
-        saved = []
+    (the day's file is still growing a minute at a time); for past days the
+    station's one bars store replays (data/market/spx_price_bars_by_minute/{day}.jsonl,
+    the bars feed's file, which the grader's own saved sessions were folded into);
+    ThetaData's flat underlying-price path is the last resort — grades from it are
+    marked estimate-only and never feed the promotion gate. The grader writes no
+    bars of its own."""
+    saved: list = station_store_files.read_spx_price_bars(None, day) if ticker == "SPX" else []
     today = datetime.now(ET).date().isoformat()
     if day == today:
         try:
@@ -442,13 +415,10 @@ def grade_day(day: str | None = None, rows=None, bars_lookup=None) -> dict:
         if any(r.get("ticker") == tk and any(r.get(e) for e in ENGINES) for r in rows):
             paths[tk] = _bar_path(tk, bars_lookup)
     # provenance so an empty result can say WHY it is empty (no rows vs no bars),
-    # plus the bar QUALITY per ticker — and save real-range bars for future re-grades
+    # plus the bar QUALITY per ticker (a re-grade reads the bars store, never a saved copy of its own)
     kinds: dict[str, str] = {}
     for tk in paths:
-        bars = bars_lookup(tk)
-        kinds[tk] = "ohlc" if _bars_have_ranges(bars) else "point"
-        if kinds[tk] == "ohlc":
-            _persist_bars(day, tk, bars)
+        kinds[tk] = "ohlc" if _bars_have_ranges(bars_lookup(tk)) else "point"
     out["meta"] = {"rows": len(rows), "bars": {tk: len(p) for tk, p in paths.items()},
                    "bars_kind": kinds}
 

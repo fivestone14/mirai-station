@@ -1,4 +1,4 @@
-"""Scheduled events near a read: the rows of ``calendar/events.json``.
+"""Scheduled events near a read: the rows of the station's one event calendar (``settings/market_event_calendar_by_event.json``).
 
 A read is tagged, never blocked, by the tier-1 rows: the tag reaches the record, the grade line and
 the phone, JEV never sees it, the sums are not suppressed, and a read with an event due inside 30
@@ -31,7 +31,7 @@ from .sessions import session_close
 
 import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
-CALENDAR = station_paths.MARKET_EVENT_CALENDAR_BY_EVENT_SPX_JEV_COPY.path()   # the package's own copy of the event calendar, in the repo
+CALENDAR = station_paths.MARKET_EVENT_CALENDAR_BY_EVENT.path()   # the station's one event calendar, versioned in the repo under settings/
 ET = ZoneInfo("America/New_York")
 TIER = "1"
 PRE_OPEN, DATA_10AM, DATA_2PM, FED_SPEAKER, AUCTION = "pre_open", "data_10am", "data_2pm", "fed_speaker", "auction"
@@ -168,12 +168,12 @@ def uncovered(day: date, path: Path | str = CALENDAR, tier: str | None = None) -
     is unknown, not quiet. Asked for the ``tier`` PRE_OPEN only, the first kept day is pre_open_covers_from."""
     cal = _load(str(path))
     if cal.covers_through is None:
-        return "the event calendar (calendar/events.json) names no last kept day (covers_through)"
+        return "the event calendar (settings/market_event_calendar_by_event.json) names no last kept day (covers_through)"
     if day > cal.covers_through:
-        return f"the event calendar (calendar/events.json) is kept only through {cal.covers_through}: extend it"
+        return f"the event calendar (settings/market_event_calendar_by_event.json) is kept only through {cal.covers_through}: extend it"
     since = cal.pre_open_covers_from if tier == PRE_OPEN else cal.covers_from
     if since is not None and day < since:
-        return f"the event calendar (calendar/events.json) is kept only from {since}"
+        return f"the event calendar (settings/market_event_calendar_by_event.json) is kept only from {since}"
     return None
 
 

@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import at, flat_bars, lane_folder, night_row, station_paths, write_json
+from conftest import at, flat_bars, lane_folder, night_row, station_paths, write_json, write_jsonl
 from spx_jev import events, overnight
 from spx_jev.labels.label_set import LabelSet
 from spx_jev.labels.measures import ET
@@ -42,7 +42,7 @@ def _session(day: str, move: float) -> list[dict]:
 def state(tmp_path):
     state_dir = tmp_path / "state"
     for day, move in {"2026-09-16": 0.0, **MOVE}.items():
-        write_json(station_paths.SPX_PRICE_BARS_BY_MINUTE_SCANNER_COPY.path(state_dir, day=day), _session(day, move))
+        write_jsonl(station_paths.SPX_PRICE_BARS_BY_MINUTE.path(state_dir, day=day), _session(day, move))
     for night in NIGHTS:
         start = overnight.night_window(night)[0]
         overnight.write_night(state_dir, night.isoformat(), [night_row("/ES", start + timedelta(minutes=k), 7750.0, minutes=5,

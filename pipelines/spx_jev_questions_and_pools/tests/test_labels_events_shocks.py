@@ -1,7 +1,7 @@
 """The events and shocks family (labels/events_shocks.py): each label's sentence at its verdicts and their
 boundaries, its omissions, point in time, and each gate both ways.
 
-The calendar labels read the shipped calendar/events.json on real days: 09-22 (the vice chair for supervision
+The calendar labels read the shipped settings/market_event_calendar_by_event.json on real days: 09-22 (the vice chair for supervision
 at 09:30 with questions), 09-29 (job openings and consumer
 confidence at 10:00, two governors after noon), 10-01 (claims before the open, ISM at 10:00 with a governor,
 four speakers), 10-02 (the jobs report), 10-13 (nothing), 10-20 (nothing, in the Fed's quiet period) and the
@@ -154,7 +154,7 @@ def test_the_minor_releases_before_the_open_leave_the_session_as_it_was(scene_fa
 
 def test_past_the_calendars_last_day_the_calendar_labels_are_omitted_and_their_questions_missing(scene_factory):
     _, omitted, gates = labels(scene_at(scene_factory, at(10, 32, "2027-01-05"), FLAT))
-    why = "the event calendar (calendar/events.json) is kept only through 2026-12-31: extend it"
+    why = "the event calendar (settings/market_event_calendar_by_event.json) is kept only through 2026-12-31: extend it"
     for path in ("context.event_clock", "event.release_clock_10m", "event.reaction", "event.statement_and_presser"):
         assert omitted[path] == why
     assert gates["event_clock"] is gates["release_in_lane"] is gates["move_reaction_path"] is None
