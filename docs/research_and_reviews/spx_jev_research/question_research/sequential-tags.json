@@ -1,0 +1,22 @@
+{
+ "gap_origin": "Splits the move since the 16:00 price into time-ordered windows and asks which one made it (dark; recommended re-cut onto the story legs).",
+ "release_reaction_path": "The report's first reaction, then what futures did after it (extended, held, faded): two steps in order (dark).",
+ "move_reaction_path": "A release, Fed remark or burst, then whether price extended, held, faded or reversed its first reaction.",
+ "fed_presser_path": "The Fed statement's first move, then whether the press conference went with it, against it or started a new leg.",
+ "shock_state": "A sudden burst, then fresh, round trip or settling since: a two-step sequence.",
+ "stress_state": "VIX made a session high, then how fear and price unfolded after it (liquidation, exhaustion, a bounce not believed).",
+ "gap_reasserts": "The gap, then the morning's run with or against it, then whether it touched yesterday's close.",
+ "gap_side_now": "The gap made at the open, then how much of it is kept now; the fill history since the open is the second step.",
+ "day_side_from_close": "Splits the day's move into the gap leg and the trading leg that followed: whether trading extended or unwound the gap.",
+ "leg_vs_day_side": "The latest 30-minute leg judged against the day's side built before it: the in-session model for latest_leg_vs_night.",
+ "first_hour_break_side": "The first-hour range, then a break, then extending, stalling or failing back inside.",
+ "prior_day_acceptance": "Crossed yesterday's high or low, then accepted beyond it or rejected back inside.",
+ "prior_close_push_fade": "A push toward yesterday's close, then crossed through, crossed back or still short.",
+ "overnight_range_position": "Its back-inside options require price to have left the overnight range and then returned (dark).",
+ "wall_touch_effort": "Touched a heavy strike, then broke through, held or still pressing.",
+ "break_armed": "A level state machine: turned back at a level, armed, then expiring if it does not break.",
+ "new_extreme_unconfirmed": "Net volume at the new extreme compared with its level at the previous extreme: a two-step divergence.",
+ "breadth_flip_after_release": "Breadth in the hour before a release against breadth since it: before and after.",
+ "tick_extreme_follow": "A TICK burst, then whether SPX followed it or stalled.",
+ "opening_side": "Reads open.path: the extreme reached from the settled open, the giveback since, and 'rotating' around it over the opening reads."
+}

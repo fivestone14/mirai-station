@@ -1,0 +1,362 @@
+{
+ "name": "SPX JEV bitcoin questions (draft, superseded)",
+ "date": "2026-09-27",
+ "status": "superseded: all six questions are in spec/question_set.json, live, and the set is the record; this draft is kept for its evidence",
+ "notes": "Placeholders are existing QUESTION_CONSTANTS names (top_fifth, bottom_fifth, third_hi, third_lo, min_rank_sessions, window_10_min, window_30_min, window_60_min); no new constants. Every cut is a rank against the last 20 sessions, nights or weekends. Labels give moves in shares of a normal move, never prices or percents. tags: SEQUENTIAL_READ marks a question that reasons over a sequence of reads or legs. recommended_status is this study's advice; status follows the set's conventions.",
+ "questions": [
+  {
+   "id": "btc_overnight_vs_futures",
+   "group": "bitcoin",
+   "type": "choice",
+   "serves": "direction",
+   "horizon": {
+    "premarket": "10min_opening; 30min and 60min graded from the 10:02 read"
+   },
+   "lanes": [
+    "premarket"
+   ],
+   "status": "live (dark in this draft)",
+   "recommended_status": "live under the owner rule once built, but expect near-zero weight; measured null on 119 nights",
+   "tags": [],
+   "cadence": "once at the 09:28 premarket read; answer held as a day constant through 10:30",
+   "schedule": {
+    "premarket": {
+     "at": [
+      "09:28"
+     ]
+    }
+   },
+   "ask": "Did bitcoin move further overnight than S&P futures did, and which way?",
+   "instructions": "Read `overnight.btc_vs_futures`. Since yesterday's 16:00 close, did bitcoin move further than S&P futures' own overnight move would match, in the direction that has gone with stocks rising, or in the direction that has gone with stocks falling?",
+   "options": [
+    {
+     "name": "btc_ahead_up",
+     "description": "bitcoin went further than the futures' move would match, in the direction that has gone with stocks rising over the last 20 nights"
+    },
+    {
+     "name": "btc_ahead_down",
+     "description": "bitcoin went further than the futures' move would match, in the direction that has gone with stocks falling over the last 20 nights"
+    }
+   ],
+   "criteria": {
+    "btc_ahead_up": "overnight excess rank vs the last 20 nights >= {top_fifth} in the stocks-up direction",
+    "btc_ahead_down": "overnight excess rank vs the last 20 nights <= {bottom_fifth} (stocks-down direction)"
+   },
+   "sleep_when": "excess rank in the middle three fifths; the Thursday bitcoin roll night; fewer than {min_rank_sessions} clean prior nights; bitcoin's last trade before 09:25 older than {window_10_min} minutes",
+   "labels_needed": [
+    {
+     "name": "overnight.btc_vs_futures",
+     "example": "from yesterday's 16:00 close to 09:25 bitcoin fell 1.9 of its normal nights while S&P futures fell 0.4 of theirs; over the last 20 nights bitcoin has moved with futures (bitcoin up has gone with stocks up), so bitcoin fell further than the futures' move would match: bottom fifth of the last 20 nights, past the bottom-fifth line",
+     "computed_how": "bitcoin log move 16:00 to 09:25 (last trade at or before each time) minus the rolling 20-night beta x the /ES move over the same window; ranked against the prior 20 clean nights; 'normal night' = median |move| of the prior 20 nights, for each series. Roll guard: Schwab's /BTC and /MBT history is one stitched front-month series; it switches contract at 18:00 ET on the Thursday before the last-Friday expiry and jumps up 0.28-0.53% against IBIT (7 of 7 rolls, Mar-Sep 2026), about a third of a normal night. Skip the roll night or splice on the IBIT ratio. DARK until the premarket lane and overnight collector exist (premarket-data-plan.md steps 2-3): schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/.",
+     "source": "Schwab /MBT (micro bitcoin futures) 1-minute and 5-minute bars with need_extended_hours_data=True; answers as the front contract (/MBTV26 now, /MBTX26 from 18:00 ET Thu 10-29). /BTC is the same price but trades under 5 bars an hour on Saturdays, so /MBT is the working series and /BTC a cross-check. Not in market_context.SYMBOLS. /ES as in overnight_move_vs_expected.",
+     "availability": "dark",
+     "label_built": false,
+     "needs_engine_edit": false
+    }
+   ],
+   "why": "Bitcoin trades through the night and reacts to the same risk news as stocks. If it has moved further than futures, the thought is that stocks have not caught up yet. The data says futures already have: bitcoin's overnight move sits inside the gap (rank correlation +0.63 with the SPX open gap) and adds nothing after 09:30. It is here so the learning loop can confirm that, and because the owner asked for bitcoin in the pre-open read.",
+   "evidence": "119 clean nights (2026-03 to 09, 5-min bars; roll and /ES-roll nights removed): bitcoin excess over futures vs SPX 09:35-10:05 rank corr +0.01 (p 0.91), vs 09:35-10:35 +0.05, vs 09:35-close -0.05. Fifths: bottom fifth first 30 min up 64%, top fifth 57%, middle 43% (no order). Halves: -0.10 then +0.11 (sign flips). The round-3 figure (+0.15/+0.24, n=31) does not hold at four times the sample. Long sample, 287 weekends 2020-26: bitcoin's weekend move is in the Monday gap (+0.19; +0.36 since mid-2022) but predicts nothing after it (Monday open-to-close -0.06, t -1.5 controlling for the gap).",
+   "origin": "new (bitcoin study 2026-09-27); replaces the bitcoin half of overnight_bonds_vs_gap",
+   "code_answer": true,
+   "sources": [
+    "https://www.cmegroup.com/media-room/press-releases/2026/2/19/cme_group_to_launch247cryptocurrencyfuturesandoptionstradingonma.html"
+   ]
+  },
+  {
+   "id": "btc_weekend_path",
+   "group": "bitcoin",
+   "type": "choice",
+   "serves": "direction",
+   "horizon": {
+    "premarket": "10min_opening; 30min and 60min graded from the 10:02 read; open-to-close"
+   },
+   "lanes": [
+    "premarket"
+   ],
+   "status": "live (dark in this draft)",
+   "recommended_status": "live after about 20 weekends of 24/7 data are saved (mid-October); speculative, no direct evidence yet",
+   "tags": [
+    "SEQUENTIAL_READ"
+   ],
+   "cadence": "once at the 09:28 premarket read on the first session after a weekend or market holiday; held as a day constant",
+   "schedule": {
+    "premarket": {
+     "at": [
+      "09:28"
+     ],
+     "days": "first session after a weekend or holiday"
+    }
+   },
+   "ask": "After a big bitcoin weekend, did bitcoin keep going, hold, or turn back once S&P futures reopened?",
+   "instructions": "Read `weekend.btc_path`. It gives bitcoin's weekend leg (Friday 16:00 to Sunday 18:00, before S&P futures reopen) and its reopen leg (Sunday 18:00 to 09:25). Taking the weekend leg's direction as the reference, did the reopen leg extend it, hold it, or turn back against it?",
+   "options": [
+    {
+     "name": "extended",
+     "description": "after S&P futures reopened, bitcoin kept moving the same way as its weekend move"
+    },
+    {
+     "name": "held",
+     "description": "after the reopen bitcoin stayed about where the weekend left it"
+    },
+    {
+     "name": "reversed",
+     "description": "after the reopen bitcoin moved back against its weekend move"
+    }
+   ],
+   "criteria": {
+    "extended": "reopen-leg rank vs the last 20 reopen legs in the weekend leg's direction >= {third_hi}",
+    "held": "reopen-leg rank in the middle third",
+    "reversed": "reopen-leg rank against the weekend leg's direction >= {third_hi}"
+   },
+   "ref_side": "sign of the weekend leg (the learning loop folds on it)",
+   "sleep_when": "weekend-leg rank vs the last 20 weekends in the middle three fifths (an ordinary weekend); not the first session after a weekend or holiday; fewer than {min_rank_sessions} prior weekends; the Saturday maintenance window leaves no trade in the last {window_60_min} minutes of the weekend leg",
+   "labels_needed": [
+    {
+     "name": "weekend.btc_path",
+     "example": "from Friday's 16:00 close to Sunday 18:00 bitcoin fell 2.6 of its normal weekends, bottom fifth of the last 20 weekends; since S&P futures reopened at 18:00 it has risen 0.9 of a normal reopen leg, top third against the weekend's fall: it turned back; S&P futures are down 0.3 of a normal night",
+     "computed_how": "two bitcoin legs, each a log move between last trades at or before the two times: Fri 16:00 to Sun 18:00 and Sun 18:00 to 09:25. The weekend leg is ranked by size and sign against the last 20 weekends, the reopen leg against the last 20 reopen legs; each is expressed in shares of its own median |leg| over those windows. The futures clause reuses overnight.es_move. Holidays: the leg runs from the last cash close to the /ES reopen. Roll guard: Schwab's /BTC and /MBT history is one stitched front-month series; it switches contract at 18:00 ET on the Thursday before the last-Friday expiry and jumps up 0.28-0.53% against IBIT (7 of 7 rolls, Mar-Sep 2026), about a third of a normal night. Skip the roll night or splice on the IBIT ratio. DARK until the premarket lane and overnight collector exist (premarket-data-plan.md steps 2-3): schwab.minute_bars hard-codes need_extended_hours_data=False and nothing writes state/spx_jev/overnight/.",
+     "source": "Schwab /MBT (micro bitcoin futures) 1-minute and 5-minute bars with need_extended_hours_data=True; answers as the front contract (/MBTV26 now, /MBTX26 from 18:00 ET Thu 10-29). /BTC is the same price but trades under 5 bars an hour on Saturdays, so /MBT is the working series and /BTC a cross-check. Not in market_context.SYMBOLS. Before 2026-05-29 CME bitcoin futures were shut Fri 17:00 to Sun 18:00 ET, so older weekends have only the Sunday reopen gap and no path.",
+     "availability": "dark",
+     "label_built": false,
+     "needs_engine_edit": false
+    }
+   ],
+   "why": "Bitcoin is the one big market that trades all weekend, so it shows first how risk appetite moved while stocks were shut. A peer-reviewed study (Mourey, Shahrour, Soiman, Finance Research Letters 2025) finds that weak crypto weekends predict weaker Mondays for stocks and strong ones do not, an effect that grew after the May 2022 LUNA collapse. That study measures Friday close to Monday close, and at 09:28 the futures gap already contains most of it. This question asks the part the gap does not show: whether bitcoin's weekend verdict is being confirmed or taken back since futures reopened.",
+   "evidence": "No direct test: only 17 weekends of 24/7 CME bitcoin exist (since 2026-05-29). Long sample, 277 ranked weekends 2020-26 (Fri close to Sun reopen): bottom-fifth bitcoin weekends had the SPX Monday gap at -23 bp on average, then Monday open-to-close +20 bp, up 60%, the same as ordinary weekends (61%). Since mid-2022, n=44: gap -32 bp, open-to-close +9 bp, up 55%. The weakness shows up in the gap and is not extended after it. Cases: 2022-05-09 and 2022-06-13 (bitcoin -4.6%, -6.4%), SPX extended lower after the open (-2.2%, -2.3%); 2024-08-05 (bitcoin -6.7%), SPX gapped down 3.7% and closed +0.7% above the open.",
+   "origin": "new (bitcoin study 2026-09-27)",
+   "code_answer": true,
+   "sources": [
+    "https://ideas.repec.org/a/eee/finlet/v86y2025ipes1544612325019154.html",
+    "https://finance.yahoo.com/markets/crypto/articles/bitcoin-first-cme-gap-free-174649486.html"
+   ]
+  },
+  {
+   "id": "btc_gap_30m",
+   "group": "bitcoin",
+   "type": "choice",
+   "serves": "direction",
+   "horizon": "30min",
+   "lanes": [
+    "thirty_minute"
+   ],
+   "status": "live",
+   "recommended_status": "live; the one bitcoin read with a measurable effect (weak, and it runs against bitcoin's move)",
+   "tags": [],
+   "cadence": "every 30-minute read",
+   "schedule": {
+    "thirty_minute": {
+     "every_min": 30,
+     "from": "10:02",
+     "to": "15:32"
+    }
+   },
+   "ask": "Did bitcoin run ahead of the index over the last half hour, and which way?",
+   "instructions": "Read `xasset.btc_gap_30min`. Over the last {window_30_min} minutes, did bitcoin move further than the index's move would match, in the direction that has gone with stocks rising, or in the direction that has gone with stocks falling?",
+   "options": [
+    {
+     "name": "btc_ahead_up",
+     "description": "bitcoin moved further than the index's move would match, in the direction that has gone with stocks rising"
+    },
+    {
+     "name": "btc_ahead_down",
+     "description": "bitcoin moved further than the index's move would match, in the direction that has gone with stocks falling"
+    }
+   ],
+   "criteria": {
+    "btc_ahead_up": "excess rank vs the same clock over the last 20 sessions >= {top_fifth}, stocks-up direction",
+    "btc_ahead_down": "excess rank <= {bottom_fifth}, stocks-down direction"
+   },
+   "sleep_when": "excess rank in the middle three fifths; fewer than {min_rank_sessions} prior sessions at this clock; no bitcoin trade in the last {window_10_min} minutes",
+   "labels_needed": [
+    {
+     "name": "xasset.btc_gap_30min",
+     "example": "over the last 30 minutes bitcoin rose 1.7 times its normal half-hour gap more than the index's move would match: top fifth at this time of day over the last 20 sessions; bitcoin up has gone with stocks up this month; today bitcoin and the index are moving together more tightly than on most of the last 20 sessions (top third)",
+     "computed_how": "bitcoin 30-minute log return minus the rolling 20-session beta x the SPX 30-minute return; ranked against the same clock over the prior 20 sessions; 'normal half-hour gap' = median |excess| at that clock. Link clause: the 20-session correlation of 30-minute returns, ranked in thirds against its own last 20 values (no fixed line).",
+     "source": "Schwab /MBT (or /BTC) 1-min bars via market_context.py, saved by the context job to state/spx_jev/context/{day}.jsonl and the bars backfill; /MBT is not yet in market_context.SYMBOLS. 1-min history reaches back about 38 days (40,000-bar cap), 5-min about 6 months.",
+     "availability": "cheap_add",
+     "label_built": false,
+     "needs_engine_edit": false
+    }
+   ],
+   "why": "The usual idea is that bitcoin is a fast risk gauge the index follows. Measured here, it runs the other way. When bitcoin has run ahead of the index in the last half hour, the index's next half hour leans slightly the opposite way. At the minute level the index leads bitcoin, not the reverse. The label reports the move and the link and does not say 'bitcoin leads', so the learning loop learns the sign.",
+   "evidence": "1,474 half-hours on 134 sessions (2026-03-17 to 09-25, 5-min bars): excess vs SPX next 30 min rank corr -0.074 (p<0.01; day-clustered t -1.97 controlling for SPX's own last 30). Top fifth: SPX next 30 up 43.5%, mean -2.1 bp (about a quarter of the median 7.9 bp half-hour move); other fifths 51-56% up. Same sign in both halves of the sample (-0.069, -0.078); stronger when the link is tight (-0.10, p 0.01) than loose (-0.04, ns). On 08-11 to 09-25 alone (n 363) -0.03, ns, which matches the earlier xasset study (+0.02, n 1,089 one-minute windows). Minute lead-lag, 33 sessions: corr(bitcoin[t-1], SPX[t]) 0.009, corr(SPX[t-1], bitcoin[t]) 0.047, same minute 0.31. The index leads.",
+   "origin": "new (bitcoin study 2026-09-27)",
+   "code_answer": true
+  },
+  {
+   "id": "btc_gap_streak",
+   "group": "bitcoin",
+   "type": "choice",
+   "serves": "direction",
+   "horizon": "30min",
+   "lanes": [
+    "thirty_minute"
+   ],
+   "status": "live",
+   "recommended_status": "live, but it overlaps btc_gap_30m; keep only one of the two if the combiner shows they duplicate",
+   "tags": [
+    "SEQUENTIAL_READ"
+   ],
+   "cadence": "every 30-minute read from 11:02 (needs three prior half-hours)",
+   "schedule": {
+    "thirty_minute": {
+     "every_min": 30,
+     "from": "11:02",
+     "to": "15:32"
+    }
+   },
+   "ask": "Has bitcoin run ahead of the index the same way for three half-hours in a row?",
+   "instructions": "Read `xasset.btc_gap_streak`. Across the last three 30-minute reads, did bitcoin run ahead of the index in the same direction every time, toward stocks rising or toward stocks falling?",
+   "options": [
+    {
+     "name": "streak_up",
+     "description": "three half-hours in a row bitcoin moved further than the index's move would match, each time in the direction that has gone with stocks rising"
+    },
+    {
+     "name": "streak_down",
+     "description": "three half-hours in a row bitcoin moved further than the index's move would match, each time in the stocks-falling direction"
+    }
+   ],
+   "criteria": {
+    "streak_up": "the last three half-hour excesses all on the stocks-up side and their sum ranks >= {third_hi} against the same clock over the last 20 sessions",
+    "streak_down": "all three on the stocks-down side and their sum ranks <= {third_lo}"
+   },
+   "sleep_when": "the three signs are mixed, or the summed excess is in the middle third; before 11:02; any of the three windows missing bitcoin data",
+   "labels_needed": [
+    {
+     "name": "xasset.btc_gap_streak",
+     "example": "in each of the last three half-hours (10:32, 11:02, 11:32) bitcoin fell further than the index's move would match; together that is 2.3 times a normal 90-minute gap, bottom third at this time of day over the last 20 sessions",
+     "computed_how": "the three latest xasset.btc_gap_30min excesses with their signs, summed, and the sum ranked against the same clock over the prior 20 sessions; shares of the median |90-minute excess|",
+     "source": "as xasset.btc_gap_30min",
+     "availability": "cheap_add",
+     "label_built": false,
+     "needs_engine_edit": false
+    }
+   ],
+   "why": "One half-hour of bitcoin drift can be noise. Three in a row in the same direction is a steadier sign that risk appetite outside stocks is moving differently from the index. The measured effect is small and, like btc_gap_30m, runs against bitcoin's direction.",
+   "evidence": "134 sessions: 267 windows with three same-sign excesses; SPX's next 30 minutes went bitcoin's way 43.8% (mean -1.2 bp) vs 46.6% on the 939 mixed windows. Summed 90-minute excess vs next 30 min rank corr -0.051 (p 0.08, n 1,206). Weak, and it overlaps btc_gap_30m.",
+   "origin": "new (bitcoin study 2026-09-27)",
+   "code_answer": true
+  },
+  {
+   "id": "btc_link_today",
+   "group": "bitcoin",
+   "type": "choice",
+   "serves": "regime",
+   "horizon": "60min",
+   "lanes": [
+    "thirty_minute"
+   ],
+   "status": "live",
+   "recommended_status": "live as a regime read; could equally be a clause of xasset.btc_gap_30min",
+   "tags": [],
+   "cadence": "every other 30-minute read (hourly)",
+   "schedule": {
+    "thirty_minute": {
+     "every_min": 60,
+     "from": "10:32",
+     "to": "15:32"
+    }
+   },
+   "ask": "Are bitcoin and the index trading together today more tightly than usual, or less?",
+   "instructions": "Read `xasset.btc_link`. Since the open, have bitcoin and the index moved together minute by minute more tightly than on most of the last 20 sessions, or more loosely?",
+   "options": [
+    {
+     "name": "tight",
+     "description": "bitcoin and the index have moved together today more tightly than on most recent sessions"
+    },
+    {
+     "name": "loose",
+     "description": "bitcoin and the index have moved together today more loosely than on most recent sessions, or in opposite directions"
+    }
+   ],
+   "criteria": {
+    "tight": "today's link rank vs the last 20 sessions at this clock >= {third_hi}",
+    "loose": "rank <= {third_lo}"
+   },
+   "sleep_when": "link rank in the middle third; before 10:32 (too few minutes)",
+   "labels_needed": [
+    {
+     "name": "xasset.btc_link",
+     "example": "since the open bitcoin and the index have moved together minute by minute more tightly than on 17 of the last 20 sessions at this time (top third); over the last 20 sessions bitcoin up has gone with stocks up",
+     "computed_how": "correlation of 5-minute returns (bitcoin vs SPX) from 09:35 to now, ranked against the same span on the prior 20 sessions; sign of the 20-session beta in words",
+     "source": "as xasset.btc_gap_30min",
+     "availability": "cheap_add",
+     "label_built": false,
+     "needs_engine_edit": false
+    }
+   ],
+   "why": "Bitcoin's tie to stocks comes and goes. Since 2020 the 60-session correlation of daily moves has run from -0.09 to 0.72. This year the 20-session figure fell from about 0.7 in March and April to 0.26 in August. A tight day says one risk mood is driving both markets. A loose day says bitcoin is on its own news, and its moves say little about stocks. This question tells the loop which days to trust the other bitcoin reads on.",
+   "evidence": "Indirect only. The btc_gap_30m effect is -0.10 (p 0.01) on tight-link half-hours and -0.04 (ns) on loose ones, 737 each. Whether the link level on its own leans the index's direction is untested. Daily CME bitcoin vs SPX correlation: 20-session 0.63 and 60-session 0.39 as of 2026-09-25; 260-session 0.51.",
+   "origin": "new (bitcoin study 2026-09-27)",
+   "code_answer": true
+  },
+  {
+   "id": "btc_five_day_lead",
+   "group": "bitcoin",
+   "type": "choice",
+   "serves": "direction",
+   "horizon": {
+    "opening_five_minute": "10min_opening",
+    "thirty_minute": "day"
+   },
+   "lanes": [
+    "opening_five_minute",
+    "thirty_minute"
+   ],
+   "status": "live",
+   "recommended_status": "live; weak, and unstable in 2025-26",
+   "tags": [
+    "SEQUENTIAL_READ"
+   ],
+   "cadence": "once at the 09:35 read; answer held as a day constant through the 30-minute reads",
+   "schedule": {
+    "opening_five_minute": {
+     "at": [
+      "09:35"
+     ],
+     "hold": true
+    },
+    "thirty_minute": {
+     "hold_until": "15:32"
+    }
+   },
+   "ask": "Over the last week, has bitcoin been lagging the index or running ahead of it?",
+   "instructions": "Read `xasset.btc_five_day`. Over the last five sessions, has bitcoin done worse than its usual tie to the index would match (lagging) or better (running ahead)?",
+   "options": [
+    {
+     "name": "btc_lagging",
+     "description": "over the last five sessions bitcoin has done clearly worse than the index's move would match"
+    },
+    {
+     "name": "btc_ahead",
+     "description": "over the last five sessions bitcoin has done clearly better than the index's move would match"
+    }
+   ],
+   "criteria": {
+    "btc_lagging": "five-session excess rank vs the last 20 sessions <= {bottom_fifth}",
+    "btc_ahead": "rank >= {top_fifth}"
+   },
+   "sleep_when": "rank in the middle three fifths; fewer than {min_rank_sessions} prior sessions; a bitcoin roll inside the five sessions without a splice",
+   "labels_needed": [
+    {
+     "name": "xasset.btc_five_day",
+     "example": "over the last five sessions bitcoin did 2.1 normal weeks worse than the index's move would match: bottom fifth of the last 20 sessions; the index itself rose 0.6 of a normal week",
+     "computed_how": "bitcoin five-session log move (settlement to settlement) minus the rolling 60-session beta x the SPX five-session move; ranked against the prior 20 sessions; 'normal week' = median |five-session excess| over the prior 20",
+     "source": "Schwab daily bars for /BTC (history from 2020) and $SPX; the roll guard applies to the stitched daily series too",
+     "availability": "cheap_add",
+     "label_built": false,
+     "needs_engine_edit": false
+    }
+   ],
+   "why": "The 'canary' idea is that bitcoin weakening while stocks hold up warns of a stock drop. The data does not support it. From 2020 to 2026, weeks when bitcoin lagged were followed by slightly better index days, not worse. The pattern was not stable in 2025-26. It is in the set because it is the most common bitcoin-for-stocks claim, and the loop should learn its sign rather than JEV assuming it.",
+   "evidence": "1,608 sessions 2020-2026 (daily /BTC vs $SPX): bitcoin lagging (bottom fifth) -> SPX next day up 57.9% (+12.5 bp), middle 54.0% (+6.1 bp), bitcoin ahead (top fifth) 51.5% (-0.3 bp). Rank corr with the next day -0.004 (p 0.89); with the next five sessions (non-overlapping) -0.056 (p 0.32). Since mid-2022 the same shape (59.8 / 52.3 / 51.7% up). 2025-26 (n 429): bottom 62.6%, middle 49.0%, top 66.3%. The shape breaks.",
+   "origin": "new (bitcoin study 2026-09-27)",
+   "code_answer": true
+  }
+ ],
+ "also_recommended": [
+  "overnight_bonds_vs_gap: drop the bitcoin half (criteria 'bitcoin not <= {third_lo}' and the sleep rule on bitcoin disagreeing). On 119 nights bitcoin adds nothing beyond S&P futures; its round-3 +0.15/+0.24 came from n=31. Also change its example 'bitcoin futures fell 1.8%' to shares of a normal night, and its source '/BTCV26' to /MBT (the history is stitched either way).",
+  "gap_open.py and the question_set unresolved list name /BTCV26: the quote for /BTC answers as /BTCV26, but history for any /BTC contract is the same stitched series; add a roll table (next switch 18:00 ET Thu 2026-10-29)."
+ ]
+}

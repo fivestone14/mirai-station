@@ -474,10 +474,14 @@ export TZ=UTC                                               # commit dates must 
 - **SPX scene, field by field** (wt-11): `docs/research_and_reviews/spx-payload-inventory.md`
 - **SNDK scene, field by field**: `docs/research_and_reviews/sndk-payload-inventory.md`
 
-There is also a human-facing, numbered walkthrough of the whole project at
-`~/Desktop/Mirai-Awakening/` — an organized window of symlinks into this directory,
-with a plain-English `README.md` in every folder. Edit through it and you are editing
-the real files; the machine always runs from `~/mirai_awakening`.
+- **Research and reviews moved in from the old Desktop map** (2026-10-11): `docs/research_and_reviews/`
+  (JEV research, SPX JEV question research and reviews, the Watchtower note); the payload diagram is
+  `docs/diagrams/`; the phone-push setup is `docs/how_to_run/phone_push_setup_and_format.md`.
+- **Page and diagram builders** (artifact dev aids, never committed): `docs/artifact_and_diagram_builders_not_in_git/`.
+
+`~/Desktop/Mirai-Awakening/` now holds one shortcut, `mirai_awakening`, to this folder. The old
+numbered map (its shortcuts and plain-English READMEs) is kept in
+`data/archive/2026-10-11_desktop_map_folder/`; the folder names here say what they hold instead.
 
 ---
 
