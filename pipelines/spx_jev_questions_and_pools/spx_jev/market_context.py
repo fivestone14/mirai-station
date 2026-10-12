@@ -6,7 +6,7 @@ the funds for bonds, credit, oil and gold.
     python3 -m spx_jev.market_context --backfill --symbols /ZN,SPXL  # those symbols into every saved session lacking them
 
 Schwab keeps about 34 sessions of 1-minute history, so anything wanted for longer has to be saved as
-it happens. Two files per day under ``state/market/``:
+it happens. Two files per day under ``data/market/``:
 
     watchlist_quotes_by_minute/{day}.jsonl        one line per live snapshot, written by the job each minute in market hours:
                        {"ts": when it was taken, "quotes": {symbol: {"last", "close", "volume", "quote_time"}},
@@ -43,7 +43,7 @@ from .labels.measures import is_num
 from .sessions import SESSION_CLOSE, SESSION_OPEN, is_trading_day
 from .state_builder import CONTEXT_SUBDIR, DEFAULT_STATE_DIR, INDEX_QUOTE, load_jsonl
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 ET = ZoneInfo("America/New_York")
 JOB = "spx-jev-context"
@@ -334,7 +334,7 @@ def backfill(state_dir: Path, first: date, last: date, symbols: tuple[str, ...] 
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Save the market around SPX under state/market/watchlist_quotes_by_minute/.")
+    ap = argparse.ArgumentParser(description="Save the market around SPX under data/market/watchlist_quotes_by_minute/.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
     ap.add_argument("--backfill", metavar="FROM", nargs="?", const=FIRST_BACKFILL_DAY,
                     help=f"save every past session's minute bars from this day (default {FIRST_BACKFILL_DAY}) to yesterday")

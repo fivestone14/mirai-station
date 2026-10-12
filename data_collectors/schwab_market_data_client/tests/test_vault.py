@@ -226,7 +226,7 @@ def test_excepthook_scrubs_a_token_in_the_message(vault_mod):
     prog = (
         "import sys\n"
         f"sys.path.insert(0, {os.path.dirname(os.path.dirname(os.path.abspath(vault_mod.__file__)))!r})\n"
-        "sys.path.insert(0, 'iv-viability')\n"
+        "sys.path.insert(0, 'schwab_market_data_client')\n"
         "import vault\n"
         "vault.install_runtime_hardening()\n"
         f"raise RuntimeError('refresh failed for ' + {_REAL_JWT!r})\n"

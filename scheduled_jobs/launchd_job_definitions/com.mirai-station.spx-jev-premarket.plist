@@ -9,7 +9,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-spx-jev-premarket.sh</string>
+    <string>$HOME/mirai_awakening/scheduled_jobs/job_start_scripts/start_job_with_logs.sh spx-jev-premarket run-spx-jev-premarket.sh</string>
   </array>
 
   <!-- The SPX premarket lane: a read at each checkpoint before the open, 02:35, 03:35, 08:05, 08:48,
@@ -20,8 +20,8 @@
        04:35 ET, Europe's checkpoint in a week Frankfurt keeps winter time and New York does not; the
        command reads only the day's own checkpoints and refuses a fire more than 5 minutes late, so the
        04:35 fire reads nothing in any other week, and the 03:35 one nothing in that week. Writes only
-       state/spx/jev/premarket_lane/, its card under state/screen_files/phone/, its lines in the shared
-       archive under state/spx/jev/, and the overnight store under state/market/.
+       data/spx/jev/premarket_lane/, its card under data/screen_files/phone/, its lines in the shared
+       archive under data/spx/jev/, and the overnight store under data/market/.
        NOTE: launchd's StartCalendarInterval uses SYSTEM-LOCAL time and ignores the
        TZ env var below. This box runs on Pacific, so Hour=5 Minute=48 == 05:48 PT == 08:48 ET
        year-round (PT is ET minus 3h through DST). 02:35 ET is 23:35 PT the evening before, so its
@@ -69,11 +69,6 @@
     <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>6</integer></dict>
     <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>6</integer></dict>
   </array>
-
-  <key>StandardOutPath</key>
-  <string>/tmp/mirai-station.spx-jev-premarket.out</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/mirai-station.spx-jev-premarket.err</string>
 
   <key>EnvironmentVariables</key>
   <dict>

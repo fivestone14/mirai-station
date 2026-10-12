@@ -1,4 +1,4 @@
-"""Load the routine's tunable numbers from runtime/watch/config/*.json.
+"""Load the routine's tunable numbers from settings/*.json.
 
 Plain English: this is the one place the code reads its settings from. A human
 edits the JSON files in the config folder; this module hands those values to the
@@ -15,8 +15,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict
 
-# The config folder sits next to this package: runtime/watch/config/
-_CONFIG_DIR = Path(__file__).resolve().parents[1] / "config"
+# The settings folder sits at the repo root (this file is alerts_and_phone_pushes/watch/intraday/settings.py): settings/
+_CONFIG_DIR = Path(__file__).resolve().parents[3] / "settings"
 
 # Defaults mirror the JSON files. They exist so the routine still runs sensibly
 # if a config file is ever missing on a fresh machine.

@@ -5,7 +5,7 @@
     python3 -m spx_jev.store --backfill             # every market day with a raw file on disk, naming other days left out
 
 The raw files stay the record (the archive's own note: a cleaner store is a later transform of them). This job
-only reads them, and writes only the tables runtime/station_paths.py names: the JEV tables under ``spx/jev/tables/``,
+only reads them, and writes only the tables station_paths.py names: the JEV tables under ``spx/jev/tables/``,
 the bar tables under ``market/tables/``, the refused rows and the build counts under ``operations/health/``:
 
     <table folder>/day=YYYY-MM-DD/part-0.parquet   one file per table per built day, zero rows included, replaced whole;
@@ -76,7 +76,7 @@ from .overnight import OVERNIGHT_SUBDIR
 from .sessions import is_trading_day, previous_trading_day, session_close, session_open
 from .state_builder import DEFAULT_STATE_DIR, LIVE_BARS_SUBDIR, SESSION_BARS_SUBDIR, SYMBOL
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 PART = "part-0.parquet"
 # 4: no facts table (2026-10-07); 3: the average-price call, its answer and grade, both loops' logs. The seven tables
@@ -918,7 +918,7 @@ def off_days_on_disk(state_dir: Path | str, until: date) -> list[date]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Build the learning store (the tables runtime/station_paths.py names under "
+    ap = argparse.ArgumentParser(description="Build the learning store (the tables station_paths.py names under "
                                              "spx/jev/tables/, market/tables/ and operations/health/): each market day's raw "
                                              "files as checked Parquet.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))

@@ -79,7 +79,7 @@ def test_the_forecast_page_measures_the_height_before_anything_paints():
 def test_the_shell_gives_the_webview_a_real_height():
     """The cause, not the symptom: WRAP_CONTENT is what made the WebView report
     a zero-height viewport. Android's WebView guidance is match_parent."""
-    kt = (Path(__file__).resolve().parents[3] / "mirai-mobile" / "app" / "src" / "main"
+    kt = (Path(__file__).resolve().parents[3] / "screens" / "android_phone_app" / "app" / "src" / "main"
           / "java" / "com" / "mirai" / "mobile" / "MainActivity.kt").read_text()
     code = "\n".join(l.split("//")[0] for l in kt.splitlines())
     assert re.search(r"addView\(web,\s*ViewGroup\.LayoutParams\(\s*ViewGroup\.LayoutParams\.MATCH_PARENT,"

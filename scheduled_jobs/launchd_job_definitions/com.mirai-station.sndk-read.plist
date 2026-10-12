@@ -9,7 +9,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-sndk-read.sh</string>
+    <string>$HOME/mirai_awakening/scheduled_jobs/job_start_scripts/start_job_with_logs.sh sndk-read run-sndk-read.sh</string>
   </array>
 
   <!-- The SNDK reading: fire every 2 min, in step with the scanner so it always
@@ -26,11 +26,6 @@
        cost a diary row. launchd will not run two copies of this at once. -->
   <key>StartInterval</key>
   <integer>120</integer>
-
-  <key>StandardOutPath</key>
-  <string>/tmp/mirai-station.sndk-read.out</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/mirai-station.sndk-read.err</string>
 
   <key>EnvironmentVariables</key>
   <dict>

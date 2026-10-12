@@ -9,21 +9,16 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-spx-jev-context.sh</string>
+    <string>$HOME/mirai_awakening/scheduled_jobs/job_start_scripts/start_job_with_logs.sh spx-jev-context run-spx-jev-context.sh</string>
   </array>
 
   <!-- The market around SPX, a snapshot a minute during market hours: breadth, the VIX family, the ES
        future, rates, the sectors, the index funds and the big names, appended to
-       state/market/watchlist_quotes_by_minute/{date}.jsonl (spx_jev/market_context.py). One batched quote call and seven
+       data/market/watchlist_quotes_by_minute/{date}.jsonl (spx_jev/market_context.py). One batched quote call and seven
        breadth history calls a run, spaced half a second apart, through the station's shared REST
        client; never the lob-flow streamer. The runner's market gate keeps it to market hours. -->
   <key>StartInterval</key>
   <integer>60</integer>
-
-  <key>StandardOutPath</key>
-  <string>/tmp/mirai-station.spx-jev-context.out</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/mirai-station.spx-jev-context.err</string>
 
   <key>EnvironmentVariables</key>
   <dict>

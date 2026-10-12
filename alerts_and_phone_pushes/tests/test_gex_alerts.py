@@ -399,7 +399,7 @@ class TestFeedHealthSiren(unittest.TestCase):
 def test_the_pages_question_counts_are_the_catalogs_own(monkeypatch):
     """gex_alerts imports nothing from spx_jev, so its copies of the provider's
     questions and the catalog's size are held to the code here."""
-    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[3] / "skills" / "spx-jev"))
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[2] / "pipelines" / "spx_jev_questions_and_pools"))
     from spx_jev.mirai_prediction.code_features import GEX_BOOK_QUESTIONS, PROVIDER_QUESTIONS, load_catalog
     assert set(gex_alerts.PROVIDER_QUESTIONS) == PROVIDER_QUESTIONS and GEX_BOOK_QUESTIONS < PROVIDER_QUESTIONS
     assert len(gex_alerts.PROVIDER_QUESTIONS) == len(PROVIDER_QUESTIONS)

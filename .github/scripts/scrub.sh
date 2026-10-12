@@ -108,7 +108,7 @@ scan 'a literal Authorization header — a credential written into the source' \
 # place, and the next hardcoded thing beside it is the password. Kotlin and Java
 # only: res/*.xml is full of http://schemas.android.com namespaces that are not
 # addresses of anything.
-apk_urls=$(git grep $UNTRACKED -nIE -e 'https?://' -- 'mirai-mobile/app/src/*.kt' 'mirai-mobile/app/src/*.java' || true)
+apk_urls=$(git grep $UNTRACKED -nIE -e 'https?://' -- 'screens/android_phone_app/app/src/*.kt' 'screens/android_phone_app/app/src/*.java' || true)
 [ -n "$apk_urls" ] && report 'hardcoded URL in the app source (every URL comes from local.properties)' "$apk_urls"
 
 # Not a pattern but the same question: the credential files must not be tracked

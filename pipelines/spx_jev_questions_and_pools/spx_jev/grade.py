@@ -2,8 +2,8 @@
 
     python3 -m spx_jev.grade                # grade every ungraded record, rewrite weights.json
     python3 -m spx_jev.grade --day 2026-09-29
-    python3 -m spx_jev.grade --lane tape    # the opening lane, under state/spx/jev/opening_lane/
-    python3 -m spx_jev.grade --lane premarket   # the reads before the open, under state/spx/jev/premarket_lane/
+    python3 -m spx_jev.grade --lane tape    # the opening lane, under data/spx/jev/opening_lane/
+    python3 -m spx_jev.grade --lane premarket   # the reads before the open, under data/spx/jev/premarket_lane/
     python3 -m spx_jev.grade --integral-backfill [--day D]   # the average-price grade of past graded horizons, from their bars
     python3 -m spx_jev.grade --integral-report  # per box, the flat share on the average price against the end price
     python3 -m spx_jev.grade --integral-loop-dry-run   # what the loop would learn from the average-price grade, built in a scratch folder
@@ -86,7 +86,7 @@ The average-price grade
     the file for past days from their saved bars without grading anything else, and ``--integral-report``
     prints the flat share on both grades over the same windows, which is how the factor is judged.
 
-Outputs, all under the lane's folder (state/spx/jev/live_lane/ for the live lane)
+Outputs, all under the lane's folder (data/spx/jev/live_lane/ for the live lane)
     jev_end_price_grades_by_read.jsonl   one line per graded horizon of a record (append only, keyed by row_ts and
                        the ``horizons`` the line carries; the primary's line has its fields flat on top)
     jev_question_weights_state.json   {"graded_runs": reads whose primary mark is graded, "primary",
@@ -131,7 +131,7 @@ from .sessions import session_close, session_open
 from .state_builder import DEFAULT_STATE_DIR, MarketContext, load_bars, load_jsonl, parse_ts, prior_bar_days
 from .weights import WEIGHTS_NAME, QuestionWeights
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 ET = ZoneInfo("America/New_York")
 

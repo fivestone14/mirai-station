@@ -33,9 +33,9 @@ from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 SKILL_DIR = Path(__file__).resolve().parent
-_RUNTIME = str(SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(SKILL_DIR.parent.parent)             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 
 # --- BETA gate -------------------------------------------------------------
@@ -51,7 +51,7 @@ THETA_SHADOW = True              # theta native-GEX A/B recorder (record only, n
 # DISK-BACKED (N5 verify, 2026-07-12): the production scanner is a ONE-SHOT launchd process
 # (a fresh hunter.py per wake), so "in-process memory" is EMPTY on every live scan — the
 # marginal fields (gamma_tape_60m, flow_recent) had been structurally None on every live row
-# while their unit tests passed. The snapshot now round-trips through state/spx/scanner/spx_options_volume_last_scan_state.json so
+# while their unit tests passed. The snapshot now round-trips through data/spx/scanner/spx_options_volume_last_scan_state.json so
 # consecutive one-shot scans can difference. In-memory dict stays as a same-process cache.
 _TAPE_PREV: dict[str, dict] = {}
 
@@ -1650,7 +1650,7 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
         # while spot touches a dealer-gamma wall. REVERSED SIGN doctrine
         # (backtest n=168 touches, 11/13 days): heavy volume at a touch
         # predicts the wall BREAKS (held 39% vs 54% quiet) — SIEGE = expect
-        # break, QUIET = expect hold. Record-only: own store (the wall sensor's files under state/spx/scanner/) +
+        # break, QUIET = expect hold. Record-only: own store (the wall sensor's files under data/spx/scanner/) +
         # this diary key via the bridge; no payload words, no tower coupling.
         # Walls mirror the lob seam's choice — RAW 0DTE gamma walls first
         # (the strikes the touch evidence was measured on), operative
@@ -1773,7 +1773,7 @@ def evaluate(ticker: str, now: datetime | None = None) -> Optional[dict]:
 
 def record(telemetry: dict, now: datetime | None = None) -> None:
     """DIARY WRITER — appends the scan's row to today's diary file, the permanent
-    evidence stream (state/spx/scanner/spx_options_scanner_results_by_scan/{date}.jsonl, best-effort). This is the
+    evidence stream (data/spx/scanner/spx_options_scanner_results_by_scan/{date}.jsonl, best-effort). This is the
     learning-capture stream the self-tuner will reconcile."""
     if not telemetry:
         return
@@ -1911,7 +1911,7 @@ def _regime_badge(regime: str) -> str:
 
 def _wall_bar(spot, put_wall, call_wall, width: int = 25) -> str:
     """ASCII position bar: ● marks where spot sits between the put and call
-    walls (labeled GWp/GWc per docs/gw-vocab.md)."""
+    walls (labeled GWp/GWc per docs/glossary/gw-vocab.md)."""
     if not (spot and put_wall and call_wall and call_wall > put_wall):
         return ""
     frac = max(0.0, min(1.0, (spot - put_wall) / (call_wall - put_wall)))
@@ -1940,7 +1940,7 @@ def _aggregate(rows: list[dict], ticker: str) -> dict:
 
 def magp_label(latest: Optional[dict], magnet) -> str:
     """Display label for a magnet level — MagP + intensity mark per
-    docs/gw-vocab.md: inherits the GW tier of the wall the magnet sits on
+    docs/glossary/gw-vocab.md: inherits the GW tier of the wall the magnet sits on
     (walls clustered from the measured gex_views.net_by_strike surface);
     off-wall or no surface → the default MagP''."""
     tier = "''"

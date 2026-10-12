@@ -9,5 +9,5 @@ set +e
 source "${SCRIPT_DIR}/env.sh"
 set -e
 
-cd "${MIRAI_STATION_ROOT}/runtime"
+cd "${MIRAI_STATION_ROOT}/alerts_and_phone_pushes"
 exec "${MIRAI_STATION_VENV}/bin/python" -m watch.intraday.auth_check

@@ -26,8 +26,8 @@ WHAT ONE RECORD IS — one entry, two faces:
      judged scan. This face is what gets ranked by meaning at query time.
 
 TIERS:
-  day    state/spx/scanner/spx_options_scanner_claude_notes_by_read/{date}.jsonl — one slice per judged verdict,
-         plus the DIARY (state/spx/scanner/spx_options_scanner_results_by_scan) as the raw numeric series the
+  day    data/spx/scanner/spx_options_scanner_claude_notes_by_read/{date}.jsonl — one slice per judged verdict,
+         plus the DIARY (data/spx/scanner/spx_options_scanner_results_by_scan) as the raw numeric series the
          `series` command reads. Slices roll up into a day summary.
   month  spx_options_scanner_claude_session_summaries_by_day.jsonl (one row per session) +
          spx_options_scanner_claude_terrain_state.json (standing walls, recurring battle lines, tape character) — context, never the trigger.
@@ -46,7 +46,7 @@ exists to hide, and slices are one allow-listed call away at the uncertain
 moments where anchoring bites. Same rule for interest strings that name the
 gates — neutralized to "gate event".
 
-Isolation: writes ONLY its notes, summaries and terrain files under state/spx/scanner/. Reads the SPX reversion diary;
+Isolation: writes ONLY its notes, summaries and terrain files under data/spx/scanner/. Reads the SPX reversion diary;
 never touches any SNDK store. Called two ways:
   * imported by watchtower (record_slice — fail-open, must never cost a scan)
   * as the allow-listed CLI the reasoning model may run (watchtower._RAG_CMD)
@@ -77,9 +77,9 @@ from zoneinfo import ZoneInfo
 import atomic_io
 
 _SKILL_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
-_RUNTIME = str(_SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(_SKILL_DIR.parent.parent)             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 _ET = ZoneInfo("America/New_York")
 RAG_V = 2                    # the SHARED record-shape era (twin of sndk_rag) —
@@ -534,9 +534,9 @@ def _rank(query: str, records: list[dict]) -> tuple[list[dict], str]:
         # progress bars would leak into the reasoning model's tool output
         os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
         os.environ.setdefault("TQDM_DISABLE", "1")
-        sys.path.insert(0, str(_SKILL_DIR.parent / "mirai-right-eye"))
+        sys.path.insert(0, str(_SKILL_DIR.parent / "shared_text_embedder_for_note_search"))
         from embed import embed_text                      # noqa: PLC0415
-        cfg = json.loads((_SKILL_DIR.parent / "mirai-right-eye" /
+        cfg = json.loads((_SKILL_DIR.parent / "shared_text_embedder_for_note_search" /
                           "config.json").read_text())
         qv = embed_text(query, cfg)
         scored = []

@@ -2,7 +2,7 @@
 # launchd-fired wrapper: the SNDK minute-bar SIDECAR (09-02).
 # One run = fetch today's 1-min session bars from Schwab (one call, the whole
 # session) and append every COMPLETED minute not already on disk to
-# state/sndk/sndk_price_bars_by_minute/{date}.jsonl. Idempotent, self-healing: a run after a gap
+# data/sndk/sndk_price_bars_by_minute/{date}.jsonl. Idempotent, self-healing: a run after a gap
 # writes the gap. Own clock, own process — the scanner and the reader never wait
 # on it, and it never waits on them.
 # Gated on the market-status helper like run-sndk.sh, PLUS a twelve-minute
@@ -19,7 +19,7 @@ set -e
 [[ "${SNDK_PRO_DISABLE:-0}" == "1" ]] && exit 0
 [[ $(date +%u) -gt 5 ]] && exit 0
 
-cd "${MIRAI_STATION_ROOT}/runtime"
+cd "${MIRAI_STATION_ROOT}/alerts_and_phone_pushes"
 HHMM="$(TZ=America/New_York date +%H%M)"
 # Only the gate's own "closed" (exit 3) skips quietly. Python exits 1 on any
 # uncaught exception, so with "closed" on 1 a broken venv or import read as a
@@ -41,5 +41,5 @@ elif [[ $GATE_RC -ne 0 ]]; then
   exit 1
 fi
 
-cd "${MIRAI_STATION_ROOT}/skills/sndk-pro"
+cd "${MIRAI_STATION_ROOT}/pipelines/sndk_options_scanner_and_reader"
 exec "${MIRAI_STATION_VENV}/bin/python" sndk_bars.py

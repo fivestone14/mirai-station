@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-# Reuse iv-viability's authenticated client (sibling skill in this plugin)
-IV_DIR = Path(__file__).resolve().parent.parent / "iv-viability"
+# Reuse the Schwab client's authenticated session (data_collectors/schwab_market_data_client)
+IV_DIR = Path(__file__).resolve().parents[2] / "data_collectors" / "schwab_market_data_client"
 if str(IV_DIR) not in sys.path:
     sys.path.insert(0, str(IV_DIR))
 

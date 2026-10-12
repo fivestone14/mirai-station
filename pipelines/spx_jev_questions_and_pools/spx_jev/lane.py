@@ -39,7 +39,7 @@ from .archive import ARCHIVE_SUBDIR
 from .cuts import (AVERAGE_30_FLAT_PCT, MINIMUM_TAPE_ZONE_POINTS, MINIMUM_ZONE_POINTS, NEXT_30_FLAT_PCT, NEXT_60_FLAT_PCT, OPEN_FLAT_PCT,
                    TAPE_FLAT_PCT)
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 QUESTIONS_DIR = Path(__file__).resolve().parent.parent / "questions"
 LIVE_DIR = station_paths.JEV_LANE_FOLDERS["live"]   # the live lane's folder under the state dir; no other lane writes its records there, only the shared archive/

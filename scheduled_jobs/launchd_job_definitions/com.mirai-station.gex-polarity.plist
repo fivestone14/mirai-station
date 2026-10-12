@@ -9,7 +9,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-gex-polarity.sh</string>
+    <string>$HOME/mirai_awakening/scheduled_jobs/job_start_scripts/start_job_with_logs.sh gex-polarity run-gex-polarity.sh</string>
   </array>
 
   <!-- After-close GEX polarity + magnet A/B grader (shadow). Runs once a day at
@@ -25,11 +25,6 @@
     <key>Minute</key>
     <integer>15</integer>
   </dict>
-
-  <key>StandardOutPath</key>
-  <string>/tmp/mirai-station.gex-polarity.out</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/mirai-station.gex-polarity.err</string>
 
   <key>EnvironmentVariables</key>
   <dict>

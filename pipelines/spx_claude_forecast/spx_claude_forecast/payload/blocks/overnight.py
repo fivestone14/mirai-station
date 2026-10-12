@@ -1,5 +1,5 @@
 """The overnight block: what the futures did between the prior close and the open, from the station's overnight
-store (``state/market/futures_price_bars_by_minute/{day}.jsonl``, spx_jev.overnight), the night named for the session it leads into.
+store (``data/market/futures_price_bars_by_minute/{day}.jsonl``, spx_jev.overnight), the night named for the session it leads into.
 
 The night is read as the store saved it and cut at the read: only bars finished by the cut count, and every
 price is taken at the last pre-open point, the open (09:30 ET) or the cut itself on a read before it. The move

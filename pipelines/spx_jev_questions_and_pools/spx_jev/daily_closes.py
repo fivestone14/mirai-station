@@ -5,7 +5,7 @@ history, one call a symbol.
     python3 -m spx_jev.daily_closes --through 2026-10-02
 
 Schwab keeps daily candles for years, so one call serves a symbol's whole history and the first run is the
-backfill. One file per symbol under ``state/market/spx_vix_rates_price_bars_by_day/``:
+backfill. One file per symbol under ``data/market/spx_vix_rates_price_bars_by_day/``:
 
     {symbol}.jsonl     one line per session, oldest first, as Schwab served it (the Treasury yield $TNX at ten
                        times the yield, as the market feed keeps it; state_builder.context_value puts it in percent):
@@ -34,7 +34,7 @@ from .feed_log import failure, log
 from .sessions import is_trading_day
 from .state_builder import DEFAULT_STATE_DIR, load_jsonl
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 ET = ZoneInfo("America/New_York")
 JOB = "spx-jev-daily-closes"
@@ -115,7 +115,7 @@ def save(state_dir: Path, through: date, now: datetime | None = None, symbols: t
 def main(argv: list[str] | None = None) -> int:
     from .save_day import last_closed       # save_day runs this step, so its rule for the last closed session is read late
 
-    ap = argparse.ArgumentParser(description="Save each symbol's daily closes, years back, under state/market/spx_vix_rates_price_bars_by_day/.")
+    ap = argparse.ArgumentParser(description="Save each symbol's daily closes, years back, under data/market/spx_vix_rates_price_bars_by_day/.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
     ap.add_argument("--through", help="YYYY-MM-DD, the last session to keep; default the last one that has closed")
     args = ap.parse_args(argv)

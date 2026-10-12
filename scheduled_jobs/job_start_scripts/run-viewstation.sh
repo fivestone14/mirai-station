@@ -16,4 +16,4 @@ set -e
 
 export MIRAI_VIEW_PORT="${MIRAI_VIEW_PORT:-8787}"
 exec "${MIRAI_STATION_VENV}/bin/python" \
-  "${MIRAI_STATION_ROOT}/runtime/viewstation/server.py"
+  "${MIRAI_STATION_ROOT}/screens/desktop_and_phone_server/server.py"

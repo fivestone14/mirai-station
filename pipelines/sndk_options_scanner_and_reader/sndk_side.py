@@ -3,7 +3,7 @@
 A second, smaller document built beside the scene on the same scan. The scene
 is options-first: it is assembled from the diary row, and its clock is the
 2-minute scan. This one is bars-first — it is assembled from the minute-bar
-sidecar (`sndk_bars`, state/sndk/sndk_price_bars_by_minute/<day>.jsonl) and its clock is the bar.
+sidecar (`sndk_bars`, data/sndk/sndk_price_bars_by_minute/<day>.jsonl) and its clock is the bar.
 The two are meant to disagree about what matters, not about the facts.
 
 WHY IT EXISTS. A day's trade map from a working SNDK trader was taken apart in
@@ -60,11 +60,11 @@ from zoneinfo import ZoneInfo
 _SKILL_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
 if str(_SKILL_DIR) not in sys.path:
     sys.path.insert(0, str(_SKILL_DIR))
-_RUNTIME = str(_SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(_SKILL_DIR.parent.parent)             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
-_LEFT_EYE = str(_SKILL_DIR.parent / "mirai-left-eye")
+_LEFT_EYE = str(_SKILL_DIR.parent / "spx_options_scanner")
 if _LEFT_EYE not in sys.path:
     sys.path.insert(0, _LEFT_EYE)
 try:

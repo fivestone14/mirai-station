@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # launchd-fired wrapper for the SPX JEV decision service (record-only: nothing here trades).
-# One tick = read the newest SPX diary row (state/spx/scanner/spx_options_scanner_results_by_scan/, the left-eye scanner's) and what sits
+# One tick = read the newest SPX diary row (data/spx/scanner/spx_options_scanner_results_by_scan/, the left-eye scanner's) and what sits
 # beside it, build the labels, ask JEV when a key is present, write the live lane's records under
-# state/spx/jev/live_lane/ and its card at state/screen_files/phone/jev_live_card.json for the phone. Same gates as run-sndk.sh, so it is quiet outside
+# data/spx/jev/live_lane/ and its card at data/screen_files/phone/jev_live_card.json for the phone. Same gates as run-sndk.sh, so it is quiet outside
 # market hours; a separate job from the scanner, never imported by it.
 # Installed by install-launchd.sh (com.mirai-station.spx-jev, :02 and :32). The opening lane's job
 # (com.mirai-station.spx-jev-tape, every 5 minutes 09:35 to 10:30 ET) runs the same script with
-# `--lane tape`; the service then writes under state/spx/jev/opening_lane/ (and its own card) only.
+# `--lane tape`; the service then writes under data/spx/jev/opening_lane/ (and its own card) only.
 # The gate lets a fire through within 13 minutes after the day's real close: the live job's 16:02 fire
 # (13:02 on a half day), which the service runs as a grade-only close-out.
 # Kill switch: SPX_JEV_DISABLE=1 => exit-0 no-op.
@@ -25,7 +25,7 @@ set -e
 [[ "${SPX_JEV_DISABLE:-0}" == "1" ]] && exit 0
 [[ $(date +%u) -gt 5 ]] && exit 0
 
-cd "${MIRAI_STATION_ROOT}/runtime"
+cd "${MIRAI_STATION_ROOT}/alerts_and_phone_pushes"
 set +e
 "${MIRAI_STATION_VENV}/bin/python" -c "
 import sys
@@ -57,5 +57,5 @@ if [[ -f "$ROWS" ]]; then
   if (( AGE < 20 )); then sleep $(( 20 - AGE )); fi
 fi
 
-cd "${MIRAI_STATION_ROOT}/skills/spx-jev"
-exec "${MIRAI_STATION_VENV}/bin/python" -m spx_jev.service --state-dir "${MIRAI_STATION_ROOT}/state" --send --lane "$LANE"
+cd "${MIRAI_STATION_ROOT}/pipelines/spx_jev_questions_and_pools"
+exec "${MIRAI_STATION_VENV}/bin/python" -m spx_jev.service --state-dir "${MIRAI_STATION_STATE}" --send --lane "$LANE"

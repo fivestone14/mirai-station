@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Interpreter: same venv as sndk_hunter.py, and the shebang cannot pin it — name
-# the venv python explicitly or use runtime/scripts/run-sndk-read.sh.
+# the venv python explicitly or use scheduled_jobs/job_start_scripts/run-sndk-read.sh.
 """
 sndk_read.py — the SNDK chart's live reading. One wake = one read row.
 
@@ -17,7 +17,7 @@ aggregate() stood records the measured reasons. Old read rows keep their
 `arrow` field as history; nothing writes a new one.
 
 The design rests on what four sessions of recorded SNDK rows measured
-(2026-07-28..31, 756 rows, verified against state/sndk/sndk_options_scanner_results_by_scan/):
+(2026-07-28..31, 756 rows, verified against data/sndk/sndk_options_scanner_results_by_scan/):
 
   * 12 of the ~20 fields a "hand it everything" payload would carry are
     CONSTANTS. dex_word is the identical string on 756/756 rows and renders as
@@ -34,8 +34,8 @@ The design rests on what four sessions of recorded SNDK rows measured
     runs and 86 shove runs. Every accuracy claim on this surface is inside the
     noise band. Nothing here is presented as an edge.
 
-Isolation (README doctrine): writes ONLY state/sndk/sndk_options_reader_gates_and_answers_by_run/ and its own
-state files beside it under state/sndk/. Never imports
+Isolation (README doctrine): writes ONLY data/sndk/sndk_options_reader_gates_and_answers_by_run/ and its own
+state files beside it under data/sndk/. Never imports
 watchtower, never touches the SPX diary, never blocks sndk_hunter's tick —
 this is its own launchd job so a slow model call cannot drop a scan.
 
@@ -70,11 +70,11 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 _SKILL_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
-_RUNTIME = str(_SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(_SKILL_DIR.parent.parent)             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
-_LEFT_EYE = str(_SKILL_DIR.parent / "mirai-left-eye")
+_LEFT_EYE = str(_SKILL_DIR.parent / "spx_options_scanner")
 if _LEFT_EYE not in sys.path:
     sys.path.insert(0, _LEFT_EYE)
 
@@ -147,7 +147,7 @@ PAYLOAD_DEFAULT = "strikes" # which builder feeds the model unless the switch sa
                             # obs-5 (2026-09-02): THE MINUTE-BAR SIDECAR. The
                             # session's highs and lows, the opening box, every
                             # box break and the prior sessions' range now read
-                            # state/sndk/sndk_price_bars_by_minute/<day>.jsonl — one completed
+                            # data/sndk/sndk_price_bars_by_minute/<day>.jsonl — one completed
                             # minute per line, written by its own launchd job
                             # (sndk_bars.py) — and fall back to the 2-minute
                             # spots when the file is absent or thin, saying
@@ -723,7 +723,7 @@ def reasoning_on() -> bool:
 def payload_mode() -> str:
     """'strikes' or 'scene': which payload the model reads. The environment
     wins (manual runs), then the control file the pause switch already uses
-    (`state/sndk/sndk_options_reader_reasoning_switch.json`, key "payload"), then the module
+    (`data/sndk/sndk_options_reader_reasoning_switch.json`, key "payload"), then the module
     default. Anything unrecognised reads as the default. The next 120 s tick
     picks up a change; no code edit, no restart."""
     v = os.environ.get("SNDK_PAYLOAD")
@@ -756,7 +756,7 @@ def active_era(built: Optional[bool] = None) -> str:
 def _market_live() -> bool:
     """Authoritative RTH gate, fail-CLOSED (mirrors sndk_hunter._market_live)."""
     try:
-        rt = str(_SKILL_DIR.parent.parent / "runtime")
+        rt = str(_SKILL_DIR.parent.parent / "alerts_and_phone_pushes")
         if rt not in sys.path:
             sys.path.insert(0, rt)
         from watch.intraday import market_status as _ms
@@ -1099,7 +1099,7 @@ def state_for_next_wake(row: dict, scene: Optional[dict] = None,
     """The structural state the wake gate compares against, snapshotted.
 
     THIS EXISTS BECAUSE `prev` IS NOT A DIARY ROW. `read_once` passes the last
-    row that SPENT A CALL, and those live in state/sndk/sndk_options_reader_gates_and_answers_by_run/, whose schema is
+    row that SPENT A CALL, and those live in data/sndk/sndk_options_reader_gates_and_answers_by_run/, whose schema is
     ts / wake / spot / sigma / magnet_band / reading / ... and carries
     none of `call_wall`, `put_wall`, `gamma_flip`, `atm_iv`, `gamma_sign` or
     `gex_views`. A gate reading those off `prev` gets None every time and
@@ -4351,7 +4351,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
             # the Gate Payload: the old magnet, walls and the blocks the model stopped
             # seeing. Its regions rule checks the reply's change words below; the
             # dashboard rebuilds it for its Payload tab. Never written to disk (the
-            # state/sndk_legacy copy stopped 2026-10-11: nothing read it) and never sent.
+            # data/sndk_legacy copy stopped 2026-10-11: nothing read it) and never sent.
             legacy_doc = board.legacy(row, rows, scene_now, v1=scene)
         except Exception as exc:
             print(f"sndk-read :: strikes payload failed, scene payload used: {exc!r}")
@@ -4410,7 +4410,7 @@ def read_once(now: Optional[datetime] = None, force: bool = False,
         # row, not only on the ones that spend a call, so a restart mid-session
         # cannot leave the gate with nothing to measure from.
         "gate": state_for_next_wake(row, scene, rows, scene_now),
-        # a pointer, not the packet: state/sndk/sndk_price_bar_facts_by_read/<day>.jsonl holds it
+        # a pointer, not the packet: data/sndk/sndk_price_bar_facts_by_read/<day>.jsonl holds it
         **({"side_bar": (side.get("as_of") or {}).get("bar_index")} if side else {}),
         "reading": None, "model": None, "wall_s": None, "error": None,
     }

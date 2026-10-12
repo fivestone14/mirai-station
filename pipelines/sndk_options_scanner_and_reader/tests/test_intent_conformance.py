@@ -2,8 +2,8 @@
 against what the code does.
 
 Every test here reads its side of the contract out of a document on each run:
-the README, docs/sndk-payload-inventory.md, the pipeline map
-(runtime/viewstation/static/pipeline.html and the station's _PL_NODES), and the
+the README, docs/research_and_reviews/sndk-payload-inventory.md, the pipeline map
+(screens/desktop_and_phone_server/static/pipeline.html and the station's _PL_NODES), and the
 rulebook the model is sent. Nothing a document lists is copied into this file,
 so a change made to one side alone fails here and the same change made to the
 document and the code together passes. A test that pins a number pins the
@@ -35,13 +35,15 @@ from synth import _REAL_CALL_THE_MODEL, _REAL_CALL_THE_MODEL_V2
 
 ET = ZoneInfo("America/New_York")
 ROOT = Path(__file__).resolve().parents[3]
-if str(ROOT / "runtime") not in sys.path:
-    sys.path.append(str(ROOT / "runtime"))
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
 import station_paths  # noqa: E402  — every store the code names comes from here
-README = (ROOT / "skills" / "sndk-pro" / "README.md").read_text()
-INVENTORY = (ROOT / "docs" / "sndk-payload-inventory.md").read_text()
-PIPELINE = (ROOT / "runtime" / "viewstation" / "static" / "pipeline.html").read_text()
-STATION = (ROOT / "runtime" / "viewstation" / "static" / "index.html").read_text()
+ALERTS = ROOT / "alerts_and_phone_pushes"                    # the watch package's home (the dead-man, the market gate)
+SCREENS_SERVER = ROOT / "screens" / "desktop_and_phone_server"
+README = (ROOT / "pipelines" / "sndk_options_scanner_and_reader" / "README.md").read_text()
+INVENTORY = (ROOT / "docs" / "research_and_reviews" / "sndk-payload-inventory.md").read_text()
+PIPELINE = (SCREENS_SERVER / "static" / "pipeline.html").read_text()
+STATION = (SCREENS_SERVER / "static" / "index.html").read_text()
 
 
 # ---------------------------------------------------------------- the documents
@@ -171,7 +173,7 @@ def _store_units(spec):
 
 def _station_store_folders():
     nodes = STATION[STATION.index("const _PL_NODES=["):STATION.index("const _PL_EDGES=[")]
-    return set(re.findall(r"state/(%s)" % _STORE_UNIT, nodes))
+    return set(re.findall(r"data/(%s)" % _STORE_UNIT, nodes))
 
 
 def _pipeline_note(node):
@@ -635,7 +637,7 @@ def _run_every_writer(state, monkeypatch):
     import lefteye_fetcher
     import sndk_hunter
     import sndk_rag
-    monkeypatch.syspath_prepend(str(ROOT / "runtime"))
+    monkeypatch.syspath_prepend(str(ALERTS))
     from watch.intraday import sndk_deadman
 
     monkeypatch.setenv("MIRAI_STATE_DIR", str(state))
@@ -733,7 +735,7 @@ def test_every_file_sndk_pro_writes_is_in_the_where_it_is_saved_table(tmp_path, 
         if s["dead"] or s["code_free"]:
             assert not any(s["pattern"].match(p) for p in written), f"{s['file']} is written by code"
 
-    skill = ROOT / "skills" / "sndk-pro"
+    skill = ROOT / "pipelines" / "sndk_options_scanner_and_reader"
     for s in live:
         if not s["module"]:
             continue
@@ -742,7 +744,7 @@ def test_every_file_sndk_pro_writes_is_in_the_where_it_is_saved_table(tmp_path, 
             assert any(_written_by(st, s["module"], s["function"]) for st in stacks), (
                 f"{s['file']}: the table names {s['writer']!r}, which did not write it")
         else:
-            source = next((ROOT / "runtime").rglob(f"{s['module']}.py"))
+            source = next(p for folder in (ALERTS, SCREENS_SERVER) for p in folder.rglob(f"{s['module']}.py"))
             text = source.read_text()
             assert re.search(r"^def %s\(" % re.escape(s["function"]), text, re.M), s["writer"]
             assert _store_units(s["file"]) & _folders_named(text), f"{source} never names {s['file']}"
@@ -754,15 +756,15 @@ def test_every_state_folder_the_code_joins_is_on_both_pipeline_diagrams_and_in_t
     README's Store list names them too; any folder the SNDK Pro code, the
     viewstation or the dead-man joins onto the state directory must be on all
     three, including code no test pass reaches."""
-    sources = [*(ROOT / "skills" / "sndk-pro").glob("sndk_*.py"),
-               *(ROOT / "runtime" / "viewstation").glob("*.py"),
-               *(ROOT / "runtime" / "watch" / "intraday").glob("sndk_*.py")]
+    sources = [*(ROOT / "pipelines" / "sndk_options_scanner_and_reader").glob("sndk_*.py"),
+               *SCREENS_SERVER.glob("*.py"),
+               *(ALERTS / "watch" / "intraday").glob("sndk_*.py")]
     joined = {f for f in set().union(*(_folders_named(p.read_text()) for p in sources)) if f.startswith("sndk/") or f == "sndk"}
     stores = _stores()
     table = set().union(*(_store_units(s["file"]) for s in stores if not s["dead"]))
     dead = set().union(*(_store_units(s["file"]) for s in stores if s["dead"]), set())
     readme = README[README.index("* Store"):]
-    readme = set(re.findall(r"`state/(%s)" % _STORE_UNIT, readme[:readme.index("\n* ")]))
+    readme = set(re.findall(r"`data/(%s)" % _STORE_UNIT, readme[:readme.index("\n* ")]))
     assert joined, "no state folder found in the code — the pattern broke"
     assert joined - table == set(), "folders the code uses that the store table does not list"
     assert joined & dead == set(), "a store the table calls dead is still used by the code"
@@ -776,7 +778,7 @@ _WATCHED = datetime(2026, 8, 27, 11, 4, tzinfo=ET)     # a Thursday session; the
 
 def _dead_man(monkeypatch):
     """sndk_deadman, with its pager's channel kept off the station."""
-    monkeypatch.syspath_prepend(str(ROOT / "runtime"))
+    monkeypatch.syspath_prepend(str(ALERTS))
     from watch import push
     from watch.intraday import sndk_deadman
     monkeypatch.setattr(push, "_channel", None)
@@ -829,7 +831,7 @@ def test_the_dead_man_watches_the_reader_on_the_readme_ceilings(tmp_path, monkey
     call_s, guard_s = map(float, re.search(
         r"model call to the (\d+) s timeout and then the reviewer to its (\d+) s",
         re.sub(r"\s+", " ", README)).groups())
-    plist = (ROOT / "runtime" / "launchd" / "com.mirai-station.sndk-deadman.plist").read_text()
+    plist = (ROOT / "scheduled_jobs" / "launchd_job_definitions" / "com.mirai-station.sndk-deadman.plist").read_text()
     assert int(re.search(r"<key>StartInterval</key>\s*<integer>(\d+)</integer>", plist).group(1)) == every * 60
     assert int(first.group(1)) * 60 + int(first.group(2)) == deadman.FIRST_ROW_BY_MIN
     assert silent == base == deadman.SNDK_SILENT_MIN
@@ -1050,15 +1052,15 @@ def test_every_document_states_the_book_cache_life_the_feed_keeps():
 
 # ------------------------------------------------------------------- the runbook
 def test_the_runbook_names_the_schwab_login_and_the_gate_codes_the_code_has():
-    """docs/OPERATIONS.md is what a person follows with a job down. The Schwab
+    """docs/how_to_run/OPERATIONS.md is what a person follows with a job down. The Schwab
     re-login it gives must be a real flag on a real script, pointing at the
     callback address that script uses; and the market gate's codes must be the
     ones every gated launch script acts on, with every gated script listed. A gate
     that also answers in the minutes after the close is named in the runbook with its
     code and its window, and no other gate answers that way."""
-    ops = (ROOT / "docs" / "OPERATIONS.md").read_text()
+    ops = (ROOT / "docs" / "how_to_run" / "OPERATIONS.md").read_text()
     schwab = ops[ops.index("# Schwab"):]
-    script, flag = re.search(r"(skills/[a-z_-]+/[a-z_]+\.py) (--[a-z-]+)", schwab).groups()
+    script, flag = re.search(r"((?:data_collectors|pipelines)/[a-z_]+/[a-z_]+\.py) (--[a-z-]+)", schwab).groups()
     source = (ROOT / script).read_text()
     assert f'add_argument("{flag}"' in source, f"{script} has no {flag}"
     assert re.search(r'DEFAULT_CALLBACK_URL = "([^"]+)"', source).group(1) in schwab
@@ -1068,7 +1070,7 @@ def test_the_runbook_names_the_schwab_login_and_the_gate_codes_the_code_has():
         r"The gates of ([a-z, -]+?) also exit (\d) in the (\d+) minutes after the close", row).groups()
     late = set(re.findall(r"[a-z][a-z-]*", names)) - {"and"}
     assert after not in (live, closed)
-    gated = [p for p in sorted((ROOT / "runtime" / "scripts").glob("run-*.sh")) if "GATE_RC" in p.read_text()]
+    gated = [p for p in sorted((ROOT / "scheduled_jobs" / "job_start_scripts").glob("run-*.sh")) if "GATE_RC" in p.read_text()]
     assert gated, "no launch script gates on the market clock — the pattern broke"
     assert late <= {p.stem.removeprefix("run-") for p in gated}, "the runbook names an after-close gate no script has"
     for p in gated:

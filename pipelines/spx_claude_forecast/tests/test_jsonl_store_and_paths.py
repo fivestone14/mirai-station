@@ -16,13 +16,13 @@ def test_ensure_folders_creates_every_folder_and_the_store_map(tmp_path):
     assert "payloads/{day}.jsonl" in store_map["stores"] and store_map["root"] == str(paths.root)
 
 
-def test_the_state_root_comes_from_the_per_test_override_then_the_station_env_then_the_plugin_tree(monkeypatch, tmp_path):
+def test_the_state_root_comes_from_the_per_test_override_then_the_station_env_then_the_repo(monkeypatch, tmp_path):
     """station_paths.state_root decides: MIRAI_STATE_DIR (the override every suite sets) beats MIRAI_STATION_STATE (env.sh),
-    so a pytest run in a shell that sourced env.sh still writes to its temp folder; with neither, the plugin tree's state."""
+    so a pytest run in a shell that sourced env.sh still writes to its temp folder; with neither, the repo's data/."""
     monkeypatch.delenv("MIRAI_STATION_STATE", raising=False)
     monkeypatch.delenv("MIRAI_STATE_DIR", raising=False)
     monkeypatch.delenv("MIRAI_STATION_ROOT", raising=False)
-    assert forecast_paths.default_state_dir() == forecast_paths.STATION_ROOT / "state"
+    assert forecast_paths.default_state_dir() == forecast_paths.STATION_ROOT / "data"
     monkeypatch.setenv("MIRAI_STATION_STATE", str(tmp_path / "station"))
     assert forecast_paths.default_state_dir() == tmp_path / "station"
     monkeypatch.setenv("MIRAI_STATE_DIR", str(tmp_path / "override"))

@@ -42,9 +42,9 @@ ET = ZoneInfo("America/New_York")
 SKILL_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = SKILL_DIR / "config.json"
 
-_RUNTIME = str(SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(SKILL_DIR.parent.parent)             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 
 # State dir (where the reversion telemetry lives): the station's one resolver.

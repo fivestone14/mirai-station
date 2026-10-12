@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # launchd-fired wrapper: save the overnight futures bars.
 # One run = /ES, /ZN, /BTC and /MBT 1- and 5-minute bars from the prior close to now, merged into
-# state/market/futures_price_bars_by_minute/{date}.jsonl for the night in progress and every night of the last week,
+# data/market/futures_price_bars_by_minute/{date}.jsonl for the night in progress and every night of the last week,
 # a manifest line for each night that changed, and the roll table re-detected
 # (spx_jev/overnight.py). REST only, through the station's shared client; the lob-flow streamer is
 # never touched. Idempotent: a bar on disk is never written twice.
@@ -20,5 +20,5 @@ set -e
 [[ "${SPX_JEV_DISABLE:-0}" == "1" ]] && exit 0
 [[ $(date +%u) -gt 5 ]] && exit 0
 
-cd "${MIRAI_STATION_ROOT}/skills/spx-jev"
-exec "${MIRAI_STATION_VENV}/bin/python" -m spx_jev.overnight --state-dir "${MIRAI_STATION_ROOT}/state"
+cd "${MIRAI_STATION_ROOT}/pipelines/spx_jev_questions_and_pools"
+exec "${MIRAI_STATION_VENV}/bin/python" -m spx_jev.overnight --state-dir "${MIRAI_STATION_STATE}"

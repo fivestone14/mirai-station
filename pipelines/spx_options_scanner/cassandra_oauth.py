@@ -104,7 +104,8 @@ from typing import Optional
 
 import httpx
 
-_IV = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "iv-viability")
+_IV = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                   "data_collectors", "schwab_market_data_client")                    # the Schwab client's vault
 if _IV not in sys.path:
     sys.path.insert(0, _IV)
 import vault
@@ -131,9 +132,9 @@ REDIRECT_PORT = 8765
 REDIRECT_PATH = "/callback"
 
 _HTTP_TIMEOUT = httpx.Timeout(connect=5.0, read=20.0, write=10.0, pool=5.0)
-_RUNTIME = str(Path(__file__).resolve().parents[2] / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(Path(__file__).resolve().parents[2])             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 _LOCK_PATH = station_paths.SCHWAB_SIGN_IN_LOCK.path()
 _HARDENED = False

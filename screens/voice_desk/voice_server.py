@@ -3,7 +3,7 @@
 
 WebSocket on MIRAI_VOICE_PORT (default 8788), binding 0.0.0.0 like the
 viewstation — LAN-open by design, no auth; the perimeter is the LAN
-(runtime/viewstation/README.md documents the stance). An Origin guard keeps
+(screens/desktop_and_phone_server/README.md documents the stance). An Origin guard keeps
 that perimeter honest: WebSockets ignore CORS, so without it any page the
 user visits is inside the LAN too (see _origin_ok). Kill switch:
 MIRAI_VOICE_DISABLE=1 (checked here AND in run-voice.sh — defense in depth).
@@ -90,7 +90,7 @@ def _local_host(host: str) -> bool:
     except ValueError:
         return False
     # ::ffff:8.8.8.8 must be judged as 8.8.8.8 — see the twin note in
-    # runtime/viewstation/server.py.
+    # screens/desktop_and_phone_server/server.py.
     if getattr(ip, "ipv4_mapped", None) is not None:
         ip = ip.ipv4_mapped
     return ip.is_private or ip.is_loopback or (ip.version == 4 and ip in _CGNAT)

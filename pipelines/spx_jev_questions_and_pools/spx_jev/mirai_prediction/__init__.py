@@ -12,6 +12,6 @@ It never touches the live read, the grader, pool_v1 or the phone's call. Its pie
     nightly_job        after the close: build the tables, score the voices, update pool_v2, refit for tomorrow, scoreboard
     scoreboard         the phone card's file: after N reads, how right each voice is and how it compares with the odds
 
-Data lives under state/spx/prediction/ (paths.py), the phone's cards under state/screen_files/phone/, the run logs under
-state/operations/logs/ and the rollback copies under state/archive/. Old store names are mapped once in name_map.py.
+Data lives under data/spx/prediction/ (paths.py), the phone's cards under data/screen_files/phone/, the run logs under
+data/operations/logs/ and the rollback copies under data/archive/. Old store names are mapped once in name_map.py.
 """

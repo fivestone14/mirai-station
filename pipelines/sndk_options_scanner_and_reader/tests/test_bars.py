@@ -273,7 +273,7 @@ def test_the_doctrine_names_the_witness_and_the_era_moved():
     # the eras are the ones the payload inventory records: its newest note names
     # the era the Strikes Payload writes, and obs-5 survives as the legacy
     # scene's era, which the revert switch writes
-    inventory = (Path(__file__).resolve().parents[3] / "docs" / "sndk-payload-inventory.md").read_text()
+    inventory = (Path(__file__).resolve().parents[3] / "docs" / "research_and_reviews" / "sndk-payload-inventory.md").read_text()
     assert SR.ERA == re.search(r"^> \*\*(strikes-\d+) \(", inventory, re.M).group(1)
     assert SR.LEGACY_ERA == re.search(r"\(`sndk_read\.build_scene`, era `([a-z]+-\d+)`\)", inventory).group(1)
     assert SR.ERA != SR.LEGACY_ERA

@@ -15,8 +15,8 @@
   average went and what was called, a picture of the window against the call, and Right or Wrong. A tap on a call
   opens its numbers.
 
-  Reads the live lane's average-price grades (JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON in runtime/station_paths.py)
-  through the viewstation's by-name store route, one row per graded window (skills/spx-jev grade.py, the average-price
+  Reads the live lane's average-price grades (JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON in station_paths.py)
+  through the viewstation's by-name store route, one row per graded window (pipelines/spx_jev_questions_and_pools grade.py, the average-price
   grade): horizon next_30 only, the last row of a read kept. ``from`` is the price the call was made at, ``edge`` its
   flat band either side, ``g`` the 30-minute average's move from it, ``worst`` and ``best`` the window's low and high,
   ``label`` where the average went, ``pick`` the call and ``verdict`` the grade. An open day's line is the day's

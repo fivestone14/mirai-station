@@ -2,11 +2,11 @@
 the options tape, loaded point in time into a Scene. The labels themselves are built by the families
 under ``labels/`` (labels.registry.build_labels).
 
-* Read-only. Rows come from the left-eye scanner's diary ``state/spx/scanner/spx_options_scanner_results_by_scan/{day}.jsonl``
-  (cut down by row_adapter), bars from ``state/market/spx_price_bars_by_minute_scanner_copy/{day}-SPX.json`` for past
-  sessions and ``state/market/spx_price_bars_by_minute/{day}.jsonl`` for today (bars.py), the market around
-  SPX from ``state/market/watchlist_quotes_by_minute/`` and ``watchlist_price_bars_by_minute/`` (market_context.py),
-  the signed 0DTE options tape from the lob-flow collector's ``state/spx/scanner/spx_order_flow_readings_by_minute/{day}.jsonl`` and the SPY volume at wall touches
+* Read-only. Rows come from the left-eye scanner's diary ``data/spx/scanner/spx_options_scanner_results_by_scan/{day}.jsonl``
+  (cut down by row_adapter), bars from ``data/market/spx_price_bars_by_minute_scanner_copy/{day}-SPX.json`` for past
+  sessions and ``data/market/spx_price_bars_by_minute/{day}.jsonl`` for today (bars.py), the market around
+  SPX from ``data/market/watchlist_quotes_by_minute/`` and ``watchlist_price_bars_by_minute/`` (market_context.py),
+  the signed 0DTE options tape from the lob-flow collector's ``data/spx/scanner/spx_order_flow_readings_by_minute/{day}.jsonl`` and the SPY volume at wall touches
   from the row's ``siege`` block. Nothing is written here.
 * Point in time. ``now`` is the row's own timestamp, not the wall clock. Only
   bars that finished before ``now`` count, so a replay never sees the
@@ -27,9 +27,9 @@ from .labels.rulers import SigmaRuler, morning_ruler, tape_unit, vix_at_settled_
 from .row_adapter import SYMBOL, labeller_row
 from .sessions import previous_trading_day, session_close, session_minutes, session_open
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
-# Every folder below is the store's, relative to the data root, as runtime/station_paths.py names it; the day files in them
+# Every folder below is the store's, relative to the data root, as station_paths.py names it; the day files in them
 # are ``{day}.jsonl`` (the map's own rule), so a folder constant and a day name still make a file.
 DEFAULT_STATE_DIR = station_paths.state_root()                                              # the data root when no --state-dir is given
 ROWS_SUBDIR = station_paths.SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN.relative_folder            # the left-eye scanner's SPX diary

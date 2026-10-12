@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mirai Voice — start the SNDK spoken-conversation sidecar (skills/mirai-voice).
+# Mirai Voice — start the SNDK spoken-conversation sidecar (screens/voice_desk).
 # WebSocket on :8788 for the tab's talk button; models (Parakeet ears, Kokoro
 # mouth) warm at boot, Claude rides the subscription via the Agent SDK.
 #
@@ -24,6 +24,6 @@ if [[ "${MIRAI_VOICE_DISABLE:-0}" == "1" ]]; then
 fi
 
 export MIRAI_VOICE_PORT="${MIRAI_VOICE_PORT:-8788}"
-# -u: launchd pipes stdout to /tmp logs; unbuffered so the log is live
+# -u: what it prints goes to the job's log under data/operations/logs/; unbuffered so the log is live
 exec "${MIRAI_STATION_VENV}/bin/python" -u \
-  "${MIRAI_STATION_ROOT}/skills/mirai-voice/voice_server.py"
+  "${MIRAI_STATION_ROOT}/screens/voice_desk/voice_server.py"

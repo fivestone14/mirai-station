@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Install + load all mirai-station LaunchAgents.
-# Symlinks the plists from the plugin tree into ~/Library/LaunchAgents/
-# then bootstraps each via launchctl.
+# Symlinks the plists from scheduled_jobs/launchd_job_definitions/ into ~/Library/LaunchAgents/
+# then bootstraps each via launchctl. Every plist starts its job through
+# start_job_with_logs.sh, so each job's output lands under data/operations/logs/.
 
 set -euo pipefail
 
@@ -27,8 +28,8 @@ PLISTS=(
   # deadman is — an unlisted plist is a job that was built and never hired.
   "com.mirai-station.sndk-bars.plist"
   # The SPX JEV decision service: the same shape beside the left-eye scanner, writing
-  # only its own stores (state/spx/jev/, state/spx/prediction/, state/market/, its cards under
-  # state/screen_files/phone/). The live read at :02 and :32, the opening lane, the premarket lane's
+  # only its own stores (data/spx/jev/, data/spx/prediction/, data/market/, its cards under
+  # data/screen_files/phone/). The live read at :02 and :32, the opening lane, the premarket lane's
   # checkpoints before the open, the four feeds it reads (SPX minute bars, the market around
   # SPX, the day's full bars saved after the close, and the overnight futures saved at 09:26 and 16:20),
   # and the learning store rebuilt from all of them at 16:40.
@@ -44,18 +45,18 @@ PLISTS=(
   "com.mirai-station.spx-jev-overnight.plist"
   "com.mirai-station.spx-jev-store.plist"
   # The Mirai Prediction System's nightly job (17:05 ET): its own tables, voice scores, pool_v2, the learners'
-  # refit for tomorrow and the phone's scoreboard, all under state/spx/prediction/ (the scoreboard card under
-  # state/screen_files/phone/).
+  # refit for tomorrow and the phone's scoreboard, all under data/spx/prediction/ (the scoreboard card under
+  # data/screen_files/phone/).
   "com.mirai-station.spx-jev-prediction-nightly.plist"
   # The headline feed (Phase 3, 2026-10-07): four public RSS feeds polled every 3 minutes, each new item stamped with
-  # the poll's own clock under state/market/news_headlines_by_article/, for the judgment questions. Stdlib only, no Schwab.
+  # the poll's own clock under data/market/news_headlines_by_article/, for the judgment questions. Stdlib only, no Schwab.
   "com.mirai-station.spx-jev-headlines.plist"
   # The spx-claude-forecast recorder (2026-10-09): copies station data before it is overwritten or deleted (the
   # dated options book, siege's SPY minutes, the raw tape, the $VIX1D close, SPX 5-minute bars) into
-  # state/market/ and mirrors the forecast folder and those copies off-disk. 08:40 and 16:25 ET, plus Friday 17:30 ET.
+  # data/market/ and mirrors the forecast folder and those copies off-disk. 08:40 and 16:25 ET, plus Friday 17:30 ET.
   "com.mirai-station.spx-claude-forecast-recorder.plist"
   # Its nightly job (17:15 ET weekdays): seals what happened after every read, rebuilds the library of past
-  # moments, scores every forecaster and writes the scorecard, all under state/spx/claude_forecast/.
+  # moments, scores every forecaster and writes the scorecard, all under data/spx/claude_forecast/.
   "com.mirai-station.spx-claude-forecast-nightly.plist"
   "com.mirai-station.voice.plist"
 )
@@ -85,7 +86,7 @@ bootstrap_with_retry() {
 }
 
 for p in "${PLISTS[@]}"; do
-  src="${MIRAI_STATION_ROOT}/runtime/launchd/$p"
+  src="${MIRAI_STATION_ROOT}/scheduled_jobs/launchd_job_definitions/$p"
   dst="${TARGET_DIR}/$p"
   label="$(basename "$p" .plist)"
 

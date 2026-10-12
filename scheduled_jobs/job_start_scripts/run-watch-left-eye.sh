@@ -18,7 +18,7 @@ set +e
 source "${SCRIPT_DIR}/env.sh"
 set -e
 
-cd "${MIRAI_STATION_ROOT}/runtime"
+cd "${MIRAI_STATION_ROOT}/alerts_and_phone_pushes"
 
 # Phase 1 — scan (RTH only). A scan failure must not block the alert pass.
 # Only the gate's own "closed" (exit 3) skips the scan quietly. Python exits 1 on
@@ -29,7 +29,7 @@ set +e
 GATE_RC=$?
 set -e
 if [[ $GATE_RC -eq 0 ]]; then
-  "${MIRAI_STATION_VENV}/bin/python" "${MIRAI_STATION_ROOT}/skills/mirai-left-eye/hunter.py" || true
+  "${MIRAI_STATION_VENV}/bin/python" "${MIRAI_STATION_ROOT}/pipelines/spx_options_scanner/hunter.py" || true
 elif [[ $GATE_RC -eq 3 ]]; then
   echo "mirai-left-eye :: market closed — skipping scan"
 else

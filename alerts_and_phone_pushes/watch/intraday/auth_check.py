@@ -14,7 +14,7 @@ What it touches:
   - `push_ntfy` to send it.
 
 Run by hand:   python -m watch.intraday.auth_check [--force]
-Run by launchd: same, once per day (see runtime/launchd/com.mirai-station.auth-watch.plist)
+Run by launchd: same, once per day (see scheduled_jobs/launchd_job_definitions/com.mirai-station.auth-watch.plist)
 """
 from __future__ import annotations
 
@@ -32,8 +32,8 @@ def _load_vault():
     Returns the module, or None if it can't be imported (e.g. deps/venv missing)
     — in which case we treat auth state as unknown and still ping.
     """
-    # parents[3] = plugin root (this file is runtime/watch/intraday/auth_check.py)
-    skill_dir = Path(__file__).resolve().parents[3] / "skills" / "iv-viability"
+    # parents[3] = plugin root (this file is alerts_and_phone_pushes/watch/intraday/auth_check.py)
+    skill_dir = Path(__file__).resolve().parents[3] / "data_collectors" / "schwab_market_data_client"
     if str(skill_dir) not in sys.path:
         sys.path.insert(0, str(skill_dir))
     try:
@@ -79,8 +79,8 @@ CassandraPing = namedtuple("CassandraPing", "title message priority tags")
 def _load_native():
     """Import the native GEX feed (sibling skill) for its `probe_token` health check.
     Returns the module, or None if it can't be imported (deps missing, etc.)."""
-    # parents[3] = plugin root (this file is runtime/watch/intraday/auth_check.py)
-    left_eye = Path(__file__).resolve().parents[3] / "skills" / "mirai-left-eye"
+    # parents[3] = plugin root (this file is alerts_and_phone_pushes/watch/intraday/auth_check.py)
+    left_eye = Path(__file__).resolve().parents[3] / "pipelines" / "spx_options_scanner"
     if str(left_eye) not in sys.path:
         sys.path.insert(0, str(left_eye))
     try:

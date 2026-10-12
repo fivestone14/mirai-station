@@ -19,7 +19,7 @@ enters through the gamma × fill_weight product in the pin — gamma collapses o
 strikes the market has left, fills concentrate near the money.
 
 Every watch tick is a FRESH process, so the ledger persists to
-state/spx/scanner/ (spx_options_strike_volume_weights_state.json for native_SPX,
+data/spx/scanner/ (spx_options_strike_volume_weights_state.json for native_SPX,
 spy_options_strike_volume_weights_state.json for proxy_SPY). Day rollover reseeds (0DTE volume is per-day;
 the first scan of a day seeds weight = cumulative volume, which equals the legacy
 read at the open and diverges usefully after). All IO is best-effort: any failure
@@ -37,9 +37,9 @@ from typing import Optional
 HALFLIFE_MIN = 45.0        # dial: fill relevance half-life (grade via magnet A/B)
 _PRUNE_BELOW = 0.5         # drop decayed keys lighter than half a contract
 _SKILL_DIR = Path(__file__).resolve().parent
-_RUNTIME = str(_SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(_SKILL_DIR.parent.parent)             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 _DEFAULT_DIR = station_paths.SPX_OPTIONS_STRIKE_VOLUME_WEIGHTS_STATE.folder()    # both ledgers' files sit in one folder
 

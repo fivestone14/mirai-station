@@ -217,7 +217,7 @@ def load_context_bars_by_day(state_dir: Path | str, before_day: str, sessions: i
 
 
 def load_spy_minute_volumes(state_dir: Path | str, day: str) -> dict[int, float]:
-    """SPY's volume per minute of the day as the siege box keeps it (state/spx/scanner/spy_volume_baselines_state.json, a minute keyed by its
+    """SPY's volume per minute of the day as the siege box keeps it (data/spx/scanner/spy_volume_baselines_state.json, a minute keyed by its
     start in minutes after midnight ET, 570 = 09:30): the same figures as the saved minute bars, live and after the save."""
     path = Path(state_dir) / SPY_VOLUMES
     if not path.exists():

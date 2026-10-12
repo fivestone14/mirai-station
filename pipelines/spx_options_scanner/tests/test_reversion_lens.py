@@ -16,9 +16,9 @@ from zoneinfo import ZoneInfo  # noqa: E402
 import reversion_lens as R  # noqa: E402
 import lefteye_gex_box as G  # noqa: E402
 
-_RUNTIME = str(Path(__file__).resolve().parents[3] / "runtime")
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(Path(__file__).resolve().parents[3])
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402  — every store the code names comes from here
 
 NOW = datetime.datetime(2026, 6, 23, 10, 30, tzinfo=ZoneInfo("America/New_York"))
@@ -294,7 +294,7 @@ def test_gex_heatmap_splits_green_above_flip_red_below_and_marks_spot():
     assert "🟩" in strip and "🟥" in strip          # both gamma zones present
     assert "🔵" in strip                             # spot is marked
     assert "🟨" in strip                             # flip transition cell
-    # band bounds carry the standard notation (docs/gw-vocab.md): GWp/GWc
+    # band bounds carry the standard notation (docs/glossary/gw-vocab.md): GWp/GWc
     assert strip.startswith("**GWp 7300**") and strip.endswith("**GWc 7450**")
 
 

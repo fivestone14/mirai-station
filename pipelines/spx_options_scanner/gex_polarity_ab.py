@@ -11,9 +11,9 @@ scores higher is the correct polarity. It also grades MAGNET GRAVITATION per eng
 (closest approach of the price path to the stated magnet, in σ) — the head-to-head
 that settles which engine's pin is real when the two disagree.
 
-Read-only vs the live loop: reads state/spx/scanner/spx_options_scanner_results_by_scan/{day}.jsonl + 1-min bars; places
+Read-only vs the live loop: reads data/spx/scanner/spx_options_scanner_results_by_scan/{day}.jsonl + 1-min bars; places
 no orders itself, but its promotion_gate() is THE earn-trust check consumed by
-reversion_lens.live_allowed(). Persists its verdicts to the state/spx/scanner/spx_options_scanner_grades_by_day.jsonl
+reversion_lens.live_allowed(). Persists its verdicts to the data/spx/scanner/spx_options_scanner_grades_by_day.jsonl
 ledger, one row per day, so the record accumulates instead of scrolling away (a per-day
 polarity-{day}.json holding the same row was written beside it until 2026-10-11).
 Scheduled after close via com.mirai-station.gex-polarity; manual:
@@ -32,9 +32,9 @@ from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 SKILL_DIR = Path(__file__).resolve().parent
-_RUNTIME = str(SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(SKILL_DIR.parent.parent)             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 TICKERS = ("SPX",)
 ENGINES = ("gex_views", "gex_theta",   # SPY-proxy GexBox · native ThetaData

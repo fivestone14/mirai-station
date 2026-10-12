@@ -1,7 +1,7 @@
 """The options-flow family: what is trading in today's 0DTE book and who is taking which side (options.*), and
 SPY's own tape and quote (volume.*, liquidity.*).
 
-The 0DTE tape labels read the lob-flow collector's raw tape, ``state/market/spx_same_day_options_raw_day_folders/{day}/tape.jsonl``
+The 0DTE tape labels read the lob-flow collector's raw tape, ``data/market/spx_same_day_options_raw_day_folders/{day}/tape.jsonl``
 (``tape.jsonl.gz`` once the collector archives the day): one line per 0DTE SPXW trade with the quote it
 printed into, on the strikes the collector watches: 10 either side of price for each right, plus the book's
 magnet and walls. That set moves with price, so the tape is the near-price 0DTE trading, never a far print.
@@ -15,8 +15,8 @@ its own; its premium still counts as premium traded. Reading 20 prior sessions' 
 each) takes some 15 seconds a read: only the lines inside the window asked for are parsed.
 
 The other sources: the collector's quote sweeps (``sweeps.jsonl`` beside the tape) and its record
-(``state/spx/scanner/spx_order_flow_readings_by_minute/{day}.jsonl``: the refill test and SPY's quote), the diary's same-day volume by
-strike, and SPY's volume by minute as the siege box keeps it (``state/spx/scanner/spy_volume_baselines_state.json``), since the market-context
+(``data/spx/scanner/spx_order_flow_readings_by_minute/{day}.jsonl``: the refill test and SPY's quote), the diary's same-day volume by
+strike, and SPY's volume by minute as the siege box keeps it (``data/spx/scanner/spy_volume_baselines_state.json``), since the market-context
 job saves SPY's quote live but not its minute bars. Every one is read point in time and ranked against the same
 minutes of up to the last 20 prior sessions, needing 10 of them (ranks.rank_sessions), never a fixed size: what a
 large trade is, which way premium leaned, how far the swing to calls went, how wide SPY's quote is, how near a
@@ -47,7 +47,7 @@ from .rulers import estimated_note, sigma_anchor
 from .vol_sources import TAPE_LINE_START, TAPE_RAW_SUBDIR, tape_path
 from .words import pct, plural, sig, signed
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 LABELS = ("options.turnover", "options.call_put_split", "options.aggressor_side", "options.new_activity",
           "options.big_prints_10", "options.call_put_shift_10m", "options.flow_lean_30", "options.premium_burst_5m",
@@ -742,7 +742,7 @@ def _spy_quote(scene: Scene, ls: LabelSet) -> None:
 
 @dataclass(frozen=True)
 class QuoteSweeps:
-    """A day's minute-by-minute sweeps of the 0DTE quotes (``state/market/spx_same_day_options_raw_day_folders/{day}/sweeps.jsonl``): when each
+    """A day's minute-by-minute sweeps of the 0DTE quotes (``data/market/spx_same_day_options_raw_day_folders/{day}/sweeps.jsonl``): when each
     was taken, and the 25-40 delta bucket's median displayed size and spread where it held enough contracts."""
     stamps: list[datetime]
     near: list[tuple[datetime, float, float]]
@@ -777,7 +777,7 @@ def _read_sweeps(path: str, mtime_ns: int) -> QuoteSweeps:
 
 @dataclass(frozen=True)
 class CollectorRecord:
-    """A day's lob-flow record (``state/spx/scanner/spx_order_flow_readings_by_minute/{day}.jsonl``), oldest first: the refill test's block per
+    """A day's lob-flow record (``data/spx/scanner/spx_order_flow_readings_by_minute/{day}.jsonl``), oldest first: the refill test's block per
     reading, and SPY's quoted spread and displayed size per reading (the control's baseline rows)."""
     defense: list[tuple[datetime, dict]]
     spy: list[tuple[datetime, float, float]]

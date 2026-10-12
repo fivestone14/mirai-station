@@ -1,6 +1,6 @@
 """
 siege_bridge.py — the ONLY coupling point between Mirai and the SIEGE box at
-skills/siege (underlying SPY volume EFFORT at dealer-gamma wall touches).
+data_collectors/spy_volume_at_walls_sensor (underlying SPY volume EFFORT at dealer-gamma wall touches).
 Everything mirai-specific lives here: the sys.path shim, the state dir, the
 SPX scope gate, and the one telemetry attach the 5-min tick makes. The
 package itself never imports mirai code.
@@ -8,10 +8,10 @@ package itself never imports mirai code.
 =========================== THE REVERSED SIGN =============================
 Backtest sweep 2026-07 (n=168 touches, 11 of 13 days): HIGH volume at a
 wall touch predicts the wall BREAKS (held 39% vs 54% for quiet touches).
-SIEGE = expect break; QUIET = expect hold. See skills/siege/README.md.
+SIEGE = expect break; QUIET = expect hold. See data_collectors/spy_volume_at_walls_sensor/README.md.
 ===========================================================================
 
-Shadow with one reader: the box writes to its own store (the wall sensor's files under state/spx/scanner/) and
+Shadow with one reader: the box writes to its own store (the wall sensor's files under data/spx/scanner/) and
 this bridge attaches one "siege" diary field. Since wt-7 (2026-07-18) the
 Watchtower's build_payload reads that field into siege_effort_at_walls —
 the wording and the era bump live in watchtower.py, never here.
@@ -27,13 +27,13 @@ from pathlib import Path
 from typing import Optional
 
 SKILL_DIR = Path(__file__).resolve().parent
-_SIEGE = str(SKILL_DIR.parent / "siege")
+_SIEGE = str(SKILL_DIR.parents[1] / "data_collectors" / "spy_volume_at_walls_sensor")
 if _SIEGE not in sys.path:
     sys.path.insert(0, _SIEGE)
 
-_RUNTIME = str(SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(SKILL_DIR.parent.parent)             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 
 STATE_DIR = station_paths.state_root()          # the data root; SiegeStore finds the sensor's files under it

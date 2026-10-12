@@ -23,7 +23,7 @@ Behavior notes (deliberate, v1):
     are excluded here (belt and suspenders: whole-day rows carry a null
     time_et, so the truthy-time filter drops them too).
   * Calendar coupling is SOFT and READ-ONLY: the single WRITER of
-    state/market/market_event_calendar_by_event.json stays lob-flow's FileCalendar (it seeds the
+    data/market/market_event_calendar_by_event.json stays lob-flow's FileCalendar (it seeds the
     file on first run). This module only reads it — at most ONE file read per
     ET day (module-level cache) — and a missing/corrupt file simply means
     "no event day". Never writes, never repairs, never networks.
@@ -46,9 +46,9 @@ from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 SKILL_DIR = Path(__file__).resolve().parent
-_RUNTIME = str(SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(SKILL_DIR.parent.parent)             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 
 # Macro-print allowlist + impact rank (multi-event day: max rank wins the read).
@@ -87,7 +87,7 @@ def reset_calendar_cache() -> None:
 
 
 def load_calendar(path=None) -> list:
-    """READ-ONLY view of the shared event calendar (state/market/market_event_calendar_by_event.json).
+    """READ-ONLY view of the shared event calendar (data/market/market_event_calendar_by_event.json).
 
     The single WRITER of that file stays lob-flow's FileCalendar — this is a
     soft read-only data coupling: we never create, seed, or repair the file.

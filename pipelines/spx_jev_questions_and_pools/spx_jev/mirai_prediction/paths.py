@@ -1,4 +1,4 @@
-"""Where the Mirai Prediction System keeps its data, every file named in runtime/station_paths.py.
+"""Where the Mirai Prediction System keeps its data, every file named in station_paths.py.
 
 This system's folder is ``<state_dir>/spx/prediction/`` (``data_root``); its stores sit in it, and the few files it
 writes for other parts of the station sit where those parts look (``state_dir_of`` finds the data root again from the
@@ -31,9 +31,9 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-_RUNTIME = str(Path(__file__).resolve().parents[4] / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(Path(__file__).resolve().parents[4])             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 
 FOLDER = station_paths.PREDICTION_FOLDER     # this system's folder under the data root: spx/prediction

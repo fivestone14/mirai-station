@@ -5,14 +5,14 @@
 # this file points at that pin file rather than restating it, so CI inherits a
 # version bump instead of drifting away from one.
 
--r ../skills/iv-viability/requirements.txt   # httpx, keyring, cryptography, filelock, numpy, pytest, schwab-py
+-r ../data_collectors/schwab_market_data_client/requirements.txt   # httpx, keyring, cryptography, filelock, numpy, pytest, schwab-py
 
 # Not pinned anywhere else: the voice box is wired by venv-bootstrap.sh on the
 # mini rather than by a requirements file of its own.
 rapidfuzz                                    # the intent matcher, imported at module level
 websockets                                   # voice_server's transport
 
-# The spx-jev learning store (skills/spx-jev/spx_jev/store.py), pinned in that box's pyproject.toml too. Its
+# The spx-jev learning store (pipelines/spx_jev_questions_and_pools/spx_jev/store.py), pinned in that box's pyproject.toml too. Its
 # tests skip where these are missing, so CI installs them to run the tests rather than skip them.
 duckdb>=1.5,<2                               # the prediction system's readers of the store's Parquet (mirai_prediction/)
 pyarrow>=24,<25                              # the Parquet files

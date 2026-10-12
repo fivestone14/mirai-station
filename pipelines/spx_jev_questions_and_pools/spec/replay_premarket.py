@@ -4,7 +4,7 @@
     python3 spec/replay_premarket.py --out DIR --workers 8            # the nights spread over 8 processes
     python3 spec/replay_premarket.py --out DIR --report FILE --from 2026-07-06 --to 2026-09-25 --state-dir DIR
 
-Every night in the overnight store (state/market/futures_price_bars_by_minute/, overnight.py) is read again at each of its
+Every night in the overnight store (data/market/futures_price_bars_by_minute/, overnight.py) is read again at each of its
 day's checkpoints (premarket.checkpoints) the way the lane reads it: the scene before the open
 (premarket.make_premarket_scene), every label and gate (labels.registry.build_labels), and the requests
 the lane would send (ask.build_requests) with the questions not due at the read left out (schedule.not_due);
@@ -13,7 +13,7 @@ replayed as live whatever its status, so a dark question is judged before it goe
 answer here is the code's: the verdict on its own label's figure (the label whose verdict is one of its
 options). JEV is never asked.
 
-What happened next comes from the SPX session bars (state/market/spx_price_bars_by_minute_scanner_copy/{day}-SPX.json): the gap from
+What happened next comes from the SPX session bars (data/market/spx_price_bars_by_minute_scanner_copy/{day}-SPX.json): the gap from
 the prior close to the settled open (the 09:34 close), the move from the settled open to 09:44, 10:04,
 10:34 and the close, and the range of the first 30 and 60 minutes after it, each in the pre-open ruler
 the day's reads stamped. A question is judged on the outcome its answers speak to:

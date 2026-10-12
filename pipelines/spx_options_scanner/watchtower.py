@@ -64,12 +64,12 @@ from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 SKILL_DIR = Path(__file__).resolve().parent
-_RUNTIME = str(SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(SKILL_DIR.parent.parent)             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 STATE_DIR = station_paths.state_root()
-CONFIG = SKILL_DIR.parent.parent / "runtime" / "watch" / "config" / "limits-and-cooldowns.json"
+CONFIG = SKILL_DIR.parents[1] / "settings" / "limits-and-cooldowns.json"
 
 # --- knobs -------------------------------------------------------------------
 PROMPT_VERSION = "wt-11"    # bump on ANY prompt change — a bump resets the record
@@ -545,7 +545,7 @@ def _event_clock(now: datetime, t: dict) -> dict | None:
         if not horizon:
             return {"kind": None,
                     "note": "event calendar has NO upcoming entries — the tower is blind to "
-                            "scheduled prints until state/market/market_event_calendar_by_event.json is re-seeded."}
+                            "scheduled prints until data/market/market_event_calendar_by_event.json is re-seeded."}
     except Exception:
         pass
     return None
@@ -722,7 +722,7 @@ def _speed_words(speed: dict) -> dict | None:
 def _gw_cluster_read(net_by_strike, spot, sigma) -> tuple[dict, str | None]:
     """wt-8 doctrine gaps (2026-07-25) — the GW cluster system, finally in the
     tower's room. Dominance tiers and the doctrine's CLEAN? gate lived in
-    gw_vocab (docs/gw-vocab.md) and the viewstation, but the payload's walls
+    gw_vocab (docs/glossary/gw-vocab.md) and the viewstation, but the payload's walls
     arrived as bare σ-levels: the tower could not tell a ''' fortress from a '
     picket, and it had no way to see a contradictory hierarchy at all.
 

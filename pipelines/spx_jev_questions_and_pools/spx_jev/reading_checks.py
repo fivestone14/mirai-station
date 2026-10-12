@@ -14,7 +14,7 @@ pick is checked against it; a question whose labels name no option, or more than
 is a misreading worth rewording the question or the label for (the put tilt's steep-for-flat on 09-28 was
 one), never a grade: nothing here feeds the weights, the sums or the phone.
 
-Reads ``state/spx/jev/jev_reads_and_grades_by_event/{day}.jsonl`` and writes nothing.
+Reads ``data/spx/jev/jev_reads_and_grades_by_event/{day}.jsonl`` and writes nothing.
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from pathlib import Path
 from .ask import get_path, paths_in, pick
 from .state_builder import DEFAULT_STATE_DIR
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 ARCHIVE = station_paths.JEV_READS_AND_GRADES_BY_EVENT.relative_folder
 MIN_PHRASE_CHARS = 12          # a shorter lead of a description ("up", "flat") names nothing on its own

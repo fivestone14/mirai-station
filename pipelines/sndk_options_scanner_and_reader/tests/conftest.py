@@ -12,12 +12,12 @@ import pytest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _SKILL = os.path.dirname(_HERE)
-_SKILLS = os.path.dirname(_SKILL)
+_PIPELINES = os.path.dirname(_SKILL)
 sys.path.insert(0, _SKILL)
-sys.path.insert(0, os.path.join(_SKILLS, "mirai-left-eye"))
-_RUNTIME = os.path.join(os.path.dirname(_SKILLS), "runtime")   # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+sys.path.insert(0, os.path.join(_PIPELINES, "spx_options_scanner"))
+_REPO_ROOT = os.path.dirname(_PIPELINES)   # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 
 import station_paths  # noqa: E402
 import lefteye_fill_ledger  # noqa: E402

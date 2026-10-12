@@ -21,8 +21,8 @@ WHAT ONE RECORD IS — one entry, two faces:
      ranked by meaning at query time.
 
 TIERS:
-  day    state/sndk/sndk_options_reader_notes_by_read/{date}.jsonl — per-wake slice records, plus the
-         DIARY (state/sndk/sndk_options_scanner_results_by_scan) as the raw numeric series the `series`
+  day    data/sndk/sndk_options_reader_notes_by_read/{date}.jsonl — per-wake slice records, plus the
+         DIARY (data/sndk/sndk_options_scanner_results_by_scan) as the raw numeric series the `series`
          command reads. Slices roll up into a day summary with a sentiment read.
   month  sndk_options_reader_session_summaries_by_day.jsonl (one row per session) +
          sndk_options_reader_terrain_state.json (standing walls, recurring battle lines, stock character) — context, never the trigger.
@@ -34,7 +34,7 @@ overlap otherwise; the output names which ranker ran. Corpus per query is tens
 of sentences, so survivors are embedded at query time — no vector store to
 drift out of sync with the rows.
 
-Isolation: writes ONLY its notes, summaries and terrain files under state/sndk/. Reads the SNDK diary and reads
+Isolation: writes ONLY its notes, summaries and terrain files under data/sndk/. Reads the SNDK diary and reads
 store; never touches any SPX store. Called two ways:
   * imported by sndk_read (record_slice — fail-open, must never cost a read)
   * as the allow-listed CLI the VOICE desk may run (mirai-voice convo._RAG_CMD);
@@ -64,11 +64,11 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 _SKILL_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
-_RUNTIME = str(_SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(_SKILL_DIR.parent.parent)             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
-_LEFT_EYE = str(_SKILL_DIR.parent / "mirai-left-eye")
+_LEFT_EYE = str(_SKILL_DIR.parent / "spx_options_scanner")
 if _LEFT_EYE not in sys.path:
     sys.path.insert(0, _LEFT_EYE)
 
@@ -580,9 +580,9 @@ def _rank(query: str, records: list[dict]) -> tuple[list[dict], str]:
         # progress bars would leak into the reading model's tool output
         os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
         os.environ.setdefault("TQDM_DISABLE", "1")
-        sys.path.insert(0, str(_SKILL_DIR.parent / "mirai-right-eye"))
+        sys.path.insert(0, str(_SKILL_DIR.parent / "shared_text_embedder_for_note_search"))
         from embed import embed_text                      # noqa: PLC0415
-        cfg = json.loads((_SKILL_DIR.parent / "mirai-right-eye" /
+        cfg = json.loads((_SKILL_DIR.parent / "shared_text_embedder_for_note_search" /
                           "config.json").read_text())
         qv = embed_text(query, cfg)
         scored = []

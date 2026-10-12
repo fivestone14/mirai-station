@@ -14,7 +14,7 @@ while persisting in the market. This sidecar pulls exactly two extra bands:
 BLAST-RADIUS CONTRACT (the whole point of the design):
   * separate PROCESS  — runs from its own launchd job (05:17 PT pre-open), never
     inside a scan tick; the scan side is a cache-ONLY file read (`diary_summary`).
-  * separate STORE    — state/market/spx_monthly_quarterly_open_interest_latest.json; nothing here ever touches
+  * separate STORE    — data/market/spx_monthly_quarterly_open_interest_latest.json; nothing here ever touches
     native_gex_feed's chain cache or the contracts list build_views consumes, so
     gamma_flip / regime / shove / magnet keep their exact input distribution.
   * MAGNITUDE ONLY    — unsigned OI / gamma-mass / vanna-mass; the schema carries
@@ -48,9 +48,9 @@ import atomic_io
 
 _ET = ZoneInfo("America/New_York")
 _SKILL_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
-_RUNTIME = str(_SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(_SKILL_DIR.parent.parent)             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 
 # Strike windows per band (fractions of spot). Monthlies: ±12% core with the put
@@ -91,7 +91,7 @@ def _holidays(year: int) -> frozenset:
     Fail-open: an import problem returns an empty set — worst case the nightly
     job fires on a holiday; an empty result keeps the previous book untouched."""
     try:
-        rt = str(_SKILL_DIR.parent.parent / "runtime")
+        rt = str(_SKILL_DIR.parent.parent / "alerts_and_phone_pushes")
         if rt not in sys.path:
             sys.path.insert(0, rt)
         from watch.intraday import market_status as _ms
@@ -469,7 +469,7 @@ def _quarterly_due(now: datetime, prev: dict) -> bool:
 
 def pull(now: Optional[datetime] = None) -> dict:
     """Nightly job entry: ONE batched cass_market_run for both monthlies (+ the
-    quarter-end when due), post-processed into state/market/spx_monthly_quarterly_open_interest_latest.json with
+    quarter-end when due), post-processed into data/market/spx_monthly_quarterly_open_interest_latest.json with
     uw_periscope store semantics. Returns a status dict; NEVER raises."""
     now = now or datetime.now(_ET)
     today = now.astimezone(_ET).date() if now.tzinfo else now.date()

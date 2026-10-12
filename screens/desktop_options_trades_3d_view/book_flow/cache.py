@@ -26,9 +26,9 @@ from .sources import spx_tape_board
 from .track import spot_track
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[3]
-_RUNTIME = str(PLUGIN_ROOT / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(PLUGIN_ROOT)             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 
 STATE = station_paths.state_root()

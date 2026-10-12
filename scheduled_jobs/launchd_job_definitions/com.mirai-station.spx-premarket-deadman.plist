@@ -9,7 +9,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-spx-premarket-deadman.sh</string>
+    <string>$HOME/mirai_awakening/scheduled_jobs/job_start_scripts/start_job_with_logs.sh spx-premarket-deadman run-spx-premarket-deadman.sh</string>
   </array>
 
   <!-- Every 5 minutes. A pre-market read is owed 15 minutes after its checkpoint (the lane's
@@ -23,11 +23,6 @@
        are the lane's card and read file. -->
   <key>StartInterval</key>
   <integer>300</integer>
-
-  <key>StandardOutPath</key>
-  <string>/tmp/mirai-station.spx-premarket-deadman.out</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/mirai-station.spx-premarket-deadman.err</string>
 
   <key>EnvironmentVariables</key>
   <dict>

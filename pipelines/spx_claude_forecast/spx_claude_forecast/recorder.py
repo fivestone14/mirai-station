@@ -2,7 +2,7 @@
 
 Every task is idempotent (it copies only what is missing, and only for sessions that have finished, so a
 run by hand mid-session never freezes half a day) and reads the station's stores read-only; the copies
-land under ``market/`` (runtime/station_paths.py names each). Run by the ``spx-claude-forecast-recorder`` launchd job
+land under ``market/`` (station_paths.py names each). Run by the ``spx-claude-forecast-recorder`` launchd job
 at 08:40 and 16:25 ET (after the 08:17 ET dated-book fetch and after the close), plus Friday 17:30 ET after
 the Friday book refresh; it fires on weekends too, as a second chance at Friday's book before Monday's
 fetch overwrites it. The two Schwab tasks (spx_5m, leveraged_funds) stay out of market hours, where the login

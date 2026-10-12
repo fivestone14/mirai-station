@@ -4,12 +4,12 @@
 
 set -u
 
-# Resolve plugin root from this script's location (../..)
+# Resolve the repo root from this script's location (../..: scheduled_jobs/job_start_scripts/env.sh)
 MIRAI_STATION_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export MIRAI_STATION_ROOT
 export MIRAI_STATION_VENV="${HOME}/.local/share/mirai-station/venv"
-export MIRAI_STATION_STATE="${MIRAI_STATION_ROOT}/state"
-export MIRAI_STATION_LOGS="${MIRAI_STATION_STATE}/operations/logs/station_runtime_log"   # runtime/station_paths.py STATION_RUNTIME_LOG
+export MIRAI_STATION_STATE="${MIRAI_STATION_ROOT}/data"                        # the data root (station_paths.py: <repo>/data)
+export MIRAI_STATION_LOGS="${MIRAI_STATION_STATE}/operations/logs/station_runtime_log"   # station_paths.py STATION_RUNTIME_LOG
 
 # Force New York time for market-hour gates
 export TZ="America/New_York"

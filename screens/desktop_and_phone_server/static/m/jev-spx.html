@@ -9,17 +9,17 @@
   The SPX forecast, the phone's home page (/m since the redesign of
   2026-10-10): the decision card over the SPX service's cards. Reads the
   three lanes' cards (JEV_LIVE_CARD, JEV_OPENING_CARD, JEV_PREMARKET_CARD in
-  runtime/station_paths.py, under screen_files/phone/) through the
+  station_paths.py, under screen_files/phone/) through the
   viewstation's by-name store route, and the live
   SPX print through its existing /api/spot route (one cached Schwab quote),
   so the only line in server.py for it is the one that serves it at /m. All
-  three cards are written by skills/spx-jev (its own launchd jobs), never by
+  three cards are written by pipelines/spx_jev_questions_and_pools (its own launchd jobs), never by
   the scan. The Android shell opens it as /m?user=will; the query is the
   shell's and nothing here reads it.
 
   Two modes in the session, switched by the clock and the cards alone, and
   the pre-market card before them.
-  The opening lane (skills/spx-jev, --lane tape) reads every 5 minutes through
+  The opening lane (pipelines/spx_jev_questions_and_pools, --lane tape) reads every 5 minutes through
   the first hour; while today's newest lane call is still open, that call leads
   the page and the 30-minute call folds to one line. Once it closes, the
   30-minute call leads again and the opening folds to its score for the day.
@@ -716,7 +716,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 <div class="od" id="od" role="status" hidden></div>
 <div id="state"></div>
 <main id="main" style="display:flex;flex-direction:column;gap:12px"></main>
-<!-- Claude's own read (skills/spx-claude-forecast, 2026-10-10): after every half-hour read Claude answers, apart from the
+<!-- Claude's own read (pipelines/spx_claude_forecast, 2026-10-10): after every half-hour read Claude answers, apart from the
      call above and never mixed into it, with its up / flat / down chances per horizon. Read from
      its card (CLAUDE_FORECAST_CARD); the strip stays hidden until the file holds a real read. Each bar is Claude's
      three chances; the line under it is how often this time of day stayed flat on earlier sessions (the base rate
@@ -798,7 +798,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // lands a few minutes before it: a row at or after ROW_LEAD_MIN before the last read is the day's last, not a
   // stale one. A card without a session falls back to 15:32 on the market clock.
   var LAST_READ_DEFAULT = '15:32', ROW_LEAD_MIN = 4;
-  // the question groups of skills/spx-jev/questions/spx_questions.json, in its order; a group not named here
+  // the question groups of pipelines/spx_jev_questions_and_pools/questions/spx_questions.json, in its order; a group not named here
   // is headed by its id in words
   var ORDER = ['opening_price','opening_flow','opening_context','price_move','gap_and_day','size','vol_signals','events_regime',
                'dealer_regime','gamma_map','levels_and_tape','breadth','leadership','macro_and_calendar','shocks_and_news','close',
@@ -1578,7 +1578,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     }
   }
 
-  // SPX expires every trading day. The card's expiries (skills/spx-jev expiry.py) say when today's 0DTE
+  // SPX expires every trading day. The card's expiries (pipelines/spx_jev_questions_and_pools expiry.py) say when today's 0DTE
   // settles, or the next one once it has; the line counts down to it and tags the days a monthly (OpEx),
   // a quarterly or the quarter-end book expires as well
   var EXPIRY_TAGS = [['quarterly', 'Quarterly OpEx'], ['monthly', 'Monthly OpEx'], ['quarter_end', 'Quarter-end']];
@@ -1824,7 +1824,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     tapeTimer = setTimeout(function(){ tapeTimer = null; if(!document.hidden) pollTape(); armTapeMark(); }, Math.max(1000, ms));
   }
 
-  // ---- before the open: the pre-market lane's card (skills/spx-jev, spx_jev.premarket), written at each of the
+  // ---- before the open: the pre-market lane's card (pipelines/spx_jev_questions_and_pools, spx_jev.premarket), written at each of the
   // night's checkpoints from 02:35 market time. It leads the page alone from the day's first pre-market read until
   // the opening lane's first read takes over (the card's handover, 09:35); then its call folds to one line, which
   // gives each check's result once the 10:06 close-out has graded it. A card of another day is never drawn.
@@ -2596,7 +2596,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   var pxBtn = $('px');
   pxBtn.addEventListener('click', function(){ openChart(pxBtn); });
 
-  // ---- options data: the station's alert pass (runtime/watch/intraday/gex_alerts.py) writes options_data.json on every
+  // ---- options data: the station's alert pass (alerts_and_phone_pushes/watch/intraday/gex_alerts.py) writes options_data.json on every
   // in-session tick. Once the options provider's book has been down 15 minutes straight its questions are blank, and the
   // banner under the price box says so. A file of another market day, or older than OPTIONS_FRESH_MS, means the alert
   // pass is not running, which says nothing about the book: no banner.
@@ -2721,7 +2721,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       .catch(function(){});
   }
 
-  // ---- Claude's own read (skills/spx-claude-forecast, 2026-10-10): after every half-hour read Claude answers, apart from
+  // ---- Claude's own read (pipelines/spx_claude_forecast, 2026-10-10): after every half-hour read Claude answers, apart from
   // the call above and never mixed into it, with its up, flat and down chances per horizon, from
   // its card (CLAUDE_FORECAST_CARD) on the page's cadence. A missing file (no read yet, the switch off) costs the
   // call nothing, the strip stays hidden; so does a sample read (read_id "sample:..."), which is never a real one. Chances

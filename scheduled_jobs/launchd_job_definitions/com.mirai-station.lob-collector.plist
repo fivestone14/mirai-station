@@ -9,7 +9,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-lob-collector.sh</string>
+    <string>$HOME/mirai_awakening/scheduled_jobs/job_start_scripts/start_job_with_logs.sh lob-collector run-lob-collector.sh</string>
   </array>
 
   <!-- Layer-2 LOB (FLOW) collector supervisor: every minute the runner checks
@@ -17,11 +17,6 @@
        so this doubles as the crash self-heal (worst-case 60s gap). -->
   <key>StartInterval</key>
   <integer>60</integer>
-
-  <key>StandardOutPath</key>
-  <string>/tmp/mirai-station.lob-collector.out</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/mirai-station.lob-collector.err</string>
 
   <key>EnvironmentVariables</key>
   <dict>

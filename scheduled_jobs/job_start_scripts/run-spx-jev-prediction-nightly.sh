@@ -3,7 +3,7 @@
 # One run = today's work for the live lane (spx_jev/mirai_prediction/nightly_job.py): build this system's tables
 # from its raw record files, score every voice against the day's grades, let pool_v2 learn the day, refit the
 # three learners for the next market day, write the phone's scoreboard. Reads the store only; no Schwab call, no
-# JEV call; writes only under state/spx/prediction/ (plus its phone card, logs and refused rows under screen_files/ and operations/). Idempotent: tables are rewritten whole, a day is
+# JEV call; writes only under data/spx/prediction/ (plus its phone card, logs and refused rows under screen_files/ and operations/). Idempotent: tables are rewritten whole, a day is
 # learned once.
 # Installed by install-launchd.sh (com.mirai-station.spx-jev-prediction-nightly, 17:05 ET), weekdays only.
 # Kill switches: SPX_JEV_DISABLE=1 or SPX_JEV_PREDICTION_DISABLE=1 => exit-0 no-op.
@@ -19,5 +19,5 @@ set -e
 [[ "${SPX_JEV_PREDICTION_DISABLE:-0}" == "1" ]] && exit 0
 [[ $(date +%u) -gt 5 ]] && exit 0
 
-cd "${MIRAI_STATION_ROOT}/skills/spx-jev"
+cd "${MIRAI_STATION_ROOT}/pipelines/spx_jev_questions_and_pools"
 exec "${MIRAI_STATION_VENV}/bin/python" -m spx_jev.mirai_prediction.nightly_job --state-dir "${MIRAI_STATION_STATE}" --lane live

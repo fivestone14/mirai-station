@@ -6,10 +6,10 @@ minute-log limits, each job's plist schedule, the SPX pre-market lane's checkpoi
 late line, the SPX learning store's nightly build, "the dashboard serves the code on disk",
 and "the phone server gets a live SPX price and runs the latest login code").
 The check functions and their unit tests always run. The live tests only read the
-real station (launchd, its state/ directory, its git log, GET on 127.0.0.1:8787) and
+real station (launchd, its data/ folder, its git log, GET on 127.0.0.1:8787) and
 skip unless MIRAI_LIVE=1:
 
-    cd <repo>/runtime && MIRAI_LIVE=1 ~/.local/share/mirai-station/venv/bin/python -m pytest -q -rA health
+    cd <repo> && MIRAI_LIVE=1 ~/.local/share/mirai-station/venv/bin/python -m pytest -q -rA health_checks
 """
 from __future__ import annotations
 
@@ -30,11 +30,12 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-_RUNTIME = Path(__file__).resolve().parents[1]
-if str(_RUNTIME) not in sys.path:
-    sys.path.insert(0, str(_RUNTIME))
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+for _folder in (_REPO_ROOT, _REPO_ROOT / "alerts_and_phone_pushes"):   # station_paths at the root; the watch package beside the alerts
+    if str(_folder) not in sys.path:
+        sys.path.insert(0, str(_folder))
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path, above)
+import station_paths  # noqa: E402  (the repo root is on sys.path, above)
 from watch.intraday import market_status  # noqa: E402
 
 ET = ZoneInfo("America/New_York")
@@ -48,7 +49,7 @@ SPX_PREMARKET_DEADMAN = "com.mirai-station.spx-premarket-deadman"
 # worst run is the night's save, eight Schwab calls each given up after 30 seconds, then JEV's calls
 # with a retry each
 PREMARKET_RUN_MIN = 10
-# the SPX learning store's nightly job (skills/spx-jev/spx_jev/store.py): its fire in market time, which
+# the SPX learning store's nightly job (pipelines/spx_jev_questions_and_pools/spx_jev/store.py): its fire in market time, which
 # its plist sets on the box's Pacific clock, and how long its run is given: a rebuild of the week reads
 # files on disk only and takes seconds
 SPX_STORE_JOB = "com.mirai-station.spx-jev-store"
@@ -59,10 +60,10 @@ STORE_RUN_MIN = 10
 SPX_JOBS = ("com.mirai-station.spx-jev", "com.mirai-station.spx-jev-tape", "com.mirai-station.spx-jev-bars",
             "com.mirai-station.spx-jev-context", "com.mirai-station.spx-jev-overnight", "com.mirai-station.spx-jev-save-day",
             "com.mirai-station.spx-jev-headlines", "com.mirai-station.spx-jev-prediction-nightly",
-            # the Claude forecast's two jobs (skills/spx-claude-forecast, installed 2026-10-09): the recorder that copies
+            # the Claude forecast's two jobs (pipelines/spx_claude_forecast, installed 2026-10-09): the recorder that copies
             # at-risk station data and mirrors the folder, and the nightly grade, library and backup
             "com.mirai-station.spx-claude-forecast-recorder", "com.mirai-station.spx-claude-forecast-nightly")
-# The live and opening lanes' reads in market time (skills/spx-jev/spx_jev/lane.py: LIVE_READS less its 16:02
+# The live and opening lanes' reads in market time (pipelines/spx_jev_questions_and_pools/spx_jev/lane.py: LIVE_READS less its 16:02
 # close-out, and TAPE.schedule) and how many minutes before its read time a read may be stamped (each lane's
 # read_grace_min: the live lane's diary row, the opening lane's bar); a unit test holds these to the lane's code. A
 # read is owed LANE_READ_OWED_MIN after its time: the bar or row wait, JEV's sends with their retries and the grading.
@@ -72,7 +73,7 @@ LANE_READ_OWED_MIN = 10
 DASHBOARD_URL = "http://127.0.0.1:8787/api/health"
 SPOT_URL = "http://127.0.0.1:8787/api/spot?ticker=SPX"
 # the code the phone server runs its Schwab login and live price through
-PHONE_SERVER_CODE = ("skills/iv-viability", "skills/mirai-left-eye", "runtime/viewstation")
+PHONE_SERVER_CODE = ("data_collectors/schwab_market_data_client", "pipelines/spx_options_scanner", "screens/desktop_and_phone_server")
 
 
 # --- limits, read from the station's own code ---------------------------------
@@ -113,8 +114,8 @@ def code_limit(source_path: Path, name: str) -> float:
 
 
 def station_limits(root: Path) -> dict:
-    deadman = Path(root) / "runtime" / "watch" / "intraday" / "sndk_deadman.py"
-    reader = Path(root) / "skills" / "sndk-pro" / "sndk_read.py"
+    deadman = Path(root) / "alerts_and_phone_pushes" / "watch" / "intraday" / "sndk_deadman.py"
+    reader = Path(root) / "pipelines" / "sndk_options_scanner_and_reader" / "sndk_read.py"
     return {"silent_min": code_limit(deadman, "SNDK_SILENT_MIN"),
             "first_row_by_min": code_limit(deadman, "FIRST_ROW_BY_MIN"),
             "reader_silent_min": code_limit(deadman, "READER_SILENT_MIN"),
@@ -134,7 +135,7 @@ def lane_times(lane_py: Path, name: str) -> tuple[tuple[str, ...], str]:
 
 
 def premarket_limits(root: Path) -> dict:
-    spx = Path(root) / "skills" / "spx-jev" / "spx_jev"
+    spx = Path(root) / "pipelines" / "spx_jev_questions_and_pools" / "spx_jev"
     checkpoints, close_out = lane_times(spx / "lane.py", "PREMARKET")
     return {"late_min": code_limit(spx / "premarket.py", "LATE_FIRE_MIN"),
             "first_checkpoint": checkpoints[0], "close_out": close_out}
@@ -462,7 +463,7 @@ def _print_field(launchctl_print_text: str, field: str) -> str | None:
 
 def _plistlib_plist(path) -> dict:
     """The same plist through the standard library, XML comments dropped first so expat
-    accepts what launchd accepts — the trick runtime/watch/tests/test_station_jobs.py has
+    accepts what launchd accepts — the trick alerts_and_phone_pushes/tests/test_station_jobs.py has
     always used on the same file. Every failure leaves here as a ValueError, because that
     is what the schedule check below reports as a plist it cannot read."""
     try:
@@ -516,8 +517,8 @@ def dashboard_code_paths(server_py: Path) -> list[Path]:
     server_py = Path(server_py).resolve()
     root = server_py.parents[2]
     # the directories server.py, snapshot.py and sndk_read.py put on sys.path
-    search = [server_py.parent, root / "skills" / "mirai-left-eye",
-              root / "skills" / "sndk-pro", root / "skills" / "book-flow"]
+    search = [server_py.parent, root / "pipelines" / "spx_options_scanner",
+              root / "pipelines" / "sndk_options_scanner_and_reader", root / "screens" / "desktop_options_trades_3d_view"]
     finder = modulefinder.ModuleFinder(path=[str(d) for d in search])
     finder.run_script(str(server_py))
     return sorted({Path(m.__file__) for m in finder.modules.values()
@@ -891,7 +892,7 @@ def test_dashboard_code_current_fails_when_a_file_changed_after_the_process_star
 
 
 def test_dashboard_code_paths_include_the_lazily_imported_sndk_modules():
-    names = {p.name for p in dashboard_code_paths(_RUNTIME / "viewstation" / "server.py")}
+    names = {p.name for p in dashboard_code_paths(_REPO_ROOT / "screens" / "desktop_and_phone_server" / "server.py")}
     assert {"server.py", "snapshot.py", "sndk_read.py", "sndk_board.py", "sndk_side.py"} <= names
 
 
@@ -952,10 +953,10 @@ def test_code_limit_resolves_numbers_names_and_arithmetic(tmp_path):
 
 def test_every_limit_the_live_checks_hold_is_the_value_the_code_runs_on(monkeypatch):
     """Parsing a limit out of source must give the number the module has once imported."""
-    monkeypatch.syspath_prepend(str(_RUNTIME.parent / "skills" / "sndk-pro"))
+    monkeypatch.syspath_prepend(str(_REPO_ROOT / "pipelines" / "sndk_options_scanner_and_reader"))
     import sndk_read
     from watch.intraday import sndk_deadman
-    assert station_limits(_RUNTIME.parent) == {
+    assert station_limits(_REPO_ROOT) == {
         "silent_min": sndk_deadman.SNDK_SILENT_MIN,
         "first_row_by_min": sndk_deadman.FIRST_ROW_BY_MIN,
         "reader_silent_min": sndk_deadman.READER_SILENT_MIN,
@@ -1031,16 +1032,16 @@ def test_premarket_fired_skips_a_day_the_market_is_shut(tmp_path, when):
 
 
 def test_premarket_limits_are_the_values_the_lane_runs_on(monkeypatch):
-    monkeypatch.syspath_prepend(str(_RUNTIME.parent / "skills" / "spx-jev"))
+    monkeypatch.syspath_prepend(str(_REPO_ROOT / "pipelines" / "spx_jev_questions_and_pools"))
     from spx_jev import premarket
     from spx_jev.lane import PREMARKET
-    assert premarket_limits(_RUNTIME.parent) == {"late_min": premarket.LATE_FIRE_MIN,
+    assert premarket_limits(_REPO_ROOT) == {"late_min": premarket.LATE_FIRE_MIN,
                                                  "first_checkpoint": PREMARKET.schedule[0], "close_out": PREMARKET.close_out}
 
 
 def test_the_premarket_pager_holds_the_lane_to_the_limits_this_review_does(monkeypatch):
     """The dead-man's switch imports nothing from spx_jev, so its copies of the lane's limits are held to it here."""
-    monkeypatch.syspath_prepend(str(_RUNTIME.parent / "skills" / "spx-jev"))
+    monkeypatch.syspath_prepend(str(_REPO_ROOT / "pipelines" / "spx_jev_questions_and_pools"))
     from spx_jev import premarket
     from spx_jev.lane import PREMARKET
     from watch.intraday import spx_premarket_deadman as pager
@@ -1083,14 +1084,15 @@ def test_lane_read_owes_nothing_after_a_half_days_close_or_on_a_day_the_market_i
 
 
 def test_the_lane_reads_this_review_owes_are_the_lanes_own(monkeypatch):
-    monkeypatch.syspath_prepend(str(_RUNTIME.parent / "skills" / "spx-jev"))
+    monkeypatch.syspath_prepend(str(_REPO_ROOT / "pipelines" / "spx_jev_questions_and_pools"))
     from spx_jev.lane import LIVE, LIVE_READS, TAPE
     assert SPX_LANE_READS["live"] == (LIVE_READS[:-1], LIVE.read_grace_min) and LIVE_READS[-1] == "16:02"
     assert SPX_LANE_READS["tape"] == (TAPE.schedule, TAPE.read_grace_min)
 
 
 def test_the_spx_jobs_this_review_loads_are_the_installers():
-    installed = set(re.findall(r'"(com\.mirai-station\.spx-[\w-]+)\.plist"', (_RUNTIME / "scripts" / "install-launchd.sh").read_text()))
+    installer = _REPO_ROOT / "scheduled_jobs" / "job_start_scripts" / "install-launchd.sh"
+    installed = set(re.findall(r'"(com\.mirai-station\.spx-[\w-]+)\.plist"', installer.read_text()))
     assert installed == set(SPX_JOBS) | {SPX_PREMARKET_JOB, SPX_PREMARKET_DEADMAN, SPX_STORE_JOB}
 
 
@@ -1123,7 +1125,7 @@ def test_store_built_fails_a_store_that_was_never_built(tmp_path):
 
 
 def test_the_store_check_fires_when_the_job_does():
-    job = _plistlib_plist(_RUNTIME / "launchd" / f"{SPX_STORE_JOB}.plist")["StartCalendarInterval"]
+    job = _plistlib_plist(_REPO_ROOT / "scheduled_jobs" / "launchd_job_definitions" / f"{SPX_STORE_JOB}.plist")["StartCalendarInterval"]
     assert f"{job['Hour'] + 3:02d}:{job['Minute']:02d}" == STORE_FIRES_ET                  # the box keeps Pacific time
 
 
@@ -1174,7 +1176,9 @@ def limits(station):
 
 
 def _log(station, label: str, stream: str) -> str:
-    return _print_field(station.prints.get(label, ""), f"{stream} path") or f"<{label} {stream} log>"
+    """The job's log under data/operations/logs/, named from its label the way start_job_with_logs.sh names it."""
+    store = station_paths.LAUNCHD_JOB_ERRORS_LOG if stream == "stderr" else station_paths.LAUNCHD_JOB_OUTPUT_LOG
+    return str(store.path(station.state, job=label.removeprefix("com.mirai-station.").replace("-", "_")))
 
 
 def _skip_when_closed(now: datetime) -> None:
@@ -1207,7 +1211,7 @@ def test_live_spx_lane_read_at_every_read_owed(station, lane):
     job = "com.mirai-station.spx-jev" + ("-tape" if lane == "tape" else "")
     _hold(lane_read(folder, station.now, reads, grace, LANE_READ_OWED_MIN, lane),
           f"cut -c1-60 {folder}/jev_answers_by_read/{station.day}.jsonl; "
-          f"grep -E 'skipping|failed' /tmp/{job.removeprefix('com.')}.err | tail -n 5")
+          f"grep -E 'skipping|failed' {_log(station, job, 'stderr')} | tail -n 5")
 
 
 @live
@@ -1219,7 +1223,7 @@ def test_live_spx_store_job_is_loaded(station):
 def test_live_spx_store_holds_the_last_market_day(station):
     counts = station_paths.TABLE_BUILD_COUNTS_BY_TABLE_AND_DAY.path(station.state)
     _hold(store_built(station.state, station.now, STORE_FIRES_ET, STORE_RUN_MIN),
-          f"ls {counts} | tail -n 3; tail -n 5 /tmp/mirai-station.spx-jev-store.err")
+          f"ls {counts} | tail -n 3; tail -n 5 {_log(station, SPX_STORE_JOB, 'stderr')}")
 
 
 @live
@@ -1267,7 +1271,7 @@ def test_live_dashboard_serves_the_code_on_disk(station):
     started = _started(pid)
     _hold(dashboard_code_current(started, dashboard_code_paths(server_py)),
           f"ps -o lstart= -p {pid}; ls -ltT {server_py.parent}/*.py "
-          f"{station.root}/skills/sndk-pro/*.py | head")
+          f"{station.root}/pipelines/sndk_options_scanner_and_reader/*.py | head")
 
 
 @live

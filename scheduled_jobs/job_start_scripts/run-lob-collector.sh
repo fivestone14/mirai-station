@@ -12,7 +12,7 @@ set +e
 source "${SCRIPT_DIR}/env.sh"
 set -e
 
-cd "${MIRAI_STATION_ROOT}/runtime"
+cd "${MIRAI_STATION_ROOT}/alerts_and_phone_pushes"
 
 # Market-hours gate (same authoritative check the left-eye runner trusts).
 # Only a CLEAN "not live" (exit 3) skips quietly — a broken venv/import (any
@@ -30,5 +30,5 @@ elif [[ $GATE_RC -ne 0 ]]; then
   exit 1
 fi
 
-cd "${MIRAI_STATION_ROOT}/skills/mirai-left-eye"
+cd "${MIRAI_STATION_ROOT}/pipelines/spx_options_scanner"
 exec "${MIRAI_STATION_VENV}/bin/python" lob_bridge.py --run-collector

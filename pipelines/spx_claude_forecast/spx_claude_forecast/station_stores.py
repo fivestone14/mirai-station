@@ -1,6 +1,6 @@
 """Where the station's own stores are, read-only, and how to reach the spx_jev code that reads them.
 
-Every path here is READ, and each is named in runtime/station_paths.py (the names below). Nothing in this package
+Every path here is READ, and each is named in station_paths.py (the names below). Nothing in this package
 writes under any of them; ``jsonl_store`` refuses to.
 
     SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN            the SPX options diary (the left-eye scanner's rows)
@@ -26,7 +26,7 @@ from types import ModuleType
 
 from .paths import STATION_ROOT, station_paths
 
-SPX_JEV_SKILL_DIR = STATION_ROOT / "skills" / "spx-jev"
+SPX_JEV_SKILL_DIR = STATION_ROOT / "pipelines" / "spx_jev_questions_and_pools"
 
 
 def reversion_rows_file(state_dir: Path, day: str) -> Path:
@@ -86,7 +86,7 @@ def events_calendar_file() -> Path:
 
 def import_spx_jev(module: str) -> ModuleType:
     """Import ``spx_jev.<module>`` from the sibling skill, which is not installed anywhere: the house
-    pattern is a lazy sys.path insert at the point of use (sessions.py does the same for runtime/)."""
+    pattern is a lazy sys.path insert at the point of use (sessions.py does the same for the watch package)."""
     if str(SPX_JEV_SKILL_DIR) not in sys.path:
         sys.path.insert(0, str(SPX_JEV_SKILL_DIR))
     return importlib.import_module(f"spx_jev.{module}")

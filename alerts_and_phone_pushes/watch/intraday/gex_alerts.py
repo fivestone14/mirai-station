@@ -10,7 +10,7 @@ restructure). Runs once per tick AFTER the left-eye scan
   2. THE WALL-BREACH BELL. When spot pushes CONCRETELY beyond a dealer wall
      (the engine's recorded crossing, or the fallback check: buffer = frac ×
      the lens's σ yardstick), page the phone once per wall per cooldown.
-     Walls, spot and σ come from the LENS DIARY (state/spx/scanner/spx_options_scanner_results_by_scan/{date}.jsonl):
+     Walls, spot and σ come from the LENS DIARY (data/spx/scanner/spx_options_scanner_results_by_scan/{date}.jsonl):
      the gravity engine's own numbers, no separate market feed.
   3. THE FEED SIRENS. A fresh diary row carrying a degraded-feed fact pages
      once per outage, with an all-clear when it heals; a live market with no
@@ -19,11 +19,11 @@ restructure). Runs once per tick AFTER the left-eye scan
 Until 2026-10-11 a breach also re-dived the morning macro brief's analyst and
 a pass after the close scored the brief's direction call; the brief retired
 and both went with it, and the state/market_expectation/ folder with them: the alerts
-state below moved under state/operations/ on 2026-10-11.
+state below moved under data/operations/ on 2026-10-11.
 
 All best-effort: any failure costs a log line, never a tick. Idempotent
-state: state/operations/phone_pushes_wall_timers_feed_outages_state.json (resets per day). The
-feed-health pass also writes state/screen_files/phone/options_feed_status_card.json
+state: data/operations/phone_pushes_wall_timers_feed_outages_state.json (resets per day). The
+feed-health pass also writes data/screen_files/phone/options_feed_status_card.json
 on every in-session tick, the SPX phone page's options-data banner.
 """
 from __future__ import annotations
@@ -46,7 +46,7 @@ ET = ZoneInfo("America/New_York")
 # so adding "SNDK" here would not give the stock a watchdog, it would give it
 # a second bell nobody asked for.
 #
-# SNDK's scanner IS watched, by its own process: runtime/watch/intraday/
+# SNDK's scanner IS watched, by its own process: alerts_and_phone_pushes/watch/intraday/
 # sndk_deadman.py on com.mirai-station.sndk-deadman (2026-08-30). It lives
 # outside this module on purpose — gex_alerts runs from the left-eye tick, so
 # a siren that shares that process cannot report the tick's own death. Four
@@ -100,10 +100,10 @@ def _recovery_text(flag: str) -> str:
 # once, after BOOK_OUT_WAIT_MIN straight, in those terms, and flow_dead keeps
 # quiet while it stands (same provider, same outage).
 #
-# The provider's questions (skills/spx-jev/spx_jev/mirai_prediction/
+# The provider's questions (pipelines/spx_jev_questions_and_pools/spx_jev/mirai_prediction/
 # code_features.py PROVIDER_QUESTIONS) and the catalog's size
 # (code_feature_catalog.json). This module imports nothing from spx_jev;
-# runtime/watch/tests/test_gex_alerts.py holds these copies to it.
+# alerts_and_phone_pushes/tests/test_gex_alerts.py holds these copies to it.
 PROVIDER_QUESTIONS = ("OPTIONS-01", "OPTIONS-02", "OPTIONS-03", "OPTIONS-04",
                       "OPTIONS-05", "OPTIONS-06", "OPTIONS-07", "OPTIONS-08",
                       "OPTIONS-10", "OPTIONS-11", "VOLATILITY-01",

@@ -1,6 +1,6 @@
 """The SPX diary row, cut down to what the labeller reads.
 
-The left-eye scanner writes one row per scan to ``state/spx/scanner/spx_options_scanner_results_by_scan/{day}.jsonl``, about 40 KB of
+The left-eye scanner writes one row per scan to ``data/spx/scanner/spx_options_scanner_results_by_scan/{day}.jsonl``, about 40 KB of
 engines, lenses and fire blocks. The labeller reads a few dozen of those numbers, so each row is
 reduced here to exactly them, by name, and everything else is dropped on the way in: a day of rows
 fits in memory, the clock can replay twenty sessions, and a field the labeller starts reading has
@@ -13,7 +13,7 @@ open-interest wall or the 1-to-7-day structural wall, whichever stands first); t
 and ``regime_tenor`` are the blended 1-to-7-day and 0-to-7-day books; ``dex_above_spot`` is the whole
 0-to-7-day book; ``dated_gex`` is the monthly and quarter-end books, pulled each morning.
 
-The ``siege`` block is the siege box's read at the scan (skills/siege): SPY volume spent while spot
+The ``siege`` block is the siege box's read at the scan (data_collectors/spy_volume_at_walls_sensor): SPY volume spent while spot
 touched a wall or the magnet, as a percentile of normal for that clock window, with the feed's health
 and the baseline's maturity beside it. Its towers keep only the fields the labeller reads.
 

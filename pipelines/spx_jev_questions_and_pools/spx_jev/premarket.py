@@ -65,7 +65,7 @@ from .sessions import is_trading_day, session_close, session_open
 from .state_builder import DEFAULT_STATE_DIR, Scene, load_jsonl, load_market_context, parse_ts, prior_sessions
 from .weights import QuestionWeights
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 ET = overnight.ET
 LATE_FIRE_MIN = 5                          # a fire this many minutes or more after its checkpoint reads nothing

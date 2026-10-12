@@ -24,7 +24,7 @@ of the day", not vs a flat whole-day expected move.
 
 Derived sensory layer, SHADOW-adjacent: pure functions, no votes, no trades.
 READ-ONLY — writes nothing anywhere, touches no network. The baseline is the
-saved real-range bars store (state/market/spx_price_bars_by_minute_scanner_copy, written by gex_polarity_ab's
+saved real-range bars store (data/market/spx_price_bars_by_minute_scanner_copy, written by gex_polarity_ab's
 grader); the baseline is injectable so every path is testable offline.
 Stateless: a mid-session restart just re-derives everything from today's bars.
 
@@ -44,9 +44,9 @@ from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 SKILL_DIR = Path(__file__).resolve().parent
-_RUNTIME = str(SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(SKILL_DIR.parent.parent)             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 
 # --- session grid ---------------------------------------------------------

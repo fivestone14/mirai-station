@@ -13,7 +13,7 @@ the night that follows it. Each save asks for both resolutions: 1-minute bars (S
 40,000, some six weeks) and 5-minute bars (back to March 2026), so the 5-minute series runs unbroken
 from the backfill on.
 
-``state/market/futures_price_bars_by_minute/{day}.jsonl``, one bar per line, sorted by symbol, resolution and time:
+``data/market/futures_price_bars_by_minute/{day}.jsonl``, one bar per line, sorted by symbol, resolution and time:
 
     {"schema_version", "day", "ts" (the bar's start, ISO with the New York offset), "symbol" ("/ES"),
      "contract" ("/ESZ26"), "contract_from" ("roll_table" or "quote"), "bar_minutes" (1 or 5),
@@ -27,7 +27,7 @@ negative volume) is kept with its ``flags``, never dropped. The contract is the 
 (rolls.py) says Schwab's stitched series was on at the bar's last minute (a 5-minute bar a roll falls inside
 closed on the new contract), else the one Schwab quotes the root under.
 
-``state/market/futures_price_bar_change_counts_by_save.jsonl``, one line per save that changed a night: per symbol and
+``data/market/futures_price_bar_change_counts_by_save.jsonl``, one line per save that changed a night: per symbol and
 resolution the bar count against the bars expected in the window (CME Globex hours, Sunday 18:00 to
 Friday 17:00 with the 17:00 halt; bitcoin round the clock since CRYPTO_ROUND_THE_CLOCK_FROM), the
 gaps (each missing stretch's first bar and its minutes), the flagged bars, the duplicates in Schwab's
@@ -59,7 +59,7 @@ from .sessions import (SESSION_OPEN, half_days, is_trading_day, market_holidays,
                        session_close)
 from .state_builder import DEFAULT_STATE_DIR, load_jsonl
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 ET = ZoneInfo("America/New_York")
 OVERNIGHT_SUBDIR = station_paths.FUTURES_PRICE_BARS_BY_MINUTE.relative_folder
@@ -475,7 +475,7 @@ def backfill(state_dir: Path, now: datetime, since: date = BACKFILL_FROM) -> tup
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Save the overnight futures bars under state/market/futures_price_bars_by_minute/.")
+    ap = argparse.ArgumentParser(description="Save the overnight futures bars under data/market/futures_price_bars_by_minute/.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
     ap.add_argument("--day", help="YYYY-MM-DD, the trading day one night leads into")
     ap.add_argument("--backfill", action="store_true", help="every night Schwab still serves, then the roll table")

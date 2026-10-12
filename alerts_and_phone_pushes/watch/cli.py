@@ -9,7 +9,7 @@ The morning macro brief (`macro-brief`, 09:00 ET) retired on 2026-10-11.
 
 The bet-watching graph (`tick`), entry-signal learner (`learn`) and checkpoint
 disposal (`gc`) were retired with the nine-voter system — the Fade Lens in
-skills/mirai-left-eye is the brain now, and hunter.py runs the scan directly.
+pipelines/spx_options_scanner is the brain now, and hunter.py runs the scan directly.
 Backup of the old system: mirai-station.backup-pre-gexmodule-20260703.
 """
 from __future__ import annotations

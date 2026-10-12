@@ -52,7 +52,7 @@ def _gate_clock(monkeypatch, gate):
     gate that can no longer find the clock fails here instead of passing."""
     for name in [m for m in sys.modules if m == "watch" or m.startswith("watch.")]:
         monkeypatch.delitem(sys.modules, name)
-    monkeypatch.setattr(sys, "path", [p for p in sys.path if os.path.basename(p) != "runtime"])
+    monkeypatch.setattr(sys, "path", [p for p in sys.path if os.path.basename(p) != "alerts_and_phone_pushes"])
     gate._market_live()
     return sys.modules["watch.intraday.market_status"]
 

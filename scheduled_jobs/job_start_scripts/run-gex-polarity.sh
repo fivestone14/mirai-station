@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # launchd-fired wrapper: after-close GEX polarity + magnet A/B grader (shadow).
 # Grades today's gex_views (native-primary GexBox) and gex_theta (native) reads against the
-# day's 1-min bars and persists the verdicts to the state/spx/scanner/spx_options_scanner_grades_by_day.jsonl
+# day's 1-min bars and persists the verdicts to the data/spx/scanner/spx_options_scanner_grades_by_day.jsonl
 # ledger, one row per day. Read-only vs the live loop.
 set -u
 _SELF="${BASH_SOURCE[0]}"
@@ -14,7 +14,7 @@ set -e
 # Weekends are not trading days — nothing to grade.
 [[ $(date +%u) -gt 5 ]] && exit 0
 
-cd "${MIRAI_STATION_ROOT}/skills/mirai-left-eye"
+cd "${MIRAI_STATION_ROOT}/pipelines/spx_options_scanner"
 # The two nightly passes are independent (both read the diary, write disjoint
 # state): a grader crash must not cost the day's LOB baseline fold, and vice
 # versa. Preserve the grader's exit code as the job's own.

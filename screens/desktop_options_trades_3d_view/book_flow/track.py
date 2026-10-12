@@ -7,7 +7,7 @@ fixed number, and 7730 means something completely different at 09:40 spot 7712
 than it does at 15:30 spot 7741. The price track is the missing half — the
 market's own path across the same price axis, on the same clock.
 
-The source is the diary the station already writes (the scanners' results, `SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN` in runtime/station_paths.py,
+The source is the diary the station already writes (the scanners' results, `SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN` in station_paths.py,
 one row a scan, ~90 s apart, carrying `spot` and `vwap`). Nothing new is
 recorded and nothing reaches the network: this is a second read of a file that
 has been on disk since the session ran.
@@ -36,9 +36,9 @@ from pathlib import Path
 from typing import Optional
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[3]
-_RUNTIME = str(PLUGIN_ROOT / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(PLUGIN_ROOT)             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 
 # The diary is PER SYMBOL and the directory name is not derivable from the

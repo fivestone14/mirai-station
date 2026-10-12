@@ -16,8 +16,8 @@ SCAN_SUFFIXES = {".py", ".json", ".jsonl", ".md", ".sh", ".txt", ".template", ".
 def test_env_is_git_ignored_and_the_example_is_not():
     if not (REPO / ".git").exists():
         pytest.skip("not a git checkout, so there is no ignore list to check")
-    assert subprocess.run(["git", "check-ignore", "-q", "skills/spx-jev/.env"], cwd=REPO).returncode == 0
-    assert subprocess.run(["git", "check-ignore", "-q", "skills/spx-jev/.env.example"], cwd=REPO).returncode == 1
+    assert subprocess.run(["git", "check-ignore", "-q", "pipelines/spx_jev_questions_and_pools/.env"], cwd=REPO).returncode == 0
+    assert subprocess.run(["git", "check-ignore", "-q", "pipelines/spx_jev_questions_and_pools/.env.example"], cwd=REPO).returncode == 1
 
 
 def test_no_key_in_any_skill_file_but_env():

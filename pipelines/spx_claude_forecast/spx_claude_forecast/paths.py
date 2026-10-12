@@ -1,6 +1,6 @@
 """Where everything this package writes lives, and nothing else.
 
-Every file is named in runtime/station_paths.py; this module hands them out from one state root. The package
+Every file is named in station_paths.py; this module hands them out from one state root. The package
 writes only under its own folder there, ``spx/claude_forecast/`` (``root``), the recorder's copies under
 ``market/``, its phone card under ``screen_files/phone/``, its logs and locks under ``operations/``, plus an
 off-disk backup folder it is told about (``writable``). Every other station store it reads is listed in
@@ -42,12 +42,12 @@ from pathlib import Path
 from . import jsonl_store
 
 PACKAGE_DIR = Path(__file__).resolve().parent
-SKILL_DIR = PACKAGE_DIR.parent                       # skills/spx-claude-forecast
-STATION_ROOT = SKILL_DIR.parent.parent               # ~/.claude/plugins/mirai-station
+SKILL_DIR = PACKAGE_DIR.parent                       # pipelines/spx_claude_forecast
+STATION_ROOT = SKILL_DIR.parent.parent               # ~/mirai_awakening
 
-_RUNTIME = str(STATION_ROOT / "runtime")             # runtime/station_paths.py names every store, this package's included
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(STATION_ROOT)             # station_paths.py names every store, this package's included
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 
 FORECAST_FOLDER_NAME = station_paths.CLAUDE_FORECAST_FOLDER.relative   # under the station's data root: spx/claude_forecast
@@ -55,8 +55,8 @@ RUN_LOG_KEPT_DAYS = 30                               # the job runs log is the o
 
 
 def default_state_dir() -> Path:
-    """The station's state root, as runtime/station_paths.py decides it: ``MIRAI_STATE_DIR`` (the per-test override),
-    else ``MIRAI_STATION_STATE`` (set by runtime/scripts/env.sh), else ``<station>/state``."""
+    """The station's state root, as station_paths.py decides it: ``MIRAI_STATE_DIR`` (the per-test override),
+    else ``MIRAI_STATION_STATE`` (set by scheduled_jobs/job_start_scripts/env.sh), else ``<station>/state``."""
     return station_paths.state_root()
 
 

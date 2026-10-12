@@ -1,8 +1,8 @@
 """test_gw_parity — automated twin-parity guard for the GW notation standard.
 
 There are TWO implementations of the GW vocab: the Python source of truth
-(skills/mirai-left-eye/gw_vocab.py) and its JS twin, the `const GW = {…}` block
-embedded in runtime/viewstation/static/index.html. The standard (docs/gw-vocab.md)
+(pipelines/spx_options_scanner/gw_vocab.py) and its JS twin, the `const GW = {…}` block
+embedded in screens/desktop_and_phone_server/static/index.html. The standard (docs/glossary/gw-vocab.md)
 requires the two stay in step; before this test the only guard was manual
 discipline + inline "# JS-twin parity" comments, so a threshold changed in one
 twin but not the other would drift silently until it mis-rendered a live wall.
@@ -39,7 +39,7 @@ import gw_vocab as gw  # noqa: E402
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _INDEX = os.path.normpath(os.path.join(
-    _HERE, "..", "..", "..", "runtime", "viewstation", "static", "index.html"))
+    _HERE, "..", "..", "..", "screens", "desktop_and_phone_server", "static", "index.html"))
 
 
 def _gw_block():

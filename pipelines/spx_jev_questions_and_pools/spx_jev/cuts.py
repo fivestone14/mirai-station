@@ -72,7 +72,7 @@ PULLBACK_SHARE = 0.25
 RSI_OVERSOLD, RSI_OVERBOUGHT = 30, 70
 VIX_CURVE_FLAT = 1.0            # VIX over the three-month VIX: at or above it, near-term fear is priced above longer-term
 # The siege box's own verdict cuts on a wall touch's SPY volume, a percentile of normal for its clock
-# window (skills/siege/siege/contracts.py): a siege at or above the first, quiet at or below the second.
+# window (data_collectors/spy_volume_at_walls_sensor/siege/contracts.py): a siege at or above the first, quiet at or below the second.
 WALL_TOUCH_SIEGE_PERCENTILE, WALL_TOUCH_QUIET_PERCENTILE = 70, 30
 # The 0DTE book's last hour before its settle: its gamma decays fastest then, and its at-the-money
 # implied volatility moved a median 2.1 vol points in 30 minutes against 0.8 earlier in the day

@@ -6,7 +6,7 @@
 The judgment questions (judgment.py) ask what the news should do to stocks, so the one fact that matters about a
 headline is when this station could have read it. ``captured_at`` is the poll's own wall clock, the truth a question is
 cut on; the feed's ``pubDate`` is kept raw as ``pub_claimed`` and never trusted (feeds back-date, re-date and omit it).
-One JSON line per NEW item under ``state/market/news_headlines_by_article/``:
+One JSON line per NEW item under ``data/market/news_headlines_by_article/``:
 
     {day}.jsonl     {"captured_at": ISO ET, "pub_claimed": the raw pubDate string or null, "feed": the feed's name,
                      "source": the outlet (Google News' <source> tag, else the feed), "title", "url", "guid"}
@@ -44,7 +44,7 @@ from .cuts import HEADLINE_CUT_MIN
 from .feed_log import log
 from .state_builder import DEFAULT_STATE_DIR, load_jsonl, parse_ts
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 ET = ZoneInfo("America/New_York")
 JOB = "spx-jev-headlines"
@@ -221,7 +221,7 @@ def headlines_before(state_dir: Path | str, row_ts: str | datetime, minutes: int
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Poll the headline feeds once into state/market/news_headlines_by_article/.")
+    ap = argparse.ArgumentParser(description="Poll the headline feeds once into data/market/news_headlines_by_article/.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
     ap.add_argument("--now", action="store_true", help=f"poll whatever the clock says (else only {CAPTURE_FROM}-{CAPTURE_TO} ET on weekdays)")
     args = ap.parse_args(argv)

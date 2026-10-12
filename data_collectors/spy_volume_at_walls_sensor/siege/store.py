@@ -6,7 +6,7 @@ missing/short/torn file. One writer per file by convention (the engine, one
 scan at a time).
 
 Layout under one injected root (the station's data root, state/, in the mirai wiring; each file is named in
-runtime/station_paths.py and sits under spx/scanner/):
+station_paths.py and sits under spx/scanner/):
     spx_dealer_walls_latest.json                   # "latest": the viewstation contract — field names are FROZEN; carries the feed verdict per scan
     spy_volume_baselines_state.json                # "baseline": minute-volume normalcy memory, folded day by day
     spx_dealer_wall_touches_today_state.json       # "session": the intraday episode state machine
@@ -19,9 +19,9 @@ import os
 import sys
 from pathlib import Path
 
-_RUNTIME = str(Path(__file__).resolve().parents[3] / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(Path(__file__).resolve().parents[3])             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 
 
@@ -66,7 +66,7 @@ def append_jsonl(path, obj):
 
 
 class SiegeStore:
-    """One object, all paths — each named in runtime/station_paths.py; ``root`` is the station's data root."""
+    """One object, all paths — each named in station_paths.py; ``root`` is the station's data root."""
 
     def __init__(self, root):
         self.root = Path(root)

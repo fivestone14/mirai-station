@@ -2,7 +2,7 @@
 # launchd-fired wrapper for the SPX JEV premarket lane (record-only: nothing here trades).
 # One run = one checkpoint before the open: save the night's overnight futures, build the night's labels
 # on a scene without a diary row, ask JEV the questions due there when a key is present, and write
-# state/spx/jev/premarket_lane/ (its records and sums; its card under state/screen_files/phone/) and the archive (spx_jev/premarket.py).
+# data/spx/jev/premarket_lane/ (its records and sums; its card under data/screen_files/phone/) and the archive (spx_jev/premarket.py).
 # The 10:06 ET fire is the close-out: it asks JEV nothing and grades the morning's calls from the
 # settled open. REST only, through the station's shared client; the lob-flow streamer is never touched.
 # No market-hours gate: it runs before the open by design. The command itself reads only on market
@@ -25,5 +25,5 @@ set -e
 [[ "${SPX_JEV_DISABLE:-0}" == "1" ]] && exit 0
 [[ $(TZ=America/New_York date +%u) -gt 5 ]] && exit 0
 
-cd "${MIRAI_STATION_ROOT}/skills/spx-jev"
-exec "${MIRAI_STATION_VENV}/bin/python" -m spx_jev.premarket --state-dir "${MIRAI_STATION_ROOT}/state" --send
+cd "${MIRAI_STATION_ROOT}/pipelines/spx_jev_questions_and_pools"
+exec "${MIRAI_STATION_VENV}/bin/python" -m spx_jev.premarket --state-dir "${MIRAI_STATION_STATE}" --send

@@ -67,8 +67,8 @@ GEX_BOOK_QUESTIONS = frozenset({"OPTIONS-01", "OPTIONS-02", "OPTIONS-03", "OPTIO
 # Every question whose inputs come from the options data provider: the book's seven above, the lob-flow collector's refill
 # test and quote sweeps (OPTIONS-05, OPTIONS-08), and the labels built from its chain and trade tape (OPTIONS-07's flow lean,
 # VOLATILITY-01's straddle, VOLATILITY-09/10's skew, VOLATILITY-16's ruler). All 14 went blank together on 2026-10-06 and
-# 10-07, when the provider sent empty SPX books. runtime/watch/intraday/gex_alerts.py keeps a copy for the phone's page
-# and status file; runtime/watch/tests/test_gex_alerts.py holds it to this one.
+# 10-07, when the provider sent empty SPX books. alerts_and_phone_pushes/watch/intraday/gex_alerts.py keeps a copy for the phone's page
+# and status file; alerts_and_phone_pushes/tests/test_gex_alerts.py holds it to this one.
 PROVIDER_QUESTIONS = GEX_BOOK_QUESTIONS | frozenset({"OPTIONS-05", "OPTIONS-07", "OPTIONS-08", "VOLATILITY-01", "VOLATILITY-09",
                                                      "VOLATILITY-10", "VOLATILITY-16"})
 NATIVE_BOOK = "native"

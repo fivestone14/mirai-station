@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Interpreter: the mirai-station venv is the only one with schwab-py + httpx, and
-# the shebang cannot pin it — name it explicitly or use runtime/scripts/run-sndk.sh
-# (see skills/mirai-left-eye/hunter.py for the rationale).
+# the shebang cannot pin it — name it explicitly or use scheduled_jobs/job_start_scripts/run-sndk.sh
+# (see pipelines/spx_options_scanner/hunter.py for the rationale).
 """
 sndk_hunter.py — SNDK-PRO scanner: one tick = one diary row.
 
@@ -14,10 +14,10 @@ Per tick (launchd fires every 120s; the run wrapper gates RTH):
        re-pulling), IV rebuilt from quotes, gamma filled.
     3. sndk_views.build_row() — the pure engines (build_views / slide_0dte on
        the front book / dex / ladder / EM) → one row.
-    4. Append to state/sndk/sndk_options_scanner_results_by_scan/{YYYY-MM-DD}.jsonl (the viewstation reads
+    4. Append to data/sndk/sndk_options_scanner_results_by_scan/{YYYY-MM-DD}.jsonl (the viewstation reads
        these files via the generic /api/raw endpoints — pinned contract).
 
-Isolation: writes ONLY under state/sndk/ (the scan rows, and the chain, expiries and
+Isolation: writes ONLY under data/sndk/ (the scan rows, and the chain, expiries and
 volatility state files). Never
 touches the SPX diary, reversion_lens, or hunter.py's scan loop.
 
@@ -39,11 +39,11 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 _SKILL_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
-_RUNTIME = str(_SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(_SKILL_DIR.parent.parent)             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
-_LEFT_EYE = str(_SKILL_DIR.parent / "mirai-left-eye")
+_LEFT_EYE = str(_SKILL_DIR.parent / "spx_options_scanner")
 if _LEFT_EYE not in sys.path:
     sys.path.insert(0, _LEFT_EYE)
 
@@ -66,7 +66,7 @@ def _market_live() -> bool:
     """The authoritative RTH gate (same source run-watch-left-eye.sh shells to).
     Fail-CLOSED: if the watch package can't be read, don't scan."""
     try:
-        rt = str(_SKILL_DIR.parent.parent / "runtime")
+        rt = str(_SKILL_DIR.parent.parent / "alerts_and_phone_pushes")
         if rt not in sys.path:
             sys.path.insert(0, rt)
         from watch.intraday import market_status as _ms

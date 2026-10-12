@@ -6,7 +6,7 @@
     repl.py --mic      hold Enter-to-talk: record until Enter again, then
                        ears → jargon → convo → mouth (the full pipeline)
 
-Ctrl-C or "q" exits. Every turn is logged to state/voice_desk/voice_desk_transcripts_by_exchange/{date}.jsonl
+Ctrl-C or "q" exits. Every turn is logged to data/voice_desk/voice_desk_transcripts_by_exchange/{date}.jsonl
 by convo itself.
 """
 from __future__ import annotations

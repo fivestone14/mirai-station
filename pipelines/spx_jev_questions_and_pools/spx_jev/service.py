@@ -2,7 +2,7 @@
 
 This is the microservice boundary. It reads what Mirai station already stores (the SPX diary
 rows, minute bars, the market context), builds the labels, asks JEV, sums the answers, blends the
-sums with the time-of-day odds (clock.py), grades them, and writes only the stores runtime/station_paths.py names for
+sums with the time-of-day odds (clock.py), grades them, and writes only the stores station_paths.py names for
 it (the live lane's folder is spx/jev/live_lane/):
 
     live_lane/jev_answers_by_read/{day}.jsonl            every run, appended: the state, the requests, the answers
@@ -44,7 +44,7 @@ A lane (lane.py) is the same run with its own docs, folder, clock and grader. Th
 (``--lane tape``) stamps each read at the newest finished bar by its fire minute (a sent run first waits, up to
 BAR_WAIT_S, for the bar that finishes at that minute: wait_for_bar), measures the tape unit
 (labels.rulers.tape_unit), asks what its schedule asks afresh, prices its sum's bands from the unit, and writes the
-same files under state/spx/jev/opening_lane/ (its card under screen_files/phone/), each record marked with the lane and the unit.
+same files under data/spx/jev/opening_lane/ (its card under screen_files/phone/), each record marked with the lane and the unit.
 
     python3 -m spx_jev.service            # one run on the newest row, not sent
     python3 -m spx_jev.service --send     # post to JEV; the key comes from .env
@@ -85,7 +85,7 @@ from .sessions import session_close, session_open
 from .state_builder import DEFAULT_STATE_DIR, NoBarYet, Scene, load_bars, load_jsonl, load_rows, make_scene, parse_ts
 from .weights import QuestionWeights
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 # the situation the phone draws: four facts, each with a short title, the builder's verdict in a word, its
 # figure (number, cut, kind) to draw and its full sentence behind a tap
@@ -920,10 +920,10 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
             f.write(json.dumps(hour_line(hour), ensure_ascii=False) + "\n")
     archive.append(lane.archive_folder(state_dir, out_dir), day_name, read_record(hour))
     if do_send and lane.pool and day is None:
-        # Claude's own forecast of this read (skills/spx-claude-forecast, 2026-10-09): built from the record just archived,
+        # Claude's own forecast of this read (pipelines/spx_claude_forecast, 2026-10-09): built from the record just archived,
         # in its own process, never on the read's path, never in the combined call; its switch is SPX_CLAUDE_FORECAST_DISABLE
         try:
-            claude_forecast_skill = Path(__file__).resolve().parents[2] / "spx-claude-forecast"
+            claude_forecast_skill = Path(__file__).resolve().parents[2] / "spx_claude_forecast"
             if str(claude_forecast_skill) not in sys.path:
                 sys.path.insert(0, str(claude_forecast_skill))
             from spx_claude_forecast.hook import spawn_claude_forecast

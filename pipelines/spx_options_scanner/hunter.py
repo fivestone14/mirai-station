@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Interpreter: the mirai-station venv (~/.local/share/mirai-station/venv) is the
 # only one with schwab-py + scipy. System python3 lacks schwab → most signal modules
-# silently fail → bogus quiet scans. Provision via runtime/scripts/venv-bootstrap.sh.
+# silently fail → bogus quiet scans. Provision via scheduled_jobs/job_start_scripts/venv-bootstrap.sh.
 # The shebang CANNOT pin it — an absolute path hardcodes one machine's home, and a
 # tilde never expands in a shebang — so name the venv python explicitly, or go
 # through run-watch-left-eye.sh, which passes $MIRAI_STATION_VENV. Running this as
@@ -48,9 +48,9 @@ from zoneinfo import ZoneInfo
 ET = ZoneInfo("America/New_York")
 PT = ZoneInfo("America/Los_Angeles")
 SKILL_DIR = Path(__file__).resolve().parent
-_RUNTIME = str(SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(SKILL_DIR.parent.parent)             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 LOGS_DIR = station_paths.SPX_OPTIONS_SCANNER_SIGNAL_CHECKS_BY_SCAN.folder()
 STATE_PATH = station_paths.SPX_OPTIONS_SCANNER_SIGNALS_SENT_STATE.path()
@@ -284,7 +284,7 @@ def scan(
             "gap_stretch": rev.get("gap_stretch"),
         })
         if verbose:
-            # GW standard (docs/gw-vocab.md): the magnet level wears MagP + tier
+            # GW standard (docs/glossary/gw-vocab.md): the magnet level wears MagP + tier
             print(f"[{ticker}] spot {t.get('spot')}  regime {t.get('regime')}"
                   f"  dealers {gv.get('regime')}"
                   f"  {reversion.magp_label(t, gv.get('magnet'))} {gv.get('magnet')}"

@@ -1,7 +1,7 @@
 """spx-jev — the JEV decision service beside the SPX diary: labels, requests, the sums,
 grading, and the phone's card.
 
-Read-only over the station's stored files; writes only the stores runtime/station_paths.py
+Read-only over the station's stored files; writes only the stores station_paths.py
 names for it (the lanes under spx/jev/, the pools under spx/prediction/, the cards under
 screen_files/phone/, the two feeds' bars and market quotes under market/). Nothing here touches
 the live loop.
@@ -16,9 +16,9 @@ import sys
 from importlib import import_module
 from pathlib import Path
 
-_RUNTIME = str(Path(__file__).resolve().parents[3] / "runtime")     # runtime/station_paths.py names every store this package touches
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(Path(__file__).resolve().parents[3])     # station_paths.py names every store this package touches
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 
 _HOMES = {"Scene": ".state_builder", "make_scene": ".state_builder", "build_labels": ".labels.registry",
           "build_requests": ".ask", "load_questions": ".ask", "send": ".ask"}

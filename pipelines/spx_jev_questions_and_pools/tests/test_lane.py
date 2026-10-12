@@ -94,11 +94,11 @@ def test_the_premarket_job_fires_at_every_checkpoint_of_the_year_and_its_close_o
                                                 ("com.mirai-station.spx-jev-headlines", "run-spx-jev-headlines.sh", None)])
 def test_each_job_runs_its_repo_script_and_logs_to_its_own_files(name, script, lane):
     job = _job(name)
-    command = job["ProgramArguments"][2]
-    assert job["Label"] == name and command.split()[0].endswith(f"runtime/scripts/{script}")
-    assert (REPO / "runtime" / "scripts" / script).is_file()
-    assert (lane is None) == ("--lane" not in command) and (lane is None or command.endswith(f"--lane {lane}"))
-    assert job["StandardOutPath"] == f"/tmp/mirai-station.{name.split('.')[-1]}.out"
+    starter, logs_as, run, *args = job["ProgramArguments"][2].split()
+    assert job["Label"] == name and starter.endswith("scheduled_jobs/job_start_scripts/start_job_with_logs.sh")
+    assert logs_as == name.removeprefix("com.mirai-station.") and run == script      # its own log files, its own script
+    assert (REPO / "scheduled_jobs" / "job_start_scripts" / script).is_file()
+    assert (lane is None) == ("--lane" not in args) and (lane is None or args == ["--lane", lane])
     assert job["EnvironmentVariables"]["TZ"] == "America/New_York" and job["RunAtLoad"] is False
 
 
@@ -123,11 +123,12 @@ def test_the_learning_store_is_built_after_the_days_saves():
 
 
 def test_the_installed_plists_match_their_templates():
-    """runtime/launchd holds what install-launchd.sh loads; each SPX job there is its template byte for
+    """scheduled_jobs/launchd_job_definitions holds what install-launchd.sh loads; each SPX job there is its template byte for
     byte, so the schedules the tests above hold are the ones launchd runs, and no SPX plist is loaded
     that has no template."""
     templates = {p.name.removesuffix(".template") for p in LAUNCHD.glob("*.plist.template")}
-    installed = {p.name for p in (REPO / "runtime" / "launchd").glob("com.mirai-station.spx-jev*.plist")}
+    loaded = REPO / "scheduled_jobs" / "launchd_job_definitions"
+    installed = {p.name for p in loaded.glob("com.mirai-station.spx-jev*.plist")}
     assert len(templates) == 10 and installed == templates   # 8 service jobs, the Mirai Prediction System's nightly job, the headline feed
     for name in sorted(templates):
-        assert (REPO / "runtime" / "launchd" / name).read_bytes() == (LAUNCHD / f"{name}.template").read_bytes(), name
+        assert (loaded / name).read_bytes() == (LAUNCHD / f"{name}.template").read_bytes(), name

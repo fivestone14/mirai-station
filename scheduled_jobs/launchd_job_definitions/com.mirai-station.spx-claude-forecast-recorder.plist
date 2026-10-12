@@ -9,7 +9,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-spx-claude-forecast-recorder.sh</string>
+    <string>$HOME/mirai_awakening/scheduled_jobs/job_start_scripts/start_job_with_logs.sh spx-claude-forecast-recorder run-spx-claude-forecast-recorder.sh</string>
   </array>
 
   <!-- The spx-claude-forecast recorder: copies station data before it is overwritten or deleted, and
@@ -19,7 +19,7 @@
        too, on purpose: a second chance at Friday's book before Monday's 08:17 ET fetch overwrites it
        (the runner has no weekday gate; the Schwab task skips weekends itself). Every task copies only
        what is missing, and only finished sessions. Reads every station store read-only; writes only
-       its copies under state/market/, its lock and run log under state/operations/, and the backup folder.
+       its copies under data/market/, its lock and run log under data/operations/, and the backup folder.
        NOTE: launchd's StartCalendarInterval uses SYSTEM-LOCAL time and ignores the TZ env var below.
        This box runs on Pacific, so Hour=5 Minute=40 == 05:40 PT == 08:40 ET, Hour=13 Minute=25 ==
        16:25 ET and Weekday=5 Hour=14 Minute=30 == Friday 17:30 ET, year-round (PT is ET minus 3h
@@ -30,11 +30,6 @@
     <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>25</integer></dict>
     <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>14</integer><key>Minute</key><integer>30</integer></dict>
   </array>
-
-  <key>StandardOutPath</key>
-  <string>/tmp/mirai-station.spx-claude-forecast-recorder.out</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/mirai-station.spx-claude-forecast-recorder.err</string>
 
   <key>EnvironmentVariables</key>
   <dict>

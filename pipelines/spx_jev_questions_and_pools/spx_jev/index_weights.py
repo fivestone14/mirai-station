@@ -1,4 +1,4 @@
-"""The index weights file, ``state/market/spx_largest_stock_weights_by_update.json``: each largest stock's share of the S&P 500, dated, for
+"""The index weights file, ``data/market/spx_largest_stock_weights_by_update.json``: each largest stock's share of the S&P 500, dated, for
 the megacap labels (labels/leadership.py).
 
     python3 -m spx_jev.index_weights --show
@@ -29,7 +29,7 @@ from pathlib import Path
 
 from .state_builder import DEFAULT_STATE_DIR
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 WEIGHTS_FILE = Path(station_paths.SPX_LARGEST_STOCK_WEIGHTS_BY_UPDATE.relative)
 

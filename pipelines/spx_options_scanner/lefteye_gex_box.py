@@ -4,7 +4,7 @@ Vocabulary: GRAVITY = dealer positioning, where price gets PULLED (magnet/walls/
 flip/regime — this module). FLOW = the live force, who is SHOVING price right now
 (the aggressor-flow sensor in native_gex_feed; cross-checked in slide E). The
 pin-vs-trend failure mode reads as: gravity gets overpowered by flow. Display
-notation for labeled levels (docs/gw-vocab.md): walls render as GWc/GWp, the
+notation for labeled levels (docs/glossary/gw-vocab.md): walls render as GWc/GWp, the
 magnet as MagP, pinning as Pin — storage keys here are never renamed.
 
 An isolated rework of the dealer-gamma read (cf. lefteye_gamma). Instead of ONE
@@ -388,7 +388,7 @@ def _nyse_holidays(year: int) -> frozenset:
     (aggressor_flow/gamma_tape/flow_recent/tape_prev) on every scan from 2026-07-13 on.
     Cached: build_views ~29s→~0.9s, identical output. A one-line calendar change per year
     is a cache miss (maxsize=8 covers this year + next + slack); everything else is a hit."""
-    rt = str(Path(__file__).resolve().parent.parent.parent / "runtime")
+    rt = str(Path(__file__).resolve().parent.parent.parent / "alerts_and_phone_pushes")
     if rt not in sys.path:
         sys.path.insert(0, rt)
     from watch.intraday import market_status as _ms
@@ -789,7 +789,7 @@ def gamma_tape(zero_dte: list[dict], spot: float,
     # unknown interval is not a rate. The 4-30 min window is enforced at BOTH ends: here
     # (consumption) and at the snapshot-advance rule in reversion_lens (the disk anchor only
     # advances once its window is ≥ the floor — production scans are one-shot processes, so
-    # the anchor round-trips through state/spx/scanner/spx_options_volume_last_scan_state.json and a too-eager advance would keep the
+    # the anchor round-trips through data/spx/scanner/spx_options_volume_last_scan_state.json and a too-eager advance would keep the
     # window forever under the floor).
     interval_min = None
     if prev and prev.get("ts") and now:

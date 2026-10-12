@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-_RUNTIME = str(Path(__file__).resolve().parents[3] / "runtime")     # runtime/station_paths.py names every store a fixture writes
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(Path(__file__).resolve().parents[3])     # station_paths.py names every store a fixture writes
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 
 ET = timezone(timedelta(hours=-4))

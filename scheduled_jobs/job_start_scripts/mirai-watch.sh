@@ -2,7 +2,7 @@
 # `mirai-watch` wrapper — dispatches activate / deactivate / status / tick.
 #
 # Install (per-machine, idempotent):
-#   ln -sf "$HOME/.claude/plugins/mirai-station/runtime/scripts/mirai-watch.sh" \
+#   ln -sf "$HOME/mirai_awakening/scheduled_jobs/job_start_scripts/mirai-watch.sh" \
 #          "$HOME/.local/bin/mirai-watch"
 
 set -u
@@ -19,7 +19,7 @@ source "${SCRIPT_DIR}/env.sh"
 set -e
 
 PY="${MIRAI_STATION_VENV}/bin/python"
-LAUNCHD="${MIRAI_STATION_ROOT}/runtime/launchd"
+LAUNCHD="${MIRAI_STATION_ROOT}/scheduled_jobs/launchd_job_definitions"
 UID_GUI="gui/$(id -u)"
 
 usage() {
@@ -66,7 +66,7 @@ case "$cmd" in
     exec "${SCRIPT_DIR}/run-watch-left-eye.sh"
     ;;
   doctor)
-    cd "${MIRAI_STATION_ROOT}/runtime"
+    cd "${MIRAI_STATION_ROOT}/alerts_and_phone_pushes"
     exec "$PY" -m watch.cli doctor
     ;;
   help|-h|--help|"")

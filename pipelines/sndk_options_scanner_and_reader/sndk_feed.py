@@ -29,9 +29,9 @@ SPX read:
     (parity: same strike, same IV; BS gamma is right-independent). Provider IV
     survives only as a plausibility-banded, parity-clamped fallback.
 
-Store: state/sndk/ (sndk_options_expiries_state.json, the discovery cache; sndk_options_chain_state.json,
+Store: data/sndk/ (sndk_options_expiries_state.json, the discovery cache; sndk_options_chain_state.json,
 the raw-book cache; sndk_implied_volatility_state.json, the vol hint; the fetch log) — nothing here touches
-the SPX dated book (state/market/spx_monthly_quarterly_open_interest_latest.json), the native chain cache,
+the SPX dated book (data/market/spx_monthly_quarterly_open_interest_latest.json), the native chain cache,
 or any SPX store.
 
 Kill switch: SNDK_PRO_DISABLE=1 → sndk_chain() returns None (checked in the
@@ -55,13 +55,13 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 _SKILL_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
-_RUNTIME = str(_SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(_SKILL_DIR.parent.parent)             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 # transport + engine helpers live in the sibling left-eye skill (same pattern
 # native_gex_feed uses to borrow iv-viability's vault)
-_LEFT_EYE = str(_SKILL_DIR.parent / "mirai-left-eye")
+_LEFT_EYE = str(_SKILL_DIR.parent / "spx_options_scanner")
 if _LEFT_EYE not in sys.path:
     sys.path.insert(0, _LEFT_EYE)
 
@@ -91,7 +91,7 @@ _THIN_TWIN_RATIO = 5
 
 _SCAN_INTERVAL_S = 120.0      # the scanner's launchd StartInterval (com.mirai-station.sndk)
 _CHAIN_TTL_S = 1.5 * _SCAN_INTERVAL_S
-                              # persisted-book freshness (state/sndk/sndk_options_chain_state.json):
+                              # persisted-book freshness (data/sndk/sndk_options_chain_state.json):
                               # launchd relaunches the process every tick, so the cache
                               # lives on DISK — an in-process TTL could never hit.
                               # Half a tick either side: the tick after a pull re-serves
@@ -113,7 +113,7 @@ def _holidays(year: int) -> frozenset:
     """NYSE full-closure holidays via the watch package's computed calendar
     (dated_gex_feed._holidays verbatim). Fail-open to an empty set."""
     try:
-        rt = str(_SKILL_DIR.parent.parent / "runtime")
+        rt = str(_SKILL_DIR.parent.parent / "alerts_and_phone_pushes")
         if rt not in sys.path:
             sys.path.insert(0, rt)
         from watch.intraday import market_status as _ms
@@ -277,7 +277,7 @@ return {'spot': cell['spot'], 'contracts': out, 'chunks': chunks, 'sides': sides
 
 def discover_expiries(now: Optional[datetime] = None) -> list:
     """Today's probed expiry list (ISO strings, ascending), day-cached in
-    state/sndk/sndk_options_expiries_state.json so the ~10 probe calls are paid once per day.
+    data/sndk/sndk_options_expiries_state.json so the ~10 probe calls are paid once per day.
     Empty list = discovery failed (caller degrades); never raises.
 
     M2 — a probe ERROR is an unknown, not an empty: if any errored day is a
@@ -579,7 +579,7 @@ def sndk_chain(now: Optional[datetime] = None,
                live_spot: Optional[float] = None) -> Optional[dict]:
     """ONE SNDK book: discovered weeklies, chunk-fetched around the live-quote
     anchor, IV rebuilt from quotes, gamma filled. The raw book persists to
-    state/sndk/sndk_options_chain_state.json for _CHAIN_TTL_S; a fresh cache is RE-PRICED at the
+    data/sndk/sndk_options_chain_state.json for _CHAIN_TTL_S; a fresh cache is RE-PRICED at the
     live quote instead of re-pulled (meta.book_source / cache_age_s say which).
     None on kill switch, missing live quote (M3: the chain's own spot is ~15%
     stale — no quote, no book), discovery failure, or a dead front book

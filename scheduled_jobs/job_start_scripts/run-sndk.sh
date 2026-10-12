@@ -2,7 +2,7 @@
 # launchd-fired wrapper: SNDK-PRO scan tick (record-only: nothing here trades).
 # One tick = pull the SNDK weekly chain (disk-cached for sndk_feed._CHAIN_TTL_S
 # inside python), compute gex/dex/ladder/EM views via the pure left-eye engines,
-# append one diary row to state/sndk/sndk_options_scanner_results_by_scan/{date}.jsonl for the viewstation's
+# append one diary row to data/sndk/sndk_options_scanner_results_by_scan/{date}.jsonl for the viewstation's
 # /api/raw readers.
 # Gated on the authoritative market-status (RTH only) — the python side gates
 # again (defense in depth; sndk_hunter.py --force bypasses for manual runs).
@@ -21,7 +21,7 @@ set -e
 [[ "${SNDK_PRO_DISABLE:-0}" == "1" ]] && exit 0
 [[ $(date +%u) -gt 5 ]] && exit 0
 
-cd "${MIRAI_STATION_ROOT}/runtime"
+cd "${MIRAI_STATION_ROOT}/alerts_and_phone_pushes"
 # Not exit 1 for "closed": Python exits 1 on any uncaught exception, so a broken
 # venv or import read as a closed market and launchd reported success for a
 # session that never wrote a row.
@@ -37,5 +37,5 @@ elif [[ $GATE_RC -ne 0 ]]; then
   exit 1
 fi
 
-cd "${MIRAI_STATION_ROOT}/skills/sndk-pro"
+cd "${MIRAI_STATION_ROOT}/pipelines/sndk_options_scanner_and_reader"
 exec "${MIRAI_STATION_VENV}/bin/python" sndk_hunter.py

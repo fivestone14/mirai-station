@@ -20,11 +20,11 @@ from pathlib import Path
 
 import pytest
 
-_SNDK = Path(__file__).resolve().parents[2] / "sndk-pro"
+_SNDK = Path(__file__).resolve().parents[3] / "pipelines" / "sndk_options_scanner_and_reader"
 sys.path.insert(0, str(_SNDK))
-_RUNTIME = str(Path(__file__).resolve().parents[3] / "runtime")   # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(Path(__file__).resolve().parents[3])   # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 
 import sndk_read as SR          # noqa: E402
 import convo                    # noqa: E402

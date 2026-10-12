@@ -1,7 +1,7 @@
 """
 gw_vocab.py — the single Python source of truth for the GW notation standard.
 
-The full standard lives in docs/gw-vocab.md (2026-07-19, amended same day after
+The full standard lives in docs/glossary/gw-vocab.md (2026-07-19, amended same day after
 the live-data pressure test): GWc/GWp = call/put gex walls, MagP = magnetic
 pull, Pin = pinning; every structure carries a prime intensity mark (' '' ''')
 relative to the strongest structure on the same surface; tenor prefixes
@@ -27,7 +27,7 @@ PRIME_DOMINANT = 0.60      # ≥ → '''
 PRIME_SIGNIFICANT = 0.25   # ≥ → ''  (else ')
 TIER_HYSTERESIS = 0.07     # live surfaces: promote at cut+0.07, demote below cut−0.07
 
-# Clustering (docs/gw-vocab.md §Clustering, pressure-tested 2026-07-19):
+# Clustering (docs/glossary/gw-vocab.md §Clustering, pressure-tested 2026-07-19):
 STRIKE_FLOOR = 0.25        # per-strike concentration floor vs the strongest strike —
                            # without it same-sign grouping merges each side of the
                            # book into one ~220-pt blob
@@ -112,7 +112,7 @@ def infer_step(strikes: list[float]) -> float:
 
 def cluster_walls(net_by_strike: list, spot: float,
                   step: float | None = None) -> list[dict]:
-    """docs/gw-vocab.md §Clustering — find the walls on one per-strike surface.
+    """docs/glossary/gw-vocab.md §Clustering — find the walls on one per-strike surface.
 
     net_by_strike: [strike, net_gamma] pairs (calls +, puts −), typically
     `gex_views.net_by_strike`. Concentration floor FIRST: only strikes with

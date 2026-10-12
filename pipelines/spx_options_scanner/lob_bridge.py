@@ -1,6 +1,6 @@
 """
 lob_bridge.py — the ONLY coupling point between Mirai and the Layer-2 LOB
-(FLOW) sensor box at skills/lob-flow. Everything mirai-specific about the box
+(FLOW) sensor box at data_collectors/spx_options_tape_collector. Everything mirai-specific about the box
 lives here: paths, secrets, the Schwab/MCP adapters, and the two file
 handshakes the 5-min tick uses (write the gravity strikes down, read the
 collector's latest fold up). The package itself never imports mirai code.
@@ -28,13 +28,18 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 SKILL_DIR = Path(__file__).resolve().parent
-_IV = str(SKILL_DIR.parent / "iv-viability")
+_IV = str(SKILL_DIR.parents[1] / "data_collectors" / "schwab_market_data_client")
 if _IV not in sys.path:
     sys.path.insert(0, _IV)
+# the lob_flow box itself, so the bridge finds it from the repo alone and not only through the
+# venv's editable install (which pins the folder it was installed from)
+_TAPE_COLLECTOR = str(SKILL_DIR.parents[1] / "data_collectors" / "spx_options_tape_collector")
+if _TAPE_COLLECTOR not in sys.path:
+    sys.path.append(_TAPE_COLLECTOR)
 
-_RUNTIME = str(SKILL_DIR.parent.parent / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(SKILL_DIR.parent.parent)             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 
 ET = ZoneInfo("America/New_York")
@@ -212,7 +217,7 @@ def _build_adapters():
 
     def _is_live() -> bool:
         try:
-            _rt = str(SKILL_DIR.parent.parent / "runtime")
+            _rt = str(SKILL_DIR.parent.parent / "alerts_and_phone_pushes")
             if _rt not in sys.path:
                 sys.path.insert(0, _rt)
             from watch.intraday import market_status

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # launchd-fired wrapper: after the close, save the day's full 1-minute bars.
-# One run = every market-feed symbol's whole session to state/market/watchlist_price_bars_by_minute/{date}.jsonl,
-# and SPX's own session to state/market/spx_price_bars_by_minute/{date}.jsonl when that file is short
+# One run = every market-feed symbol's whole session to data/market/watchlist_price_bars_by_minute/{date}.jsonl,
+# and SPX's own session to data/market/spx_price_bars_by_minute/{date}.jsonl when that file is short
 # (spx_jev/save_day.py), for today and any market day of the last week not yet on disk. REST only,
 # through the station's shared client; the lob-flow streamer is never touched. Idempotent: a day on
 # disk is never fetched again.
@@ -20,5 +20,5 @@ set -e
 [[ "${SPX_JEV_DISABLE:-0}" == "1" ]] && exit 0
 [[ $(date +%u) -gt 5 ]] && exit 0
 
-cd "${MIRAI_STATION_ROOT}/skills/spx-jev"
-exec "${MIRAI_STATION_VENV}/bin/python" -m spx_jev.save_day --state-dir "${MIRAI_STATION_ROOT}/state"
+cd "${MIRAI_STATION_ROOT}/pipelines/spx_jev_questions_and_pools"
+exec "${MIRAI_STATION_VENV}/bin/python" -m spx_jev.save_day --state-dir "${MIRAI_STATION_STATE}"

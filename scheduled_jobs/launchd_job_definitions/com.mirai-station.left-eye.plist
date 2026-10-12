@@ -9,7 +9,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-watch-left-eye.sh</string>
+    <string>$HOME/mirai_awakening/scheduled_jobs/job_start_scripts/start_job_with_logs.sh left-eye run-watch-left-eye.sh</string>
   </array>
 
   <!-- Fire every 5 min; the script (run-watch-left-eye.sh) enforces both the weekday
@@ -23,11 +23,6 @@
        stale. Revert to 300 if a tick does not complete well under 60s. -->
   <key>StartInterval</key>
   <integer>60</integer>
-
-  <key>StandardOutPath</key>
-  <string>/tmp/mirai-station.left-eye.out</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/mirai-station.left-eye.err</string>
 
   <key>EnvironmentVariables</key>
   <dict>

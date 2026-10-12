@@ -1,6 +1,6 @@
 """``latest.json``: the one record the phone's card reads, rewritten after every read.
 
-The phone (runtime/viewstation/static/m/jev-spx.html, the "Claude's read" card) never opens a daily file: it
+The phone (screens/desktop_and_phone_server/static/m/jev-spx.html, the "Claude's read" card) never opens a daily file: it
 polls this one and draws what it holds. So it carries everything the card and its sheet show: the final
 forecast per horizon with the base rate beside it (the final line already has both), the reasons the
 answers gave in plain words (reason_words), the strongest reason against the lean, and the scorecard's

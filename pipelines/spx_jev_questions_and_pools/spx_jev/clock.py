@@ -17,7 +17,7 @@ The odds
     30 minutes; a day the scanner barely covered is left out rather than counted as a full session.
 
     Point in time: prior sessions only, never today. A past session's counts are kept in
-    ``state/spx/jev/live_lane/historical_odds_end_price_days_state.json`` with the number of bars and the size and time of the diary and
+    ``data/spx/jev/live_lane/historical_odds_end_price_days_state.json`` with the number of bars and the size and time of the diary and
     market-context files they were counted from and the names of the sessions before it whose bars size its
     zones, and are counted again only if any of them changes, or if the rule itself (the zone's rule, the
     targets, phases, grid, version) changes. Fewer than MIN_SESSIONS counted sessions, or a read on an
@@ -71,7 +71,7 @@ from .lane import LIVE, PREMARKET, Lane
 from .sessions import SESSION_CLOSE, session_close
 from .state_builder import CONTEXT_SUBDIR, ROWS_SUBDIR, MarketContext, bar_days, load_market_context, load_rows, parse_ts, prior_bar_days
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 JEV_SHARE = 0.5          # declared, not fitted
 MIN_SESSIONS = 10        # fewer counted prior sessions than this and the odds are too thin to blend

@@ -1,8 +1,9 @@
 """Every data store of the station, defined once, under its final name, in its named folder.
 
 Cleanup phase 1 (2026-10-11) named every store here; phase 7 (the same day) moved each store's VALUE to its folder in
-the approved layout (``final_mapping_v4.md``), still under the data root ``state/`` (a later phase renames state/ to
-data/). Each store below is a ``Store`` whose NAME is the store's final name from the map (``<subject>_<content>_by_<grain>``,
+the approved layout (``final_mapping_v4.md``); phase 8 gave the code one project home (``~/mirai_awakening``, every
+folder named for what it holds) with the data root at ``data/``. Each store below is a ``Store`` whose NAME is the
+store's final name from the map (``<subject>_<content>_by_<grain>``,
 or a ``_latest`` / ``_card`` / ``_state`` / ``_log`` ending) and whose VALUE is where it now lives. The ``_TABLE`` ending
 is this file's own rule, not the map's: a Parquet table and the raw folder it is built from share the map's name
 (``tables/jev_answers_by_read_and_question/``), so the constant for the table takes ``_TABLE`` to tell the two apart.
@@ -22,30 +23,31 @@ each copy has a location of its own below, so nothing is lost, and a later phase
 
 How to import it
 ----------------
-This file lives in ``runtime/``, which is on ``sys.path`` only for the jobs that run as ``python -m watch...``
-from the runtime folder. Everything else (the skills, the viewstation server, the voice desk, the test suites)
-puts ``runtime/`` on ``sys.path`` first, by its own position in the repo, then imports the module by name::
+This file sits at the repo root, which is on nobody's ``sys.path`` by default: the jobs run as ``python -m watch...``
+from ``alerts_and_phone_pushes/``, the pipelines from their own folders. Every consumer (the pipelines, the
+collectors, the screens' server, the voice desk, the test suites) puts the repo root on ``sys.path`` first, by its
+own position in the repo, then imports the module by name::
 
     import sys
     from pathlib import Path
 
-    _RUNTIME = str(Path(__file__).resolve().parents[N] / "runtime")      # N: this file's depth below the repo root
-    if _RUNTIME not in sys.path:
-        sys.path.append(_RUNTIME)                                         # appended, so it shadows nothing
+    _REPO_ROOT = str(Path(__file__).resolve().parents[N])      # N: this file's depth below the repo root
+    if _REPO_ROOT not in sys.path:
+        sys.path.append(_REPO_ROOT)                                         # appended, so it shadows nothing
     import station_paths
 
 A package does this once, in the module its other modules already import for paths (``spx_jev/__init__.py``,
-``spx_claude_forecast/paths.py``, ``book_flow/cache.py``, ``viewstation/snapshot.py``); a flat skill folder does it
-in each module that names a store. The module is pure standard library and has no side effects when imported: it
-creates no folder and reads no file.
+``spx_claude_forecast/paths.py``, ``book_flow/cache.py``, ``desktop_and_phone_server/snapshot.py``,
+``watch/paths.py``); a flat pipeline folder does it in each module that names a store. The module is pure standard
+library and has no side effects when imported: it creates no folder and reads no file.
 
 The data root
 -------------
 ``state_root(explicit=None)`` is the one place the root is decided, in the order the station used before this file:
 an explicit root (the ``--state-dir`` the launchd scripts pass to the spx-jev and Claude-forecast jobs), else
 ``MIRAI_STATE_DIR`` (the per-test override every suite sets, so it wins over the station-wide variable even in a
-shell that sourced env.sh), else ``MIRAI_STATION_STATE`` (env.sh), else ``$MIRAI_STATION_ROOT/state``, else
-``<repo>/state``. A consumer that resolved its root at import keeps doing so (``STATE_DIR = station_paths.state_root()``);
+shell that sourced env.sh), else ``MIRAI_STATION_STATE`` (env.sh), else ``$MIRAI_STATION_ROOT/data``, else
+``<repo>/data``. A consumer that resolved its root at import keeps doing so (``STATE_DIR = station_paths.state_root()``);
 one that resolved per call keeps doing that too.
 
 Keys
@@ -73,13 +75,13 @@ import os
 import re
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]            # ~/.claude/plugins/mirai-station
-STATE_FOLDER_NAME = "state"                                 # the data root's folder under the repo, today
+REPO_ROOT = Path(__file__).resolve().parent                # the project home, ~/mirai_awakening: this file sits at its root
+STATE_FOLDER_NAME = "data"                                  # the data root's folder under the repo
 DAY_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def default_state_root() -> Path:
-    """The root with no override: ``$MIRAI_STATION_ROOT/state`` when env.sh set the station root, else ``<repo>/state``."""
+    """The root with no override: ``$MIRAI_STATION_ROOT/data`` when env.sh set the station root, else ``<repo>/data``."""
     station_root = os.environ.get("MIRAI_STATION_ROOT")
     if station_root:
         return Path(station_root).expanduser().resolve() / STATE_FOLDER_NAME
@@ -244,7 +246,7 @@ SPX_LARGEST_STOCK_WEIGHTS_BY_UPDATE = Store("market/spx_largest_stock_weights_by
 # The event calendar is kept twice: the collector's copy under the data root, and the spx-jev package's own hand-kept
 # file in the repo. A later phase merges them.
 MARKET_EVENT_CALENDAR_BY_EVENT = Store("market/market_event_calendar_by_event.json")
-MARKET_EVENT_CALENDAR_BY_EVENT_SPX_JEV_COPY = Store("skills/spx-jev/calendar/events.json", base="repo")
+MARKET_EVENT_CALENDAR_BY_EVENT_SPX_JEV_COPY = Store("pipelines/spx_jev_questions_and_pools/calendar/events.json", base="repo")
 SPX_PRICE_BARS_BY_MINUTE_TABLE = Store("market/tables/spx_price_bars_by_minute")
 FUTURES_PRICE_BARS_BY_MINUTE_TABLE = Store("market/tables/futures_price_bars_by_minute")
 
@@ -382,11 +384,16 @@ SPX_OPTIONS_TRADES_3D_VIEW_CARD = Store("screen_files/desktop/spx_options_trades
 # =====================================================================================================================
 # operations/   logs, locks, health files and alert state
 # =====================================================================================================================
-STATION_RUNTIME_LOG = Store("operations/logs/station_runtime_log/{day}.log")        # env.sh's log(); runtime/watch names the folder
+STATION_RUNTIME_LOG = Store("operations/logs/station_runtime_log/{day}.log")        # env.sh's log(); alerts_and_phone_pushes/watch names the folder
 CLAUDE_FORECAST_JOB_RUNS_LOG = Store("operations/logs/claude_forecast_job_runs_log.jsonl")
 CLAUDE_FORECAST_READ_JOB_LOG = Store("operations/logs/claude_forecast_read_job_log.txt")
 PREDICTION_JOB_RUNS_LOG = Store("operations/logs/prediction_job_runs_log.jsonl")
 FORECASTER_FORECASTS_JOB_LOG = Store("operations/logs/forecaster_forecasts_job_log.txt")
+# What each launchd job prints, captured by scheduled_jobs/job_start_scripts/start_job_with_logs.sh (launchd itself
+# expands nothing in a plist path): {job} is the launchd Label without its com.mirai-station. prefix, hyphens written
+# as underscores (spx-jev-tape -> spx_jev_tape). Appended to on every run; nothing rotates them.
+LAUNCHD_JOB_OUTPUT_LOG = Store("operations/logs/{job}_output_log.txt")
+LAUNCHD_JOB_ERRORS_LOG = Store("operations/logs/{job}_errors_log.txt")
 SPX_OPTIONS_TAPE_COLLECTOR_LOCK = Store("operations/locks/spx_options_tape_collector.lock")
 CLAUDE_FORECAST_NIGHTLY_JOB_LOCK = Store("operations/locks/claude_forecast_nightly_job.lock")
 CLAUDE_FORECAST_RECORDER_JOB_LOCK = Store("operations/locks/claude_forecast_recorder_job.lock")

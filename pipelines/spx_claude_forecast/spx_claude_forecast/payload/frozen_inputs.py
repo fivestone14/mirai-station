@@ -288,7 +288,7 @@ def load_market_snapshot(state_dir: Path, day: str, cut: datetime, notes: list[s
 
 
 def load_tape_folds(state_dir: Path, day: str, prior_days: list[str], cut: datetime) -> dict[str, list[TapeFold]]:
-    """The lob-flow collector's folds (``state/spx/scanner/spx_order_flow_readings_by_minute/{day}.jsonl``) by day: today's written at or before the
+    """The lob-flow collector's folds (``data/spx/scanner/spx_order_flow_readings_by_minute/{day}.jsonl``) by day: today's written at or before the
     cut, each prior session's whole; oldest first. A day with no agg file has an empty list."""
     folds = {day: [fold for fold in _tape_folds_of(state_dir, day) if fold.at <= cut]}
     for prior in prior_days:

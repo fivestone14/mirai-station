@@ -9,7 +9,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-dated-book.sh</string>
+    <string>$HOME/mirai_awakening/scheduled_jobs/job_start_scripts/start_job_with_logs.sh dated-book run-dated-book.sh</string>
   </array>
 
   <!-- DATED BOOK SIDECAR: nightly far-dated OI pull (next two SPX monthlies +
@@ -39,11 +39,6 @@
       <integer>10</integer>
     </dict>
   </array>
-
-  <key>StandardOutPath</key>
-  <string>/tmp/mirai-station.dated-book.out</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/mirai-station.dated-book.err</string>
 
   <key>EnvironmentVariables</key>
   <dict>

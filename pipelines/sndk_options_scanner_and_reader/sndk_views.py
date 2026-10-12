@@ -34,7 +34,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 _SKILL_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
-_LEFT_EYE = str(_SKILL_DIR.parent / "mirai-left-eye")
+_LEFT_EYE = str(_SKILL_DIR.parent / "spx_options_scanner")
 if _LEFT_EYE not in sys.path:
     sys.path.insert(0, _LEFT_EYE)
 
@@ -270,7 +270,7 @@ def _iv_skew(front: list, spot: float, sigma: Optional[float]) -> Optional[dict]
     with one-sided vol, so d = σ_dn / (σ_dn + σ_up). A side with fewer than
     _SKEW_MIN_STRIKES clean solves proves nothing → None (absent, never 0.5).
 
-    NOTE (flagged in docs/sndk-payload-inventory.md): this is a DIFFERENT
+    NOTE (flagged in docs/research_and_reviews/sndk-payload-inventory.md): this is a DIFFERENT
     asymmetry source from `adaptive_em` (realized downside semivariance).
     Both record; the scene payload's aem reads THIS one per the blueprint."""
     if not spot or not sigma or sigma <= 0:

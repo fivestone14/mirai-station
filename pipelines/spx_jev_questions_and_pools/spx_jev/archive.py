@@ -1,6 +1,6 @@
 """The raw archive: everything a read saw, asked, was told and later scored, for machine learning.
 
-    state/spx/jev/jev_reads_and_grades_by_event/{day}.jsonl    append only, never rewritten, one JSON object per line
+    data/spx/jev/jev_reads_and_grades_by_event/{day}.jsonl    append only, never rewritten, one JSON object per line
                                                               (<out-dir>/archive/ for a run pointed at a folder of its own,
                                                               lane.Lane.archive_folder)
 
@@ -39,7 +39,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 SCHEMA_VERSION = 5          # 2: a read carries the learning loop's forecasts (pool); 3: a premarket read carries its checkpoint and the night it saw;
                             # 4: a close_out's calls and tally are graded on the average price (see close_out above);

@@ -1,7 +1,7 @@
 """The one place old names meet the diagram's names, and the few shared words every module uses.
 
 The learning store's tables are reached through STORES, by the diagram's words, each a store named in
-runtime/station_paths.py. Pool_v1's expert names become voice names the same way (VOICE_NAMES).
+station_paths.py. Pool_v1's expert names become voice names the same way (VOICE_NAMES).
 STAGES, SUMS_BY_LANE and REFERENCE_VOICE live here too, so the hook, the nightly job and the learners share one spelling, and
 CUT_OVER_DAY (cuts.py's) is read from here: the day the live lane stopped asking the pre-merge questions.
 """

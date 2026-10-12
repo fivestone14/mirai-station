@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # launchd-fired wrapper: the SPX live-bars sidecar.
 # One run = fetch today's 1-min SPX session from Schwab (one call, the whole session) and append
-# every FINISHED minute not already on disk to state/market/spx_price_bars_by_minute/{date}.jsonl. Idempotent and
+# every FINISHED minute not already on disk to data/market/spx_price_bars_by_minute/{date}.jsonl. Idempotent and
 # self-healing: a run after a gap writes the gap. Its own clock and process; the SPX JEV service
 # reads the file, and the scanner never waits on it.
 # Gated on the market-status helper like run-sndk-bars.sh, plus the twelve minutes after the day's
@@ -20,7 +20,7 @@ set -e
 [[ "${SPX_JEV_DISABLE:-0}" == "1" ]] && exit 0
 [[ $(date +%u) -gt 5 ]] && exit 0
 
-cd "${MIRAI_STATION_ROOT}/runtime"
+cd "${MIRAI_STATION_ROOT}/alerts_and_phone_pushes"
 set +e
 "${MIRAI_STATION_VENV}/bin/python" -c "
 import sys
@@ -41,5 +41,5 @@ elif [[ $GATE_RC -ne 0 ]]; then
   exit 1
 fi
 
-cd "${MIRAI_STATION_ROOT}/skills/spx-jev"
-exec "${MIRAI_STATION_VENV}/bin/python" -m spx_jev.bars --state-dir "${MIRAI_STATION_ROOT}/state"
+cd "${MIRAI_STATION_ROOT}/pipelines/spx_jev_questions_and_pools"
+exec "${MIRAI_STATION_VENV}/bin/python" -m spx_jev.bars --state-dir "${MIRAI_STATION_STATE}"

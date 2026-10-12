@@ -6,7 +6,7 @@ Each label's sentence, how it is computed and its source are in spec/question_se
 fund and stock is measured against its usual multiple of the index (usual_link), and every size is ranked
 against the same measure at this minute on up to the last 20 sessions, needing 10 (ranks.rank_sessions),
 never against a fixed line; a stock's own move against its own (usual_link.OwnMoves). The megacap labels read
-the index weights from ``state/market/spx_largest_stock_weights_by_update.json`` (index_weights.py: dated entries of ``{symbol: share
+the index weights from ``data/market/spx_largest_stock_weights_by_update.json`` (index_weights.py: dated entries of ``{symbol: share
 of the index}``, the newest dated on or before the read's day); without it they are omitted with the reason.
 
 Not built: the heavyweight gap's earnings tag (the spec's "NVDA reported after yesterday's close"). It waits
@@ -32,7 +32,7 @@ from .usual_link import (SPX, AgainstIndex, OwnMoves, Session, UsualLink, agains
                          needs_move, same_clock_sessions)
 from .words import listed, pct, sig, signed
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 LABELS = ("leaders.equal_weight_vs_cap_30m", "leaders.heavyweight_gap", "leaders.megacap_cohesion_30m", "leaders.pull_vs_rest_30m",
           "leaders.rotation_30m", "leaders.semis_vs_index_30m", "leaders.single_name_10m", "leaders.size_spread_day",

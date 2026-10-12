@@ -8,9 +8,9 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import gex_polarity_ab as pab
 
-_RUNTIME = str(Path(__file__).resolve().parents[3] / "runtime")
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(Path(__file__).resolve().parents[3])
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402  — every store the code names comes from here
 
 ET = ZoneInfo("America/New_York")

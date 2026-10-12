@@ -20,5 +20,5 @@ set -e
 [[ "${SPX_JEV_DISABLE:-0}" == "1" ]] && exit 0
 [[ $(TZ=America/New_York date +%u) -gt 5 ]] && exit 0
 
-cd "${MIRAI_STATION_ROOT}/runtime"
+cd "${MIRAI_STATION_ROOT}/alerts_and_phone_pushes"
 exec "${MIRAI_STATION_VENV}/bin/python" -m watch.intraday.spx_premarket_deadman "$@"

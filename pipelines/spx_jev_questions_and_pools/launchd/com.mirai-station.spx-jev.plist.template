@@ -9,7 +9,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-spx-jev.sh</string>
+    <string>$HOME/mirai_awakening/scheduled_jobs/job_start_scripts/start_job_with_logs.sh spx-jev run-spx-jev.sh</string>
   </array>
 
   <!-- The SPX JEV decision service: a separate job from the left-eye scanner, never on its path.
@@ -17,9 +17,9 @@
        JEV reads once per 30-minute mark on the newest SPX diary row; the runner waits until that row is
        at least 20 s old. The 16:02 fire (13:02 on a half day) passes the runner's after-close gate and only
        grades the day's last calls (the service's close-out). Reads the diary, the
-       bars and the market context; writes only its own stores (the live lane under state/spx/jev/, the
-       learning loops under state/spx/prediction/, the card under state/screen_files/phone/). The key is read by the service itself
-       from the git-ignored skills/spx-jev/.env, never from this file.
+       bars and the market context; writes only its own stores (the live lane under data/spx/jev/, the
+       learning loops under data/spx/prediction/, the card under data/screen_files/phone/). The key is read by the service itself
+       from the git-ignored pipelines/spx_jev_questions_and_pools/.env, never from this file.
        NOTE: launchd's StartCalendarInterval uses SYSTEM-LOCAL time and ignores the
        TZ env var below. This box runs on Pacific, so Hour=6 Minute=32 == 06:32 PT == 09:32 ET
        year-round (PT is ET minus 3h through DST). -->
@@ -40,11 +40,6 @@
     <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>32</integer></dict>
     <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>2</integer></dict>
   </array>
-
-  <key>StandardOutPath</key>
-  <string>/tmp/mirai-station.spx-jev.out</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/mirai-station.spx-jev.err</string>
 
   <key>EnvironmentVariables</key>
   <dict>

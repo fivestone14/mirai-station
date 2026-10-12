@@ -4,11 +4,11 @@
 Serves the desktop page, the phone pages under /m, and the JSON routes behind
 them (the live spot, a replay day, the SNDK payload, pipeline replay and memory,
 the Day Visual LOB board), the pages' data files served by store NAME through
-runtime/station_paths.py (/api/store/file, /api/store/index), plus an opt-in
+station_paths.py (/api/store/file, /api/store/index), plus an opt-in
 raw-data explorer over the on-disk state files. Pure Python stdlib — no third-party deps — but run it under the
 mirai-station venv so snapshot.py can import the skill modules.
 
-    python runtime/viewstation/server.py            # binds 0.0.0.0:8787
+    python screens/desktop_and_phone_server/server.py            # binds 0.0.0.0:8787
     MIRAI_VIEW_PORT=9000 python .../server.py        # custom port
 
 WHO READS THIS, AND FROM WHERE. It began as a tablet view on the desk and the
@@ -22,7 +22,7 @@ STRICTLY READ-ONLY. There is no do_POST and no route that writes anything. It
 had one write once, the SNDK reasoning pause, and that went on 2026-08-23 when
 the station went public: a switch that silences the model is not something a
 visitor should be able to reach. The pause still exists as an operator control —
-edit state/sndk/sndk_options_reader_reasoning_switch.json, which skills/sndk-pro/sndk_read.py reads
+edit data/sndk/sndk_options_reader_reasoning_switch.json, which pipelines/sndk_options_scanner_and_reader/sndk_read.py reads
 (reasoning_on) and which fails OPEN. Anything re-introducing a write here must
 bring back the Origin / Sec-Fetch-Site guard that went with it: a read-only
 server does not need one, a writing one does.
@@ -59,7 +59,7 @@ HERE = Path(__file__).resolve().parent
 STATIC = HERE / "static"
 sys.path.insert(0, str(HERE))
 import snapshot as snap  # noqa: E402
-import station_paths  # noqa: E402  (snapshot put runtime/ on sys.path)
+import station_paths  # noqa: E402  (snapshot put the repo root on sys.path)
 
 PLUGIN_ROOT = snap.PLUGIN_ROOT
 STATE_DIR = snap.STATE_DIR
@@ -98,13 +98,13 @@ def _payload_unlocked(qs: dict) -> bool:
 # The Memory view (behind the same lock) shows what the reading model can
 # remember: the SNDK RAG store. The overview is a read-only inventory
 # (snapshot.sndk_memory_overview); a query runs the SAME allow-listed CLI the
-# model runs (skills/sndk-pro/sndk_rag.py, same interpreter, in a subprocess so
+# model runs (pipelines/sndk_options_scanner_and_reader/sndk_rag.py, same interpreter, in a subprocess so
 # the embedder never loads into this server) and hands back both the parsed
 # result and the exact text the model would see. Note the CLI's own documented
 # side effect: a days/month ask rolls closed sessions up into sndk_options_reader_session_summaries_by_day.jsonl /
 # sndk_options_reader_terrain_state.json under state/sndk — the memory maintaining itself, exactly as
 # when the model asks; no trading state is touched.
-_RAG_CLI = PLUGIN_ROOT / "skills" / "sndk-pro" / "sndk_rag.py"
+_RAG_CLI = PLUGIN_ROOT / "pipelines" / "sndk_options_scanner_and_reader" / "sndk_rag.py"
 _MEMORY_TIMEOUT_S = 60.0
 _MEMORY_MAX_LIMIT = 60
 _DATE_RX = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -348,7 +348,7 @@ def _raw_file(root_label: str, rel: str, limit: int) -> dict:
 
 
 # --- stores by name --------------------------------------------------------------
-# The pages ask for a store by its NAME in runtime/station_paths.py (JEV_LIVE_CARD,
+# The pages ask for a store by its NAME in station_paths.py (JEV_LIVE_CARD,
 # SPX_PRICE_BARS_BY_MINUTE&day=...), so a folder move changes that one file and
 # nothing a page holds. Same door as the raw explorer: the state root only, the
 # same readable types, the same denied subtrees, the same escape check.
@@ -496,7 +496,7 @@ def _page_version() -> str:
 # through a session. book_flow owns the arithmetic and the disk cache; this is
 # only the door. Imported lazily for the same reason the payload tab is — the
 # tab is rarely open and the import walks a recorded day.
-_BOOK_FLOW = PLUGIN_ROOT / "skills" / "book-flow"
+_BOOK_FLOW = PLUGIN_ROOT / "screens" / "desktop_options_trades_3d_view"
 _LOB_BOARD_GATE = threading.Semaphore(1)
 
 

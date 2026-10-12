@@ -13,7 +13,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-LEFT_EYE = Path(__file__).resolve().parents[2] / "mirai-left-eye"
+LEFT_EYE = Path(__file__).resolve().parents[2] / "spx_options_scanner"
 QUOTE_BATCH = 25            # symbols per quote call
 CALL_SPACING_S = 0.5        # pause between calls, so a minute's snapshot never bursts the rate limit
 

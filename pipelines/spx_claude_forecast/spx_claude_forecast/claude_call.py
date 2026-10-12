@@ -1,6 +1,6 @@
 """One ``claude -p`` call on the subscription, every tool denied, with its bill and timing kept.
 
-Why these flags (the pattern proven by SNDK, skills/sndk-pro/sndk_read.py call_the_model): the rulebook
+Why these flags (the pattern proven by SNDK, pipelines/sndk_options_scanner_and_reader/sndk_read.py call_the_model): the rulebook
 rides ``--append-system-prompt`` so it stays byte-identical and cached; ``--disallowedTools`` is the only
 thing that actually denies tools (``--allowedTools`` does not), and it must stay LAST on the command line;
 the MCP config is emptied; the model and the effort are pinned explicitly because an unpinned effort is

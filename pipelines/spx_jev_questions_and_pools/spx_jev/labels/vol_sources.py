@@ -5,7 +5,7 @@ diary series (the VIX, the straddle and the VIX curve through each day), and the
 * Prior diaries. A same-clock rank of a diary measure (the VIX, same-day vol, the straddle, the VIX curve)
   needs each prior session's rows, and the Scene keeps only each day's first. They are read here, only for days before the one being built,
   and kept for the process: a past day's file never changes.
-* The tape. ``state/market/spx_same_day_options_raw_day_folders/{day}/tape.jsonl`` (``tape.jsonl.gz`` once the collector archives the
+* The tape. ``data/market/spx_same_day_options_raw_day_folders/{day}/tape.jsonl`` (``tape.jsonl.gz`` once the collector archives the
   day): one line per 0DTE SPXW trade, with the quote it printed into. Lines land up to two hours out of
   time order, so every line up to the read's clock is read (the first line stamped after it was written
   after it, as options_flow reads the tape, today and on the prior sessions alike) and only the minutes
@@ -30,7 +30,7 @@ from ..sessions import session_close
 from ..state_builder import load_rows
 from .measures import is_num
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 # The scanner writes a row every one to two minutes; a row further than this from a moment does not stand for it.
 ROW_MAX_GAP = timedelta(minutes=10)

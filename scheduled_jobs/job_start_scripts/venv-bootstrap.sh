@@ -36,7 +36,7 @@ pip install --upgrade \
   'pyarrow>=24,<25'
 
 # Layer-2 LOB (FLOW) sensor box — editable install of the local package
-pip install -e "${MIRAI_STATION_ROOT}/skills/lob-flow"
+pip install -e "${MIRAI_STATION_ROOT}/data_collectors/spx_options_tape_collector"
 
 log "venv-bootstrap complete: $(python --version) at $MIRAI_STATION_VENV"
 

@@ -258,7 +258,7 @@ def test_promotion_gate_ignores_legacy_trade_cards(tmp_path):
 
 
 def test_replay_day_serves_the_sweep_contract(monkeypatch):
-    vs = Path(__file__).resolve().parents[3] / "runtime" / "viewstation"
+    vs = Path(__file__).resolve().parents[3] / "screens" / "desktop_and_phone_server"
     sys.path.insert(0, str(vs))
     import snapshot
     rows = [_row(0, "call"), _row(60, "put")]

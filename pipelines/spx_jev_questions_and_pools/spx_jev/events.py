@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo
 from .expiry import expiry_kinds, quarter_end_expiry
 from .sessions import session_close
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 CALENDAR = station_paths.MARKET_EVENT_CALENDAR_BY_EVENT_SPX_JEV_COPY.path()   # the package's own copy of the event calendar, in the repo
 ET = ZoneInfo("America/New_York")

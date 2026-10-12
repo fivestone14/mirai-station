@@ -1,4 +1,4 @@
-"""Tests for gw_vocab — the GW notation standard (docs/gw-vocab.md).
+"""Tests for gw_vocab — the GW notation standard (docs/glossary/gw-vocab.md).
 
 Pure math over injected data, no network, no writes. Covers the prime tier
 boundaries + hysteresis, MagP wall-tier inheritance (and its off-wall default),

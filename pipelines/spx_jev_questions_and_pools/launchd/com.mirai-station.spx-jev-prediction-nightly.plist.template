@@ -9,14 +9,14 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-spx-jev-prediction-nightly.sh</string>
+    <string>$HOME/mirai_awakening/scheduled_jobs/job_start_scripts/start_job_with_logs.sh spx-jev-prediction-nightly run-spx-jev-prediction-nightly.sh</string>
   </array>
 
   <!-- The Mirai Prediction System's nightly job (spx_jev/mirai_prediction/nightly_job.py): after the learning store's
        16:40 ET rebuild has the day's grades, it builds this system's tables from its raw files, scores every voice,
        lets pool_v2 learn the day, refits the three learners for the next market day and writes the phone's
-       scoreboard. Reads the store only; writes only under state/spx/prediction/, the scoreboard card under
-       state/screen_files/phone/ and its run log under state/operations/logs/. Fires at 17:05 ET.
+       scoreboard. Reads the store only; writes only under data/spx/prediction/, the scoreboard card under
+       data/screen_files/phone/ and its run log under data/operations/logs/. Fires at 17:05 ET.
        NOTE: launchd's StartCalendarInterval uses SYSTEM-LOCAL time and ignores the TZ env var below. This box
        runs on Pacific, so Hour=14 Minute=5 == 14:05 PT == 17:05 ET year-round (PT is ET minus 3h through DST). -->
   <key>StartCalendarInterval</key>
@@ -26,11 +26,6 @@
     <key>Minute</key>
     <integer>5</integer>
   </dict>
-
-  <key>StandardOutPath</key>
-  <string>/tmp/mirai-station.spx-jev-prediction-nightly.out</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/mirai-station.spx-jev-prediction-nightly.err</string>
 
   <key>EnvironmentVariables</key>
   <dict>

@@ -27,7 +27,7 @@ the current contract is always the one before the first roll advanced by the num
 roll found again never moves it twice. A quote that disagrees with the table's current contract is a
 roll the data has not shown yet (``pending``); the manifest carries it and the rank skips that night.
 
-The table lives beside the overnight store, ``state/market/futures_contracts_and_past_rolls_latest.json``, since the daily
+The table lives beside the overnight store, ``data/market/futures_contracts_and_past_rolls_latest.json``, since the daily
 job rewrites it.
 """
 from __future__ import annotations
@@ -38,7 +38,7 @@ import statistics
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 SCHEMA_VERSION = 1
 REFERENCES = {"/ES": "$SPX", "/ZN": "$TNX", "/BTC": "IBIT", "/MBT": "IBIT"}

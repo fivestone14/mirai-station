@@ -13,18 +13,13 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-viewstation.sh</string>
+    <string>$HOME/mirai_awakening/scheduled_jobs/job_start_scripts/start_job_with_logs.sh viewstation run-viewstation.sh</string>
   </array>
 
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
   <true/>
-
-  <key>StandardOutPath</key>
-  <string>/tmp/mirai-station.viewstation.out</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/mirai-station.viewstation.err</string>
 
   <key>EnvironmentVariables</key>
   <dict>

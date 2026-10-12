@@ -1,5 +1,5 @@
 """The SPX forecast page (jev-spx.html, the phone's home at /m): its two modes and today's calls over the SPX
-service's cards (skills/spx-jev), with every time drawn in the viewer's own zone. The SPX card writes every
+service's cards (pipelines/spx_jev_questions_and_pools), with every time drawn in the viewer's own zone. The SPX card writes every
 time as a full stamp with its offset, so the page draws each one through one formatter, viewerTime, in
 whatever zone the phone is in; the schedule (which mode leads, when to poll, what "today" is) stays on the
 New York market clock. The rules are functions in the page, lifted out by name and run in node against the
@@ -790,7 +790,7 @@ def test_the_reason_a_sum_stands_alone_gives_its_times_in_the_viewers_zone():
 
 def test_every_question_group_has_a_heading_in_words():
     """The groups are the SPX question file's, not SNDK's viewpoints: each has a plain name, none a raw id."""
-    doc = json.loads((Path(__file__).resolve().parents[3] / "skills" / "spx-jev" / "questions" / "spx_questions.json").read_text())
+    doc = json.loads((Path(__file__).resolve().parents[3] / "pipelines" / "spx_jev_questions_and_pools" / "questions" / "spx_questions.json").read_text())
     shown = [g["id"] for g in doc["groups"] if g["id"] != "dark"]
     decl = "".join(re.search(r"\n  var %s = .*?;" % v, JS, re.S).group(0) for v in ("ORDER", "NAME"))
     names = _run(decl + "console.log(JSON.stringify([ORDER, NAME]));", {})
@@ -993,7 +993,7 @@ def test_an_older_cards_half_and_half_is_named_as_the_graded_tile():
     assert blend == ["Usual oddsFlat 50%", "Half of each \u00B7 gradedFlat 50%"]
 
 
-# ---- before the open: the pre-market card (skills/spx-jev, spx_jev.premarket)
+# ---- before the open: the pre-market card (pipelines/spx_jev_questions_and_pools, spx_jev.premarket)
 
 PRE_DAY = "2026-09-28"                                          # a Monday
 CHECKPOINTS = ("02:35", "03:35", "08:05", "08:48", "09:05", "09:28")
@@ -1347,7 +1347,7 @@ def test_a_card_left_behind_by_a_sleeping_mac_says_which_read_is_missing():
 def test_a_missed_last_jev_read_is_said_before_the_hand_over():
     """The lane reads nothing 5 minutes or more after a checkpoint, so by 09:34 the 09:28 call is not coming: the
     card says so before the 09:35 hand-over, and no longer names that read as one to come."""
-    lane = (Path(__file__).resolve().parents[3] / "skills" / "spx-jev" / "spx_jev" / "premarket.py").read_text()
+    lane = (Path(__file__).resolve().parents[3] / "pipelines" / "spx_jev_questions_and_pools" / "spx_jev" / "premarket.py").read_text()
     late = re.search(r"\nLATE_FIRE_MIN = (\d+) ", lane)
     assert late and _var("PRE_LATE_MIN").strip().startswith(f"var PRE_LATE_MIN = {int(late.group(1)) + 1};")
     assert _page(pre_card("09:05"), et("09:20"))["state"] == ["snapshot, JEV at 06:28"]
@@ -1519,7 +1519,7 @@ def test_the_folded_premarket_call_fits_the_owners_360px_phone():
     assert all(w <= inner for k, w in _FOLD_W.items() if " · " in k)
 
 
-# ---- the call on the average price (skills/spx-jev hour.average_summary): up, flat or down over the window, no unsure;
+# ---- the call on the average price (pipelines/spx_jev_questions_and_pools hour.average_summary): up, flat or down over the window, no unsure;
 # the end-price sum kept beside it
 
 AVG = {"pick": "up", "probabilities": {"up": 0.55, "flat": 0.3, "down": 0.15}, "primary": "average_30", "box": "next_30",
@@ -2149,7 +2149,7 @@ def test_a_dark_question_names_its_own_reason_not_a_news_source_for_every_one():
     """Every dark question sat under "dark, waiting for a news source", overnight_range_position and gamma_cushion among
     them though neither waits for news. The sheet's last group says each waits for its own source, and each card gives
     its reason when the card carries one, as the questions doc words it (dark_reason)."""
-    doc = json.loads((Path(__file__).resolve().parents[3] / "skills" / "spx-jev" / "questions" / "spx_questions.json").read_text())
+    doc = json.loads((Path(__file__).resolve().parents[3] / "pipelines" / "spx_jev_questions_and_pools" / "questions" / "spx_questions.json").read_text())
     dark = [q for g in doc["groups"] for q in g["questions"].values() if q.get("status") == "dark"]
     assert dark and all(q.get("dark_reason") for q in dark), "every dark question in the doc names what it waits for"
     live = {**MONDAY["live"], "dark": [
@@ -2383,7 +2383,7 @@ def test_the_record_rows_sheet_is_the_learning_loop_against_the_usual_odds_guess
 
 # ---- Claude's read (2026-10-10): the strip under the call and its Why sheet
 
-# a read as skills/spx-claude-forecast writes latest.json (spec/record_formats.md), with the board's numbers (Final-Claude):
+# a read as pipelines/spx_claude_forecast writes latest.json (spec/record_formats.md), with the board's numbers (Final-Claude):
 # the 14:30 ET read of 10-09, flat 58 on the next 30 minutes against the usual 60, up 28 against 19
 CLAUDE = {"read_id": "live:2026-10-09T14:30:12-04:00", "trading_day": "2026-10-09", "half_hour_slot_et": "14:30", "read_at": "2026-10-09T14:30:12-04:00",
           "status": "ok", "usable_answer_count": 2, "claude_input_sha256": "sha256:e3be78dc3f2cd9ac", "prompt_and_model_version": "cr-1",
@@ -2656,7 +2656,7 @@ def test_the_questions_and_the_info_controls_share_one_row_that_fits_a_320px_pho
 # ---- the options-data banner (2026-10-08)
 
 # On 10-06..08 the options provider sent empty SPX books and 14 of the 79 code questions went blank. The station's
-# alert pass (runtime/watch/intraday/gex_alerts.py) writes spx_jev/mirai_prediction/options_data.json on every
+# alert pass (alerts_and_phone_pushes/watch/intraday/gex_alerts.py) writes spx_jev/mirai_prediction/options_data.json on every
 # in-session tick; the page says the outage in a red banner under the price box, and only from a file of today's
 # market day younger than 10 minutes. The 14 questions themselves are drawn nowhere on the page (the situation rows
 # are labels, the questions sheet JEV's own questions, and the card's hour.code_sentences only a count, not drawn), so

@@ -45,7 +45,7 @@ At read time a question whose last two fresh answers differed by CHANGE_CUT or m
 The schedule's ``every_min`` is the starting value until a recount exists; the doc's free-text
 ``cadence`` is for people and is never read.
 
-Files, under the lane's folder (state/spx/jev/live_lane/ for the live lane):
+Files, under the lane's folder (data/spx/jev/live_lane/ for the live lane):
     jev_question_ask_schedule_state.json ("cadence")   {"recounted_from": day, "questions": {qid: {"minutes", "p25_hold_min", "changes", "reads", "why"}}}
     jev_last_answers_state.json ("last_asked")   {qid: {"row_ts", "answer", "moved", "code_answer", "lost", "asleep"}}   the newest fresh answer per
                       question, how far it moved from the one before, the code's answer at that read for a question
@@ -68,7 +68,7 @@ from .lane import LIVE
 from .schedule import every_min, holds_for_the_day
 from .state_builder import DEFAULT_STATE_DIR, load_jsonl, parse_ts
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 CADENCE_NAME = station_paths.JEV_QUESTION_ASK_SCHEDULE_STATE.file_name()
 LAST_NAME = station_paths.JEV_LAST_ANSWERS_STATE.file_name()
@@ -429,7 +429,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Recount each question's cadence from a day's runs.")
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
     ap.add_argument("--day", help="the day to recount; default the newest day with records")
-    ap.add_argument("--write", action="store_true", help="write state/spx/jev/live_lane/jev_question_ask_schedule_state.json")
+    ap.add_argument("--write", action="store_true", help="write data/spx/jev/live_lane/jev_question_ask_schedule_state.json")
     args = ap.parse_args(argv)
     out_dir = LIVE.folder(args.state_dir)
     doc = load_questions(LIVE.questions, LIVE.key)

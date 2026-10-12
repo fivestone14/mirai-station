@@ -1,7 +1,7 @@
 """lefteye_profile_ladder.py — the GAMMA PROFILE STATE LADDER (SHADOW, record-only).
 
 The named levels of one scan's gamma profile, top to bottom in the GW notation
-standard (docs/gw-vocab.md), each with its price and signed % distance from spot:
+standard (docs/glossary/gw-vocab.md), each with its price and signed % distance from spot:
 
     GWc — nearest call-side gamma-wall cluster peak ABOVE spot
     cT  — call transition: the UPPER edge of the flip chop band

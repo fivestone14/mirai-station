@@ -41,7 +41,7 @@ from .state_builder import CONTEXT_SUBDIR, Scene, load_jsonl, parse_ts
 
 from .ask import GATED            # a gate's reason starts with this; ask.build_requests keeps it as the skipped reason
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 TNX = "$TNX"
 NOT_MEASURED = "not measured this read"
 FAR_GAP = ("far up", "far down")                 # MACRO-02's top fifth: the macro_gap gate

@@ -37,11 +37,11 @@ os.environ.pop("ANTHROPIC_API_KEY", None)
 
 _SKILL_DIR = Path(__file__).resolve().parent
 _ROOT = _SKILL_DIR.parent.parent
-_RUNTIME = str(_ROOT / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(_ROOT)             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
-_SNDK_PRO = str(_SKILL_DIR.parent / "sndk-pro")
+_SNDK_PRO = str(_ROOT / "pipelines" / "sndk_options_scanner_and_reader")
 if _SNDK_PRO not in sys.path:
     sys.path.insert(0, _SNDK_PRO)
 
@@ -65,7 +65,7 @@ _NO_TOOLS = ("Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Glob",
              "Grep", "WebFetch", "Task", "Agent", "TodoWrite", "ExitPlanMode",
              "BashOutput", "KillShell", "SlashCommand", "Skill")
 
-# transient-failure detector (the pattern runtime/watch/claude_cli.py carried until it retired 2026-10-11)
+# transient-failure detector (the pattern alerts_and_phone_pushes/watch/claude_cli.py carried until it retired 2026-10-11)
 _RATE_LIMIT_RE = re.compile(
     r"(rate.?limit|429|too\s+many\s+requests|usage\s+limit|quota|please\s+wait)",
     re.IGNORECASE)

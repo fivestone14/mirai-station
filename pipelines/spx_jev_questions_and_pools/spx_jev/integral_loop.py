@@ -63,7 +63,7 @@ from .lane import HOUR_SUBDIR, LIVE, Lane
 from .sessions import SESSION_CLOSE, session_close
 from .state_builder import ET, load_jsonl, parse_ts
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 LOOP_VERSION = 1                # bump when this loop's learning changes: a state from before is learned again (update)
 GATE_SESSIONS = 10              # SPX sessions of average-price grades before Will decides whether to trust what it learns

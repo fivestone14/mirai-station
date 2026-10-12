@@ -9,7 +9,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-spx-jev.sh --lane tape</string>
+    <string>$HOME/mirai_awakening/scheduled_jobs/job_start_scripts/start_job_with_logs.sh spx-jev-tape run-spx-jev.sh --lane tape</string>
   </array>
 
   <!-- The SPX opening lane: the same runner and market gate as com.mirai-station.spx-jev, with
@@ -17,8 +17,8 @@
        entries), each read stamped at the newest finished bar and sized in tape units, then once at
        10:42 ET, the close-out: that run asks JEV nothing, grades the morning's last two calls and
        refreshes the card (spx_jev/lane.py TAPE.schedule and close_out; a test holds these entries to
-       them). Writes only state/spx/jev/opening_lane/, its card under state/screen_files/phone/ and its lines
-       in the shared archive under state/spx/jev/.
+       them). Writes only data/spx/jev/opening_lane/, its card under data/screen_files/phone/ and its lines
+       in the shared archive under data/spx/jev/.
        NOTE: launchd's StartCalendarInterval uses SYSTEM-LOCAL time and ignores the
        TZ env var below. This box runs on Pacific, so Hour=6 Minute=35 == 06:35 PT == 09:35 ET
        year-round (PT is ET minus 3h through DST). -->
@@ -38,11 +38,6 @@
     <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>30</integer></dict>
     <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>42</integer></dict>
   </array>
-
-  <key>StandardOutPath</key>
-  <string>/tmp/mirai-station.spx-jev-tape.out</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/mirai-station.spx-jev-tape.err</string>
 
   <key>EnvironmentVariables</key>
   <dict>

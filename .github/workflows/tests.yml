@@ -4,9 +4,9 @@ name: tests
 # the commit means what the README loop means — without anyone remembering to run
 # it on the mini.
 #
-# The twelve suite directories each ship their own conftest.py and collide if
-# pytest collects them together, so they run as twelve parallel jobs. Same split as
-# the README; the failing box is named in the job title. runtime/health runs its
+# The thirteen suite directories each ship their own conftest.py and collide if
+# pytest collects them together, so they run as thirteen parallel jobs. Same split as
+# the README; the failing box is named in the job title. health_checks runs its
 # always-on unit tests here; its live checks need MIRAI_LIVE=1 and the station.
 
 on:
@@ -23,18 +23,18 @@ jobs:
       fail-fast: false          # one red box must not hide the other ten
       matrix:
         suite:
-          - runtime/health
-          - runtime/viewstation/tests
-          - runtime/watch/tests
-          - skills/iv-viability/tests
-          - skills/lob-flow/tests
-          - skills/mirai-left-eye/tests
-          - skills/mirai-voice/tests
-          - skills/siege/tests
-          - skills/sndk-pro/tests
-          - skills/sndk-jev/tests
-          - skills/spx-jev/tests
-          - skills/spx-claude-forecast/tests
+          - health_checks
+          - screens/desktop_and_phone_server/tests
+          - alerts_and_phone_pushes/tests
+          - data_collectors/schwab_market_data_client/tests
+          - data_collectors/spx_options_tape_collector/tests
+          - pipelines/spx_options_scanner/tests
+          - screens/voice_desk/tests
+          - data_collectors/spy_volume_at_walls_sensor/tests
+          - pipelines/sndk_options_scanner_and_reader/tests
+          - pipelines/spx_jev_questions_and_pools/tests
+          - pipelines/spx_claude_forecast/tests
+          - screens/desktop_options_trades_3d_view/tests
     steps:
       - uses: actions/checkout@v4
 

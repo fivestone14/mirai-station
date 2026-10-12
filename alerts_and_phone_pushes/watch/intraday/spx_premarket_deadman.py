@@ -46,9 +46,9 @@ import station_paths                       # on sys.path through watch.paths
 
 ET = ZoneInfo("America/New_York")
 
-# The lane's first checkpoint and its close-out (skills/spx-jev/spx_jev/lane.py,
+# The lane's first checkpoint and its close-out (pipelines/spx_jev_questions_and_pools/spx_jev/lane.py,
 # PREMARKET.schedule[0] and .close_out), and the minutes after a checkpoint from
-# which it refuses a fire (premarket.LATE_FIRE_MIN). runtime/health/
+# which it refuses a fire (premarket.LATE_FIRE_MIN). health_checks/
 # test_live_station.py holds these to the lane's code.
 FIRST_CHECKPOINT = "02:35"
 CLOSE_OUT = "10:06"

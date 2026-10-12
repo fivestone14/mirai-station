@@ -2,7 +2,7 @@
 # launchd-fired wrapper: the market around SPX, one snapshot a minute.
 # One run = one batched Schwab quote call for the volatility, futures, rates, sector, index-fund
 # and megacap symbols, and the newest finished 1-minute bar for each NYSE breadth symbol, appended
-# as one line to state/market/watchlist_quotes_by_minute/{date}.jsonl (spx_jev/market_context.py). REST only, through
+# as one line to data/market/watchlist_quotes_by_minute/{date}.jsonl (spx_jev/market_context.py). REST only, through
 # the station's shared client; the lob-flow streamer is never touched.
 # Gated on the market-status helper: market hours only.
 # Installed by install-launchd.sh (com.mirai-station.spx-jev-context, every 60 s).
@@ -18,7 +18,7 @@ set -e
 [[ "${SPX_JEV_DISABLE:-0}" == "1" ]] && exit 0
 [[ $(date +%u) -gt 5 ]] && exit 0
 
-cd "${MIRAI_STATION_ROOT}/runtime"
+cd "${MIRAI_STATION_ROOT}/alerts_and_phone_pushes"
 set +e
 "${MIRAI_STATION_VENV}/bin/python" -c "from watch.intraday import market_status as m; import sys; sys.exit(0 if m.check().is_live else 3)"
 GATE_RC=$?
@@ -31,5 +31,5 @@ elif [[ $GATE_RC -ne 0 ]]; then
   exit 1
 fi
 
-cd "${MIRAI_STATION_ROOT}/skills/spx-jev"
-exec "${MIRAI_STATION_VENV}/bin/python" -m spx_jev.market_context --state-dir "${MIRAI_STATION_ROOT}/state"
+cd "${MIRAI_STATION_ROOT}/pipelines/spx_jev_questions_and_pools"
+exec "${MIRAI_STATION_VENV}/bin/python" -m spx_jev.market_context --state-dir "${MIRAI_STATION_STATE}"

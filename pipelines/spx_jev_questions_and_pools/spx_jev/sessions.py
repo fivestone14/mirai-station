@@ -1,6 +1,6 @@
 """The NYSE session calendar: the open, the close (13:00 on a half day), holidays and trading days.
 
-Taken from the station's own market-hours gate (``runtime/watch/intraday/market_status``), the one
+Taken from the station's own market-hours gate (``alerts_and_phone_pushes/watch/intraday/market_status``), the one
 computed calendar every station job uses, so the labeller, the grader, the clock and the expiry
 calendar can never disagree about when a session ends. If the gate cannot be imported the calendar
 fails open to a plain Monday-to-Friday week with a 16:00 close, rather than stopping a read.
@@ -15,13 +15,13 @@ SESSION_OPEN = time(9, 30)
 SESSION_CLOSE = time(16, 0)
 EARLY_CLOSE = time(13, 0)       # NYSE half days (the day after Thanksgiving, some July 3rds and Christmas Eves)
 
-_RUNTIME = Path(__file__).resolve().parents[3] / "runtime"
+_ALERTS_AND_PHONE_PUSHES = Path(__file__).resolve().parents[3] / "alerts_and_phone_pushes"   # the watch package's home
 
 
 def _market_status():
     try:
-        if str(_RUNTIME) not in sys.path:
-            sys.path.insert(0, str(_RUNTIME))
+        if str(_ALERTS_AND_PHONE_PUSHES) not in sys.path:
+            sys.path.insert(0, str(_ALERTS_AND_PHONE_PUSHES))
         from watch.intraday import market_status
         return market_status
     except Exception:

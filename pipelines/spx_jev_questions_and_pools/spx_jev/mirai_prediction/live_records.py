@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 def lane_folder(state_dir: Path | str, lane: str) -> Path:
-    """The lane's own folder under the state dir (the live lane's is state/spx/jev/live_lane)."""
+    """The lane's own folder under the state dir (the live lane's is data/spx/jev/live_lane)."""
     from ..lane import LANES
     return LANES[lane].folder(Path(state_dir))
 

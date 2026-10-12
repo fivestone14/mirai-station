@@ -12,9 +12,9 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import watchtower as wt
 
-_RUNTIME = str(Path(__file__).resolve().parents[3] / "runtime")
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(Path(__file__).resolve().parents[3])
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402  — every store the code names comes from here
 
 ET = ZoneInfo("America/New_York")
@@ -991,7 +991,7 @@ def test_stuck_soft_side_reads_as_terrain_fact_in_the_payload(tmp_path):
 
 # ------------------------------------------------- wt-8 doctrine gaps (2026-07-25)
 # Chop band at the flip, GW cluster dominance, profile cleanliness — the three
-# audited holes between docs/wt8-doctrine.md and what the tower could actually see.
+# audited holes between docs/research_and_reviews/wt8-doctrine.md and what the tower could actually see.
 def test_permission_slip_leads_the_gravity_block():
     dm = wt.build_payload(_telemetry())["dealer_map_gravity"]
     assert list(dm)[:2] == ["gamma_sign_at_spot", "pull_toward_magnet"]

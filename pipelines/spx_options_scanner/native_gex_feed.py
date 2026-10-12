@@ -33,8 +33,9 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
-# vault lives in the sibling iv-viability skill
-_IV = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "iv-viability")
+# vault lives in the Schwab client, data_collectors/schwab_market_data_client
+_IV = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                   "data_collectors", "schwab_market_data_client")
 if _IV not in sys.path:
     sys.path.insert(0, _IV)
 import vault

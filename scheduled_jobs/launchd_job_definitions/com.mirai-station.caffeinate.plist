@@ -9,19 +9,15 @@
        -s prevents system sleep on AC power, -u declares user activity. -->
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/bin/caffeinate</string>
-    <string>-imsu</string>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>$HOME/mirai_awakening/scheduled_jobs/job_start_scripts/start_job_with_logs.sh caffeinate /usr/bin/caffeinate -imsu</string>
   </array>
 
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
   <true/>
-
-  <key>StandardOutPath</key>
-  <string>/tmp/mirai-station.caffeinate.out</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/mirai-station.caffeinate.err</string>
 
   <key>ProcessType</key>
   <string>Background</string>

@@ -4,7 +4,7 @@ through here. Atomic writes (tmp+rename, never a torn read), the latest.json
 handshake the host tick reads, append-only raw journals with cursors for
 crash-replay, and the rotation that enforces the disk budget.
 
-Every file is named in runtime/station_paths.py; StateDir is handed the station's data root and asks it:
+Every file is named in station_paths.py; StateDir is handed the station's data root and asks it:
     spx/scanner/spx_order_flow_readings_latest.json      # the ONLY file the host's tick reads
     spx/scanner/spx_dealer_gamma_levels_latest.json      # written by the host, read by the daemon
     market/market_event_calendar_by_event.json           # scheduled-event dates (seeded if missing)
@@ -25,9 +25,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterator, Optional
 
-_RUNTIME = str(Path(__file__).resolve().parents[3] / "runtime")             # runtime/station_paths.py names every store
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(Path(__file__).resolve().parents[3])             # station_paths.py names every store
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 """The station's launchd jobs, checked as definitions.
 
-No other test reads runtime/launchd, so a plist pointing at a renamed script, a
+No other test reads scheduled_jobs/launchd_job_definitions, so a plist pointing at a renamed script, a
 job the installer never names, or a scanner slowed past its dead-man's ceiling
 passes every other test and is noticed only when the data stops. Each test here
 holds one rule the job definitions are meant to keep, and every number it
@@ -25,19 +25,22 @@ import pytest
 
 from watch.intraday import market_status, sndk_deadman
 
-REPO = Path(__file__).resolve().parents[3]
-LAUNCHD = REPO / "runtime" / "launchd"
-SCRIPTS = REPO / "runtime" / "scripts"
-SNDK_PRO = REPO / "skills" / "sndk-pro"
+REPO = Path(__file__).resolve().parents[2]
+LAUNCHD = REPO / "scheduled_jobs" / "launchd_job_definitions"
+SCRIPTS = REPO / "scheduled_jobs" / "job_start_scripts"
+SNDK_PRO = REPO / "pipelines" / "sndk_options_scanner_and_reader"
 SCANNER = SNDK_PRO / "sndk_hunter.py"
 READER = SNDK_PRO / "sndk_read.py"
 
 PLISTS = sorted(LAUNCHD.glob("*.plist"))
 SCHEDULE_KEYS = ("StartInterval", "StartCalendarInterval", "KeepAlive")
-LOG_KEYS = ("StandardOutPath", "StandardErrorPath")
+# Every job's bash command starts with this script: `<starter> <job> <command> [args]`. It makes the
+# logs folder, sends what the job prints to the job's own files under data/operations/logs/ and
+# becomes the job (launchd expands nothing in a plist path, so the plists cannot name those files).
+STARTER = "start_job_with_logs.sh"
 # env.sh finds the checkout two levels above its own directory, so a job's
-# program path is always "<checkout>/runtime/scripts/<script>".
-SCRIPTS_REL = "runtime/scripts/"
+# program path is always "<checkout>/scheduled_jobs/job_start_scripts/<script>".
+SCRIPTS_REL = "scheduled_jobs/job_start_scripts/"
 SHELL_VARS = {"MIRAI_STATION_ROOT": str(REPO), "SCRIPT_DIR": str(SCRIPTS)}
 
 
@@ -56,15 +59,36 @@ def _shell_array(script, name):
     return shlex.split(m.group(1), comments=True)
 
 
-def _program(job):
-    """What the job executes: the command inside `bash -lc "..."` when it goes
-    through a shell, otherwise the program itself."""
+def _shell_command(job):
+    """The words of the command inside `bash -lc "..."`, or None when the job runs a program directly."""
     argv = job.get("ProgramArguments") or [job.get("Program")]
     if Path(argv[0]).name in ("bash", "sh", "zsh"):
         for flag, command in zip(argv[1:], argv[2:]):
             if flag.startswith("-") and "c" in flag:
-                return shlex.split(command)[0]
-    return argv[0]
+                return shlex.split(command)
+    return None
+
+
+def _started_through(job):
+    """(the starter's path, the job name it is handed) when the command goes through STARTER, else None."""
+    words = _shell_command(job)
+    if words and Path(words[0]).name == STARTER and len(words) >= 3:
+        return words[0], words[1]
+    return None
+
+
+def _program(job):
+    """What the job executes: the command inside `bash -lc "..."` when it goes
+    through a shell, looking through the starter to the run script or program it
+    hands on (a bare script name is one in the starter's own folder), otherwise
+    the program itself."""
+    words = _shell_command(job)
+    if words is None:
+        return (job.get("ProgramArguments") or [job.get("Program")])[0]
+    if _started_through(job):
+        command = words[2]
+        return command if "/" in command else str(Path(words[0]).parent / command)
+    return words[0]
 
 
 def _run_script(job):
@@ -171,7 +195,7 @@ def _sndk_pro(module):
 # --- the installer --------------------------------------------------------------
 
 def test_every_built_job_is_hired_by_the_installer():
-    """Every plist in runtime/launchd is installed, and the installer names none that is missing."""
+    """Every plist in scheduled_jobs/launchd_job_definitions is installed, and the installer names none that is missing."""
     listed = _shell_array(SCRIPTS / "install-launchd.sh", "PLISTS")
     built = {p.name for p in PLISTS}
     assert len(listed) == len(set(listed)), "install-launchd.sh names a job twice"
@@ -195,25 +219,22 @@ def test_job_is_a_loadable_schedule(path):
     assert job.get("ProgramArguments") or job.get("Program"), "nothing to run"
     assert any(job.get(key) for key in SCHEDULE_KEYS), \
         f"none of {', '.join(SCHEDULE_KEYS)}: launchd would never start it"
-    for key in LOG_KEYS:
-        assert job.get(key), f"no {key}: its failures would go nowhere"
+    assert _started_through(job), f"not started through {STARTER}: what it prints would go nowhere"
 
 
 def test_every_job_logs_to_its_own_files():
-    """No two jobs share a log file, so one job's failure is never filed under another's name."""
-    owner = {}
+    """Each job hands the starter its own label, so what it prints lands in files named for it and
+    never under another job's name; and the starter it names is the executable one in the repo."""
     for path in PLISTS:
-        job = _job(path)
-        for key in LOG_KEYS:
-            log = job.get(key)
-            if log:
-                assert owner.setdefault(log, path.stem) == path.stem, \
-                    f"{path.stem} writes {log}, which is {owner[log]}'s log"
+        starter, job = _started_through(_job(path))
+        assert job == path.stem.removeprefix("com.mirai-station."), f"{path.stem} logs as {job!r}"
+        assert Path(starter).name == STARTER and SCRIPTS_REL in starter
+        assert os.access(SCRIPTS / STARTER, os.X_OK), f"{STARTER} is not executable, so bash -lc cannot start it"
 
 
 @pytest.mark.parametrize("path", PLISTS, ids=lambda p: p.stem)
 def test_job_starts_a_program_that_exists_and_can_run(path):
-    """The job starts an executable run script from runtime/scripts, or a system tool present on this Mac."""
+    """The job starts an executable run script from scheduled_jobs/job_start_scripts, or a system tool present on this Mac."""
     job = _job(path)
     script = _run_script(job)
     if script is None:
@@ -353,16 +374,18 @@ def _run_gated(tmp_path, script, market, python=True):
     weekday mid-morning, so the weekend skip never answers before the gate does.
     Returns the finished process and the recorded launches."""
     root, venv, launched = tmp_path / "station", tmp_path / "venv", tmp_path / "launched"
-    scripts, intraday = root / "runtime" / "scripts", root / "runtime" / "watch" / "intraday"
-    for skill in ("sndk-pro", "mirai-left-eye", "spx-jev"):
-        (root / "skills" / skill).mkdir(parents=True)
+    scripts = root / "scheduled_jobs" / "job_start_scripts"
+    intraday = root / "alerts_and_phone_pushes" / "watch" / "intraday"
+    for folder in ("pipelines/sndk_options_scanner_and_reader", "pipelines/spx_options_scanner",
+                   "pipelines/spx_jev_questions_and_pools"):
+        (root / folder).mkdir(parents=True)
     _file(intraday.parent / "__init__.py", "")
     _file(intraday / "__init__.py", "")
     _file(intraday / "market_status.py", MARKET_STATUS[market])
     _file(scripts / "env.sh",
           'export MIRAI_STATION_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"\n'
           f'export MIRAI_STATION_VENV="{venv}"\n'
-          'export MIRAI_STATION_STATE="${MIRAI_STATION_ROOT}/state"\n'
+          'export MIRAI_STATION_STATE="${MIRAI_STATION_ROOT}/data"\n'
           'log() { echo "$*"; }\n')
     shutil.copy2(SCRIPTS / script, scripts / script)
     _file(tmp_path / "bin" / "date",
@@ -427,11 +450,13 @@ def _run_premarket(tmp_path, local_day, new_york_day, env=None, script=PREMARKET
     `new_york_day` under TZ=America/New_York and `local_day` on the box's own clock. The venv
     python only records its launch. Returns the finished process and the recorded launches."""
     root, venv, launched = tmp_path / "station", tmp_path / "venv", tmp_path / "launched"
-    scripts = root / "runtime" / "scripts"
-    (root / "skills" / "spx-jev").mkdir(parents=True)
+    scripts = root / "scheduled_jobs" / "job_start_scripts"
+    for folder in ("pipelines/spx_jev_questions_and_pools", "alerts_and_phone_pushes"):     # the lane's and the dead-man's working folders
+        (root / folder).mkdir(parents=True)
     _file(scripts / "env.sh",
           'export MIRAI_STATION_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"\n'
-          f'export MIRAI_STATION_VENV="{venv}"\n')
+          f'export MIRAI_STATION_VENV="{venv}"\n'
+          'export MIRAI_STATION_STATE="${MIRAI_STATION_ROOT}/data"\n')
     shutil.copy2(SCRIPTS / script, scripts / script)
     _file(tmp_path / "bin" / "date",
           '#!/bin/sh\nif [ "$*" = "+%u" ]; then\n'
@@ -464,7 +489,7 @@ def test_the_premarket_job_reads_on_new_york_weekdays(tmp_path, local_day, new_y
     done, launched = _run_premarket(tmp_path, local_day, new_york_day)
     assert (done.returncode, done.stderr) == (0, "")
     root = tmp_path / "station"
-    assert launched == (f"-m spx_jev.premarket --state-dir {root}/state --send\n" if reads else "")
+    assert launched == (f"-m spx_jev.premarket --state-dir {root}/data --send\n" if reads else "")
 
 
 def test_the_premarket_kill_switch_starts_nothing(tmp_path):
@@ -514,7 +539,8 @@ def _spelled(node, constants):
 
 
 def _year_pinned_patterns():
-    for path in sorted([*(REPO / "skills").rglob("*.py"), *(REPO / "runtime").rglob("*.py")]):
+    code = ("pipelines", "data_collectors", "screens", "alerts_and_phone_pushes", "health_checks", "scheduled_jobs")
+    for path in sorted(p for folder in code for p in (REPO / folder).rglob("*.py")):
         if any(part in {"tests", "node_modules", "__pycache__", ".venv", "venv"} for part in path.parts):
             continue
         try:

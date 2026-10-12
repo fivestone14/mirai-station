@@ -9,7 +9,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-sndk-deadman.sh</string>
+    <string>$HOME/mirai_awakening/scheduled_jobs/job_start_scripts/start_job_with_logs.sh sndk-deadman run-sndk-deadman.sh</string>
   </array>
 
   <!-- Every 5 minutes. The check asserts the newest SNDK diary row is younger
@@ -27,11 +27,6 @@
        08-24). Each looked like a quiet tape on every screen in the house. -->
   <key>StartInterval</key>
   <integer>300</integer>
-
-  <key>StandardOutPath</key>
-  <string>/tmp/mirai-station.sndk-deadman.out</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/mirai-station.sndk-deadman.err</string>
 
   <key>EnvironmentVariables</key>
   <dict>

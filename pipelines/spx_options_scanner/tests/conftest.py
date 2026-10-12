@@ -5,12 +5,12 @@ import sys
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-# lob_bridge imports the lob_flow box lazily; the runtime provides it via an
+# lob_bridge imports the lob_flow box lazily; the station's venv provides it via an
 # editable install, but a bare pytest run needs the package dir on sys.path so
 # the test_lob_bridge suite can import it (mirrors siege_bridge's own insert).
 sys.path.insert(0, os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "lob-flow"))
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
+    "data_collectors", "spx_options_tape_collector"))
 import lefteye_fill_ledger
 
 

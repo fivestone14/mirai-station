@@ -9,7 +9,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-auth-check.sh</string>
+    <string>$HOME/mirai_awakening/scheduled_jobs/job_start_scripts/start_job_with_logs.sh auth-watch run-auth-check.sh</string>
   </array>
 
   <!-- Schwab login keep-alive. Runs once a day at 8:00 AM ET; if the 7-day token
@@ -25,11 +25,6 @@
     <key>Minute</key>
     <integer>0</integer>
   </dict>
-
-  <key>StandardOutPath</key>
-  <string>/tmp/mirai-station.auth-watch.out</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/mirai-station.auth-watch.err</string>
 
   <key>EnvironmentVariables</key>
   <dict>

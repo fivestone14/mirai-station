@@ -2,7 +2,7 @@
 # launchd-fired wrapper: the SNDK chart's live READING (record-only).
 # One run = write one read row from the newest diary row (pure python, free),
 # and — only when the wake gate fires — spend ONE `claude -p` call to write the
-# plain-English observation. Appends to state/sndk/sndk_options_reader_gates_and_answers_by_run/{date}.jsonl for the
+# plain-English observation. Appends to data/sndk/sndk_options_reader_gates_and_answers_by_run/{date}.jsonl for the
 # viewstation's /api/raw readers.
 #
 # WHY THIS IS ITS OWN JOB and not a step inside run-sndk.sh: a model call takes
@@ -29,7 +29,7 @@ set -e
 [[ "${SNDK_PRO_DISABLE:-0}" == "1" ]] && exit 0
 [[ $(date +%u) -gt 5 ]] && exit 0
 
-cd "${MIRAI_STATION_ROOT}/runtime"
+cd "${MIRAI_STATION_ROOT}/alerts_and_phone_pushes"
 # Only the gate's own "closed" (exit 3) skips quietly. Python exits 1 on any
 # uncaught exception, so with "closed" on 1 a broken venv or import read as a
 # closed market and launchd reported success for a read that never ran.
@@ -45,5 +45,5 @@ elif [[ $GATE_RC -ne 0 ]]; then
   exit 1
 fi
 
-cd "${MIRAI_STATION_ROOT}/skills/sndk-pro"
+cd "${MIRAI_STATION_ROOT}/pipelines/sndk_options_scanner_and_reader"
 exec "${MIRAI_STATION_VENV}/bin/python" sndk_read.py

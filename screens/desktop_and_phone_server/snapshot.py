@@ -28,13 +28,13 @@ try:
 except Exception:  # pragma: no cover - zoneinfo always present on 3.9+
     ET = None
 
-# --- locate the plugin + make the skill modules importable -------------------
-PLUGIN_ROOT = Path(__file__).resolve().parents[2]          # .../mirai-station
-SKILL_DIR = PLUGIN_ROOT / "skills" / "mirai-left-eye"
+# --- locate the repo + make the pipeline modules importable -------------------
+PLUGIN_ROOT = Path(__file__).resolve().parents[2]          # the repo root, ~/mirai_awakening
+SKILL_DIR = PLUGIN_ROOT / "pipelines" / "spx_options_scanner"
 
-_RUNTIME = str(PLUGIN_ROOT / "runtime")                     # station_paths names every store this server reads
-if _RUNTIME not in sys.path:
-    sys.path.append(_RUNTIME)
+_REPO_ROOT = str(PLUGIN_ROOT)                     # station_paths names every store this server reads
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
 import station_paths  # noqa: E402
 
 STATE_DIR = station_paths.state_root()
@@ -203,7 +203,7 @@ def replay_day(day: str) -> dict:
 
 # --- SNDK payload (08-21) — the exact scene JSON the reader hands the model ------
 # The "SNDK Payload" tab shows ONLY what Claude is fed: the scene dict that
-# skills/sndk-pro/sndk_read.build_scene assembles from the newest diary row,
+# pipelines/sndk_options_scanner_and_reader/sndk_read.build_scene assembles from the newest diary row,
 # rebuilt here through the SAME functions (never a copy of the logic), plus the
 # 12-word user-message wrapper it rides in. The cached doctrine is deliberately
 # not returned — the tab's job is the varying payload, not the rulebook.
@@ -230,7 +230,7 @@ def replay_day(day: str) -> dict:
 # saying how old it is. The tab never renders a gutted scene: a reader of the
 # scene alone, without `freshness_rules` or `data_sources`, would take a block
 # the gate deleted for a wall that was never measured.
-_SNDK_PRO_DIR = PLUGIN_ROOT / "skills" / "sndk-pro"
+_SNDK_PRO_DIR = PLUGIN_ROOT / "pipelines" / "sndk_options_scanner_and_reader"
 
 
 def _side_packet(R, row: dict, build_now: datetime,

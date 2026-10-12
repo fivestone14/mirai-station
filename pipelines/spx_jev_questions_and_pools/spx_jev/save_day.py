@@ -6,17 +6,17 @@ and the daily closes of the few symbols kept years back.
 
 Schwab keeps about 34 sessions of 1-minute history. The live snapshots (market_context.py) keep one
 finished bar a minute for the breadth symbols and a quote for the rest; this job keeps every history
-symbol's whole day, one line per minute, in ``state/market/watchlist_price_bars_by_minute/{day}.jsonl``: the file the
+symbol's whole day, one line per minute, in ``data/market/watchlist_price_bars_by_minute/{day}.jsonl``: the file the
 backfill writes and the labeller reads (market_context.backfill_day). A day already on disk is never
 fetched again, so a rerun costs nothing, and a missed night is caught up by the next run that
 succeeds, up to CATCH_UP_DAYS back. The one exception is the breadth: Schwab serves a session's NYSE
 breadth wrong until after it, so a day saved on its own evening has its breadth fetched again by a later
 run, once Schwab has put it right (market_context.refresh_breadth).
 
-SPX's own day. The gex-polarity job saves ``state/market/spx_price_bars_by_minute_scanner_copy/{day}-SPX.json`` at 16:15 ET (every
+SPX's own day. The gex-polarity job saves ``data/market/spx_price_bars_by_minute_scanner_copy/{day}-SPX.json`` at 16:15 ET (every
 diary day from 2026-07-06 to 2026-09-25 has one), but only when that day's diary carries its engines'
 reads and the bars have real ranges, and a failed write is swallowed. So this job does not lean on it: when
-the bars feed's own file, ``state/market/spx_price_bars_by_minute/{day}.jsonl``, holds fewer than the session's minutes,
+the bars feed's own file, ``data/market/spx_price_bars_by_minute/{day}.jsonl``, holds fewer than the session's minutes,
 it fetches the session once and appends what is missing (bars.append_day). A full file costs no call.
 
 Market days only (sessions.is_trading_day; a calendar that cannot be read falls back to Monday to
@@ -40,7 +40,7 @@ from . import bars, daily_closes, market_context
 from .sessions import is_trading_day, session_close, session_minutes
 from .state_builder import CONTEXT_SUBDIR, DEFAULT_STATE_DIR, load_jsonl
 
-import station_paths  # noqa: E402  (runtime/ is on sys.path: spx_jev/__init__.py)
+import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__init__.py)
 
 ET = ZoneInfo("America/New_York")
 CATCH_UP_DAYS = 7              # a run also saves any market day this many calendar days back that is not on disk

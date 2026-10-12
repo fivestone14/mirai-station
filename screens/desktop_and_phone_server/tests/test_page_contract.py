@@ -513,10 +513,10 @@ def test_the_payload_tab_carries_the_schema_card():
     assert PAGE.index("_plTeardown();") > PAGE.index("function closeModal(")  # called from it
     # the side packet is part of the picture, not a footnote to it
     assert "sndk_side.build_side()" in PAGE and _named(station_paths.SNDK_PRICE_BAR_FACTS_BY_READ) in PAGE
-    for rel in ("skills/sndk-pro/sndk_hunter.py", "skills/sndk-pro/sndk_views.py",
-                "skills/sndk-pro/sndk_bars.py", "skills/sndk-pro/sndk_read.py",
-                "skills/sndk-pro/sndk_rag.py", "runtime/watch/intraday/sndk_deadman.py",
-                "runtime/launchd/com.mirai-station.sndk-bars.plist"):
+    for rel in ("pipelines/sndk_options_scanner_and_reader/sndk_hunter.py", "pipelines/sndk_options_scanner_and_reader/sndk_views.py",
+                "pipelines/sndk_options_scanner_and_reader/sndk_bars.py", "pipelines/sndk_options_scanner_and_reader/sndk_read.py",
+                "pipelines/sndk_options_scanner_and_reader/sndk_rag.py", "alerts_and_phone_pushes/watch/intraday/sndk_deadman.py",
+                "scheduled_jobs/launchd_job_definitions/com.mirai-station.sndk-bars.plist"):
         assert (root / rel).exists(), rel
         assert rel.split("/")[-1].replace(".plist", "") in PAGE, rel
     assert "ThetaData supplies this week" not in PAGE       # the SNDK chain is the market-data server's
@@ -667,7 +667,7 @@ def test_the_sndk_chart_claims_nothing_about_what_dealers_do():
     "Dealers buy the dips here — it holds price up" and its three siblings,
     from an ASSUMED gamma sign. The reader's doctrine forbids the model that
     claim (never say what dealers are doing, never say hedging damps or
-    amplifies) and docs/sndk-plan.md records it as measured absent on SNDK.
+    amplifies) and docs/research_and_reviews/sndk-plan.md records it as measured absent on SNDK.
     Removed 2026-09-10 with the phone's copies of the same four sentences.
 
     Held as the claim, not as those four sentences: no code from the SNDK

@@ -9,12 +9,12 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>$HOME/.claude/plugins/mirai-station/runtime/scripts/run-spx-jev-save-day.sh</string>
+    <string>$HOME/mirai_awakening/scheduled_jobs/job_start_scripts/start_job_with_logs.sh spx-jev-save-day run-spx-jev-save-day.sh</string>
   </array>
 
   <!-- After the close, once a day: every market-feed symbol's full 1-minute bars for the day to
-       state/market/watchlist_price_bars_by_minute/{date}.jsonl, and SPX's own day to
-       state/market/spx_price_bars_by_minute/{date}.jsonl
+       data/market/watchlist_price_bars_by_minute/{date}.jsonl, and SPX's own day to
+       data/market/spx_price_bars_by_minute/{date}.jsonl
        when that file is short (spx_jev/save_day.py), before Schwab's 34-session window rolls past
        the day. Market days only; a day on disk is never fetched again, and a missed night is caught
        up by the next. Fires at 16:20 ET, after the bars feed's last run (16:12) and gex-polarity's
@@ -29,11 +29,6 @@
     <key>Minute</key>
     <integer>20</integer>
   </dict>
-
-  <key>StandardOutPath</key>
-  <string>/tmp/mirai-station.spx-jev-save-day.out</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/mirai-station.spx-jev-save-day.err</string>
 
   <key>EnvironmentVariables</key>
   <dict>

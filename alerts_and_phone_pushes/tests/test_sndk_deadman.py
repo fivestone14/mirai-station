@@ -160,7 +160,7 @@ def test_the_ceiling_is_the_readers_own_stale_book_line():
     when the data stopped being usable."""
     import sys
     from pathlib import Path
-    skill = Path(__file__).resolve().parents[3] / "skills" / "sndk-pro"
+    skill = Path(__file__).resolve().parents[2] / "pipelines" / "sndk_options_scanner_and_reader"
     sys.path.insert(0, str(skill))
     import sndk_read
     assert D.SNDK_SILENT_MIN == float(sndk_read.STALE_BOOK_MIN)
@@ -323,7 +323,7 @@ def test_the_reader_ceiling_is_the_scanners_plus_the_longest_read():
     model call to its timeout, then the semantic guard to its own."""
     import sys
     from pathlib import Path
-    skill = Path(__file__).resolve().parents[3] / "skills" / "sndk-pro"
+    skill = Path(__file__).resolve().parents[2] / "pipelines" / "sndk_options_scanner_and_reader"
     sys.path.insert(0, str(skill))
     import sndk_read
     longest_s = (max(sndk_read.CALL_TIMEOUT_S, sndk_read.CALL_TIMEOUT_STRIKES_S)
