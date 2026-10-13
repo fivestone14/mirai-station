@@ -17,7 +17,7 @@ Every feed produces the SAME Slice, so the renderer never learns which fed it.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 ET = "America/New_York"
@@ -89,17 +89,3 @@ class BoardConfig:
     max_bins: int = 60                 # widest board the renderer draws well
     tz: str = ET
     lanes: tuple[str, str] = ("bid", "ask")
-
-
-@dataclass
-class TickerSpec:
-    """What the collector subscribes to for one ticker. `book_service` is the
-    Schwab streamer service, chosen by where the symbol is LISTED (SNDK and
-    QQQ are Nasdaq-listed -> NASDAQ_BOOK; SPY is NYSE Arca -> NYSE_BOOK).
-    `control` marks a symbol streamed only so the primary can be compared
-    against it — it is recorded exactly the same way and never blended in."""
-    symbol: str
-    book_service: str = "NASDAQ_BOOK"
-    control: bool = False
-    board: Optional[BoardConfig] = None
-    extra: dict = field(default_factory=dict)

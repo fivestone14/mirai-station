@@ -4,9 +4,9 @@ through a session, and the collector that records it.
 Public surface is deliberately tiny; everything else is an implementation
 detail the viewstation must not reach into.
 """
-from .contracts import Bin, BoardConfig, Slice, TickerSpec
+from .contracts import Bin, BoardConfig, Slice
 from .board import BoardBuilder, to_wire, trim_bins
 from .sources import spx_tape_board
 
-__all__ = ["Bin", "BoardConfig", "Slice", "TickerSpec", "BoardBuilder",
+__all__ = ["Bin", "BoardConfig", "Slice", "BoardBuilder",
            "to_wire", "trim_bins", "spx_tape_board"]
