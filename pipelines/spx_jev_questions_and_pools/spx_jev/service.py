@@ -28,7 +28,8 @@ can show it in the viewer's own zone; prose meant for a reader names the market 
 A sent run on today's newest row checks the wall clock: a row more than STALE_ROW_SKIP_MIN old is
 skipped (the SPX diary is not being written; the last card stays). The SPX row carries no separate options-book
 time (the book is rebuilt on every scan), so that one line covers the book too. The day's first
-read after 10:01 first waits for a row stamped from 10:01, and the first after 10:31 for one from 10:31 (first_window_row). A replay (--day)
+read, at 09:32, first waits for a row stamped from the open (OPEN_ROW_WAIT_S), the first after 10:01 for one stamped
+from 10:01, and the first after 10:31 for one from 10:31 (first_window_row). A replay (--day)
 checks nothing against the wall clock, and never writes into the station's records unless its
 --out-dir names them: without one it writes into a fresh scratch folder, archive included, and says
 where. Every read carries the tier-1 events due within the hour
@@ -118,6 +119,12 @@ BAR_POLL_S = 2.0
 FIRST_WINDOW_MIN = 31
 FIRST_HOUR_WINDOW_MIN = 61
 ROW_WAIT_S = 90
+# The day's first read, the 09:32 fire, waits the same way for a row stamped from the 09:30 open, and longer: the
+# scanner's first scan of the day starts at the open and has taken up to about two minutes, so on four of ten mornings
+# its first row was not on file at 09:32 and the read skipped (NoRowYet), with the opening call and Claude's first
+# read behind it. Two minutes covers the slowest first scan seen, and the read still lands minutes before the health
+# check counts it owed (health_checks LANE_READ_OWED_MIN, ten minutes after its time).
+OPEN_ROW_WAIT_S = 120
 # JEV's round trips for one read end well inside the tape lane's 5-minute slot however JEV fails (ask.send): the
 # groups retry only until SEND_GROUPS_S after the read's first request, room for three tries after two timeouts,
 # and the sums only until SEND_READ_S, so a read's sends take under a minute at worst.
@@ -1148,6 +1155,12 @@ def main(argv: list[str] | None = None) -> int:
         elif do_send and not args.day and (first := first_window_row(now_et())) is not None:
             if not wait_for_row(state_dir, first):
                 log(f"no diary row stamped from {first:%H:%M} after {ROW_WAIT_S} s: reading on the newest row on file")
+        elif do_send and not args.day and (opened := session_open(now_et())) <= now_et() < opened + timedelta(minutes=30):
+            # the day's first read (the 09:32 fire, the only one in the first half hour): the scanner's first row of the
+            # day is often not on file yet, and a read with no row for today skips (NoRowYet). Wait for one stamped from
+            # the open, as the reads after 10:01 and 10:31 wait for theirs; the other reads read the diary as it is
+            if not wait_for_row(state_dir, opened, timeout_s=OPEN_ROW_WAIT_S):
+                log(f"no diary row stamped from the {opened:%H:%M} open after {OPEN_ROW_WAIT_S} s: reading on the newest row on file")
         try:
             c = run_once(state_dir, out_dir, doc, do_send, args.day, unsent, lane, fire)
             if c["row_ts"] != last_row:
