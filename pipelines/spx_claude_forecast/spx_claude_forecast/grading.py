@@ -180,8 +180,8 @@ def _to_close_result(prices: SessionPrices, t0: datetime, spot: float, edge: flo
 
 def comparison_forecasts_from_read_record(read_record: dict | None, horizon: str) -> tuple[dict, dict]:
     """``(comparison_forecasts, missing)`` for one horizon from the station's archived read record: its time-of-day
-    odds and its main forecast (Pool 2, as it was shown live), each as up/flat/down percentages. The 60-minute
-    odds are end-price odds, and the line says so. A main forecast archived later than
+    odds and its main forecast (the learner pool, as it was shown live), each as up/flat/down percentages. The
+    60-minute odds are end-price odds, and the line says so. A main forecast archived later than
     MAIN_FORECAST_LIVE_WITHIN_SECONDS after the read is a replay and goes into ``missing``."""
     found: dict = {}
     missing: dict = {}

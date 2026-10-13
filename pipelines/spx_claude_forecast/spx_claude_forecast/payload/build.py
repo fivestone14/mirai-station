@@ -38,7 +38,7 @@ COUNT_KEYS = frozenset({"trades", "add_live_approx", "add_30m_change", "fill_bas
                         "big_prints_10m", "minutes_present", "stale_dropped", "index_mover_items_60m", "counts", "age_s"})
 BASIS_POINT_KEYS = frozenset({"bp", "dist_bp", "r12_bp", "rrod_bp"})   # basis points pass 1,000 on a big day; never a level
 LEAK_DATE_PATTERN = re.compile(r"20\d\d-\d\d-\d\d")
-LEAK_WORDS = ("JEV", "pool_v", "blend", "% sure", "read_id", "row_ts")
+LEAK_WORDS = ("JEV", "pool_v", "blend", "% sure", "read_id", "row_ts", "base_pool", "learner_pool")
 BUILDER_SOURCES = ("payload", "grading.py", "library.py", "precedents.py", "rulebook.py")   # what builder_sha covers
 VIX_IMPLIED_TRADING_DAYS = 252
 
