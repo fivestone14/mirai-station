@@ -113,9 +113,10 @@ def test_the_page_reads_the_spx_cards_and_keeps_the_sndk_pages_modes():
     assert "var ex = expiryLine(c); if(ex) main.appendChild(ex);" in _fn("paint")
     assert "laneLeads(tape, Date.now(), marketDay()) !== shownLeads" in _fn("tick")
     assert "setInterval(function(){ if(!document.hidden){ poll(); pollTape(); tick(); } }, POLL_MS);" in JS
-    # the live price rides the station's existing quote route, every SPOT_MS in a session the card is today's, and on load and waking
+    # the live price rides the station's existing quote route, every SPOT_MS in the session (inSession, the market-clock gate:
+    # the session's hours on a trading day), and on load and waking
     assert "var SPOT_URL = '/api/spot?ticker=SPX', SPOT_MS = 5000, SESSION_HOURS = ['09:30', '16:00'];" in JS
-    assert "setInterval(function(){ if(!document.hidden && todaysCard() && within(SESSION_HOURS)) pollSpot(); }, SPOT_MS);" in JS
+    assert "setInterval(function(){ if(!document.hidden && inSession()) pollSpot(); }, SPOT_MS);" in JS
     assert "pollSpot();" in _fn("wake") and "poll(); pollTape(); pollSpot(); armMark(); armTapeMark();" in JS
     assert "LANE_HOURS = ['09:33', '16:05']" in JS and "within(LANE_HOURS)" in _fn("pollTape")
     # the questions left the page for their own sheet (09-29), so no fold is remembered on the phone any more
@@ -267,7 +268,7 @@ def test_a_new_card_asks_for_the_grades_at_once_and_keeps_a_call_open_until_its_
     js = ("var calls = 0, last = null, lastOk = true, barsDay = null;"
           "function fetch(){ calls++; return Promise.resolve({ok: true, json: function(){ return Promise.resolve({kind: 'jsonl', rows: []}); }}); }"
           "function $(id){ return {getAttribute: function(){ return 'true'; }, classList: {contains: function(){ return false; }}, dataset: {}}; }"
-          "function cardDay(){ return null; } function pollBars(){} function pollBook(){} function draw(){} function ages(){} function tick(){} function paintCalls(){} function paintChart(){}"
+          "function priceDay(){ return null; } function pollBars(){} function pollBook(){} function draw(){} function ages(){} function tick(){} function paintCalls(){} function paintChart(){}"
           "function chartDocked(){ return false; }" + _var("GRADES_URL") + _var("BOOK_URL") + _var("grades") + "".join(_fn(f) for f in ("chartVisible", "rawRows", "pollGrades", "arrived"))
           + "function settle(){ return new Promise(function(r){ setImmediate(r); }); }"
           "(async function(){ var out = {};"
@@ -334,10 +335,13 @@ def test_the_next_read_is_found_on_the_market_clock_and_drawn_in_the_viewers_zon
 def test_the_header_names_the_cards_market_day_and_the_next_read_in_the_viewers_zone():
     """The redesign's header (Final-Home, 2026-10-10): "SPX · Forecast" on the left; on the right the market day the
     card belongs to, its stamp's own date and never the viewer's, and the next read while one is still ahead, in the
-    viewer's zone. After the day's last read, or on a card of another day, the day stands alone. The pre-market card
-    names its day and the night's next checkpoint the same way, and both move with the clock."""
-    js = ("var READ_MINUTES = [2, 32], LAST_READ_DEFAULT = '15:32', nodes = {hdR: el('span')}; function $(id){ return nodes[id]; } function chartDocked(){ return !!D.wide; }"
-          + _fn("nextRead") + _fn("dayName") + _fn("mins") + _fn("ageWord") + _fn("headLine") + _fn("setHead") + _fn("preNextRead") +
+    viewer's zone. After the day's last read, or on a card of another day, the day stands alone; on a session day before
+    its first card the day is today's with the day's next read, the card's day being in the trouble line. The pre-market
+    card names its day and the night's next checkpoint the same way, then the day's first live read once the checkpoints
+    are past, and both move with the clock."""
+    js = ("var READ_MINUTES = [2, 32], LAST_READ_DEFAULT = '15:32', LAST_READ_LEAD_MIN = 28, nodes = {hdR: el('span')}; function $(id){ return nodes[id]; } function chartDocked(){ return !!D.wide; }"
+          "var last = D.c, premarket = D.pre || null, tape = null;" + _var("SPOT_URL") + _fn("within") + _fn("cardDay") + _fn("todaysCard") + _fn("dayClose") + _fn("inSession")
+          + _fn("waiting") + _fn("nextRead") + _fn("dayName") + _fn("mins") + _fn("ageWord") + _fn("headLine") + _fn("setHead") + _fn("preNextRead") +
           "setHead(D.c); console.log(JSON.stringify([nodes.hdR.textContent, D.pre ? headLine(D.pre.day, preNextRead(D.pre, Date.now())) : null]));")
     card = {"row_ts": "2026-10-09T11:31:56-04:00", "session": {"last_read": "2026-10-09T15:32:00-04:00", "close": "2026-10-09T16:00:00-04:00"}}
     assert _run(js, {"now": "2026-10-09T11:40:00-04:00", "c": card}, LA)[0] == "Fri 10-09 · next read 09:02"
@@ -353,7 +357,7 @@ def test_the_header_names_the_cards_market_day_and_the_next_read_in_the_viewers_
     assert _run(js, {"now": "2026-10-09T15:40:00-04:00", "c": card, "wide": True}, LA)[0] == "Fri 10-09"
     assert _run(js, {"now": "2026-10-12T05:00:00-04:00", "c": card, "pre": pre, "wide": True}, LA)[1] == "Mon 10-12 · next read 03:35"
     assert "setHead(c);" in _fn("paint") and "setHead(c);" in _fn("ages"), "the next read moves with the clock"
-    assert "if(head) head.textContent = headLine(p.day, preNextRead(p, now));" in _fn("paintPre")
+    assert "nr = preNextRead(p, now);" in _fn("paintPre") and "if(head) head.textContent = headLine(p.day, nr);" in _fn("paintPre")
     assert '<span class="hd-r" id="hdR"></span>' in SPX and "BETA" not in SPX.split("<body>", 1)[1].split("<main", 1)[0]
 
 
@@ -362,13 +366,13 @@ def test_the_header_line_names_the_row_in_the_viewers_time_and_knows_the_close()
           + _fn("nextRead") + _fn("ageWord") + _fn("cardCount") + _fn("subLine") + "console.log(JSON.stringify(subLine(D.c, D.m)));")
     c = {"row_ts": "2026-09-28T11:01:56-04:00", "labels": 43,
          "session": {"close": "2026-09-28T16:00:00-04:00", "last_read": "2026-09-28T15:32:00-04:00"}}
-    assert _run(js, {"now": "2026-09-28T11:14:00-04:00", "c": c, "m": 12}, LA) == "row 08:01, 12 min ago, 43 labels, next read 08:32"
+    assert _run(js, {"now": "2026-09-28T11:14:00-04:00", "c": c, "m": 12}, LA) == "row 08:01, 12 min ago, 43 labels"
     last = {**c, "row_ts": "2026-09-28T15:31:56-04:00"}
     assert _run(js, {"now": "2026-09-28T16:10:00-04:00", "c": last, "m": 38}, LA) == "after the close, last row 12:31, 43 labels"
     assert _run(js, {"now": "2026-09-28T15:50:00-04:00", "c": last, "m": 18}, TOKYO).startswith("row 04:31, 18 min ago")
     # the card's counts under their own names (service.card's labels_count), the bare name only on a card from before them
     counted = {**{k: v for k, v in c.items() if k != "labels"}, "labels_count": 43}
-    assert _run(js, {"now": "2026-09-28T11:14:00-04:00", "c": counted, "m": 12}, LA) == "row 08:01, 12 min ago, 43 labels, next read 08:32"
+    assert _run(js, {"now": "2026-09-28T11:14:00-04:00", "c": counted, "m": 12}, LA) == "row 08:01, 12 min ago, 43 labels"
 
 
 def _count(c, tz=LA):
@@ -403,42 +407,56 @@ def test_a_read_that_asked_no_question_says_so_instead_of_a_count_of_nothing():
 
 def test_the_header_line_is_kept_for_a_stale_card_alone():
     """Will's layout of 09-29: the row line under the title is gone. A fresh card and the day's last one after the
-    close say nothing there (the live price and the card's own clock do); a card gone stale mid-session still says so,
-    in subLine's words, and an error is still said there (say)."""
-    js = ("var READ_MINUTES = [2, 32], GONE_MIN = 60, STALE_MIN = 35, ROW_LEAD_MIN = 4, LAST_READ_DEFAULT = '15:32';"
-          + _fn("nextRead") + _fn("ageWord") + _fn("cardCount") + _fn("subLine") + _fn("staleLine")
+    close say nothing there (the live price and the card's own clock do); an error is still said there (say). In the
+    session a card DELAYED_MIN old with no new one says since when nothing has come and that the station is behind
+    (10-13: Schwab's login lapsed and the 10:31 card sat for 4.5 hours under a muted "stale"); on a day that is no
+    session day of the card's (no lane has read, no expiry calendar on it) a card of another day is the last session's,
+    in subLine's words."""
+    js = ("var READ_MINUTES = [2, 32], GONE_MIN = 60, STALE_MIN = 35, DELAYED_MIN = 40, ROW_LEAD_MIN = 4, LAST_READ_DEFAULT = '15:32';"
+          "var last = D.c, premarket = null, tape = null;" + _var("SPOT_URL") + _fn("within") + _fn("cardDay") + _fn("todaysCard") + _fn("dayClose") + _fn("inSession")
+          + _fn("waiting") + _fn("nextRead") + _fn("ageWord") + _fn("cardCount") + _fn("subLine") + _fn("staleLine")
           + "console.log(JSON.stringify(staleLine(D.c, D.m)));")
     c = {"row_ts": "2026-09-28T11:01:56-04:00", "labels_count": 43,
          "session": {"close": "2026-09-28T16:00:00-04:00", "last_read": "2026-09-28T15:32:00-04:00"}}
     assert _run(js, {"now": "2026-09-28T11:14:00-04:00", "c": c, "m": 12}, LA) == ""
-    assert _run(js, {"now": "2026-09-28T11:40:00-04:00", "c": c, "m": 38}, LA) == "row 08:01, 38 min ago, stale, next read 09:02"
+    assert _run(js, {"now": "2026-09-28T11:44:00-04:00", "c": c, "m": 42}, LA) == "No read since 08:01, station data delayed"
     last = {**c, "row_ts": "2026-09-28T15:31:56-04:00"}
     assert _run(js, {"now": "2026-09-28T16:10:00-04:00", "c": last, "m": 38}, LA) == ""
-    # yesterday's last card in today's session (the service wrote nothing today) is said at the top
+    # yesterday's last card on a day no lane has read, with no expiry calendar on it to make today a session day: the last session's
     assert _run(js, {"now": "2026-09-29T11:00:00-04:00", "c": last, "m": 1168}, LA) == "after the close, last row 12:31, 43 labels"
     assert "s.hidden = false;" in _fn("say") and "s.hidden = !text;" in _fn("setSub")
     assert "setSub(staleLine(c, m));" in _fn("paint") and "setSub(staleLine(c, m));" in _fn("ages")
 
 
 # Widths measured in Chrome with the shipped face at the header line's 13px: the stale line with its label count ran
-# past the 328px column on the owner's 360px phone and was cut before its next read ("next read 07:…")
-_SUB_W = {"row 06:31, 39 min ago, stale, 125 labels, next read 07:32": 333.80, "row 06:31, 39 min ago, stale, next read 07:32": 268.56,
-          "row 12:31, 20 hr 29 min ago, stale, next read 07:32": 297.38, "row 08:01, 12 min ago, 125 labels, next read 08:32": 298.19}
+# past the 328px column on the owner's 360px phone and was cut before its next read ("next read 07:…"). Since 10-13 the
+# line carries no next read (where it is shown, after the close, none is ahead) and in the session the trouble line
+# stands in its place; each line the header shows fits
+_SUB_W = {"row 06:31, 39 min ago, stale, 125 labels, next read 07:32": 333.80, "row 11:31, 1 hr 39 min ago, stale": 180.81,
+          "row 12:31, 20 hr 29 min ago, stale": 196.17, "No read since 06:31, station data delayed": 251.53}
 
 
-def test_a_stale_header_line_keeps_its_next_read_on_the_owners_360px_phone():
+def test_a_stale_header_line_fits_the_owners_360px_phone():
     """Monday 10:10 ET: the 09:31 card was 39 minutes old, and its line was cut at "next read 07:…". A stale line
-    drops the label count, which says least about an old card, so the next read fits."""
-    js = ("var READ_MINUTES = [2, 32], GONE_MIN = 60, STALE_MIN = 35, ROW_LEAD_MIN = 4, LAST_READ_DEFAULT = '15:32';"
-          + _fn("nextRead") + _fn("ageWord") + _fn("cardCount") + _fn("subLine") + "console.log(JSON.stringify(subLine(D.c, D.m)));")
+    drops the label count, which says least about an old card. Since 10-13 the session's header says nothing at 39
+    minutes and that the station is delayed from DELAYED_MIN; the stale line is the close's, when the day's last reads
+    were missed, with no next read ahead to carry."""
+    js = ("var READ_MINUTES = [2, 32], GONE_MIN = 60, STALE_MIN = 35, DELAYED_MIN = 40, ROW_LEAD_MIN = 4, LAST_READ_DEFAULT = '15:32';"
+          "var last = D.c, premarket = null, tape = null;" + _var("SPOT_URL") + _fn("within") + _fn("cardDay") + _fn("todaysCard") + _fn("dayClose") + _fn("inSession")
+          + _fn("waiting") + _fn("nextRead") + _fn("ageWord") + _fn("cardCount") + _fn("subLine") + _fn("staleLine")
+          + "console.log(JSON.stringify(staleLine(D.c, D.m)));")
     c = {"row_ts": "2026-09-28T09:31:20-04:00", "labels": 125,
          "session": {"close": "2026-09-28T16:00:00-04:00", "last_read": "2026-09-28T15:32:00-04:00"}}
-    stale = _run(js, {"now": "2026-09-28T10:10:00-04:00", "c": c, "m": 39}, LA)
-    assert stale == "row 06:31, 39 min ago, stale, next read 07:32"
+    assert _run(js, {"now": "2026-09-28T10:10:00-04:00", "c": c, "m": 39}, LA) == ""
+    delayed = _run(js, {"now": "2026-09-28T10:12:00-04:00", "c": c, "m": 41}, LA)
+    assert delayed == "No read since 06:31, station data delayed"
+    missed = {**c, "row_ts": "2026-09-28T14:31:20-04:00"}
+    stale = _run(js, {"now": "2026-09-28T16:10:00-04:00", "c": missed, "m": 99}, LA)
+    assert stale == "row 11:31, 1 hr 39 min ago, stale"
     column = 360 - 2 * 16
     assert _SUB_W[stale] <= column < _SUB_W["row 06:31, 39 min ago, stale, 125 labels, next read 07:32"]
-    assert _SUB_W["row 12:31, 20 hr 29 min ago, stale, next read 07:32"] <= column
-    assert _SUB_W["row 08:01, 12 min ago, 125 labels, next read 08:32"] <= column
+    for line in (delayed, "row 12:31, 20 hr 29 min ago, stale"):
+        assert _SUB_W[line] <= column
 
 
 def test_the_last_lane_read_is_known_from_the_schedules_stamps():
@@ -476,8 +494,9 @@ def test_the_expiry_line_counts_down_to_todays_settle_and_tags_the_big_days():
 
 def test_after_the_settle_the_line_names_the_next_expiry_with_its_day():
     assert _expiry(EXPIRIES, "2026-09-30T16:05:00-04:00") == [["span", "Next expiry settles Thu 13:00 PDT"]]
-    # a card from an earlier day (its today is not New York's today) never counts down
-    assert _expiry(EXPIRIES, "2026-10-01T09:40:00-04:00", TOKYO) == [["span", "Next expiry settles Fri 05:00 GMT+9"]]
+    # a card from an earlier day never counts down its own day's settle; its next one, when that is today's (the session
+    # day before its first card), it counts down, without the earlier day's tags
+    assert _expiry(EXPIRIES, "2026-10-01T09:40:00-04:00", TOKYO) == [["span", "Options settle 05:00 GMT+9"], ["b", "6 hr 20 min left"]]
     assert _expiry(None, "2026-09-30T11:14:00-04:00") is None
 
 
@@ -702,7 +721,7 @@ def test_a_good_fetch_after_a_failed_one_clears_the_failure_though_the_card_is_t
           "contains: function(k){ return !!SUB.cls[k]; }, add: function(k){ SUB.cls[k] = true; }, remove: function(k){ delete SUB.cls[k]; }}};"
           "function $(id){ return SUB; } function ages(){ drawn.push('ages'); } function tick(){}"
           "function draw(c, ok){ lastOk = ok; drawn.push(ok); if(ok) SUB.classList.remove('err'); }"
-          "function setTimeout(){} var barsDay = null, gradesAt = 0; function cardDay(){ return null; } function pollBars(){} function pollBook(){} function pollGrades(){}" + _fn("arrived") +
+          "function setTimeout(){} var barsDay = null, gradesAt = 0; function priceDay(){ return null; } function pollBars(){} function pollBook(){} function pollGrades(){}" + _fn("arrived") +
           "var c = {generated_at: 'g1', row_ts: 'r1'};"
           "arrived(c); arrived(c); draw(last, false); arrived(c); arrived(c);"
           "SUB.classList.add('err'); arrived(c);"
@@ -891,9 +910,9 @@ def _price_run(data, out, tz=LA):
     (the chart's visibility is not this harness's: chartVisible says hidden, chartDocked a phone); ``out`` is the JS object printed back."""
     js = ("var IDS = {}; " + _PX_IDS + ".forEach(function(k){ IDS[k] = el('div'); IDS[k].hidden = true; });"
           "function $(id){ return IDS[id]; } function chartVisible(){ return false; } function chartDocked(){ return false; }"
-          "var last = D.last, spot = D.spot && {price: D.spot, at: Date.parse(D.at), fresh: D.fresh};"
+          "var last = D.last, premarket = null, tape = null, spot = D.spot && {price: D.spot, at: Date.parse(D.at), fresh: D.fresh};"
           + _var("SPOT_URL") + _var("SPOT_LIVE_MS") + _var("AVG_REACH") + _fn("placeNow") + _fn("within") + _fn("money") + _fn("cardDay")
-          + _fn("todaysCard") + _fn("spotState") + _fn("paintPx")
+          + _fn("todaysCard") + _fn("dayClose") + _fn("inSession") + _fn("spotState") + _fn("paintPx")
           + "paintPx(); console.log(JSON.stringify(" + out + "));")
     return _run(js, data, tz)
 
@@ -940,9 +959,9 @@ def _needle(price, card_day="2026-10-08", now="2026-10-08T14:35:00-04:00", later
     ``price`` (None: no quote yet), then, with ``later``, moved by the next quote through paintPx."""
     js = ("var IDS = {}; " + _PX_IDS + ".forEach(function(k){ IDS[k] = el('div'); });"
           "function $(id){ return IDS[id]; } function chartVisible(){ return false; } function chartDocked(){ return false; } var last = {row_ts: D.card + 'T14:31:03-04:00'};"
-          "var spot = D.price == null ? null : {price: D.price, at: Date.now(), fresh: true};"
+          "var premarket = null, tape = null, spot = D.price == null ? null : {price: D.price, at: Date.now(), fresh: true};"
           + _var("SPOT_URL") + _var("SPOT_LIVE_MS") + _var("AVG_REACH") + "".join(_fn(f) for f in ("tag", "averageWords", "indexLevel", "money", "within",
-                                                                                 "cardDay", "todaysCard", "spotState", "placeNow", "calledAt", "paintPx"))
+                                                                                 "cardDay", "todaysCard", "dayClose", "inSession", "spotState", "placeNow", "calledAt", "paintPx"))
           + "var bar = calledAt({price: 7756.79, edge_points: 2.24}, 30).kids[1], n = bar.kids[2];"
           "if(D.later != null){ spot = {price: D.later, at: Date.now(), fresh: true}; paintPx(); }"
           "console.log(JSON.stringify({kids: bar.kids.map(function(k){ return k.attrs['class']; }), hidden: !!n.hidden,"
@@ -1057,17 +1076,17 @@ def pre_card(at="09:28", day=PRE_DAY, report=True, sent=None, checkpoints=CHECKP
 
 
 PRE_FNS = ("fits", "top1", "oddsKeys", "oddsBar", "tag", "skipLine", "averageWords", "jevOwn", "endPriceRow", "ageWord", "mins", "untilWords", "expiryLine",
-           "preLeads", "preMissed", "preJevRead", "preJevDue", "preUnsent", "preState", "shapeWords", "sumPick", "sumSaid", "preClock",
-           "preCall", "preRulerLine", "preStaleLine", "checksSvg", "chipFits", "storySide", "storyHead", "storySvg", "preFacts", "paintPre")
-PRE_VARS = ("ODDS_ORDER", "EXPIRY_TAGS", "PRE_LATE_MIN", "OPENS", "THEN", "CHECKS_LEAD_MIN", "CHIP_W")
-# the page's #h1, #sub, #state and #main, with the classList the pre-market card toggles
+           "cardDay", "todaysCard", "nextRead", "preLeads", "preNextRead", "preMissed", "preJevRead", "preJevDue", "preUnsent", "preState", "shapeWords",
+           "sumPick", "sumSaid", "preClock", "preCall", "preRulerLine", "preStaleLine", "checksSvg", "chipFits", "storySide", "storyHead", "storySvg", "preFacts", "paintPre")
+PRE_VARS = ("ODDS_ORDER", "EXPIRY_TAGS", "PRE_LATE_MIN", "OPENS", "THEN", "CHECKS_LEAD_MIN", "CHIP_W", "READ_MINUTES", "LAST_READ_DEFAULT")
+# the page's #h1, #sub, #state and #main, with the classList the pre-market card toggles; no 30-minute card is on hand
 PRE_DOM = """
 Object.defineProperty(Node.prototype, 'classList', {get: function(){ var n = this; function has(){ return (n.attrs['class'] || '').split(' ').filter(Boolean); }
   return {remove: function(k){ n.attrs['class'] = has().filter(function(x){ return x !== k; }).join(' '); },
           toggle: function(k, on){ var h = has().filter(function(x){ return x !== k; }); if(on) h.push(k); n.attrs['class'] = h.join(' '); }}; }});
 var nodes = {h1: el('span'), sub: el('div'), state: el('div'), main: el('main'), dock: el('div'), qBtn: el('button')};
 function $(id){ return nodes[id]; }
-var tickers = [], shownPre = false, shownLeads = false;
+var tickers = [], shownPre = false, shownLeads = false, last = null;
 """
 
 
@@ -1130,7 +1149,7 @@ def test_a_call_leads_the_card_with_its_shape_its_checks_and_the_story():
     assert [m[0] for m in got["main"]] == ["mode", "exp", "card dashed pre", "card fold"]
     assert _flat_text(got["main"][0][1]) == "before the open"
     parts = _card_parts(got)
-    assert parts[0] == ["lab", "before the openJUST NOW"]
+    assert parts[0] == ["lab", "Pre-Market CallJUST NOW"]
     assert parts[1][1] == "Opens 06:302 min to goRead 06:28 PDTChecked 06:44 and 07:04"
     assert parts[2] == ["big", "Up 41%"]
     assert parts[3] == ["shape", "Opens firm, holds: up at the first check, still up at the second"]
@@ -1333,7 +1352,7 @@ def test_a_card_left_behind_by_a_sleeping_mac_says_which_read_is_missing():
     got = _page(pre_card("03:35"), et("08:20"))
     assert got["sub"] == "pre-market read 00:35, 4 hr 45 min ago, open 06:30"
     assert got["state"] == ["snapshot, JEV at 05:48 and 06:28", "stale: the 05:05 read has not landed"]
-    assert _card_parts(got)[0] == ["lab", "before the open4 HR 45 MIN AGO"]
+    assert _card_parts(got)[0] == ["lab", "Pre-Market Call4 HR 45 MIN AGO"]
     age = [m[1] for m in got["main"] if "pre" in m[0]][0]["kids"][0]["kids"][1]
     assert age["attrs"]["class"] == "r old"
     # a checkpoint only minutes late is not yet missing
@@ -2065,7 +2084,7 @@ def _whole(cards, now, tz=LA):
 
 @pytest.mark.parametrize("tz", [LA, TOKYO, NY, KOLKATA])
 @pytest.mark.parametrize("now, leads", [
-    ("2026-09-28T09:30:00-04:00", "before the open"),                 # the 09:28 pre-market card leads
+    ("2026-09-28T09:30:00-04:00", "Market Open"),                     # the 09:28 pre-market card leads; at the bell its mode says the market is open
     ("2026-09-28T10:35:00-04:00", "10-min call · every 5 min"),       # the 10:30 lane call is open
     ("2026-09-28T15:40:00-04:00", "30-min call"),    # the 15:32 read's call is open
     ("2026-09-28T16:10:00-04:00", "30-min call"),
@@ -2073,7 +2092,7 @@ def _whole(cards, now, tz=LA):
 def test_mondays_real_cards_draw_whole_in_every_zone(now, leads, tz):
     got = _whole({k: MONDAY[k] for k in ("live", "tape", "premarket")}, now, tz)
     assert not got["err"], got["sub"]
-    if leads == "before the open":
+    if leads == "Market Open":
         assert got["main"][0] == ["mode", leads]
         return
     # in the session the mode chip heads the leading card, first on the clock's row, and the header line says nothing
@@ -2271,7 +2290,7 @@ def test_a_live_card_with_no_sum_says_so_when_the_30_minute_call_leads(tz, next_
             "marks": {"next_30": "2026-09-28T10:00:00-04:00", "next_60": "2026-09-28T10:30:00-04:00"}}
     calls = [c for c in MONDAY["tape"]["calls"] if c["read"] <= "2026-09-28T09:55"]
     tape = {**MONDAY["tape"], "row_ts": "2026-09-28T09:55:00-04:00", "calls": calls, "closed_out_at": None}
-    got = _whole({"live": live, "tape": tape}, "2026-09-28T10:10:00-04:00", tz)
+    got = _whole({"live": live, "tape": tape}, "2026-09-28T10:12:00-04:00", tz)
     assert not got["err"], got["sub"]
     card = next(d for c, d in zip(got["main"], got["dom"]) if c[0] == "card dashed")
     assert _flat_text(card["kids"][0]) == "30-min call"
@@ -2279,7 +2298,7 @@ def test_a_live_card_with_no_sum_says_so_when_the_30_minute_call_leads(tz, next_
     assert [k["attrs"].get("class") for k in card["kids"]] == ["mode", "lab", "skip", "tag", "rec"]
     read = {LA: "06:31", TOKYO: "22:31", KOLKATA: "19:01"}[tz]
     assert _flat_text(card["kids"][3]) == f"The {read} read"      # the header no longer names the row, so the card does
-    assert got["sub"].startswith("row ") and ", stale" in got["sub"]     # the 09:31 card is 39 minutes old: said at the top
+    assert got["sub"] == f"No read since {read}, station data delayed"     # the 09:31 card is 41 minutes old, past DELAYED_MIN: said at the top
 
 
 @pytest.mark.parametrize("tz, reopen, close", [(LA, "Sun 15:00", "Fri 13:00"), (TOKYO, "Mon 07:00", "Sat 05:00"),
@@ -2989,7 +3008,7 @@ def grade(hhmm, verdict, horizon="next_30", day="2026-10-09"):
 BOARD_GRADES = [grade("10:02", "right"), grade("10:32", "wrong"), grade("11:02", "right"), grade("11:02", "right", horizon="next_60"),
                 grade("10:02", "right", day="2026-10-08")]
 
-_CHART_FNS = ("cardDay", "chartDocked", "todaysCard", "within", "money", "indexLevel", "dayName", "skipLine", "tag", "bookRow", "dayCalls", "liveCall",
+_CHART_FNS = ("cardDay", "chartDocked", "todaysCard", "within", "dayClose", "inSession", "priceDay", "money", "indexLevel", "dayName", "skipLine", "tag", "bookRow", "dayCalls", "liveCall",
               "dayFacts", "paintSpark", "strikePitch", "chartWindow", "strikeBars", "kShort", "chWidth", "wordClear", "wordSpot", "chartSvg", "chTile", "gapWords",
               "barAt", "bookTiles", "keyLine", "spotState", "chartDay", "paintChart")
 _CHART_VARS = ("SPOT_URL", "SPOT_LIVE_MS", "SPARK_W", "WINDOW_SHARE", "CH_H", "CH_SIDE", "CH_ADV_400", "CH_ADV_500", "CH_ADV_800", "CH_ADV")
@@ -3000,7 +3019,7 @@ def _chart(data, tz=LA):
     told) and in the sheet unless D.wide, the panel from 1024px up: the market day on the title row and the body as dumped nodes."""
     js = ("var IDS = {}; ['chBody', 'chDay', 'pxSpark'].forEach(function(k){ IDS[k] = el('div'); }); function $(id){ return IDS[id]; } var WIDE = {matches: !!D.wide};"
           "if(D.W) IDS.chBody.clientWidth = D.W;"
-          "var last = D.card, bars = D.bars, book = D.book, grades = D.grades || null, spot = D.spot ? {price: D.spot, at: Date.now(), fresh: true} : null;"
+          "var last = D.card, premarket = null, tape = null, bars = D.bars, book = D.book, grades = D.grades || null, spot = D.spot ? {price: D.spot, at: Date.now(), fresh: true} : null;"
           + "".join(_var(v) for v in _CHART_VARS) + "".join(_fn(f) for f in _CHART_FNS)
           + "paintChart(); paintSpark(); console.log(JSON.stringify({day: IDS.chDay.textContent, body: dump(IDS.chBody), spark: dump(IDS.pxSpark)}));")
     return _run(js, data, tz)
@@ -3207,15 +3226,15 @@ def test_the_book_is_fetched_only_while_the_sheet_is_open_and_each_file_at_most_
     session and the minutes after it in which the close's last bar lands, from the card's day, and only a card naming
     a new day asks for them outside that, dropping the last day's bars before asking for its own."""
     assert _var("BARS_URL").endswith("BARS_MS = 60000, BARS_HOURS = ['09:30', '16:05'];") and _var("BOOK_URL").endswith("BOOK_MS = 60000;")
-    assert "setInterval(function(){ if(!document.hidden && todaysCard() && within(BARS_HOURS)) pollBars(); }, BARS_MS);" in JS
+    assert "setInterval(function(){ if(!document.hidden && priceDay() === marketDay() && within(BARS_HOURS)) pollBars(); }, BARS_MS);" in JS
     assert "setInterval(function(){ if(!document.hidden && chartVisible()){ pollBook(); pollGrades(); } }, BOOK_MS);" in JS
-    assert "if(cardDay() !== barsDay) pollBars();" in _fn("arrived") and "pollBars();" in _fn("wake") and "pollBook" not in _fn("wake")
+    assert "if(priceDay() !== barsDay) pollBars();" in _fn("arrived") and "pollBars();" in _fn("wake") and "pollBook" not in _fn("wake")
     js = ("var calls = [], OPEN = 'true', WIDE = {matches: false}, painted = 0, sparked = 0; function $(id){ return {getAttribute: function(){ return OPEN; }}; }"
           "function paintChart(){ painted++; } function paintSpark(){ sparked++; } function paintCalls(){}"
           "function fetch(url){ calls.push(url.split('?')[1]); return Promise.resolve({ok: true, json: function(){ return Promise.resolve({kind: 'jsonl', rows: [D.row]}); }}); }"
-          "var last = {row_ts: '2026-10-09T10:02:00-04:00'};"
-          + "".join(_var(v) for v in ("BARS_URL", "BOOK_URL", "GRADES_URL", "bars", "book", "grades"))
-          + "".join(_fn(f) for f in ("cardDay", "chartDocked", "chartVisible", "rawRows", "bookRow", "pollBars", "pollBook", "pollGrades"))
+          "var last = {row_ts: '2026-10-09T10:02:00-04:00'}, premarket = null, tape = null;"
+          + "".join(_var(v) for v in ("BARS_URL", "BOOK_URL", "GRADES_URL", "SPOT_URL", "bars", "book", "grades"))
+          + "".join(_fn(f) for f in ("cardDay", "todaysCard", "within", "dayClose", "inSession", "priceDay", "chartDocked", "chartVisible", "rawRows", "bookRow", "pollBars", "pollBook", "pollGrades"))
           + "function tick(){ return new Promise(function(r){ setImmediate(r); }); }"
           "(async function(){ var out = {};"
           " pollBook(); pollGrades(); pollBook(); await tick(); await tick(); out.closed = calls.length;"
@@ -3395,8 +3414,8 @@ def test_the_book_is_fetched_while_the_chart_is_visible_as_a_sheet_or_as_a_panel
     (the query's matches), and neither means no fetch; a card's arrival asks through the same gate."""
     js = ("var calls = [], OPEN = 'true', WIDE = {matches: false}; function $(id){ return {getAttribute: function(){ return OPEN; }}; }"
           "function paintChart(){} function fetch(url){ calls.push(url.split('name=')[1].split('&')[0]); return Promise.resolve({ok: true, json: function(){ return Promise.resolve({kind: 'jsonl', rows: [D.row]}); }}); }"
-          "var last = {row_ts: '2026-10-09T10:02:00-04:00'};"
-          + "".join(_var(v) for v in ("BOOK_URL", "book")) + "".join(_fn(f) for f in ("cardDay", "chartDocked", "chartVisible", "rawRows", "bookRow", "pollBook"))
+          "var last = {row_ts: '2026-10-09T10:02:00-04:00'}, premarket = null, tape = null;"
+          + "".join(_var(v) for v in ("BOOK_URL", "SPOT_URL", "book")) + "".join(_fn(f) for f in ("cardDay", "todaysCard", "within", "dayClose", "inSession", "priceDay", "chartDocked", "chartVisible", "rawRows", "bookRow", "pollBook"))
           + "function tick(){ return new Promise(function(r){ setImmediate(r); }); }"
           "(async function(){ var out = {};"
           " pollBook(); await tick(); await tick(); out.phoneShut = [chartVisible(), calls.length];"

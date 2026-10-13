@@ -50,7 +50,10 @@
   through one formatter, viewerTime; the call clock and the expiry line name
   the zone. The schedule is not the viewer's: which mode leads, when to poll,
   what "today" is, all run on the New York market clock (marketClock,
-  marketDay).
+  marketDay), and one gate, inSession, says whether the market is open, from
+  the bell to the day's own close: in the session the price is live, the bars
+  and the chart are today's, and a 30-minute card of another day is said to be
+  one.
 
   One paper on every phone page: its tokens, its card, its label row, its
   tab bar. No dark mode. House rules kept: text goes in with textContent
@@ -804,10 +807,16 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   'use strict';
   var URL_ = '/api/store/file?name=JEV_LIVE_CARD';
   var STALE_MIN = 35, GONE_MIN = 60;           // reads land every 30 minutes: a row is stale only once the next read is overdue
-  // The day's last read is 28 minutes before the close (the card's session.last_read, a full stamp), and its row
-  // lands a few minutes before it: a row at or after ROW_LEAD_MIN before the last read is the day's last, not a
-  // stale one. A card without a session falls back to 15:32 on the market clock.
-  var LAST_READ_DEFAULT = '15:32', ROW_LEAD_MIN = 4;
+  // In the session a row this old with no card after it, or a day this far past the open with no card yet, says the
+  // station is behind (staleLine). Past every healthy gap in the logs (a card has come up to 35.8 minutes after the
+  // last card's row, the 09:32 and 10:02 reads' waits for a row included), so a page that checks every POLL_MS never
+  // calls a quiet station delayed.
+  var DELAYED_MIN = 40;
+  // The day's last read is LAST_READ_LEAD_MIN before the close (the card's session.last_read, a full stamp; before the
+  // day's first card the page counts it back from dayClose the same way, 12:32 on a half day), and its row lands a few
+  // minutes before it: a row at or after ROW_LEAD_MIN before the last read is the day's last, not a stale one. A card
+  // without a session falls back to 15:32 on the market clock.
+  var LAST_READ_DEFAULT = '15:32', LAST_READ_LEAD_MIN = 28, ROW_LEAD_MIN = 4;
   // the question groups of pipelines/spx_jev_questions_and_pools/questions/spx_questions.json, in its order; a group not named here
   // is headed by its id in words
   var ORDER = ['opening_price','opening_flow','opening_context','price_move','gap_and_day','size','vol_signals','events_regime',
@@ -886,19 +895,27 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   function cardCount(c, k){ return c[k + '_count'] != null ? c[k + '_count'] : c[k]; }
   // an hour after a row past the day's last read (the card's session, instants both) there is nothing newer
   // to wait for, and after the close neither; an hour after any earlier row the card is stale. A stale line drops
-  // the label count, so the next read still fits the one line on a 360px phone
+  // the label count, which says least about an old card, so it fits the one line on a 360px phone
   function subLine(c, m){
     var at = viewerTime(c.row_ts), n = cardCount(c, 'labels') + ' labels', s = c.session || {};
     var lr = Date.parse(s.last_read), closed = Date.now() >= Date.parse(s.close);
     if(m != null && (m > GONE_MIN || closed) && Date.parse(c.row_ts) >= lr - ROW_LEAD_MIN * 60000) return 'after the close, last row ' + at + ', ' + n;
-    var next = nextRead(lr); var hint = next != null ? ', next read ' + viewerTime(next) : '';
     var stale = m != null && m > STALE_MIN;
-    return 'row ' + at + ', ' + ageWord(m) + (stale ? ', stale' : ', ' + n) + hint;
+    return 'row ' + at + ', ' + ageWord(m) + (stale ? ', stale' : ', ' + n);
   }
-  // The header line is kept for trouble alone: a card gone stale mid-session says so there in subLine's words, and so
-  // does a card of another day (the service wrote nothing today); a fresh card and today's last one after the close
-  // say nothing, the live price and the card's own clock say it.
+  // The header line is kept for trouble alone. In the session a station that has stopped never passes for a quiet one
+  // (Schwab's login lapsed on 10-13, and the 10:31 card sat for 4.5 hours): a card DELAYED_MIN old with no new one, or
+  // no card yet DELAYED_MIN after the open (the day's first reads missed), says since when nothing has come and that
+  // the station is behind, and the line goes when a fresh card lands; until then it is empty (a session day with no
+  // card yet says so in the call's place, waitFold). Outside the session a card of another day says it is the last
+  // session's in subLine's words, and a card gone stale before the close says so; a fresh card and today's last one
+  // after the close say nothing, the live price and the card's own clock say it.
   function staleLine(c, m){
+    if(inSession()){
+      // how long nothing has come: since the open on a day with no card yet, else since the card's row
+      var t = marketClock(), open = SESSION_HOURS[0].split(':').map(Number), quiet = waiting() ? (t.h - open[0]) * 60 + t.m - open[1] : m;
+      return quiet != null && quiet > DELAYED_MIN ? 'No read since ' + viewerTime(c.row_ts, {day: waiting()}) + ', station data delayed' : '';
+    }
     var s = c.session || {}, lr = Date.parse(s.last_read), closed = Date.now() >= Date.parse(s.close);
     var after = m != null && (m > GONE_MIN || closed) && Date.parse(c.row_ts) >= lr - ROW_LEAD_MIN * 60000;
     if(after) return String(c.row_ts || '').slice(0, 10) === marketDay() ? '' : subLine(c, m);
@@ -908,8 +925,10 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // The header's right side: the market day the card belongs to (its stamp's own date, written in New York's offset,
   // as the reads page names a day: "Fri 10-09", never the viewer's day) and, while one is still ahead, the next read
   // in the viewer's zone; from WIDE up the board's fuller line (Final-Desktop), the read's time and age before the next
-  // read, which a phone has no room for beside the name. Drawn again on every poll and tick, since the next read and
-  // the age move with the clock.
+  // read, which a phone has no room for beside the name. In the session before the day's first card the day is
+  // today's with the day's next read, never past the day's last one (LAST_READ_LEAD_MIN before dayClose, 12:32 on a
+  // half day), the last call's day being in the fold under it (waitFold). Drawn again on every poll and tick, since
+  // the next read and the age move with the clock.
   function dayName(d){
     var t = Date.parse(d + 'T12:00:00Z');
     return isNaN(t) ? String(d) : WEEKDAYS[new Date(t).getUTCDay()].slice(0, 3) + ' ' + d.slice(5);
@@ -921,7 +940,8 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   }
   function setHead(c){
     var r = $('hdR'); if(!r) return;
-    r.textContent = headLine(String(c.row_ts || '').slice(0, 10), nextRead(Date.parse(c.session && c.session.last_read)), c.row_ts);
+    r.textContent = waiting() ? headLine(marketDay(), nextRead(dayClose() - LAST_READ_LEAD_MIN * 60000))
+                              : headLine(String(c.row_ts || '').slice(0, 10), nextRead(Date.parse(c.session && c.session.last_read)), c.row_ts);
   }
   // The service reads at :02 and :32 market time. The next mark is the earliest one still ahead of the
   // market clock, never past the day's last read, found on the market clock and handed back as an instant,
@@ -1217,14 +1237,17 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     // the service says in its own words when it built on a row nothing newer had replaced
     if(c.freshness && c.freshness.stale && c.freshness.note) st.appendChild(el('span', 'state', c.freshness.note));
     var main = document.getElementById('main'); main.textContent = '';
-    var ageText = m == null ? '' : (m < 1 ? 'JUST NOW' : ageWord(m).toUpperCase());
 
-    // the opening's 5-minute call leads while today's newest one is still open; otherwise the 30-minute call does
+    // the opening's 5-minute call leads while today's newest one is still open; otherwise the 30-minute call does,
+    // unless the session has no 30-minute card yet (waitFold): the last session's call is never drawn as today's
     tickers = [];
-    shownLeads = laneLeads(tape, Date.now(), marketDay());
+    shownLeads = laneLeads(tape, Date.now(), marketDay()); shownWait = waiting();
     var ex = expiryLine(c); if(ex) main.appendChild(ex);
     if(shownLeads){
       main.appendChild(laneCard(tape, tapeOk));
+      main.appendChild(foldLive(c));
+    } else if(shownWait){
+      main.appendChild(waitFold(c));
       main.appendChild(foldLive(c));
     } else sumCard(c, main);
     if(preFolds(premarket, Date.now(), marketDay())) main.appendChild(preFold(premarket));
@@ -1233,9 +1256,9 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     // WIDE up the stylesheet stands under the chart panel instead
     var dock = document.getElementById('dock'); dock.textContent = '';
     var today = el('a', 'card calls-link'); today.id = 'todayCalls'; today.setAttribute('href', '/m/reads.html');
-    callsRow(dayStates(c), 'Today\u2019s calls', today);
+    callsRow(dayStates(c), callsName(), today);
     dock.appendChild(today);
-    dock.appendChild(situationCard(c, ageText, old));
+    dock.appendChild(situationCard(c, sitAge(c, m), old));
 
     // the questions live in their own sheet (qsDeck); the page keeps one plain control for them, drawn once a card is
     var qb = $('qBtn'); qb.textContent = 'Questions \u00B7 ' + (c.asked || 0) + ' asked'; qb.hidden = false;
@@ -1388,8 +1411,11 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // a drawn card is then given what the other files hold: the live price, the record row's scoreboard, and Claude's read
   // against the call
   function draw(c, ok){ lastOk = ok; try { paint(c, ok); clearLoading(); } catch(e){ say('the card could not be drawn: ' + (e && e.message ? e.message : e)); } paintPx(); paintCalls(); paintRecord(); drawClaude(); }
-  // Between cards the minutes still move: every tick updates each clock and each pre-market drawing,
-  // and when the leading call changes (the opening's last call closes) the page is drawn again.
+  // Between cards the minutes still move: every tick updates each clock and each pre-market drawing. The session's
+  // page is drawn again when what leads changes: the opening's last call closes (laneLeads), or the bell finds the
+  // last session's card still on hand (waiting, until today's first card lands). While the pre-market card leads
+  // neither changes its drawing, so only the hand-over redraws it: from the bell to the hand-over the page is waiting
+  // too, and a page rebuilt every tick would lose a reader's scroll.
   function tick(){
     if(preLeads(premarket, Date.now(), marketDay()) !== shownPre){
       if(last) draw(last, lastOk);
@@ -1401,23 +1427,22 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       tickers.forEach(function(f){ f(); });
       return;
     }
-    if(laneLeads(tape, Date.now(), marketDay()) !== shownLeads){ draw(last, lastOk); return; }
+    if(!shownPre && (laneLeads(tape, Date.now(), marketDay()) !== shownLeads || waiting() !== shownWait)){ draw(last, lastOk); return; }
     tickers.forEach(function(f){ f(); });
   }
   // The same card again only moves the ages, so a reader mid-scroll is never handed a rebuilt page; after a
   // failed fetch or a station error it is drawn again once, so the failure's words leave with the failure.
   function ages(c){
     if(shownPre) return;                          // the pre-market card leads and keeps its own ages
-    var m = mins(c.row_ts), old = m != null && m > STALE_MIN;
+    var m = mins(c.row_ts), old = m != null && m > STALE_MIN, ageText = sitAge(c, m);
     setHead(c);
     var sub = $('sub'); if(sub && !sub.classList.contains('err')) setSub(staleLine(c, m));
-    var ageText = m == null ? '' : (m < 1 ? 'JUST NOW' : ageWord(m).toUpperCase());
     Array.prototype.forEach.call(document.querySelectorAll('#dock .lab .age'), function(r){ r.textContent = ageText; r.classList.toggle('old', old); });
   }
   function arrived(c){
     var same = last && last.generated_at === c.generated_at && last.row_ts === c.row_ts;
     last = c;
-    if(cardDay() !== barsDay) pollBars();         // the card names the day whose bars the price box and the chart draw
+    if(priceDay() !== barsDay) pollBars();        // a new card can name the day whose bars the price box and the chart draw
     pollBook();                                   // and whose book, while the chart is visible
     if(!same){ gradesAt = 0; pollGrades(); }      // a new card may carry a new grade: the day's calls are asked for again, past the minute's throttle
     if(same && lastOk && !$('sub').classList.contains('err')){ ages(c); tick(); return; }
@@ -1447,7 +1472,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   }
   // ---- the calls: every call looks some minutes ahead, graded at its mark (the read's
   // minute plus those minutes, as the grader counts it). The page only counts minutes against the marks.
-  var tickers = [], shownLeads = false, lastOk = true;
+  var tickers = [], shownLeads = false, shownWait = false, lastOk = true;
   function pct(x){ return Math.round((x || 0) * 100) + '%'; }
   function words(k){ return String(k).replace(/_/g, ' '); }
   function startOf(iso){ return Math.floor(Date.parse(iso) / 60000) * 60000; }
@@ -1543,7 +1568,10 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     (c.calls || []).slice().reverse().forEach(function(k){ if(reads.indexOf(startOf(k.read)) < 0 && callState(k) === 'open') states.push('open'); });
     return states;
   }
-  function paintCalls(){ var into = $('todayCalls'); if(into && last) callsRow(dayStates(last), 'Today\u2019s calls', into); }
+  // the row's name: the calls are the card's day's, so a card of another day (a weekend, or a session day before its
+  // first card) names that day, never "today"
+  function callsName(){ return todaysCard() ? 'Today\u2019s calls' : dayName(cardDay()) + ' Calls'; }
+  function paintCalls(){ var into = $('todayCalls'); if(into && last) callsRow(dayStates(last), callsName(), into); }
 
   // the 30-minute call when it leads (Final-Home, 2026-10-10): the clock, the call's label with its voices control, the
   // big number, its odds as a bar, the price it was called at with its flat band, the usual odds and JEV's own read as
@@ -1593,7 +1621,9 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 
   // SPX expires every trading day. The card's expiries (pipelines/spx_jev_questions_and_pools expiry.py) say when today's 0DTE
   // settles, or the next one once it has; the line counts down to it and tags the days a monthly (OpEx),
-  // a quarterly or the quarter-end book expires as well
+  // a quarterly or the quarter-end book expires as well. The settle counted down is today's on the market clock: the
+  // card's own day's, or on a later session day before its first card the card's next one, which is that day's (the
+  // tags are the card's day's alone)
   var EXPIRY_TAGS = [['quarterly', 'Quarterly OpEx'], ['monthly', 'Monthly OpEx'], ['quarter_end', 'Quarter-end']];
   function untilWords(ms){ var m = Math.ceil(ms / 60000); return m >= 60 ? Math.floor(m / 60) + ' hr ' + (m % 60) + ' min' : m + ' min'; }
   function expiryLine(c){
@@ -1602,13 +1632,13 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var tags = EXPIRY_TAGS.filter(function(t){ return kinds.indexOf(t[0]) >= 0; }).map(function(t){ return t[1]; });
     if(tags.indexOf('Quarterly OpEx') >= 0) tags = tags.filter(function(t){ return t !== 'Monthly OpEx'; });
     function update(){
-      var now = Date.now(), today = Date.parse(x.today_settles_at);
-      var open = today > now && String(x.today_settles_at).slice(0, 10) === marketDay();
+      var now = Date.now(), today = Date.parse(x.today_settles_at), next = Date.parse(x.next_settles_at);
+      var settles = String(x.today_settles_at).slice(0, 10) === marketDay() ? today : String(x.next_settles_at).slice(0, 10) === marketDay() ? next : NaN;
       row.textContent = '';
-      if(open){
-        row.appendChild(el('span', null, 'Options settle ' + viewerTime(today, {zone: true})));
-        row.appendChild(el('b', null, untilWords(today - now) + ' left'));
-        tags.forEach(function(t){ row.appendChild(el('span', 'state', t)); });
+      if(settles > now){
+        row.appendChild(el('span', null, 'Options settle ' + viewerTime(settles, {zone: true})));
+        row.appendChild(el('b', null, untilWords(settles - now) + ' left'));
+        if(settles === today) tags.forEach(function(t){ row.appendChild(el('span', 'state', t)); });
       } else {
         row.appendChild(el('span', null, 'Next expiry settles ' + viewerTime(x.next_settles_at, {day: true, zone: true})));
       }
@@ -1690,6 +1720,12 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     });
     MiraiSheet.open(from);
   }
+  // the situation's age on its label row: minutes since its read, or on a session day before its first card (waiting)
+  // the last session's read by its day, "Fri 12:31", never "66 hr ago" beside the live price
+  function sitAge(c, m){
+    if(waiting()) return viewerTime(c.row_ts, {day: true});
+    return m == null ? '' : (m < 1 ? 'JUST NOW' : ageWord(m).toUpperCase());
+  }
   function situationCard(c, ageText, old){
     var card = el('button', 'card sit'); card.type = 'button'; card.setAttribute('aria-controls', 'jevSheet');
     card.appendChild(labRow('Situation', ageText, 'age' + (old ? ' old' : '')));
@@ -1711,10 +1747,19 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var nr = nextRead(Date.parse(c.session && c.session.last_read));
     return 'No 30-minute call on this read' + (nr ? ', next read ' + viewerTime(nr) : '');
   }
-  // the 30-minute call while the opening leads: one line, with its own minutes left
+  // the 30-minute call's place on a session day before its first card (the day's first read still to land, or skipped:
+  // a scanner row late at 09:32 lost it on four of ten mornings): one line that says so and names the last call's day,
+  // and under it that call, folded (foldLive), never drawn as today's; the day's next read is the header's (setHead)
+  function waitFold(c){
+    var f = el('div', 'card fold');
+    f.appendChild(el('span', 'k', 'No 30-Min Read Yet Today')); f.appendChild(el('span', 'l', 'Last call ' + viewerTime(c.row_ts, {day: true})));
+    return f;
+  }
+  // the 30-minute call while the opening leads, or under waitFold: one line, with its own minutes left; a call of
+  // another day carries its weekday, so the last session's call never passes for today's
   function foldLive(c){
     var f = el('div', 'card fold'), h = callSum(c.hour), own = headline(h), p = own && own.probabilities;
-    f.appendChild(el('span', 'k', '30-min call \u00B7 ' + viewerTime(c.row_ts)));
+    f.appendChild(el('span', 'k', '30-min call \u00B7 ' + viewerTime(c.row_ts, {day: String(c.row_ts || '').slice(0, 10) !== marketDay()})));
     var left = el('span', 'l');
     if(!p){ f.appendChild(left); left.textContent = noCallWords(c); return f; }
     var top = own.pick || top1(p); f.appendChild(el('b', null, cap(top) + ' ' + pct(p[top])));
@@ -1882,9 +1927,14 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
                                   : 'Checked ' + viewerTime(p.marks[0]) + ' and ' + viewerTime(p.marks[1])));
     return f;
   }
-  // the night's next checkpoint still ahead (the card's schedule, instants), for the header's right side
+  // the next read still ahead, for the header's right side: the night's checkpoints (the card's schedule, instants),
+  // after them the day's first live read, READ_MINUTES[0] after the open, which the card leads until (the hand-over),
+  // and once that read's card is on hand the 30-minute service's next one (nextRead); none while the first read is due
   function preNextRead(p, now){
-    return ((p.schedule && p.schedule.reads) || []).map(function(t){ return Date.parse(t); }).filter(function(t){ return t > now; })[0];
+    if(todaysCard()) return nextRead(Date.parse(last.session && last.session.last_read));
+    var reads = ((p.schedule && p.schedule.reads) || []).map(function(t){ return Date.parse(t); });
+    if(p.open) reads.push(Date.parse(p.open) + READ_MINUTES[0] * 60000);
+    return reads.filter(function(t){ return t > now; })[0];
   }
   // the checkpoint after the card's read, as an instant, once it is PRE_LATE_MIN overdue: the Mac slept or the job failed
   function preMissed(p, now){
@@ -1941,17 +1991,19 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   }
   function sumPick(s){ return s && s.probabilities ? s.pick || top1(s.probabilities) : null; }
   function sumSaid(s){ var k = sumPick(s); return k ? cap(k) + ' ' + pct(s.probabilities[k]) : null; }
-  // the clock: from the night's first read to the open, how long is left, and when the call is checked
+  // the clock: from the night's first read to the open, how long is left, and when the call is checked; from the bell,
+  // that it opened
   function preClock(p){
     var open = Date.parse(p.open), first = Date.parse(((p.schedule && p.schedule.reads) || [])[0] || p.row_ts);
-    var box = el('div'), top = el('div', 'clock-top');
-    top.appendChild(el('span', null, 'Opens ' + viewerTime(open)));
+    var box = el('div'), top = el('div', 'clock-top'), opens = el('span');
+    top.appendChild(opens);
     var left = el('b'); top.appendChild(left); box.appendChild(top);
     var track = el('div', 'clock-bar'), fill = el('i'); track.appendChild(fill); box.appendChild(track);
     var sub = el('div', 'clock-sub'); sub.appendChild(el('span', null, 'Read ' + viewerTime(p.row_ts, {zone: true})));
     sub.appendChild(el('span', null, 'Checked ' + viewerTime(p.marks[0]) + ' and ' + viewerTime(p.marks[1]))); box.appendChild(sub);
     function update(){
       var now = Date.now();
+      opens.textContent = (now < open ? 'Opens ' : 'Opened ') + viewerTime(open);
       left.textContent = now < open ? untilWords(open - now) + ' to go' : 'Open now';
       fill.style.width = Math.max(0, Math.min(100, (now - first) / Math.max(60000, open - first) * 100)).toFixed(1) + '%';
     }
@@ -2089,16 +2141,18 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     return box;
   }
   // the page before the open: the header's words, the state chips, the mode, the 0DTE line, the pre-market card
-  // and, folded to one line, the opening reads that take over
+  // and, folded to one line, the opening reads that take over. From the bell to the hand-over the mode and the header
+  // say the market is open and when the day's first live read comes, never "before the open" of an open market; the
+  // card's own label names the card, so the age beside it is the read's, never the open's
   function paintPre(p, ok){
     tickers = []; shownPre = true; shownLeads = false;
     $('h1').textContent = (p.symbol || 'SPX') + ' \u00B7 Forecast';
     var sub = $('sub'), st = $('state'), main = $('main'), head = $('hdR');
     sub.classList.remove('err'); sub.hidden = false; main.textContent = ''; $('dock').textContent = ''; $('qBtn').hidden = true;
-    main.appendChild(el('div', 'mode', 'before the open'));
+    var chip = el('div', 'mode'); main.appendChild(chip);
     var ex = expiryLine(p); if(ex) main.appendChild(ex);
     var card = el('div', 'card dashed pre'), age = el('span', 'r'), lab = el('div', 'lab');
-    lab.appendChild(el('span', null, 'before the open')); lab.appendChild(age); card.appendChild(lab);
+    lab.appendChild(el('span', null, 'Pre-Market Call')); lab.appendChild(age); card.appendChild(lab);
     card.appendChild(preClock(p));
     preCall(p, card);
     var unruled = preRulerLine(p); if(unruled) card.appendChild(unruled);
@@ -2120,9 +2174,14 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     nf.appendChild(el('span', 'l', 'Every 5 min, 10-minute calls'));
     main.appendChild(nf);
     function update(){
-      var now = Date.now(), m = mins(p.row_ts);
-      if(head) head.textContent = headLine(p.day, preNextRead(p, now));
-      sub.textContent = 'pre-market read ' + viewerTime(p.row_ts) + ', ' + ageWord(m) + ', open ' + viewerTime(p.open);
+      var now = Date.now(), m = mins(p.row_ts), opened = now >= Date.parse(p.open), nr = preNextRead(p, now);
+      chip.textContent = opened ? 'Market Open' : 'before the open';
+      if(head) head.textContent = headLine(p.day, nr);
+      // from the bell: when the day's first read comes, that it is due, or once its card is on hand when it came (the
+      // next read is the header's)
+      var first = todaysCard() ? 'came at ' + viewerTime(last.row_ts) : nr ? viewerTime(nr) : 'due';
+      sub.textContent = opened ? 'Opened ' + viewerTime(p.open) + ', first read ' + first
+                               : 'pre-market read ' + viewerTime(p.row_ts) + ', ' + ageWord(m) + ', open ' + viewerTime(p.open);
       st.textContent = ''; preState(p, ok, now).forEach(function(w){ st.appendChild(el('span', 'state', w)); });
       age.textContent = m == null ? '' : (m < 1 ? 'JUST NOW' : ageWord(m).toUpperCase());
       age.classList.toggle('old', preMissed(p, now) != null);
@@ -2137,11 +2196,12 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     clearLoading();
     return true;
   }
-  // a new card, or a fetch that failed or recovered, is drawn only when the pre-market card leads, just did, or
-  // folds under the session's cards, so a card of another day never rebuilds the page under a reader
+  // a new card, or a fetch that failed or recovered, is drawn only when the pre-market card leads, just did, folds
+  // under the session's cards or turns today into a session day (waiting), so a card of another day never rebuilds
+  // the page under a reader
   function redrawPre(){
     var now = Date.now(), today = marketDay();
-    if(!shownPre && !preLeads(premarket, now, today) && !preFolds(premarket, now, today)) return;
+    if(waiting() === shownWait && !shownPre && !preLeads(premarket, now, today) && !preFolds(premarket, now, today)) return;
     if(last) draw(last, lastOk); else if(!preOnly() && !laneOnly()) tick();
   }
   function pollPre(){
@@ -2163,13 +2223,13 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   }
 
   // ---- the live price: the station's SPX print (/api/spot, one Schwab quote cached a couple of seconds for every
-  // viewer), asked every SPOT_MS while the session is open on a day the 30-minute card is today's (so never on a
-  // weekend or a holiday), and once on load and on waking outside it, when it is the last close. Live only in that
-  // session and while the quote is younger than SPOT_LIVE_MS; its change is measured from the card's prior_close, the last
-  // minute bar of the session before, and said only on today's card. A failed or empty quote keeps the last price,
-  // said to be as of when it came, never dressed up as live; with no price yet the strip stays hidden. A card that
-  // lands after the quote draws the strip again (draw), so its change never waits for the next quote. The same
-  // words go on the price-today sheet's own price line, and while that sheet is open each quote moves its dot.
+  // viewer), asked every SPOT_MS in the session (inSession), and once on load and on waking outside it, when it is the
+  // last close. Live only in the session and while the quote is younger than SPOT_LIVE_MS; its change is measured from
+  // the card's prior_close, the last minute bar of the session before, and said only on today's card. A failed or
+  // empty quote keeps the last price, said to be as of when it came, never dressed up as live; with no price yet the
+  // strip stays hidden. A card that lands after the quote draws the strip again (draw), so its change never waits for
+  // the next quote. The same words go on the price-today sheet's own price line, and while that sheet is open each
+  // quote moves its dot.
   var SPOT_URL = '/api/spot?ticker=SPX', SPOT_MS = 5000, SESSION_HOURS = ['09:30', '16:00'];
   var SPOT_LIVE_MS = 15000;                     // a quote older than this is never drawn live
   var spot = null, spotInflight = 0;
@@ -2177,10 +2237,35 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // the card's market day: its stamp's own date, written in New York's offset
   function cardDay(){ return last ? String(last.row_ts || '').slice(0, 10) : null; }
   function todaysCard(){ return !!last && cardDay() === marketDay(); }
-  // the quote's state as the price box says it: live in the session on today's card while the quote is young, else the
-  // quote's time in the session, else the last close
+  // The day's close as an instant, 13:00 on a half day (NaN when no card names it): today's card's (its session.close),
+  // or before the day's first card the 30-minute card's next expiry's settle, which the service's expiry calendar puts
+  // at the next trading day's close, holiday-aware (so a morning no lane has read yet, lanes down or the Mac woken
+  // late, is still a session day, and the day's last read is counted back from it).
+  function dayClose(){
+    var d = marketDay(), s = last && last.session, x = last && last.expiries;
+    return Date.parse(todaysCard() ? s && s.close : x && String(x.next_settles_at || '').slice(0, 10) === d ? x.next_settles_at : null);
+  }
+  // The one market-clock gate the page's parts share (2026-10-13): from the bell to the day's own close (dayClose) on
+  // a trading day; a day only the pre-market or the opening lane has read closes at the usual bell. A weekend or a
+  // holiday, when every card is the last session's, is never in session. Until 10-13 "today" was the 30-minute card's
+  // day alone, so from the bell to the day's first card (and all morning when the 09:32 read was skipped) the live
+  // price was called the last close and never asked for again, and the bars, the chart and the headline were the last
+  // session's.
+  function inSession(){
+    var d = marketDay(), close = dayClose();
+    if(!d || !within(SESSION_HOURS)) return false;
+    if(!isNaN(close)) return Date.now() < close;
+    return todaysCard() || !!(premarket && premarket.day === d) || !!(tape && String(tape.row_ts || '').slice(0, 10) === d);
+  }
+  // a session day before its first 30-minute card (the day's first read still to land, or skipped), the last session's
+  // card on hand: the header, the call's place (waitFold) and the situation's age all say so
+  function waiting(){ return !!last && !todaysCard() && inSession(); }
+  // the day the price box and the chart draw: today's in the session, else the card's
+  function priceDay(){ return inSession() ? marketDay() : cardDay(); }
+  // the quote's state as the price box says it: live in the session while the quote is young, else the quote's time in
+  // the session, else the last close
   function spotState(){
-    var open = todaysCard() && within(SESSION_HOURS), live = open && spot.fresh && Date.now() - spot.at < SPOT_LIVE_MS;
+    var open = inSession(), live = open && spot.fresh && Date.now() - spot.at < SPOT_LIVE_MS;
     return {live: live, words: live ? 'live' : open ? viewerTime(spot.at) : 'last close'};
   }
   function paintPx(){
@@ -2213,7 +2298,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       paintPx();
     }).catch(function(){ if(spot) spot.fresh = false; paintPx(); }).finally(function(){ spotInflight = 0; });
   }
-  setInterval(function(){ if(!document.hidden && todaysCard() && within(SESSION_HOURS)) pollSpot(); }, SPOT_MS);
+  setInterval(function(){ if(!document.hidden && inSession()) pollSpot(); }, SPOT_MS);
 
   // ---- the price-today chart (2026-10-10, Will's board Final-Chart): a tap on the price box opens the day's SPX line
   // by the minute, with today's options book drawn into the chart's right gutter. Three files, all through the by-name
@@ -2223,9 +2308,9 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // (SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN, the station's reversion pass) is some 10 MB that the server reads whole on every
   // call, so it is fetched only while the sheet is open and at most every BOOK_MS; the day's graded calls
   // (JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON, as the reads page reads it) draw the dock's calls row as well as the chart's squares, so they
-  // are fetched on every new card and, while the sheet is open, on the same terms as the book. The day is the
-  // card's market day: after the close and before the next day's card the chart is the last session's, as the card
-  // is. The live dot is the page's own quote (spot), never a second poll.
+  // are fetched on every new card and, while the sheet is open, on the same terms as the book. The day is today's in
+  // the session and the card's market day outside it (priceDay): after the close and before the next session the
+  // chart is the last session's, as the card is. The live dot is the page's own quote (spot), never a second poll.
   var BARS_URL = '/api/store/file?name=SPX_PRICE_BARS_BY_MINUTE&day=', BARS_MS = 60000, BARS_HOURS = ['09:30', '16:05'];
   var BOOK_URL = '/api/store/file?name=SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN&day=', BOOK_MS = 60000;
   var GRADES_URL = '/api/store/file?name=JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON&lane=live&limit=400';
@@ -2268,7 +2353,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // a new day drops the last day's bars before its own are asked for, so a failed fetch leaves no sparkline rather
   // than yesterday's line under today's price; the throttle counts from the asking, so a failed fetch waits its turn too
   function pollBars(){
-    var day = cardDay(); if(!day || barsInflight) return;
+    var day = priceDay(); if(!day || barsInflight) return;
     if(day !== barsDay){ bars = null; barsDay = day; barsAt = 0; paintSpark(); }
     if(Date.now() - barsAt < BARS_MS) return;
     barsInflight = true; barsAt = Date.now();
@@ -2276,7 +2361,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       .catch(function(){}).finally(function(){ barsInflight = false; });
   }
   function pollBook(){
-    var day = cardDay(); if(!day || !chartVisible() || bookInflight) return;
+    var day = priceDay(); if(!day || !chartVisible() || bookInflight) return;
     if(day !== bookDay){ book = null; bookDay = day; bookAt = 0; }
     if(Date.now() - bookAt < BOOK_MS) return;
     bookInflight = true; bookAt = Date.now();
@@ -2289,7 +2374,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     rawRows(GRADES_URL).then(function(rows){ if(rows){ grades = rows; paintCalls(); if(chartVisible()) paintChart(); } })
       .catch(function(){}).finally(function(){ gradesInflight = false; });
   }
-  setInterval(function(){ if(!document.hidden && todaysCard() && within(BARS_HOURS)) pollBars(); }, BARS_MS);
+  setInterval(function(){ if(!document.hidden && priceDay() === marketDay() && within(BARS_HOURS)) pollBars(); }, BARS_MS);
   setInterval(function(){ if(!document.hidden && chartVisible()){ pollBook(); pollGrades(); } }, BOOK_MS);
   // the row the book is drawn from: the newest of the file's last rows whose book is SPX's own (gex_source native). A
   // row the station could not parse and one built from SPY's book (gex_source spy_proxy...) are passed over, and
@@ -2422,7 +2507,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // box with the called price through it, the now-line at the newest bar with its time, the dot at ``price`` (the
   // quote on the day's own card) or the newest close; the gutter's strike column with the puts left and the calls
   // right of one zero; and the day's calls as squares under the clock
-  function chartSvg(W, H, c, d, book, calls, call, price, w, sb, inSession){
+  function chartSvg(W, H, c, d, book, calls, call, price, w, sb, session){
     var gv = (book && book.gex_views) || {};
     var BOT = H - CH_BOT, AXIS = H - CH_AXIS, FOOT = H - CH_FOOT, SQ = H - CH_SQ;
     var g = Math.max(1, W / CH_W), SIDE = Math.round(CH_SIDE * g);
@@ -2431,7 +2516,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var x = function(t){ return Math.max(0, Math.min(PW, (t - open) / (close - open) * PW)); };
     var y = function(v){ return CH_TOP + (w.hi - v) / (w.hi - w.lo) * (BOT - CH_TOP); };
     var pts = d.pts.map(function(p){ return {x: x(p.t), y: y(p.c)}; });
-    var highWord = inSession ? 'high so far' : 'high';
+    var highWord = session ? 'high so far' : 'high';
     var dotPrice = price != null ? price : d.newest.c, nx = x(d.newest.t);
     var right = calls.filter(function(k){ return k.verdict === 'right'; }).length;
     var levels = [[gv.call_wall_gamma, 'wall', 'CALL WALL · TODAY'], [gv.magnet, 'mag', 'MAGNET'], [gv.put_wall_gamma, 'pwall', 'PUT WALL']]
@@ -2573,14 +2658,14 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // the tiles (the range against the card's sigma, a normal day's move in points, then the book's) and the caption with
   // the book's time; without bars yet it says so, without a book the words say that instead
   function paintChart(){
-    var body = $('chBody'), c = last, day = cardDay(), d = dayFacts(bars); body.textContent = '';
+    var body = $('chBody'), c = last, day = priceDay(), d = dayFacts(bars); body.textContent = '';
     $('chDay').textContent = day ? chartDay(day) : '';
     if(!c || !d){ body.appendChild(skipLine(day ? 'no price bars yet for ' + dayName(day) : 'no card yet, so no day to draw')); return; }
     var now = Date.now(), call = liveCall(c, now), calls = dayCalls(grades, day), gv = (book && book.gex_views) || {};
     var price = spot && day === marketDay() ? spot.price : null, dotPrice = price != null ? price : d.newest.c;
-    var W = body.clientWidth || 320, H = chartDocked() ? CH_H_WIDE : CH_H, inSession = day === marketDay() && within(SESSION_HOURS);
+    var W = body.clientWidth || 320, H = chartDocked() ? CH_H_WIDE : CH_H;
     var w = chartWindow(d, book, call), sb = strikeBars(book, w);
-    body.appendChild(chartSvg(W, H, c, d, book, calls, call, price, w, sb, inSession));
+    body.appendChild(chartSvg(W, H, c, d, book, calls, call, price, w, sb, inSession()));
     var key = el('div', 'ch-key');
     if(call) keyLine(key, 'box', 'Dashed box', 'the ' + viewerTime(call.read) + ' call, flat ± ' + call.edge.toFixed(1) + ' pts to ' + viewerTime(call.mark));
     if(book){
@@ -2589,7 +2674,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     }
     if(key.firstChild) body.appendChild(key);
     var tiles = el('div', 'tod ch-tiles'), range = d.high.h - d.low.l;
-    tiles.appendChild(chTile(inSession ? 'Range so far' : 'Range', Math.round(range) + ' pts', typeof c.sigma === 'number' && c.sigma > 0 ? (range / c.sigma).toFixed(2) + ' of a normal day' : null));
+    tiles.appendChild(chTile(inSession() ? 'Range so far' : 'Range', Math.round(range) + ' pts', typeof c.sigma === 'number' && c.sigma > 0 ? (range / c.sigma).toFixed(2) + ' of a normal day' : null));
     bookTiles(gv, sb, dotPrice).forEach(function(t){ tiles.appendChild(t); });
     body.appendChild(tiles);
     var lean = {positive: 'dealers lean against moves', negative: 'dealers lean with moves'}[book && book.gamma_sign];
