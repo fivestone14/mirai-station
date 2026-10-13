@@ -14,7 +14,13 @@ folder a job holds):
         learner_pool/learner_pool_trained_forecasters_by_day/{day}_{horizon}.json
                                                                  the fitted learners for that day (fit on days before it) with the answer
                                                                  matrix they were fitted on; only the newest FIT_FILES_KEPT_DAYS days are kept
+        direction_line/direction_line_calls_by_read/{day}.jsonl  the direction line's call revisions, one per read and revision; append-only
+        direction_line/direction_line_grades_by_read/{day}.jsonl its points grade per read; append-only
+        direction_line/direction_line_weights_state/{horizon}.json
+                                                                 its weights, the reads it learned, its confidence bins and slot means
     screen_files/phone/forecaster_scoreboard_card.json          the phone card's file
+    screen_files/phone/direction_line_card.json                 the direction line's card (its newest call and its record)
+    operations/locks/direction_line_job.lock                    held while the direction line grades, learns and calls
     operations/logs/prediction_job_runs_log.jsonl               every job and hook run
     operations/logs/forecaster_forecasts_job_log.txt            the after-read hook's output
     operations/health/forecaster_table_refused_rows_by_event/{day}.jsonl   rows a check refused, with the reason
@@ -135,6 +141,34 @@ def prune_voice_fits(root: Path, keep_days: int = FIT_FILES_KEPT_DAYS) -> list[s
 
 def scoreboard_file(root: Path) -> Path:
     return station_paths.FORECASTER_SCOREBOARD_CARD.path(state_dir_of(root))
+
+
+def direction_line_calls_file(root: Path, day: str) -> Path:
+    return station_paths.DIRECTION_LINE_CALLS_BY_READ.within(FOLDER, root, day=day)
+
+
+def direction_line_calls_dir(root: Path) -> Path:
+    return station_paths.DIRECTION_LINE_CALLS_BY_READ.folder_within(FOLDER, root)
+
+
+def direction_line_grades_file(root: Path, day: str) -> Path:
+    return station_paths.DIRECTION_LINE_GRADES_BY_READ.within(FOLDER, root, day=day)
+
+
+def direction_line_grades_dir(root: Path) -> Path:
+    return station_paths.DIRECTION_LINE_GRADES_BY_READ.folder_within(FOLDER, root)
+
+
+def direction_line_weights_file(root: Path, sum_id: str) -> Path:
+    return station_paths.DIRECTION_LINE_WEIGHTS_STATE.within(FOLDER, root, sum_id=sum_id)
+
+
+def direction_line_card_file(root: Path) -> Path:
+    return station_paths.DIRECTION_LINE_CARD.path(state_dir_of(root))
+
+
+def direction_line_lock_file(root: Path) -> Path:
+    return station_paths.DIRECTION_LINE_JOB_LOCK.path(state_dir_of(root))
 
 
 def job_run_log_file(root: Path) -> Path:

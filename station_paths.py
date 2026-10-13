@@ -327,6 +327,13 @@ CODE_QUESTION_ANSWERS_BY_READ = Store("spx/prediction/code_question_answers_by_r
 FORECASTS_BY_FORECASTER_READ_AND_HORIZON = Store("spx/prediction/forecasts_by_forecaster_read_and_horizon/{day}.jsonl")
 FORECASTS_BY_FORECASTER_READ_AND_HORIZON_TABLE = Store("spx/prediction/tables/forecasts_by_forecaster_read_and_horizon")
 GRADES_BY_FORECASTER_READ_AND_HORIZON_TABLE = Store("spx/prediction/tables/grades_by_forecaster_read_and_horizon")
+# The direction line (mirai_prediction/direction_line.py, 2026-10-13): the separate SPX line that answers only "if it
+# moves, which way?" for the 30-minute average-price box, its forecasters weighted by points. Its calls and grades are
+# day files; its weights are one state file per sum it runs on (the average-price box alone).
+DIRECTION_LINE_SUM_IDS = {"average_30": "average_of_next_30_minutes"}
+DIRECTION_LINE_CALLS_BY_READ = Store("spx/prediction/direction_line/direction_line_calls_by_read/{day}.jsonl")
+DIRECTION_LINE_GRADES_BY_READ = Store("spx/prediction/direction_line/direction_line_grades_by_read/{day}.jsonl")
+DIRECTION_LINE_WEIGHTS_STATE = Store("spx/prediction/direction_line/direction_line_weights_state/{sum_id}.json", sum_id=DIRECTION_LINE_SUM_IDS)
 
 # =====================================================================================================================
 # spx/claude_forecast/   Claude's own SPX forecast
@@ -380,6 +387,7 @@ JEV_PREMARKET_CARD = Store("screen_files/phone/jev_premarket_card.json")
 JEV_CARD_BY_LANE = {"live": JEV_LIVE_CARD, "tape": JEV_OPENING_CARD, "premarket": JEV_PREMARKET_CARD}
 CLAUDE_FORECAST_CARD = Store("screen_files/phone/claude_forecast_card.json")
 FORECASTER_SCOREBOARD_CARD = Store("screen_files/phone/forecaster_scoreboard_card.json")
+DIRECTION_LINE_CARD = Store("screen_files/phone/direction_line_card.json")
 OPTIONS_FEED_STATUS_CARD = Store("screen_files/phone/options_feed_status_card.json")
 SPX_OPTIONS_TRADES_3D_VIEW_CARD = Store("screen_files/desktop/spx_options_trades_3d_view_card/{day}.json")   # a rebuildable cache of one day's board
 
@@ -405,6 +413,7 @@ CLAUDE_FORECAST_JOB_LOCK_BY_JOB = {"nightly": CLAUDE_FORECAST_NIGHTLY_JOB_LOCK, 
 SCHWAB_SIGN_IN_LOCK = Store("operations/locks/schwab_sign_in.lock")                  # the Schwab sign-in's single-copy lock (cassandra_oauth.py)
 FUTURES_PRICE_BARS_SAVE_LOCK = Store("operations/locks/futures_price_bars_save.lock")   # the overnight saver's single-copy lock
 NEWS_HEADLINES_POLL_LOCK = Store("operations/locks/news_headlines_poll.lock")       # the headline poller's single-copy lock
+DIRECTION_LINE_JOB_LOCK = Store("operations/locks/direction_line_job.lock")         # held while the direction line grades, learns and calls
 SNDK_PRICE_BARS_HEALTH_LATEST = Store("operations/health/sndk_price_bars_health_latest.json")
 TABLE_BUILD_COUNTS_BY_TABLE_AND_DAY = Store("operations/health/table_build_counts_by_table_and_day")
 TABLE_BUILD_REFUSED_ROWS_BY_EVENT = Store("operations/health/table_build_refused_rows_by_event")

@@ -930,6 +930,14 @@ def run_once(state_dir: Path, out_dir: Path | None, doc: dict, do_send: bool, da
             spawn_claude_forecast(state_dir, archive.read_id(lane.name, scene.row["ts"]))
         except Exception as e:  # the Claude forecast must never cost the read anything
             log(f"the Claude forecast hook was skipped this run: {type(e).__name__}: {e}")
+    if do_send and lane.pool and day is None:
+        # the direction line (mirai_prediction/direction_line.py, 2026-10-13): "if it moves, which way?" for the average-price
+        # box, in its own process, never on the read's path, never in the combined call; its switch is SPX_DIRECTION_LINE_DISABLE
+        try:
+            from .mirai_prediction.service_hook import spawn_direction_line
+            spawn_direction_line(state_dir, archive.read_id(lane.name, scene.row["ts"]))
+        except Exception as e:  # the direction line must never cost the read anything
+            log(f"the direction line hook was skipped this run: {type(e).__name__}: {e}")
     if do_send and lane.pool and day is None and not forecast_now_done and not prediction_off:
         # the Mirai Prediction System's fallback: forecast this read in its own process (never on the read's path, never raises)
         try:

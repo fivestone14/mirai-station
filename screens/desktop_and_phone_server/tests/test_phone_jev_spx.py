@@ -1535,11 +1535,12 @@ def _parts(node):
 
 
 SUM_CARD_FNS = ("top1", "oneAnswer", "phaseSpan", "howBar", "tile", "howChart", "tag", "skipLine", "plusIso", "averageWords", "jevOwn", "combinedCall", "headline",
-                "labRow", "indexLevel", "calledAt", "threeWay", "voiceName", "voicesOf", "bySay", "sayWords", "voicesButton", "recordRow", "sumCard")
+                "labRow", "indexLevel", "calledAt", "threeWay", "voiceName", "voicesOf", "bySay", "sayWords", "voicesButton", "recordRow",
+                "signedPts", "directionWords", "paintDirection", "directionRow", "sumCard")
 
 
 def _sum_card(c, tz=LA, whole=False, wide=False):
-    js = (CARD_STUBS + _odds() + "".join(_fn(f) for f in SUM_CARD_FNS) + _var("VOICE_WORDS")
+    js = (CARD_STUBS + _odds() + "".join(_fn(f) for f in SUM_CARD_FNS) + _var("VOICE_WORDS") + _var("direction")
           + "var main = el('main'); sumCard(D.c, main); console.log(JSON.stringify(dump(main.kids[0])));")
     card = _run(js, {"c": c, "now": "2026-09-28T11:10:00-04:00", "wide": wide}, tz)
     return card if whole else _parts(card)
@@ -1739,7 +1740,7 @@ def test_the_last_reads_clock_looks_as_far_ahead_as_its_average_runs():
     28 minutes": the clock takes the call's own minutes (hour.average.minutes); a card with no average-price call keeps
     its calls' horizon."""
     js = (CARD_STUBS + "function clockBlock(read, minutes, mark){ return el('div', 'clock', 'Looks ' + minutes + ' min ahead, graded ' + mark); }"
-          + _odds() + "".join(_fn(f) for f in SUM_CARD_FNS) + _var("VOICE_WORDS")
+          + _odds() + "".join(_fn(f) for f in SUM_CARD_FNS) + _var("VOICE_WORDS") + _var("direction")
           + "console.log(JSON.stringify(D.c.map(function(c){ var main = el('main'); sumCard(c, main); return dump(main.kids[0]); })));")
     hour = {**END_30, "used": 12, "by": {"next_30": END_30}, "average": {**AVG, "minutes": 28}}
     c = {"row_ts": "2026-09-28T15:32:10-04:00", "hour": hour, "marks": {"next_30": "2026-09-28T16:00:00-04:00"},
