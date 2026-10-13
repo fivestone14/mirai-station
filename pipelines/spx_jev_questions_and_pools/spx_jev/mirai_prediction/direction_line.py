@@ -278,7 +278,7 @@ def load_state(root: Path) -> dict:
 
 def save_state(root: Path, state: dict) -> Path:
     path = direction_line_weights_file(root, SUM_ID)
-    backup_before_change(root, path)
+    backup_before_change(root, path, name=f"direction_line_weights_state_{path.name}")   # the learner pool's state has the same file name
     write_json_atomically(path, state)
     return path
 
@@ -615,7 +615,7 @@ def run_for_read(state_dir: Path | str, read_id: str) -> dict:
                 until = horizon_start(row_ts, LIVE) + timedelta(minutes=CLAUDE_WAIT_MIN)
                 while True:
                     claude = claude_line(state_dir, day, read_id)
-                    claude_q = claude_which_way(claude)
+                    claude_q = claude_which_way(claude) if claude_in_time(claude, row_ts) else None
                     if claude_q is not None or datetime.now(ET) >= until:
                         break
                     time.sleep(CLAUDE_POLL_S)

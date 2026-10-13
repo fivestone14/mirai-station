@@ -231,12 +231,14 @@ def log_job_run(root: Path, job_name: str, started_at: str, ok: bool, error: str
                                               "ok": ok, "error": error, **counts})
 
 
-def backup_before_change(root: Path, path: Path) -> Path | None:
-    """Copy a state file into the rollback-copies folder before it changes; returns the copy's path, or None when there was no file."""
+def backup_before_change(root: Path, path: Path, name: str | None = None) -> Path | None:
+    """Copy a state file into the rollback-copies folder before it changes, as ``name`` (the file's own name when None, so
+    two states with one file name pass their own ``name`` and prune_archive keeps each one's backups apart); returns the
+    copy's path, or None when there was no file."""
     if not path.exists():
         return None
     stamp = datetime.now(timezone.utc).strftime(STAMP)
-    copy = archive_dir(root) / f"{path.name}.{stamp}"
+    copy = archive_dir(root) / f"{name or path.name}.{stamp}"
     copy.parent.mkdir(parents=True, exist_ok=True)
     copy.write_bytes(path.read_bytes())
     return copy
