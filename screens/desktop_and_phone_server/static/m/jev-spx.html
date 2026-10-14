@@ -133,9 +133,6 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 #state:empty{display:none}                          /* with no trouble it takes no gap under the price box */
 .state{display:inline-block;padding:5px 9px;border-radius:8px;border:1px solid var(--rule-soft);font:700 11px/1.2 var(--sans);
        letter-spacing:.08em;text-transform:uppercase;color:var(--i-mute);background:var(--s)}
-.lab.call{margin-top:12px}
-.lab.call+.big{margin-top:4px}
-.big{margin-top:8px;font:700 30px/1.1 var(--sans);color:var(--i);letter-spacing:-.01em}
 /* the squares, one key everywhere (the scoreboard, the chart, the results page): one square per call, oldest on the
    left, filled when right, outlined when it stayed flat or was passed, rust when wrong, dashed blue while still open */
 .sq{display:flex;flex-wrap:wrap;gap:2px}
@@ -207,6 +204,8 @@ button.wa-r{cursor:pointer}
 .wa-go{display:inline-flex;align-items:center;gap:6px;margin-top:6px;font:700 12px/1.2 var(--sans);color:var(--i)}
 .wa-r.wide{grid-template-columns:minmax(0,1fr);min-height:64px}
 .wa-r.wide .wa-n{color:var(--i-mute)}
+.wa-r.wide .wa-go{display:inline;font:500 11.5px/1.3 var(--sans);color:var(--i-mute)}
+.wa-r.wide .wa-go::after{display:inline-block;margin:0 0 1px 6px}
 /* the scoreboard: a row per read, each with today's squares and score, the score since the start, and the yardstick it
    is judged against with the verdict in a chip */
 .sb-h,.sb-g{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:8px}
@@ -263,11 +262,6 @@ button.vt{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:t
 .sit-v{grid-column:3;text-align:right;white-space:nowrap;font:700 13px/1.2 var(--sans);color:var(--i)}
 .sit-v span{display:block;white-space:normal;font:400 11.5px/1.2 var(--sans);color:var(--i-mute)}
 .sit-c{grid-column:1 / -1;font:400 12.5px/1.35 var(--sans);color:var(--i-mute)}
-/* which call leads the page: the opening's 5-minute calls, or the 30-minute call */
-.mode{align-self:flex-start;padding:5px 9px;border-radius:8px;border:1px solid var(--rule-soft);background:var(--s);
-      font:700 11px/1.2 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--i)}
-/* inside the leading card the mode chip heads it, still its own box */
-.card>.mode{width:fit-content;margin-bottom:12px}
 /* the live price: the SPX print on the station's quote, its change since the last close, and since 2026-10-10 the day's
    closes as a sparkline between them. The box is the control that opens the price-today sheet, a tap target of the
    page's minimum, and the chevron on its label says so */
@@ -307,9 +301,6 @@ main>.exp+.card{margin-top:-4px}                 /* the line belongs to the card
 /* the call clock: how far ahead the leading call looks, and how long it has left */
 .clock-top{display:flex;flex-wrap:wrap;align-items:center;gap:8px;row-gap:6px;font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
 .clock-top b{margin-left:auto;color:var(--i)}
-/* a leading card's mode chip rides the clock's row, beside the time left and a size smaller; when both don't fit (the
-   opening's long chip at 320, or beside "under 1 min left") the time left wraps to its own line, right-aligned */
-.clock-top .mode{align-self:center;padding:3px 7px;border-radius:7px}
 .clock-bar{margin-top:8px;height:6px;border-radius:3px;background:var(--s2)}
 .clock-bar i{display:block;height:6px;border-radius:3px;background:var(--px-ink)}
 .clock-sub{display:flex;margin-top:4px;font:400 11.5px/1.2 var(--sans);color:var(--i-mute)}
@@ -413,41 +404,56 @@ main>.exp+.card{margin-top:-4px}                 /* the line belongs to the card
 .td.thin .td-c{color:var(--o-dn)}
 .td.out,.td.out .td-c{color:var(--rule-soft)}
 .td.out .how-bar{height:6px;border:1px dashed var(--rule-soft);border-radius:3px}
-/* the 60-minute end-price sum from the same read, one line at the foot of the 30-minute card, as the end-price sum beside the call is */
-.row60{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-top:12px;padding-top:11px;border-top:1px solid var(--s2)}
-.row60 .k{font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
-.row60 b{font:700 14px/1.2 var(--sans);color:var(--i)}
-/* the 30-minute call's price under its odds: the read's price, the flat edge as a pill, then the flat band on a small bar
-   with its two prices under it; on the bar the call's price is the ink needle, fixed, and the live price the blue one,
-   moved by every quote (placeNow) */
-.avg-at{display:flex;align-items:baseline;gap:6px;margin-top:10px;font:400 12.5px/1.2 var(--sans);color:var(--i-mute)}
-.avg-at b{font:700 17px/1.2 var(--sans);color:var(--i)}
-.pill{margin-left:auto;align-self:center;padding:3px 8px;border:1px solid var(--rule-soft);border-radius:999px;font:600 12px/1.2 var(--sans);
-      color:var(--i-body);white-space:nowrap}
-.avg-bar{position:relative;height:8px;margin-top:14px;border-radius:4px;background:var(--s2)}
+/* the opening call's flat band as a strip: its width named over it, an axis with the band shaded, the called price the
+   ink needle fixed in its middle, the live price the blue needle moved by every quote (placeNow), the running average a
+   dashed ring, and the band's two prices under its edges. The strip reaches 2.25 flat edges either side (AVG_REACH),
+   so the band is a little under half its width */
+.strip{margin-top:12px}
+.avg-h{text-align:center;font:700 11px/1.2 var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--i-mute)}
+.avg-bar{position:relative;height:28px;margin-top:6px}
+.avg-bar::before{content:"";position:absolute;left:0;right:0;top:50%;border-top:1px solid var(--o-fl)}
 .avg-bar i{position:absolute;display:block}
-.avg-bar .band{top:0;bottom:0;left:10%;right:10%;border-radius:4px;background:var(--o-fl)}
-.avg-bar .at{top:-3px;bottom:-3px;left:50%;width:2px;margin-left:-1px;border-radius:1px;background:var(--i)}
-.avg-bar .now{top:-8px;bottom:-3px;width:2px;margin-left:-1px;border-radius:1px;background:var(--o-up);transition:left .3s var(--ease-out)}
+.avg-bar .band{top:3px;bottom:3px;left:27.8%;right:27.8%;border-radius:3px;background:var(--o-un)}
+.avg-bar .at{top:0;bottom:0;left:50%;width:2px;margin-left:-1px;border-radius:1px;background:var(--i)}
+.avg-bar .avg{top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border:1.5px dashed var(--o-up);border-radius:50%}
+.avg-bar .now{top:-4px;bottom:0;width:2px;margin-left:-1px;border-radius:1px;background:var(--o-up);transition:left .3s var(--ease-out)}
 .avg-bar .now::before{content:'';position:absolute;top:-4px;left:-3px;width:8px;height:8px;border-radius:50%;background:var(--o-up);
                       box-shadow:0 0 0 2px var(--s)}
 .avg-bar .now[hidden]{display:none}
 @media (prefers-reduced-motion:reduce){.avg-bar .now{transition:none}}
-.avg-lab{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;margin-top:5px;font:400 11.5px/1.2 var(--sans);color:var(--i-mute)}
-.avg-lab .c{text-align:center}
-/* the pre-market card's drawings on one clock: when the call is checked, and the story so far */
+.avg-lab{display:flex;justify-content:space-between;padding:0 calc(27.8% - 22px);margin-top:4px;font:500 11px/1.2 var(--sans);color:var(--i-mute)}
+.k-at{stroke:var(--i);stroke-width:2.2}
+.k-now{stroke:var(--o-up);stroke-width:2} .k-now-d{fill:var(--o-up)}
+.k-ring{fill:none;stroke:var(--o-up);stroke-width:1.5;stroke-dasharray:2 1.6}
+/* the pre-market call at a glance: its read and its checks' score in a pill, its pick big with an arrow, and a tile per
+   check with where the average went and whether the call was right */
+.pm{padding:12px 14px}
+.pm-top{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+.pm-pill{display:inline-flex;align-items:center;gap:6px;margin-left:auto;padding:4px 9px;border-radius:999px;background:var(--g);
+         font:800 12px/1.2 var(--sans);color:var(--i-body);white-space:nowrap}
+.pm-pill.bad{background:var(--o-dn-wash);color:var(--o-dn-ink)}
+.pm-pill.good{background:var(--px-soft);color:var(--px-ink)}
+.pm-pill .sq i{width:8px;height:8px}
+.pm-call{display:flex;align-items:center;gap:8px;margin-top:6px}
+.pm-call .cnote{margin-left:auto;text-align:right;max-width:9.5em}
+.pm-pick{font:800 24px/1.1 var(--sans);letter-spacing:-.01em;color:var(--i);white-space:nowrap}
+.pm-pick.up{color:var(--o-up)} .pm-pick.dn{color:var(--o-dn)} .pm-pick.fl{color:var(--i-mute)}
+.pm-tiles{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin-top:10px}
+.pm-t{display:flex;flex-direction:column;gap:6px;min-width:0;padding:9px 10px;border-radius:12px;background:var(--s3)}
+.pm-h{font:700 11px/1.2 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--i-faint)}
+.pm-went{display:flex;align-items:center;gap:6px;font:800 15px/1.2 var(--sans);color:var(--i)}
+.pm-went .up{color:var(--o-up)} .pm-went .dn{color:var(--o-dn)} .pm-went .fl{color:var(--i-mute)}
+.pm-r{display:flex;align-items:center;gap:6px;font:700 12.5px/1.2 var(--sans);color:var(--i-body)}
+.pm-r.bad{color:var(--o-dn-ink)}
+.arr{flex:none;fill:none;stroke:var(--i-mute);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.arr.up{stroke:var(--o-up)} .arr.dn{stroke:var(--o-dn)}
+.sit-card{padding:12px 16px 6px}
+/* the night's story so far, in the 5-minute tab's window before the open */
 .inplay-h{margin-top:14px;font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint)}
 .inplay{display:block;width:100%;height:auto;margin-top:6px;font-family:var(--sans)}
-.inplay .b-now{fill:var(--px-ink)}
-.inplay .b-open{fill:var(--px-soft)}
-.inplay .t-now{fill:#FFFFFF;font-size:11px;font-weight:700}
-.inplay .t-open{fill:var(--i);font-size:11px;font-weight:700}
-.inplay .t-side{fill:var(--i-body);font-size:10.5px}
 .inplay .t-axis{fill:var(--i-mute);font-size:10px}
 .inplay .t-now-l{fill:var(--i);font-size:10px;font-weight:700}
-.inplay .t-side,.inplay .t-axis,.inplay .t-now-l{paint-order:stroke;stroke:var(--s);stroke-width:3px;stroke-linejoin:round}
-.inplay .axis{stroke:var(--rule-soft);stroke-width:1}
-.inplay .now{stroke:var(--i);stroke-width:1.4;stroke-dasharray:3 3}
+.inplay .t-axis,.inplay .t-now-l{paint-order:stroke;stroke:var(--s);stroke-width:3px;stroke-linejoin:round}
 /* the info sheet's legend, as labelled rows */
 .pt-r{display:grid;grid-template-columns:96px minmax(0,1fr);gap:10px;align-items:baseline;padding:6px 0;font:400 13px/1.35 var(--sans);color:var(--i-body)}
 .pt-r+.pt-r{border-top:1px solid var(--s2)}
@@ -500,11 +506,8 @@ main>.exp+.card{margin-top:-4px}                 /* the line belongs to the card
 .tile-s{margin-top:3px;font:400 11.5px/1.2 var(--sans);color:var(--i-mute);white-space:nowrap}
 .ch-tiles .tile-s{white-space:normal}   /* a tile is half the sheet wide on a phone, so its sub line wraps rather than run past its edge */
 #chartSheet .tag{margin-top:10px}
-/* before the open: the pre-market card's label row, its call in words, the story so far as chips in each
-   read's lean, and its facts as the situation's rows with the builder's sentence under each */
-.pre>.lab{margin-bottom:12px}
-.shape{margin-top:4px;font:700 15px/1.3 var(--sans);color:var(--i)}
-.shape span{font-weight:400;color:var(--i-mute)}
+/* before the open: the story so far as chips in each read's lean, and the night's facts as the situation's rows with
+   the builder's sentence under each */
 .story .c-up{fill:var(--o-up)}
 .story .c-up_small{fill:var(--o-up-soft)}
 .story .c-flat{fill:var(--o-fl)}
@@ -600,11 +603,6 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 .cs-verdict b{font:700 22px/1.1 var(--sans);color:var(--i)}
 .cs-verdict span{font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-mute)}
 .cs-result p{margin:6px 0 0}
-/* a call that does not lead, folded to one line */
-.fold{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:12px 16px}
-.fold .k{font:700 11px/1.2 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--i-faint)}
-.fold b{margin-left:auto;font:700 15px/1.2 var(--sans);color:var(--i)}
-.fold .l{font:400 12.5px/1.2 var(--sans);color:var(--i-mute)}
 .q{background:var(--s);border-radius:18px;padding:14px 16px;box-shadow:var(--sh1)}
 .q.shadow{border:1px dashed var(--rule-soft);box-shadow:none}
 .ask{font:700 15px/1.35 var(--sans);color:var(--i)}
@@ -972,8 +970,10 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   }
   function setHeadLine(day, line){ var r = $('hdR'), z = $('hdZ'); if(r) r.textContent = dayName(day); if(z) z.textContent = line; }
   function setHead(c){
-    var lane = tabNow() === 'five' ? laneNext(Date.now()) : null;
-    if(lane) setHeadLine(marketDay(), headLine(lane, null, 'next opening call'));
+    var now = Date.now(), five = tabNow() === 'five', lane = five ? laneNext(now) : null;
+    if(five && preLeads(premarket, now, marketDay())) setHeadLine(premarket.day, headLine(preNextRead(premarket, now)));
+    else if(lane) setHeadLine(marketDay(), headLine(lane, null, 'next opening call'));
+    else if(!c) setHeadLine(marketDay(), headLine(null));
     else if(waiting()) setHeadLine(marketDay(), headLine(nextRead(dayClose() - LAST_READ_LEAD_MIN * 60000)));
     else setHeadLine(String(c.row_ts || '').slice(0, 10), headLine(nextRead(Date.parse(c.session && c.session.last_read)), c.row_ts));
   }
@@ -1073,40 +1073,44 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var s = skipLine('No average answer; end-price call'); s.setAttribute('title', sentence(fallbackWords(h.average.error, at)));
     return s;
   }
-  // the end-price sum kept beside the opening and pre-market calls: asked and graded as before, never the call, and
-  // shown by JEV's own pick as the headline above it is
-  function endPriceRow(h){
-    var own = jevOwn(h), p = own.probabilities, t = own.pick || top1(p), r = el('div', 'row60');
-    r.appendChild(el('span', 'k', 'End price')); r.appendChild(el('b', null, cap(t) + ' ' + pct(p[t])));
-    return r;
-  }
-  // the 30-minute call's price under its odds (hour.average price and edge_points): the read's price, the flat edge as a
-  // pill, and the flat band on a small bar, the price's needle fixed in its middle and the live price's moving over it
-  // (placeNow), its two prices to a tenth under it; a call without both says its edge in words, as it did
-  function calledAt(a, minutes){
+  // The opening call's flat band as a strip (Design B): its width named over it, the band shaded, the called price the
+  // ink needle fixed in its middle and the live price the blue one, moved by every quote (placeNow), the running average
+  // since the read a dashed ring once ``avg`` (its points from the called price, five minutes in) is given, and the
+  // band's two prices under its edges; then a key row each, the live price's moved with its needle. A call without a
+  // price says its edge in words.
+  function calledAt(a, avg){
     var p = a.price, e = a.edge_points;
     if(typeof p !== 'number' || typeof e !== 'number') return tag(averageWords(a));
-    var box = el('div'), at = el('div', 'avg-at'), track = el('div', 'avg-bar'), lab = el('div', 'avg-lab'), now = el('i', 'now');
+    var box = el('div', 'strip'), track = el('div', 'avg-bar'), lab = el('div', 'avg-lab'), now = el('i', 'now'), keys = el('div', 'keys');
     var lo = indexLevel(p - e, 1), hi = indexLevel(p + e, 1);
-    at.appendChild(el('span', null, 'Called at')); at.appendChild(el('b', null, indexLevel(p, 2)));
-    at.appendChild(el('span', 'pill', '\u00B1 ' + e.toFixed(1) + ' pts'));
-    track.appendChild(el('i', 'band')); track.appendChild(el('i', 'at')); track.appendChild(now);
-    track.setAttribute('role', 'img');
-    lab.appendChild(el('span', null, lo)); lab.appendChild(el('span', 'c', 'flat on the ' + minutes + '-min average')); lab.appendChild(el('span', null, hi));
-    box.appendChild(at); box.appendChild(track); box.appendChild(lab);
-    var bar = {track: track, needle: now, price: p, edge: e, words: 'Flat from ' + lo + ' to ' + hi};
+    box.appendChild(el('div', 'avg-h', 'Flat band ± ' + e.toFixed(1) + ' pts'));
+    track.appendChild(el('i', 'band')); track.appendChild(el('i', 'at'));
+    if(avg != null){ var ring = el('i', 'avg'); ring.style.left = stripAt(avg / e); track.appendChild(ring); }
+    track.appendChild(now); track.setAttribute('role', 'img');
+    lab.appendChild(el('span', null, lo)); lab.appendChild(el('span', null, hi));
+    box.appendChild(track); box.appendChild(lab);
+    keys.appendChild(keyRow('at', [['Called at '], [indexLevel(p, 2), 'b']]));
+    var said = el('span'); keys.appendChild(keyRow('now', [[said]]));
+    keys.appendChild(keyRow('ring', avg != null ? [['Average so far '], [indexLevel(p + avg, 2), 'b'], [' ' + signedOne(avg) + ' pts · ' + bandWords(avg, e)]]
+                                                : [['Average so far: shown from 5 minutes in']]));
+    box.appendChild(keys);
+    var bar = {track: track, needle: now, price: p, edge: e, say: said, words: 'Flat from ' + lo + ' to ' + hi};
     nowBars.push(bar); placeNow(bar);
     return box;
   }
-  // the live price on a called-at bar: the bar reaches AVG_REACH flat edges either side of the call (the band, 10% to 90%
-  // in the CSS, is one), so a price past either end rests at that end; the needle shows only with a quote on today's
-  // card. nowBars are the bars on the page, each moved again by every quote (paintPx)
-  var AVG_REACH = 1.25, nowBars = [];
+  // a move in flat edges as its place on the strip: the strip reaches AVG_REACH flat edges either side of the call (the
+  // band, a little under half its width in the CSS, is one), so a move past either end rests at that end
+  var AVG_REACH = 2.25, nowBars = [];
+  function stripAt(x){ return (Math.min(1, Math.max(0, 0.5 + x / (2 * AVG_REACH))) * 100).toFixed(1) + '%'; }
+  function bandWords(x, e){ return (x > e ? 'above' : x < -e ? 'below' : 'inside') + ' the band'; }
+  // the live price on a strip, shown only with a quote on today's card; nowBars are the strips on the page, each moved
+  // again by every quote (paintPx), its key row with it
   function placeNow(b){
-    var on = !!(spot && todaysCard()), f = on ? 0.5 + (spot.price - b.price) / (2 * AVG_REACH * b.edge) : 0.5;
+    var on = !!(spot && todaysCard());
     b.needle.hidden = !on;
-    b.needle.style.left = (Math.min(1, Math.max(0, f)) * 100).toFixed(1) + '%';
+    b.needle.style.left = stripAt(on ? (spot.price - b.price) / b.edge : 0);
     b.track.setAttribute('aria-label', b.words + (on ? ', price now ' + money(spot.price) : ''));
+    if(b.say) b.say.textContent = on ? 'Price now ' + money(spot.price) + ' · ' + bandWords(spot.price - b.price, b.edge) : 'Price now: no quote on today’s card yet';
   }
   // a forecast's down, flat and up alone, for a bar that reads like the price axis: unsure is left out of the bar
   function threeWay(p){ var o = {}; ['down', 'flat', 'up'].forEach(function(k){ if(k in p) o[k] = p[k]; }); return o; }
@@ -1246,47 +1250,47 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   }
 
   function paint(c, ok){
-    // on the 5-minute tab before the open the pre-market card leads alone, until the opening lane's first read takes over
-    shownTab = leadTab();
-    if(tabNow() === 'five' && preLeads(premarket, Date.now(), marketDay())){ paintPre(premarket, premarketOk); paintSwitch(); return; }
-    shownPre = false;
-    document.getElementById('h1').textContent = (c.symbol || 'SPX') + ' \u00B7 Forecast';
-    setHead(c);
-    var m = mins(c.row_ts);
-    var old = m != null && m > STALE_MIN;
-    $('sub').classList.remove('err'); setSub(staleLine(c, m));
-    // trouble stays at the top; the count of questions answered is said in the questions sheet (countWords)
-    var st = document.getElementById('state'); st.textContent = '';
-    if(!ok) st.appendChild(el('span', 'state', 'fetch failed, showing the last card'));
-    else if(!c.sent) st.appendChild(el('span', 'state', 'not sent: no key on the station'));
-    // the service says in its own words when it built on a row nothing newer had replaced
-    if(c.freshness && c.freshness.stale && c.freshness.note) st.appendChild(el('span', 'state', c.freshness.note));
-    var main = document.getElementById('main'); main.textContent = '';
-
-    // the 5-minute tab: the opening's newest call while today's lane reads, then its card until the lane's card is
-    // dropped; the 30-minute tab: the 30-minute call, unless the session has no 30-minute card yet (nowCard), when
-    // the last session's call is never drawn as today's
+    var now = Date.now(), today = marketDay(), five = tabNow() === 'five', p = premarket;
+    shownTab = leadTab(); shownPre = preLeads(p, now, today); shownLeads = laneLeads(tape, now, today); shownWait = waiting();
     tickers = [];
-    shownLeads = laneLeads(tape, Date.now(), marketDay()); shownWait = waiting();
+    $('h1').textContent = ((c || p || {}).symbol || 'SPX') + ' \u00B7 Forecast';
+    setHead(c); tickers.push(function(){ setHead(last); });
+    var m = c ? mins(c.row_ts) : null, old = m != null && m > STALE_MIN;
+    // the line under the header is for trouble alone: a card gone stale or a station behind (staleLine), said on the
+    // 5-minute tab only in the session; with no 30-minute card it keeps whatever error the poll said
+    if(c){ $('sub').classList.remove('err'); setSub(five && !inSession() ? '' : staleLine(c, m)); }
+    // the chips: trouble only, the pre-market card's on the 5-minute tab before the hand-over (preState), the 30-minute
+    // card's otherwise; the count of questions answered is said in the questions sheet (countWords)
+    var st = $('state'); st.textContent = '';
+    if(five && shownPre) preState(p, premarketOk, now).forEach(function(w){ st.appendChild(el('span', 'state', w)); });
+    else if(c){
+      if(!ok) st.appendChild(el('span', 'state', 'fetch failed, showing the last card'));
+      else if(!c.sent) st.appendChild(el('span', 'state', 'not sent: no key on the station'));
+      // the service says in its own words when it built on a row nothing newer had replaced
+      if(c.freshness && c.freshness.stale && c.freshness.note) st.appendChild(el('span', 'state', c.freshness.note));
+    }
+    var main = $('main'); main.textContent = '';
     paintSwitch();
-    var ex = expiryLine(c); if(ex) main.appendChild(ex);
-    if(tabNow() === 'five'){
-      if(laneToday()){ main.appendChild(laneCard(tape, tapeOk)); main.appendChild(foldLive(c)); }
-      else { var done = el('div', 'card fold'); done.appendChild(el('span', 'k', 'Opening calls')); done.appendChild(el('span', 'l', 'done for today')); main.appendChild(done); }
-      if(preFolds(premarket, Date.now(), marketDay())) main.appendChild(preFold(premarket));
-    } else paintThirty(c, main);
+    var ex = expiryLine(c || p || tape); if(ex) main.appendChild(ex);
+    if(five) paintFive(main);
+    else if(c) paintThirty(c, main);
+    else { var none = el('section', 'card'); none.appendChild(el('div', 'win-t', 'No 30-min card yet')); main.appendChild(none); }
 
     // the situation is the combined call's sheet's on a phone; from WIDE up the stylesheet stands it under the chart
     // panel (Final-Desktop)
-    var dock = document.getElementById('dock'); dock.textContent = '';
-    if(chartDocked()) dock.appendChild(situationCard(c, sitAge(c, m), old));
+    var dock = $('dock'); dock.textContent = '';
+    if(c && chartDocked()) dock.appendChild(situationCard(c, sitAge(c, m), old));
 
     // the questions live in their own sheet (qsDeck); the page keeps one plain control for them on the tab whose call
-    // asked them, drawn once a card is
-    var qb = $('qBtn'); qb.textContent = 'Questions \u00B7 ' + (c.asked || 0) + ' asked'; qb.hidden = tabNow() === 'thirty';
-    $('note').textContent = 'A forecast, graded by the price bars. Not advice.';
-    if(qsOpen()){ qsLoad(c, true); qsDraw(true); }   // a new card while the sheet is open keeps the reader's place
+    // asked them: the opening call's on the 5-minute tab while its card is today's, the 30-minute call's in its sheet
+    var qc = qsCard(), qb = $('qBtn'), t = laneToday() ? tape : null;
+    qb.textContent = 'Questions \u00B7 ' + ((qc && qc.asked) || 0); qb.hidden = !(five && t);
+    $('note').textContent = (five && t ? 'Questions here are the ones JEV answered for the ' + viewerTime(t.row_ts) + ' opening call. ' : '')
+                          + 'A forecast, graded by the price bars. Not advice.';
+    if(qc && qsOpen()){ qsLoad(qc, true); qsDraw(true); }   // a new card while the sheet is open keeps the reader's place
   }
+  // the card whose questions the questions sheet deals: the opening call's on the 5-minute tab, else the 30-minute card's
+  function qsCard(){ return tabNow() === 'five' && laneToday() ? tape : last; }
   // the card's count of questions answered, said in the questions sheet: a read that asked no question (nothing due,
   // or from the cut-over no gate fired) says so, not "0 of 6 answered"
   function countWords(c){
@@ -1368,8 +1372,9 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     return qs.deck.length - 1;
   }
   function openQuestions(from){
-    if(!last || MiraiSheet.isOpen()) return;
-    qsLoad(last, true);
+    var c = qsCard();
+    if(!c || MiraiSheet.isOpen()) return;
+    qsLoad(c, true);
     MiraiSheet.open(from);
     qsDraw(true);
   }
@@ -1433,7 +1438,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   window.onerror = function(msg){ say('the card could not be drawn: ' + msg); };
   // a drawn card is then given the live price; the other files' parts (the scoreboard, the direction line, Claude's read)
   // are drawn with it from what is on hand, and again as each file comes
-  function draw(c, ok){ lastOk = ok; try { paint(c, ok); clearLoading(); } catch(e){ say('the card could not be drawn: ' + (e && e.message ? e.message : e)); } paintPx(); }
+  function draw(c, ok){ lastOk = ok; try { paint(c, ok); if(c || premarket || tape) clearLoading(); } catch(e){ say('the card could not be drawn: ' + (e && e.message ? e.message : e)); } paintPx(); }
   // Between cards the minutes still move: every tick updates each clock and each pre-market drawing. The page is
   // drawn again only when what it shows changes: the lead passes from one clock to the other (leadTab: the pre-market
   // card and the opening lane lead the 5-minute tab, which opens with them; at the lane's last mark the 30-minute
@@ -1447,22 +1452,15 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
                            : !!last && waiting() !== shownWait){ redraw(); return; }
     tickers.forEach(function(f){ f(); });
   }
-  // the page drawn again for the tab on screen: from the 30-minute card once one is read, else the pre-market card or
-  // the lane alone on the 5-minute tab, else the switch over an empty page
-  function redraw(){
-    if(last){ draw(last, lastOk); return; }
-    if(preOnly() || laneOnly()) return;
-    shownTab = leadTab(); shownPre = false; shownLeads = false; tickers = []; $('main').textContent = '';
-    if(tabNow() === 'thirty'){ var f = el('div', 'card fold'); f.appendChild(el('span', 'k', '30-min card')); f.appendChild(el('span', 'l', 'not read yet')); $('main').appendChild(f); }
-    paintSwitch();
-  }
+  // the page drawn again for the tab on screen, from the 30-minute card once one is read and from the morning's cards
+  // alone before (paint draws either)
+  function redraw(){ draw(last, lastOk); }
   // The same card again only moves the ages, so a reader mid-scroll is never handed a rebuilt page; after a
   // failed fetch or a station error it is drawn again once, so the failure's words leave with the failure.
   function ages(c){
-    if(shownPre) return;                          // the pre-market card leads and keeps its own ages
     var m = mins(c.row_ts), old = m != null && m > STALE_MIN, ageText = sitAge(c, m);
     setHead(c);
-    var sub = $('sub'); if(sub && !sub.classList.contains('err')) setSub(staleLine(c, m));
+    var sub = $('sub'); if(sub && !sub.classList.contains('err')) setSub(tabNow() === 'five' && !inSession() ? '' : staleLine(c, m));
     Array.prototype.forEach.call(document.querySelectorAll('#dock .lab .age'), function(r){ r.textContent = ageText; r.classList.toggle('old', old); });
   }
   function arrived(c){
@@ -1502,10 +1500,10 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       return r.json();
     }).then(function(j){
       if(j && j.kind === 'json' && j.data && j.data.questions){ arrived(j.data); }
-      else if(j && j.error){ say('the station said: ' + j.error); preOnly() || laneOnly(); }
+      else if(j && j.error){ redraw(); say('the station said: ' + j.error); }
       else if(last){ failedFetch(); }
-      else { say('no card yet: the JEV service has not written one'); preOnly() || laneOnly(); }
-    }).catch(function(e){ if(last) failedFetch(); else { say('could not read the card: ' + (e && e.message ? e.message : 'no reply')); preOnly() || laneOnly(); } })
+      else { redraw(); say('no card yet: the JEV service has not written one'); }
+    }).catch(function(e){ if(last) failedFetch(); else { redraw(); say('could not read the card: ' + (e && e.message ? e.message : 'no reply')); } })
       .finally(function(){ inflight = false; polling(false); });
   }
   // ---- the calls: every call looks some minutes ahead, graded at its mark (the read's
@@ -1605,26 +1603,8 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     return (todaysCard() ? 'Done for today' : 'Last: ' + dayName(cardDay()).slice(0, 3)) + ' \u00B7 ' + rightWords(dayStates(c));
   }
 
-  // the call clock: how long a call has left, and the minute it is graded (``mark``, the card's; null when the call
-  // ends past the close and is never graded); a leading card's mode ``chip`` heads its row, the time left beside it
-  function clockBlock(read, minutes, mark, chip){
-    var box = el('div');
-    var top = el('div', 'clock-top'), left = el('b'); if(chip) top.appendChild(chip); top.appendChild(left); box.appendChild(top);
-    var track = el('div', 'clock-bar'), fill = el('i'); track.appendChild(fill); box.appendChild(track);
-    var sub = el('div', 'clock-sub'); sub.appendChild(el('span', null, 'Read ' + viewerTime(read, {zone: true})));
-    sub.appendChild(el('span', null, mark ? 'Graded ' + viewerTime(mark) : 'Ends past the close, never graded')); box.appendChild(sub);
-    var t0 = startOf(read), end = mark ? Date.parse(mark) : t0 + minutes * 60000;
-    function update(){
-      var now = Date.now();
-      left.textContent = mark ? (leftWords(end, now) || 'Window closed') : 'Never graded';
-      fill.style.width = Math.max(0, Math.min(100, (now - t0) / Math.max(60000, end - t0) * 100)).toFixed(1) + '%';
-    }
-    update(); tickers.push(update);
-    return box;
-  }
 
-  // the drawings' helpers: an SVG element with its attributes, and the pre-market checks drawing's measures, a row's
-  // height, the track's width and where the newest bar ends so its words fit after it
+  // an SVG element with its attributes
   var NS = 'http://www.w3.org/2000/svg';
   function svgEl(tag, attrs, text){
     var e = document.createElementNS(NS, tag);
@@ -1632,8 +1612,6 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     if(text != null) e.textContent = text;
     return e;
   }
-  var ROW_H = 30, TRACK_W = 296, NEWEST_END = 211;
-  function fits(text, width){ return text.length * 6.2 + 8 <= width; }   // 11px bold, about 6.2px a letter
 
   // a call's state for its square: its grade's verdict (right, wrong or passed), open until graded, or never when it was
   // closed for good or ends past the close with no mark
@@ -1670,6 +1648,271 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     return states;
   }
 
+  // The 5-minute tab (Design B, 2026-10-14), the morning's: the pre-market call at a glance, the window being forecast
+  // (before the hand-over the clock to the open and the night's story), who answers it, the morning's scoreboard, the way
+  // to the results, and what the market is doing. Before the open the pre-market card leads it; from the hand-over the
+  // opening lane's newest call does, then its last call with its verdict until the lane's card is dropped at the day's
+  // end; after that the scoreboard and when the next morning's calls come.
+  function paintFive(main){
+    var now = Date.now(), today = marketDay(), p = premarket, pre = preLeads(p, now, today), t = laneToday() ? tape : null;
+    if((pre || preFolds(p, now, today)) && p.hour && callSum(p.hour).probabilities) main.appendChild(preGlance(p));
+    else if(pre) main.appendChild(preGlance(p));
+    if(pre){
+      main.appendChild(secHead('Now', 'the open, ' + viewerTime(p.open)));
+      main.appendChild(preNow(p));
+    } else if(t){
+      main.appendChild(secHead('Now', 'the ' + viewerTime(t.calls[0].read) + ' call'));
+      main.appendChild(fiveNow(t));
+    } else main.appendChild(laneDone(now));
+    if(pre || t) main.appendChild(fiveWho(pre ? null : t));
+    main.appendChild(secHead('Scoreboard', 'morning reads'));
+    main.appendChild(squareKey());
+    main.appendChild(fiveBoard(t));
+    var link = el('a', 'rowbtn'); link.setAttribute('href', '/m/reads.html#opening');
+    link.appendChild(el('span', null, 'Today’s results, read by read')); link.appendChild(el('span', 'm', 'all clocks'));
+    main.appendChild(link);
+    var mk = pre ? preMarketCard(p) : t ? marketCard(t) : null; if(mk) main.appendChild(mk);
+  }
+  // the opening calls' place once today's lane card is dropped (after 16:05) or before the lane's first read: when
+  // the next morning's first call comes, the next session day's 09:35 (the card's expiry calendar names the day)
+  function laneDone(now){
+    var box = el('section', 'card'), first = todayAt('09:35'), x = last && last.expiries, next = now < first ? first : x ? marketAt(x.next_settles_at, '09:35') : NaN;
+    box.appendChild(el('div', 'win-t', now < first ? 'Opening calls start at ' + viewerTime(first) : 'Opening calls are done for today'));
+    if(!(now < first) && !isNaN(next)) box.appendChild(el('div', 'cnote', 'Next from ' + viewerTime(next, {day: true})));
+    return box;
+  }
+  // The pre-market call at a glance: its read and its checks' score in a pill (when they are checked, before they are),
+  // its pick big with an arrow, and one tile per check (10 and 30 minutes after the settled open, the card's marks):
+  // where the average went and whether the call was right. The call is the average-price sum's; each check grades its
+  // own pick (grade.checked_call), a check standing on its end price alone said so ("Ended up"); a check the close-out
+  // could not grade never will be, and says so. A read with no call yet says when it comes.
+  var PRE_CHECKS = ['open_10', 'open_30'];
+  var WENT = {up: 'Went up', down: 'Went down', flat: 'Stayed flat'};
+  function preChecks(p){
+    var h = p.hour, a = h && callSum(h), top = a && a.probabilities && (a.pick || top1(a.probabilities));
+    var call = (p.calls || []).filter(function(c){ return h && c.read === h.read_at; })[0], checks = (call && call.checks) || {};
+    return PRE_CHECKS.map(function(k, i){
+      var ck = checks[k] && a !== h ? {pick: top, integral: checks[k].integral, end_price: checks[k].outcome ? checks[k] : null} : checks[k];
+      var v = ck && gradeOf(ck);
+      return {mark: p.marks[i], minutes: i ? 30 : 10, grade: v, state: v ? v.verdict.toLowerCase() : p.closed_out_at ? 'never' : 'open'};
+    });
+  }
+  function preGlance(p){
+    var box = el('section', 'card pm'), h = p.hour, a = h && callSum(h), pr = a && a.probabilities, head = el('div', 'pm-top');
+    head.appendChild(el('div', 'lab', 'Pre-market · ' + viewerTime((h && h.read_at) || p.row_ts)));
+    box.appendChild(head);
+    if(!pr){ preNoCall(p, box); return box; }
+    var top = a.pick || top1(pr), checks = preChecks(p), graded = checks.filter(function(k){ return k.grade; });
+    var right = graded.filter(function(k){ return k.state === 'right'; }).length;
+    var pill = el('div', 'pm-pill' + (!graded.length ? '' : right === checks.length ? ' good' : right ? '' : ' bad'));
+    if(graded.length){ var sq = el('span', 'sq'); sq.appendChild(el('i', SQ_KEY[right ? 'right' : 'wrong'])); pill.appendChild(sq); pill.appendChild(el('span', null, right + ' of ' + checks.length + ' right')); }
+    else pill.appendChild(el('span', null, 'Checks at ' + checks.map(function(k){ return viewerTime(k.mark); }).join(', ')));
+    head.appendChild(pill);
+    var call = el('div', 'pm-call');
+    call.appendChild(arrow(top, 22)); call.appendChild(el('div', 'pm-pick' + sideCls(top), cap(top) + ' ' + pct(pr[top])));
+    call.appendChild(el('div', 'cnote', 'called for the first half hour'));
+    box.appendChild(call);
+    var tiles = el('div', 'pm-tiles');
+    checks.forEach(function(k){
+      var t = el('div', 'pm-t'), went = el('div', 'pm-went'), res = el('div', 'pm-r'), g = k.grade, side = g && String(g.label).split('_')[0];
+      t.appendChild(el('div', 'pm-h', k.minutes + ' min · ' + viewerTime(k.mark)));
+      if(g){ went.appendChild(arrow(side, 16)); went.appendChild(el('span', sideCls(side).trim() || null, g.endOnly ? 'Ended ' + side : WENT[side] || cap(g.label))); }
+      else went.appendChild(el('span', 'fl', k.state === 'never' ? 'Not graded' : 'Not checked yet'));
+      t.appendChild(went);
+      var s = el('span', 'sq'); s.appendChild(el('i', SQ_KEY[k.state] || 'f')); res.appendChild(s);
+      res.appendChild(el('span', null, g ? g.verdict : k.state === 'never' ? 'Closed out' : 'Open'));
+      res.className = 'pm-r' + (k.state === 'wrong' ? ' bad' : '');
+      t.appendChild(res); tiles.appendChild(t);
+    });
+    box.appendChild(tiles);
+    box.setAttribute('aria-label', 'Pre-market call: called ' + cap(top) + ' ' + pct(pr[top]) + ' at ' + viewerTime(h.read_at || p.row_ts) + '. '
+                     + checks.map(function(k){ return k.minutes + ' minutes on, ' + (k.grade ? k.grade.verdict.toLowerCase() : 'not checked yet'); }).join('; '));
+    return box;
+  }
+  // an arrow for a side, up, down or level, in its colour, ``size`` pixels square
+  function arrow(side, size){
+    var svg = svgEl('svg', {viewBox: '0 0 16 16', width: size, height: size, 'class': 'arr' + sideCls(side), 'aria-hidden': 'true'});
+    svg.appendChild(svgEl('path', {d: side === 'up' ? 'M8 14V2.5M3 7.5 8 2.5l5 5' : side === 'down' ? 'M8 2v11.5M3 8.5l5 5 5-5' : 'M2 8h11.5M9 3.5 13.5 8 9 12.5'}));
+    return svg;
+  }
+  // a read that made no call (a snapshot, or a JEV read unsent or whose sum failed, the card's hour_error): why, and
+  // when the next call comes
+  function preNoCall(p, box){
+    var failed = p.hour_error && p.hour_error.read_at === p.row_ts ? 'made no sum: ' + p.hour_error.error : null;
+    var row = Date.parse(p.row_ts), jev = (p.schedule && p.schedule.jev_reads) || [], next = jev.filter(function(t){ return Date.parse(t) > row + 60000; })[0];
+    box.appendChild(el('div', 'pm-pick', 'No call yet'));
+    if(failed) box.appendChild(skipLine('the ' + viewerTime(p.row_ts) + ' read ' + failed));
+    box.appendChild(skipLine(next ? (jev.indexOf(next) ? 'next call at ' : 'first call at ') + viewerTime(next) : 'no call before the open'));
+  }
+  // Before the hand-over the window is the open: the clock to it and when the call is checked, then the night's story,
+  // one chip per read, and why a read measured nothing or stood on stale futures
+  function preNow(p){
+    var box = el('section', 'card pre');
+    box.appendChild(preClock(p));
+    var h = p.hour;
+    if(h && h.read_at && h.read_at !== p.row_ts && callSum(h).probabilities)
+      box.appendChild(tag('the call is the ' + viewerTime(h.read_at) + ' read’s; the ' + viewerTime(p.row_ts) + ' read ' +
+                          (!preJevRead(p) ? 'is a snapshot and asks nothing.' : p.sent ? (p.hour_error && p.hour_error.read_at === p.row_ts ? 'made no sum: ' + p.hour_error.error : 'made none.') : 'was not sent.')));
+    var unruled = preRulerLine(p); if(unruled) box.appendChild(unruled);
+    var stale = preStaleLine(p); if(stale) box.appendChild(stale);
+    if(p.story && p.story.length){
+      box.appendChild(el('div', 'inplay-h', storyHead(p.story)));
+      box.appendChild(storySvg(p.story, ((p.schedule && p.schedule.reads) || []).length));
+    }
+    box.appendChild(tag('both checks start from the price at ' + viewerTime(p.start) + ', ' + Math.round((Date.parse(p.start) - Date.parse(p.open)) / 60000) +
+                        ' minutes after the open; the 5-minute opening calls start at ' + viewerTime(p.handover) + '.'));
+    return box;
+  }
+  // The opening lane's window: its newest call's read to its mark with the minutes left, what it is graded on and that
+  // the next call overlaps it, the progress through it, then the flat band as a strip with the called price, the live
+  // price moved by every quote and the running average once five minutes are in; after its mark, its verdict
+  function fiveNow(t){
+    var box = el('section', 'card'), k = t.calls[0], a = t.row_ts === k.read ? callSum(t.hour) : null, minutes = k.minutes || 10;
+    var t0 = startOf(k.read), end = k.mark ? Date.parse(k.mark) : t0 + minutes * 60000, reads = (t.schedule && t.schedule.reads) || [];
+    var next = reads.map(function(r){ return Date.parse(r); }).filter(function(r){ return r > t0 + 60000; })[0];
+    var top = el('div', 'win-top'), left = el('div', 'win-left');
+    top.appendChild(el('div', 'win-t', viewerTime(k.read) + ' → ' + (k.mark ? viewerTime(k.mark) : 'the close'))); top.appendChild(left);
+    box.appendChild(top);
+    var note = el('div', 'cnote');
+    note.appendChild(el('span', null, 'Graded on the ')); note.appendChild(el('b', null, 'average price')); note.appendChild(el('span', null, ' over these ' + minutes + ' minutes.'));
+    if(next && next < end) note.appendChild(el('span', null, ' The next call lands at ' + viewerTime(next) + ', so two calls overlap for a while.'));
+    box.appendChild(note);
+    var prog = el('div', 'prog'), fill = el('i'), lab = el('div', 'prog-l'), done = el('span');
+    prog.appendChild(fill); prog.setAttribute('aria-hidden', 'true'); box.appendChild(prog);
+    lab.appendChild(el('span', null, 'Read ' + viewerTime(k.read))); lab.appendChild(done); lab.appendChild(el('span', null, k.mark ? 'Graded ' + viewerTime(k.mark) : 'Never graded'));
+    box.appendChild(lab);
+    function update(){
+      var now = Date.now();
+      left.textContent = k.mark ? (leftWords(end, now) || 'Window closed') : 'Never graded';
+      fill.style.width = Math.max(0, Math.min(100, (now - t0) / Math.max(60000, end - t0) * 100)).toFixed(1) + '%';
+      done.textContent = Math.max(0, Math.min(minutes, Math.floor((now - t0) / 60000))) + ' of ' + minutes + ' min';
+    }
+    update(); tickers.push(update);
+    if(a && a !== t.hour && a.probabilities){
+      var avgs = bars && barsDay === marketDay() && typeof a.price === 'number' ? runningAvg(bars, t0, minutes, a.price) : [];
+      box.appendChild(calledAt(a, avgs.length >= 5 ? avgs[avgs.length - 1] : null));
+    }
+    var fb = fallbackLine(t.hour, t.row_ts); if(fb) box.appendChild(fb);
+    // a read with no sum keeps the newest call it has, said to be that read's
+    if(t.row_ts !== k.read) box.appendChild(skipLine('no sum on the ' + viewerTime(t.row_ts) + ' read' + (t.hour && t.hour.error ? ': ' + t.hour.error : '') + '; this is the ' + viewerTime(k.read) + ' call'));
+    var g = gradeOf(k);
+    if(g) box.appendChild(el('div', 'cnote', 'Graded ' + g.verdict + ': the ' + minutes + '-minute ' + (g.endOnly ? 'end price' : 'average') + ' ' + (WENT[String(g.label).split('_')[0]] || 'went ' + words(g.label)).toLowerCase() + '.'));
+    if(!tapeOk) box.appendChild(tag('fetch failed, showing the last read'));
+    return box;
+  }
+  // Who answers this? The 5-minute tab's one call, JEV's alone with no mix: the opening call on the lane's window (the
+  // pre-market call before the hand-over), its pick boxed, if it moves which way, its odds; then a row that says the
+  // 30-minute reads make no 10-minute calls and takes the reader to their tab
+  function fiveWho(t){
+    var box = el('section', 'card'), p = premarket, k = t && t.calls[0], a, pick, pr;
+    if(t){ a = t.row_ts === k.read ? callSum(t.hour) : null; pr = a && a.probabilities; pick = pr ? a.pick || top1(pr) : k.pick; }
+    else { a = p.hour && callSum(p.hour); pr = a && a.probabilities; pick = pr && (a.pick || top1(pr)); }
+    var head = el('div', 'wa-top'); head.appendChild(el('div', 'lab', 'Who answers this?'));
+    head.appendChild(el('div', 'cnote', t ? viewerTime(k.read) + ' → ' + (k.mark ? viewerTime(k.mark) : 'the close') : 'the first half hour'));
+    box.appendChild(head);
+    var hd = el('div', 'wa-h'); ['Read', 'Most likely', 'If it moves'].forEach(function(x){ hd.appendChild(el('div', null, x)); });
+    box.appendChild(hd);
+    if(pick){
+      var mv = pr && ifMoves(pr), p0 = pr ? pr[pick] : k.p;
+      var r = waRow(false, 'call', t ? 'Opening call' : 'Pre-market call', 'JEV alone, no mix', waVal(cap(pick) + ' ' + pct(p0), pick, true),
+                    mv ? waVal(cap(mv.side) + ' ' + pct(mv.p), mv.side, false, 'not scored') : waVal('—'));
+      r.firstChild.firstChild.appendChild(el('span', 'wa-tag', 'The call'));
+      if(pr){ var odds = el('div', 'wa-odds'); odds.appendChild(oddsBar(threeWay(pr), pick)); r.appendChild(odds); }
+      box.appendChild(r);
+    }
+    var c = last, lm = c && c.marks && c.marks.next_30, mine = todaysCard() && lm;
+    var go = el('button', 'wa-r wide'), n = el('div'); go.type = 'button';
+    n.appendChild(el('div', 'wa-n', 'Combined call \u00B7 Direction line \u00B7 Claude'));
+    n.appendChild(el('span', 'wa-d wa-go', 'None of them make 10-minute calls. Their answers' + (mine ? ' for ' + viewerTime(c.row_ts) + ' \u2192 ' + viewerTime(lm) : '') + ' are on the 30-min tab'));
+    go.appendChild(n); go.setAttribute('aria-label', 'Switch to the 30-minute tab');
+    go.addEventListener('click', function(){ setTab('thirty'); });
+    box.appendChild(go);
+    return box;
+  }
+  // The morning's scoreboard: the opening calls (today's squares, those still open and to come, the lane's grades since
+  // its first day) and the pre-market call (its two checks today, its calls since its first day, the day's last graded
+  // read standing for the day); neither has a yardstick yet
+  function fiveBoard(t){
+    var box = el('section', 'card'); box.id = 'fiveBoard';
+    fillFive(box, t);
+    return box;
+  }
+  function paintFiveBoard(){ var b = $('fiveBoard'); if(b) fillFive(b, laneToday() ? tape : null); swStatus(); }
+  function fillFive(box, t){
+    box.textContent = '';
+    var head = el('div', 'sb-h'); ['Today', 'Since start', 'Yardstick'].forEach(function(k){ head.appendChild(el('div', null, k)); });
+    box.appendChild(head);
+    var states = laneStates(t), reads = (t && t.schedule && t.schedule.reads) || [], toCome = Math.max(0, reads.length - states.length);
+    var since = laneSince(), more = [openWords(states), toCome && states.length ? toCome + ' to come' : null].filter(Boolean).join(' · ');
+    box.appendChild(sbRow('Opening calls', '10-min average' + (since.first ? ' · since ' + since.first.slice(5) : ''), [
+      sbCell(states, states.length ? rightWords(states) : 'No call yet', more || null),
+      since.n ? sbCell(null, since.right + ' of ' + since.n, Math.round(since.right / since.n * 100) + '% right') : sbCell(null, '—'),
+      sbCell(null, null, 'None yet', ['Too early', 'early'])]));
+    var p = premarket, pre = p && p.day === marketDay() && p.hour && callSum(p.hour), pr = pre && pre.probabilities, ps = preSince();
+    if(pr || ps.n){
+      // today's checks from the card while it is fetched, from the grades once it is dropped at the day's end
+      var day = preDays()[marketDay()], k = pr ? pre.pick || top1(pr) : day && day.pick;
+      var states = pr ? preChecks(p).map(function(x){ return x.state === 'never' ? 'passed' : x.state; }) : day ? PRE_CHECKS.map(function(h){ return day[h] || 'passed'; }) : [];
+      var right = states.filter(function(x){ return x === 'right'; }).length, graded = states.filter(function(x){ return x !== 'open'; }).length;
+      box.appendChild(sbRow('Pre-market call', 'first half hour' + (ps.first ? ' \u00B7 since ' + ps.first.slice(5) : ''), [
+        sbCell(states, !states.length ? 'No call today' : graded ? right + ' of ' + states.length + ' checks' : 'Not checked yet',
+               k ? 'called ' + cap(k) + (pr ? ' ' + pct(pr[k]) : '') : null),
+        ps.n ? sbCell(null, ps.right + ' of ' + ps.n, Math.round(ps.right / ps.n * 100) + '% right') : sbCell(null, '—'),
+        sbCell(null, null, 'None yet', ['Too early', 'early'])]));
+    }
+    var foot = el('div', 'cnote sb-f');
+    if(laneLeads(tape, Date.now(), marketDay()) && reads.length){
+      var lastRead = Date.parse(reads[reads.length - 1]), lastMark = lastRead + ((t.schedule.looks_ahead_min || 10) * 60000);
+      foot.appendChild(el('span', null, 'At ' + viewerTime(lastMark) + ', after the ' + viewerTime(lastRead) + ' call is graded, this tab shows the morning’s total and the page moves to the 30-min tab. '));
+    }
+    foot.appendChild(el('b', null, 'pts')); foot.appendChild(el('span', null, ' always means S&P index points.'));
+    box.appendChild(foot);
+  }
+  // the lane's graded calls since its first day, as the scoreboard counts them: right of right and wrong
+  function laneSince(){
+    var by = {}, first = null, right = 0, n = 0;
+    (tapeGrades || []).forEach(function(r){ if(r && r.horizon === 'next_10' && r.graded && r.row_ts) by[r.row_ts] = r; });
+    Object.keys(by).forEach(function(ts){ var v = by[ts].verdict; if(v === 'right' || v === 'wrong'){ n++; if(v === 'right') right++; } if(!first || ts < first) first = ts; });
+    return {right: right, n: n, first: first && first.slice(0, 10)};
+  }
+  // the pre-market call's checks by day from its grades: each day's last graded read stands for the day, both its
+  // checks' verdicts and its pick
+  function preDays(){
+    var days = {};
+    (preGrades || []).forEach(function(r){
+      if(!(r && r.graded && r.row_ts && (r.horizon === 'open_10' || r.horizon === 'open_30'))) return;
+      var d = r.row_ts.slice(0, 10), x = days[d] = days[d] || {};
+      if(!x.ts || r.row_ts > x.ts){ days[d] = x = {ts: r.row_ts, pick: r.pick}; }
+      if(r.row_ts === x.ts) x[r.horizon] = r.verdict;
+    });
+    return days;
+  }
+  // the pre-market call's checks since its first day, right of right and wrong
+  function preSince(){
+    var days = preDays(), right = 0, n = 0, first = null;
+    Object.keys(days).forEach(function(d){ PRE_CHECKS.forEach(function(h){ var v = days[d][h]; if(v === 'right' || v === 'wrong'){ n++; if(v === 'right') right++; } }); if(!first || d < first) first = d; });
+    return {right: right, n: n, first: first};
+  }
+  // What the market is doing, as the lane's call saw it: its facts as the situation's rows, seen at its read, and the
+  // stretch since the last read (what already happened, not a forecast) as one more row; a tap opens the facts in words
+  function marketCard(t){
+    var card = situationCard(t, 'seen at ' + viewerTime(t.row_ts), false, 'What the market is doing'), st = stretchWords(t);
+    if(st){
+      var row = el('div', 'sit-row'), v = el('span', 'sit-v', st[1]);
+      row.appendChild(el('span', 'sit-t', 'Last ' + st[0] + ' min (already happened)')); row.appendChild(v);
+      if(st[2]) v.appendChild(el('span', null, st[2]));
+      card.appendChild(row);
+    }
+    return card;
+  }
+  // before the hand-over the night's facts, as the pre-market card wrote them, with the builder's sentence under each
+  function preMarketCard(p){
+    if(!(p.situation && p.situation.length)) return null;
+    var card = el('section', 'card sit-card');
+    card.appendChild(labRow('What the market is doing', 'seen at ' + viewerTime(p.row_ts)));
+    card.appendChild(preFacts(p));
+    return card;
+  }
   // a section's head: its name over an ink rule, a note at its right
   function secHead(title, note){ var h = el('div', 'sec'); h.appendChild(el('h2', null, title)); if(note) h.appendChild(el('span', 'r', note)); return h; }
   // The 30-minute tab (Design B, 2026-10-14): the window the newest read forecasts, drawn live; who agrees on it, the
@@ -1753,13 +1996,17 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var said = gr ? ' · ' + words(gr.result) : !open && n === T ? ' · ' + words(dirResult(pts, rightAt)) : (open ? ' so far' : '') + ' · right at +' + rightAt;
     keys.appendChild(keyRow('gain', [['Direction line score '], [signedPts(pts), 'b'], [said]]));
   }
-  // one key row: its swatch, drawn as the chart draws it, and its words, each part a span of its own class
+  // one key row: its swatch, drawn as the chart draws it, and its words, each part a span of its own class (or a node
+  // of the caller's, which it fills later)
   function keyRow(kind, parts){
     var r = el('div', 'keyrow'), svg = svgEl('svg', {viewBox: '0 0 14 14', 'aria-hidden': 'true'}), t = el('span');
     if(kind === 'zero') svg.appendChild(svgEl('line', {x1: 1, y1: 7, x2: 13, y2: 7, 'class': 'k-zero'}));
+    else if(kind === 'at') svg.appendChild(svgEl('line', {x1: 7, y1: 1, x2: 7, y2: 13, 'class': 'k-at'}));
+    else if(kind === 'now'){ svg.appendChild(svgEl('line', {x1: 7, y1: 4, x2: 7, y2: 13, 'class': 'k-now'})); svg.appendChild(svgEl('circle', {cx: 7, cy: 3.5, r: 2.8, 'class': 'k-now-d'})); }
+    else if(kind === 'ring') svg.appendChild(svgEl('circle', {cx: 7, cy: 7, r: 5, 'class': 'k-ring'}));
     else if(kind === 'dot') svg.appendChild(svgEl('circle', {cx: 7, cy: 7, r: 5.5, 'class': 'k-dot'}));
     else svg.appendChild(svgEl('rect', {x: 1, y: 2, width: 12, height: 10, rx: 2, 'class': 'k-gain'}));
-    parts.forEach(function(p){ t.appendChild(el(p[1] === 'b' ? 'b' : 'span', p[1] && p[1] !== 'b' ? p[1] : null, p[0])); });
+    parts.forEach(function(p){ t.appendChild(typeof p[0] === 'string' ? el(p[1] === 'b' ? 'b' : 'span', p[1] && p[1] !== 'b' ? p[1] : null, p[0]) : p[0]); });
     r.appendChild(svg); r.appendChild(t);
     return r;
   }
@@ -2069,9 +2316,9 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     if(waiting()) return viewerTime(c.row_ts, {day: true});
     return m == null ? '' : (m < 1 ? 'JUST NOW' : ageWord(m).toUpperCase());
   }
-  function situationCard(c, ageText, old){
+  function situationCard(c, ageText, old, title){
     var card = el('button', 'card sit'); card.type = 'button'; card.setAttribute('aria-controls', 'jevSheet');
-    card.appendChild(labRow('Situation', ageText, 'age' + (old ? ' old' : '')));
+    card.appendChild(labRow(title || 'Situation', ageText, 'age' + (old ? ' old' : '')));
     (c.situation || []).forEach(function(r){
       var row = el('div', 'sit-row');
       if(typeof r === 'string'){ row.appendChild(el('span', 'sit-c', sentence(r))); card.appendChild(row); return; }   // a card written before 2026-09-26
@@ -2081,7 +2328,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       row.appendChild(v);
       card.appendChild(row);
     });
-    card.setAttribute('aria-label', 'Situation, ' + (ageText ? ageText.toLowerCase() : 'age unknown') + '. Open the facts in words');
+    card.setAttribute('aria-label', (title || 'Situation') + ', ' + (ageText ? ageText.toLowerCase() : 'age unknown') + '. Open the facts in words');
     card.addEventListener('click', function(){ openSituation(c, card); });
     return card;
   }
@@ -2089,20 +2336,6 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   function noCallWords(c){
     var nr = nextRead(Date.parse(c.session && c.session.last_read));
     return 'No 30-minute call on this read' + (nr ? ', next read ' + viewerTime(nr) : '');
-  }
-  // the 30-minute call while the opening leads: one line, with its own minutes left; a call of
-  // another day carries its weekday, so the last session's call never passes for today's
-  function foldLive(c){
-    var f = el('div', 'card fold'), h = callSum(c.hour), own = headline(h), p = own && own.probabilities;
-    f.appendChild(el('span', 'k', '30-min call \u00B7 ' + viewerTime(c.row_ts, {day: String(c.row_ts || '').slice(0, 10) !== marketDay()})));
-    var left = el('span', 'l');
-    if(!p){ f.appendChild(left); left.textContent = noCallWords(c); return f; }
-    var top = own.pick || top1(p); f.appendChild(el('b', null, cap(top) + ' ' + pct(p[top])));
-    f.appendChild(left);
-    var m30 = c.marks && c.marks.next_30 !== undefined ? c.marks.next_30 : plusIso(c.row_ts, 30);
-    function update(){ left.textContent = m30 ? (leftWords(Date.parse(m30), Date.now()) || 'Window closed at ' + viewerTime(m30)) : 'Never graded'; }
-    update(); tickers.push(update);
-    return f;
   }
 
   // ---- the opening lane: its own card, written every 5 minutes from 09:35 and once more at its close-out
@@ -2119,49 +2352,17 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   function within(span, t){ t = t || marketClock(); if(!t) return false; var s = hhmm(t); return s >= span[0] && s < span[1]; }
   // an index level as the owner reads it, with its thousands comma, to a whole point or the given decimals
   function indexLevel(x, d){ return (+x).toLocaleString('en-US', {minimumFractionDigits: d || 0, maximumFractionDigits: d || 0}); }
-  // the stretch since the last read on one line, as the 30-minute card's end-price rows read: how far price went and how
-  // busy the range was for this minute (the builder's sentences, labels/range_size._since_last_read), over the minutes
-  // the builder measured, which a missed read makes more than 5; a sentence in another shape is left out, and the
-  // day's first read, with nothing before it, has no line
+  // the stretch since the last read, what already happened (not a forecast): how far price went and how busy the range
+  // was for this minute (the builder's sentences, labels/range_size._since_last_read), over the minutes the builder
+  // measured, which a missed read makes more than 5, as [minutes, the move, how busy]; a sentence in another shape is
+  // left out, and the day's first read, with nothing before it, has none
   var STRETCH_MOVE = /^since the last read, ([\d.]+) minutes ago, price ended (?:level with it|([\d.]+) points (above|below) it)/;
   var STRETCH_BUSY = /in the (bottom|middle|top) third for this minute/;
   var STRETCH_THIRD = {bottom: 'quiet', middle: 'normal', top: 'busy'};
-  function stretchRow(t){
+  function stretchWords(t){
     var st = t.stretch || {}, m = STRETCH_MOVE.exec(st.move_since_read || ''), b = STRETCH_BUSY.exec(st.range_since_read || '');
     if(!m) return null;
-    var said = [m[2] ? (m[3] === 'above' ? 'Up ' : 'Down ') + (+m[2]).toFixed(1) + ' pts' : 'No change'];
-    if(b) said.push(STRETCH_THIRD[b[1]]);
-    var r = el('div', 'row60');
-    r.appendChild(el('span', 'k', 'Last ' + m[1] + ' min')); r.appendChild(el('b', null, said.join(' \u00B7 ')));
-    return r;
-  }
-  // the opening lane's card, in the 30-minute card's shape (Will, 2026-10-08: agile, lean and clean): the call and its
-  // odds, the price it was called at with its flat band, the morning's calls as squares, then one line each for the end
-  // price and the stretch since the last read
-  function laneCard(t, ok){
-    var box = el('div', 'card dashed'), newest = t.calls[0], h = t.hour, a = callSum(h), p = a && a.probabilities;
-    box.appendChild(clockBlock(newest.read, newest.minutes, newest.mark,
-                               el('div', 'mode', newest.minutes + '-min call \u00B7 every ' + TAPE_STEP_MIN + ' min')));
-    box.appendChild(labRow('Opening call')).setAttribute('class', 'lab call');
-    if(p && t.row_ts === newest.read){
-      var top = a.pick || top1(p);
-      box.appendChild(el('div', 'big', cap(top) + ' ' + pct(p[top])));
-      box.appendChild(oddsBar(p, top));
-      if(a !== h) box.appendChild(calledAt(a, newest.minutes));
-      var fb = fallbackLine(h, t.row_ts); if(fb) box.appendChild(fb);
-    } else {
-      box.appendChild(el('div', 'big', cap(newest.pick) + ' ' + pct(newest.p)));
-      box.appendChild(skipLine('no sum on the ' + viewerTime(t.row_ts) + ' read' + (h && h.error ? ': ' + h.error : '') + '; this is the ' + viewerTime(newest.read) + ' call'));
-    }
-    var ls = laneStates(t), lr = el('div', 'calls'); lr.appendChild(labRow('Opening calls', rightWords(ls))); lr.appendChild(sqRow(ls)); box.appendChild(lr);
-    if(p && t.row_ts === newest.read && a !== h && h.probabilities) box.appendChild(endPriceRow(h));
-    var sr = stretchRow(t); if(sr) box.appendChild(sr);
-    if(!ok) box.appendChild(tag('fetch failed, showing the last read'));
-    // when the 5-minute calls hand back to the 30-minute ones, on one closing line
-    var sch = t.schedule;
-    if(sch && sch.reads && sch.reads.length) box.appendChild(tag(lastLaneRead(t) ? 'Last 5-min check; every 30 min again from ' + viewerTime(newest.mark)
-      : '5-min checks until ' + viewerTime(Date.parse(sch.reads[sch.reads.length - 1]) + sch.looks_ahead_min * 60000)));
-    return box;
+    return [m[1], m[2] ? (m[3] === 'above' ? 'Up ' : 'Down ') + (+m[2]).toFixed(1) + ' pts' : 'No change', b ? STRETCH_THIRD[b[1]] : null];
   }
   // today's lane card with its calls, which its tab draws until the card is dropped at the day's end (LANE_HOURS)
   function laneToday(){ return !!(tape && tape.lane === 'tape' && String(tape.row_ts || '').slice(0, 10) === marketDay() && tape.calls && tape.calls.length); }
@@ -2195,27 +2396,6 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       if(reads.indexOf(startOf(k.read)) < 0 && st !== 'never') states.push(st);
     });
     return states;
-  }
-  // the card's read is the lane's last of the day: it is stamped at a bar, which can be a minute behind the
-  // job's fire, so the last read is one stamped no more than a minute before the last scheduled read, and a
-  // close-out settles it
-  function lastLaneRead(t){
-    var r = t.schedule && t.schedule.reads;
-    return !!(t.closed_out_at || (r && r.length && Date.parse(t.row_ts) >= Date.parse(r[r.length - 1]) - 60000));
-  }
-  // No 30-minute card read yet (none written, or the station failed): the opening lane still leads while its call
-  // is open, drawn alone under the header's words about the 30-minute card. False when there is nothing to draw.
-  function laneOnly(){
-    if(last || tabNow() !== 'five' || !laneLeads(tape, Date.now(), marketDay())) return false;
-    var main = $('main'); main.textContent = ''; $('dock').textContent = ''; $('qBtn').hidden = true;
-    tickers = []; shownLeads = true; shownTab = leadTab();
-    paintSwitch();
-    main.appendChild(laneCard(tape, tapeOk));
-    var f = el('div', 'card fold'); f.appendChild(el('span', 'k', '30-min card')); f.appendChild(el('span', 'l', 'not read yet'));
-    main.appendChild(f);
-    if(preFolds(premarket, Date.now(), marketDay())) main.appendChild(preFold(premarket));
-    clearLoading();
-    return true;
   }
   var tapeInflight = false, tapeTimer = null;
   // what makes a lane card new: a read, or a close-out's grading (graded_at, on every close-out run, even one that
@@ -2270,32 +2450,6 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var a = p && p.hour && callSum(p.hour);
     return !!(p && p.lane === 'premarket' && today && p.day === today && now >= Date.parse(p.handover) && a && a.probabilities);
   }
-  // the folded call: its pick, then each check (the card's marks, 10 and 30 minutes after the settled open) as the
-  // close-out graded it on the call's own record, one it has not graded yet said so; before the close-out, when the
-  // call is checked. The card is stamped closed_out_at only once nothing is left to grade, so a check still ungraded
-  // then never will be: it says so, with the grader's reason when the call carries one (``closed``). Every check of
-  // an average-price call grades the call's own pick (grade.checked_call), so a check standing on its end price alone
-  // is judged on that pick too; a call whose end-price sums got no answer has its average-price checks alone; a read
-  // whose average-price sum got no answer checks each box on its own pick
-  var PRE_CHECKS = ['open_10', 'open_30'];
-  function preFold(p){
-    var h = p.hour, a = callSum(h), top = a.pick || top1(a.probabilities), f = el('div', 'card fold');
-    var call = (p.calls || []).filter(function(c){ return c.read === h.read_at; })[0], checks = (call && call.checks) || {};
-    f.appendChild(el('span', 'k', 'pre-market call ' + viewerTime(h.read_at || p.row_ts)));
-    f.appendChild(el('b', null, cap(top) + ' ' + pct(a.probabilities[top])));
-    // each check on the average price over its own window from the settled open, or on its end price alone, said so
-    var never = false, said = PRE_CHECKS.map(function(k, i){
-      var ck = checks[k] && a !== h ? {pick: top, integral: checks[k].integral, end_price: checks[k].outcome ? checks[k] : null} : checks[k];
-      var v = ck && gradeOf(ck), at = viewerTime(p.marks[i]);
-      if(v) return at + (v.endOnly ? ' ended ' : ' was ') + cap(v.label) + ', ' + v.verdict.toLowerCase();
-      never = never || !!p.closed_out_at;
-      return at + (p.closed_out_at ? ' not graded at the close-out' : ' not graded yet');
-    });
-    var why = never && call && call.closed ? ' (' + marketWords(call.closed, h.read_at || p.row_ts) + ')' : '';
-    f.appendChild(el('span', 'l', p.closed_out_at || Object.keys(checks).length ? said.join(' \u00B7 ') + why
-                                  : 'Checked ' + viewerTime(p.marks[0]) + ' and ' + viewerTime(p.marks[1])));
-    return f;
-  }
   // the next read still ahead, for the header's right side: the night's checkpoints (the card's schedule, instants),
   // after them the day's first live read, READ_MINUTES[0] after the open, which the card leads until (the hand-over),
   // and once that read's card is on hand the 30-minute service's next one (nextRead); none while the first read is due
@@ -2317,12 +2471,6 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     return ((p.schedule && p.schedule.jev_reads) || []).filter(function(t){
       return row >= Date.parse(t) - 60000 && row < Date.parse(t) + PRE_LATE_MIN * 60000; })[0] || null;
   }
-  // the JEV reads still to come after the card's read: one PRE_LATE_MIN past its time is missing, not coming
-  function preJevDue(p, now){
-    var row = Date.parse(p.row_ts);
-    return ((p.schedule && p.schedule.jev_reads) || []).filter(function(t){
-      return Date.parse(t) > row + 60000 && now < Date.parse(t) + PRE_LATE_MIN * 60000; });
-  }
   // why a JEV read was not sent, as the builder wrote it, its market clock in the viewer's zone: its own reasons open
   // with 'not sent', and one that does not ("nothing to ask at the 08:48 ET read") is given the prefix here. A read
   // with no pre-open ruler adds why to that reason; the card says it once, under the call (preRulerLine)
@@ -2332,31 +2480,15 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var reason = marketWords(omitted ? p.unsent_reason.replace(': ' + omitted, '') : p.unsent_reason, p.row_ts);
     return /^not sent\b/.test(reason) ? reason : 'not sent: ' + reason;
   }
-  // the state chips: a failed fetch, whether this read asked JEV and was sent, a missed checkpoint; how old the
-  // futures were at the read is said under the call (preStaleLine), since its note can run past one chip's line
+  // the state chips, trouble alone: a failed fetch, a JEV read that was not sent, a missed checkpoint; how old the futures were at the read is said in the window (preStaleLine), since its
+  // note can run past one chip's line
   function preState(p, ok, now){
-    var out = [], jev = (p.schedule && p.schedule.jev_reads) || [];
+    var out = [];
     if(!ok) out.push('fetch failed, showing the last card');
-    var qs = p.questions || [];
-    if(p.sent) out.push(qs.filter(function(q){ return q.answer; }).length + ' of ' + qs.length + ' answered');
-    else if(preJevRead(p)) out.push(preUnsent(p));
-    else if(jev.length){
-      var due = preJevDue(p, now).map(function(t){ return viewerTime(t); });
-      out.push(due.length ? 'snapshot, JEV at ' + due.join(' and ') : 'snapshot');
-    }
+    if(!p.sent && preJevRead(p)) out.push(preUnsent(p));
     var missed = preMissed(p, now);
     if(missed != null) out.push('stale: the ' + viewerTime(missed) + ' read has not landed');
     return out;
-  }
-  // the call in words, from the two sums' picks: how the first check (10 minutes on) opens, and whether the
-  // second (30 minutes on) keeps it
-  var OPENS = {up: 'Opens firm', down: 'Opens weak', flat: 'Opens quiet', unsure: 'Unclear at first'};
-  var THEN = {up: 'then rises', down: 'then falls', flat: 'then settles', unsure: 'then unclear'};
-  function shapeWords(first, second){
-    if(!(first in OPENS) || !(second in OPENS)) return null;
-    var same = first === second;
-    return {title: same ? (first === 'unsure' ? 'Unclear at both checks' : OPENS[first] + ', holds') : OPENS[first] + ', ' + THEN[second],
-            words: words(first) + ' at the first check, ' + (same ? 'still ' : '') + words(second) + ' at the second'};
   }
   function sumPick(s){ return s && s.probabilities ? s.pick || top1(s.probabilities) : null; }
   function sumSaid(s){ var k = sumPick(s); return k ? cap(k) + ' ' + pct(s.probabilities[k]) : null; }
@@ -2379,33 +2511,6 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     update(); tickers.push(update);
     return box;
   }
-  // the call: its pick as the big number, its shape in words, the odds bar; a read that made no call (a snapshot,
-  // or a JEV read unsent or whose sum failed, the card's hour_error) carries the newest call and says whose it is and
-  // why; before the first call, when it comes
-  function preCall(p, box){
-    var h = p.hour, a = callSum(h), pr = a && a.probabilities;
-    var failed = p.hour_error && p.hour_error.read_at === p.row_ts ? 'made no sum: ' + p.hour_error.error : null;
-    if(pr){
-      // the shape is the end-price sums' two checks: under an average-price call it is said to be theirs, under their line
-      var top = a.pick || top1(pr), by = h.by || {}, s = shapeWords(sumPick(by.open_10), sumPick(by.open_30));
-      box.appendChild(el('div', 'big', cap(top) + ' ' + pct(pr[top])));
-      if(s && a === h){ var sh = el('div', 'shape', s.title); sh.appendChild(el('span', null, ': ' + s.words)); box.appendChild(sh); }
-      box.appendChild(oddsBar(pr, top));
-      if(a !== h) box.appendChild(tag(averageWords(a)));
-      var fb = fallbackLine(h, p.row_ts); if(fb) box.appendChild(fb);
-      if(a !== h && h.probabilities) box.appendChild(endPriceRow(h));
-      if(s && a !== h) box.appendChild(tag('end-price question: ' + s.title.charAt(0).toLowerCase() + s.title.slice(1) + ': ' + s.words));
-      if(h.read_at && h.read_at !== p.row_ts)
-        box.appendChild(tag('the call from the ' + viewerTime(h.read_at) + ' read; the ' + viewerTime(p.row_ts) + ' read ' +
-                            (!preJevRead(p) ? 'is a snapshot and asks nothing.' : p.sent ? failed || 'made none.' : 'was not sent.')));
-      return;
-    }
-    var row = Date.parse(p.row_ts), jev = (p.schedule && p.schedule.jev_reads) || [];
-    var next = jev.filter(function(t){ return Date.parse(t) > row + 60000; })[0];
-    box.appendChild(el('div', 'big', 'No call yet'));
-    if(failed) box.appendChild(skipLine('the ' + viewerTime(p.row_ts) + ' read ' + failed));
-    box.appendChild(skipLine(next ? (jev.indexOf(next) ? 'next call at ' : 'first call at ') + viewerTime(next) : 'no call before the open'));
-  }
   // a read with no pre-open ruler measured nothing (premarket.NoPreOpenRead): its chips are empty and it has no facts,
   // so the card says why; null for a read that measured
   function preRulerLine(p){
@@ -2417,42 +2522,6 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   function preStaleLine(p){
     var f = p.freshness;
     return f && f.stale && f.note ? skipLine('futures stale at the ' + viewerTime(p.row_ts) + ' read: ' + marketWords(f.note, p.row_ts)) : null;
-  }
-  // when it is checked: the call from the settled open (the card's start) to each mark, on one clock from ten
-  // minutes before the open; an average-price call is checked at both on its own pick, a card without one on each
-  // end-price sum's. The solid line is the open, the dashed one now
-  var CHECKS_LEAD_MIN = 10, CHECKS_TOP = 20;
-  function checksSvg(p, now){
-    var open = Date.parse(p.open), start = Date.parse(p.start), a = callSum(p.hour), by = (p.hour && p.hour.by) || {};
-    var t0 = open - CHECKS_LEAD_MIN * 60000, t1 = Date.parse(p.marks[1]), end = t0 + (t1 - t0) * TRACK_W / NEWEST_END;
-    function x(t){ return (t - t0) / (end - t0) * TRACK_W; }
-    var rows = [['open_10', p.marks[0], 'b-now', 't-now'], ['open_30', p.marks[1], 'b-open', 't-open']];
-    var ay = CHECKS_TOP + rows.length * ROW_H + 4;
-    var svg = svgEl('svg', {viewBox: '0 0 300 ' + (ay + 32), 'class': 'inplay', role: 'img',
-                            'aria-label': 'Checked twice from the ' + viewerTime(start) + ' price: at ' + viewerTime(p.marks[0]) + ' and ' + viewerTime(p.marks[1])});
-    if(now >= t0 && now <= end){
-      var nx = x(now).toFixed(1);
-      svg.appendChild(svgEl('line', {x1: nx, y1: CHECKS_TOP - 2, x2: nx, y2: ay, 'class': 'now'}));
-      svg.appendChild(svgEl('text', {x: Math.min(288, Math.max(12, nx)).toFixed(1), y: ay + 27, 'text-anchor': 'middle', 'class': 't-now-l'}, 'now'));
-    }
-    var ox = x(open);
-    svg.appendChild(svgEl('line', {x1: ox.toFixed(1), y1: CHECKS_TOP - 2, x2: ox.toFixed(1), y2: ay, 'class': 'axis'}));
-    svg.appendChild(svgEl('text', {x: (ox + 4).toFixed(1), y: 11, 'class': 't-axis'}, 'open ' + viewerTime(open)));
-    rows.forEach(function(r, i){
-      var sum = a && a !== p.hour ? a : by[r[0]];
-      var y = CHECKS_TOP + i * ROW_H, x0 = x(start), mark = Date.parse(r[1]), b = x(mark), name = sumSaid(sum);
-      svg.appendChild(svgEl('rect', {x: x0.toFixed(1), y: y, width: (b - x0).toFixed(1), height: 21, rx: 5, 'class': r[2]}));
-      if(name){
-        if(!fits(name, b - x0)) name = cap(sumPick(sum));
-        if(fits(name, b - x0)) svg.appendChild(svgEl('text', {x: (x0 + 5).toFixed(1), y: y + 14.5, 'class': r[3]}, name));
-      }
-      svg.appendChild(svgEl('text', {x: (b + 5).toFixed(1), y: y + 14.5, 'class': 't-side'}, Math.round((mark - start) / 60000) + ' min on'));
-    });
-    svg.appendChild(svgEl('line', {x1: 0, y1: ay, x2: TRACK_W, y2: ay, 'class': 'axis'}));
-    [start, Date.parse(p.marks[0]), t1].forEach(function(t){
-      svg.appendChild(svgEl('text', {x: x(t).toFixed(1), y: ay + 13, 'text-anchor': 'middle', 'class': 't-axis'}, viewerTime(t)));
-    });
-    return svg;
   }
   // the story so far: one chip per read today, oldest first, in its lean's colour, the newest ringed, REPORT over a
   // read made after a report; under each its time and the call it made. The row has a place for each of the day's
@@ -2509,74 +2578,16 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     });
     return box;
   }
-  // the page before the open: the header's words, the state chips, the mode, the 0DTE line, the pre-market card
-  // and, folded to one line, the opening reads that take over. From the bell to the hand-over the mode and the header
-  // say the market is open and when the day's first live read comes, never "before the open" of an open market; the
-  // card's own label names the card, so the age beside it is the read's, never the open's
-  function paintPre(p, ok){
-    tickers = []; shownPre = true; shownLeads = false;
-    $('h1').textContent = (p.symbol || 'SPX') + ' \u00B7 Forecast';
-    var sub = $('sub'), st = $('state'), main = $('main');
-    sub.classList.remove('err'); sub.hidden = false; main.textContent = ''; $('dock').textContent = ''; $('qBtn').hidden = true;
-    var chip = el('div', 'mode'); main.appendChild(chip);
-    var ex = expiryLine(p); if(ex) main.appendChild(ex);
-    var card = el('div', 'card dashed pre'), age = el('span', 'r'), lab = el('div', 'lab');
-    lab.appendChild(el('span', null, 'Pre-Market Call')); lab.appendChild(age); card.appendChild(lab);
-    card.appendChild(preClock(p));
-    preCall(p, card);
-    var unruled = preRulerLine(p); if(unruled) card.appendChild(unruled);
-    var stale = preStaleLine(p); if(stale) card.appendChild(stale);
-    card.appendChild(el('div', 'inplay-h', 'When it is checked'));
-    var checks = el('div'); card.appendChild(checks);
-    card.appendChild(tag('both checks start from the price at ' + viewerTime(p.start) + ', ' +
-                         Math.round((Date.parse(p.start) - Date.parse(p.open)) / 60000) + ' minutes after the open.'));
-    if(p.story && p.story.length){
-      card.appendChild(el('div', 'inplay-h', storyHead(p.story)));
-      card.appendChild(storySvg(p.story, ((p.schedule && p.schedule.reads) || []).length));
-    }
-    card.appendChild(preFacts(p));
-    card.appendChild(tag('hands over to the 5-minute opening reads at ' + viewerTime(p.handover) + '.' +
-                         (p.hour && callSum(p.hour).probabilities ? ' A forecast, graded by the bars, not a trade signal.' : '')));
-    main.appendChild(card);
-    var nf = el('div', 'card fold');
-    nf.appendChild(el('span', 'k', 'Opening reads')); nf.appendChild(el('b', null, 'First ' + viewerTime(p.handover)));
-    nf.appendChild(el('span', 'l', 'Every 5 min, 10-minute calls'));
-    main.appendChild(nf);
-    function update(){
-      var now = Date.now(), m = mins(p.row_ts), opened = now >= Date.parse(p.open), nr = preNextRead(p, now);
-      chip.textContent = opened ? 'Market Open' : 'before the open';
-      setHeadLine(p.day, headLine(nr));
-      // from the bell: when the day's first read comes, that it is due, or once its card is on hand when it came (the
-      // next read is the header's)
-      var first = todaysCard() ? 'came at ' + viewerTime(last.row_ts) : nr ? viewerTime(nr) : 'due';
-      sub.textContent = opened ? 'Opened ' + viewerTime(p.open) + ', first read ' + first
-                               : 'pre-market read ' + viewerTime(p.row_ts) + ', ' + ageWord(m) + ', open ' + viewerTime(p.open);
-      st.textContent = ''; preState(p, ok, now).forEach(function(w){ st.appendChild(el('span', 'state', w)); });
-      age.textContent = m == null ? '' : (m < 1 ? 'JUST NOW' : ageWord(m).toUpperCase());
-      age.classList.toggle('old', preMissed(p, now) != null);
-      checks.textContent = ''; checks.appendChild(checksSvg(p, now));
-    }
-    update(); tickers.push(update);
-  }
-  // No 30-minute card read yet: the pre-market card still leads before the open, drawn alone. False when it does not.
-  function preOnly(){
-    if(last || tabNow() !== 'five' || !preLeads(premarket, Date.now(), marketDay())) return false;
-    shownTab = leadTab();
-    paintPre(premarket, premarketOk);
-    paintSwitch();
-    clearLoading();
-    return true;
-  }
   // a new card, or a fetch that failed or recovered, is drawn only when the pre-market card leads, just did, folds
   // under the session's cards or turns today into a session day (waiting), so a card of another day never rebuilds
   // the page under a reader
   function redrawPre(){
     var now = Date.now(), today = marketDay();
-    if(waiting() === shownWait && !shownPre && !preLeads(premarket, now, today) && !preFolds(premarket, now, today)) return;
+    if(waiting() === shownWait && !shownPre && !preLeads(premarket, now, today) && !(tabNow() === 'five' && preFolds(premarket, now, today))) return;
     redraw();
   }
   function pollPre(){
-    if(!within(PRE_HOURS)){ if(premarket){ premarket = null; if(shownPre) tick(); else if(last) draw(last, lastOk); } return; }
+    if(!within(PRE_HOURS)){ if(premarket){ premarket = null; redraw(); } return; }
     // today's close-out has landed: the card is final, so the page stops asking for it
     if(preInflight || (premarket && premarket.day === marketDay() && premarket.closed_out_at)) return;
     preInflight = true;
@@ -2587,7 +2598,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       var d = j && j.kind === 'json' && j.data && j.data.lane === 'premarket' ? j.data : null;
       var changed = d && sig(d) !== sig(premarket), wasOk = premarketOk;
       premarketOk = true;
-      if(changed) premarket = d;
+      if(changed){ premarket = d; preGradesAt = 0; pollPreGrades(); }
       if(changed || !wasOk) redrawPre();
     }).catch(function(){ var wasOk = premarketOk; premarketOk = false; if(wasOk) redrawPre(); })
       .finally(function(){ preInflight = false; });
@@ -2758,8 +2769,18 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   function pollTapeGrades(){
     if(tapeGradesInflight || Date.now() - tapeGradesAt < BOOK_MS) return;
     tapeGradesInflight = true; tapeGradesAt = Date.now();
-    rawRows(TAPE_GRADES_URL).then(function(rows){ if(rows){ tapeGrades = rows; swStatus(); } else tapeGradesAt = 0; })
+    rawRows(TAPE_GRADES_URL).then(function(rows){ if(rows){ tapeGrades = rows; paintFiveBoard(); } else tapeGradesAt = 0; })
       .catch(function(){ tapeGradesAt = 0; }).finally(function(){ tapeGradesInflight = false; });
+  }
+  // the pre-market lane's grades (the same file's premarket lane, each read's two checks), for its score since its first
+  // day: on load and on every new pre-market card, at most once a minute
+  var PRE_GRADES_URL = '/api/store/file?name=JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON&lane=premarket&limit=2000';
+  var preGrades = null, preGradesAt = 0, preGradesInflight = false;
+  function pollPreGrades(){
+    if(preGradesInflight || Date.now() - preGradesAt < BOOK_MS) return;
+    preGradesInflight = true; preGradesAt = Date.now();
+    rawRows(PRE_GRADES_URL).then(function(rows){ if(rows){ preGrades = rows; paintFiveBoard(); } else preGradesAt = 0; })
+      .catch(function(){ preGradesAt = 0; }).finally(function(){ preGradesInflight = false; });
   }
   // the newest market day a grades file has a graded call of the horizon on
   function lastDay(rows, horizon){
@@ -3511,7 +3532,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   window.addEventListener('pageshow', wake);
   window.addEventListener('focus', wake);
   window.addEventListener('online', wake);
-  pollOptions(); pollLearn(); pollClaude(); pollDirection(); pollTapeGrades();
+  pollOptions(); pollLearn(); pollClaude(); pollDirection(); pollTapeGrades(); pollPreGrades();
   setInterval(function(){ if(!document.hidden){ pollOptions(); pollClaude(); } }, POLL_MS);
   setInterval(function(){ if(!document.hidden) pollDirection(); }, POLL_MS);
   setInterval(function(){ if(!document.hidden) pollLearn(); }, LEARN_MS);

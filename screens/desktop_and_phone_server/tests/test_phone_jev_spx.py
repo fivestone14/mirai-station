@@ -74,9 +74,9 @@ def _run(js, data=None, tz=LA):
         pytest.skip("node is not installed")
     script = ("const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + FIXED_NOW + FAKE_DOM
               + "".join(_fn(f) for f in ("viewerTime", "marketAt", "marketWords", "cap", "pct", "words", "startOf",
-                                          "leftWords", "verdict", "endPrice", "gradeOf", "laneLeads", "svgEl", "lastLaneRead", "hhmm", "marketClock",
+                                          "leftWords", "verdict", "endPrice", "gradeOf", "laneLeads", "svgEl", "hhmm", "marketClock",
                                           "marketDay", "sentence", "callSum", "endVerdict", "fallbackWords", "fallbackLine"))
-              + _var("VIEWER_FMT") + _var("WEEKDAYS") + _var("MARKET_TIME") + _var("NS") + _var("ROW_H") + js)
+              + _var("VIEWER_FMT") + _var("WEEKDAYS") + _var("MARKET_TIME") + _var("NS") + js)
     out = run_node(_NODE, script, input=json.dumps(data), capture_output=True, text=True, timeout=20,
                          env={**os.environ, "TZ": tz})
     assert out.returncode == 0, out.stderr
@@ -107,10 +107,9 @@ def test_the_page_reads_the_spx_cards_and_keeps_the_sndk_pages_modes():
     assert "var URL_ = '/api/store/file?name=JEV_LIVE_CARD';" in JS
     assert "var TAPE_URL = '/api/store/file?name=JEV_OPENING_CARD';" in JS
     assert "timedFetch(URL_)" in JS and "fetch(TAPE_URL, {cache:'no-store'})" in JS
-    assert "shownLeads = laneLeads(tape, Date.now(), marketDay());" in _fn("paint")
-    assert "main.appendChild(laneCard(tape, tapeOk));" in _fn("paint") and "main.appendChild(foldLive(c));" in _fn("paint")
-    assert "} else paintThirty(c, main);" in _fn("paint")
-    assert "var ex = expiryLine(c); if(ex) main.appendChild(ex);" in _fn("paint")
+    assert "shownLeads = laneLeads(tape, now, today);" in _fn("paint")
+    assert "if(five) paintFive(main);" in _fn("paint") and "else if(c) paintThirty(c, main);" in _fn("paint")
+    assert "var ex = expiryLine(c || p || tape); if(ex) main.appendChild(ex);" in _fn("paint")
     assert "laneLeads(tape, now, today) !== shownLeads" in _fn("tick")
     assert "setInterval(function(){ if(!document.hidden){ poll(); pollTape(); tick(); } }, POLL_MS);" in JS
     # the live price rides the station's existing quote route, every SPOT_MS in the session (inSession, the market-clock gate:
@@ -123,7 +122,7 @@ def test_the_page_reads_the_spx_cards_and_keeps_the_sndk_pages_modes():
     # the questions left the page for their own sheet (09-29), so no fold is remembered on the phone any more
     assert "jev.spx.folded" not in JS and "'jev.folded'" not in JS and "el('details'" not in JS
     assert "<title>SPX · Forecast</title>" in SPX and '<span id="h1">SPX &middot; Forecast</span>' in SPX
-    assert "' \\u00B7 Forecast'" in _fn("paint") and "' \\u00B7 Forecast'" in _fn("paintPre"), "the script writes the header's name too"
+    assert "' \\u00B7 Forecast'" in _fn("paint"), "the script writes the header's name too"
     assert "innerHTML" not in JS
     # the call sheet, opened by sheet.js loaded first
     assert 'id="jevSheet" role="dialog" aria-modal="true" aria-hidden="true"' in SPX
@@ -139,7 +138,7 @@ def test_every_time_on_the_page_goes_through_the_one_formatter():
     assert "timeZone:" not in _fn("viewerTime"), "the viewer's zone is the phone's own, never named"
     # the market clock stays New York's, and is used only for the schedule
     assert "timeZone: 'America/New_York'" in _fn("marketClock") and "timeZone: 'America/New_York'" in _fn("marketDay")
-    for f in ("clockBlock", "checksSvg", "openSituation", "nowCard", "nowChart", "fillAgree", "openMix", "openDirection", "openWhy", "foldLive", "laneCard", "question", "subLine", "expiryLine"):
+    for f in ("preClock", "preGlance", "fiveNow", "fiveWho", "openSituation", "nowCard", "nowChart", "fillAgree", "openMix", "openDirection", "openWhy", "question", "subLine", "expiryLine"):
         assert "viewerTime(" in _fn(f), f
 
 
@@ -339,7 +338,7 @@ def test_the_header_names_the_cards_market_day_and_the_next_read_in_the_viewers_
     night's next checkpoint the same way, then the day's first live read once the checkpoints are past, and both move
     with the clock."""
     js = ("var READ_MINUTES = [2, 32], LAST_READ_DEFAULT = '15:32', LAST_READ_LEAD_MIN = 28, nodes = {hdR: el('span'), hdZ: el('span')}; function $(id){ return nodes[id]; } function chartDocked(){ return !!D.wide; }"
-          "function tabNow(){ return D.lane ? 'five' : 'thirty'; } function laneNext(){ return D.lane ? Date.parse(D.lane) : null; }"
+          "function tabNow(){ return D.lane ? 'five' : 'thirty'; } function laneNext(){ return D.lane ? Date.parse(D.lane) : null; }" + _fn("preLeads") +
           "var last = D.c, premarket = D.pre || null, tape = null;" + _var("SPOT_URL") + _fn("within") + _fn("cardDay") + _fn("todaysCard") + _fn("dayClose") + _fn("inSession")
           + _fn("waiting") + _fn("nextRead") + _fn("dayName") + _fn("mins") + _fn("ageWord") + _fn("zoneName") + _fn("headLine") + _fn("setHeadLine") + _fn("setHead") + _fn("preNextRead") +
           "setHead(D.c); console.log(JSON.stringify([nodes.hdR.textContent + ' / ' + nodes.hdZ.textContent, D.pre ? headLine(preNextRead(D.pre, Date.now())) : null]));")
@@ -358,7 +357,7 @@ def test_the_header_names_the_cards_market_day_and_the_next_read_in_the_viewers_
     assert _run(js, {"now": "2026-10-09T15:40:00-04:00", "c": card, "wide": True}, LA)[0] == "Fri 10-09 / Times PDT"
     assert _run(js, {"now": "2026-10-12T05:00:00-04:00", "c": card, "pre": pre, "wide": True}, LA)[1] == "Times PDT · next read 03:35"
     assert "setHead(c);" in _fn("paint") and "setHead(c);" in _fn("ages"), "the next read moves with the clock"
-    assert "nr = preNextRead(p, now);" in _fn("paintPre") and "setHeadLine(p.day, headLine(nr));" in _fn("paintPre")
+    assert "setHeadLine(premarket.day, headLine(preNextRead(premarket, now)));" in _fn("setHead") and "tickers.push(function(){ setHead(last); });" in _fn("paint")
     assert '<span class="hd-r"><span id="hdR"></span><span class="hd-z" id="hdZ"></span></span>' in SPX and "BETA" not in SPX.split("<body>", 1)[1].split("<main", 1)[0]
 
 
@@ -391,7 +390,7 @@ def test_the_count_of_answers_reads_the_cards_counts_under_their_own_names_in_th
         assert _count(c) == f"{answered} of {len(c['questions'])} answered, 7 fresh on the 12:31 row"
         got = _whole({"live": c, "tape": MONDAY["tape"], "premarket": MONDAY["premarket"]}, "2026-09-28T15:40:00-04:00")
         assert got["state"] == [] and "answered" not in json.dumps(got["dom"])
-        assert got["qBtn"] == {"hidden": True, "text": f"Questions \u00B7 {c.get('asked') or 0} asked"}   # on the 30-minute tab the questions are its sheet's
+        assert got["qBtn"] == {"hidden": True, "text": f"Questions \u00B7 {c.get('asked') or 0}"}   # on the 30-minute tab the questions are its sheet's
     assert "qs.count = countWords(c);" in _fn("qsLoad") and "$('qsCount').textContent = 'This read: ' + qs.count;" in _fn("qsDraw")
     assert '<div class="qs-sub" id="qsCount"></div>' in SPX
 
@@ -402,7 +401,7 @@ def test_a_read_that_asked_no_question_says_so_instead_of_a_count_of_nothing():
     live = {k: v for k, v in MONDAY["live"].items() if k not in ("fresh", "held", "labels")}
     none = {**live, "asked": 0, "fresh_count": 0, "held_count": 0, "questions": [{**q, "answer": None, "skipped": "gate: not fired"} for q in live["questions"]]}
     assert _count(none) == "no question asked"
-    assert _whole({"live": none, "tape": MONDAY["tape"], "premarket": MONDAY["premarket"]}, "2026-09-28T15:40:00-04:00")["qBtn"]["text"] == "Questions \u00B7 0 asked"
+    assert _whole({"live": none, "tape": MONDAY["tape"], "premarket": MONDAY["premarket"]}, "2026-09-28T15:40:00-04:00")["qBtn"]["text"] == "Questions \u00B7 0"
     assert "!answered && !c.asked" in _fn("countWords")
 
 
@@ -426,7 +425,7 @@ def test_the_header_line_is_kept_for_a_stale_card_alone():
     # yesterday's last card on a day no lane has read, with no expiry calendar on it to make today a session day: the last session's
     assert _run(js, {"now": "2026-09-29T11:00:00-04:00", "c": last, "m": 1168}, LA) == "after the close, last row 12:31, 43 labels"
     assert "s.hidden = false;" in _fn("say") and "s.hidden = !text;" in _fn("setSub")
-    assert "setSub(staleLine(c, m));" in _fn("paint") and "setSub(staleLine(c, m));" in _fn("ages")
+    assert "setSub(five && !inSession() ? '' : staleLine(c, m));" in _fn("paint") and "setSub(tabNow() === 'five' && !inSession() ? '' : staleLine(c, m));" in _fn("ages")
 
 
 # Widths measured in Chrome with the shipped face at the header line's 13px: the stale line with its label count ran
@@ -458,16 +457,6 @@ def test_a_stale_header_line_fits_the_owners_360px_phone():
     assert _SUB_W[stale] <= column < _SUB_W["row 06:31, 39 min ago, stale, 125 labels, next read 07:32"]
     for line in (delayed, "row 12:31, 20 hr 29 min ago, stale"):
         assert _SUB_W[line] <= column
-
-
-def test_the_last_lane_read_is_known_from_the_schedules_stamps():
-    reads = [f"2026-09-28T{t}:00-04:00" for t in ("09:35", "09:40", "09:45", "09:50", "09:55", "10:00", "10:05", "10:10",
-                                                    "10:15", "10:20", "10:25", "10:30")]
-    cards = [{"row_ts": f"2026-09-28T{t}:00-04:00", "schedule": {"reads": reads}} for t in ("10:30", "10:29", "10:27", "10:25")]
-    cards.append({"row_ts": "2026-09-28T10:20:00-04:00", "schedule": {"reads": reads}, "closed_out_at": "2026-09-28T14:42:10+00:00"})
-    assert _run("console.log(JSON.stringify(D.map(lastLaneRead)));", cards, TOKYO) == [True, True, False, False, True]
-    # the hand-back is an instant from the card, drawn in the viewer's zone
-    assert "viewerTime(Date.parse(sch.reads[sch.reads.length - 1]) + sch.looks_ahead_min * 60000)" in _fn("laneCard")
 
 
 # ---- the expiry line
@@ -504,7 +493,7 @@ def test_after_the_settle_the_line_names_the_next_expiry_with_its_day():
 def test_every_line_the_page_writes_starts_with_a_capital():
     assert JS.count("el('div', 'tag', ") == 1 and JS.count("el('div', 'skip', ") == 1
     for word in ("'Options settle '", "'Next expiry settles '", "'Opening call'", "'No change'",
-                 "'Called at'", "'Usual odds'", "'Read '", "'Graded '"):
+                 "'Called at '", "'Usual odds'", "'Read '", "'Graded '"):
         assert word in JS, word
 
 
@@ -571,36 +560,14 @@ def test_the_page_fits_the_owners_360px_phone():
         assert _W[part] <= exp, f"{part!r} is wider than the expiry line at 360"
     assert _W["NORMAL · A CALL EVERY 30 MIN"] <= column
     assert _W["Read 06:50 GMT+5:30 … Graded 07:00"] <= card
-    # the pre-market drawings are 300 wide in their own units and scale to the card, so they never run past it
-    assert "width:100%;height:auto" in _rule(".inplay") and "viewBox: '0 0 300 '" in _fn("checksSvg")
+    # the night's story is 300 wide in its own units and scales to the card, so it never runs past it
+    assert "width:100%;height:auto" in _rule(".inplay") and "viewBox: '0 0 300 '" in _fn("storySvg")
     # the odds line under the bar is one line of words that wraps rather than cut (a five-way call on an old card)
     assert "nowrap" not in _rule(".odds-lab") and "overflow" not in _rule(".odds-lab") and "font:40011.5px/" in _rule(".odds-lab")
 
 
 # Chrome at 360 with the shipped face, measured on the live page on 2026-10-09: the leading card's mode chip in the clock's
 # row (11px capitals spaced .08em, 7px side padding, 1px border) and the time left beside it (11px bold, spaced .1em)
-_CLOCK_W = {"30-MIN CALL": 98.09, "10-MIN CALL · EVERY 5 MIN": 183.0, "WINDOW CLOSED": 113.5, "UNDER 1 MIN LEFT": 112.53,
-            "10 MIN LEFT": 74.7}
-
-
-def test_the_leading_cards_chip_and_time_left_share_one_row_on_the_owners_phone():
-    """Will's spacing pass of 2026-10-09: the mode chip and the time left are one row, so the 30-minute card's top is a line
-    shorter. At 360 the 30-minute chip fits beside the widest time left; the opening's longer chip fits beside its time
-    left until the call's last minute, when "Under 1 min left" wraps to its own line, right-aligned, never cut (the
-    opening's card leads only while its call is open, so it never says "Window closed"). The card's side padding stays
-    .card's 16px, which the 294px odds track is measured on; only its top and bottom tighten."""
-    card = 360 - 2 * 16 - 2 * _px(".card", "padding") - 2 * 1          # a dashed card: 1px border a side
-    gap = _px(".clock-top", "gap")
-    assert _CLOCK_W["30-MIN CALL"] + gap + _CLOCK_W["WINDOW CLOSED"] <= card
-    assert _CLOCK_W["10-MIN CALL · EVERY 5 MIN"] + gap + _CLOCK_W["10 MIN LEFT"] <= card
-    assert _CLOCK_W["30-MIN CALL"] + gap + _CLOCK_W["UNDER 1 MIN LEFT"] <= card
-    assert _CLOCK_W["10-MIN CALL · EVERY 5 MIN"] + gap + _CLOCK_W["UNDER 1 MIN LEFT"] > card   # so it wraps, which it may
-    assert _rule(".card.dashed").endswith("padding-top:12px;padding-bottom:14px") and "padding:" not in _rule(".card.dashed")
-    assert "#state:empty{display:none}" in SPX                    # no trouble, no gap under the price box
-    assert "main>.exp+.card{margin-top:-4px}" in SPX and ".lab.call+.big{margin-top:4px}" in SPX
-    assert "flex-wrap:wrap" in _rule(".clock-top") and "margin-left:auto" in _rule(".clock-top b")
-
-
 def test_the_sheets_lines_fit_or_wrap_on_the_owners_phone():
     """The situation sheet's verdict row holds the word beside the fact's name and wraps when a name is long; every
     other line of a sheet is a paragraph that wraps inside it, never a line held to one row."""
@@ -608,7 +575,7 @@ def test_the_sheets_lines_fit_or_wrap_on_the_owners_phone():
     assert "flex-wrap:wrap" in _rule(".cs-verdict")
     for sel in (".cs-result p", ".sh-caveat", ".cnote", ".cl-why-r", ".cl-rec"):
         assert "nowrap" not in _rule(sel) and "overflow" not in _rule(sel), sel
-    assert "flex-wrap:wrap" in _rule(".fold") and "nowrap" not in _rule(".fold .l")   # the pre-market fold wraps under its name
+    assert "nowrap" not in _rule(".pm-r") and "nowrap" not in _rule(".pm-went")   # the glance's tiles wrap their words
 
 
 def test_the_footnote_says_once_what_the_average_over_the_window_is():
@@ -623,10 +590,10 @@ def test_a_call_is_a_forecast_not_a_trade_signal_and_shadow_means_only_the_shado
     sums "in shadow" though they are graded. A call is the graded forecast, said to be no trade signal; shadow is kept
     for the shadow questions, asked and logged, never graded and never weighted (the question set's definition)."""
     assert "never a call" not in SPX and "Neither is a call" not in SPX and "in shadow" not in SPX
-    assert JS.count("not a trade signal") == 1                   # the pre-market card's closing line
+    assert JS.count("not a trade signal") == 0                   # said once, in the info sheet's paragraph
     # the page's last line, under the two buttons on their row (Final-Home, 2026-10-10)
     assert SPX.index('<p class="note" id="note">A forecast, graded by the bars. Not advice.</p>') > SPX.index('id="infoBtn"')
-    assert "$('note').textContent = 'A forecast, graded by the price bars. Not advice.';" in _fn("paint")       # Design B's words, set per tab
+    assert "+ 'A forecast, graded by the price bars. Not advice.';" in _fn("paint")       # Design B's words, set per tab
     assert "flex:11100%;margin:0;text-align:center" in _rule(".note")
     foot = re.search(r'(?s)<p class="foot">(.*?)</p>', SPX).group(1)
     assert "A call is a forecast, not a trade signal" in foot and "asked and logged, never graded and never weighted" in foot
@@ -757,22 +724,15 @@ def test_a_fetch_that_keeps_failing_draws_the_last_card_once_and_then_only_moves
 
 
 def test_the_opening_lane_is_drawn_while_the_30_minute_card_cannot_be_read():
-    """Monday's first morning with no 30-minute card on file: the open 5-minute call still leads, drawn alone;
-    once a 30-minute card has been read, paint draws both and this draws nothing."""
-    js = ("var last = D.last, tape = D.tape, premarket = D.premarket || null, tapeOk = true, tickers = [], shownLeads = false, shownTab = null, MAIN = el('div', 'main');"
-          "function $(id){ return MAIN; } function clearLoading(){} function laneCard(t, ok){ return el('div', 'lane', t.row_ts); }"
-          "function tabNow(){ return D.tab || 'five'; } function leadTab(){ return 'five'; } function paintSwitch(){}"
-          + _fn("top1") + _fn("preFolds") + _var("PRE_CHECKS") + _fn("preFold") + _fn("laneOnly") +
-          "var drew = laneOnly(); console.log(JSON.stringify([drew, shownLeads, MAIN.kids.map(function(k){ return k.textContent; })]));")
-    tape = {"lane": "tape", "row_ts": "2026-09-28T10:00:00-04:00", "calls": [call("10:00", "10:10", "flat", 0.4)]}
-    drew = _run(js, {"now": "2026-09-28T10:05:00-04:00", "last": None, "tape": tape})
-    assert drew == [True, True, ["2026-09-28T10:00:00-04:00", "30-min cardnot read yet"]]   # the mode chip heads the lane card
-    # the pre-market call, handed over, folds under them
-    drew = _run(js, {"now": "2026-09-28T10:05:00-04:00", "last": None, "tape": tape, "premarket": pre_card("09:28")})
-    assert drew[2][-1] == "pre-market call 06:28Up 41%Checked 06:44 and 07:04"
-    assert _run(js, {"now": "2026-09-28T10:05:00-04:00", "last": {"row_ts": "x"}, "tape": tape})[0] is False
-    assert _run(js, {"now": "2026-09-28T10:11:00-04:00", "last": None, "tape": tape})[0] is False    # the call has closed
-    assert _run(js, {"now": "2026-09-28T10:05:00-04:00", "last": None, "tape": tape, "tab": "thirty"})[0] is False   # the reader is on the 30-minute tab
+    """Monday's first morning with no 30-minute card on file: the 5-minute tab still leads with the open opening call,
+    drawn from the lane's card alone, the station's error said at the top; the 30-minute tab has no card to draw yet."""
+    tape = {**MONDAY["tape"], "closed_out_at": None}
+    got = _whole({"tape": tape, "premarket": MONDAY["premarket"]}, "2026-09-28T10:33:00-04:00")
+    assert got["err"] and got["sub"] == "the station said: no such file"
+    assert got["sw"][0] == "on" and [k for k, _ in got["main"]][:4] == ["exp", "card pm", "sec", "card"] and got["main"][2][1] == "Nowthe 07:30 call"
+    assert got["qBtn"]["hidden"] is False
+    late = _whole({"tape": tape}, "2026-09-28T10:41:00-04:00")                       # the call has closed: the 30-minute tab leads, with no card
+    assert late["sw"][2] == "on" and late["main"][-1] == ["card", "No 30-min card yet"]
 
 
 def test_the_blend_note_names_the_phase_by_its_hours_in_the_viewers_zone():
@@ -831,32 +791,6 @@ def test_every_question_group_has_a_heading_in_words():
     names = _run(decl + "console.log(JSON.stringify([ORDER, NAME]));", {})
     assert names[0] == shown and set(names[1]) == set(shown) and "_" not in "".join(names[1].values())
     assert "NAME[vp] || words(vp)" in _fn("qsDeck")
-
-
-FOLD_JS = ("var tickers = [], READ_MINUTES = [2, 32], LAST_READ_DEFAULT = '15:32';" + _fn("top1") + _fn("plusIso") + _fn("nextRead")
-           + _fn("noCallWords") + _fn("jevOwn") + _fn("combinedCall") + _fn("headline") + _fn("foldLive")
-           + "var f = foldLive(D.c); console.log(JSON.stringify([f.kids.map(function(k){ return k.textContent; }), tickers.length]));")
-
-
-def test_the_folded_30_minute_line_counts_down_only_a_call_that_was_made():
-    """The 09:32 read asks nothing, so from 09:35 to 10:02 the opening view has no 30-minute call to time."""
-    c = {"row_ts": "2026-09-28T09:31:20-04:00", "hour": None, "marks": {"next_30": "2026-09-28T10:00:00-04:00"},
-         "session": {"close": "2026-09-28T16:00:00-04:00", "last_read": "2026-09-28T15:32:00-04:00"}}
-    assert _run(FOLD_JS, {"now": "2026-09-28T09:52:00-04:00", "c": c}, LA) == [
-        ["30-min call \u00B7 06:31", "No 30-minute call on this read, next read 07:02"], 0]
-
-
-def test_the_folded_30_minute_line_names_the_pick_the_card_would_lead_with():
-    """One rule for the headline (headline): under the opening call the fold names the combined forecast's pick on a
-    card since the cut-over (shown_source learner_pool; pool_v2 on a card from before 2026-10-11), never JEV's own beside it (Will, 2026-10-07: two answers on one
-    screen confused); on a card from before it, JEV's own read, as the card led with it then."""
-    blend = {"used": True, "jev_share": 0.5}
-    avg = {"pick": "flat", "probabilities": {"up": 0.38, "flat": 0.47, "down": 0.15}, "blend": blend, "shown_source": "learner_pool",
-           "jev": {"pick": "up", "probabilities": {"up": 0.67, "flat": 0.2, "down": 0.13}}}
-    c = {"row_ts": "2026-09-28T10:02:10-04:00", "marks": {"next_30": "2026-09-28T10:32:00-04:00"}, "hour": {"average": avg}}
-    assert _run(FOLD_JS, {"now": "2026-09-28T10:05:00-04:00", "c": c}, LA)[0] == ["30-min call \u00B7 07:02", "Flat 47%", "27 min left"]
-    older = {**c, "hour": {"average": {k: v for k, v in avg.items() if k != "shown_source"}}}
-    assert _run(FOLD_JS, {"now": "2026-09-28T10:05:00-04:00", "c": older}, LA)[0] == ["30-min call \u00B7 07:02", "Up 67%", "27 min left"]
 
 
 # the time-of-day sheet over 09-29's real counts (clock._blocks on the 20 sessions before it): five parts, 09-01 left out
@@ -971,26 +905,28 @@ def test_the_live_price_says_its_change_since_the_last_close_only_on_todays_card
 
 
 def _needle(price, card_day="2026-10-08", now="2026-10-08T14:35:00-04:00", later=None):
-    """The called-at bar of the owner's 14:31 call on 2026-10-08 (7,756.79, flat edge 2.24), drawn with a quote of
-    ``price`` (None: no quote yet), then, with ``later``, moved by the next quote through paintPx."""
+    """The flat band strip of the owner's 14:31 call on 2026-10-08 (7,756.79, flat edge 2.24), drawn with a quote of
+    ``price`` (None: no quote yet), then, with ``later``, moved by the next quote through paintPx: the strip's marks,
+    the live needle, its label and its key row."""
     js = ("var IDS = {}; " + _PX_IDS + ".forEach(function(k){ IDS[k] = el('div'); });"
           "function $(id){ return IDS[id]; } function chartVisible(){ return false; } function chartDocked(){ return false; } var last = {row_ts: D.card + 'T14:31:03-04:00'};"
           "var premarket = null, tape = null, spot = D.price == null ? null : {price: D.price, at: Date.now(), fresh: true};"
-          + _var("SPOT_URL") + _var("SPOT_LIVE_MS") + _var("AVG_REACH") + "".join(_fn(f) for f in ("tag", "averageWords", "indexLevel", "money", "within",
-                                                                                 "cardDay", "todaysCard", "dayClose", "inSession", "spotState", "placeNow", "calledAt", "paintPx"))
-          + "var bar = calledAt({price: 7756.79, edge_points: 2.24}, 30).kids[1], n = bar.kids[2];"
+          + _var("SPOT_URL") + _var("SPOT_LIVE_MS") + _var("AVG_REACH") + "".join(_fn(f) for f in ("tag", "averageWords", "indexLevel", "money", "within", "signedOne", "keyRow",
+                                                                                 "cardDay", "todaysCard", "dayClose", "inSession", "spotState", "stripAt", "bandWords", "placeNow", "calledAt", "paintPx"))
+          + "var strip = calledAt({price: 7756.79, edge_points: 2.24}, null), bar = strip.kids[1], n = bar.kids[2];"
           "if(D.later != null){ spot = {price: D.later, at: Date.now(), fresh: true}; paintPx(); }"
           "console.log(JSON.stringify({kids: bar.kids.map(function(k){ return k.attrs['class']; }), hidden: !!n.hidden,"
-          " left: n.style.left, label: bar.attrs['aria-label']}));")
+          " left: n.style.left, label: bar.attrs['aria-label'], key: strip.kids[3].kids[1].textContent}));")
     return _run(js, {"price": price, "card": card_day, "now": now, "later": later})
 
 
 def test_the_called_at_bar_keeps_the_call_fixed_and_moves_a_second_needle_with_the_live_price():
-    """Will's mockup of 2026-10-09: the ink needle stays on the price the call was made at; a blue one follows the live
-    price across the bar, which reaches 1.25 flat edges either side of the call (the band is one), resting at an end
-    when price runs past it. No words say where price is: the price box already does."""
+    """Will's mockup of 2026-10-09, drawn as Design B's strip (2026-10-14): the ink needle stays on the price the call was
+    made at; a blue one follows the live price across the strip, which reaches 2.25 flat edges either side of the call
+    (the band is one), resting at an end when price runs past it; its key row says where price is against the band."""
     inside = _needle(7758.10)
-    assert inside["kids"] == ["band", "at", "now"] and inside["hidden"] is False and inside["left"] == "73.4%"
+    assert inside["kids"] == ["band", "at", "now"] and inside["hidden"] is False and inside["left"] == "63.0%"
+    assert inside["key"] == "Price now 7,758.10 \u00B7 inside the band"
     assert inside["label"].startswith("Flat from 7,754.") and inside["label"].endswith(", price now 7,758.10")
     assert _needle(7756.79)["left"] == "50.0%"                                # on the call, over the ink needle
     assert _needle(7765.0)["left"] == "100.0%" and _needle(7740.0)["left"] == "0.0%"   # past either end, it rests there
@@ -998,25 +934,22 @@ def test_the_called_at_bar_keeps_the_call_fixed_and_moves_a_second_needle_with_t
     assert none["hidden"] is True and ", price now" not in none["label"]       # no quote yet: only the call's needle
     assert _needle(7758.10, card_day="2026-10-07")["hidden"] is True           # another day's card never shows today's price
     moved = _needle(None, later=7755.39)                                       # the next quote moves it (paintPx)
-    assert moved["hidden"] is False and moved["left"] == "25.0%"
+    assert moved["hidden"] is False and moved["left"] == "36.1%" and moved["key"] == "Price now 7,755.39 \u00B7 inside the band"
     assert ".avg-bar .now[hidden]{display:none}" in SPX
     assert "@media (prefers-reduced-motion:reduce){.avg-bar .now{transition:none}}" in SPX   # it jumps for those who ask for less motion
 
 
 def test_the_mode_chip_heads_the_leading_card_and_the_record_row_closes_it():
-    """The mode chip heads the opening card, riding the clock's row beside the time left (Will's 2026-10-09 spacing pass;
-    when both don't fit the time left wraps to its own line, right-aligned); the 30-minute tab has no chip, its section
-    heads say what each part is (Design B, 2026-10-14): Now, the window, who agrees, then the scoreboard under its key,
-    the board closing the tab before the way to the results. The top keeps only trouble (a failed fetch, an unsent read,
-    a stale row's note), and the count of answers is said in the questions sheet."""
-    assert "el('div', 'mode', newest.minutes + '-min call \\u00B7 every ' + TAPE_STEP_MIN + ' min')));" in _fn("laneCard")
-    assert "if(chip) top.appendChild(chip); top.appendChild(left);" in _fn("clockBlock")
-    assert "flex-wrap:wrap" in _rule(".clock-top") and ".clock-top .mode{align-self:center;" in SPX
-    assert "'mode'" not in _fn("laneOnly") and "main.appendChild(el('div', 'mode'" not in _fn("paint") and "'mode'" not in _fn("paintThirty")
+    """Design B (2026-10-14) has no mode chip: the switch says which clock leads, and each tab's section heads say what
+    each part is. The 30-minute tab: Now, the window, who agrees, then the scoreboard under its key, the board closing
+    the tab before the way to the results; the 5-minute tab: the pre-market glance, Now, who answers, the morning's
+    scoreboard, the results, what the market is doing. The top keeps only trouble, and the count of answers is said in
+    the questions sheet."""
+    assert ".mode{" not in SPX and "'mode'" not in JS
     assert re.findall(r"main\.appendChild\((\w+)", _fn("paintThirty")) == ["secHead", "nowCard", "agreeCard", "secHead", "squareKey", "boardCard", "link"]
-    assert _fn("paintThirty").index("boardCard(c)") < _fn("paintThirty").index("'/m/reads.html#combined'")
-    assert "' answered'" not in _fn("paint")
-    assert ".card>.mode{width:fit-content;margin-bottom:12px}" in SPX and "state answered" not in SPX and ".answered{" not in SPX
+    assert re.findall(r"main\.appendChild\((\w+)", _fn("paintFive")) == ["preGlance", "preGlance", "secHead", "preNow", "secHead", "fiveNow", "laneDone",
+                                                                         "fiveWho", "secHead", "squareKey", "fiveBoard", "link", "mk"]
+    assert "' answered'" not in _fn("paint") and "answered'" not in _fn("preState")
 
 
 def test_an_older_cards_half_and_half_is_named_as_the_graded_tile():
@@ -1091,10 +1024,12 @@ def pre_card(at="09:28", day=PRE_DAY, report=True, sent=None, checkpoints=CHECKP
     return {**card, **over}
 
 
-PRE_FNS = ("fits", "top1", "oddsKeys", "oddsBar", "tag", "skipLine", "averageWords", "jevOwn", "endPriceRow", "ageWord", "mins", "untilWords", "expiryLine",
-           "cardDay", "todaysCard", "nextRead", "preLeads", "preNextRead", "preMissed", "preJevRead", "preJevDue", "preUnsent", "preState", "shapeWords",
-           "sumPick", "sumSaid", "dayName", "zoneName", "headLine", "setHeadLine", "preClock", "preCall", "preRulerLine", "preStaleLine", "checksSvg", "chipFits", "storySide", "storyHead", "storySvg", "preFacts", "paintPre")
-PRE_VARS = ("WEEKDAYS", "ODDS_ORDER", "EXPIRY_TAGS", "PRE_LATE_MIN", "OPENS", "THEN", "CHECKS_LEAD_MIN", "CHIP_W", "READ_MINUTES", "LAST_READ_DEFAULT")
+PRE_FNS = ("top1", "oddsKeys", "oddsBar", "tag", "skipLine", "averageWords", "ageWord", "mins", "untilWords", "expiryLine", "labRow", "secHead", "dayName",
+           "cardDay", "todaysCard", "nextRead", "preLeads", "preFolds", "preNextRead", "preMissed", "preJevRead", "preUnsent", "preState", "sumPick", "sumSaid",
+           "preClock", "preRulerLine", "preStaleLine", "chipFits", "storySide", "storyHead", "storySvg", "preFacts", "sideCls", "arrow", "preChecks",
+           "preNoCall", "preGlance", "preNow", "preMarketCard", "threeWay", "ifMoves", "waVal", "waRow", "fiveWho", "sqRow", "rightWords", "openWords",
+           "sbRow", "sbCell", "laneSince", "preDays", "preSince", "dayCalls", "laneToday", "laneStates", "fiveBoard", "fillFive")
+PRE_VARS = ("WEEKDAYS", "ODDS_ORDER", "EXPIRY_TAGS", "PRE_LATE_MIN", "CHIP_W", "READ_MINUTES", "LAST_READ_DEFAULT", "PRE_CHECKS", "WENT", "SQ_KEY")
 # the page's #h1, #sub, #state and #main, with the classList the pre-market card toggles; no 30-minute card is on hand
 PRE_DOM = """
 Object.defineProperty(Node.prototype, 'classList', {get: function(){ var n = this; function has(){ return (n.attrs['class'] || '').split(' ').filter(Boolean); }
@@ -1102,7 +1037,8 @@ Object.defineProperty(Node.prototype, 'classList', {get: function(){ var n = thi
           toggle: function(k, on){ var h = has().filter(function(x){ return x !== k; }); if(on) h.push(k); n.attrs['class'] = h.join(' '); }}; }});
 var nodes = {h1: el('span'), hdR: el('span'), hdZ: el('span'), sub: el('div'), state: el('div'), main: el('main'), dock: el('div'), qBtn: el('button')};
 function $(id){ return nodes[id]; }
-var tickers = [], shownPre = false, shownLeads = false, last = null;
+var tickers = [], shownPre = false, shownLeads = false, last = null, tape = null, tapeGrades = null, preGrades = null, premarket = D.card;
+function setTab(){} function tabNow(){ return 'five'; } function laneLeads(){ return false; }
 """
 
 
@@ -1111,19 +1047,22 @@ def _pre(js, data, tz=LA):
 
 
 def _page(card, now, tz=LA, ok=True):
-    """paintPre on ``card`` at ``now``: the header line, the state chips, and each of main's parts as its class and flat text."""
-    js = ("paintPre(D.card, D.ok);"
-          "function flat(n){ return n._t + n.kids.map(flat).join(''); }"
-          "console.log(JSON.stringify({sub: nodes.sub.textContent, state: nodes.state.kids.map(flat),"
-          " main: nodes.main.kids.map(function(k){ return [k.attrs['class'] || k.tag, k]; }).map(function(x){ return [x[0], dump(x[1])]; }),"
-          " tickers: tickers.length, shownPre: shownPre, qBtn: nodes.qBtn.hidden}));")
+    """The 5-minute tab's pre-market parts on ``card`` at ``now`` (Design B): the state chips, the glance, the window
+    (before the hand-over the clock to the open and the night's story), who answers it, and the facts card, each dumped."""
+    js = ("var glance = preGlance(D.card), win = preNow(D.card), who = fiveWho(null), facts = preMarketCard(D.card);"
+          "console.log(JSON.stringify({state: preState(D.card, D.ok, Date.now()), glance: dump(glance), now: dump(win), who: dump(who),"
+          " facts: facts && dump(facts), tickers: tickers.length}));")
     return _pre(js, {"card": card, "now": now, "ok": ok}, tz)
 
 
 def _card_parts(got):
-    """The pre-market card's children, each as [class, flat text]."""
-    card = [m[1] for m in got["main"] if "pre" in m[0].split()][0]
-    return [[k["attrs"].get("class", k["tag"]), _flat_text(k)] for k in card["kids"]]
+    """The window's (before the hand-over) children, each as [class, flat text]."""
+    return [[k["attrs"].get("class", k["tag"]), _flat_text(k)] for k in got["now"]["kids"]]
+
+
+def _glance(got):
+    """The glance's children, each as [class, flat text]: its head, its call, its two tiles."""
+    return [[k["attrs"].get("class", k["tag"]), _flat_text(k)] for k in got["glance"]["kids"]]
 
 
 def test_the_page_reads_the_premarket_card_and_it_leads_before_the_open():
@@ -1133,13 +1072,11 @@ def test_the_page_reads_the_premarket_card_and_it_leads_before_the_open():
     # after the hand-over the card is fetched until today's close-out lands, then left as it is
     assert "premarket.day === marketDay() && premarket.closed_out_at)) return;" in _fn("pollPre")
     assert "pollPre();" in _fn("poll")
-    # paint hands the whole page to the pre-market card while it leads; tick and the ages follow it
-    assert _fn("paint").lstrip("\n").splitlines()[3] == \
-        "    if(tabNow() === 'five' && preLeads(premarket, Date.now(), marketDay())){ paintPre(premarket, premarketOk); paintSwitch(); return; }"
-    assert "preLeads(premarket, now, today) !== shownPre" in _fn("tick")
-    assert "if(shownPre) return;" in _fn("ages")
-    assert _fn("poll").count("preOnly() || laneOnly();") == 3
-    for f in ("preState", "preClock", "preCall", "checksSvg", "storySvg", "preFacts", "paintPre"):
+    # the 5-minute tab leads while the pre-market card does, and draws it (paintFive); tick follows the hand-over
+    assert "preLeads(premarket, now, today) || laneLeads(tape, now, today) ? 'five' : 'thirty'" in _fn("leadTab")
+    assert "if(five) paintFive(main);" in _fn("paint") and "preLeads(premarket, now, today) !== shownPre" in _fn("tick")
+    assert _fn("poll").count("redraw(); say(") == 3 and "preOnly" not in JS and "laneOnly" not in JS and "paintPre" not in JS
+    for f in ("preState", "preClock", "preGlance", "preNow", "storySvg", "preFacts", "fiveNow", "fiveWho"):
         assert "viewerTime(" in _fn(f), f
 
 
@@ -1159,30 +1096,29 @@ def test_the_premarket_card_leads_only_on_its_own_day_until_the_hand_over(card, 
 
 
 def test_a_call_leads_the_card_with_its_shape_its_checks_and_the_story():
+    """Design B's 5-minute tab before the hand-over (2026-10-14): the pre-market call at a glance (its read, when its
+    checks come, its pick big, a tile per check still to come), the window being the open (the clock to it and when the
+    call is checked, the night's story one chip per read), who answers it (the pre-market call, JEV alone, no mix; the
+    30-minute reads make no 10-minute calls), and the night's facts in words; no chip but trouble."""
     got = _page(pre_card("09:28"), et("09:28", s="20"))
-    assert got["sub"] == "pre-market read 06:28, just now, open 06:30"
-    assert got["state"] == ["1 of 2 answered"] and got["shownPre"] is True and got["tickers"] == 3 and got["qBtn"] is True
-    assert [m[0] for m in got["main"]] == ["mode", "exp", "card dashed pre", "card fold"]
-    assert _flat_text(got["main"][0][1]) == "before the open"
+    assert got["state"] == [] and got["tickers"] == 1
+    assert _glance(got) == [["pm-top", "Pre-market · 06:28Checks at 06:44, 07:04"], ["pm-call", "Up 41%called for the first half hour"],
+                            ["pm-tiles", "10 min · 06:44Not checked yetOpen30 min · 07:04Not checked yetOpen"]]
     parts = _card_parts(got)
-    assert parts[0] == ["lab", "Pre-Market CallJUST NOW"]
-    assert parts[1][1] == "Opens 06:302 min to goRead 06:28 PDTChecked 06:44 and 07:04"
-    assert parts[2] == ["big", "Up 41%"]
-    assert parts[3] == ["shape", "Opens firm, holds: up at the first check, still up at the second"]
-    assert parts[5] == ["inplay-h", "When it is checked"]
-    assert parts[7] == ["tag", "Both checks start from the price at 06:34, 4 minutes after the open."]
-    assert parts[8] == ["inplay-h", "Story so far · 6 reads, all up"]
-    facts = [m for m in parts if m[0] == "facts"][0][1]
-    assert facts.startswith("S&P futuresBigger nightS&P futures stand 0.62% above their 13:00 price")   # market words, the viewer's zone
+    assert parts[0] == ["div", "Opens 06:302 min to goRead 06:28 PDTChecked 06:44 and 07:04"]
+    assert parts[1] == ["inplay-h", "Story so far · 6 reads, all up"] and parts[2][0] == "inplay story"
+    assert parts[-1] == ["tag", "Both checks start from the price at 06:34, 4 minutes after the open; the 5-minute opening calls start at 06:35."]
+    who = _flat_text(got["who"])
+    assert who.startswith("Who answers this?the first half hourReadMost likelyIf it movesPre-market callThe callJEV alone, no mixUp 41%")
+    assert who.endswith("Combined call · Direction line · ClaudeNone of them make 10-minute calls. Their answers are on the 30-min tab")
+    facts = _flat_text(got["facts"])
+    assert facts.startswith("What the market is doingseen at 06:28S&P futuresBigger nightS&P futures stand 0.62% above their 13:00 price")   # market words, the viewer's zone
     assert "05:30 reportExtendedSince the 05:30 jobless claims" in facts
-    assert parts[-1] == ["tag", "Hands over to the 5-minute opening reads at 06:35. A forecast, graded by the bars, not a trade signal."]
-    assert _flat_text(got["main"][3][1]) == "Opening readsFirst 06:35Every 5 min, 10-minute calls"
+    assert "not a trade signal" not in json.dumps(got)
 
 
 def _fold(card, now, tz=LA):
-    js = (_fn("preFolds") + _var("PRE_CHECKS") + _fn("preFold") +
-          "console.log(JSON.stringify({folds: preFolds(D.card, Date.now(), marketDay()),"
-          " fold: preFolds(D.card, Date.now(), marketDay()) ? dump(preFold(D.card)) : null}));")
+    js = ("console.log(JSON.stringify({folds: preFolds(D.card, Date.now(), marketDay()), glance: dump(preGlance(D.card))}));")
     return _run(PRE_DOM + "".join(_fn(f) for f in PRE_FNS) + "".join(_var(v) for v in PRE_VARS) + js, {"card": card, "now": now}, tz)
 
 
@@ -1214,40 +1150,39 @@ def _partial(**checks):
 
 
 @pytest.mark.parametrize("card, now, tz, want", [
-    (pre_card("09:28"), et("09:50"), LA, "pre-market call 06:28Up 41%Checked 06:44 and 07:04"),
+    (pre_card("09:28"), et("09:50"), LA, ["Pre-market · 06:28Checks at 06:44, 07:04", "10 min · 06:44Not checked yetOpen", "30 min · 07:04Not checked yetOpen"]),
     # each check on the average price over its window, of the call's own pick, as the close-out log counts it
     (_partial(open_10={"outcome": "up", "hit": True, "pick": "up", "integral": on_call("down", "right")}), et("10:30"), LA,
-     "pre-market call 06:28Down 45%06:44 was Down, right · 07:04 not graded yet"),
+     ["Pre-market · 06:281 of 2 right", "10 min · 06:44Went downRight", "30 min · 07:04Not checked yetOpen"]),
     # the 09:45 check is the call's, whatever the ten-minute end-price question said (unsure here)
     (_closed(open_10={"outcome": "flat", "hit": False, "pick": "unsure", "integral": on_call("up", "wrong")},
              open_30={"outcome": "down", "hit": True, "pick": "down", "integral": on_call("down", "right")}), et("10:30"), LA,
-     "pre-market call 06:28Down 45%06:44 was Up, wrong · 07:04 was Down, right"),
+     ["Pre-market · 06:281 of 2 right", "10 min · 06:44Went upWrong", "30 min · 07:04Went downRight"]),
     (_closed(open_10={"outcome": "down", "hit": True, "pick": "down", "integral": on_call("down", "right")},
              open_30={"outcome": "down_small", "hit": False, "pick": "flat", "integral": on_call("down", "right")}), et("10:30"), TOKYO,
-     "pre-market call 22:28Down 45%22:44 was Down, right · 23:04 was Down, right"),
+     ["Pre-market · 22:282 of 2 right", "10 min · 22:44Went downRight", "30 min · 23:04Went downRight"]),
     # no average-price grade: the end price alone, said so, judged on the call's pick, not the end-price question's
     (_closed(open_10={"outcome": "down", "hit": False, "pick": "up"}, open_30={"outcome": "flat", "hit": False, "pick": "unsure"}), et("10:30"), LA,
-     "pre-market call 06:28Down 45%06:44 ended Down, right · 07:04 ended Flat, wrong"),
+     ["Pre-market · 06:281 of 2 right", "10 min · 06:44Ended downRight", "30 min · 07:04Ended flatWrong"]),
     # a read whose average-price sum got no answer calls the end-price question's pick, and each box is checked on its own
     (_closed(average={"error": "HTTP 529", "primary": "open_average_30", "box": "open_30"},
              open_10={"outcome": "flat", "hit": False, "pick": "unsure", "integral": graded("down", "passed")},
              open_30={"outcome": "flat", "hit": False, "pick": "unsure"}), et("10:30"), LA,
-     "pre-market call 06:28Up 41%06:44 was Down, passed · 07:04 ended Flat, passed"),
-    # closed out with a check ungraded: it never will be, said so, with the grader's reason in the viewer's zone
-    (_closed(), et("12:00"), NY, "pre-market call 09:28Down 45%09:44 not graded at the close-out · 10:04 not graded at the close-out"),
-    (_closed("halted window: no settled open (the 09:34 bar) on a finished day"), et("12:00"), LA,
-     "pre-market call 06:28Down 45%06:44 not graded at the close-out · 07:04 not graded at the close-out "
-     "(halted window: no settled open (the 06:34 bar) on a finished day)"),
+     ["Pre-market · 06:280 of 2 right", "10 min · 06:44Went downPassed", "30 min · 07:04Ended flatPassed"]),
+    # closed out with a check ungraded: it never will be, said so
+    (_closed(), et("12:00"), NY, ["Pre-market · 09:28Checks at 09:44, 10:04", "10 min · 09:44Not gradedClosed out", "30 min · 10:04Not gradedClosed out"]),
     (_closed("halted window: no bar at the mark", open_10={"outcome": "flat", "hit": True, "pick": "flat", "integral": on_call("up", "wrong")}),
-     et("12:00"), LA, "pre-market call 06:28Down 45%06:44 was Up, wrong · 07:04 not graded at the close-out (halted window: no bar at the mark)"),
+     et("12:00"), LA, ["Pre-market · 06:280 of 2 right", "10 min · 06:44Went upWrong", "30 min · 07:04Not gradedClosed out"]),
 ])
 def test_after_the_hand_over_the_call_folds_to_one_line_with_each_checks_result(card, now, tz, want):
-    """The call is checked at 09:44 and 10:04 and the close-out grades both at 10:06: once the opening lane takes
-    over, the card is still fetched until that close-out lands, and its call folds to a line under the session's
-    cards giving each check's result, in the viewer's zone, as the live card's folded line gives its call."""
+    """The call is checked at 09:44 and 10:04 and the close-out grades both at 10:06: once the opening lane takes over,
+    the card is still fetched until that close-out lands, and its glance on the 5-minute tab gives each check's result
+    in a tile, in the viewer's zone: where the average went (the end price alone said so) and whether the call was
+    right, with the score in the pill."""
     got = _fold(card, now, tz)
-    assert got["folds"] is True and _flat_text(got["fold"]) == want
-    assert got["fold"]["attrs"]["class"] == "card fold"
+    g = got["glance"]
+    assert got["folds"] is True and [_flat_text(g["kids"][0])] + [_flat_text(t) for t in g["kids"][2]["kids"]] == want
+    assert g["attrs"]["class"] == "card pm"
 
 
 def _alone(**checks):
@@ -1261,23 +1196,25 @@ def _alone(**checks):
 
 
 @pytest.mark.parametrize("card, want", [
-    (_alone(open_10={"integral": on_call("down", "right")}), "pre-market call 06:28Down 45%06:44 was Down, right · 07:04 not graded yet"),
+    (_alone(open_10={"integral": on_call("down", "right")}), ["Pre-market · 06:281 of 2 right", "10 min · 06:44Went downRight", "30 min · 07:04Not checked yetOpen"]),
     (_alone(open_10={"integral": on_call("down", "right")}, open_30={"integral": on_call("up", "wrong")}),
-     "pre-market call 06:28Down 45%06:44 was Down, right · 07:04 was Up, wrong"),
+     ["Pre-market · 06:281 of 2 right", "10 min · 06:44Went downRight", "30 min · 07:04Went upWrong"]),
     (_alone(open_10={"integral": {"graded": False, "reason": "not graded: a window with bars missing"}}),
-     "pre-market call 06:28Down 45%06:44 not graded yet · 07:04 not graded yet"),
+     ["Pre-market · 06:28Checks at 06:44, 07:04", "10 min · 06:44Not checked yetOpen", "30 min · 07:04Not checked yetOpen"]),
 ])
 def test_a_call_whose_end_price_sums_got_no_answer_still_folds_with_its_checks(card, want):
     """Only the end-price request failed: the card's hour holds the average-price call and no end-price odds, and the
-    fold once needed those, so the call vanished at the hand-over. It folds on the call's own odds, each check on its
-    average-price grade alone."""
+    fold once needed those, so the call vanished at the hand-over. Its glance stands on the call's own odds, each check
+    on its average-price grade alone."""
     got = _fold(card, et("10:30"))
-    assert got["folds"] is True and _flat_text(got["fold"]) == want
+    g = got["glance"]
+    assert got["folds"] is True and [_flat_text(g["kids"][0])] + [_flat_text(t) for t in g["kids"][2]["kids"]] == want
 
 
 def test_a_call_whose_end_price_sums_got_no_answer_is_still_said_to_be_a_forecast():
-    parts = _card_parts(_page(_alone(), et("09:28", s="20")))
-    assert parts[-1] == ["tag", "Hands over to the 5-minute opening reads at 06:35. A forecast, graded by the bars, not a trade signal."]
+    got = _page(_alone(), et("09:28", s="20"))
+    assert _glance(got)[1] == ["pm-call", "Down 45%called for the first half hour"]
+    assert "Down 45%" in _flat_text(got["who"])
 
 
 @pytest.mark.parametrize("card, now", [
@@ -1290,74 +1227,48 @@ def test_no_fold_while_the_card_leads_on_another_day_or_without_a_call(card, now
 
 
 def test_the_fold_follows_the_session_cards_and_the_opening_lane_alone():
-    assert "if(preFolds(premarket, Date.now(), marketDay())) main.appendChild(preFold(premarket));" in _fn("paint")
-    assert "if(preFolds(premarket, Date.now(), marketDay())) main.appendChild(preFold(premarket));" in _fn("laneOnly")
-    assert "!preFolds(premarket, now, today)) return;" in _fn("redrawPre")
-
-
-def test_the_checks_drawing_names_both_sums_from_the_settled_open_in_the_viewers_zone():
-    js = "console.log(JSON.stringify(dump(checksSvg(D.card, Date.parse(D.now)))));"
-    svg = _pre(js, {"card": pre_card("09:28"), "now": et("09:28", s="40")}, TOKYO)
-    assert _texts(svg, "t-axis") == ["open 22:30", "22:34", "22:44", "23:04"]
-    assert _texts(svg, "t-now") == ["Up 42%"] and _texts(svg, "t-open") == ["Up 41%"]
-    assert _texts(svg, "t-side") == ["10 min on", "30 min on"] and _texts(svg, "t-now-l") == ["now"]
-    assert svg["attrs"]["aria-label"] == "Checked twice from the 22:34 price: at 22:44 and 23:04"
-    assert all(0 <= float(k["attrs"].get("x", 0)) <= 300 for k in svg["kids"] if k["tag"] == "text")
-    # hours before the open the dashed now line is off the drawing, and a card with no call names no bar
-    early = _pre(js, {"card": pre_card("02:35"), "now": et("02:36")}, LA)
-    assert _texts(early, "t-now-l") == [] and _texts(early, "t-now") == [] and _texts(early, "t-side") == ["10 min on", "30 min on"]
-
-
-def test_the_now_word_stays_whole_where_the_now_line_meets_an_edge_of_the_drawing():
-    """From 09:20 the checks drawing starts ten minutes before the open, so for its first minutes the dashed now line
-    runs along the left edge, and its word, centred on it, was cut in half ("ow"). The line keeps its place; the word
-    is kept inside the drawing."""
-    js = "console.log(JSON.stringify(dump(checksSvg(D.card, Date.parse(D.now)))));"
-    svg = _pre(js, {"card": pre_card("09:28"), "now": et("09:20", s="10")}, LA)
-    line = [k for k in svg["kids"] if k["tag"] == "line" and k["attrs"].get("class") == "now"][0]
-    word = [k for k in svg["kids"] if k["tag"] == "text" and k["attrs"].get("class") == "t-now-l"][0]
-    assert float(line["attrs"]["x1"]) < 1 and float(word["attrs"]["x"]) == 12.0
+    """The glance tops the 5-minute tab while the pre-market card leads and after the hand-over until the card is
+    dropped (PRE_HOURS), on that tab only."""
+    assert "if((pre || preFolds(p, now, today)) && p.hour && callSum(p.hour).probabilities) main.appendChild(preGlance(p));" in _fn("paintFive")
+    assert "preGlance" not in _fn("paintThirty") and "!(tabNow() === 'five' && preFolds(premarket, now, today))) return;" in _fn("redrawPre")
 
 
 def test_snapshot_reads_before_the_first_call_say_when_it_comes():
     got = _page(pre_card("03:35"), et("03:40"))
-    assert got["state"] == ["snapshot, JEV at 05:48 and 06:28"]
-    parts = _card_parts(got)
-    assert parts[2:4] == [["big", "No call yet"], ["skip", "First call at 05:48"]]
-    assert parts[-1] == ["tag", "Hands over to the 5-minute opening reads at 06:35."]
-    assert "REPORT" not in _flat_text([m[1] for m in got["main"] if "pre" in m[0]][0])
-    assert [p for p in parts if p[0] == "facts"][0][1].count("report") == 0          # no report row before one is out
+    assert got["state"] == []                                          # a snapshot is no trouble: no chip
+    assert _glance(got) == [["pm-top", "Pre-market · 00:35"], ["pm-pick", "No call yet"], ["skip", "First call at 05:48"]]
+    assert "REPORT" not in _flat_text(got["now"])
+    assert _flat_text(got["facts"]).count("report") == 0               # no report row before one is out
 
 
 def test_a_snapshot_after_a_call_carries_it_and_says_whose_it_is():
-    parts = _card_parts(_page(pre_card("09:05"), et("09:06")))
-    assert parts[2] == ["big", "Up 38%"]
-    assert ["tag", "The call from the 05:48 read; the 06:05 read is a snapshot and asks nothing."] in parts
+    got = _page(pre_card("09:05"), et("09:06"))
+    assert _glance(got)[1] == ["pm-call", "Up 38%called for the first half hour"] and _glance(got)[0][1].startswith("Pre-market · 05:48")
+    assert ["tag", "The call is the 05:48 read’s; the 06:05 read is a snapshot and asks nothing."] in _card_parts(got)
 
 
 def test_an_unsent_jev_read_says_why_and_when_the_next_call_is():
     card = pre_card("08:48", sent=False, unsent_reason="not sent: no key on this machine")
     got = _page(card, et("08:50"), TOKYO)
     assert got["state"] == ["not sent: no key on this machine"]
-    assert _card_parts(got)[2:4] == [["big", "No call yet"], ["skip", "Next call at 22:28"]]
-    assert "Up 38%" not in json.dumps(_page(card, et("08:50"))["main"])        # no call on its chip either
+    assert _glance(got)[1:] == [["pm-pick", "No call yet"], ["skip", "Next call at 22:28"]]
+    assert "Up 38%" not in json.dumps(_page(card, et("08:50"))["glance"])        # no call on its chip either
     # the last JEV read unsent: the 08:48 call is still the newest, and nothing more comes before the open
     last = _page(pre_card("09:28", sent=False, unsent_reason="not sent: this run was not asked to send"), et("09:29"))
     assert last["state"] == ["not sent: this run was not asked to send"]
-    assert _card_parts(last)[2] == ["big", "Up 38%"]
-    assert ["tag", "The call from the 05:48 read; the 06:28 read was not sent."] in _card_parts(last)
+    assert _glance(last)[1] == ["pm-call", "Up 38%called for the first half hour"]
+    assert ["tag", "The call is the 05:48 read’s; the 06:28 read was not sent."] in _card_parts(last)
     # sent, but its sum made no call (premarket.newest_call keeps only sums with a pick): the 08:48 call is carried
     failed = _page(pre_card("09:28", hour={**CALL_0848, "read_at": et("08:48", PRE_DAY, "04")}), et("09:29"))
-    assert failed["state"] == ["1 of 2 answered"] and _card_parts(failed)[2] == ["big", "Up 38%"]
-    assert ["tag", "The call from the 05:48 read; the 06:28 read made none."] in _card_parts(failed)
-    # the lane put the failed sum's error on the card: the note says it, and with no earlier call so does the line under
+    assert failed["state"] == [] and _glance(failed)[1] == ["pm-call", "Up 38%called for the first half hour"]
+    assert ["tag", "The call is the 05:48 read’s; the 06:28 read made none."] in _card_parts(failed)
+    # the lane put the failed sum's error on the card: the note says it, and with no earlier call so does the glance
     error = {"read_at": et("09:28", PRE_DAY, "04"), "error": "JEV timed out after 60 s"}
     errored = _page(pre_card("09:28", hour={**CALL_0848, "read_at": et("08:48", PRE_DAY, "04")}, hour_error=error), et("09:29"))
-    assert ["tag", "The call from the 05:48 read; the 06:28 read made no sum: JEV timed out after 60 s"] in _card_parts(errored)
+    assert ["tag", "The call is the 05:48 read’s; the 06:28 read made no sum: JEV timed out after 60 s"] in _card_parts(errored)
     alone = _page(pre_card("08:48", hour=None, hour_error={**error, "read_at": et("08:48", PRE_DAY, "04")}), et("08:49"))
-    assert _card_parts(alone)[2:5] == [["big", "No call yet"], ["skip", "The 05:48 read made no sum: JEV timed out after 60 s"],
-                                       ["skip", "Next call at 06:28"]]
-    assert _card_parts(_page(pre_card("09:28", sent=False, hour=None), et("09:29")))[3] == ["skip", "No call before the open"]
+    assert _glance(alone)[1:] == [["pm-pick", "No call yet"], ["skip", "The 05:48 read made no sum: JEV timed out after 60 s"], ["skip", "Next call at 06:28"]]
+    assert _glance(_page(pre_card("09:28", sent=False, hour=None), et("09:29")))[2] == ["skip", "No call before the open"]
     # a JEV read with nothing to ask names its checkpoint on the market clock; the chip gives it in the viewer's zone
     empty = pre_card("08:48", sent=False, unsent_reason="nothing to ask at the 08:48 ET read")
     assert _page(empty, et("08:50"), TOKYO)["state"] == ["not sent: nothing to ask at the 21:48 read"]
@@ -1366,33 +1277,26 @@ def test_an_unsent_jev_read_says_why_and_when_the_next_call_is():
 
 def test_a_card_left_behind_by_a_sleeping_mac_says_which_read_is_missing():
     got = _page(pre_card("03:35"), et("08:20"))
-    assert got["sub"] == "pre-market read 00:35, 4 hr 45 min ago, open 06:30"
-    assert got["state"] == ["snapshot, JEV at 05:48 and 06:28", "stale: the 05:05 read has not landed"]
-    assert _card_parts(got)[0] == ["lab", "Pre-Market Call4 HR 45 MIN AGO"]
-    age = [m[1] for m in got["main"] if "pre" in m[0]][0]["kids"][0]["kids"][1]
-    assert age["attrs"]["class"] == "r old"
+    assert got["state"] == ["stale: the 05:05 read has not landed"]
+    assert _card_parts(got)[0][1] == "Opens 06:301 hr 10 min to goRead 00:35 PDTChecked 06:44 and 07:04"
     # a checkpoint only minutes late is not yet missing
-    assert _page(pre_card("03:35"), et("08:10"))["state"] == ["snapshot, JEV at 05:48 and 06:28"]
-    # stale futures are no chip: their age at the read is said under the call (test_a_read_on_stale_futures_says_so_under_the_call)
+    assert _page(pre_card("03:35"), et("08:10"))["state"] == []
+    # stale futures are no chip: their age at the read is said in the window (test_a_read_on_stale_futures_says_so_under_the_call)
     stale = pre_card("08:05", freshness={"age_s": 1380, "stale": True, "note": "/ES's newest bar is 23 minutes old at the read"})
-    assert _page(stale, et("08:06"))["state"] == ["snapshot, JEV at 05:48 and 06:28"]
+    assert _page(stale, et("08:06"))["state"] == []
     assert _page(pre_card("09:05"), et("09:06"), ok=False)["state"][0] == "fetch failed, showing the last card"
 
 
 def test_a_missed_last_jev_read_is_said_before_the_hand_over():
     """The lane reads nothing 5 minutes or more after a checkpoint, so by 09:34 the 09:28 call is not coming: the
-    card says so before the 09:35 hand-over, and no longer names that read as one to come."""
+    page says so before the 09:35 hand-over."""
     lane = (Path(__file__).resolve().parents[3] / "pipelines" / "spx_jev_questions_and_pools" / "spx_jev" / "premarket.py").read_text()
     late = re.search(r"\nLATE_FIRE_MIN = (\d+) ", lane)
     assert late and _var("PRE_LATE_MIN").strip().startswith(f"var PRE_LATE_MIN = {int(late.group(1)) + 1};")
-    assert _page(pre_card("09:05"), et("09:20"))["state"] == ["snapshot, JEV at 06:28"]
-    assert _page(pre_card("09:05"), et("09:33", s="59"))["state"] == ["snapshot, JEV at 06:28"]
-    got = _page(pre_card("09:05"), et("09:34"))
-    assert got["state"] == ["snapshot", "stale: the 06:28 read has not landed"]
-    age = [m[1] for m in got["main"] if "pre" in m[0]][0]["kids"][0]["kids"][1]
-    assert age["attrs"]["class"] == "r old"
-    # a passed JEV read drops from the chip once it is missing, the one still to come stays
-    assert _page(pre_card("08:05"), et("08:54"))["state"] == ["snapshot, JEV at 06:28", "stale: the 05:48 read has not landed"]
+    assert _page(pre_card("09:05"), et("09:20"))["state"] == []
+    assert _page(pre_card("09:05"), et("09:33", s="59"))["state"] == []
+    assert _page(pre_card("09:05"), et("09:34"))["state"] == ["stale: the 06:28 read has not landed"]
+    assert _page(pre_card("08:05"), et("08:54"))["state"] == ["stale: the 05:48 read has not landed"]
 
 
 NO_RULER = "no pre-open ruler: fewer than 10 of the last sessions have a morning anchor on file"
@@ -1408,12 +1312,11 @@ def unruled_card(at, **over):
 
 def test_a_read_without_a_pre_open_ruler_says_why_it_measured_nothing():
     got = _page(unruled_card("03:35"), et("03:40"), TOKYO)
-    parts = _card_parts(got)
-    assert parts[2:5] == [["big", "No call yet"], ["skip", "First call at 21:48"],
-                          ["skip", "Nothing measured at the 16:35 read: " + NO_RULER]]
-    assert got["state"] == ["snapshot, JEV at 21:48 and 22:28"]
-    assert _card_parts(_page(pre_card("03:35"), et("03:40")))[4] == ["inplay-h", "When it is checked"]   # a read that measured says nothing
-    # a JEV read without one: the chip says it was not sent and the card, once, why
+    assert _glance(got)[1:] == [["pm-pick", "No call yet"], ["skip", "First call at 21:48"]]
+    assert ["skip", "Nothing measured at the 16:35 read: " + NO_RULER] in _card_parts(got)
+    assert got["state"] == []
+    assert not any(k == "skip" for k, _ in _card_parts(_page(pre_card("03:35"), et("03:40"))))   # a read that measured says nothing
+    # a JEV read without one: the chip says it was not sent and the window, once, why
     jev = unruled_card("08:48", sent=False, unsent_reason="nothing to ask at the 08:48 ET read: " + NO_RULER)
     got = _page(jev, et("08:50"))
     assert got["state"] == ["not sent: nothing to ask at the 05:48 read"]
@@ -1422,7 +1325,7 @@ def test_a_read_without_a_pre_open_ruler_says_why_it_measured_nothing():
 
 def test_a_day_without_a_report_has_no_report_row_or_chip():
     got = _page(pre_card("09:28", report=False), et("09:29"))
-    facts = [p for p in _card_parts(got) if p[0] == "facts"][0][1]
+    facts = _flat_text(got["facts"])
     assert facts.count("report") == 0 and facts.count("BitcoinIn line") == 1
     svg = _pre("console.log(JSON.stringify(dump(storySvg(D.card.story, 6))));", {"card": pre_card("09:28", report=False), "now": et("09:29")})
     assert _texts(svg, "t-rep") == []
@@ -1458,20 +1361,6 @@ def test_early_in_the_night_the_chips_keep_their_place_and_size():
     assert svg["attrs"]["viewBox"] == "0 0 300 66" and _texts(svg, "t-p") == []
 
 
-@pytest.mark.parametrize("first, second, title", [
-    ("up", "up", "Opens firm, holds"), ("down", "down", "Opens weak, holds"), ("flat", "flat", "Opens quiet, holds"),
-    ("up", "flat", "Opens firm, then settles"), ("down", "up", "Opens weak, then rises"), ("flat", "down", "Opens quiet, then falls"),
-    ("unsure", "up", "Unclear at first, then rises"), ("unsure", "unsure", "Unclear at both checks"), ("up", None, None),
-])
-def test_the_calls_shape_is_worded_from_both_sums_picks(first, second, title):
-    got = _pre("console.log(JSON.stringify(shapeWords(D.a, D.b)));", {"a": first, "b": second})
-    assert (got and got["title"]) == title
-    if second == "up" and first == "down":
-        assert got["words"] == "down at the first check, up at the second"
-    if first == second == "flat":
-        assert got["words"] == "flat at the first check, still flat at the second"
-
-
 def test_the_story_heading_says_all_one_way_only_when_it_is():
     js = "console.log(JSON.stringify(D.s.map(storyHead)));"
     got = _pre(js, {"s": [[{"lean": "up"}], [{"lean": "up_small"}, {"lean": "up"}], [{"lean": "down_small"}, {"lean": "down"}],
@@ -1503,8 +1392,7 @@ def test_the_week_frankfurt_is_on_winter_time_moves_a_checkpoint_and_the_card_fo
 def test_a_read_on_stale_futures_says_so_under_the_call():
     stale = {"age_s": 1380, "stale": True, "spot_from": "futures", "note": "/ES's newest bar is 23 minutes old at the read"}
     parts = _card_parts(_page(pre_card("03:35", freshness=stale), et("03:40"), TOKYO))
-    assert parts[2:5] == [["big", "No call yet"], ["skip", "First call at 21:48"],
-                          ["skip", "Futures stale at the 16:35 read: /ES's newest bar is 23 minutes old at the read"]]
+    assert ["skip", "Futures stale at the 16:35 read: /ES's newest bar is 23 minutes old at the read"] in parts
     assert "Futures stale" not in json.dumps(_card_parts(_page(pre_card("03:35"), et("03:40"))))     # fresh futures say nothing
 
 
@@ -1512,46 +1400,44 @@ def test_a_read_on_stale_futures_says_so_under_the_call():
 
 # Widths measured in Chrome at 360 with the shipped face (Plus Jakarta Sans), in Los Angeles, Tokyo, New York and
 # Kolkata (a zone name is widest as an offset), each line at the widest form it takes before the hand-over
-_PRE_W = {"pre-market read 00:35, 4 hr 45 min ago, open 06:30": 319.23, "BEFORE THE OPEN": 113.08,
-          "SNAPSHOT, JEV AT 05:48 AND 06:28": 222.83, "STALE: THE 05:05 READ HAS NOT LANDED": 255.12,
-          "NOT SENT: NO KEY ON THIS MACHINE": 227.98,
-          "NOT SENT: THIS RUN WAS NOT ASKED TO SEND": 284.97, "NOT SENT: NOTHING TO ASK AT THE 05:48 READ": 293.56,
-          "OPENS 06:30": 85.72, "5 HR 50 MIN TO GO": 120.45, "Read 13:05 GMT+5:30": 119.91, "Checked 19:14 and 19:34": 143.86}
+_PRE_W = {"PRE-MARKET · 06:28": 145.48, "Checks at 06:44, 07:04": 140.22, "1 of 2 right": 58.97, "30 MIN · 07:04": 99.67, "Not checked yet": 121.2,
+          "OPENS 06:30": 85.72, "5 HR 50 MIN TO GO": 120.45, "Read 13:05 GMT+5:30": 119.91, "Checked 19:14 and 19:34": 143.86,
+          "NOT SENT: NO KEY ON THIS MACHINE": 227.98, "NOT SENT: THIS RUN WAS NOT ASKED TO SEND": 284.97, "NOT SENT: NOTHING TO ASK AT THE 05:48 READ": 293.56,
+          "STALE: THE 05:05 READ HAS NOT LANDED": 255.12}
 
 
 def test_the_premarket_card_fits_the_owners_360px_phone():
-    """Checked in Chrome at 360 in each state (a call, snapshots, unsent, stale, carried, no 30-minute card) in Los
-    Angeles, Tokyo, New York and Kolkata: nothing past the page and nothing clipped in the card's own lines. The
-    header line is one line cut with an ellipsis, so its widest form must fit whole; a chip wraps, but each is one
-    line at 360; the drawings are 300 wide in their own units and scale to the card."""
+    """Checked in headless Chrome at 360 in each state (a call, snapshots, unsent, stale, carried, no 30-minute card) in
+    Los Angeles, Tokyo, New York and Kolkata: nothing past the page. The glance's head holds its read and its pill on
+    one row; each tile holds its time and its words in half the card; a chip wraps, but each is one line at 360; the
+    story's drawing is 300 wide in its own units and scales to the card."""
     column = 360 - 2 * 16
-    card = column - 2 * _px(".card", "padding")
+    glance = column - 2 * 14
     chip = 2 * 9 + 2                                            # .state's side padding and border
-    assert _PRE_W["pre-market read 00:35, 4 hr 45 min ago, open 06:30"] <= column
-    for w in ("BEFORE THE OPEN", "SNAPSHOT, JEV AT 05:48 AND 06:28", "STALE: THE 05:05 READ HAS NOT LANDED",
-              "NOT SENT: NO KEY ON THIS MACHINE", "NOT SENT: THIS RUN WAS NOT ASKED TO SEND",
+    for w in ("STALE: THE 05:05 READ HAS NOT LANDED", "NOT SENT: NO KEY ON THIS MACHINE", "NOT SENT: THIS RUN WAS NOT ASKED TO SEND",
               "NOT SENT: NOTHING TO ASK AT THE 05:48 READ"):
         assert _PRE_W[w] + chip <= column, w
+    # the read and a graded pill share the head's row; the pill of check times before them wraps under the read, whole
+    assert _PRE_W["PRE-MARKET · 06:28"] + 8 + _PRE_W["1 of 2 right"] + 18 + 14 <= glance < _PRE_W["PRE-MARKET · 06:28"] + 8 + _PRE_W["Checks at 06:44, 07:04"] + 18
+    assert "flex-wrap:wrap" in _rule(".pm-top") and "white-space:nowrap" in _rule(".pm-pill") and _PRE_W["Checks at 06:44, 07:04"] + 18 <= glance
+    tile = (glance - 8) / 2 - 2 * 10
+    assert _PRE_W["30 MIN · 07:04"] <= tile and _PRE_W["Not checked yet"] <= tile
+    card = column - 2 * _px(".card", "padding")
     assert _PRE_W["OPENS 06:30"] + _px(".clock-top", "gap") + _PRE_W["5 HR 50 MIN TO GO"] <= card
     assert _PRE_W["Read 13:05 GMT+5:30"] + _PRE_W["Checked 19:14 and 19:34"] <= card
-    assert "viewBox: '0 0 300 '" in _fn("checksSvg") and "viewBox: '0 0 300 '" in _fn("storySvg")
-    assert "'class': 'inplay'" in _fn("checksSvg") and "'class': 'inplay story'" in _fn("storySvg")
+    assert "viewBox: '0 0 300 '" in _fn("storySvg") and "'class': 'inplay story'" in _fn("storySvg") and "width:100%;height:auto" in _rule(".inplay")
 
 
 # Chrome at 360 with the shipped face: the folded call's parts at their widest (the viewer's zone changes no width,
 # a time having no zone name here); .fold wraps between parts, so each must fit the fold alone
-_FOLD_W = {"PRE-MARKET CALL 09:28": 159.81, "Unsure 100%": 96.67,
-           "09:44 was Down, wrong · 10:04 was Down, wrong": 288.66, "09:44 was Flat, wrong · 10:04 not graded yet": 260.52}
+_FOLD_W = {"Went down": 84.58, "Stayed flat": 80.58, "Closed out": 66.39}
 
 
 def test_the_folded_premarket_call_fits_the_owners_360px_phone():
-    """Checked in Chrome at 360 after the close-out in Los Angeles, Tokyo, New York and Kolkata: nothing past the
-    page and nothing clipped; the label and the pick share one row, the results take the next."""
-    column = 360 - 2 * 16
-    inner = column - 2 * float(re.search(r"padding:12px([\d.]+)px", _rule(".fold")).group(1))
-    assert "flex-wrap:wrap" in _rule(".fold")
-    assert _FOLD_W["PRE-MARKET CALL 09:28"] + 12 + _FOLD_W["Unsure 100%"] <= inner
-    assert all(w <= inner for k, w in _FOLD_W.items() if " · " in k)
+    """The glance after the close-out at 360: each tile's result and its words fit its half of the card."""
+    tile = ((360 - 2 * 16 - 2 * 14) - 8) / 2 - 2 * 10
+    assert all(16 + 6 + w <= tile for w in _FOLD_W.values())
+    assert "grid-template-columns:minmax(0,1fr)minmax(0,1fr)" in _rule(".pm-tiles") and "font:80015px/1.2" in _rule(".pm-went")
 
 
 # ---- the call on the average price (pipelines/spx_jev_questions_and_pools hour.average_summary): up, flat or down over the window, no unsure;
@@ -1560,7 +1446,7 @@ def test_the_folded_premarket_call_fits_the_owners_360px_phone():
 AVG = {"pick": "up", "probabilities": {"up": 0.55, "flat": 0.3, "down": 0.15}, "primary": "average_30", "box": "next_30",
        "minutes": 30, "flat_points": 5.25, "edge_points": 3.11}
 END_30 = {"pick": "flat", "probabilities": {"up": 0.1, "flat": 0.8, "down": 0.05, "unsure": 0.05}}
-CARD_STUBS = "var tickers = []; function clockBlock(read, minutes, mark, chip){ var b = el('div', 'clock'); if(chip) b.appendChild(chip); return b; }"
+CARD_STUBS = "var tickers = []; var spot = null; function todaysCard(){ return false; } function chartDocked(){ return !!D.wide; }" + _var("AVG_REACH") + _fn("stripAt") + _fn("bandWords") + _fn("placeNow") + _fn("money")
 # a card is drawn before any quote here, so its live-price needle starts hidden (placeNow); on a phone unless D.wide
 CARD_STUBS += "var spot = null; function todaysCard(){ return false; } function chartDocked(){ return !!D.wide; }" + _var("AVG_REACH") + _fn("placeNow") + _fn("money")
 
@@ -1779,9 +1665,11 @@ def test_the_last_reads_clock_looks_as_far_ahead_as_its_average_runs():
 
 
 # the opening card's own parts, lifted with it
-LANE_FNS = ("top1", "tag", "skipLine", "jevOwn", "endPriceRow", "indexLevel", "averageWords", "labRow", "calledAt", "stretchRow", "callState", "rightWords", "dayCalls",
-            "laneStates", "sqRow", "laneCard")
-LANE_VARS = ("TAPE_STEP_MIN", "STRETCH_MOVE", "STRETCH_BUSY", "STRETCH_THIRD", "SQ_KEY", "tapeGrades")
+LANE_FNS = ("top1", "tag", "skipLine", "indexLevel", "averageWords", "labRow", "signedOne", "keyRow", "runningAvg", "calledAt", "stretchWords", "fiveNow",
+            "threeWay", "oddsKeys", "oddsBar", "ifMoves", "sideCls", "waVal", "waRow", "fiveWho", "callState", "rightWords", "openWords", "dayCalls", "laneToday",
+            "laneStates", "sqRow", "sbRow", "sbCell", "laneSince", "preDays", "preSince", "fiveBoard", "fillFive", "sitWords", "signedWords", "gauge", "measured", "points",
+            "factCaption", "situationCard", "marketCard")
+LANE_VARS = ("STRETCH_MOVE", "STRETCH_BUSY", "STRETCH_THIRD", "SQ_KEY", "WENT", "PRE_CHECKS", "GAUGE_W", "WALL_WORDS", "SIT_RENAMED")
 # the builder's own sentences (labels/range_size._since_last_read): the day's first read, from the owner's phone on
 # 09-29, and a later read's, from the same day's 10:30 card
 FIRST_RANGE = ("the range since the open, 5 minutes ago, is 18.1 points, 1.78 tape units (one is 10.2 points), in the middle third "
@@ -1810,8 +1698,12 @@ OCT8 = {"lane": "tape", "row_ts": "2026-10-08T10:30:00-04:00",
 
 
 def _lane(ts, now="2026-09-28T10:42:00-04:00"):
+    """The 5-minute tab's lane parts for each card in ``ts`` at ``now``: its window (fiveNow), who answers it, its
+    scoreboard and what the market is doing, each dumped."""
     js = (CARD_STUBS + _odds() + "".join(_var(v) for v in LANE_VARS) + "".join(_fn(f) for f in LANE_FNS)
-          + "console.log(JSON.stringify(D.t.map(function(t){ return dump(laneCard(t, true)); })));")
+          + "var bars = null, barsDay = null, last = null, premarket = null, tapeGrades = null, preGrades = null, tapeOk = true, tape = null;"
+          "function setTab(){} function openSituation(){} function $(){ return null; }"
+          "console.log(JSON.stringify(D.t.map(function(t){ tape = t; return {now: dump(fiveNow(t)), who: dump(fiveWho(t)), board: dump(fiveBoard(t)), market: dump(marketCard(t))}; })));")
     return _run(js, {"t": ts, "now": now})
 
 
@@ -1826,115 +1718,112 @@ def _texts(node, cls):
 
 
 def test_the_opening_card_is_the_30_minute_cards_shape():
-    """Will, 2026-10-08: the 5-minute card reads as the 30-minute one does, lean. Its call and odds under a call label, the
-    price it was called at with the flat band on the 10-minute average, the morning's calls as squares (the same row the
-    dock draws, standing alone since the reads list the 30-minute calls only), then one row for the end price and one for
-    the stretch since the last read, and the hand-back last. Nothing else: no sentence of where SPX should average, no
-    flat range line, no direction or size odds row, no move-size scale, no typical-swing note."""
-    card = _lane([OCT8], "2026-10-08T10:42:00-04:00")[0]
-    parts = _parts(card)
-    assert [k for k, _ in parts] == ["clock", "lab call", "big", "div", "div", "calls", "row60", "row60", "tag"]
-    assert [v for _, v in parts[:3]] == ["10-min call \u00B7 every 5 min", "Opening call", "Flat 50%"]   # the chip on the clock's row
-    assert parts[5] == ["calls", "Opening callsNone graded yet"] and card["kids"][5]["tag"] == "div"
-    assert [v for _, v in parts[6:]] == ["End priceUnsure 41%", "Last 5 minUp 2.4 pts \u00B7 busy",
-                                         "Last 5-min check; every 30 min again from 07:40"]
-    assert [k["attrs"]["class"] for k in card["kids"][3]["kids"]] == ["odds-bar", "odds-lab"]
-    assert [k["attrs"]["class"] for k in card["kids"][4]["kids"]] == ["avg-at", "avg-bar", "avg-lab"]
-    at = _cls(card, "avg-at")[0]
-    assert [_flat_text(k) for k in at["kids"]] == ["Called at", "7,792.23", "\u00B1 1.2 pts"]
-    assert [_flat_text(k) for k in _cls(card, "avg-lab")[0]["kids"]] == ["7,791.1", "flat on the 10-min average", "7,793.4"]
-    flat = json.dumps(card)
-    for gone in ("SPX should average", "Flat: ", "Big move", "Move size", "Typical 5-min swing", "mv-bar", "\"range\"", "\"odds\""):
+    """Design B's 5-minute tab while the lane reads (2026-10-14): the window, the newest call's read to its mark with the
+    minutes left, what it is graded on and the progress through it, as the 30-minute tab's window is; under it the
+    flat band as a strip, its width named over it, the called price fixed in its middle, the live price moving over it
+    and the band's prices under its edges, with a key row each. Who answers it: the opening call alone, JEV's with no
+    mix, its pick boxed and its odds; nothing else (no end-price row, no squares in the window)."""
+    got = _lane([OCT8], "2026-10-08T10:35:30-04:00")[0]
+    parts = _parts(got["now"])
+    assert [k for k, _ in parts] == ["win-top", "cnote", "prog", "prog-l", "strip"]
+    assert parts[0] == ["win-top", "07:30 → 07:405 min left"] and parts[1] == ["cnote", "Graded on the average price over these 10 minutes."]
+    assert parts[3] == ["prog-l", "Read 07:305 of 10 minGraded 07:40"]
+    strip = got["now"]["kids"][4]
+    assert [_flat_text(k) for k in strip["kids"][:1]] == ["Flat band ± 1.2 pts"]
+    assert [k["attrs"]["class"] for k in strip["kids"][1]["kids"]] == ["band", "at", "now"]
+    assert [_flat_text(k) for k in strip["kids"][2]["kids"]] == ["7,791.1", "7,793.4"]
+    assert [_flat_text(k) for k in strip["kids"][3]["kids"]] == ["Called at 7,792.23", "Price now: no quote on today’s card yet", "Average so far: shown from 5 minutes in"]
+    rows = got["who"]["kids"][2:]
+    assert [_flat_text(r["kids"][0]) for r in rows] == ["Opening callThe callJEV alone, no mix", "Combined call · Direction line · ClaudeNone of them make 10-minute calls. Their answers are on the 30-min tab"]
+    assert _flat_text(rows[0]["kids"][1]) == "Flat 50%" and _flat_text(rows[0]["kids"][2]) == "Up 96%not scored"
+    flat = json.dumps(got)
+    for gone in ("SPX should average", "Big move", "Move size", "Typical 5-min swing", "End price", "row60", "\"mode\""):
         assert gone not in flat, gone
-    # a point is said once, in the info sheet, in words (no arrow glyph); neither the card nor the footer sizes the call in tape units
-    assert "A point is one step of the S&amp;P 500 index, e.g. 7,817 to 7,818." in SPX
-    foot = re.search(r'(?s)<p class="foot">(.*?)</p>', SPX).group(1)
-    assert "sized in tape units" not in foot and "tape unit" not in _fn("laneCard")
-    assert "the average price over the 30 minutes after the first settled price" in foot and "where price stands 10 and 30" not in foot
+    # a point is said once, in the info sheet, in words (no arrow glyph); neither the window nor the footer sizes the call in tape units
+    assert "tape unit" not in _fn("fiveNow") and "tape unit" not in re.search(r'(?s)<p class="foot">(.*?)</p>', SPX).group(1)
 
 
 def test_an_opening_call_on_the_end_price_alone_or_with_no_sum_still_says_its_call():
     """A card from before the average-price call (Monday 09-28's) or a read whose average went unanswered calls the end
-    price: its pick and odds lead, with no price it was called at and no end-price row beside it, and an unanswered
-    average says so. A read with no sum keeps the newest call it has, said to be that read's."""
+    price: its pick leads who answers, with no price it was called at and no strip, and an unanswered average says so.
+    A read with no sum keeps the newest call it has, said to be that read's."""
     five = {"down_big": 0.05, "down_small": 0.1, "flat": 0.3, "up_small": 0.4, "up_big": 0.1, "unsure": 0.05}
     base = {"lane": "tape", "row_ts": "2026-09-28T10:40:00-04:00", "calls": [call("10:40", "10:50", "up_small", 0.4)], "stretch": LATER}
     old = {**base, "hour": {"pick": "up_small", "probabilities": five}}
     lost = {**base, "hour": {"pick": "up_small", "probabilities": five, "average": {"error": "jev timed out"}}}
     none = {**base, "row_ts": "2026-09-28T10:45:00-04:00", "hour": {"error": "jev timed out"}}
-    got = [_parts(c) for c in _lane([old, lost, none])]
-    for parts in got[:2]:
-        assert parts[1:3] == [["lab call", "Opening call"], ["big", "Up small 40%"]]
-        assert not any(k in ("avg-at", "tag") for k, _ in parts) and ["row60", "Last 5 minUp 1.8 pts \u00B7 busy"] in parts
-        assert not any(v.startswith("End price") for _, v in parts)
-    assert ["skip", "No average answer; end-price call"] in got[1] and not any(k == "skip" for k, _ in got[0])
-    assert got[2][1:4] == [["lab call", "Opening call"], ["big", "Up small 40%"],
-                           ["skip", "No sum on the 07:45 read: jev timed out; this is the 07:40 call"]]
-    assert not any(v.startswith("End price") for _, v in got[2])
+    got = _lane([old, lost, none], "2026-09-28T10:46:00-04:00")
+    for g in got:
+        assert _flat_text(g["who"]["kids"][2]["kids"][1]) == "Up small 40%" and not _cls(g["now"], "strip")
+        assert "End price" not in json.dumps(g)
+    assert ["skip", "No average answer; end-price call"] in _parts(got[1]["now"]) and not any(k == "skip" for k, _ in _parts(got[0]["now"]))
+    assert ["skip", "No sum on the 07:45 read: jev timed out; this is the 07:40 call"] in _parts(got[2]["now"])
 
 
 @pytest.mark.parametrize("move, rng, said", [
-    (LATER["move_since_read"], LATER["range_since_read"], "Last 5 minUp 1.8 pts \u00B7 busy"),
+    (LATER["move_since_read"], LATER["range_since_read"], "Last 5 min (already happened)Up 1.8 ptsbusy"),
     ("since the last read, 5 minutes ago, price ended level with it, 0 of a tape unit (7.2 points), within the 0.42 cut, so it held",
-     None, "Last 5 minNo change"),
+     None, "Last 5 min (already happened)No change"),
     ("since the last read, 5 minutes ago, price ended 4.1 points below it, 0.57 of a tape unit (7.2 points), more than the 0.42 cut "
      "and no more than 0.89, so it fell small",
      "the range since the last read, 5 minutes ago, is 2.1 points, 0.29 of a tape unit (7.2 points), in the bottom third for this "
-     "minute, higher than 0 of 19 prior sessions, each in its own morning ruler (ruler estimated)", "Last 5 minDown 4.1 pts \u00B7 quiet"),
+     "minute, higher than 0 of 19 prior sessions, each in its own morning ruler (ruler estimated)", "Last 5 min (already happened)Down 4.1 ptsquiet"),
     ("since the last read, 10 minutes ago, price ended 9.9 points above it, 1.38 tape units (one is 7.2 points), more than the 0.89 "
      "cut, so it rose big",
      "the range since the last read, 10 minutes ago, is 12.0 points, 1.67 tape units (one is 7.2 points), in the middle third for "
-     "this minute, higher than 10 of 19 prior sessions, each in its own morning ruler", "Last 10 minUp 9.9 pts \u00B7 normal"),
+     "this minute, higher than 10 of 19 prior sessions, each in its own morning ruler", "Last 10 min (already happened)Up 9.9 ptsnormal"),
 ])
 def test_the_last_5_minutes_row_says_the_move_and_how_busy_it_was(move, rng, said):
-    """The builder's sentences come down to one row: the move since the last read in points, and the range's third for
-    this minute against the prior sessions as quiet, normal or busy. The row names the minutes the builder measured, so
-    a read after a missed one says its 10."""
+    """The builder's sentences come down to one row of what the market is doing, said to have already happened (not a
+    forecast): the move since the last read in points, and the range's third for this minute against the prior sessions
+    as quiet, normal or busy. The row names the minutes the builder measured, so a read after a missed one says its 10."""
     stretch = {"move_since_read": move, **({"range_since_read": rng} if rng else {})}
-    t = {"lane": "tape", "row_ts": "2026-09-28T10:30:00-04:00", "hour": {}, "calls": [call("10:30", "10:40", "flat", 0.5)], "stretch": stretch}
-    assert _texts(_lane([t])[0], "row60") == [said]
+    t = {"lane": "tape", "row_ts": "2026-09-28T10:30:00-04:00", "hour": {}, "calls": [call("10:30", "10:40", "flat", 0.5)], "stretch": stretch, "situation": []}
+    market = _lane([t])[0]["market"]
+    assert _flat_text(market["kids"][0]) == "What the market is doingseen at 07:30"
+    assert [_flat_text(r) for r in market["kids"] if r["attrs"].get("class") == "sit-row"] == [said]
 
 
 def test_the_days_first_read_and_a_move_the_page_cannot_read_have_no_last_5_minutes_row():
     """The day's first read has nothing before it to have moved from; a move the builder left out for another reason, or
     wrote in a shape the page does not know, is left out too, never said whole or as the builder's reason."""
-    base = {"lane": "tape", "row_ts": "2026-09-28T09:35:00-04:00", "hour": {}, "calls": [call("09:35", "09:45", "flat", 0.89)]}
+    base = {"lane": "tape", "row_ts": "2026-09-28T09:35:00-04:00", "hour": {}, "calls": [call("09:35", "09:45", "flat", 0.89)], "situation": []}
     first = {**base, "stretch": {"range_since_read": FIRST_RANGE}, "omitted": {"tape.move_since_read": "the day's first read: no earlier read today to measure from"}}
     gap = {**base, "row_ts": "2026-09-28T10:30:00-04:00", "stretch": {}, "omitted": {"tape.move_since_read": "no finished bar at the last read"}}
     odd = {**base, "stretch": {"move_since_read": "price moved a little", "range_since_read": LATER["range_since_read"]}}
-    for card in _lane([first, gap, odd], "2026-09-28T09:40:00-04:00"):
-        assert not _cls(card, "row60") and not _cls(card, "tag")
-        assert "first read" not in json.dumps(card) and "finished bar" not in json.dumps(card) and "a little" not in json.dumps(card)
+    for got in _lane([first, gap, odd], "2026-09-28T09:40:00-04:00"):
+        assert not _cls(got["market"], "sit-row")
+        assert "first read" not in json.dumps(got["market"]) and "finished bar" not in json.dumps(got["market"]) and "a little" not in json.dumps(got["market"])
 
 
 # the opening card's widest lines in the shipped face (Plus Jakarta Sans, its advance widths at the line's weight, size
 # and spacing): a stretch row after a missed read with a two-figure move, the mode chip with its padding and border
-_LANE_W = {"LAST 10 MIN": 76.16, "Down 12.3 pts \u00B7 normal": 152.89, "END PRICE": 67.22, "Down small 100%": 120.55,
-           "10-MIN CALL \u00B7 EVERY 5 MIN": 192.70, "flat on the 10-min average": 141.08, "7,791.1": 34.28}
+_LANE_W = {"FLAT BAND ± 12.3 PTS": 136.2, "7,791.1": 33.02, "Last 10 min (already happened)": 181.89, "Opening call": 85.66}
 
 
 def test_the_opening_cards_rows_fit_the_owners_360px_phone():
-    """At 360 the dashed card holds 294px: each row's name and words sit on one line, and wrap under it if a figure
-    ever grows; the flat band's prices and its words fit their grid."""
-    inner = 360 - 2 * 16 - 2 * _px(".card", "padding") - 2
-    assert "flex-wrap:wrap" in _rule(".row60")
-    between = float(re.search(r"gap:[\d.]+px([\d.]+)px", _rule(".row60")).group(1))   # the column gap, after the row gap
-    for k, v in (("LAST 10 MIN", "Down 12.3 pts \u00B7 normal"), ("END PRICE", "Down small 100%")):
-        assert _LANE_W[k] + between + _LANE_W[v] <= inner, f"{k} {v} runs past the card at 360"
-    assert _LANE_W["10-MIN CALL \u00B7 EVERY 5 MIN"] <= inner
-    assert 2 * _LANE_W["7,791.1"] + 2 * _px(".avg-lab", "gap") + _LANE_W["flat on the 10-min average"] <= inner
+    """At 360 a card holds 296px: the strip's name sits over it, its two prices under the band's edges keep apart, the
+    stretch's row name wraps under its 1fr column at worst, and who answers holds the opening call's name beside its
+    boxed pick."""
+    inner = 360 - 2 * 16 - 2 * _px(".card", "padding")
+    assert _LANE_W["FLAT BAND ± 12.3 PTS"] <= inner
+    band = inner * (1 - 2 * 0.278)
+    assert 2 * _LANE_W["7,791.1"] <= band + 2 * 22 and "padding:0calc(27.8%-22px)" in _rule(".avg-lab")
+    assert "left:27.8%;right:27.8%" in _rule(".avg-bar .band") and _var("AVG_REACH").startswith("\n  var AVG_REACH = 2.25")
+    cols = re.search(r"grid-template-columns:minmax\(0,1fr\)(\d+)px(\d+)px;gap:(\d+)px", _rule(".wa-h,.wa-r"))
+    assert inner + 16 - int(cols.group(1)) - int(cols.group(2)) - 2 * int(cols.group(3)) >= _LANE_W["Opening call"]
 
 
 def test_the_opening_cards_last_line_says_when_it_hands_back_and_what_a_call_is():
     reads = [f"2026-09-28T{t}:00-04:00" for t in ("09:35", "09:40", "10:25", "10:30")]
-    base = {"lane": "tape", "hour": {}, "stretch": {}, "schedule": {"reads": reads, "looks_ahead_min": 10}}
+    base = {"lane": "tape", "hour": {}, "stretch": {}, "situation": [], "schedule": {"reads": reads, "looks_ahead_min": 10}}
     mid = {**base, "row_ts": reads[1], "calls": [call("09:40", "09:50", "flat", 0.6)]}
     last = {**base, "row_ts": reads[-1], "calls": [call("10:30", "10:40", "flat", 0.6)]}
-    bare = {**mid, "schedule": None}
-    assert [_parts(c)[-1] for c in _lane([mid, last, bare])] == [
-        ["tag", "5-min checks until 07:40"],
-        ["tag", "Last 5-min check; every 30 min again from 07:40"],
-        ["calls", "Opening callsNone graded yet"]]
+    got = _lane([mid, last], "2026-09-28T09:42:00-04:00")
+    assert _flat_text(got[0]["board"]["kids"][-1]) == ("At 07:40, after the 07:30 call is graded, this tab shows the morning’s total and the page moves "
+                                                       "to the 30-min tab. pts always means S&P index points.")
+    assert _flat_text(got[0]["board"]["kids"][1]).startswith("Opening calls10-min averageNone graded yet1 open · 3 to come")
+    assert _flat_text(_lane([last], "2026-09-28T10:45:00-04:00")[0]["board"]["kids"][-1]) == "pts always means S&P index points."
 
 
 def test_the_pre_market_call_and_its_fold_are_the_average_price_sums():
@@ -1943,10 +1832,8 @@ def test_the_pre_market_call_and_its_fold_are_the_average_price_sums():
     card = pre_card("09:28")
     card = {**card, "hour": {**card["hour"], "average": avg}}
     got = _fold(card, et("09:50"))
-    assert _flat_text(got["fold"]) == "pre-market call 06:28Down 45%Checked 06:44 and 07:04"
-    box = _parts(_pre("var box = el('div'); preCall(D.card, box); console.log(JSON.stringify(dump(box)));", {"card": card, "now": et("09:30")}))
-    assert box[0] == ["big", "Down 45%"] and ["row60", "End priceUp 41%"] in box
-    assert ["tag", "Average price \u00B7 flat \u00B12.6 pts"] in box
+    assert _flat_text(got["glance"]["kids"][1]) == "Down 45%called for the first half hour"
+    assert "End price" not in json.dumps(_page(card, et("09:30")))
 
 
 def test_a_read_whose_average_question_went_unanswered_says_so_and_stands_on_its_end_price():
@@ -1979,25 +1866,16 @@ def test_an_average_question_that_was_not_asked_is_never_said_to_be_unanswered()
 
 
 def test_the_pre_market_card_says_the_shape_and_its_checks_are_the_end_price_questions():
+    """The pre-market card's shape and its end-price question went with Design B: the call the page shows is the
+    average-price sum, and nothing on the 5-minute tab names the end-price question."""
     avg = {**AVG, "pick": "down", "probabilities": {"up": 0.25, "flat": 0.3, "down": 0.45}, "primary": "open_average_30", "box": "open_30",
            "flat_points": 4.38, "edge_points": 2.59}
     card = pre_card("09:28")
     card = {**card, "hour": {**card["hour"], "average": avg}}
-    parts = _card_parts(_page(card, et("09:30")))
-    assert not any(k == "shape" for k, _ in parts)
-    assert ["tag", "End-price question: opens firm, holds: up at the first check, still up at the second"] in parts
-    old = _card_parts(_page(pre_card("09:28"), et("09:30")))
-    assert any(k == "shape" for k, _ in old) and ["inplay-h", "When it is checked"] in old
-
-
-def test_the_pre_market_checks_drawing_shows_the_call_it_grades_at_both_marks():
-    """Both checks grade the average-price call's own pick (grade.checked_call), so the card heads them as its own, not
-    the end-price question's, and draws that call on both bars; a card without one draws each end-price sum's."""
-    card = pre_card("09:28")
-    card = {**card, "hour": {**card["hour"], "average": PRE_AVG}}
-    assert ["inplay-h", "When it is checked"] in _card_parts(_page(card, et("09:30")))
-    svg = _pre("console.log(JSON.stringify(dump(checksSvg(D.card, Date.parse(D.now)))));", {"card": card, "now": et("09:28", s="40")})
-    assert _texts(svg, "t-now") == ["Down"] and _texts(svg, "t-open") == ["Down 45%"]   # the ten-minute bar has room for the pick alone
+    flat = json.dumps(_page(card, et("09:30")))
+    for gone in ("End-price question", "Opens firm", "shape", "End price"):
+        assert gone not in flat, gone
+    assert "shapeWords" not in JS and ".shape{" not in SPX
 
 
 def test_the_story_calls_end_inside_the_drawing_on_the_owners_phone():
@@ -2102,33 +1980,33 @@ def _board_cell(got, name, i):
 
 @pytest.mark.parametrize("tz", [LA, TOKYO, NY, KOLKATA])
 @pytest.mark.parametrize("now, leads", [
-    ("2026-09-28T09:30:00-04:00", "Market Open"),                     # the 09:28 pre-market card leads; at the bell its mode says the market is open
-    ("2026-09-28T10:35:00-04:00", "10-min call · every 5 min"),       # the 10:30 lane call is open
+    ("2026-09-28T09:30:00-04:00", "pre"),                             # the 09:28 pre-market card leads the 5-minute tab until the hand-over
+    ("2026-09-28T10:35:00-04:00", "lane"),                            # the 10:30 lane call is open
     ("2026-09-28T15:40:00-04:00", "30-min"),                          # the 15:32 read's call is open
     ("2026-09-28T16:10:00-04:00", "30-min"),
 ])
 def test_mondays_real_cards_draw_whole_in_every_zone(now, leads, tz):
     got = _whole({k: MONDAY[k] for k in ("live", "tape", "premarket")}, now, tz)
     assert not got["err"], got["sub"]
-    if leads == "Market Open":
-        assert got["main"][0] == ["mode", leads] and got["sw"][0] == "on"
-        return
     if leads == "30-min":
         # the 30-minute tab (Design B): the expiry line, Now over the window, who agrees, the scoreboard under its key, the
         # way to the results; the switch lit on it, and the header line says nothing of a fresh card
         assert [k for k, _ in got["main"]] == ["exp", "sec", "card", "card", "sec", "legend", "card", "rowbtn"]
         assert got["sw"][2] == "on" and got["sub"] == "" and got["main"][1][1].startswith("Now")
         return
-    # on the 5-minute tab the mode chip heads the lane card, first on the clock's row
-    card = next(d for k, d in zip(got["main"], got["dom"]) if k[0] == "card dashed")
-    row = card["kids"][0]["kids"][0]
-    assert row["attrs"]["class"] == "clock-top" and [row["kids"][0]["attrs"]["class"], _flat_text(row["kids"][0])] == ["mode", leads]
-    assert got["sub"] == "" and not any(k[0] == "mode" for k in got["main"]) and got["sw"][0] == "on"
-    # Monday's lane card is from before the average-price call: its end-price pick, the stretch row, the hand-back
-    parts = _parts(card)
-    assert parts[1:3] == [["lab call", "Opening call"], ["big", "Down small 44%"]]
-    assert [v for k, v in parts if k == "row60"] == ["Last 5 minDown 2.7 pts · normal"]
-    assert parts[-1][1].startswith("Last 5-min check; every 30 min again from ")
+    assert got["sw"][0] == "on" and got["sub"] == "" and not any(k[0] == "mode" for k in got["main"])
+    if leads == "pre":
+        # before the hand-over: the glance, Now as the open with the night's story, who answers, the scoreboard, the
+        # results and the night's facts
+        assert [k for k, _ in got["main"]] == ["exp", "card pm", "sec", "card pre", "card", "sec", "legend", "card", "rowbtn", "card sit-card"]
+        assert got["main"][2][1].startswith("Nowthe open, ")
+        return
+    # the lane: Monday's lane card is from before the average-price call, so its window has no strip; its pick is the
+    # end price's, and the stretch since the last read is what the market is doing's last row
+    assert [k for k, _ in got["main"]] == ["exp", "card pm", "sec", "card", "card", "sec", "legend", "card", "rowbtn", "card sit"]
+    who = [d for k, d in zip(got["main"], got["dom"]) if k[0] == "card"][1]
+    assert _flat_text(who["kids"][2]).startswith("Opening callThe callJEV alone, no mixDown small 44%")
+    assert got["main"][-1][1].endswith("Down 2.7 ptsnormal") and "already happened" in got["main"][-1][1]
 
 
 @pytest.mark.parametrize("tz", [LA, TOKYO, KOLKATA])
@@ -2256,7 +2134,7 @@ def test_a_new_card_keeps_the_question_in_view():
           + "qsLoad(D.c); var first = [qs.g, qs.i]; qs.g = D.g; qs.i = D.i; var id = qs.deck[qs.g].qs[qs.i].id;"
             "qsLoad(D.c, true); var kept = [qs.g, qs.i, qs.deck[qs.g].qs[qs.i].id === id]; qsLoad(D.c); console.log(JSON.stringify([first, kept, [qs.g, qs.i]]));")
     assert _run(js, {"c": MONDAY["live"], "g": 3, "i": 2}) == [[0, 0], [3, 2, True], [0, 0]]
-    assert "qsLoad(last, true);" in _fn("openQuestions") and "if(qsOpen()){ qsLoad(c, true); qsDraw(true); }" in _fn("paint")
+    assert "qsLoad(c, true);" in _fn("openQuestions") and "if(qc && qsOpen()){ qsLoad(qc, true); qsDraw(true); }" in _fn("paint")
 
 
 def test_a_question_retired_at_the_cut_over_sits_in_its_own_last_group_and_never_in_the_count():
@@ -2341,7 +2219,7 @@ def test_a_market_time_with_its_weekday_is_drawn_on_the_viewers_day(tz, reopen, 
 @pytest.mark.parametrize("tz, reopen", [(TOKYO, "Mon 07:00"), (KOLKATA, "Mon 03:30"), (LA, "Sun 15:00")])
 def test_mondays_premarket_bitcoin_fact_names_the_viewers_day(tz, reopen):
     got = _whole({k: MONDAY[k] for k in ("live", "tape", "premarket")}, "2026-09-28T09:30:00-04:00", tz)
-    card = next(d for c, d in zip(got["main"], got["dom"]) if "pre" in c[0].split())
+    card = next(d for c, d in zip(got["main"], got["dom"]) if c[0] == "card sit-card")
     facts = _flat_text(next(k for k in card["kids"] if k["attrs"].get("class") == "facts"))
     assert f"since the S&P futures reopened at {reopen} bitcoin futures (/MBT) fell" in facts
     assert "Sunday" not in facts
@@ -2645,10 +2523,10 @@ def test_the_situation_sheet_gives_each_facts_sentence_in_the_viewers_zone():
 
 
 def test_the_questions_and_the_info_controls_share_one_row_that_fits_a_320px_phone():
-    """Final-Home (2026-10-10): two half-width 48px buttons at the foot, "Questions · N asked" (drawn once a card is, hidden
-    before the open and while the lane leads alone) and "How to read", on one flex row so the info control has the row
-    to itself before a card; at 320 each holds 138px inside, and "Questions · 12 asked" fits it at the 13.5px the
-    buttons are set at (at the board's 14px it is 138.2 wide). The footer line is the page's last."""
+    """Final-Home (2026-10-10), Design B's words (2026-10-14): two half-width 48px buttons at the foot, "Questions · N"
+    (the opening call's, shown on the 5-minute tab while the lane's card is today's) and "How to read", on one flex row
+    so the info control has the row to itself on the 30-minute tab (its questions are the call's sheet's); at 320 each
+    holds 138px inside. The footer line is the page's last, and names the call the questions are for."""
     assert re.search(r'<div class="vq-row">\n  <button class="vq" id="qBtn" type="button" aria-controls="qSheet" hidden>Questions</button>\n'
                      r'  <button class="vq info" id="infoBtn" type="button" aria-controls="infoSheet"><i aria-hidden="true">i</i>How to read</button>\n'
                      r'  <p class="note" id="note">A forecast, graded by the bars. Not advice.</p>\n</div>', SPX)
@@ -2656,7 +2534,7 @@ def test_the_questions_and_the_info_controls_share_one_row_that_fits_a_320px_pho
     assert "font:70013.5px/1" in _rule(".vq")
     inside = (320 - 2 * 16 - 8) / 2 - 2
     assert _REC_W["Questions · 12 asked"] <= inside and 18 + 8 + _REC_W["How to read"] <= inside
-    assert "$('qBtn').hidden = true;" in _fn("laneOnly") and "$('qBtn').hidden = true;" in _fn("paintPre") and "qb.hidden = tabNow() === 'thirty';" in _fn("paint")
+    assert "qb.hidden = !(five && t);" in _fn("paint") and "'Questions here are the ones JEV answered for the '" in _fn("paint")
     assert 'id="infoBtn"' in SPX and "How to read this page" in SPX.split('id="infoTitle"')[1][:60]
 
 
