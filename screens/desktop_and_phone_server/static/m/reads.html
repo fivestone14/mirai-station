@@ -295,9 +295,15 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
     return bars;
   }
   // the day's price from the open to the close as a line W wide, the low on the axis, a dot at each call's read minute
-  // (its bar's close, or the last bar's before it), a wrong call's ringed and named where the words clear the line:
-  // under the dot, a row lower, else over it; the feet the open and the close in the viewer's zone. Nothing under two bars.
-  function dayLine(d, rows, W){
+  // (its bar's close, or the last bar's before it), a wrong call's ringed; the feet the open and the close in the
+  // viewer's zone. Nothing under two bars. The drawing goes into the card over its calls (before ``list``) before the
+  // wrong calls are named, so each name is measured as the phone draws it. A name takes the first spot inside the
+  // drawing above its axis that keeps off the line, the dots and the names placed before: beside its dot, right then
+  // left, on the row under it or the one over it, else centred on the dot (held inside the drawing's ends) a row
+  // lower, then a row higher. A spot counts only while the name's box sits nearer its own ring than any other dot,
+  // so a name never reads as a neighbour's. With no spot free the ring alone marks the call, as the list under the
+  // line names every wrong call.
+  function dayLine(d, rows, W, list){
     var pts = (rows || []).filter(function(b){ return b && typeof b.close === 'number' && !isNaN(Date.parse(b.ts)); })
       .map(function(b){ return {t: Date.parse(b.ts), c: b.close}; }).sort(function(a, b){ return a.t - b.t; });
     if(pts.length < 2) return null;
@@ -305,7 +311,14 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
     var lo = Math.min.apply(null, pts.map(function(p){ return p.c; })), hi = Math.max.apply(null, pts.map(function(p){ return p.c; }));
     function x(t){ return Math.max(2, Math.min(W - 2, 2 + (t - open) / (close - open) * (W - 4))); }
     function y(c){ return hi > lo ? LINE_TOP + (hi - c) / (hi - lo) * (LINE_AXIS - LINE_TOP) : (LINE_TOP + LINE_AXIS) / 2; }
-    function clear(x0, x1, base){ return !pts.some(function(p){ var px = x(p.t), py = y(p.c); return px >= x0 - 2 && px <= x1 + 2 && py >= base - 9 && py <= base + 2; }); }
+    // a word's box is clear when no point of the line falls in it and it meets nothing taken: a dot, or a word
+    // placed before with a space either side of it; gap is how far a box sits from a dot's centre
+    var taken = [], dots = [];
+    function gap(b, o){ return Math.hypot(Math.max(b.x0 - o.cx, 0, o.cx - b.x1), Math.max(b.y0 - o.cy, 0, o.cy - b.y1)); }
+    function clear(b){
+      return !pts.some(function(p){ var px = x(p.t), py = y(p.c); return px >= b.x0 - 2 && px <= b.x1 + 2 && py >= b.y0 && py <= b.y1; })
+          && !taken.some(function(o){ return o.x1 > b.x0 && o.x0 < b.x1 && o.y1 > b.y0 && o.y0 < b.y1; });
+    }
     var wrong = d.calls.filter(function(c){ return !isRight(c); });
     var svg = svgEl('svg', {viewBox: '0 0 ' + W + ' ' + LINE_H, 'class': 'price', role: 'img',
                             'aria-label': 'The day’s price from the ' + viewerTime(open) + ' open to the ' + viewerTime(close) + ' close, a dot at each of the '
@@ -313,20 +326,34 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
                               + wrong.map(function(c){ return viewerTime(c.row_ts); }).join(', ') : '')});
     svg.appendChild(svgEl('line', {x1: 2, y1: LINE_AXIS, x2: W - 2, y2: LINE_AXIS, 'class': 'ax'}));
     svg.appendChild(svgEl('polyline', {points: pts.map(function(p){ return x(p.t).toFixed(1) + ',' + y(p.c).toFixed(1); }).join(' ')}));
+    var named = [];
     d.calls.forEach(function(c){
       var t = Date.parse(c.row_ts), p = null;
       pts.forEach(function(q){ if(q.t <= t) p = q; });
       if(!p) return;
-      var cx = x(p.t), cy = y(p.c), ok = isRight(c);
-      svg.appendChild(svgEl('circle', {cx: cx.toFixed(1), cy: cy.toFixed(1), r: ok ? 2.2 : 4.2, 'class': ok ? 'dot' : 'dot wrong'}));
-      if(ok) return;
-      var words = viewerTime(c.row_ts) + ' wrong', w = words.length * 6.3, right = cx + 8 + w <= W - 2, x0 = right ? cx + 8 : cx - 8 - w;
-      var base = [cy + 10, cy + 19, cy - 6].filter(function(b){ return b <= LINE_AXIS - 3 && b >= LINE_TOP + 6 && clear(x0, x0 + w, b); })[0];
-      if(base == null) base = Math.min(LINE_AXIS - 3, cy + 10);
-      svg.appendChild(svgEl('text', {x: (right ? cx + 8 : cx - 8).toFixed(1), y: base.toFixed(1), 'text-anchor': right ? 'start' : 'end'}, words));
+      var cx = x(p.t), cy = y(p.c), ok = isRight(c), r = ok ? 2.2 : 4.2;
+      svg.appendChild(svgEl('circle', {cx: cx.toFixed(1), cy: cy.toFixed(1), r: r, 'class': ok ? 'dot' : 'dot wrong'}));
+      taken.push({x0: cx - r - 1, x1: cx + r + 1, y0: cy - r - 1, y1: cy + r + 1});
+      dots.push({c: c, cx: cx, cy: cy});
+      if(!ok) named.push(dots[dots.length - 1]);
     });
     svg.appendChild(svgEl('text', {x: 2, y: LINE_H - 2, 'class': 'foot'}, 'OPEN ' + viewerTime(open)));
     svg.appendChild(svgEl('text', {x: W - 2, y: LINE_H - 2, 'text-anchor': 'end', 'class': 'foot'}, 'CLOSE ' + viewerTime(close)));
+    list.parentNode.insertBefore(svg, list);
+    named.forEach(function(n){
+      var words = svg.appendChild(svgEl('text', {x: 0, y: 0}, viewerTime(n.c.row_ts) + ' wrong')), m = words.getBBox(), spot = null;
+      var beside = [n.cx + 8, n.cx - 8 - m.width], centred = [Math.max(2, Math.min(W - 2 - m.width, n.cx - m.width / 2))];
+      [[n.cy + 10, beside], [n.cy - 6, beside], [n.cy + 19, centred], [n.cy - 15, centred]].forEach(function(row){
+        row[1].forEach(function(x0){
+          var b = {x0: x0, x1: x0 + m.width, y0: row[0] + m.y, y1: row[0] + m.y + m.height, base: row[0]};
+          if(!spot && b.x0 >= 2 && b.x1 <= W - 2 && b.y0 >= 0 && b.y1 <= LINE_AXIS && clear(b)
+             && dots.every(function(o){ return o === n || gap(b, o) > gap(b, n); })) spot = b;
+        });
+      });
+      if(!spot){ svg.removeChild(words); return; }
+      taken.push({x0: spot.x0 - 4, x1: spot.x1 + 4, y0: spot.y0, y1: spot.y1});
+      words.setAttribute('x', spot.x0.toFixed(1)); words.setAttribute('y', spot.base.toFixed(1));
+    });
     return svg;
   }
   function callRow(c){
@@ -359,7 +386,7 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
     // the card's width as it stands then (the head's, which has no sides of its own)
     function line(){
       if(lined) return; lined = true;
-      barsOf(d).then(function(rows){ var svg = dayLine(d, rows, head.clientWidth || LINE_W); if(svg) card.insertBefore(svg, list); });
+      barsOf(d).then(function(rows){ dayLine(d, rows, head.clientWidth || LINE_W, list); });
     }
     if(open) line();
     head.addEventListener('click', function(){

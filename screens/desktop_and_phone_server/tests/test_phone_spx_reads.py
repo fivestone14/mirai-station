@@ -39,7 +39,11 @@ def _run(js, data=None, tz=LA):
     each day asked for noted in ``asked`` (a test of the page's own barsOf declares it again after this stand-in)."""
     if not _NODE:
         pytest.skip("node is not installed")
-    text = "document.createTextNode = function(t){ var n = new Node('#text'); n._t = String(t); return n; };"
+    text = ("document.createTextNode = function(t){ var n = new Node('#text'); n._t = String(t); return n; };"
+            # a text's box as Chrome measures the page's 11px words: 6.03 a letter (its figures are tabular), 11 over the
+            # baseline and 13.42 tall; a word with no room is taken out again
+            "Node.prototype.getBBox = function(){ return {x: 0, y: -11, width: this.textContent.length * 6.03, height: 13.42}; };"
+            "Node.prototype.removeChild = function(n){ this.kids.splice(this.kids.indexOf(n), 1); return n; };")
     fns = "".join(_fn(f) for f in ("svgEl", "viewerTime", "marketAt", "money", "signed", "cap", "callDays", "isRight", "score", "rightOf", "share",
                                    "dayName", "headLine", "strip", "squares", "dayLine", "callRow", "dayCard", "summary", "anyOpen"))
     script = ("const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + FIXED_NOW + FAKE_DOM + text + _var("DAYS_SUMMED") + _var("STRIP_W")
@@ -157,13 +161,15 @@ def test_a_day_folds_to_its_score_and_squares_oldest_first_and_opens_to_its_call
 def test_an_open_day_draws_its_price_with_a_dot_at_each_call_and_the_wrong_ones_ringed():
     """Final-Reads (2026-10-10): over an open day's calls the day's closes from the open to the close (the feet, in the
     viewer's zone) with the low on the axis, a dot at each call's read minute (its bar's close, or the last bar's before
-    it), a wrong call's ringed and named clear of the line, to its right, or to its left near the close. The line is laid
-    out at the card's measured width (300 on the owner's 360 phone, 260 on a 320 one), as the forecast page's chart is,
-    so its words keep 11px at every width. The bars are asked for the first time a day is open, once per card; a folded
-    day never asks, and a day with under two bars draws no line."""
+    it), a wrong call's ringed and named where its words, measured as drawn, keep off the line, the dots and the words
+    placed before (reads-1): to its right, or to its left near the close. The line is laid out at the card's measured
+    width (300 on the owner's 360 phone, 260 on a 320 one), as the forecast page's chart is, so its words keep 11px at
+    every width, and goes into the card over its calls before its words are placed. The bars are asked for the first
+    time a day is open, once per card; a folded day never asks, and a day with under two bars draws no line."""
     d = {"day": "2026-10-09", "calls": [grade("2026-10-09T10:02:31-04:00"), grade("2026-10-09T12:31:03-04:00", verdict="wrong", label="up"),
                                         grade("2026-10-09T14:30:40-04:00", verdict="wrong", label="down")]}
-    svg, none = _run("console.log(JSON.stringify([dump(dayLine(D.d, D.bars, 300)), dayLine(D.d, D.bars.slice(0, 1), 300)]));", {"d": d, "bars": BOARD_BARS})
+    card = "var card = el('section', 'card'), list = card.appendChild(el('div', 'calls'));"
+    svg, none = _run(card + "console.log(JSON.stringify([dump(dayLine(D.d, D.bars, 300, list)), dayLine(D.d, D.bars.slice(0, 1), 300, list)]));", {"d": d, "bars": BOARD_BARS})
     assert none is None
     assert svg["attrs"]["class"] == "price" and svg["attrs"]["viewBox"] == "0 0 300 56" and svg["attrs"]["role"] == "img"
     assert svg["attrs"]["aria-label"] == "The day’s price from the 06:30 open to the 13:00 close, a dot at each of the 3 calls, the 2 wrong calls ringed: 09:31, 11:30"
@@ -174,23 +180,24 @@ def test_an_open_day_draws_its_price_with_a_dot_at_each_call_and_the_wrong_ones_
     dots = [(k["attrs"]["class"], k["attrs"]["cx"], k["attrs"]["cy"], k["attrs"]["r"]) for k in kids if k["tag"] == "circle"]
     assert dots == [("dot", "15.7", "42.0", "2.2"), ("dot wrong", "115.8", "21.9", "4.2"), ("dot wrong", "227.4", "8.0", "4.2")]
     texts = [(k["text"], k["attrs"].get("x"), k["attrs"].get("y"), k["attrs"].get("text-anchor"), k["attrs"].get("class")) for k in kids if k["tag"] == "text"]
-    assert texts == [("09:31 wrong", "123.8", "31.9", "start", None), ("11:30 wrong", "219.4", "18.0", "end", None),
-                     ("OPEN 06:30", "2", "54", None, "foot"), ("CLOSE 13:00", "298", "54", "end", "foot")]
-    tokyo = _run("console.log(JSON.stringify(dayLine(D.d, D.bars, 300).kids.filter(function(k){ return k.tag === 'text'; }).map(function(k){ return k.textContent; })));",
+    # each name's x is where its measured words start: the 11:30 call's 66.3 end 8 left of its ring at 227.4
+    assert texts == [("OPEN 06:30", "2", "54", None, "foot"), ("CLOSE 13:00", "298", "54", "end", "foot"),
+                     ("09:31 wrong", "123.8", "31.9", None, None), ("11:30 wrong", "153.1", "18.0", None, None)]
+    tokyo = _run(card + "console.log(JSON.stringify(dayLine(D.d, D.bars, 300, list).kids.filter(function(k){ return k.tag === 'text'; }).map(function(k){ return k.textContent; })));",
                  {"d": d, "bars": BOARD_BARS}, TOKYO)
-    assert tokyo == ["01:31 wrong", "03:30 wrong", "OPEN 22:30", "CLOSE 05:00"]
+    assert tokyo == ["OPEN 22:30", "CLOSE 05:00", "01:31 wrong", "03:30 wrong"]
     # at 260 the line ends at 258 and the 11:30 call's words, which no longer fit to its right, sit to its left
-    narrow = _run("var s = dayLine(D.d, D.bars, 260); console.log(JSON.stringify([s.attrs.viewBox, s.kids[0].attrs.x2, s.kids[1].attrs.points.split(' ').pop(),"
-                  " s.kids.filter(function(k){ return k.tag === 'text'; }).map(function(k){ return [k.textContent, k.attrs.x, k.attrs['text-anchor']]; })]));",
+    narrow = _run(card + "var s = dayLine(D.d, D.bars, 260, list); console.log(JSON.stringify([s.attrs.viewBox, s.kids[0].attrs.x2, s.kids[1].attrs.points.split(' ').pop(),"
+                  " s.kids.filter(function(k){ return k.tag === 'text'; }).map(function(k){ return [k.textContent, k.attrs.x]; }), card.kids.map(function(k){ return k.tag; })]));",
                   {"d": d, "bars": BOARD_BARS})
-    assert narrow == ["0 0 260 56", "258", "257.3,11.2", [["09:31 wrong", "108.5", "start"], ["11:30 wrong", "189.0", "end"], ["OPEN 06:30", "2", None], ["CLOSE 13:00", "258", "end"]]]
+    assert narrow == ["0 0 260 56", "258", "257.3,11.2", [["OPEN 06:30", "2"], ["CLOSE 13:00", "258"], ["09:31 wrong", "108.5"], ["11:30 wrong", "122.6"]], ["svg", "div"]]
     # a folded day asks for nothing; an open one asks once, at the head's width (the card's, which has no sides of its own,
     # 300 for a card not laid out) and puts the line in over its calls when it comes
     got = _run("var a = dayCard(D.d, false), b = dayCard(D.d, true); var askedNow = asked.slice();"
                "setImmediate(function(){ console.log(JSON.stringify([askedNow, asked, a.kids.map(function(k){ return k.tag + '.' + (k.attrs['class'] || ''); }),"
                " b.kids.map(function(k){ return k.tag + '.' + (k.attrs['class'] || ''); }), b.kids[2].attrs.viewBox])); });", {"d": d, "bars": BOARD_BARS})
     assert got == [["2026-10-09"], ["2026-10-09"], ["button.dh", "div.sq", "div.calls"], ["button.dh", "div.sq", "svg.price", "div.calls"], "0 0 300 56"]
-    assert "dayLine(d, rows, head.clientWidth || LINE_W)" in _fn("dayCard") and re.search(r"\n\.dh\{[^}]*;margin:-12px 0 0;padding:12px 0 0;border:0;", READS)
+    assert "dayLine(d, rows, head.clientWidth || LINE_W, list)" in _fn("dayCard") and re.search(r"\n\.dh\{[^}]*;margin:-12px 0 0;padding:12px 0 0;border:0;", READS)
     bare = _run("var b = dayCard(D.d, true); setImmediate(function(){ console.log(JSON.stringify(b.kids.length)); });", {"d": d, "bars": None})
     assert bare == 3
     assert _var("BARS_URL").strip() == "var BARS_URL = '/api/store/file?name=SPX_PRICE_BARS_BY_MINUTE&day=';"

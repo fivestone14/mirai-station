@@ -3367,11 +3367,13 @@ def test_the_wide_column_is_the_boards_three_tiles_a_row_of_horizons_and_the_not
     three horizons stand side by side with the Why control on the strip's label row, the sparkline is the board's 120,
     today's calls are one row (the label, the squares, the score at the right, the chevron: the label row gives up its
     box so its score and chevron follow the squares), and the note sits beside the two 176px buttons."""
-    _, wide = _wide_css()
+    css, wide = _wide_css()
     assert ".calls-link{display:flex;align-items:center}" in wide and ".calls-link .calls{flex:1 1 auto;display:flex;align-items:center;gap:12px}" in wide
     assert ".calls-link .lab{display:contents}" in wide and ".calls-link .lab .r,.calls-link .lab::after{order:1}" in wide and ".calls-link .sq{margin-top:0}" in wide
     assert ".tod{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}" in wide
-    assert ".ch-tiles{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));grid-auto-flow:row}" in wide and ".ch-tiles .tile-s{white-space:normal}" in wide
+    assert ".ch-tiles{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));grid-auto-flow:row}" in wide
+    # the tiles' sub lines wrap at every width, the phone's half-sheet tile too (DEV-7: "options book unavailable" at 320)
+    assert ".ch-tiles .tile-s{white-space:normal}" in css.replace(wide, "") and ".ch-tiles .tile-s" not in wide
     assert ".voices{display:block;height:auto;margin:0;padding:9px 10px;border:1px solid var(--rule-soft);border-radius:12px;text-align:left;font:inherit;" in wide
     assert ".voices::after{display:none}" in wide and ".voices .tile-k{display:flex}" in wide and ".voices .tile-s{display:block;white-space:normal}" in wide
     assert ".claude{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;padding-bottom:10px}" in wide
