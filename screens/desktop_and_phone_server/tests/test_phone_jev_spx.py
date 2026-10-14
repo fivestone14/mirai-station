@@ -124,7 +124,7 @@ def test_the_page_reads_the_spx_cards_and_keeps_the_sndk_pages_modes():
     # the questions left the page for their own sheet (09-29), so no fold is remembered on the phone any more
     assert "jev.spx.folded" not in JS and "'jev.folded'" not in JS and "el('details'" not in JS
     assert "<title>SPX · Forecast</title>" in SPX and '<span id="h1">SPX &middot; Forecast</span>' in SPX
-    assert "' \\u00B7 Forecast'" in _fn("paint"), "the script writes the header's name too"
+    assert "' · Forecast'" in _fn("paint"), "the script writes the header's name too"
     assert "innerHTML" not in JS
     # the call sheet, opened by sheet.js loaded first
     assert 'id="jevSheet" role="dialog" aria-modal="true" aria-hidden="true"' in SPX
@@ -237,7 +237,7 @@ def test_a_call_closed_for_good_is_never_graded_in_the_row_not_still_open():
     assert "st !== 'never'" in _fn("dayStates") and "st !== 'never'" in _fn("laneStates")
 
 
-def test_the_days_calls_row_sits_in_the_dock_under_claudes_read_as_a_card():
+def test_the_scoreboards_combined_call_row_gives_every_graded_call_of_the_day():
     """Monday's card and close-out log said 6 of 11 right while the page drew at most four calls (a card carries its last
     few): the scoreboard's Combined call row gives today's calls, every graded call of the day from the grades file (as
     the chart's squares) as a square with the score in words, and the grades are asked for on every new card. Design B
@@ -392,8 +392,8 @@ def _count(c, tz=LA):
 
 def test_the_count_of_answers_reads_the_cards_counts_under_their_own_names_in_the_questions_sheet():
     """The card's fresh and held are counts, while a record's are the answers themselves (I25): the card writes
-    fresh_count and held_count, and the count reads them, or the bare names on a card from before them. Since
-    Final-Home (2026-10-10) the count is said in the questions sheet's header, not as a chip on the card, and the
+    fresh_count and held_count, and the count reads them, or the bare names on a card from before them. In
+    Design B, as since 2026-10-10, the count is said in the questions sheet's header, not as a chip on the card, and the
     questions control on the page says the sheet's own count, "N of M", so the two never name different numbers; the
     top keeps only trouble."""
     live = {k: v for k, v in MONDAY["live"].items() if k not in ("fresh", "held", "labels")}
@@ -613,7 +613,7 @@ def test_a_call_is_a_forecast_not_a_trade_signal_and_shadow_means_only_the_shado
     for the shadow questions, asked and logged, never graded and never weighted (the question set's definition)."""
     assert "never a call" not in SPX and "Neither is a call" not in SPX and "in shadow" not in SPX
     assert JS.count("not a trade signal") == 0                   # said once, in the info sheet's paragraph
-    # the page's last line, under the two buttons on their row (Final-Home, 2026-10-10)
+    # the page's last line, under the two buttons on their row (Design B, as since 2026-10-10)
     assert SPX.index('<p class="note" id="note">A forecast, graded by the bars. Not advice.</p>') > SPX.index('id="infoBtn"')
     assert "+ 'A forecast, graded by the price bars. Not advice.';" in _fn("paint")       # Design B's words, set per tab
     assert "flex:11100%;margin:0;text-align:center" in _rule(".note")
@@ -633,7 +633,7 @@ def _odds():
 
 @pytest.mark.parametrize("tz", [LA, TOKYO])
 def test_the_odds_read_as_one_line_under_the_bar_with_the_pick_in_bold(tz):
-    """Final-Home (2026-10-10): under the bar one line names every option's odds, "Down 15 · Flat 62 · Up 24", the pick in
+    """Design B, as since 2026-10-10: under the bar one line names every option's odds, "Down 15 · Flat 62 · Up 24", the pick in
     bold; the bar keeps each option's share of the width, down on the left, up on the right, unsure last. A five-way
     call (an old opening card) says every option the same way, on as many lines as it needs."""
     got = _run(_odds() + "var b = oddsBar(D.o, D.pick); var d = dump(b); d.flex = b.kids[0].kids.map(function(k){ return k.style.flex; }); console.log(JSON.stringify(d));",
@@ -651,7 +651,7 @@ def test_the_odds_read_as_one_line_under_the_bar_with_the_pick_in_bold(tz):
 # ---- the tab bar, and the old SNDK address
 
 
-def test_the_switch_is_gone_and_the_old_sndk_forecast_address_forwards_to_the_forecast():
+def test_the_sndk_switch_is_gone_and_the_old_sndk_forecast_address_forwards_to_the_forecast():
     """The redesign (2026-10-10): SPX only. The SNDK | SPX switch and the choice it kept on the phone are gone from
     the page, with the beta chip; jev.html, the SNDK forecast, keeps its name as a redirect, so an old bookmark or a
     phone that kept the address lands on /m/ with its query, and a browser without scripts reads where it went."""
@@ -678,9 +678,9 @@ def test_the_sndk_glance_is_gone_and_its_address_answers_404():
             assert not re.search(r"index\.html|page\.js|glance\.js|the glance", p.read_text()), p.name
 
 
-def test_the_two_tabs_are_forecast_and_reads_on_every_page_that_carries_them():
-    """Final-Home: two tabs, Forecast (the page at /m/) and Results (the reads page, renamed in Design B, 2026-10-14,
-    its address kept), the Now tab gone; each page lights its own and links
+def test_the_two_tabs_are_forecast_and_results_on_every_page_that_carries_them():
+    """Design B (2026-10-14): two tabs, Forecast (the page at /m/) and Results (at /m/reads.html, the address it kept from
+    when it was Reads), the Now tab gone; each page lights its own and links
     the other, both answer a press through press.js, and the label is the board's 11px.
     The bar is inside the header on both pages, fixed at the phone's foot and in the header's row from 1024px up
     (Final-Desktop), so a screen reader meets the two tabs with the page's name."""
@@ -790,7 +790,7 @@ def _agree(c, direction=None, claude=None, tz=LA, now="2026-10-07T15:40:00-04:00
     return _run(js, {"c": c, "direction": direction, "claude": claude, "now": now}, tz)
 
 
-def test_the_blend_is_drawn_as_two_tiles_and_only_the_usual_odds_one_opens_the_sheet():
+def test_who_agrees_boxes_the_combined_calls_pick_and_sets_jev_alone_under_it():
     """Design B's Who agrees (2026-10-14), in place of the call's tiles: the reads of the same window, one row each. The
     combined call, tinted and tagged The call, its pick boxed (what it is scored on), if it moves which way (not scored),
     its odds as a bar, and a tap opens what is in it; JEV alone, for comparison, its pick boxed; the header names the
@@ -962,7 +962,7 @@ def test_the_called_at_bar_keeps_the_call_fixed_and_moves_a_second_needle_with_t
     assert "@media (prefers-reduced-motion:reduce){.avg-bar .now{transition:none}}" in SPX   # it jumps for those who ask for less motion
 
 
-def test_the_mode_chip_heads_the_leading_card_and_the_record_row_closes_it():
+def test_each_tab_runs_now_who_answers_and_its_scoreboard_with_no_mode_chip():
     """Design B (2026-10-14) has no mode chip: the switch says which clock leads, and each tab's section heads say what
     each part is. The 30-minute tab: Now, the window, who agrees, then the scoreboard under its key, the board closing
     the tab before the way to the results; the 5-minute tab: the pre-market glance, Now, who answers, the morning's
@@ -970,12 +970,12 @@ def test_the_mode_chip_heads_the_leading_card_and_the_record_row_closes_it():
     the questions sheet."""
     assert ".mode{" not in SPX and "'mode'" not in JS
     assert re.findall(r"main\.appendChild\((\w+)", _fn("paintThirty")) == ["secHead", "nowCard", "agreeCard", "secHead", "squareKey", "boardCard", "link"]
-    assert re.findall(r"main\.appendChild\((\w+)", _fn("paintFive")) == ["preGlance", "preGlance", "secHead", "preNow", "secHead", "fiveNow", "laneDone",
+    assert re.findall(r"main\.appendChild\((\w+)", _fn("paintFive")) == ["preGlance", "secHead", "preNow", "secHead", "fiveNow", "laneDone",
                                                                          "fiveWho", "secHead", "squareKey", "fiveBoard", "link", "mk"]
     assert "' answered'" not in _fn("paint") and "answered'" not in _fn("preState")
 
 
-def test_an_older_cards_half_and_half_is_named_as_the_graded_tile():
+def test_an_older_card_without_the_combined_forecast_leads_with_jevs_own_read():
     """A card from before the combined forecast (no shown_source, no voices) leads with JEV's own read, as it always did:
     its row is The call, JEV alone, and it opens nothing; no second JEV row sits under it."""
     avg = {k: v for k, v in REAL_AVG.items() if k not in ("shown_source", "voices")}
@@ -1224,7 +1224,7 @@ def _partial(**checks):
     (_closed("halted window: no bar at the mark", open_10={"outcome": "flat", "hit": True, "pick": "flat", "integral": on_call("up", "wrong")}),
      et("12:00"), LA, ["Pre-market · 06:280 of 2 right", "10 min · 06:44Went upWrong", "30 min · 07:04Not gradedClosed out"]),
 ])
-def test_after_the_hand_over_the_call_folds_to_one_line_with_each_checks_result(card, now, tz, want):
+def test_after_the_hand_over_the_glance_gives_each_checks_result(card, now, tz, want):
     """The call is checked at 09:44 and 10:04 and the close-out grades both at 10:06: once the opening lane takes over,
     the card is still fetched until that close-out lands, and its glance on the 5-minute tab gives each check's result
     in a tile, in the viewer's zone: where the average went (the end price alone said so) and whether the call was
@@ -1252,7 +1252,7 @@ def _alone(**checks):
     (_alone(open_10={"integral": {"graded": False, "reason": "not graded: a window with bars missing"}}),
      ["Pre-market · 06:28Checks at 06:44, 07:04", "10 min · 06:44Not checked yetOpen", "30 min · 07:04Not checked yetOpen"]),
 ])
-def test_a_call_whose_end_price_sums_got_no_answer_still_folds_with_its_checks(card, want):
+def test_a_call_whose_end_price_sums_got_no_answer_keeps_its_glance_and_its_checks(card, want):
     """Only the end-price request failed: the card's hour holds the average-price call and no end-price odds, and the
     fold once needed those, so the call vanished at the hand-over. Its glance stands on the call's own odds, each check
     on its average-price grade alone."""
@@ -1272,14 +1272,14 @@ def test_a_call_whose_end_price_sums_got_no_answer_is_still_said_to_be_a_forecas
     (pre_card("09:28", day="2026-09-25"), et("10:30")),                      # Friday's card on Monday
     (pre_card("08:05"), et("10:30")),                                        # no call made today: nothing to fold
 ])
-def test_no_fold_while_the_card_leads_on_another_day_or_without_a_call(card, now):
+def test_no_kept_glance_while_the_card_leads_on_another_day_or_without_a_call(card, now):
     assert _fold(card, now)["folds"] is False
 
 
-def test_the_fold_follows_the_session_cards_and_the_opening_lane_alone():
+def test_the_glance_tops_the_five_minute_tab_alone():
     """The glance tops the 5-minute tab while the pre-market card leads and after the hand-over until the card is
     dropped (PRE_HOURS), on that tab only."""
-    assert "if((pre || preFolds(p, now, today)) && p.hour && callSum(p.hour).probabilities) main.appendChild(preGlance(p));" in _fn("paintFive")
+    assert "if(pre || preFolds(p, now, today)) main.appendChild(preGlance(p));" in _fn("paintFive")
     assert "preGlance" not in _fn("paintThirty") and "!(tabNow() === 'five' && preFolds(premarket, now, today))) return;" in _fn("redrawPre")
 
 
@@ -1485,7 +1485,7 @@ def test_the_premarket_card_fits_the_owners_360px_phone():
 _FOLD_W = {"Went down": 84.58, "Stayed flat": 80.58, "Closed out": 66.39}
 
 
-def test_the_folded_premarket_call_fits_the_owners_360px_phone():
+def test_the_premarket_glance_after_the_close_out_fits_the_owners_360px_phone():
     """The glance after the close-out at 360: each tile's result and its words fit its half of the card."""
     tile = ((360 - 2 * 16 - 2 * 14) - 8) / 2 - 2 * 10
     assert all(16 + 6 + w <= tile for w in _FOLD_W.values())
@@ -1511,7 +1511,7 @@ def sentence_(s):
     return s[:1].upper() + s[1:]
 
 
-def test_a_blended_call_leads_with_jevs_own_read_and_keeps_the_half_and_half_in_a_tile():
+def test_a_blended_call_leads_with_jevs_own_read_never_the_half_and_half():
     """Will, 2026-09-30: on a blended call from before the combined forecast the call is JEV's own read, its odds and
     its pick, never the half-and-half."""
     blend = {"used": True, "jev_share": 0.5, "phase_words": "lunch, 12:00 to 14:00", "sessions": 19}
@@ -1525,7 +1525,7 @@ def test_a_blended_call_leads_with_jevs_own_read_and_keeps_the_half_and_half_in_
     assert "Flat 45%" not in json.dumps(got["dom"])
 
 
-def test_the_combined_forecast_leads_the_card_and_jevs_own_read_sits_in_a_tile():
+def test_the_combined_forecast_leads_the_card_and_jevs_own_read_is_the_jev_alone_row():
     """Will, 2026-10-07: once the combined forecast is the call (shown_source learner_pool), the call's row is it, and
     JEV's own read is the JEV alone row under it, never the call. (The 13:29 ET read of 10-07 showed JEV's Up 67% big
     while the graded call was Flat 47%.)"""
@@ -1557,11 +1557,11 @@ def _voice(name, plain, down, flat, up, share):
     return {"name": name, "plain_name": plain, "probabilities": {"up": up, "flat": flat, "down": down}, "share": share}
 
 
-# the 15:29 ET card of 2026-10-07 (state/spx_jev/latest.json) as the service wrote it then (shown_source pool_v2, the learner pool's
-# name before 2026-10-11, which the page still reads): the call's voices beside it
+# the 15:29 ET card of 2026-10-07 (state/spx_jev/latest.json) as the service wrote it then, its shown_source under the learner
+# pool's name of today (it said pool_v2 before 2026-10-11, and the live card is rewritten every read): the call's voices beside it
 # (live_call.take_over, listed in the order written, not by share) and each end-price sum's flat band in points
 REAL_AVG = {"pick": "flat", "probabilities": {"up": 0.1653, "flat": 0.4803, "down": 0.3545}, "primary": "average_30", "box": "next_30",
-            "minutes": 30, "flat_points": 3.62, "edge_points": 2.14, "price": 7798.0, "shown_source": "pool_v2",
+            "minutes": 30, "flat_points": 3.62, "edge_points": 2.14, "price": 7798.0, "shown_source": "learner_pool",
             "blend": {"used": True, "jev_share": 0.5, "phase_words": "close, 15:00 to 16:00", "sessions": 20},
             "jev": {"probabilities": {"up": 0.13, "flat": 0.15, "down": 0.72}}, "clock": {"probabilities": {"up": 0.17, "flat": 0.65, "down": 0.17}},
             "voices": [_voice("historical_odds", "Historical odds", 0.172, 0.654, 0.173, 0.224),
@@ -1572,9 +1572,9 @@ REAL_AVG = {"pick": "flat", "probabilities": {"up": 0.1653, "flat": 0.4803, "dow
                        _voice("additive_scorer", "Additive scorer", 0.109, 0.781, 0.11, 0.026)]}
 REAL_30 = {"pick": "flat", "probabilities": {"up": 0.1419, "down": 0.2058, "flat": 0.5472, "unsure": 0.105}, "blended": True, "flat_points": 3.62}
 REAL_60 = {"pick": "flat", "probabilities": {"up": 0.1543, "flat": 0.6974, "down": 0.1483}, "blended": True, "flat_points": 5.69,
-           "shown_source": "pool_v2", "blend50_exact": {"up": 0.1288, "down": 0.2043, "flat": 0.527, "unsure": 0.14}}
+           "shown_source": "learner_pool", "blend50_exact": {"up": 0.1288, "down": 0.2043, "flat": 0.527, "unsure": 0.14}}
 REAL = {"row_ts": "2026-10-07T15:29:17.137096-04:00", "marks": {"next_30": "2026-10-07T15:59:00-04:00", "next_60": None}, "calls": [],
-        "hour": {**REAL_30, "primary": "next_30", "shown_source": "pool_v2", "by": {"next_30": REAL_30, "next_60": REAL_60}, "average": REAL_AVG}}
+        "hour": {**REAL_30, "primary": "next_30", "shown_source": "learner_pool", "by": {"next_30": REAL_30, "next_60": REAL_60}, "average": REAL_AVG}}
 
 
 def _mix(c, tz=LA):
@@ -1660,7 +1660,7 @@ def _now(c, bars=None, direction=None, now="2026-10-07T15:40:00-04:00", tz=LA):
           "var READ_MINUTES = [2, 32], LAST_READ_DEFAULT = '15:32'; function waiting(){ return !!D.waiting; } function directionShown(d){ return !!d; }"
           "var HOLD = {}; function $(id){ return HOLD[id]; }"
           + "".join(_fn(f) for f in ("top1", "tag", "skipLine", "plusIso", "nextRead", "noCallWords", "averageWords", "indexLevel", "cardDay", "signedPts", "signedOne",
-                                     "runningAvg", "dirPoints", "dirResult", "dirSide", "chWidth", "nowChart", "keyRow", "nowCard", "paintNow"))
+                                     "runningAvg", "dirPoints", "dirResult", "dirSide", "chWidth", "nowChart", "keyRow", "windowHead", "windowOf", "nowCard", "paintNow"))
           + "".join(_var(v) for v in ("CH_ADV_400", "CH_ADV_500", "CH_ADV_800", "CH_ADV"))
           + "var box = nowCard(D.c); HOLD.nowChart = box.kids.filter(function(k){ return k.id === 'nowChart'; })[0]; HOLD.nowKeys = box.kids.filter(function(k){ return k.id === 'nowKeys'; })[0];"
           "paintNow(); console.log(JSON.stringify({parts: box.kids.map(function(k){ return [k.attrs['class'] || k.tag, k.textContent]; }),"
@@ -1668,11 +1668,12 @@ def _now(c, bars=None, direction=None, now="2026-10-07T15:40:00-04:00", tz=LA):
     return _run(js, {"c": c, "bars": bars, "direction": direction, "now": now}, tz)
 
 
-# Chrome at 360 with the shipped face, measured on the live page on 2026-10-10 (Final-Home): the record row's label (11px
-# capitals spaced .12em) and its count (11px bold), its line (12.5px), the calls row's label and score (12.5px bold),
-# Claude's numbers column (12.5px at 600, the pick at 800), the situation's value captions (11.5px), the two buttons'
-# words (13.5px bold), and the strip's label row (11px capitals spaced .12em)
-_REC_W = {"Combined call": 98.11, "Direction line": 89.36, "Down 92%": 74.78, "Down 98%": 73.53, "100 · 100 · 100": 101.95,
+# Chrome at 360 with the shipped face, measured on the live page (Design B's on 2026-10-14, the buttons' words and the
+# situation's captions before it): Who agrees' row name (14px bold) and its widest picks, boxed and plain (14px), the
+# combined call's sheet's three figures (12.5px), the scoreboard's since-start count (13px bold), the window's times
+# (17px heavy) and its progress line (11.5px), the two buttons' words (13.5px bold), and the situation's value captions
+# (11.5px)
+_REC_W = {"Combined call": 98.11, "Down 92%": 74.78, "Down 98%": 73.53, "100 · 100 · 100": 101.95,
           "187 of 312": 59.86, "09:31 → 10:01": 122.41, "Read 06:50": 64.63, "28 of 30 min": 67.2, "Graded 07:20": 77.94,
           "Questions · 12 asked": 133.28, "How to read": 79.77, "Most Calls Held · 187 pts above": 165.06, "by 16 pts": 46.53}
 
@@ -1726,7 +1727,7 @@ def test_the_last_reads_clock_looks_as_far_ahead_as_its_average_runs():
 
 
 # the opening card's own parts, lifted with it
-LANE_FNS = ("top1", "tag", "skipLine", "indexLevel", "averageWords", "labRow", "signedOne", "keyRow", "runningAvg", "calledAt", "stretchWords", "fillFiveStrip", "fiveNow",
+LANE_FNS = ("top1", "tag", "skipLine", "indexLevel", "averageWords", "labRow", "signedOne", "keyRow", "runningAvg", "calledAt", "stretchWords", "fillFiveStrip", "windowHead", "fiveNow",
             "threeWay", "oddsKeys", "oddsBar", "ifMoves", "sideCls", "waVal", "waRow", "fiveWho", "callState", "rightWords", "openWords", "dayCalls", "laneToday",
             "laneStates", "sqRow", "sbRow", "sbCell", "laneSince", "preDays", "preSince", "fiveBoard", "fillFive", "sitWords", "signedWords", "gauge", "measured", "points",
             "factCaption", "situationCard", "marketCard")
@@ -1868,14 +1869,13 @@ def test_the_days_first_read_and_a_move_the_page_cannot_read_have_no_last_5_minu
 
 
 # the opening card's widest lines in the shipped face (Plus Jakarta Sans, its advance widths at the line's weight, size
-# and spacing): a stretch row after a missed read with a two-figure move, the mode chip with its padding and border
-_LANE_W = {"FLAT BAND ± 12.3 PTS": 136.2, "7,791.1": 33.02, "Last 10 min (already happened)": 181.89, "Opening call": 85.66}
+# and spacing): the strip's name with a two-figure edge, a band edge's price, and who answers' row name
+_LANE_W = {"FLAT BAND ± 12.3 PTS": 136.2, "7,791.1": 33.02, "Opening call": 85.66}
 
 
 def test_the_opening_cards_rows_fit_the_owners_360px_phone():
-    """At 360 a card holds 296px: the strip's name sits over it, its two prices under the band's edges keep apart, the
-    stretch's row name wraps under its 1fr column at worst, and who answers holds the opening call's name beside its
-    boxed pick."""
+    """At 360 a card holds 296px: the strip's name sits over it, its two prices under the band's edges keep apart, and
+    who answers holds the opening call's name beside its boxed pick."""
     inner = 360 - 2 * 16 - 2 * _px(".card", "padding")
     assert _LANE_W["FLAT BAND ± 12.3 PTS"] <= inner
     band = inner * (1 - 2 * 0.278)
@@ -1898,7 +1898,7 @@ def test_the_opening_cards_last_line_says_when_it_hands_back_and_what_a_call_is(
     assert _flat_text(_lane([last], "2026-09-28T10:45:00-04:00")[0]["board"]["kids"][-1]) == "pts always means S&P index points."
 
 
-def test_the_pre_market_call_and_its_fold_are_the_average_price_sums():
+def test_the_pre_market_call_and_its_glance_are_the_average_price_sums():
     avg = {**AVG, "pick": "down", "probabilities": {"up": 0.25, "flat": 0.3, "down": 0.45}, "primary": "open_average_30", "box": "open_30",
            "flat_points": 4.38, "edge_points": 2.59}
     card = pre_card("09:28")
@@ -2334,23 +2334,7 @@ BOARD = {"sums": {"average_30": {"graded_reads_count": 107, "since_day": "2026-0
                                             {"name": "matcher", "plain_name": "Matcher", "right_pct": 57.9, "skill_vs_historical_odds_pct": -5.29, "reads_count": 95}],
                                  "daily_skill": [{"day": "2026-10-07", "base_pool_pct": -33.81, "learner_pool_pct": -22.11}, {"day": "2026-10-08", "base_pool_pct": -2.06, "learner_pool_pct": 5.01},
                                                  {"day": "2026-10-09", "base_pool_pct": -6.18, "learner_pool_pct": -4.48}]}}}
-_RECORD_FNS = ("labRow", "learnSum", "learnGuess", "scorePct", "verdictWords", "sideOf", "recordRow", "paintRecord", "scoreBar", "scoreRow", "skillLine", "openRecord")
-
-
-def _record(board, tz=LA):
-    """The record row built by the card and filled by paintRecord from ``board``, then the sheet a tap opens: the row's
-    hidden state, its parts' flat text and label, and the sheet's title and body."""
-    js = ("var nodes = {csTitle: el('div'), csBody: el('div')}; var row = null; function $(id){ return id === 'rec' ? row : nodes[id] || byId(row, id); }"
-          "function byId(n, id){ if(!n) return null; if(n.id === id) return n; for(var i = 0; i < n.kids.length; i++){ var f = byId(n.kids[i], id); if(f) return f; } return null; }"
-          "var opened = 0, MiraiSheet = {open: function(){ opened++; }};"
-          + "".join(_var(v) for v in ("LEARN_URL", "BASE", "board")) + "".join(_fn(f) for f in _RECORD_FNS)
-          + "row = recordRow(); board = D.board; paintRecord(); var hidden = row.hidden;"
-          "openRecord(row); console.log(JSON.stringify({hidden: hidden, parts: row.kids.map(function(k){ return [k.attrs['class'], k.textContent]; }), label: row.attrs['aria-label'],"
-          " title: nodes.csTitle.textContent, opened: opened, body: dump(nodes.csBody)}));")
-    return _run(js, {"board": board}, tz)
-
-
-def test_the_record_row_gives_the_scoreboards_numbers_in_the_learning_loops_words():
+def test_the_scoreboard_gives_each_reads_record_against_its_yardstick():
     """Design B's scoreboard (2026-10-14) in place of the record row and its learning loop: a row per read with today's
     squares and score, its score since its first day, and the yardstick it is judged against with the verdict in a chip.
     The combined call: the scoreboard's learner pool against the base-rate guess, "a bit worse" under 10 points, judged
@@ -2444,9 +2428,8 @@ CLAUDE = {"read_id": "live:2026-10-09T14:30:12-04:00", "trading_day": "2026-10-0
           "record": {"verdict": "Too early", "graded_reads": 0, "scorecard_built_at": None, "horizons": {}}, "written_at": "2026-10-09T14:31:40-04:00"}
 _CLAUDE_FNS = ("top1", "clOk", "clBase", "clPick", "clDir", "clHeader", "clBar", "clNumbers", "moveVsUsual", "tiltVsUsual", "against",
                "noAnswerWords", "horizonKey", "reasonRow", "recordLine", "openWhy")
-# the 30-minute card the CLAUDE read was made for (its read_id is "live:" and the card's row stamp), calling flat, and one calling up
+# the 30-minute card the CLAUDE read was made for (its read_id is "live:" and the card's row stamp), calling flat
 FLAT_CARD = {"row_ts": "2026-10-09T14:30:12-04:00", "hour": {"average": {"pick": "flat", "probabilities": {"flat": 0.62, "up": 0.24, "down": 0.15}}}}
-UP_CARD = {**FLAT_CARD, "hour": {"average": {"pick": "up", "probabilities": {"flat": 0.3, "up": 0.5, "down": 0.2}}}}
 
 
 def _claude(c, card=None, tz=LA, leads=None, now="2026-10-09T14:32:30-04:00"):
@@ -2458,7 +2441,7 @@ def _claude(c, card=None, tz=LA, leads=None, now="2026-10-09T14:32:30-04:00"):
     return _run(js, {"c": c, "card": card, "leads": leads, "now": now}, tz)
 
 
-def test_claudes_read_is_a_strip_under_the_call_never_a_second_headline():
+def test_claudes_read_and_the_direction_line_are_rows_of_who_agrees_never_a_second_headline():
     """Design B (2026-10-14): Claude's read is a row of Who agrees, never a second headline, beside the direction line's. The direction line's row: its own mix (four forecasters and Claude), "Doesn't call flat", its graded side boxed
     (revision 0, made at the read) and the newest revision's under it once Claude's joining moved it; a tap opens its
     sheet. Claude's row: not in the call, its pick boxed and, if it moves, up against down; a read made for another card
@@ -2496,7 +2479,7 @@ def test_an_older_read_is_never_set_against_the_call_on_screen():
     assert "c.read_id === 'live:' + last.row_ts" in _fn("claudeRow")
 
 
-def test_a_read_with_no_answer_or_a_rejected_horizon_says_so_in_the_strip():
+def test_a_read_with_no_answer_or_a_rejected_horizon_says_so_in_its_row():
     """A read made for the card on screen that answered nothing will never be in: Who agrees says "No answer" with why
     under it, rejected by the checks or paused by hand (a failed answer, with nothing more to say, says "No answer"
     alone), never "Not in yet", which is a read of another card; its Why sheet says which horizons were rejected and
@@ -2577,7 +2560,7 @@ def test_a_sample_read_is_never_shown_as_a_real_one():
     assert "pollOptions(); pollLearn(); pollClaude();" in JS
 
 
-def test_the_whole_page_draws_claudes_strip_against_mondays_call():
+def test_the_whole_page_draws_claudes_row_against_mondays_call():
     """Monday's 15:31 card is from before the cut-over, so its call is JEV's own Down 51%; Claude's read made for it is
     its row in Who agrees, Flat 58% boxed. Under the opening call at 10:35 the 5-minute tab leads and no table is drawn;
     without Claude's file the row is not there."""
@@ -2590,7 +2573,7 @@ def test_the_whole_page_draws_claudes_strip_against_mondays_call():
     assert [r[0] for r in [[_flat_text(x["kids"][0])] for x in _whole(cards, "2026-09-28T15:40:00-04:00")["agree"]["kids"][2:]]] == ["The callThe callJEV alone"]
 
 
-# ---- the situation card (Final-Home, 2026-10-10)
+# ---- the situation card (2026-10-10, kept in Design B)
 
 SITUATION = [{"path": "price.recent_move", "title": "Price, last 30 min", "verdict": "Flat", "figure": {"kind": "signed", "value": 0.03, "band": 0.029, "unit": "sigma"},
               "sentence": "over the last 30 minutes price moved 0.03 of a normal day's move, larger than 4 of the last 19 sessions at this minute, bottom third: no real move"},
@@ -2619,7 +2602,7 @@ def _situation(rows, sigma=75.3, age="13 MIN AGO", tz=LA, wide=False):
 
 
 def test_the_situation_is_one_control_of_key_value_rows_with_the_figures_in_points():
-    """Final-Home (2026-10-10): the card is a button headed "Situation" with the age and a chevron; three rows, the fact's
+    """Design B, as since 2026-10-10: the card is a button headed "Situation" with the age and a chevron; three rows, the fact's
     name, a 60px gauge in the middle (the same semantics: a signed figure centred on no change with its flat band shaded,
     a rank with its ends shaded, a distance from price with the near-wall stretch shaded) and the verdict at the right
     with the figure under it in index points on the card's sigma; vol points and a rank stay in their own units; a
@@ -2674,7 +2657,7 @@ def test_the_situation_sheet_gives_each_facts_sentence_in_the_viewers_zone():
 
 
 def test_the_questions_and_the_info_controls_share_one_row_that_fits_a_320px_phone():
-    """Final-Home (2026-10-10), Design B's words (2026-10-14): two half-width 48px buttons at the foot, "Questions · N"
+    """Design B (2026-10-14), as since 2026-10-10: two half-width 48px buttons at the foot, "Questions · N"
     (the opening call's, shown on the 5-minute tab while the lane's card is today's) and "How to read", on one flex row
     so the info control has the row to itself on the 30-minute tab (its questions are the call's sheet's); at 320 each
     holds 138px inside. The footer line is the page's last, and names the call the questions are for."""
@@ -3137,7 +3120,7 @@ def test_the_chart_is_drawn_to_the_boards_scales():
     assert [_flat_text(k) for k in key["kids"]] == ["Dashed box · the 11:30 call, flat ± 3.1 pts to 12:00", "Lines · Today’s Call Wall (7,815), Magnet (7,810), Today’s Put Wall (7,810)",
                                                    "Bars · today’s options per strike, puts left, calls right"]
     assert [[_flat_text(k) for k in t["kids"]] for t in tiles["kids"]] == [["Range so far", "35 pts", "0.46 of a normal day"], ["Magnet", "7,810", "373k · 1.5 pts below"]]
-    assert tiles["attrs"]["class"] == "tod ch-tiles" and cap["attrs"] == {"class": "tag"} and _flat_text(cap) == "Dealers lean against moves · options book 12:58 · not advice"
+    assert tiles["attrs"]["class"] == "ch-tiles" and cap["attrs"] == {"class": "tag"} and _flat_text(cap) == "Dealers lean against moves · options book 12:58 · not advice"
     assert [k["attrs"]["class"] for k in key["kids"]] == ["box", "walls", "bars"] and cap["kids"][-1]["attrs"]["class"] == "ch-advice"   # what the panel leaves out, by class
     assert _flat_text(got["body"]["kids"][-1]) == _flat_text(cap) and len(got["body"]["kids"]) == 4
 
@@ -3374,15 +3357,16 @@ def test_the_tabs_sit_in_the_headers_row_on_both_pages_from_1024px_up():
     assert "main{width:100%;max-width:528px;margin:0 auto}" in reads   # the days stay the phone's centred column
 
 
-def test_the_wide_column_is_the_boards_three_tiles_a_row_of_horizons_and_the_note_beside_the_buttons():
-    """Final-Desktop's column, by the one wide block: the chart's tiles' grid gives every tile the same share whatever
-    their count, the sparkline is the board's 120, and the note sits beside the two 176px buttons; Design B's tab parts
-    (the switch, the window, the table and the board) take the 544px column as every card does."""
+def test_the_wide_panels_tiles_fill_its_rows_and_the_note_sits_beside_the_buttons():
+    """Final-Desktop's column, by the one wide block: the chart panel's tiles stand four in a row where the panel is wide
+    enough and two by two where it is not, the sparkline is the board's 120, and the note sits beside the two 176px
+    buttons; Design B's tab parts (the switch, the window, the table and the board) take the 544px column as every card
+    does."""
     css, wide = _wide_css()
-    for gone in (".calls-link", ".voices{", ".claude{", ".cl-grid"):                                  # the column's old rows went with Design B
+    for gone in (".calls-link", ".voices{", ".claude{", ".cl-grid", ".tod{"):                       # the old rows and tile grid went with Design B
         assert gone not in css, gone
-    assert ".tod{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}" in wide
-    assert ".ch-tiles{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));grid-auto-flow:row}" in wide
+    assert ".ch-tiles{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin-top:12px}" in css.replace(wide, "")
+    assert ".ch-tiles{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}" in wide
     # the tiles' sub lines wrap at every width, the phone's half-sheet tile too (DEV-7: "options book unavailable" at 320)
     assert ".ch-tiles .tile-s{white-space:normal}" in css.replace(wide, "") and ".ch-tiles .tile-s" not in wide
     assert ".px-spark{flex:0 0 120px;max-width:none}" in wide and "SPARK_W_WIDE = 120" in _var("SPARK_W") and "W = chartDocked() ? SPARK_W_WIDE : SPARK_W" in _fn("paintSpark")
@@ -3472,7 +3456,7 @@ def test_the_panel_carries_the_boards_title_and_four_tiles_and_the_sheet_keeps_i
     assert [k["attrs"]["class"] for k in key["kids"]] == ["box", "walls", "bars"] and ".ch-key .walls{display:none}" in SPX and ".ch-key .bars{order:-1}" in SPX
     assert [[_flat_text(k) for k in t["kids"]] for t in tiles["kids"]] == [["Range so far", "35 pts", "0.46 of a normal day"], ["Biggest strike", "7,810", "373k traded · 1.5 pts below"],
                                                                            ["Today’s Call Wall", "7,815", "214k calls · 3.5 pts above"], ["Today’s Put Wall · Magnet", "7,810", "171k puts · the magnet"]]
-    assert tiles["attrs"]["class"] == "tod ch-tiles" and [t["attrs"]["class"] for t in tiles["kids"]] == ["tile"] * 4
+    assert tiles["attrs"]["class"] == "ch-tiles" and [t["attrs"]["class"] for t in tiles["kids"]] == ["tile"] * 4
     assert _flat_text(cap) == "Dealers lean against moves · options book 12:58 · not advice" and cap["kids"][-1]["attrs"]["class"] == "ch-advice"
     # the magnet off the put wall: the wall's distance in its place, and no magnet on either name
     apart = _board(W=744, wide=True, book={**NATIVE_ROW, "gex_views": {**NATIVE_ROW["gex_views"], "magnet": 7805.0}})["body"]["kids"][2]

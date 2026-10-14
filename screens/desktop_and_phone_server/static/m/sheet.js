@@ -1,12 +1,13 @@
 /* sheet.js — the explainer sheets: how one opens, and every way it closes.
  *
- * The forecast page carries several: a call's result, how to read the page,
- * Claude's read, the questions, the price-today chart. The page owns each
- * sheet's markup, its copy of the sheet's CSS (a shared stylesheet would be a
+ * The forecast page carries several: what is in the combined call, the time
+ * of day, the situation, the direction line, Claude's why, how to read the
+ * page, the questions, the price-today chart. The page owns each sheet's
+ * markup, its copy of the sheet's CSS (a shared stylesheet would be a
  * render-blocking re-fetch on every open) and the control that OPENS it: a
- * plain tap on a tile or a button, because those are controls. Each control
- * names its sheet in aria-controls, and a sheet already open is not opened
- * again, which would push a second history entry for it.
+ * plain tap on a button (a row, a card, the price box), because those are
+ * controls. Each control names its sheet in aria-controls, and a sheet already
+ * open is not opened again, which would push a second history entry for it.
  * Everything after the opening is here, once, because every part of it was
  * learned on a phone and a second copy would have to learn it again.
  *
