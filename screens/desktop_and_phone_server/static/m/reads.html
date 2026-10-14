@@ -6,40 +6,35 @@
 <meta name="color-scheme" content="light">
 <title>SPX · Results</title>
 <!--
-  The SPX reads: every graded 30-minute call, a day at a time (Will's design D of 2026-10-09, drawn to his board
-  Final-Reads of 2026-10-10). The last five days' score stays pinned at the top with the header, with its share
-  right, the five days under it as bars, and a Collapse all / Open all control. Under it the days, newest first, a
-  sliver apart: the newest open, the others folded to their score and one square per call, filled when the call was
-  right, oldest on the left. An open day draws its price from the open to the close with a dot at each call, the
-  wrong ones ringed, and lists its calls earliest to latest in the viewer's zone: the time, where the 30-minute
-  average went and what was called, a picture of the window against the call, and Right or Wrong. A tap on a call
-  opens its numbers.
+  The SPX results (Design B, 2026-10-14; Will's design D of 2026-10-09 before it, at the same address): every read
+  the forecast page shows, graded, a day at a time. A picker of the last five market days; the square key; the day as
+  one lane per read, each square at the time its call was made on one axis whose first hour is zoomed in to half the
+  width, so the opening's calls five minutes apart keep apart: the pre-market call (its two checks), the opening calls,
+  the combined call, the direction line, Claude, and for comparison JEV alone. A tap on a lane lists its calls under the
+  lanes, earliest first, a graded window's numbers a tap away, and its last five days under the list.
 
-  Reads the live lane's average-price grades (JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON in station_paths.py)
-  through the viewstation's by-name store route, one row per graded window (pipelines/spx_jev_questions_and_pools grade.py, the average-price
-  grade): horizon next_30 only, the last row of a read kept. ``from`` is the price the call was made at, ``edge`` its
-  flat band either side, ``g`` the 30-minute average's move from it, ``worst`` and ``best`` the window's low and high,
-  ``label`` where the average went, ``pick`` the call and ``verdict`` the grade. An open day's line is the day's
-  one-minute bars (SPX_PRICE_BARS_BY_MINUTE, the SPX service's bars job, as the forecast page's chart reads them), fetched
-  when the reader opens the day: once and kept for a done day, again on each draw while the day runs, since a page
-  left open all session (the MacBook's tab) would otherwise draw the line only to the minute it was first asked for.
-  Nothing in server.py changes for it.
+  Reads, through the viewstation's by-name store route: the average-price grades (JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_
+  HORIZON in station_paths.py, one row per graded window, pipelines/spx_jev_questions_and_pools grade.py) of the live
+  lane (horizon next_30), the opening lane (tape, next_10) and the pre-market lane (premarket, its checks open_10 and
+  open_30, the day's last graded read standing for the day); the 30-minute card (JEV_LIVE_CARD) for today's open call;
+  and a day at a time JEV's own answers (FORECASTS_BY_FORECASTER_READ_AND_HORIZON, voice jev_own), the direction line's
+  grades (DIRECTION_LINE_GRADES_BY_READ) and Claude's answers and their outcomes (CLAUDE_FORECAST_ANSWERS_BY_READ,
+  CLAUDE_FORECAST_OUTCOMES_BY_READ, written at the evening's finalize). The 60-minute grades are never shown. In a grade
+  row ``from`` is the price the call was made at, ``edge`` its flat band either side, ``g`` the window's average's move
+  from it, ``worst`` and ``best`` the window's low and high, ``label`` where the average went, ``pick`` the call and
+  ``verdict`` the grade. Nothing in server.py changes for it.
 
-  The picture: the call's price is the ink tick in the middle, its flat band the shaded box, the window's low to
-  high the line, and the average, the number that is graded, the dot, coloured by where it went (up the page's
-  blue, down its rust, flat ink). The scale is SCALE_PTS either side on every row, so the rows compare.
-
-  Times are the viewer's, through viewerTime as on the forecast page; which day a call belongs to is its
-  market day (the stamp's own date, written in New York's offset). Same paper as the forecast page: its tokens,
-  its card, its label row, its header line, its tab bar, and from 1024px up its header row with the tabs in it,
-  the days staying a centred column. Text goes in with textContent only; a failed fetch keeps the last list on
-  screen and says so. Nothing here reads a viewport unit.
+  Times are the viewer's, through viewerTime as on the forecast page; which day a call belongs to is its market day (the
+  stamp's own date, written in New York's offset), and the axis's open and close are the day's on the market clock.
+  Same paper as the forecast page: its tokens, its card, its square key, its header line, its tab bar, and from 1024px
+  up its header row with the tabs in it, the page staying a centred column. Text goes in with textContent only; a
+  failed fetch keeps the last results on screen and says so. Nothing here reads a viewport unit, and no sheet opens.
 -->
 <link rel="preload" href="/m/pjs-153fc85b7029.woff2" as="font" type="font/woff2" crossorigin>
 <style>
 @font-face{font-family:"Jakarta";src:url("/m/pjs-153fc85b7029.woff2") format("woff2");font-weight:200 800;font-style:normal;font-display:swap}
 :root{
-  --g:#E4E0D8; --s:#F4F1EB; --s2:#DCD7CD; --fill:#1F2622;
+  --g:#E4E0D8; --s:#F4F1EB; --s2:#DCD7CD; --s3:#EDE9E2; --fill:#1F2622;
   --i:#161A17; --i-body:#333B35; --i-mute:#535B52; --i-faint:#5C6459;
   --on-body:#E4E6DF; --rule-soft:#7E8779;
   --o-dn:#A8492F; --o-fl:#B9B2A4; --o-up:#2F44B8; --o-un:#9C9586;
@@ -51,91 +46,105 @@
 *{box-sizing:border-box}
 html{background:var(--g)}
 body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sans);font-variant-numeric:tabular-nums;
-     -webkit-font-smoothing:antialiased;padding:0 16px calc(var(--tab-h) + 16px);display:flex;flex-direction:column;gap:10px;
+     -webkit-font-smoothing:antialiased;padding:0 16px calc(var(--tab-h) + 16px);display:flex;flex-direction:column;gap:12px;
      max-width:560px;margin:0 auto}
 
-/* header, as the forecast page draws it: the page's name on the left and on the right the newest day's market day,
-   said done once its close has passed; the two share one line at 360 and the right side wraps under the name at 320 */
-.hd{position:sticky;top:0;z-index:5;margin:0 -16px;padding:calc(env(safe-area-inset-top) + 12px) 16px 10px;background:var(--g);
-    box-shadow:0 8px 12px -10px rgba(58,48,32,.35)}       /* the days scroll under it, the pinned summary with it */
-.hd-1{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;font:700 11px/1.2 var(--sans);letter-spacing:.16em;color:var(--i-faint);
+/* header, as the forecast page draws it: the page's name on the left and on the right two lines, the newest day and
+   under it the zone the page's times are in with whether the day is still running; the right side wraps under the
+   name, whole, when a long zone name leaves no room */
+.hd{position:sticky;top:0;z-index:5;margin:0 -16px;padding:calc(env(safe-area-inset-top) + 12px) 16px 10px;background:var(--g)}
+.hd-1{display:flex;flex-wrap:wrap;align-items:flex-start;gap:2px 8px;font:700 11px/1.2 var(--sans);letter-spacing:.16em;color:var(--i-faint);
       text-transform:uppercase}
 .hd-l{white-space:nowrap}
 /* tabular digits (the font shorthand above resets them), so the day keeps one width whatever it says */
-.hd-r{margin-left:auto;letter-spacing:.12em;color:var(--i-mute);white-space:nowrap;font-variant-numeric:tabular-nums}
+.hd-r{margin-left:auto;text-align:right;letter-spacing:.12em;color:var(--i-mute);white-space:nowrap;font-variant-numeric:tabular-nums}
+.hd-z{display:block;margin-top:4px;font:500 12px/1.2 var(--sans);letter-spacing:0;text-transform:none}
+.hd-z:empty{display:none}
 .hd-2{margin-top:3px;font:400 13px/1.3 var(--sans);color:var(--i-mute)}
+.hd-2[hidden]{display:none}
 .hd-2.err{color:var(--o-dn)}
 
 .card{background:var(--s);border-radius:18px;padding:12px 14px;box-shadow:var(--sh1)}
-main{display:flex;flex-direction:column;gap:6px}         /* a sliver between days */
-/* the last five days, pinned in the header: the score with its share, the one control for every day, and under them
-   the days themselves, oldest on the left, each its right calls as a bar and its score, the newest in ink */
-.sum{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:8px}
-.sum[hidden]{display:none}
-.sum-l{flex:1 1 auto;min-width:0}
-.sum-v{margin-top:2px;font:700 16px/1.2 var(--sans);color:var(--i)}
-.sum-v span{font:400 12.5px/1.2 var(--sans);color:var(--i-mute)}
-.all{flex:none;min-height:var(--tap-min);padding:0 12px;border:1px solid var(--rule-soft);border-radius:10px;background:var(--s);
-     font:700 11px/1 var(--sans);letter-spacing:.06em;color:var(--i);touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-.all:focus-visible{outline:2px solid var(--o-up);outline-offset:2px}
-.byday{display:flex;gap:6px;flex:1 1 100%}
-.byday div{flex:1 1 0;min-width:0}
-.byday b{display:block;font:700 11px/1.2 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--i-faint)}
-.byday .bar{display:block;height:5px;margin-top:4px;border-radius:3px;background:var(--s2)}
-.byday .bar i{display:block;height:5px;border-radius:3px;background:var(--fill)}
-.byday span{display:block;margin-top:3px;font:400 11px/1.2 var(--sans);color:var(--i-mute);white-space:nowrap}
-.byday .now b,.byday .now span{color:var(--i)}
-.byday .now span{font-weight:700}
-.lab{display:flex;align-items:center;gap:8px;font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i-faint)}
-.lab .r{margin-left:auto;font-size:12.5px;letter-spacing:0;text-transform:none;color:var(--i);white-space:nowrap}
+main{display:flex;flex-direction:column;gap:12px}
+.lab{font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i)}
+.cnote{font:500 12px/1.45 var(--sans);color:var(--i-mute)}
+.foot{padding:2px 8px;text-align:center;font:500 11.5px/1.4 var(--sans);color:var(--i-mute)}
+/* a section's head: its name over an ink rule, a note at its right */
+.sec{display:flex;align-items:baseline;gap:8px;margin-top:6px;padding-bottom:2px;border-bottom:1.5px solid var(--i)}
+.sec h2{margin:0;font:800 13px/1.2 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--i)}
+.sec .r{margin-left:auto;font:500 12px/1.2 var(--sans);color:var(--i-mute);text-align:right}
 
-/* a day: its header a button that opens and folds it, its calls as squares, filled when right, oldest on the left */
-.dh{display:flex;align-items:center;gap:8px;width:100%;min-height:var(--tap-min);margin:-12px 0 0;padding:12px 0 0;border:0;
-    background:none;font:inherit;color:inherit;text-align:left;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-.dh .lab{flex:1 1 auto}
-.dh:focus-visible,.call:focus-visible{outline:2px solid var(--o-up);outline-offset:2px;border-radius:8px}
-.chev{flex:none;width:7px;height:7px;margin:0 3px 3px 4px;border-right:1.5px solid var(--i-mute);border-bottom:1.5px solid var(--i-mute);
-      transform:rotate(-45deg);transition:transform .2s var(--ease-out)}
-.dh[aria-expanded="true"] .chev{transform:rotate(45deg)}
-.sq{display:flex;flex-wrap:wrap;gap:3px;margin-top:6px}
-.sq i{display:block;width:10px;height:10px;border-radius:2px;border:1.2px solid var(--o-un)}
-.sq i.ok{background:var(--fill);border-color:var(--fill)}
-/* an open day's price from the open to the close, a dot at each call, a wrong one ringed and named; laid out at the
-   card's measured width, as the forecast page's chart is, so no width scales its words under 11px, the page's floor */
-.price{display:block;width:100%;height:auto;margin-top:8px;font-family:var(--sans)}
-.price .ax{stroke:var(--s2);stroke-width:1}
-.price polyline{fill:none;stroke:var(--i);stroke-width:1.3;stroke-linejoin:round;stroke-linecap:round}
-.price .dot{fill:var(--fill)}
-.price .dot.wrong{fill:var(--s);stroke:var(--i);stroke-width:1.5}
-.price text{font-size:11px;font-weight:600;fill:var(--i-mute)}
-.price .foot{font-weight:700;letter-spacing:.06em;fill:var(--i-faint)}
+/* the day picker: the last five market days, the picked one in ink */
+.days{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;padding:4px;border-radius:14px;background:var(--s2)}
+.days button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-height:var(--tap-min);padding:0;border:0;
+             border-radius:10px;background:none;font:500 11px/1.2 var(--sans);color:var(--i-mute);touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.days button b{font:800 13px/1.2 var(--sans);color:var(--i)}
+.days button.on{background:var(--i);color:var(--on-body)}
+.days button.on b{color:var(--s)}
+/* the squares, the forecast page's one key: filled right, outlined flat or passed, rust wrong, dashed blue open */
+.sq{display:inline-flex}
+.sq i{display:block;flex:none;width:10px;height:10px;border-radius:2px;background:var(--fill)}
+.sq i.f{background:none;border:1.6px solid var(--i-mute)}
+.sq i.w{background:var(--o-dn)}
+.sq i.o{background:none;border:1.6px dashed var(--o-up)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 10px;padding:8px 10px;border-radius:10px;background:var(--s3);font:500 11.5px/1.2 var(--sans);color:var(--i-body)}
+.legend>span{display:inline-flex;align-items:center;gap:5px}
 
-/* a call: time, where the average went over what was called, the picture, the grade; a tap opens its numbers */
-.calls{margin-top:4px}
-.calls[hidden]{display:none}
-.call{display:grid;grid-template-columns:minmax(40px,max-content) minmax(0,1fr) 104px 52px;gap:8px;align-items:center;width:100%;min-height:var(--tap-min);
-      padding:6px 0;border:0;border-top:1px solid var(--s2);background:none;font:inherit;color:inherit;text-align:left;
+/* the day's lanes, one per read: its name and what it is, its score at the right, and its calls as squares on the
+   day's axis; a lane is a control that lists its calls, the picked one ringed */
+.lanes{padding:10px 10px 12px}
+.lanes>.cnote{padding:0 4px 6px}
+.lane{display:block;width:100%;min-height:58px;padding:7px 4px 4px;border:0;border-radius:10px;background:none;text-align:left;font:inherit;color:inherit;
       touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-/* the time's column holds the widest time in 40px and grows with Android's larger text sizes; the time's 3.2em (40px
-   at 12.5px) grows every row's column alike, so the words stay in line down the day */
-.call .t{min-width:3.2em;font:700 12.5px/1.2 var(--sans);color:var(--i)}
-.call .w{min-width:0;font:400 11.5px/1.25 var(--sans);color:var(--i-mute)}
-.call .w b{display:block;font:700 12.5px/1.2 var(--sans)}
-.call .w b.up{color:var(--o-up)} .call .w b.down{color:var(--o-dn)} .call .w b.flat{color:var(--i)}
-/* the picture's inks are the page's: the flat band in the flat colour the odds and the chart use, the dot in where-it-went's */
-.strip{display:block;width:104px;height:18px}
-.strip .ax{stroke:var(--s2);stroke-width:1}
-.strip .band{fill:var(--o-fl)}
-.strip .span{stroke:var(--i-mute);stroke-width:1.6;stroke-linecap:round}
-.strip .at{stroke:var(--i);stroke-width:1.2}
-.strip .dot{fill:var(--i);stroke:var(--s);stroke-width:1.5}
-.strip .dot.up{fill:var(--o-up)} .strip .dot.down{fill:var(--o-dn)}
-.grade{justify-self:end;padding:2px 6px;border-radius:6px;border:1px solid var(--o-fl);font:700 11px/1.3 var(--sans);color:var(--i-faint)}
-.grade.ok{background:var(--fill);border-color:var(--fill);color:var(--on-body)}
-.nums{padding:0 0 8px 48px;font:400 11.5px/1.45 var(--sans);color:var(--i-mute)}
-.nums[hidden]{display:none}
-.nums b{font-weight:700;color:var(--i)}
-.dh.is-pressed,.call.is-pressed,.all.is-pressed{background:rgba(22,26,23,var(--state-press));transition:background var(--press-in)}
+.lane.sel{background:var(--g);box-shadow:inset 0 0 0 1.5px var(--i)}
+.lane:focus-visible,.ls:focus-visible,.days button:focus-visible{outline:2px solid var(--o-up);outline-offset:2px}
+.lane-h{display:flex;align-items:baseline;gap:6px}
+.lane-n{display:block;font:700 13px/1.2 var(--sans);color:var(--i)}
+.lane-d{display:block;margin-top:2px;font:500 11px/1.25 var(--sans);color:var(--i-mute)}
+.lane-t{margin-left:auto;text-align:right;white-space:nowrap;font:800 12.5px/1.2 var(--sans);color:var(--i)}
+.lane-t small{display:block;margin-top:2px;font:500 11px/1.2 var(--sans);color:var(--i-mute)}
+.lane-g{display:block;margin-top:5px;overflow:visible}
+.lane-g .ax,.axis .ax{stroke:var(--o-fl);stroke-width:1}
+.lane-g .hour{stroke:var(--o-fl);stroke-width:1;stroke-dasharray:1.5 2}
+.lane-g .now{stroke:var(--o-up);stroke-width:1.2}
+.lane-g .sq-r{fill:var(--fill)}
+.lane-g .sq-w{fill:var(--o-dn)}
+.lane-g .sq-f{fill:none;stroke:var(--i-mute);stroke-width:1.5}
+.lane-g .sq-o{fill:none;stroke:var(--o-up);stroke-width:1.5;stroke-dasharray:2 1.5}
+.cmp{display:flex;align-items:center;gap:8px;margin:8px 4px 2px;font:700 11px/1.2 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--i-faint)}
+.cmp::after{content:"";flex:1;border-top:1px dashed var(--rule-soft)}
+.lane-ax{padding:2px 4px 0}
+.axis{display:block;overflow:visible;font-family:var(--sans)}
+.axis text{font-size:11px;fill:var(--i-mute)}
+.axis text.now{font-weight:700;fill:var(--o-up)}
+
+/* the picked lane's calls: its square, its time, the call and what happened, and the result; a graded window opens to
+   its numbers in place */
+.list{padding:6px 14px}
+.ls-h,.ls{display:grid;grid-template-columns:14px 40px minmax(0,1fr) 46px;gap:8px}
+.ls-h{padding:8px 0 6px;border-bottom:1px solid var(--o-fl);font:700 11px/1.2 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--i-faint)}
+.ls{align-items:center;width:100%;min-height:var(--tap-min);padding:7px 0;border:0;border-bottom:1px solid var(--s2);background:none;text-align:left;
+    font:inherit;color:inherit;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.ls.on{margin:0 -8px;padding:7px 8px;width:calc(100% + 16px);border-radius:10px;background:var(--s3);border-bottom:0}
+.ls .t{font:700 13px/1.2 var(--sans);color:var(--i)}
+.ls .w{min-width:0;font:500 13px/1.3 var(--sans);color:var(--i)}
+.ls .w b{font-weight:800}
+.ls .w b.up{color:var(--o-up)} .ls .w b.dn{color:var(--o-dn)}
+.ls .w small{display:block;margin-top:1px;font:500 11.5px/1.3 var(--sans);color:var(--i-mute)}
+.ls .res{text-align:right;font:800 12px/1.2 var(--sans);color:var(--i)}
+.ls .res.dn{color:var(--o-dn)} .ls .res.up{color:var(--o-up)}
+.ls .more{grid-column:2 / 5;display:flex;flex-direction:column;gap:2px;padding:6px 0 2px;font:500 12px/1.35 var(--sans);color:var(--i-body)}
+.ls .more[hidden]{display:none}
+.ls-f{padding:8px 0 6px}
+.ls.is-pressed,.lane.is-pressed{background:rgba(22,26,23,var(--state-press));transition:background var(--press-in)}
+
+/* the lane's last five days: each day's score under its name, the picked day ringed, their total at the right */
+.five-h{display:flex;align-items:baseline;gap:8px;margin-bottom:8px}
+.five-t{margin-left:auto;font:700 13px/1.2 var(--sans);color:var(--i)}
+.d5{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
+.d5 span{display:flex;flex-direction:column;align-items:center;padding:6px 2px;border-radius:8px;background:var(--g);font:600 11px/1.2 var(--sans);color:var(--i-mute)}
+.d5 span b{font:800 12px/1.3 var(--sans);color:var(--i)}
+.d5 span.on{box-shadow:inset 0 0 0 1.5px var(--i)}
 
 /* the tab bar, the same on every phone page, with this page lit; a press tints the tab as press.js asks */
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;justify-content:space-evenly;align-items:flex-start;
@@ -155,13 +164,12 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
 .tab s{font:500 11px/1 var(--sans);letter-spacing:.1em;text-decoration:none}
 .tab i{width:4px;height:4px;border-radius:50%;background:transparent;margin-top:1px}
 .tab.on i{background:var(--i)}
-@media (prefers-reduced-motion:reduce){.chev{transition:none}.tab.is-pressed::before{opacity:.20}}
+@media (prefers-reduced-motion:reduce){.tab.is-pressed::before{opacity:.20}}
 @media (forced-colors:active){.tab::before{display:none}.tab.is-pressed,.tab.on{color:Highlight}}
 
-/* From 1024px up (the forecast page's one layout query, so the Reads tab stands in the same place on both pages) the
-   header is the board Final-Desktop's row across the top: the name, the tabs in flow after it, the line under the name
-   between them and the day at the right, with the pinned score centred under the row; no bottom bar. The days stay the
-   centred column the phone reads. */
+/* From 1024px up (the forecast page's one layout query, so the Results tab stands in the same place on both pages) the
+   header is the board Final-Desktop's row across the top: the name, the tabs in flow after it, the error line between
+   them and the day at the right; no bottom bar. The page stays the centred column the phone reads. */
 @media (min-width:1024px){
   body{max-width:none;margin:0;padding:0 40px 20px}
   main{width:100%;max-width:528px;margin:0 auto}
@@ -169,18 +177,18 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
   .hd-1{display:contents}
   .hd-2{order:2;flex:0 1 auto;min-width:0;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .hd-r{order:3}
-  .sum{order:4;flex:1 1 100%;max-width:528px;margin:0 auto}
   .tabs{order:1;position:static;height:56px;padding:0;gap:4px;align-items:center;background:none;border-radius:0;box-shadow:none}
   .tab{flex-direction:row;gap:8px;min-height:var(--tap-min);padding:0 12px}
   .tab svg{width:18px;height:18px}
   .tab i{margin-top:0}
+  .foot{width:100%;max-width:528px;margin:0 auto}
 }
 </style>
 </head>
 <body>
 <header class="hd">
-  <div class="hd-1"><span class="hd-l">SPX &middot; Results</span><span class="hd-r" id="hdR"></span></div>
-  <div class="hd-2" id="sub">loading</div>
+  <div class="hd-1"><span class="hd-l">SPX &middot; Results</span><span class="hd-r"><span id="hdR"></span><span class="hd-z" id="hdZ"></span></span></div>
+  <div class="hd-2" id="sub" hidden></div>
   <!-- the tab bar, fixed at the phone's foot and in the header's row from 1024px up -->
   <nav class="tabs">
     <a class="tab" href="/m/" aria-label="Forecast" data-press data-haptic>
@@ -192,22 +200,30 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
       <s>RESULTS</s><i></i>
     </span>
   </nav>
-  <section class="card sum" id="sum" hidden></section>
 </header>
 <main id="main"></main>
 <script src="/m/press.js"></script>
 <script>
 (function(){
   'use strict';
-  var GRADES_URL = '/api/store/file?name=JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON&lane=live&limit=400';
-  var BARS_URL = '/api/store/file?name=SPX_PRICE_BARS_BY_MINUTE&day=';
-  var DAYS_SUMMED = 5, SCALE_PTS = 32, POLL_MS = 60000;
-  var STRIP_W = 104, STRIP_H = 18;
-  var LINE_W = 300, LINE_H = 56, LINE_TOP = 8, LINE_AXIS = 42;   // LINE_W: the line's width for a card not laid out yet
+  // the grades files, every day in each: the 30-minute calls (lane live), the opening lane's (tape) and the pre-market
+  // call's checks (premarket); and the files of one day each: JEV's own answers, the direction line's grades, and
+  // Claude's answers and their outcomes
+  var GRADES_URL = '/api/store/file?name=JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON&lane=';
+  var GRADE_LIMITS = {live: 2000, tape: 20000, premarket: 2000};
+  var DAY_URLS = {jev: '/api/store/file?name=FORECASTS_BY_FORECASTER_READ_AND_HORIZON&limit=1000&day=',
+                  direction: '/api/store/file?name=DIRECTION_LINE_GRADES_BY_READ&day=',
+                  answers: '/api/store/file?name=CLAUDE_FORECAST_ANSWERS_BY_READ&limit=500&day=',
+                  outcomes: '/api/store/file?name=CLAUDE_FORECAST_OUTCOMES_BY_READ&day='};
+  var LIVE_URL = '/api/store/file?name=JEV_LIVE_CARD';
+  var DAYS_SHOWN = 5, POLL_MS = 60000, FETCHES_AT_ONCE = 2;   // the station reads two raw files at a time (_RAW_FILE_GATE)
+  var COMBINED_FROM = '2026-10-06';                          // the combined forecast is the call from this day; before it JEV alone was
   var NS = 'http://www.w3.org/2000/svg';
-  var days = null, drawn = null, failed = false, opened = {};   // opened: each day's open or folded, the newest open at first
-  var barsByDay = {};                                           // each done day's bars, asked for once; a running day's are never kept
-  var lines = {};                                               // each drawn day's line(), which asks for its line until one is drawn
+  // the lanes, in the order the page draws them: each its name, what it is, and the hash that picks it
+  var LANES = [['premarket', 'Pre-market call', 'read before the open \u00B7 JEV alone'], ['opening', 'Opening calls', 'every 5 min \u00B7 10-min average \u00B7 JEV alone'],
+               ['combined', 'Combined call', 'every 30 min \u00B7 30-min average'], ['direction', 'Direction line', 'if it moves, which way \u00B7 own mix + Claude'],
+               ['claude', 'Claude', '30-min read \u00B7 not in the call'], ['jev', 'JEV alone', '30-min raw answer \u00B7 not a call']];
+  var grades = {}, live = null, perDay = {}, picked = null, lane = 'combined', open = {}, failed = false, queue = [], running = 0;
 
   function $(id){ return document.getElementById(id); }
   function el(tag, cls, text){ var e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
@@ -236,220 +252,360 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
     var m = /^(\d{4}-\d\d-\d\d)T.*?([+-]\d\d:\d\d|Z)$/.exec(iso || '');
     return m ? Date.parse(m[1] + 'T' + hhmm + ':00' + m[2]) : NaN;
   }
-  function money(x){ return (+x).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
-  function signed(x){ x = +x; return (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x).toFixed(1); }
-  function cap(s){ s = String(s); return s.charAt(0).toUpperCase() + s.slice(1); }
-
-  // the graded 30-minute calls by market day, newest day first and each day's calls earliest first; a read graded
-  // twice keeps its last row
-  function callDays(rows){
-    var byRead = {}, byDay = {};
-    (rows || []).forEach(function(r){ if(r && r.horizon === 'next_30' && r.graded && r.row_ts) byRead[r.row_ts] = r; });
-    Object.keys(byRead).forEach(function(ts){ var d = ts.slice(0, 10); (byDay[d] = byDay[d] || []).push(byRead[ts]); });
-    return Object.keys(byDay).sort().reverse().map(function(d){
-      return {day: d, calls: byDay[d].sort(function(a, b){ return Date.parse(a.row_ts) - Date.parse(b.row_ts); })};
-    });
+  // New York's market day, so the page's today is the forecast page's
+  function marketDay(){
+    try { return new Intl.DateTimeFormat('en-CA', {timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit'}).format(new Date()); }
+    catch(e){ return null; }
   }
-  function isRight(c){ return c.verdict === 'right'; }
-  function score(calls){ return calls.filter(isRight).length + ' of ' + calls.length; }
-  function rightOf(calls){ return score(calls) + ' right'; }
-  function share(calls){ return Math.round(calls.filter(isRight).length / calls.length * 100); }
+  function money(x){ return (+x).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+  function level(x){ return (+x).toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1}); }
+  function signed(x){ x = +x; return (x > 0 ? '+' : x < 0 ? '\u2212' : '') + Math.abs(x).toFixed(1); }
+  function cap(s){ s = String(s); return s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' '); }
+  function pct(x){ return Math.round((x || 0) * 100) + '%'; }
   // "Thu 10-08": the market day's weekday and date, never the viewer's
   function dayName(d){
     var t = Date.parse(d + 'T12:00:00Z');
     return isNaN(t) ? d : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(t).getUTCDay()] + ' ' + d.slice(5);
   }
-  // the header's right side: the newest day, and once its close has passed that it is done
-  function headLine(d){ return dayName(d.day) + (Date.now() >= marketAt(d.calls[0].row_ts, '16:00') ? ' · day done' : ''); }
 
-  // the window against the call on one scale: the flat band as a box, low to high as a line, the call's price as
-  // the tick in the middle, the graded average as the dot in where-it-went's colour; past the scale rests at an end
-  function strip(c){
-    var mid = STRIP_W / 2, y = STRIP_H / 2, per = (mid - 5) / SCALE_PTS;
-    function x(v){ return Math.max(4, Math.min(STRIP_W - 4, mid + v * per)).toFixed(1); }
-    var lo = c.worst ? c.worst.points : c.g, hi = c.best ? c.best.points : c.g, edge = +c.edge || 0;
-    var svg = svgEl('svg', {viewBox: '0 0 ' + STRIP_W + ' ' + STRIP_H, 'class': 'strip', role: 'img',
-                            'aria-label': 'Low ' + signed(lo) + ', average ' + signed(c.g) + ', high ' + signed(hi) + ' points; flat within ' + edge.toFixed(1)});
-    svg.appendChild(svgEl('line', {x1: 2, y1: y, x2: STRIP_W - 2, y2: y, 'class': 'ax'}));
-    svg.appendChild(svgEl('rect', {x: (mid - edge * per).toFixed(1), y: y - 5, width: (2 * edge * per).toFixed(1), height: 10, rx: 2, 'class': 'band'}));
-    svg.appendChild(svgEl('line', {x1: x(lo), y1: y, x2: x(hi), y2: y, 'class': 'span'}));
-    svg.appendChild(svgEl('line', {x1: mid, y1: y - 7, x2: mid, y2: y + 7, 'class': 'at'}));
-    svg.appendChild(svgEl('circle', {cx: x(c.g), cy: y, r: 4.2, 'class': 'dot' + (c.label === 'up' || c.label === 'down' ? ' ' + c.label : '')}));
+  // a grades file's graded calls of one horizon by market day, newest day first and each day's calls earliest first; a
+  // read graded twice keeps its last row
+  function callDays(rows, horizon){
+    var byRead = {}, byDay = {};
+    (rows || []).forEach(function(r){ if(r && r.horizon === horizon && r.graded && r.row_ts) byRead[r.row_ts] = r; });
+    Object.keys(byRead).forEach(function(ts){ var d = ts.slice(0, 10); (byDay[d] = byDay[d] || []).push(byRead[ts]); });
+    return Object.keys(byDay).sort().reverse().map(function(d){
+      return {day: d, calls: byDay[d].sort(function(a, b){ return Date.parse(a.row_ts) - Date.parse(b.row_ts); })};
+    });
+  }
+  function dayOf(rows, horizon, d){ return (callDays(rows, horizon).filter(function(x){ return x.day === d; })[0] || {calls: []}).calls; }
+  // the days the picker offers: the newest DAYS_SHOWN market days with a graded 30-minute call, today among them once its
+  // first card is written
+  function pickDays(){
+    var ds = callDays(grades.live, 'next_30').map(function(x){ return x.day; }), today = liveDay();
+    if(today && ds.indexOf(today) < 0) ds.unshift(today);
+    return ds.slice(0, DAYS_SHOWN).reverse();
+  }
+  // the 30-minute card's day when it is today's: its open call is the Combined call's open square
+  function liveDay(){ return live && String(live.row_ts || '').slice(0, 10) === marketDay() ? marketDay() : null; }
+  // the day's close as an instant: today's card's session close (13:00 on a half day), else 16:00 on the day
+  function closeOf(d){ return d === liveDay() && live.session && live.session.close ? Date.parse(live.session.close) : marketAt(d + 'T12:00:00' + offsetOf(d), '16:00'); }
+  function openOf(d){ return marketAt(d + 'T12:00:00' + offsetOf(d), '09:30'); }
+  // New York's offset on a day, from any stamp the page holds of it, else from its own clock
+  function offsetOf(d){
+    var r = (grades.live || []).concat(grades.tape || []).filter(function(x){ return x && String(x.row_ts || '').slice(0, 10) === d; })[0];
+    var m = r && /([+-]\d\d:\d\d)$/.exec(r.row_ts);
+    if(m) return m[1];
+    try {
+      var n = new Intl.DateTimeFormat('en-US', {timeZone: 'America/New_York', timeZoneName: 'shortOffset'}).formatToParts(new Date(d + 'T16:00:00Z'))
+        .filter(function(x){ return x.type === 'timeZoneName'; })[0].value, o = /GMT([+-])(\d+)/.exec(n);
+      return o ? o[1] + ('0' + o[2]).slice(-2) + ':00' : '-05:00';
+    } catch(e){ return '-05:00'; }
+  }
+  // what a call's average did, in words: "went up", "went down", "stayed flat"
+  function wentWords(label){ var k = String(label || '').split('_')[0]; return k === 'flat' ? 'stayed flat' : k ? 'went ' + k : '?'; }
+  function sideClass(label){ var k = String(label || '').split('_')[0]; return k === 'up' ? 'up' : k === 'down' ? 'dn' : null; }
+
+  // ---- the lanes: one per read, each a day's calls as items {t, state, call} (the call in words for its list)
+  function laneItems(name, d){
+    if(name === 'combined') return combinedItems(d);
+    if(name === 'opening') return dayOf(grades.tape, 'next_10', d).map(function(r){ return {t: Date.parse(r.row_ts), state: r.verdict, row: r, minutes: 10}; });
+    if(name === 'premarket') return preItems(d);
+    var f = perDay[d];
+    if(name === 'direction') return f && f.direction ? directionItems(d, f.direction) : null;
+    if(name === 'claude') return f && f.answers ? claudeItems(d, f.answers, f.outcomes || []) : null;
+    if(name === 'jev') return f && f.jev ? jevItems(d, f.jev) : null;
+    return [];
+  }
+  // the combined call: the day's graded 30-minute calls, and today the 30-minute card's own call while it is still to grade
+  function combinedItems(d){
+    var items = dayOf(grades.live, 'next_30', d).map(function(r){ return {t: Date.parse(r.row_ts), state: r.verdict, row: r, minutes: 30}; });
+    var c = d === liveDay() ? live : null, a = c && c.hour && c.hour.average, mark = c && c.marks && c.marks.next_30;
+    if(c && a && a.probabilities && mark && !items.some(function(k){ return k.row.row_ts === c.row_ts; })){
+      var k = a.pick || top(a.probabilities);
+      items.push({t: Date.parse(c.row_ts), state: 'open', open: {pick: k, p: a.probabilities[k], edge: a.edge_points, price: a.price, mark: mark}, minutes: 30});
+    }
+    return items;
+  }
+  function top(p){ return Object.keys(p).sort(function(x, y){ return p[y] - p[x]; })[0]; }
+  // the pre-market call: the day's last graded read stands for the day, its two checks drawn at 10 and 30 minutes after
+  // the settled open (09:35, premarket.py)
+  function preItems(d){
+    var rows = (grades.premarket || []).filter(function(r){ return r && r.graded && String(r.row_ts || '').slice(0, 10) === d && (r.horizon === 'open_10' || r.horizon === 'open_30'); });
+    var lastTs = rows.reduce(function(m, r){ return r.row_ts > m ? r.row_ts : m; }, '');
+    return ['open_10', 'open_30'].map(function(h, i){
+      var r = rows.filter(function(x){ return x.row_ts === lastTs && x.horizon === h; })[0];
+      return r ? {t: marketAt(r.row_ts, '09:35') + (i ? 30 : 10) * 60000, state: r.verdict, row: r, minutes: i ? 30 : 10, check: true} : null;
+    }).filter(Boolean);
+  }
+  function directionItems(d, rows){
+    var seen = {};
+    return rows.filter(function(r){ if(!r || r.day !== d || seen[r.row_ts]) return false; seen[r.row_ts] = 1; return true; })
+      .sort(function(a, b){ return Date.parse(a.row_ts) - Date.parse(b.row_ts); })
+      .map(function(r){ return {t: Date.parse(r.row_ts), state: r.called === false ? 'passed' : r.result, dir: r}; });
+  }
+  // Claude's pick: the largest of the three; a tie goes to flat (the forecast page's clPick)
+  function claudePick(h){ var best = 'flat'; ['down', 'flat', 'up'].forEach(function(k){ if(h[k + '_pct'] > h[best + '_pct'] + 1e-9) best = k; }); return best; }
+  // Claude's reads of the day, each its next-30-minute pick against where the average went (its outcome, written at
+  // the evening's finalize; open until then)
+  function claudeItems(d, answers, outcomes){
+    var went = {};
+    outcomes.forEach(function(o){ if(o && o.horizon === 'next_30_minutes' && o.result && o.result.direction) went[o.read_id] = o.result.direction; });
+    return answers.filter(function(r){ return r && r.line_type === 'final_forecast' && /^live:/.test(r.read_id || '') && String(r.trading_day || r.read_id.slice(5, 15)) === d; })
+      .map(function(r){
+        var h = (r.forecast || {}).next_30_minutes, ok = h && h.status === 'ok', k = ok ? claudePick(h) : null, w = went[r.read_id];
+        return {t: Date.parse(r.read_id.slice(5)), state: !ok ? 'passed' : !w ? 'open' : k === w ? 'right' : 'wrong', claude: {pick: k, p: ok ? h[k + '_pct'] : null, went: w}};
+      }).sort(function(a, b){ return a.t - b.t; });
+  }
+  // JEV's own pick on a read's odds: the largest, down, flat and up in that order taking a tie (the forecast page's)
+  function jevPick(p){ var best = null; ['down', 'flat', 'up'].forEach(function(k){ if(best == null || (p[k] || 0) > (p[best] || 0)) best = k; }); return best; }
+  // JEV alone: its own answer on each 30-minute read against where the graded average went
+  function jevItems(d, rows){
+    var graded = {};
+    dayOf(grades.live, 'next_30', d).forEach(function(r){ graded[r.row_ts] = r; });
+    return rows.filter(function(r){ return r && r.voice_name === 'jev_own' && r.sum_id === 'average_30' && r.voice_probs && String(r.row_ts || '').slice(0, 10) === d; })
+      .sort(function(a, b){ return Date.parse(a.row_ts) - Date.parse(b.row_ts); })
+      .map(function(r){ var g = graded[r.row_ts], k = jevPick(r.voice_probs); return {t: Date.parse(r.row_ts), state: !g ? 'open' : k === g.label ? 'right' : 'wrong', jev: {pick: k, p: r.voice_probs[k], went: g && g.label}}; });
+  }
+  // a lane's day in numbers: right of the calls graded right or wrong (the direction line's calls that stayed flat
+  // counted too, as its record counts them), and how many are open
+  function tally(items){
+    var right = items.filter(function(k){ return k.state === 'right'; }).length, n = items.filter(function(k){ return /^(right|wrong|stayed_flat)$/.test(k.state); }).length;
+    return {right: right, n: n, open: items.filter(function(k){ return k.state === 'open'; }).length};
+  }
+  function laneTotal(name, items){
+    var t = tally(items), main = t.n ? t.right + ' of ' + t.n : t.open ? t.open + ' open' : 'None yet', sub = t.n && t.open ? t.open + ' open' : null;
+    if(name === 'opening' && items.length) sub = 'done ' + viewerTime(items[items.length - 1].t + 10 * 60000);
+    if(name === 'premarket' && items.length) sub = 'checks at ' + items.map(function(k){ return viewerTime(k.t); }).join(', ');
+    if(name === 'direction'){
+      var called = items.filter(function(k){ return k.dir && k.dir.called !== false; });
+      if(called.length) sub = 'score ' + signed(called.reduce(function(s, k){ return s + (k.dir.points || 0); }, 0) / called.length) + ' a call';
+    }
+    if(name === 'claude' && t.open && !t.n) sub = 'scored after the close';
+    return [main, sub];
+  }
+
+  // ---- the lanes' drawing: the day on one axis, its first hour zoomed in to half the width and the rest of the session
+  // to the close in the other half, so the opening's calls five minutes apart never overlap; laid out at the card's
+  // measured width so no text scales under 11px
+  var SQ = 9, LANE_H = 15;
+  function dayScale(d, W){
+    var open = openOf(d), hour = open + 3600000, close = closeOf(d);
+    return function(t){
+      var x = t <= hour ? (t - open) / 3600000 * W / 2 : W / 2 + (t - hour) / Math.max(60000, close - hour) * W / 2;
+      return Math.max(0, Math.min(W - SQ, x - SQ / 2));
+    };
+  }
+  function laneSvg(W, items, d, now){
+    var x = dayScale(d, W), svg = svgEl('svg', {viewBox: '0 0 ' + W + ' ' + LANE_H, width: W, height: LANE_H, 'class': 'lane-g', 'aria-hidden': 'true'});
+    svg.appendChild(svgEl('line', {x1: 0, y1: LANE_H / 2, x2: W, y2: LANE_H / 2, 'class': 'ax'}));
+    svg.appendChild(svgEl('line', {x1: W / 2, y1: 0, x2: W / 2, y2: LANE_H, 'class': 'hour'}));
+    if(now != null) svg.appendChild(svgEl('line', {x1: (x(now) + SQ / 2).toFixed(1), y1: 0, x2: (x(now) + SQ / 2).toFixed(1), y2: LANE_H, 'class': 'now'}));
+    items.forEach(function(k){
+      var cls = SQ_CLASS[k.state] || 'f', out = cls === 'f' || cls === 'o', s = out ? SQ - 1.5 : SQ;
+      svg.appendChild(svgEl('rect', {x: (x(k.t) + (SQ - s) / 2).toFixed(1), y: ((LANE_H - s) / 2).toFixed(1), width: s, height: s, rx: 1.5, 'class': LANE_SQ[cls]}));
+    });
     return svg;
   }
-  function squares(calls){
-    var box = el('div', 'sq');
-    calls.forEach(function(c){ box.appendChild(el('i', isRight(c) ? 'ok' : null)); });
-    box.setAttribute('role', 'img'); box.setAttribute('aria-label', rightOf(calls) + ', oldest first');
+  var SQ_CLASS = {right: 'r', wrong: 'w', passed: 'f', stayed_flat: 'f', open: 'o'}, LANE_SQ = {r: 'sq-r', w: 'sq-w', f: 'sq-f', o: 'sq-o'};
+  // the axis under the lanes: the open, +30 and +60 minutes, then a tick an hour as far as their times keep TICK_GAP
+  // apart and clear of the close's, the close, and now while the day runs; the first hour said to be zoomed in
+  var TICK_GAP = 42, CLOSE_GAP = 56;
+  function axisSvg(W, d, now){
+    var x = dayScale(d, W), open = openOf(d), close = closeOf(d), svg = svgEl('svg', {viewBox: '0 0 ' + W + ' 34', width: W, height: 34, 'class': 'axis', 'aria-hidden': 'true'});
+    svg.appendChild(svgEl('line', {x1: 0, y1: 2, x2: W, y2: 2, 'class': 'ax'}));
+    var ticks = [open, open + 1800000, open + 3600000], lastX = x(open + 3600000) + SQ / 2;
+    for(var t = open + 2 * 3600000; t < close - 1800000; t += 3600000){ var tx = x(t) + SQ / 2; if(tx - lastX >= TICK_GAP && W - tx >= CLOSE_GAP){ ticks.push(t); lastX = tx; } }
+    if(W - lastX >= CLOSE_GAP) ticks.push(close);
+    ticks.forEach(function(t, i){
+      var tx = x(t) + SQ / 2, a = i === 0 ? 'start' : t === close ? 'end' : 'middle';
+      svg.appendChild(svgEl('line', {x1: tx.toFixed(1), y1: 2, x2: tx.toFixed(1), y2: 6, 'class': 'ax'}));
+      svg.appendChild(svgEl('text', {x: (a === 'start' ? 0 : a === 'end' ? W : tx).toFixed(1), y: 17, 'text-anchor': a}, viewerTime(t)));
+    });
+    svg.appendChild(svgEl('text', {x: (W / 4).toFixed(1), y: 31, 'text-anchor': 'middle'}, 'first hour, zoomed in'));
+    if(now != null) svg.appendChild(svgEl('text', {x: W, y: 31, 'text-anchor': 'end', 'class': 'now'}, 'now ' + viewerTime(now)));
+    return svg;
+  }
+
+  // ---- the selected lane's calls, a row each: its square, its time, the call and what happened, and the result; a
+  // graded 30- or 10-minute call opens to its numbers
+  function callRow(name, k){
+    var opens = !!(k.row && !k.check), row = el(opens ? 'button' : 'div', 'ls'), w = el('span', 'w'), res = RESULT[k.state] || cap(k.state);
+    var sq = el('span', 'sq'); sq.appendChild(el('i', SQ_CLASS[k.state] || 'f')); row.appendChild(sq);
+    row.appendChild(el('span', 't', viewerTime(k.t)));
+    if(k.row){
+      var r = k.row, edge = +r.edge || 0;
+      w.appendChild(el('span', null, k.check ? k.minutes + '-min check \u00B7 called ' : 'Called '));
+      w.appendChild(el('b', null, cap(r.pick)));
+      w.appendChild(el('span', null, ' \u00B7 '));
+      var went = el('span', null, wentWords(r.label));
+      if(sideClass(r.label)) went = el('b', sideClass(r.label), wentWords(r.label));
+      w.appendChild(went);
+      w.appendChild(el('small', null, 'average ' + signed(r.g) + ' pts, ' + (Math.abs(r.g) <= edge ? 'inside' : 'past') + ' \u00B1 ' + edge.toFixed(1)));
+    } else if(k.open){
+      w.appendChild(el('span', null, 'Called ')); w.appendChild(el('b', null, cap(k.open.pick) + ' ' + pct(k.open.p))); w.appendChild(el('span', null, ' \u00B7 open'));
+      w.appendChild(el('small', null, (typeof k.open.edge === 'number' ? 'flat \u00B1 ' + k.open.edge.toFixed(1) + ' \u00B7 ' : '') + 'scored ' + viewerTime(k.open.mark)));
+    } else if(k.dir){
+      var dr = k.dir;
+      if(dr.called === false){ w.appendChild(el('span', null, 'No call (leaned ' + cap(dr.side) + ') \u00B7 ')); w.appendChild(el('span', null, 'passed')); }
+      else { w.appendChild(el('span', null, 'Called ')); w.appendChild(el('b', null, cap(dr.side))); w.appendChild(el('span', null, ' \u00B7 ' + (dr.result === 'stayed_flat' ? 'stayed flat' : dr.result === 'right' ? 'went ' + dr.side : 'went against it'))); }
+      w.appendChild(el('small', null, 'score ' + signed(dr.points || 0)));
+    } else if(k.claude){
+      var c = k.claude;
+      if(c.pick){ w.appendChild(el('span', null, 'Called ')); w.appendChild(el('b', null, cap(c.pick) + ' ' + Math.round(c.p) + '%')); w.appendChild(el('span', null, ' \u00B7 ' + (c.went ? wentWords(c.went) : 'scored after the close'))); }
+      else w.appendChild(el('span', null, 'No answer'));
+    } else if(k.jev){
+      w.appendChild(el('span', null, 'Answered ')); w.appendChild(el('b', null, cap(k.jev.pick) + ' ' + pct(k.jev.p))); w.appendChild(el('span', null, ' \u00B7 ' + (k.jev.went ? wentWords(k.jev.went) : 'open')));
+    }
+    row.appendChild(w);
+    row.appendChild(el('span', 'res' + (k.state === 'wrong' ? ' dn' : k.state === 'open' ? ' up' : ''), res));
+    if(opens){
+      var r2 = k.row, e = +r2.edge || 0, more = el('span', 'more'), id = name + r2.row_ts;
+      row.type = 'button';
+      more.appendChild(el('span', null, 'Called at ' + money(r2.from) + ' \u00B7 flat band ' + level(r2.from - e) + ' to ' + level(r2.from + e)));
+      more.appendChild(el('span', null, k.minutes + '-min average ' + money(r2.from + r2.g) + ' (' + signed(r2.g) + ' pts)'));
+      if(r2.best && r2.worst) more.appendChild(el('span', null, 'Highest ' + signed(r2.best.points) + ' pts (minute ' + r2.best.minute + ') \u00B7 lowest ' + signed(r2.worst.points) + ' pts (minute ' + r2.worst.minute + ')'));
+      more.hidden = !open[id]; row.appendChild(more);
+      row.setAttribute('aria-expanded', String(!!open[id]));
+      row.addEventListener('click', function(){ open[id] = !open[id]; more.hidden = !open[id]; row.setAttribute('aria-expanded', String(open[id])); row.className = 'ls' + (open[id] ? ' on' : ''); });
+      if(open[id]) row.className = 'ls on';
+    }
+    return row;
+  }
+  var RESULT = {right: 'Right', wrong: 'Wrong', passed: 'Passed', stayed_flat: 'Flat', open: 'Open'};
+
+  // ---- the page
+  function draw(){
+    var main = $('main'), sub = $('sub'), days = pickDays(), now = Date.now(), today = marketDay();
+    sub.className = failed ? 'hd-2 err' : 'hd-2'; sub.textContent = failed ? 'Fetch failed, showing the last results' : '';
+    sub.hidden = !failed;
+    if(!days.length){ main.textContent = ''; main.appendChild(el('section', 'card', grades.live ? 'No graded calls yet.' : 'Reading the results')); return; }
+    if(!picked || days.indexOf(picked) < 0) picked = days[days.length - 1];
+    want(picked);
+    var hd = headLine(days[days.length - 1], now);
+    $('hdR').textContent = hd[0]; $('hdZ').textContent = hd[1];
+    main.textContent = '';
+    // the day picker
+    var pick = el('div', 'days'); pick.setAttribute('role', 'tablist'); pick.setAttribute('aria-label', 'Day');
+    days.forEach(function(d){
+      var b = el('button', d === picked ? 'on' : null); b.type = 'button'; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(d === picked));
+      b.appendChild(el('b', null, dayName(d).slice(0, 3))); b.appendChild(el('span', null, d.slice(5)));
+      b.addEventListener('click', function(){ picked = d; draw(); want(d); });
+      pick.appendChild(b);
+    });
+    main.appendChild(pick);
+    main.appendChild(squareKey());
+    var isToday = picked === today, head = el('div', 'sec');
+    head.appendChild(el('h2', null, (isToday ? 'Today' : dayName(picked)) + ', by read')); head.appendChild(el('span', 'r', 'one lane per read'));
+    main.appendChild(head);
+    var card = el('section', 'card lanes'); card.setAttribute('aria-label', (isToday ? 'Today' : dayName(picked)) + '\u2019s results, one lane per read');
+    main.appendChild(card);
+    card.appendChild(el('div', 'cnote', 'Each square sits at the time its call was made (pre-market: at its two checks). Tap a lane to list its calls.'));
+    var W = Math.max(240, Math.round(card.clientWidth || 312) - 20), nowAt = isToday && now < closeOf(picked) ? now : null;
+    LANES.forEach(function(l){
+      if(l[0] === 'jev') card.appendChild(el('div', 'cmp', 'For comparison, not a call'));
+      var items = laneItems(l[0], picked), b = el('button', l[0] === lane ? 'lane sel' : 'lane'), h = el('span', 'lane-h'), n = el('span');
+      b.type = 'button'; b.setAttribute('aria-pressed', String(l[0] === lane));
+      n.appendChild(el('span', 'lane-n', l[1]));
+      n.appendChild(el('span', 'lane-d', l[0] === 'combined' && picked < COMBINED_FROM ? 'JEV alone that day' : l[2]));
+      h.appendChild(n);
+      var tot = items ? laneTotal(l[0], items) : ['\u2026', null], t = el('span', 'lane-t', tot[0]);
+      if(tot[1]) t.appendChild(el('small', null, tot[1]));
+      h.appendChild(t); b.appendChild(h);
+      b.appendChild(laneSvg(W, items || [], picked, nowAt));
+      b.setAttribute('aria-label', l[1] + ': ' + tot[0] + (tot[1] ? ', ' + tot[1] : '') + '. List its calls');
+      b.addEventListener('click', function(){ lane = l[0]; draw(); });
+      card.appendChild(b);
+    });
+    var ax = el('div', 'lane-ax'); ax.appendChild(axisSvg(W, picked, nowAt)); card.appendChild(ax);
+    // the lane picked: its calls, then its last five days
+    var meta = LANES.filter(function(l){ return l[0] === lane; })[0], items = laneItems(lane, picked) || [];
+    var sh = el('div', 'sec'); sh.appendChild(el('h2', null, meta[1])); sh.appendChild(el('span', 'r', meta[2]));
+    main.appendChild(sh);
+    var list = el('section', 'card list'), lh = el('div', 'ls-h');
+    ['', 'Read', 'Called \u00B7 what happened', 'Result'].forEach(function(x){ lh.appendChild(el('span', null, x)); });
+    list.appendChild(lh);
+    items.forEach(function(k){ list.appendChild(callRow(lane, k)); });
+    if(!items.length) list.appendChild(el('div', 'cnote', laneItems(lane, picked) ? 'No call on this day.' : 'Reading this lane\u2019s day\u2026'));
+    var tt = laneTotal(lane, items);
+    if(items.length) list.appendChild(el('div', 'cnote ls-f', tt[0] + (tally(items).n ? ' right' : '') + (tt[1] ? ' \u00B7 ' + tt[1] : '') + '.'
+      + (lane === 'combined' ? ' The combined call is the mix since ' + COMBINED_FROM.slice(5) + '; on earlier days this lane was JEV alone and is marked so.' : '')));
+    main.appendChild(list);
+    main.appendChild(fiveDays(lane, days));
+    main.appendChild(el('div', 'foot', 'Scored on the average price over each window, not the last price. pts = S&P index points.'));
+  }
+  // the header's right side: the newest day, and under it the zone the page's times are in and whether the day is still
+  // running, said done once its close has passed
+  function headLine(d0, now){
+    var zone = viewerTime(now, {zone: true}).split(' ')[1] || '';
+    return [dayName(d0), (zone ? 'Times ' + zone + ' \u00B7 ' : '') + (d0 === marketDay() && now < closeOf(d0) ? 'day in progress, ' + viewerTime(now) : 'day done')];
+  }
+  // the key, said once over the lanes: the forecast page's squares
+  function squareKey(){
+    var k = el('div', 'legend'); k.setAttribute('aria-label', 'Square key');
+    [['r', 'right'], ['f', 'flat or passed'], ['w', 'wrong'], ['o', 'open']].forEach(function(x){
+      var s = el('span'), q = el('span', 'sq'); q.appendChild(el('i', x[0])); s.appendChild(q); s.appendChild(el('span', null, x[1])); k.appendChild(s);
+    });
+    return k;
+  }
+  // the lane's last five days: each day's score under its name, the picked day ringed, and their total with its share
+  function fiveDays(name, days){
+    var box = el('section', 'card five'), head = el('div', 'five-h'), row = el('div', 'd5'), right = 0, n = 0;
+    var meta = LANES.filter(function(l){ return l[0] === name; })[0];
+    head.appendChild(el('div', 'lab', 'Last ' + days.length + ' days \u00B7 ' + meta[1].toLowerCase()));
+    days.forEach(function(d){
+      var items = laneItems(name, d), t = items ? tally(items) : null, cell = el('span', d === picked ? 'on' : null);
+      cell.appendChild(el('span', null, dayName(d).slice(0, 3)));
+      cell.appendChild(el('b', null, t ? (t.n ? t.right + ' of ' + t.n : '\u2014') : '\u2026'));
+      if(t){ right += t.right; n += t.n; }
+      row.appendChild(cell);
+    });
+    head.appendChild(el('div', 'five-t', n ? right + ' of ' + n + ' \u00B7 ' + Math.round(right / n * 100) + '%' : '\u2014'));
+    box.appendChild(head); box.appendChild(row);
+    days.forEach(function(d){ want(d); });
     return box;
   }
-  // a day's one-minute bars, as the route wraps them. A done day's are asked for once and kept, done once its close's
-  // last bar has landed (16:05, where the forecast page's bars hours end); a running day's line is still growing, so
-  // its bars are asked for on every draw of its card, one per new grade, and never kept. Only a day's rows are kept: a
-  // fetch that failed, or that the station refused or answered with something else, is asked again next time
-  function barsOf(d){
-    var day = d.day, done = Date.now() >= marketAt(d.calls[0].row_ts, '16:05');
-    if(done && barsByDay[day]) return barsByDay[day];
-    var bars = fetch(BARS_URL + day + '&limit=420', {cache: 'no-store'})
-      .then(function(r){ return r.ok ? r.json() : null; }).then(function(j){ return j && j.kind === 'jsonl' && Array.isArray(j.rows) ? j.rows : null; })
-      .catch(function(){ return null; })
-      .then(function(rows){ if(!rows) delete barsByDay[day]; return rows; });
-    if(done) barsByDay[day] = bars;
-    return bars;
+
+  // ---- the fetching: the grades files once and once a minute; the per-day files of a day when a lane needs them, the
+  // picked day first, two at a time (the station reads two raw files at a time); a done day's are kept, today's asked
+  // for again with each poll
+  function rawRows(url){
+    return fetch(url, {cache: 'no-store'}).then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){ return j && j.kind === 'jsonl' && Array.isArray(j.rows) ? j.rows : null; });
   }
-  // the day's price from the open to the close as a line W wide, the low on the axis, a dot at each call's read minute
-  // (its bar's close, or the last bar's before it), a wrong call's ringed; the feet the open and the close in the
-  // viewer's zone. Nothing under two bars. The drawing goes into the card over its calls (before ``list``) before the
-  // wrong calls are named, so each name is measured as the phone draws it. A name takes the first spot inside the
-  // drawing above its axis that keeps off the line, the dots and the names placed before: beside its dot, right then
-  // left, on the row under it or the one over it, else centred on the dot (held inside the drawing's ends) a row
-  // lower, then a row higher. A spot counts only while the name's box sits nearer its own ring than any other dot,
-  // so a name never reads as a neighbour's. With no spot free the ring alone marks the call, as the list under the
-  // line names every wrong call.
-  function dayLine(d, rows, W, list){
-    var pts = (rows || []).filter(function(b){ return b && typeof b.close === 'number' && !isNaN(Date.parse(b.ts)); })
-      .map(function(b){ return {t: Date.parse(b.ts), c: b.close}; }).sort(function(a, b){ return a.t - b.t; });
-    if(pts.length < 2) return null;
-    var at = d.calls[0].row_ts, open = marketAt(at, '09:30'), close = marketAt(at, '16:00');
-    var lo = Math.min.apply(null, pts.map(function(p){ return p.c; })), hi = Math.max.apply(null, pts.map(function(p){ return p.c; }));
-    function x(t){ return Math.max(2, Math.min(W - 2, 2 + (t - open) / (close - open) * (W - 4))); }
-    function y(c){ return hi > lo ? LINE_TOP + (hi - c) / (hi - lo) * (LINE_AXIS - LINE_TOP) : (LINE_TOP + LINE_AXIS) / 2; }
-    // a word's box is clear when no point of the line falls in it and it meets nothing taken: a dot, or a word
-    // placed before with a space either side of it; gap is how far a box sits from a dot's centre
-    var taken = [], dots = [];
-    function gap(b, o){ return Math.hypot(Math.max(b.x0 - o.cx, 0, o.cx - b.x1), Math.max(b.y0 - o.cy, 0, o.cy - b.y1)); }
-    function clear(b){
-      return !pts.some(function(p){ var px = x(p.t), py = y(p.c); return px >= b.x0 - 2 && px <= b.x1 + 2 && py >= b.y0 && py <= b.y1; })
-          && !taken.some(function(o){ return o.x1 > b.x0 && o.x0 < b.x1 && o.y1 > b.y0 && o.y0 < b.y1; });
+  function gate(task){ queue.push(task); pump(); }
+  function pump(){
+    while(running < FETCHES_AT_ONCE && queue.length){
+      var task = queue.shift(); running++;
+      task().catch(function(){}).then(function(){ running--; pump(); });
     }
-    var wrong = d.calls.filter(function(c){ return !isRight(c); });
-    var svg = svgEl('svg', {viewBox: '0 0 ' + W + ' ' + LINE_H, 'class': 'price', role: 'img',
-                            'aria-label': 'The day’s price from the ' + viewerTime(open) + ' open to the ' + viewerTime(close) + ' close, a dot at each of the '
-                              + d.calls.length + ' calls' + (wrong.length ? ', the ' + (wrong.length === 1 ? 'wrong call' : wrong.length + ' wrong calls') + ' ringed: '
-                              + wrong.map(function(c){ return viewerTime(c.row_ts); }).join(', ') : '')});
-    svg.appendChild(svgEl('line', {x1: 2, y1: LINE_AXIS, x2: W - 2, y2: LINE_AXIS, 'class': 'ax'}));
-    svg.appendChild(svgEl('polyline', {points: pts.map(function(p){ return x(p.t).toFixed(1) + ',' + y(p.c).toFixed(1); }).join(' ')}));
-    var named = [];
-    d.calls.forEach(function(c){
-      var t = Date.parse(c.row_ts), p = null;
-      pts.forEach(function(q){ if(q.t <= t) p = q; });
-      if(!p) return;
-      var cx = x(p.t), cy = y(p.c), ok = isRight(c), r = ok ? 2.2 : 4.2;
-      svg.appendChild(svgEl('circle', {cx: cx.toFixed(1), cy: cy.toFixed(1), r: r, 'class': ok ? 'dot' : 'dot wrong'}));
-      taken.push({x0: cx - r - 1, x1: cx + r + 1, y0: cy - r - 1, y1: cy + r + 1});
-      dots.push({c: c, cx: cx, cy: cy});
-      if(!ok) named.push(dots[dots.length - 1]);
-    });
-    svg.appendChild(svgEl('text', {x: 2, y: LINE_H - 2, 'class': 'foot'}, 'OPEN ' + viewerTime(open)));
-    svg.appendChild(svgEl('text', {x: W - 2, y: LINE_H - 2, 'text-anchor': 'end', 'class': 'foot'}, 'CLOSE ' + viewerTime(close)));
-    list.parentNode.insertBefore(svg, list);
-    named.forEach(function(n){
-      var words = svg.appendChild(svgEl('text', {x: 0, y: 0}, viewerTime(n.c.row_ts) + ' wrong')), m = words.getBBox(), spot = null;
-      var beside = [n.cx + 8, n.cx - 8 - m.width], centred = [Math.max(2, Math.min(W - 2 - m.width, n.cx - m.width / 2))];
-      [[n.cy + 10, beside], [n.cy - 6, beside], [n.cy + 19, centred], [n.cy - 15, centred]].forEach(function(row){
-        row[1].forEach(function(x0){
-          var b = {x0: x0, x1: x0 + m.width, y0: row[0] + m.y, y1: row[0] + m.y + m.height, base: row[0]};
-          if(!spot && b.x0 >= 2 && b.x1 <= W - 2 && b.y0 >= 0 && b.y1 <= LINE_AXIS && clear(b)
-             && dots.every(function(o){ return o === n || gap(b, o) > gap(b, n); })) spot = b;
-        });
-      });
-      if(!spot){ svg.removeChild(words); return; }
-      taken.push({x0: spot.x0 - 4, x1: spot.x1 + 4, y0: spot.y0, y1: spot.y1});
-      words.setAttribute('x', spot.x0.toFixed(1)); words.setAttribute('y', spot.base.toFixed(1));
-    });
-    return svg;
   }
-  function callRow(c){
-    var row = el('button', 'call'), nums = el('div', 'nums');
-    row.type = 'button'; row.setAttribute('aria-expanded', 'false'); row.setAttribute('data-press', '');
-    row.appendChild(el('span', 't', viewerTime(c.row_ts)));
-    var w = el('span', 'w'); w.appendChild(el('b', c.label, cap(c.label))); w.appendChild(document.createTextNode('called ' + c.pick));
-    row.appendChild(w);
-    row.appendChild(strip(c));
-    row.appendChild(el('span', isRight(c) ? 'grade ok' : 'grade', isRight(c) ? 'Right' : 'Wrong'));
-    var lo = c.worst ? c.worst.points : null, hi = c.best ? c.best.points : null;
-    nums.appendChild(document.createTextNode('Low ' + (lo == null ? '?' : signed(lo)) + ' · average '));
-    nums.appendChild(el('b', null, signed(c.g)));
-    nums.appendChild(document.createTextNode(' · high ' + (hi == null ? '?' : signed(hi)) + ' pts'));
-    nums.appendChild(el('br'));
-    nums.appendChild(document.createTextNode('Called at ' + money(c.from) + ' · flat within ±' + (+c.edge).toFixed(1)));
-    nums.hidden = true;
-    row.addEventListener('click', function(){ var o = nums.hidden; nums.hidden = !o; row.setAttribute('aria-expanded', String(o)); });
-    return [row, nums];
-  }
-  function dayCard(d, open){
-    var card = el('section', 'card'), head = el('button', 'dh'), list = el('div', 'calls'), lined = false;
-    head.type = 'button'; head.setAttribute('aria-expanded', String(open)); head.setAttribute('data-press', '');
-    var lab = el('span', 'lab', dayName(d.day)); lab.appendChild(el('span', 'r', rightOf(d.calls)));
-    head.appendChild(lab); head.appendChild(el('i', 'chev'));
-    card.appendChild(head); card.appendChild(squares(d.calls));
-    d.calls.forEach(function(c){ callRow(c).forEach(function(n){ list.appendChild(n); }); });
-    list.hidden = !open;
-    // the day's line is asked for the first time the day is open and put in over its calls when it comes, laid out at
-    // the card's width as it stands then (the head's, which has no sides of its own); bars that failed or that the
-    // station could not find leave it to be asked for again, at the next unfold or poll
-    function line(){
-      if(lined) return; lined = true;
-      barsOf(d).then(function(rows){ if(!rows){ lined = false; return; } dayLine(d, rows, head.clientWidth || LINE_W, list); });
-    }
-    lines[d.day] = line;
-    if(open) line();
-    head.addEventListener('click', function(){
-      var now = list.hidden; list.hidden = !now; head.setAttribute('aria-expanded', String(now)); opened[d.day] = now; allLabel();
-      if(now) line();
+  // the files a lane reads a day at a time
+  var LANE_FILES = {jev: ['jev'], direction: ['direction'], claude: ['answers', 'outcomes']};
+  var asked = {};
+  function want(d){
+    var files = d === picked ? Object.keys(DAY_URLS) : LANE_FILES[lane] || [], f = perDay[d] = perDay[d] || {};
+    files.forEach(function(k){
+      var key = d + k;
+      if(asked[key]) return;
+      asked[key] = true;
+      // a day with no such file (the direction line began 10-12) has none of its calls; a fetch that failed is asked again
+      gate(function(){ return rawRows(DAY_URLS[k] + d).then(function(rows){ f[k] = rows || []; draw(); }, function(){ asked[key] = false; }); });
     });
-    card.appendChild(list);
-    return card;
-  }
-  // the pinned summary's insides: the last DAYS_SUMMED days' score with its share, Collapse all, or Open all once every
-  // day is folded, and the days under them oldest first, the newest in ink
-  function summary(box, ds){
-    var recent = ds.slice(0, DAYS_SUMMED), all = [].concat.apply([], recent.map(function(d){ return d.calls; }));
-    var left = el('div', 'sum-l'), btn = el('button', 'all'), byDay = el('div', 'byday'), oldest = recent.slice().reverse();
-    left.appendChild(el('div', 'lab', 'Last ' + recent.length + (recent.length === 1 ? ' day' : ' days')));
-    left.appendChild(el('div', 'sum-v', rightOf(all))).appendChild(el('span', null, ' · ' + share(all) + '%'));
-    btn.type = 'button'; btn.id = 'all'; btn.setAttribute('data-press', '');
-    btn.textContent = anyOpen() ? 'Collapse all' : 'Open all';
-    btn.addEventListener('click', function(){ var open = !anyOpen(); days.forEach(function(d){ opened[d.day] = open; }); draw(); });
-    oldest.forEach(function(d, i){
-      var cell = el('div', i === oldest.length - 1 ? 'now' : null), bar = el('i', 'bar'), fill = el('i');
-      fill.style.width = share(d.calls) + '%'; bar.appendChild(fill);
-      cell.appendChild(el('b', null, dayName(d.day).slice(0, 3))); cell.appendChild(bar); cell.appendChild(el('span', null, score(d.calls)));
-      byDay.appendChild(cell);
-    });
-    byDay.setAttribute('role', 'img');
-    byDay.setAttribute('aria-label', 'By day: ' + oldest.map(function(d){ return dayName(d.day).slice(0, 3) + ' ' + score(d.calls); }).join(', '));
-    box.textContent = ''; box.appendChild(left); box.appendChild(btn); box.appendChild(byDay); box.hidden = false;
-  }
-  function anyOpen(){ return (days || []).some(function(d){ return opened[d.day]; }); }
-  function allLabel(){ var b = $('all'); if(b) b.textContent = anyOpen() ? 'Collapse all' : 'Open all'; }
-  function draw(){
-    var main = $('main'), sub = $('sub');
-    sub.className = failed ? 'hd-2 err' : 'hd-2';
-    var zone = viewerTime(Date.now(), {zone: true}).split(' ')[1] || '';
-    sub.textContent = (failed ? 'Fetch failed, showing the last list · ' : '') + '30-min calls, graded on the average' + (zone ? ' · ' + zone : '');
-    if(!days) return;
-    main.textContent = '';
-    $('hdR').textContent = days.length ? headLine(days[0]) : '';
-    if(!days.length){ $('sum').hidden = true; main.appendChild(el('section', 'card', 'No graded calls yet.')); return; }
-    days.forEach(function(d, i){ if(!(d.day in opened)) opened[d.day] = i === 0; });   // a new day opens only if it is the newest
-    summary($('sum'), days);
-    days.forEach(function(d){ main.appendChild(dayCard(d, opened[d.day])); });
   }
   function poll(){
-    fetch(GRADES_URL, {cache: 'no-store'}).then(function(r){ return r.ok ? r.json() : null; }).then(function(j){
-      if(!j || j.kind !== 'jsonl') throw new Error('no grades');
-      // the file's last rows only: when they are not the whole file and start inside the oldest day, that day may be
-      // cut short, so it is left out rather than shown with fewer calls than it had
-      var next = callDays(j.rows), first = j.rows[0];
-      if(j.total > j.shown && first && next.length && String(first.row_ts || '').slice(0, 10) === next[next.length - 1].day) next.pop();
-      // the same list again leaves the page alone, so a call the reader opened stays open; only an open day's line a
-      // failed fetch left out is asked for again
-      var key = JSON.stringify(next.map(function(d){ return [d.day, d.calls.length, d.calls[d.calls.length - 1].row_ts]; }));
-      if(key === drawn && !failed){ days.forEach(function(d){ if(opened[d.day]) lines[d.day](); }); return; }
-      days = next; drawn = key; failed = false; draw();
-    }).catch(function(){ failed = true; draw(); });
+    var all = Object.keys(GRADE_LIMITS).map(function(k){
+      return rawRows(GRADES_URL + k + '&limit=' + GRADE_LIMITS[k]).then(function(rows){ if(!rows) throw new Error('no grades'); grades[k] = rows; });
+    });
+    var card = fetch(LIVE_URL, {cache: 'no-store'}).then(function(r){ return r.ok ? r.json() : null; }).then(function(j){ live = j && j.kind === 'json' ? j.data : live; }).catch(function(){});
+    Promise.all(all.concat([card])).then(function(){ failed = false; }).catch(function(){ failed = true; }).then(function(){
+      // today's day files are asked for again with every poll, a done day's kept
+      var today = marketDay(); Object.keys(DAY_URLS).forEach(function(k){ asked[today + k] = false; });
+      draw();
+    });
   }
+  var HASH = {'#premarket': 'premarket', '#opening': 'opening', '#combined': 'combined', '#direction': 'direction', '#claude': 'claude', '#jev': 'jev'};
+  if(HASH[location.hash]) lane = HASH[location.hash];
   poll();
   setInterval(function(){ if(!document.hidden) poll(); }, POLL_MS);
   document.addEventListener('visibilitychange', function(){ if(!document.hidden) poll(); });

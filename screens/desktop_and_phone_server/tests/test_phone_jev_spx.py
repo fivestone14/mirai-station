@@ -3219,7 +3219,7 @@ def test_the_tabs_sit_in_the_headers_row_on_both_pages_from_1024px_up():
     assert ".hd-2.err{order:4;flex:1 1 100%;margin:0 0 10px}" in _wide_css()[1]     # after the right side, so the row stays one line
     reads = _wide_css((M / "reads.html").read_text())[1]
     assert ".hd{display:flex;flex-wrap:wrap;align-items:center;gap:0 28px;min-height:56px;margin:0 -40px;padding:0 40px 10px}" in reads
-    assert ".hd-1{display:contents}" in reads and ".sum{order:4;flex:1 1 100%;max-width:528px;margin:0 auto}" in reads
+    assert ".hd-1{display:contents}" in reads and ".sum{" not in reads           # the pinned summary went with Design B
     assert "main{width:100%;max-width:528px;margin:0 auto}" in reads   # the days stay the phone's centred column
 
 
