@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
-<title>SPX reads · Mirai</title>
+<title>SPX · Results</title>
 <!--
   The SPX reads: every graded 30-minute call, a day at a time (Will's design D of 2026-10-09, drawn to his board
   Final-Reads of 2026-10-10). The last five days' score stays pinned at the top with the header, with its share
@@ -179,7 +179,7 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
 </head>
 <body>
 <header class="hd">
-  <div class="hd-1"><span class="hd-l">SPX &middot; Reads</span><span class="hd-r" id="hdR"></span></div>
+  <div class="hd-1"><span class="hd-l">SPX &middot; Results</span><span class="hd-r" id="hdR"></span></div>
   <div class="hd-2" id="sub">loading</div>
   <!-- the tab bar, fixed at the phone's foot and in the header's row from 1024px up -->
   <nav class="tabs">
@@ -188,8 +188,8 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
       <s>FORECAST</s><i></i>
     </a>
     <span class="tab on" data-press>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-      <s>READS</s><i></i>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>
+      <s>RESULTS</s><i></i>
     </span>
   </nav>
   <section class="card sum" id="sum" hidden></section>

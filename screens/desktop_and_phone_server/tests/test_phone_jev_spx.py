@@ -111,7 +111,7 @@ def test_the_page_reads_the_spx_cards_and_keeps_the_sndk_pages_modes():
     assert "main.appendChild(laneCard(tape, tapeOk));" in _fn("paint") and "main.appendChild(foldLive(c));" in _fn("paint")
     assert "} else sumCard(c, main);" in _fn("paint")
     assert "var ex = expiryLine(c); if(ex) main.appendChild(ex);" in _fn("paint")
-    assert "laneLeads(tape, Date.now(), marketDay()) !== shownLeads" in _fn("tick")
+    assert "laneLeads(tape, now, today) !== shownLeads" in _fn("tick")
     assert "setInterval(function(){ if(!document.hidden){ poll(); pollTape(); tick(); } }, POLL_MS);" in JS
     # the live price rides the station's existing quote route, every SPOT_MS in the session (inSession, the market-clock gate:
     # the session's hours on a trading day), and on load and waking; on the same clock a live box is drawn again once its
@@ -337,32 +337,35 @@ def test_the_next_read_is_found_on_the_market_clock_and_drawn_in_the_viewers_zon
 
 
 def test_the_header_names_the_cards_market_day_and_the_next_read_in_the_viewers_zone():
-    """The redesign's header (Final-Home, 2026-10-10): "SPX · Forecast" on the left; on the right the market day the
-    card belongs to, its stamp's own date and never the viewer's, and the next read while one is still ahead, in the
-    viewer's zone. After the day's last read, or on a card of another day, the day stands alone; on a session day before
-    its first card the day is today's with the day's next read, the card's day being in the trouble line. The pre-market
-    card names its day and the night's next checkpoint the same way, then the day's first live read once the checkpoints
-    are past, and both move with the clock."""
-    js = ("var READ_MINUTES = [2, 32], LAST_READ_DEFAULT = '15:32', LAST_READ_LEAD_MIN = 28, nodes = {hdR: el('span')}; function $(id){ return nodes[id]; } function chartDocked(){ return !!D.wide; }"
+    """Design B's header (2026-10-14): "SPX · Forecast" on the left; on the right two lines, the market day the card
+    belongs to, its stamp's own date and never the viewer's, and under it the zone the page's times are in, named by
+    the phone, with the next read while one is still ahead, in that zone. After the day's last read, or on a card of
+    another day, the zone stands alone; on a session day before its first card the day is today's with the day's next
+    read. On the 5-minute tab while the opening lane reads, its next call. The pre-market card names its day and the
+    night's next checkpoint the same way, then the day's first live read once the checkpoints are past, and both move
+    with the clock."""
+    js = ("var READ_MINUTES = [2, 32], LAST_READ_DEFAULT = '15:32', LAST_READ_LEAD_MIN = 28, nodes = {hdR: el('span'), hdZ: el('span')}; function $(id){ return nodes[id]; } function chartDocked(){ return !!D.wide; }"
+          "function tabNow(){ return D.lane ? 'five' : 'thirty'; } function laneNext(){ return D.lane ? Date.parse(D.lane) : null; }"
           "var last = D.c, premarket = D.pre || null, tape = null;" + _var("SPOT_URL") + _fn("within") + _fn("cardDay") + _fn("todaysCard") + _fn("dayClose") + _fn("inSession")
-          + _fn("waiting") + _fn("nextRead") + _fn("dayName") + _fn("mins") + _fn("ageWord") + _fn("headLine") + _fn("setHead") + _fn("preNextRead") +
-          "setHead(D.c); console.log(JSON.stringify([nodes.hdR.textContent, D.pre ? headLine(D.pre.day, preNextRead(D.pre, Date.now())) : null]));")
+          + _fn("waiting") + _fn("nextRead") + _fn("dayName") + _fn("mins") + _fn("ageWord") + _fn("zoneName") + _fn("headLine") + _fn("setHeadLine") + _fn("setHead") + _fn("preNextRead") +
+          "setHead(D.c); console.log(JSON.stringify([nodes.hdR.textContent + ' / ' + nodes.hdZ.textContent, D.pre ? headLine(preNextRead(D.pre, Date.now())) : null]));")
     card = {"row_ts": "2026-10-09T11:31:56-04:00", "session": {"last_read": "2026-10-09T15:32:00-04:00", "close": "2026-10-09T16:00:00-04:00"}}
-    assert _run(js, {"now": "2026-10-09T11:40:00-04:00", "c": card}, LA)[0] == "Fri 10-09 · next read 09:02"
-    assert _run(js, {"now": "2026-10-09T11:40:00-04:00", "c": card}, TOKYO)[0] == "Fri 10-09 · next read 01:02"   # Saturday in Tokyo, Friday's card
-    assert _run(js, {"now": "2026-10-09T15:40:00-04:00", "c": card}, LA)[0] == "Fri 10-09"                         # after the day's last read
-    assert _run(js, {"now": "2026-10-10T11:40:00-04:00", "c": card}, LA)[0] == "Fri 10-09"                         # the weekend: no read ahead
+    assert _run(js, {"now": "2026-10-09T11:40:00-04:00", "c": card}, LA)[0] == "Fri 10-09 / Times PDT · next read 09:02"
+    assert _run(js, {"now": "2026-10-09T11:40:00-04:00", "c": card}, TOKYO)[0] == "Fri 10-09 / Times GMT+9 · next read 01:02"   # Saturday in Tokyo, Friday's card
+    assert _run(js, {"now": "2026-10-09T15:40:00-04:00", "c": card}, LA)[0] == "Fri 10-09 / Times PDT"                          # after the day's last read
+    assert _run(js, {"now": "2026-10-10T11:40:00-04:00", "c": card}, LA)[0] == "Fri 10-09 / Times PDT"                          # the weekend: no read ahead
+    assert _run(js, {"now": "2026-10-09T10:12:00-04:00", "c": card, "lane": "2026-10-09T10:15:00-04:00"}, LA)[0] == "Fri 10-09 / Times PDT · next opening call 07:15"
     pre = {"day": "2026-10-12", "schedule": {"reads": ["2026-10-12T02:35:00-04:00", "2026-10-12T06:35:00-04:00", "2026-10-12T08:50:00-04:00"]}}
-    assert _run(js, {"now": "2026-10-12T05:00:00-04:00", "c": card, "pre": pre}, LA)[1] == "Mon 10-12 · next read 03:35"
-    assert _run(js, {"now": "2026-10-12T09:00:00-04:00", "c": card, "pre": pre}, LA)[1] == "Mon 10-12"
+    assert _run(js, {"now": "2026-10-12T05:00:00-04:00", "c": card, "pre": pre}, LA)[1] == "Times PDT · next read 03:35"
+    assert _run(js, {"now": "2026-10-12T09:00:00-04:00", "c": card, "pre": pre}, LA)[1] == "Times PDT"
     # from 1024px up the board's fuller line (Final-Desktop): the read's time and age before the next read; after the
-    # day's last read the day alone, and the pre-market card's line as on a phone
-    assert _run(js, {"now": "2026-10-09T11:40:00-04:00", "c": card, "wide": True}, LA)[0] == "Fri 10-09 · read 08:31, 8 min ago · next 09:02"
-    assert _run(js, {"now": "2026-10-09T15:40:00-04:00", "c": card, "wide": True}, LA)[0] == "Fri 10-09"
-    assert _run(js, {"now": "2026-10-12T05:00:00-04:00", "c": card, "pre": pre, "wide": True}, LA)[1] == "Mon 10-12 · next read 03:35"
+    # day's last read the zone alone, and the pre-market card's line as on a phone
+    assert _run(js, {"now": "2026-10-09T11:40:00-04:00", "c": card, "wide": True}, LA)[0] == "Fri 10-09 / Times PDT · read 08:31, 8 min ago · next 09:02"
+    assert _run(js, {"now": "2026-10-09T15:40:00-04:00", "c": card, "wide": True}, LA)[0] == "Fri 10-09 / Times PDT"
+    assert _run(js, {"now": "2026-10-12T05:00:00-04:00", "c": card, "pre": pre, "wide": True}, LA)[1] == "Times PDT · next read 03:35"
     assert "setHead(c);" in _fn("paint") and "setHead(c);" in _fn("ages"), "the next read moves with the clock"
-    assert "nr = preNextRead(p, now);" in _fn("paintPre") and "if(head) head.textContent = headLine(p.day, nr);" in _fn("paintPre")
-    assert '<span class="hd-r" id="hdR"></span>' in SPX and "BETA" not in SPX.split("<body>", 1)[1].split("<main", 1)[0]
+    assert "nr = preNextRead(p, now);" in _fn("paintPre") and "setHeadLine(p.day, headLine(nr));" in _fn("paintPre")
+    assert '<span class="hd-r"><span id="hdR"></span><span class="hd-z" id="hdZ"></span></span>' in SPX and "BETA" not in SPX.split("<body>", 1)[1].split("<main", 1)[0]
 
 
 def test_the_header_line_names_the_row_in_the_viewers_time_and_knows_the_close():
@@ -517,8 +520,10 @@ def test_every_line_the_page_writes_starts_with_a_capital():
 # widest form it takes. The header's two sides (11px capitals, spaced .16em and .12em) were measured in headless
 # Chromium on 2026-10-10 with the redesign; the right side is widest on a Monday, "MON" being the widest weekday in
 # capitals, and its digits are tabular, so no time is wider than another. A zone name is widest as an offset
-# ("GMT+5:30"); a countdown under 10 hours.
-_W = {"SPX · FORECAST": 113.09, "MON 10-09 · NEXT READ 12:01": 198.44, "FRI 10-09 · NEXT READ 12:01": 187.59,
+# ("GMT+5:30"); a countdown under 10 hours. Design B's two-line right side (2026-10-14, measured in headless Chrome
+# with the shipped face): the day in capitals, the zone line at 12px.
+_W = {"SPX · FORECAST": 122.69, "MON 10-09": 74.69, "Times GMT+9 · next read 10:02": 181.2, "Times PDT · next opening call 07:15": 204.11,
+      "Times GMT+5:30 · next opening call 07:15": 242.58,
       "Today’s 0DTE settles 13:00 GMT+5:30": 223.75, "6 hr 30 min left": 88.44,
       "Next expiry settles Mon 16:00 GMT+5:30": 237.14, "Quarterly OpEx": 129.09,
       "NORMAL · A CALL EVERY 30 MIN": 216.06, "Read 06:50 GMT+5:30 … Graded 07:00": 203.0}
@@ -555,11 +560,15 @@ def test_the_page_fits_the_owners_360px_phone():
     # the widths above are of tabular digits, which the font shorthand on .hd-1 resets: with proportional digits the
     # widest line would be another string, and the time would shift the line every half hour
     assert "font-variant-numeric:tabular-nums" in _rule(".hd-r")
-    row = _W["SPX · FORECAST"] + float(gap.group(1)) + _W["MON 10-09 · NEXT READ 12:01"]
+    right = max(_W["MON 10-09"], _W["Times GMT+9 · next read 10:02"])
+    row = _W["SPX · FORECAST"] + float(gap.group(1)) + right
     assert row <= column, f"the header line is {row:.1f} of {column}"
+    # the opening lane's next call is a longer line: the right side wraps under the name, whole, never cut
+    assert _W["SPX · FORECAST"] + float(gap.group(1)) + _W["Times PDT · next opening call 07:15"] > column >= _W["Times GMT+5:30 · next opening call 07:15"]
+    assert "display:block" in _rule(".hd-z") and "font:50012px/1.2" in _rule(".hd-z") and "text-align:right" in _rule(".hd-r")
     assert "position:absolute" in _rule(".poll") and "left:100%" in _rule(".poll") and "position:relative" in _rule(".hd-l")
     spinner = _W["SPX · FORECAST"] + _px(".poll", "margin-left") + _px(".poll", "width")
-    assert spinner <= column - _W["MON 10-09 · NEXT READ 12:01"], f"the spinner ends at {spinner:.1f}, under the right side"
+    assert spinner <= column - right, f"the spinner ends at {spinner:.1f}, under the right side"
     assert "flex-wrap:wrap" in _rule(".exp")
     pad = re.search(r"padding:0([\d.]+)px", _rule(".exp"))
     assert pad, ".exp lost its side padding"
@@ -622,7 +631,7 @@ def test_a_call_is_a_forecast_not_a_trade_signal_and_shadow_means_only_the_shado
     assert "never a call" not in SPX and "Neither is a call" not in SPX and "in shadow" not in SPX
     assert JS.count("not a trade signal") == 1                   # the pre-market card's closing line
     # the page's last line, under the two buttons on their row (Final-Home, 2026-10-10)
-    assert SPX.index('<p class="note">A forecast, graded by the bars. Not advice.</p>') > SPX.index('id="infoBtn"')
+    assert SPX.index('<p class="note" id="note">A forecast, graded by the bars. Not advice.</p>') > SPX.index('id="infoBtn"')
     assert "flex:11100%;margin:0;text-align:center" in _rule(".note")
     foot = re.search(r'(?s)<p class="foot">(.*?)</p>', SPX).group(1)
     assert "A call is a forecast, not a trade signal" in foot and "asked and logged, never graded and never weighted" in foot
@@ -662,7 +671,7 @@ def test_the_switch_is_gone_and_the_old_sndk_forecast_address_forwards_to_the_fo
     """The redesign (2026-10-10): SPX only. The SNDK | SPX switch and the choice it kept on the phone are gone from
     the page, with the beta chip; jev.html, the SNDK forecast, keeps its name as a redirect, so an old bookmark or a
     phone that kept the address lands on /m/ with its query, and a browser without scripts reads where it went."""
-    for gone in ('class="sw"', "jev.symbol", "data-sym", 'class="beta"', "SNDK", "/m/jev.html"):
+    for gone in ("jev.symbol", "data-sym", 'class="beta"', "SNDK", "/m/jev.html"):
         assert gone not in SPX, gone
     sndk = (M / "jev.html").read_text()
     assert re.findall(r"(?s)<script>(.*?)</script>", sndk) == ["location.replace('/m/' + location.search);"]
@@ -686,16 +695,18 @@ def test_the_sndk_glance_is_gone_and_its_address_answers_404():
 
 
 def test_the_two_tabs_are_forecast_and_reads_on_every_page_that_carries_them():
-    """Final-Home: two tabs, Forecast (the page at /m/) and Reads, the Now tab gone; each page lights its own and links
+    """Final-Home: two tabs, Forecast (the page at /m/) and Results (the reads page, renamed in Design B, 2026-10-14,
+    its address kept), the Now tab gone; each page lights its own and links
     the other, both answer a press through press.js, and the label is the board's 11px.
     The bar is inside the header on both pages, fixed at the phone's foot and in the header's row from 1024px up
     (Final-Desktop), so a screen reader meets the two tabs with the page's name."""
-    for page, lit, link in (("jev-spx.html", "FORECAST", "/m/reads.html"), ("reads.html", "READS", "/m/")):
+    for page, lit, link in (("jev-spx.html", "FORECAST", "/m/reads.html"), ("reads.html", "RESULTS", "/m/")):
         html = (M / page).read_text()
         nav = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', html).group(1)
         assert re.findall(r'<a class="tab" href="([^"]+)"', nav) == [link], page
         assert nav.count('<span class="tab on" data-press>') == 1 and f"<s>{lit}</s>" in nav, page
-        assert "NOW" not in nav and 'href="/m/jev.html"' not in nav, page
+        assert "NOW" not in nav and "READS" not in nav and 'href="/m/jev.html"' not in nav, page
+        assert "<s>RESULTS</s>" in nav and '<rect x="14" y="14" width="6" height="6" rx="1"/>' in nav, page   # the Results tab's 2x2 grid
         assert re.search(r'<a class="tab" href="[^"]+" aria-label="\w+" data-press data-haptic>', nav), page
         assert html.index('<header class="hd">') < html.index('<nav class="tabs">') < html.index("</header>"), page
         assert html.index('<script src="/m/press.js"></script>') > html.index("</nav>"), page
@@ -752,8 +763,9 @@ def test_a_fetch_that_keeps_failing_draws_the_last_card_once_and_then_only_moves
 def test_the_opening_lane_is_drawn_while_the_30_minute_card_cannot_be_read():
     """Monday's first morning with no 30-minute card on file: the open 5-minute call still leads, drawn alone;
     once a 30-minute card has been read, paint draws both and this draws nothing."""
-    js = ("var last = D.last, tape = D.tape, premarket = D.premarket || null, tapeOk = true, tickers = [], shownLeads = false, MAIN = el('div', 'main');"
+    js = ("var last = D.last, tape = D.tape, premarket = D.premarket || null, tapeOk = true, tickers = [], shownLeads = false, shownTab = null, MAIN = el('div', 'main');"
           "function $(id){ return MAIN; } function clearLoading(){} function laneCard(t, ok){ return el('div', 'lane', t.row_ts); }"
+          "function tabNow(){ return D.tab || 'five'; } function leadTab(){ return 'five'; } function paintSwitch(){}"
           + _fn("top1") + _fn("preFolds") + _var("PRE_CHECKS") + _fn("preFold") + _fn("laneOnly") +
           "var drew = laneOnly(); console.log(JSON.stringify([drew, shownLeads, MAIN.kids.map(function(k){ return k.textContent; })]));")
     tape = {"lane": "tape", "row_ts": "2026-09-28T10:00:00-04:00", "calls": [call("10:00", "10:10", "flat", 0.4)]}
@@ -764,6 +776,7 @@ def test_the_opening_lane_is_drawn_while_the_30_minute_card_cannot_be_read():
     assert drew[2][-1] == "pre-market call 06:28Up 41%Checked 06:44 and 07:04"
     assert _run(js, {"now": "2026-09-28T10:05:00-04:00", "last": {"row_ts": "x"}, "tape": tape})[0] is False
     assert _run(js, {"now": "2026-09-28T10:11:00-04:00", "last": None, "tape": tape})[0] is False    # the call has closed
+    assert _run(js, {"now": "2026-09-28T10:05:00-04:00", "last": None, "tape": tape, "tab": "thirty"})[0] is False   # the reader is on the 30-minute tab
 
 
 def test_the_blend_note_names_the_phase_by_its_hours_in_the_viewers_zone():
@@ -1081,14 +1094,14 @@ def pre_card(at="09:28", day=PRE_DAY, report=True, sent=None, checkpoints=CHECKP
 
 PRE_FNS = ("fits", "top1", "oddsKeys", "oddsBar", "tag", "skipLine", "averageWords", "jevOwn", "endPriceRow", "ageWord", "mins", "untilWords", "expiryLine",
            "cardDay", "todaysCard", "nextRead", "preLeads", "preNextRead", "preMissed", "preJevRead", "preJevDue", "preUnsent", "preState", "shapeWords",
-           "sumPick", "sumSaid", "preClock", "preCall", "preRulerLine", "preStaleLine", "checksSvg", "chipFits", "storySide", "storyHead", "storySvg", "preFacts", "paintPre")
-PRE_VARS = ("ODDS_ORDER", "EXPIRY_TAGS", "PRE_LATE_MIN", "OPENS", "THEN", "CHECKS_LEAD_MIN", "CHIP_W", "READ_MINUTES", "LAST_READ_DEFAULT")
+           "sumPick", "sumSaid", "dayName", "zoneName", "headLine", "setHeadLine", "preClock", "preCall", "preRulerLine", "preStaleLine", "checksSvg", "chipFits", "storySide", "storyHead", "storySvg", "preFacts", "paintPre")
+PRE_VARS = ("WEEKDAYS", "ODDS_ORDER", "EXPIRY_TAGS", "PRE_LATE_MIN", "OPENS", "THEN", "CHECKS_LEAD_MIN", "CHIP_W", "READ_MINUTES", "LAST_READ_DEFAULT")
 # the page's #h1, #sub, #state and #main, with the classList the pre-market card toggles; no 30-minute card is on hand
 PRE_DOM = """
 Object.defineProperty(Node.prototype, 'classList', {get: function(){ var n = this; function has(){ return (n.attrs['class'] || '').split(' ').filter(Boolean); }
   return {remove: function(k){ n.attrs['class'] = has().filter(function(x){ return x !== k; }).join(' '); },
           toggle: function(k, on){ var h = has().filter(function(x){ return x !== k; }); if(on) h.push(k); n.attrs['class'] = h.join(' '); }}; }});
-var nodes = {h1: el('span'), sub: el('div'), state: el('div'), main: el('main'), dock: el('div'), qBtn: el('button')};
+var nodes = {h1: el('span'), hdR: el('span'), hdZ: el('span'), sub: el('div'), state: el('div'), main: el('main'), dock: el('div'), qBtn: el('button')};
 function $(id){ return nodes[id]; }
 var tickers = [], shownPre = false, shownLeads = false, last = null;
 """
@@ -1122,9 +1135,9 @@ def test_the_page_reads_the_premarket_card_and_it_leads_before_the_open():
     assert "premarket.day === marketDay() && premarket.closed_out_at)) return;" in _fn("pollPre")
     assert "pollPre();" in _fn("poll")
     # paint hands the whole page to the pre-market card while it leads; tick and the ages follow it
-    assert _fn("paint").lstrip("\n").splitlines()[2] == \
-        "    if(preLeads(premarket, Date.now(), marketDay())){ paintPre(premarket, premarketOk); return; }"
-    assert "preLeads(premarket, Date.now(), marketDay()) !== shownPre" in _fn("tick")
+    assert _fn("paint").lstrip("\n").splitlines()[3] == \
+        "    if(tabNow() === 'five' && preLeads(premarket, Date.now(), marketDay())){ paintPre(premarket, premarketOk); paintSwitch(); return; }"
+    assert "preLeads(premarket, now, today) !== shownPre" in _fn("tick")
     assert "if(shownPre) return;" in _fn("ages")
     assert _fn("poll").count("preOnly() || laneOnly();") == 3
     for f in ("preState", "preClock", "preCall", "checksSvg", "storySvg", "preFacts", "paintPre"):
@@ -2039,8 +2052,8 @@ Object.defineProperty(Node.prototype, 'classList', {get: function(){ var n = thi
           remove: function(k){ put(has().filter(function(x){ return x !== k; })); },
           toggle: function(k, on){ put(has().filter(function(x){ return x !== k; }).concat(on ? [k] : [])); }}; }});
 var ids = {};
-['h1', 'sub', 'state', 'main', 'dock', 'load', 'poll', 'csTitle', 'csBody', 'od', 'px', 'pxSpark', 'qBtn', 'infoBtn', 'claude', 'claudeLab',
- 'claudePick', 'claudeLine', 'claudeRows', 'claudeWhy', 'qsCount', 'chartSheet', 'chBody', 'chDay'].forEach(function(id){ ids[id] = new Node('div'); });
+['h1', 'hdR', 'hdZ', 'sub', 'state', 'sw', 'swFive', 'swFiveS', 'swThirty', 'swThirtyS', 'main', 'dock', 'load', 'poll', 'csTitle', 'csBody', 'od', 'px',
+ 'pxSpark', 'qBtn', 'infoBtn', 'note', 'claude', 'claudeLab', 'claudePick', 'claudeLine', 'claudeRows', 'claudeWhy', 'qsCount', 'chartSheet', 'chBody', 'chDay'].forEach(function(id){ ids[id] = new Node('div'); });
 ids.claude.hidden = true; ids.qBtn.hidden = true;          // hidden in the markup until a read, a card
 // an id the page gives a node it builds (the record row's) is found under main
 function byId(n, id){ if(n.id === id) return n; for(var i = 0; i < n.kids.length; i++){ var f = byId(n.kids[i], id); if(f) return f; } return null; }
@@ -2670,7 +2683,7 @@ def test_the_questions_and_the_info_controls_share_one_row_that_fits_a_320px_pho
     buttons are set at (at the board's 14px it is 138.2 wide). The footer line is the page's last."""
     assert re.search(r'<div class="vq-row">\n  <button class="vq" id="qBtn" type="button" aria-controls="qSheet" hidden>Questions</button>\n'
                      r'  <button class="vq info" id="infoBtn" type="button" aria-controls="infoSheet"><i aria-hidden="true">i</i>How to read</button>\n'
-                     r'  <p class="note">A forecast, graded by the bars. Not advice.</p>\n</div>', SPX)
+                     r'  <p class="note" id="note">A forecast, graded by the bars. Not advice.</p>\n</div>', SPX)
     assert _rule(".vq-row") == "display:flex;flex-wrap:wrap;gap:8px" and "flex:110;min-width:0;height:var(--tap-min);padding:0" in _rule(".vq") and ".vq[hidden]{display:none}" in SPX
     assert "font:70013.5px/1" in _rule(".vq")
     inside = (320 - 2 * 16 - 8) / 2 - 2

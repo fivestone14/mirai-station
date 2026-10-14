@@ -100,7 +100,7 @@ def test_the_header_names_the_newest_day_and_says_when_it_is_done():
     assert _run(js, {"d": d, "now": "2026-10-09T16:00:00-04:00"}) == "Fri 10-09 · day done"
     assert _run(js, {"d": d, "now": "2026-10-10T20:00:00-04:00"}, TOKYO) == "Fri 10-09 · day done"    # Sunday in Tokyo, Friday's day
     assert "$('hdR').textContent = days.length ? headLine(days[0]) : '';" in _fn("draw")
-    assert '<div class="hd-1"><span class="hd-l">SPX &middot; Reads</span><span class="hd-r" id="hdR"></span></div>' in READS
+    assert '<div class="hd-1"><span class="hd-l">SPX &middot; Results</span><span class="hd-r" id="hdR"></span></div>' in READS
     assert ".hd-r{margin-left:auto;letter-spacing:.12em;color:var(--i-mute);white-space:nowrap;font-variant-numeric:tabular-nums}" in READS
     assert "flex-wrap:wrap" in re.search(r"\n\.hd-1\{([^}]*)\}", READS).group(1)      # at 320 the day wraps under the name, whole
 
@@ -263,10 +263,11 @@ def test_the_page_reads_the_grades_through_the_raw_route_and_keeps_an_opened_cal
 
 
 def test_the_tab_bar_lights_reads_and_every_page_links_it():
-    """Two tabs since the redesign (2026-10-10): Forecast, the page at /m/, and Reads, lit here."""
+    """Two tabs since the redesign (2026-10-10): Forecast, the page at /m/, and Results (Design B's name for this page,
+    2026-10-14, its address kept), lit here."""
     nav = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', READS).group(1)
     assert re.findall(r'<a class="tab" href="([^"]+)"', nav) == ["/m/"]
-    assert nav.count('<span class="tab on" data-press>') == 1 and "<s>READS</s>" in nav and "<s>FORECAST</s>" in nav
+    assert nav.count('<span class="tab on" data-press>') == 1 and "<s>RESULTS</s>" in nav and "<s>FORECAST</s>" in nav
     assert "NOW" not in nav and "jev.html" not in nav
     tabs = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', (M / "jev-spx.html").read_text()).group(1)
     assert 'href="/m/reads.html"' in tabs and "thread.html" not in tabs
