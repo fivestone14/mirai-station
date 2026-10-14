@@ -109,7 +109,9 @@ def test_the_page_reads_the_spx_cards_and_keeps_the_sndk_pages_modes():
     assert "timedFetch(URL_)" in JS and "fetch(TAPE_URL, {cache:'no-store'})" in JS
     assert "shownLeads = laneLeads(tape, now, today);" in _fn("paint")
     assert "if(five) paintFive(main);" in _fn("paint") and "else if(c) paintThirty(c, main);" in _fn("paint")
-    assert "var ex = expiryLine(c || p || tape); if(ex) main.appendChild(ex);" in _fn("paint")
+    # the expiry line stands in the price box's top row (Design B, D1), drawn with the page
+    assert "var pe = $('pxE'), ex = expiryLine(c || p || tape || {}); pe.textContent = ''; if(ex) pe.appendChild(ex);" in _fn("paint")
+    assert '<div class="px-top"><div class="px-k"><i id="pxLive" hidden></i><span id="pxK">SPX</span></div><div id="pxE"></div></div>' in SPX
     assert "laneLeads(tape, now, today) !== shownLeads" in _fn("tick")
     assert "setInterval(function(){ if(!document.hidden){ poll(); pollTape(); tick(); } }, POLL_MS);" in JS
     # the live price rides the station's existing quote route, every SPOT_MS in the session (inSession, the market-clock gate:
@@ -255,7 +257,8 @@ def test_the_days_calls_row_sits_in_the_dock_under_claudes_read_as_a_card():
 
 def test_a_new_card_asks_for_the_grades_at_once_and_keeps_a_call_open_until_its_grade_lands():
     """The grades are asked for at most once a minute while the chart is open: a new card asks past that throttle, since
-    the run that grades the last call writes the card with it, and the same card again never asks. Between a call's
+    the run that grades the last call writes the card with it, and the same card again never asks; JEV's own answers and
+    the direction line's grades likewise, only on a new card, never on every poll of the same one. Between a call's
     mark passing and its grade landing (the grader runs a minute or two after the mark) the call stays in the row as an
     open square from the card's own calls instead of vanishing; once the grades file carries it, it is drawn once, from
     the file. A call the card has graded but the file lacks (the file could not be read) keeps the card's grade."""
@@ -263,16 +266,17 @@ def test_a_new_card_asks_for_the_grades_at_once_and_keeps_a_call_open_until_its_
           "function fetch(){ calls++; return Promise.resolve({ok: true, json: function(){ return Promise.resolve({kind: 'jsonl', rows: []}); }}); }"
           "function $(id){ return {getAttribute: function(){ return 'true'; }, classList: {contains: function(){ return false; }}, dataset: {}}; }"
           "function priceDay(){ return null; } function pollBars(){} function pollBook(){} function draw(){} function ages(){} function tick(){} function paintBoard(){} function paintChart(){}"
-          "var jevAt = 0, dirGradesAt = 0; function pollJevAlone(){} function pollDirGrades(){}"
+          "var jevAt = 0, dirGradesAt = 0, asked = {jev: 0, dir: 0}, claudeReadsDay = null; function cardDay(){ return null; } function pollClaudeReads(){}"
+          "function pollJevAlone(){ asked.jev++; jevAt = Date.now(); } function pollDirGrades(){ asked.dir++; dirGradesAt = Date.now(); }"
           "function chartDocked(){ return false; }" + _var("GRADES_URL") + _var("BOOK_URL") + _var("grades") + "".join(_fn(f) for f in ("chartVisible", "rawRows", "pollGrades", "arrived"))
           + "function settle(){ return new Promise(function(r){ setImmediate(r); }); }"
           "(async function(){ var out = {};"
           " arrived({generated_at: 'g1', row_ts: 'r1'}); await settle(); out.first = calls;"
           " arrived({generated_at: 'g1', row_ts: 'r1'}); await settle(); out.same = calls;"
           " NOW += 20000; arrived({generated_at: 'g2', row_ts: 'r2'}); await settle(); out.fresh = calls;"
-          " pollGrades(); await settle(); out.throttled = calls;"
+          " pollGrades(); await settle(); out.throttled = calls; out.jev = asked.jev; out.dir = asked.dir;"
           " console.log(JSON.stringify(out)); })();")
-    assert _run(js, {"now": "2026-10-09T16:02:00-04:00"}) == {"first": 1, "same": 1, "fresh": 2, "throttled": 2}
+    assert _run(js, {"now": "2026-10-09T16:02:00-04:00"}) == {"first": 1, "same": 1, "fresh": 2, "throttled": 2, "jev": 2, "dir": 2}
     stamp = lambda hhmm: f"2026-10-09T{hhmm}:40-04:00"
     calls = [{"read": stamp("15:31"), "mark": "2026-10-09T16:00:00-04:00", "minutes": 30, "pick": "flat", "p": 0.5},
              {"read": stamp("15:01"), "mark": "2026-10-09T15:31:00-04:00", "minutes": 30, "pick": "up", "p": 0.4},       # its mark passed, no grade yet
@@ -333,20 +337,27 @@ def test_the_header_names_the_cards_market_day_and_the_next_read_in_the_viewers_
     """Design B's header (2026-10-14): "SPX · Forecast" on the left; on the right two lines, the market day the card
     belongs to, its stamp's own date and never the viewer's, and under it the zone the page's times are in, named by
     the phone, with the next read while one is still ahead, in that zone. After the day's last read, or on a card of
-    another day, the zone stands alone; on a session day before its first card the day is today's with the day's next
-    read. On the 5-minute tab while the opening lane reads, its next call. The pre-market card names its day and the
+    another day, the next session's first read, named by its weekday when it is not today (the card's expiry calendar
+    names the day); a card without one leaves the zone alone. On a session day before its first card the day is today's
+    with the day's next read. On the 5-minute tab while the opening lane reads, its next call. The pre-market card names its day and the
     night's next checkpoint the same way, then the day's first live read once the checkpoints are past, and both move
     with the clock."""
     js = ("var READ_MINUTES = [2, 32], LAST_READ_DEFAULT = '15:32', LAST_READ_LEAD_MIN = 28, nodes = {hdR: el('span'), hdZ: el('span')}; function $(id){ return nodes[id]; } function chartDocked(){ return !!D.wide; }"
           "function tabNow(){ return D.lane ? 'five' : 'thirty'; } function laneNext(){ return D.lane ? Date.parse(D.lane) : null; }" + _fn("preLeads") +
           "var last = D.c, premarket = D.pre || null, tape = null;" + _var("SPOT_URL") + _fn("within") + _fn("cardDay") + _fn("todaysCard") + _fn("dayClose") + _fn("inSession")
-          + _fn("waiting") + _fn("nextRead") + _fn("dayName") + _fn("mins") + _fn("ageWord") + _fn("zoneName") + _fn("headLine") + _fn("setHeadLine") + _fn("setHead") + _fn("preNextRead") +
+          + _fn("waiting") + _fn("nextRead") + _fn("dayName") + _fn("mins") + _fn("ageWord") + _fn("zoneName") + _fn("headLine") + _fn("setHeadLine") + _fn("setHead") + _fn("nextSessionRead") + _fn("preNextRead") + _fn("marketAt") +
           "setHead(D.c); console.log(JSON.stringify([nodes.hdR.textContent + ' / ' + nodes.hdZ.textContent, D.pre ? headLine(preNextRead(D.pre, Date.now())) : null]));")
     card = {"row_ts": "2026-10-09T11:31:56-04:00", "session": {"last_read": "2026-10-09T15:32:00-04:00", "close": "2026-10-09T16:00:00-04:00"}}
     assert _run(js, {"now": "2026-10-09T11:40:00-04:00", "c": card}, LA)[0] == "Fri 10-09 / Times PDT · next read 09:02"
     assert _run(js, {"now": "2026-10-09T11:40:00-04:00", "c": card}, TOKYO)[0] == "Fri 10-09 / Times GMT+9 · next read 01:02"   # Saturday in Tokyo, Friday's card
     assert _run(js, {"now": "2026-10-09T15:40:00-04:00", "c": card}, LA)[0] == "Fri 10-09 / Times PDT"                          # after the day's last read
     assert _run(js, {"now": "2026-10-10T11:40:00-04:00", "c": card}, LA)[0] == "Fri 10-09 / Times PDT"                          # the weekend: no read ahead
+    # with the card's expiry calendar: after the close the next session's first read, Monday's over the weekend, and
+    # before the open the day's own, with no weekday
+    dated = {**card, "expiries": {"today_settles_at": "2026-10-09T16:00:00-04:00", "next_settles_at": "2026-10-12T16:00:00-04:00"}}
+    assert _run(js, {"now": "2026-10-09T15:40:00-04:00", "c": dated}, LA)[0] == "Fri 10-09 / Times PDT · next read Mon 06:32"
+    assert _run(js, {"now": "2026-10-10T11:40:00-04:00", "c": dated}, TOKYO)[0] == "Fri 10-09 / Times GMT+9 · next read Mon 22:32"
+    assert _run(js, {"now": "2026-10-12T08:00:00-04:00", "c": dated}, LA)[0] == "Fri 10-09 / Times PDT · next read 06:32"
     assert _run(js, {"now": "2026-10-09T10:12:00-04:00", "c": card, "lane": "2026-10-09T10:15:00-04:00"}, LA)[0] == "Fri 10-09 / Times PDT · next opening call 07:15"
     pre = {"day": "2026-10-12", "schedule": {"reads": ["2026-10-12T02:35:00-04:00", "2026-10-12T06:35:00-04:00", "2026-10-12T08:50:00-04:00"]}}
     assert _run(js, {"now": "2026-10-12T05:00:00-04:00", "c": card, "pre": pre}, LA)[1] == "Times PDT · next read 03:35"
@@ -383,14 +394,15 @@ def test_the_count_of_answers_reads_the_cards_counts_under_their_own_names_in_th
     """The card's fresh and held are counts, while a record's are the answers themselves (I25): the card writes
     fresh_count and held_count, and the count reads them, or the bare names on a card from before them. Since
     Final-Home (2026-10-10) the count is said in the questions sheet's header, not as a chip on the card, and the
-    questions control on the page says how many the read asked; the top keeps only trouble."""
+    questions control on the page says the sheet's own count, "N of M", so the two never name different numbers; the
+    top keeps only trouble."""
     live = {k: v for k, v in MONDAY["live"].items() if k not in ("fresh", "held", "labels")}
     answered = sum(1 for q in live["questions"] if q.get("answer"))
     for c in ({**live, "fresh_count": 7, "held_count": 3, "labels_count": 119}, {**live, "fresh": 7, "held": 3, "labels": 119}):
         assert _count(c) == f"{answered} of {len(c['questions'])} answered, 7 fresh on the 12:31 row"
         got = _whole({"live": c, "tape": MONDAY["tape"], "premarket": MONDAY["premarket"]}, "2026-09-28T15:40:00-04:00")
         assert got["state"] == [] and "answered" not in json.dumps(got["dom"])
-        assert got["qBtn"] == {"hidden": True, "text": f"Questions \u00B7 {c.get('asked') or 0}"}   # on the 30-minute tab the questions are its sheet's
+        assert got["qBtn"] == {"hidden": True, "text": f"Questions \u00B7 {answered} of {len(c['questions'])}"}   # on the 30-minute tab the questions are its sheet's
     assert "qs.count = countWords(c);" in _fn("qsLoad") and "$('qsCount').textContent = 'This read: ' + qs.count;" in _fn("qsDraw")
     assert '<div class="qs-sub" id="qsCount"></div>' in SPX
 
@@ -401,7 +413,7 @@ def test_a_read_that_asked_no_question_says_so_instead_of_a_count_of_nothing():
     live = {k: v for k, v in MONDAY["live"].items() if k not in ("fresh", "held", "labels")}
     none = {**live, "asked": 0, "fresh_count": 0, "held_count": 0, "questions": [{**q, "answer": None, "skipped": "gate: not fired"} for q in live["questions"]]}
     assert _count(none) == "no question asked"
-    assert _whole({"live": none, "tape": MONDAY["tape"], "premarket": MONDAY["premarket"]}, "2026-09-28T15:40:00-04:00")["qBtn"]["text"] == "Questions \u00B7 0"
+    assert _whole({"live": none, "tape": MONDAY["tape"], "premarket": MONDAY["premarket"]}, "2026-09-28T15:40:00-04:00")["qBtn"]["text"] == f"Questions \u00B7 0 of {len(none['questions'])}"
     assert "!answered && !c.asked" in _fn("countWords")
 
 
@@ -473,20 +485,22 @@ EXPIRIES = {"today_settles_at": "2026-09-30T16:00:00-04:00", "next_settles_at": 
 
 
 def test_the_expiry_line_counts_down_to_todays_settle_and_tags_the_big_days():
+    """Design B (D1): the line stands in the price box's top row as the mockup words it, "Options settle 13:00 · 3 hr
+    11 min", in the zone the header names, the OpEx tags after it."""
     got = _expiry(EXPIRIES, "2026-09-30T11:14:00-04:00")
-    assert got == [["span", "Options settle 13:00 PDT"], ["b", "4 hr 46 min left"], ["state", "Quarter-end"]]
+    assert got == [["span", "Options settle 13:00 ·"], ["b", "4 hr 46 min"], ["state", "Quarter-end"]]
     opex = {**EXPIRIES, "today_settles_at": "2026-09-18T16:00:00-04:00", "expiring_today": ["monthly", "quarterly"]}
     assert _expiry(opex, "2026-09-18T15:31:00-04:00", TOKYO) == [
-        ["span", "Options settle 05:00 GMT+9"], ["b", "29 min left"], ["state", "Quarterly OpEx"]]
+        ["span", "Options settle 05:00 ·"], ["b", "29 min"], ["state", "Quarterly OpEx"]]
     month = {**EXPIRIES, "today_settles_at": "2026-10-16T16:00:00-04:00", "expiring_today": ["monthly"]}
     assert _expiry(month, "2026-10-16T09:40:00-04:00")[2] == ["state", "Monthly OpEx"]
 
 
 def test_after_the_settle_the_line_names_the_next_expiry_with_its_day():
-    assert _expiry(EXPIRIES, "2026-09-30T16:05:00-04:00") == [["span", "Next expiry settles Thu 13:00 PDT"]]
+    assert _expiry(EXPIRIES, "2026-09-30T16:05:00-04:00") == [["span", "Next expiry settles Thu 13:00"]]
     # a card from an earlier day never counts down its own day's settle; its next one, when that is today's (the session
     # day before its first card), it counts down, without the earlier day's tags
-    assert _expiry(EXPIRIES, "2026-10-01T09:40:00-04:00", TOKYO) == [["span", "Options settle 05:00 GMT+9"], ["b", "6 hr 20 min left"]]
+    assert _expiry(EXPIRIES, "2026-10-01T09:40:00-04:00", TOKYO) == [["span", "Options settle 05:00 ·"], ["b", "6 hr 20 min"]]
     assert _expiry(None, "2026-09-30T11:14:00-04:00") is None
 
 
@@ -504,11 +518,11 @@ def test_every_line_the_page_writes_starts_with_a_capital():
 # Chromium on 2026-10-10 with the redesign; the right side is widest on a Monday, "MON" being the widest weekday in
 # capitals, and its digits are tabular, so no time is wider than another. A zone name is widest as an offset
 # ("GMT+5:30"); a countdown under 10 hours. Design B's two-line right side (2026-10-14, measured in headless Chrome
-# with the shipped face): the day in capitals, the zone line at 12px.
+# with the shipped face): the day in capitals, the zone line at 12px; the price box's label and its expiry line (D1).
 _W = {"SPX · FORECAST": 122.69, "MON 10-09": 74.69, "Times GMT+9 · next read 10:02": 181.2, "Times PDT · next opening call 07:15": 204.11,
       "Times GMT+5:30 · next opening call 07:15": 242.58,
-      "Today’s 0DTE settles 13:00 GMT+5:30": 223.75, "6 hr 30 min left": 88.44,
-      "Next expiry settles Mon 16:00 GMT+5:30": 237.14, "Quarterly OpEx": 129.09,
+      "Options settle 13:00 ·": 123.27, "6 hr 30 min": 62.28, "Next expiry settles Mon 16:00": 167.56, "Quarterly OpEx": 123.09,
+      "SPX LIVE": 57.06, "SPX · LAST CLOSE": 116.78,
       "NORMAL · A CALL EVERY 30 MIN": 216.06, "Read 06:50 GMT+5:30 … Graded 07:00": 203.0}
 
 
@@ -552,16 +566,21 @@ def test_the_page_fits_the_owners_360px_phone():
     assert "position:absolute" in _rule(".poll") and "left:100%" in _rule(".poll") and "position:relative" in _rule(".hd-l")
     spinner = _W["SPX · FORECAST"] + _px(".poll", "margin-left") + _px(".poll", "width")
     assert spinner <= column - right, f"the spinner ends at {spinner:.1f}, under the right side"
-    assert "flex-wrap:wrap" in _rule(".exp")
-    pad = re.search(r"padding:0([\d.]+)px", _rule(".exp"))
-    assert pad, ".exp lost its side padding"
-    exp = column - 2 * float(pad.group(1))
-    for part in ("Today’s 0DTE settles 13:00 GMT+5:30", "6 hr 30 min left", "Next expiry settles Mon 16:00 GMT+5:30", "Quarterly OpEx"):
-        assert _W[part] <= exp, f"{part!r} is wider than the expiry line at 360"
+    # the expiry line in the price box's top row (D1): beside the live label at 360, the dot, the chevron and the gaps
+    # counted; each part fits the box alone, so at 320 or after the close the line wraps under the label, whole
+    assert "flex-wrap:wrap" in _rule(".exp") and "flex-wrap:wrap" in _rule(".px-top") and "justify-content:space-between" in _rule(".px-top")
+    box = column - 2 * float(re.search(r"padding:\d+px(\d+)px", _rule(".px")).group(1))
+    label = _W["SPX LIVE"] + 7 + 6 + 8 + 6
+    assert label + 10 + _W["Options settle 13:00 ·"] + 8 + _W["6 hr 30 min"] <= box
+    for part in ("Options settle 13:00 ·", "Next expiry settles Mon 16:00", "Quarterly OpEx", "SPX · LAST CLOSE"):
+        assert _W[part] <= box, f"{part!r} is wider than the price box at 360"
     assert _W["NORMAL · A CALL EVERY 30 MIN"] <= column
     assert _W["Read 06:50 GMT+5:30 … Graded 07:00"] <= card
-    # the night's story is 300 wide in its own units and scales to the card, so it never runs past it
-    assert "width:100%;height:auto" in _rule(".inplay") and "viewBox: '0 0 300 '" in _fn("storySvg")
+    # the night's story is laid out at the card's width (300 before the page has one) and scales to the card, so it
+    # never runs past it, its words at the page's 11px floor
+    assert "width:100%;height:auto" in _rule(".inplay") and "viewBox: '0 0 ' + W + ' '" in _fn("storySvg") and "storyWidth()" in _fn("preNow")
+    for sel in (".inplay .t-axis", ".inplay .t-now-l", ".story .w-light", ".story .w-dark", ".story .t-rep", ".story .t-p"):
+        assert "font-size:11px" in _rule(sel), sel
     # the odds line under the bar is one line of words that wraps rather than cut (a five-way call on an old card)
     assert "nowrap" not in _rule(".odds-lab") and "overflow" not in _rule(".odds-lab") and "font:40011.5px/" in _rule(".odds-lab")
 
@@ -701,8 +720,8 @@ def test_a_good_fetch_after_a_failed_one_clears_the_failure_though_the_card_is_t
           "contains: function(k){ return !!SUB.cls[k]; }, add: function(k){ SUB.cls[k] = true; }, remove: function(k){ delete SUB.cls[k]; }}};"
           "function $(id){ return SUB; } function ages(){ drawn.push('ages'); } function tick(){}"
           "function draw(c, ok){ lastOk = ok; drawn.push(ok); if(ok) SUB.classList.remove('err'); }"
-          "function setTimeout(){} var barsDay = null, gradesAt = 0, jevAt = 0, dirGradesAt = 0; function priceDay(){ return null; } function pollBars(){} function pollBook(){} function pollGrades(){}"
-          "function pollJevAlone(){} function pollDirGrades(){}" + _fn("arrived") +
+          "function setTimeout(){} var barsDay = null, gradesAt = 0, jevAt = 0, dirGradesAt = 0, claudeReadsDay = null; function priceDay(){ return null; } function pollBars(){} function pollBook(){} function pollGrades(){}"
+          "function pollJevAlone(){} function pollDirGrades(){} function pollClaudeReads(){} function cardDay(){ return null; }" + _fn("arrived") +
           "var c = {generated_at: 'g1', row_ts: 'r1'};"
           "arrived(c); arrived(c); draw(last, false); arrived(c); arrived(c);"
           "SUB.classList.add('err'); arrived(c);"
@@ -732,7 +751,7 @@ def test_the_opening_lane_is_drawn_while_the_30_minute_card_cannot_be_read():
     tape = {**MONDAY["tape"], "closed_out_at": None}
     got = _whole({"tape": tape, "premarket": MONDAY["premarket"]}, "2026-09-28T10:33:00-04:00")
     assert got["err"] and got["sub"] == "the station said: no such file"
-    assert got["sw"][0] == "on" and [k for k, _ in got["main"]][:4] == ["exp", "card pm", "sec", "card"] and got["main"][2][1] == "Nowthe 07:30 call"
+    assert got["sw"][0] == "on" and [k for k, _ in got["main"]][:3] == ["card pm", "sec", "card"] and got["main"][1][1] == "Nowthe 07:30 call"
     assert got["qBtn"]["hidden"] is False
     late = _whole({"tape": tape}, "2026-09-28T10:41:00-04:00")                       # the call has closed: the 30-minute tab leads, with no card
     assert late["sw"][2] == "on" and late["main"][-1] == ["card", "No 30-min card yet"]
@@ -750,7 +769,8 @@ def test_the_blend_note_names_the_phase_by_its_hours_in_the_viewers_zone():
 def _how():
     return (_var("ODDS_ORDER") + _var("VOICE_WORDS") + _var("SQ_KEY") + "".join(_fn(f) for f in (
         "oddsKeys", "oddsBar", "top1", "threeWay", "jevOwn", "combinedCall", "headline", "voiceName", "voicesOf", "labRow", "ifMoves", "sideCls",
-        "waVal", "waRow", "theCallRow", "dirSide", "directionShown", "dirRow", "clOk", "clPick", "clDir", "claudeRow", "jevRow", "fillAgree", "agreeCard")))
+        "waVal", "waRow", "theCallRow", "dirSide", "directionShown", "dirRow", "clOk", "clPick", "clDir", "noAnswerWords", "claudeRow", "jevRow", "fillAgree", "agreeCard"))
+        + _var("STATUS_WORDS") + _var("HORIZONS"))
 
 
 # the agree table's stand-ins: the sheets each row opens, the clock's gates, and Claude's DIRS
@@ -1029,7 +1049,7 @@ def pre_card(at="09:28", day=PRE_DAY, report=True, sent=None, checkpoints=CHECKP
 
 PRE_FNS = ("top1", "oddsKeys", "oddsBar", "tag", "skipLine", "averageWords", "ageWord", "mins", "untilWords", "expiryLine", "labRow", "secHead", "dayName",
            "cardDay", "todaysCard", "nextRead", "preLeads", "preFolds", "preNextRead", "preMissed", "preJevRead", "preUnsent", "preState", "sumPick", "sumSaid",
-           "preClock", "preRulerLine", "preStaleLine", "chipFits", "storySide", "storyHead", "storySvg", "preFacts", "sideCls", "arrow", "preChecks",
+           "preClock", "preRulerLine", "preStaleLine", "chipFits", "storySide", "storyHead", "storyWidth", "storySvg", "preFacts", "sideCls", "arrow", "preChecks",
            "preNoCall", "preGlance", "preNow", "preMarketCard", "threeWay", "ifMoves", "waVal", "waRow", "fiveWho", "sqRow", "rightWords", "openWords",
            "sbRow", "sbCell", "laneSince", "preDays", "preSince", "dayCalls", "laneToday", "laneStates", "fiveBoard", "fillFive")
 PRE_VARS = ("WEEKDAYS", "ODDS_ORDER", "EXPIRY_TAGS", "PRE_LATE_MIN", "CHIP_W", "READ_MINUTES", "LAST_READ_DEFAULT", "PRE_CHECKS", "WENT", "SQ_KEY")
@@ -1076,11 +1096,38 @@ def test_the_page_reads_the_premarket_card_and_it_leads_before_the_open():
     assert "premarket.day === marketDay() && premarket.closed_out_at)) return;" in _fn("pollPre")
     assert "pollPre();" in _fn("poll")
     # the 5-minute tab leads while the pre-market card does, and draws it (paintFive); tick follows the hand-over
-    assert "preLeads(premarket, now, today) || laneLeads(tape, now, today) ? 'five' : 'thirty'" in _fn("leadTab")
+    assert "preLeads(premarket, now, today) || laneDue(now) || laneLeads(tape, now, today) ? 'five' : 'thirty'" in _fn("leadTab")
     assert "if(five) paintFive(main);" in _fn("paint") and "preLeads(premarket, now, today) !== shownPre" in _fn("tick")
     assert _fn("poll").count("redraw(); say(") == 3 and "preOnly" not in JS and "laneOnly" not in JS and "paintPre" not in JS
     for f in ("preState", "preClock", "preGlance", "preNow", "storySvg", "preFacts", "fiveNow", "fiveWho"):
         assert "viewerTime(" in _fn(f), f
+    # Monday morning through the whole page, Friday's 30-minute card on hand. The pre-market card leads until the
+    # hand-over; from 09:35 until the lane's first card lands the first call is due and the 5-minute tab keeps the lead
+    # (never "done for today", never a jump to the 30-minute tab and back); a tap on the other tab holds through the
+    # ticks until the lead changes hands, past LANE_GRACE_MIN when the call is late, and the tap is let go then; the lane's
+    # card, landing through its own poll, takes the lead back, and at its last mark the 30-minute tab leads again.
+    fri = {**MONDAY["live"], "row_ts": "2026-09-25T15:31:30-04:00", "generated_at": "2026-09-25T19:32:00+00:00", "calls": [],
+           "marks": {"next_30": "2026-09-25T16:00:00-04:00", "next_60": None},
+           "session": {"close": "2026-09-25T16:00:00-04:00", "last_read": "2026-09-25T15:32:00-04:00"},
+           "expiries": {"today_settles_at": "2026-09-25T16:00:00-04:00", "next_settles_at": "2026-09-28T16:00:00-04:00", "expiring_today": []}}
+    first = {**MONDAY["tape"], "row_ts": "2026-09-28T09:40:00-04:00", "closed_out_at": None,
+             "calls": [call("09:40", "09:50", "flat", 0.5), call("09:35", "09:45", "up", 0.4)]}
+    steps = [{"at": et("09:35", s="20")}, {"at": et("09:35", s="40"), "tap": "swThirty"}, {"at": et("09:36", s="40")},
+             {"at": et("09:41")}, {"at": et("09:41", s="10"), "tap": "swFive"}, {"at": et("09:42", s="30"), "cards": {"JEV_OPENING_CARD": first}},
+             {"at": et("09:43"), "tap": "swThirty"}, {"at": et("10:41"), "cards": {"JEV_OPENING_CARD": MONDAY["tape"]}},
+             {"at": et("10:41", s="10"), "tap": "swFive"}, {"at": et("10:45")}]
+    got = _whole({"live": fri, "premarket": MONDAY["premarket"]}, et("09:34", s="50"), steps=steps)
+    assert got["sw"][:2] == ["on", "Pre-market · called Down 86%"]
+    sw = [[x["sw"][0] == "on" and "five" or "thirty", x["sw"][1]] for x in got["steps"]]
+    assert sw == [["five", "First call 06:35 · due"], ["thirty", "First call 06:35 · due"], ["thirty", "First call 06:35 · due"],
+                  ["thirty", "First call 06:35 · late"], ["five", "First call 06:35 · late"], ["five", "Live · call 2 of 12"],
+                  ["thirty", "Live · call 2 of 12"], ["thirty", "Done for today · 0 of 1 right"], ["five", "Done for today · 0 of 1 right"],
+                  ["five", "Done for today · 0 of 1 right"]]
+    assert ["sec", "Nowthe 06:30 call"] not in got["steps"][0]["main"] and ["card", "First opening call due 06:35Its card lands a few minutes after its 06:35 read."] in got["steps"][0]["main"]
+    assert ["card", "First opening call is lateIts card lands a few minutes after its 06:35 read; none has come yet."] in got["steps"][4]["main"]
+    assert ["sec", "Nowthe 06:40 call"] in got["steps"][5]["main"] and "done for today" not in json.dumps(got["steps"][:5])
+    assert got["steps"][2]["main"][0] == ["sec", "Nowno read yet today"]       # the reader's pick, the 30-minute tab, held through the tick
+    assert "if(shownTab != null && lead !== shownTab) tabPick = null;" in _fn("paint") and "tabPick = null" not in _fn("tick")
 
 
 @pytest.mark.parametrize("card, now, tz, leads", [
@@ -1340,8 +1387,10 @@ def test_the_story_chips_fit_six_reads_and_ring_the_newest():
     assert [c["attrs"]["class"] for c in chips] == ["c-up_small", "c-up", "c-up", "c-up", "c-up", "c-up"]
     edges = [(float(c["attrs"]["x"]), float(c["attrs"]["x"]) + float(c["attrs"]["width"])) for c in chips]
     assert edges[0][0] >= 0 and edges[-1][1] <= 300 and all(a[1] < b[0] for a, b in zip(edges, edges[1:]))
-    # "Up small" is too wide for a chip of six, so it takes two lines and every chip the taller height
-    assert _texts(svg, "w-dark") == ["Up", "small"] and {c["attrs"]["height"] for c in chips} == {"30"}
+    # "Up small" is too wide for a chip of six, so it takes two lines and every chip the taller height, the two lines
+    # 14px apart so their 11px words never touch
+    assert _texts(svg, "w-dark") == ["Up", "small"] and {c["attrs"]["height"] for c in chips} == {"34"}
+    assert [float(t["attrs"]["y"]) for t in _find(svg, "w-dark")] == [29.5, 43.5]
     rings = [k for k in svg["kids"] if k["attrs"].get("class") == "ring"]
     assert len(rings) == 1 and float(rings[0]["attrs"]["x"]) > edges[-2][1]
     assert _texts(svg, "t-rep") == ["REPORT"] and _texts(svg, "t-now-l") == ["06:28"]
@@ -1349,7 +1398,7 @@ def test_the_story_chips_fit_six_reads_and_ring_the_newest():
     assert svg["attrs"]["aria-label"].startswith("23:35 Up small; 00:35 Up; 05:05 Up; 05:48 Up, after the report, call Up 38%")
     # a day of five places keeps one line, as the mockup draws it
     five = _pre("console.log(JSON.stringify(dump(storySvg(D.card.story.slice(1), 5))));", {"card": pre_card("09:28"), "now": et("09:29")})
-    assert {k["attrs"]["height"] for k in five["kids"] if k["tag"] == "rect" and k["attrs"]["class"].startswith("c-")} == {"21"}
+    assert {k["attrs"]["height"] for k in five["kids"] if k["tag"] == "rect" and k["attrs"]["class"].startswith("c-")} == {"22"}
 
 
 def test_early_in_the_night_the_chips_keep_their_place_and_size():
@@ -1358,10 +1407,10 @@ def test_early_in_the_night_the_chips_keep_their_place_and_size():
     js = "console.log(JSON.stringify(dump(storySvg(D.card.story, D.card.schedule.reads.length))));"
     svg = _pre(js, {"card": pre_card("03:35"), "now": et("03:40")})
     chips = [k["attrs"] for k in svg["kids"] if k["tag"] == "rect" and k["attrs"]["class"].startswith("c-")]
-    assert [(float(c["x"]), c["width"], c["height"]) for c in chips] == [(2.0, "46", "30"), (52.0, "46", "30")]
+    assert [(float(c["x"]), c["width"], c["height"]) for c in chips] == [(2.0, "46", "34"), (52.0, "46", "34")]
     link = [k["attrs"] for k in svg["kids"] if k["attrs"].get("class") == "link"][0]
     assert (float(link["x1"]), float(link["x2"])) == (25.0, 75.0)
-    assert svg["attrs"]["viewBox"] == "0 0 300 66" and _texts(svg, "t-p") == []
+    assert svg["attrs"]["viewBox"] == "0 0 300 71" and _texts(svg, "t-p") == []
 
 
 def test_the_story_heading_says_all_one_way_only_when_it_is():
@@ -1413,7 +1462,7 @@ def test_the_premarket_card_fits_the_owners_360px_phone():
     """Checked in headless Chrome at 360 in each state (a call, snapshots, unsent, stale, carried, no 30-minute card) in
     Los Angeles, Tokyo, New York and Kolkata: nothing past the page. The glance's head holds its read and its pill on
     one row; each tile holds its time and its words in half the card; a chip wraps, but each is one line at 360; the
-    story's drawing is 300 wide in its own units and scales to the card."""
+    story's drawing is laid out at the card's width and scales to the card should the page's width change under it."""
     column = 360 - 2 * 16
     glance = column - 2 * 14
     chip = 2 * 9 + 2                                            # .state's side padding and border
@@ -1428,7 +1477,7 @@ def test_the_premarket_card_fits_the_owners_360px_phone():
     card = column - 2 * _px(".card", "padding")
     assert _PRE_W["OPENS 06:30"] + _px(".clock-top", "gap") + _PRE_W["5 HR 50 MIN TO GO"] <= card
     assert _PRE_W["Read 13:05 GMT+5:30"] + _PRE_W["Checked 19:14 and 19:34"] <= card
-    assert "viewBox: '0 0 300 '" in _fn("storySvg") and "'class': 'inplay story'" in _fn("storySvg") and "width:100%;height:auto" in _rule(".inplay")
+    assert "viewBox: '0 0 ' + W + ' '" in _fn("storySvg") and "'class': 'inplay story'" in _fn("storySvg") and "width:100%;height:auto" in _rule(".inplay")
 
 
 # Chrome at 360 with the shipped face: the folded call's parts at their widest (the viewer's zone changes no width,
@@ -1534,7 +1583,7 @@ def _mix(c, tz=LA):
     js = ("var nodes = {csTitle: el('div'), csBody: el('div')}; function $(id){ return nodes[id]; } var opened = [], MiraiSheet = {open: function(){ opened.push('open'); }, isOpen: function(){ return false; }, close: function(){}};"
           "Node.prototype.addEventListener = function(k, f){ this.on = f; }; function openTod(){ opened.push('tod'); } function openSituation(){ opened.push('situation'); } function openQuestions(){ opened.push('questions'); }"
           "var window = {addEventListener: function(){}, removeEventListener: function(){}};"
-          + _var("VOICE_WORDS") + _var("VOICE_ABOUT") + "".join(_fn(f) for f in ("top1", "threeWay", "phaseSpan", "voiceName", "voicesOf", "bySay", "sheetLink", "afterClose", "openMix"))
+          + _var("VOICE_WORDS") + _var("VOICE_ABOUT") + "".join(_fn(f) for f in ("top1", "threeWay", "phaseSpan", "voiceName", "voicesOf", "bySay", "sheetLink", "afterClose", "answeredOf", "openMix"))
           + "openMix(D.c, el('button')); var body = nodes.csBody.kids;"
           "var rows = body.filter(function(r){ return /^vt( |$)/.test(r.attrs['class']); }).map(function(r){ return [r.kids[0]._t, r.kids[0].kids[0] ? r.kids[0].kids[0].textContent : null,"
           " r.kids[1].textContent, r.kids[2].textContent, r.kids[2].kids.filter(function(k){ return k.tag === 'b'; }).map(function(k){ return k.textContent; })[0], r.tag]; });"
@@ -1553,9 +1602,13 @@ def test_the_combined_call_says_its_price_and_its_flat_band_and_keeps_its_voices
     now = _now(REAL, REAL_BARS, now="2026-10-07T15:34:30-04:00")
     assert now["keys"][0] == "Called at 7,798.00"
     assert now["keys"][1] == "Average so far 7,799.30 +1.3 pts · inside the band"
-    edges = [t for t in _find(now["chart"], "t-edge halo")]
+    edges = [t for t in _find(now["chart"], tag="text") if t["attrs"].get("class") == "halo"]
     assert [_flat_text(t) for t in edges] == ["+2.1(7,800.1)", "−2.1(7,795.9)"] and edges[0]["kids"][0]["attrs"]["dx"] == "5"
     assert _texts(now["chart"], "t-band") == ["FLAT BAND"] and _find(now["chart"], "zero") and _find(now["chart"], "band")
+    # the band's words stand over the minutes still to come, never washed out under their shade, at the page's 11px
+    order = [k["attrs"].get("class") for k in now["chart"]["kids"]]
+    assert order.index("ahead") < order.index("t-band") and order.index("ahead") < order.index("halo")
+    assert "font-size" not in _rule(".nw-chart .t-band") and "font-size:11px" in _rule(".nw-chart text") and ".t-edge" not in SPX
     sheet = _mix(REAL)
     assert sheet["title"] == "What’s in the combined call · 12:29" and sheet["head"] == "VoiceSayDown · Flat · Up"
     assert sheet["rows"] == [["50/50 blend", None, "60%", "45 · 40 · 15", "45", "div"],
@@ -1564,7 +1617,7 @@ def test_the_combined_call_says_its_price_and_its_flat_band_and_keeps_its_voices
                              ["Corrected JEV", "JEV minus its usual errors", "5%", "14 · 69 · 17", "69", "div"],
                              ["Additive scorer", "each question’s lean, added", "3%", "11 · 78 · 11", "78", "div"],
                              ["JEV alone", None, "2%", "72 · 15 · 13", "72", "div"]]
-    assert sheet["links"] == [["What the market was doing", "jevSheet"], ["Questions JEV answered · 0", "qSheet"]]
+    assert sheet["links"] == [["What the market was doing", "jevSheet"], ["Questions JEV answered · 0 of 0", "qSheet"]]
     assert sheet["opened"] == ["open", "situation", "questions"]
     tod = _mix({**REAL, "time_of_day": TOD_0929})
     assert tod["rows"][1][5] == "button" and tod["opened"][-1] == "tod"
@@ -1576,6 +1629,10 @@ def test_the_combined_call_says_its_price_and_its_flat_band_and_keeps_its_voices
     svg = got["chart"]
     assert svg["attrs"]["viewBox"] == "0 0 296 150" and svg["attrs"]["class"] == "nw-chart"
     assert _texts(svg, "t-avg halo") == ["avg +7.0"] and _find(svg, "gain") and _find(svg, "loss") and _find(svg, "ahead") and _find(svg, "now")
+    # the average climbs out through the band's top left, so the band's name moves to its bottom left, clear of the line
+    band = _find(svg, "t-band")[0]["attrs"]
+    edge = next(t for t in _find(svg, tag="text") if t["attrs"].get("class") == "halo" and _flat_text(t).startswith("−"))
+    assert band["x"] == "4.0" and float(band["y"]) == float(edge["attrs"]["y"]) - 16
     assert [t["text"] for t in _find(svg, tag="text") if t["attrs"].get("y") == "136"] == ["12:29 read", "now 12:44", "12:59"]
     assert got["keys"][1] == "Average so far 7,805.00 +7.0 pts · above the band" and got["keys"][2].startswith("Direction line score +") and got["keys"][2].endswith(" so far · right at +10")
     assert "the direction line’s score" in svg["attrs"]["aria-label"]
@@ -1603,7 +1660,8 @@ def _now(c, bars=None, direction=None, now="2026-10-07T15:40:00-04:00", tz=LA):
           "var READ_MINUTES = [2, 32], LAST_READ_DEFAULT = '15:32'; function waiting(){ return !!D.waiting; } function directionShown(d){ return !!d; }"
           "var HOLD = {}; function $(id){ return HOLD[id]; }"
           + "".join(_fn(f) for f in ("top1", "tag", "skipLine", "plusIso", "nextRead", "noCallWords", "averageWords", "indexLevel", "cardDay", "signedPts", "signedOne",
-                                     "runningAvg", "dirPoints", "dirResult", "dirSide", "nowChart", "keyRow", "nowCard", "paintNow"))
+                                     "runningAvg", "dirPoints", "dirResult", "dirSide", "chWidth", "nowChart", "keyRow", "nowCard", "paintNow"))
+          + "".join(_var(v) for v in ("CH_ADV_400", "CH_ADV_500", "CH_ADV_800", "CH_ADV"))
           + "var box = nowCard(D.c); HOLD.nowChart = box.kids.filter(function(k){ return k.id === 'nowChart'; })[0]; HOLD.nowKeys = box.kids.filter(function(k){ return k.id === 'nowKeys'; })[0];"
           "paintNow(); console.log(JSON.stringify({parts: box.kids.map(function(k){ return [k.attrs['class'] || k.tag, k.textContent]; }),"
           " chart: HOLD.nowChart && HOLD.nowChart.kids[0] ? dump(HOLD.nowChart.kids[0]) : null, keys: HOLD.nowKeys ? HOLD.nowKeys.kids.map(function(k){ return k.textContent; }) : [], tickers: tickers.length}));")
@@ -1668,7 +1726,7 @@ def test_the_last_reads_clock_looks_as_far_ahead_as_its_average_runs():
 
 
 # the opening card's own parts, lifted with it
-LANE_FNS = ("top1", "tag", "skipLine", "indexLevel", "averageWords", "labRow", "signedOne", "keyRow", "runningAvg", "calledAt", "stretchWords", "fiveNow",
+LANE_FNS = ("top1", "tag", "skipLine", "indexLevel", "averageWords", "labRow", "signedOne", "keyRow", "runningAvg", "calledAt", "stretchWords", "fillFiveStrip", "fiveNow",
             "threeWay", "oddsKeys", "oddsBar", "ifMoves", "sideCls", "waVal", "waRow", "fiveWho", "callState", "rightWords", "openWords", "dayCalls", "laneToday",
             "laneStates", "sqRow", "sbRow", "sbCell", "laneSince", "preDays", "preSince", "fiveBoard", "fillFive", "sitWords", "signedWords", "gauge", "measured", "points",
             "factCaption", "situationCard", "marketCard")
@@ -1700,14 +1758,14 @@ OCT8 = {"lane": "tape", "row_ts": "2026-10-08T10:30:00-04:00",
         "schedule": {"reads": TAPE_READS, "looks_ahead_min": 10}, "closed_out_at": "2026-10-08T14:42:14+00:00"}
 
 
-def _lane(ts, now="2026-09-28T10:42:00-04:00"):
-    """The 5-minute tab's lane parts for each card in ``ts`` at ``now``: its window (fiveNow), who answers it, its
-    scoreboard and what the market is doing, each dumped."""
+def _lane(ts, now="2026-09-28T10:42:00-04:00", bars=None):
+    """The 5-minute tab's lane parts for each card in ``ts`` at ``now``, with the day's minute ``bars`` when given: its
+    window (fiveNow), who answers it, its scoreboard and what the market is doing, each dumped."""
     js = (CARD_STUBS + _odds() + "".join(_var(v) for v in LANE_VARS) + "".join(_fn(f) for f in LANE_FNS)
-          + "var bars = null, barsDay = null, last = null, premarket = null, tapeGrades = null, preGrades = null, tapeOk = true, tape = null;"
+          + "var bars = D.bars || null, barsDay = D.bars ? D.bars[0].ts.slice(0, 10) : null, last = null, premarket = null, tapeGrades = null, preGrades = null, tapeOk = true, tape = null;"
           "function setTab(){} function openSituation(){} function $(){ return null; }"
           "console.log(JSON.stringify(D.t.map(function(t){ tape = t; return {now: dump(fiveNow(t)), who: dump(fiveWho(t)), board: dump(fiveBoard(t)), market: dump(marketCard(t))}; })));")
-    return _run(js, {"t": ts, "now": now})
+    return _run(js, {"t": ts, "now": now, "bars": bars})
 
 
 def _cls(node, cls):
@@ -1725,13 +1783,23 @@ def test_the_opening_card_is_the_30_minute_cards_shape():
     minutes left, what it is graded on and the progress through it, as the 30-minute tab's window is; under it the
     flat band as a strip, its width named over it, the called price fixed in its middle, the live price moving over it
     and the band's prices under its edges, with a key row each. Who answers it: the opening call alone, JEV's with no
-    mix, its pick boxed and its odds; nothing else (no end-price row, no squares in the window)."""
+    mix, its pick boxed and its odds; nothing else (no end-price row, no squares in the window). The strip is drawn
+    again on every new minute bar and each minute (paintFiveNow): five minutes in it rings the average so far, and
+    once the mark has passed the window's graded 10-minute average."""
     got = _lane([OCT8], "2026-10-08T10:35:30-04:00")[0]
     parts = _parts(got["now"])
-    assert [k for k, _ in parts] == ["win-top", "cnote", "prog", "prog-l", "strip"]
+    assert [k for k, _ in parts] == ["win-top", "cnote", "prog", "prog-l", "div"]
     assert parts[0] == ["win-top", "07:30 → 07:405 min left"] and parts[1] == ["cnote", "Graded on the average price over these 10 minutes."]
     assert parts[3] == ["prog-l", "Read 07:305 of 10 minGraded 07:40"]
-    strip = got["now"]["kids"][4]
+    assert "fillFiveStrip(s, tape)" in _fn("paintFiveNow") and "paintFiveNow();" in _fn("pollBars") and "paintFiveNow();" in _fn("tick")
+    bars = [{"ts": f"2026-10-08T10:3{m}:00-04:00", "close": 7793.23} for m in range(5)]
+    five = _lane([OCT8], "2026-10-08T10:35:30-04:00", bars)[0]["now"]["kids"][4]["kids"][0]
+    assert _flat_text(five["kids"][3]["kids"][2]) == "Average so far 7,793.23 +1.0 pts · inside the band" and _cls(five, "avg")
+    graded_ = {**OCT8, "calls": [{**OCT8["calls"][0], "integral": graded("down", "wrong", -2.0, 1.17)}]}
+    after = _lane([graded_], "2026-10-08T10:41:00-04:00", bars)[0]["now"]
+    assert _flat_text(after["kids"][4]["kids"][0]["kids"][3]["kids"][2]) == "10-min average 7,790.23 −2.0 pts · below the band"
+    assert _flat_text(after["kids"][-1]) == "Graded Wrong: the 10-minute average went down."
+    strip = got["now"]["kids"][4]["kids"][0]
     assert [_flat_text(k) for k in strip["kids"][:1]] == ["Flat band ± 1.2 pts"]
     assert [k["attrs"]["class"] for k in strip["kids"][1]["kids"]] == ["band", "at", "now"]
     assert [_flat_text(k) for k in strip["kids"][2]["kids"]] == ["7,791.1", "7,793.4"]
@@ -1825,7 +1893,8 @@ def test_the_opening_cards_last_line_says_when_it_hands_back_and_what_a_call_is(
     got = _lane([mid, last], "2026-09-28T09:42:00-04:00")
     assert _flat_text(got[0]["board"]["kids"][-1]) == ("At 07:40, after the 07:30 call is graded, this tab shows the morning’s total and the page moves "
                                                        "to the 30-min tab. pts always means S&P index points.")
-    assert _flat_text(got[0]["board"]["kids"][1]).startswith("Opening calls10-min averageNone graded yet1 open · 3 to come")
+    # still to come: the reads ahead of the clock, 10:25 and 10:30, never the 09:35 read that made no call
+    assert _flat_text(got[0]["board"]["kids"][1]).startswith("Opening calls10-min averageNone graded yet1 open · 2 to come")
     assert _flat_text(_lane([last], "2026-09-28T10:45:00-04:00")[0]["board"]["kids"][-1]) == "pts always means S&P index points."
 
 
@@ -1882,17 +1951,20 @@ def test_the_pre_market_card_says_the_shape_and_its_checks_are_the_end_price_que
 
 
 def test_the_story_calls_end_inside_the_drawing_on_the_owners_phone():
-    """The newest chip's call sits under the drawing's right edge, and the night's first under its left; bold 10px runs
-    up to 6.7px a letter, so a call as wide as "Down 45%" is moved in until it sits between 0 and 300 (it ran 1.3px past
-    the right in Chrome at 360, and a night of one read put it past the left)."""
+    """The newest chip's call sits under the drawing's right edge, and the night's first under its left; bold 11px runs
+    up to 7.4px a letter, so a call as wide as "Down 45%" is moved in until it sits between 0 and the drawing's width
+    (it ran 1.3px past the right in Chrome at 360, and a night of one read put it past the left). The drawing is the
+    card's width (512 in the board's column); a call wider than its place in a narrower one says its pick alone."""
     card = pre_card("09:28")
     down = {"pick": "down", "probabilities": {"up": 0.25, "flat": 0.3, "down": 0.45}}
     card["story"][-1]["call"] = down
-    js = "console.log(JSON.stringify([dump(storySvg(D.card.story, 6)), dump(storySvg(D.card.story.slice(-1), 6))]));"
-    for svg in _pre(js, {"card": card, "now": et("09:29")}, LA):
+    js = "console.log(JSON.stringify([dump(storySvg(D.card.story, 6, 512)), dump(storySvg(D.card.story.slice(-1), 6, 512)), dump(storySvg(D.card.story, 6, 296))]));"
+    got = _pre(js, {"card": card, "now": et("09:29")}, LA)
+    for svg in got[:2]:
         (last,) = [k for k in svg["kids"] if k["tag"] == "text" and k["attrs"].get("class") == "t-p last"]
-        half = len(last["text"]) * 6.7 / 2
-        assert last["text"] == "Down 45%" and half <= float(last["attrs"]["x"]) <= 300 - half
+        half = len(last["text"]) * 7.4 / 2
+        assert svg["attrs"]["viewBox"].startswith("0 0 512 ") and last["text"] == "Down 45%" and half <= float(last["attrs"]["x"]) <= 512 - half
+    assert _texts(got[2], "t-p last") == ["Down"]
 
 
 # ---- Monday's real cards, through the whole page
@@ -1911,7 +1983,7 @@ Node.prototype.setAttribute = function(k, v){ this.attrs[k] = String(v); };
 Node.prototype.getAttribute = function(k){ return k in this.attrs ? this.attrs[k] : null; };
 Node.prototype.removeAttribute = function(k){ delete this.attrs[k]; };
 Node.prototype.appendChild = function(n){ this.kids.push(n); n.parentNode = this; return n; };
-Node.prototype.addEventListener = function(){};
+Node.prototype.addEventListener = function(ev, f){ (this.listeners = this.listeners || {})[ev] = f; };
 Object.defineProperty(Node.prototype, 'firstChild', {get: function(){ return this.kids[0] || null; }});
 Object.defineProperty(Node.prototype, 'childNodes', {get: function(){ return this.kids; }});
 Object.defineProperty(Node.prototype, 'textContent', {get: function(){ return this._t + this.kids.map(function(k){ return k.textContent; }).join(''); },
@@ -1924,7 +1996,7 @@ Object.defineProperty(Node.prototype, 'classList', {get: function(){ var n = thi
           toggle: function(k, on){ put(has().filter(function(x){ return x !== k; }).concat(on ? [k] : [])); }}; }});
 var ids = {};
 ['h1', 'hdR', 'hdZ', 'sub', 'state', 'sw', 'swFive', 'swFiveS', 'swThirty', 'swThirtyS', 'main', 'dock', 'load', 'poll', 'csTitle', 'csBody', 'od', 'px',
- 'pxSpark', 'qBtn', 'infoBtn', 'note', 'qsCount', 'chartSheet', 'chBody', 'chDay'].forEach(function(id){ ids[id] = new Node('div'); });
+ 'pxE', 'pxSpark', 'qBtn', 'infoBtn', 'note', 'qsCount', 'chartSheet', 'chBody', 'chDay'].forEach(function(id){ ids[id] = new Node('div'); });
 ids.qBtn.hidden = true;                                    // hidden in the markup until a card
 // an id the page gives a node it builds (the 30-minute tab's window, table and board) is found under main
 function byId(n, id){ if(n.id === id) return n; for(var i = 0; i < n.kids.length; i++){ var f = byId(n.kids[i], id); if(f) return f; } return null; }
@@ -1939,37 +2011,47 @@ var CARDS = {'JEV_LIVE_CARD': D.live, 'JEV_OPENING_CARD': D.tape, 'JEV_PREMARKET
              'CLAUDE_FORECAST_CARD': D.claude, 'DIRECTION_LINE_CARD': D.direction};
 // the files read as rows: the live and the lane's grades, JEV's own answers and the direction line's grades
 var ROWS = {'JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON': function(url){ return /lane=tape/.test(url) ? D.tape_grades : D.grades; },
-            'FORECASTS_BY_FORECASTER_READ_AND_HORIZON': function(){ return D.jev; }, 'DIRECTION_LINE_GRADES_BY_READ': function(){ return D.dir_grades; }};
+            'FORECASTS_BY_FORECASTER_READ_AND_HORIZON': function(){ return D.jev; }, 'DIRECTION_LINE_GRADES_BY_READ': function(){ return D.dir_grades; },
+            'CLAUDE_FORECAST_ANSWERS_BY_READ': function(){ return D.claude_reads; }};
 var grades = null;
 function fetch(url){
   var m = /name=([^&]*)/.exec(url), name = m ? decodeURIComponent(m[1]) : '', c = CARDS[name];   // the spot poll names no store
   if(ROWS[name]){ var rows = ROWS[name](url); return Promise.resolve({ok: !!rows, json: function(){ return Promise.resolve({kind: 'jsonl', rows: rows}); }}); }
   return Promise.resolve({ok: true, json: function(){ return Promise.resolve(c ? {kind: 'json', data: c} : {error: 'no such file'}); }});
 }
-var setTimeout = function(){ return 0; }, clearTimeout = function(){}, setInterval = function(){ return 0; };
+// the page's timers never fire on their own; a test's steps run the 20-second ones (the polls and the tick) by hand
+var INTERVALS = [], setTimeout = function(){ return 0; }, clearTimeout = function(){}, setInterval = function(f, ms){ INTERVALS.push([ms, f]); return 0; };
 function dump(n){ return {tag: n.tag, attrs: n.attrs, text: n._t, kids: n.kids.map(dump)}; }
 function flat(n){ return n._t + n.kids.map(flat).join(''); }
 """
 
 
-def _whole(cards, now, tz=LA):
+def _whole(cards, now, tz=LA, steps=()):
     """The page drawn at ``now`` in ``tz`` from ``cards`` (live, tape, premarket, options, board, claude, direction, and
-    the rows of grades, tape_grades, jev and dir_grades; a missing one is not on file; ``wide`` from 1024px up): the
-    header line and whether it is an error, the state chips, each of main's parts as [class, flat text], the dock's, the
-    30-minute tab's window, table and board, the questions control, the switch and the options-data banner's lines
-    (None while hidden)."""
+    the rows of grades, tape_grades, jev, dir_grades and claude_reads; a missing one is not on file; ``wide`` from 1024px
+    up): the header line and whether it is an error, the state chips, each of main's parts as [class, flat text], the
+    dock's, the 30-minute tab's window, table and board, the questions control, the switch and the options-data banner's
+    lines (None while hidden). Then each of ``steps`` in turn ({at, cards, tap}): the clock moved to ``at``, the station's
+    files swapped for ``cards``, a tap on the ``tap`` half of the switch, and the 20-second polls and tick run; after
+    each, the switch and main's parts."""
     if not _NODE:
         pytest.skip("node is not installed")
     script = ("const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + FIXED_NOW + WHOLE_DOM + MAIN_JS +
-              "setImmediate(function(){ console.log(JSON.stringify({sub: ids.sub.textContent, err: ids.sub.classList.contains('err'),"
+              "function sw(){ return [ids.swFive.className, ids.swFiveS.textContent, ids.swThirty.className, ids.swThirtyS.textContent]; }"
+              "function step(s){ NOW = RealDate.parse(s.at); Object.keys(s.cards || {}).forEach(function(k){ CARDS[k] = s.cards[k]; });"
+              " if(s.tap) ids[s.tap].listeners.click(); INTERVALS.forEach(function(x){ if(x[0] === 20000) x[1](); }); }"
+              "function stepped(i, out, done){ if(i === (D.steps || []).length) return done(out); step(D.steps[i]);"
+              " setImmediate(function(){ out.push({sw: sw(), main: ids.main.kids.map(function(k){ return [k.className || k.tag, flat(k)]; })}); stepped(i + 1, out, done); }); }"
+              "setImmediate(function(){ var first = {sub: ids.sub.textContent, err: ids.sub.classList.contains('err'),"
               " state: ids.state.kids.map(flat), main: ids.main.kids.map(function(k){ return [k.className || k.tag, flat(k)]; }),"
               " dom: ids.main.kids.map(dump),"
               " dock: ids.dock.kids.map(function(k){ return [k.className || k.tag, flat(k)]; }), dock_dom: ids.dock.kids.map(dump),"
               " now: (function(n){ return n && dump(n); })(byId(ids.main, 'now')), agree: (function(n){ return n && dump(n); })(byId(ids.main, 'agree')),"
               " board: (function(n){ return n && dump(n); })(byId(ids.main, 'board')),"
-              " qBtn: {hidden: ids.qBtn.hidden, text: ids.qBtn.textContent}, sw: [ids.swFive.className, ids.swFiveS.textContent, ids.swThirty.className, ids.swThirtyS.textContent],"
-              " od: ids.od.hidden ? null : ids.od.kids.map(function(k){ return [k.className, flat(k)]; })})); });")
-    out = run_node(_NODE, script, input=json.dumps({**cards, "now": now}), capture_output=True, text=True, timeout=20,
+              " qBtn: {hidden: ids.qBtn.hidden, text: ids.qBtn.textContent}, sw: sw(),"
+              " od: ids.od.hidden ? null : ids.od.kids.map(function(k){ return [k.className, flat(k)]; })};"
+              " stepped(0, [], function(out){ first.steps = out; console.log(JSON.stringify(first)); }); });")
+    out = run_node(_NODE, script, input=json.dumps({**cards, "now": now, "steps": list(steps)}), capture_output=True, text=True, timeout=20,
                          env={**os.environ, "TZ": tz})
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout)
@@ -1991,22 +2073,28 @@ def _board_cell(got, name, i):
 def test_mondays_real_cards_draw_whole_in_every_zone(now, leads, tz):
     got = _whole({k: MONDAY[k] for k in ("live", "tape", "premarket")}, now, tz)
     assert not got["err"], got["sub"]
+    # each half of the switch says its tab's state: the pre-market call, then which lane call is live, then the
+    # morning's score; the 30-minute window's minutes left while it leads, then the day's score after the close
+    assert {"pre": got["sw"][1], "lane": got["sw"][1], "30-min": got["sw"][1] + " | " + got["sw"][3]}[leads] == {
+        "2026-09-28T09:30:00-04:00": "Pre-market · called Down 86%", "2026-09-28T10:35:00-04:00": "Live · call 12 of 12",
+        "2026-09-28T15:40:00-04:00": "Done for today · 0 of 1 right | Live · 20 min left",
+        "2026-09-28T16:10:00-04:00": " | Done for today · 4 of 4 right"}[now]
     if leads == "30-min":
         # the 30-minute tab (Design B): the expiry line, Now over the window, who agrees, the scoreboard under its key, the
         # way to the results; the switch lit on it, and the header line says nothing of a fresh card
-        assert [k for k, _ in got["main"]] == ["exp", "sec", "card", "card", "sec", "legend", "card", "rowbtn"]
-        assert got["sw"][2] == "on" and got["sub"] == "" and got["main"][1][1].startswith("Now")
+        assert [k for k, _ in got["main"]] == ["sec", "card", "card", "sec", "legend", "card", "rowbtn"]
+        assert got["sw"][2] == "on" and got["sub"] == "" and got["main"][0][1].startswith("Now")
         return
     assert got["sw"][0] == "on" and got["sub"] == "" and not any(k[0] == "mode" for k in got["main"])
     if leads == "pre":
         # before the hand-over: the glance, Now as the open with the night's story, who answers, the scoreboard, the
         # results and the night's facts
-        assert [k for k, _ in got["main"]] == ["exp", "card pm", "sec", "card pre", "card", "sec", "legend", "card", "rowbtn", "card sit-card"]
-        assert got["main"][2][1].startswith("Nowthe open, ")
+        assert [k for k, _ in got["main"]] == ["card pm", "sec", "card pre", "card", "sec", "legend", "card", "rowbtn", "card sit-card"]
+        assert got["main"][1][1].startswith("Nowthe open, ")
         return
     # the lane: Monday's lane card is from before the average-price call, so its window has no strip; its pick is the
     # end price's, and the stretch since the last read is what the market is doing's last row
-    assert [k for k, _ in got["main"]] == ["exp", "card pm", "sec", "card", "card", "sec", "legend", "card", "rowbtn", "card sit"]
+    assert [k for k, _ in got["main"]] == ["card pm", "sec", "card", "card", "sec", "legend", "card", "rowbtn", "card sit"]
     who = [d for k, d in zip(got["main"], got["dom"]) if k[0] == "card"][1]
     assert _flat_text(who["kids"][2]).startswith("Opening callThe callJEV alone, no mixDown small 44%")
     assert got["main"][-1][1].endswith("Down 2.7 ptsnormal") and "already happened" in got["main"][-1][1]
@@ -2198,7 +2286,7 @@ def test_a_live_card_with_no_sum_says_so_when_the_30_minute_call_leads(tz, next_
     got = _whole({"live": live, "tape": tape}, "2026-09-28T10:12:00-04:00", tz)
     assert not got["err"], got["sub"]
     read = {LA: "06:31", TOKYO: "22:31", KOLKATA: "19:01"}[tz]
-    assert got["main"][1][1] == f"Nowthe {read} read"                    # the header no longer names the row, so Now does
+    assert got["main"][0][1] == f"Nowthe {read} read"                    # the header no longer names the row, so Now does
     assert [[k["attrs"].get("class"), _flat_text(k)] for k in got["now"]["kids"]] == [["skip", f"No 30-minute call on this read, next read {next_read}"]]
     assert got["agree"]["kids"][2:] == []                                 # no call to agree on: the table's head alone
     assert got["sub"] == f"No read since {read}, station data delayed"     # the 09:31 card is 41 minutes old, past DELAYED_MIN: said at the top
@@ -2267,25 +2355,68 @@ def test_the_record_row_gives_the_scoreboards_numbers_in_the_learning_loops_word
     squares and score, its score since its first day, and the yardstick it is judged against with the verdict in a chip.
     The combined call: the scoreboard's learner pool against the base-rate guess, "a bit worse" under 10 points, judged
     at 300 reads; JEV alone against the same guess; the direction line against the always-up guess, level within a
-    point; Claude against its starting odds, too early until scored. The board is drawn again as each file comes."""
+    point; Claude against its starting odds, too early until scored. The verdict in a chip is the scoreboard's own (its
+    status), "a bit" or "much" said from the skill. JEV alone's today is its own pick on each graded read (its answers
+    file against the live grades), the card's read open until graded; Claude's is a square per read of its own the
+    service scores (its answers file: a failed 30-minute answer is scored on its starting odds, a paused read is not).
+    The board is drawn again as each file comes."""
     claude = {**CLAUDE, "record": {"verdict": "Too early", "graded_reads": 18, "horizons": {"next_30_minutes": {"claude_right_pct": 61.1, "reads": 18}}}}
-    got = _whole({**{k: MONDAY[k] for k in ("live", "tape", "premarket")}, "board": BOARD, "claude": claude}, "2026-09-28T16:10:00-04:00")
+    live = MONDAY["live"]
+    early, late = live["calls"][3]["read"], live["calls"][2]["read"]
+    grades = [{"horizon": "next_30", "graded": True, "row_ts": early, "label": "flat", "verdict": "right"},
+              {"horizon": "next_30", "graded": True, "row_ts": late, "label": "down", "verdict": "right"}]
+    jev = [{"voice_name": "jev_own", "sum_id": "average_30", "row_ts": early, "voice_probs": {"down": 0.2, "flat": 0.5, "up": 0.3}},
+           {"voice_name": "jev_own", "sum_id": "average_30", "row_ts": late, "voice_probs": {"down": 0.3, "flat": 0.2, "up": 0.5}},
+           {"voice_name": "matcher", "sum_id": "average_30", "row_ts": late, "voice_probs": {"down": 0.6, "flat": 0.2, "up": 0.2}}]
+    base = {"up_pct": 20, "flat_pct": 60, "down_pct": 20}
+    reads = [{"line_type": "final_forecast", "read_id": "live:" + early, "test_variant": "none", "forecast": {"next_30_minutes": {"status": "ok", "up_pct": 20, "flat_pct": 60, "down_pct": 20, "base_rate_shown_to_claude": base}}},
+             {"line_type": "claude_answer", "read_id": "live:" + early},
+             {"line_type": "final_forecast", "read_id": "live:" + late, "test_variant": "none", "forecast": {"next_30_minutes": {"status": "failed", "base_rate_shown_to_claude": base}}},
+             {"line_type": "final_forecast", "read_id": "live:" + live["row_ts"], "test_variant": "none", "status": "paused", "forecast": {}}]
+    got = _whole({**{k: MONDAY[k] for k in ("live", "tape", "premarket")}, "board": BOARD, "claude": claude, "grades": grades, "jev": jev, "claude_reads": reads},
+                 "2026-09-28T16:10:00-04:00")
     rows = {r["kids"][0]["text"]: [_flat_text(k) for k in r["kids"]] for r in got["board"]["kids"] if r["attrs"].get("class") == "sb"}
     assert rows["Combined call"] == ["Combined callthe call · since 09-29", "4 of 4 right56 of 10752% rightBase-rate guess 58%A bit worse",
                                      "Judged at 300 scored reads · 107 so far."]
-    assert rows["JEV alone"][1] == "None graded yet40 of 10737% rightBase-rate guess 58%Much worse"
+    assert rows["JEV alone"][1] == "1 of 2 right40 of 10737% rightBase-rate guess 58%Much worse"      # Monday's 15:31 read made no average call
+    assert [q["attrs"]["class"] for q in _board_cell(got, "JEV alone", 0)["kids"][0]["kids"]] == ["r", "w"]
     assert rows["Claude"][1] == "Scored after the close61% of 18rightIts starting oddsToo early"
+    assert [q["attrs"]["class"] for q in _board_cell(got, "Claude", 0)["kids"][0]["kids"]] == ["o", "o"]
+    verdicts = _run(_fn("yardWords") + _var("STATUS_CHIP") + _fn("voiceVerdict") + "console.log(JSON.stringify(D.v.map(voiceVerdict)));",
+                    {"v": [{"status": "Too early", "skill_vs_historical_odds_pct": -4.64}, {"status": "Worse", "skill_vs_historical_odds_pct": -44.2},
+                           {"status": "No edge", "skill_vs_historical_odds_pct": 1.2}, {"status": "Edge", "skill_vs_historical_odds_pct": 3.1},
+                           {"skill_vs_historical_odds_pct": -5.34}]})
+    assert verdicts == [["Too early", "early"], ["Much worse", "worse"], ["No edge", "level"], ["A bit better", "better"], ["A bit worse", "worse"]]
     assert [_flat_text(k) for k in got["board"]["kids"][0]["kids"]] == ["Today", "Since start", "Yardstick"]
+    # the next morning before its first card the squares are still Monday's, and the column says so
+    tuesday = _whole({**{k: MONDAY[k] for k in ("live", "tape", "premarket")}, "board": BOARD}, "2026-09-29T09:31:00-04:00")
+    assert [_flat_text(k) for k in tuesday["board"]["kids"][0]["kids"]] == ["Mon", "Since start", "Yardstick"]
     assert _flat_text(got["board"]["kids"][-1]).startswith("Score: plus when the average moves the Direction line’s way")
     assert _cls(_board_cell(got, "Combined call", 2), "verdict worse")
-    direction = {**DIRECTION, "read_id": "live:" + MONDAY["live"]["row_ts"], "row_ts": MONDAY["live"]["row_ts"]}
-    lined = _whole({**{k: MONDAY[k] for k in ("live", "tape", "premarket")}, "direction": direction,
-                    "dir_grades": [{"row_ts": "2026-09-28T10:00:00-04:00", "day": "2026-09-28", "called": True, "result": "stayed_flat"},
-                                   {"row_ts": "2026-09-28T10:30:00-04:00", "day": "2026-09-28", "called": True, "result": "wrong"}]}, "2026-09-28T15:40:00-04:00")
-    cells = [_flat_text(_board_cell(lined, "Direction line", i)) for i in range(3)]
-    assert cells == ["0 of 4 rightscore −16.4 a call", "1 of 16score −1.5 a call", "Always-up guess −1.5Level"]
-    assert [q["attrs"]["class"] for q in _board_cell(lined, "Direction line", 0)["kids"][0]["kids"]] == ["f", "w", "o"]
-    assert "paintBoard(); })" in _fn("pollLearn") and "paintBoard();" in _fn("pollDirGrades") and "paintBoard();" in _fn("pollJevAlone")
+    # the direction line: the day's graded reads from its grades file, the read on screen open until its grade lands,
+    # past its mark too (16:10); the day's record only from a line card of the card's own day
+    direction = {**DIRECTION, "read_id": "live:" + MONDAY["live"]["row_ts"], "row_ts": MONDAY["live"]["row_ts"], "day": "2026-09-28"}
+    dir_grades = [{"row_ts": "2026-09-28T10:00:00-04:00", "day": "2026-09-28", "called": True, "result": "stayed_flat"},
+                  {"row_ts": "2026-09-28T10:30:00-04:00", "day": "2026-09-28", "called": True, "result": "wrong"}]
+    for at in ("2026-09-28T15:40:00-04:00", "2026-09-28T16:10:00-04:00"):
+        lined = _whole({**{k: MONDAY[k] for k in ("live", "tape", "premarket")}, "direction": direction, "dir_grades": dir_grades}, at)
+        cells = [_flat_text(_board_cell(lined, "Direction line", i)) for i in range(3)]
+        assert cells == ["0 of 4 rightscore −16.4 a call", "1 of 16score −1.5 a call", "Always-up guess −1.5Level"]
+        assert [q["attrs"]["class"] for q in _board_cell(lined, "Direction line", 0)["kids"][0]["kids"]] == ["f", "w", "o"]
+    friday = _whole({**{k: MONDAY[k] for k in ("live", "tape", "premarket")}, "direction": {**direction, "day": "2026-09-25"}}, "2026-09-28T15:40:00-04:00")
+    assert _flat_text(_board_cell(friday, "Direction line", 0)).startswith("No call yet")
+    assert "paintBoard();" in _fn("pollLearn") and "paintBoard();" in _fn("pollDirGrades") and "paintBoard();" in _fn("pollJevAlone")
+    # the line's card and the scoreboard come every 20 seconds and every minute: each is drawn again only when it was
+    # written again (a focused row in Who agrees keeps its focus), and a new line card asks for the line's grades again
+    js = ("var drawn = 0, asked = 0, dirGradesAt = 5, direction = null, board = null, i = 0, files = D.files;"
+          "function paintNow(){} function paintAgree(){ drawn++; } function paintBoard(){ drawn++; } function pollDirGrades(){ asked++; }"
+          "function fetch(){ var f = files[i++]; return Promise.resolve({ok: true, json: function(){ return Promise.resolve({kind: 'json', data: f}); }}); }"
+          + _var("DIRECTION_URL") + _var("LEARN_URL") + _fn("dirSig") + _fn("pollDirection") + _fn("pollLearn")
+          + "var polls = [pollDirection, pollDirection, pollDirection, pollLearn, pollLearn, pollLearn];"
+          "(function next(k){ if(k === polls.length){ console.log(JSON.stringify({drawn: drawn, asked: asked})); return; } polls[k](); setImmediate(function(){ next(k + 1); }); })(0);")
+    regraded = {**direction, "written_at": "2026-09-28T19:33:56+00:00"}
+    files = [direction, direction, regraded, {**BOARD, "built_at": "a"}, {**BOARD, "built_at": "a"}, {**BOARD, "built_at": "b"}]
+    assert _run(js, {"files": files}) == {"drawn": 2 * 2 + 2, "asked": 2}
     assert "setInterval(function(){ if(!document.hidden) pollLearn(); }, LEARN_MS);" in JS
     for gone in ("recordRow", "paintRecord", "openRecord", "skillLine", "lp-t", "Learning loop", 'id="learn"'):
         assert gone not in SPX, gone
@@ -2344,6 +2475,10 @@ def test_claudes_read_is_a_strip_under_the_call_never_a_second_headline():
     assert lean[4] == ["Not in yet", "wa-v na"]                                  # Claude's read of another card
     up = {**claude, "forecast": {**claude["forecast"], "next_30_minutes": {**claude["forecast"]["next_30_minutes"], "up_pct": 28, "down_pct": 14, "flat_pct": 58}}}
     assert _agree(REAL, DIRECTION, up)["rows"][2][4:] == [["Flat 58%", "wa-v g fl"], ["Up 67%28 vs 14", "wa-v up"]]
+    # a tie is the service's (scoring.py: the first largest of up, flat, down), so the pick boxed is the one it scores
+    for odds, said in (((40, 40, 20), ["Up 40%", "wa-v g up"]), ((20, 40, 40), ["Flat 40%", "wa-v g fl"]), ((40, 20, 40), ["Up 40%", "wa-v g up"])):
+        tie = {**claude, "forecast": {**claude["forecast"], "next_30_minutes": {**claude["forecast"]["next_30_minutes"], "up_pct": odds[0], "flat_pct": odds[1], "down_pct": odds[2]}}}
+        assert _agree(REAL, DIRECTION, tie)["rows"][2][4] == said, odds
     other = {**DIRECTION, "read_id": "live:2026-10-07T15:00:00-04:00"}
     assert [r[2] for r in _agree(REAL, other)["rows"]] == ["Combined callThe call", "JEV alone"]
     nocall = {**DIRECTION, "graded_call": {**DIRECTION["graded_call"], "called": False, "p_up": 0.52}}
@@ -2362,15 +2497,20 @@ def test_an_older_read_is_never_set_against_the_call_on_screen():
 
 
 def test_a_read_with_no_answer_or_a_rejected_horizon_says_so_in_the_strip():
-    """A read whose 30-minute horizon was rejected, or that answered nothing, is not in yet in Who agrees; its Why sheet
-    says which horizons were rejected and why there was no answer."""
+    """A read made for the card on screen that answered nothing will never be in: Who agrees says "No answer" with why
+    under it, rejected by the checks or paused by hand (a failed answer, with nothing more to say, says "No answer"
+    alone), never "Not in yet", which is a read of another card; its Why sheet says which horizons were rejected and
+    why there was no answer."""
     mine = "live:" + REAL["row_ts"]
     rejected = {**CLAUDE, "read_id": mine, "forecast": {**CLAUDE["forecast"], "next_30_minutes": {"status": "rejected", "base_rate_shown_to_claude": {"up_pct": 19, "flat_pct": 60, "down_pct": 21}}}}
-    assert _agree(REAL, None, rejected)["rows"][1][4] == ["Not in yet", "wa-v na"]
+    assert _agree(REAL, None, rejected)["rows"][1][4:] == [["No answerRejected by the checks", "wa-v na"], ["—", "wa-v"]]
     leans = [_flat_text(k) for k in _claude(rejected)["body"]["kids"][0]["kids"] if k["attrs"].get("class") == "cl-vs-k"]
     assert leans[0] == "30 minrejected by the checks"
     none = {**CLAUDE, "read_id": mine, "status": "paused", "usable_answer_count": 0, "forecast": {}}
-    assert _agree(REAL, None, none)["rows"][1][4] == ["Not in yet", "wa-v na"]
+    assert _agree(REAL, None, none)["rows"][1][4] == ["No answerPaused by hand", "wa-v na"]
+    failed = {**CLAUDE, "read_id": mine, "forecast": {**CLAUDE["forecast"], "next_30_minutes": {"status": "failed", "base_rate_shown_to_claude": {"up_pct": 19, "flat_pct": 60, "down_pct": 21}}}}
+    assert _agree(REAL, None, failed)["rows"][1][4] == ["No answer", "wa-v na"]
+    assert _agree(REAL, None, {**failed, "read_id": "live:2026-10-07T15:00:00-04:00"})["rows"][1][4] == ["Not in yet", "wa-v na"]
     assert _run(_var("STATUS_WORDS") + _var("HORIZONS") + _fn("noAnswerWords") + "console.log(JSON.stringify(noAnswerWords(D.c)));", {"c": none}) == "Paused by hand"
 
 
@@ -2410,21 +2550,29 @@ def test_the_why_sheet_sets_claudes_bar_over_the_usuals_with_the_reasons_in_plai
     assert "grid-template-columns:minmax(78px,min-content)minmax(0,1fr)minmax(110px,min-content)" in _rule(".cl-vs") and "height:14px" in _rule(".cl-vs .cl-bar") and "height:8px" in _rule(".cl-vs .cl-bar.usual")
 
 
-def _claude_poll(c):
-    """pollClaude over the file the station serves: what the page keeps, and whether Who agrees and the board are drawn."""
-    js = ("var drawn = 0; function paintAgree(){ drawn++; } function paintBoard(){}"
-          "function fetch(){ return Promise.resolve({ok: true, json: function(){ return Promise.resolve({kind: 'json', data: D.c}); }}); }"
-          + _var("CLAUDE_URL") + _var("claude") + _fn("pollClaude")
-          + "pollClaude(); setImmediate(function(){ console.log(JSON.stringify({kept: claude && claude.read_id, drawn: drawn})); });")
-    return _run(js, {"c": c})
+def _claude_poll(*cs):
+    """pollClaude over each file the station serves in turn: what the page keeps, how often Who agrees and the board are
+    drawn, and how often the day's reads are asked for."""
+    js = ("var drawn = 0, reads = 0, i = 0; function paintAgree(){ drawn++; } function paintBoard(){} function pollClaudeReads(){ reads++; }"
+          "function fetch(){ var c = D.c[i++]; return Promise.resolve({ok: true, json: function(){ return Promise.resolve({kind: 'json', data: c}); }}); }"
+          + _var("CLAUDE_URL") + _var("claude") + _fn("claudeSig") + _fn("pollClaude")
+          + "(function next(){ if(i === D.c.length){ console.log(JSON.stringify({kept: claude && claude.read_id, drawn: drawn, reads: reads})); return; }"
+          " pollClaude(); setImmediate(next); })();")
+    return _run(js, {"c": list(cs)})
 
 
 def test_a_sample_read_is_never_shown_as_a_real_one():
     """On 10-10 the owner was shown a sample's numbers as Claude's read. A file whose read_id begins "sample:" is kept
-    out (Who agrees drawn again without it); a live read is kept and drawn; a file with no forecast changes nothing."""
-    assert _claude_poll(CLAUDE) == {"kept": "live:2026-10-09T14:30:12-04:00", "drawn": 1}
-    assert _claude_poll({**CLAUDE, "read_id": "sample:2026-10-09T14:30"}) == {"kept": None, "drawn": 1}
-    assert _claude_poll({"error": "not found"}) == {"kept": None, "drawn": 0}
+    out (Who agrees drawn again without it); a live read is kept and drawn, with the day's reads asked for again; the
+    same read polled again draws nothing (a row keeps the reader's focus) until it is written again; a file with no
+    forecast changes nothing."""
+    sample = {**CLAUDE, "read_id": "sample:2026-10-09T14:30"}
+    assert _claude_poll(CLAUDE) == {"kept": "live:2026-10-09T14:30:12-04:00", "drawn": 1, "reads": 1}
+    assert _claude_poll(CLAUDE, CLAUDE, CLAUDE) == {"kept": "live:2026-10-09T14:30:12-04:00", "drawn": 1, "reads": 1}
+    assert _claude_poll(CLAUDE, {**CLAUDE, "written_at": "2026-10-09T14:33:00-04:00"}) == {"kept": "live:2026-10-09T14:30:12-04:00", "drawn": 2, "reads": 2}
+    assert _claude_poll(CLAUDE, sample) == {"kept": None, "drawn": 2, "reads": 2}
+    assert _claude_poll(sample) == {"kept": None, "drawn": 0, "reads": 0}
+    assert _claude_poll({"error": "not found"}) == {"kept": None, "drawn": 0, "reads": 0}
     assert "var CLAUDE_URL = '/api/store/file?name=CLAUDE_FORECAST_CARD', NEAR = 3;" in JS
     assert "pollOptions(); pollLearn(); pollClaude();" in JS
 
