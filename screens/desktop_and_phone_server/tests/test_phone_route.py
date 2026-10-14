@@ -196,7 +196,7 @@ def test_the_font_ships_its_licence():
 
 
 def test_the_two_phone_pages_share_one_palette():
-    """The forecast and the reads each carry their own :root block, and most
+    """The forecast and the results each carry their own :root block, and most
     tokens are declared in both. Duplicated bytes are not the risk — DRIFT is:
     somebody darkens --i-mute on one page and the other quietly disagrees.
 
@@ -205,11 +205,8 @@ def test_the_two_phone_pages_share_one_palette():
     and sends no ETag, so a revalidation cannot come back 304 — a shared file
     would be re-fetched in full on every open, plus a render-blocking round
     trip before first paint on both pages. So the pages keep their own copies
-    and this test guards the only thing the shared file was for.
-
-    One token is known to differ: --o-un is the forecast's "unsure" fill and
-    the reads page's square border, drawn darker so a 1.2px line reads. It is
-    named here so a second disagreement cannot hide behind it."""
+    and this test guards the only thing the shared file was for: every token
+    both pages declare has one value."""
 
     def tokens(css):
         m = re.search(r"(?ms)^:root\{(.*?)^\}", css)
@@ -222,7 +219,7 @@ def test_the_two_phone_pages_share_one_palette():
     shared = set(a) & set(b)
     assert len(shared) >= 20, f"the pages have stopped sharing a palette ({len(shared)} tokens)"
     drift = {k: (a[k], b[k]) for k in shared if a[k] != b[k]}
-    assert set(drift) <= {"--o-un"}, f"the two phone pages disagree about {drift}"
+    assert not drift, f"the two phone pages disagree about {drift}"
 
 
 def _css_rules(html):
@@ -237,15 +234,16 @@ def _css_rules(html):
 
 
 def test_the_page_that_opens_a_sheet_draws_it_the_one_way():
-    """The forecast page opens sheets: a call's result, how to read the page,
-    Claude's read, the questions, the price-today chart. What a sheet does is
-    one script, sheet.js, and the open one is the one it has unhidden, so the
-    page carries several without a second copy of anything. What it looks like
-    is one set of rules in the page's own stylesheet, for the palette's reason
-    above: the sheet capped at 86% of the measured height and scrolling, not
-    clipping, past it; not selectable; its head, its caveat and the one close
-    button. A page that opens no sheet (the reads) loads neither the script nor
-    the rules: a page carries the sheet whole or not at all."""
+    """The forecast page opens sheets: what is in the combined call, how to
+    read the page, Claude's why, the questions, the price-today chart. What a
+    sheet does is one script, sheet.js, and the open one is the one it has
+    unhidden, so the page carries several without a second copy of anything.
+    What it looks like is one set of rules in the page's own stylesheet, for
+    the palette's reason above: the sheet capped at 86% of the measured height
+    and scrolling, not clipping, past it; not selectable; its head, its caveat
+    and the one close button. A page that opens no sheet (the results) loads
+    neither the script nor the rules: a page carries the sheet whole or not at
+    all."""
     core = {".scrim", ".sheet", "body.sheet-open .scrim", '.sheet[aria-hidden="false"]', ".sh-grab",
             ".sh-h", ".sh-caveat", ".sh-caveat b", ".sh-close",
             ".sh-close:focus-visible", '.sheet,.sheet[aria-hidden="false"]'}

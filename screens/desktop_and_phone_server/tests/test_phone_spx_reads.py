@@ -36,17 +36,20 @@ def _var(name):
 
 def _run(js, data=None, tz=LA):
     """The page's builders in node at D.now (the real clock without one), with the grades files of D.grades (live, tape,
-    premarket), the 30-minute card D.live and the day files of D.perDay."""
+    premarket), the 30-minute card D.live, the opening and pre-market cards D.tapeCard and D.preCard, and the day files
+    of D.perDay."""
     if not _NODE:
         pytest.skip("node is not installed")
     fns = "".join(_fn(f) for f in ("svgEl", "viewerTime", "marketAt", "marketDay", "money", "level", "signed", "cap", "pct", "dayName", "callDays", "dayOf",
                                    "pickDays", "liveDay", "closeOf", "openOf", "offsetOf", "wentWords", "sideClass", "laneItems", "combinedItems", "top",
-                                   "preItems", "directionItems", "claudePick", "claudeItems", "jevPick", "jevItems", "tally", "laneTotal", "dayScale",
-                                   "laneSvg", "axisSvg", "callRow", "headLine", "squareKey", "fiveDays"))
+                                   "runningCard", "openingItems", "openingWords", "preItems", "directionItems", "claudePick", "claudeItems", "jevPick",
+                                   "jevItems", "tally", "laneTotal", "laneNote", "voices", "dayScale", "laneSvg", "axisSvg", "callRow", "headLine",
+                                   "squareKey", "fiveDays"))
     script = ("const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + FIXED_NOW + FAKE_DOM
               + "Node.prototype.addEventListener = function(k, f){ this.on = f; };"
-              + "".join(_var(v) for v in ("NS", "LANES", "COMBINED_FROM", "SQ", "SQ_CLASS", "TICK_GAP", "RESULT", "VIEWER_FMT"))
-              + "var grades = D.grades || {}, live = D.live || null, perDay = D.perDay || {}, picked = D.picked || null, lane = D.lane || 'combined', open = {};"
+              + "".join(_var(v) for v in ("NS", "LANES", "OPENING_END_MIN", "COMBINED_FROM", "SQ", "SQ_CLASS", "TICK_GAP", "RESULT", "VIEWER_FMT"))
+              + "var grades = D.grades || {}, live = D.live || null, tapeCard = D.tapeCard || null, preCard = D.preCard || null, perDay = D.perDay || {};"
+              "var picked = D.picked || null, lane = D.lane || 'combined', open = {};"
               "var wanted = []; function want(d){ wanted.push(d); }" + fns + js)
     out = run_node(_NODE, script, input=json.dumps(data), capture_output=True, text=True, timeout=20,
                    env={**os.environ, "TZ": tz})
@@ -87,11 +90,67 @@ def test_the_calls_are_the_30_minute_windows_by_market_day_newest_day_first_each
     got = _run("console.log(JSON.stringify(callDays(D.rows, 'next_30').map(function(d){ return [d.day, d.calls.map(function(c){"
                " return c.row_ts.slice(11, 16) + ' ' + c.verdict; }), dayName(d.day)]; })));", {"rows": rows})
     assert got == [["2026-10-08", ["09:30 right", "14:31 right", "15:00 wrong"], "Thu 10-08"], ["2026-10-07", ["15:29 right"], "Wed 10-07"]]
-    lanes = _run("console.log(JSON.stringify(['combined', 'opening', 'premarket'].map(function(l){ return laneItems(l, '2026-10-08').map(function(k){ return [viewerTime(k.t), k.state]; }); })));",
-                 {"grades": {"live": rows, "tape": MORNING, "premarket": PRE}})
-    assert lanes[0] == [["06:30", "right"], ["11:31", "right"], ["12:00", "wrong"]]
-    assert len(lanes[1]) == 12 and lanes[1][:2] == [["06:35", "wrong"], ["06:40", "right"]]
-    assert lanes[2] == [["06:45", "wrong"], ["07:05", "wrong"]]                       # 08:48's check is not the day's last read's
+    # every lane of Thu 10-08 from its rows, seen on Wed 10-14, as [time, state] with the lane's score and the line under
+    # it: the direction line's call that stayed flat counts against it and its pass is left out; Claude's pick against
+    # its 30-minute outcome (the 60-minute one never), a failed read passed; JEV alone's own answer against the graded
+    # average's label, open on a read not graded; the pre-market call regraded keeps its last row (S2)
+    ts = {"09:30": "2026-10-08T09:30:00-04:00", "14:31": OCT8_1431["row_ts"], "15:00": OCT8_1500["row_ts"], "15:30": "2026-10-08T15:30:02-04:00"}
+    day = {"direction": [{"day": "2026-10-08", "row_ts": ts["09:30"], "called": True, "side": "up", "result": "right", "points": 12.0},
+                         {"day": "2026-10-08", "row_ts": ts["14:31"], "called": True, "side": "down", "result": "stayed_flat", "points": -9.0},
+                         {"day": "2026-10-08", "row_ts": ts["15:00"], "called": False, "side": "down", "points": 0.0}],
+           "answers": [{"line_type": "final_forecast", "read_id": "live:" + ts["09:30"], "trading_day": "2026-10-08",
+                        "forecast": {"next_30_minutes": {"status": "ok", "up_pct": 20.0, "flat_pct": 50.0, "down_pct": 30.0}}},
+                       {"line_type": "final_forecast", "read_id": "live:" + ts["14:31"], "trading_day": "2026-10-08",
+                        "forecast": {"next_30_minutes": {"status": "ok", "up_pct": 40.0, "flat_pct": 30.0, "down_pct": 30.0}}},
+                       {"line_type": "final_forecast", "read_id": "live:" + ts["15:00"], "trading_day": "2026-10-08",
+                        "forecast": {"next_30_minutes": {"status": "failed"}}},
+                       {"line_type": "raw_answer", "read_id": "live:" + ts["15:30"], "trading_day": "2026-10-08"}],
+           "outcomes": [{"read_id": "live:" + ts["09:30"], "horizon": "next_30_minutes", "result": {"direction": "flat"}},
+                        {"read_id": "live:" + ts["09:30"], "horizon": "next_60_minutes", "result": {"direction": "up"}},
+                        {"read_id": "live:" + ts["14:31"], "horizon": "next_30_minutes", "result": {"direction": "down"}}],
+           "jev": [{"voice_name": "jev_own", "sum_id": "average_30", "row_ts": ts["09:30"], "voice_probs": {"down": 0.2, "flat": 0.5, "up": 0.3}},
+                   {"voice_name": "jev_own", "sum_id": "average_30", "row_ts": ts["14:31"], "voice_probs": {"down": 0.5, "flat": 0.3, "up": 0.2}},
+                   {"voice_name": "jev_own", "sum_id": "average_30", "row_ts": ts["15:00"], "voice_probs": {"down": 0.1, "flat": 0.3, "up": 0.6}},
+                   {"voice_name": "jev_own", "sum_id": "average_30", "row_ts": ts["15:30"], "voice_probs": {"down": 0.3, "flat": 0.6, "up": 0.1}},
+                   {"voice_name": "jev_corrected", "sum_id": "average_30", "row_ts": ts["14:31"], "voice_probs": {"down": 0.1, "flat": 0.8, "up": 0.1}},
+                   {"voice_name": "jev_own", "sum_id": "average_60", "row_ts": ts["14:31"], "voice_probs": {"down": 0.1, "flat": 0.8, "up": 0.1}}]}
+    regraded = PRE + [grade("2026-10-08T09:28:02-04:00", "open_30", verdict="right", label="down", pick="down")]
+    lanes = _run("console.log(JSON.stringify(LANES.map(function(l){ var items = laneItems(l[0], '2026-10-08');"
+                 " return [items.map(function(k){ return [viewerTime(k.t), k.state]; }), laneTotal(l[0], items, '2026-10-08'), laneNote(l, items)]; })))",
+                 {"grades": {"live": rows, "tape": MORNING, "premarket": regraded}, "perDay": {"2026-10-08": day}, "now": "2026-10-14T12:00:00-04:00"})
+    pre, opening, combined, direction, claude, jev = lanes
+    assert pre == [[["06:45", "wrong"], ["07:05", "right"]], ["1 of 2", "checks at 06:45, 07:05"], "read 06:28 · called Down · JEV alone"]
+    assert len(opening[0]) == 12 and opening[0][:2] == [["06:35", "wrong"], ["06:40", "right"]] and opening[1] == ["3 of 12", "done 07:40"]
+    assert combined[:2] == [[["06:30", "right"], ["11:31", "right"], ["12:00", "wrong"]], ["2 of 3", None]]
+    assert direction[:2] == [[["06:30", "right"], ["11:31", "stayed_flat"], ["12:00", "passed"]], ["1 of 2", "score +1.5 a call"]]
+    assert claude[:2] == [[["06:30", "right"], ["11:31", "wrong"], ["12:00", "passed"]], ["1 of 2", "scored after the close"]]
+    assert jev[:2] == [[["06:30", "right"], ["11:31", "wrong"], ["12:00", "right"], ["12:30", "open"]], ["2 of 3", "1 open"]]
+    # a lane with no call on a day gone by says so; on today it is still to come
+    none = _run("console.log(JSON.stringify([laneTotal('direction', [], '2026-10-08'), laneTotal('direction', [], '2026-10-14')]))", {"now": "2026-10-14T12:00:00-04:00"})
+    assert none == [["None that day", None], ["None yet", None]]
+    # today at 09:58 (S6, S7): the opening run is on, its calls on the card the grades lack drawn open, and the pre-market
+    # call names its read and its odds from today's card, its 30-minute check still open
+    reads = [f"2026-10-14T{h}:{m}:00-04:00" for h, m in [("09", "35"), ("09", "40"), ("09", "45"), ("09", "50"), ("09", "55"), ("10", "00"), ("10", "05"),
+                                                           ("10", "10"), ("10", "15"), ("10", "20"), ("10", "25"), ("10", "30")]]
+    tape_card = {"row_ts": reads[4], "schedule": {"reads": reads, "looks_ahead_min": 10},
+                 "calls": [{"read": reads[4], "mark": "2026-10-14T10:05:00-04:00", "pick": "down", "p": 0.7},
+                           {"read": reads[3], "mark": "2026-10-14T10:00:00-04:00", "pick": "flat", "p": 0.55},
+                           {"read": reads[2], "mark": "2026-10-14T09:55:00-04:00", "pick": "down", "p": 0.6}]}
+    pre_card = {"day": "2026-10-14", "row_ts": "2026-10-14T09:28:02-04:00", "calls": [{"read": "2026-10-14T09:28:02-04:00", "pick": "down", "p": 0.68},
+                                                                                     {"read": "2026-10-14T08:48:01-04:00", "pick": "up", "p": 0.51}]}
+    today = {"grades": {"tape": [grade(r, "next_10", verdict="wrong") for r in reads[:3]],
+                        "premarket": [grade("2026-10-14T09:28:02-04:00", "open_10", verdict="wrong", pick="down")]},
+             "tapeCard": tape_card, "preCard": pre_card, "now": "2026-10-14T09:58:00-04:00"}
+    js = ("console.log(JSON.stringify(['opening', 'premarket'].map(function(l){ var items = laneItems(l, '2026-10-14');"
+          " return [items.map(function(k){ return [viewerTime(k.t), k.state]; }), laneTotal(l, items, '2026-10-14'), laneNote(LANES.filter(function(x){ return x[0] === l; })[0], items)]; })))")
+    opening, pre = _run(js, today)
+    assert opening[:2] == [[["06:35", "wrong"], ["06:40", "wrong"], ["06:45", "wrong"], ["06:50", "open"], ["06:55", "open"]], ["0 of 3", "running · 5 of 12"]]
+    assert pre == [[["06:45", "wrong"], ["07:05", "open"]], ["0 of 1", "checks at 06:45, 07:05"], "read 06:28 · called Down 68% · JEV alone"]
+    # before the first check is graded both are open on the card's read; after the last opening mark the run is done
+    early = _run(js, {**today, "grades": {}, "now": "2026-10-14T09:40:00-04:00"})
+    assert early[1][:2] == [[["06:45", "open"], ["07:05", "open"]], ["2 open", "checks at 06:45, 07:05"]]
+    done = _run(js, {**today, "grades": {"tape": [grade(r, "next_10", verdict="right") for r in reads]}, "now": "2026-10-14T10:41:00-04:00"})
+    assert done[0][1] == ["12 of 12", "done 07:40"]
     assert "next_60" not in JS
 
 
@@ -129,9 +188,12 @@ def test_a_call_row_says_the_time_where_it_went_what_was_called_and_the_grade_an
         {"lane": "direction", "item": {"t": 0, "state": "stayed_flat", "dir": {"called": True, "side": "up", "result": "stayed_flat", "points": -9.1}}},
         {"lane": "direction", "item": {"t": 0, "state": "passed", "dir": {"called": False, "side": "down", "points": 0}}},
         {"lane": "claude", "item": {"t": 0, "state": "wrong", "claude": {"pick": "flat", "p": 50, "went": "up"}}},
-        {"lane": "premarket", "item": {"t": 0, "state": "wrong", "row": PRE[1], "minutes": 10, "check": True}}]})
+        {"lane": "premarket", "item": {"t": 0, "state": "wrong", "row": PRE[1], "minutes": 10, "check": True}},
+        {"lane": "premarket", "item": {"t": 0, "state": "open", "minutes": 30, "check": True, "open": {"pick": "down", "p": 0.68, "mark": "2026-10-14T10:05:00-04:00"}}},
+        {"lane": "opening", "item": {"t": 0, "state": "open", "minutes": 10, "open": {"pick": "down", "p": 0.89, "mark": "2026-10-14T10:40:00-04:00"}}}]})
     assert words == [["div", "Called Up · stayed flatscore −9.1", "Flat"], ["div", "No call (leaned Down) · passedscore 0.0", "Passed"],
-                     ["div", "Called Flat 50% · went up", "Wrong"], ["div", "10-min check · called Down · went upaverage +0.4\u00a0pts, inside ±\u00a02.2", "Wrong"]]
+                     ["div", "Called Flat 50% · went up", "Wrong"], ["div", "10-min check · called Down · went upaverage +0.4\u00a0pts, inside ±\u00a02.2", "Wrong"],
+                     ["div", "30-min check · called Down 68% · openscored 07:05", "Open"], ["div", "Called Down 89% · openscored 07:40", "Open"]]
 
 
 def test_a_day_folds_to_its_score_and_squares_oldest_first_and_opens_to_its_calls():
@@ -159,15 +221,16 @@ def test_a_day_folds_to_its_score_and_squares_oldest_first_and_opens_to_its_call
 
 def test_the_pinned_summary_counts_the_last_five_days_beside_one_control_for_every_day():
     """Design B's last five days, under the picked lane's list (the pinned summary went): each day's score of the lane
-    picked under the day's name, the picked day ringed, and their total with its share; a day whose files are still to
-    come says so, and is asked for."""
+    picked under the day's name, the picked day ringed, and their total with its share, a line under them saying the
+    days are the picked lane's; a day whose files are still to come says so, and is asked for."""
     days = ["2026-10-02", "2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08"]
     rows = [grade(f"{d}T10:00:00-04:00", verdict=v) for d, vs in zip(days, (["right", "wrong"], ["wrong"], ["right"], ["right", "right"], ["wrong", "passed"])) for v in vs]
     rows = [{**r, "row_ts": r["row_ts"].replace("10:00", f"1{i % 10}:00")} for i, r in enumerate(rows)]
     js = "var box = fiveDays(D.lane, D.days); console.log(JSON.stringify([dump(box), wanted]));"
     box, wanted = _run(js, {"grades": {"live": rows}, "days": days, "picked": "2026-10-08", "lane": "combined"})
-    head, row = box["kids"]
-    assert _flat_text(head) == "Last 5 days · combined call4 of 7 · 57%"
+    head, row, note = box["kids"]
+    assert _flat_text(head) == "Last 5 days · combined4 of 7 · 57%"
+    assert note["text"] == "Each lane has its own 5-day line; this one follows the lane you picked."
     assert [(_flat_text(c), c["attrs"].get("class")) for c in row["kids"]] == [("Fri1 of 2", None), ("Mon0 of 1", None), ("Tue1 of 1", None), ("Wed2 of 2", None), ("Thu0 of 1", "on")]
     assert wanted == days
     jev, _ = _run(js, {"grades": {"live": rows}, "days": days, "picked": "2026-10-08", "lane": "jev"})
@@ -176,14 +239,63 @@ def test_the_pinned_summary_counts_the_last_five_days_beside_one_control_for_eve
 
 
 def test_the_page_reads_the_grades_through_the_raw_route_and_keeps_an_opened_call_open():
+    """The files through the station's by-name route, about a week of each grades file's newest rows (the review of
+    2026-10-14: the whole history was 1.15 MB a minute over the tunnel). A file read once is asked for its last row alone
+    and read whole again only when its count of rows moved; never more than two at a time (the station's gate). Only
+    "not found" is a day with nothing in it: a refused fetch (a 502 from the tunnel) keeps the lane unknown, says so on
+    the header's line, and is asked again."""
     assert _var("GRADES_URL").strip() == "var GRADES_URL = '/api/store/file?name=JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON&lane=';"
-    assert "var GRADE_LIMITS = {live: 2000, tape: 20000, premarket: 2000};" in JS
-    for name in ("FORECASTS_BY_FORECASTER_READ_AND_HORIZON", "DIRECTION_LINE_GRADES_BY_READ", "CLAUDE_FORECAST_ANSWERS_BY_READ", "CLAUDE_FORECAST_OUTCOMES_BY_READ"):
+    assert "var GRADE_LIMITS = {live: 200, tape: 100, premarket: 40};" in JS
+    for name in ("FORECASTS_BY_FORECASTER_READ_AND_HORIZON", "DIRECTION_LINE_GRADES_BY_READ", "CLAUDE_FORECAST_ANSWERS_BY_READ", "CLAUDE_FORECAST_OUTCOMES_BY_READ",
+                 "JEV_LIVE_CARD", "JEV_OPENING_CARD", "JEV_PREMARKET_CARD"):
         assert f"name={name}" in JS, name
-    assert "var DAYS_SHOWN = 5, POLL_MS = 60000, FETCHES_AT_ONCE = 2;" in JS
-    assert "while(running < FETCHES_AT_ONCE && queue.length)" in _fn("pump") and "gate(function()" in _fn("want")
+    assert "var DAYS_SHOWN = 5, POLL_MS = 60000, SLOW_MS = 300000, RETRY_MS = 20000, FETCHES_AT_ONCE = 2;" in JS
+    assert "while(running < FETCHES_AT_ONCE && queue.length)" in _fn("pump") and "return gate(function()" in _fn("stored")
+    js = (_var("DAY_URLS") + _var("DAY_LIMIT") + _var("DAYS_SHOWN") + _var("LANE_FILES") + _var("asked") + "var bad = {}, queue = [], running = 0;"
+          + "".join(_fn(f) for f in ("stored", "gate", "pump", "fresh", "track", "want")) + """
+var log = [], inflight = 0, most = 0, draws = 0, timers = [], realTimeout = setTimeout;
+function draw(){ draws++; }
+setTimeout = function(f, ms){ timers.push([ms, f]); };
+function settle(){ return new Promise(function(r){ realTimeout(r, 30); }); }
+fetch = function(url){
+  var name = /name=([A-Z_]+)/.exec(url)[1] + (/day=([\\d-]+)/.exec(url) || ['', ''])[1], limit = +/limit=(\\d+)/.exec(url)[1], f = D.files[name];
+  log.push(name + ' ' + limit); inflight++; most = Math.max(most, inflight);
+  return new Promise(function(ok){ realTimeout(function(){ inflight--;
+    if(f.status) return ok({ok: false, status: f.status, json: function(){ return Promise.reject(new Error('html')); }});
+    ok({ok: true, status: 200, json: function(){ return Promise.resolve(f.missing ? {error: 'not found'} : {kind: 'jsonl', total: f.rows.length, rows: f.rows.slice(-limit)}); }});
+  }, 5); });
+};
+(async function(){
+  var g = '/api/store/file?name=G', out = {};
+  out.first = await fresh('g', g, 200); out.same = await fresh('g', g, 200);
+  D.files.G.rows.push({n: 3}); out.grew = await fresh('g', g, 200);
+  out.gLog = log.splice(0);
+  picked = '2026-10-13'; want(picked); await settle();
+  var f = perDay[picked];
+  out.day = [Object.keys(f).sort(), f.answers, laneItems('direction', picked), Object.keys(bad), asked[picked + 'direction'], timers.map(function(t){ return t[0]; })];
+  out.dayLog = log.splice(0).sort();
+  D.files['DIRECTION_LINE_GRADES_BY_READ2026-10-13'] = {rows: [{n: 1}]};
+  timers[0][1](); await settle();
+  out.retry = [f.direction, Object.keys(bad), log.splice(0)];
+  out.most = most;
+  console.log(JSON.stringify(out));
+})();""")
+    files = {"G": {"rows": [{"n": 1}, {"n": 2}]}, "FORECASTS_BY_FORECASTER_READ_AND_HORIZON2026-10-13": {"rows": [{"n": 1}]},
+             "DIRECTION_LINE_GRADES_BY_READ2026-10-13": {"status": 502}, "CLAUDE_FORECAST_ANSWERS_BY_READ2026-10-13": {"missing": True},
+             "CLAUDE_FORECAST_OUTCOMES_BY_READ2026-10-13": {"rows": []}}
+    got = _run(js, {"files": files})
+    assert got["first"] == [{"n": 1}, {"n": 2}] and got["same"] is None and got["grew"] == [{"n": 1}, {"n": 2}, {"n": 3}]
+    assert got["gLog"] == ["G 200", "G 1", "G 1", "G 200"]                                    # read, probed, probed and read again
+    # the 502 leaves the direction lane unknown (null, never an empty day), the header's line on, and a retry armed; the
+    # missing answers file is a day with no answers
+    assert got["day"] == [["answers", "jev", "outcomes"], [], None, ["2026-10-13direction"], "asking", [20000]]
+    assert got["dayLog"] == sorted(f"{n}2026-10-13 1000" for n in ("FORECASTS_BY_FORECASTER_READ_AND_HORIZON", "DIRECTION_LINE_GRADES_BY_READ",
+                                                                    "CLAUDE_FORECAST_ANSWERS_BY_READ", "CLAUDE_FORECAST_OUTCOMES_BY_READ"))
+    assert got["retry"] == [[{"n": 1}], [], ["DIRECTION_LINE_GRADES_BY_READ2026-10-13 1000"]]
+    assert got["most"] <= 2
     assert "open[id] = !open[id];" in _fn("callRow") and "more.hidden = !open[id];" in _fn("callRow")      # a call the reader opened stays open
     assert "'Fetch failed, showing the last results'" in _fn("draw") and "HASH[location.hash]" in JS
+    assert "history.replaceState(null, '', '#' + lane)" in _fn("draw") and "window.addEventListener('resize'" in JS
     assert '<script src="/m/sheet.js"></script>' not in READS
 
 
@@ -208,7 +320,7 @@ def test_the_page_fits_the_owners_360px_phone_and_keeps_the_house_rules():
     assert cols and card - (14 + 40 + 46 + 3 * 8) >= 150
     assert "min-height:var(--tap-min)" in re.search(r"\n\.ls\{([^}]*)\}", READS).group(1) and "min-height:58px" in re.search(r"\n\.lane\{([^}]*)\}", READS).group(1)
     assert "min-height:var(--tap-min)" in re.search(r"\n\.days button\{([^}]*)\}", READS).group(1)
-    assert "Math.round(card.clientWidth || 312) - 20" in _fn("draw") and ".axis text{font-size:11px;" in READS
+    assert "Math.round(card.clientWidth || 312) - 32" in _fn("draw") and ".axis text{font-size:11px;" in READS
     assert "cursor:pointer" not in READS and not re.search(r"[\U0001F300-\U0001FAFF]", READS)
     css = re.sub(r"(?s)/\*.*?\*/", "", "\n".join(re.findall(r"(?s)<style>(.*?)</style>", READS)))
     assert not re.search(r"\d(?:vh|dvh|svh|lvh|vw)\b", css)

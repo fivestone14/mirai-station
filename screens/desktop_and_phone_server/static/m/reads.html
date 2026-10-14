@@ -16,10 +16,13 @@
   Reads, through the viewstation's by-name store route: the average-price grades (JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_
   HORIZON in station_paths.py, one row per graded window, pipelines/spx_jev_questions_and_pools grade.py) of the live
   lane (horizon next_30), the opening lane (tape, next_10) and the pre-market lane (premarket, its checks open_10 and
-  open_30, the day's last graded read standing for the day); the 30-minute card (JEV_LIVE_CARD) for today's open call;
-  and a day at a time JEV's own answers (FORECASTS_BY_FORECASTER_READ_AND_HORIZON, voice jev_own), the direction line's
-  grades (DIRECTION_LINE_GRADES_BY_READ) and Claude's answers and their outcomes (CLAUDE_FORECAST_ANSWERS_BY_READ,
-  CLAUDE_FORECAST_OUTCOMES_BY_READ, written at the evening's finalize). The 60-minute grades are never shown. In a grade
+  open_30, the day's last graded read standing for the day); the lanes' cards for today's calls still to grade, the
+  30-minute card (JEV_LIVE_CARD), the opening card (JEV_OPENING_CARD) and the pre-market card (JEV_PREMARKET_CARD, its
+  read's odds too); and a day at a time JEV's own answers (FORECASTS_BY_FORECASTER_READ_AND_HORIZON, voice jev_own), the
+  direction line's grades (DIRECTION_LINE_GRADES_BY_READ) and Claude's answers and their outcomes
+  (CLAUDE_FORECAST_ANSWERS_BY_READ, CLAUDE_FORECAST_OUTCOMES_BY_READ, written at the evening's finalize). The files are
+  only ever appended to, so a file read once is asked again for its last row alone, and read whole again only when its
+  count of rows moved; a card only when it can have changed. The 60-minute grades are never shown. In a grade
   row ``from`` is the price the call was made at, ``edge`` its flat band either side, ``g`` the window's average's move
   from it, ``worst`` and ``best`` the window's low and high, ``label`` where the average went, ``pick`` the call and
   ``verdict`` the grade. Nothing in server.py changes for it.
@@ -37,7 +40,7 @@
   --g:#E4E0D8; --s:#F4F1EB; --s2:#DCD7CD; --s3:#EDE9E2; --fill:#1F2622;
   --i:#161A17; --i-body:#333B35; --i-mute:#535B52; --i-faint:#5C6459;
   --on-body:#E4E6DF; --rule-soft:#7E8779;
-  --o-dn:#A8492F; --o-fl:#B9B2A4; --o-up:#2F44B8; --o-un:#9C9586;
+  --o-dn:#A8492F; --o-fl:#B9B2A4; --o-up:#2F44B8;
   --sh1:0 1px 1px -.5px rgba(58,48,32,.05),0 3px 6px -1px rgba(58,48,32,.06),0 10px 22px -6px rgba(58,48,32,.07);
   --tap-min:48px; --state-press:.12; --press-in:80ms; --press-out:200ms; --ease-in:cubic-bezier(0,0,0,1); --ease-out:cubic-bezier(.2,0,0,1);
   --sans:"Jakarta",system-ui,Roboto,"Segoe UI",sans-serif;
@@ -69,9 +72,9 @@ main{display:flex;flex-direction:column;gap:12px}
 .lab{font:700 11px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--i)}
 .cnote{font:500 12px/1.45 var(--sans);color:var(--i-mute)}
 .foot{padding:2px 8px;text-align:center;font:500 11.5px/1.4 var(--sans);color:var(--i-mute)}
-/* a section's head: its name over an ink rule, a note at its right */
+/* a section's head: its name over an ink rule, on one line, a short note at its right */
 .sec{display:flex;align-items:baseline;gap:8px;margin-top:6px;padding-bottom:2px;border-bottom:1.5px solid var(--i)}
-.sec h2{margin:0;font:800 13px/1.2 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--i)}
+.sec h2{margin:0;font:800 13px/1.2 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--i);white-space:nowrap}
 .sec .r{margin-left:auto;font:500 12px/1.2 var(--sans);color:var(--i-mute);text-align:right}
 
 /* the day picker: the last five market days, the picked one in ink */
@@ -91,10 +94,11 @@ main{display:flex;flex-direction:column;gap:12px}
 .legend>span{display:inline-flex;align-items:center;gap:5px}
 
 /* the day's lanes, one per read: its name and what it is, its score at the right, and its calls as squares on the
-   day's axis; a lane is a control that lists its calls, the picked one ringed */
+   day's axis; a lane is a control that lists its calls, the picked one ringed, its side padding keeping the first and
+   last squares off the ring */
 .lanes{padding:10px 10px 12px}
 .lanes>.cnote{padding:0 4px 6px}
-.lane{display:block;width:100%;min-height:58px;padding:7px 4px 4px;border:0;border-radius:10px;background:none;text-align:left;font:inherit;color:inherit;
+.lane{display:block;width:100%;min-height:58px;padding:7px 6px 4px;border:0;border-radius:10px;background:none;text-align:left;font:inherit;color:inherit;
       touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .lane.sel{background:var(--g);box-shadow:inset 0 0 0 1.5px var(--i)}
 .lane:focus-visible,.ls:focus-visible,.days button:focus-visible{outline:2px solid var(--o-up);outline-offset:2px}
@@ -113,7 +117,7 @@ main{display:flex;flex-direction:column;gap:12px}
 .lane-g .sq-o{fill:none;stroke:var(--o-up);stroke-width:1.5;stroke-dasharray:2 1.5}
 .cmp{display:flex;align-items:center;gap:8px;margin:8px 4px 2px;font:700 11px/1.2 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--i-faint)}
 .cmp::after{content:"";flex:1;border-top:1px dashed var(--rule-soft)}
-.lane-ax{padding:2px 4px 0}
+.lane-ax{padding:2px 6px 0}
 .axis{display:block;overflow:visible;font-family:var(--sans)}
 .axis text{font-size:11px;fill:var(--i-mute)}
 .axis text.now{font-weight:700;fill:var(--o-up)}
@@ -136,15 +140,20 @@ main{display:flex;flex-direction:column;gap:12px}
 .ls .more{grid-column:2 / 5;display:flex;flex-direction:column;gap:2px;padding:6px 0 2px;font:500 12px/1.35 var(--sans);color:var(--i-body)}
 .ls .more[hidden]{display:none}
 .ls-f{padding:8px 0 6px}
+/* under 340px the square, time and result columns and their gaps give the words of a row what they can */
+@media (max-width:340px){.ls-h,.ls{grid-template-columns:10px 36px minmax(0,1fr) 46px;gap:6px}}
 .ls.is-pressed,.lane.is-pressed{background:rgba(22,26,23,var(--state-press));transition:background var(--press-in)}
 
-/* the lane's last five days: each day's score under its name, the picked day ringed, their total at the right */
+/* the lane's last five days: each day's score under its name, the picked day ringed, their total at the right, whole,
+   the name wrapping first when they cannot share a line */
 .five-h{display:flex;align-items:baseline;gap:8px;margin-bottom:8px}
-.five-t{margin-left:auto;font:700 13px/1.2 var(--sans);color:var(--i)}
+.five-h .lab{min-width:0}
+.five-t{margin-left:auto;font:700 13px/1.2 var(--sans);color:var(--i);white-space:nowrap}
 .d5{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
 .d5 span{display:flex;flex-direction:column;align-items:center;padding:6px 2px;border-radius:8px;background:var(--g);font:600 11px/1.2 var(--sans);color:var(--i-mute)}
 .d5 span b{font:800 12px/1.3 var(--sans);color:var(--i)}
 .d5 span.on{box-shadow:inset 0 0 0 1.5px var(--i)}
+.five-n{margin-top:8px}
 
 /* the tab bar, the same on every phone page, with this page lit; a press tints the tab as press.js asks */
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;justify-content:space-evenly;align-items:flex-start;
@@ -206,24 +215,34 @@ main{display:flex;flex-direction:column;gap:12px}
 <script>
 (function(){
   'use strict';
-  // the grades files, every day in each: the 30-minute calls (lane live), the opening lane's (tape) and the pre-market
-  // call's checks (premarket); and the files of one day each: JEV's own answers, the direction line's grades, and
-  // Claude's answers and their outcomes
+  // the grades files, every day in each, their newest rows only: the 30-minute calls (lane live), the opening lane's
+  // (tape) and the pre-market call's checks (premarket), each limit about a week of a lane's rows (some 26, 12 and 4 a
+  // day) so the picker's five days are in it; and the files of one day each: JEV's own answers, the direction line's
+  // grades, and Claude's answers and their outcomes
   var GRADES_URL = '/api/store/file?name=JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON&lane=';
-  var GRADE_LIMITS = {live: 2000, tape: 20000, premarket: 2000};
-  var DAY_URLS = {jev: '/api/store/file?name=FORECASTS_BY_FORECASTER_READ_AND_HORIZON&limit=1000&day=',
+  var GRADE_LIMITS = {live: 200, tape: 100, premarket: 40};
+  var DAY_URLS = {jev: '/api/store/file?name=FORECASTS_BY_FORECASTER_READ_AND_HORIZON&day=',
                   direction: '/api/store/file?name=DIRECTION_LINE_GRADES_BY_READ&day=',
-                  answers: '/api/store/file?name=CLAUDE_FORECAST_ANSWERS_BY_READ&limit=500&day=',
+                  answers: '/api/store/file?name=CLAUDE_FORECAST_ANSWERS_BY_READ&day=',
                   outcomes: '/api/store/file?name=CLAUDE_FORECAST_OUTCOMES_BY_READ&day='};
-  var LIVE_URL = '/api/store/file?name=JEV_LIVE_CARD';
-  var DAYS_SHOWN = 5, POLL_MS = 60000, FETCHES_AT_ONCE = 2;   // the station reads two raw files at a time (_RAW_FILE_GATE)
+  var DAY_LIMIT = 1000;
+  // the lanes' cards, for today's calls still to grade: the 30-minute card, the opening lane's and the pre-market call's
+  var CARD_URLS = {live: '/api/store/file?name=JEV_LIVE_CARD', tape: '/api/store/file?name=JEV_OPENING_CARD', pre: '/api/store/file?name=JEV_PREMARKET_CARD'};
+  // once a minute in the busy hours of a weekday (the grades land from 09:45, Claude's outcomes at the evening's
+  // finalize, 17:15), every five minutes outside them, never on a weekend; a fetch that failed asked again after RETRY_MS
+  var DAYS_SHOWN = 5, POLL_MS = 60000, SLOW_MS = 300000, RETRY_MS = 20000, FETCHES_AT_ONCE = 2;   // the station reads two raw files at a time (_RAW_FILE_GATE)
+  var BUSY_HOURS = ['09:25', '17:30'];
+  var OPENING_END_MIN = 70;                                  // the opening's last call (10:30) is marked 70 minutes after the open
   var COMBINED_FROM = '2026-10-06';                          // the combined forecast is the call from this day; before it JEV alone was
   var NS = 'http://www.w3.org/2000/svg';
-  // the lanes, in the order the page draws them: each its name, what it is, and the hash that picks it
-  var LANES = [['premarket', 'Pre-market call', 'read before the open \u00B7 JEV alone'], ['opening', 'Opening calls', 'every 5 min \u00B7 10-min average \u00B7 JEV alone'],
-               ['combined', 'Combined call', 'every 30 min \u00B7 30-min average'], ['direction', 'Direction line', 'if it moves, which way \u00B7 own mix + Claude'],
-               ['claude', 'Claude', '30-min read \u00B7 not in the call'], ['jev', 'JEV alone', '30-min raw answer \u00B7 not a call']];
-  var grades = {}, live = null, perDay = {}, picked = null, lane = 'combined', open = {}, failed = false, queue = [], running = 0;
+  // the lanes, in the order the page draws them: each its name, what it is, the short note over its list, and the hash
+  // that picks it
+  var LANES = [['premarket', 'Pre-market call', 'read before the open \u00B7 JEV alone', 'two checks \u00B7 JEV alone'],
+               ['opening', 'Opening calls', 'every 5 min \u00B7 10-min average \u00B7 JEV alone', '10-min average \u00B7 JEV alone'],
+               ['combined', 'Combined call', 'every 30 min \u00B7 30-min average', '30-min average'],
+               ['direction', 'Direction line', 'if it moves, which way \u00B7 own mix + Claude', 'which way, if it moves'],
+               ['claude', 'Claude', '30-min read \u00B7 not in the call', 'not in the call'], ['jev', 'JEV alone', '30-min raw answer \u00B7 not a call', 'not a call']];
+  var grades = {}, live = null, tapeCard = null, preCard = null, perDay = {}, picked = null, lane = 'combined', open = {}, bad = {}, queue = [], running = 0;
 
   function $(id){ return document.getElementById(id); }
   function el(tag, cls, text){ var e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
@@ -309,7 +328,7 @@ main{display:flex;flex-direction:column;gap:12px}
   // ---- the lanes: one per read, each a day's calls as items {t, state, call} (the call in words for its list)
   function laneItems(name, d){
     if(name === 'combined') return combinedItems(d);
-    if(name === 'opening') return dayOf(grades.tape, 'next_10', d).map(function(r){ return {t: Date.parse(r.row_ts), state: r.verdict, row: r, minutes: 10}; });
+    if(name === 'opening') return openingItems(d);
     if(name === 'premarket') return preItems(d);
     var f = perDay[d];
     if(name === 'direction') return f && f.direction ? directionItems(d, f.direction) : null;
@@ -328,14 +347,46 @@ main{display:flex;flex-direction:column;gap:12px}
     return items;
   }
   function top(p){ return Object.keys(p).sort(function(x, y){ return p[y] - p[x]; })[0]; }
-  // the pre-market call: the day's last graded read stands for the day, its two checks drawn at 10 and 30 minutes after
-  // the settled open (09:35, premarket.py)
+  // a lane card when it is the day's and still has calls to grade (not yet closed out at the day's end of its run)
+  function runningCard(c, d){ return c && d === marketDay() && String(c.row_ts || '').slice(0, 10) === d && !c.closed_out_at ? c : null; }
+  // the opening calls: the day's graded ones, and today those on the opening card the grades lack, open until graded
+  function openingItems(d){
+    var items = dayOf(grades.tape, 'next_10', d).map(function(r){ return {t: Date.parse(r.row_ts), state: r.verdict, row: r, minutes: 10}; });
+    var c = runningCard(tapeCard, d);
+    ((c && c.calls) || []).forEach(function(k){
+      var t = Date.parse(k.read);
+      if(!isNaN(t) && !items.some(function(x){ return Math.abs(x.t - t) < 60000; })) items.push({t: t, state: 'open', open: {pick: k.pick, p: k.p, mark: k.mark}, minutes: 10});
+    });
+    return items.sort(function(a, b){ return a.t - b.t; });
+  }
+  // the opening run in words: "running · 6 of 12" today from its first call until the last call's mark (the calls
+  // made so far of the opening card's schedule), "done" at the mark of the day's last call after it
+  function openingWords(d, items){
+    var c = d === marketDay() && tapeCard && String(tapeCard.row_ts || '').slice(0, 10) === d ? tapeCard : null, now = Date.now();
+    var reads = (c && c.schedule && c.schedule.reads) || [];
+    var end = reads.length ? Date.parse(reads[reads.length - 1]) + (c.schedule.looks_ahead_min || 10) * 60000 : openOf(d) + OPENING_END_MIN * 60000;
+    if(d === marketDay() && now < end){
+      var made = reads.filter(function(r){ return Date.parse(r) <= now; }).length;
+      return made ? 'running \u00B7 ' + made + ' of ' + reads.length : 'running';
+    }
+    return 'done ' + viewerTime(items[items.length - 1].t + 10 * 60000);
+  }
+  // the pre-market call: the day's last read stands for the day, its two checks drawn at 10 and 30 minutes after the
+  // settled open (09:35, premarket.py); a check graded twice keeps its last row, as callDays does; today a check still
+  // to grade is open on the pre-market card's newest read, and its read's odds are the card's
   function preItems(d){
     var rows = (grades.premarket || []).filter(function(r){ return r && r.graded && String(r.row_ts || '').slice(0, 10) === d && (r.horizon === 'open_10' || r.horizon === 'open_30'); });
     var lastTs = rows.reduce(function(m, r){ return r.row_ts > m ? r.row_ts : m; }, '');
+    var c = preCard && preCard.day === d && d === marketDay() && (preCard.calls || [])[0], same = c && lastTs && Math.abs(Date.parse(c.read) - Date.parse(lastTs)) < 60000;
+    if(c && !same && !lastTs){ lastTs = c.read; same = true; }
+    if(!same) c = null;
     return ['open_10', 'open_30'].map(function(h, i){
-      var r = rows.filter(function(x){ return x.row_ts === lastTs && x.horizon === h; })[0];
-      return r ? {t: marketAt(r.row_ts, '09:35') + (i ? 30 : 10) * 60000, state: r.verdict, row: r, minutes: i ? 30 : 10, check: true} : null;
+      var m = rows.filter(function(x){ return x.row_ts === lastTs && x.horizon === h; }), r = m[m.length - 1];
+      var k = {t: marketAt(lastTs, '09:35') + (i ? 30 : 10) * 60000, minutes: i ? 30 : 10, check: true, read: lastTs, p: c ? c.p : null};
+      if(r){ k.state = r.verdict; k.row = r; return k; }
+      if(!c || preCard.closed_out_at) return null;
+      k.state = 'open'; k.open = {pick: c.pick, p: c.p, mark: k.t};
+      return k;
     }).filter(Boolean);
   }
   function directionItems(d, rows){
@@ -373,17 +424,30 @@ main{display:flex;flex-direction:column;gap:12px}
     var right = items.filter(function(k){ return k.state === 'right'; }).length, n = items.filter(function(k){ return /^(right|wrong|stayed_flat)$/.test(k.state); }).length;
     return {right: right, n: n, open: items.filter(function(k){ return k.state === 'open'; }).length};
   }
-  function laneTotal(name, items){
-    var t = tally(items), main = t.n ? t.right + ' of ' + t.n : t.open ? t.open + ' open' : 'None yet', sub = t.n && t.open ? t.open + ' open' : null;
-    if(name === 'opening' && items.length) sub = 'done ' + viewerTime(items[items.length - 1].t + 10 * 60000);
+  // a lane's score on a day and the line under it; a day gone by with no call says so, not "yet"
+  function laneTotal(name, items, d){
+    var t = tally(items), sub = t.n && t.open ? t.open + ' open' : null;
+    var main = t.n ? t.right + ' of ' + t.n : t.open ? t.open + ' open' : d < marketDay() ? 'None that day' : 'None yet';
+    if(name === 'opening' && items.length) sub = openingWords(d, items);
     if(name === 'premarket' && items.length) sub = 'checks at ' + items.map(function(k){ return viewerTime(k.t); }).join(', ');
     if(name === 'direction'){
       var called = items.filter(function(k){ return k.dir && k.dir.called !== false; });
       if(called.length) sub = 'score ' + signed(called.reduce(function(s, k){ return s + (k.dir.points || 0); }, 0) / called.length) + ' a call';
     }
-    if(name === 'claude' && t.open && !t.n) sub = 'scored after the close';
+    if(name === 'claude' && items.length && !sub) sub = 'scored after the close';
     return [main, sub];
   }
+  // a lane's line under its name: what it is; the pre-market call's the read standing for the day and its call, "read
+  // 06:28 · called Down 68% · JEV alone" (the odds on today's card only, a past day's grades carry the pick
+  // alone); the combined call's with its count of voices on the 30-minute card
+  function laneNote(l, items){
+    var k = items && items[0];
+    if(l[0] === 'premarket' && k) return 'read ' + viewerTime(k.read) + ' \u00B7 called ' + cap(k.row ? k.row.pick : k.open.pick) + (k.p != null ? ' ' + pct(k.p) : '') + ' \u00B7 JEV alone';
+    if(l[0] === 'combined' && voices()) return l[2] + ' \u00B7 mix of ' + voices();
+    return l[2];
+  }
+  // how many voices the combined call mixes, on the 30-minute card; 0 without one
+  function voices(){ var v = live && live.hour && live.hour.average && live.hour.average.voices; return Array.isArray(v) ? v.length : 0; }
 
   // ---- the lanes' drawing: the day on one axis, its first hour zoomed in to half the width and the rest of the session
   // to the close in the other half, so the opening's calls five minutes apart never overlap; laid out at the card's
@@ -443,7 +507,7 @@ main{display:flex;flex-direction:column;gap:12px}
       w.appendChild(went);
       w.appendChild(el('small', null, 'average ' + signed(r.g) + '\u00A0pts, ' + (Math.abs(r.g) <= edge ? 'inside' : 'past') + ' \u00B1\u00A0' + edge.toFixed(1)));
     } else if(k.open){
-      w.appendChild(el('span', null, 'Called ')); w.appendChild(el('b', null, cap(k.open.pick) + ' ' + pct(k.open.p))); w.appendChild(el('span', null, ' \u00B7 open'));
+      w.appendChild(el('span', null, k.check ? k.minutes + '-min check \u00B7 called ' : 'Called ')); w.appendChild(el('b', null, cap(k.open.pick) + ' ' + pct(k.open.p))); w.appendChild(el('span', null, ' \u00B7 open'));
       w.appendChild(el('small', null, (typeof k.open.edge === 'number' ? 'flat \u00B1 ' + k.open.edge.toFixed(1) + ' \u00B7 ' : '') + 'scored ' + viewerTime(k.open.mark)));
     } else if(k.dir){
       var dr = k.dir;
@@ -461,7 +525,7 @@ main{display:flex;flex-direction:column;gap:12px}
     row.appendChild(el('span', 'res' + (k.state === 'wrong' ? ' dn' : k.state === 'open' ? ' up' : ''), res));
     if(opens){
       var r2 = k.row, e = +r2.edge || 0, more = el('span', 'more'), id = name + r2.row_ts;
-      row.type = 'button';
+      row.type = 'button'; row.setAttribute('data-k', 'row ' + id);
       more.appendChild(el('span', null, 'Called at ' + money(r2.from) + ' \u00B7 flat band ' + level(r2.from - e) + ' to ' + level(r2.from + e)));
       more.appendChild(el('span', null, k.minutes + '-min average ' + money(r2.from + r2.g) + ' (' + signed(r2.g) + ' pts)'));
       if(r2.best && r2.worst) more.appendChild(el('span', null, 'Highest ' + signed(r2.best.points) + ' pts (minute ' + r2.best.minute + ') \u00B7 lowest ' + signed(r2.worst.points) + ' pts (minute ' + r2.worst.minute + ')'));
@@ -476,7 +540,7 @@ main{display:flex;flex-direction:column;gap:12px}
 
   // ---- the page
   function draw(){
-    var main = $('main'), sub = $('sub'), days = pickDays(), now = Date.now(), today = marketDay();
+    var main = $('main'), sub = $('sub'), days = pickDays(), now = Date.now(), today = marketDay(), failed = Object.keys(bad).length > 0;
     sub.className = failed ? 'hd-2 err' : 'hd-2'; sub.textContent = failed ? 'Fetch failed, showing the last results' : '';
     sub.hidden = !failed;
     if(!days.length){ main.textContent = ''; main.appendChild(el('section', 'card', grades.live ? 'No graded calls yet.' : 'Reading the results')); return; }
@@ -484,11 +548,13 @@ main{display:flex;flex-direction:column;gap:12px}
     want(picked);
     var hd = headLine(days[days.length - 1], now);
     $('hdR').textContent = hd[0]; $('hdZ').textContent = hd[1];
+    // the control in focus (a day, a lane, a call) is focused again once the page is rebuilt round it
+    var had = document.activeElement, focusKey = had && main.contains(had) ? had.getAttribute('data-k') : null;
     main.textContent = '';
     // the day picker
     var pick = el('div', 'days'); pick.setAttribute('role', 'tablist'); pick.setAttribute('aria-label', 'Day');
     days.forEach(function(d){
-      var b = el('button', d === picked ? 'on' : null); b.type = 'button'; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(d === picked));
+      var b = el('button', d === picked ? 'on' : null); b.type = 'button'; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(d === picked)); b.setAttribute('data-k', 'day ' + d);
       b.appendChild(el('b', null, dayName(d).slice(0, 3))); b.appendChild(el('span', null, d.slice(5)));
       b.addEventListener('click', function(){ picked = d; draw(); want(d); });
       pick.appendChild(b);
@@ -501,38 +567,41 @@ main{display:flex;flex-direction:column;gap:12px}
     var card = el('section', 'card lanes'); card.setAttribute('aria-label', (isToday ? 'Today' : dayName(picked)) + '\u2019s results, one lane per read');
     main.appendChild(card);
     card.appendChild(el('div', 'cnote', 'Each square sits at the time its call was made (pre-market: at its two checks). Tap a lane to list its calls.'));
-    var W = Math.max(240, Math.round(card.clientWidth || 312) - 20), nowAt = isToday && now < closeOf(picked) ? now : null;
+    var W = Math.max(240, Math.round(card.clientWidth || 312) - 32), nowAt = isToday && now < closeOf(picked) ? now : null;
     LANES.forEach(function(l){
       if(l[0] === 'jev') card.appendChild(el('div', 'cmp', 'For comparison, not a call'));
       var items = laneItems(l[0], picked), b = el('button', l[0] === lane ? 'lane sel' : 'lane'), h = el('span', 'lane-h'), n = el('span');
-      b.type = 'button'; b.setAttribute('aria-pressed', String(l[0] === lane));
+      b.type = 'button'; b.setAttribute('aria-pressed', String(l[0] === lane)); b.setAttribute('data-k', 'lane ' + l[0]);
       n.appendChild(el('span', 'lane-n', l[1]));
-      n.appendChild(el('span', 'lane-d', l[0] === 'combined' && picked < COMBINED_FROM ? 'JEV alone that day' : l[2]));
+      n.appendChild(el('span', 'lane-d', laneNote(l, items)));
       h.appendChild(n);
-      var tot = items ? laneTotal(l[0], items) : ['\u2026', null], t = el('span', 'lane-t', tot[0]);
+      var tot = items ? laneTotal(l[0], items, picked) : ['\u2026', null], t = el('span', 'lane-t', tot[0]);
       if(tot[1]) t.appendChild(el('small', null, tot[1]));
       h.appendChild(t); b.appendChild(h);
       b.appendChild(laneSvg(W, items || [], picked, nowAt));
       b.setAttribute('aria-label', l[1] + ': ' + tot[0] + (tot[1] ? ', ' + tot[1] : '') + '. List its calls');
-      b.addEventListener('click', function(){ lane = l[0]; draw(); });
+      b.addEventListener('click', function(){ lane = l[0]; if(history.replaceState) history.replaceState(null, '', '#' + lane); draw(); });
       card.appendChild(b);
     });
     var ax = el('div', 'lane-ax'); ax.appendChild(axisSvg(W, picked, nowAt)); card.appendChild(ax);
     // the lane picked: its calls, then its last five days
     var meta = LANES.filter(function(l){ return l[0] === lane; })[0], items = laneItems(lane, picked) || [];
-    var sh = el('div', 'sec'); sh.appendChild(el('h2', null, meta[1])); sh.appendChild(el('span', 'r', meta[2]));
+    var sh = el('div', 'sec'); sh.appendChild(el('h2', null, meta[1])); sh.appendChild(el('span', 'r', meta[3] + (lane === 'combined' && voices() ? ' \u00B7 mix of ' + voices() + ' voices' : '')));
     main.appendChild(sh);
     var list = el('section', 'card list'), lh = el('div', 'ls-h');
     ['', 'Read', 'Called \u00B7 what happened', 'Result'].forEach(function(x){ lh.appendChild(el('span', null, x)); });
     list.appendChild(lh);
     items.forEach(function(k){ list.appendChild(callRow(lane, k)); });
     if(!items.length) list.appendChild(el('div', 'cnote', laneItems(lane, picked) ? 'No call on this day.' : 'Reading this lane\u2019s day\u2026'));
-    var tt = laneTotal(lane, items);
+    var tt = laneTotal(lane, items, picked);
     if(items.length) list.appendChild(el('div', 'cnote ls-f', tt[0] + (tally(items).n ? ' right' : '') + (tt[1] ? ' \u00B7 ' + tt[1] : '') + '.'
-      + (lane === 'combined' ? ' The combined call is the mix since ' + COMBINED_FROM.slice(5) + '; on earlier days this lane was JEV alone and is marked so.' : '')));
+      + (lane === 'combined' ? ' The combined call is the mix since ' + COMBINED_FROM.slice(5) + '.' : '')));
     main.appendChild(list);
     main.appendChild(fiveDays(lane, days));
     main.appendChild(el('div', 'foot', 'Scored on the average price over each window, not the last price. pts = S&P index points.'));
+    drawnW = main.clientWidth;
+    var back = focusKey && main.querySelector('[data-k="' + focusKey + '"]');
+    if(back) back.focus({preventScroll: true});
   }
   // the header's right side: the newest day, and under it the zone the page's times are in and whether the day is still
   // running, said done once its close has passed
@@ -548,11 +617,13 @@ main{display:flex;flex-direction:column;gap:12px}
     });
     return k;
   }
-  // the lane's last five days: each day's score under its name, the picked day ringed, and their total with its share
+  // the lane's last five days, named short ("pre-market", the list above naming the lane whole) so they and their total
+  // share a line: each day's score under its name, the picked day ringed, and their total with its share; a line under
+  // them says whose days they are
   function fiveDays(name, days){
     var box = el('section', 'card five'), head = el('div', 'five-h'), row = el('div', 'd5'), right = 0, n = 0;
     var meta = LANES.filter(function(l){ return l[0] === name; })[0];
-    head.appendChild(el('div', 'lab', 'Last ' + days.length + ' days \u00B7 ' + meta[1].toLowerCase()));
+    head.appendChild(el('div', 'lab', 'Last ' + days.length + ' days \u00B7 ' + meta[1].replace(/ calls?$/, '').toLowerCase()));
     days.forEach(function(d){
       var items = laneItems(name, d), t = items ? tally(items) : null, cell = el('span', d === picked ? 'on' : null);
       cell.appendChild(el('span', null, dayName(d).slice(0, 3)));
@@ -562,53 +633,143 @@ main{display:flex;flex-direction:column;gap:12px}
     });
     head.appendChild(el('div', 'five-t', n ? right + ' of ' + n + ' \u00B7 ' + Math.round(right / n * 100) + '%' : '\u2014'));
     box.appendChild(head); box.appendChild(row);
+    box.appendChild(el('div', 'cnote five-n', 'Each lane has its own 5-day line; this one follows the lane you picked.'));
     days.forEach(function(d){ want(d); });
     return box;
   }
 
-  // ---- the fetching: the grades files once and once a minute; the per-day files of a day when a lane needs them, the
-  // picked day first, two at a time (the station reads two raw files at a time); a done day's are kept, today's asked
-  // for again with each poll
-  function rawRows(url){
-    return fetch(url, {cache: 'no-store'}).then(function(r){ return r.ok ? r.json() : null; })
-      .then(function(j){ return j && j.kind === 'jsonl' && Array.isArray(j.rows) ? j.rows : null; });
+  // ---- the fetching: the grades files, and per day the files a lane needs, the picked day first; a file read once is
+  // asked again for its count of rows alone and read again only when it grew, a done day's never; every fetch, two at a
+  // time (the station reads two raw files at a time)
+  // a store file as the station answers it, its rows' count (total) whatever the limit; null when it has no such file
+  // ("not found": a day the store has nothing for); a refused or broken answer throws, so the caller keeps what it had
+  function stored(url){
+    return gate(function(){
+      return fetch(url, {cache: 'no-store'}).then(function(r){ if(!r.ok) throw new Error('the station answered ' + r.status); return r.json(); })
+        .then(function(j){
+          if(j && (j.kind === 'jsonl' && Array.isArray(j.rows) || j.kind === 'json')) return j;
+          if(j && j.error === 'not found') return null;
+          throw new Error('not a store file');
+        });
+    });
   }
-  function gate(task){ queue.push(task); pump(); }
+  function gate(task){ return new Promise(function(ok, no){ queue.push(function(){ return task().then(ok, no); }); pump(); }); }
   function pump(){
     while(running < FETCHES_AT_ONCE && queue.length){
       var task = queue.shift(); running++;
       task().catch(function(){}).then(function(){ running--; pump(); });
     }
   }
+  // a jsonl file's rows when they changed since the page last read them, else null: once read, a file is asked for its
+  // last row alone (a kilobyte, with the file's count) and read whole again, its newest `limit` rows, only when that
+  // count moved, the files being only ever appended to; a file the station does not have reads as no rows
+  function fresh(key, url, limit){
+    var moved = counts[key] == null ? Promise.resolve(true) : stored(url + '&limit=1').then(function(j){ return (j ? j.total : 0) !== counts[key]; });
+    return moved.then(function(m){
+      return m ? stored(url + '&limit=' + limit).then(function(j){ counts[key] = j ? j.total : 0; return j ? j.rows : []; }) : null;
+    });
+  }
+  // a fetch's outcome on the header's error line, said until the same fetch succeeds again; true when the page should
+  // be drawn again (what it read moved, or the line changes)
+  function track(key, p){
+    return p.then(function(moved){ var was = bad[key]; delete bad[key]; return moved || !!was; }, function(){ bad[key] = true; return true; });
+  }
+  // the market clock now, "HH:MM" in New York, and whether it is a weekend there
+  function marketClock(){
+    try {
+      var p = {};
+      new Intl.DateTimeFormat('en-US', {timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'})
+        .formatToParts(new Date()).forEach(function(x){ p[x.type] = x.value; });
+      return {hhmm: ('0' + (+p.hour % 24)).slice(-2) + ':' + p.minute, weekend: p.weekday === 'Sat' || p.weekday === 'Sun'};
+    } catch(e){ return null; }
+  }
+  // how long the page waits between polls: POLL_MS in a weekday's busy hours, SLOW_MS outside them, 0 (none) on a weekend
+  function pollEvery(){
+    var c = marketClock();
+    return !c ? POLL_MS : c.weekend ? 0 : c.hhmm >= BUSY_HOURS[0] && c.hhmm < BUSY_HOURS[1] ? POLL_MS : SLOW_MS;
+  }
+  // whether a card is worth its download now (some 50 KB the 30-minute card, 20 to 35 the others), never twice in a
+  // poll's minute: the first time; the 30-minute card in the busy hours from the mark its next read is due at until
+  // that read is on hand, before the close, and every SLOW_MS while today has none; the opening card while the
+  // morning's run is on (its first call to its last's mark) and it lags its schedule by a read two minutes old; the
+  // pre-market card while today's is still to come, before the checks' close-out (10:06), or its reads are, to five
+  // minutes after the last
+  function cardDue(k, now){
+    var at = cardAt[k], today = marketDay(), open = openOf(today);
+    if(at != null && now - at < POLL_MS - 5000) return false;
+    if(k === 'live'){
+      var c = live, mine = c && String(c.row_ts || '').slice(0, 10) === today;
+      if(at == null) return true;
+      if(pollEvery() !== POLL_MS) return false;
+      return mine ? now >= ((c.marks && Date.parse(c.marks.next_30)) || Date.parse(c.row_ts) + 1800000) && now < closeOf(today) : now - at >= SLOW_MS;
+    }
+    if(k === 'tape'){
+      if(now < open + 5 * 60000 || now > open + (OPENING_END_MIN + 2) * 60000) return false;
+      var t = tapeCard, reads = t && String(t.row_ts || '').slice(0, 10) === today && t.schedule && t.schedule.reads;
+      if(!reads) return true;
+      var due = reads.map(function(r){ return Date.parse(r); }).filter(function(r){ return r <= now - 120000; });
+      return due.length > 0 && due[due.length - 1] - Date.parse(t.row_ts) > 60000;
+    }
+    var p = preCard && preCard.day === today ? preCard : null, jr = p && p.schedule && p.schedule.jev_reads;
+    if(at == null) return true;
+    if(!p) return now < open + 36 * 60000;
+    return !!(jr && jr.length) && now < Date.parse(jr[jr.length - 1]) + 5 * 60000;
+  }
+  // a card fetched, kept when it moved (a card the station does not have keeps the last); true when the page should be
+  // drawn again
+  function askCard(k){
+    cardAt[k] = Date.now();
+    return track('card ' + k, stored(CARD_URLS[k]).then(function(j){
+      var c = j && j.kind === 'json' && j.data ? j.data : null;
+      if(!c || sig(c) === sig(k === 'live' ? live : k === 'tape' ? tapeCard : preCard)) return false;
+      if(k === 'live') live = c; else if(k === 'tape') tapeCard = c; else preCard = c;
+      return true;
+    }));
+  }
+  // what makes a card new: a read, or a grading or close-out run (the forecast page's)
+  function sig(x){ return x ? [x.generated_at, x.row_ts, x.graded_at || '', x.closed_out_at || ''].join('|') : ''; }
   // the files a lane reads a day at a time
   var LANE_FILES = {jev: ['jev'], direction: ['direction'], claude: ['answers', 'outcomes']};
-  var asked = {};
+  var asked = {}, counts = {}, cardAt = {}, polledAt = 0, drawnW = 0, resizeTimer = null;
+  // a day's files a lane needs, the picked day's all of them, each asked once (poll asks today's again), and today's
+  // cards while today is picked; a file that failed keeps its lane unknown, or its last rows, and is asked again after
+  // RETRY_MS
   function want(d){
     var files = d === picked ? Object.keys(DAY_URLS) : LANE_FILES[lane] || [], f = perDay[d] = perDay[d] || {};
     files.forEach(function(k){
       var key = d + k;
       if(asked[key]) return;
-      asked[key] = true;
-      // a day with no such file (the direction line began 10-12) has none of its calls; a fetch that failed is asked again
-      gate(function(){ return rawRows(DAY_URLS[k] + d).then(function(rows){ f[k] = rows || []; draw(); }, function(){ asked[key] = false; }); });
+      asked[key] = 'asking';
+      track(key, fresh(key, DAY_URLS[k] + d, DAY_LIMIT).then(function(rows){ asked[key] = 'read'; if(rows) f[k] = rows; return !!rows; }))
+        .then(function(redraw){
+          if(bad[key]) setTimeout(function(){ asked[key] = false; want(d); }, RETRY_MS);
+          if(redraw) draw();
+        });
     });
+    if(d === picked && d === marketDay()) ['tape', 'pre'].forEach(function(k){ if(cardDue(k, Date.now())) askCard(k).then(function(redraw){ if(redraw) draw(); }); });
   }
+  // the grades files and the 30-minute card, then the page; in the busy hours today's day files are asked again (each
+  // read whole only if it grew)
   function poll(){
-    var all = Object.keys(GRADE_LIMITS).map(function(k){
-      return rawRows(GRADES_URL + k + '&limit=' + GRADE_LIMITS[k]).then(function(rows){ if(!rows) throw new Error('no grades'); grades[k] = rows; });
+    polledAt = Date.now();
+    var today = marketDay(), jobs = Object.keys(GRADE_LIMITS).map(function(k){
+      return track('grades ' + k, fresh('grades ' + k, GRADES_URL + k, GRADE_LIMITS[k]).then(function(rows){ if(rows) grades[k] = rows; return !!rows; }));
     });
-    var card = fetch(LIVE_URL, {cache: 'no-store'}).then(function(r){ return r.ok ? r.json() : null; }).then(function(j){ live = j && j.kind === 'json' ? j.data : live; }).catch(function(){});
-    Promise.all(all.concat([card])).then(function(){ failed = false; }).catch(function(){ failed = true; }).then(function(){
-      // today's day files are asked for again with every poll, a done day's kept
-      var today = marketDay(); Object.keys(DAY_URLS).forEach(function(k){ asked[today + k] = false; });
+    if(cardDue('live', polledAt)) jobs.push(askCard('live'));
+    Promise.all(jobs).then(function(){
+      if(pollEvery() === POLL_MS) Object.keys(DAY_URLS).forEach(function(k){ if(asked[today + k] === 'read') asked[today + k] = false; });
       draw();
     });
   }
   var HASH = {'#premarket': 'premarket', '#opening': 'opening', '#combined': 'combined', '#direction': 'direction', '#claude': 'claude', '#jev': 'jev'};
   if(HASH[location.hash]) lane = HASH[location.hash];
   poll();
-  setInterval(function(){ if(!document.hidden) poll(); }, POLL_MS);
-  document.addEventListener('visibilitychange', function(){ if(!document.hidden) poll(); });
+  // the page asks once a minute whether a poll is due; brought back to the screen it polls at once if its last is
+  // older than its wait (SLOW_MS on a weekend)
+  setInterval(function(){ var every = pollEvery(); if(!document.hidden && every && Date.now() - polledAt >= every - 5000) poll(); }, POLL_MS);
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden && Date.now() - polledAt >= (pollEvery() || SLOW_MS)) poll(); });
+  // a turn of the phone or a resized window lays the lanes out again at the card's new width, once it settles
+  window.addEventListener('resize', function(){ clearTimeout(resizeTimer); resizeTimer = setTimeout(function(){ if($('main').clientWidth !== drawnW) draw(); }, 150); });
 })();
 </script>
 </body>
