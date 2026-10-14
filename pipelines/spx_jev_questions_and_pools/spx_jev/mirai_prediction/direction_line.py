@@ -70,8 +70,8 @@ from ..state_builder import load_bars, load_jsonl
 from .name_map import LEARNER_POOL
 from .paths import (append_json_line, backup_before_change, data_root, direction_line_calls_dir, direction_line_calls_file,
                     direction_line_card_file, direction_line_grades_dir, direction_line_grades_file, direction_line_lock_file,
-                    direction_line_weights_file, log_job_run, now_utc_iso, raw_forecasts_file, read_json_lines, station_paths,
-                    today_et, write_json_atomically)
+                    direction_line_weights_file, log_job_run, now_utc_iso, raw_forecasts_file, read_json_lines, state_dir_of,
+                    station_paths, today_et, write_json_atomically)
 
 LANE = "live"
 SUM_ID = "average_30"
@@ -544,8 +544,51 @@ def record_of(rows: list[dict]) -> dict:
     return out
 
 
+CARD_KEEP = 40                     # the phone's panel: its record squares and its weight sparklines cover the newest 40 reads
+CALL_FIELDS = ("revision", "side", "p_up", "confidence", "called", "expected_points", "claude_included")
+GRADE_FIELDS = ("result", "points", "up_points", "official_side", "minutes", "why", "graded_at")
+
+
+def share_history(root: Path) -> dict:
+    """Each voice's share of the say at the newest CARD_KEEP reads, oldest first: the shares of the read's newest
+    revision (the one the phone showed), None where the voice did not speak on that read."""
+    reads: list[dict] = []
+    for day in reversed(call_days(root)[-DAYS_SCANNED:]):
+        by_read = calls_by_read(calls_of_day(root, day))
+        reads = [revisions[-1] for _, revisions in sorted(by_read.items(), key=lambda kv: kv[1][0].get("row_ts") or "")] + reads
+        if len(reads) >= CARD_KEEP:
+            break
+    reads = reads[-CARD_KEEP:]
+    return {"row_ts": [str(r.get("row_ts") or "")[:16] for r in reads],
+            "shares": {v: [round(r["shares"][v], 3) if isinstance((r.get("shares") or {}).get(v), (int, float)) else None for r in reads]
+                       for v in VOICES}}
+
+
+def card_read(root: Path, newest: dict, grades: list[dict]) -> dict:
+    """What the phone's panel needs of the newest read besides its newest revision: the call that is graded
+    (revision 0), the read's grade once it has one, and when Claude's line landed when it joined."""
+    revisions = calls_by_read(calls_of_day(root, newest["day"])).get(newest["read_id"]) or [newest]
+    out: dict = {"graded_call": {k: revisions[0].get(k) for k in CALL_FIELDS}}
+    grade = next((r for r in reversed(grades) if r.get("read_id") == newest["read_id"]), None)
+    out["grade"] = {k: grade[k] for k in GRADE_FIELDS if k in grade} if grade else None
+    out["claude_written_at"] = None
+    if any(r.get("claude_included") for r in revisions):
+        line = claude_line(state_dir_of(root), newest["day"], newest["read_id"])
+        out["claude_written_at"] = (line or {}).get("written_at")
+    return out
+
+
+def recent_calls(grades: list[dict]) -> list[dict]:
+    """The newest CARD_KEEP graded calls, oldest first: when, which side, how it went and its points."""
+    calls = sorted((r for r in grades if r.get("called") and r.get("result") != NOT_GRADED and isinstance(r.get("points"), (int, float))),
+                   key=lambda r: r.get("row_ts") or "")
+    return [{"row_ts": r.get("row_ts"), "side": r.get("side"), "result": r.get("result"), "points": r.get("points")} for r in calls[-CARD_KEEP:]]
+
+
 def write_card(root: Path, state: dict, today: str) -> Path:
-    """The phone's card: the newest read's newest call revision, the record today and since the start, the weights."""
+    """The phone's card: the newest read's newest call revision, the record today and since the start, the weights;
+    for the phone's direction panel also the read's graded call and grade, its newest graded calls and the voices'
+    shares over the newest reads, with the grade's two rules the panel's running points follow."""
     newest = None
     for day in reversed(call_days(root)[-DAYS_SCANNED:]):
         rows = calls_of_day(root, day)
@@ -555,8 +598,11 @@ def write_card(root: Path, state: dict, today: str) -> Path:
     grades = [r for day in grade_days(root) for r in grades_of_day(root, day)]
     days = sorted({r["day"] for r in grades if r.get("day")})
     card = {"read_id": (newest or {}).get("read_id"), "day": (newest or {}).get("day"), "row_ts": (newest or {}).get("row_ts"),
-            "call": newest, "record": {"today": record_of([r for r in grades if r.get("day") == today]), "since_start": record_of(grades),
-                                       "first_day": days[0] if days else None},
+            "call": newest, **(card_read(root, newest, grades) if newest else {}),
+            "record": {"today": record_of([r for r in grades if r.get("day") == today]), "since_start": record_of(grades),
+                       "first_day": days[0] if days else None},
+            "recent_calls": recent_calls(grades), "share_history": share_history(root),
+            "rules": {"right_points": RIGHT_POINTS, "d_cap": D_CAP},
             "shares": {v: round(x, 4) for v, x in shares(state).items()}, "reads_learned": state.get("reads_learned", 0),
             "written_at": now_utc_iso()}
     path = direction_line_card_file(root)

@@ -291,16 +291,71 @@ button.tile .tile-k::after,.voices .tile-k::after{margin-left:auto}
 .cl-why{display:inline-flex;align-items:center;gap:6px;height:var(--tap-min);margin:-2px 0;padding:0 0 0 8px;border:0;background:none;
         font:700 12.5px/1.2 var(--sans);color:var(--i);cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .cl-why:focus-visible{outline:2px solid var(--px-ink);outline-offset:2px}
-/* the direction line (2026-10-13): one row under the headline's odds bar, "if it moves, which way?", its lead at 13px
-   with the expected points beside it and its record under it at 11px; the words wrap on a 360px phone, nothing is
-   clipped, and the row is hidden until the line's card is the read on screen */
-.dline{margin-top:8px;padding-top:6px;border-top:1px solid var(--s2)}
-.dline[hidden]{display:none}
-.dl-lead{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px}
-.dl-lead b{font:700 13px/1.25 var(--sans);color:var(--i)}
-.dl-lead span{font:400 12px/1.3 var(--sans);color:var(--i-mute)}
-.dl-rec{margin-top:2px;font:400 11px/1.3 var(--sans);color:var(--i-mute)}
-.dl-rec[hidden]{display:none}
+/* the direction panel (2026-10-14, Will's approved design): its own card between the 30-minute call and Claude's read,
+   ringed in the page's blue. The clock as the call's card draws it with a thinner bar; "if it moves, which way" with the
+   graded call big and the points so far at its right; the split of down and up with the no-call band's two ticks; the
+   window drawn live; one row per voice; the record; who joined when. The 1.5px ring and 14.5px padding leave the
+   drawing 296px on a 360px phone, laid out at its measured width so its 11px text is never scaled under the page's
+   floor. Every row wraps or gives way at Android's larger text sizes (the voices' name and weight columns in em), and
+   the card stays hidden, taking no room, until the line's card is the read on screen */
+.dpanel{border:1.5px solid var(--px-ink);padding:14.5px}
+.dpanel[hidden]{display:none}
+.dpanel .clock-bar,.dpanel .clock-bar i{height:4px;border-radius:2px}
+.dp-lab{margin-top:14px}
+.dp-head{display:flex;flex-wrap:wrap;align-items:flex-end;gap:4px 12px;margin-top:4px}
+.dp-call{display:flex;align-items:center;gap:6px;font:700 30px/1.1 var(--sans);letter-spacing:-.01em;color:var(--i);white-space:nowrap}
+.dp-call.up{color:var(--o-up)}
+.dp-call.down{color:var(--o-dn)}
+.dp-call svg{flex:none;width:.5em;height:.72em;stroke:currentColor;stroke-width:2.4;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.dp-call.none{flex-direction:column;align-items:flex-start;gap:0}   /* no call: its lean under it, the points keep their side */
+.dp-call span{font:400 12.5px/1.35 var(--sans);letter-spacing:0;color:var(--i-mute)}
+.dp-pts{margin-left:auto;text-align:right}
+.dp-pts b{display:block;font:700 22px/1.1 var(--sans);color:var(--i)}
+.dp-pts b.up{color:var(--o-up)}
+.dp-pts b.down{color:var(--o-dn)}
+.dp-pts span{font:400 12.5px/1.35 var(--sans);color:var(--i-mute)}
+.dp-split{position:relative;display:flex;gap:3px;height:12px;margin-top:10px}
+.dp-split i{display:block;min-width:3px;border-radius:4px}
+.dp-split .dn{background:var(--o-dn)}
+.dp-split .up{background:var(--o-up)}
+.dp-split b{position:absolute;top:-3px;width:2px;height:18px;margin-left:-1px;border-radius:1px;background:var(--i)}
+.dp-split-lab{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 10px;margin-top:8px;font:400 12.5px/1.35 var(--sans);color:var(--i-mute)}
+.dp-split-lab b{font-weight:700;color:var(--i)}
+.dp-chart{display:block;width:100%;height:auto;margin-top:12px;font-family:var(--sans);overflow:visible}
+.dp-chart text{font-size:11px;fill:var(--i-mute)}
+.dp-chart .band{fill:var(--s2);fill-opacity:.55}
+.dp-chart .edge{stroke:var(--rule-soft);stroke-width:1;stroke-dasharray:3 3}
+.dp-chart .now{stroke:var(--o-fl);stroke-width:1}
+.dp-chart .path{fill:none;stroke:var(--px-ink);stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
+.dp-chart .dot{fill:var(--px-ink)}
+.dp-chart .t-avg{font-weight:700;fill:var(--i)}
+.dp-chart .halo{paint-order:stroke;stroke:var(--s);stroke-width:3px;stroke-linejoin:round}
+.dp-cap{margin-top:2px;font:400 12.5px/1.35 var(--sans);color:var(--i-mute)}
+.dp-v{display:grid;grid-template-columns:7.4em minmax(0,1fr) minmax(2.7em,max-content) 44px;gap:8px;align-items:center;margin-top:8px;
+      font:400 13px/1.2 var(--sans);color:var(--i-body)}
+.dp-v .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dp-v .w{text-align:right;font-weight:700;color:var(--i);white-space:nowrap}
+.dp-v svg{display:block;width:44px;height:14px;overflow:visible}
+.dp-v .sp{fill:none;stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round}
+.dp-v .sp.up{stroke:var(--o-up)}
+.dp-v .sp.dn{stroke:var(--o-dn)}
+.dp-v.ends{margin-top:2px;font-size:12px;color:var(--i-mute)}
+.dp-v .e{grid-column:2;display:flex;justify-content:space-between}
+.dp-tr{position:relative;height:8px;border-radius:4px;background:var(--o-un)}
+.dp-tr i{position:absolute;top:0;height:8px;border-radius:4px}
+.dp-tr .up{background:var(--o-up)}
+.dp-tr .dn{background:var(--o-dn)}
+.dp-tr b{position:absolute;left:50%;top:-3px;width:1.5px;height:14px;margin-left:-.75px;background:var(--i-mute)}
+.dp-rec{margin-top:16px;padding-top:10px;border-top:1px solid var(--s2)}
+.dp-rec .lab .r{font:400 12.5px/1.2 var(--sans);letter-spacing:0;text-transform:none}
+.dp-rec .sq i.flat{background:none;border:1.2px solid var(--rule-soft)}
+.dp-rec .sq i.miss{background:var(--o-dn)}
+.dp-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:10px}
+.dp-tiles .tile{padding:8px}
+.dp-tiles .tile-k{letter-spacing:.04em}
+.dp-tiles .tile-v{margin:3px 0 0;font:700 17px/1.3 var(--sans);white-space:nowrap}
+.dp-note{margin-top:8px;font:400 12.5px/1.35 var(--sans);color:var(--i-mute)}
+.dp-foot{margin-top:10px;padding-top:8px;border-top:1px solid var(--s2);font:400 12.5px/1.35 var(--sans);color:var(--i-mute)}
 /* the Why sheet: one grid, per horizon its lean in words over Claude's bar and its historical odds' soft bar with the
    numbers beside each, and under the grid what those odds are; then the reasons and the reason against, a horizon and
    a sentence each, and the record line. The label column holds HISTORICAL (77px) with ODDS under it, the numbers'
@@ -737,6 +792,9 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 <div class="od" id="od" role="status" hidden></div>
 <div id="state"></div>
 <main id="main" style="display:flex;flex-direction:column;gap:12px"></main>
+<!-- the direction panel (spx_jev.mirai_prediction.direction_line, 2026-10-14): "if it moves, which way?" for the read on
+     screen, from its card (DIRECTION_LINE_CARD), drawn by paintDirection; hidden until that card is this read's -->
+<div class="card dpanel" id="dpanel" role="region" hidden aria-label="Direction, 30 minutes"></div>
 <!-- Claude's own read (pipelines/spx_claude_forecast, 2026-10-10): after every half-hour read Claude answers, apart from the
      call above and never mixed into it, with its up / flat / down chances per horizon. Read from
      its card (CLAUDE_FORECAST_CARD); the strip stays hidden until the file holds a real read. Each bar is Claude's
@@ -1420,7 +1478,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   window.onerror = function(msg){ say('the card could not be drawn: ' + msg); };
   // a drawn card is then given what the other files hold: the live price, the record row's scoreboard, and Claude's read
   // against the call
-  function draw(c, ok){ lastOk = ok; try { paint(c, ok); clearLoading(); } catch(e){ say('the card could not be drawn: ' + (e && e.message ? e.message : e)); } paintPx(); paintCalls(); paintRecord(); drawClaude(); }
+  function draw(c, ok){ lastOk = ok; try { paint(c, ok); clearLoading(); } catch(e){ say('the card could not be drawn: ' + (e && e.message ? e.message : e)); } paintPx(); paintCalls(); drawDirection(); paintRecord(); drawClaude(); }
   // Between cards the minutes still move: every tick updates each clock and each pre-market drawing. The session's
   // page is drawn again when what leads changes: the opening's last call closes (laneLeads), or the bell finds the
   // last session's card still on hand (waiting, until today's first card lands). While the pre-market card leads
@@ -1625,7 +1683,6 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       if(voices && !voices.parentNode) head.appendChild(voices);
       hc.appendChild(head);
       hc.appendChild(oddsBar(hp, top));
-      hc.appendChild(directionRow());                 // the direction line's row, filled when its card is this read's
       if(a !== h) hc.appendChild(calledAt(a, minutes));
       var fb = fallbackLine(h, c.row_ts); if(fb) hc.appendChild(fb);
       hc.appendChild(tiles);
@@ -2392,7 +2449,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     if(day !== barsDay){ bars = null; barsDay = day; barsAt = 0; paintSpark(); }
     if(Date.now() - barsAt < BARS_MS) return;
     barsInflight = true; barsAt = Date.now();
-    rawRows(BARS_URL + day + '&limit=420').then(function(rows){ if(rows){ bars = rows; paintSpark(); if(chartVisible()) paintChart(); } })
+    rawRows(BARS_URL + day + '&limit=420').then(function(rows){ if(rows){ bars = rows; paintSpark(); if(chartVisible()) paintChart(); drawDirection(); } })
       .catch(function(){}).finally(function(){ barsInflight = false; });
   }
   function pollBook(){
@@ -2889,48 +2946,208 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // from past days before it answered (base_rate_shown_to_claude; never the call card's usual odds, which are the
   // station's own count); the reasons come with their words (reason_words.py), so nothing here translates a path. A
   // horizon the read did not ask (the close too near) has no row.
-  // ---- the direction line (spx_jev.mirai_prediction.direction_line, 2026-10-13): a separate line that answers only "if it
-  // moves, which way?" for the 30-minute average-price box, from its card (DIRECTION_LINE_CARD) on the page's cadence. One
-  // row under the headline's odds bar, drawn only when the card's read is the read on screen (read_id "live:" and the
-  // card's row stamp): a call says its side and confidence with the points it expects, a no-call says which way it leaned,
-  // a line with no graded call yet says it is new; under a call or no-call with a record, how its calls have gone and what
-  // "always up" would have scored on the same reads. A missing file (no read yet, the switch off) costs the call nothing.
+  // ---- the direction panel (spx_jev.mirai_prediction.direction_line; the line 2026-10-13, the panel 2026-10-14 on Will's
+  // approved design): a separate line that answers only "if it moves, which way?" for the 30-minute average-price box,
+  // from its card (DIRECTION_LINE_CARD) on the page's cadence, as its own card between the 30-minute call and Claude's
+  // read. Drawn only for the read on screen (the card's read_id is "live:" and the live card's row stamp), never under
+  // a session day's wait for its first card nor under the pre-market card before today's first read. Top to bottom: the
+  // window's clock; the graded call (revision 0, made at the read) big, with the points it has banked so far at its
+  // right, and its final points with how it went once graded; the split of down and up with the no-call band's ticks;
+  // the window drawn live from the day's minute bars (the price box's own fetch), the running average since the read
+  // against the flat zone; one row per voice, its lean, its share of the say on the newest revision (Claude joins
+  // there) and that share's trend over the newest reads; the record of the line's graded calls; and when the call was
+  // made and Claude joined. A missing or unserved file costs the page nothing: the card stays hidden.
   var DIRECTION_URL = '/api/store/file?name=DIRECTION_LINE_CARD';
   var direction = null;
-  function signedPts(x){ x = Math.round(x || 0); return (x > 0 ? '+' : '') + x; }
-  function directionWords(c){
-    var k = c.call, rec = c.record && c.record.since_start, has = !!(rec && rec.calls), side = cap(k.side) + ' ' + pct(k.confidence);
-    var lead = k.called ? 'If it moves: ' + side : 'If it moves: no call (' + side + ')';
-    var tail = !has ? ' · new' : k.called && typeof k.expected_points === 'number' ? ' · expect ' + signedPts(k.expected_points) : '';
-    var line = has ? 'Direction line · ' + rec.right + ' of ' + rec.calls + ' right · avg ' + signedPts(rec.mean_points) +
-                     (typeof rec.always_up_mean_points === 'number' ? ' (always-up ' + signedPts(rec.always_up_mean_points) + ')' : '') : '';
-    return {lead: lead, tail: tail, line: line};
+  var DIR_VOICES = [['matcher', 'Matcher'], ['additive_scorer', 'Additive'], ['jev_corrected', 'JEV-corrected'], ['historical_odds', 'Usual odds'],
+                    ['claude_forecast', 'Claude']];
+  var DIR_BAND = [0.45, 0.55];                  // the no-call band the split's ticks mark (the line's cold-start gate)
+  function signedPts(x){ x = Math.round(x || 0); return (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x); }
+  function signedOne(x){ var v = Math.round((x || 0) * 10) / 10; return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(1); }
+  function dirSide(k){ return cap(k.side) + ' ' + pct(k.side === 'up' ? k.p_up : 1 - k.p_up); }
+  // the line's points grade, mirrored from direction_line.points_grade (keep the two in step): with Z the read's edge,
+  // a_t the average of the closes from the read's minute through minute t less the read's spot (the running average),
+  // d_t = (a_t - Z) / Z past the edge above, at most d_cap, (a_t + Z) / Z past it below, at least -d_cap, 0 inside;
+  // w_t = T + 1 - t over the window's T minutes, sooner counting more; S = 100 x sum(w_t d_t) / (d_cap x sum(w_t)) in
+  // the Up view, a Down call scoring -S. A minute still to come adds nothing yet, so the sum is the points banked so far
+  // and at the window's last minute it is the line's own grade. The bars counted are those finished by now, up to the
+  // first minute with none (the grade never fills a bar)
+  function dirPoints(rows, t0, T, spot, edge, dcap){
+    var by = {}, now = Date.now();
+    (rows || []).forEach(function(b){ var t = Date.parse(b && b.ts); if(!isNaN(t) && typeof b.close === 'number' && t + 60000 <= now) by[t] = b; });
+    var total = 0, weighted = 0, avgs = [];
+    for(var t = 1; t <= T; t++){
+      var b = by[t0 + (t - 1) * 60000]; if(!b) break;
+      total += b.close - spot;
+      var a = total / t, d = a > edge ? Math.min((a - edge) / edge, dcap) : a < -edge ? Math.max((a + edge) / edge, -dcap) : 0;
+      weighted += (T + 1 - t) * d; avgs.push(a);
+    }
+    return {avgs: avgs, up: T > 0 ? 100 * weighted / (dcap * T * (T + 1) / 2) : 0};
   }
-  function paintDirection(node){
-    var d = node || $('dline'); if(!d) return;
-    var c = direction, k = c && c.call;
-    if(!(k && k.side && last && c.read_id === 'live:' + last.row_ts)){ d.hidden = true; return; }
-    var w = directionWords(c), lead = d.firstChild, rec = d.lastChild;
-    lead.textContent = ''; lead.appendChild(el('b', null, w.lead)); if(w.tail) lead.appendChild(el('span', null, w.tail));
-    rec.textContent = w.line; rec.hidden = !w.line;
-    d.setAttribute('aria-label', w.lead + w.tail + (w.line ? '. ' + w.line : ''));
-    d.hidden = false;
+  var DIR_RESULT = {right: 'right', wrong: 'wrong', stayed_flat: 'stayed flat'};
+  function dirResult(points, rightAt){ return points >= rightAt ? 'right' : points <= -rightAt ? 'wrong' : 'stayed_flat'; }
+  function directionShown(c){
+    return !!(c && c.call && c.call.side && typeof c.call.p_up === 'number' && last && c.read_id === 'live:' + last.row_ts
+              && !waiting() && !(shownPre && !todaysCard()));
   }
-  function directionRow(){
-    var d = el('div', 'dline'); d.id = 'dline'; d.hidden = true;
-    d.appendChild(el('div', 'dl-lead')); d.appendChild(el('div', 'dl-rec'));
-    paintDirection(d);
-    return d;
+  // the window as a drawing, laid out at its measured width W: the flat zone as a band with its edges dashed, the running
+  // average since the read as a line to its newest minute, now as a rule, and under it the read, now and the window's end
+  function dirChart(W, avgs, T, edge, open){
+    var H = 110, top = 8, bottom = 94, svg = svgEl('svg', {viewBox: '0 0 ' + W + ' ' + H, 'class': 'dp-chart', role: 'img'});
+    var hi = Math.max(1.6 * edge, Math.max.apply(null, avgs.concat([0])) * 1.15), lo = Math.min(-1.6 * edge, Math.min.apply(null, avgs.concat([0])) * 1.15);
+    var y = function(v){ return top + (hi - v) / (hi - lo) * (bottom - top); }, x = function(t){ return t / T * (W - 5); };   // the dot's radius kept inside
+    var yu = y(edge), yd = y(-edge);
+    svg.appendChild(svgEl('rect', {x: 0, y: yu.toFixed(1), width: W, height: (yd - yu).toFixed(1), 'class': 'band'}));
+    [yu, yd].forEach(function(v){ svg.appendChild(svgEl('line', {x1: 0, x2: W, y1: v.toFixed(1), y2: v.toFixed(1), 'class': 'edge'})); });
+    var e1 = edge.toFixed(1);
+    svg.appendChild(svgEl('text', {x: 4, y: (yd - yu >= 18 ? yd - 5 : yd + 13).toFixed(1), 'class': 'halo'}, 'flat ±' + e1 + ' pts'));
+    svg.appendChild(svgEl('text', {x: W - 4, y: (yu - 4).toFixed(1), 'text-anchor': 'end', 'class': 'halo'}, '+' + e1));
+    var n = avgs.length, nx = x(n);
+    if(open) svg.appendChild(svgEl('line', {x1: nx.toFixed(1), x2: nx.toFixed(1), y1: 4, y2: 96, 'class': 'now'}));
+    var pts = ['0,' + y(0).toFixed(1)].concat(avgs.map(function(a, i){ return x(i + 1).toFixed(1) + ',' + y(a).toFixed(1); }));
+    if(n) svg.appendChild(svgEl('polyline', {points: pts.join(' '), 'class': 'path'}));
+    var dy = y(n ? avgs[n - 1] : 0), right = nx < W - 72;
+    svg.appendChild(svgEl('circle', {cx: nx.toFixed(1), cy: dy.toFixed(1), r: 4.5, 'class': 'dot'}));
+    if(n) svg.appendChild(svgEl('text', {x: (right ? nx + 6 : nx - 7).toFixed(1), y: (dy < 20 ? dy + 16 : dy - 6).toFixed(1), 'text-anchor': right ? 'start' : 'end',
+                                         'class': 't-avg halo'}, 'avg ' + signedOne(avgs[n - 1])));
+    svg.appendChild(svgEl('text', {x: 0, y: 108}, 'read'));
+    if(open && nx > 34 && nx < W - 62) svg.appendChild(svgEl('text', {x: nx.toFixed(1), y: 108, 'text-anchor': 'middle'}, 'now'));
+    svg.appendChild(svgEl('text', {x: W, y: 108, 'text-anchor': 'end'}, '+' + T + ' min'));
+    svg.setAttribute('aria-label', n ? 'The average since the read is ' + signedOne(avgs[n - 1]) + ' points after ' + n + ' of ' + T + ' minutes, the flat zone ' +
+                                       '±' + e1 + ' points' : 'No minute of the window yet');
+    return svg;
+  }
+  // one voice's row: its name, its lean drawn from the middle (up to the right in blue, down to the left in rust), its
+  // share of the say and that share over the newest reads, on one scale ``span`` for every voice
+  function dirVoice(name, q, share, hist, span){
+    var r = el('div', 'dp-v'), tr = el('div', 'dp-tr'), half = Math.abs(q - 0.5) * 100, up = q >= 0.5, lean = el('i', up ? 'up' : 'dn');
+    lean.style.left = (up ? 50 : 50 - half).toFixed(1) + '%'; lean.style.width = half.toFixed(1) + '%';
+    tr.appendChild(lean); tr.appendChild(el('b'));
+    r.appendChild(el('span', 'n', name)); r.appendChild(tr); r.appendChild(el('span', 'w', pct(share)));
+    var svg = svgEl('svg', {viewBox: '0 0 44 14', 'aria-hidden': 'true'}), seen = [];
+    (hist || []).forEach(function(v, i){ if(typeof v === 'number') seen.push([i, v]); });
+    if(seen.length >= 2 && span[1] > span[0]){
+      var last_ = (hist.length - 1) || 1;
+      svg.appendChild(svgEl('polyline', {'class': 'sp ' + (seen[seen.length - 1][1] >= seen[0][1] ? 'up' : 'dn'),
+        points: seen.map(function(p){ return (p[0] / last_ * 44).toFixed(1) + ',' + (13 - (p[1] - span[0]) / (span[1] - span[0]) * 12).toFixed(1); }).join(' ')}));
+    }
+    r.appendChild(svg);
+    r.setAttribute('aria-label', name + ': ' + (up ? 'up ' : 'down ') + pct(up ? q : 1 - q) + ' if it moves, ' + pct(share) + ' of the say');
+    return r;
+  }
+  function dirTile(key, value){ var t = el('div', 'tile'), k = el('div', 'tile-k'); k.appendChild(el('span', null, key)); t.appendChild(k); t.appendChild(el('div', 'tile-v', value)); return t; }
+  function paintDirection(box){
+    var c = direction, k = c.call, g0 = c.graded_call || k, rules = c.rules || {}, rightAt = rules.right_points || 10, dcap = rules.d_cap || 2;
+    var t0 = startOf(c.row_ts), mark = last.marks && last.marks.next_30 !== undefined ? last.marks.next_30 : plusIso(c.row_ts, 30);
+    var end = mark ? Date.parse(mark) : t0 + 30 * 60000, T = Math.max(1, Math.round((end - t0) / 60000)), now = Date.now(), open = now < end;
+    var otherDay = String(c.row_ts || '').slice(0, 10) !== marketDay();
+    box.textContent = '';
+    // the clock, as the call's card draws it
+    var top_ = el('div', 'clock-top'), left = el('b', null, mark ? (leftWords(end, now) || 'Window closed') : 'Never graded');
+    top_.appendChild(el('div', 'mode', 'Direction · 30 min')); top_.appendChild(left); box.appendChild(top_);
+    var track = el('div', 'clock-bar'), fill = el('i'); track.appendChild(fill); box.appendChild(track);
+    fill.style.width = Math.max(0, Math.min(100, (now - t0) / Math.max(60000, end - t0) * 100)).toFixed(1) + '%';
+    var sub = el('div', 'clock-sub'); sub.appendChild(el('span', null, 'Read ' + viewerTime(c.row_ts, {zone: true, day: otherDay})));
+    sub.appendChild(el('span', null, mark ? 'Graded ' + viewerTime(mark) : 'Ends past the close, never graded')); box.appendChild(sub);
+    // the graded call, and its points: banked so far from the bars while the window is open, then the line's own grade
+    // (the bars' count until the grade lands at the next read); a no-call is scored on the side it leaned
+    box.appendChild(labRow('If it moves · which way')).className = 'lab dp-lab';
+    var head = el('div', 'dp-head'), call = el('div', 'dp-call ' + (g0.called ? g0.side : 'none')), sign = g0.side === 'up' ? 1 : -1;
+    if(g0.called){
+      var arrow = svgEl('svg', {viewBox: '0 0 12 16', 'aria-hidden': 'true'});
+      arrow.appendChild(svgEl('path', {d: g0.side === 'up' ? 'M6 15V2M1.5 6.5 6 2l4.5 4.5' : 'M6 1v13M1.5 9.5 6 14l4.5-4.5'}));
+      call.appendChild(arrow); call.appendChild(el('b', null, dirSide(g0)));
+    } else { call.appendChild(el('b', null, 'No call')); call.appendChild(el('span', null, 'leans ' + dirSide(g0))); }
+    head.appendChild(call);
+    var sameDay = !!bars && barsDay === String(c.row_ts || '').slice(0, 10);
+    var edge = typeof k.zone_edge_points === 'number' && k.zone_edge_points > 0 ? k.zone_edge_points : null;
+    var run = sameDay && edge && typeof k.spot === 'number' ? dirPoints(bars, t0, T, k.spot, edge, dcap) : null;
+    var gr = c.grade && typeof c.grade.points === 'number' ? c.grade : null, said = null, upPts = null;
+    if(gr){ upPts = gr.up_points; said = signedPts(gr.points) + '|points · ' + (g0.called ? DIR_RESULT[gr.result] || words(gr.result) : 'on its lean'); }
+    else if(c.grade && c.grade.result === 'not_graded') said = '—|not graded';
+    else if(run && mark && !open && run.avgs.length === T){ upPts = run.up; said = signedPts(sign * run.up) + '|points · ' + (g0.called ? DIR_RESULT[dirResult(sign * run.up, rightAt)] : 'on its lean'); }
+    else if(run && mark){ upPts = run.up; said = signedPts(sign * run.up) + '|points ' + (open ? 'so far' : 'so far, bars missing') + (g0.called ? '' : ' on its lean'); }
+    if(said){
+      var p = el('div', 'dp-pts'), parts = said.split('|'), num = el('b', upPts > 0 ? 'up' : upPts < 0 ? 'down' : null, parts[0]);
+      p.appendChild(num); p.appendChild(el('span', null, parts[1])); head.appendChild(p);
+    }
+    box.appendChild(head);
+    // the split of the call, down on the left, with the no-call band's ticks
+    var split = el('div', 'dp-split'), dn = el('i', 'dn'), up = el('i', 'up'), pu = g0.p_up;
+    dn.style.flex = (1 - pu).toFixed(4) + ' 1 0'; up.style.flex = pu.toFixed(4) + ' 1 0';
+    split.appendChild(dn); split.appendChild(up);
+    DIR_BAND.forEach(function(b){ var tick = el('b'); tick.style.left = (b * 100) + '%'; split.appendChild(tick); });
+    split.setAttribute('role', 'img'); split.setAttribute('aria-label', 'Down ' + pct(1 - pu) + ', up ' + pct(pu) + ', no call between 45 and 55');
+    box.appendChild(split);
+    var sl = el('div', 'dp-split-lab'), odds = el('span');
+    [['down', 'Down ' + Math.round((1 - pu) * 100)], ['up', 'Up ' + Math.round(pu * 100)]].forEach(function(o, i){
+      if(i) odds.appendChild(el('span', null, ' · '));
+      odds.appendChild(el(o[0] === g0.side ? 'b' : 'span', null, o[1]));
+    });
+    sl.appendChild(odds);
+    sl.appendChild(el('span', null, 'no call 45–55' + (g0.called && typeof g0.expected_points === 'number' ? ' · expect ' + signedPts(g0.expected_points) : '')));
+    box.appendChild(sl);
+    // the window, live: drawn once there are bars of the read's day, at the card's measured width
+    if(run && mark){
+      var holder = el('div'); box.appendChild(holder);
+      var W = Math.round(holder.clientWidth) || 296;
+      holder.appendChild(dirChart(Math.max(200, W), run.avgs, T, edge, open));
+      box.appendChild(el('div', 'dp-cap', 'The average since the read, against the flat zone: ' + (g0.side === 'up' ? 'higher' : 'lower') + ' and sooner earns more points.'));
+    }
+    // who drove it: the newest revision's voices and shares (Claude joins at revision 1), each share's trend over the
+    // newest reads on one scale
+    var keyRow = labRow('Who drove it', 'lean · weight · trend'); keyRow.className = 'lab dp-lab'; box.appendChild(keyRow);
+    var hist = (c.share_history && c.share_history.shares) || {}, all = [];
+    DIR_VOICES.forEach(function(v){ (hist[v[0]] || []).forEach(function(x){ if(typeof x === 'number') all.push(x); }); });
+    var span = all.length ? [Math.min.apply(null, all), Math.max.apply(null, all)] : [0, 0];
+    DIR_VOICES.forEach(function(v){
+      var q = (k.voices || {})[v[0]], w = (k.shares || {})[v[0]];
+      if(typeof q === 'number' && typeof w === 'number') box.appendChild(dirVoice(v[1], q, w, hist[v[0]], span));
+    });
+    var ends = el('div', 'dp-v ends'), e = el('span', 'e'); e.appendChild(el('span', null, 'down')); e.appendChild(el('span', null, 'up'));
+    ends.appendChild(e); ends.setAttribute('aria-hidden', 'true'); box.appendChild(ends);
+    // the record: one square per graded call, oldest first (filled right, outlined stayed flat, rust wrong), this read's
+    // call dashed until it is graded; the calls right, their mean points and "up only" (always up on the same reads)
+    var rec = c.record && c.record.since_start, recBox = el('div', 'dp-rec');
+    var rl = labRow('Record · direction', c.record && c.record.first_day ? 'since ' + dayWords(c.record.first_day) : null); recBox.appendChild(rl);
+    var sq = el('div', 'sq'), calls = c.recent_calls || [], graded = calls.some(function(r){ return r.row_ts === c.row_ts; });
+    calls.forEach(function(r){ sq.appendChild(el('i', r.result === 'right' ? null : r.result === 'wrong' ? 'miss' : 'flat')); });
+    if(g0.called && !graded) sq.appendChild(el('i', 'open'));
+    if(calls.length || (g0.called && !graded)){
+      sq.setAttribute('role', 'img');
+      sq.setAttribute('aria-label', calls.length + ' graded calls, oldest first' + (g0.called && !graded ? ', and this read’s still open' : ''));
+      recBox.appendChild(sq);
+    }
+    if(rec && rec.calls){
+      var tiles = el('div', 'dp-tiles');
+      tiles.appendChild(dirTile('Right', rec.right + ' of ' + rec.calls));
+      tiles.appendChild(dirTile('Avg points', signedOne(rec.mean_points)));
+      tiles.appendChild(dirTile('Up only', typeof rec.always_up_mean_points === 'number' ? signedOne(rec.always_up_mean_points) : '—'));
+      recBox.appendChild(tiles);
+      var note = (rec.graded_reads || 0) < DECIDE_AT ? 'Too early to judge' : 'Judged at ' + DECIDE_AT + ' reads';
+      recBox.appendChild(el('div', 'dp-note', note + ' · ' + rec.stayed_flat + ' stayed flat' + (rec.wrong ? ' · ' + rec.wrong + ' wrong' : '')));
+    } else recBox.appendChild(el('div', 'dp-note', 'No graded call yet'));
+    box.appendChild(recBox);
+    // who joined when: the graded call at the read, Claude's revision when it came after
+    var foot = 'Graded call made at ' + viewerTime(c.row_ts);
+    if(k.revision >= 1 && k.claude_included) foot += ' · Claude joined ' + viewerTime(c.claude_written_at || k.written_at) + ' (now ' + dirSide(k) + ')';
+    else if(g0.claude_included) foot += ' · Claude in it';
+    box.appendChild(el('div', 'dp-foot', foot));
+  }
+  // the panel drawn for the read on screen, or hidden (taking no room) when it is not, or when its card cannot be drawn
+  function drawDirection(){
+    var box = $('dpanel'); if(!box) return;
+    if(!directionShown(direction)){ box.hidden = true; return; }
+    try { box.hidden = false; paintDirection(box); } catch(e){ box.hidden = true; }
   }
   function pollDirection(){
     fetch(DIRECTION_URL, {cache:'no-store'}).then(function(r){ return r.ok ? r.json() : null; })
       .then(function(j){
         var c = j && j.kind === 'json' ? j.data : j;   // /api/store/file wraps the file as {kind, data}
-        if(!(c && c.call)) return;
-        direction = c;
-        try { paintDirection(); } catch(e){ var d = $('dline'); if(d) d.hidden = true; }
+        if(c && c.call) direction = c;
+        drawDirection();
       })
-      .catch(function(){});
+      .catch(function(){ drawDirection(); });
   }
 
   var CLAUDE_URL = '/api/store/file?name=CLAUDE_FORECAST_CARD', NEAR = 3;
