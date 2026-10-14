@@ -3101,7 +3101,9 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     else if(run && mark && !open && run.avgs.length === T){ upPts = run.up; said = signedPts(sign * run.up) + '|points · ' + (g0.called ? DIR_RESULT[dirResult(sign * run.up, rightAt)] : 'on its lean'); }
     else if(run && mark){ upPts = run.up; said = signedPts(sign * run.up) + '|points ' + (open ? 'so far' : 'so far, bars missing') + (g0.called ? '' : ' on its lean'); }
     if(said){
-      var p = el('div', 'dp-pts'), parts = said.split('|'), num = el('b', upPts > 0 ? 'up' : upPts < 0 ? 'down' : null, parts[0]);
+      // the number's colour says whether the call is earning, not where price went: plus blue, minus rust, zero plain
+      var earned = upPts === null ? null : sign * upPts;
+      var p = el('div', 'dp-pts'), parts = said.split('|'), num = el('b', earned > 0 ? 'up' : earned < 0 ? 'down' : null, parts[0]);
       p.appendChild(num); p.appendChild(el('span', null, parts[1])); head.appendChild(p);
     }
     box.appendChild(head);
