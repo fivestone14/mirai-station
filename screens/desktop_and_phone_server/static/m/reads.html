@@ -113,10 +113,12 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
 /* a call: time, where the average went over what was called, the picture, the grade; a tap opens its numbers */
 .calls{margin-top:4px}
 .calls[hidden]{display:none}
-.call{display:grid;grid-template-columns:40px minmax(0,1fr) 104px 52px;gap:8px;align-items:center;width:100%;min-height:var(--tap-min);
+.call{display:grid;grid-template-columns:minmax(40px,max-content) minmax(0,1fr) 104px 52px;gap:8px;align-items:center;width:100%;min-height:var(--tap-min);
       padding:6px 0;border:0;border-top:1px solid var(--s2);background:none;font:inherit;color:inherit;text-align:left;
       touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-.call .t{font:700 12.5px/1.2 var(--sans);color:var(--i)}
+/* the time's column holds the widest time in 40px and grows with Android's larger text sizes; the time's 3.2em (40px
+   at 12.5px) grows every row's column alike, so the words stay in line down the day */
+.call .t{min-width:3.2em;font:700 12.5px/1.2 var(--sans);color:var(--i)}
 .call .w{min-width:0;font:400 11.5px/1.25 var(--sans);color:var(--i-mute)}
 .call .w b{display:block;font:700 12.5px/1.2 var(--sans)}
 .call .w b.up{color:var(--o-up)} .call .w b.down{color:var(--o-dn)} .call .w b.flat{color:var(--i)}

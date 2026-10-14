@@ -278,7 +278,7 @@ def test_the_page_fits_the_owners_360px_phone_and_keeps_the_house_rules():
     page's 48px tap minimum, seen whole (Final-Reads), not a smaller box with a hidden reach. No viewport unit, no
     innerHTML, and no class the stylesheet names that nothing writes."""
     card = 360 - 2 * 16 - 2 * 14
-    cols = re.search(r"\.call\{display:grid;grid-template-columns:40px minmax\(0,1fr\) 104px 52px;gap:8px;align-items:center;width:100%;min-height:var\(--tap-min\);", READS)
+    cols = re.search(r"\.call\{display:grid;grid-template-columns:minmax\(40px,max-content\) minmax\(0,1fr\) 104px 52px;gap:8px;align-items:center;width:100%;min-height:var\(--tap-min\);", READS)
     assert cols and card - (40 + 104 + 52 + 3 * 8) >= 75
     assert re.search(r"\n\.all\{flex:none;min-height:var\(--tap-min\);", READS) and ".all::after" not in READS
     assert "cursor:pointer" not in READS and not re.search(r"[\U0001F300-\U0001FAFF]", READS)

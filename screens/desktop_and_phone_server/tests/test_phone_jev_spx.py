@@ -1715,8 +1715,8 @@ def test_the_new_rows_fit_the_owners_360px_phone():
     Why sheet (78 and 110px)."""
     inner = 360 - 2 * 16 - 2 * _px(".card", "padding") - 2
     sheet = 360 - 2 * 20
-    cols = re.search(r"grid-template-columns:(\d+)pxminmax\(0,1fr\)(\d+)px;gap:(\d+)px", _rule(".mix-r"))
-    assert sheet - int(cols.group(1)) - int(cols.group(2)) - 2 * int(cols.group(3)) >= 110
+    cols = re.search(r"grid-template-columns:([\d.]+)emminmax\(0,1fr\)([\d.]+)em;gap:(\d+)px.*font:400(12.5)px", _rule(".mix-r"))
+    assert sheet - float(cols.group(4)) * (float(cols.group(1)) + float(cols.group(2))) - 2 * int(cols.group(3)) >= 110
     assert "text-overflow:ellipsis" in _rule(".mix-r .n")
     assert "margin-left:auto" in _rule(".pill") and "white-space:nowrap" in _rule(".pill")
     assert _REC_W["RECORD · 30 MIN"] + 2 * 8 + _REC_W["300 of 300 reads"] + 6 <= inner
@@ -1724,7 +1724,7 @@ def test_the_new_rows_fit_the_owners_360px_phone():
     assert _REC_W["TODAY’S CALLS"] + 2 * 8 + _REC_W["10 of 11 right · 1 open"] + 6 <= inner
     strip = 360 - 2 * 16 - 2 * 14 - 2
     for sel, room in ((".cl-grid", strip), (".cl-vs", sheet)):
-        cols = re.search(r"grid-template-columns:(\d+)pxminmax\(0,1fr\)(\d+)px;gap:\d+px(\d+)px", _rule(sel))
+        cols = re.search(r"grid-template-columns:minmax\((\d+)px,m[a-z]+-content\)minmax\(0,1fr\)minmax\((\d+)px,m[a-z]+-content\);gap:\d+px(\d+)px", _rule(sel))
         assert room - int(cols.group(1)) - int(cols.group(2)) - 2 * int(cols.group(3)) >= 110, sel
     assert "white-space:nowrap" in _rule(".cl-n") and _REC_W["14 · 58 · 28"] + 4 <= 84      # one number at 800 adds under 4px
     # the value column's verdict keeps one line and its caption wraps under it when long ("Busier than 13 of 19 days")
@@ -2474,7 +2474,7 @@ def test_claudes_read_is_a_strip_under_the_call_never_a_second_headline():
     assert _rule(".claude").startswith("padding:10px14px0;border:1pxsolidvar(--o-fl)") and "box-shadow" not in _rule(".claude") and "background" not in _rule(".claude")
     assert "color:var(--i-mute)" in _rule(".cl-h i,.cl-n i")                           # the dots read on the paper, as the page's other separators do
     assert "font:70015px/1.2" in _rule(".cl-lead b") and "font:70030px" in _rule(".big") and "height:var(--tap-min)" in _rule(".cl-why")
-    assert "grid-template-columns:44pxminmax(0,1fr)84px" in _rule(".cl-grid") and "height:10px" in _rule(".cl-bar")
+    assert "grid-template-columns:minmax(44px,max-content)minmax(0,1fr)minmax(84px,max-content)" in _rule(".cl-grid") and "height:10px" in _rule(".cl-bar")
     assert "% chance the window ends each way" not in SPX and 'id="claudeR"' not in SPX and 'id="claudeSheet"' not in SPX
 
 
@@ -2541,7 +2541,7 @@ def test_the_why_sheet_sets_claudes_bar_over_the_usuals_with_the_reasons_in_plai
     rest = [[k["attrs"].get("class"), _flat_text(k)] for k in _claude(scored)["body"]["kids"][1:]]
     assert rest == [["cl-why-h", "Why"], ["cl-why-r", "AllNo reason survived the checks"],
                     ["cl-rec", "Record: right 54% of 120 reads (next 30 min) \u00B7 +4% vs the historical odds. Not part of the call above."]]
-    assert "grid-template-columns:78pxminmax(0,1fr)110px" in _rule(".cl-vs") and "height:14px" in _rule(".cl-vs .cl-bar") and "height:8px" in _rule(".cl-vs .cl-bar.usual")
+    assert "grid-template-columns:minmax(78px,min-content)minmax(0,1fr)minmax(110px,min-content)" in _rule(".cl-vs") and "height:14px" in _rule(".cl-vs .cl-bar") and "height:8px" in _rule(".cl-vs .cl-bar.usual")
 
 
 def _claude_poll(c):
@@ -3383,8 +3383,8 @@ def test_the_wide_column_is_the_boards_three_tiles_a_row_of_horizons_and_the_not
     assert ".claude{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;padding-bottom:10px}" in wide
     assert ".cl-foot{grid-column:2;grid-row:1;margin:-16px 0;border-top:0}" in wide and ".cl-h{display:none}" in wide
     assert ".cl-grid{grid-template-columns:repeat(3,auto minmax(0,1fr));gap:4px 8px}" in wide
-    assert ".cl-k,.cl-n{grid-row:1;grid-column:auto}" in wide and ".cl-bar{grid-row:2;grid-column:span 2}" in wide and ".cl-usual{grid-row:3;grid-column:span 2;margin-bottom:0;white-space:normal}" in wide
-    assert ".px-spark{flex:0 0 120px}" in wide and "SPARK_W_WIDE = 120" in _var("SPARK_W") and "W = chartDocked() ? SPARK_W_WIDE : SPARK_W" in _fn("paintSpark")
+    assert ".cl-k,.cl-n{grid-row:1;grid-column:auto}" in wide and ".cl-bar{grid-row:2;grid-column:span 2}" in wide and ".cl-usual{grid-row:3;grid-column:span 2;margin-bottom:0}" in wide
+    assert ".px-spark{flex:0 0 120px;max-width:none}" in wide and "SPARK_W_WIDE = 120" in _var("SPARK_W") and "W = chartDocked() ? SPARK_W_WIDE : SPARK_W" in _fn("paintSpark")
     assert ".vq{flex:0 0 176px}" in wide and ".note{flex:1 1 0;min-width:0;text-align:right}" in wide   # shrinks beside them, never under
     spark = _chart({"now": "2026-10-09T14:43:00-04:00", "card": BOARD_CARD, "bars": BOARD_BARS, "book": None, "wide": True})["spark"]
     assert spark["attrs"]["viewBox"] == "0 0 120 26" and spark["kids"][1]["attrs"]["cx"] == "119" and spark["kids"][0]["attrs"]["points"].startswith("1.0,")
