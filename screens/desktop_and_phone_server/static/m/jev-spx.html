@@ -1450,7 +1450,8 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     last = c;
     if(priceDay() !== barsDay) pollBars();        // a new card can name the day whose bars the price box and the chart draw
     pollBook();                                   // and whose book, while the chart is visible
-    if(!same){ gradesAt = 0; pollGrades(); }      // a new card may carry a new grade: the day's calls are asked for again, past the minute's throttle
+    if(!same) gradesAt = 0;                       // a new card may carry a new grade: the day's calls are asked for again, past the minute's throttle,
+    if(!gradesAt) pollGrades();                   // and so are they on every poll after a fetch of them failed
     if(same && lastOk && !$('sub').classList.contains('err')){ ages(c); tick(); return; }
     draw(c, true);
     if(same) return;
@@ -1460,12 +1461,21 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // A failed fetch draws the last card once, saying it failed; while fetches keep failing only the ages move, so a
   // fold the reader opened is never snapped shut every POLL_MS through an outage.
   function failedFetch(){ if(lastOk) draw(last, false); else ages(last); }
+  // The card and the price are given up on after FETCH_MS: a station or tunnel that stalls without refusing would
+  // otherwise hold the one fetch each allows for the minute or two a gateway takes to time out, the spinner turning
+  // and no new card asked for, so a stall fails as a refused fetch does.
+  var FETCH_MS = 10000;
+  function timedFetch(url){
+    var ac = new AbortController();
+    setTimeout(function(){ ac.abort(new Error('no reply in ' + FETCH_MS / 1000 + ' seconds')); }, FETCH_MS);
+    return fetch(url, {cache:'no-store', signal: ac.signal});
+  }
   var inflight = false;
   function poll(){
     pollPre();                                    // before the open, the pre-market card is fetched with it
     if(inflight) return;                          // one fetch at a time, whatever fired it
     inflight = true; polling(true);               // a refresh shows its spinner; it never blanks the card
-    fetch(URL_, {cache:'no-store'}).then(function(r){
+    timedFetch(URL_).then(function(r){
       if(!r.ok) throw new Error('the station answered ' + r.status);
       return r.json();
     }).then(function(j){
@@ -1566,12 +1576,17 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     return row;
   }
   // the day's 30-minute calls, oldest first: the graded ones from the grades file (dayCalls), then the card's own calls
-  // the file has not graded yet, each open (callState) until its grade lands, so a call's square never vanishes between
-  // its mark passing and the grade's landing; a call the file has graded is drawn once, from the file
+  // the file lacks, each on its own state (callState): open until its grade lands, so a call's square never vanishes
+  // between its mark passing and the grade's landing, and graded as the card grades it when the file could not be read
+  // or has not caught up, so a failed fetch never drops a grade the card on screen carries; a call the file has graded
+  // is drawn once, from the file
   function dayStates(c){
     var graded = dayCalls(grades, cardDay()), states = graded.map(function(k){ return k.verdict; });
     var reads = graded.map(function(k){ return k.read; });
-    (c.calls || []).slice().reverse().forEach(function(k){ if(reads.indexOf(startOf(k.read)) < 0 && callState(k) === 'open') states.push('open'); });
+    (c.calls || []).slice().reverse().forEach(function(k){
+      var st = callState(k);
+      if(reads.indexOf(startOf(k.read)) < 0 && st !== 'never') states.push(st);
+    });
     return states;
   }
   // the row's name: the calls are the card's day's, so a card of another day (a weekend, or a session day before its
@@ -2236,14 +2251,15 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // ---- the live price: the station's SPX print (/api/spot, one Schwab quote cached a couple of seconds for every
   // viewer), asked every SPOT_MS in the session (inSession), and once on load and on waking outside it, when it is the
   // last close. Live only in the session and while the quote is younger than SPOT_LIVE_MS; its change is measured from
-  // the card's prior_close, the last minute bar of the session before, and said only on today's card. A failed or
-  // empty quote keeps the last price, said to be as of when it came, never dressed up as live; with no price yet the
-  // strip stays hidden. A card that lands after the quote draws the strip again (draw), so its change never waits for
-  // the next quote. The same words go on the price-today sheet's own price line, and while that sheet is open each
-  // quote moves its dot.
+  // the card's prior_close, the last minute bar of the session before, and said only on today's card. A failed, empty
+  // or stalled quote (timedFetch) keeps the last price, said to be as of when it came, never dressed up as live: every
+  // SPOT_MS the clock checks that rule again, so a live box whose quote has aged or whose session has closed is drawn
+  // again without waiting for a reply. With no price yet the strip stays hidden. A card that lands after the quote
+  // draws the strip again (draw), so its change never waits for the next quote. The same words go on the price-today
+  // sheet's own price line, and while that sheet is open each quote moves its dot.
   var SPOT_URL = '/api/spot?ticker=SPX', SPOT_MS = 5000, SESSION_HOURS = ['09:30', '16:00'];
   var SPOT_LIVE_MS = 15000;                     // a quote older than this is never drawn live
-  var spot = null, spotInflight = 0;
+  var spot = null, spotInflight = false;
   function money(x){ return (+x).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
   // the card's market day: its stamp's own date, written in New York's offset
   function cardDay(){ return last ? String(last.row_ts || '').slice(0, 10) : null; }
@@ -2301,15 +2317,19 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     if(chartVisible()) paintChart();
   }
   function pollSpot(){
-    if(spotInflight && Date.now() - spotInflight < SPOT_LIVE_MS) return;   // one at a time, a hung one given up on
-    spotInflight = Date.now();
-    fetch(SPOT_URL, {cache:'no-store'}).then(function(r){ return r.ok ? r.json() : null; }).then(function(j){
+    if(spotInflight) return;                    // one at a time, a hung one given up on (timedFetch)
+    spotInflight = true;
+    timedFetch(SPOT_URL).then(function(r){ return r.ok ? r.json() : null; }).then(function(j){
       if(j && typeof j.spot === 'number' && j.spot > 0) spot = {price: j.spot, at: Date.now(), fresh: true};
       else if(spot) spot.fresh = false;
       paintPx();
-    }).catch(function(){ if(spot) spot.fresh = false; paintPx(); }).finally(function(){ spotInflight = 0; });
+    }).catch(function(){ if(spot) spot.fresh = false; paintPx(); }).finally(function(){ spotInflight = false; });
   }
-  setInterval(function(){ if(!document.hidden && inSession()) pollSpot(); }, SPOT_MS);
+  setInterval(function(){
+    if(document.hidden) return;
+    if(inSession()) pollSpot();
+    if(spot && !$('pxLive').hidden && !spotState().live) paintPx();
+  }, SPOT_MS);
 
   // ---- the price-today chart (2026-10-10, Will's board Final-Chart): a tap on the price box opens the day's SPX line
   // by the minute, with today's options book drawn into the chart's right gutter. Three files, all through the by-name
@@ -2379,11 +2399,12 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     rawRows(BOOK_URL + day + '&limit=3').then(function(rows){ if(rows){ book = bookRow(rows); paintChart(); } })
       .catch(function(){}).finally(function(){ bookInflight = false; });
   }
+  // a failed or refused fetch of the grades clears its stamp, so the next card poll (arrived) asks again
   function pollGrades(){
     if(gradesInflight || Date.now() - gradesAt < BOOK_MS) return;
     gradesInflight = true; gradesAt = Date.now();
-    rawRows(GRADES_URL).then(function(rows){ if(rows){ grades = rows; paintCalls(); if(chartVisible()) paintChart(); } })
-      .catch(function(){}).finally(function(){ gradesInflight = false; });
+    rawRows(GRADES_URL).then(function(rows){ if(rows){ grades = rows; paintCalls(); if(chartVisible()) paintChart(); } else gradesAt = 0; })
+      .catch(function(){ gradesAt = 0; }).finally(function(){ gradesInflight = false; });
   }
   setInterval(function(){ if(!document.hidden && priceDay() === marketDay() && within(BARS_HOURS)) pollBars(); }, BARS_MS);
   setInterval(function(){ if(!document.hidden && chartVisible()){ pollBook(); pollGrades(); } }, BOOK_MS);

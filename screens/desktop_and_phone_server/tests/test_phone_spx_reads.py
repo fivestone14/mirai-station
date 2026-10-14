@@ -47,7 +47,7 @@ def _run(js, data=None, tz=LA):
     fns = "".join(_fn(f) for f in ("svgEl", "viewerTime", "marketAt", "money", "signed", "cap", "callDays", "isRight", "score", "rightOf", "share",
                                    "dayName", "headLine", "strip", "squares", "dayLine", "callRow", "dayCard", "summary", "anyOpen"))
     script = ("const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + FIXED_NOW + FAKE_DOM + text + _var("DAYS_SUMMED") + _var("STRIP_W")
-              + _var("LINE_W") + _var("NS") + "var VIEWER_FMT = {}, opened = D.opened || {}, days = D.days || null, asked = [];"
+              + _var("LINE_W") + _var("NS") + "var VIEWER_FMT = {}, opened = D.opened || {}, days = D.days || null, lines = {}, asked = [];"
               "function barsOf(d){ asked.push(d.day); return Promise.resolve(D.bars || null); }" + fns + js)
     out = run_node(_NODE, script, input=json.dumps(data), capture_output=True, text=True, timeout=20,
                    env={**os.environ, "TZ": tz})
@@ -256,7 +256,7 @@ def test_the_pinned_summary_counts_the_last_five_days_beside_one_control_for_eve
 def test_the_page_reads_the_grades_through_the_raw_route_and_keeps_an_opened_call_open():
     assert _var("GRADES_URL").strip() == "var GRADES_URL = '/api/store/file?name=JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON&lane=live&limit=400';"
     assert _var("DAYS_SUMMED").strip() == "var DAYS_SUMMED = 5, SCALE_PTS = 32, POLL_MS = 60000;"
-    assert "if(key === drawn && !failed) return;" in _fn("poll")                       # the same list leaves the page alone
+    assert "if(key === drawn && !failed){ days.forEach(function(d){ if(opened[d.day]) lines[d.day](); }); return; }" in _fn("poll")   # the same list leaves the page alone
     assert "if(!(d.day in opened)) opened[d.day] = i === 0;" in _fn("draw")           # the newest day opens, a hand choice stays
     assert "days.forEach(function(d){ opened[d.day] = open; }); draw();" in _fn("summary")
     assert "Fetch failed, showing the last list" in _fn("draw")

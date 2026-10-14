@@ -205,6 +205,7 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
   var NS = 'http://www.w3.org/2000/svg';
   var days = null, drawn = null, failed = false, opened = {};   // opened: each day's open or folded, the newest open at first
   var barsByDay = {};                                           // each done day's bars, asked for once; a running day's are never kept
+  var lines = {};                                               // each drawn day's line(), which asks for its line until one is drawn
 
   function $(id){ return document.getElementById(id); }
   function el(tag, cls, text){ var e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
@@ -383,11 +384,13 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
     d.calls.forEach(function(c){ callRow(c).forEach(function(n){ list.appendChild(n); }); });
     list.hidden = !open;
     // the day's line is asked for the first time the day is open and put in over its calls when it comes, laid out at
-    // the card's width as it stands then (the head's, which has no sides of its own)
+    // the card's width as it stands then (the head's, which has no sides of its own); bars that failed or that the
+    // station could not find leave it to be asked for again, at the next unfold or poll
     function line(){
       if(lined) return; lined = true;
-      barsOf(d).then(function(rows){ dayLine(d, rows, head.clientWidth || LINE_W, list); });
+      barsOf(d).then(function(rows){ if(!rows){ lined = false; return; } dayLine(d, rows, head.clientWidth || LINE_W, list); });
     }
+    lines[d.day] = line;
     if(open) line();
     head.addEventListener('click', function(){
       var now = list.hidden; list.hidden = !now; head.setAttribute('aria-expanded', String(now)); opened[d.day] = now; allLabel();
@@ -434,9 +437,14 @@ main{display:flex;flex-direction:column;gap:6px}         /* a sliver between day
   function poll(){
     fetch(GRADES_URL, {cache: 'no-store'}).then(function(r){ return r.ok ? r.json() : null; }).then(function(j){
       if(!j || j.kind !== 'jsonl') throw new Error('no grades');
-      // the same list again leaves the page alone, so a call the reader opened stays open
-      var next = callDays(j.rows), key = JSON.stringify(next.map(function(d){ return [d.day, d.calls.length, d.calls[d.calls.length - 1].row_ts]; }));
-      if(key === drawn && !failed) return;
+      // the file's last rows only: when they are not the whole file and start inside the oldest day, that day may be
+      // cut short, so it is left out rather than shown with fewer calls than it had
+      var next = callDays(j.rows), first = j.rows[0];
+      if(j.total > j.shown && first && next.length && String(first.row_ts || '').slice(0, 10) === next[next.length - 1].day) next.pop();
+      // the same list again leaves the page alone, so a call the reader opened stays open; only an open day's line a
+      // failed fetch left out is asked for again
+      var key = JSON.stringify(next.map(function(d){ return [d.day, d.calls.length, d.calls[d.calls.length - 1].row_ts]; }));
+      if(key === drawn && !failed){ days.forEach(function(d){ if(opened[d.day]) lines[d.day](); }); return; }
       days = next; drawn = key; failed = false; draw();
     }).catch(function(){ failed = true; draw(); });
   }

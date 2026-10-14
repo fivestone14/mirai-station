@@ -106,7 +106,7 @@ MORNING = [call("09:50", "10:00", "flat", 0.42), call("09:45", "09:55", "up_smal
 def test_the_page_reads_the_spx_cards_and_keeps_the_sndk_pages_modes():
     assert "var URL_ = '/api/store/file?name=JEV_LIVE_CARD';" in JS
     assert "var TAPE_URL = '/api/store/file?name=JEV_OPENING_CARD';" in JS
-    assert "fetch(URL_, {cache:'no-store'})" in JS and "fetch(TAPE_URL, {cache:'no-store'})" in JS
+    assert "timedFetch(URL_)" in JS and "fetch(TAPE_URL, {cache:'no-store'})" in JS
     assert "shownLeads = laneLeads(tape, Date.now(), marketDay());" in _fn("paint")
     assert "main.appendChild(laneCard(tape, tapeOk));" in _fn("paint") and "main.appendChild(foldLive(c));" in _fn("paint")
     assert "} else sumCard(c, main);" in _fn("paint")
@@ -114,9 +114,10 @@ def test_the_page_reads_the_spx_cards_and_keeps_the_sndk_pages_modes():
     assert "laneLeads(tape, Date.now(), marketDay()) !== shownLeads" in _fn("tick")
     assert "setInterval(function(){ if(!document.hidden){ poll(); pollTape(); tick(); } }, POLL_MS);" in JS
     # the live price rides the station's existing quote route, every SPOT_MS in the session (inSession, the market-clock gate:
-    # the session's hours on a trading day), and on load and waking
+    # the session's hours on a trading day), and on load and waking; on the same clock a live box is drawn again once its
+    # quote is too old to be live
     assert "var SPOT_URL = '/api/spot?ticker=SPX', SPOT_MS = 5000, SESSION_HOURS = ['09:30', '16:00'];" in JS
-    assert "setInterval(function(){ if(!document.hidden && inSession()) pollSpot(); }, SPOT_MS);" in JS
+    assert "if(inSession()) pollSpot();" in JS and "if(spot && !$('pxLive').hidden && !spotState().live) paintPx();" in JS
     assert "pollSpot();" in _fn("wake") and "poll(); pollTape(); pollSpot(); armMark(); armTapeMark();" in JS
     assert "LANE_HOURS = ['09:33', '16:05']" in JS and "within(LANE_HOURS)" in _fn("pollTape")
     # the questions left the page for their own sheet (09-29), so no fold is remembered on the phone any more
@@ -246,7 +247,9 @@ def test_the_days_calls_row_sits_in_the_dock_under_claudes_read_as_a_card():
     few) and never the score: the dock's first card is today's calls, every graded call of the day from the grades file
     (as the chart's squares) as a square with the score in words, before the situation; the fold that gave the tally in
     words is gone with the drawing, and the grades are asked for on every new card."""
-    rows = [grade(f"{10 + i // 2:02d}:{'02' if i % 2 == 0 else '32'}", "wrong" if i in (1, 4, 6, 8, 10) else "right", day="2026-09-28") for i in range(11)]
+    # the day's reads from 10:31 to 15:31, the card's four (14:01 to 15:31) among them as the station's file carries them
+    reads = ["10:31", "11:01", "11:31", "12:01", "12:31", "13:01", "13:31", "14:01", "14:31", "15:00", "15:31"]
+    rows = [grade(t, "wrong" if i in (1, 4, 6, 8, 10) else "right", day="2026-09-28") for i, t in enumerate(reads)]
     got = _whole({**{k: MONDAY[k] for k in ("live", "tape", "premarket")}, "grades": rows}, "2026-09-28T16:04:00-04:00")
     assert [k for k, _ in got["dock"]] == ["card calls-link", "card sit"]
     assert got["dock"][0][1] == "Today\u2019s calls6 of 11 right" and got["dock_dom"][0]["attrs"]["href"] == "/m/reads.html"
@@ -255,8 +258,8 @@ def test_the_days_calls_row_sits_in_the_dock_under_claudes_read_as_a_card():
     assert [q["attrs"].get("class") for q in squares] == [None, "wrong", None, None, "wrong", None, "wrong", None, "wrong", None, "wrong"]
     assert not any(k == "card fold" and t.startswith("30-min calls") for k, t in got["main"])
     bare = _whole({k: MONDAY[k] for k in ("live", "tape", "premarket")}, "2026-09-28T15:40:00-04:00")
-    assert bare["dock"][0][1] == "Today\u2019s callsnone graded yet"       # no grades file on the station yet
-    assert "if(!same){ gradesAt = 0; pollGrades(); }" in _fn("arrived") and "paintCalls();" in _fn("draw") and "paintCalls();" in _fn("pollGrades")
+    assert bare["dock"][0][1] == "Today\u2019s calls4 of 4 right"       # no grades file on the station yet: the card's own grades stand in
+    assert "if(!same) gradesAt = 0;" in _fn("arrived") and "if(!gradesAt) pollGrades();" in _fn("arrived") and "paintCalls();" in _fn("draw") and "paintCalls();" in _fn("pollGrades")
 
 
 def test_a_new_card_asks_for_the_grades_at_once_and_keeps_a_call_open_until_its_grade_lands():
@@ -264,7 +267,7 @@ def test_a_new_card_asks_for_the_grades_at_once_and_keeps_a_call_open_until_its_
     the run that grades the last call writes the card with it, and the same card again never asks. Between a call's
     mark passing and its grade landing (the grader runs a minute or two after the mark) the call stays in the row as an
     open square from the card's own calls instead of vanishing; once the grades file carries it, it is drawn once, from
-    the file, which is the row's one source of grades (a card carries only its last few)."""
+    the file. A call the card has graded but the file lacks (the file could not be read) keeps the card's grade."""
     js = ("var calls = 0, last = null, lastOk = true, barsDay = null;"
           "function fetch(){ calls++; return Promise.resolve({ok: true, json: function(){ return Promise.resolve({kind: 'jsonl', rows: []}); }}); }"
           "function $(id){ return {getAttribute: function(){ return 'true'; }, classList: {contains: function(){ return false; }}, dataset: {}}; }"
@@ -288,13 +291,14 @@ def test_a_new_card_asks_for_the_grades_at_once_and_keeps_a_call_open_until_its_
           "console.log(JSON.stringify(out));")
     got = _run(js, {"card": {"row_ts": stamp("15:31"), "calls": calls}, "file": [grade("14:00", "wrong"), grade("14:30", "right")],
                     "landed": grade("15:01", "right"), "now": "2026-10-09T15:33:00-04:00"})
-    assert got == {"bare": ["open", "open"], "file": ["wrong", "right", "open", "open"], "landed": ["wrong", "right", "right", "open"]}
-    # through the whole page: Monday's 15:31 call before its grade, with no grades file on the station
+    assert got == {"bare": ["wrong", "right", "open", "open"], "file": ["wrong", "right", "open", "open"], "landed": ["wrong", "right", "right", "open"]}
+    # through the whole page: Monday's 15:31 call before its grade, with no grades file on the station, the card's other
+    # three graded as the card grades them
     live = {**MONDAY["live"], "calls": [{k: v for k, v in c.items() if k not in ("outcome", "hit", "moved")} if i == 0 else c
                                         for i, c in enumerate(MONDAY["live"]["calls"])]}
     got = _whole({"live": live, "tape": MONDAY["tape"], "premarket": MONDAY["premarket"]}, "2026-09-28T15:40:00-04:00")
-    assert got["dock"][0][1] == "Today’s callsnone graded yet · 1 open"
-    assert [q["attrs"].get("class") for q in got["dock_dom"][0]["kids"][0]["kids"][1]["kids"]] == ["open"]
+    assert got["dock"][0][1] == "Today’s calls3 of 3 right · 1 open"
+    assert [q["attrs"].get("class") for q in got["dock_dom"][0]["kids"][0]["kids"][1]["kids"]] == [None, None, None, "open"]
 
 
 def test_a_close_out_that_leaves_a_call_to_grade_still_redraws_the_page():
@@ -737,7 +741,7 @@ def test_a_fetch_that_keeps_failing_draws_the_last_card_once_and_then_only_moves
           "function pollPre(){} function polling(){} function say(){ drawn.push('say'); } function preOnly(){ return false; }"
           "function laneOnly(){ return false; } function arrived(){ drawn.push('arrived'); lastOk = true; }"
           "function draw(c, ok){ lastOk = ok; drawn.push('draw ' + ok); } function ages(){ drawn.push('ages'); }"
-          "function fetch(){ return reply ? Promise.resolve({ok: true, json: function(){ return Promise.resolve(reply); }}) : Promise.reject(new Error('offline')); }"
+          "function timedFetch(){ return reply ? Promise.resolve({ok: true, json: function(){ return Promise.resolve(reply); }}) : Promise.reject(new Error('offline')); }"
           + _fn("failedFetch") + _fn("poll") +
           "var steps = [null, null, null, {kind: 'json', data: {questions: []}}, null, {kind: 'json'}];"
           "(function next(i){ if(i === steps.length){ console.log(JSON.stringify(drawn)); return; }"
@@ -3504,7 +3508,8 @@ def test_a_resize_across_the_breakpoint_closes_an_open_sheet_and_asks_for_the_bo
     assert out.returncode == 0, out.stderr
     got = json.loads(out.stdout)
     assert got["query"] is True and "SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN" not in got["loaded"] and got["phone"] == ["true", "true", "dialog"]   # a phone with the sheet shut never asks
-    assert got["widened"] == {"closed": 1, "book": ["SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN"], "chart": 1, "aria": ["false", None, "region"]}
+    # the station has no grades file here, so the widening asks for it again with the book
+    assert got["widened"] == {"closed": 1, "book": ["SPX_OPTIONS_SCANNER_RESULTS_BY_SCAN", "JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON"], "chart": 1, "aria": ["false", None, "region"]}
     assert got["narrowed"] == {"closed": 1, "more": 0, "aria": ["true", "true", "dialog"]}
     assert 'id="chartSheet" role="dialog" aria-modal="true" aria-hidden="true"' in SPX     # the markup is the phone's: dockChart rewrites all three
     assert "-webkit-user-select:auto;user-select:auto}" in _wide_css()[1]     # docked, its words select as the page's do
