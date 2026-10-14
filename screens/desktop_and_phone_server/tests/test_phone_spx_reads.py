@@ -118,7 +118,7 @@ def test_a_call_row_says_the_time_where_it_went_what_was_called_and_the_grade_an
     row, before, after, expanded = _run(js, {"c": OCT8_1500})
     kids = row["kids"]
     assert row["tag"] == "button" and [k["attrs"].get("class") for k in kids] == ["sq", "t", "w", "res dn", "more"]
-    assert _flat_text(kids[1]) == "12:00" and _flat_text(kids[2]) == "Called Flat · went upaverage +2.8 pts, past ± 2.2" and _flat_text(kids[3]) == "Wrong"
+    assert _flat_text(kids[1]) == "12:00" and _flat_text(kids[2]) == "Called Flat · went upaverage +2.8\u00a0pts, past ±\u00a02.2" and _flat_text(kids[3]) == "Wrong"
     assert [k["text"] for k in kids[4]["kids"]] == ["Called at 7,754.82 · flat band 7,752.6 to 7,757.1", "30-min average 7,757.57 (+2.8 pts)",
                                                     "Highest +11.1 pts (minute 27) · lowest −2.3 pts (minute 8)"]
     assert before is True and after is False and expanded == "true"
@@ -131,7 +131,7 @@ def test_a_call_row_says_the_time_where_it_went_what_was_called_and_the_grade_an
         {"lane": "claude", "item": {"t": 0, "state": "wrong", "claude": {"pick": "flat", "p": 50, "went": "up"}}},
         {"lane": "premarket", "item": {"t": 0, "state": "wrong", "row": PRE[1], "minutes": 10, "check": True}}]})
     assert words == [["div", "Called Up · stayed flatscore −9.1", "Flat"], ["div", "No call (leaned Down) · passedscore 0.0", "Passed"],
-                     ["div", "Called Flat 50% · went up", "Wrong"], ["div", "10-min check · called Down · went upaverage +0.4 pts, inside ± 2.2", "Wrong"]]
+                     ["div", "Called Flat 50% · went up", "Wrong"], ["div", "10-min check · called Down · went upaverage +0.4\u00a0pts, inside ±\u00a02.2", "Wrong"]]
 
 
 def test_a_day_folds_to_its_score_and_squares_oldest_first_and_opens_to_its_calls():

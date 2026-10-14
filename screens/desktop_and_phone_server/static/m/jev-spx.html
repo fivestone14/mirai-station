@@ -7,7 +7,7 @@
 <title>SPX · Forecast</title>
 <!--
   The SPX forecast, the phone's home page (/m since the redesign of
-  2026-10-10): the decision card over the SPX service's cards. Reads the
+  2026-10-10, Design B since 2026-10-14) over the SPX service's cards. Reads the
   three lanes' cards (JEV_LIVE_CARD, JEV_OPENING_CARD, JEV_PREMARKET_CARD in
   station_paths.py, under screen_files/phone/) through the
   viewstation's by-name store route, and the live
@@ -17,20 +17,22 @@
   the scan. The Android shell opens it as /m?user=will; the query is the
   shell's and nothing here reads it.
 
-  Two modes in the session, switched by the clock and the cards alone, and
-  the pre-market card before them.
-  The opening lane (pipelines/spx_jev_questions_and_pools, --lane tape) reads every 5 minutes through
-  the first hour; while today's newest lane call is still open, that call leads
-  the page and the 30-minute call folds to one line. Once it closes, the
-  30-minute call leads again and the opening folds to its score for the day.
-  Before both, the pre-market lane (spx_jev.premarket) writes its card
-  (JEV_PREMARKET_CARD) at each of the night's checkpoints;
-  from the day's first pre-market read until the opening lane's first read
-  (09:35) that card leads the page alone: the clock to the open, the call
-  checked 10 and 30 minutes after the settled open, the story so far one chip
-  per read, and the night's facts in words. After the hand-over the call folds
-  to one line, fetched until its 10:06 close-out lands, with each check's
-  result as it is graded.
+  Two tabs (Design B, 2026-10-14), picked by a switch under the price box. The
+  5-minute tab is the morning's: the pre-market lane (spx_jev.premarket) writes
+  its card (JEV_PREMARKET_CARD) at each of the night's checkpoints, and from
+  the day's first pre-market read until the opening lane's first read (09:35)
+  the tab leads with the call at a glance, the clock to the open and the
+  night's story, one chip per read; the opening lane (--lane tape) then reads
+  every 5 minutes through the first hour, and while today's newest lane call
+  is still open the tab leads with its window, its flat band and who answers
+  it. The 30-minute tab is the rest of the day's: the window the newest read
+  forecasts drawn live, who agrees on it (the combined call, the direction
+  line, Claude, JEV alone), and the scoreboard. The page opens on the leading
+  tab, a tap keeps the other until the lead changes hands, and each tab's
+  scoreboard reads its grades files (JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON,
+  the live, tape and premarket lanes), with JEV's own answers
+  (FORECASTS_BY_FORECASTER_READ_AND_HORIZON), the direction line's grades
+  (DIRECTION_LINE_GRADES_BY_READ) and the scoreboard (FORECASTER_SCOREBOARD_CARD).
 
   The price box opens the price-today sheet (2026-10-10): the day's SPX line by
   the minute from the bars feed (SPX_PRICE_BARS_BY_MINUTE), which also draws the box's
@@ -38,7 +40,7 @@
   chart's gutter and the day's graded calls (JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON)
   under its clock, all through the same by-name store route. From 1024px up (the
   owner's MacBook Air) the page is the board Final-Desktop: the header across
-  the top with the tabs in it, the home as a 544px column, and the chart
+  the top with the tabs in it, the switch and both tabs as a 544px column, and the chart
   standing beside it as a panel with the situation card under it, the sheet's
   own markup placed there by the stylesheet's one layout query; one markup
   and one painter serve both widths, and the few words and tiles the board
@@ -47,8 +49,8 @@
 
   Times are the viewer's. Every time the SPX card carries is a full timestamp
   with its offset, so every time on this page is drawn in the phone's own zone
-  through one formatter, viewerTime; the call clock and the expiry line name
-  the zone. The schedule is not the viewer's: which mode leads, when to poll,
+  through one formatter, viewerTime; the header and the expiry line name
+  the zone. The schedule is not the viewer's: which tab leads, when to poll,
   what "today" is, all run on the New York market clock (marketClock,
   marketDay), and one gate, inSession, says whether the market is open, from
   the bell to the day's own close: in the session the price is live, the bars
@@ -56,13 +58,13 @@
   one.
 
   One paper on every phone page: its tokens, its card, its label row, its
-  tab bar. No dark mode. House rules kept: text goes in with textContent
-  only, no emoji, no arrows, each card's read time shown on it and a stale
-  row said at the top, a failed fetch keeps the last card on screen and says
-  so. Every answer is a probability per option; the calls and the end-price
-  sums are forecasts graded later, the shadow questions forecasts asked and
-  logged and never graded, all drawn dashed with that said in words. Nothing
-  here reads a viewport unit.
+  tab bar, its square key. No dark mode. House rules kept: text goes in with
+  textContent only, no emoji, arrows only for a window's start to its end and a
+  side's direction, each read's time shown on it and trouble said at the top,
+  a failed fetch keeps the last card on screen and says so. Every answer is a
+  probability per option; the calls are forecasts graded later, the shadow
+  questions forecasts asked and logged and never graded. Nothing here reads a
+  viewport unit.
 -->
 <link rel="preload" href="/m/pjs-153fc85b7029.woff2" as="font" type="font/woff2" crossorigin>
 <style>
@@ -80,7 +82,7 @@
   --sans:"Jakarta",system-ui,Roboto,"Segoe UI",sans-serif;
   --tab-h:74px;
   /* the visible height in pixels, set by the script at the top of <body>; 100dvh is only its fallback,
-     because inside the app every viewport unit reads zero (see the token on the reads page) */
+     because inside the app every viewport unit reads zero (test_phone_layout_safety) */
   --app-h:100dvh;
 }
 *{box-sizing:border-box}
@@ -89,7 +91,7 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
      -webkit-font-smoothing:antialiased;padding:0 16px calc(var(--tab-h) + 16px);display:flex;flex-direction:column;gap:12px;
      max-width:560px;margin:0 auto}
 
-/* header, as the reads page draws it: the page's name on the left, and on the right two lines, the card's market day
+/* header, as the results page draws it: the page's name on the left, and on the right two lines, the card's market day
    and under it the zone every time is in with the next read; the right side sits beside the name at 360 and wraps
    under it, whole, when a long zone name leaves no room */
 .hd{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;margin:0 -16px;
@@ -126,7 +128,7 @@ body{margin:0;background:var(--g);color:var(--i-body);font:400 15px/1.5 var(--sa
 .lab .r{margin-left:auto;color:var(--i-mute);white-space:nowrap}
 /* aging is a shape, not a hue: the outlined chip */
 .lab .r.old{padding:3px 7px;border:1px solid var(--i-mute);border-radius:6px}
-/* the tap cue, one rule: a chevron drawn as a rotated border on every control that opens a sheet or the reads */
+/* the tap cue, one rule: a chevron drawn as a rotated border on every control that opens a sheet, a tab or the results */
 .px-k::after,.sit .lab::after,.wa-go::after,.wa-n.go::after,.rowbtn::after,.vt-go::after{
   content:"";flex:none;width:6px;height:6px;border-right:1.5px solid var(--i-mute);border-top:1.5px solid var(--i-mute);transform:rotate(45deg)}
 #state{display:flex;flex-wrap:wrap;gap:6px}
@@ -373,9 +375,9 @@ main>.exp+.card{margin-top:-4px}                 /* the line belongs to the card
 .dp-tr .up{background:var(--o-up)}
 .dp-tr .dn{background:var(--o-dn)}
 .dp-tr b{position:absolute;left:50%;top:-3px;width:1.5px;height:14px;margin-left:-.75px;background:var(--i-mute)}
-/* the Why sheet: one grid, per horizon its lean in words over Claude's bar and its historical odds' soft bar with the
+/* the Why sheet: one grid, per horizon its lean in words over Claude's bar and its starting odds' soft bar with the
    numbers beside each, and under the grid what those odds are; then the reasons and the reason against, a horizon and
-   a sentence each, and the record line. The label column holds HISTORICAL (77px) with ODDS under it, the numbers'
+   a sentence each, and the record line. The label column holds ITS STARTING (78px) with ODDS under it, the numbers'
    column the header over them (109px); both grow with Android's larger text sizes, the bars giving way */
 .cl-vs{display:grid;grid-template-columns:minmax(78px,min-content) minmax(0,1fr) minmax(110px,min-content);gap:2px 10px;align-items:center;margin-top:12px}
 .cl-vs .cl-k{white-space:normal}
@@ -484,7 +486,7 @@ main>.exp+.card{margin-top:-4px}                 /* the line belongs to the card
 .chart .wall{stroke:var(--i);stroke-width:2}
 .chart .mag{stroke:var(--i);stroke-width:2.2;stroke-dasharray:6 3}
 .chart .pwall{stroke:var(--i);stroke-width:1.6;stroke-dasharray:3 3}
-/* the open call's band, the box the Reads strip draws, dashed here as every forecast on the page is */
+/* the open call's band as a dashed box, as every forecast on the page is */
 .chart .box{fill:var(--o-fl);fill-opacity:.45;stroke:var(--i);stroke-width:1;stroke-dasharray:3 2}
 .chart .at{stroke:var(--i);stroke-width:2}
 .chart .casing{fill:none;stroke:var(--s);stroke-width:3.5;stroke-linejoin:round;stroke-linecap:round}
@@ -678,9 +680,9 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
    the price box is no longer the way into it, so its chevron goes. The situation stands under the panel by the panel's
    measured height (--ch-h), as the price box sticks under the header by the header's; an absolutely placed card's
    margin adds nothing to the page's height, so the room under it that the body's padding gives an in-flow card is a
-   box hung under it. What the board widens is widened here by its rule: the call's tiles take the voices control as a
-   third, the chart's tiles and Claude's horizons stand in a row, today's calls on one line, the situation's facts side
-   by side, the note beside the two buttons. */
+   box hung under it; on the 5-minute tab the card standing there is what the market is doing as the opening call saw
+   it. What the board widens is widened here by its rule: the chart's tiles stand in a row, the situation's facts side
+   by side, the note beside the two buttons; the switch and both tabs keep the column. */
 @media (min-width:1024px){
   body{position:relative;max-width:none;margin:0;padding:0 40px 20px}
   body > :not(.hd, .load, .scrim, .sheet){width:544px}
@@ -787,15 +789,19 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
 <div class="sheet" id="infoSheet" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="infoTitle">
   <div class="sh-grab"></div>
   <div class="sh-h" id="infoTitle">How to read this page</div>
-  <div class="pt-r"><span class="k">Today&rsquo;s call</span><span>The combined forecast: every forecaster mixed by its track record (since 10/06). This is the call today&rsquo;s calls are scored on; the voices control lists what went into it.</span></div>
-  <div class="pt-r"><span class="k">Usual odds</span><span>What SPX did this hour on recent days; the bar to beat. Tap it for each part of the day.</span></div>
-  <div class="pt-r"><span class="k">JEV alone</span><span>JEV&rsquo;s own forecast, one of the voices mixed into the call; not scored as the call.</span></div>
-  <div class="pt-r"><span class="k">Point</span><span>A point is one step of the S&amp;P 500 index, e.g. 7,817 to 7,818.</span></div>
-  <div class="pt-r"><span class="k">Today&rsquo;s calls</span><span>One square per 30-minute call today, oldest on the left: filled when right, outlined when not, dashed while open. Tap for the reads, which carry each call&rsquo;s numbers.</span></div>
-  <div class="pt-r"><span class="k">Situation</span><span>Each row is one of the facts JEV reads, its figure in index points; tap for the sentences JEV answers questions about, word for word.</span></div>
-  <div class="pt-r"><span class="k">Record</span><span>Right = called direction matched. The usual-odds guess always says what this time of day usually does; it is right often on its own because most half hours are flat. Score vs guess = how much better (+) or worse (&minus;) a forecast&rsquo;s odds are than that guess, with confident misses costing most. Too early to judge until 300 reads; tap for the learning loop.</span></div>
-  <div class="pt-r"><span class="k">5-min call</span><span>The opening hour&rsquo;s call, made every 5 minutes on the average price over the next 10. Last 5 min = how far price moved since the previous read, and whether that was quiet, normal or busy for the time of day.</span></div>
-  <p class="foot">JEV answers small questions about labelled facts, one probability per option. A probability here is not a forecast of where price goes. The sums are forecasts, graded by the bars 30 and 60 minutes later; the dashed questions are shadow questions, asked and logged, never graded and never weighted. A call is a forecast, not a trade signal, graded on the average price over its window: where each minute closed against the price at the read, averaged, in index points, and set against a flat band (the &plusmn; figure) narrower than an end price would get, because an average swings less than any one price. Its direction decides right or wrong; its size at the end price, where price stood highest and lowest (&ldquo;min 3&rdquo; is the window&rsquo;s third minute) and any sharp move are on the reads page, and an unsure call is passed, never counted as a miss. For now each call also keeps the old grade, on the end price alone, and a call the average could not grade stands on that, said so. The call is JEV&rsquo;s answer to that question itself: where the average will sit, up, flat or down within the &plusmn; figure, with no unsure; the old question on the end price is still asked and graded beside it. Through the first hour the opening lane reads every 5 minutes and its call, on the average price over the next 10 minutes, leads the page until its last call closes; then the 30-minute call leads again. Each call looks ahead a fixed number of minutes, so a new call can start before the last one is graded: today&rsquo;s calls show each as a square. Before the open, the pre-market lane reads S&amp;P futures, 10-year bond futures, bitcoin futures and the morning&rsquo;s reports through the night and makes one call about the first half hour: the average price over the 30 minutes after the first settled price, four minutes after the open. It is a forecast too, graded by the bars. Every time here is in this phone's own time zone.</p>
+  <div class="pt-r"><span class="k">The call</span><span>The one call each tab is scored on, boxed where it stands: the combined call on the 30-min tab, the opening call on the 5-min tab (the pre-market call before the open).</span></div>
+  <div class="pt-r"><span class="k">Combined call</span><span>Every forecaster mixed by its track record, the 30-minute call since 10/06; What&rsquo;s in it lists its voices and their say.</span></div>
+  <div class="pt-r"><span class="k">Usual odds</span><span>How the average went at this time of day on recent sessions, the time-of-day odds; tap their row in What&rsquo;s in it for each part of the day.</span></div>
+  <div class="pt-r"><span class="k">Base-rate guess</span><span>Always picking the usual odds&rsquo; favourite: the yardstick a read is judged against on the scoreboard, right often on its own because most half hours are flat.</span></div>
+  <div class="pt-r"><span class="k">JEV alone</span><span>JEV&rsquo;s raw answer, for comparison, not a call. Corrected JEV, one of the combined call&rsquo;s voices, is JEV with its usual errors taken out.</span></div>
+  <div class="pt-r"><span class="k">Direction line</span><span>If price moves past the flat band, which way: its own mix of four forecasters and Claude. It never calls flat. Its score is plus when the average moves its way past the band and minus against; +10 or more is right.</span></div>
+  <div class="pt-r"><span class="k">Claude</span><span>Claude&rsquo;s own read of the same half hour, not in the call, scored after the close against its starting odds, the odds it was given from past days.</span></div>
+  <div class="pt-r"><span class="k">Opening call</span><span>Every 5 minutes through the first hour, on the average price over the next 10 minutes: JEV alone, no mix.</span></div>
+  <div class="pt-r"><span class="k">Pre-market call</span><span>Read through the night from S&amp;P futures, bond futures, bitcoin futures and the morning&rsquo;s reports, on the first half hour&rsquo;s average: JEV alone, checked 10 and 30 minutes after the settled open, four minutes after the bell.</span></div>
+  <div class="pt-r"><span class="k">Squares</span><span>One key everywhere: filled when right, outlined when it stayed flat or was passed, rust when wrong, dashed while open; the oldest on the left.</span></div>
+  <div class="pt-r"><span class="k">pts</span><span>Points of the S&amp;P 500 index: 7,817 to 7,818 is one.</span></div>
+  <div class="pt-r"><span class="k">Times</span><span>Every time is in this phone&rsquo;s own time zone, named in the header.</span></div>
+  <p class="foot">A call is graded on the average price over its window: where each minute closed against the price at the read, averaged, in index points, and set against a flat band (the &plusmn; figure) narrower than an end price would get, because an average swings less than any one price. An unsure call is passed, never counted as a miss. The dashed questions are shadow questions, asked and logged, never graded and never weighted. A call is a forecast, not a trade signal.</p>
   <button class="sh-close" type="button" data-sheet-close>Close</button>
 </div>
 <!-- the price-today sheet (2026-10-10), opened by the price box: the day's SPX line by the minute with the options book
@@ -1277,9 +1283,10 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     else { var none = el('section', 'card'); none.appendChild(el('div', 'win-t', 'No 30-min card yet')); main.appendChild(none); }
 
     // the situation is the combined call's sheet's on a phone; from WIDE up the stylesheet stands it under the chart
-    // panel (Final-Desktop)
+    // panel (Final-Desktop), the lane's own on the 5-minute tab
     var dock = $('dock'); dock.textContent = '';
-    if(c && chartDocked()) dock.appendChild(situationCard(c, sitAge(c, m), old));
+    if(chartDocked() && five && laneToday() && !shownPre) dock.appendChild(marketCard(tape));
+    else if(c && chartDocked()) dock.appendChild(situationCard(c, sitAge(c, m), old));
 
     // the questions live in their own sheet (qsDeck); the page keeps one plain control for them on the tab whose call
     // asked them: the opening call's on the 5-minute tab while its card is today's, the 30-minute call's in its sheet
@@ -1461,7 +1468,8 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var m = mins(c.row_ts), old = m != null && m > STALE_MIN, ageText = sitAge(c, m);
     setHead(c);
     var sub = $('sub'); if(sub && !sub.classList.contains('err')) setSub(tabNow() === 'five' && !inSession() ? '' : staleLine(c, m));
-    Array.prototype.forEach.call(document.querySelectorAll('#dock .lab .age'), function(r){ r.textContent = ageText; r.classList.toggle('old', old); });
+    // the docked situation's age, the 30-minute card's (the 5-minute tab's card says when its read saw the market)
+    if(tabNow() === 'thirty') Array.prototype.forEach.call(document.querySelectorAll('#dock .lab .age'), function(r){ r.textContent = ageText; r.classList.toggle('old', old); });
   }
   function arrived(c){
     var same = last && last.generated_at === c.generated_at && last.row_ts === c.row_ts;
@@ -1671,7 +1679,8 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var link = el('a', 'rowbtn'); link.setAttribute('href', '/m/reads.html#opening');
     link.appendChild(el('span', null, 'Today’s results, read by read')); link.appendChild(el('span', 'm', 'all clocks'));
     main.appendChild(link);
-    var mk = pre ? preMarketCard(p) : t ? marketCard(t) : null; if(mk) main.appendChild(mk);
+    // the lane's market stands under the chart panel from WIDE up, where the situation does (paint's dock)
+    var mk = pre ? preMarketCard(p) : t && !chartDocked() ? marketCard(t) : null; if(mk) main.appendChild(mk);
   }
   // the opening calls' place once today's lane card is dropped (after 16:05) or before the lane's first read: when
   // the next morning's first call comes, the next session day's 09:35 (the card's expiry calendar names the day)
@@ -3189,7 +3198,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // the page nothing.
   var DIRECTION_URL = '/api/store/file?name=DIRECTION_LINE_CARD', DIR_GRADES_URL = '/api/store/file?name=DIRECTION_LINE_GRADES_BY_READ&day=';
   var direction = null, dirGrades = null, dirGradesAt = 0, dirGradesInflight = false;
-  var DIR_VOICES = [['matcher', 'Matcher'], ['additive_scorer', 'Additive'], ['jev_corrected', 'JEV-corrected'], ['historical_odds', 'Usual odds'],
+  var DIR_VOICES = [['matcher', 'Matcher'], ['additive_scorer', 'Additive scorer'], ['jev_corrected', 'Corrected JEV'], ['historical_odds', 'Usual odds'],
                     ['claude_forecast', 'Claude']];
   var DIR_BAND = [0.45, 0.55];                  // the no-call band the split's ticks mark (the line's cold-start gate)
   function signedPts(x){ x = Math.round(x || 0); return (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x); }
@@ -3396,7 +3405,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   // (CLAUDE_FORECAST_CARD) on the page's cadence: its row in Who agrees for the read on screen, its row on the
   // scoreboard, and its Why sheet. A missing file (no read yet, the switch off) costs the call nothing; so does a sample
   // read (read_id "sample:..."), which is never a real one. Chances are whole percents (up_pct, flat_pct, down_pct),
-  // beside each horizon Claude's historical odds, the odds it was given from past days before it answered
+  // beside each horizon Claude's starting odds, the odds it was given from past days before it answered
   // (base_rate_shown_to_claude; never the call card's usual odds, which are the station's own count); the reasons come
   // with their words (reason_words.py), so nothing here translates a path. A horizon the read did not ask (the close
   // too near) has no row.
@@ -3413,7 +3422,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
   function clBar(h, usual){
     var b = el('span', 'cl-bar' + (usual ? ' usual' : '') + (h ? '' : ' none'));
     if(!h) return b;
-    b.setAttribute('role', 'img'); b.setAttribute('aria-label', (usual ? 'Claude’s historical odds: ' : 'Claude: ') + DIRS.map(function(d){ return d[2] + ' ' + Math.round(h[d[0]]); }).join(', '));
+    b.setAttribute('role', 'img'); b.setAttribute('aria-label', (usual ? 'Claude’s starting odds: ' : 'Claude: ') + DIRS.map(function(d){ return d[2] + ' ' + Math.round(h[d[0]]); }).join(', '));
     DIRS.forEach(function(d){ var i = el('i', d[1]); i.style.flexBasis = Math.max(0, h[d[0]]) + '%'; b.appendChild(i); });
     return b;
   }
@@ -3423,7 +3432,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     DIRS.forEach(function(d, i){ if(i) s.appendChild(el('i', null, '·')); s.appendChild(el(d[0] === p ? 'b' : 'span', null, String(Math.round(h[d[0]])))); });
     return s;
   }
-  // how Claude sits against its historical odds: toward a move or toward flat, and a lean up or down, each when NEAR
+  // how Claude sits against its starting odds: toward a move or toward flat, and a lean up or down, each when NEAR
   // points or more
   function moveVsUsual(h, b){ return Math.round(b.flat_pct - h.flat_pct); }
   function tiltVsUsual(h, b){ return Math.round((h.up_pct - b.up_pct) - (h.down_pct - b.down_pct)); }
@@ -3431,7 +3440,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var move = moveVsUsual(h, b), tilt = tiltVsUsual(h, b), parts = [];
     if(Math.abs(move) >= NEAR) parts.push('+' + Math.abs(move) + (move > 0 ? ' toward a move' : ' toward flat'));
     if(Math.abs(tilt) >= NEAR) parts.push('+' + Math.abs(tilt) + ' toward ' + (tilt > 0 ? 'up' : 'down'));
-    return parts.length ? parts.join(' · ') : 'about the historical odds';
+    return parts.length ? parts.join(' · ') : 'about its starting odds';
   }
   // why there is no answer to show, in words: a read held before the call (paused by hand, the day's limit), a read
   // whose every horizon came back with nothing (a timeout, an error), or one the checks rejected
@@ -3450,21 +3459,21 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     row.appendChild(k); row.appendChild(t);
     return row;
   }
-  // the record: too early until 100 graded reads, then how often the pick was right and the skill against the
-  // historical odds
+  // the record: too early until 100 graded reads, then how often the pick was right and the skill against its
+  // starting odds
   function recordLine(r){
     var d = el('div', 'cl-rec');
     if(!r || r.verdict !== 'Scored'){
       d.appendChild(el('b', null, 'Record: too early'));
-      d.appendChild(el('span', null, ' · ' + ((r && r.graded_reads) || 0) + ' graded reads, scored from 100. Not part of the call above.'));
+      d.appendChild(el('span', null, ' · ' + ((r && r.graded_reads) || 0) + ' graded reads, scored from 100. Not in the call.'));
       return d;
     }
     var h = (r.horizons || {}).next_30_minutes || {}, skill = h.skill_vs_base_rate_pct;
     d.appendChild(el('b', null, 'Record: right ' + Math.round(h.claude_right_pct || 0) + '% of ' + (h.reads || 0) + ' reads'));
-    d.appendChild(el('span', null, ' (next 30 min)' + (skill != null ? ' · ' + (skill >= 0 ? '+' : '−') + Math.round(Math.abs(skill)) + '% vs the historical odds' : '') + '. Not part of the call above.'));
+    d.appendChild(el('span', null, ' (next 30 min)' + (skill != null ? ' · ' + (skill >= 0 ? '+' : '−') + Math.round(Math.abs(skill)) + '% vs its starting odds' : '') + '. Not in the call.'));
     return d;
   }
-  // the Why sheet (Final-Claude, 2026-10-10): per horizon the lean in words over Claude's bar and its historical odds'
+  // the Why sheet (Final-Claude, 2026-10-10): per horizon the lean in words over Claude's bar and its starting odds'
   // soft bar with the numbers beside each, what those odds are said once under the grid, then the reasons in plain
   // words, the reason against, and the record line
   function openWhy(from){
@@ -3472,14 +3481,14 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     $('csTitle').textContent = 'Claude’s read · why · ' + viewerTime(c.read_at);
     body.textContent = '';
     var grid = el('div', 'cl-vs');
-    grid.appendChild(el('span', 'cl-vs-cap', 'Claude’s bar over its historical odds')); grid.appendChild(clHeader());
+    grid.appendChild(el('span', 'cl-vs-cap', 'Claude’s bar over its starting odds')); grid.appendChild(clHeader());
     HORIZONS.forEach(function(x){
       var hz = f[x[0]]; if(!hz) return;
       var b = clBase(hz), k = el('div', 'cl-vs-k'); k.appendChild(el('span', null, x[1]));
-      k.appendChild(el('b', null, !clOk(hz) ? (hz.status === 'rejected' ? 'rejected by the checks' : 'no answer') : b ? against(hz, b) : 'no historical odds yet'));
+      k.appendChild(el('b', null, !clOk(hz) ? (hz.status === 'rejected' ? 'rejected by the checks' : 'no answer') : b ? against(hz, b) : 'no starting odds yet'));
       grid.appendChild(k);
       grid.appendChild(el('span', 'cl-k', 'Claude')); grid.appendChild(clBar(clOk(hz) ? hz : null)); grid.appendChild(clOk(hz) ? clNumbers(hz, true) : el('span', 'cl-n', '—'));
-      grid.appendChild(el('span', 'cl-k', 'Historical Odds')); grid.appendChild(clBar(b, true)); grid.appendChild(b ? clNumbers(b, false) : el('span', 'cl-n', '—'));
+      grid.appendChild(el('span', 'cl-k', 'Its starting odds')); grid.appendChild(clBar(b, true)); grid.appendChild(b ? clNumbers(b, false) : el('span', 'cl-n', '—'));
       if(clOk(hz) && hz.largest_gap_between_answers_pct_points >= 10)
         grid.appendChild(el('span', 'cl-gap', 'Claude’s two answers differed by ' + Math.round(hz.largest_gap_between_answers_pct_points) + ' points here'));
     });

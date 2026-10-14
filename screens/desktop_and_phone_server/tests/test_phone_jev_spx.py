@@ -581,8 +581,11 @@ def test_the_sheets_lines_fit_or_wrap_on_the_owners_phone():
 def test_the_footnote_says_once_what_the_average_over_the_window_is():
     foot = re.search(r'(?s)<p class="foot">(.*?)</p>', SPX).group(1)
     assert foot.count("average price over its window") == 1
-    assert "passed, never counted as a miss" in foot and "direction decides" in foot and "end price alone" in foot
-    assert "&plusmn;" in foot and "min 3" in foot
+    assert "An unsure call is passed, never counted as a miss." in foot and "narrower than an end price would get" in foot
+    assert "&plusmn;" in foot and "end price alone" not in foot           # Design B's info sheet: the old end-price grade is no longer the page's
+    keys = re.findall(r'<div class="pt-r"><span class="k">([^<]*)</span>', SPX)
+    assert keys == ["The call", "Combined call", "Usual odds", "Base-rate guess", "JEV alone", "Direction line", "Claude", "Opening call",
+                    "Pre-market call", "Squares", "pts", "Times"]
 
 
 def test_a_call_is_a_forecast_not_a_trade_signal_and_shadow_means_only_the_shadow_questions():
@@ -2383,19 +2386,19 @@ def test_the_why_sheet_sets_claudes_bar_over_the_usuals_with_the_reasons_in_plai
     assert grid["attrs"]["class"] == "cl-vs"
     kinds = [k["attrs"].get("class") for k in grid["kids"]]
     assert kinds[:2] == ["cl-vs-cap", "cl-h"] and kinds[2:9] == ["cl-vs-k", "cl-k", "cl-bar", "cl-n", "cl-k", "cl-bar usual", "cl-n"]
-    assert _flat_text(grid["kids"][0]) == "Claude\u2019s bar over its historical odds"
+    assert _flat_text(grid["kids"][0]) == "Claude\u2019s bar over its starting odds"
     leans = [[_flat_text(k["kids"][0]), _flat_text(k["kids"][1])] for k in grid["kids"] if k["attrs"].get("class") == "cl-vs-k"]
     assert leans == [["30 min", "+16 toward up"], ["60 min", "+14 toward a move \u00B7 +17 toward up"], ["Close", "+5 toward a move \u00B7 +9 toward up"]]
     nums = [_flat_text(k) for k in grid["kids"] if k["attrs"].get("class") == "cl-n"]
     assert nums == ["14\u00B758\u00B728", "21\u00B760\u00B719", "15\u00B755\u00B730", "17\u00B769\u00B715", "16\u00B750\u00B734", "18\u00B755\u00B727"]
     usual = [k for k in grid["kids"] if k["attrs"].get("class") == "cl-bar usual"][0]
-    assert usual["attrs"]["aria-label"] == "Claude’s historical odds: Down 21, Flat 60, Up 19"
+    assert usual["attrs"]["aria-label"] == "Claude’s starting odds: Down 21, Flat 60, Up 19"
     assert _texts(grid, "cl-gap") == ["Claude\u2019s two answers differed by 12 points here"]       # the 60-minute horizon's two answers
     rest = [[k["attrs"].get("class"), _flat_text(k)] for k in body["kids"][1:]]
     assert rest == [["cl-why-h", "Why"], ["cl-why-r", "30 minPrice sits above the day\u2019s average \u00B7 points up"],
                     ["cl-why-r", "AllDealers lean against moves today \u00B7 points to a smaller move"],
                     ["cl-why-h", "Against"], ["cl-why-r", "30 minThe last 30 min moved less than usual at this hour \u00B7 points to a smaller move"],
-                    ["cl-rec", "Record: too early \u00B7 0 graded reads, scored from 100. Not part of the call above."]]
+                    ["cl-rec", "Record: too early \u00B7 0 graded reads, scored from 100. Not in the call."]]
     why = body["kids"][2]
     assert why["kids"][0]["attrs"] == {"class": "cl-k", "aria-label": "next 30 minutes"} and why["kids"][1]["kids"][-1]["tag"] == "b"
     assert body["kids"][3]["kids"][0]["attrs"]["aria-label"] == "all three horizons"
@@ -2403,7 +2406,7 @@ def test_the_why_sheet_sets_claudes_bar_over_the_usuals_with_the_reasons_in_plai
               "record": {"verdict": "Scored", "graded_reads": 120, "horizons": {"next_30_minutes": {"claude_right_pct": 54.2, "skill_vs_base_rate_pct": 4.1, "reads": 120}}}}
     rest = [[k["attrs"].get("class"), _flat_text(k)] for k in _claude(scored)["body"]["kids"][1:]]
     assert rest == [["cl-why-h", "Why"], ["cl-why-r", "AllNo reason survived the checks"],
-                    ["cl-rec", "Record: right 54% of 120 reads (next 30 min) \u00B7 +4% vs the historical odds. Not part of the call above."]]
+                    ["cl-rec", "Record: right 54% of 120 reads (next 30 min) \u00B7 +4% vs its starting odds. Not in the call."]]
     assert "grid-template-columns:minmax(78px,min-content)minmax(0,1fr)minmax(110px,min-content)" in _rule(".cl-vs") and "height:14px" in _rule(".cl-vs .cl-bar") and "height:8px" in _rule(".cl-vs .cl-bar.usual")
 
 

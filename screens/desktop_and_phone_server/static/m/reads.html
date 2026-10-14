@@ -441,7 +441,7 @@ main{display:flex;flex-direction:column;gap:12px}
       var went = el('span', null, wentWords(r.label));
       if(sideClass(r.label)) went = el('b', sideClass(r.label), wentWords(r.label));
       w.appendChild(went);
-      w.appendChild(el('small', null, 'average ' + signed(r.g) + ' pts, ' + (Math.abs(r.g) <= edge ? 'inside' : 'past') + ' \u00B1 ' + edge.toFixed(1)));
+      w.appendChild(el('small', null, 'average ' + signed(r.g) + '\u00A0pts, ' + (Math.abs(r.g) <= edge ? 'inside' : 'past') + ' \u00B1\u00A0' + edge.toFixed(1)));
     } else if(k.open){
       w.appendChild(el('span', null, 'Called ')); w.appendChild(el('b', null, cap(k.open.pick) + ' ' + pct(k.open.p))); w.appendChild(el('span', null, ' \u00B7 open'));
       w.appendChild(el('small', null, (typeof k.open.edge === 'number' ? 'flat \u00B1 ' + k.open.edge.toFixed(1) + ' \u00B7 ' : '') + 'scored ' + viewerTime(k.open.mark)));
