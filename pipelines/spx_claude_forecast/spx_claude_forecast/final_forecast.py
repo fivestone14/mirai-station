@@ -5,7 +5,8 @@ flipped), so order bias cancels in the average. Per horizon the final line carri
 chances under the answer's own number, the largest gap between them (the noise floor), the base rate
 Claude was shown, how far the final sits from it, and whether it merely leans the way the last thirty
 minutes went. A horizon with no usable answer is ``rejected`` when an answer came back and failed the
-checks, and ``failed`` when no answer came back at all (the statuses spec/record_formats.md lists).
+checks, and ``failed`` when no answer came back at all (the statuses spec/record_formats.md lists); it keeps
+the base rate Claude was shown, so the phone still has the historical odds to show beside it.
 """
 from __future__ import annotations
 
@@ -32,9 +33,12 @@ def final_forecast_for(answers: list[dict], asked_horizons: list[str], base_rate
     for horizon in asked_horizons:
         blocks = {answer_number_of(a): a["checked_forecast"].get(horizon) or {} for a in usable}
         oks = {name: b for name, b in blocks.items() if b.get("status") == "ok"}
+        base = (base_rate_pct or {}).get(horizon)
+        shown = ({"base_rate_shown_to_claude": {k: base[k] for k in DIRECTION_KEYS}}
+                 if isinstance(base, dict) and all(k in base for k in DIRECTION_KEYS) else {})
         if not oks:
             rejected = any(b.get("status") == "rejected" for b in blocks.values())
-            out["forecast"][horizon] = {"status": "rejected" if rejected else "failed"}
+            out["forecast"][horizon] = {"status": "rejected" if rejected else "failed", **shown}
             continue
         counted.update(oks)
         block = {"status": "ok"}
@@ -48,9 +52,8 @@ def final_forecast_for(answers: list[dict], asked_horizons: list[str], base_rate
         if len(oks) > 1:
             block["largest_gap_between_answers_pct_points"] = max(
                 abs(a[k] - b[k]) for k in DIRECTION_KEYS for a in oks.values() for b in oks.values())
-        base = (base_rate_pct or {}).get(horizon)
-        if isinstance(base, dict) and all(k in base for k in DIRECTION_KEYS):
-            block["base_rate_shown_to_claude"] = {k: base[k] for k in DIRECTION_KEYS}
+        if shown:
+            block.update(shown)
             gap = max(abs(block[k] - base[k]) for k in DIRECTION_KEYS)
             block["largest_gap_from_base_rate_pct_points"] = round(gap, 1)
             block["is_within_3_pct_points_of_base_rate"] = gap <= NEAR_BASE_RATE_PCT_POINTS

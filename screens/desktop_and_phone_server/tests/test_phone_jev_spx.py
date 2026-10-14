@@ -1698,17 +1698,17 @@ def test_a_combined_call_without_the_new_fields_keeps_its_edge_line_and_has_no_v
 # words (13.5px bold), and the strip's label row (11px capitals spaced .12em)
 _REC_W = {"RECORD · 30 MIN": 112.75, "300 of 300 reads": 92.2, "56 of 107 right · usual odds 62 · a bit worse": 242.88,
           "TODAY’S CALLS": 102.98, "10 of 11 right · 1 open": 120.22, "14 · 58 · 28": 61.33,
-          "Call wall 187 pts up": 99.19, "Busier than 13 of 19 days": 128.5, "by 16 pts": 46.53,
+          "Most Calls Held · 187 pts above": 165.06, "Busier than 13 of 19 days": 128.5, "by 16 pts": 46.53,
           "Questions · 12 asked": 133.28, "How to read": 79.77,
-          "CLAUDE’S READ · 11:30": 150.75, "NOT IN THE CALL": 109.19, "agrees with the call · leans up more than usual": 253.41,
-          "Nearest heavy strike": 118.92, "Open air": 91.05, "None in reach": 144.36}
+          "CLAUDE’S READ · 11:30": 150.75, "NOT IN THE CALL": 109.19, "agrees with the call · a move is more likely than the historical odds": 364.08,
+          "Nearest Big Strike": 126.63, "None Nearby": 82.25, "Close By": 55.36}
 
 
 def test_the_new_rows_fit_the_owners_360px_phone():
     """At 360 the dashed card holds 294px and a sheet 320: a voice row's name and figures leave its bar room, the
     price line's pill sits beside the price, the record row's words and the calls row's score sit beside their labels
     on one line each, and Claude's rows leave their bars room in the strip (the board's 44 and 84px columns) and in the
-    Why sheet (52 and 110px)."""
+    Why sheet (78 and 110px)."""
     inner = 360 - 2 * 16 - 2 * _px(".card", "padding") - 2
     sheet = 360 - 2 * 20
     cols = re.search(r"grid-template-columns:(\d+)pxminmax\(0,1fr\)(\d+)px;gap:(\d+)px", _rule(".mix-r"))
@@ -1724,10 +1724,10 @@ def test_the_new_rows_fit_the_owners_360px_phone():
         assert room - int(cols.group(1)) - int(cols.group(2)) - 2 * int(cols.group(3)) >= 110, sel
     assert "white-space:nowrap" in _rule(".cl-n") and _REC_W["14 · 58 · 28"] + 4 <= 84      # one number at 800 adds under 4px
     # the value column's verdict keeps one line and its caption wraps under it when long ("Busier than 13 of 19 days")
-    assert "grid-template-columns:minmax(0,1fr)60px100px" in _rule(".sit-row") and _REC_W["Call wall 187 pts up"] <= 100 < _REC_W["Busier than 13 of 19 days"]
+    assert "grid-template-columns:minmax(0,1fr)60px100px" in _rule(".sit-row") and _REC_W["by 16 pts"] <= 100 < _REC_W["Most Calls Held · 187 pts above"]
     assert "white-space:nowrap" in _rule(".sit-v") and "white-space:normal" in _rule(".sit-v span")
     assert _REC_W["CLAUDE’S READ · 11:30"] + 8 + _REC_W["NOT IN THE CALL"] <= strip
-    assert _REC_W["agrees with the call · leans up more than usual"] <= strip   # on its own line under the pick at worst
+    assert _REC_W["agrees with the call · a move is more likely than the historical odds"] <= 2 * strip   # two lines under the pick at worst
 
 
 def test_the_30_minute_card_leads_with_the_average_price_call():
@@ -2121,9 +2121,9 @@ def test_a_diary_row_with_no_wall_draws_its_fact_in_words(tz):
     assert not any(c[1].startswith("Situation") for c in got["main"])
     situation = [d for c, d in zip(got["dock"], got["dock_dom"]) if c[0] == "card sit"][0]
     rows = {r["kids"][0]["text"]: r for r in situation["kids"] if r["attrs"].get("class") == "sit-row"}
-    wall = rows["Nearest heavy strike"]
+    wall = rows["Nearest Big Strike"]                                                  # the card's old words, read in the new
     assert [k["attrs"].get("class") for k in wall["kids"]] == ["sit-t", "sit-v"]      # no gauge
-    assert _flat_text(wall["kids"][1]) == "None in reach"                              # the sentence is in the sheet
+    assert _flat_text(wall["kids"][1]) == "None Nearby"                                # the sentence is in the sheet
     assert [k["attrs"].get("class") for k in rows["Price, last 30 min"]["kids"]] == ["sit-t", "sit-g", "sit-v"]
     assert [k for k, _ in got["dock"]] == ["card calls-link", "card sit"] and got["qBtn"]["hidden"] is False
 
@@ -2423,7 +2423,7 @@ CLAUDE = {"read_id": "live:2026-10-09T14:30:12-04:00", "trading_day": "2026-10-0
                                             "pushes_toward_in_words": "points to a smaller move", "horizon_in_words": "next 30 min"},
           "record": {"verdict": "Too early", "graded_reads": 0, "scorecard_built_at": None, "horizons": {}}, "written_at": "2026-10-09T14:31:40-04:00"}
 _CLAUDE_FNS = ("top1", "jevOwn", "combinedCall", "headline", "clOk", "clBase", "clPick", "clDir", "clHeader", "clBar", "clNumbers", "moveVsUsual", "tiltVsUsual", "against", "leadLine",
-               "agreeWords", "paintClaude", "drawClaude", "horizonKey", "reasonRow", "recordLine", "openWhy")
+               "noAnswerWords", "agreeWords", "paintClaude", "drawClaude", "horizonKey", "reasonRow", "recordLine", "openWhy")
 # the 30-minute card the CLAUDE read was made for (its read_id is "live:" and the card's row stamp), calling flat, and one calling up
 FLAT_CARD = {"row_ts": "2026-10-09T14:30:12-04:00", "hour": {"average": {"pick": "flat", "probabilities": {"flat": 0.62, "up": 0.24, "down": 0.15}}}}
 UP_CARD = {**FLAT_CARD, "hour": {"average": {"pick": "up", "probabilities": {"flat": 0.3, "up": 0.5, "down": 0.2}}}}
@@ -2436,7 +2436,7 @@ def _claude(c, card=None, tz=LA, leads=None, now="2026-10-09T14:32:30-04:00"):
     js = ("var IDS = {}; ['claude', 'claudeLab', 'claudePick', 'claudeLine', 'claudeRows', 'csTitle', 'csBody'].forEach(function(k){ IDS[k] = el('div'); });"
           "IDS.claude.hidden = true; function $(id){ return IDS[id]; } var opened = 0, MiraiSheet = {open: function(){ opened++; }};"
           "var last = D.card, shownPre = D.leads === 'pre', shownLeads = D.leads === 'lane';"
-          + "".join(_var(v) for v in ("CLAUDE_URL", "HORIZONS", "DIRS", "claude")) + "".join(_fn(f) for f in _CLAUDE_FNS)
+          + "".join(_var(v) for v in ("CLAUDE_URL", "HORIZONS", "DIRS", "claude", "STATUS_WORDS")) + "".join(_fn(f) for f in _CLAUDE_FNS)
           + "claude = D.c; drawClaude(); var strip = {hidden: IDS.claude.hidden, lab: IDS.claudeLab.textContent, pick: IDS.claudePick.textContent, line: IDS.claudeLine.textContent, rows: dump(IDS.claudeRows)};"
           "openWhy(el('button')); console.log(JSON.stringify({strip: strip, title: IDS.csTitle.textContent, opened: opened, body: dump(IDS.csBody)}));")
     return _run(js, {"c": c, "card": card, "leads": leads, "now": now}, tz)
@@ -2451,17 +2451,17 @@ def test_claudes_read_is_a_strip_under_the_call_never_a_second_headline():
     got = _claude(CLAUDE, FLAT_CARD)
     strip = got["strip"]
     assert strip["hidden"] is False and strip["lab"] == "Claude\u2019s read \u00B7 11:30" and strip["pick"] == "Flat 58%"
-    assert strip["line"] == "agrees with the call \u00B7 leans up more than usual"
+    assert strip["line"] == "agrees with the call \u00B7 leans up more than the historical odds"
     rows = strip["rows"]["kids"]
     assert [k["attrs"].get("class") for k in rows] == ["cl-h"] + ["cl-k", "cl-bar", "cl-n", "cl-usual"] * 3 and _flat_text(rows[0]) == "Down\u00B7Flat\u00B7Up"
     assert [_flat_text(k) for k in rows if k["attrs"].get("class") == "cl-k"] == ["30 min", "60 min", "Close"]
     assert [_flat_text(k) for k in rows if k["attrs"].get("class") == "cl-n"] == ["14\u00B758\u00B728", "15\u00B755\u00B730", "16\u00B750\u00B734"]
     assert [[c["tag"], c["text"]] for c in rows[3]["kids"]] == [["span", "14"], ["i", "\u00B7"], ["b", "58"], ["i", "\u00B7"], ["span", "28"]]
-    assert [_flat_text(k) for k in rows if k["attrs"].get("class") == "cl-usual"] == ["usually flat 60%", "usually flat 69%", "usually flat 55%"]
+    assert [_flat_text(k) for k in rows if k["attrs"].get("class") == "cl-usual"] == ["Claude\u2019s Historical Odds \u00B7 Flat 60%", "Claude\u2019s Historical Odds \u00B7 Flat 69%", "Claude\u2019s Historical Odds \u00B7 Flat 55%"]
     assert rows[2]["attrs"]["aria-label"] == "Claude: Down 14, Flat 58, Up 28" and [k["attrs"]["class"] for k in rows[2]["kids"]] == ["dn", "fl", "up"]
     # against an up call the same read differs; with no call on the card the line is the lean alone
-    assert _claude(CLAUDE, UP_CARD)["strip"]["line"] == "differs from the call \u00B7 leans up more than usual"
-    assert _claude(CLAUDE, None)["strip"]["line"] == "leans up more than usual"
+    assert _claude(CLAUDE, UP_CARD)["strip"]["line"] == "differs from the call \u00B7 leans up more than the historical odds"
+    assert _claude(CLAUDE, None)["strip"]["line"] == "leans up more than the historical odds"
     assert _claude(CLAUDE, FLAT_CARD, TOKYO)["strip"]["lab"] == "Claude\u2019s read \u00B7 03:30"
     # the markup and its CSS: the strip, the label row, the 15px pick, the 48px Why control that opens the page's sheet
     assert '<section class="claude" id="claude" hidden aria-labelledby="claudeLab">' in SPX
@@ -2482,13 +2482,13 @@ def test_an_older_read_is_never_set_against_the_call_on_screen():
     viewer's zone, so it never passes for today's."""
     yesterday = {**CLAUDE, "read_id": "live:2026-10-08T15:30:12-04:00", "trading_day": "2026-10-08", "read_at": "2026-10-08T15:30:12-04:00"}
     got = _claude(yesterday, FLAT_CARD)["strip"]
-    assert got["lab"] == "Claude’s read · Thu 12:30" and got["line"] == "leans up more than usual"
+    assert got["lab"] == "Claude’s read · Thu 12:30" and got["line"] == "leans up more than the historical odds"
     assert _claude(yesterday, FLAT_CARD, TOKYO)["strip"]["lab"] == "Claude’s read · Fri 04:30"
     last_half_hour = {**CLAUDE, "read_id": "live:2026-10-09T14:00:12-04:00", "read_at": "2026-10-09T14:00:12-04:00"}
     got = _claude(last_half_hour, FLAT_CARD)["strip"]
-    assert got["lab"] == "Claude’s read · 11:00" and got["line"] == "leans up more than usual"
+    assert got["lab"] == "Claude’s read · 11:00" and got["line"] == "leans up more than the historical odds"
     for leads in ("lane", "pre"):
-        assert _claude(CLAUDE, FLAT_CARD, leads=leads)["strip"]["line"] == "leans up more than usual", leads
+        assert _claude(CLAUDE, FLAT_CARD, leads=leads)["strip"]["line"] == "leans up more than the historical odds", leads
     assert _claude(CLAUDE, FLAT_CARD)["strip"]["line"].startswith("agrees with the call")
     assert "c.read_id !== 'live:' + last.row_ts" in _fn("agreeWords") and "headline(callSum(last.hour))" in _fn("agreeWords")
 
@@ -2496,12 +2496,12 @@ def test_an_older_read_is_never_set_against_the_call_on_screen():
 def test_a_read_with_no_answer_or_a_rejected_horizon_says_so_in_the_strip():
     rejected = {**CLAUDE, "forecast": {**CLAUDE["forecast"], "next_30_minutes": {"status": "rejected", "base_rate_shown_to_claude": {"up_pct": 19, "flat_pct": 60, "down_pct": 21}}}}
     got = _claude(rejected)["strip"]
-    assert got["pick"] == "Flat 55%" and got["line"] == "a move is more likely than usual"      # the 60-minute horizon leads
+    assert got["pick"] == "Flat 55%" and got["line"] == "a move is more likely than the historical odds"      # the 60-minute horizon leads
     rows = got["rows"]["kids"]
     assert _flat_text(rows[3]) == "rejected" and rows[2]["attrs"]["class"] == "cl-bar none"
     none = {**CLAUDE, "status": "paused", "usable_answer_count": 0, "forecast": {}}
     got = _claude(none)["strip"]
-    assert got["pick"] == "No answer" and got["line"] == "paused" and len(got["rows"]["kids"]) == 1
+    assert got["pick"] == "No answer" and got["line"] == "Paused by hand" and len(got["rows"]["kids"]) == 1
 
 
 def test_the_why_sheet_sets_claudes_bar_over_the_usuals_with_the_reasons_in_plain_words():
@@ -2516,13 +2516,13 @@ def test_the_why_sheet_sets_claudes_bar_over_the_usuals_with_the_reasons_in_plai
     assert grid["attrs"]["class"] == "cl-vs"
     kinds = [k["attrs"].get("class") for k in grid["kids"]]
     assert kinds[:2] == ["cl-vs-cap", "cl-h"] and kinds[2:9] == ["cl-vs-k", "cl-k", "cl-bar", "cl-n", "cl-k", "cl-bar usual", "cl-n"]
-    assert _flat_text(grid["kids"][0]) == "Claude\u2019s bar over the usual\u2019s"
+    assert _flat_text(grid["kids"][0]) == "Claude\u2019s bar over its historical odds"
     leans = [[_flat_text(k["kids"][0]), _flat_text(k["kids"][1])] for k in grid["kids"] if k["attrs"].get("class") == "cl-vs-k"]
     assert leans == [["30 min", "+16 toward up"], ["60 min", "+14 toward a move \u00B7 +17 toward up"], ["Close", "+5 toward a move \u00B7 +9 toward up"]]
     nums = [_flat_text(k) for k in grid["kids"] if k["attrs"].get("class") == "cl-n"]
     assert nums == ["14\u00B758\u00B728", "21\u00B760\u00B719", "15\u00B755\u00B730", "17\u00B769\u00B715", "16\u00B750\u00B734", "18\u00B755\u00B727"]
     usual = [k for k in grid["kids"] if k["attrs"].get("class") == "cl-bar usual"][0]
-    assert usual["attrs"]["aria-label"] == "Usual odds at this time of day: Down 21, Flat 60, Up 19"
+    assert usual["attrs"]["aria-label"] == "Claude’s historical odds: Down 21, Flat 60, Up 19"
     assert _texts(grid, "cl-gap") == ["Claude\u2019s two answers differed by 12 points here"]       # the 60-minute horizon's two answers
     rest = [[k["attrs"].get("class"), _flat_text(k)] for k in body["kids"][1:]]
     assert rest == [["cl-why-h", "Why"], ["cl-why-r", "30 minPrice sits above the day\u2019s average \u00B7 points up"],
@@ -2536,8 +2536,8 @@ def test_the_why_sheet_sets_claudes_bar_over_the_usuals_with_the_reasons_in_plai
               "record": {"verdict": "Scored", "graded_reads": 120, "horizons": {"next_30_minutes": {"claude_right_pct": 54.2, "skill_vs_base_rate_pct": 4.1, "reads": 120}}}}
     rest = [[k["attrs"].get("class"), _flat_text(k)] for k in _claude(scored)["body"]["kids"][1:]]
     assert rest == [["cl-why-h", "Why"], ["cl-why-r", "AllNo reason survived the checks"],
-                    ["cl-rec", "Record: right 54% of 120 reads (next 30 min) \u00B7 +4% vs the usual odds. Not part of the call above."]]
-    assert "grid-template-columns:52pxminmax(0,1fr)110px" in _rule(".cl-vs") and "height:14px" in _rule(".cl-vs .cl-bar") and "height:8px" in _rule(".cl-vs .cl-bar.usual")
+                    ["cl-rec", "Record: right 54% of 120 reads (next 30 min) \u00B7 +4% vs the historical odds. Not part of the call above."]]
+    assert "grid-template-columns:78pxminmax(0,1fr)110px" in _rule(".cl-vs") and "height:14px" in _rule(".cl-vs .cl-bar") and "height:8px" in _rule(".cl-vs .cl-bar.usual")
 
 
 def _claude_poll(c):
@@ -2567,11 +2567,11 @@ def test_the_whole_page_draws_claudes_strip_against_mondays_call():
     read = {**CLAUDE, "read_id": "live:" + MONDAY["live"]["row_ts"], "trading_day": "2026-09-28", "read_at": "2026-09-28T15:31:30-04:00"}
     got = _whole({**cards, "claude": read, "board": BOARD}, "2026-09-28T15:40:00-04:00")
     assert got["claude"]["lab"] == "Claude\u2019s read \u00B7 12:31" and got["claude"]["pick"] == "Flat 58%"
-    assert got["claude"]["line"] == "differs from the call \u00B7 leans up more than usual"
+    assert got["claude"]["line"] == "differs from the call \u00B7 leans up more than the historical odds"
     assert "Today\u2019s call \u00B7 JEV35% sureDown 51%" in next(t for k, t in got["main"] if k == "card dashed")
     assert got["rec"] == "Record \u00B7 30 min107 of 300 reads56 of 107 right \u00B7 usual odds 58 \u00B7 a bit worseToo early to judge"
     lane = _whole({**cards, "claude": read}, "2026-09-28T10:35:00-04:00")
-    assert lane["claude"]["line"] == "leans up more than usual" and lane["claude"]["lab"] == "Claude\u2019s read \u00B7 12:31"
+    assert lane["claude"]["line"] == "leans up more than the historical odds" and lane["claude"]["lab"] == "Claude\u2019s read \u00B7 12:31"
     assert next(t for k, t in lane["main"] if k == "card fold").startswith("30-min call \u00B7 12:31Down 51%")
     assert _whole(cards, "2026-09-28T15:40:00-04:00")["claude"] is None
 
@@ -2595,7 +2595,7 @@ def _situation(rows, sigma=75.3, age="13 MIN AGO", tz=LA, wide=False):
     and label, each row as [name, gauge viewBox or None, verdict, caption], and the sheet's title and parts."""
     js = ("var nodes = {csTitle: el('div'), csBody: el('div')}; function $(id){ return nodes[id]; } var opened = 0, MiraiSheet = {open: function(){ opened++; }};"
           "function chartDocked(){ return !!D.wide; }"
-          + _var("GAUGE_W") + _var("SIDE_WORDS") + "".join(_fn(f) for f in ("labRow", "signedWords", "gauge", "measured", "points", "factCaption", "openSituation", "situationCard"))
+          + _var("GAUGE_W") + _var("WALL_WORDS") + _var("SIT_RENAMED") + "".join(_fn(f) for f in ("sitWords", "labRow", "signedWords", "gauge", "measured", "points", "factCaption", "openSituation", "situationCard"))
           + "var c = {row_ts: '2026-10-09T14:30:40-04:00', sigma: D.sigma, situation: D.rows}, card = situationCard(c, D.age, false);"
           "card.kids[0].kids[1].on = null; var rows = card.kids.slice(1).map(function(r){ var g = r.kids.filter(function(k){ return k.tag === 'svg'; })[0], v = r.kids[r.kids.length - 1];"
           " return [r.kids[0].textContent, g ? g.attrs.viewBox : null, v._t, v.kids.length ? v.kids[0].textContent : null]; });"
@@ -2614,15 +2614,16 @@ def test_the_situation_is_one_control_of_key_value_rows_with_the_figures_in_poin
     assert got["tag"] == "button" and got["attrs"] == {"class": "card sit", "aria-controls": "jevSheet", "aria-label": "Situation, 13 min ago. Open the facts in words"}
     assert _flat_text(got["lab"]) == "Situation13 MIN AGO" and got["lab"]["kids"][1]["attrs"]["class"] == "r age"
     assert got["rows"] == [["Price, last 30 min", "0 0 64 14", "Flat", "+2 pts"], ["Price vs day\u2019s average", "0 0 64 14", "Above", "by 16 pts"],
-                           ["Range, last 30 min", "0 0 64 14", "Busy", "Busier than 13 of 19 days"], ["Nearest heavy strike", "0 0 64 14", "Open air", "Call wall 187 pts up"],
+                           ["Range, last 30 min", "0 0 64 14", "Busy", "Busier than 13 of 19 days"], ["Nearest Big Strike", "0 0 64 14", "None Nearby", "Most Calls Held \u00B7 187 pts above"],
                            ["Implied volatility", "0 0 64 14", "Flat", "No change"]]
     assert _situation([{**SITUATION[0], "figure": {**SITUATION[0]["figure"], "value": -0.004}}])["rows"][0][3] == "No change"
     assert _situation([{**SITUATION[0], "figure": {**SITUATION[0]["figure"], "value": -0.102}}])["rows"][0][3] == "\u22128 pts"
     # a card without a sigma says the figure as a share of a usual day, as the card did before the board
-    assert [r[3] for r in _situation(SITUATION[:2] + SITUATION[3:4], sigma=None)["rows"]] == ["Up 0.03\u00D7 a usual day", "0.21\u00D7 a usual day above", "Call wall, 2.48\u00D7 a usual day above"]
-    # a fact with no number (a diary row with no wall) has no gauge and no caption
-    bare = _situation([{"path": "gex.air_to_wall", "title": "Nearest heavy strike", "verdict": "None in reach", "figure": {"kind": "distance", "value": None}, "sentence": "no heavy strike sits within reach"}])
-    assert bare["rows"] == [["Nearest heavy strike", None, "None in reach", ""]]
+    assert [r[3] for r in _situation(SITUATION[:2] + SITUATION[3:4], sigma=None)["rows"]] == ["Up 0.03\u00D7 a usual day", "0.21\u00D7 a usual day above", "Most Calls Held, 2.48\u00D7 a usual day above"]
+    # a fact with no number (a diary row with no wall) has no gauge and no caption; a card from before 2026-10-13 (the
+    # rows above) is read in the new words, and a card in the new words as it is
+    bare = _situation([{"path": "gex.air_to_wall", "title": "Nearest Big Strike", "verdict": "None Nearby", "figure": {"kind": "distance", "value": None}, "sentence": "no heavy strike sits within reach"}])
+    assert bare["rows"] == [["Nearest Big Strike", None, "None Nearby", ""]]
     assert "sit-top" not in SPX and "openFact" not in JS and 'role="button"' not in _fn("situationCard") and "margin-top:6px" in _rule(".sit .sit-row:first-of-type")
 
 
@@ -2654,7 +2655,7 @@ def test_the_situation_sheet_gives_each_facts_sentence_in_the_viewers_zone():
     assert got["title"] == "Situation \u00B7 the 11:30 read" and got["opened"] == 1
     assert got["sheet"][:2] == [["FlatPrice, last 30 min", "Over the last 30 minutes price moved 0.03 of a normal day's move, larger than 4 of the last 19 sessions at this minute, bottom third: no real move."],
                                 ["AbovePrice vs day\u2019s average", "Price is 0.21 of a normal day's move above the day's volume-weighted average price (VWAP); it last traded at VWAP at 08:02."]]
-    assert len(got["sheet"]) == 5 and got["sheet"][3][0] == "Open airNearest heavy strike"
+    assert len(got["sheet"]) == 5 and got["sheet"][3][0] == "None NearbyNearest Big Strike"
     assert _situation(SITUATION, tz=TOKYO)["title"] == "Situation \u00B7 the 03:30 read"
 
 
@@ -3009,7 +3010,7 @@ BOARD_GRADES = [grade("10:02", "right"), grade("10:32", "wrong"), grade("11:02",
                 grade("10:02", "right", day="2026-10-08")]
 
 _CHART_FNS = ("cardDay", "chartDocked", "todaysCard", "within", "dayClose", "inSession", "priceDay", "money", "indexLevel", "dayName", "skipLine", "tag", "bookRow", "dayCalls", "liveCall",
-              "dayFacts", "paintSpark", "strikePitch", "chartWindow", "strikeBars", "kShort", "chWidth", "wordClear", "wordSpot", "chartSvg", "chTile", "gapWords",
+              "dayFacts", "paintSpark", "strikePitch", "chartWindow", "strikeBars", "kShort", "chWidth", "wordClear", "wordSpot", "bookLevels", "chartSvg", "chTile", "gapWords",
               "barAt", "bookTiles", "keyLine", "spotState", "chartDay", "paintChart")
 _CHART_VARS = ("SPOT_URL", "SPOT_LIVE_MS", "SPARK_W", "WINDOW_SHARE", "CH_H", "CH_SIDE", "CH_ADV_400", "CH_ADV_500", "CH_ADV_800", "CH_ADV")
 
@@ -3090,8 +3091,8 @@ def test_the_chart_is_drawn_to_the_boards_scales():
     wall, mag = _find(svg, "wall")[0], _find(svg, "mag")[0]
     assert (wall["attrs"]["y1"], wall["attrs"]["x2"]) == ("69.1", "204") and mag["attrs"]["y1"] == "85.5" and not _find(svg, "pwall")
     names = {t["text"]: t["attrs"] for t in _find(svg, "t-lvl")}
-    assert names["CALL WALL · TODAY"] == {"x": "2.0", "y": "65.1", "text-anchor": "start", "class": "t-lvl halo"}
-    assert names["MAGNET"]["y"] == "81.5" and names["PUT WALL"]["y"] == "98.0"                     # one line, the second name under it
+    assert names["Today’s Call Wall"] == {"x": "2.0", "y": "65.1", "text-anchor": "start", "class": "t-lvl halo"}
+    assert names["Magnet"]["y"] == "81.5" and names["Today’s Put Wall"]["y"] == "98.0"             # one line, the second name under it
     box, at = _find(svg, "box")[0]["attrs"], _find(svg, "at")[0]["attrs"]
     assert (box["x"], box["y"], box["width"], box["height"]) == ("156.9", "65.5", "15.7", "20.3")  # 14:30 to 15:00, 7,816.11 down to 7,809.91
     assert (at["x1"], at["y1"], at["x2"]) == ("156.9", "75.6", "172.6")
@@ -3114,14 +3115,14 @@ def test_the_chart_is_drawn_to_the_boards_scales():
     assert squares == [("sq", "12.7"), ("sq wrong", "29.0"), ("sq", "44.1"), ("sq open", "153.5")]
     assert texts["30-min calls · 2 of 3 right"]["x"] == "320"
     assert svg["attrs"]["aria-label"].startswith("SPX today by the minute from the 06:30 open to 11:42, low 7,779.34 at 06:48, high so far 7,814.33 at 11:27, now 7,811.47; "
-                                                 "the call wall at 7,815, the magnet at 7,810, the put wall at 7,810 drawn as lines")
+                                                 "Today’s Call Wall at 7,815, Magnet at 7,810, Today’s Put Wall at 7,810 drawn as lines")
     assert svg["attrs"]["aria-label"].endswith("busiest 7,810; the open 11:30 call drawn as a dashed box, flat within 3.1 points to 12:00; "
                                                "the day’s 30-minute calls as squares under the clock, 2 of 3 right, one open")
     # under the drawing: the legend lines, the two tiles and the caption, the board's words with the day's numbers
     key, tiles, cap = got["body"]["kids"][1], got["body"]["kids"][2], got["body"]["kids"][3]
-    assert [_flat_text(k) for k in key["kids"]] == ["Dashed box · the 11:30 call, flat ± 3.1 pts to 12:00", "Walls · the most calls (7,815), the most puts (7,810)",
+    assert [_flat_text(k) for k in key["kids"]] == ["Dashed box · the 11:30 call, flat ± 3.1 pts to 12:00", "Lines · Today’s Call Wall (7,815), Magnet (7,810), Today’s Put Wall (7,810)",
                                                    "Bars · today’s options per strike, puts left, calls right"]
-    assert [[_flat_text(k) for k in t["kids"]] for t in tiles["kids"]] == [["Range so far", "35 pts", "0.46 of a normal day"], ["Magnet · busiest", "7,810", "373k · 1.5 pts below"]]
+    assert [[_flat_text(k) for k in t["kids"]] for t in tiles["kids"]] == [["Range so far", "35 pts", "0.46 of a normal day"], ["Magnet", "7,810", "373k · 1.5 pts below"]]
     assert tiles["attrs"]["class"] == "tod ch-tiles" and cap["attrs"] == {"class": "tag"} and _flat_text(cap) == "Dealers lean against moves · options book 12:58 · not advice"
     assert [k["attrs"]["class"] for k in key["kids"]] == ["box", "walls", "bars"] and cap["kids"][-1]["attrs"]["class"] == "ch-advice"   # what the panel leaves out, by class
     assert _flat_text(got["body"]["kids"][-1]) == _flat_text(cap) and len(got["body"]["kids"]) == 4
@@ -3137,7 +3138,7 @@ def test_the_chart_in_tokyo_and_after_the_close():
     assert _find(svg, "dot")[0]["attrs"]["cy"] == "80.8"                 # the newest close, 7,811.42: the quote is not this day's
     assert not _find(svg, "box") and not _find(svg, "sq open")           # the 14:30 call's mark has passed
     assert [_flat_text(k) for k in got["body"]["kids"][2]["kids"][0]["kids"]] == ["Range", "35 pts", "0.46 of a normal day"]
-    assert [_flat_text(k) for k in got["body"]["kids"][1]["kids"]][0].startswith("Walls")
+    assert [_flat_text(k) for k in got["body"]["kids"][1]["kids"]][0].startswith("Lines")
 
 
 def test_the_chart_says_so_without_bars_and_without_a_book():
@@ -3156,7 +3157,7 @@ def test_the_chart_says_so_without_bars_and_without_a_book():
     assert "; no options book; " in svg["attrs"]["aria-label"]
     key, tiles, cap = got["body"]["kids"][1], got["body"]["kids"][2], got["body"]["kids"][3]
     assert [_flat_text(k) for k in key["kids"]] == ["Dashed box · the 11:30 call, flat ± 3.1 pts to 12:00"]
-    assert [_flat_text(k) for k in tiles["kids"][1]["kids"]] == ["Magnet · busiest", "No book", "options book unavailable"]
+    assert [_flat_text(k) for k in tiles["kids"][1]["kids"]] == ["Magnet", "No book", "options book unavailable"]
     assert _flat_text(cap) == "Options book unavailable · not advice"
     # the sparkline: the closes across the box, the newest as the dot
     spark = got["spark"]["kids"]
@@ -3376,7 +3377,7 @@ def test_the_wide_column_is_the_boards_three_tiles_a_row_of_horizons_and_the_not
     assert ".claude{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;padding-bottom:10px}" in wide
     assert ".cl-foot{grid-column:2;grid-row:1;margin:-16px 0;border-top:0}" in wide and ".cl-h{display:none}" in wide
     assert ".cl-grid{grid-template-columns:repeat(3,auto minmax(0,1fr));gap:4px 8px}" in wide
-    assert ".cl-k,.cl-n{grid-row:1;grid-column:auto}" in wide and ".cl-bar{grid-row:2;grid-column:span 2}" in wide and ".cl-usual{grid-row:3;grid-column:span 2;margin-bottom:0}" in wide
+    assert ".cl-k,.cl-n{grid-row:1;grid-column:auto}" in wide and ".cl-bar{grid-row:2;grid-column:span 2}" in wide and ".cl-usual{grid-row:3;grid-column:span 2;margin-bottom:0;white-space:normal}" in wide
     assert ".px-spark{flex:0 0 120px}" in wide and "SPARK_W_WIDE = 120" in _var("SPARK_W") and "W = chartDocked() ? SPARK_W_WIDE : SPARK_W" in _fn("paintSpark")
     assert ".vq{flex:0 0 176px}" in wide and ".note{flex:1 1 0;min-width:0;text-align:right}" in wide   # shrinks beside them, never under
     spark = _chart({"now": "2026-10-09T14:43:00-04:00", "card": BOARD_CARD, "bars": BOARD_BARS, "book": None, "wide": True})["spark"]
@@ -3463,16 +3464,16 @@ def test_the_panel_carries_the_boards_title_and_four_tiles_and_the_sheet_keeps_i
     key, tiles, cap = live["body"]["kids"][1], live["body"]["kids"][2], live["body"]["kids"][3]
     assert [k["attrs"]["class"] for k in key["kids"]] == ["box", "walls", "bars"] and ".ch-key .walls{display:none}" in SPX and ".ch-key .bars{order:-1}" in SPX
     assert [[_flat_text(k) for k in t["kids"]] for t in tiles["kids"]] == [["Range so far", "35 pts", "0.46 of a normal day"], ["Biggest strike", "7,810", "373k traded · 1.5 pts below"],
-                                                                           ["Call wall", "7,815", "214k calls · 3.5 pts above"], ["Put wall · magnet", "7,810", "171k puts · the magnet"]]
+                                                                           ["Today’s Call Wall", "7,815", "214k calls · 3.5 pts above"], ["Today’s Put Wall · Magnet", "7,810", "171k puts · the magnet"]]
     assert tiles["attrs"]["class"] == "tod ch-tiles" and [t["attrs"]["class"] for t in tiles["kids"]] == ["tile"] * 4
     assert _flat_text(cap) == "Dealers lean against moves · options book 12:58 · not advice" and cap["kids"][-1]["attrs"]["class"] == "ch-advice"
     # the magnet off the put wall: the wall's distance in its place, and no magnet on either name
     apart = _board(W=744, wide=True, book={**NATIVE_ROW, "gex_views": {**NATIVE_ROW["gex_views"], "magnet": 7805.0}})["body"]["kids"][2]
-    assert [[_flat_text(k) for k in t["kids"]] for t in apart["kids"][2:]] == [["Call wall", "7,815", "214k calls · 3.5 pts above"], ["Put wall", "7,810", "171k puts · 1.5 pts below"]]
+    assert [[_flat_text(k) for k in t["kids"]] for t in apart["kids"][2:]] == [["Today’s Call Wall", "7,815", "214k calls · 3.5 pts above"], ["Today’s Put Wall", "7,810", "171k puts · 1.5 pts below"]]
     # after the close, and without a book: the state and the one tile the sheet shows
     shut = _chart({"now": "2026-10-09T16:20:00-04:00", "card": BOARD_CARD, "bars": BOARD_BARS, "book": None, "spot": 7811.0, "W": 744, "wide": True})
     assert shut["day"] == "Fri 10-09 · last close · PDT"
-    assert [[_flat_text(k) for k in t["kids"]] for t in _find(shut["body"], "ch-tiles")[0]["kids"]] == [["Range", "35 pts", "0.46 of a normal day"], ["Magnet · busiest", "No book", "options book unavailable"]]
+    assert [[_flat_text(k) for k in t["kids"]] for t in _find(shut["body"], "ch-tiles")[0]["kids"]] == [["Range", "35 pts", "0.46 of a normal day"], ["Magnet", "No book", "options book unavailable"]]
     assert _board(W=744, wide=True, spot=None)["day"] == "Fri 10-09"       # no quote yet: the day alone, as the sheet
     assert _board()["day"] == "Fri 10-09" and len(_board()["body"]["kids"][2]["kids"]) == 2
     assert JS.count("function chTile(") == 1 and "if(!chartDocked()){" in _fn("bookTiles") and "$('chDay').textContent = day ? chartDay(day) : '';" in _fn("paintChart")

@@ -20,7 +20,7 @@ def _answer(reasons, against=None):
 def test_a_reason_gets_its_words_beside_its_codes():
     reason = {"input_field_path": "tape.rv30_vs_clock_x", "pushes_toward": "smaller_move", "horizon": "next_30_minutes"}
     assert reason_words.reason_in_words(reason) == {
-        **reason, "input_field_path_in_words": "the last 30 minutes' realized move against the usual for this time of day",
+        **reason, "input_field_path_in_words": "the last 30 minutes' realized move against what is normal for this time of day",
         "pushes_toward_in_words": "points to a smaller move", "horizon_in_words": "next 30 min"}
     assert reason_words.reason_in_words(None) is None
 

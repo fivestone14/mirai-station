@@ -3,9 +3,11 @@ claude_forecast_card.json) never meets a dotted path.
 
 A reason is ``{input_field_path, pushes_toward, horizon}`` (spec/record_formats.md, the reply's ``reasons``).
 ``input_field_path`` is a dotted path into the scene (``tape.rv30_vs_clock_x``); the words for every path the
-payload can carry are listed here by block, and a path this file does not know gets its block's name and its
-own words with the underscores taken out, so a new field is readable before it is listed. The station's own
-code questions (``code.TREND-01``) are named by their id.
+payload can carry are listed here by block. A path below a listed one takes its nearest listed parent's words: a
+ranked number is written as ``{"v": x, "r": [a, b]}``, so a reason naming its value or its rank (``tape.m30_sig.v``)
+reads as the number, and one naming an item of a list (``tape.last_6x5m_sig.2``) reads as the list. A path with no
+listed parent gets its block's name and its own words with the underscores taken out, so a new field is readable
+before it is listed. The station's own code questions (``code.TREND-01``) are named by their id.
 """
 from __future__ import annotations
 
@@ -19,26 +21,35 @@ BLOCK_WORDS = {"data_sources": "the feeds", "clock": "the clock", "calendar": "t
                "tape": "the tape", "open_signals": "the open", "close_signals": "the close", "options": "the options",
                "flow": "the options flow", "internals": "market breadth", "cross_asset": "other markets",
                "sentiment": "market mood", "overnight": "overnight", "foreign": "overseas markets",
-               "news": "the headlines", "code": "the station's questions", "precedents": "the past moments"}
+               "news": "the headlines", "code": "the station's questions", "base_rate": "the historical odds",
+               "precedents": "the past moments", "absent": "the inputs left out"}
 
 FIELD_WORDS = {
     # data_sources: how old each feed was at the cut
     "data_sources.cut_at": "the time the scene was cut",
+    "data_sources.spx_bars": "the price bars feed",
     "data_sources.spx_bars.last_finished": "when the last finished 5-minute bar ended",
     "data_sources.spx_bars.age_s": "the age of the last price bar",
+    "data_sources.options_diary": "the options diary",
     "data_sources.options_diary.row_at": "when the options diary row was written",
     "data_sources.options_diary.age_s": "the age of the options diary row",
     "data_sources.options_diary.book": "which options book the diary row stands on",
     "data_sources.options_diary.coverage": "how much of the options book the diary row covers",
+    "data_sources.market_feed": "the market feed",
     "data_sources.market_feed.snapshot_at": "when the market feed was last read",
     "data_sources.market_feed.age_s": "the age of the market feed",
     "data_sources.market_feed.failed": "whether the market feed failed",
+    "data_sources.tape": "the tape feed",
     "data_sources.tape.fold_at": "when the tape was last folded",
     "data_sources.tape.age_s": "the age of the tape",
-    "data_sources.tape.trades_15m_vs_usual_x": "trades on the tape in the last 15 minutes against the usual",
+    "data_sources.tape.trades_15m_vs_usual_x": "trades on the tape in the last 15 minutes against what is normal",
     "data_sources.tape.content": "what the tape holds",
+    "data_sources.headlines": "the headlines feed",
     "data_sources.headlines.last_capture": "when headlines were last captured",
     "data_sources.headlines.age_s": "the age of the headlines",
+    "data_sources.dated_book": "the monthly and quarterly options book",
+    "data_sources.dated_book.as_of": "when the monthly and quarterly options book was read",
+    "data_sources.dated_book.age_h": "the age of the monthly and quarterly options book",
     "data_sources.load_notes": "notes from loading the inputs",
     # clock
     "clock.min_after_open": "minutes since the open",
@@ -47,14 +58,18 @@ FIELD_WORDS = {
     # calendar
     "calendar.day_class": "what kind of day it is",
     "calendar.today": "today's scheduled events",
+    "calendar.next_high_tier": "the next big scheduled event",
     "calendar.next_high_tier.kind": "the next big scheduled event",
     "calendar.next_high_tier.sessions_ahead": "sessions until the next big scheduled event",
+    "calendar.fomc": "the Fed meeting cycle",
     "calendar.fomc.phase": "where we are in the Fed meeting cycle",
     "calendar.fomc.sessions_to_next": "sessions until the next Fed meeting",
+    "calendar.month": "where the month stands",
     "calendar.month.trading_day": "the trading day of the month",
     "calendar.month.days_left": "trading days left in the month",
     "calendar.month.turn_window": "whether this is the turn of the month",
     "calendar.month.pension_stock_minus_bond_mtd_pts": "stocks against bonds this month, for month-end rebalancing",
+    "calendar.expiry": "options expiry",
     "calendar.expiry.today": "whether options expire today",
     "calendar.expiry.monthly_sessions_ahead": "sessions until the monthly options expiry",
     # scale
@@ -77,44 +92,54 @@ FIELD_WORDS = {
     "tape.five_session_pos": "where price sits in the last five sessions' range",
     "tape.price_minus_vwap_sig": "price against VWAP",
     "tape.vwap_last_touch_min_ago": "minutes since price last touched VWAP",
+    "tape.high": "the day's high",
     "tape.high.minus_price_sig": "the day's high above price",
     "tape.high.at": "when the day's high was set",
     "tape.high.min_ago": "minutes since the day's high",
+    "tape.low": "the day's low",
     "tape.low.minus_price_sig": "the day's low below price",
     "tape.low.at": "when the day's low was set",
     "tape.low.min_ago": "minutes since the day's low",
+    "tape.prior_high": "yesterday's high",
     "tape.prior_high.minus_price_sig": "yesterday's high against price",
     "tape.prior_high.price_above_for_min": "minutes price has held above yesterday's high",
     "tape.path_eff_since_open": "how straight the path since the open has been",
     "tape.open_crosses": "how many times price has crossed the open",
-    "tape.rv30_vs_clock_x": "the last 30 minutes' realized move against the usual for this time of day",
+    "tape.rv30_vs_clock_x": "the last 30 minutes' realized move against what is normal for this time of day",
     "tape.last_6x5m_sig": "the last six 5-minute moves",
     "tape.half_hours_vs_close_sig": "each half hour against yesterday's close",
     # open_signals
+    "open_signals.gap": "the opening gap",
     "open_signals.gap.settled_sig": "the opening gap, settled",
     "open_signals.gap.settled_pct": "the opening gap in percent",
     "open_signals.gap.print_pct": "the gap at the first print",
     "open_signals.gap.x_straddle": "the gap as a multiple of the straddle",
     "open_signals.gap.filled": "whether the gap has filled",
-    "open_signals.gap.kept_pct": "how much of the gap is kept",
+    "open_signals.gap.kept_x": "how much of the gap price has kept",
     "open_signals.gap.fill_by_close_base_pct": "how often a gap like this fills by the close",
     "open_signals.gap.fill_base_n": "how many sessions the gap-fill rate counts",
     "open_signals.gap.base_on": "what the gap-fill rate is counted on",
-    "open_signals.noise_band.sigma_pct": "the width of the opening noise band",
+    "open_signals.noise_band": "the opening noise band",
+    "open_signals.noise_band.band_pct": "the width of the opening noise band",
     "open_signals.noise_band.side": "which side of the opening noise band price is on",
     "open_signals.noise_band.dist_bp": "how far price is from the opening noise band",
     "open_signals.noise_band.open_basis": "what the opening noise band is drawn from",
+    "open_signals.opt_imbalance_10m": "options trades in the first 10 minutes",
     "open_signals.opt_imbalance_10m.tilt": "the tilt of options trades in the first 10 minutes",
     "open_signals.opt_imbalance_10m.trades": "options trades in the first 10 minutes",
     "open_signals.opt_imbalance_10m.feed_ok": "whether the options trade feed was healthy",
     # close_signals
-    "close_signals.r1.bp": "the first-hour move",
-    "close_signals.r1.to": "when the first-hour move was measured to",
-    "close_signals.r12_bp": "the move over the first two hours",
-    "close_signals.rrod_bp": "the end-of-day reversal",
+    "close_signals.r1": "the first half hour's move",
+    "close_signals.r1.bp": "the first half hour's move",
+    "close_signals.r1.to": "when the first half hour's move was measured to",
+    "close_signals.r12_bp": "the move in the half hour before the last",
+    "close_signals.rrod_bp": "the move from yesterday's close into the last half hour",
+    "close_signals.late_to": "when the late-day moves were measured to",
+    "close_signals.gamma_open": "the dealer gamma at the open",
     "close_signals.gamma_open.regime": "the dealer gamma regime at the open",
     "close_signals.gamma_open.book": "the options book at the open",
     "close_signals.gamma_open.at": "when the open's gamma was read",
+    "close_signals.gamma_open.net_gex_usd_bn_per_1pct": "net dealer gamma at the open",
     "close_signals.gamma_open.net_gex_usd_bn_per_1pct.0dte": "net dealer gamma at the open, same-day options",
     "close_signals.gamma_open.net_gex_usd_bn_per_1pct.0_7dte": "net dealer gamma at the open, options within a week",
     "close_signals.gamma_open.price_minus_flip_sig": "price against the gamma flip level at the open",
@@ -133,12 +158,15 @@ FIELD_WORDS = {
     "close_signals.leveraged_fund_rebalance.funds_left_out": "the leveraged funds left out of the estimate",
     # options
     "options.book": "which options book this read stands on",
+    "options.regime": "the dealer gamma regime",
     "options.regime.0dte_oi": "the gamma regime by same-day open interest",
     "options.regime.0dte_volume": "the gamma regime by same-day volume",
     "options.regime.0_7dte_oi": "the gamma regime by open interest within a week",
+    "options.net_gex_usd_bn_per_1pct": "net dealer gamma",
     "options.net_gex_usd_bn_per_1pct.0dte": "net dealer gamma, same-day options",
     "options.net_gex_usd_bn_per_1pct.0_7dte": "net dealer gamma, options within a week",
     "options.net_gex_usd_bn_per_1pct.at_prior_close_0_7dte": "net dealer gamma at yesterday's close, options within a week",
+    "options.gamma_above_pct": "the share of gamma above price",
     "options.gamma_above_pct.0dte": "the share of same-day gamma above price",
     "options.gamma_above_pct.1_7dte": "the share of this week's gamma above price",
     "options.top_strike_share_pct": "how much of the gamma sits at the biggest strike",
@@ -150,10 +178,11 @@ FIELD_WORDS = {
     # flow
     "flow.tilt_15m": "the tilt of options flow in the last 15 minutes",
     "flow.told_share": "the share of trades the tape could read",
-    "flow.lean_30m_vs_usual": "the lean of the last 30 minutes' flow against the usual",
+    "flow.lean_30m_vs_usual": "the lean of the last 30 minutes' flow against what is normal",
     "flow.big_prints_10m": "big trades in the last 10 minutes",
     "flow.big_prints_bullish_pct": "the share of big trades that were bullish",
-    "flow.premium_pace_30m_x": "the pace of options premium in the last 30 minutes against the usual",
+    "flow.premium_pace_30m_x": "the pace of options premium in the last 30 minutes against what is normal",
+    "flow.spy_volume_30m_x": "SPY's volume in the last 30 minutes against what is normal",
     "flow.spy_spread_cents": "the SPY bid-ask spread",
     # internals
     "internals.add_live_approx": "advancers minus decliners, live",
@@ -189,6 +218,7 @@ FIELD_WORDS = {
     # overnight
     "overnight.es_vs_close_sig": "the futures overnight against yesterday's close",
     "overnight.range_sig": "the overnight range",
+    "overnight.legs_sig": "the overnight move, leg by leg",
     "overnight.legs_sig.after_close": "the move after yesterday's close",
     "overnight.legs_sig.asia": "the move during Asian hours",
     "overnight.legs_sig.europe_open": "the move at the European open",
@@ -205,12 +235,21 @@ FIELD_WORDS = {
     "news.kinds": "the kinds of headlines",
     "news.newest_index_mover_min_ago": "minutes since the newest index-moving headline",
     "news.stale_dropped": "stale headlines dropped",
+    # base_rate: the historical odds, how past days moved from this time of day
+    "base_rate.slot": "the time of day the historical odds are for",
+    "base_rate.sessions": "how many past days the historical odds count",
+    "base_rate.pooled_minutes": "how many minutes either side the historical odds take in",
+    "base_rate.bucket_order": "the move sizes the historical odds are counted in",
+    "base_rate.next_30_minutes": "the historical odds for the next 30 minutes",
+    "base_rate.next_60_minutes": "the historical odds for the next 60 minutes",
+    "base_rate.to_close": "the historical odds to the close",
     # precedents
     "precedents.rule": "how the past moments were matched",
     "precedents.candidate_sessions": "how many sessions the past moments were drawn from",
     "precedents.shown": "how many past moments were shown",
     "precedents.order": "the order the past moments were shown in",
     "precedents.cards": "the past moments shown",
+    "precedents.now": "the numbers the past moments are matched on",
     "precedents.now.gap_sig": "the opening gap",
     "precedents.now.price_minus_close_sig": "price against yesterday's close",
     "precedents.now.last_30_minutes_sig": "the move over the last 30 minutes",
@@ -222,10 +261,14 @@ FIELD_WORDS = {
 
 
 def field_words(input_field_path: str) -> str:
-    """The words for a dotted path: listed words, a code question by its id, else the block and the leaf in words."""
+    """The words for a dotted path: its own listed words or its nearest listed parent's, a code question by its id,
+    else the block and the leaf in words."""
     path = str(input_field_path or "")
-    if path in FIELD_WORDS:
-        return FIELD_WORDS[path]
+    parts = path.split(".")
+    for end in range(len(parts), 1, -1):
+        listed = FIELD_WORDS.get(".".join(parts[:end]))
+        if listed:
+            return listed
     block, _, rest = path.partition(".")
     if block == "code" and rest:
         return f"the station's question {rest}"

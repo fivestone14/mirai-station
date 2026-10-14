@@ -91,10 +91,10 @@ import station_paths  # noqa: E402  (the repo root is on sys.path: spx_jev/__ini
 # the situation the phone draws: four facts, each with a short title, the builder's verdict in a word, its
 # figure (number, cut, kind) to draw and its full sentence behind a tap
 SITUATION = (("price.recent_move", "Price, last 30 min"), ("price.vs_vwap", "Price against VWAP"),
-             ("gex.air_to_wall", "Nearest heavy strike"), ("iv.trend_30min", "Implied volatility, last 30 min"))
+             ("gex.air_to_wall", "Nearest Big Strike"), ("iv.trend_30min", "Implied volatility, last 30 min"))
 VERDICT_WORDS = {"going_nowhere": "Flat", "rising": "Rising", "falling": "Falling", "flat": "Flat",
                  "at_it": "At it", "above": "Above", "below": "Below",
-                 "heavy_strike_close": "Close", "open_air": "Open air", "no_wall_in_reach": "None in reach"}
+                 "heavy_strike_close": "Close By", "open_air": "None Nearby", "no_wall_in_reach": "None Nearby"}
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 ET = ZoneInfo("America/New_York")
 STALE_ROW_SKIP_MIN = 6.0       # a live read on a row older than this is skipped, and an unsent card on one says it is stale
