@@ -42,7 +42,7 @@ def _run(js, data=None, tz=LA):
         pytest.skip("node is not installed")
     fns = "".join(_fn(f) for f in ("svgEl", "viewerTime", "marketAt", "marketDay", "money", "level", "signed", "cap", "pct", "dayName", "callDays", "dayOf",
                                    "pickDays", "liveDay", "closeOf", "openOf", "offsetOf", "wentWords", "sideClass", "laneItems", "combinedItems", "top",
-                                   "runningCard", "openingItems", "openingWords", "preItems", "directionItems", "claudePick", "claudeItems", "jevPick",
+                                   "runningCard", "openingItems", "openingWords", "preItems", "directionItems", "clOk", "clBase", "claudePick", "claudeItems", "jevPick",
                                    "jevItems", "tally", "laneTotal", "laneNote", "voices", "dayScale", "laneSvg", "axisSvg", "callRow", "headLine",
                                    "squareKey", "fiveDays"))
     script = ("const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + FIXED_NOW + FAKE_DOM
@@ -78,7 +78,7 @@ PRE = [grade("2026-10-08T08:48:01-04:00", "open_10", verdict="right"), grade("20
        grade("2026-10-08T09:28:02-04:00", "open_30", verdict="wrong", label="flat", pick="down")]
 
 
-def test_the_calls_are_the_30_minute_windows_by_market_day_newest_day_first_each_days_calls_earliest_first():
+def test_every_lane_reads_its_calls_by_market_day_earliest_first_a_read_graded_twice_keeping_its_last_row():
     """Will, 2026-10-09: the days newest first, and in each day the calls from earlier to later; a read graded twice
     keeps its last row; the 60-minute grades are never a call on the page. The lanes read the same rows: the combined
     call the live lane's next_30, the opening calls the tape lane's next_10, the pre-market call its day's last read's two
@@ -91,23 +91,31 @@ def test_the_calls_are_the_30_minute_windows_by_market_day_newest_day_first_each
                " return c.row_ts.slice(11, 16) + ' ' + c.verdict; }), dayName(d.day)]; })));", {"rows": rows})
     assert got == [["2026-10-08", ["09:30 right", "14:31 right", "15:00 wrong"], "Thu 10-08"], ["2026-10-07", ["15:29 right"], "Wed 10-07"]]
     # every lane of Thu 10-08 from its rows, seen on Wed 10-14, as [time, state] with the lane's score and the line under
-    # it: the direction line's call that stayed flat counts against it and its pass is left out; Claude's pick against
-    # its 30-minute outcome (the 60-minute one never), a failed read passed; JEV alone's own answer against the graded
-    # average's label, open on a read not graded; the pre-market call regraded keeps its last row (S2)
+    # it: the direction line's call that stayed flat counts against it, its pass is left out and a read graded twice keeps
+    # its last row; Claude's pick against its 30-minute outcome (the 60-minute one never), a tie going to up as the
+    # service scores it, a failed answer scored on its starting odds and a read with neither left out, as the service
+    # and the forecast page count them; JEV alone's own answer against the graded average's label, open on a read not
+    # graded; the pre-market call regraded keeps its last row (S2)
     ts = {"09:30": "2026-10-08T09:30:00-04:00", "14:31": OCT8_1431["row_ts"], "15:00": OCT8_1500["row_ts"], "15:30": "2026-10-08T15:30:02-04:00"}
     day = {"direction": [{"day": "2026-10-08", "row_ts": ts["09:30"], "called": True, "side": "up", "result": "right", "points": 12.0},
+                         {"day": "2026-10-08", "row_ts": ts["14:31"], "called": True, "side": "down", "result": "right", "points": 5.0},
                          {"day": "2026-10-08", "row_ts": ts["14:31"], "called": True, "side": "down", "result": "stayed_flat", "points": -9.0},
                          {"day": "2026-10-08", "row_ts": ts["15:00"], "called": False, "side": "down", "points": 0.0}],
            "answers": [{"line_type": "final_forecast", "read_id": "live:" + ts["09:30"], "trading_day": "2026-10-08",
                         "forecast": {"next_30_minutes": {"status": "ok", "up_pct": 20.0, "flat_pct": 50.0, "down_pct": 30.0}}},
                        {"line_type": "final_forecast", "read_id": "live:" + ts["14:31"], "trading_day": "2026-10-08",
-                        "forecast": {"next_30_minutes": {"status": "ok", "up_pct": 40.0, "flat_pct": 30.0, "down_pct": 30.0}}},
+                        "forecast": {"next_30_minutes": {"status": "ok", "up_pct": 40.0, "flat_pct": 20.0, "down_pct": 40.0}}},
                        {"line_type": "final_forecast", "read_id": "live:" + ts["15:00"], "trading_day": "2026-10-08",
-                        "forecast": {"next_30_minutes": {"status": "failed"}}},
+                        "forecast": {"next_30_minutes": {"status": "failed", "up_pct": None, "flat_pct": None, "down_pct": None,
+                                                         "base_rate_shown_to_claude": {"up_pct": 18.8, "flat_pct": 56.2, "down_pct": 25.0}}}},
+                       {"line_type": "final_forecast", "read_id": "live:" + ts["15:30"], "trading_day": "2026-10-08",
+                        "forecast": {"next_30_minutes": {"status": "rejected"}}},
                        {"line_type": "raw_answer", "read_id": "live:" + ts["15:30"], "trading_day": "2026-10-08"}],
-           "outcomes": [{"read_id": "live:" + ts["09:30"], "horizon": "next_30_minutes", "result": {"direction": "flat"}},
-                        {"read_id": "live:" + ts["09:30"], "horizon": "next_60_minutes", "result": {"direction": "up"}},
-                        {"read_id": "live:" + ts["14:31"], "horizon": "next_30_minutes", "result": {"direction": "down"}}],
+           "outcomes": [{"read_id": "live:" + ts["09:30"], "horizon": "next_30_minutes", "result": {"status": "final", "direction": "flat"}},
+                        {"read_id": "live:" + ts["09:30"], "horizon": "next_60_minutes", "result": {"status": "final", "direction": "up"}},
+                        {"read_id": "live:" + ts["14:31"], "horizon": "next_30_minutes", "result": {"status": "final", "direction": "down"}},
+                        {"read_id": "live:" + ts["15:00"], "horizon": "next_30_minutes", "result": {"status": "final", "direction": "flat"}},
+                        {"read_id": "live:" + ts["15:30"], "horizon": "next_30_minutes", "result": {"status": "final", "direction": "flat"}}],
            "jev": [{"voice_name": "jev_own", "sum_id": "average_30", "row_ts": ts["09:30"], "voice_probs": {"down": 0.2, "flat": 0.5, "up": 0.3}},
                    {"voice_name": "jev_own", "sum_id": "average_30", "row_ts": ts["14:31"], "voice_probs": {"down": 0.5, "flat": 0.3, "up": 0.2}},
                    {"voice_name": "jev_own", "sum_id": "average_30", "row_ts": ts["15:00"], "voice_probs": {"down": 0.1, "flat": 0.3, "up": 0.6}},
@@ -123,7 +131,7 @@ def test_the_calls_are_the_30_minute_windows_by_market_day_newest_day_first_each
     assert len(opening[0]) == 12 and opening[0][:2] == [["06:35", "wrong"], ["06:40", "right"]] and opening[1] == ["3 of 12", "done 07:40"]
     assert combined[:2] == [[["06:30", "right"], ["11:31", "right"], ["12:00", "wrong"]], ["2 of 3", None]]
     assert direction[:2] == [[["06:30", "right"], ["11:31", "stayed_flat"], ["12:00", "passed"]], ["1 of 2", "score +1.5 a call"]]
-    assert claude[:2] == [[["06:30", "right"], ["11:31", "wrong"], ["12:00", "passed"]], ["1 of 2", "scored after the close"]]
+    assert claude[:2] == [[["06:30", "right"], ["11:31", "wrong"], ["12:00", "right"]], ["2 of 3", "scored after the close"]]
     assert jev[:2] == [[["06:30", "right"], ["11:31", "wrong"], ["12:00", "right"], ["12:30", "open"]], ["2 of 3", "1 open"]]
     # a lane with no call on a day gone by says so; on today it is still to come
     none = _run("console.log(JSON.stringify([laneTotal('direction', [], '2026-10-08'), laneTotal('direction', [], '2026-10-14')]))", {"now": "2026-10-14T12:00:00-04:00"})
@@ -188,15 +196,17 @@ def test_a_call_row_says_the_time_where_it_went_what_was_called_and_the_grade_an
         {"lane": "direction", "item": {"t": 0, "state": "stayed_flat", "dir": {"called": True, "side": "up", "result": "stayed_flat", "points": -9.1}}},
         {"lane": "direction", "item": {"t": 0, "state": "passed", "dir": {"called": False, "side": "down", "points": 0}}},
         {"lane": "claude", "item": {"t": 0, "state": "wrong", "claude": {"pick": "flat", "p": 50, "went": "up"}}},
+        {"lane": "claude", "item": {"t": 0, "state": "right", "claude": {"pick": "flat", "p": 56.2, "went": "flat", "base": True}}},
         {"lane": "premarket", "item": {"t": 0, "state": "wrong", "row": PRE[1], "minutes": 10, "check": True}},
         {"lane": "premarket", "item": {"t": 0, "state": "open", "minutes": 30, "check": True, "open": {"pick": "down", "p": 0.68, "mark": "2026-10-14T10:05:00-04:00"}}},
         {"lane": "opening", "item": {"t": 0, "state": "open", "minutes": 10, "open": {"pick": "down", "p": 0.89, "mark": "2026-10-14T10:40:00-04:00"}}}]})
     assert words == [["div", "Called Up · stayed flatscore −9.1", "Flat"], ["div", "No call (leaned Down) · passedscore 0.0", "Passed"],
-                     ["div", "Called Flat 50% · went up", "Wrong"], ["div", "10-min check · called Down · went upaverage +0.4\u00a0pts, inside ±\u00a02.2", "Wrong"],
+                     ["div", "Called Flat 50% · went up", "Wrong"], ["div", "Starting odds Flat 56% · stayed flatNo answer · scored on its starting odds", "Right"],
+                     ["div", "10-min check · called Down · went upaverage +0.4\u00a0pts, inside ±\u00a02.2", "Wrong"],
                      ["div", "30-min check · called Down 68% · openscored 07:05", "Open"], ["div", "Called Down 89% · openscored 07:40", "Open"]]
 
 
-def test_a_day_folds_to_its_score_and_squares_oldest_first_and_opens_to_its_calls():
+def test_a_lane_draws_its_calls_as_squares_at_their_times_on_the_days_axis():
     """Design B's lanes: each lane's calls as squares on the day's axis at the time each call was made, its first hour
     zoomed in to half the width so the opening's twelve calls five minutes apart never overlap, the rest of the session
     to the close in the other half; the page's one key (filled right, rust wrong, outlined flat or passed, dashed open);
@@ -219,10 +229,10 @@ def test_a_day_folds_to_its_score_and_squares_oldest_first_and_opens_to_its_call
     assert "Tap a lane to list its calls." in JS and "'For comparison, not a call'" in JS
 
 
-def test_the_pinned_summary_counts_the_last_five_days_beside_one_control_for_every_day():
-    """Design B's last five days, under the picked lane's list (the pinned summary went): each day's score of the lane
-    picked under the day's name, the picked day ringed, and their total with its share, a line under them saying the
-    days are the picked lane's; a day whose files are still to come says so, and is asked for."""
+def test_the_last_five_days_count_the_picked_lane_under_its_list():
+    """Design B's last five days, under the picked lane's list: each day's score of the lane picked under the day's name,
+    the picked day ringed, and their total with its share, a line under them saying the days are the picked lane's; a
+    day whose files are still to come says so, and is asked for."""
     days = ["2026-10-02", "2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08"]
     rows = [grade(f"{d}T10:00:00-04:00", verdict=v) for d, vs in zip(days, (["right", "wrong"], ["wrong"], ["right"], ["right", "right"], ["wrong", "passed"])) for v in vs]
     rows = [{**r, "row_ts": r["row_ts"].replace("10:00", f"1{i % 10}:00")} for i, r in enumerate(rows)]
@@ -238,12 +248,13 @@ def test_the_pinned_summary_counts_the_last_five_days_beside_one_control_for_eve
     assert ".d5 span.on{box-shadow:inset 0 0 0 1.5px var(--i)}" in READS and 'id="sum"' not in READS
 
 
-def test_the_page_reads_the_grades_through_the_raw_route_and_keeps_an_opened_call_open():
+def test_the_page_reads_the_stores_by_name_asks_only_for_what_changed_and_keeps_an_opened_call_open():
     """The files through the station's by-name route, about a week of each grades file's newest rows (the review of
     2026-10-14: the whole history was 1.15 MB a minute over the tunnel). A file read once is asked for its last row alone
-    and read whole again only when its count of rows moved; never more than two at a time (the station's gate). Only
-    "not found" is a day with nothing in it: a refused fetch (a 502 from the tunnel) keeps the lane unknown, says so on
-    the header's line, and is asked again."""
+    and, when its count of rows grew, for the rows added alone (the last row in hand when one was); a count that fell, or
+    a held last row the station could not parse (a line caught mid-write), reads the newest rows again. Never more than
+    two at a time (the station's gate). Only "not found" is a day with nothing in it: a refused fetch (a 502 from the
+    tunnel) keeps the lane unknown, says so on the header's line, and is asked again."""
     assert _var("GRADES_URL").strip() == "var GRADES_URL = '/api/store/file?name=JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON&lane=';"
     assert "var GRADE_LIMITS = {live: 200, tape: 100, premarket: 40};" in JS
     for name in ("FORECASTS_BY_FORECASTER_READ_AND_HORIZON", "DIRECTION_LINE_GRADES_BY_READ", "CLAUDE_FORECAST_ANSWERS_BY_READ", "CLAUDE_FORECAST_OUTCOMES_BY_READ",
@@ -252,7 +263,7 @@ def test_the_page_reads_the_grades_through_the_raw_route_and_keeps_an_opened_cal
     assert "var DAYS_SHOWN = 5, POLL_MS = 60000, SLOW_MS = 300000, RETRY_MS = 20000, FETCHES_AT_ONCE = 2;" in JS
     assert "while(running < FETCHES_AT_ONCE && queue.length)" in _fn("pump") and "return gate(function()" in _fn("stored")
     js = (_var("DAY_URLS") + _var("DAY_LIMIT") + _var("DAYS_SHOWN") + _var("LANE_FILES") + _var("asked") + "var bad = {}, queue = [], running = 0;"
-          + "".join(_fn(f) for f in ("stored", "gate", "pump", "fresh", "track", "want")) + """
+          + "".join(_fn(f) for f in ("stored", "gate", "pump", "fresh", "hold", "track", "want")) + """
 var log = [], inflight = 0, most = 0, draws = 0, timers = [], realTimeout = setTimeout;
 function draw(){ draws++; }
 setTimeout = function(f, ms){ timers.push([ms, f]); };
@@ -269,6 +280,10 @@ fetch = function(url){
   var g = '/api/store/file?name=G', out = {};
   out.first = await fresh('g', g, 200); out.same = await fresh('g', g, 200);
   D.files.G.rows.push({n: 3}); out.grew = await fresh('g', g, 200);
+  D.files.G.rows.push({n: 4}, {n: 5}); out.two = await fresh('g', g, 200);
+  D.files.G.rows = [{n: 9}]; out.fell = await fresh('g', g, 200);
+  D.files.G.rows.push({_unparsed: '{"n": 1'}); out.cut = await fresh('g', g, 200);
+  D.files.G.rows = [{n: 9}, {n: 10}, {n: 11}]; out.healed = await fresh('g', g, 200);
   out.gLog = log.splice(0);
   picked = '2026-10-13'; want(picked); await settle();
   var f = perDay[picked];
@@ -285,7 +300,11 @@ fetch = function(url){
              "CLAUDE_FORECAST_OUTCOMES_BY_READ2026-10-13": {"rows": []}}
     got = _run(js, {"files": files})
     assert got["first"] == [{"n": 1}, {"n": 2}] and got["same"] is None and got["grew"] == [{"n": 1}, {"n": 2}, {"n": 3}]
-    assert got["gLog"] == ["G 200", "G 1", "G 1", "G 200"]                                    # read, probed, probed and read again
+    assert got["two"] == [{"n": i} for i in range(1, 6)] and got["fell"] == [{"n": 9}]
+    assert got["cut"] == [{"n": 9}, {"_unparsed": '{"n": 1'}] and got["healed"] == [{"n": 9}, {"n": 10}, {"n": 11}]
+    # read; probed; probed, its one new row in hand; probed and the two added asked for; probed and fell, read again;
+    # probed, a line mid-write in hand; probed and read again past it
+    assert got["gLog"] == ["G 200", "G 1", "G 1", "G 1", "G 2", "G 1", "G 200", "G 1", "G 1", "G 200"]
     # the 502 leaves the direction lane unknown (null, never an empty day), the header's line on, and a retry armed; the
     # missing answers file is a day with no answers
     assert got["day"] == [["answers", "jev", "outcomes"], [], None, ["2026-10-13direction"], "asking", [20000]]
@@ -299,7 +318,7 @@ fetch = function(url){
     assert '<script src="/m/sheet.js"></script>' not in READS
 
 
-def test_the_tab_bar_lights_reads_and_every_page_links_it():
+def test_the_tab_bar_lights_results_and_every_page_links_it():
     """Two tabs since the redesign (2026-10-10): Forecast, the page at /m/, and Results (Design B's name for this page,
     2026-10-14, its address kept), lit here."""
     nav = re.search(r'(?s)<nav class="tabs">(.*?)</nav>', READS).group(1)

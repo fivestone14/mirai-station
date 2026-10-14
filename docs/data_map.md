@@ -205,7 +205,7 @@ under the spx-jev job; the seed (rebuild) CLI and the control CLI are run by han
 |---|---|---|---|---|
 | `CLAUDE_FORECAST_FOLDER` | `spx/claude_forecast/` | the package's own folder: the record, the tables, the rulebooks; the only place under `data/` its writers may write, beside the recorder's copies, its card, logs and locks | every Claude forecast job (`ensure_folders`) | the recorder's and nightly's backup walk it |
 | `CLAUDE_FORECAST_INPUTS_BY_READ` | `spx/claude_forecast/claude_forecast_inputs_by_read/{day}.jsonl` | the frozen scene sent to Claude for one read (a `blind` line when it could not be built) | read runner | read runner (already-written check), nightly (seal, library, test variants) |
-| `CLAUDE_FORECAST_ANSWERS_BY_READ` | `spx/claude_forecast/claude_forecast_answers_by_read/{day}.jsonl` | Claude's two answers and the final forecast for one read | read runner | nightly (test variants, scores, scorecard), the daily call cap (read runner and nightly), phone (the results page's Claude lane) |
+| `CLAUDE_FORECAST_ANSWERS_BY_READ` | `spx/claude_forecast/claude_forecast_answers_by_read/{day}.jsonl` | Claude's two answers and the final forecast for one read | read runner | nightly (test variants, scores, scorecard), the daily call cap (read runner and nightly), phone (the forecast page's Claude squares on the scoreboard, the results page's Claude lane) |
 | `CLAUDE_FORECAST_OUTCOMES_BY_READ` | `spx/claude_forecast/claude_forecast_outcomes_by_read/{day}.jsonl` | what price did after one read, one line per horizon, sealed, never edited | spx-claude-forecast-nightly (seal and catch-up) | nightly (seal, library, scores), phone (the results page's Claude lane) |
 | `CLAUDE_FORECAST_TEST_ANSWERS_BY_VARIANT_AND_READ` | `spx/claude_forecast/claude_forecast_test_answers_by_variant_and_read/{day}.jsonl` | one test variant's answer and forecast lines on one read's frozen inputs; never mixed into the live record | spx-claude-forecast-nightly (`test_variants`) | nightly (test variants, scores), the daily call cap |
 | `CLAUDE_FORECAST_RULEBOOKS_BY_VERSION` | `spx/claude_forecast/claude_forecast_rulebooks_by_version/{sha}.txt` | one distinct rulebook text sent to Claude | read runner (write once) | nothing in code; kept so a sent prompt can be rebuilt by hand |
@@ -250,7 +250,7 @@ it is the writer of the two on-demand files.
 
 | store (constant) | path | one row or file holds | written by | read by |
 |---|---|---|---|---|
-| `JEV_LIVE_CARD` | `screen_files/phone/jev_live_card.json` | the live lane's newest read, as the phone shows it | spx-jev (`service.write_card`) | phone (`jev-spx.html`), SPX JEV (the close-out reads it back) |
+| `JEV_LIVE_CARD` | `screen_files/phone/jev_live_card.json` | the live lane's newest read, as the phone shows it | spx-jev (`service.write_card`) | phone (`jev-spx.html`; `reads.html` for today's combined call still to grade), SPX JEV (the close-out reads it back) |
 | `JEV_OPENING_CARD` | `screen_files/phone/jev_opening_card.json` | the opening lane's newest read (the code's `tape` lane) | spx-jev-tape | phone, SPX JEV (close-out) |
 | `JEV_PREMARKET_CARD` | `screen_files/phone/jev_premarket_card.json` | the premarket lane's newest read | spx-jev-premarket (`premarket.py`) | phone, alerts (`spx_premarket_deadman`), health, SPX JEV (close-out retries) |
 | `CLAUDE_FORECAST_CARD` | `screen_files/phone/claude_forecast_card.json` | Claude's newest forecast beside the base rate, the reasons in plain words, the scorecard's verdict | the Claude forecast read runner (`latest_card`) | phone |

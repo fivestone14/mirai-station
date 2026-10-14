@@ -20,9 +20,10 @@
   30-minute card (JEV_LIVE_CARD), the opening card (JEV_OPENING_CARD) and the pre-market card (JEV_PREMARKET_CARD, its
   read's odds too); and a day at a time JEV's own answers (FORECASTS_BY_FORECASTER_READ_AND_HORIZON, voice jev_own), the
   direction line's grades (DIRECTION_LINE_GRADES_BY_READ) and Claude's answers and their outcomes
-  (CLAUDE_FORECAST_ANSWERS_BY_READ, CLAUDE_FORECAST_OUTCOMES_BY_READ, written at the evening's finalize). The files are
-  only ever appended to, so a file read once is asked again for its last row alone, and read whole again only when its
-  count of rows moved; a card only when it can have changed. The 60-minute grades are never shown. In a grade
+  (CLAUDE_FORECAST_ANSWERS_BY_READ, CLAUDE_FORECAST_OUTCOMES_BY_READ, written at the evening's finalize; a read whose
+  answer failed scored on its starting odds, as the service and the forecast page count it). The files are only ever
+  appended to, so a file read once is asked again for its last row alone, and when its count of rows grew for the rows
+  added alone; a card only when it can have changed. The 60-minute grades are never shown. In a grade
   row ``from`` is the price the call was made at, ``edge`` its flat band either side, ``g`` the window's average's move
   from it, ``worst`` and ``best`` the window's low and high, ``label`` where the average went, ``pick`` the call and
   ``verdict`` the grade. Nothing in server.py changes for it.
@@ -389,24 +390,35 @@ main{display:flex;flex-direction:column;gap:12px}
       return k;
     }).filter(Boolean);
   }
+  // the direction line's calls of the day, a read graded twice keeping its last row as the line's own card does
+  // (direction_line.py's card_read); a call it did not make is passed
   function directionItems(d, rows){
-    var seen = {};
-    return rows.filter(function(r){ if(!r || r.day !== d || seen[r.row_ts]) return false; seen[r.row_ts] = 1; return true; })
+    var byRead = {};
+    rows.forEach(function(r){ if(r && r.day === d && r.row_ts) byRead[r.row_ts] = r; });
+    return Object.keys(byRead).map(function(ts){ return byRead[ts]; })
       .sort(function(a, b){ return Date.parse(a.row_ts) - Date.parse(b.row_ts); })
       .map(function(r){ return {t: Date.parse(r.row_ts), state: r.called === false ? 'passed' : r.result, dir: r}; });
   }
-  // Claude's pick: the largest of the three; a tie goes to flat (the forecast page's clPick)
-  function claudePick(h){ var best = 'flat'; ['down', 'flat', 'up'].forEach(function(k){ if(h[k + '_pct'] > h[best + '_pct'] + 1e-9) best = k; }); return best; }
-  // Claude's reads of the day, each its next-30-minute pick against where the average went (its outcome, written at
-  // the evening's finalize; open until then)
+  // a horizon Claude answered, and the starting odds it was given (the forecast page's clOk and clBase)
+  function clOk(h){ return !!h && h.status === 'ok' && typeof h.up_pct === 'number'; }
+  function clBase(h){ var b = h && h.base_rate_shown_to_claude; return b && typeof b.flat_pct === 'number' ? b : null; }
+  // Claude's pick: the largest of the three, a tie going to up, then flat, as the service scores it (scoring.py's max
+  // over grading.DIRECTIONS, up, flat, down) and the forecast page picks it
+  function claudePick(h){ var best = null; ['up', 'flat', 'down'].forEach(function(k){ if(best == null || h[k + '_pct'] > h[best + '_pct']) best = k; }); return best; }
+  // Claude's reads of the day (a read's last final forecast), each its next-30-minute pick against where the average
+  // went (the read's last outcome row, sealed at the evening's finalize; open until then); a read whose answer failed is
+  // scored on its starting odds, as the service scores it (scoring.py's scored_as_base) and the forecast page counts
+  // it, and a read with neither is never scored and not drawn
   function claudeItems(d, answers, outcomes){
-    var went = {};
-    outcomes.forEach(function(o){ if(o && o.horizon === 'next_30_minutes' && o.result && o.result.direction) went[o.read_id] = o.result.direction; });
-    return answers.filter(function(r){ return r && r.line_type === 'final_forecast' && /^live:/.test(r.read_id || '') && String(r.trading_day || r.read_id.slice(5, 15)) === d; })
-      .map(function(r){
-        var h = (r.forecast || {}).next_30_minutes, ok = h && h.status === 'ok', k = ok ? claudePick(h) : null, w = went[r.read_id];
-        return {t: Date.parse(r.read_id.slice(5)), state: !ok ? 'passed' : !w ? 'open' : k === w ? 'right' : 'wrong', claude: {pick: k, p: ok ? h[k + '_pct'] : null, went: w}};
-      }).sort(function(a, b){ return a.t - b.t; });
+    var went = {}, byRead = {};
+    outcomes.forEach(function(o){ if(o && o.horizon === 'next_30_minutes') went[o.read_id] = o.result && o.result.status === 'final' ? o.result.direction : null; });
+    answers.forEach(function(r){
+      if(r && r.line_type === 'final_forecast' && /^live:/.test(r.read_id || '') && (r.test_variant || 'none') === 'none' && String(r.trading_day || r.read_id.slice(5, 15)) === d) byRead[r.read_id] = r;
+    });
+    return Object.keys(byRead).map(function(id){
+      var h = (byRead[id].forecast || {}).next_30_minutes, ok = clOk(h), b = ok ? h : clBase(h), k = b && claudePick(b), w = went[id];
+      return b && {t: Date.parse(id.slice(5)), state: !w ? 'open' : k === w ? 'right' : 'wrong', claude: {pick: k, p: b[k + '_pct'], went: w, base: !ok}};
+    }).filter(Boolean).sort(function(a, b){ return a.t - b.t; });
   }
   // JEV's own pick on a read's odds: the largest, down, flat and up in that order taking a tie (the forecast page's)
   function jevPick(p){ var best = null; ['down', 'flat', 'up'].forEach(function(k){ if(best == null || (p[k] || 0) > (p[best] || 0)) best = k; }); return best; }
@@ -460,6 +472,8 @@ main{display:flex;flex-direction:column;gap:12px}
       return Math.max(0, Math.min(W - SQ, x - SQ / 2));
     };
   }
+  // one lane's drawing: its axis, the first hour's edge, now while the day runs, and a square per call in the key's
+  // shape, an outlined one a stroke's width smaller so it sits in the filled one's box
   function laneSvg(W, items, d, now){
     var x = dayScale(d, W), svg = svgEl('svg', {viewBox: '0 0 ' + W + ' ' + LANE_H, width: W, height: LANE_H, 'class': 'lane-g', 'aria-hidden': 'true'});
     svg.appendChild(svgEl('line', {x1: 0, y1: LANE_H / 2, x2: W, y2: LANE_H / 2, 'class': 'ax'}));
@@ -516,8 +530,9 @@ main{display:flex;flex-direction:column;gap:12px}
       w.appendChild(el('small', null, 'score ' + signed(dr.points || 0)));
     } else if(k.claude){
       var c = k.claude;
-      if(c.pick){ w.appendChild(el('span', null, 'Called ')); w.appendChild(el('b', null, cap(c.pick) + ' ' + Math.round(c.p) + '%')); w.appendChild(el('span', null, ' \u00B7 ' + (c.went ? wentWords(c.went) : 'scored after the close'))); }
-      else w.appendChild(el('span', null, 'No answer'));
+      w.appendChild(el('span', null, c.base ? 'Starting odds ' : 'Called ')); w.appendChild(el('b', null, cap(c.pick) + ' ' + Math.round(c.p) + '%'));
+      w.appendChild(el('span', null, ' \u00B7 ' + (c.went ? wentWords(c.went) : 'scored after the close')));
+      if(c.base) w.appendChild(el('small', null, 'No answer \u00B7 scored on its starting odds'));
     } else if(k.jev){
       w.appendChild(el('span', null, 'Answered ')); w.appendChild(el('b', null, cap(k.jev.pick) + ' ' + pct(k.jev.p))); w.appendChild(el('span', null, ' \u00B7 ' + (k.jev.went ? wentWords(k.jev.went) : 'open')));
     }
@@ -639,8 +654,8 @@ main{display:flex;flex-direction:column;gap:12px}
   }
 
   // ---- the fetching: the grades files, and per day the files a lane needs, the picked day first; a file read once is
-  // asked again for its count of rows alone and read again only when it grew, a done day's never; every fetch, two at a
-  // time (the station reads two raw files at a time)
+  // asked again for its count of rows alone and for the rows it gained only when it grew, a done day's never; every
+  // fetch, two at a time (the station reads two raw files at a time)
   // a store file as the station answers it, its rows' count (total) whatever the limit; null when it has no such file
   // ("not found": a day the store has nothing for); a refused or broken answer throws, so the caller keeps what it had
   function stored(url){
@@ -660,15 +675,27 @@ main{display:flex;flex-direction:column;gap:12px}
       task().catch(function(){}).then(function(){ running--; pump(); });
     }
   }
-  // a jsonl file's rows when they changed since the page last read them, else null: once read, a file is asked for its
-  // last row alone (a kilobyte, with the file's count) and read whole again, its newest `limit` rows, only when that
-  // count moved, the files being only ever appended to; a file the station does not have reads as no rows
+  // a jsonl file's rows, its newest `limit`, when they changed since the page last read them, else null: once read, a
+  // file is asked for its last row alone (a kilobyte, with the file's count), and when that count grew only the rows
+  // added are asked for (the one row in hand when one was) and put after those held, the files being only ever appended
+  // to; a count that fell or grew by `limit` or more, rows added between the two asks, or a held last row the station
+  // could not parse (a line caught mid-write) read the newest `limit` again; a file the station does not have reads as
+  // no rows
   function fresh(key, url, limit){
-    var moved = counts[key] == null ? Promise.resolve(true) : stored(url + '&limit=1').then(function(j){ return (j ? j.total : 0) !== counts[key]; });
-    return moved.then(function(m){
-      return m ? stored(url + '&limit=' + limit).then(function(j){ counts[key] = j ? j.total : 0; return j ? j.rows : []; }) : null;
+    var had = held[key];
+    function whole(){ return stored(url + '&limit=' + limit).then(function(j){ return hold(key, j, j ? j.rows : []); }); }
+    if(!had) return whole();
+    return stored(url + '&limit=1').then(function(j){
+      var added = (j ? j.total : 0) - had.total, last = had.rows[had.rows.length - 1];
+      if(!added) return null;
+      if(added < 0 || added >= limit || (last && last._unparsed)) return whole();
+      return (added === 1 ? Promise.resolve(j) : stored(url + '&limit=' + added)).then(function(n){
+        return n && n.total === had.total + n.rows.length ? hold(key, n, had.rows.concat(n.rows).slice(-limit)) : whole();
+      });
     });
   }
+  // a file's rows as the page holds them, with the count of rows the station had when they were read
+  function hold(key, j, rows){ held[key] = {total: j ? j.total : 0, rows: rows}; return rows; }
   // a fetch's outcome on the header's error line, said until the same fetch succeeds again; true when the page should
   // be drawn again (what it read moved, or the line changes)
   function track(key, p){
@@ -730,7 +757,7 @@ main{display:flex;flex-direction:column;gap:12px}
   function sig(x){ return x ? [x.generated_at, x.row_ts, x.graded_at || '', x.closed_out_at || ''].join('|') : ''; }
   // the files a lane reads a day at a time
   var LANE_FILES = {jev: ['jev'], direction: ['direction'], claude: ['answers', 'outcomes']};
-  var asked = {}, counts = {}, cardAt = {}, polledAt = 0, drawnW = 0, resizeTimer = null;
+  var asked = {}, held = {}, cardAt = {}, polledAt = 0, drawnW = 0, resizeTimer = null;
   // a day's files a lane needs, the picked day's all of them, each asked once (poll asks today's again), and today's
   // cards while today is picked; a file that failed keeps its lane unknown, or its last rows, and is asked again after
   // RETRY_MS
@@ -749,7 +776,7 @@ main{display:flex;flex-direction:column;gap:12px}
     if(d === picked && d === marketDay()) ['tape', 'pre'].forEach(function(k){ if(cardDue(k, Date.now())) askCard(k).then(function(redraw){ if(redraw) draw(); }); });
   }
   // the grades files and the 30-minute card, then the page; in the busy hours today's day files are asked again (each
-  // read whole only if it grew)
+  // read only for the rows it gained)
   function poll(){
     polledAt = Date.now();
     var today = marketDay(), jobs = Object.keys(GRADE_LIMITS).map(function(k){

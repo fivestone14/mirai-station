@@ -18,6 +18,7 @@ equal across the pages, and the sheet (sheet.js, one copy) on the page that
 opens one."""
 import hashlib
 import io
+import json
 import re
 from pathlib import Path
 
@@ -165,17 +166,20 @@ def test_an_unhashed_font_falls_back_to_no_cache(tmp_path):
     assert h.sent["Cache-Control"] == "no-cache", "the phone page itself is cached"
 
 
-def test_the_raw_file_route_is_never_stored(tmp_path, monkeypatch):
-    """The SPX cards and every grade row come through /api/raw/file, and the
-    pages fetch them with cache:'no-store'; the answer has to say the same, or a
-    proxy between the phone and the station may hand back yesterday's card."""
-    (tmp_path / "spx_jev").mkdir()
-    (tmp_path / "spx_jev" / "latest.json").write_text('{"questions": []}')
+def test_the_file_routes_are_never_stored(tmp_path, monkeypatch):
+    """The SPX cards and every grade row come through /api/store/file, by the
+    store's name, and the pages fetch them with cache:'no-store'; the answer has
+    to say the same, or a proxy between the phone and the station may hand back
+    yesterday's card. The raw explorer's /api/raw/file is held to the same."""
+    (tmp_path / "screen_files" / "phone").mkdir(parents=True)
+    (tmp_path / "screen_files" / "phone" / "jev_live_card.json").write_text('{"row_ts": null}')
     monkeypatch.setattr(server, "RAW_ROOTS", {"state": tmp_path})
-    h = _Wire("/api/raw/file?root=state&path=spx_jev/latest.json")
-    h.do_GET()
-    assert h.status == 200
-    assert h.sent["Cache-Control"] == "no-store"
+    monkeypatch.delenv("MIRAI_STATE_DIR", raising=False)
+    for path in ("/api/store/file?name=JEV_LIVE_CARD", "/api/raw/file?root=state&path=screen_files/phone/jev_live_card.json"):
+        h = _Wire(path)
+        h.do_GET()
+        assert h.status == 200 and json.loads(h.wfile.getvalue())["data"] == {"row_ts": None}, path
+        assert h.sent["Cache-Control"] == "no-store", path
 
 
 def test_the_font_is_on_disk_and_named_by_its_own_bytes():
