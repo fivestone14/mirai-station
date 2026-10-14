@@ -2999,8 +2999,8 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     var yu = y(edge), yd = y(-edge);
     svg.appendChild(svgEl('rect', {x: 0, y: yu.toFixed(1), width: W, height: (yd - yu).toFixed(1), 'class': 'band'}));
     [yu, yd].forEach(function(v){ svg.appendChild(svgEl('line', {x1: 0, x2: W, y1: v.toFixed(1), y2: v.toFixed(1), 'class': 'edge'})); });
-    var e1 = edge.toFixed(1);
-    svg.appendChild(svgEl('text', {x: 4, y: (yd - yu >= 18 ? yd - 5 : yd + 13).toFixed(1), 'class': 'halo'}, 'flat ±' + e1 + ' pts'));
+    var e1 = edge.toFixed(1), flatWords = 'flat ±' + e1 + ' pts', fy = yd - yu >= 18 ? yd - 5 : yd + 13;
+    svg.appendChild(svgEl('text', {x: 4, y: fy.toFixed(1), 'class': 'halo'}, flatWords));
     svg.appendChild(svgEl('text', {x: W - 4, y: (yu - 4).toFixed(1), 'text-anchor': 'end', 'class': 'halo'}, '+' + e1));
     var n = avgs.length, nx = x(n);
     if(open) svg.appendChild(svgEl('line', {x1: nx.toFixed(1), x2: nx.toFixed(1), y1: 4, y2: 96, 'class': 'now'}));
@@ -3008,8 +3008,41 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     if(n) svg.appendChild(svgEl('polyline', {points: pts.join(' '), 'class': 'path'}));
     var dy = y(n ? avgs[n - 1] : 0), right = nx < W - 72;
     svg.appendChild(svgEl('circle', {cx: nx.toFixed(1), cy: dy.toFixed(1), r: 4.5, 'class': 'dot'}));
-    if(n) svg.appendChild(svgEl('text', {x: (right ? nx + 6 : nx - 7).toFixed(1), y: (dy < 20 ? dy + 16 : dy - 6).toFixed(1), 'text-anchor': right ? 'start' : 'end',
-                                         'class': 't-avg halo'}, 'avg ' + signedOne(avgs[n - 1])));
+    // the dot's label never crosses the band's dashed edges nor sits on the band's two labels, and keeps off the path:
+    // beside the dot where the path has not gone yet, else above it, else under it, else just past the nearest dashed
+    // edge above or under it, else to the dot's left, else a step further up or down, the first of those clear of all
+    // three within 24px of the dot; when none is, the first clear of the edges and the labels (haloed over the path),
+    // else the first of all
+    if(n){
+      var said = 'avg ' + signedOne(avgs[n - 1]), lw = 6.6 * said.length, sx = right ? nx + 6 : nx - 7, anchor = right ? 'start' : 'end';
+      var taken = [[4, fy - 9, 4 + 5.8 * flatWords.length, fy + 3], [W - 4 - 5.8 * (e1.length + 1), yu - 13, W - 4, yu - 1]];
+      var path = [[0, y(0)]].concat(avgs.map(function(a, i){ return [x(i + 1), y(a)]; }));
+      var above = [yu, yd].filter(function(v){ return v < dy; }), under = [yu, yd].filter(function(v){ return v > dy; });
+      var spots = (right ? [[nx + 9, dy + 4, 'start']] : []).concat([[sx, dy - 8, anchor], [sx, dy + 17, anchor]],
+        above.length ? [[sx, Math.max.apply(null, above) - 4, anchor]] : [], under.length ? [[sx, Math.min.apply(null, under) + 11, anchor]] : [],
+        [[nx - 9, dy + 4, 'end']]);
+      for(var off = 2; off <= 30; off += 2) spots.push([sx, dy - 8 - off, anchor], [sx, dy + 17 + off, anchor], [sx, dy + 4 + off, anchor], [sx, dy + 4 - off, anchor]);
+      var box = function(s){ var x0 = s[2] === 'start' ? s[0] : s[0] - lw; return [x0, s[1] - 9, x0 + lw, s[1] + 3]; };
+      var offLines = function(s){
+        var b = box(s);
+        if(b[1] < 0 || b[3] > 98 || [yu, yd].some(function(v){ return v > b[1] - 1 && v < b[3] + 1; })) return false;
+        return !taken.some(function(t){ return b[0] < t[2] && b[2] > t[0] && b[1] < t[3] && b[3] > t[1]; });
+      };
+      var offPath = function(s){
+        var b = box(s);
+        return !path.some(function(q, i){
+          if(!i) return false;
+          var p0 = path[i - 1], lo_ = Math.max(b[0], p0[0]), hi_ = Math.min(b[2], q[0]);
+          if(lo_ > hi_) return false;
+          var ya = p0[1] + (q[1] - p0[1]) * (q[0] > p0[0] ? (lo_ - p0[0]) / (q[0] - p0[0]) : 0);
+          var yb = p0[1] + (q[1] - p0[1]) * (q[0] > p0[0] ? (hi_ - p0[0]) / (q[0] - p0[0]) : 0);
+          return Math.max(ya, yb) > b[1] - 2 && Math.min(ya, yb) < b[3] + 2;
+        });
+      };
+      var near = function(s){ return Math.abs(s[1] - 3 - dy) <= 24; };
+      var at = spots.filter(function(s){ return near(s) && offLines(s) && offPath(s); })[0] || spots.filter(offLines)[0] || spots[0];
+      svg.appendChild(svgEl('text', {x: at[0].toFixed(1), y: at[1].toFixed(1), 'text-anchor': at[2], 'class': 't-avg halo'}, said));
+    }
     svg.appendChild(svgEl('text', {x: 0, y: 108}, 'read'));
     if(open && nx > 34 && nx < W - 62) svg.appendChild(svgEl('text', {x: nx.toFixed(1), y: 108, 'text-anchor': 'middle'}, 'now'));
     svg.appendChild(svgEl('text', {x: W, y: 108, 'text-anchor': 'end'}, '+' + T + ' min'));
