@@ -36,8 +36,8 @@ def _var(name):
 
 def _run(js, data=None, tz=LA):
     """The page's builders in node at D.now (the real clock without one), with the grades files of D.grades (live, tape,
-    premarket), the 30-minute card D.live, the opening and pre-market cards D.tapeCard and D.preCard, and the day files
-    of D.perDay."""
+    premarket), the 30-minute card D.live, the opening, pre-market and direction line cards D.tapeCard, D.preCard and
+    D.dirCard, and the day files of D.perDay."""
     if not _NODE:
         pytest.skip("node is not installed")
     fns = "".join(_fn(f) for f in ("svgEl", "viewerTime", "marketAt", "marketDay", "money", "level", "signed", "cap", "pct", "dayName", "callDays", "dayOf",
@@ -48,7 +48,7 @@ def _run(js, data=None, tz=LA):
     script = ("const D=JSON.parse(require('fs').readFileSync(0,'utf8'));" + FIXED_NOW + FAKE_DOM
               + "Node.prototype.addEventListener = function(k, f){ this.on = f; };"
               + "".join(_var(v) for v in ("NS", "LANES", "OPENING_END_MIN", "COMBINED_FROM", "SQ", "SQ_CLASS", "TICK_GAP", "RESULT", "VIEWER_FMT"))
-              + "var grades = D.grades || {}, live = D.live || null, tapeCard = D.tapeCard || null, preCard = D.preCard || null, perDay = D.perDay || {};"
+              + "var grades = D.grades || {}, live = D.live || null, tapeCard = D.tapeCard || null, preCard = D.preCard || null, dirCard = D.dirCard || null, perDay = D.perDay || {};"
               "var picked = D.picked || null, lane = D.lane || 'combined', open = {};"
               "var wanted = []; function want(d){ wanted.push(d); }" + fns + js)
     out = run_node(_NODE, script, input=json.dumps(data), capture_output=True, text=True, timeout=20,
@@ -159,6 +159,28 @@ def test_every_lane_reads_its_calls_by_market_day_earliest_first_a_read_graded_t
     assert early[1][:2] == [[["06:45", "open"], ["07:05", "open"]], ["2 open", "checks at 06:45, 07:05"]]
     done = _run(js, {**today, "grades": {"tape": [grade(r, "next_10", verdict="right") for r in reads]}, "now": "2026-10-14T10:41:00-04:00"})
     assert done[0][1] == ["12 of 12", "done 07:40"]
+    # the direction line today at 13:40, as the forecast page's scoreboard draws it: its graded reads, then the line card's
+    # read, open until its grade lands, when it is the 30-minute card's newest read, on the side taken at the read (its
+    # graded call, revision 0); its row says the call, or the lean of a read it made no call on, and when it is scored
+    read = "2026-10-14T13:28:10.336004-04:00"
+    live_card = {"row_ts": read, "marks": {"next_30": "2026-10-14T13:58:00-04:00"}}
+    dir_card = {"read_id": "live:" + read, "row_ts": read, "day": "2026-10-14", "call": {"called": True, "side": "down", "p_up": 0.3, "revision": 1},
+                "graded_call": {"called": True, "side": "up", "p_up": 0.58, "revision": 0}}
+    dir_rows = [{"day": "2026-10-14", "row_ts": "2026-10-14T10:00:26.420624-04:00", "called": True, "side": "up", "result": "stayed_flat", "points": 0.0},
+                {"day": "2026-10-14", "row_ts": "2026-10-14T12:31:11.426920-04:00", "called": True, "side": "up", "result": "right", "points": 10.16}]
+    js = ("var items = laneItems('direction', D.d); console.log(JSON.stringify([items.map(function(k){ return [viewerTime(k.t), k.state]; }), laneTotal('direction', items, D.d),"
+          " items.filter(function(k){ return k.open; }).map(function(k){ var r = callRow('direction', k); return [r.tag, r.kids[2].textContent, r.kids[3].textContent]; })]));")
+    lined = {"d": "2026-10-14", "live": live_card, "dirCard": dir_card, "perDay": {"2026-10-14": {"direction": dir_rows}}, "now": "2026-10-14T13:40:00-04:00"}
+    assert _run(js, lined) == [[["07:00", "stayed_flat"], ["09:31", "right"], ["10:28", "open"]], ["1 of 2", "score +5.1 a call"],
+                               [["div", "Called Up 58% · openscored 10:58", "Open"]]]
+    # the real card of 10-15 13:00, a read it made no call on
+    passed = {**dir_card, "graded_call": {"called": False, "side": "up", "p_up": 0.5241, "revision": 0}}
+    assert _run(js, {**lined, "dirCard": passed})[2] == [["div", "No call, leans Up 52% · openscored 10:58", "Open"]]
+    # its grade landed; the line card still on the last read; the day gone by: no open square
+    landed = dir_rows + [{"day": "2026-10-14", "row_ts": read, "called": True, "side": "up", "result": "wrong", "points": -12.0}]
+    assert _run(js, {**lined, "perDay": {"2026-10-14": {"direction": landed}}})[0][-1] == ["10:28", "wrong"]
+    assert _run(js, {**lined, "live": {**live_card, "row_ts": "2026-10-14T13:58:31-04:00"}})[0] == [["07:00", "stayed_flat"], ["09:31", "right"]]
+    assert _run(js, {**lined, "now": "2026-10-15T09:00:00-04:00"})[0] == [["07:00", "stayed_flat"], ["09:31", "right"]]
     assert "next_60" not in JS
 
 
@@ -202,8 +224,27 @@ def test_a_call_row_says_the_time_where_it_went_what_was_called_and_the_grade_an
         {"lane": "opening", "item": {"t": 0, "state": "open", "minutes": 10, "open": {"pick": "down", "p": 0.89, "mark": "2026-10-14T10:40:00-04:00"}}}]})
     assert words == [["div", "Called Up · stayed flatscore −9.1", "Flat"], ["div", "No call (leaned Down) · passedscore 0.0", "Passed"],
                      ["div", "Called Flat 50% · went up", "Wrong"], ["div", "Starting odds Flat 56% · stayed flatNo answer · scored on its starting odds", "Right"],
-                     ["div", "10-min check · called Down · went upaverage +0.4\u00a0pts, inside ±\u00a02.2", "Wrong"],
+                     ["button", "10-min check · called Down · went upaverage +0.4\u00a0pts, inside ±\u00a02.2", "Wrong"],
                      ["div", "30-min check · called Down 68% · openscored 07:05", "Open"], ["div", "Called Down 89% · openscored 07:40", "Open"]]
+    # a graded pre-market check opens in place as the others do (10-14's real checks, read 09:28 and measured from the
+    # settled open): its call with today's odds, its window from the settled open, the flat band, the average and the
+    # window's high and low; a past day's grades carry the pick alone; the two checks of a read open apart
+    checks = [grade("2026-10-14T09:28:02-04:00", "open_10", **{"from": 7775.95, "edge": 2.28, "g": 3.63, "label": "up", "pick": "down", "verdict": "wrong",
+                                                               "best": {"points": 8.79, "minute": 8}, "worst": {"points": -2.88, "minute": 1}}),
+              grade("2026-10-14T09:28:02-04:00", "open_30", **{"from": 7775.95, "edge": 4.64, "g": -1.81, "label": "flat", "pick": "down", "verdict": "wrong",
+                                                               "best": {"points": 11.8, "minute": 15}, "worst": {"points": -17.77, "minute": 25}})]
+    pre_card = {"day": "2026-10-14", "row_ts": "2026-10-14T09:28:02-04:00", "calls": [{"read": "2026-10-14T09:28:02-04:00", "pick": "down", "p": 0.68}]}
+    js = ("console.log(JSON.stringify(preItems(D.d).map(function(k){ var row = callRow('premarket', k), more = row.kids[4], shut = more.hidden; row.on();"
+          " return [row.tag, row.attrs['data-k'], shut, more.hidden, more.kids.map(function(x){ return x.textContent; })]; })));")
+    opened = _run(js, {"d": "2026-10-14", "grades": {"premarket": checks}, "preCard": pre_card, "now": "2026-10-14T12:00:00-04:00"})
+    assert opened == [["button", "row premarket2026-10-14T09:28:02-04:00open_10", True, False,
+                       ["Called Down 68% · window 06:35 to 06:45", "Settled open 7,775.95 · flat band 7,773.7 to 7,778.2", "10-min average 7,779.58 (+3.6 pts)",
+                        "Highest +8.8 pts (minute 8) · lowest −2.9 pts (minute 1)"]],
+                      ["button", "row premarket2026-10-14T09:28:02-04:00open_30", True, False,
+                       ["Called Down 68% · window 06:35 to 07:05", "Settled open 7,775.95 · flat band 7,771.3 to 7,780.6", "30-min average 7,774.14 (−1.8 pts)",
+                        "Highest +11.8 pts (minute 15) · lowest −17.8 pts (minute 25)"]]]
+    past = _run(js, {"d": "2026-10-14", "grades": {"premarket": checks}, "now": "2026-10-16T12:00:00-04:00"}, TOKYO)
+    assert [r[4][0] for r in past] == ["Called Down · window 22:35 to 22:45", "Called Down · window 22:35 to 23:05"]
 
 
 def test_a_lane_draws_its_calls_as_squares_at_their_times_on_the_days_axis():
@@ -254,11 +295,13 @@ def test_the_page_reads_the_stores_by_name_asks_only_for_what_changed_and_keeps_
     and, when its count of rows grew, for the rows added alone (the last row in hand when one was); a count that fell, or
     a held last row the station could not parse (a line caught mid-write), reads the newest rows again. Never more than
     two at a time (the station's gate). Only "not found" is a day with nothing in it: a refused fetch (a 502 from the
-    tunnel) keeps the lane unknown, says so on the header's line, and is asked again."""
+    tunnel) keeps the lane unknown, says so on the header's line, and is asked again. A card is asked for only when it
+    can have changed: the direction line's when today is picked, and again in the busy hours only while it lags the
+    30-minute card's newest read."""
     assert _var("GRADES_URL").strip() == "var GRADES_URL = '/api/store/file?name=JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON&lane=';"
     assert "var GRADE_LIMITS = {live: 200, tape: 100, premarket: 40};" in JS
     for name in ("FORECASTS_BY_FORECASTER_READ_AND_HORIZON", "DIRECTION_LINE_GRADES_BY_READ", "CLAUDE_FORECAST_ANSWERS_BY_READ", "CLAUDE_FORECAST_OUTCOMES_BY_READ",
-                 "JEV_LIVE_CARD", "JEV_OPENING_CARD", "JEV_PREMARKET_CARD"):
+                 "JEV_LIVE_CARD", "JEV_OPENING_CARD", "JEV_PREMARKET_CARD", "DIRECTION_LINE_CARD"):
         assert f"name={name}" in JS, name
     assert "var DAYS_SHOWN = 5, POLL_MS = 60000, SLOW_MS = 300000, RETRY_MS = 20000, FETCHES_AT_ONCE = 2;" in JS
     assert "while(running < FETCHES_AT_ONCE && queue.length)" in _fn("pump") and "return gate(function()" in _fn("stored")
@@ -312,6 +355,19 @@ fetch = function(url){
                                                                     "CLAUDE_FORECAST_ANSWERS_BY_READ", "CLAUDE_FORECAST_OUTCOMES_BY_READ"))
     assert got["retry"] == [[{"n": 1}], [], ["DIRECTION_LINE_GRADES_BY_READ2026-10-13 1000"]]
     assert got["most"] <= 2
+    # the direction line's card: asked for the first time, never twice in a minute, then in the busy hours while it is
+    # another read's than the 30-minute card's newest, never once it has caught up, after the busy hours or on a day
+    # whose 30-minute card is not today's
+    due = (_var("DAYS_SHOWN") + _var("BUSY_HOURS") + "".join(_fn(f) for f in ("cardDue", "pollEvery", "marketClock"))
+           + "var cardAt = {}; console.log(JSON.stringify(D.at.map(function(x){ cardAt.dir = x[1] == null ? null : Date.parse(x[1]); live = x[2]; dirCard = x[3];"
+           " NOW = Date.parse(x[0]); return cardDue('dir', Date.now()); })));")
+    read, earlier = "2026-10-15T13:00:13.037889-04:00", "2026-10-15T12:31:39.611351-04:00"
+    card = lambda ts: {"row_ts": ts}
+    lags, caught = {"read_id": "live:" + earlier}, {"read_id": "live:" + read}
+    at = [["2026-10-15T13:01:00-04:00", None, card(read), None], ["2026-10-15T13:01:30-04:00", "2026-10-15T13:01:00-04:00", card(read), lags],
+          ["2026-10-15T13:02:00-04:00", "2026-10-15T13:01:00-04:00", card(read), lags], ["2026-10-15T13:02:00-04:00", "2026-10-15T13:01:00-04:00", card(read), caught],
+          ["2026-10-15T17:40:00-04:00", "2026-10-15T13:01:00-04:00", card(read), lags], ["2026-10-16T10:00:00-04:00", "2026-10-15T13:01:00-04:00", card(read), lags]]
+    assert _run(due, {"at": at, "now": at[0][0]}) == [True, False, True, False, False, False]
     assert "open[id] = !open[id];" in _fn("callRow") and "more.hidden = !open[id];" in _fn("callRow")      # a call the reader opened stays open
     assert "'Fetch failed, showing the last results'" in _fn("draw") and "HASH[location.hash]" in JS
     assert "history.replaceState(null, '', '#' + lane)" in _fn("draw") and "window.addEventListener('resize'" in JS

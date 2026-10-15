@@ -266,7 +266,7 @@ def test_a_new_card_asks_for_the_grades_at_once_and_keeps_a_call_open_until_its_
           "function fetch(){ calls++; return Promise.resolve({ok: true, json: function(){ return Promise.resolve({kind: 'jsonl', rows: []}); }}); }"
           "function $(id){ return {getAttribute: function(){ return 'true'; }, classList: {contains: function(){ return false; }}, dataset: {}}; }"
           "function priceDay(){ return null; } function pollBars(){} function pollBook(){} function draw(){} function ages(){} function tick(){} function paintBoard(){} function paintChart(){}"
-          "var jevAt = 0, dirGradesAt = 0, asked = {jev: 0, dir: 0}, claudeReadsDay = null; function cardDay(){ return null; } function pollClaudeReads(){}"
+          "var jevAt = 0, dirGradesAt = 0, asked = {jev: 0, dir: 0}, claudeReadsDay = null; function cardDay(){ return null; } function pollClaudeReads(){} function pollClaudeOutcomes(){}"
           "function pollJevAlone(){ asked.jev++; jevAt = Date.now(); } function pollDirGrades(){ asked.dir++; dirGradesAt = Date.now(); }"
           "function chartDocked(){ return false; }" + _var("GRADES_URL") + _var("BOOK_URL") + _var("grades") + "".join(_fn(f) for f in ("chartVisible", "rawRows", "pollGrades", "arrived"))
           + "function settle(){ return new Promise(function(r){ setImmediate(r); }); }"
@@ -721,7 +721,7 @@ def test_a_good_fetch_after_a_failed_one_clears_the_failure_though_the_card_is_t
           "function $(id){ return SUB; } function ages(){ drawn.push('ages'); } function tick(){}"
           "function draw(c, ok){ lastOk = ok; drawn.push(ok); if(ok) SUB.classList.remove('err'); }"
           "function setTimeout(){} var barsDay = null, gradesAt = 0, jevAt = 0, dirGradesAt = 0, claudeReadsDay = null; function priceDay(){ return null; } function pollBars(){} function pollBook(){} function pollGrades(){}"
-          "function pollJevAlone(){} function pollDirGrades(){} function pollClaudeReads(){} function cardDay(){ return null; }" + _fn("arrived") +
+          "function pollJevAlone(){} function pollDirGrades(){} function pollClaudeReads(){} function pollClaudeOutcomes(){} function cardDay(){ return null; }" + _fn("arrived") +
           "var c = {generated_at: 'g1', row_ts: 'r1'};"
           "arrived(c); arrived(c); draw(last, false); arrived(c); arrived(c);"
           "SUB.classList.add('err'); arrived(c);"
@@ -2012,7 +2012,7 @@ var CARDS = {'JEV_LIVE_CARD': D.live, 'JEV_OPENING_CARD': D.tape, 'JEV_PREMARKET
 // the files read as rows: the live and the lane's grades, JEV's own answers and the direction line's grades
 var ROWS = {'JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON': function(url){ return /lane=tape/.test(url) ? D.tape_grades : D.grades; },
             'FORECASTS_BY_FORECASTER_READ_AND_HORIZON': function(){ return D.jev; }, 'DIRECTION_LINE_GRADES_BY_READ': function(){ return D.dir_grades; },
-            'CLAUDE_FORECAST_ANSWERS_BY_READ': function(){ return D.claude_reads; }};
+            'CLAUDE_FORECAST_ANSWERS_BY_READ': function(){ return D.claude_reads; }, 'CLAUDE_FORECAST_OUTCOMES_BY_READ': function(){ return D.claude_outcomes; }};
 var grades = null;
 function fetch(url){
   var m = /name=([^&]*)/.exec(url), name = m ? decodeURIComponent(m[1]) : '', c = CARDS[name];   // the spot poll names no store
@@ -2028,7 +2028,7 @@ function flat(n){ return n._t + n.kids.map(flat).join(''); }
 
 def _whole(cards, now, tz=LA, steps=()):
     """The page drawn at ``now`` in ``tz`` from ``cards`` (live, tape, premarket, options, board, claude, direction, and
-    the rows of grades, tape_grades, jev, dir_grades and claude_reads; a missing one is not on file; ``wide`` from 1024px
+    the rows of grades, tape_grades, jev, dir_grades, claude_reads and claude_outcomes; a missing one is not on file; ``wide`` from 1024px
     up): the header line and whether it is an error, the state chips, each of main's parts as [class, flat text], the
     dock's, the 30-minute tab's window, table and board, the questions control, the switch and the options-data banner's
     lines (None while hidden). Then each of ``steps`` in turn ({at, cards, tap}): the clock moved to ``at``, the station's
@@ -2342,7 +2342,10 @@ def test_the_scoreboard_gives_each_reads_record_against_its_yardstick():
     point; Claude against its starting odds, too early until scored. The verdict in a chip is the scoreboard's own (its
     status), "a bit" or "much" said from the skill. JEV alone's today is its own pick on each graded read (its answers
     file against the live grades), the card's read open until graded; Claude's is a square per read of its own the
-    service scores (its answers file: a failed 30-minute answer is scored on its starting odds, a paused read is not).
+    service scores (its answers file: a read's last final forecast, a test variant's never, a failed 30-minute answer
+    scored on its starting odds, a paused read not at all), open and "Scored after the close" until the evening's
+    finalize seals its outcome (its outcomes file, asked for only after the close: a read's last 30-minute row, final
+    alone counting), then its pick against where the average went, a tie going to up, as the results page scores it.
     The board is drawn again as each file comes."""
     claude = {**CLAUDE, "record": {"verdict": "Too early", "graded_reads": 18, "horizons": {"next_30_minutes": {"claude_right_pct": 61.1, "reads": 18}}}}
     live = MONDAY["live"]
@@ -2353,10 +2356,16 @@ def test_the_scoreboard_gives_each_reads_record_against_its_yardstick():
            {"voice_name": "jev_own", "sum_id": "average_30", "row_ts": late, "voice_probs": {"down": 0.3, "flat": 0.2, "up": 0.5}},
            {"voice_name": "matcher", "sum_id": "average_30", "row_ts": late, "voice_probs": {"down": 0.6, "flat": 0.2, "up": 0.2}}]
     base = {"up_pct": 20, "flat_pct": 60, "down_pct": 20}
+    tied = live["calls"][1]["read"]
     reads = [{"line_type": "final_forecast", "read_id": "live:" + early, "test_variant": "none", "forecast": {"next_30_minutes": {"status": "ok", "up_pct": 20, "flat_pct": 60, "down_pct": 20, "base_rate_shown_to_claude": base}}},
              {"line_type": "claude_answer", "read_id": "live:" + early},
+             {"line_type": "final_forecast", "read_id": "live:" + early, "test_variant": "calm", "forecast": {"next_30_minutes": {"status": "ok", "up_pct": 90, "flat_pct": 5, "down_pct": 5}}},
              {"line_type": "final_forecast", "read_id": "live:" + late, "test_variant": "none", "forecast": {"next_30_minutes": {"status": "failed", "base_rate_shown_to_claude": base}}},
+             {"line_type": "final_forecast", "read_id": "live:" + tied, "forecast": {"next_30_minutes": {"status": "ok", "up_pct": 10, "flat_pct": 10, "down_pct": 80}}},
+             {"line_type": "final_forecast", "read_id": "live:" + tied, "forecast": {"next_30_minutes": {"status": "ok", "up_pct": 40, "flat_pct": 20, "down_pct": 40}}},
              {"line_type": "final_forecast", "read_id": "live:" + live["row_ts"], "test_variant": "none", "status": "paused", "forecast": {}}]
+    final = lambda ts, went, horizon="next_30_minutes": {"read_id": "live:" + ts, "horizon": horizon, "result": {"status": "final", "direction": went}}
+    outcomes = [final(early, "flat"), final(early, "up", "next_60_minutes"), final(late, "up"), final(tied, "down"), final(tied, "up")]
     got = _whole({**{k: MONDAY[k] for k in ("live", "tape", "premarket")}, "board": BOARD, "claude": claude, "grades": grades, "jev": jev, "claude_reads": reads},
                  "2026-09-28T16:10:00-04:00")
     rows = {r["kids"][0]["text"]: [_flat_text(k) for k in r["kids"]] for r in got["board"]["kids"] if r["attrs"].get("class") == "sb"}
@@ -2365,7 +2374,32 @@ def test_the_scoreboard_gives_each_reads_record_against_its_yardstick():
     assert rows["JEV alone"][1] == "1 of 2 right40 of 10737% rightBase-rate guess 58%Much worse"      # Monday's 15:31 read made no average call
     assert [q["attrs"]["class"] for q in _board_cell(got, "JEV alone", 0)["kids"][0]["kids"]] == ["r", "w"]
     assert rows["Claude"][1] == "Scored after the close61% of 18rightIts starting oddsToo early"
-    assert [q["attrs"]["class"] for q in _board_cell(got, "Claude", 0)["kids"][0]["kids"]] == ["o", "o"]
+    assert [q["attrs"]["class"] for q in _board_cell(got, "Claude", 0)["kids"][0]["kids"]] == ["o", "o", "o"]
+    # sealed at the evening's finalize: the flat pick right, the failed read's starting odds (flat) wrong, the tie
+    # (40 up, 40 down) up and right on the read's last outcome row; a last row not final leaves its read open; before the
+    # close the file is never asked for, so the squares stay open whatever it holds
+    def claude_today(outcomes, at="2026-09-28T17:20:00-04:00"):
+        board = _whole({**{k: MONDAY[k] for k in ("live", "tape", "premarket")}, "claude": claude, "claude_reads": reads, "claude_outcomes": outcomes}, at)
+        cell = _board_cell(board, "Claude", 0)
+        return [q["attrs"]["class"] for q in cell["kids"][0]["kids"]], _flat_text(cell)
+    assert claude_today(outcomes) == (["r", "w", "r"], "2 of 3 right")
+    assert claude_today(outcomes + [{"read_id": "live:" + early, "horizon": "next_30_minutes", "result": {"status": "pending", "direction": "flat"}}]) == (["o", "w", "r"], "1 of 2 right1 open")
+    assert claude_today(outcomes, "2026-09-28T15:40:00-04:00") == (["o", "o", "o"], "Scored after the close")
+    # the outcomes file is asked for on a card of a new day at once, on today's card only after its close and then every
+    # five minutes until each read's outcome is sealed, never again after
+    js = ("var claudeReads = [{id: 'a', pick: 'up'}], claudeReadsDay = 'd1', day = 'd1', today = true, asked = [], answer = null;"
+          "function cardDay(){ return day; } function todaysCard(){ return today; } function dayClose(){ return Date.parse('2026-09-28T16:00:00-04:00'); }"
+          "function paintBoard(){} function rawRows(url){ asked.push(url.split('day=')[1]); return Promise.resolve(answer); }"
+          + _var("CLAUDE_OUTCOMES_URL") + _var("claudeWent") + _fn("claudeSealed") + _fn("pollClaudeOutcomes")
+          + "function at(t){ NOW = Date.parse('2026-09-28T' + t + '-04:00'); pollClaudeOutcomes(); return new Promise(function(r){ setImmediate(r); }); }"
+          "(async function(){ var out = [];"
+          " await at('15:40:00'); out.push(asked.length); await at('16:01:00'); out.push(asked.length); await at('16:05:00'); out.push(asked.length);"
+          " answer = [{read_id: 'a', horizon: 'next_30_minutes', result: {status: 'final', direction: 'up'}}];"
+          " await at('16:06:01'); out.push(asked.length); await at('17:30:00'); out.push(asked.length);"
+          " day = 'd2'; today = false; await at('17:30:10'); out.push(asked.length);"
+          " console.log(JSON.stringify([out, asked])); })();")
+    assert _run(js, {"now": "2026-09-28T15:40:00-04:00"}) == [[0, 1, 1, 2, 2, 3], ["d1", "d1", "d2"]]
+    assert "pollClaudeOutcomes();" in _fn("arrived") and "pollClaudeOutcomes();" in _fn("pollClaudeReads")
     verdicts = _run(_fn("yardWords") + _var("STATUS_CHIP") + _fn("voiceVerdict") + "console.log(JSON.stringify(D.v.map(voiceVerdict)));",
                     {"v": [{"status": "Too early", "skill_vs_historical_odds_pct": -4.64}, {"status": "Worse", "skill_vs_historical_odds_pct": -44.2},
                            {"status": "No edge", "skill_vs_historical_odds_pct": 1.2}, {"status": "Edge", "skill_vs_historical_odds_pct": 3.1},

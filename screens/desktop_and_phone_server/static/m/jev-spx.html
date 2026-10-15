@@ -32,7 +32,9 @@
   scoreboard reads its grades files (JEV_AVERAGE_PRICE_GRADES_BY_READ_AND_HORIZON,
   the live, tape and premarket lanes), with JEV's own answers
   (FORECASTS_BY_FORECASTER_READ_AND_HORIZON), the direction line's grades
-  (DIRECTION_LINE_GRADES_BY_READ) and the scoreboard (FORECASTER_SCOREBOARD_CARD).
+  (DIRECTION_LINE_GRADES_BY_READ), Claude's answers and their outcomes
+  (CLAUDE_FORECAST_ANSWERS_BY_READ, CLAUDE_FORECAST_OUTCOMES_BY_READ) and the
+  scoreboard (FORECASTER_SCOREBOARD_CARD).
 
   The price box opens the price-today sheet (2026-10-10): the day's SPX line by
   the minute from the bars feed (SPX_PRICE_BARS_BY_MINUTE), which also draws the box's
@@ -1512,6 +1514,7 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     if(!jevAt) pollJevAlone();
     if(!dirGradesAt) pollDirGrades();
     if(!same && claudeReadsDay !== cardDay()) pollClaudeReads();   // and Claude's reads, once the card names a new day
+    pollClaudeOutcomes();                                           // and their outcomes once they can have been sealed
     if(same && lastOk && !$('sub').classList.contains('err')){ ages(c); tick(); return; }
     draw(c, true);
     if(same) return;
@@ -2267,16 +2270,22 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       sbCell(null, null, gap != null ? 'Always-up guess ' + signedOne(all.always_up_mean_points) : '—',
              gap == null ? null : Math.abs(gap) <= 1 ? ['Level', 'level'] : gap > 0 ? ['Better', 'better'] : ['Worse', 'worse'])]);
   }
-  // Claude: one open square per read of its own on the card's day (its answers file; its reads are scored after the
-  // close, on the results page), its record on the next 30 minutes, and its starting odds, too early to judge until it
-  // has its graded reads
+  // Claude: a square per read of its own on the card's day (its answers file), each its pick against where the average
+  // went once the evening's finalize has sealed the read's outcome (its outcomes file) and open until then, as the
+  // results page scores it; its record on the next 30 minutes, and its starting odds, too early to judge until it has
+  // its graded reads
   function claudeBoard(){
     var cl = claude; if(!cl) return null;
-    var rec = cl.record || {}, h = (rec.horizons || {}).next_30_minutes, states = (claudeReadsDay === cardDay() ? claudeReads || [] : []).map(function(){ return 'open'; });
+    var rec = cl.record || {}, h = (rec.horizons || {}).next_30_minutes, states = claudeStates(), graded = states.some(function(s){ return s !== 'open'; });
     return sbRow('Claude', 'not in the call', [
-      sbCell(states, states.length ? 'Scored after the close' : 'No read yet'),
+      sbCell(states, !states.length ? 'No read yet' : graded ? rightWords(states) : 'Scored after the close', graded ? openWords(states) : null),
       h && h.reads ? sbCell(null, Math.round(h.claude_right_pct) + '% of ' + h.reads, 'right') : sbCell(null, '—'),
       sbCell(null, null, 'Its starting odds', rec.verdict === 'Scored' ? yardWords(h && h.skill_vs_base_rate_pct) : ['Too early', 'early'])]);
+  }
+  // the card's day's reads of Claude's own, oldest first: right or wrong on the read's sealed outcome, open without one
+  function claudeStates(){
+    var reads = claudeReadsDay === cardDay() ? claudeReads || [] : [], went = claudeWentDay === claudeReadsDay ? claudeWent || {} : {};
+    return reads.map(function(r){ var w = went[r.id]; return !w ? 'open' : r.pick === w ? 'right' : 'wrong'; });
   }
   // JEV alone: today's reads, its own pick against where each graded average went; the scoreboard's JEV voice since its
   // first day, against the base-rate guess
@@ -3632,9 +3641,10 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
       })
       .catch(function(){});
   }
-  // Claude's own reads of the card's day (its answers file, CLAUDE_FORECAST_ANSWERS_BY_READ: one final_forecast line per
-  // live read), for the scoreboard's squares: each read the service scores, its 30-minute answer or, when that failed,
-  // its starting odds (scoring.py's scored_as_base); asked for on every new Claude card and on a card of a new day
+  // Claude's own reads of the card's day (its answers file, CLAUDE_FORECAST_ANSWERS_BY_READ: a read's last final_forecast
+  // line), for the scoreboard's squares: each read the service scores and its 30-minute pick, on its answer or, when that
+  // failed, on its starting odds (scoring.py's scored_as_base), a read with neither left out, as the results page counts
+  // them; asked for on every new Claude card and on a card of a new day
   var CLAUDE_READS_URL = '/api/store/file?name=CLAUDE_FORECAST_ANSWERS_BY_READ&limit=500&day=';
   var claudeReads = null, claudeReadsDay = null, claudeReadsInflight = false;
   function pollClaudeReads(){
@@ -3642,13 +3652,37 @@ body.sheet-open .scrim{opacity:1;pointer-events:auto}
     claudeReadsInflight = true;
     rawRows(CLAUDE_READS_URL + day).then(function(rows){
       if(!rows) return;
-      var seen = {};
+      var byRead = {};
       rows.forEach(function(r){
-        var h = r && r.line_type === 'final_forecast' && /^live:/.test(r.read_id || '') && (r.test_variant || 'none') === 'none' && (r.forecast || {}).next_30_minutes;
-        if(h && (clOk(h) || clBase(h))) seen[r.read_id] = 1;
+        if(r && r.line_type === 'final_forecast' && /^live:/.test(r.read_id || '') && (r.test_variant || 'none') === 'none' && String(r.trading_day || r.read_id.slice(5, 15)) === day) byRead[r.read_id] = r;
       });
-      claudeReads = Object.keys(seen).sort(); claudeReadsDay = day; paintBoard();
+      claudeReads = Object.keys(byRead).sort().map(function(id){
+        var h = (byRead[id].forecast || {}).next_30_minutes, b = clOk(h) ? h : clBase(h), k = b && clPick(b);
+        return b && {id: id, pick: k.replace('_pct', '')};
+      }).filter(Boolean);
+      claudeReadsDay = day; paintBoard(); pollClaudeOutcomes();
     }).catch(function(){}).finally(function(){ claudeReadsInflight = false; });
+  }
+  // where the average went on each of the card's day's reads (its outcomes file, CLAUDE_FORECAST_OUTCOMES_BY_READ: a
+  // read's last 30-minute outcome line, its direction only once final), written at the evening's finalize (17:15): asked
+  // for on a card of a new day, and on today's card only after the close, every OUTCOMES_MS until each read's is sealed
+  var CLAUDE_OUTCOMES_URL = '/api/store/file?name=CLAUDE_FORECAST_OUTCOMES_BY_READ&limit=500&day=', OUTCOMES_MS = 300000;
+  var claudeWent = null, claudeWentDay = null, claudeWentAt = 0, claudeWentInflight = false;
+  // whether every read held of the day has its outcome sealed, so the file has nothing more to give
+  function claudeSealed(){
+    return !!claudeWent && claudeReadsDay === claudeWentDay && (claudeReads || []).every(function(r){ return claudeWent[r.id]; });
+  }
+  function pollClaudeOutcomes(){
+    var day = cardDay(), now = Date.now(); if(!day || claudeWentInflight) return;
+    if(day !== claudeWentDay){ claudeWent = null; claudeWentDay = day; claudeWentAt = 0; }
+    if((todaysCard() && !(now >= dayClose())) || claudeSealed() || now - claudeWentAt < OUTCOMES_MS) return;
+    claudeWentInflight = true; claudeWentAt = now;
+    rawRows(CLAUDE_OUTCOMES_URL + day).then(function(rows){
+      if(!rows) return;
+      var went = {};
+      rows.forEach(function(o){ if(o && o.horizon === 'next_30_minutes') went[o.read_id] = o.result && o.result.status === 'final' ? o.result.direction : null; });
+      claudeWent = went; paintBoard();
+    }).catch(function(){}).finally(function(){ claudeWentInflight = false; });
   }
   // a tap on either half of the switch picks its tab
   [['swFive', 'five'], ['swThirty', 'thirty']].forEach(function(b){ $(b[0]).addEventListener('click', function(){ setTab(b[1]); }); });
