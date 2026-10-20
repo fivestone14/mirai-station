@@ -186,7 +186,7 @@ def test_replay_today_reseeds_tape_window(sd, trade_factory):
 
 
 def test_spxw_symbol_format():
-    from lob_flow.spy_stream import spxw_symbol
+    from schwab_live_stream.stream_symbols import spxw_symbol
     assert spxw_symbol("2026-07-06", "call", 7475.0) == "SPXW  260706C07475000"
     assert spxw_symbol("2026-07-06", "put", 6302.5) == "SPXW  260706P06302500"
     assert len(spxw_symbol("2026-12-31", "call", 5.0)) == 21

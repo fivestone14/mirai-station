@@ -326,6 +326,7 @@ mirai_awakening/
 │   │                           read (model reading) · rag (on-demand memory)
 │   └── shared_text_embedder_for_note_search/   embed.py, the bge-small embedder the two memories rank with
 ├── data_collectors/
+│   ├── schwab_live_stream/          the one Schwab streaming connection: SPY book, SPXW focus set, $SPX live price
 │   ├── schwab_market_data_client/   the Schwab sign-in, token vault and fetchers every pipeline imports
 │   ├── spx_options_tape_collector/  lob_flow: the same-day SPX options tape and depth collector (shadow)
 │   └── spy_volume_at_walls_sensor/  siege: SPY volume spent at dealer walls (shadow)

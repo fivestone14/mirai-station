@@ -89,7 +89,7 @@ def test_tick_path_stays_network_free():
     """attach_telemetry must never pull the network-facing modules into the
     tick — the feeds (and their httpx client) load only in the collector."""
     import sys
-    banned = ("lob_flow.options_feed", "lob_flow.spy_stream", "lob_flow.daemon")
+    banned = ("lob_flow.options_feed", "schwab_live_stream.stream_connection", "lob_flow.daemon")
     # A feed/daemon test earlier in the session may have left these in
     # sys.modules; drop them so the assertion measures THIS call's imports only.
     for name in banned:

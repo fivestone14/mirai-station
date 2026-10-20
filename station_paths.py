@@ -220,6 +220,7 @@ class Store:
 # market/   prices, quotes, depth, trades, open interest, the calendar, and the tables built from them
 # =====================================================================================================================
 SPX_PRICE_BARS_BY_MINUTE = Store("market/spx_price_bars_by_minute/{day}.jsonl")   # the one copy: the bars feed's; read through station_store_files
+SPX_LIVE_PRICE_LATEST = Store("market/spx_live_price_latest.json")   # $SPX's last streamed trade, at most a second old; the lob-collector's stream writes it, Kaze reads it
 WATCHLIST_QUOTES_BY_MINUTE = Store("market/watchlist_quotes_by_minute/{day}.jsonl")
 WATCHLIST_PRICE_BARS_BY_MINUTE = Store("market/watchlist_price_bars_by_minute/{day}.jsonl")
 FUTURES_PRICE_BARS_BY_MINUTE = Store("market/futures_price_bars_by_minute/{day}.jsonl")

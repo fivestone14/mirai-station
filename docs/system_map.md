@@ -17,6 +17,7 @@ page to look a store up on (its path, what one row holds, who writes and reads i
 | `pipelines/spx_claude_forecast/` | Claude's own SPX forecast (the `spx_claude_forecast` package): the read hook, the recorder, the nightly job | `pipelines/spx_claude_forecast/tests` |
 | `pipelines/sndk_options_scanner_and_reader/` | the SNDK scanner, its bar sidecar, the reader and the reader's memory | `pipelines/sndk_options_scanner_and_reader/tests` |
 | `pipelines/shared_text_embedder_for_note_search/` | `embed.py`, the bge-small embedder the two memories (`lefteye_rag`, `sndk_rag`) rank their notes with | none |
+| `data_collectors/schwab_live_stream/` | the station's one Schwab streaming connection (SPY book, SPXW focus set, `$SPX`'s live price file for Kaze), run inside the lob-collector | `data_collectors/spx_options_tape_collector/tests` (through the collector) |
 | `data_collectors/schwab_market_data_client/` | the Schwab sign-in, token vault and fetchers every pipeline imports (`iv_fetcher`, `vault`) | `data_collectors/schwab_market_data_client/tests` |
 | `data_collectors/spx_options_tape_collector/` | the `lob_flow` package: the same-day SPX options tape and depth collector, run through the scanner's `lob_bridge.py` | `data_collectors/spx_options_tape_collector/tests` |
 | `data_collectors/spy_volume_at_walls_sensor/` | the `siege` package: SPY volume spent at dealer walls, run inside the scan through `siege_bridge.py` | `data_collectors/spy_volume_at_walls_sensor/tests` |

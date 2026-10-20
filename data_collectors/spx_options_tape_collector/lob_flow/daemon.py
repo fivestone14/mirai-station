@@ -5,7 +5,8 @@ loop, all state through io_state, all math delegated to sensors/engine:
 
   T1  quote sweep   (60s)  chain top-of-book WITH sizes -> sweep bins
   T2  tape poll     (30s)  incremental trades (quote-at-print) -> tape window
-  T3  schwab stream (push) SPY depth samples + SPXW focus-set revisions
+  T3  schwab stream (push) SPY depth samples + SPXW focus-set revisions,
+                           and $SPX's last trade saved for Kaze (spx_price_writer)
   T4  fold          (60s)  evaluate_once -> latest.json + agg journal + health
 
 Fail-closed posture: every window handed to the fold is age-gated (a feed
@@ -21,17 +22,24 @@ collectors can never run at once. The daemon self-terminates after the close
 from __future__ import annotations
 
 import asyncio
+import sys
 import traceback
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Callable, Optional
 
 from . import engine as _engine
 from .baselines import BaselineStore, FileCalendar
 from .contracts import DepthSample, LobConfig, TradeEvent
 from .io_state import StateDir, load_cursor, save_cursor
-from .spy_stream import spxw_symbol
+
+_DATA_COLLECTORS = str(Path(__file__).resolve().parents[2])   # the station's one Schwab stream sits beside this box
+if _DATA_COLLECTORS not in sys.path:
+    sys.path.append(_DATA_COLLECTORS)
+from schwab_live_stream.spx_price_writer import SpxPriceWriter  # noqa: E402
+from schwab_live_stream.stream_symbols import spxw_symbol  # noqa: E402
 
 TAPE_WINDOW_MIN = 15          # rolling trade window the sensors read
 TAPE_SEED_MIN = 5             # a NEW focus contract starts its tape this far
@@ -54,7 +62,7 @@ class Adapters:
     """Everything injected from the host — the box's only view of the world."""
     quote_feed: object                 # OptionsQuoteFeed
     tape_feed: object                  # OptionsTapeFeed
-    schwab_stream: Optional[object]    # StreamFeed | None
+    schwab_stream: Optional[object]    # schwab_live_stream.SchwabLiveStream | None
     gex: object                        # GexContext
     calendar: FileCalendar
     clock: Callable[[], datetime]      # ET-aware now()
@@ -313,7 +321,7 @@ def _prune_trades(mem: _Mem, now: datetime) -> None:
 
 
 # ---------------------------------------------------------------------------
-# T3 — schwab stream (SPY depth + SPXW focus set)
+# T3 — schwab stream (SPY depth + SPXW focus set + $SPX's live price)
 # ---------------------------------------------------------------------------
 
 
@@ -322,8 +330,10 @@ async def _stream_loop(cfg: LobConfig, a: Adapters, mem: _Mem,
     """Connects immediately — the SPY control needs no spot; the option
     focus set starts as whatever gravity gives and the drift check
     re-subscribes once the first sweep sets spot (an MCP outage must never
-    silence the independent control)."""
+    silence the independent control). $SPX's last trade rides the same
+    connection to the live-price file Kaze reads; its writer never raises."""
     backoff = 5
+    price_writer = SpxPriceWriter(a.state.state_root)
     while not stop.is_set():
         now = a.clock()
         connected_at = now
@@ -345,9 +355,10 @@ async def _stream_loop(cfg: LobConfig, a: Adapters, mem: _Mem,
             mem.stream_up = True
             await a.schwab_stream.run(
                 cfg.control_symbol, subscribed,
-                on_depth=lambda d: _on_depth(mem, d),
+                on_depth=lambda d: _on_depth(mem, DepthSample(**d)),
                 on_option_quote=lambda q: _on_option_quote(mem, q),
-                should_stop=_should_stop)
+                should_stop=_should_stop,
+                on_index_tick=price_writer.save)
             backoff = 5                            # clean exit (drift/stop)
         except Exception as e:  # noqa: BLE001 — reconnect with backoff, mark the gap
             a.state.gap_marker(_day(now), "spy-depth", now,

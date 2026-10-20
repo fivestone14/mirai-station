@@ -22,7 +22,7 @@ a nightly-graded record — is a confidence nudge clamped to ×[0.85, 1.15].
 | `contracts.py` | Shared Language | Every data shape, adapter interface, and knob — no logic, no I/O |
 | `io_state.py` | Filing System | Atomic writes, the `latest.json` handshake, journals + cursors, the gzip of finished raw days (kept forever, nothing pruned) |
 | `options_feed.py` | Chain Tap | Pulls the chain's top-of-book (with sizes) and the trade tape (with quote-at-print) from the hosted MCP |
-| `spy_stream.py` | Control's Feed | Streams SPY top-of-book + the ~30-strike SPXW focus set over Schwab |
+| `../schwab_live_stream/` | Control's Feed | The station's one Schwab stream (moved out of this box 2026-10-20): SPY top-of-book + the ~30-strike SPXW focus set, and $SPX's last trade for Kaze's live price |
 | `daemon.py` | Collector | The only long-lived process: four loops — sweep, tape, stream, fold |
 | `sensors.py :: read_tape()` | Tape Reader | Who's eating: signs each trade bucket by where its VWAP sits inside the quote |
 | `sensors.py :: fade_dial()` | Fade Dial | Are the monkeys fleeing (scatter, ≥2 bins) or is nothing happening |
@@ -46,7 +46,7 @@ the dormant promotion switch `LOB_LIVE`).
 |---|---|---|---|
 | 60s chain sweep (hosted-MCP cache ceiling) | `options_feed.sweep` | delta-bucket scatter/persistence, spread dial, purge steps at 1-min resolution | sub-minute pull-and-refill; true revision rates |
 | event-time tape, 30s poll (ms resolution) | `options_feed.trades_since` | signed flow; refill half-life at ACTIVE strikes (exactly the gravity strikes while being tested) | quiet-strike refill |
-| Schwab stream (SPY + SPXW focus set) | `spy_stream` | true revisions/sec + full-fidelity refill on the focus set | the rest of the chain |
+| Schwab stream (SPY + SPXW focus set) | `schwab_live_stream` | true revisions/sec + full-fidelity refill on the focus set | the rest of the chain |
 | future: direct Theta Terminal | new feed impls only | full refill curves, chain-wide true noise | — |
 
 Chain-wide `noise_proxy` is a **proxy** until a direct quote-tick feed exists;
@@ -89,7 +89,7 @@ consume with `read_latest(state_dir, now)`.
 
 Probes (live smoke tests, never used by the test suite):
 `python -m lob_flow.options_feed --probe --token-cmd '...'` ·
-`python -m lob_flow.spy_stream --probe --client-py '...'`
+`python -m schwab_live_stream.stream_connection --probe --client-py '...'` (from `data_collectors/`)
 
 ## Trust labels & the clock
 

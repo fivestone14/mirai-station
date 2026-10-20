@@ -36,6 +36,10 @@ if _IV not in sys.path:
 _TAPE_COLLECTOR = str(SKILL_DIR.parents[1] / "data_collectors" / "spx_options_tape_collector")
 if _TAPE_COLLECTOR not in sys.path:
     sys.path.append(_TAPE_COLLECTOR)
+# the station's one Schwab stream (schwab_live_stream/), which the collector's stream loop rides
+_DATA_COLLECTORS = str(SKILL_DIR.parents[1] / "data_collectors")
+if _DATA_COLLECTORS not in sys.path:
+    sys.path.append(_DATA_COLLECTORS)
 
 _REPO_ROOT = str(SKILL_DIR.parent.parent)             # station_paths.py names every store
 if _REPO_ROOT not in sys.path:
@@ -192,8 +196,8 @@ def _build_adapters():
                        harden=vault.install_runtime_hardening)   # OWN session
     stream = None
     try:
-        from lob_flow.spy_stream import SchwabStream
-        stream = SchwabStream(iv_fetcher._build_client)
+        from schwab_live_stream.stream_connection import SchwabLiveStream
+        stream = SchwabLiveStream(iv_fetcher._build_client)
     except Exception:  # noqa: BLE001 — no schwab stream -> poll-only tier
         stream = None
 
