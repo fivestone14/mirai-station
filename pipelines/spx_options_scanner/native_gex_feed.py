@@ -833,6 +833,97 @@ def _tape_flow_by_strike(day: str) -> Optional[dict]:
                 for key, rec in _TAPE_FLOW["by"].items()}
 
 
+# The tape follows only the strikes around the price (about 21 of them); the provider's flow
+# tool had covered the whole 0DTE chain (190-364 strikes). The rest is rebuilt from the Schwab
+# book each scan already pulls: every contract carries its running day volume, its newest trade
+# price and its quote, so a rise in volume between two scans is trading, and the quote rule
+# sides it. It is coarser than the tape (one row per contract per scan: the whole rise takes
+# the side of the newest price), so it only ever fills what the tape did not see.
+_CHAIN_FLOW_FILE = "chain_flow.json"
+_CHAIN_FLOW_MIN_GAP_S = 45.0     # the tape journal trails the stream by up to 30 s; a rise is
+                                 # only compared with the tape one scan (>= this long) later
+_FLOW_FIELDS = ("buy", "sell", "buy_vol", "sell_vol", "mid_vol", "unknown_vol")
+
+
+def _quote_side(price, bid, ask) -> str:
+    """The tape's quote rule on one price: 'buy' | 'sell' | 'mid' | 'unknown'."""
+    if not (price and price > 0 and bid and ask and bid > 0 and ask >= bid):
+        return "unknown"
+    return "buy" if price >= ask else "sell" if price <= bid else "mid"
+
+
+def _chain_flow_by_strike(day: str, contracts: list, root: str, tape_by: Optional[dict],
+                          now_s: Optional[float] = None) -> dict:
+    """Per (strike, right) buy/sell totals for the 0DTE volume the tape did NOT carry, from
+    the change in each contract's day volume between scans. State lives beside the day's
+    tape (chain_flow.json) because every scan is a fresh process.
+
+    Per contract: `base`/`tape0` are the day volume and the tape's volume when first seen
+    (volume before that is not sided: nobody watched it trade), `vol` the day volume at the
+    previous scan with the side and price its last rise took, `attr` what has been counted
+    here so far. Counted now = (rise up to the PREVIOUS scan) - (what the tape has since
+    carried for the contract) - attr, when positive. A contract the stream follows nets to
+    zero; one it does not, or volume it missed across a reconnect, is counted in full."""
+    import time
+    import atomic_io
+    import lob_bridge
+    path = lob_bridge._state().raw(day, "tape").with_name(_CHAIN_FLOW_FILE)
+    state = atomic_io.read_json_or(path, {})
+    if state.get("day") != day:
+        state = {"day": day, "at": None, "c": {}, "by": {}}
+    now_s = time.time() if now_s is None else now_s
+    seen, by = state["c"], state["by"]
+    if state.get("at") is None or now_s - state["at"] >= _CHAIN_FLOW_MIN_GAP_S:
+        for c in contracts:
+            volume = c.get("volume")
+            if (c.get("dte") != 0 or c.get("root") != root or volume is None
+                    or c.get("strike") is None or c.get("right") not in ("call", "put")):
+                continue
+            strike = round(float(c["strike"]), 4)
+            key = f"{strike}|{c['right']}"
+            tape = (tape_by or {}).get((strike, c["right"])) or {}
+            tape_vol = sum(tape.get(name, 0.0) for name in
+                           ("buy_vol", "sell_vol", "mid_vol", "unknown_vol"))
+            entry = seen.get(key)
+            if entry is None:
+                seen[key] = {"base": volume, "tape0": tape_vol, "vol": volume,
+                             "side": None, "px": None, "attr": 0.0}
+                continue
+            due = (entry["vol"] - entry["base"]) - (tape_vol - entry["tape0"]) - entry["attr"]
+            if due > 0 and entry["side"]:
+                rec = by.setdefault(key, dict.fromkeys(_FLOW_FIELDS, 0.0))
+                side = entry["side"]
+                if side in ("buy", "sell"):
+                    rec[side] += entry["px"] * due * 100.0
+                rec[f"{side}_vol"] += due
+                entry["attr"] += due
+            if volume > entry["vol"]:
+                entry["side"] = _quote_side(c.get("last"), c.get("bid"), c.get("ask"))
+                entry["px"] = c.get("last") or 0.0
+                entry["vol"] = volume
+        state["at"] = now_s
+        atomic_io.write_json_atomic(path, state)
+    out = {}
+    for key, rec in by.items():
+        strike, right = key.split("|")
+        out[(float(strike), right)] = rec
+    return out
+
+
+def _merge_flow(tape_by: Optional[dict], chain_by: Optional[dict]) -> Optional[dict]:
+    """The tape's totals plus the chain's fill, per (strike, right), nets recomputed."""
+    out: dict = {}
+    for source in (tape_by or {}, chain_by or {}):
+        for key, rec in source.items():
+            into = out.setdefault(key, dict.fromkeys(_FLOW_FIELDS, 0.0))
+            for name in _FLOW_FIELDS:
+                into[name] += rec.get(name, 0.0)
+    for rec in out.values():
+        rec["net"] = rec["buy"] - rec["sell"]
+        rec["net_vol"] = rec["buy_vol"] - rec["sell_vol"]
+    return out or None
+
+
 def native_chain(ticker: str) -> Optional[dict]:
     """REAL CHAIN — pulls the actual SPX option book, strike by strike.
     Native 0-7 DTE index chain in GexBox's contract shape (no SPY proxy): chunked
@@ -887,7 +978,10 @@ def native_chain(ticker: str) -> Optional[dict]:
         # is on, and strikes with no ticks stay unannotated (pin falls back to volume).
         try:
             if SIGNED_FLOW:
-                fbs = flow_by_strike(ticker, spot)
+                # a Schwab book carries each contract's day volume and newest price, which
+                # lets the flow reach the strikes the tape does not follow
+                fbs = flow_by_strike(ticker, spot, book=contracts
+                                     if res.get("provider") == "schwab" else None)
                 if fbs:
                     for c in contracts:
                         if c.get("dte") != 0 or c.get("strike") is None:
@@ -953,7 +1047,8 @@ def aggressor_flow(ticker: str, spot: float) -> Optional[float]:
 SIGNED_FLOW = True
 
 
-def flow_by_strike(ticker: str, spot: float, day: str | None = None) -> Optional[dict]:
+def flow_by_strike(ticker: str, spot: float, day: str | None = None,
+                   book: Optional[list] = None) -> Optional[dict]:
     """FLOW SENSOR, per strike — {(strike, right): {'buy': $, 'sell': $, 'net': buy−sell,
     'buy_vol': n, 'sell_vol': n, 'net_vol': n, 'mid_vol': n, 'unknown_vol': n}} across the
     0DTE window, or None. Same NBBO quote-rule aggressor tags as aggressor_flow.
@@ -962,7 +1057,10 @@ def flow_by_strike(ticker: str, spot: float, day: str | None = None) -> Optional
     tape (`lefteye_gex_box.gamma_tape`). They are different questions and must not be merged.
 
     `day` (ISO) is for BACKFILL only — the live call passes None and hits the identical
-    path, so a backfilled row is computed by the same code that computes a live one."""
+    path, so a backfilled row is computed by the same code that computes a live one.
+
+    `book` (the live Schwab contracts, today only) widens the tape's answer to the whole
+    0DTE chain: volume the tape did not carry is sided from the book (_chain_flow_by_strike)."""
     if not spot:
         return None
     root = ROOT.get(ticker, ticker)
@@ -973,6 +1071,12 @@ def flow_by_strike(ticker: str, spot: float, day: str | None = None) -> Optional
             # the collector's own journal: today's, or a past day's when one is asked for
             # (a plain file only — an archived, gzipped day falls through to the MCP)
             by = _tape_flow_by_strike(day or _today_iso())
+            if book and day in (None, _today_iso()):
+                try:
+                    by = _merge_flow(by, _chain_flow_by_strike(_today_iso(), book, root, by))
+                except Exception as e:               # the fill is best-effort: the tape stands
+                    print(f"[native_gex_feed] chain flow failed: {type(e).__name__}: "
+                          f"{str(e)[:160]}", file=sys.stderr)
             if by:
                 return {k: v for k, v in by.items() if lo <= k[0] <= hi} or None
             continue

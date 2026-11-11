@@ -15,7 +15,7 @@ Two layers, so the shaping can be tested without a network:
 
 A contract row is the shape native_gex_feed has always handed GexBox:
     {right, strike, dte, expiry, root, iv, open_interest, volume, gamma, delta, theta,
-     vega, bid, ask, mark, bid_size, ask_size, symbol}
+     vega, bid, ask, mark, last, bid_size, ask_size, symbol}
 
 Differences from the old provider, all handled here:
   * Schwab quotes IV in percent (13.7); the station works in decimals (0.137).
@@ -106,6 +106,7 @@ def normalize(payload: dict, today: date, roots: Optional[Iterable[str]] = None,
                         "vega": _num(row.get("vega")),
                         "bid": _num(row.get("bid")), "ask": _num(row.get("ask")),
                         "mark": _num(row.get("mark")),
+                        "last": _num(row.get("last")),     # the newest trade's price
                         "bid_size": _whole(row.get("bidSize")),
                         "ask_size": _whole(row.get("askSize")),
                         "symbol": row.get("symbol")})

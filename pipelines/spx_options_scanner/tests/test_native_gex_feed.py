@@ -559,3 +559,72 @@ def test_flow_falls_back_to_the_mcp_when_the_tape_is_empty(monkeypatch, tmp_path
     assert tf.aggressor_flow("SPX", 7600.0) == 0.25
     monkeypatch.setattr(tf, "_run", lambda code: None)
     assert tf.aggressor_flow("SPX", 7600.0) is None and tf.flow_by_strike("SPX", 7600.0) is None
+
+
+# --- the flow beyond the tape's strikes, from the Schwab book's day volume (2026-11-11) ---
+
+def _book_row(strike, right, volume, last, bid=1.0, ask=1.2, dte=0, root="SPXW"):
+    return {"strike": strike, "right": right, "volume": volume, "last": last, "bid": bid,
+            "ask": ask, "dte": dte, "root": root}
+
+
+def test_chain_flow_fills_the_strikes_the_tape_does_not_follow(monkeypatch, tmp_path):
+    _write_tape(monkeypatch, tmp_path, [_print(7600.0, "call", 1.2, 10)])
+    t0 = 1_000_000.0
+    flow = lambda book, at: tf._merge_flow(  # noqa: E731
+        tf._tape_flow_by_strike("2026-11-11"),
+        tf._chain_flow_by_strike("2026-11-11", book, "SPXW",
+                                 tf._tape_flow_by_strike("2026-11-11"), now_s=at))
+    # scan 1: first sight; volume already on the day is not sided
+    out = flow([_book_row(7600.0, "call", 500, 1.2), _book_row(7900.0, "call", 300, 1.2)], t0)
+    assert (7900.0, "call") not in out
+    # scan 2: 7900 rises by 40 at the ask; counted one scan LATER, so still nothing
+    out = flow([_book_row(7600.0, "call", 500, 1.2), _book_row(7900.0, "call", 340, 1.2)], t0 + 60)
+    assert (7900.0, "call") not in out
+    # scan 3: the rise is counted as bought, at the price it rose at; a new rise at the bid waits
+    out = flow([_book_row(7600.0, "call", 500, 1.2), _book_row(7900.0, "call", 350, 1.0)], t0 + 120)
+    rec = out[(7900.0, "call")]
+    assert rec["buy_vol"] == 40 and rec["buy"] == 1.2 * 40 * 100 and rec["sell_vol"] == 0
+    # scan 4: the second rise lands as sold
+    out = flow([_book_row(7600.0, "call", 500, 1.2), _book_row(7900.0, "call", 350, 1.0)], t0 + 180)
+    rec = out[(7900.0, "call")]
+    assert rec["sell_vol"] == 10 and rec["net_vol"] == 30 and rec["net"] == 4800.0 - 1000.0
+    assert out[(7600.0, "call")]["buy_vol"] == 10            # the tape's own total is untouched
+
+
+def test_chain_flow_counts_nothing_twice_for_a_strike_on_the_tape(monkeypatch, tmp_path):
+    import json
+    path = _write_tape(monkeypatch, tmp_path, [_print(7600.0, "call", 1.2, 10)])
+    t0 = 1_000_000.0
+
+    def scan(volume, at):
+        tape = tf._tape_flow_by_strike("2026-11-11")
+        return tf._merge_flow(tape, tf._chain_flow_by_strike(
+            "2026-11-11", [_book_row(7600.0, "call", volume, 1.2)], "SPXW", tape, now_s=at))
+    scan(500, t0)
+    scan(525, t0 + 60)                       # the book shows 25 more before the tape does
+    with open(path, "a") as f:               # the tape then carries 20 of them
+        f.write(json.dumps(_print(7600.0, "call", 1.2, 20)) + "\n")
+    out = scan(525, t0 + 120)
+    assert out[(7600.0, "call")]["buy_vol"] == 10 + 20 + 5   # tape 30, plus the 5 it missed
+
+
+def test_chain_flow_ignores_a_second_scan_inside_the_same_minute(monkeypatch, tmp_path):
+    _write_tape(monkeypatch, tmp_path, [])
+    t0 = 1_000_000.0
+    scan = lambda volume, at: tf._chain_flow_by_strike(  # noqa: E731
+        "2026-11-11", [_book_row(7900.0, "put", volume, 1.2)], "SPXW", None, now_s=at)
+    scan(100, t0)
+    scan(130, t0 + 60)
+    assert scan(130, t0 + 70) == {}                          # too soon after the rise was seen
+    assert scan(130, t0 + 120)[(7900.0, "put")]["buy_vol"] == 30
+
+
+def test_chain_flow_leaves_other_days_and_other_roots_alone(monkeypatch, tmp_path):
+    _write_tape(monkeypatch, tmp_path, [])
+    t0 = 1_000_000.0
+    rows = lambda v: [_book_row(7900.0, "put", v, 1.2, dte=1),          # noqa: E731
+                      _book_row(7900.0, "put", v, 1.2, root="SPX")]
+    for i, v in enumerate((100, 150, 150)):
+        out = tf._chain_flow_by_strike("2026-11-11", rows(v), "SPXW", None, now_s=t0 + 60 * i)
+    assert out == {}
