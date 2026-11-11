@@ -55,6 +55,9 @@ class TradeEvent:
     ask_size: Optional[int]
     condition: Optional[int] = None   # exchange trade condition (complex-leg
                                       # calibration input; carried, not yet keyed)
+    src: Optional[str] = None         # None = the provider's true tape; "schwab_stream" =
+                                      # rebuilt from the Schwab stream's volume rises
+                                      # (schwab_options_feed.py says what that costs)
 
 
 @dataclass(frozen=True)

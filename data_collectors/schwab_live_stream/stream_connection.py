@@ -12,7 +12,9 @@ on 2026-10-20 so more than one listener can ride the same connection.
       - the ~30-strike SPXW focus set (LEVELONE_OPTIONS; note the option
         field enums BID_SIZE=16 / ASK_SIZE=17 differ from equities) for TRUE
         quote-revision counts on the strikes that matter.
-    SPXW symbol acceptance confirmed live 2026-07-04.
+    SPXW symbol acceptance confirmed live 2026-07-04. Since 2026-11-11 the
+        same rows also carry last price, last size, total volume and trade time,
+        which the collector's tape feed turns into trades (lob_flow/schwab_options_feed.py).
 
 The lob-collector daemon owns the connection (see README.md); every listener
 is a plain callback, so a listener's trouble is its own and never the stream's.
@@ -33,7 +35,8 @@ class SchwabLiveStream:
     """One connection, every subscription. on_depth receives dicts
     {ts, bid, ask, bid_size, ask_size} (a DepthSample's fields) for the equity
     symbol; on_option_quote receives raw dicts {symbol, bid, ask, bid_size,
-    ask_size, ts} for the focus set; on_index_tick receives (price, trade time
+    ask_size, last_price, last_size, total_volume, trade_ms, ts} for the focus
+    set (a field Schwab did not send on that row is None); on_index_tick receives (price, trade time
     ET ISO) for every $SPX update."""
 
     def __init__(self, client_factory: Callable[[], object],
@@ -74,11 +77,16 @@ class SchwabLiveStream:
             op_fields = StreamClient.LevelOneOptionFields
             stream.add_level_one_option_handler(
                 lambda msg: _handle_option(msg, on_option_quote))
+            # The four trade fields (2026-11-11) let a listener rebuild a trade tape from the
+            # same subscription: a rise in TOTAL_VOLUME is a print at LAST_PRICE. Schwab sends
+            # only the fields that changed, so a quote-only row still carries no trade field.
             await stream.level_one_option_subs(
                 list(option_symbols),
                 fields=[op_fields.SYMBOL, op_fields.BID_PRICE,
                         op_fields.ASK_PRICE,
-                        op_fields.BID_SIZE, op_fields.ASK_SIZE])
+                        op_fields.BID_SIZE, op_fields.ASK_SIZE,
+                        op_fields.LAST_PRICE, op_fields.LAST_SIZE,
+                        op_fields.TOTAL_VOLUME, op_fields.TRADE_TIME_MILLIS])
 
         while not (should_stop and should_stop()):
             await stream.handle_message()
@@ -123,6 +131,11 @@ def _handle_option(msg: dict, on_quote: Callable[[dict], None]) -> None:
                   "bid": item.get("BID_PRICE"), "ask": item.get("ASK_PRICE"),
                   "bid_size": item.get("BID_SIZE"),
                   "ask_size": item.get("ASK_SIZE"),
+                  # trade fields: present only on the rows where they changed
+                  "last_price": item.get("LAST_PRICE"),
+                  "last_size": item.get("LAST_SIZE"),
+                  "total_volume": item.get("TOTAL_VOLUME"),
+                  "trade_ms": item.get("TRADE_TIME_MILLIS"),
                   "ts": datetime.now(tz=ET).isoformat()})
 
 

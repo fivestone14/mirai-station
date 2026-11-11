@@ -699,6 +699,140 @@ def _fetch_book(root: str, monthly_root: Optional[str], today) -> Optional[dict]
             "expiries": expiries}
 
 
+# --- SCHWAB FIRST (2026-11-11) ---------------------------------------------------------------
+# The hosted MCP stopped offering `options_chain`, `option_trade_flow`, `historical_option_trades`
+# and `historical_option_greeks` on 2026-11-09 ("Unknown tool: options_chain"; its catalog now
+# lists only treasury, macro and SEC tools). Every scan fell to the SPY×10 proxy with a healthy
+# login in hand. The book now comes from Schwab's own chain endpoint first and the MCP second, so
+# either provider coming or going leaves the other in place:
+#   * the BOOK      Schwab `get_option_chain("$SPX")`, one call (schwab_options_chain.py)
+#   * the FLOW      the collector's own tape journal (trades the station's Schwab stream saw on
+#                   the focus strikes), classified by the same quote rule the provider used
+# Order matters only for cost: a dead provider is asked second, never first.
+BOOK_PROVIDERS = ("schwab", "mcp")
+FLOW_PROVIDERS = ("tape", "mcp")
+_BOOK_WINDOW = (0.92, 1.08)          # the same ±8% of spot the MCP pull asked for
+_SCHWAB_CLIENT = None
+_SCHWAB_CLIENT_LOCK = threading.Lock()
+
+
+def _schwab_client():
+    """The station's Schwab REST client, built once per process (token renewal is shared
+    through the vault's renewal lock, so one more client is safe beside the stream's)."""
+    global _SCHWAB_CLIENT
+    with _SCHWAB_CLIENT_LOCK:
+        if _SCHWAB_CLIENT is None:
+            import iv_fetcher
+            _SCHWAB_CLIENT = iv_fetcher._build_client()
+        return _SCHWAB_CLIENT
+
+
+def _fetch_book_schwab(root: str, monthly_root: Optional[str], today) -> Optional[dict]:
+    """The 0-7 DTE book from Schwab in _fetch_book's shape (spot, contracts, sides, chunks,
+    expiries) plus "provider". None on any failure — the caller then tries the next source."""
+    import schwab_options_chain
+    symbol = schwab_options_chain.INDEX_SYMBOL.get(root)
+    if not symbol:
+        return None
+    roots = {root} | ({monthly_root} if monthly_root else set())
+    try:
+        return schwab_options_chain.fetch_book(
+            _schwab_client(), symbol, today, days=7, roots=roots,
+            lo_frac=_BOOK_WINDOW[0], hi_frac=_BOOK_WINDOW[1])
+    except Exception as e:                            # a dead login, a timeout: not a crash
+        print(f"[native_gex_feed] schwab book failed: {type(e).__name__}: {str(e)[:160]}",
+              file=sys.stderr)
+        return None
+
+
+def _usable_book(res: Optional[dict]) -> bool:
+    return bool(res and res.get("spot") is not None and res.get("contracts"))
+
+
+def _fetch_book_any(root: str, monthly_root: Optional[str], today) -> Optional[dict]:
+    """The book from the first provider in BOOK_PROVIDERS that returns one."""
+    last = None
+    for provider in BOOK_PROVIDERS:
+        if provider == "schwab":
+            res = _fetch_book_schwab(root, monthly_root, today)
+        else:
+            try:
+                res = _fetch_book(root, monthly_root, today)
+            except Exception as e:                    # auth refusal etc. — try nothing further
+                print(f"[native_gex_feed] mcp book failed: {type(e).__name__}", file=sys.stderr)
+                res = None
+            if res is not None:
+                res.setdefault("provider", "mcp")
+        if _usable_book(res):
+            return res
+        last = res if res is not None else last
+    return last
+
+
+# The tape journal is read incrementally: each scan parses only the bytes appended since the
+# last one, so a long session costs the same per scan as a short one.
+_TAPE_FLOW: dict = {"path": None, "offset": 0, "by": {}}
+_TAPE_FLOW_LOCK = threading.Lock()
+
+
+def _tape_flow_by_strike(day: str) -> Optional[dict]:
+    """Per (strike, right) buy/sell totals from the collector's tape journal for `day`.
+
+    The quote rule the provider applied: a print at or above the ask is buyer-initiated, at
+    or below the bid seller-initiated, between them `mid`; a print with no usable quote is
+    `unknown`. Dollars are price × size × 100. Covers the strikes the collector follows (the
+    ATM window plus the gravity strikes), from the moment its tape began. None when the
+    journal is absent or holds no trades."""
+    try:
+        import lob_bridge
+        path = lob_bridge._state().raw(day, "tape")
+    except Exception:
+        return None
+    with _TAPE_FLOW_LOCK:
+        if _TAPE_FLOW["path"] != str(path):
+            _TAPE_FLOW.update(path=str(path), offset=0, by={})
+        try:
+            with open(path, "rb") as handle:
+                handle.seek(_TAPE_FLOW["offset"])
+                chunk = handle.read()
+        except OSError:
+            return None
+        end = chunk.rfind(b"\n")
+        if end >= 0:
+            by = _TAPE_FLOW["by"]
+            for line in chunk[:end].splitlines():
+                if b'"ts_ms"' not in line:
+                    continue                           # gap markers, blank lines
+                try:
+                    t = json.loads(line)
+                    strike, right = float(t["strike"]), t["right"]
+                    price, size = float(t["price"]), float(t["size"])
+                except (ValueError, KeyError, TypeError):
+                    continue
+                if right not in ("call", "put") or price <= 0 or size <= 0:
+                    continue
+                rec = by.setdefault((round(strike, 4), right), {
+                    "buy": 0.0, "sell": 0.0, "buy_vol": 0.0, "sell_vol": 0.0,
+                    "mid_vol": 0.0, "unknown_vol": 0.0})
+                bid, ask = t.get("bid"), t.get("ask")
+                if not (bid and ask and bid > 0 and ask >= bid):
+                    rec["unknown_vol"] += size
+                elif price >= ask:
+                    rec["buy"] += price * size * 100.0
+                    rec["buy_vol"] += size
+                elif price <= bid:
+                    rec["sell"] += price * size * 100.0
+                    rec["sell_vol"] += size
+                else:
+                    rec["mid_vol"] += size
+            _TAPE_FLOW["offset"] += end + 1
+        if not _TAPE_FLOW["by"]:
+            return None
+        return {key: {**rec, "net": rec["buy"] - rec["sell"],
+                      "net_vol": rec["buy_vol"] - rec["sell_vol"]}
+                for key, rec in _TAPE_FLOW["by"].items()}
+
+
 def native_chain(ticker: str) -> Optional[dict]:
     """REAL CHAIN — pulls the actual SPX option book, strike by strike.
     Native 0-7 DTE index chain in GexBox's contract shape (no SPY proxy): chunked
@@ -717,8 +851,8 @@ def native_chain(ticker: str) -> Optional[dict]:
             return hit[1]
         root = ROOT.get(ticker, ticker)
         today = now.date()
-        res = _fetch_book(root, MONTHLY_ROOT.get(ticker), today)
-        if not res or res.get("spot") is None or not res.get("contracts"):
+        res = _fetch_book_any(root, MONTHLY_ROOT.get(ticker), today)
+        if not _usable_book(res):
             return None
         spot, contracts = res["spot"], res["contracts"]
         # N7: coverage verdict BEFORE anything downstream touches the book. A dead/thin
@@ -779,7 +913,11 @@ def native_chain(ticker: str) -> Optional[dict]:
             pass                                   # best-effort: pin falls back to volume
         out = {"spot": spot, "contracts": contracts,
                "meta": {"chunks": res.get("chunks"), "expiries": res.get("expiries"),
-                        "am_settled_dropped": am_dropped, "coverage": cov, **iv_meta}}
+                        "am_settled_dropped": am_dropped, "coverage": cov,
+                        # which source served this book ("schwab" | "mcp"), and whether
+                        # Schwab said its quotes were delayed
+                        "provider": res.get("provider") or "mcp",
+                        "delayed": res.get("delayed"), **iv_meta}}
         _CHAIN_CACHE[ticker] = (now, out)
         LAST_REJECT = None       # a served book clears the reject — a LATER proxy fallback
         return out               # (token death, timeout) must not inherit 'coverage' as its why
@@ -793,10 +931,21 @@ def aggressor_flow(ticker: str, spot: float) -> Optional[float]:
     root = ROOT.get(ticker, ticker)
     step = STRIKE_STEP.get(root, 5.0)
     strike = round(spot / step) * step
-    res = _run(_FLOW_CODE % {"root": root, "exp": _today_iso(), "strike": strike})
-    if not res or not res.get("available") or res.get("flow") is None:
-        return None
-    return max(-1.0, min(1.0, float(res["flow"])))
+    for provider in FLOW_PROVIDERS:
+        if provider == "tape":
+            by = _tape_flow_by_strike(_today_iso()) or {}
+            call = by.get((round(float(strike), 4), "call")) or {}
+            put = by.get((round(float(strike), 4), "put")) or {}
+            cb, cs = call.get("buy", 0.0), call.get("sell", 0.0)
+            pb, ps = put.get("buy", 0.0), put.get("sell", 0.0)
+            gross = cb + cs + pb + ps
+            if gross > 0:                   # same sign rule as _FLOW_CODE; no ticks -> next source
+                return max(-1.0, min(1.0, ((cb - cs) + (ps - pb)) / gross))
+            continue
+        res = _run(_FLOW_CODE % {"root": root, "exp": _today_iso(), "strike": strike})
+        if res and res.get("available") and res.get("flow") is not None:
+            return max(-1.0, min(1.0, float(res["flow"])))
+    return None
 
 
 # Phase 0 gate: fetch the per-strike signed flow. The WEIGHTING that consumes it is gated
@@ -818,8 +967,19 @@ def flow_by_strike(ticker: str, spot: float, day: str | None = None) -> Optional
         return None
     root = ROOT.get(ticker, ticker)
     lo, hi = round(spot * 0.92), round(spot * 1.08)
-    res = _run(_FLOWSTRIKE_CODE % {"root": root, "exp": day or _today_iso(),
-                                   "lo": lo, "hi": hi})
+    res = None
+    for provider in FLOW_PROVIDERS:
+        if provider == "tape":
+            # the collector's own journal: today's, or a past day's when one is asked for
+            # (a plain file only — an archived, gzipped day falls through to the MCP)
+            by = _tape_flow_by_strike(day or _today_iso())
+            if by:
+                return {k: v for k, v in by.items() if lo <= k[0] <= hi} or None
+            continue
+        res = _run(_FLOWSTRIKE_CODE % {"root": root, "exp": day or _today_iso(),
+                                       "lo": lo, "hi": hi})
+        if res and res.get("available"):
+            break
     if not res or not res.get("available"):
         return None
     out: dict = {}

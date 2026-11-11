@@ -284,12 +284,22 @@ async def _tape_loop(cfg: LobConfig, a: Adapters, mem: _Mem,
                         continue
                     mem.seen_tape.add(k)
                     mem.trades.append(e)
-                    a.state.append(a.state.raw(_day(now), "tape"), e.__dict__)
+                    a.state.append(a.state.raw(_day(now), "tape"), _tape_row(e))
                 save_cursor(a.state, cursor)
                 _prune_trades(mem, now)
         except Exception as e:  # noqa: BLE001
             a.state.gap_marker(_day(now), "tape", now, f"{type(e).__name__}: {e}")
         await asyncio.sleep(cfg.tape_poll_s)
+
+
+def _tape_row(e: TradeEvent) -> dict:
+    """One print as its journal row. `src` is written only when set, so the
+    provider's true tape keeps the row shape it always had and a rebuilt
+    print says so on its own line."""
+    row = dict(e.__dict__)
+    if row.get("src") is None:
+        row.pop("src", None)
+    return row
 
 
 def _focus_contracts(cfg: LobConfig, a: Adapters,
@@ -353,10 +363,13 @@ async def _stream_loop(cfg: LobConfig, a: Adapters, mem: _Mem,
 
         try:
             mem.stream_up = True
+            reset = getattr(a.tape_feed, "on_stream_reset", None)
+            if reset is not None:
+                reset()                            # a stream-fed tape re-bases its totals
             await a.schwab_stream.run(
                 cfg.control_symbol, subscribed,
                 on_depth=lambda d: _on_depth(mem, DepthSample(**d)),
-                on_option_quote=lambda q: _on_option_quote(mem, q),
+                on_option_quote=lambda q: _on_option_quote(mem, q, a.tape_feed),
                 should_stop=_should_stop,
                 on_index_tick=price_writer.save)
             backoff = 5                            # clean exit (drift/stop)
@@ -383,8 +396,22 @@ def _on_depth(mem: _Mem, d: DepthSample) -> None:
         mem.spy_samples.popleft()
 
 
-def _on_option_quote(mem: _Mem, q: dict) -> None:
-    mem.option_revisions += 1
+_BOOK_FIELDS = ("bid", "ask", "bid_size", "ask_size")
+
+
+def _on_option_quote(mem: _Mem, q: dict, tape_feed: object = None) -> None:
+    """One streamed focus-set row. A row that moved the book counts as a quote
+    revision, as it always has; a row that only reports a trade (the stream
+    carries trade fields since 2026-11-11) must not inflate that count. A
+    stream-fed tape (schwab_options_feed.OptionsTapeFeedStream) sees every row."""
+    if any(q.get(k) is not None for k in _BOOK_FIELDS):
+        mem.option_revisions += 1
+    sink = getattr(tape_feed, "on_stream_quote", None)
+    if sink is not None:
+        try:
+            sink(q)
+        except Exception:  # noqa: BLE001 — a listener's trouble is its own, never the stream's
+            pass
 
 
 # ---------------------------------------------------------------------------

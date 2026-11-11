@@ -51,6 +51,12 @@ ET = ZoneInfo("America/New_York")
 STATE_DIR = station_paths.state_root()          # the data root; StateDir finds the collector's files under it
 GEX_CONTEXT_MAX_AGE_S = 1800          # six missed 5-min ticks = the map is stale
 LOB_LIVE = False                      # P5 switch — dormant by design
+# Where the collector's two options feeds come from. "schwab" (since 2026-11-11): the quote
+# sweep from Schwab's chain endpoint, the tape rebuilt from the station's Schwab stream
+# (lob_flow/schwab_options_feed.py says what a rebuilt tape is and is not). "mcp": both from
+# the hosted MCP, as before 2026-11-09, when it stopped offering its options tools; set this
+# back only once `options_chain` and `historical_option_trades` answer there again.
+OPTIONS_SOURCE = "schwab"
 
 
 def _lob():
@@ -230,9 +236,32 @@ def _build_adapters():
         except Exception:  # noqa: BLE001 — unknown = keep running to the clock
             return True
 
+    if OPTIONS_SOURCE == "schwab":
+        from lob_flow.schwab_options_feed import (OptionsQuoteFeedSchwab,
+                                                  OptionsTapeFeedStream)
+        import schwab_options_chain
+        rest: dict = {}                    # one Schwab REST client for the sweeps, built on first use
+
+        def _fetch_day_book(expiry: str):
+            """Today's book for the sweep: one Schwab chain call for the one expiry."""
+            from datetime import date
+            if "client" not in rest:
+                rest["client"] = iv_fetcher._build_client()
+            symbol = schwab_options_chain.INDEX_SYMBOL.get(cfg.root)
+            if not symbol:
+                return None
+            return schwab_options_chain.fetch_book(
+                rest["client"], symbol, date.fromisoformat(expiry), days=0, roots={cfg.root})
+
+        quote_feed = OptionsQuoteFeedSchwab(_fetch_day_book)
+        tape_feed = OptionsTapeFeedStream()
+    else:
+        quote_feed = OptionsQuoteFeedMcp(client)
+        tape_feed = OptionsTapeFeedMcp(client)
+
     return cfg, Adapters(
-        quote_feed=OptionsQuoteFeedMcp(client),
-        tape_feed=OptionsTapeFeedMcp(client),
+        quote_feed=quote_feed,
+        tape_feed=tape_feed,
         schwab_stream=stream,
         gex=FileGexContext(),
         calendar=FileCalendar(_state().calendar),

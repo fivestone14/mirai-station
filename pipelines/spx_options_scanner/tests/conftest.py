@@ -80,3 +80,12 @@ def _disarm_watchtower(monkeypatch):
     (slow, costly, non-deterministic). The env kill-switch makes observe()
     return None. Tests that exercise the tower itself delenv this."""
     monkeypatch.setenv("WATCHTOWER_DISABLE", "1")
+
+
+@pytest.fixture(autouse=True)
+def _no_live_schwab_book(monkeypatch):
+    """native_chain asks Schwab for the book before the MCP (2026-11-11). No test may reach
+    the real Schwab login or network: the Schwab leg answers "nothing" unless a test puts
+    its own stub there, so every existing `_fetch_book` stub still decides the outcome."""
+    import native_gex_feed
+    monkeypatch.setattr(native_gex_feed, "_fetch_book_schwab", lambda *a, **k: None)

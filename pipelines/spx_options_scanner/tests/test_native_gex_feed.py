@@ -464,3 +464,98 @@ def test_coverage_relative_thin_flags_amputated_side():
     sides = [{"root": "SPXW", "exp": today, "side": "call", "rows": 3, "dte": 0},
              {"root": "SPXW", "exp": today, "side": "put", "rows": 4, "dte": 0}]
     assert tf._coverage(sides, "SPXW", today)["complete"] is True
+
+
+# --- 2026-11-11: Schwab first, the MCP second; flow from the collector's tape -------------
+
+def _schwab_book(provider="schwab"):
+    return {"spot": 7600.0, "provider": provider, "delayed": False, "chunks": 1,
+            "expiries": ["2099-01-01"],
+            "contracts": [{"right": r, "strike": 7600.0, "dte": 3, "iv": 0.14, "gamma": None,
+                           "open_interest": 10, "volume": 5, "root": "SPXW",
+                           "expiry": "2099-01-01"} for r in ("call", "put")],
+            "sides": [{"root": "SPXW", "exp": "2099-01-01", "side": s, "rows": 1, "dte": 3}
+                      for s in ("call", "put")]}
+
+
+def test_schwab_book_is_served_first_and_named_in_meta(monkeypatch):
+    tf.reset_chain_cache()
+    monkeypatch.setattr(tf, "_fetch_book_schwab", lambda *a: _schwab_book())
+    monkeypatch.setattr(tf, "_fetch_book", lambda *a: pytest.fail("the MCP must not be asked"))
+    out = tf.native_chain("SPX")
+    assert out["meta"]["provider"] == "schwab" and out["meta"]["delayed"] is False
+    assert all(c["gamma"] and c["gamma"] > 0 for c in out["contracts"])   # filled from IV
+    tf.reset_chain_cache()
+
+
+def test_mcp_book_is_the_fallback_when_schwab_has_nothing(monkeypatch):
+    tf.reset_chain_cache()
+    monkeypatch.setattr(tf, "_fetch_book_schwab", lambda *a: None)
+    mcp = _schwab_book()
+    del mcp["provider"]
+    monkeypatch.setattr(tf, "_fetch_book", lambda *a: mcp)
+    assert tf.native_chain("SPX")["meta"]["provider"] == "mcp"
+    tf.reset_chain_cache()
+    monkeypatch.setattr(tf, "_fetch_book", lambda *a: None)
+    assert tf.native_chain("SPX") is None
+    tf.reset_chain_cache()
+
+
+def _write_tape(monkeypatch, tmp_path, rows):
+    import json
+    path = tmp_path / "tape.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+    class _State:
+        def raw(self, day, stream):
+            return path
+    import lob_bridge
+    monkeypatch.setattr(lob_bridge, "_state", lambda: _State())
+    monkeypatch.setattr(tf, "_TAPE_FLOW", {"path": None, "offset": 0, "by": {}})
+    return path
+
+
+def _print(strike, right, price, size, bid=1.0, ask=1.2):
+    return {"ts_ms": 1, "strike": strike, "right": right, "price": price, "size": size,
+            "bid": bid, "ask": ask, "bid_size": 1, "ask_size": 1, "condition": None,
+            "src": "schwab_stream"}
+
+
+def test_flow_by_strike_is_read_from_the_tape_by_the_quote_rule(monkeypatch, tmp_path):
+    path = _write_tape(monkeypatch, tmp_path, [
+        _print(7600.0, "call", 1.2, 10),            # at the ask: bought
+        _print(7600.0, "call", 1.0, 4),             # at the bid: sold
+        _print(7600.0, "call", 1.1, 3),             # between: mid
+        _print(7600.0, "call", 1.1, 2, bid=None),   # no quote: unknown
+        {"gap": True, "ts": "x", "reason": "empty sweep"},
+        _print(9999.0, "put", 1.2, 1),              # outside ±8% of spot
+    ])
+    out = tf.flow_by_strike("SPX", 7600.0)
+    rec = out[(7600.0, "call")]
+    assert (rec["buy_vol"], rec["sell_vol"], rec["mid_vol"], rec["unknown_vol"]) == (10, 4, 3, 2)
+    assert rec["buy"] == 1.2 * 10 * 100 and rec["sell"] == 1.0 * 4 * 100
+    assert rec["net"] == rec["buy"] - rec["sell"] and rec["net_vol"] == 6
+    assert (9999.0, "put") not in out
+    # only the appended bytes are read on the next scan, and a torn last line waits
+    with open(path, "a") as f:
+        import json
+        f.write(json.dumps(_print(7600.0, "call", 1.2, 5)) + "\n" + '{"ts_ms": 2, "stri')
+    assert tf.flow_by_strike("SPX", 7600.0)[(7600.0, "call")]["buy_vol"] == 15
+
+
+def test_aggressor_flow_reads_the_atm_strike_from_the_tape(monkeypatch, tmp_path):
+    _write_tape(monkeypatch, tmp_path, [
+        _print(7600.0, "call", 1.2, 10),            # calls bought: +1200
+        _print(7600.0, "put", 1.0, 5),              # puts sold:    +500
+        _print(7600.0, "put", 1.2, 5),              # puts bought:  -600
+        _print(7605.0, "call", 1.0, 99),            # not the ATM strike
+    ])
+    assert abs(tf.aggressor_flow("SPX", 7601.0) - (1200 + 500 - 600) / 2300) < 1e-9
+
+
+def test_flow_falls_back_to_the_mcp_when_the_tape_is_empty(monkeypatch, tmp_path):
+    _write_tape(monkeypatch, tmp_path, [])
+    monkeypatch.setattr(tf, "_run", lambda code: {"available": True, "flow": 0.25})
+    assert tf.aggressor_flow("SPX", 7600.0) == 0.25
+    monkeypatch.setattr(tf, "_run", lambda code: None)
+    assert tf.aggressor_flow("SPX", 7600.0) is None and tf.flow_by_strike("SPX", 7600.0) is None
