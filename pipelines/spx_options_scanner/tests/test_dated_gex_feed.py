@@ -552,3 +552,65 @@ def test_near_wall_on_the_real_book_shape_never_crowns_the_crash_bet():
     # crash-only book: nothing within reach at all → None (consumers keep the king,
     # explicitly FAR-labeled by the σ distance)
     assert dg.near_wall([[7000.0, 5865.0]], 7575.0, "put") is None
+
+
+# --- the Schwab leg (2026-11-11) ---------------------------------------------------
+
+_real_schwab_fetch = dg._fetch_dated_schwab     # captured at import, before conftest's stub
+
+
+def _schwab_payload(expiry, root, spot=6800.0):
+    def row(strike, oi, iv=15.0):
+        return [{"optionRoot": root, "strikePrice": strike, "openInterest": oi,
+                 "volatility": iv, "symbol": f"{root} X"}]
+    key = f"{expiry}:9"
+    return {"status": "SUCCESS", "underlyingPrice": spot,
+            "callExpDateMap": {key: {"6800.0": row(6800.0, 500), "7000.0": row(7000.0, 0),
+                                     "9000.0": row(9000.0, 900)}},
+            "putExpDateMap": {key: {"6500.0": row(6500.0, 700, iv=-999.0)}}}
+
+
+def test_schwab_dated_fetch_binds_the_nearest_listed_expiry(monkeypatch):
+    import schwab_options_chain as sc
+    import native_gex_feed as nf
+    today = date(2026, 11, 11)
+    asked = []
+
+    def fake_call(client, symbol, d0, d1):
+        asked.append(d0)
+        if d0 == date(2026, 11, 19):          # the listed day is one before the computed one
+            return _schwab_payload("2026-11-19", "SPX")
+        return {"status": "SUCCESS", "underlyingPrice": 6800.0}
+
+    monkeypatch.setattr(sc, "_call", fake_call)
+    monkeypatch.setattr(nf, "_schwab_client", lambda: object())
+    job = {"exp": "2026-11-20", "root": "SPX", "band": "monthly",
+           "call_lo": -0.12, "call_hi": 0.12, "put_lo": -0.20, "put_hi": 0.12}
+    res = _real_schwab_fetch([job], today)
+    assert asked[:2] == [date(2026, 11, 20), date(2026, 11, 19)]
+    assert res["expiry_map"] == {"2026-11-20": "2026-11-19"}
+    got = {(c["right"], c["strike"]): c for c in res["contracts"]}
+    assert set(got) == {("call", 6800.0), ("put", 6500.0)}     # zero OI and out-of-window dropped
+    assert got[("call", 6800.0)]["iv"] == 0.15                 # percent -> decimal
+    assert got[("put", 6500.0)]["iv"] is None                  # Schwab's -999 is a blank
+    assert res["provider"] == "schwab" and res["spot"] == 6800.0
+
+
+def test_schwab_dated_fetch_skips_a_band_with_no_listed_expiry(monkeypatch):
+    import schwab_options_chain as sc
+    import native_gex_feed as nf
+    monkeypatch.setattr(sc, "_call", lambda *a: {"status": "SUCCESS", "underlyingPrice": 6800.0})
+    monkeypatch.setattr(nf, "_schwab_client", lambda: object())
+    job = {"exp": "2026-11-20", "root": "SPX", "band": "monthly",
+           "call_lo": -0.12, "call_hi": 0.12, "put_lo": -0.20, "put_hi": 0.12}
+    res = _real_schwab_fetch([job], date(2026, 11, 11))
+    assert res["expiry_map"] == {"2026-11-20": None} and res["contracts"] == []
+
+
+def test_pull_takes_schwab_first_and_records_the_provider(monkeypatch):
+    res = _synthetic_result()
+    res["provider"] = "schwab"
+    monkeypatch.setattr(dg, "_fetch_dated_schwab", lambda jobs, today: res)
+    monkeypatch.setattr(dg, "_run_code", lambda code: pytest.fail("MCP asked after Schwab answered"))
+    assert dg.pull(_dt(2026, 7, 10))["ok"]
+    assert json.load(open(dg._book_path()))["meta"]["provider"] == "schwab"

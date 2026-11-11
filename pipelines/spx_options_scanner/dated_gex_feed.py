@@ -285,6 +285,87 @@ def _run_code(code: str) -> Optional[dict]:
     return _nf._run(code)
 
 
+# --- the same pull from Schwab (2026-11-11) ---------------------------------------
+# The hosted MCP stopped offering `options_chain` on 2026-11-09, so the nightly pull
+# kept the 11-06 book and every scan marked it stale. Schwab's chain endpoint lists
+# the same monthly (SPX, AM) and quarter-end (SPXW, PM) expiries with open interest
+# and IV, so it is asked first and the MCP second.
+
+DATED_PROVIDERS = ("schwab", "mcp")
+_EXPIRY_TOLERANCE_DAYS = 3     # the same ±3 days the MCP probe allowed (holiday/rebook shifts)
+
+
+def _fetch_dated_schwab(jobs: list, today: date) -> Optional[dict]:
+    """The dated chain from Schwab in _DATED_CHAIN_CODE's result shape: {spot, contracts,
+    calls, expiry_map}. One request per candidate day, nearest the computed expiry first,
+    so the usual job costs one call; a day that lists nothing under the job's root is
+    passed over, and a job with no listed expiry within ±3 days maps to None (the band is
+    skipped, never mis-bound). None when Schwab cannot be reached at all."""
+    import native_gex_feed as _nf
+    import schwab_options_chain as _sc
+    client = _nf._schwab_client()
+    spot, calls = None, 0
+    out, seen, expiry_map = [], set(), {}
+    for job in jobs:
+        target = date.fromisoformat(job["exp"])
+        symbol = _sc.INDEX_SYMBOL.get(job["root"])
+        book = None
+        if symbol:
+            offsets = [0] + [sign * n for n in range(1, _EXPIRY_TOLERANCE_DAYS + 1)
+                             for sign in (-1, 1)]
+            for offset in offsets:
+                day = target + timedelta(days=offset)
+                if day < today or day.weekday() >= 5:
+                    continue
+                calls += 1
+                part = _sc.normalize(_sc._call(client, symbol, day, day), today,
+                                     roots={job["root"]})
+                if part and part.get("contracts"):
+                    book = part
+                    break
+        if not book:
+            expiry_map[job["exp"]] = None
+            continue
+        spot = spot or book["spot"]
+        actual = book["contracts"][0]["expiry"]
+        expiry_map[job["exp"]] = actual
+        for c in book["contracts"]:
+            side = c["right"]
+            lo = spot * (1.0 + job[side + "_lo"])
+            hi = spot * (1.0 + job[side + "_hi"])
+            oi = c.get("open_interest") or 0
+            if c["expiry"] != actual or not (lo <= c["strike"] <= hi) or oi <= 0:
+                continue                   # dated book = resting OI structure only
+            key = (job["root"], actual, side, c["strike"])
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({"right": side, "strike": c["strike"], "expiry": actual,
+                        "root": job["root"], "band": job["band"],
+                        "iv": c.get("iv"), "open_interest": oi})
+    return {"spot": spot, "contracts": out, "calls": calls, "expiry_map": expiry_map,
+            "provider": "schwab"}
+
+
+def _fetch_dated(jobs: list, today: date) -> Optional[dict]:
+    """The dated chain from the first provider in DATED_PROVIDERS that returns one."""
+    for provider in DATED_PROVIDERS:
+        try:
+            if provider == "schwab":
+                res = _fetch_dated_schwab(jobs, today)
+            else:
+                res = _run_code(_DATED_CHAIN_CODE % {"jobs": jobs})
+                if res is not None:
+                    res.setdefault("provider", "mcp")
+        except Exception as e:
+            res = None
+            print(f"dated_gex :: {provider} chain fetch failed: {type(e).__name__}: {e}",
+                  file=sys.stderr)
+        if res and res.get("spot") and res.get("contracts"):
+            return res
+    return None
+
+
 # --- pull (nightly job; the ONLY network path) ----------------------------------
 
 _PROF_SPAN = 0.06          # ±6% of spot — the price range a dated book actually acts over
@@ -474,7 +555,7 @@ def _quarterly_due(now: datetime, prev: dict) -> bool:
 
 
 def pull(now: Optional[datetime] = None) -> dict:
-    """Nightly job entry: ONE batched cass_market_run for both monthlies (+ the
+    """Nightly job entry: ONE batched fetch (Schwab first, the MCP second) for both monthlies (+ the
     quarter-end when due), post-processed into data/market/spx_monthly_quarterly_open_interest_latest.json with
     uw_periscope store semantics, and kept once more under its as_of in the
     open-interest history folder beside it. Returns a status dict; NEVER raises."""
@@ -503,11 +584,7 @@ def pull(now: Optional[datetime] = None) -> dict:
                          "call_lo": w["call"][0], "call_hi": w["call"][1],
                          "put_lo": w["put"][0], "put_hi": w["put"][1]})
 
-    try:
-        res = _run_code(_DATED_CHAIN_CODE % {"jobs": jobs})
-    except Exception as e:
-        res = None
-        print(f"dated_gex :: chain fetch failed: {type(e).__name__}: {e}", file=sys.stderr)
+    res = _fetch_dated(jobs, today)
     if not res or not res.get("spot") or not res.get("contracts"):
         # never overwrite good with bad: previous book stays untouched
         return {"ok": False, "kept_previous": bool(prev)}
@@ -606,6 +683,7 @@ def pull(now: Optional[datetime] = None) -> dict:
                 "spot": spot, "bands": bands,
                 "landed_date": (prev.get("landed_date") or today.isoformat()),
                 "meta": {"calls": res.get("calls"),
+                         "provider": res.get("provider"),     # "schwab" | "mcp"
                          "expiry_map": res.get("expiry_map"),
                          "iv_rescued": iv_rescued,
                          "round_strike_check": _round_strike_check(contracts, spot)}}

@@ -89,3 +89,11 @@ def _no_live_schwab_book(monkeypatch):
     its own stub there, so every existing `_fetch_book` stub still decides the outcome."""
     import native_gex_feed
     monkeypatch.setattr(native_gex_feed, "_fetch_book_schwab", lambda *a, **k: None)
+
+
+@pytest.fixture(autouse=True)
+def _no_live_schwab_dated_book(monkeypatch):
+    """The nightly dated pull asks Schwab before the MCP too (2026-11-11); the same rule:
+    the Schwab leg answers "nothing" unless a test stubs it, so `_run_code` stubs decide."""
+    import dated_gex_feed
+    monkeypatch.setattr(dated_gex_feed, "_fetch_dated_schwab", lambda *a, **k: None)
