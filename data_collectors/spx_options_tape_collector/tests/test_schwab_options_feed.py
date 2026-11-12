@@ -169,3 +169,29 @@ def test_the_journal_row_names_its_source_only_when_rebuilt():
     rebuilt = TradeEvent(ts_ms=1, strike=7600.0, right="call", price=1.0, size=1,
                          bid=0.9, ask=1.0, bid_size=1, ask_size=1, src=TAPE_SOURCE)
     assert daemon._tape_row(rebuilt)["src"] == TAPE_SOURCE
+
+
+def test_a_row_carries_the_size_of_its_newest_single_print():
+    clock = Clock()
+    feed = OptionsTapeFeedStream(clock=clock)
+    feed.on_stream_quote(row(bid=1.0, ask=1.2, total_volume=100))
+    clock.now += 1
+    feed.on_stream_quote(row(last_price=1.2, last_size=60, total_volume=160))   # one print of 60
+    clock.now += 1
+    feed.on_stream_quote(row(last_price=1.1, last_size=3, total_volume=180))    # 20 merged, last 3
+    clock.now += 1
+    feed.on_stream_quote(row(last_price=1.1, total_volume=183))                 # LAST_SIZE unchanged: 3
+    clock.now += 1
+    feed.on_stream_quote(row(last_price=1.1, last_size=500, total_volume=185))  # capped at the row
+    sizes = [(e.size, e.last_size) for e in drain(feed)]
+    assert sizes == [(60, 60), (20, 3), (3, 3), (2, 2)]
+
+
+def test_the_journal_writes_last_size_only_when_known():
+    from lob_flow.contracts import TradeEvent
+    bare = TradeEvent(ts_ms=1, strike=7600.0, right="call", price=1.2, size=5, bid=1.0, ask=1.2,
+                      bid_size=1, ask_size=1)
+    assert "last_size" not in daemon._tape_row(bare)
+    rebuilt = TradeEvent(ts_ms=1, strike=7600.0, right="call", price=1.2, size=5, bid=1.0, ask=1.2,
+                         bid_size=1, ask_size=1, src=TAPE_SOURCE, last_size=2)
+    assert daemon._tape_row(rebuilt)["last_size"] == 2

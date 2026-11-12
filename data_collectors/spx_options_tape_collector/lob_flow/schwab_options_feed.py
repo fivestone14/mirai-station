@@ -32,6 +32,10 @@ row it writes carries `src = "schwab_stream"`):
     reconnect a contract's first row only re-bases its total (a short gap is
     bridged as one row, a long one is counted in `missed_volume` and skipped).
   * `condition` is always None (Schwab does not send the exchange condition).
+  * `last_size` (added 2026-11-12) is the size of the newest single print in the
+    row, from the stream's LAST_SIZE, capped at the row's size. A row whose
+    last_size equals its size holds exactly one print, so a reader can apply
+    single-trade rules (a "big print") to the print rather than to the lump.
 """
 from __future__ import annotations
 
@@ -85,12 +89,12 @@ class OptionsQuoteFeedSchwab:
 
 class _Contract:
     """What the stream last said about one contract."""
-    __slots__ = ("bid", "ask", "bid_size", "ask_size", "last_price", "trade_ms",
-                 "volume", "rebase")
+    __slots__ = ("bid", "ask", "bid_size", "ask_size", "last_price", "last_size",
+                 "trade_ms", "volume", "rebase")
 
     def __init__(self):
         self.bid = self.ask = self.bid_size = self.ask_size = None
-        self.last_price = self.trade_ms = self.volume = None
+        self.last_price = self.last_size = self.trade_ms = self.volume = None
         self.rebase = False
 
 
@@ -132,6 +136,9 @@ class OptionsTapeFeedStream:
             if c is None:
                 c = self._contracts[row["symbol"]] = _Contract()
             price = _positive(row.get("last_price"))
+            last_size = _whole(row.get("last_size"))
+            if last_size is not None and last_size > 0:
+                c.last_size = last_size                   # Schwab sends a field only when it changes
             trade_ms = _whole(row.get("trade_ms"))
             volume = _whole(row.get("total_volume"))
             if volume is not None:
@@ -171,6 +178,7 @@ class OptionsTapeFeedStream:
         # the quote the print met: what stood before this row, else what this row brings
         quote = {name: (getattr(c, name) if getattr(c, name) is not None else row.get(name))
                  for name in ("bid", "ask", "bid_size", "ask_size")}
+        last_size = min(c.last_size, size) if c.last_size else None
         if len(self._pending) >= MAX_PENDING:
             self.dropped += 1
             return
@@ -178,7 +186,7 @@ class OptionsTapeFeedStream:
             ts_ms=ms, strike=strike, right=right, price=float(price), size=int(size),
             bid=quote["bid"], ask=quote["ask"],
             bid_size=_whole(quote["bid_size"]), ask_size=_whole(quote["ask_size"]),
-            condition=None, src=TAPE_SOURCE))
+            condition=None, src=TAPE_SOURCE, last_size=last_size))
 
     # -- tape-loop side ------------------------------------------------------
 

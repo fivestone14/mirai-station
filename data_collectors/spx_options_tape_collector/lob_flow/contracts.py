@@ -57,6 +57,9 @@ class TradeEvent:
                                       # calibration input; carried, not yet keyed)
     src: Optional[str] = None         # None = the provider's true tape; "schwab_stream" =
                                       # rebuilt from the Schwab stream's volume rises
+    last_size: Optional[int] = None   # rebuilt rows only: the size of the newest single print
+                                      # inside the row (a row can merge several prints;
+                                      # last_size == size means it holds exactly one)
                                       # (schwab_options_feed.py says what that costs)
 
 

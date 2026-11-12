@@ -293,12 +293,13 @@ async def _tape_loop(cfg: LobConfig, a: Adapters, mem: _Mem,
 
 
 def _tape_row(e: TradeEvent) -> dict:
-    """One print as its journal row. `src` is written only when set, so the
-    provider's true tape keeps the row shape it always had and a rebuilt
-    print says so on its own line."""
+    """One print as its journal row. `src` and `last_size` are written only
+    when set, so the provider's true tape keeps the row shape it always had
+    and a rebuilt print says so on its own line."""
     row = dict(e.__dict__)
-    if row.get("src") is None:
-        row.pop("src", None)
+    for name in ("src", "last_size"):
+        if row.get(name) is None:
+            row.pop(name, None)
     return row
 
 
