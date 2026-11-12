@@ -99,7 +99,9 @@ def build_payload(inputs: FrozenInputs, library_rows: list[dict], *, origin: str
         "prompt_and_model_version": rulebook.PROMPT_AND_MODEL_VERSION, "schema": SCHEMA, "trading_day": inputs.day,
         "half_hour_slot_et": inputs.slot, "origin": origin, "status": "refused" if leaks else "built",
         "why": "; ".join(leaks) if leaks else None, "cut_at": inputs.cut.isoformat(), "built_at": built_at.isoformat(timespec="seconds"),
-        "built_lag_s": int((built_at - inputs.cut).total_seconds()), "scene": scene, "ask": ask, "asked_horizons": asked,
+        # true elapsed seconds: two New York times on the same zone object subtract as wall clocks, an hour off
+        # across a clock change (a rebuilt October read built in November)
+        "built_lag_s": int(built_at.timestamp() - inputs.cut.timestamp()), "scene": scene, "ask": ask, "asked_horizons": asked,
         "prompt_sha256": prompt_sha, "direction_order_asked": direction_order, "precedent_order_shown": precedent_order,
         "rules_sha": rulebook.rulebook_sha(), **code_version(),
         "quality_flags": quality_flags(inputs, builder_errors),
