@@ -113,7 +113,8 @@ def test_a_real_read_runs_end_to_end_with_a_stand_in_claude(station_state, real_
     assert [l["answer_id"] for l in reads[:2]] == [f"{REAL_READ_ID}#answer_1", f"{REAL_READ_ID}#answer_2"]
     final = reads[-1]
     assert final["usable_answer_count"] == 2 and final["forecast"]["next_30_minutes"]["up_pct"] == 20
-    assert final["forecast"]["next_30_minutes"]["answer_2"]["up_pct"] == 20 and final["written_at"].endswith("-04:00")
+    assert final["forecast"]["next_30_minutes"]["answer_2"]["up_pct"] == 20 and (datetime.fromisoformat(final["written_at"]).utcoffset()
+                                                                         == datetime.now(ET).utcoffset())  # New York time, either season
     assert "shown_precedents_outcomes" not in final and final["picked_precedents_among_code_nearest_3_count"] is None
     assert json.loads(paths.latest_file.read_text())["read_id"] == REAL_READ_ID
     assert read_runner.run_read(station_state, REAL_READ_ID, call=fake_call)["skipped"] == "already written"
